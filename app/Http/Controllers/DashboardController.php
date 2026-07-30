@@ -14,6 +14,7 @@ use App\Models\ShopeeMetric;
 use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
+use App\Services\Desempenho\NpsSemLinkService;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsPendingService;
@@ -54,6 +55,15 @@ class DashboardController extends Controller
         // nota 1 (D2/D3/D7). Única fonte de leitura para os 3 widgets de NPS
         // deste controller (adminDashboard, buildRanking, userDashboard).
         private NpsImputationService $npsImputation,
+        // Fase 119.1 Plan 09 (D1) — empresa ELEGÍVEL sem NENHUM link no mês
+        // também conta nota 1, mesma régua do bônus. Injetado por CONSTRUTOR
+        // (nunca `app()` dentro do laço de `buildRanking()`) porque
+        // `NpsElegibilidadeService::empresasElegiveis()` memoiza por mês NA
+        // INSTÂNCIA (T-119.1-41) — só a instância única do request preserva
+        // o memo entre as N pessoas do ranking. `app()` dentro do laço
+        // resolveria uma instância NOVA a cada pessoa e desarmaria o memo,
+        // repetindo o precedente de dashboard de 70s já registrado no projeto.
+        private NpsSemLinkService $npsSemLink,
     ) {}
 
     /**
@@ -807,6 +817,23 @@ class DashboardController extends Controller
         )->pluck('nota');
         $notasEmpresa = collect($notasEmpresa->all())->merge($notasImputadasEmpresa);
 
+        // Fase 119.1 Plan 09 (D1) — empresa ELEGÍVEL sem NENHUM link no mês
+        // também conta nota 1, mesma régua do bônus. Ramo ADITIVO e
+        // DISJUNTO dos ramos acima (`notasDaEmpresaSemLink()` rejeita
+        // internamente qualquer empresa que já tenha survey na competência).
+        // Piso retroativo (DEC-09-B): esta é leitura em JANELA ROLANTE —
+        // nunca alcança mais que mês anterior + corrente.
+        $notasSemLinkEmpresa = $this->npsSemLink->notasDaEmpresaSemLink(
+            $companies->pluck('id'),
+            'empresa',
+            $since,
+            now(),
+            null,
+            collect([NpsTemplate::principalId()]),
+            $this->npsSemLink->pisoRetroativo(),
+        )->pluck('nota');
+        $notasEmpresa = $notasEmpresa->merge($notasSemLinkEmpresa);
+
         $avgNps = $notasEmpresa->isNotEmpty()
             ? round((float) $notasEmpresa->avg(), 2)
             : 0;
@@ -1361,6 +1388,25 @@ class DashboardController extends Controller
             // filtra por modelo (templateIds=null), diferente do widget admin.
             $notasImputadas = $this->npsImputation->notasDaEmpresa($companyIds, $dimensao, $since, now())->pluck('nota');
 
+            // Fase 119.1 Plan 09 (D1) — empresa ELEGÍVEL sem NENHUM link no
+            // mês também conta nota 1, mesma régua do bônus. MESMA carteira
+            // ($companyIds) já usada acima; templateIds=null (o ranking hoje
+            // não filtra por modelo — preservado). Piso retroativo
+            // (DEC-09-B): leitura em JANELA ROLANTE, nunca alcança mais que
+            // mês anterior + corrente. Concatenado ANTES do guard abaixo —
+            // senão a pessoa só com nota D1 (sem nenhuma resposta real nem
+            // imputada do ramo C) continuaria caindo no sentinela null.
+            $notasSemLink = $this->npsSemLink->notasDaEmpresaSemLink(
+                $companyIds,
+                $dimensao,
+                $since,
+                now(),
+                null,
+                null,
+                $this->npsSemLink->pisoRetroativo(),
+            )->pluck('nota');
+            $notasImputadas = $notasImputadas->merge($notasSemLink);
+
             // Guard ajustado: pessoa só com notas imputadas (sem nenhuma
             // resposta real) não pode mais cair no sentinela null antigo.
             $avgNps = ($surveys->count() > 0 || $notasImputadas->isNotEmpty())
@@ -1521,6 +1567,23 @@ class DashboardController extends Controller
             collect([NpsTemplate::principalId()]),
         )->pluck('nota');
 
+        // Fase 119.1 Plan 09 (D1) — empresa ELEGÍVEL sem NENHUM link no mês
+        // também conta nota 1, mesma régua do bônus. MESMA carteira
+        // ($companies) e dimensão já usadas acima; templateIds=[principalId()]
+        // espelha o `->principal()` de $npsResponses (mesmo racional do
+        // widget admin). Piso retroativo (DEC-09-B): leitura em JANELA
+        // ROLANTE, nunca alcança mais que mês anterior + corrente.
+        $notasSemLinkUsuario = $this->npsSemLink->notasDaEmpresaSemLink(
+            $companies->pluck('id'),
+            $dimensao,
+            $since,
+            now(),
+            null,
+            collect([NpsTemplate::principalId()]),
+            $this->npsSemLink->pisoRetroativo(),
+        )->pluck('nota');
+        $notasImputadasUsuario = $notasImputadasUsuario->merge($notasSemLinkUsuario);
+
         // Phase 72 Plan 02 — SC#3: empresas pendentes de NPS restritas a
         // carteira do proprio usuario (forCarteira filtra por
         // $user->companies() quando nao e admin).
@@ -1566,6 +1629,13 @@ class DashboardController extends Controller
      * respondido (nota 1 — `NpsImputationService`) são mescladas às notas
      * reais ANTES do `avg()`, preservando o `round(..., 1)` e a sentinela
      * `0.0` de coleção vazia.
+     *
+     * Fase 119.1 Plan 09 — `$notasImputadas` agora pode trazer notas de DOIS
+     * ramos: as do `NpsImputationService` (Fase 116, survey disparado sem
+     * resposta) E as do `NpsSemLinkService` (D1, empresa elegível sem
+     * NENHUM link) — os chamadores (`buildRanking()`, `userDashboard()`)
+     * concatenam os dois ANTES de passar pra cá. A assinatura deste método
+     * NÃO muda: ele só soma o que recebe.
      *
      * @param  iterable<int, \App\Models\NpsSurvey>  $surveys
      * @param  string  $dimensao          Uma das constantes NpsTemplateQuestion::DIMENSOES

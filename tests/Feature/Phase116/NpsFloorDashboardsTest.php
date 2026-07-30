@@ -452,23 +452,23 @@ class NpsFloorDashboardsTest extends TestCase
 
     // ═══════════════════════════════════════════════════════════════════
     // 7 — Empresa ELEGÍVEL (D1/Fase 119.1) sem survey: estes 5 call-sites
-    //     AINDA mantêm a sentinela D3 — GAP CONHECIDO, não é regressão
+    //     AGORA CONTAM NOTA 1 — plano 119.1-09 fechou o gap, 2026-07-29
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_empresa_elegivel_sem_survey_ainda_mantem_sentinela_nestes_call_sites_gap_conhecido(): void
+    public function test_empresa_elegivel_sem_survey_agora_conta_nota_1_em_todos_os_call_sites(): void
     {
-        // Fase 119.1 (D1) inverteu D3 DE PROPÓSITO para o BÔNUS
-        // (`DesempenhoScoreService::computeNpsMedio()`, Plan 03) e para a
-        // ÁREA NPS (`NpsController::index()`, Plan 04) — mas estes 5
-        // call-sites (dashboard admin, ranking "Desempenho da equipe",
-        // dashboard do usuário, página da empresa, meta de NPS) ainda NÃO
-        // consomem `NpsSemLinkService`. Mesmo com uma empresa GENUINAMENTE
-        // elegível (estrategista + contrato ativo + modelo automático
-        // aplicável), o comportamento aqui continua sendo o D3 original —
-        // divergência CONHECIDA, registrada no SUMMARY do 119.1-04 para o
-        // plano 08 fechar a coerência entre telas. NÃO é regressão desta
-        // fase: nenhum destes 5 call-sites foi tocado.
+        // Fase 119.1 Plan 03/04 inverteu D3 DE PROPÓSITO para o BÔNUS
+        // (`DesempenhoScoreService::computeNpsMedio()`) e para a ÁREA NPS
+        // (`NpsController::index()`) — mas deixou estes 5 call-sites
+        // (dashboard admin, ranking "Desempenho da equipe", dashboard do
+        // usuário, página da empresa, meta de NPS) como GAP CONHECIDO. O
+        // usuário foi consultado em 2026-07-29 e decidiu fechar os 4
+        // consumidores restantes (a meta é um dos 4; o quinto — carteira —
+        // foi coberto em `NpsD1CarteiraTest`) — Plano 119.1-09 é essa
+        // entrega. Estas asserções foram INVERTIDAS (nunca apagadas): a
+        // mesma empresa GENUINAMENTE elegível que antes mantinha a
+        // sentinela D3 agora conta nota 1, mesma régua do bônus.
         Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
         $admin        = $this->admin();
         $analista     = User::factory()->create(['role' => 'consultor', 'active' => true]);
@@ -489,33 +489,48 @@ class NpsFloorDashboardsTest extends TestCase
         );
         NpsTemplate::query()->where('id', $template->id)->update(['envio_automatico_mensal' => true]);
 
-        // Nenhum survey criado — nem respondido, nem não respondido.
+        // Nenhum survey criado — a empresa é ELEGÍVEL e, com "hoje" em
+        // 15/07/2026, o mês anterior (junho) já fechou e está dentro do
+        // piso retroativo (DEC-09-B) — D1 conta nota 1 para ele em todos os
+        // call-sites que leem janela ROLANTE.
 
-        // 1) Dashboard admin — sentinela 0, GAP CONHECIDO (119.1).
+        // 1) Dashboard admin — Plano 119.1-09 fechou o gap.
         $propsAdmin = $this->propsDoDashboardAdmin($admin);
-        $this->assertEquals(0, $propsAdmin['stats']['avg_nps'],
-            'GAP CONHECIDO (119.1): dashboard admin ainda não consome D1 — pendente para o plano 08.');
+        $this->assertEquals(1.0, $propsAdmin['stats']['avg_nps'],
+            'Plano 119.1-09 (2026-07-29): dashboard admin agora consome D1.');
 
-        // 2) Ranking — sentinela null, GAP CONHECIDO (119.1).
+        // 2) Ranking — Plano 119.1-09 fechou o gap.
         $ranking = $this->invocarBuildRanking(collect([$analista]), now()->subDays(30));
         $linha   = $ranking->firstWhere('id', $analista->id);
-        $this->assertNull($linha['avg_nps'],
-            'GAP CONHECIDO (119.1): ranking "Desempenho da equipe" ainda não consome D1 — pendente para o plano 08.');
+        $this->assertSame(1.0, $linha['avg_nps'],
+            'Plano 119.1-09 (2026-07-29): ranking "Desempenho da equipe" agora consome D1.');
 
-        // 3) Dashboard do usuário — sentinela 0.0, GAP CONHECIDO (119.1).
+        // 3) Dashboard do usuário — Plano 119.1-09 fechou o gap.
         $propsUser = $this->invocarUserDashboard($analista, now()->subDays(30));
-        $this->assertEquals(0, $propsUser['stats']['avg_nps'],
-            'GAP CONHECIDO (119.1): dashboard do usuário ainda não consome D1 — pendente para o plano 08.');
+        $this->assertEquals(1.0, $propsUser['stats']['avg_nps'],
+            'Plano 119.1-09 (2026-07-29): dashboard do usuário agora consome D1.');
 
-        // 4) Página da empresa — sem dado nenhum, GAP CONHECIDO (119.1).
+        // 4) Página da empresa — Plano 119.1-09 fechou o gap; a LISTA "NPS
+        //    Respondidos" permanece vazia (só respostas reais).
         $propsCompany = $this->propsDaEmpresa($admin, $empresa);
-        $this->assertNull($propsCompany['company']['nps_avg'],
-            'GAP CONHECIDO (119.1): página da empresa ainda não consome D1 — pendente para o plano 08.');
-        $this->assertCount(0, $propsCompany['company']['nps_surveys']);
+        $this->assertEquals(1.0, $propsCompany['company']['nps_avg'],
+            'Plano 119.1-09 (2026-07-29): página da empresa agora consome D1.');
+        $this->assertCount(0, $propsCompany['company']['nps_surveys'],
+            'A lista de respostas reais continua vazia — D1 nunca aparece nela.');
 
-        // 5) Meta NPS — continua null, GAP CONHECIDO (119.1).
-        $media = $this->invocarComputeNpsDaMeta($empresa->id, 2026, 7);
-        $this->assertNull($media,
-            'GAP CONHECIDO (119.1): meta de NPS ainda não consome D1 — pendente para o plano 08.');
+        // 5) Meta NPS para JULHO (mês corrente, coleta AINDA ABERTA) —
+        //    continua legitimamente null. Isto NÃO é o gap: é a regra de
+        //    janela aberta (`NpsJanelaResolver::fechada()`), preservada tal
+        //    como estava.
+        $mediaMesAberto = $this->invocarComputeNpsDaMeta($empresa->id, 2026, 7);
+        $this->assertNull($mediaMesAberto,
+            'Julho ainda está com a coleta aberta — a meta continua null (regra de janela, não o gap).');
+
+        // 5b) Meta NPS para JUNHO (mês FECHADO, dentro do piso) — Plano
+        //     119.1-09 fechou o gap. Sem esta asserção nova, o arquivo
+        //     provaria a meta sem nunca exercitá-la de fato fechada.
+        $mediaMesFechado = $this->invocarComputeNpsDaMeta($empresa->id, 2026, 6);
+        $this->assertEquals(1.0, $mediaMesFechado,
+            'Plano 119.1-09 (2026-07-29): meta de NPS para o mês FECHADO agora consome D1.');
     }
 }

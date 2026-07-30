@@ -628,16 +628,21 @@ class NpsFloorRegressaoTest extends TestCase
 
     // ═══════════════════════════════════════════════════════════════════
     // 8 — Cenário-espelho ELEGÍVEL (Fase 119.1 · D1), SEM NENHUM survey: os
-    //     2 consumidores já plugados (área NPS, bônus) passam a contar
-    //     nota 1 quando o mês fecha; os 4 restantes (carteira, ranking,
-    //     página da empresa, meta) AINDA mantêm a sentinela — GAP
-    //     CONHECIDO, registrado no SUMMARY do 119.1-04 para o plano 08
-    //     fechar a coerência entre telas. NÃO é regressão desta fase.
+    //     6 consumidores AGORA CONCORDAM contando nota 1 — plano 119.1-09
+    //     fechou os 4 que faltavam, 2026-07-29.
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_cenario_espelho_elegivel_sem_survey_conta_1_onde_d1_foi_plugado_e_mantem_sentinela_nos_demais(): void
+    public function test_cenario_espelho_elegivel_sem_survey_conta_1_em_todos_os_consumidores(): void
     {
+        // Até o plano 119.1-04, só 2 dos 6 consumidores (área NPS, bônus)
+        // consumiam D1 — os outros 4 (carteira, ranking, página da empresa,
+        // meta de NPS) mantinham a sentinela D3 antiga, GAP CONHECIDO. O
+        // usuário foi consultado em 2026-07-29 e decidiu fechar os 4 — Plano
+        // 119.1-09 é essa entrega. Estas asserções foram INVERTIDAS (nunca
+        // apagadas): com "hoje" em 2026-08-01, julho fechou e está dentro
+        // do piso retroativo (DEC-09-B: piso = mês anterior a "hoje" =
+        // julho) — os 6 consumidores concordam em nota 1.
         $cenario = $this->montarCenarioVazioElegivel();
         $admin   = $this->admin();
 
@@ -659,28 +664,32 @@ class NpsFloorRegressaoTest extends TestCase
         $this->assertSame(1.0, $this->invocarComputeNpsMedio($cenario['estrategista'], Carbon::parse('2026-07-01')),
             'D1 — empresa elegível sem link conta nota 1 no bônus do estrategista.');
 
-        // 3) Carteira — GAP CONHECIDO: ainda não consome D1, sentinela null.
+        // 3) Carteira — Plano 119.1-09 fechou o gap: CONTA nota 1.
         $propsCarteira = $this->propsDashboardCarteira($cenario['analista']);
         $linhaCarteira = collect($propsCarteira['empresas'])->firstWhere('id', $cenario['empresa']->id);
         $this->assertNotNull($linhaCarteira);
-        $this->assertNull($linhaCarteira['nps'],
-            'GAP CONHECIDO (119.1): dashboardCarteira ainda não consome D1 — pendente para o plano 08.');
+        $this->assertEquals(1.0, $linhaCarteira['nps'],
+            'Plano 119.1-09 (2026-07-29): dashboardCarteira agora consome D1.');
 
-        // 4) Ranking — GAP CONHECIDO: sentinela null preservada.
+        // 4) Ranking — Plano 119.1-09 fechou o gap: CONTA nota 1.
         $ranking      = $this->invocarBuildRanking(collect([$cenario['analista']]), now()->subDays(30));
         $linhaRanking = $ranking->firstWhere('id', $cenario['analista']->id);
-        $this->assertNull($linhaRanking['avg_nps'],
-            'GAP CONHECIDO (119.1): ranking "Desempenho da equipe" ainda não consome D1 — pendente para o plano 08.');
+        $this->assertSame(1.0, $linhaRanking['avg_nps'],
+            'Plano 119.1-09 (2026-07-29): ranking "Desempenho da equipe" agora consome D1.');
 
-        // 5) Página da empresa — GAP CONHECIDO: nps_avg null, lista vazia.
+        // 5) Página da empresa — Plano 119.1-09 fechou o gap: CONTA nota 1;
+        //    a lista "NPS Respondidos" permanece vazia (só respostas reais).
         $propsEmpresa = $this->propsDaEmpresa($admin, $cenario['empresa']);
-        $this->assertNull($propsEmpresa['company']['nps_avg'],
-            'GAP CONHECIDO (119.1): página da empresa ainda não consome D1 — pendente para o plano 08.');
-        $this->assertCount(0, $propsEmpresa['company']['nps_surveys']);
+        $this->assertEquals(1.0, $propsEmpresa['company']['nps_avg'],
+            'Plano 119.1-09 (2026-07-29): página da empresa agora consome D1.');
+        $this->assertCount(0, $propsEmpresa['company']['nps_surveys'],
+            'A lista de respostas reais continua vazia — D1 nunca aparece nela.');
 
-        // 6) Meta de NPS — GAP CONHECIDO: continua null.
+        // 6) Meta de NPS — Plano 119.1-09 fechou o gap: CONTA nota 1 (julho
+        //    já fechou nesta data congelada — DIFERENTE do teste do bloco 7
+        //    de NpsFloorDashboardsTest, onde julho ainda estava aberto).
         $media = $this->invocarComputeNpsDaMeta($cenario['empresa']->id, 2026, 7);
-        $this->assertNull($media,
-            'GAP CONHECIDO (119.1): meta de NPS ainda não consome D1 — pendente para o plano 08.');
+        $this->assertEquals(1.0, $media,
+            'Plano 119.1-09 (2026-07-29): meta de NPS agora consome D1.');
     }
 }

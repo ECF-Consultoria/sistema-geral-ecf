@@ -450,11 +450,31 @@ class CompanyController extends Controller
             now(),
         )->pluck('nota');
 
+        // Fase 119.1 Plan 09 (D1) — empresa ELEGÍVEL sem NENHUM link no mês
+        // também conta nota 1, mesma régua do bônus. A LISTA `nps_surveys`
+        // abaixo NÃO muda — continua só com respostas reais; só `nps_avg`/
+        // `nps_nao_respondidos` somam esta fonte nova. Piso retroativo
+        // (DEC-09-B): leitura em JANELA ROLANTE (início relativo a `now()`),
+        // nunca alcança mais que mês anterior + corrente — o histórico
+        // antigo não é reescrito por este ramo.
+        $semLinkService = app(\App\Services\Desempenho\NpsSemLinkService::class);
+        $notasSemLinkEmpresa = $semLinkService->notasDaEmpresaSemLink(
+            collect([$company->id]),
+            'empresa',
+            Carbon::createFromDate(1970, 1, 1),
+            now(),
+            null,
+            null,
+            $semLinkService->pisoRetroativo(),
+        )->pluck('nota');
+
         // Cast explícito pra Collection base antes do merge(): $notasReaisEmpresa
         // é Eloquent\Collection (herda o tipo de $company->npsSurveys via
         // ->map()/->filter()) e o merge() dela assume Model::getKey() —
         // armadilha documentada nos Plans 116-03/116-04.
-        $notasEmpresaCard = collect($notasReaisEmpresa->all())->merge($notasImputadasEmpresa);
+        $notasEmpresaCard = collect($notasReaisEmpresa->all())
+            ->merge($notasImputadasEmpresa)
+            ->merge($notasSemLinkEmpresa);
         $npsAvg = $notasEmpresaCard->isNotEmpty() ? round((float) $notasEmpresaCard->avg(), 1) : null;
         // Fase 116 Plan 07 (tarefa adicional) — quantidade de notas reais vs.
         // notas de não respondido que compõem `nps_avg` acima, para a página
@@ -462,9 +482,11 @@ class CompanyController extends Controller
         // área NPS: "respondida(s)" · "sem resposta (contam 1)"). Nota:
         // $notasReaisEmpresa reflete só os 10 surveys respondidos mais
         // recentes (mesma limitação já existente do `nps_surveys` eager-load
-        // usada pelo `nps_avg` desde o Plan 116-05).
+        // usada pelo `nps_avg` desde o Plan 116-05). Fase 119.1 Plan 09 —
+        // `$npsNaoRespondidos` soma as DUAS fontes (survey disparado sem
+        // resposta + empresa elegível sem NENHUM link).
         $npsRespondidos     = $notasReaisEmpresa->count();
-        $npsNaoRespondidos  = $notasImputadasEmpresa->count();
+        $npsNaoRespondidos  = $notasImputadasEmpresa->count() + $notasSemLinkEmpresa->count();
 
         return Inertia::render('Companies/Show', [
             'company' => [

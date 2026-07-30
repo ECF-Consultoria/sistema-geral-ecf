@@ -257,6 +257,33 @@ class CalculateGoalResults implements ShouldQueue
         )->pluck('nota');
         $notas = collect($notas->all())->merge($notasImputadas);
 
+        // Fase 119.1 Plan 09 (D1) — empresa ELEGÍVEL sem NENHUM link no mês
+        // também conta nota 1, mesma régua do bônus. MESMO recorte de modelo
+        // (templateIds = [principalId()]) das notas imputadas acima, pra não
+        // misturar modelos na mesma meta.
+        //
+        // ⚠ DEC-09-C — este é o ÚNICO call-site do plano 09 que NÃO passa
+        // `pisoRetroativo()`. `computeNps()` recebe `($year, $month)`
+        // EXPLÍCITOS — é leitura de competência FIXA, não janela rolante. Um
+        // piso relativo a `now()` aqui faria o resultado de uma competência
+        // FECHADA depender da HORA em que o recompute roda (a mesma classe
+        // de bug documentada no projeto em
+        // `project_adman_margem_diff_instavel_bonus`) — o oposto do que
+        // `desempenho:consolidar-mes` precisa pra congelar um snapshot
+        // reprodutível. `NpsSemLinkService::notasDaEmpresaSemLink()` já
+        // resolve janela fechada/elegibilidade/invalidação sozinho — nenhum
+        // piso é necessário aqui porque `$year`/`$month` já fixam a única
+        // competência que este método lê.
+        $notasSemLink = app(\App\Services\Desempenho\NpsSemLinkService::class)->notasDaEmpresaSemLink(
+            collect([$companyId]),
+            'empresa',
+            Carbon::createFromDate($year, $month, 1)->startOfMonth(),
+            Carbon::createFromDate($year, $month, 1)->endOfMonth(),
+            null,
+            collect([NpsTemplate::principalId()]),
+        )->pluck('nota');
+        $notas = $notas->merge($notasSemLink);
+
         // Semântica de retorno preservada (invariante D3): null quando NÃO
         // há NENHUMA nota (nem real, nem imputada) — meta sem dado nenhum
         // continua sem resultado, nunca vira 1.
