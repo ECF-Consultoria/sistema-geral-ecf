@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BonusInvalidacao;
 use App\Models\Company;
+use App\Models\CompanyGroup;
 use App\Models\Configuracao;
 use App\Models\NpsEmailEnvio;
 use App\Models\NpsImputedAssignment;
@@ -15,6 +16,7 @@ use App\Models\NpsSurvey;
 use App\Models\NpsSurveyEvent;
 use App\Services\Desempenho\NpsSemLinkService;
 use App\Services\Nps\NpsElegibilidadeService;
+use App\Services\Nps\NpsGrupoCoberturaService;
 use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsJanelaResolver;
 use App\Services\Nps\NpsTemplateService;
@@ -55,11 +57,15 @@ class NpsController extends Controller
     // nota 1 nos cards/série (NpsSemLinkService, mesma régua do bônus) e o
     // "mês fechou?" da janela de coleta é lido de NpsJanelaResolver (Fase
     // 118), nunca reimplementado inline.
+    // Quick task 260730-jzx (ajuste 3) · colapso de grupo em Faltantes reusa
+    // a régua de "mesma dupla" já implementada em NpsGrupoCoberturaService —
+    // a comparação de responsáveis não é reimplementada aqui (DQ-05).
     public function __construct(
         private NpsImputationService $imputationService,
         private NpsElegibilidadeService $elegibilidadeService,
         private NpsSemLinkService $npsSemLinkService,
         private NpsJanelaResolver $npsJanelaResolver,
+        private NpsGrupoCoberturaService $grupoCoberturaService,
     ) {
     }
 
@@ -470,6 +476,17 @@ class NpsController extends Controller
             });
         };
 
+        // Quick task 260730-jzx (ajuste 4) — empresa sem estrategista atribuído
+        // não entra em Faltantes: reusa a MESMA régua que o cálculo da nota já
+        // usa (`empresasElegiveis()` exige estrategista, D-07 Fase 31), então
+        // a lista de trabalho fica alinhada com o que a nota já ignorava
+        // (DQ-02). Calculado ANTES do laço dos setores para servir de FILTRO
+        // aqui embaixo, e reaproveitado mais adiante para `conta_nota_1`.
+        $elegiveisPorEmpresa = [];
+        foreach ($this->elegibilidadeService->empresasElegiveis($mesInicio) as $item) {
+            $elegiveisPorEmpresa[$item->company_id] = true;
+        }
+
         $faltantes = [];
         foreach ($setores as $setor => $info) {
             $servicoIds  = array_values(array_unique($info['servicoIds']));
@@ -510,27 +527,30 @@ class NpsController extends Controller
 
             $q->whereNotIn('id', $comSurvey);
 
-            foreach ($q->get(['id', 'name', 'email_cliente', 'digisac_group_contact_id']) as $c) {
+            foreach ($q->get(['id', 'name', 'company_group_id']) as $c) {
+                // Quick task 260730-jzx (ajuste 4) — sem estrategista atribuído,
+                // a empresa ainda não entrou na operação: não aparece na lista
+                // de trabalho (mesmo corte de `empresasElegiveis()` acima).
+                if (!isset($elegiveisPorEmpresa[$c->id])) {
+                    continue;
+                }
+
                 $faltantes[] = [
-                    'company_id'  => $c->id,
-                    'name'        => $c->name,
-                    'modelo'      => $info['modeloNome'],
-                    'template_id' => $info['templateId'],
-                    'setor'       => $setor,
-                    // Fase 119.1 (D5/NPSMAN-12) — motivo do "sem link": falta
-                    // cadastrar contato (nem email nem Digisac) vs. o contato
-                    // existe e só falta gerar/enviar o link. D5 trava que a
-                    // AUSÊNCIA de contato NÃO tira a empresa da regra — isto é
-                    // só o motivo que a tela mostra pra explicar o que fazer.
-                    'motivo'      => (empty($c->email_cliente) && empty($c->digisac_group_contact_id))
-                        ? 'sem_contato'
-                        : 'sem_link',
+                    'company_id'       => $c->id,
+                    'name'             => $c->name,
+                    'modelo'           => $info['modeloNome'],
+                    'template_id'      => $info['templateId'],
+                    'setor'            => $setor,
+                    'company_group_id' => $c->company_group_id,
+                    // Quick task 260730-jzx (ajuste 1) — o "motivo" (sem
+                    // contato/sem link) saiu da tela: o envio é manual (gera o
+                    // link e manda por fora), então falta de e-mail/Digisac
+                    // não impede nada. A regra de nota 1 (D5) não mudou.
+                    'tipo'             => 'empresa',
+                    'empresas_count'   => 1,
                 ];
             }
         }
-
-        // Ordena por empresa e depois modelo (leitura da lista).
-        usort($faltantes, fn ($a, $b) => [$a['name'], $a['modelo']] <=> [$b['name'], $b['modelo']]);
 
         // Fase 119.1 (D1) — cada faltante diz se está PESANDO na média (mês
         // de coleta já fechado + par empresa/modelo elegível + não invalidada
@@ -549,29 +569,45 @@ class NpsController extends Controller
         // modelo do setor este mês" (o `comSurvey` acima varre todos os
         // `$templateIds`), basta saber se a empresa é elegível para ALGUM
         // modelo aplicável — a mesma pergunta que `NpsSemLinkService`
-        // responde por (empresa, modelo) somada abaixo.
-        $elegiveisPorEmpresa = [];
-        foreach ($this->elegibilidadeService->empresasElegiveis($mesInicio) as $item) {
-            $elegiveisPorEmpresa[$item->company_id] = true;
-        }
+        // responde por (empresa, modelo) somada abaixo. `$elegiveisPorEmpresa`
+        // já foi calculado ANTES do laço dos setores (ajuste 4) — não
+        // recalcular aqui, é o mesmo mapa.
         foreach ($faltantes as &$faltante) {
             $faltante['conta_nota_1'] = $mesFechadoAtual
                 && isset($elegiveisPorEmpresa[$faltante['company_id']])
                 && !$invalidadasCompetenciaAtual->contains($faltante['company_id']);
+            // Quick task 260730-jzx (DQ-03 — preparo do colapso de grupo) —
+            // conta_nota_1_count/empresas_count são os campos que os
+            // contadores somam abaixo; hoje 1 linha = 1 empresa, mas a linha
+            // de grupo (Task 2) vai agregar N empresas nestes mesmos campos.
+            $faltante['conta_nota_1_count'] = (int) $faltante['conta_nota_1'];
         }
         unset($faltante);
 
-        $contadores['faltantes'] = count($faltantes);
+        // Quick task 260730-jzx (ajuste 3) — grupo cuidado pelas MESMAS
+        // pessoas colapsa em UMA linha (DQ-03/DQ-04/DQ-05). Roda DEPOIS do
+        // laço que grava conta_nota_1/conta_nota_1_count (agrega valores já
+        // calculados) e ANTES do usort/contadores (a ordenação e as somas
+        // abaixo já enxergam a lista colapsada).
+        $faltantes = $this->colapsarFaltantesPorGrupo($faltantes, $mesInicio);
+
+        // Ordena por empresa/grupo e depois modelo (leitura da lista).
+        usort($faltantes, fn ($a, $b) => [$a['name'], $a['modelo']] <=> [$b['name'], $b['modelo']]);
+
+        // Quick task 260730-jzx (DQ-03) — os contadores somam EMPRESAS
+        // (campo `empresas_count`), nunca LINHAS. Colapsar um grupo de N
+        // empresas em 1 linha (Task 2) não pode mudar nenhum destes números.
+        $contadores['faltantes'] = array_sum(array_column($faltantes, 'empresas_count'));
         // Fase 119.1 (D1) — quantos faltantes estão pesando na média (o
         // plano 07/UI consome esta chave, ver 119.1-04-PLAN.md).
-        $contadores['contam_nota_1'] = count(array_filter($faltantes, fn ($f) => $f['conta_nota_1']));
+        $contadores['contam_nota_1'] = array_sum(array_column($faltantes, 'conta_nota_1_count'));
 
         // "Todos" = TODAS as empresas da carteira filtrada (2026-07-21):
         // respondidas + pendentes + expiradas (os surveys do mês) + faltantes
         // (empresas sem link no mês). Antes contava só os surveys e escondia os
         // faltantes do total. Respeita o filtro de pessoa aplicado — filtrando
         // por um estrategista/analista, "Todos" reflete a carteira dele.
-        $contadores['todos'] = $totalGeral + count($faltantes);
+        $contadores['todos'] = $totalGeral + array_sum(array_column($faltantes, 'empresas_count'));
 
         // Status efetivo por linha — coerente com os contadores acima (mesma
         // regra de "expirado"). Apresentação pura; a coluna `status` do banco
@@ -616,6 +652,10 @@ class NpsController extends Controller
                 'respondent'         => $s->response?->respondent_name,
                 'comment'            => $s->response?->comment,
                 'link'               => route('nps.respond', $s->token),
+                // Quick task 260730-jzx (ajuste 2) — detalhe do link pendente
+                // precisa dizer se é de UMA empresa ou de um GRUPO. Leitura de
+                // coluna já carregada (group_survey_id), sem eager load novo.
+                'de_grupo'           => $s->group_survey_id !== null,
 
                 // Phase 33 Plan 33-04 + Bugfix 2026-07-08 — dual-path para o modal.
                 'respostas_customizadas' => $extrasDe($s->response)->all(),
@@ -914,6 +954,113 @@ class NpsController extends Controller
         }
 
         return Inertia::render('Nps/Index', $props);
+    }
+
+    /**
+     * Quick task 260730-jzx (ajuste 3) — colapsa em UMA linha as empresas
+     * FALTANTES de um mesmo (setor, grupo) quando `NpsGrupoCoberturaService`
+     * confirma que todas são cuidadas pelas MESMAS pessoas (DQ-05: a régua de
+     * "mesma dupla" vive no serviço, nunca reimplementada aqui). Balde com
+     * menos de 2 empresas na interseção real da cobertura mantém as linhas
+     * individuais (DQ-04). O serviço é chamado UMA vez por (grupo, setor),
+     * nunca dentro de um laço por empresa.
+     *
+     * Roda DEPOIS do laço que grava `conta_nota_1`/`conta_nota_1_count` (só
+     * agrega valores já calculados) e ANTES do `usort`/contadores (DQ-03: os
+     * contadores somam `empresas_count`, então o colapso não muda nenhum
+     * número, só encurta a lista).
+     *
+     * @param array<int, array> $faltantes
+     * @return array<int, array>
+     */
+    private function colapsarFaltantesPorGrupo(array $faltantes, Carbon $mesInicio): array
+    {
+        // Baldes por (setor, company_group_id) — ignora empresa sem grupo.
+        $baldes = [];
+        foreach ($faltantes as $idx => $f) {
+            if (($f['tipo'] ?? null) !== 'empresa' || empty($f['company_group_id'])) {
+                continue;
+            }
+            $chave = $f['setor'] . '|' . $f['company_group_id'];
+            $baldes[$chave][] = $idx;
+        }
+
+        // DQ-04 — só vale consultar o serviço para baldes com 2+ linhas.
+        $baldesElegiveis = array_filter($baldes, fn ($idxs) => count($idxs) >= 2);
+        if (empty($baldesElegiveis)) {
+            return $faltantes;
+        }
+
+        // Carrega TODOS os grupos e modelos envolvidos em 2 queries (nunca
+        // dentro do laço por balde/empresa — armadilha 4).
+        $grupoIds = collect($baldesElegiveis)
+            ->map(fn ($idxs) => (int) $faltantes[$idxs[0]]['company_group_id'])
+            ->unique()
+            ->values();
+        $grupos = CompanyGroup::with('companies')->whereIn('id', $grupoIds)->get()->keyBy('id');
+
+        $templateIds = collect($baldesElegiveis)
+            ->map(fn ($idxs) => $faltantes[$idxs[0]]['template_id'])
+            ->unique()
+            ->values();
+        $templates = \App\Models\NpsTemplate::whereIn('id', $templateIds)->get()->keyBy('id');
+
+        $indicesParaRemover = [];
+        $linhasDeGrupo = [];
+
+        foreach ($baldesElegiveis as $idxs) {
+            $representante = $faltantes[$idxs[0]];
+            $grupo = $grupos->get((int) $representante['company_group_id']);
+            $template = $templates->get($representante['template_id']);
+
+            if (!$grupo || !$template) {
+                continue; // defesa — não deveria acontecer com dados consistentes
+            }
+
+            // UMA chamada por (grupo, setor) — nunca por empresa.
+            $cobertura = $this->grupoCoberturaService->calcular($grupo, $template, $mesInicio);
+            $incluidasIds = collect($cobertura['incluidas'])->pluck('company_id');
+
+            $idxsCobertos = collect($idxs)->filter(
+                fn ($idx) => $incluidasIds->contains($faltantes[$idx]['company_id'])
+            )->values();
+
+            if ($idxsCobertos->count() < 2) {
+                continue; // DQ-04 — cobertura real não chega a 2 empresas
+            }
+
+            $linhas = $idxsCobertos->map(fn ($idx) => $faltantes[$idx]);
+
+            $linhasDeGrupo[] = [
+                'tipo'               => 'grupo',
+                'group_id'           => $grupo->id,
+                'name'               => $grupo->name,
+                'empresas_count'     => $linhas->count(),
+                'empresas_nomes'     => $linhas->pluck('name')->values()->all(),
+                'modelo'             => $representante['modelo'],
+                'template_id'        => $representante['template_id'],
+                'setor'              => $representante['setor'],
+                'conta_nota_1'       => $linhas->contains(fn ($l) => $l['conta_nota_1']),
+                'conta_nota_1_count' => $linhas->sum('conta_nota_1_count'),
+            ];
+
+            foreach ($idxsCobertos as $idx) {
+                $indicesParaRemover[$idx] = true;
+            }
+        }
+
+        if (empty($indicesParaRemover)) {
+            return $faltantes;
+        }
+
+        $resultado = [];
+        foreach ($faltantes as $idx => $f) {
+            if (!isset($indicesParaRemover[$idx])) {
+                $resultado[] = $f;
+            }
+        }
+
+        return array_merge($resultado, $linhasDeGrupo);
     }
 
     /**
