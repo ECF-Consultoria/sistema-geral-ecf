@@ -98,6 +98,28 @@ use Illuminate\Support\Facades\Cache;
 class DesempenhoScoreService
 {
     /**
+     * Fase 120 (AGRE-05/D-03) — patamar de cobertura de empresas `complete`
+     * que decide `official` vs `partial` em `computeScoreStatusPorEmpresa()`,
+     * o caminho novo de agregação por empresa (flag
+     * `metrics.performance_company_first_score`).
+     *
+     * O valor é deliberadamente o MESMO de
+     * `ConsolidarMesDesempenho::MARGEM_COBERTURA_MINIMA_CONGELAMENTO` (0.7,
+     * `app/Console/Commands/ConsolidarMesDesempenho.php:76`), que já governa
+     * a recusa de congelar snapshot degradado. Reusar o mesmo número evita
+     * que o sistema passe a ter DOIS conceitos concorrentes de "cobertura
+     * suficiente" — o mesmo problema que a C-01 da Fase 119 apontou ao
+     * descobrir a constante órfã de 0,8. Aquela constante é `private` no
+     * comando, então o valor aqui é DUPLICADO de propósito; é este docblock
+     * que amarra os dois — não há import/reuso direto entre as classes.
+     *
+     * O usuário NÃO fixou este número — é decisão de planejamento (D-03 do
+     * `120-CONTEXT.md`), fácil de sobrepor se a diretoria decidir outro
+     * patamar no futuro.
+     */
+    private const COBERTURA_MINIMA_SCORE_STATUS = 0.7;
+
+    /**
      * Cache in-memory das faixas ativas — evita re-query em loops de ranking
      * (ex: consolidação mensal itera 15-20 users e cada um chama classificar).
      * Preenche na primeira chamada de `classificarFaixa()`; invalidação natural
@@ -523,11 +545,36 @@ class DesempenhoScoreService
             ->count();
         $margemPontos = $this->margemPontos($varMargem, $nComMargemReal, $nShopeePlaceholder);
 
-        // ── Nota final (média direta, sem absenteísmo) ───────────────────────
-        $nota = $this->computeNotaFinal($nps, $varFat, $margemPontos);
-
-        // ── Status de elegibilidade (Fase 91 · DESEMP-06/D-91-02; Fase 109) ──
-        $scoreStatus = $this->computeScoreStatus($contadores, $varFat, $margemPontos);
+        // ── Nota final e score_status — bifurcação (Fase 120 · AGRE-01/05/06) ──
+        // Risco herdado da Fase 119 (`119-04-SUMMARY.md`), registrado aqui
+        // porque é o ponto exato onde ele passa a valer: régua-da-média NÃO é
+        // média-das-réguas. `margemPontos()` aplica a régua de margem UMA VEZ
+        // sobre a variação agregada da carteira inteira (e pondera os
+        // placeholders Shopee por contagem, Fase 109); o caminho novo
+        // (`computeNotaFinalPorEmpresa`/`computeScoreStatusPorEmpresa`) aplica
+        // a régua POR EMPRESA dentro do `CompanyScoreService` e promedia
+        // DEPOIS. O invariante que o docblock de `margemPontos()` declara —
+        // "só-performance devolve exatamente `reguaMargem($varMargemReal)`,
+        // regressão zero" — NÃO VALE no ramo novo. Isso é esperado: é o ponto
+        // central da milestone v21.0. Ligar a flag MUDA NOTAS; quantificar
+        // quanto é trabalho da Fase 121. Ativar em produção depende do GATE
+        // MPP-04 (hoje `reprovado`) aprovar E do delta da Fase 121 ser aceito
+        // pelo usuário — nenhum dos dois pré-requisitos está satisfeito nesta
+        // fase, e a flag permanece `false`.
+        //
+        // O `if` só ESCOLHE qual par de funções chamar — nunca uma função
+        // híbrida. Os legados `computeNotaFinal`/`computeScoreStatus` não
+        // recebem `$empresasScore` nem leem a flag; os novos
+        // `computeNotaFinalPorEmpresa`/`computeScoreStatusPorEmpresa` não
+        // recebem os 4 componentes agregados. As duas árvores de chamada
+        // ficam fisicamente separadas.
+        if (config('metrics.performance_company_first_score') && $empresasScore !== null) {
+            $nota        = $this->computeNotaFinalPorEmpresa($empresasScore);
+            $scoreStatus = $this->computeScoreStatusPorEmpresa($empresasScore);
+        } else {
+            $nota        = $this->computeNotaFinal($nps, $varFat, $margemPontos);
+            $scoreStatus = $this->computeScoreStatus($contadores, $varFat, $margemPontos);
+        }
 
         // D-91-01: blocked (zero vínculos financeiros elegíveis — ex.:
         // só-Shopee) força nota_final=null/faixa_bonus=null. Decisão do
@@ -1473,6 +1520,87 @@ class DesempenhoScoreService
         $media = $empresasScore->avg('margem_var_pp');
 
         return $media !== null ? round($media, 2) : null;
+    }
+
+    /**
+     * Fase 120 (AGRE-01) — `nota_final` do caminho novo: média das
+     * `nota_empresa` (nota ESTRITA, D-01 do `CompanyScoreService`) das
+     * empresas com `status === 'complete'`, arredondada a 2 casas.
+     *
+     * Método NOVO e SEPARADO — nunca uma extensão de `computeNotaFinal()`
+     * legado, que continua intocado e é quem roda com a flag desligada.
+     *
+     * D-01 (`120-CONTEXT.md`) — por que empresa `partial`/`sem_fonte`/
+     * `sem_dados` fica FORA do denominador, mesmo tendo
+     * `nota_empresa_parcial` disponível: entrar com a parcial misturaria
+     * empresa medida por 3 dimensões com empresa medida por 1, e a
+     * incompleta poderia até puxar a nota para CIMA (caso concreto do
+     * `120-CONTEXT.md`: 4,80 de parcial contra 4,53 da completa no caso
+     * âncora). A leitura literal do plano canônico §3.4 — qualquer
+     * incompleta derruba o profissional para `partial` — foi descartada
+     * porque empresa sem baseline é caso COMUM neste projeto
+     * (`adman_metrics` começa por volta de 21/05; Shopee não tem baseline
+     * antes de 01/06): quase toda carteira cairia em `partial` e o status
+     * pararia de distinguir qualquer coisa. A guarda de cobertura de
+     * `computeScoreStatusPorEmpresa()` é o que impede o abuso de um
+     * profissional com 10 empresas e 2 completas ser julgado por 2 com
+     * aparência de nota oficial.
+     *
+     * @param  Collection<int, object>  $empresasScore  linhas de
+     *   `CompanyScoreService::computeEmpresasScore()` — já filtradas por
+     *   carteira/invalidação por competência (T-120-06/T-120-07), nunca
+     *   reabertas aqui.
+     * @return ?float 2 decimais; `null` quando nenhuma empresa é `complete`.
+     */
+    private function computeNotaFinalPorEmpresa(Collection $empresasScore): ?float
+    {
+        $completas = $empresasScore->filter(fn ($e) => $e->status === 'complete');
+
+        if ($completas->isEmpty()) {
+            return null;
+        }
+
+        return round($completas->avg('nota_empresa'), 2);
+    }
+
+    /**
+     * Fase 120 (AGRE-05/AGRE-06) — `score_status` do caminho novo: deriva da
+     * DISTRIBUIÇÃO de status por empresa, não da presença binária de dois
+     * sinais agregados como o `computeScoreStatus()` legado (que olha
+     * `$varFat`/`$margemPontos`, cada um presente ou nulo para a carteira
+     * inteira). Método NOVO e SEPARADO — o legado continua intocado.
+     *
+     * Regras, na ordem:
+     *  1. `blocked` — nenhuma empresa com nota alguma, ou seja,
+     *     `nota_empresa_parcial` é `null` em TODAS. Caso extremo.
+     *  2. Cobertura = empresas com `status === 'complete'` / total de linhas
+     *     do `$empresasScore` — o total é o universo elegível INTEIRO,
+     *     incluindo as `sem_fonte` (D-03 da Fase 119 as lista de propósito).
+     *  3. `official` quando cobertura >= `self::COBERTURA_MINIMA_SCORE_STATUS`
+     *     (0.7), senão `partial`.
+     *
+     * Caso concreto (`120-CONTEXT.md`): 26 empresas com 20 `complete` dá
+     * cobertura 77% e `official`; com 15 `complete` dá 58% e `partial`.
+     *
+     * AGRE-06 — profissional só-Shopee tem TODAS as empresas `complete`,
+     * porque o placeholder de margem 1.0 conta como componente presente
+     * (D-02 da Fase 119), logo cobertura 100% e `official` — SEM nenhum
+     * `if` especial para Shopee. É assim que a trava da Fase 109 é
+     * preservada neste método.
+     *
+     * @param  Collection<int, object>  $empresasScore
+     */
+    private function computeScoreStatusPorEmpresa(Collection $empresasScore): string
+    {
+        if ($empresasScore->every(fn ($e) => $e->nota_empresa_parcial === null)) {
+            return 'blocked';
+        }
+
+        $total     = $empresasScore->count();
+        $completas = $empresasScore->filter(fn ($e) => $e->status === 'complete')->count();
+        $cobertura = $total > 0 ? $completas / $total : 0.0;
+
+        return $cobertura >= self::COBERTURA_MINIMA_SCORE_STATUS ? 'official' : 'partial';
     }
 
     /**
