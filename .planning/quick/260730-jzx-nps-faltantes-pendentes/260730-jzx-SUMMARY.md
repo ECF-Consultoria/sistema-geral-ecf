@@ -29,7 +29,7 @@ decisions:
 metrics:
   duration: "~50 min"
   completed: "2026-07-30"
-  tasks_completed: 3
+  tasks_completed: 4
   files_modified: 5
 ---
 
@@ -40,7 +40,8 @@ metrics:
 ## Performance
 
 - **Duration:** ~50 min
-- **Tasks:** 3 (mais o checkpoint visual, aguardando aprovação)
+- **Tasks:** 3 + checkpoint visual (Task 4)
+- **Checkpoint:** **APROVADO pelo usuário** — resposta literal "aprovado", sem pedido de ajuste. Deploy autorizado (feito pelo orquestrador após o fechamento desta quick task).
 - **Files modified:** 5 (1 criado, 4 modificados) + 3 arquivos de teste pré-existentes ajustados
 
 ## Accomplishments
@@ -61,6 +62,7 @@ Each task was committed atomically (mais 1 commit extra para as correções de t
    - `tests/Feature/NpsFaltantesPorModeloTest.php`, `tests/Feature/Phase119_1/NpsAreaD1Test.php`, `tests/Feature/Phase116/NpsFloorAreaNpsTest.php`
 3. **Task 3 (frontend)** — `f8268f88`
    - `resources/js/Pages/Nps/Index.jsx`
+4. **Task 4 (checkpoint:human-verify — conferência visual)** — **APROVADA pelo usuário**, resposta literal "aprovado", sem pedido de ajuste. Sem commit próprio (checkpoint de verificação, não de código). Deploy autorizado pelo usuário, executado pelo orquestrador após o fechamento desta quick task.
 
 _Nota sobre a ordem dos commits: Tasks 1 e 2 do plano foram implementadas na mesma passagem pelo bloco de `$faltantes` (o colapso de grupo da Task 2 já assume a estrutura que a Task 1 monta) e ficaram no mesmo commit — deviation da regra "1 commit por task" documentada abaixo._
 
@@ -73,11 +75,38 @@ _Nota sobre a ordem dos commits: Tasks 1 e 2 do plano foram implementadas na mes
 - `tests/Feature/Phase119_1/NpsAreaD1Test.php` — os 2 testes que verificavam `motivo` (`sem_contato`/`sem_link`) foram reescritos para provar que a chave não existe mais e que D5 continua valendo.
 - `tests/Feature/Phase116/NpsFloorAreaNpsTest.php` — o teste que provava "empresa não elegível aparece em faltantes com `conta_nota_1=false`" foi atualizado: ela agora NÃO aparece mais (ajuste 4 supera esse comportamento de propósito).
 
+## Texto Exato da Tela (rastreabilidade)
+
+Quem mexer nesta tela daqui a meses precisa saber exatamente o que foi aprovado. Textos literais (pt-BR), copiados do JSX aprovado:
+
+**Linha de GRUPO na aba Faltantes** (`FaltantesView`, `resources/js/Pages/Nps/Index.jsx`):
+- Título: `{nome do grupo}` (ex.: "Grupo Camillo Parts") + selo `{N} empresas`.
+- Selo do modelo ao lado (inalterado — ex.: "NPS Padrão").
+- Subtítulo (linha única, reticências, `title` com a lista completa): nomes das empresas do grupo separados por vírgula, ex.: `"Empresa Alfa, Empresa Beta, Empresa Gama"`.
+- Texto de estado: `"Um link só vale para as {N} empresas — todas são cuidadas pelas mesmas pessoas."` — e, quando `conta_nota_1_count > 0`, é acrescentado: `" {N} já estão contando nota 1 neste mês."` (concatenado na mesma frase, sem quebra de linha).
+- Botão: `"Gerar link do grupo"` (`title` idêntico ao rótulo).
+
+**Linha INDIVIDUAL na aba Faltantes** (sem mudança de texto, só perdeu o selo/parágrafo de contato):
+- Texto de estado: `"Sem link neste mês — já está contando nota 1."` (quando `conta_nota_1 === true`) ou `"Sem link neste mês — ainda dá tempo de enviar."` (caso contrário).
+- Botão: `"Gerar link"` (`title="Gerar link de NPS"`).
+
+**Botão novo na coluna de ações dos PENDENTES** (ícone `Eye`, ao lado do botão de copiar existente):
+- `title="Ver detalhes do link"`.
+
+**Modal "Detalhe do link"** (aberto pelo botão acima):
+- Título: `"{nome da empresa} — Link da pesquisa"`.
+- Caixa copiável: endereço do link + botão (ícone `Copy` → `CheckCircle` por 2s ao copiar) — mesmo padrão visual do modal "Gerar Link" da Fase 119.1 (`bg-muted`, `text-sm break-all`).
+- `"Gerado por:"` — nome de quem gerou, ou `"Envio automático"` quando `auto_generated=true` e não há nome, ou `"Não informado"` como último fallback.
+- `"Gerado em:"` — data/hora formatada (`created_at`).
+- `"Vale até:"` — data de expiração, ou `"Sem prazo"` quando `expires_at` é nulo.
+- `"Tipo de link:"` — `"Link de grupo (vale para todas as empresas do grupo)"` quando `de_grupo === true`, ou `"Link só desta empresa"` caso contrário.
+- Rodapé: botão `"Fechar"`.
+
 ## Decisions Made
 
-- Contadores (`contadores.faltantes`, `contadores.contam_nota_1`, `contadores.todos`) somam os campos `empresas_count`/`conta_nota_1_count` de cada linha, nunca `count($faltantes)` — assim o colapso de grupo da Task 2 encurta a LISTA sem mexer em nenhum número exibido (DQ-03), verificado no teste `test_colapso_de_grupo_nao_altera_os_contadores`.
-- `NpsGrupoCoberturaService::calcular()` chamado exatamente 1 vez por `(grupo, setor)` dentro de `colapsarFaltantesPorGrupo()` — nunca dentro de um laço por empresa (confirmado por grep: `calcular(` aparece 1 única vez no arquivo).
+- **DQ-03 — contadores contam EMPRESAS, nunca LINHAS.** `contadores.faltantes`, `contadores.contam_nota_1` e `contadores.todos` somam os campos `empresas_count`/`conta_nota_1_count` de cada linha (`array_sum(array_column($faltantes, ...))`), nunca `count($faltantes)`. **Por que importa:** o colapso de grupo (ajuste 3) reduz N linhas de empresa em 1 linha de grupo. Se os contadores contassem LINHAS, o chip "Faltantes" cairia de, por exemplo, 160 para 156 só porque 5 empresas viraram 1 linha — **um número mudando sem que nada tivesse mudado de verdade** (nenhuma empresa saiu da operação, só a apresentação mudou). Isso quebraria a coerência com os cards do `NpsSemLinkService` (mesma régua usada no bônus, Fase 119.1 T-119.1-15) e confundiria quem lê o painel achando que o volume de trabalho diminuiu. Com `empresas_count` como unidade de soma, o único cenário em que o chip cai é o ajuste 4 (empresa sem responsável saindo de fato da lista) — o que é o comportamento CORRETO e esperado. Provado pelo teste `test_colapso_de_grupo_nao_altera_os_contadores`.
 - Elegibilidade (ajuste 4) reusa `NpsElegibilidadeService::empresasElegiveis()` sem reimplementar a checagem de estrategista no controller (DQ-02).
+- `NpsGrupoCoberturaService::calcular()` chamado exatamente 1 vez por `(grupo, setor)` dentro de `colapsarFaltantesPorGrupo()` — nunca dentro de um laço por empresa (confirmado por grep: `calcular(` aparece 1 única vez no arquivo).
 
 ## Deviations from Plan
 
@@ -86,7 +115,7 @@ _Nota sobre a ordem dos commits: Tasks 1 e 2 do plano foram implementadas na mes
 **1. [Rule 1 - Bug/Regressão de teste] `NpsFaltantesPorModeloTest::test_dois_modelos_no_mesmo_setor_nao_duplicam_a_empresa` quebrava sob a regra nova**
 - **Found during:** verificação de baseline após Task 1 (`--filter=NpsFaltantesPorModelo`)
 - **Issue:** a fixture criava uma empresa com contrato ativo mas SEM estrategista atribuído. Sob o ajuste 4 (empresa sem responsável sai de Faltantes), a empresa sumia da lista pelo motivo ERRADO (falta de elegibilidade), mascarando o que o teste realmente prova (dedup de 2 modelos no mesmo setor).
-- **Fix:** adicionada uma linha em `company_users` com `role=estrategista` na fixture.
+- **Fix (só na fixture, ZERO asserção alterada):** adicionada uma linha em `company_users` com `role=estrategista` + `servico_id=$servicoPerf` antes do bloco "Sem survey no mês...". Nenhuma linha de `assert*` foi tocada — `$this->assertEquals(1, ...)`/`assertSame($company->id, ...)` continuam literalmente as mesmas.
 - **Files modified:** `tests/Feature/NpsFaltantesPorModeloTest.php`
 - **Verification:** `--filter=NpsFaltantesPorModelo` → 3/3 passed.
 - **Committed in:** `d26bc8ca`
@@ -94,7 +123,10 @@ _Nota sobre a ordem dos commits: Tasks 1 e 2 do plano foram implementadas na mes
 **2. [Rule 1 - Bug/Regressão de teste] `Phase119_1/NpsAreaD1Test` tinha 2 testes que verificavam a chave `motivo`, removida por este quick task**
 - **Found during:** `--filter=Phase119_1` após Task 1
 - **Issue:** `test_faltante_traz_motivo_sem_contato_quando_falta_email_e_digisac` e `test_faltante_traz_motivo_sem_link_quando_ja_tem_email_cadastrado` afirmavam `$faltante['motivo'] === 'sem_contato'/'sem_link'` — exatamente a chave que o ajuste 1 remove de propósito.
-- **Fix:** os 2 testes foram reescritos (`test_faltante_sem_contato_nao_expoe_motivo_e_continua_contando_nota_1`, `test_faltante_com_contato_cadastrado_tambem_nao_expoe_motivo`) para provar que a chave não existe mais E que D5 (contato não afeta nota 1) continua valendo.
+- **Asserção ANTES (teste 1):** `$this->assertSame('sem_contato', $faltante['motivo']);` + `$this->assertTrue($faltante['conta_nota_1']);`
+  **Asserção DEPOIS** (renomeado `test_faltante_sem_contato_nao_expoe_motivo_e_continua_contando_nota_1`): `$this->assertArrayNotHasKey('motivo', $faltante);` + `$this->assertTrue($faltante['conta_nota_1']);` — a prova de D5 (contato não afeta nota 1) **NÃO foi tocada**, só a asserção sobre `motivo` foi realinhada (de "vale X" para "a chave nem existe").
+- **Asserção ANTES (teste 2):** `$this->assertSame('sem_link', $faltante['motivo']);`
+  **Asserção DEPOIS** (renomeado `test_faltante_com_contato_cadastrado_tambem_nao_expoe_motivo`): `$this->assertArrayNotHasKey('motivo', $faltante);`
 - **Files modified:** `tests/Feature/Phase119_1/NpsAreaD1Test.php`
 - **Verification:** `--filter=Phase119_1` → 108/108 passed (baseline exata).
 - **Committed in:** `d26bc8ca`
@@ -102,12 +134,24 @@ _Nota sobre a ordem dos commits: Tasks 1 e 2 do plano foram implementadas na mes
 **3. [Rule 1 - Bug/Regressão de teste] `Phase116/NpsFloorAreaNpsTest::test_empresa_nao_elegivel_sem_survey_no_mes_nao_altera_medias_e_aparece_em_faltantes` esperava a empresa não-elegível APARECENDO em Faltantes com `conta_nota_1=false`**
 - **Found during:** `--filter=Phase116` após Task 1
 - **Issue:** este teste (D3, Fase 116) provava o comportamento ANTIGO — empresa sem estrategista continuava na lista, só não contava nota 1. O ajuste 4 supera esse comportamento de propósito: agora ela nem aparece.
-- **Fix:** teste renomeado (`..._nao_aparece_em_faltantes`) e asserção trocada de `assertNotNull`+`assertFalse(conta_nota_1)` para `assertNull($faltante)`.
+- **Asserção ANTES:**
+  ```php
+  $this->assertNotNull($faltante, 'empresa sem NENHUM survey no mês deve continuar aparecendo em faltantes (D3).');
+  $this->assertFalse($faltante['conta_nota_1'], 'empresa NÃO elegível nunca conta nota 1 (NPSMAN-07).');
+  ```
+- **Asserção DEPOIS** (teste renomeado `..._nao_aparece_em_faltantes`):
+  ```php
+  $faltante = collect($props['faltantes'])->firstWhere('company_id', $empresaSemSurvey->id);
+  $this->assertNull($faltante, 'empresa sem estrategista não deve mais aparecer em Faltantes (ajuste 4).');
+  ```
+  As duas asserções sobre os CARDS (`$props['cards']['empresa']['media'] === 1.0` e `['total'] === 1`, que prova que a empresa não-elegível não distorce a média) **não foram tocadas** — continuam provando que só a empresa COM survey pesa na média.
 - **Files modified:** `tests/Feature/Phase116/NpsFloorAreaNpsTest.php`
 - **Verification:** `--filter=Phase116` → 79/79 passed (baseline exata).
 - **Committed in:** `d26bc8ca`
 
 ---
+
+**Nenhuma asserção foi afrouxada — todas foram REALINHADAS para a regra nova, com o mesmo nível de especificidade (ou mais: `assertArrayNotHasKey` é mais específico que checar o valor de uma chave que deixou de existir).** Nenhuma cobertura foi removida; os 2 testes da `Phase119_1` inclusive continuam provando D5 (contato não afeta nota 1) e os 2 testes do `Phase116` continuam provando que a média dos cards não é distorcida pela empresa não-elegível.
 
 **Total deviations:** 3 auto-fixed (Rule 1, todos regressões de teste diretamente causadas pelos ajustes 1 e 4 desta task — nenhuma regra de negócio nova foi introduzida além do que o plano pedia).
 **Impact on plan:** Nenhum. Os 3 testes descreviam comportamento que os próprios ajustes 1/4 do usuário substituem de propósito; corrigir era necessário para a suíte continuar verde sem mascarar a mudança de regra.
@@ -120,14 +164,18 @@ None além das deviations acima.
 
 ## Verification
 
-- `$env:Path = "C:\xampp\php;$env:Path"; php artisan test --filter=NpsFaltantesGrupoEResponsavel` → 8/8 passed
-- `php artisan test --filter=NpsFaltantesPorModelo` → 3/3 passed
-- `php artisan test --filter=NpsFiltroPorPessoa` → 3/3 passed
-- `php artisan test --filter=Phase119_1` → 108/108 passed (baseline exata, zero regressão)
-- `php artisan test --filter=Phase116` → 79/79 passed (baseline exata, zero regressão)
-- `php artisan test --filter=Desempenho` → 14 failed/94 passed (baseline exata herdada, commit `25a958b3` de outra sessão — `AdmanMetricDiffService`, não relacionado)
-- `php artisan test --filter=Nps` → 5 failed/547 passed (baseline exata das 5 falhas herdadas — 2 `ConsolidarMesJanelaNpsTest`, 1 `JanelaNpsBonusTest`, 2 de `expires_at` de survey manual dependentes de data; +4 testes novos da Task 1 no momento da medição)
-- `npm run build` → exit code 0
+| Suíte | Resultado medido | Baseline herdada | Regressão? |
+|---|---|---|---|
+| `--filter=NpsFaltantesGrupoEResponsavel` (novo) | 8 passed | — (arquivo novo) | n/a |
+| `--filter=NpsFaltantesPorModelo` | 3 passed | 3 passed | Não |
+| `--filter=NpsFiltroPorPessoa` | 3 passed | 3 passed | Não |
+| `--filter=Phase119_1` | 108 passed | 108 passed | Não (exata) |
+| `--filter=Phase116` | 79 passed | 79 passed | Não (exata) |
+| `--filter=Desempenho` | 14 failed / 94 passed | 14 failed / 94 passed | Não — herdada de outra sessão (commit `25a958b3`, `AdmanMetricDiffService`), não relacionada a este quick task |
+| `--filter=Nps` | 5 failed / 547 passed | 5 failed / 543 passed | Não — as 5 falhas são as mesmas herdadas (2 `ConsolidarMesJanelaNpsTest`, 1 `JanelaNpsBonusTest`, 2 de `expires_at` de survey manual dependentes de data); +4 no total de passed vem dos 4 testes novos da Task 1 já existentes no momento desta medição específica (antes dos 4 da Task 2 serem adicionados ao mesmo arquivo) |
+| `npm run build` | exit code 0 | — | — |
+
+Comando usado para os testes: `$env:Path = "C:\xampp\php;$env:Path"; php artisan test --filter=<Nome>` (PowerShell, PHP fora do PATH).
 
 ## Known Stubs
 
@@ -150,3 +198,4 @@ None — sem novo endpoint, sem nova superfície de auth. O modal de detalhe do 
 - [x] `grep empresasElegiveis` → chamada antes do `foreach ($setores...)`
 - [x] `grep calcular(` → exatamente 1 ocorrência, fora do laço por empresa
 - [x] `npm run build` → exit 0
+- [x] Task 4 (checkpoint visual) — **aprovada pelo usuário** ("aprovado", sem ajuste pedido); deploy autorizado
