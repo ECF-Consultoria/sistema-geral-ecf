@@ -680,4 +680,115 @@ class NpsMaterializarNaoRespondidosCommandTest extends TestCase
             ->expectsOutputToContain('Muda faixa?')
             ->assertExitCode(0);
     }
+
+    // ═══ 15 — Fase 119.1 (Plano 08): regressão da janela restrita da rotina
+    //          diária (mês anterior + mês corrente, NUNCA o histórico) ══════
+    //
+    // A Fase 119.1 desligou o disparo automático (`nps:disparar-mensal`,
+    // `Schedule::command`) mas NÃO mexeu nesta rotina de propósito — o
+    // backfill retroativo do histórico continua sendo operação MANUAL com
+    // gate humano (C6 do 119.1-CONTEXT.md; ver também a seção "STATUS DO
+    // BACKFILL RETROATIVO" em `docs/nps-nao-respondido-nota-1.md`). Estes
+    // dois testes provam que essa restrição continua de pé depois da fase.
+
+    #[Test]
+    public function test_119_1_agendamento_processa_exatamente_mes_anterior_e_mes_corrente_via_mes(): void
+    {
+        // Asserção TEXTUAL sobre `routes/console.php`, e não sobre o closure
+        // do `Schedule::call` (não trivialmente invocável isolado em teste,
+        // conforme a própria Task 2 do plano 08 antecipa) — o risco real é
+        // alguém "simplificar" o laço num refactor futuro e, sem querer,
+        // ligar de novo o backfill retroativo (rodar sem `--mes` varre TODO
+        // o histórico de `nps_surveys`, ver T-119.1-33 do 119.1-08-PLAN.md).
+        $conteudo = file_get_contents(base_path('routes/console.php'));
+        $this->assertNotFalse($conteudo, 'routes/console.php precisa existir e ser legível.');
+
+        $this->assertStringContainsString('nps-materializar-nao-respondidos', $conteudo,
+            'o agendamento da Fase 116 continua registrado.');
+        $this->assertStringContainsString(
+            'foreach ([now()->subMonthNoOverflow(), now()] as $mes)',
+            $conteudo,
+            'o laço precisa continuar restrito a EXATAMENTE 2 meses (mês anterior + corrente) — nunca um range aberto.'
+        );
+        $this->assertStringContainsString(
+            "'--mes'   => \$mes->format('Y-m')",
+            $conteudo,
+            'cada chamada ao comando dentro do laço precisa continuar passando --mes explicitamente — sem isso o comando varre o histórico inteiro.'
+        );
+
+        // Garante que a chamada ao comando dentro do bloco do agendamento
+        // (não em qualquer lugar do arquivo — outros blocos podem citar o
+        // nome do comando em comentário) sempre tem `--mes` ao lado: conta as
+        // ocorrências do nome do comando fora de comentário e confirma que
+        // elas batem com as ocorrências de `--mes` dentro do MESMO bloco.
+        $blocoAgendamento = substr(
+            $conteudo,
+            (int) strpos($conteudo, "Schedule::call(function () {\n    foreach ([now()->subMonthNoOverflow()"),
+            600
+        );
+        $this->assertSame(
+            substr_count($blocoAgendamento, "Artisan::call('nps:materializar-nao-respondidos'"),
+            substr_count($blocoAgendamento, "'--mes'"),
+            'toda chamada ao comando dentro do bloco do agendamento precisa vir acompanhada de --mes — nenhuma chamada "nua".'
+        );
+    }
+
+    #[Test]
+    public function test_119_1_competencia_fechada_anterior_ao_mes_anterior_continua_intocada_apos_rodar_a_rotina(): void
+    {
+        // "Hoje" já congelado em 2026-08-01 14:05:00 pelo setUp() desta
+        // classe — mês anterior = julho/2026 (dentro da janela), mês
+        // corrente = agosto/2026 (dentro da janela). Junho/2026 é a
+        // competência de COLETA (`month_reference`) imediatamente ANTERIOR
+        // ao mês anterior — precisa ficar de fora dos dois `--mes` que a
+        // rotina roda.
+        //
+        // Usuários SEPARADOS de propósito: isola a reconsolidação do
+        // snapshot de cada um (a cobertura de margem — FIXMARG-03 — é
+        // calculada por PESSOA; misturar os dois cenários no mesmo usuário
+        // faria a empresa "fora da janela" (sem margem) contaminar a
+        // cobertura da competência julho e o comando sairia com exit 1 por
+        // um motivo que não tem nada a ver com o que este teste prova).
+        $uFora       = $this->criarUserAnalista('Coerencia Janela Fora 119.1-08');
+        $servicoPerf = $this->servicoPerformanceId();
+        $templateFora = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], [$servicoPerf]);
+
+        // Survey de COLETA em junho (competência financeira = maio) — FORA
+        // da janela de 2 meses (julho + agosto). Nunca deveria ser tocado
+        // pelo laço, então nem precisa de dado financeiro saudável.
+        $empresaAntiga = $this->criarEmpresaSemMargem($uFora, $servicoPerf);
+        $surveyForaDaJanela = $this->criarSurveyNaoRespondido($empresaAntiga, $templateFora, [
+            'month_reference' => '2026-06-01',
+            'expires_at'      => Carbon::parse('2026-06-30 23:59:59'),
+        ]);
+
+        // Survey de COLETA em agosto (competência financeira = julho) —
+        // DENTRO da janela (mês corrente). Molde EXATO de
+        // `criarCenarioReconciliacaoSaudavel()` (Shopee, financeiro saudável
+        // e determinístico) para a reconsolidação do gate FIXMARG-03 passar
+        // de primeira — o objeto deste teste é a JANELA, não o gate de margem.
+        $uDentro       = $this->criarUserAnalista('Coerencia Janela Dentro 119.1-08');
+        $servicoShopee = $this->servicoShopeeId();
+        $empresaAtual  = $this->criarEmpresaShopee($uDentro, $servicoShopee);
+        $this->seedShopeeRevenue($empresaAtual, '2026-07', 500, 300);
+        $templateDentro = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], [$servicoShopee]);
+        $surveyDentroDaJanela = $this->criarSurveyNaoRespondido($empresaAtual, $templateDentro, [
+            'month_reference' => '2026-08-01',
+            'expires_at'      => Carbon::parse('2026-08-31 23:59:59'),
+        ]);
+
+        // Replica EXATAMENTE o laço de `routes/console.php` (mesmo shape:
+        // --force + --mes por mês, mês anterior + mês corrente) — não chama
+        // o Scheduler em si (mecanismo de cron não é o objeto deste teste),
+        // só a mesma sequência de invocações que ele produz.
+        foreach ([now()->subMonthNoOverflow(), now()] as $mes) {
+            $this->artisan('nps:materializar-nao-respondidos', [
+                '--force' => true,
+                '--mes'   => $mes->format('Y-m'),
+            ])->assertExitCode(0);
+        }
+
+        $this->assertDatabaseMissing('nps_imputed_assignments', ['survey_id' => $surveyForaDaJanela->id]);
+        $this->assertDatabaseHas('nps_imputed_assignments', ['survey_id' => $surveyDentroDaJanela->id]);
+    }
 }
