@@ -689,7 +689,7 @@ function ConfiancaBadge({ confianca }) {
     );
 }
 
-function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, setActiveStatus, sort, setSort, onOpenSurvey, onCopyLink, onGerarLink, isAdmin }) {
+function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, setActiveStatus, sort, setSort, onOpenSurvey, onCopyLink, onGerarLink, onVerDetalheLink, isAdmin }) {
     // Bugfix 2026-07-16 · contagens vêm AGREGADAS do servidor (conjunto filtrado
     // inteiro), não mais recalculadas sobre surveys.data (só os 20 da página).
     // Os chips deixam de mudar de valor conforme a paginação.
@@ -1115,6 +1115,27 @@ function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, set
                                     <Link2 size={14} />
                                 </button>
                             )}
+                            {/* Quick task 260730-jzx (ajuste 2) — detalhe do
+                                link pendente (endereço, quem gerou, quando,
+                                validade, se é de grupo). O botão de copiar
+                                acima continua como atalho rápido. */}
+                            {s.status === 'pending' && (
+                                <button
+                                    type="button"
+                                    onClick={() => onVerDetalheLink(s)}
+                                    style={{
+                                        width: 30, height: 30, borderRadius: 8,
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        background: 'rgba(255,255,255,0.03)',
+                                        color: 'rgba(255,255,255,0.6)',
+                                        cursor: 'pointer',
+                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    }}
+                                    title="Ver detalhes do link"
+                                >
+                                    <Eye size={14} />
+                                </button>
+                            )}
                             {s.status === 'completed' && (
                                 <button
                                     type="button"
@@ -1225,14 +1246,25 @@ function FaltantesView({ faltantes = [], onGerarLink, contadores = {} }) {
                     // calculadas DENTRO do callback do .map(), nunca no
                     // escopo do componente (bundle de produção estoura
                     // ReferenceError se ficarem fora).
-                    const ehSemContato = c.motivo === 'sem_contato';
-                    const ehSemLink = c.motivo === 'sem_link';
-                    const jaContaUm = ehSemLink && c.conta_nota_1 === true;
+                    // Quick task 260730-jzx (ajuste 1) — o selo/texto sobre
+                    // contato não cadastrado saiu da tela: o envio é
+                    // manual, não depende de contato cadastrado. Como
+                    // `motivo` não existe mais no payload, o único texto de
+                    // estado agora é o de `conta_nota_1`.
+                    const jaContaUm = c.conta_nota_1 === true;
+                    // Quick task 260730-jzx (ajuste 3) — linha de GRUPO:
+                    // várias empresas cuidadas pelas mesmas pessoas, 1 link
+                    // só para todas.
+                    const ehGrupo = c.tipo === 'grupo';
+                    const nomesGrupo = ehGrupo ? (c.empresas_nomes ?? []).join(', ') : '';
                     return (
-                        <div key={`${c.company_id}-${c.template_id ?? 'x'}`} style={{
-                            display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
-                            padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.04)',
-                        }}>
+                        <div
+                            key={ehGrupo ? `g-${c.group_id}-${c.template_id}` : `${c.company_id}-${c.template_id ?? 'x'}`}
+                            style={{
+                                display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+                                padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.04)',
+                            }}
+                        >
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, flexWrap: 'wrap' }}>
                                     <Building2 size={15} style={{ color: 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
@@ -1240,6 +1272,15 @@ function FaltantesView({ faltantes = [], onGerarLink, contadores = {} }) {
                                         color: '#eef', fontSize: 13.5, fontWeight: 600,
                                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                                     }}>{c.name}</span>
+                                    {ehGrupo && (
+                                        <span style={{
+                                            flexShrink: 0, padding: '2px 8px', borderRadius: 6,
+                                            background: 'rgba(255,255,255,0.08)',
+                                            border: '1px solid rgba(255,255,255,0.16)',
+                                            color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: 600,
+                                            whiteSpace: 'nowrap',
+                                        }}>{c.empresas_count} empresas</span>
+                                    )}
                                     {c.modelo && (
                                         <span title={c.modelo} style={{
                                             flexShrink: 0, padding: '2px 8px', borderRadius: 6,
@@ -1249,32 +1290,26 @@ function FaltantesView({ faltantes = [], onGerarLink, contadores = {} }) {
                                             whiteSpace: 'nowrap',
                                         }}>{c.modelo}</span>
                                     )}
-                                    {ehSemContato && (
-                                        <span style={{
-                                            flexShrink: 0, padding: '2px 8px', borderRadius: 6,
-                                            background: 'rgba(255,154,90,0.14)',
-                                            border: '1px solid rgba(255,154,90,0.3)',
-                                            color: '#ffb37a', fontSize: 11, fontWeight: 700,
-                                            whiteSpace: 'nowrap',
-                                        }}>Sem contato cadastrado</span>
-                                    )}
                                 </div>
-                                {ehSemContato ? (
-                                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11.5, marginLeft: 24, lineHeight: 1.4 }}>
-                                        Esta empresa não tem e-mail nem WhatsApp cadastrado. Sem isso não dá para enviar a pesquisa — e ela fica com nota 1 no mês. Cadastre o contato na página da empresa.
-                                    </p>
-                                ) : ehSemLink ? (
-                                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11.5, marginLeft: 24 }}>
-                                        {jaContaUm
+                                {ehGrupo && (
+                                    <p title={nomesGrupo} style={{
+                                        color: 'rgba(255,255,255,0.5)', fontSize: 11.5, marginLeft: 24,
+                                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 380,
+                                    }}>{nomesGrupo}</p>
+                                )}
+                                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11.5, marginLeft: 24 }}>
+                                    {ehGrupo
+                                        ? `Um link só vale para as ${c.empresas_count} empresas — todas são cuidadas pelas mesmas pessoas.`
+                                            + (c.conta_nota_1_count > 0 ? ` ${c.conta_nota_1_count} já estão contando nota 1 neste mês.` : '')
+                                        : (jaContaUm
                                             ? 'Sem link neste mês — já está contando nota 1.'
-                                            : 'Sem link neste mês — ainda dá tempo de enviar.'}
-                                    </p>
-                                ) : null}
+                                            : 'Sem link neste mês — ainda dá tempo de enviar.')}
+                                </p>
                             </div>
                             {onGerarLink && (
                                 <button
                                     type="button"
-                                    onClick={onGerarLink}
+                                    onClick={() => onGerarLink(ehGrupo ? { grupoId: c.group_id, templateId: c.template_id } : null)}
                                     style={{
                                         display: 'inline-flex', alignItems: 'center', gap: 6,
                                         height: 30, padding: '0 12px', borderRadius: 8,
@@ -1282,9 +1317,9 @@ function FaltantesView({ faltantes = [], onGerarLink, contadores = {} }) {
                                         background: 'rgba(91,141,239,0.14)', color: '#9cc0ff',
                                         fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
                                     }}
-                                    title="Gerar link de NPS"
+                                    title={ehGrupo ? 'Gerar link do grupo' : 'Gerar link de NPS'}
                                 >
-                                    <Plus size={13} /> Gerar link
+                                    <Plus size={13} /> {ehGrupo ? 'Gerar link do grupo' : 'Gerar link'}
                                 </button>
                             )}
                         </div>
@@ -1459,6 +1494,11 @@ export default function NpsIndex({
     // escolher a frase certa no aviso de link já existente.
     const [modoGeracao, setModoGeracao] = useState('empresa');
     const [modalSurvey, setModalSurvey] = useState(null);
+    // Quick task 260730-jzx (ajuste 2) — detalhe do link de um PENDENTE
+    // (endereço, quem gerou, quando, validade, se é de grupo). `null` =
+    // modal fechado; objeto = o item de `surveys.data` clicado.
+    const [linkPendente, setLinkPendente] = useState(null);
+    const [linkPendenteCopiado, setLinkPendenteCopiado] = useState(false);
     // Fase 96 (AB-96-3) — form de motivo da invalidação, aberto sob demanda
     // dentro do modal de detalhe. Reseta sempre que um survey diferente é
     // aberto (abrirModalSurvey abaixo).
@@ -1646,6 +1686,33 @@ export default function NpsIndex({
         navigator.clipboard.writeText(generatedLink);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+    };
+
+    // Quick task 260730-jzx (ajuste 3, Task 3) — abre "Gerar link" já no
+    // modo grupo quando vem de uma linha de grupo dos Faltantes (preselecao
+    // = {grupoId, templateId}); sem preseleção mantém o comportamento atual
+    // (modo empresa). O efeito que já busca quem entraria no link do grupo
+    // (dependências [modoGeracao, grupoId, data.template_id]) faz o resto.
+    const abrirGerarLink = (preselecao) => {
+        if (preselecao) {
+            setModoGeracao('grupo');
+            setGrupoId(String(preselecao.grupoId));
+            setData('template_id', String(preselecao.templateId));
+        } else {
+            setModoGeracao('empresa');
+        }
+        setOpen(true);
+    };
+
+    // Quick task 260730-jzx (ajuste 2) — botão de copiar DENTRO do modal de
+    // detalhe do link pendente (independente do `copyModal` do modal "link
+    // gerado" — os dois podem existir ao mesmo tempo, com estados de "copiado"
+    // separados).
+    const copiarLinkPendente = () => {
+        if (!linkPendente) return;
+        navigator.clipboard.writeText(linkPendente.link);
+        setLinkPendenteCopiado(true);
+        setTimeout(() => setLinkPendenteCopiado(false), 2000);
     };
 
     // ─── Derivados dinâmicos ─────────────────────────────────────────────
@@ -1915,7 +1982,8 @@ export default function NpsIndex({
                             setSort={setSort}
                             onOpenSurvey={abrirModalSurvey}
                             onCopyLink={copyLink}
-                            onGerarLink={() => setOpen(true)}
+                            onGerarLink={abrirGerarLink}
+                            onVerDetalheLink={setLinkPendente}
                             isAdmin={isAdmin}
                         />
 
@@ -2098,6 +2166,38 @@ export default function NpsIndex({
                     </div>
                     <DialogFooter>
                         <Button onClick={() => setLinkDialog(false)}>Fechar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Dialog: detalhe do link de um PENDENTE (ajuste 2, quick task
+                260730-jzx) — mesmo padrão de caixa copiável do modal acima
+                (bg-muted + text-sm break-all + botão Copy/CheckCircle). */}
+            <Dialog open={!!linkPendente} onOpenChange={(o) => { if (!o) setLinkPendente(null); }}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{linkPendente?.company_name} — Link da pesquisa</DialogTitle>
+                    </DialogHeader>
+                    {linkPendente && (
+                        <>
+                            <div className="flex items-center gap-2 p-3 rounded-lg bg-muted">
+                                <p className="text-sm text-foreground flex-1 break-all">{linkPendente.link}</p>
+                                <Button size="icon" variant="ghost" onClick={copiarLinkPendente}>
+                                    {linkPendenteCopiado
+                                        ? <CheckCircle className="h-4 w-4 text-emerald-400" />
+                                        : <Copy className="h-4 w-4" />}
+                                </Button>
+                            </div>
+                            <div className="space-y-1.5 text-sm text-white/70">
+                                <p><span className="text-white/40">Gerado por:</span> {linkPendente.generated_by ?? (linkPendente.auto_generated ? 'Envio automático' : 'Não informado')}</p>
+                                <p><span className="text-white/40">Gerado em:</span> {linkPendente.created_at}</p>
+                                <p><span className="text-white/40">Vale até:</span> {linkPendente.expires_at ?? 'Sem prazo'}</p>
+                                <p><span className="text-white/40">Tipo de link:</span> {linkPendente.de_grupo ? 'Link de grupo (vale para todas as empresas do grupo)' : 'Link só desta empresa'}</p>
+                            </div>
+                        </>
+                    )}
+                    <DialogFooter>
+                        <Button onClick={() => setLinkPendente(null)}>Fechar</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
