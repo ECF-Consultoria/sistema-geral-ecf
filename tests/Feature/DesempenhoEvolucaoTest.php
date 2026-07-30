@@ -149,7 +149,12 @@ class DesempenhoEvolucaoTest extends TestCase
                     return true;
                 }
 
-                public function compute(User $user, Carbon $mesReferencia, ?array $periodoOverride = null): array
+                // Fase 120 (deviation Rule 3 — blocking, fora do edit-set
+                // declarado): compute() do parent ganhou o 4º parâmetro
+                // `bool $incluirEmpresasScore = false` (AGRE-02, shadow) —
+                // mesma LSP que forçou o ajuste da Fase 102 acima. O fake
+                // nunca lê o parâmetro (é puramente compat de assinatura).
+                public function compute(User $user, Carbon $mesReferencia, ?array $periodoOverride = null, bool $incluirEmpresasScore = false): array
                 {
                     if (isset($this->owner->fakeScoresPublic()[$user->id])) {
                         return $this->owner->fakeScoresPublic()[$user->id];

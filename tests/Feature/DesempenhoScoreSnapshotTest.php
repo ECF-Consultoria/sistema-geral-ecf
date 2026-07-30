@@ -143,7 +143,10 @@ class DesempenhoScoreSnapshotTest extends TestCase
                 // $periodoOverride = null` (BON-01/02) — a assinatura do
                 // override precisa ser compatível (LSP) senão é fatal error
                 // de PHP em tempo de boot, não um teste que falha.
-                public function compute(User $user, Carbon $mesReferencia, ?array $periodoOverride = null): array
+                // Fase 120 (mesma deviation Rule 3): compute() do parent
+                // ganhou o 4º parâmetro `bool $incluirEmpresasScore = false`
+                // (AGRE-02, shadow) — o fake nunca lê o parâmetro.
+                public function compute(User $user, Carbon $mesReferencia, ?array $periodoOverride = null, bool $incluirEmpresasScore = false): array
                 {
                     if (isset($this->owner->fakeScoresPublic()[$user->id])) {
                         return $this->owner->fakeScoresPublic()[$user->id];

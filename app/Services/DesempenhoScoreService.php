@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
+use App\Services\Desempenho\CompanyScoreService;
 use App\Services\Desempenho\NpsSemLinkService;
 use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsScoreCalculator;
@@ -124,6 +125,7 @@ class DesempenhoScoreService
         private MetricDiffDispatcher $diffDispatcher,
         private NpsImputationService $imputationService,
         private NpsSemLinkService $npsSemLinkService,
+        private CompanyScoreService $companyScoreService,
     ) {
     }
 
@@ -226,8 +228,14 @@ class DesempenhoScoreService
      *
      * Não use dentro de jobs/commands de snapshot ou consolidação —
      * chame `compute()` direto pra garantir dado fresco.
+     *
+     * Fase 120 (AGRE-02): `$incluirEmpresasScore` é repassado tal-e-qual pra
+     * `compute()` dentro do closure do `Cache::remember` — default `false`
+     * preserva os ~40 call-sites existentes sem uma linha de edição (D-04).
+     * Ver docblock do parâmetro em `compute()` pra a distinção C-01
+     * (shadow × feature flag).
      */
-    public function computeCached(User $user, Carbon $mesReferencia, ?array $periodoOverride = null): array
+    public function computeCached(User $user, Carbon $mesReferencia, ?array $periodoOverride = null, bool $incluirEmpresasScore = false): array
     {
         $mes         = $mesReferencia->copy()->startOfMonth();
         $mesCorrente = Carbon::now()->startOfMonth();
@@ -286,7 +294,7 @@ class DesempenhoScoreService
         return Cache::remember(
             $cacheKey,
             $ttl,
-            fn () => $this->compute($user, $mesReferencia, $periodoOverride),
+            fn () => $this->compute($user, $mesReferencia, $periodoOverride, $incluirEmpresasScore),
         );
     }
 
@@ -418,7 +426,23 @@ class DesempenhoScoreService
         return $this->compute($user, $mes, $periodo);
     }
 
-    public function compute(User $user, Carbon $mesReferencia, ?array $periodoOverride = null): array
+    /**
+     * @param  bool  $incluirEmpresasScore  Fase 120 (AGRE-02, C-01) — SHADOW.
+     *   Decide SE `CompanyScoreService::computeEmpresasScore()` roda (custo:
+     *   dispatcher por empresa + NPS por empresa, com HTTP síncrono à Adman
+     *   quando aplicável). Default `false` preserva os ~40 call-sites
+     *   existentes (incluindo `computeOficial()` e os 3 controllers de
+     *   leitura interativa) sem uma linha de edição — D-04, o shadow só roda
+     *   nos comandos (`desempenho:warm-cache`/`desempenho:consolidar-mes`).
+     *   É um sinal INDEPENDENTE da feature flag
+     *   `config('metrics.performance_company_first_score')`, que decide QUAL
+     *   resultado vira `nota_final`/`score_status` — confundir os dois faz o
+     *   custo vazar pra tela mesmo com a flag desligada. Nenhum método legado
+     *   (`computeNotaFinal`, `computeScoreStatus`, `computeVarFaturamento`,
+     *   `computeVarMargem`, `computeNpsWindow`, `margemPontos`) recebe este
+     *   parâmetro nem lê a flag internamente — só este orquestrador decide.
+     */
+    public function compute(User $user, Carbon $mesReferencia, ?array $periodoOverride = null, bool $incluirEmpresasScore = false): array
     {
         $mes     = $mesReferencia->copy()->startOfMonth();
         $periodo = $periodoOverride ?? $this->resolvePeriodo($mes);
@@ -445,6 +469,20 @@ class DesempenhoScoreService
             $companies = $companies
                 ->reject(fn ($c) => $invalidadas->contains($c->id))
                 ->values();
+        }
+
+        // ── Shadow (Fase 120 · AGRE-02, C-01) ─────────────────────────────────
+        // Dois sinais independentes: `$incluirEmpresasScore` (SE roda) e a
+        // feature flag (QUAL resultado vira nota_final/score_status — ainda
+        // não consumida neste plano, a bifurcação é do Plano 03). `$mes`,
+        // `$periodo` e `$invalidadas` já prontos — exatamente os insumos que
+        // `computeEmpresasScore()` exige. `$invalidadas` SEMPRE explícito
+        // (nunca null) — deixar o serviço reresolver duplicaria a query;
+        // nunca `collect()` vazio, que silenciaria a invalidação por
+        // competência já resolvida acima.
+        $empresasScore = null;
+        if ($incluirEmpresasScore || config('metrics.performance_company_first_score')) {
+            $empresasScore = $this->companyScoreService->computeEmpresasScore($user, $mes, $periodo, $invalidadas);
         }
 
         // ── 4 componentes independentes ──────────────────────────────────────
@@ -546,6 +584,9 @@ class DesempenhoScoreService
                 'var_faturamento_pct' => $varFat,
                 'var_margem_pct'      => $varMargem,
                 'absenteismo_pct'     => $absent,
+                // Fase 120 (AGRE-04) — metadado ADITIVO de auditoria, NUNCA
+                // insumo da nota: `null` quando o shadow não rodou (C-03).
+                'var_margem_pp'       => $this->varMargemPpAgregado($empresasScore),
             ],
             // Ajuste 2026-07-10 · pontos 1-5 por componente (após régua), pra
             // UI expor a conta que gerou a nota (ex: "(3+5+4)/3 = 4,00") em
@@ -612,6 +653,12 @@ class DesempenhoScoreService
                 'var_faturamento_pct' => $varFat !== null,
                 'var_margem_pct'      => $varMargem !== null,
             ],
+            // Fase 120 (AGRE-02/04) — payload ADITIVO do shadow: linha por
+            // empresa do `CompanyScoreService` (Fase 119), vazia quando o
+            // shadow não rodou (`$incluirEmpresasScore=false` E flag
+            // desligada). Nenhum consumidor de produção lê esta chave nesta
+            // fase — a bifurcação de `nota_final`/`score_status` é o Plano 03.
+            'empresas_score' => $empresasScore?->values()->all() ?? [],
         ];
     }
 
@@ -1402,6 +1449,33 @@ class DesempenhoScoreService
     }
 
     /**
+     * Fase 120 (AGRE-04) — média agregada de `margem_var_pp` (pontos
+     * percentuais, por empresa) das linhas do shadow, arredondada a 2 casas.
+     * Alimenta `componentes.var_margem_pp`, um metadado ADITIVO de auditoria
+     * — a NOTA nunca lê este campo (lê `margem_pontos` por empresa, dentro de
+     * `$empresasScore`, quando a flag estiver ligada — Plano 03). Reaproveitar
+     * `var_margem_pct` para este fim confundiria as duas unidades (% relativa
+     * vs pontos percentuais), que é justamente o que a milestone existe para
+     * separar (C-03/120-CONTEXT.md).
+     *
+     * Devolve `null` quando o shadow NÃO rodou (`$empresasScore === null`) —
+     * reportar `null` é honesto, inventar um número agregado seria pior.
+     * `Collection::avg()` já descarta os `null` sozinho e devolve `null` se
+     * nenhum sobrar — cobre a carteira só-Shopee, onde o placeholder de
+     * margem não tem `margem_var_pp` real.
+     */
+    private function varMargemPpAgregado(?Collection $empresasScore): ?float
+    {
+        if ($empresasScore === null) {
+            return null;
+        }
+
+        $media = $empresasScore->avg('margem_var_pp');
+
+        return $media !== null ? round($media, 2) : null;
+    }
+
+    /**
      * Blend ponderado por contagem da dimensão MARGEM (Fase 109 · SHOP-DES-02
      * — DECISÃO TRAVADA, implementar EXATAMENTE assim, ver `109-03-PLAN.md`
      * `<design_margem_placeholder>`).
@@ -1543,6 +1617,8 @@ class DesempenhoScoreService
                 'var_faturamento_pct' => null,
                 'var_margem_pct'      => null,
                 'absenteismo_pct'     => null,
+                // Fase 120 (AGRE-04) — simetria: sem carteira, shadow nunca roda.
+                'var_margem_pp'       => null,
             ],
             'pontos_componentes' => [
                 'nps'         => null,
@@ -1565,6 +1641,8 @@ class DesempenhoScoreService
                 'var_faturamento_pct' => false,
                 'var_margem_pct'      => false,
             ],
+            // Fase 120 (AGRE-04) — simetria com o shape normal.
+            'empresas_score' => [],
         ];
     }
 }

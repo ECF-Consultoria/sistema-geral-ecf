@@ -50,12 +50,12 @@ class PayloadBaselineFlagOffTest extends TestCase
     ];
 
     /**
-     * Vazia NESTA task — a Task 3 atualiza para `['empresas_score']` quando o
-     * payload aditivo entrar. É a única concessão auditável do gate: qualquer
-     * chave nova que apareça sem passar por uma edição explícita desta
-     * constante reprova o teste.
+     * Task 3 (AGRE-02/04) — `empresas_score` é a ÚNICA chave nova de topo
+     * permitida, o payload aditivo do shadow. É a única concessão auditável
+     * do gate: qualquer chave nova que apareça sem passar por uma edição
+     * explícita desta constante reprova o teste.
      */
-    private const CHAVES_ADITIVAS_PERMITIDAS = [];
+    private const CHAVES_ADITIVAS_PERMITIDAS = ['empresas_score'];
 
     private int $setorId;
     private int $cargoAnalistaId;
@@ -233,7 +233,7 @@ class PayloadBaselineFlagOffTest extends TestCase
         $payload = $this->computePayload();
 
         $chavesLegadasComponentes = ['nps_medio', 'var_faturamento_pct', 'var_margem_pct', 'absenteismo_pct'];
-        $aditivasComponentes      = []; // Task 3 atualiza para ['var_margem_pp'].
+        $aditivasComponentes      = ['var_margem_pp']; // Task 3 (AGRE-04) — metadado de auditoria do shadow.
 
         $this->assertSame(
             $chavesLegadasComponentes,
