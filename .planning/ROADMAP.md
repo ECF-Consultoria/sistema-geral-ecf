@@ -1357,7 +1357,7 @@ Plans:
 **Depends on:** Fase 116 (regra "não respondido = 1", tabela de imputação e os ~9 consumidores já ligados) e Fase 118 (`NpsPorEmpresaService` — o padrão de leitura que o item (d) generaliza). Independente das Fases 120-123 (v21.0).
 **UI hint:** Sim — tela de geração de link (bloqueio de duplicidade + prévia de quais empresas do grupo serão cobertas) e a área NPS refletindo notas de grupo
 **Por que INSERTED:** trabalho urgente pedido em 2026-07-29, adiantado porque as Fases 120-123 estão bloqueadas até a atualização da Adman das 11h.
-**Plans:** 8/9 plans executed
+**Plans:** 9/9 plans complete
 
 Plans:
 - [x] 119.1-01-PLAN.md — Fundação: `NpsElegibilidadeService` (fonte única de "quem deveria ter recebido") + desligamento do agendamento diário (wave 1)
@@ -1368,7 +1368,7 @@ Plans:
 - [x] 119.1-06-PLAN.md — NPS de grupo: prévia, geração do link, resposta pública e fan-out em N surveys-espelho reais (wave 3)
 - [x] 119.1-07-PLAN.md — UI: aviso de link já existente, prévia de cobertura do grupo, motivo "falta cadastrar o contato" + `npm run build` (wave 4, tem checkpoint) — **checkpoint humano aprovado 2026-07-30**
 - [x] 119.1-09-PLAN.md — D1 nos 4 consumidores restantes: carteira, dashboards/ranking, página da empresa e meta de NPS + piso retroativo da janela rolante (wave 4)
-- [ ] 119.1-08-PLAN.md — Fechamento: gate de coerência entre call-sites, regressão da janela da rotina, doc operacional atualizado (wave 5, **depende do 09**)
+- [x] 119.1-08-PLAN.md — Fechamento: gate de coerência entre call-sites, regressão da janela da rotina, doc operacional atualizado (wave 5, **depende do 09**)
 
 > **Plano 07 fechado em 2026-07-30.** `Nps/Index.jsx` reusa o modal de link para avisar duplicidade (individual e grupo), mostra a prévia de cobertura do grupo com os 5 motivos de exclusão distintos (`responsavel_diferente`, `sem_servico_contratado`, `sem_servico_em_comum`, `ja_tem_link`, `empresa_inativa` — **o doc operacional do Plano 08 deve listá-los separadamente, não colapsar num motivo genérico**), e explica o motivo de cada faltante (inclusive "falta cadastrar o contato", D5). `Nps/Respond.jsx` passou a postar em `survey.submit_url` — sem isso o NPS de grupo do Plano 06 não funcionava de fato. Deviation autorizada: prop `grupos` adicionada em `NpsController::index()` (fora do `files_modified` declarado), escopada como `NpsGrupoController::autorizarAcessoAoGrupo`. `--filter=Phase119_1` 102/102 (baseline exata). Lembrete: `public/build/` é gitignored — o deploy precisa rodar `npm run build` no servidor.
 
