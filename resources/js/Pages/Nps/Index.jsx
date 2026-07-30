@@ -1295,6 +1295,114 @@ function FaltantesView({ faltantes = [], onGerarLink, contadores = {} }) {
     );
 }
 
+// ═══ CoberturaPreview — cabeçalho "quem entra/quem fica de fora" (Fase
+// 119.1 Plan 07) ══════════════════════════════════════════════════════════
+// Renderiza os 5 estados do item 2 do contrato de UI. NENHUM fetch acontece
+// aqui — quem busca é o efeito em NpsIndex; este componente só EXIBE.
+function CoberturaPreview({ modo, carregando, cobertura }) {
+    let corpo;
+
+    if (modo === 'empresa') {
+        // Estado "Empresa única, sem grupo" — nenhuma prévia é buscada.
+        corpo = (
+            <p className="text-sm text-white/60">
+                Esta empresa não faz parte de nenhum grupo. O link vale só para ela.
+            </p>
+        );
+    } else if (carregando) {
+        corpo = <p className="text-sm text-white/50">Verificando as empresas do grupo...</p>;
+    } else if (!cobertura) {
+        corpo = null;
+    } else {
+        const incluidas = cobertura.incluidas ?? [];
+        const excluidas = cobertura.excluidas ?? [];
+
+        if (incluidas.length === 0) {
+            // Grupo não qualificado — botão de gerar já fica desabilitado
+            // no formulário (nenhuma incluída).
+            corpo = (
+                <div className="space-y-2">
+                    <p className="text-sm text-amber-200">
+                        Nenhuma empresa deste grupo pode receber este link agora. Veja o motivo de cada uma abaixo.
+                    </p>
+                    <MotivosExclusao excluidas={excluidas} />
+                </div>
+            );
+        } else if (excluidas.length === 0) {
+            // Grupo qualificado — nenhuma excluída.
+            corpo = (
+                <div className="space-y-1.5">
+                    <p className="text-sm text-emerald-300">
+                        Todas as {incluidas.length} empresas do grupo vão receber a nota que o cliente der.
+                    </p>
+                    <p className="text-xs text-white/50">{incluidas.map(e => e.name).join(', ')}</p>
+                </div>
+            );
+        } else {
+            // Grupo parcialmente qualificado — dois blocos.
+            corpo = (
+                <div className="space-y-2">
+                    <div className="rounded-md border border-emerald-500/25 bg-emerald-500/10 p-2.5">
+                        <p className="text-xs text-emerald-300 font-semibold mb-1">Vão receber a nota ({incluidas.length})</p>
+                        <p className="text-xs text-white/60">{incluidas.map(e => e.name).join(', ')}</p>
+                    </div>
+                    <div className="rounded-md border border-amber-500/25 bg-amber-500/10 p-2.5">
+                        <p className="text-xs text-amber-300 font-semibold mb-1.5">Não vão receber ({excluidas.length})</p>
+                        <MotivosExclusao excluidas={excluidas} />
+                    </div>
+                </div>
+            );
+        }
+    }
+
+    return (
+        <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
+            <p className="text-xs text-white/40 uppercase tracking-wide font-semibold">Quem vai receber esta nota</p>
+            {corpo}
+        </div>
+    );
+}
+
+// Uma linha por empresa excluída do grupo, com o motivo em português simples
+// — os 5 textos são EXATOS (contrato de UI item 2). Cada flag é derivada
+// DENTRO do .map() (pitfall Rollup do projeto: variável de escopo do
+// componente usada só dentro do callback some no bundle de produção).
+function MotivosExclusao({ excluidas = [] }) {
+    return (
+        <ul className="space-y-1.5">
+            {excluidas.map((e) => {
+                const ehResponsavelDiferente = e.motivo === 'responsavel_diferente';
+                const ehSemServicoContratado = e.motivo === 'sem_servico_contratado';
+                const ehSemServicoEmComum    = e.motivo === 'sem_servico_em_comum';
+                const ehJaTemLink            = e.motivo === 'ja_tem_link';
+                const ehEmpresaInativa       = e.motivo === 'empresa_inativa';
+
+                return (
+                    <li key={e.company_id} className="text-xs text-amber-200/90 leading-relaxed">
+                        <strong className="text-amber-100">{e.name}</strong>
+                        {' — '}
+                        {ehResponsavelDiferente && (
+                            <>o {e.servico} desta empresa é cuidado por outra pessoa ({e.quem_cuida}). Ela continua com nota 1 no mês até você gerar um link só para ela.</>
+                        )}
+                        {ehSemServicoContratado && (
+                            <>não tem {e.servico} contratado, então este modelo de pesquisa não se aplica a ela.</>
+                        )}
+                        {ehSemServicoEmComum && (
+                            <>não tem nenhum serviço em comum com as outras empresas do grupo neste modelo de pesquisa.</>
+                        )}
+                        {ehJaTemLink && (
+                            <>já tem um link deste modelo neste mês. Ela responde pelo link dela.</>
+                        )}
+                        {ehEmpresaInativa && (
+                            <>está inativa no sistema.</>
+                        )}
+                    </li>
+                );
+            })}
+        </ul>
+    );
+}
+
 // Mini chip de nota individual da tabela (E/A/EMP).
 function ChipNota({ v }) {
     const val = formatNota(v);
@@ -1321,6 +1429,7 @@ export default function NpsIndex({
     estrategistas = [],
     analistas = [],
     templates = [],
+    grupos = [],
     pode_filtrar_por_pessoa = false,
     pode_ver_confianca = false, // Fase 95 (AB-95-3) · ausente (não `false`) pra não-admin
     cards = {},
@@ -1380,11 +1489,21 @@ export default function NpsIndex({
     const [empresasElegiveis, setEmpresasElegiveis] = useState([]);
     const [carregandoEmpresas, setCarregandoEmpresas] = useState(false);
 
-    // Ao escolher o modelo: fixa o template_id, zera a empresa (a lista muda) e
-    // busca as empresas elegíveis daquele modelo. finally garante o fim do
-    // loading mesmo em erro de rede.
+    // Fase 119.1 Plan 07 — NPS de GRUPO. `grupoId` substitui `data.company_id`
+    // quando `modoGeracao === 'grupo'`. `cobertura` é o resultado de
+    // `nps.grupo.cobertura` (incluidas/excluidas/motivo) — nunca decide quem
+    // recebe a nota (isso é recalculado no servidor no submit), só informa.
+    const [grupoId, setGrupoId] = useState('');
+    const [cobertura, setCobertura] = useState(null);
+    const [carregandoCobertura, setCarregandoCobertura] = useState(false);
+
+    // Ao escolher o modelo: fixa o template_id, zera empresa/grupo (a lista
+    // muda) e busca as empresas elegíveis daquele modelo. finally garante o
+    // fim do loading mesmo em erro de rede.
     const onSelectModelo = async (id) => {
         setData(d => ({ ...d, template_id: id, company_id: '' }));
+        setGrupoId('');
+        setCobertura(null);
         setCarregandoEmpresas(true);
         setEmpresasElegiveis([]);
         try {
@@ -1398,6 +1517,33 @@ export default function NpsIndex({
             setCarregandoEmpresas(false);
         }
     };
+
+    // Alterna entre "Uma empresa" e "Um grupo de empresas" — zera a escolha
+    // do outro modo (não faz sentido guardar empresa E grupo ao mesmo tempo).
+    const trocarModoGeracao = (modo) => {
+        setModoGeracao(modo);
+        setData(d => ({ ...d, company_id: '' }));
+        setGrupoId('');
+        setCobertura(null);
+    };
+
+    // Busca a prévia de cobertura (item 2 do contrato de UI) sempre que
+    // grupo E modelo estiverem escolhidos, no mesmo padrão assíncrono de
+    // onSelectModelo. Nenhum fetch acontece fora do modo grupo.
+    useEffect(() => {
+        if (modoGeracao !== 'grupo' || !grupoId || !data.template_id) {
+            setCobertura(null);
+            return;
+        }
+        let cancelado = false;
+        setCarregandoCobertura(true);
+        setCobertura(null);
+        window.axios.get(route('nps.grupo.cobertura', { grupo: grupoId, template: data.template_id }))
+            .then(({ data: res }) => { if (!cancelado) setCobertura(res); })
+            .catch(() => { if (!cancelado) setCobertura({ incluidas: [], excluidas: [] }); })
+            .finally(() => { if (!cancelado) setCarregandoCobertura(false); });
+        return () => { cancelado = true; };
+    }, [modoGeracao, grupoId, data.template_id]);
 
     useEffect(() => {
         if (flash?.nps_link) {
@@ -1462,16 +1608,33 @@ export default function NpsIndex({
 
     const submit = (e) => {
         e.preventDefault();
+        // Fase 119.1 Plan 07 — modo grupo posta em nps.grupo.generate (guard
+        // de duplicidade próprio + fan-out em N surveys-espelho no submit
+        // público, Plan 06); modo empresa mantém o fluxo individual de sempre.
+        if (modoGeracao === 'grupo') {
+            router.post(route('nps.grupo.generate'), {
+                company_group_id: grupoId,
+                template_id: data.template_id,
+            }, {
+                onSuccess: () => fecharGerarLink(),
+            });
+            return;
+        }
         post(route('nps.generate'), {
             onSuccess: () => { reset(); setEmpresasElegiveis([]); setOpen(false); },
         });
     };
 
-    // Fecha/reseta o modal gerar-link limpando também a lista de elegíveis.
+    // Fecha/reseta o modal gerar-link limpando também a lista de elegíveis e
+    // o estado do modo grupo (grupoId/cobertura), sempre voltando pro modo
+    // "empresa" default na próxima abertura.
     const fecharGerarLink = () => {
         reset();
         setEmpresasElegiveis([]);
         setOpen(false);
+        setModoGeracao('empresa');
+        setGrupoId('');
+        setCobertura(null);
     };
 
     const copyLink = (link) => {
@@ -1797,33 +1960,106 @@ export default function NpsIndex({
                             {errors.template_id && <p className="text-destructive text-xs">{errors.template_id}</p>}
                         </div>
 
-                        {/* Passo 2 · EMPRESA (só as elegíveis do modelo). Fica
-                            desabilitado até escolher o modelo / durante a carga. */}
+                        {/* Alvo do link — Fase 119.1 Plan 07 (NPS de grupo).
+                            Ao trocar de modo, o seletor de empresa dá lugar
+                            ao seletor de grupo (nunca os dois ao mesmo tempo). */}
                         <div className="space-y-1.5">
-                            <label className="text-xs text-white/70 font-medium">2 · Empresa</label>
-                            {/* 2026-07-20 · seletor pesquisável (o modelo "padrão"
-                                lista TODAS as empresas — sem busca virava lista
-                                impossível de rolar). */}
-                            <SearchableGlassSelect
-                                active={!!data.company_id}
-                                disabled={!data.template_id || carregandoEmpresas}
-                                value={data.company_id || ''}
-                                onValueChange={v => setData('company_id', v)}
-                                placeholder={
-                                    !data.template_id
-                                        ? 'Escolha um modelo primeiro'
-                                        : (carregandoEmpresas ? 'Carregando empresas...' : 'Selecionar empresa...')
-                                }
-                                searchPlaceholder="Buscar empresa..."
-                                width="100%"
-                                items={empresasElegiveis.map(c => ({ value: String(c.id), label: c.name }))}
-                            />
-                            {errors.company_id && <p className="text-destructive text-xs">{errors.company_id}</p>}
+                            <label className="text-xs text-white/70 font-medium">2 · Quem vai responder</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => trocarModoGeracao('empresa')}
+                                    className={cn(
+                                        'h-9 rounded-lg border text-xs font-semibold transition-colors',
+                                        modoGeracao === 'empresa'
+                                            ? 'border-ecf-yellow/40 bg-ecf-yellow/10 text-ecf-yellow'
+                                            : 'border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/70',
+                                    )}
+                                >
+                                    Uma empresa
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => trocarModoGeracao('grupo')}
+                                    className={cn(
+                                        'h-9 rounded-lg border text-xs font-semibold transition-colors',
+                                        modoGeracao === 'grupo'
+                                            ? 'border-ecf-yellow/40 bg-ecf-yellow/10 text-ecf-yellow'
+                                            : 'border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/70',
+                                    )}
+                                >
+                                    Um grupo de empresas
+                                </button>
+                            </div>
                         </div>
+
+                        {modoGeracao === 'empresa' ? (
+                            /* Passo 3 · EMPRESA (só as elegíveis do modelo). Fica
+                               desabilitado até escolher o modelo / durante a carga. */
+                            <div className="space-y-1.5">
+                                <label className="text-xs text-white/70 font-medium">3 · Empresa</label>
+                                {/* 2026-07-20 · seletor pesquisável (o modelo "padrão"
+                                    lista TODAS as empresas — sem busca virava lista
+                                    impossível de rolar). */}
+                                <SearchableGlassSelect
+                                    active={!!data.company_id}
+                                    disabled={!data.template_id || carregandoEmpresas}
+                                    value={data.company_id || ''}
+                                    onValueChange={v => setData('company_id', v)}
+                                    placeholder={
+                                        !data.template_id
+                                            ? 'Escolha um modelo primeiro'
+                                            : (carregandoEmpresas ? 'Carregando empresas...' : 'Selecionar empresa...')
+                                    }
+                                    searchPlaceholder="Buscar empresa..."
+                                    width="100%"
+                                    items={empresasElegiveis.map(c => ({ value: String(c.id), label: c.name }))}
+                                />
+                                {errors.company_id && <p className="text-destructive text-xs">{errors.company_id}</p>}
+                            </div>
+                        ) : (
+                            /* Passo 3 · GRUPO — mesmo padrão de busca do seletor
+                               de empresa. */
+                            <div className="space-y-1.5">
+                                <label className="text-xs text-white/70 font-medium">3 · Grupo de empresas</label>
+                                <SearchableGlassSelect
+                                    active={!!grupoId}
+                                    disabled={!data.template_id}
+                                    value={grupoId}
+                                    onValueChange={v => setGrupoId(v)}
+                                    placeholder={!data.template_id ? 'Escolha um modelo primeiro' : 'Selecionar grupo...'}
+                                    searchPlaceholder="Buscar grupo..."
+                                    width="100%"
+                                    items={grupos.map(g => ({ value: String(g.id), label: g.name }))}
+                                />
+                            </div>
+                        )}
+
+                        {/* Prévia de cobertura (item 2 do contrato de UI) — só
+                            renderiza quando há algo a mostrar (empresa
+                            selecionada, ou grupo+modelo escolhidos). */}
+                        {((modoGeracao === 'empresa' && data.company_id) || (modoGeracao === 'grupo' && grupoId && data.template_id)) && (
+                            <CoberturaPreview
+                                modo={modoGeracao}
+                                carregando={carregandoCobertura}
+                                cobertura={cobertura}
+                            />
+                        )}
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={fecharGerarLink}>Cancelar</Button>
-                            <Button type="submit" disabled={processing || !data.template_id || !data.company_id}>Gerar Link</Button>
+                            <Button
+                                type="submit"
+                                disabled={
+                                    processing || !data.template_id
+                                    || (modoGeracao === 'empresa' && !data.company_id)
+                                    || (modoGeracao === 'grupo' && (
+                                        !grupoId || carregandoCobertura || !cobertura || (cobertura.incluidas ?? []).length === 0
+                                    ))
+                                }
+                            >
+                                Gerar Link
+                            </Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>

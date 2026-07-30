@@ -91,7 +91,11 @@ function RespondV15({ survey, template }) {
             setAttempted(true);
             return;
         }
-        post(route('nps.submit', survey.token), { preserveScroll: true });
+        // Fase 119.1 Plan 07 — o link de GRUPO expõe `submit_url` (rota
+        // nps.grupo.submit); fallback pra rota individual preserva o
+        // comportamento de sempre quando `survey.submit_url` não vem.
+        const destino = survey.submit_url ?? route('nps.submit', survey.token);
+        post(destino, { preserveScroll: true });
     };
 
     return (

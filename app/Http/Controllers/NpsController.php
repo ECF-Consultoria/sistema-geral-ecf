@@ -857,12 +857,30 @@ class NpsController extends Controller
             ->orderBy('nome')
             ->get(['id', 'nome']);
 
+        // Fase 119.1 Plan 07 (deviation Rule 2/3 — sem isto o seletor "Um
+        // grupo de empresas" do modal "Gerar link" não tem o que listar).
+        // Admin vê todos os grupos; não-admin só vê grupo em que TODAS as
+        // empresas estão na carteira dele — mesma regra de
+        // NpsGrupoController::autorizarAcessoAoGrupo() (nunca parcial, para
+        // não vazar nem a existência de um grupo com empresa fora do escopo).
+        $companyIdsUsuario = $user->isAdmin() ? null : $user->companies()->pluck('companies.id');
+        $grupos = \App\Models\CompanyGroup::query()
+            ->when(!$user->isAdmin(), function ($q) use ($companyIdsUsuario) {
+                $q->whereHas('companies')
+                    ->whereDoesntHave('companies', function ($qq) use ($companyIdsUsuario) {
+                        $qq->whereNotIn('companies.id', $companyIdsUsuario);
+                    });
+            })
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         $props = [
             'surveys'                => $surveys,
             'companies'              => $companies,
             'estrategistas'          => $estrategistas,
             'analistas'              => $analistas,
             'templates'              => $templates,
+            'grupos'                 => $grupos,
             'pode_filtrar_por_pessoa' => $podeFiltrarPorPessoa,
             'cards'          => $cards,
             'contadores'     => $contadores,
