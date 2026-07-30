@@ -1422,9 +1422,11 @@ Plans:
 
 Plans:
 
-- [ ] 120-01-PLAN.md — Teste dourado de byte-equivalência (substituto do gate de hash das Fases 117-119), bump da chave de cache antes da mudança de shape, feature flag nascendo `false` e a superfície aditiva: parâmetro de shadow, `empresas_score` e `componentes.var_margem_pp` [AGRE-02, AGRE-03, AGRE-04]
-- [ ] 120-02-PLAN.md — Roteamento do shadow: `consolidar-mes` e `warm-cache` com o guard do `Cache::remember` (C-02), prova de contagem zero na leitura interativa (D-04) e de que o shadow não contamina nenhum número legado [AGRE-02]
+- [x] 120-01-PLAN.md — Teste dourado de byte-equivalência (substituto do gate de hash das Fases 117-119), bump da chave de cache antes da mudança de shape, feature flag nascendo `false` e a superfície aditiva: parâmetro de shadow, `empresas_score` e `componentes.var_margem_pp` [AGRE-02, AGRE-03, AGRE-04]
+- [x] 120-02-PLAN.md — Roteamento do shadow: `consolidar-mes` e `warm-cache` com o guard do `Cache::remember` (C-02), prova de contagem zero na leitura interativa (D-04) e de que o shadow não contamina nenhum número legado [AGRE-02]
 - [ ] 120-03-PLAN.md — A bifurcação: `computeNotaFinalPorEmpresa`/`computeScoreStatusPorEmpresa`, denominador só de empresas `complete` (D-01), cobertura de 70% governando `official`/`partial` (D-02/D-03), só-Shopee `official` sem código especial e os cenários espelho da D-05 [AGRE-01, AGRE-05, AGRE-06]
+
+> **Planos 01 e 02 fechados em 2026-07-30.** Cache em `v14` (a Fase 119.1 consumiu `v13` antes). Shadow (`$incluirEmpresasScore`) roda com garantia em `desempenho:consolidar-mes`/`desempenho:warm-cache` (guard do `Cache::remember`, C-02) e contagem zero comprovada em leitura interativa (D-04). Flag `metrics.performance_company_first_score` continua `false`. Falta o Plano 03 (bifurcação de `nota_final`).
 
 ### Phase 121: Comparação antigo × novo e validação da régua em pp (v21.0)
 

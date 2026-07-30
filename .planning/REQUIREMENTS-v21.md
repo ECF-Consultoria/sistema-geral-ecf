@@ -77,9 +77,9 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 ### AGRE — Agregação do profissional (Fase 120)
 
 - [ ] **AGRE-01**: Com a flag ligada, `nota_final` do profissional é exatamente a média das `nota_empresa` das empresas consideradas
-- [ ] **AGRE-02**: Feature flag `config('metrics.performance_company_first_score')` controla a troca; `empresas_score` é calculado em **shadow** nos dois modos, para auditoria
-- [ ] **AGRE-03**: `DesempenhoScoreService::cacheKey()` sobe de `v12` para `v13` (v12 já foi consumido pela Fase 116-02), e as 4 suítes com a string hardcoded são atualizadas junto — `DesempenhoShopeeScoreTest`, `Phase116/NpsFloorDesempenhoTest`, `Phase96/NpsInvalidacaoRespostaTest`, `V18/DesempenhoMetadadosCacheTest`
-- [ ] **AGRE-04**: O payload expõe `empresas_score` e `componentes.var_margem_pp`, preservando as chaves legadas (`empresas_carteira`, `empresas_com_baseline`, `margem_amostra`, `componentes_disponiveis`, `score_status`, `faixa_bonus`, `faixa_promovida`, `componentes.var_margem_pct`)
+- [x] **AGRE-02**: Feature flag `config('metrics.performance_company_first_score')` controla a troca; `empresas_score` é calculado em **shadow** nos dois modos, para auditoria
+- [x] **AGRE-03**: `DesempenhoScoreService::cacheKey()` sobe de `v12` para `v13` (v12 já foi consumido pela Fase 116-02), e as 4 suítes com a string hardcoded são atualizadas junto — `DesempenhoShopeeScoreTest`, `Phase116/NpsFloorDesempenhoTest`, `Phase96/NpsInvalidacaoRespostaTest`, `V18/DesempenhoMetadadosCacheTest`
+- [x] **AGRE-04**: O payload expõe `empresas_score` e `componentes.var_margem_pp`, preservando as chaves legadas (`empresas_carteira`, `empresas_com_baseline`, `margem_amostra`, `componentes_disponiveis`, `score_status`, `faixa_bonus`, `faixa_promovida`, `componentes.var_margem_pct`)
 - [ ] **AGRE-05**: O tratamento de empresa sem baseline segue a decisão tomada no discuss-phase desta fase, sem contradizer `DESEMP-06` nem a trava da Fase 109
 - [ ] **AGRE-06**: `score_status` (`official` / `partial` / `blocked`) permanece coerente: profissional só-Shopee continua produzindo `nota_final`, não cai em `blocked` por ausência de margem
 
@@ -155,9 +155,9 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 | EMPS-06 | Fase 119 | Pending |
 | EMPS-07 | Fase 119 | Pending |
 | AGRE-01 | Fase 120 | Pending |
-| AGRE-02 | Fase 120 | Pending |
-| AGRE-03 | Fase 120 | Pending |
-| AGRE-04 | Fase 120 | Pending |
+| AGRE-02 | Fase 120 | Complete |
+| AGRE-03 | Fase 120 | Complete |
+| AGRE-04 | Fase 120 | Complete |
 | AGRE-05 | Fase 120 | Pending |
 | AGRE-06 | Fase 120 | Pending |
 | ROLL-01 | Fase 121 | Pending |
