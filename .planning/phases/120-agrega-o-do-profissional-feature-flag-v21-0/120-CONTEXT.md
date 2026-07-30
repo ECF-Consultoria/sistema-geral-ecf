@@ -63,6 +63,21 @@ O `--desde` é necessário porque o gate mede a **pior rodada**, e a rodada repr
   **Razão:** a memória do projeto registra dashboard de 70 segundos por chamada HTTP síncrona à Adman (`project_desempenho_compute_cache`). Rodar o caminho novo inteiro — dispatcher por empresa + NPS por empresa — em toda requisição de tela dobraria esse custo com a flag ainda desligada. Nos comandos o custo é aceitável e a auditoria fica preservada.
   Leitura literal da AGRE-02 ("shadow nos dois modos") fica **atendida no espírito**: o shadow existe e é auditável, só não paga o preço na tela.
 
+### ⚠️ Aferição pós-Fase 119.1 (2026-07-30) — LER ANTES DE EXECUTAR
+
+A Fase 119.1 (sessão paralela) foi concluída — 9 planos, 9 summaries — e mexeu nos três serviços que esta fase consome: **+107 linhas** em `DesempenhoScoreService`, **+68** em `NpsPorEmpresaService`, **+12** em `CompanyScoreService`. Reaferi o impacto:
+
+| Item | Situação |
+|---|---|
+| **Chaves do payload** | **inalteradas** — nenhuma chave nova. O teste dourado de byte-equivalência segue válido na estrutura. |
+| **Valores congelados** | **sem risco** — o plano manda *capturar em execução* os números reais de hoje, não usa literais escritos antes. |
+| **Versão de cache** | **já está em `v13`** (a 119.1 consumiu, como previsto). A regra corrente+1 leva a Fase 120 para **`v14`** automaticamente. |
+| **Linhas citadas nos planos** | **DEFASADAS.** Localizar os métodos **pelo nome**, nunca pela linha. |
+
+Referência atual (2026-07-30): `computeCached` **230** · `cacheKey` **304** · `computeScoreStatus` **706** · `computeNotaFinal` **1329**.
+
+`computeNpsMedio` ganhou um 4º ramo na 119.1 — não afeta o ponto de agregação desta fase, mas pode mudar valores de NPS. Mais uma razão para os valores do teste dourado serem capturados na hora, e não copiados de qualquer registro anterior.
+
 ### Resoluções pós-pesquisa (verificadas no código)
 
 - **C-01 · Dois sinais independentes, nunca um só.** A **feature flag** (`config('metrics.performance_company_first_score')`) decide **qual resultado vira `nota_final`**. O **shadow** é um parâmetro separado que decide **se `CompanyScoreService` sequer roda**. Confundir os dois é o caminho direto para o custo vazar para a tela (D-04). Só `desempenho:warm-cache` e `desempenho:consolidar-mes` passam o shadow como `true`.
