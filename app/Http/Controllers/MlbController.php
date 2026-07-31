@@ -1287,7 +1287,12 @@ class MlbController extends Controller
             ->map(fn($p) => ['id' => $p->id, 'nome' => $p->name])
             ->toArray();
 
-        $query = Publicacao::with('user:id,name', 'comentarioAutor:id,name')
+        $query = Publicacao::with([
+                'user:id,name',
+                'comentarioAutor:id,name',
+                'problemaResolvidoPor:id,name',
+                'comentarioResolvidoPor:id,name',
+            ])
             ->whereHas('user.setores', function ($q) {
                 $q->where('setores.slug', 'publicacao')
                   ->whereHas('cargos', fn($qc) => $qc->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao']));
@@ -1300,6 +1305,10 @@ class MlbController extends Controller
             'sem_revisao'    => $query->where('revisado', false),
             'sem_comentario' => $query->where(fn($q) => $q->whereNull('comentario')->orWhere('comentario', '')),
             'com_comentario' => $query->whereNotNull('comentario')->where('comentario', '!=', ''),
+            'com_problema'   => $query->where('problema', true),
+            'resolvidos'     => $query->where(fn($q) => $q
+                                    ->whereNotNull('problema_resolvido_em')
+                                    ->orWhere('comentario_resolvido', true)),
             'vendidos'       => $query->where('vendido', true),
             'nao_vendidos'   => $query->where('vendido', false),
             default          => null,
@@ -1323,13 +1332,17 @@ class MlbController extends Controller
                 'mlb_code'             => $p->mlb_code,
                 'vendido'              => $p->vendido,
                 'revisado'             => $p->revisado,
-                'problema'             => $p->problema,
-                'problema_nota'        => $p->problema_nota,
-                'problema_em'          => $p->problema_em?->format('d/m/Y'),
-                'comentario'           => $p->comentario,
-                'comentario_autor'     => $p->comentarioAutor?->name,
-                'comentario_em'        => $p->comentario_em?->format('d/m/Y'),
-                'comentario_resolvido' => $p->comentario_resolvido,
+                'problema'                 => $p->problema,
+                'problema_nota'            => $p->problema_nota,
+                'problema_em'              => $p->problema_em?->format('d/m/Y H:i'),
+                'problema_resolvido_por'   => $p->problemaResolvidoPor?->name,
+                'problema_resolvido_em'    => $p->problema_resolvido_em?->format('d/m/Y H:i'),
+                'comentario'               => $p->comentario,
+                'comentario_autor'         => $p->comentarioAutor?->name,
+                'comentario_em'            => $p->comentario_em?->format('d/m/Y'),
+                'comentario_resolvido'     => $p->comentario_resolvido,
+                'comentario_resolvido_por' => $p->comentarioResolvidoPor?->name,
+                'comentario_resolvido_em'  => $p->comentario_resolvido_em?->format('d/m/Y H:i'),
             ]);
 
         // Problemas com prioridade no topo
@@ -1341,6 +1354,10 @@ class MlbController extends Controller
             'vendidos'       => $publicacoes->where('vendido', true)->count(),
             'com_comentario' => $publicacoes->filter(fn($p) => !empty($p['comentario']))->count(),
             'com_problema'   => $publicacoes->where('problema', true)->count(),
+            // Pendências fechadas: problema resolvido ou comentário resolvido
+            'resolvidos'     => $publicacoes->filter(fn($p) =>
+                                    !empty($p['problema_resolvido_em']) || !empty($p['comentario_resolvido'])
+                                )->count(),
         ];
 
         // Empresas com pelo menos um SKU concluído fora do prazo
@@ -1481,10 +1498,12 @@ class MlbController extends Controller
         $comentario = trim($request->comentario ?? '');
 
         $pub->update([
-            'comentario'           => $comentario ?: null,
-            'comentario_autor_id'  => $comentario ? $user->id : null,
-            'comentario_em'        => $comentario ? now() : null,
-            'comentario_resolvido' => false,
+            'comentario'               => $comentario ?: null,
+            'comentario_autor_id'      => $comentario ? $user->id : null,
+            'comentario_em'            => $comentario ? now() : null,
+            'comentario_resolvido'     => false,
+            'comentario_resolvido_por' => null,
+            'comentario_resolvido_em'  => null,
         ]);
 
         activity('mlb')
@@ -1511,7 +1530,11 @@ class MlbController extends Controller
         }
 
         $novoStatus = !$pub->comentario_resolvido;
-        $pub->update(['comentario_resolvido' => $novoStatus]);
+        $pub->update([
+            'comentario_resolvido'     => $novoStatus,
+            'comentario_resolvido_por' => $novoStatus ? $user->id : null,
+            'comentario_resolvido_em'  => $novoStatus ? now() : null,
+        ]);
 
         activity('mlb')
             ->causedBy($user)
@@ -1535,17 +1558,31 @@ class MlbController extends Controller
         $request->validate(['problema_nota' => 'nullable|string|max:500']);
 
         $problema = !$pub->problema;
-        $nota = $problema ? trim($request->problema_nota ?? '') : null;
-        $pub->update([
-            'problema'      => $problema,
-            'problema_nota' => $nota,
-            'problema_em'   => $problema ? now() : null,
-        ]);
+
+        if ($problema) {
+            // Abrindo o problema — zera qualquer resolução anterior
+            $nota = trim($request->problema_nota ?? '') ?: null;
+            $pub->update([
+                'problema'               => true,
+                'problema_nota'          => $nota,
+                'problema_em'            => now(),
+                'problema_resolvido_por' => null,
+                'problema_resolvido_em'  => null,
+            ]);
+        } else {
+            // Resolvendo — preserva nota e data de abertura para o histórico da revisão
+            $nota = $pub->problema_nota;
+            $pub->update([
+                'problema'               => false,
+                'problema_resolvido_por' => $user->id,
+                'problema_resolvido_em'  => now(),
+            ]);
+        }
 
         activity('mlb')
             ->causedBy($user)
             ->withProperties(['mlb_code' => $pub->mlb_code, 'empresa' => $pub->empresa, 'nota' => $nota])
-            ->log('Problema ' . ($problema ? 'marcado' : 'removido') . ' na publicação ' . $pub->mlb_code . ' (' . $pub->empresa . ')' . ($nota ? ': "' . $nota . '"' : ''));
+            ->log('Problema ' . ($problema ? 'marcado' : 'resolvido') . ' na publicação ' . $pub->mlb_code . ' (' . $pub->empresa . ')' . ($nota ? ': "' . $nota . '"' : ''));
 
         return back();
     }

@@ -45,10 +45,14 @@ class Publicacao extends Model
         'problema',
         'problema_nota',
         'problema_em',
+        'problema_resolvido_por',
+        'problema_resolvido_em',
         'comentario',
         'comentario_autor_id',
         'comentario_em',
         'comentario_resolvido',
+        'comentario_resolvido_por',
+        'comentario_resolvido_em',
     ];
 
     protected $casts = [
@@ -57,10 +61,12 @@ class Publicacao extends Model
         'vendido'              => 'boolean',
         'vendas_qty'           => 'integer',
         'revisado'             => 'boolean',
-        'problema'             => 'boolean',
-        'problema_em'          => 'datetime',
-        'comentario_em'        => 'datetime',
-        'comentario_resolvido' => 'boolean',
+        'problema'                 => 'boolean',
+        'problema_em'              => 'datetime',
+        'problema_resolvido_em'    => 'datetime',
+        'comentario_em'            => 'datetime',
+        'comentario_resolvido'     => 'boolean',
+        'comentario_resolvido_em'  => 'datetime',
     ];
 
     public function user(): BelongsTo
@@ -71,5 +77,17 @@ class Publicacao extends Model
     public function comentarioAutor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'comentario_autor_id')->withTrashed();
+    }
+
+    /** Quem marcou o problema como resolvido (publicador, líder ou gestor). */
+    public function problemaResolvidoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'problema_resolvido_por')->withTrashed();
+    }
+
+    /** Quem marcou o comentário como resolvido. */
+    public function comentarioResolvidoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'comentario_resolvido_por')->withTrashed();
     }
 }

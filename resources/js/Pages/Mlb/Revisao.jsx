@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
-import { CheckCircle, MessageSquare, Package, ExternalLink, AlertTriangle, Clock } from 'lucide-react';
+import { CheckCircle, MessageSquare, Package, ExternalLink, AlertTriangle, Clock, CheckCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const MESES_PT = {
@@ -17,6 +17,11 @@ function nomeMes(ym) {
 }
 
 function fmt(n) { return Number(n ?? 0).toLocaleString('pt-BR'); }
+
+/** Pendências fechadas no grupo: problema resolvido ou comentário resolvido. */
+function resolvidosNoGrupo(pubs) {
+    return pubs.filter(p => p.problema_resolvido_em || p.comentario_resolvido).length;
+}
 function mlbUrl(code) { return `https://produto.mercadolivre.com.br/${code.replace('MLB', 'MLB-')}`; }
 
 function KpiMini({ title, value, icon: Icon, color = 'yellow' }) {
@@ -101,15 +106,19 @@ function CardPub({ pub }) {
     }
 
     const temProblema = pub.problema;
+    // Problema que já foi fechado — mantém a nota original como histórico
+    const problemaResolvido = !temProblema && !!pub.problema_resolvido_em;
 
     return (
         <div className={cn(
             'rounded-xl border p-4 transition-all',
             temProblema
                 ? 'border-red-500/40 bg-red-500/8 ring-1 ring-red-500/20'
-                : pub.revisado
-                    ? 'border-purple-500/20 bg-purple-500/5'
-                    : 'border-white/[0.06] bg-white/[0.02]'
+                : problemaResolvido
+                    ? 'border-emerald-500/25 bg-emerald-500/[0.04]'
+                    : pub.revisado
+                        ? 'border-purple-500/20 bg-purple-500/5'
+                        : 'border-white/[0.06] bg-white/[0.02]'
         )}>
             {/* Badge problema destacado */}
             {temProblema && (
@@ -121,6 +130,24 @@ function CardPub({ pub }) {
                     {pub.problema_em && (
                         <span className="text-red-400/50 text-[11px] ml-auto">desde {pub.problema_em}</span>
                     )}
+                </div>
+            )}
+
+            {/* Problema resolvido — quem fechou e quando */}
+            {problemaResolvido && (
+                <div className="mb-3 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25">
+                    <div className="flex items-center gap-2">
+                        <CheckCheck size={12} className="text-emerald-400 shrink-0" />
+                        <span className="text-emerald-400 text-[12px] font-semibold">Problema resolvido</span>
+                        <span className="text-emerald-400/50 text-[11px] ml-auto">{pub.problema_resolvido_em}</span>
+                    </div>
+                    {pub.problema_nota && (
+                        <p className="text-white/50 text-[12px] mt-1 line-through decoration-white/20">↳ {pub.problema_nota}</p>
+                    )}
+                    <p className="text-white/30 text-[11px] mt-1">
+                        por {pub.problema_resolvido_por ?? '—'}
+                        {pub.problema_em && ` · aberto em ${pub.problema_em}`}
+                    </p>
                 </div>
             )}
 
@@ -189,10 +216,13 @@ function CardPub({ pub }) {
                         ? 'border-emerald-500/20 bg-emerald-500/5'
                         : 'border-blue-500/20 bg-blue-500/5'
                 )}>
-                    {pub.comentario_resolvido
-                        ? <span className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide block mb-1">✓ Resolvido</span>
-                        : null
-                    }
+                    {pub.comentario_resolvido && (
+                        <span className="text-emerald-400 text-[10px] font-bold uppercase tracking-wide block mb-1">
+                            ✓ Resolvido
+                            {pub.comentario_resolvido_por && ` por ${pub.comentario_resolvido_por}`}
+                            {pub.comentario_resolvido_em && ` · ${pub.comentario_resolvido_em}`}
+                        </span>
+                    )}
                     💬 {pub.comentario}
                     <div className="text-white/30 text-[11px] mt-1">
                         por {pub.comentario_autor} · {pub.comentario_em}
@@ -298,6 +328,9 @@ export default function Revisao({ publicacoes, publicadores, meses, kpis, filter
                     </div>
                     <span className="text-white/30 text-xs">
                         {pubs.length} anúncio(s) · {pubs.filter(p => p.revisado).length} revisado(s)
+                        {resolvidosNoGrupo(pubs) > 0 && (
+                            <span className="text-emerald-400/60"> · {resolvidosNoGrupo(pubs)} resolvido(s)</span>
+                        )}
                     </span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -317,11 +350,12 @@ export default function Revisao({ publicacoes, publicadores, meses, kpis, filter
             </div>
 
             {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
                 <KpiMini title="Na seleção"    value={fmt(kpis?.total)}          icon={Package}        color="yellow" />
                 <KpiMini title="Revisados"      value={fmt(kpis?.revisados)}      icon={CheckCircle}    color="purple" />
                 <KpiMini title="Com comentário" value={fmt(kpis?.com_comentario)} icon={MessageSquare}  color="blue" />
                 <KpiMini title="Com problema"   value={fmt(kpis?.com_problema)}   icon={AlertTriangle}  color="red" />
+                <KpiMini title="Resolvidos"     value={fmt(kpis?.resolvidos)}     icon={CheckCheck}     color="green" />
             </div>
 
             {/* Filtros */}
@@ -358,6 +392,8 @@ export default function Revisao({ publicacoes, publicadores, meses, kpis, filter
                     <option value="sem_revisao">Sem revisão</option>
                     <option value="sem_comentario">Sem comentário</option>
                     <option value="com_comentario">Com comentário</option>
+                    <option value="com_problema">Com problema</option>
+                    <option value="resolvidos">Resolvidos</option>
                     <option value="vendidos">Vendidos</option>
                     <option value="nao_vendidos">Não vendidos</option>
                 </select>
