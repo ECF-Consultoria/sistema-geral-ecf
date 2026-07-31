@@ -85,9 +85,9 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### ROLL — Comparação e validação antes do rollout (Fase 121)
 
-- [ ] **ROLL-01**: `php artisan desempenho:comparar-score-empresa --mes=YYYY-MM` produz, por profissional, `nota_antiga`, `nota_nova`, `delta`, contagem de empresas total/complete/partial e a maior causa do delta
-- [ ] **ROLL-02**: A comparação roda sobre a última competência fechada e as amostras de risco são conferidas manualmente — profissional com poucas empresas, com muitas empresas, empresa com queda grande de faturamento, empresa com pp positivo, empresa sem baseline, empresa invalidada, profissional com Shopee
-- [ ] **ROLL-03**: A **distribuição real de `margem_var_pp` na carteira inteira** é medida e apresentada, confirmando (ou refutando) que a régua reusada de D2 produz dispersão de notas aceitável antes de ligar a flag
+- [x] **ROLL-01**: `php artisan desempenho:comparar-score-empresa --mes=YYYY-MM` produz, por profissional, `nota_antiga`, `nota_nova`, `delta`, contagem de empresas total/complete/partial e a maior causa do delta
+- [x] **ROLL-02**: A comparação roda sobre a última competência fechada e as amostras de risco são conferidas manualmente — profissional com poucas empresas, com muitas empresas, empresa com queda grande de faturamento, empresa com pp positivo, empresa sem baseline, empresa invalidada, profissional com Shopee
+- [x] **ROLL-03**: A **distribuição real de `margem_var_pp` na carteira inteira** é medida e apresentada, confirmando (ou refutando) que a régua reusada de D2 produz dispersão de notas aceitável antes de ligar a flag
 
 ### SNAP — Persistência e comandos (Fase 122)
 
@@ -160,9 +160,9 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 | AGRE-04 | Fase 120 | Complete |
 | AGRE-05 | Fase 120 | Pending |
 | AGRE-06 | Fase 120 | Pending |
-| ROLL-01 | Fase 121 | Pending |
-| ROLL-02 | Fase 121 | Pending |
-| ROLL-03 | Fase 121 | Pending |
+| ROLL-01 | Fase 121 | Complete (2026-07-31) |
+| ROLL-02 | Fase 121 | Complete (2026-07-31) |
+| ROLL-03 | Fase 121 | Complete (2026-07-31) |
 | SNAP-01 | Fase 122 | Pending |
 | SNAP-02 | Fase 122 | Pending |
 | SNAP-03 | Fase 122 | Pending |
