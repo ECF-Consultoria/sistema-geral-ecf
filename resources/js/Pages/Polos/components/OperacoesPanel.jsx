@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, LayoutGrid, GitBranch, Send, ShieldAlert, UserX, Lightbulb } from 'lucide-react';
 import { VAZIO } from '@/hooks/useAutoFilter';
 import StatChip from '@/Components/StatChip';
@@ -64,43 +64,58 @@ const DONUTS_POR_LENTE = {
 };
 
 export default function OperacoesPanel({ af, irPara, toneValor, toneFase, lente = 'geral' }) {
-    const [aberto, setAberto] = useState(true);
+    // Nasce MINIMIZADO de propósito. Aberto, o painel monta um canvas ECharts por indicador
+    // (6 na Geral) e recalcula os contadores de cada coluna — o que travava a entrada no /polos.
+    // A grade é o conteúdo principal; os donuts são consulta sob demanda.
+    const [aberto, setAberto] = useState(false);
 
-    const donuts = DONUTS_POR_LENTE[lente] ?? [];
+    const donuts = useMemo(() => DONUTS_POR_LENTE[lente] ?? [], [lente]);
+
+    // Contadores só são calculados com o painel ABERTO. Cada optionsFor() varre TODAS as linhas
+    // contra TODAS as colunas (~390 × 28 acessos), e isso rodava mesmo fechado — e de novo a cada
+    // tecla digitada na busca, porque o pai re-renderiza. O memo prende o custo às dependências
+    // reais (linhas/filtros/lente), não ao ciclo de render.
+    const montados = useMemo(() => {
+        if (!aberto) return [];
+        return donuts.map((d) => {
+            const cfg  = DONUT_CFG[d.col] ?? { label: d.col, centro: 'empresas' };
+            // Poda os "vazios" (e o 'ok' de Situação, que não é pendência).
+            const opts = af.optionsFor(d.col);
+            const uteis = d.tone === 'situacao' ? opts.filter((o) => o.value !== 'ok')
+                : d.tone === 'valor' ? opts.filter((o) => o.value !== VAZIO)
+                    : opts;
+            const dados = uteis.map((o) => ({ key: o.value, label: o.label, count: o.count }));
+            // activeKey = o valor isolado (p/ destacar a fatia). null se não isolado. Fica aqui
+            // dentro porque isOnly() também varre as linhas — no render solto era 1 varredura
+            // por categoria até achar a ativa.
+            const activeKey = af.isColumnActive(d.col)
+                ? (dados.find((x) => af.isOnly(d.col, x.key))?.key ?? null)
+                : null;
+            return { ...d, cfg, dados, activeKey };
+        });
+    }, [aberto, donuts, af.optionsFor, af.isColumnActive, af.isOnly]);
+
+    const semResp = useMemo(
+        () => (aberto && lente === 'geral' ? af.optionsFor('responsavel').find((o) => o.value === VAZIO) : null),
+        [aberto, lente, af.optionsFor],
+    );
+
     // Lente sem donuts (ex.: Financeiro) → não renderiza o painel.
     if (!donuts.length) return null;
 
-    // Opções de uma coluna, podando os "vazios" (e o 'ok' de Situação, que não é pendência).
-    const optsDe = (col, tone) => {
-        const opts = af.optionsFor(col);
-        if (tone === 'situacao') return opts.filter((o) => o.value !== 'ok');
-        if (tone === 'valor')    return opts.filter((o) => o.value !== VAZIO);
-        return opts;
-    };
-    // activeKey de uma coluna = o valor isolado (p/ destacar a fatia). null se não isolado.
-    const activeKey = (col, dados) => (af.isColumnActive(col) ? (dados.find((d) => af.isOnly(col, d.key))?.key ?? null) : null);
-
-    const montar = (d) => {
-        const cfg   = DONUT_CFG[d.col] ?? { label: d.col, centro: 'empresas' };
-        const dados = optsDe(d.col, d.tone).map((o) => ({ key: o.value, label: o.label, count: o.count }));
-        return { ...d, cfg, dados };
-    };
     // "Overview first, details on demand": cada indicador é um card COMPACTO (donut pequeno +
     // Top-5 + total + "Ver todas"), em grade densa. O detalhamento completo (todas as categorias,
     // busca, ordenação, tabela, export) abre num DRAWER sob demanda. onClick/activeKey mantêm o
     // cross-filter com a grade (irPara/af.setOnly/isOnly). Cores por paleta categórica (rank).
     const renderResumo = (d) => (
         <DistribuicaoResumo key={d.col} titulo={d.cfg.label} icone={d.cfg.icone} centroLabel={d.cfg.centro ?? 'empresas'}
-            dados={d.dados} activeKey={activeKey(d.col, d.dados)} onClick={(v) => irPara(d.col, v)} />
+            dados={d.dados} activeKey={d.activeKey} onClick={(v) => irPara(d.col, v)} />
     );
 
-    const montados = donuts.map(montar);
     // Na Geral: comandos (não-principais) no topo; "Resumo por área" (principais) abaixo.
     // Nas áreas: tudo junto num único grid.
     const comandos   = lente === 'geral' ? montados.filter((d) => !d.principal) : [];
     const principais = lente === 'geral' ? montados.filter((d) => d.principal) : montados;
-
-    const semResp = af.optionsFor('responsavel').find((o) => o.value === VAZIO);
 
     return (
         <div className="rounded-2xl border border-white/[0.06] bg-white/[0.015]">
@@ -109,6 +124,10 @@ export default function OperacoesPanel({ af, irPara, toneValor, toneFase, lente 
                 {aberto ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 <LayoutGrid size={15} className="text-ecf-yellow" /> Operações
                 {lente !== 'geral' && <span className="font-normal text-white/35">· {LENTE_LABEL[lente] ?? lente}</span>}
+                {/* Fechado por padrão: diz o que tem dentro, senão parece que os gráficos sumiram. */}
+                <span className="ml-auto text-[11px] font-normal text-white/35">
+                    {aberto ? 'ocultar' : `mostrar ${donuts.length} ${donuts.length === 1 ? 'indicador' : 'indicadores'}`}
+                </span>
             </button>
 
             {aberto && (
