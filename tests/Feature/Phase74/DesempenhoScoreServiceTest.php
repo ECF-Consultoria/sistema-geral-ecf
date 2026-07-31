@@ -731,15 +731,68 @@ class DesempenhoScoreServiceTest extends TestCase
     // ─── DESEMP-04 · % var faturamento ──────────────────────────────────────
 
     #[Test]
-    public function test_var_faturamento_media_das_variacoes_por_empresa(): void
+    public function test_var_faturamento_usa_mediana_e_outlier_nao_manda_na_carteira(): void
     {
-        // DESEMP-04 (UNIFICADO 2026-07-22) — carteira com deltas -2%, +7%, +4%
-        // → média 3.00%. `var_faturamento_pct` agora vem do
-        // AdmanMetricDiffService (revenue.diff_pct), MESMA fonte da carteira —
-        // então precisa de custId por empresa (custId vazio = emptyMetrics) e
-        // fixture DENSA (1 row/dia cobrindo current+baseline reais do resolver;
-        // esparso cairia na interseção vazia de dias-comuns). O ratio
-        // atual/anterior independe do comprimento da janela (valor constante/dia).
+        // Quick 260731-pvk — reproduz o caso Douglas (debug
+        // baseline-quase-zero-producao, empresa 332 "Lojão do Bras"): um
+        // baseline residual POSITIVO (não zero, então o guard `anterior <= 0`
+        // do calculated_fallback não pega) faz o `.diff` nativo da Adman
+        // devolver uma % gigante que, sob MÉDIA, manda sozinha na carteira.
+        //
+        // 5 empresas, cada uma com admanAccountId distinto (a chave de cache
+        // do diff service não inclui company_id):
+        //   A: 9600  vs 10000 → -4,00%
+        //   B: 9750  vs 10000 → -2,50%
+        //   C: 9850  vs 10000 → -1,50%
+        //   D: 10200 vs 10000 → +2,00%
+        //   E: 10050 vs    50 → +20.000,00% (outlier — baseline residual R$50)
+        //
+        // Ordenado: [-4,00; -2,50; -1,50; +2,00; +20000,00] → mediana = -1,50
+        // (empresa C, valor do meio). MÉDIA seria
+        // (-4,00-2,50-1,50+2,00+20000,00)/5 = 3998,80 — a asserção abaixo
+        // prova que NÃO é esse número.
+        $u = $this->criarUserAnalista('Analista Mediana Outlier');
+
+        $cA = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-MED-A');
+        $cB = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-MED-B');
+        $cC = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-MED-C');
+        $cD = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-MED-D');
+        $cE = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-MED-E');
+
+        $this->mockAdmanDiario($cA, '2026-07', revenueAtual: 9600,  revenueAnterior: 10000); // -4,00%
+        $this->mockAdmanDiario($cB, '2026-07', revenueAtual: 9750,  revenueAnterior: 10000); // -2,50%
+        $this->mockAdmanDiario($cC, '2026-07', revenueAtual: 9850,  revenueAnterior: 10000); // -1,50%
+        $this->mockAdmanDiario($cD, '2026-07', revenueAtual: 10200, revenueAnterior: 10000); // +2,00%
+        $this->mockAdmanDiario($cE, '2026-07', revenueAtual: 10050, revenueAnterior: 50);    // +20.000,00%
+
+        $service = app(DesempenhoScoreService::class);
+        $r = $service->compute($u, Carbon::parse('2026-07-01'));
+
+        $this->assertEqualsWithDelta(-1.50, $r['componentes']['var_faturamento_pct'], 0.001,
+            'Mediana de [-4,00;-2,50;-1,50;+2,00;+20000,00] = -1,50 (empresa C, valor do meio).');
+        $this->assertNotEqualsWithDelta(3998.80, $r['componentes']['var_faturamento_pct'], 0.001,
+            'NÃO pode ser a média (3998,80) — é exatamente esse número que a mediana existe para evitar: o outlier E sozinho mandaria na carteira.');
+        $this->assertSame(2.0, $r['pontos_componentes']['faturamento'],
+            'reguaFaturamento(-1,50) = 2,0 ("queda leve"). Com a média (3998,80) seria 5,0 ("crescimento excelente") — nota máxima por artefato de baseline residual.');
+        $this->assertSame(5, $r['empresas_com_baseline'],
+            'D-1: o outlier CONTINUA na conta — nenhuma empresa é excluída, filtrada ou capada. Mediana muda o peso, não o universo.');
+    }
+
+    #[Test]
+    public function test_var_faturamento_mediana_das_variacoes_por_empresa(): void
+    {
+        // Quick 260731-pvk — recalibrado de média para mediana (D-1).
+        // DESEMP-04 (UNIFICADO 2026-07-22) — carteira com deltas -2%, +7%, +4%.
+        // `var_faturamento_pct` vem do AdmanMetricDiffService (revenue.diff_pct),
+        // MESMA fonte da carteira — então precisa de custId por empresa
+        // (custId vazio = emptyMetrics) e fixture DENSA (1 row/dia cobrindo
+        // current+baseline reais do resolver; esparso cairia na interseção
+        // vazia de dias-comuns). O ratio atual/anterior independe do
+        // comprimento da janela (valor constante/dia).
+        //
+        // Ordenado: [-2%, +4%, +7%] → mediana = +4,00% (valor do meio).
+        // Média seria 3,00% (valor antigo, pré-mediana) — golden derivado da
+        // regra nova, não ajustado só para passar.
         $u = $this->criarUserAnalista('Analista var_fat');
 
         $c1 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-VARFAT-1');
@@ -753,8 +806,8 @@ class DesempenhoScoreServiceTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
 
-        $this->assertEqualsWithDelta(3.00, $r['componentes']['var_faturamento_pct'], 0.001,
-            'Carteira [-2%, +7%, +4%] → var_faturamento_pct = 3.00 (média exata).');
+        $this->assertEqualsWithDelta(4.00, $r['componentes']['var_faturamento_pct'], 0.001,
+            'Carteira [-2%, +7%, +4%] ordenada = [-2%, +4%, +7%] → mediana = 4,00 (valor do meio, não a média 3,00).');
         $this->assertSame(3, $r['empresas_com_baseline'],
             'As 3 empresas têm baseline (diff_pct != null) → empresas_com_baseline = 3.');
     }
