@@ -2042,6 +2042,25 @@ class MlbController extends Controller
         return back()->with('success', 'Empresa cadastrada com sucesso.');
     }
 
+    /**
+     * Atualiza APENAS o cust_id da empresa — usado pela edição inline no Painel Polos.
+     * Diferente de updateEmpresa (que zera os campos omitidos do payload), aqui só o
+     * cust_id é tocado, então é seguro chamar sem reenviar a empresa inteira.
+     */
+    public function updateCustIdEmpresa(Request $request, MlbEmpresa $empresa)
+    {
+        $this->checkPubAccess('empresas');
+
+        $data = $request->validate([
+            'cust_id' => 'nullable|string|max:50',
+        ]);
+
+        $cust = trim((string) ($data['cust_id'] ?? ''));
+        $empresa->update(['cust_id' => $cust === '' ? null : $cust]);
+
+        return back()->with('success', 'Cust ID atualizado.');
+    }
+
     public function updateEmpresa(Request $request, MlbEmpresa $empresa)
     {
         $this->checkPubAccess('empresas');

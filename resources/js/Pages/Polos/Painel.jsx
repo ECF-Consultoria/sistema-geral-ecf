@@ -6,7 +6,7 @@ import {
     Wallet, Target, Building2, ChevronDown, ChevronRight, Link2, BookUser,
     Sparkles, MegaphoneOff, ShieldAlert, Pencil, Trash2, Check, X,
     Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2, Copy,
-    Archive,
+    Archive, Plus,
 } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -815,6 +815,9 @@ export default function PolosPainel({
         router.post(route('mlb.polos-painel.arquivar', e.id), {}, reloadOpts);
     };
     const desarquivar = (e) => router.post(route('mlb.polos-painel.desarquivar', e.id), {}, reloadOpts);
+    // Salva SÓ o cust_id (endpoint dedicado que não zera os demais campos da empresa).
+    const salvarCustId = (e, valor) =>
+        router.patch(route('mlb.empresas.cust-id', e.id), { cust_id: String(valor ?? '').trim() }, reloadOpts);
     const sincronizar = () =>
         router.post(route('polos.sync'), mesEfetivo ? { mes: mesEfetivo } : {}, {
             preserveScroll: true, preserveState: true,
@@ -856,7 +859,7 @@ export default function PolosPainel({
         window.axios.post(route('mlb.polos-painel.meta-faturamento'), { meta: n }, { headers: { 'X-CSRF-TOKEN': csrf_token } }).catch(() => {});
     }, [metaInput, csrf_token]);
 
-    const handlers = { salvarCampo, trocarResponsavel, toggleProblema, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal };
+    const handlers = { salvarCampo, trocarResponsavel, toggleProblema, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal, salvarCustId };
 
     // ── Modo TELA CHEIA (planilha): overlay que estoura sidebar/max-width + Fullscreen API. ──
     const toggleTelaCheia = useCallback(() => {
@@ -1341,6 +1344,53 @@ function CustIdChip({ cust }) {
     );
 }
 
+// ─── Célula de Cust ID (coluna Empresa) ──────────────────────────────────────────────
+// Tem cust_id → chip clicável que copia. Não tem → botão "+" que abre input inline p/
+// cadastrar direto no Painel Polos (sem precisar ir na tela de Empresas/Publicações).
+function CustIdCell({ e, onSalvar }) {
+    const [editando, setEditando] = useState(false);
+    const [valor, setValor] = useState('');
+
+    if (e.cust_id && !editando) return <CustIdChip cust={e.cust_id} />;
+
+    if (!editando) {
+        return (
+            <button
+                type="button"
+                onClick={(ev) => { ev.stopPropagation(); setValor(''); setEditando(true); }}
+                title="Adicionar Cust ID"
+                className="inline-flex items-center gap-1 rounded-md border border-dashed border-white/15 px-1.5 py-0.5 text-[10px] font-medium text-white/40 transition hover:border-ecf-yellow/40 hover:text-ecf-yellow shrink-0"
+            >
+                <Plus size={9} /> cust_id
+            </button>
+        );
+    }
+
+    const salvar = (ev) => {
+        ev?.stopPropagation();
+        const v = valor.trim();
+        setEditando(false);
+        if (v) onSalvar(e, v);
+    };
+
+    return (
+        <span className="inline-flex items-center gap-1 shrink-0" onClick={(ev) => ev.stopPropagation()}>
+            <input
+                autoFocus
+                type="text"
+                inputMode="numeric"
+                value={valor}
+                onChange={(ev) => setValor(ev.target.value)}
+                onKeyDown={(ev) => { if (ev.key === 'Enter') salvar(ev); if (ev.key === 'Escape') setEditando(false); }}
+                placeholder="cust_id…"
+                className="h-6 w-24 rounded-md border border-white/15 bg-white/[0.05] px-1.5 font-mono text-[11px] text-white outline-none focus:border-ecf-yellow/40"
+            />
+            <button type="button" onClick={salvar} title="Salvar" className="text-emerald-300 transition hover:text-emerald-200"><Check size={12} /></button>
+            <button type="button" onClick={(ev) => { ev.stopPropagation(); setEditando(false); }} title="Cancelar" className="text-white/40 transition hover:text-white/70"><X size={12} /></button>
+        </span>
+    );
+}
+
 // Fallback de cópia p/ contextos sem Clipboard API (ex.: http não-seguro).
 function fallbackCopiar(txt, done) {
     try {
@@ -1470,7 +1520,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                                 ) : (
                                     <span className="text-white text-[13.5px] font-semibold truncate max-w-[220px]">{e.nome}</span>
                                 )}
-                                <CustIdChip cust={e.cust_id} />
+                                <CustIdCell e={e} onSalvar={on.salvarCustId} />
                                 {e.problema && <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full text-red-300 bg-red-500/10 border border-red-500/20" title={e.problema_nota ?? 'Problema'}><ShieldAlert size={9} /> problema</span>}
                                 {e.fora_do_prazo && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full text-red-300 bg-red-500/10 border border-red-500/20">fora do prazo</span>}
                                 {e.ads_desligado && <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full text-white/50 bg-white/[0.05] border border-white/10" title="ADS desligado"><MegaphoneOff size={9} /> ads off</span>}
