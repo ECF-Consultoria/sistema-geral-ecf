@@ -1345,13 +1345,28 @@ function CustIdChip({ cust }) {
 }
 
 // ─── Célula de Cust ID (coluna Empresa) ──────────────────────────────────────────────
-// Tem cust_id → chip clicável que copia. Não tem → botão "+" que abre input inline p/
-// cadastrar direto no Painel Polos (sem precisar ir na tela de Empresas/Publicações).
+// Tem cust_id → chip que copia + lápis que abre o MESMO input já preenchido (corrigir um
+// id errado sem sair do Painel). Não tem → botão "+" p/ cadastrar inline. Nos dois casos
+// evita a ida à tela de Empresas/Publicações.
 function CustIdCell({ e, onSalvar }) {
     const [editando, setEditando] = useState(false);
     const [valor, setValor] = useState('');
 
-    if (e.cust_id && !editando) return <CustIdChip cust={e.cust_id} />;
+    if (e.cust_id && !editando) {
+        return (
+            <span className="group/cust inline-flex items-center gap-1 shrink-0">
+                <CustIdChip cust={e.cust_id} />
+                <button
+                    type="button"
+                    onClick={(ev) => { ev.stopPropagation(); setValor(String(e.cust_id)); setEditando(true); }}
+                    title={`Editar Cust ID (${e.cust_id})`}
+                    className="text-white/25 opacity-0 transition hover:text-ecf-yellow focus:opacity-100 group-hover/cust:opacity-100"
+                >
+                    <Pencil size={10} />
+                </button>
+            </span>
+        );
+    }
 
     if (!editando) {
         return (
@@ -1366,11 +1381,18 @@ function CustIdCell({ e, onSalvar }) {
         );
     }
 
+    const anterior  = String(e.cust_id ?? '');
+    const v         = valor.trim();
+    // Esvaziar um id que existia = REMOVER (o endpoint grava null em string vazia). Fica
+    // explícito no botão p/ não ser uma remoção silenciosa.
+    const removendo = anterior !== '' && v === '';
+
     const salvar = (ev) => {
         ev?.stopPropagation();
-        const v = valor.trim();
         setEditando(false);
-        if (v) onSalvar(e, v);
+        if (v === anterior) return;              // nada mudou → não gasta request
+        if (v === '' && anterior === '') return; // cadastro abandonado em branco
+        onSalvar(e, v);
     };
 
     return (
@@ -1382,10 +1404,17 @@ function CustIdCell({ e, onSalvar }) {
                 value={valor}
                 onChange={(ev) => setValor(ev.target.value)}
                 onKeyDown={(ev) => { if (ev.key === 'Enter') salvar(ev); if (ev.key === 'Escape') setEditando(false); }}
-                placeholder="cust_id…"
+                placeholder={anterior ? 'vazio remove' : 'cust_id…'}
                 className="h-6 w-24 rounded-md border border-white/15 bg-white/[0.05] px-1.5 font-mono text-[11px] text-white outline-none focus:border-ecf-yellow/40"
             />
-            <button type="button" onClick={salvar} title="Salvar" className="text-emerald-300 transition hover:text-emerald-200"><Check size={12} /></button>
+            <button
+                type="button"
+                onClick={salvar}
+                title={removendo ? 'Remover Cust ID' : 'Salvar'}
+                className={cn('transition', removendo ? 'text-rose-300 hover:text-rose-200' : 'text-emerald-300 hover:text-emerald-200')}
+            >
+                {removendo ? <Trash2 size={12} /> : <Check size={12} />}
+            </button>
             <button type="button" onClick={(ev) => { ev.stopPropagation(); setEditando(false); }} title="Cancelar" className="text-white/40 transition hover:text-white/70"><X size={12} /></button>
         </span>
     );
