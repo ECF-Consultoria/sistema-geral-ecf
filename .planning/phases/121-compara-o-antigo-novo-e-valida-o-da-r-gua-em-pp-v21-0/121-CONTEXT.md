@@ -32,6 +32,14 @@ Esta fase **não muda cálculo nenhum**. Ela produz a **evidência** que decide 
   **Razão:** medir todas as empresas Adman mediria a Adman, não o bônus — muitas não têm responsável e nunca entram no cálculo. E uma competência só não distingue "a régua comprime" de "junho foi atípico".
   **A pergunta que este histograma responde:** a régua reusada (D2 da milestone) comprime a distribuição na faixa 3-4? Se 80%+ das empresas caírem nessa faixa nas três competências, a compressão está confirmada e a D2 precisa ser revisitada — foi exatamente o efeito que o usuário aceitou conscientemente ao reusar a régua, e esta fase é onde ele vira número.
 
+### Como a nota nova chega ao comando
+
+- **D-05 · O shadow passa a expor a nota nova. A fronteira "a 121 não modifica o serviço" foi REVISADA.** *(Decisão do usuário, 2026-07-31.)*
+  Quando o shadow roda, o payload ganha **`nota_final_por_empresa`** e **`score_status_por_empresa`** ao lado das chaves legadas. Mudança aditiva e pequena em `DesempenhoScoreService`.
+  **Razão:** hoje o shadow entrega `empresas_score` — matéria-prima — e obriga cada consumidor a re-derivar a nota. Isso forçaria a Fase 121 a escolher entre duas coisas ruins: **Reflection em código de produção** (o precedente do projeto é de teste, onde a quebra aparece na hora; num comando, um rename quebraria em silêncio, provavelmente na hora de decidir sobre bônus) ou **duplicar a média** (uma terceira implementação da regra que decide bônus, somada às duas duplicações já vigiadas por teste de equivalência).
+  A fronteira original era desenho meu na discussão, não decisão do usuário — e um shadow que não entrega o resultado do shadow é um shadow pela metade. As Fases 122 e 123 vão precisar da mesma nota.
+  **Protegido pelo teste dourado:** a mudança é aditiva e não pode alterar nenhum valor legado. Com a flag desligada e o shadow desligado, as chaves novas nem existem.
+
 ### Critério do gate
 
 - **D-04 · Sem limiar automático. O comando informa; o usuário decide.**
