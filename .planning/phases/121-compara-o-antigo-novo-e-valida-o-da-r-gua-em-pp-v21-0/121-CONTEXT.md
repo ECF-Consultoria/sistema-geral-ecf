@@ -40,6 +40,17 @@ Esta fase **não muda cálculo nenhum**. Ela produz a **evidência** que decide 
   A fronteira original era desenho meu na discussão, não decisão do usuário — e um shadow que não entrega o resultado do shadow é um shadow pela metade. As Fases 122 e 123 vão precisar da mesma nota.
   **Protegido pelo teste dourado:** a mudança é aditiva e não pode alterar nenhum valor legado. Com a flag desligada e o shadow desligado, as chaves novas nem existem.
 
+### Duplicações — o plano propôs três, e duas caem
+
+- **D-06 · Nenhuma cópia de `classificarFaixa`. Use `BonusFaixa::classificar()` direto.** *(Correção minha ao plano, verificada no código.)*
+  `BonusFaixa::classificar(float $nota): ?self` é **público e estático** (`app/Models/BonusFaixa.php:110`). O `classificarFaixa()` privado de `DesempenhoScoreService` (linha 1657) é apenas um wrapper com cache in-memory por request.
+  Isso elimina a duplicação **mais perigosa das três** — a da faixa. E resolve de vez o problema que o planner identificou corretamente: `faixa_bonus` no payload vem **pós-promoção DESEMP-08** (`$faixaFinal`, linha 652, vindo de `promoverPor2MesesConsecutivos` na 594), então compará-la contra uma faixa recém-classificada fabricaria mudanças de faixa inexistentes. `BonusFaixa::classificar()` dá exatamente a classificação **pré-promoção**, que é a comparável.
+
+- **D-07 · `reguaFaturamento` e `reguaMargem` viram públicas em `DesempenhoScoreService`, em vez de ganharem uma TERCEIRA cópia.**
+  São funções puras de um float — sem estado, sem efeito colateral, sem risco em expor. Já existem duas implementações (o original e a cópia de `CompanyScoreService:362,394`), vigiadas por teste de equivalência. Uma terceira cópia no comando aumentaria a dívida em vez de pagá-la.
+  Tornar públicas é aditivo, não muda comportamento nenhum, e **paga parte do débito da C-03 da Fase 119**, que já previa unificar as réguas quando o gate de aditividade saísse — e ele saiu na Fase 120.
+  **O teste de equivalência continua obrigatório** enquanto a cópia do `CompanyScoreService` existir.
+
 ### Critério do gate
 
 - **D-04 · Sem limiar automático. O comando informa; o usuário decide.**
