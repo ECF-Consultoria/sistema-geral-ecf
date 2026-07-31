@@ -473,7 +473,10 @@ function CampoValor({ label, dica, valor, onChange, prefixo = 'R$', invalido = f
 // Simulador recebe modoImposto, impostoEfetivo, mcEfetivo e llEfetivo para calcular por produto
 // (modo individual) ou com os valores globais do tier (modo massa — comportamento original).
 function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving, tabelaFreteUrl, modoImposto, impostoEfetivo, mcEfetivo, llEfetivo }) {
-    const [avancado, setAvancado] = useState(false);
+    // Parâmetros avançados já vêm EXPOSTOS por padrão (sem exigir clique) para
+    // aumentar a chance de o cliente conferir/preencher. O toggle segue disponível
+    // para recolher quem quiser.
+    const [avancado, setAvancado] = useState(true);
 
     const row        = produtos[selIdx] ?? { custo: '', frete_classico: '', frete_premium: '' };
     const t          = tier === 'classico' ? cc : cp;
