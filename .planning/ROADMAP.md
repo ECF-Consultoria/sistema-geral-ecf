@@ -1442,10 +1442,10 @@ Plans:
   3. A distribuição real de `margem_var_pp` da carteira inteira é medida e apresentada — confirmando ou refutando que a régua reusada (D2) produz dispersão aceitável
   4. **GATE:** o usuário aprova explicitamente o delta antes de qualquer ativação de flag em produção
 
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
-- [ ] 121-01-PLAN.md — Fundações: o shadow expõe a nota nova (D-05) e as duas tabelas insert-only do comparador
+- [x] 121-01-PLAN.md — Fundações: o shadow expõe a nota nova (D-05) e as duas tabelas insert-only do comparador
 - [ ] 121-02-PLAN.md — O comando: competências fixas, uma chamada de compute() por profissional, releitura interleaved e persistência (gate nº 1)
 - [ ] 121-03-PLAN.md — Decomposição da causa do delta com resíduo explícito e réguas espelho (gate nº 2)
 - [ ] 121-04-PLAN.md — Relatório reconsultado, 7 amostras de risco e histograma de margem_var_pp (gate nº 3)
