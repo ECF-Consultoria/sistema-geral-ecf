@@ -38,7 +38,7 @@ export default function DesempenhoBonificacao({ bonus_faixas = [], metodologia_t
                     <ParametroItem
                         icone={TrendingUp}
                         titulo="Variação de Faturamento (%)"
-                        texto="Média das variações percentuais de faturamento vs mês anterior por empresa da carteira. Empresas com menos de 2 meses na carteira não entram no cálculo."
+                        texto="Mediana das variações percentuais de faturamento vs mês anterior por empresa da carteira — usamos o valor do meio para que uma única empresa fora da curva não decida o resultado da carteira inteira. Todas as empresas com comparação disponível entram no cálculo."
                     />
                     <ParametroItem
                         icone={Coins}

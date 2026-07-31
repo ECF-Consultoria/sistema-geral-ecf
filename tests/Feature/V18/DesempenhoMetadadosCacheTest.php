@@ -229,8 +229,8 @@ class DesempenhoMetadadosCacheTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $chaveEsperada = $service->cacheKey($user->id, $mes);
 
-        $this->assertSame('desempenho.compute.v14.' . $user->id . '.2026-06', $chaveEsperada,
-            'mês fechado usa period_key=YYYY-MM na chave (Fase 120: bump v13→v14, AGRE-03).');
+        $this->assertSame('desempenho.compute.v15.' . $user->id . '.2026-06', $chaveEsperada,
+            'mês fechado usa period_key=YYYY-MM na chave (quick 260731-pvk: bump v14→v15).');
 
         $resultado = $service->computeCached($user, $mes);
 
@@ -255,10 +255,10 @@ class DesempenhoMetadadosCacheTest extends TestCase
         $mes     = Carbon::parse('2026-08-01');
 
         $chaveOperacional = $service->cacheKey($userId, $mes);
-        $chaveFechadaHipotetica = sprintf('desempenho.compute.v14.%d.%s', $userId, $mes->format('Y-m'));
+        $chaveFechadaHipotetica = sprintf('desempenho.compute.v15.%d.%s', $userId, $mes->format('Y-m'));
 
-        $this->assertSame('desempenho.compute.v14.999.current_month', $chaveOperacional,
-            'mês corrente usa period_key=current_month — nunca YYYY-MM (Fase 120: bump v13→v14, AGRE-03).');
+        $this->assertSame('desempenho.compute.v15.999.current_month', $chaveOperacional,
+            'mês corrente usa period_key=current_month — nunca YYYY-MM (quick 260731-pvk: bump v14→v15).');
         $this->assertNotSame($chaveFechadaHipotetica, $chaveOperacional,
             'a chave operacional do mês corrente NUNCA é igual à chave YYYY-MM do mesmo mês (T-102-04).');
     }
@@ -274,7 +274,7 @@ class DesempenhoMetadadosCacheTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $chaveHelper = $service->cacheKey($user->id, $mes);
 
-        $this->assertSame('desempenho.compute.v14.' . $user->id . '.current_month', $chaveHelper);
+        $this->assertSame('desempenho.compute.v15.' . $user->id . '.current_month', $chaveHelper);
 
         $service->computeCached($user, $mes);
 
