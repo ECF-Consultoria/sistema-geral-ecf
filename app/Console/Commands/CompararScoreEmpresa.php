@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\BonusFaixa;
+use App\Models\BonusInvalidacao;
 use App\Models\Company;
 use App\Models\DesempenhoComparadorEmpresa;
 use App\Models\DesempenhoComparadorProfissional;
@@ -12,6 +13,7 @@ use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Metrics\MetricPeriodResolver;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -64,9 +66,10 @@ use Illuminate\Support\Str;
 class CompararScoreEmpresa extends Command
 {
     protected $signature = 'desempenho:comparar-score-empresa
-        {--mes= : competência FECHADA fixa no formato YYYY-MM (OBRIGATÓRIA — nunca competência implícita)}
+        {--mes= : competência FECHADA fixa no formato YYYY-MM (OBRIGATÓRIA — nunca competência implícita — exceto com --run=)}
         {--historico=2 : quantas competências anteriores coletar para o histograma da D-03 (0 desliga, máximo 6)}
-        {--force : re-executa mesmo já havendo rodada de hoje para a mesma competência}';
+        {--force : re-executa mesmo já havendo rodada de hoje para a mesma competência}
+        {--run= : reimprime o relatório de um run_id já persistido, sem tocar a Adman e sem gravar nada — --mes deixa de ser obrigatório, a competência sai das próprias linhas}';
 
     protected $description = 'Compara nota antiga x nota nova (regua-da-media x media-das-reguas) por competencia fixa. Nao liga flag nenhuma e nao altera calculo nenhum -- so mede.';
 
@@ -80,6 +83,15 @@ class CompararScoreEmpresa extends Command
 
     public function handle(): int
     {
+        // ── Modo --run=: reimpressão pura (Fase 121, Plano 04) ────────────
+        // Nenhuma chamada a compute()/dispatcher, nenhuma gravação — só
+        // reconsulta às duas tabelas do comparador para o run_id informado.
+        // --mes NÃO é exigido aqui: a competência sai das próprias linhas.
+        $runOption = $this->option('run');
+        if (is_string($runOption) && $runOption !== '') {
+            return $this->imprimirRelatorio($runOption, modoReimpressao: true);
+        }
+
         $mes = $this->option('mes');
 
         if (! is_string($mes) || preg_match('/^\d{4}-\d{2}$/', $mes) !== 1) {
@@ -274,9 +286,493 @@ class CompararScoreEmpresa extends Command
             $this->info($msg);
         }
 
-        $this->warn('[ComparadorScoreEmpresa] AVISO: este console é um ESPELHO. A conferência OFICIAL é por reconsulta ao banco (desempenho_comparador_profissionais / desempenho_comparador_empresas), nunca por este stdout — mesma disciplina que o gate FIXMARG-03 já exige neste projeto.');
+        // ── Fase 121, Plano 04 — fase de apresentação, reconsultando o banco
+        // (nunca os arrays acumulados acima) para o mesmo run_id gravado
+        // nesta execução. `imprimirRelatorio()` é a MESMA rotina usada pelo
+        // modo `--run=`.
+        return $this->imprimirRelatorio($runId, modoReimpressao: false);
+    }
+
+    /**
+     * Fase 121, Plano 04 — fase de apresentação (D-04: o comando APRESENTA,
+     * quem DECIDE é o usuário). Toda leitura vem do banco — nunca dos arrays
+     * acumulados durante a coleta — o que prova reconsultabilidade e é o
+     * MESMO caminho usado tanto ao final da coleta quanto pelo modo
+     * `--run=` (reimpressão pura, sem tocar a Adman, sem gravar nada).
+     */
+    private function imprimirRelatorio(string $runId, bool $modoReimpressao): int
+    {
+        $linhasProfissionais = DesempenhoComparadorProfissional::query()
+            ->where('run_id', $runId)
+            ->get();
+
+        if ($linhasProfissionais->isEmpty()) {
+            // Modo --run=: run_id inexistente/typo é erro do usuário — falha
+            // ruidosamente. Ao final de uma coleta real, run_id vazio é
+            // possível e legítimo (ex.: todos os profissionais elegíveis
+            // ficaram sem carteira na competência) — nunca falhar a rodada
+            // por isso, mesmo comportamento de antes do Plano 04.
+            if ($modoReimpressao) {
+                $this->error("[ComparadorScoreEmpresa] nenhuma linha encontrada para run_id={$runId}. Nada para reimprimir — confira o run_id.");
+
+                return self::FAILURE;
+            }
+
+            $this->warn("[ComparadorScoreEmpresa] nenhuma linha persistida nesta rodada (run_id={$runId}) — todos os profissionais elegíveis ficaram sem carteira, ou a lista de elegíveis estava vazia. Nada para relatar.");
+
+            return self::SUCCESS;
+        }
+
+        $linhasEmpresas = DesempenhoComparadorEmpresa::query()
+            ->where('run_id', $runId)
+            ->get();
+
+        $mesAlvoKey = $linhasProfissionais->firstWhere('competencia_alvo', true)?->periodo_key
+            ?? $linhasProfissionais->sortBy('periodo_key')->first()->periodo_key;
+
+        $geradoEm = $linhasProfissionais->first()->gerado_em;
+
+        $competenciasHistoricas = $linhasProfissionais
+            ->where('competencia_alvo', false)
+            ->pluck('periodo_key')
+            ->unique()
+            ->sort()
+            ->values();
+
+        $linhasProfissionaisAlvo = $linhasProfissionais->where('periodo_key', $mesAlvoKey)->values();
+        $linhasEmpresasAlvo      = $linhasEmpresas->where('periodo_key', $mesAlvoKey)->values();
+
+        $processados = $linhasProfissionaisAlvo->where('falhou', false)->count();
+        $falhados    = $linhasProfissionaisAlvo->where('falhou', true)->count();
+
+        // "sem carteira" NUNCA é persistido (o usuário que não tem carteira
+        // não gera linha nenhuma) — recalculado no momento da IMPRESSÃO a
+        // partir da elegibilidade ATUAL (mesmo filtro de
+        // `resolverProfissionaisElegiveis()`), reconsultando o banco. Pode
+        // divergir do momento da coleta se a composição de setores mudou
+        // entre as duas leituras — limitação explícita no relatório, nunca
+        // escondida.
+        $elegiveisAgora = $this->resolverProfissionaisElegiveis()->count();
+        $semCarteira    = max(0, $elegiveisAgora - $processados - $falhados);
+
+        $this->imprimirCabecalho($runId, $geradoEm, $mesAlvoKey, $competenciasHistoricas, $processados, $falhados, $semCarteira);
+        $this->imprimirTabelaProfissionais($linhasProfissionaisAlvo);
+        $this->imprimirSecaoMudouFaixa($linhasProfissionaisAlvo);
+        $this->imprimirSecaoDeltaZeroStatusMudou($linhasProfissionaisAlvo);
+        $this->imprimirSecaoDecomposicao($linhasProfissionaisAlvo);
+        $this->imprimirAmostrasDeRisco($linhasProfissionaisAlvo, $linhasEmpresasAlvo, $mesAlvoKey);
+        $this->imprimirHistograma($linhasEmpresas, $mesAlvoKey, $competenciasHistoricas);
+
+        $this->warn("[ComparadorScoreEmpresa] AVISO: este console é um ESPELHO. A conferência OFICIAL é por reconsulta ao banco (desempenho_comparador_profissionais / desempenho_comparador_empresas, run_id={$runId}), nunca por este stdout — mesma disciplina que o gate FIXMARG-03 já exige neste projeto. Este comando NÃO APROVA NEM REPROVA nada (D-04) — quem decide é o usuário.");
 
         return self::SUCCESS;
+    }
+
+    /** Cabeçalho de rastreabilidade (T-121-30) — sempre a PRIMEIRA coisa impressa. */
+    private function imprimirCabecalho(
+        string $runId,
+        Carbon $geradoEm,
+        string $mesAlvoKey,
+        Collection $competenciasHistoricas,
+        int $processados,
+        int $falhados,
+        int $semCarteira
+    ): void {
+        $this->info('════════════════════════════════════════════════════════════════');
+        $this->info(sprintf('[ComparadorScoreEmpresa] RELATÓRIO — run_id=%s', $runId));
+        $this->info(sprintf('  Gerado em: %s', $geradoEm->format('d/m/Y H:i:s')));
+        $this->info(sprintf('  Competência alvo: %s', $mesAlvoKey));
+        $this->info(sprintf(
+            '  Competências históricas incluídas: %s',
+            $competenciasHistoricas->isNotEmpty() ? $competenciasHistoricas->implode(', ') : 'nenhuma'
+        ));
+        $this->info(sprintf(
+            '  Profissionais (competência alvo) — processados: %d, falhados: %d, sem carteira: %d (recalculado no momento da impressão a partir da elegibilidade atual)',
+            $processados,
+            $falhados,
+            $semCarteira
+        ));
+        $this->info('════════════════════════════════════════════════════════════════');
+    }
+
+    /**
+     * Tabela por profissional da competência alvo, ordenada pelo delta mais
+     * negativo primeiro (nulos por último). Profissionais com `falhou=true`
+     * aparecem numa seção separada, com o erro — nunca silenciados.
+     */
+    private function imprimirTabelaProfissionais(Collection $linhas): void
+    {
+        $ok = $linhas->where('falhou', false)
+            ->sortBy(fn ($l) => $l->delta ?? PHP_INT_MAX)
+            ->values();
+
+        $nomes = $this->nomesPorUserId($ok->pluck('user_id'));
+
+        $rows = [];
+        foreach ($ok as $l) {
+            $rows[] = [
+                $nomes[$l->user_id] ?? "user #{$l->user_id}",
+                $l->nota_antiga !== null ? number_format((float) $l->nota_antiga, 2) : '—',
+                $l->nota_nova !== null ? number_format((float) $l->nota_nova, 2) : '—',
+                $l->delta !== null ? number_format((float) $l->delta, 2) : '—',
+                ($l->status_antigo ?? '—') . ' → ' . ($l->status_novo ?? '—'),
+                ($l->faixa_antiga_inicial ?? '—') . ' → ' . ($l->faixa_nova_inicial ?? '—'),
+                sprintf('%d/%d/%d', $l->empresas_total, $l->empresas_complete, $l->empresas_partial),
+                $l->maior_causa_delta ?? '—',
+            ];
+        }
+
+        $this->info('── Tabela por profissional (competência alvo, delta mais negativo primeiro) ──');
+        $this->table(
+            ['Profissional', 'Nota antiga', 'Nota nova', 'Delta', 'Status (antigo → novo)', 'Faixa pré-promoção (antiga → nova)', 'Empresas (total/complete/partial)', 'Maior causa do delta'],
+            $rows
+        );
+
+        $falhados = $linhas->where('falhou', true)->values();
+        if ($falhados->isNotEmpty()) {
+            $nomesFalha = $this->nomesPorUserId($falhados->pluck('user_id'));
+
+            $this->warn('── Profissionais que FALHARAM ao processar (nunca silenciados) ──');
+            foreach ($falhados as $l) {
+                $this->line(sprintf('  - %s: %s', $nomesFalha[$l->user_id] ?? "user #{$l->user_id}", $l->erro ?? '(sem mensagem de erro)'));
+            }
+        }
+    }
+
+    /** Seção "mudou de faixa" — só profissionais com `mudou_faixa=true` (D-04). */
+    private function imprimirSecaoMudouFaixa(Collection $linhas): void
+    {
+        $this->info('── Mudou de faixa (pré-promoção) ──');
+
+        $mudou = $linhas->where('mudou_faixa', true)->values();
+
+        if ($mudou->isEmpty()) {
+            $this->line('  Nenhum profissional mudou de faixa nesta competência.');
+
+            return;
+        }
+
+        $nomes = $this->nomesPorUserId($mudou->pluck('user_id'));
+        foreach ($mudou as $l) {
+            $this->line(sprintf('  - %s: %s → %s', $nomes[$l->user_id] ?? "user #{$l->user_id}", $l->faixa_antiga_inicial ?? '—', $l->faixa_nova_inicial ?? '—'));
+        }
+    }
+
+    /**
+     * Seção "delta zero mas comportamento mudou" — caso concreto (Fase 120,
+     * cenários "Misto" e "Invalidação"): delta igual a zero (ou nulo nos
+     * dois lados) com `status_antigo` diferente de `status_novo`. "Sem delta
+     * de nota" não significa "sem mudança".
+     */
+    private function imprimirSecaoDeltaZeroStatusMudou(Collection $linhas): void
+    {
+        $this->info('── Delta zero mas comportamento mudou ──');
+
+        $casos = $linhas->filter(function ($l) {
+            $deltaZeroOuNulo = ($l->delta !== null && (float) $l->delta === 0.0)
+                || ($l->nota_antiga === null && $l->nota_nova === null);
+
+            return $deltaZeroOuNulo && $l->status_antigo !== $l->status_novo;
+        })->values();
+
+        if ($casos->isEmpty()) {
+            $this->line('  Nenhum caso nesta competência.');
+
+            return;
+        }
+
+        $nomes = $this->nomesPorUserId($casos->pluck('user_id'));
+        foreach ($casos as $l) {
+            $this->line(sprintf(
+                '  - %s: status %s → %s (delta=%s) — "sem delta de nota" não significa "sem mudança".',
+                $nomes[$l->user_id] ?? "user #{$l->user_id}",
+                $l->status_antigo ?? '—',
+                $l->status_novo ?? '—',
+                $l->delta !== null ? number_format((float) $l->delta, 2) : 'null'
+            ));
+        }
+    }
+
+    /**
+     * Seção da decomposição por pessoa (D-02, Plano 03) — as três parcelas,
+     * o resíduo e a maior causa, com a nota fixa em pt-BR explicando por que
+     * as parcelas não somam o delta sozinhas.
+     */
+    private function imprimirSecaoDecomposicao(Collection $linhas): void
+    {
+        $this->info('── Decomposição do delta por profissional (P1 margem pp×relativa / P2 régua-por-empresa×régua-da-média / P3 denominador / resíduo) ──');
+        $this->line('  As parcelas não somam o delta sozinhas porque os efeitos interagem entre si — o resíduo é a parte da mudança não decomposta por nenhuma das três variáveis testadas, nunca omitido da impressão.');
+
+        $comDecomposicao = $linhas
+            ->filter(fn ($l) => is_array($l->decomposicao) && array_key_exists('parcelas', $l->decomposicao))
+            ->values();
+
+        if ($comDecomposicao->isEmpty()) {
+            $this->line('  Nenhuma decomposição disponível nesta competência.');
+
+            return;
+        }
+
+        $nomes = $this->nomesPorUserId($comDecomposicao->pluck('user_id'));
+
+        $rows = [];
+        foreach ($comDecomposicao as $l) {
+            $d = $l->decomposicao;
+            $rows[] = [
+                $nomes[$l->user_id] ?? "user #{$l->user_id}",
+                $this->fmtNullable($d['parcelas']['margem_pp_vs_relativa'] ?? null),
+                $this->fmtNullable($d['parcelas']['regua_por_empresa_vs_regua_da_media'] ?? null),
+                $this->fmtNullable($d['parcelas']['denominador'] ?? null),
+                $this->fmtNullable($d['residuo'] ?? null),
+                $l->maior_causa_delta ?? '—',
+            ];
+        }
+
+        $this->table(['Profissional', 'P1 margem pp×relativa', 'P2 régua-por-empresa×régua-da-média', 'P3 denominador', 'Resíduo', 'Maior causa'], $rows);
+    }
+
+    /**
+     * As 7 amostras de risco (ROLL-02) — cada uma identificada
+     * PROGRAMATICAMENTE sobre as linhas persistidas da competência alvo,
+     * nunca por nome/ID chumbado no código. Uma amostra sem candidato
+     * imprime "nenhum candidato nesta competência", nunca some da saída.
+     */
+    private function imprimirAmostrasDeRisco(Collection $linhasProfissionaisAlvo, Collection $linhasEmpresasAlvo, string $mesAlvoKey): void
+    {
+        $this->info('── Amostras de risco (ROLL-02) — 7 candidatos para conferência manual ──');
+
+        $processados = $linhasProfissionaisAlvo->where('falhou', false)->values();
+
+        // 1/2. Profissional com poucas/muitas empresas.
+        $this->imprimirAmostraProfissional('1. Profissional com poucas empresas', $processados->sortBy('empresas_total')->first());
+        $this->imprimirAmostraProfissional('2. Profissional com muitas empresas', $processados->sortByDesc('empresas_total')->first());
+
+        // 3. Empresa com queda grande de faturamento — mais negativa,
+        // destacando também quantas estão em queda severa (nota 1 na régua
+        // de faturamento, corte de -6%/-1%/1%/5% — DesempenhoScoreService::reguaFaturamento()).
+        $piorFaturamento = $linhasEmpresasAlvo->whereNotNull('faturamento_var_pct')->sortBy('faturamento_var_pct')->first();
+        $quedaSevera     = $linhasEmpresasAlvo->where('faturamento_pontos', 1.0)->count();
+
+        if ($piorFaturamento !== null) {
+            $nome = $this->nomeCompany($piorFaturamento->company_id);
+            $this->line(sprintf(
+                '  3. Empresa com queda grande de faturamento: %s (faturamento_var_pct=%s%%). Empresas em queda severa (nota 1 na régua de faturamento): %d.',
+                $nome,
+                number_format((float) $piorFaturamento->faturamento_var_pct, 2),
+                $quedaSevera
+            ));
+        } else {
+            $this->line('  3. Empresa com queda grande de faturamento: nenhum candidato nesta competência.');
+        }
+
+        // 4. Empresa com pp positivo — o maior margem_var_pp acima de zero.
+        $melhorMargem = $linhasEmpresasAlvo->filter(fn ($l) => $l->margem_var_pp !== null && (float) $l->margem_var_pp > 0)->sortByDesc('margem_var_pp')->first();
+
+        if ($melhorMargem !== null) {
+            $this->line(sprintf('  4. Empresa com pp positivo: %s (margem_var_pp=%s pp).', $this->nomeCompany($melhorMargem->company_id), number_format((float) $melhorMargem->margem_var_pp, 2)));
+        } else {
+            $this->line('  4. Empresa com pp positivo: nenhum candidato nesta competência.');
+        }
+
+        // 5. Empresa sem baseline — faturamento_pontos nulo com o motivo
+        // faturamento_sem_baseline presente em quality_motivos.
+        $semBaseline = $linhasEmpresasAlvo->first(fn ($l) => $l->faturamento_pontos === null && in_array('faturamento_sem_baseline', $l->quality_motivos ?? [], true));
+
+        if ($semBaseline !== null) {
+            $this->line(sprintf('  5. Empresa sem baseline: %s.', $this->nomeCompany($semBaseline->company_id)));
+        } else {
+            $this->line('  5. Empresa sem baseline: nenhum candidato nesta competência.');
+        }
+
+        // 6. Empresa invalidada — PROVA DE AUSÊNCIA. Cruza
+        // BonusInvalidacao::companyIdsInvalidadas() com os company_id
+        // persistidos do run nesta competência. Esperado: zero presentes.
+        $mesAlvoCarbon  = Carbon::createFromFormat('Y-m-d', "{$mesAlvoKey}-01")->startOfMonth();
+        $idsInvalidados = BonusInvalidacao::companyIdsInvalidadas($mesAlvoCarbon);
+        $idsPersistidos = $linhasEmpresasAlvo->pluck('company_id')->unique();
+        $presentes      = $idsInvalidados->intersect($idsPersistidos)->values();
+
+        if ($presentes->isEmpty()) {
+            $this->line(sprintf(
+                '  6. Empresa invalidada: %d empresa(s) invalidada(s) na competência %s — VEREDITO: ausência confirmada (0 presentes nas linhas persistidas, como esperado).',
+                $idsInvalidados->count(),
+                $mesAlvoKey
+            ));
+        } else {
+            $this->error(sprintf(
+                '  6. Empresa invalidada: ANOMALIA — %d empresa(s) invalidada(s) PRESENTE(S) nas linhas persistidas (company_id: %s). Isso seria sinal de que a invalidação parou de ser respeitada.',
+                $presentes->count(),
+                $presentes->implode(', ')
+            ));
+        }
+
+        // 7. Profissional com Shopee — pelo menos uma linha com
+        // fonte_financeira='shopee'.
+        $shopeeUserIds = $linhasEmpresasAlvo->where('fonte_financeira', 'shopee')->pluck('user_id')->unique();
+
+        if ($shopeeUserIds->isNotEmpty()) {
+            $userId      = $shopeeUserIds->first();
+            $nome        = $this->nomesPorUserId(collect([$userId]))[$userId] ?? "user #{$userId}";
+            $qtdShopee   = $linhasEmpresasAlvo->where('user_id', $userId)->where('fonte_financeira', 'shopee')->count();
+            $this->line(sprintf(
+                '  7. Profissional com Shopee: %s (%d empresa(s) Shopee na carteira) — o placeholder de margem 1.0 puxa a nota para baixo em carteira só-Shopee.',
+                $nome,
+                $qtdShopee
+            ));
+        } else {
+            $this->line('  7. Profissional com Shopee: nenhum candidato nesta competência.');
+        }
+
+        $this->info('  Referência de sanidade (CONTEXT): a leitura da carteira do Luiz deu por volta de −0,59 pp, que na régua reusada é nota 3 — contra régua 5 no snapshot congelado e régua 1 no cálculo local revertido.');
+    }
+
+    /** Ajuda `imprimirAmostrasDeRisco()` para os blocos 1/2 (profissional). */
+    private function imprimirAmostraProfissional(string $label, $linha): void
+    {
+        if ($linha === null) {
+            $this->line("  {$label}: nenhum candidato nesta competência.");
+
+            return;
+        }
+
+        $nome = $this->nomesPorUserId(collect([$linha->user_id]))[$linha->user_id] ?? "user #{$linha->user_id}";
+        $this->line(sprintf('  %s: %s (%d empresas).', $label, $nome, $linha->empresas_total));
+    }
+
+    /**
+     * Gate nº 3 (D-03) — histograma de `margem_var_pp` por competência,
+     * deduplicado por `company_id` DENTRO de cada competência, só linhas com
+     * `fonte_financeira` não nula e `margem_var_pp` não nulo. Buckets vêm da
+     * régua-espelho pública (`$this->scoreService->reguaMargem()`, D-07) —
+     * nunca uma segunda cópia dos cortes.
+     */
+    private function imprimirHistograma(Collection $linhasEmpresasTodas, string $mesAlvoKey, Collection $competenciasHistoricas): void
+    {
+        $this->info('── Distribuição de margem_var_pp (ROLL-03) ──');
+
+        $periodosOrdenados = collect([$mesAlvoKey])->concat($competenciasHistoricas)->unique()->sort()->values();
+
+        if ($periodosOrdenados->count() < 3) {
+            $this->warn('  AVISO: menos de três competências coletadas nesta rodada — uma (ou duas) competência(s) só não distingue(m) "a régua comprime" de "o mês foi atípico". Rode com --historico >= 2 para uma leitura completa.');
+        }
+
+        $consolidadoContagens = array_fill(1, 5, 0);
+        $consolidadoTotal     = 0;
+
+        foreach ($periodosOrdenados as $periodoKey) {
+            $linhasPeriodo = $linhasEmpresasTodas
+                ->where('periodo_key', $periodoKey)
+                ->whereNotNull('fonte_financeira')
+                ->whereNotNull('margem_var_pp');
+
+            // Dedupe por company_id DENTRO da competência — a mesma empresa
+            // em duas carteiras (Fase 76) conta uma vez só.
+            $deduplicadas = $linhasPeriodo->unique('company_id')->values();
+
+            $contagens = array_fill(1, 5, 0);
+            $ppValues  = [];
+            foreach ($deduplicadas as $l) {
+                $nota            = (int) round((float) $this->scoreService->reguaMargem((float) $l->margem_var_pp));
+                $contagens[$nota] = ($contagens[$nota] ?? 0) + 1;
+                $ppValues[]      = (float) $l->margem_var_pp;
+            }
+
+            $totalEmpresas = $deduplicadas->count();
+            $somaContagens = array_sum($contagens);
+
+            // Sanidade (T-121-32): a soma das contagens tem que ser
+            // exatamente o número de empresas distintas elegíveis.
+            if ($somaContagens !== $totalEmpresas) {
+                $this->error(sprintf(
+                    '  ANOMALIA de sanidade em %s: soma das contagens do histograma (%d) difere do número de empresas distintas elegíveis (%d).',
+                    $periodoKey,
+                    $somaContagens,
+                    $totalEmpresas
+                ));
+            }
+
+            $this->line(sprintf('  Competência %s — %d empresa(s) distinta(s) elegível(is):', $periodoKey, $totalEmpresas));
+
+            if ($totalEmpresas === 0) {
+                $this->line('    Nenhuma empresa elegível nesta competência.');
+            } else {
+                for ($nota = 1; $nota <= 5; $nota++) {
+                    $pct = round(($contagens[$nota] / $totalEmpresas) * 100, 1);
+                    $this->line(sprintf('    Nota %d: %d (%.1f%%)', $nota, $contagens[$nota], $pct));
+                }
+
+                $pct34 = round((($contagens[3] + $contagens[4]) / $totalEmpresas) * 100, 1);
+                $this->info(sprintf('    >>> Percentual nas notas 3+4: %.1f%% <<< (a pergunta que a D-03 manda este histograma responder)', $pct34));
+
+                sort($ppValues);
+                $min       = min($ppValues);
+                $max       = max($ppValues);
+                $mediana   = $this->mediana($ppValues);
+                $positivos = count(array_filter($ppValues, fn ($v) => $v > 0));
+
+                $this->line(sprintf(
+                    '    Estatísticas: mínimo %.2f pp, máximo %.2f pp, mediana %.2f pp, %d empresa(s) com pp positivo.',
+                    $min,
+                    $max,
+                    $mediana,
+                    $positivos
+                ));
+            }
+
+            for ($nota = 1; $nota <= 5; $nota++) {
+                $consolidadoContagens[$nota] += $contagens[$nota];
+            }
+            $consolidadoTotal += $totalEmpresas;
+        }
+
+        if ($consolidadoTotal > 0) {
+            $this->line('  Consolidado (todas as competências coletadas — cada empresa conta uma vez POR competência):');
+            for ($nota = 1; $nota <= 5; $nota++) {
+                $pct = round(($consolidadoContagens[$nota] / $consolidadoTotal) * 100, 1);
+                $this->line(sprintf('    Nota %d: %d (%.1f%%)', $nota, $consolidadoContagens[$nota], $pct));
+            }
+
+            $pct34Consolidado = round((($consolidadoContagens[3] + $consolidadoContagens[4]) / $consolidadoTotal) * 100, 1);
+            $this->info(sprintf('    >>> Percentual consolidado nas notas 3+4: %.1f%% <<<', $pct34Consolidado));
+
+            // Interpretação em pt-BR, SEM veredito (D-04) — o comando não
+            // conclui nada sozinho.
+            if ($pct34Consolidado >= 50.0) {
+                $this->line('  Interpretação (sem veredito): a concentração em 3-4 está alta — se isso se confirmar nas três competências, a compressão que o usuário aceitou conscientemente ao reusar a régua (D2 da milestone) está confirmada em número, e recalibrar a régua vira pauta de diretoria (fora do escopo desta milestone). Este comando NÃO CONCLUI NADA SOZINHO — quem decide é o usuário.');
+            } else {
+                $this->line('  Interpretação (sem veredito): a concentração em 3-4 não aparenta ser dominante nesta leitura. Este comando NÃO CONCLUI NADA SOZINHO — quem decide é o usuário.');
+            }
+        }
+    }
+
+    /** Mediana simples de um array de floats já pode vir desordenado. */
+    private function mediana(array $values): float
+    {
+        sort($values);
+        $count  = count($values);
+        $middle = (int) floor(($count - 1) / 2);
+
+        if ($count % 2 === 0) {
+            return round(($values[$middle] + $values[$middle + 1]) / 2, 2);
+        }
+
+        return round($values[$middle], 2);
+    }
+
+    /** @return array<int, string> user_id => name */
+    private function nomesPorUserId(Collection $userIds): array
+    {
+        return User::query()->whereIn('id', $userIds->unique())->pluck('name', 'id')->all();
+    }
+
+    private function nomeCompany(int $companyId): string
+    {
+        return Company::query()->whereKey($companyId)->value('name') ?? "empresa #{$companyId}";
+    }
+
+    private function fmtNullable(?float $v): string
+    {
+        return $v !== null ? number_format($v, 2) : '—';
     }
 
     /**
