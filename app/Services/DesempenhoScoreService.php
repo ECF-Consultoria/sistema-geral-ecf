@@ -568,9 +568,36 @@ class DesempenhoScoreService
         // `computeNotaFinalPorEmpresa`/`computeScoreStatusPorEmpresa` não
         // recebem os 4 componentes agregados. As duas árvores de chamada
         // ficam fisicamente separadas.
+        // ── D-05 (Fase 121) — o par novo é calculado UMA VEZ aqui, antes da
+        // bifurcação, e reaproveitado tanto pelo ramo da flag ligada quanto
+        // pela exposição condicional no `$payload` mais adiante (nunca uma
+        // segunda chamada aos métodos privados para o mesmo resultado).
+        // Fronteira revisada pelo usuário em 2026-07-31: substitui as duas
+        // alternativas rejeitadas (Reflection em código de produção e uma
+        // terceira duplicação da média que decide bônus) — as Fases
+        // 121/122/123 passam a consumir `nota_final_por_empresa`/
+        // `score_status_por_empresa` prontos do payload. A exposição é
+        // CONDICIONAL ao shadow (`$empresasScore !== null`) porque o gate
+        // nº 4 do 121-VALIDATION.md exige que o teste dourado da Fase 120
+        // (`PayloadBaselineFlagOffTest`) continue byte-idêntico com o
+        // shadow desligado — ver `<design_decision>` do 121-01-PLAN.md.
+        $notaPorEmpresa   = null;
+        $statusPorEmpresa = null;
+        if ($empresasScore !== null) {
+            $statusPorEmpresa = $this->computeScoreStatusPorEmpresa($empresasScore);
+            $notaPorEmpresa   = $this->computeNotaFinalPorEmpresa($empresasScore);
+
+            // D-91-01 aplicada também ao par exposto: o valor que a Fase 121
+            // compara tem que ser byte-idêntico ao que `nota_final` seria
+            // com a flag ligada, inclusive esta regra.
+            if ($statusPorEmpresa === 'blocked') {
+                $notaPorEmpresa = null;
+            }
+        }
+
         if (config('metrics.performance_company_first_score') && $empresasScore !== null) {
-            $nota        = $this->computeNotaFinalPorEmpresa($empresasScore);
-            $scoreStatus = $this->computeScoreStatusPorEmpresa($empresasScore);
+            $nota        = $notaPorEmpresa;
+            $scoreStatus = $statusPorEmpresa;
         } else {
             $nota        = $this->computeNotaFinal($nps, $varFat, $margemPontos);
             $scoreStatus = $this->computeScoreStatus($contadores, $varFat, $margemPontos);
@@ -603,7 +630,7 @@ class DesempenhoScoreService
         $diasDecorridos = $ehMesEmCurso ? $hoje->day : $mesCorrente->daysInMonth;
         $diasNoMes      = $mesCorrente->daysInMonth;
 
-        return [
+        $payload = [
             'user_id'               => $user->id,
             'user_name'             => $user->name,
             'mes_referencia'        => $mes->toDateString(),
@@ -707,6 +734,23 @@ class DesempenhoScoreService
             // fase — a bifurcação de `nota_final`/`score_status` é o Plano 03.
             'empresas_score' => $empresasScore?->values()->all() ?? [],
         ];
+
+        // ── Fase 121 (D-05) — chaves aditivas, condicionais ao shadow ─────────
+        // Gate nº 4 do 121-VALIDATION.md: com o shadow desligado, `$payload`
+        // não pode ganhar NENHUMA chave nova, senão o teste dourado da Fase
+        // 120 (`PayloadBaselineFlagOffTest`) reprova. Quando o shadow roda,
+        // `nota_final_por_empresa`/`score_status_por_empresa` entregam o
+        // resultado do caminho novo JÁ pronto (D-91-01 aplicada acima) — sem
+        // isso as Fases 121/122/123 seriam obrigadas a escolher entre
+        // Reflection em código de produção e uma terceira duplicação da
+        // média que decide bônus (as duas alternativas rejeitadas pelo
+        // usuário em 2026-07-31).
+        if ($empresasScore !== null) {
+            $payload['nota_final_por_empresa']   = $notaPorEmpresa;
+            $payload['score_status_por_empresa'] = $statusPorEmpresa;
+        }
+
+        return $payload;
     }
 
     // ═══ Métodos privados por componente ═══════════════════════════════════
