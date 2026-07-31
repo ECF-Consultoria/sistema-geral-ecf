@@ -1507,8 +1507,15 @@ class DesempenhoScoreService
      *   <  1%  → 3 pts (estável / meta)
      *   ≤  5%  → 4 pts (crescimento saudável)
      *   >  5%  → 5 pts (crescimento excelente)
+     *
+     * PÚBLICA desde a Fase 121 Plano 03 (D-07/`121-03-PLAN.md`): o comando
+     * `desempenho:comparar-score-empresa` precisa desta régua pura para
+     * recalcular contrafactuais na decomposição do delta — expor é aditivo
+     * (só visibilidade, corpo e assinatura intocados) e paga parte do débito
+     * da C-03 da Fase 119, que previa unificar as réguas quando o gate de
+     * aditividade saísse (saiu na Fase 120).
      */
-    private function reguaFaturamento(?float $pct): ?float
+    public function reguaFaturamento(?float $pct): ?float
     {
         if ($pct === null) return null;
         if ($pct <= -6)    return 1.0;
@@ -1528,8 +1535,11 @@ class DesempenhoScoreService
      *   ≤  1%  → 3 pts
      *   ≤  4%  → 4 pts
      *   >  4%  → 5 pts
+     *
+     * PÚBLICA desde a Fase 121 Plano 03 (D-07/`121-03-PLAN.md`) — mesmos
+     * termos de `reguaFaturamento()` acima.
      */
-    private function reguaMargem(?float $pct): ?float
+    public function reguaMargem(?float $pct): ?float
     {
         if ($pct === null) return null;
         if ($pct <= -5)    return 1.0;

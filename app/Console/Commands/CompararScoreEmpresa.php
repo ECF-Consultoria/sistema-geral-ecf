@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\BonusFaixa;
 use App\Models\Company;
 use App\Models\DesempenhoComparadorEmpresa;
 use App\Models\DesempenhoComparadorProfissional;
@@ -53,6 +54,12 @@ use Illuminate\Support\Str;
  * por nenhum cron (`adman:warm-diff` só aquece o mês em curso e o último
  * mês fechado) — cada execução deste comando com `--historico>0` gera
  * chamadas reais à Adman para competências antigas.
+ *
+ * Fase 121, Plano 03 (D-02) — na competência ALVO, o comando também
+ * decompõe o delta em três parcelas (margem pp × relativa, régua-por-
+ * empresa × régua-da-média, denominador) mais o resíduo da interação, e
+ * classifica `faixa_antiga_inicial`/`faixa_nova_inicial` (pré-promoção,
+ * D-06) via `BonusFaixa::classificar()` direto. Ver `calcularDecomposicao()`.
  */
 class CompararScoreEmpresa extends Command
 {
@@ -163,7 +170,7 @@ class CompararScoreEmpresa extends Command
                         continue;
                     }
 
-                    [$empresasTotal, $empresasStatus] = $this->persistirEmpresas(
+                    [$empresasTotal, $empresasStatus, $linhasEmpresa] = $this->persistirEmpresas(
                         $user,
                         $competencia,
                         $payload,
@@ -180,6 +187,28 @@ class CompararScoreEmpresa extends Command
                         ? round($notaNova - $notaAntiga, 2)
                         : null;
 
+                    // Faixas PRÉ-promoção (D-06 — correção pós-plan-check):
+                    // BonusFaixa::classificar() direto, nunca uma função
+                    // espelho. `faixa_antiga_oficial` (persistida acima, já
+                    // pós-promoção DESEMP-08) não entra nesta comparação —
+                    // comparar pós-promoção contra pré-promoção fabricaria
+                    // mudança de faixa que não existe (T-121-22).
+                    $faixaAntigaInicial = $notaAntiga !== null ? BonusFaixa::classificar($notaAntiga)?->slug : null;
+                    $faixaNovaInicial   = $notaNova !== null ? BonusFaixa::classificar($notaNova)?->slug : null;
+                    $mudouFaixa         = $faixaAntigaInicial !== null
+                        && $faixaNovaInicial !== null
+                        && $faixaAntigaInicial !== $faixaNovaInicial;
+
+                    // A decomposição do delta só é calculada na competência
+                    // ALVO — as históricas existem só para o histograma da
+                    // D-03 (Plano 04).
+                    if ($competencia['alvo']) {
+                        [$decomposicao, $maiorCausaDelta] = $this->calcularDecomposicao($linhasEmpresa, $notaAntiga, $notaNova, $delta);
+                    } else {
+                        $decomposicao      = null;
+                        $maiorCausaDelta   = null;
+                    }
+
                     DesempenhoComparadorProfissional::create([
                         'run_id'               => $runId,
                         'user_id'              => $user->id,
@@ -192,19 +221,16 @@ class CompararScoreEmpresa extends Command
                         'status_antigo'        => $payload['score_status'] ?? null,
                         'status_novo'          => $payload['score_status_por_empresa'] ?? null,
                         'faixa_antiga_oficial' => $payload['faixa_bonus'] ?? null,
-                        // Classificação de faixa pré-promoção fica pro Plano 03
-                        // (BonusFaixa::classificar() direto, D-06) — não inventar
-                        // corte de faixa aqui.
-                        'faixa_antiga_inicial' => null,
-                        'faixa_nova_inicial'   => null,
-                        'mudou_faixa'          => false,
+                        'faixa_antiga_inicial' => $faixaAntigaInicial,
+                        'faixa_nova_inicial'   => $faixaNovaInicial,
+                        'mudou_faixa'          => $mudouFaixa,
                         'empresas_total'       => $empresasTotal,
                         'empresas_complete'    => $empresasStatus['complete'],
                         'empresas_partial'     => $empresasStatus['partial'],
                         'empresas_sem_fonte'   => $empresasStatus['sem_fonte'],
                         'empresas_sem_dados'   => $empresasStatus['sem_dados'],
-                        'decomposicao'         => null,
-                        'maior_causa_delta'    => null,
+                        'decomposicao'         => $decomposicao,
+                        'maior_causa_delta'    => $maiorCausaDelta,
                         'falhou'               => false,
                         'erro'                 => null,
                     ]);
@@ -262,7 +288,10 @@ class CompararScoreEmpresa extends Command
      *
      * @param  array{mes: Carbon, periodo_key: string, periodo: array, alvo: bool}  $competencia
      * @param  array<int, ?Company>  $companiesCache  passado por referência, escopo da rodada inteira
-     * @return array{0: int, 1: array{complete: int, partial: int, sem_fonte: int, sem_dados: int}}
+     * @return array{0: int, 1: array{complete: int, partial: int, sem_fonte: int, sem_dados: int}, 2: array<int, array{company_id: int, status: string, fonte_financeira: ?string, nps_pontos: ?float, faturamento_var_pct: ?float, faturamento_pontos: ?float, margem_var_pp: ?float, margem_diff_pct: ?float, margem_pontos: ?float, nota_empresa: ?float, nota_empresa_parcial: ?float}>}
+     *   O 3º elemento é o insumo cru — mesmos campos já persistidos em
+     *   `desempenho_comparador_empresas` — para o Plano 03 (Task 1) calcular
+     *   a decomposição do delta sem reconsultar o banco.
      */
     private function persistirEmpresas(
         User $user,
@@ -272,8 +301,9 @@ class CompararScoreEmpresa extends Command
         Carbon $geradoEm,
         array &$companiesCache
     ): array {
-        $total  = 0;
-        $status = ['complete' => 0, 'partial' => 0, 'sem_fonte' => 0, 'sem_dados' => 0];
+        $total          = 0;
+        $status         = ['complete' => 0, 'partial' => 0, 'sem_fonte' => 0, 'sem_dados' => 0];
+        $linhasCapturadas = [];
 
         foreach (collect($payload['empresas_score']) as $linhaEmpresa) {
             $total++;
@@ -337,9 +367,196 @@ class CompararScoreEmpresa extends Command
                 'nota_empresa_parcial' => $linhaEmpresa->nota_empresa_parcial ?? null,
                 'quality_motivos'      => $qualityMotivos,
             ]);
+
+            // Mesmos campos persistidos acima, guardados por referência para
+            // a decomposição do delta (Plano 03, Task 1) — nunca reconsultar
+            // o banco dentro do mesmo request só para reobter o que acabou
+            // de ser gravado.
+            $linhasCapturadas[] = [
+                'company_id'           => $linhaEmpresa->company_id,
+                'status'               => $statusEmpresa,
+                'fonte_financeira'     => $fonteFinanceira,
+                'nps_pontos'           => $linhaEmpresa->nps_pontos ?? null,
+                'faturamento_var_pct'  => $linhaEmpresa->faturamento_var_pct ?? null,
+                'faturamento_pontos'   => $linhaEmpresa->faturamento_pontos ?? null,
+                'margem_var_pp'        => $linhaEmpresa->margem_var_pp ?? null,
+                'margem_diff_pct'      => $margemDiffPct,
+                'margem_pontos'        => $linhaEmpresa->margem_pontos ?? null,
+                'nota_empresa'         => $linhaEmpresa->nota_empresa ?? null,
+                'nota_empresa_parcial' => $linhaEmpresa->nota_empresa_parcial ?? null,
+            ];
         }
 
-        return [$total, $status];
+        return [$total, $status, $linhasCapturadas];
+    }
+
+    /**
+     * Decomposição do delta (D-02, `121-03-PLAN.md`) — atribui a mudança de
+     * nota a três causas isoladas uma variável por vez, mais o resíduo da
+     * interação entre elas. Chamado SÓ na competência alvo.
+     *
+     * CORREÇÃO PÓS-PLAN-CHECK (D-06/D-07, `<correcao_pos_plan_check>` do
+     * plano): nenhuma função "espelho" é criada aqui. `reguaMargem()` é
+     * chamada direto em `$this->scoreService` (tornada pública pela Fase 121
+     * Plano 03) e a faixa usa `BonusFaixa::classificar()` direto (chamado no
+     * `handle()`, não aqui). O blend ponderado por contagem da margem (P2) é
+     * a MESMA fórmula de `DesempenhoScoreService::margemPontos()` — que
+     * continua privada e intocada — implementada aqui apenas como aritmética
+     * simples sobre médias, não como cópia de método.
+     *
+     * P1 · margem em pp × relativa — recalcula `margem_pontos` de cada
+     * empresa de C usando `reguaMargem(margem_diff_pct)` no lugar de
+     * `reguaMargem(margem_var_pp)`. Shopee mantém o placeholder 1.0.
+     * P2 · régua-por-empresa × régua-da-média — UMA nota calculada sobre as
+     * médias dos insumos de C.
+     * P3 · denominador — média de `nota_empresa_parcial` de TODAS as linhas
+     * (não só C) onde ela não é null.
+     * Resíduo — `delta − (P1 + P2 + P3)`, NUNCA escondido (T-121-21).
+     *
+     * @param  array<int, array{company_id: int, status: string, fonte_financeira: ?string, nps_pontos: ?float, faturamento_var_pct: ?float, faturamento_pontos: ?float, margem_var_pp: ?float, margem_diff_pct: ?float, margem_pontos: ?float, nota_empresa: ?float, nota_empresa_parcial: ?float}>  $linhasEmpresa
+     * @return array{0: array<string, mixed>, 1: ?string}  [decomposicao, maior_causa_delta]
+     */
+    private function calcularDecomposicao(array $linhasEmpresa, ?float $notaAntiga, ?float $notaNova, ?float $delta): array
+    {
+        // Guard — delta indefinido: NUNCA tratar como zero. Shape mínimo,
+        // exatamente como o plano descreve.
+        if ($delta === null) {
+            return [['motivo' => 'delta_indefinido'], null];
+        }
+
+        // Conjunto C — mesmo denominador que produz nota_nova.
+        $conjuntoC = array_values(array_filter($linhasEmpresa, fn (array $l) => $l['status'] === 'complete'));
+
+        if (empty($conjuntoC)) {
+            return [[
+                'motivo'               => 'conjunto_c_vazio',
+                'parcelas'             => [
+                    'margem_pp_vs_relativa'                => null,
+                    'regua_por_empresa_vs_regua_da_media'   => null,
+                    'denominador'                           => null,
+                ],
+                'residuo'              => null,
+                'delta_total'          => $delta,
+                'notas_contrafactuais' => [
+                    'alt1_margem_relativa'      => null,
+                    'alt2_regua_da_media'       => null,
+                    'alt3_denominador_ampliado' => null,
+                ],
+                'avisos' => ['p1_empresas_sem_diff_pct' => 0],
+            ], null];
+        }
+
+        // ── P1 · margem em pp × relativa ────────────────────────────────
+        $p1EmpresasSemDiffPct = 0;
+        $notasRecalculadasP1  = [];
+
+        foreach ($conjuntoC as $linha) {
+            if ($linha['fonte_financeira'] === 'shopee') {
+                // D-02 — Shopee não tem margem; diff_pct é null por
+                // construção. Mantém o placeholder 1.0, nunca aplica régua.
+                $margemAlt1 = 1.0;
+            } elseif ($linha['margem_diff_pct'] === null) {
+                // Empresa Adman sem diff_pct sai de P1 — contada, nunca
+                // escondida (o relatório informa, não finge inexistência).
+                $p1EmpresasSemDiffPct++;
+
+                continue;
+            } else {
+                $margemAlt1 = $this->scoreService->reguaMargem($linha['margem_diff_pct']);
+            }
+
+            $notasRecalculadasP1[] = ($linha['nps_pontos'] + $linha['faturamento_pontos'] + $margemAlt1) / 3;
+        }
+
+        $notaAlt1 = ! empty($notasRecalculadasP1) ? round(array_sum($notasRecalculadasP1) / count($notasRecalculadasP1), 2) : null;
+        $p1       = $notaAlt1 !== null ? round($notaNova - $notaAlt1, 2) : null;
+
+        // ── P2 · régua-por-empresa × régua-da-média ─────────────────────
+        // NPS — média dos pontos de C, clamp [1,5] como o legado faz.
+        $mediaNps = collect($conjuntoC)->avg('nps_pontos');
+        $npsAlt2  = max(1.0, min(5.0, $mediaNps));
+
+        // Faturamento — régua sobre a média de faturamento_var_pct de C.
+        $mediaFaturamentoVarPct = collect($conjuntoC)->avg('faturamento_var_pct');
+        $faturamentoAlt2        = $this->scoreService->reguaFaturamento($mediaFaturamentoVarPct);
+
+        // Margem — o MESMO blend ponderado por contagem de
+        // `DesempenhoScoreService::margemPontos()` (Fase 109, intocado),
+        // só que sobre a média de C em vez de sobre a carteira inteira.
+        $empresasAdmanC   = collect($conjuntoC)->where('fonte_financeira', 'adman')->values();
+        $empresasShopeeC  = collect($conjuntoC)->where('fonte_financeira', 'shopee')->values();
+        $nComMargemReal   = $empresasAdmanC->count();
+        $nShopeePlaceholder = $empresasShopeeC->count();
+        $mediaMargemVarPp = $nComMargemReal > 0 ? $empresasAdmanC->avg('margem_var_pp') : null;
+        $pRealAlt2        = $mediaMargemVarPp !== null ? $this->scoreService->reguaMargem($mediaMargemVarPp) : null;
+        $numeradorMargem  = ($pRealAlt2 !== null ? $pRealAlt2 * $nComMargemReal : 0.0) + 1.0 * $nShopeePlaceholder;
+        $denominadorMargem = $nComMargemReal + $nShopeePlaceholder;
+        $margemAlt2       = $denominadorMargem > 0 ? round($numeradorMargem / $denominadorMargem, 2) : null;
+
+        $notaAlt2 = $margemAlt2 !== null
+            ? round(($npsAlt2 + $faturamentoAlt2 + $margemAlt2) / 3, 2)
+            : null;
+        $p2 = $notaAlt2 !== null ? round($notaNova - $notaAlt2, 2) : null;
+
+        // ── P3 · denominador ─────────────────────────────────────────────
+        // TODAS as linhas (não só C) com nota_empresa_parcial não-null —
+        // inclui partial e sem_fonte, denominador ampliado.
+        $notasParciais = collect($linhasEmpresa)->pluck('nota_empresa_parcial')->reject(fn ($v) => $v === null);
+        $notaAlt3      = $notasParciais->isNotEmpty() ? round($notasParciais->avg(), 2) : null;
+        $p3            = $notaAlt3 !== null ? round($notaNova - $notaAlt3, 2) : null;
+
+        // ── Resíduo — NUNCA escondido, mesmo quando diferente de zero ────
+        $parcelasConhecidas = collect([$p1, $p2, $p3])->reject(fn ($v) => $v === null);
+        $residuo            = $parcelasConhecidas->isNotEmpty()
+            ? round($delta - $parcelasConhecidas->sum(), 2)
+            : null;
+
+        // ── Maior causa — maior magnitude entre as 3 parcelas + resíduo;
+        // empate resolve pela ordem determinística margem, régua,
+        // denominador, resíduo (ordem de iteração abaixo).
+        $candidatos = [
+            'margem_pp_vs_relativa'              => $p1,
+            'regua_por_empresa_vs_regua_da_media' => $p2,
+            'denominador'                         => $p3,
+            'interacao_nao_decomposta'            => $residuo,
+        ];
+
+        $maiorCausaDelta = null;
+        $maiorMagnitude  = -1.0;
+        foreach ($candidatos as $label => $valor) {
+            if ($valor === null) {
+                continue;
+            }
+
+            $magnitude = abs($valor);
+            if ($magnitude > $maiorMagnitude) {
+                $maiorMagnitude  = $magnitude;
+                $maiorCausaDelta = $label;
+            }
+        }
+
+        $avisos = ['p1_empresas_sem_diff_pct' => $p1EmpresasSemDiffPct];
+        if ($p1 === null) {
+            $avisos['p1_indisponivel'] = 'todas_as_empresas_de_c_sem_diff_pct_ou_shopee';
+        }
+
+        $decomposicao = [
+            'parcelas' => [
+                'margem_pp_vs_relativa'               => $p1,
+                'regua_por_empresa_vs_regua_da_media'  => $p2,
+                'denominador'                          => $p3,
+            ],
+            'residuo'              => $residuo,
+            'delta_total'          => $delta,
+            'notas_contrafactuais' => [
+                'alt1_margem_relativa'      => $notaAlt1,
+                'alt2_regua_da_media'       => $notaAlt2,
+                'alt3_denominador_ampliado' => $notaAlt3,
+            ],
+            'avisos' => $avisos,
+        ];
+
+        return [$decomposicao, $maiorCausaDelta];
     }
 
     /**
