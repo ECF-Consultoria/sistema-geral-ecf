@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
 status: executing
-stopped_at: Completed 121-03-PLAN.md
-last_updated: "2026-07-31T13:27:03.313Z"
+stopped_at: Completed 121-04-PLAN.md
+last_updated: "2026-07-31T14:35:00.000Z"
 last_activity: 2026-07-31 -- Phase 121 execution started
 progress:
   total_phases: 6
@@ -45,6 +45,8 @@ Last activity: 2026-07-31 -- Phase 121 execution started
 
 **Fase 121 Plan 01 EXECUTADO em 2026-07-31:** fundações do comparador — `DesempenhoScoreService::compute()` passa a expor `nota_final_por_empresa`/`score_status_por_empresa` condicionalmente ao shadow (D-05, chaves aditivas SÓ quando `$empresasScore !== null` — teste dourado da Fase 120 continua byte-idêntico) e duas tabelas insert-only (`desempenho_comparador_profissionais`/`desempenho_comparador_empresas`, decimal(14,6) na margem) ficam prontas para o comando comparador gravar/reconsultar. `--filter=Phase120` 18/18, `--filter=Phase121` 8/8, `--filter=Desempenho` baseline exata de 14 falhas. Commits `f9c770c7`/`8343098d`/`88e7838f`.
 **Fase 121 Plan 02 EXECUTADO em 2026-07-31:** comando `desempenho:comparar-score-empresa` (metade de COLETA) — `--mes` obrigatório (competência fixa, validada por `comparison_mode`), `--historico=2` (0..6) e `--force`; D-01 (comparação justa): exatamente UMA chamada de `compute($user, $mes, $periodo, incluirEmpresasScore: true)` por (profissional, competência) — `grep -c "scoreService->compute"` confirma 1; invariante nº 2 (interleaving): a releitura do `diff_pct` nativo da margem via `MetricDiffDispatcher` acontece imediatamente antes de persistir cada empresa, dentro do mesmo laço, e só na competência ALVO (as históricas usam `margem_var_pp`, já presente em `empresas_score`, sem custo extra de API — `adman:warm-diff` não pré-aquece competências antigas). `run_id` (UUID) + `gerado_em` compartilhados gravados em toda linha das duas tabelas; guard de re-execução do mesmo dia por competência alvo, `--force` para sobrepor. Fail-open por empresa E por profissional. Suíte `CompararScoreEmpresaCommandTest` (6/6) prova a sequência exata `diff(A), persist(A), diff(B), persist(B)` via eventos ordenados (dublê de `MetricDiffDispatcher` + listener `DesempenhoComparadorEmpresa::created`), zero releitura nas competências históricas, persistência relida do banco batendo com o payload real capturado (dublê que ENVOLVE uma instância REAL de `DesempenhoScoreService`, não recalcula a lógica), fail-open e guard com `--force`. **Deviation (Rule 1, só no teste):** `app()->forgetInstance(DesempenhoScoreService::class)` necessário antes de reconstruir o dublê quando o helper é chamado mais de uma vez no mesmo teste (guard de re-execução chama 3x) — sem isso o Mockery tentava encapsular um dublê anterior e colidia na geração de classe (`Cannot redeclare ...mockery_init()`); zero mudança no comando de produção. `--filter=Phase121` 14/14 (8 herdados + 6 novos), `--filter=Desempenho` 14 failed/100 passed (baseline exata). `faixa_antiga_inicial`/`faixa_nova_inicial`/`decomposicao`/`maior_causa_delta` ficam `null` neste plano — Plano 03 aplica `BonusFaixa::classificar()` direto (D-06) e a decomposição por componente/causa. ROLL-01 (`REQUIREMENTS-v21.md`) segue `[ ]` de propósito — só fecha quando o Plano 03 entregar "maior causa do delta". Commits `616f88d1` (Task 1), `022612e0` (Task 2).
+**Fase 121 Plan 03 EXECUTADO em 2026-07-31:** decomposição do delta (P1 margem pp×relativa / P2 régua-por-empresa×régua-da-média / P3 denominador + resíduo sempre visível) e faixas pré-promoção via `BonusFaixa::classificar()` direto (D-06); `reguaFaturamento()`/`reguaMargem()` de `DesempenhoScoreService` viraram públicas (D-07, só visibilidade) — correção pós-plan-check aplicada literalmente, nenhuma função "espelho" criada. `--filter=Phase121` 19/19, `--filter=Desempenho` baseline exata (14 failed/100 passed), `--filter=Phase120` 18/18. Commits `0b56fed4` (Task 1), `4f6fe65c` (Task 2).
+**Fase 121 Plan 04 EXECUTADO em 2026-07-31:** fase de APRESENTAÇÃO do comparador (D-04 — o comando informa, quem decide é o usuário). `imprimirRelatorio()` reconsulta SEMPRE o banco (nunca os arrays da coleta) e monta cabeçalho de rastreabilidade (`run_id`/`gerado_em`/competências/contadores), tabela por profissional (delta mais negativo primeiro), seção "mudou de faixa", seção "delta zero mas comportamento mudou" e a decomposição por pessoa; opção `--run=` reimprime uma rodada antiga sem tocar Adman/gravar nada. **ROLL-02** — as 7 amostras de risco identificadas programaticamente (nenhum ID chumbado), incluindo a prova de AUSÊNCIA da empresa invalidada via `BonusInvalidacao::companyIdsInvalidadas()` (veredito explícito mesmo quando zero é o esperado). **ROLL-03 (gate nº 3)** — histograma de `margem_var_pp` deduplicado por `company_id` dentro de cada competência, só empresas elegíveis, em três competências, com percentual 3+4 destacado e asserção de sanidade da soma; buckets pela régua-espelho pública do Plano 03, nenhuma cópia nova de cortes (`grep -c reguaMargem` confirma). Nenhum limiar automático em lugar nenhum. **Deviation (Rule 1):** `imprimirRelatorio()` falhava a rodada quando zero linhas foram persistidas (ex.: todos sem carteira) — corrigido com `bool $modoReimpressao` (falha só via `--run=` com run_id inexistente; SUCCESS com aviso ao fim de uma coleta real, preservando o comportamento pré-Plano 04). `--filter=Phase121` 28/28 (19 herdados + 9 novos), `--filter=Desempenho` 14 failed/100 passed (baseline exata), `--filter=Phase120` 18/18. Commits `780a8883` (feat), `c6618873` (test). **Nota de processo:** as 3 tasks foram commitadas em 2 commits coesos (produção + testes) em vez de 3, porque formam um único fluxo testado em conjunto — ver `121-04-SUMMARY.md`.
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
@@ -275,6 +277,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 121 P01 | 25min | 3 tasks | 6 files |
 | Phase 121 P02 | 35min | 2 tasks | 2 files |
 | Phase 121 P03 | 40min | - tasks | - files |
+| Phase 121 P04 | ~45min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -808,8 +811,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-31T13:27:03.261Z
-Stopped at: Completed 121-03-PLAN.md
+Last session: 2026-07-31T14:35:00.000Z
+Stopped at: Completed 121-04-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
