@@ -122,12 +122,26 @@ class SyncPolosPlanilha extends Command
         } else {
             [$header, $rows] = $this->lerCsv($file);
         }
+        // Índice de colunas: chave EXATA primeiro (mantém a precedência de sempre — a v5 da
+        // planilha tinha 'Fase' e 'fase' como colunas distintas) e, num segundo passe, um alias
+        // NORMALIZADO como fallback. Sem o alias, uma variação de caixa no cabeçalho derruba a
+        // coluna em silêncio: a planilha traz 'Reunião de Onboarding' e o TEXT_IMPL procurava
+        // 'Reunião de onboarding', então reuniao_onboarding nunca era gravado.
         $idx = [];
         foreach ($header as $i => $h) {
-            $idx[trim($h)] = $i;
+            $col = trim((string) $h);
+            if ($col !== '') {
+                $idx[$col] = $i;
+            }
+        }
+        foreach ($header as $i => $h) {
+            $col = trim((string) $h);
+            if ($col !== '') {
+                $idx[$this->chaveCol($col)] ??= $i;
+            }
         }
         foreach (['Loja', 'Cust ID', 'Fase', 'Polo'] as $req) {
-            if (! isset($idx[$req])) {
+            if (! isset($idx[$req]) && ! isset($idx[$this->chaveCol($req)])) {
                 $this->error("Coluna obrigatória ausente no CSV: '{$req}'");
                 return self::FAILURE;
             }
@@ -169,7 +183,12 @@ class SyncPolosPlanilha extends Command
 
     private function processarLinha(array $r, array $idx, bool $apply): void
     {
-        $get = fn (string $col) => isset($idx[$col]) ? trim((string) ($r[$idx[$col]] ?? '')) : '';
+        // Resolve pelo cabeçalho exato e, se não achar, pelo alias normalizado (ver handle()).
+        $get = function (string $col) use ($r, $idx) {
+            $i = $idx[$col] ?? $idx[$this->chaveCol($col)] ?? null;
+
+            return $i === null ? '' : trim((string) ($r[$i] ?? ''));
+        };
 
         $nome   = $get('Loja');
         $custRaw = $get('Cust ID');
@@ -376,6 +395,12 @@ class SyncPolosPlanilha extends Command
             }
         }
         return null;
+    }
+
+    /** Normaliza um cabeçalho de coluna p/ casar sem depender de caixa ou espaço extra. */
+    private function chaveCol(string $h): string
+    {
+        return mb_strtolower(preg_replace('/\s+/', ' ', trim($h)));
     }
 
     private function normNome(string $n): string
