@@ -404,6 +404,59 @@ class DecomposicaoDeltaTest extends TestCase
         $this->assertSame(1, $decomposicao['avisos']['p1_empresas_sem_diff_pct']);
     }
 
+    // ═══ Aviso de escopo — empresas fora de C que ainda entrariam no
+    //     agregado legado (achado do debug residuo-delta-douglas-danilo,
+    //     2026-07-31) ══════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_aviso_de_escopo_reporta_empresas_fora_de_c_com_fat_ou_margem_presentes(): void
+    {
+        $user   = $this->criarUserComCargo('Decomposicao Aviso Escopo');
+        $legado = $this->criarCompanyLegado($user);
+
+        $companyG = Company::factory()->create();
+        $companyH = Company::factory()->create();
+        $companyI = Company::factory()->create();
+
+        // G: única empresa de C -> nota_nova = nota_empresa de G.
+        // H: 'partial' (sem margem_var_pp), mas com faturamento_var_pct
+        //    EXTREMO (250%, ex.: baseline quase-zero no mês anterior) — o
+        //    tipo de empresa que entraria sem filtro na média legada de
+        //    `computeVarFaturamento()`, mas nunca aparece em nenhuma parcela.
+        // I: 'partial' também, com faturamento_var_pct presente mas NÃO
+        //    extremo — conta no aviso de escopo, não no de extremo.
+        $linhas = collect([
+            $companyG->id => $this->linha($companyG->id, 'adman', 'complete', 4.0, 3.0, 4.0, 2.0, 4.0, 4.0, 4.0),
+            $companyH->id => $this->linha($companyH->id, 'adman', 'partial', 1.0, 250.0, null, null, null, null, 2.0),
+            $companyI->id => $this->linha($companyI->id, 'adman', 'partial', 1.0, -3.0, null, null, null, null, 1.5),
+        ]);
+
+        $this->instalarMocks($linhas, [
+            $legado->id   => 0.0,  // nota_antiga = reguaMargem(0.0) = 3.0
+            $companyG->id => 2.0,  // = margem_var_pp -> P1 neutro para G
+        ]);
+
+        $linha = $this->rodarComandoEBuscarLinha($user);
+
+        $this->assertEqualsWithDelta(3.0, $linha->nota_antiga, 0.01);
+        $this->assertEqualsWithDelta(4.0, $linha->nota_nova, 0.01);
+
+        $decomposicao = $linha->decomposicao;
+        $this->assertIsArray($decomposicao);
+
+        // Gate nº 2 — identidade continua valendo mesmo com o novo aviso.
+        $p1      = $decomposicao['parcelas']['margem_pp_vs_relativa'];
+        $p2      = $decomposicao['parcelas']['regua_por_empresa_vs_regua_da_media'];
+        $p3      = $decomposicao['parcelas']['denominador'];
+        $residuo = $decomposicao['residuo'];
+        $this->assertEqualsWithDelta($decomposicao['delta_total'], $p1 + $p2 + $p3 + $residuo, 0.01);
+
+        // H e I estão fora de C mas têm faturamento_var_pct presente -> 2.
+        $this->assertSame(2, $decomposicao['avisos']['empresas_fora_de_c_no_agregado_legado']);
+        // Só H tem |faturamento_var_pct| > 200 -> 1.
+        $this->assertSame(1, $decomposicao['avisos']['empresas_fora_de_c_fat_extremo']);
+    }
+
     // ═══ Delta indefinido — guard nunca trata null como zero ════════════
 
     #[Test]

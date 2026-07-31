@@ -1031,7 +1031,38 @@ class CompararScoreEmpresa extends Command
             }
         }
 
-        $avisos = ['p1_empresas_sem_diff_pct' => $p1EmpresasSemDiffPct];
+        // ── Aviso de escopo (achado do debug residuo-delta-douglas-danilo,
+        // 2026-07-31): NENHUMA das 3 parcelas testa a diferença de
+        // POPULAÇÃO entre a nota antiga e as contrafactuais.
+        // `computeVarFaturamento()`/`computeVarMargem()` (legado, alimentam
+        // nota_antiga) somam TODA empresa elegível com diff_pct presente,
+        // sem filtrar por 'complete'/'partial' — essa classificação só
+        // existe no pipeline novo (`CompanyScoreService`). Uma empresa
+        // 'partial' (ex.: sem `margem_var_pp`) ainda pode ter
+        // `faturamento_var_pct`/`margem_diff_pct` presentes e, portanto,
+        // ENTRAR na média legada sem nunca aparecer em nenhuma parcela
+        // daqui — vira resíduo, mas com causa identificável. Agrava quando a
+        // empresa fora de C tem variação extrema (ex.: baseline quase-zero
+        // no mês anterior, causando %s de milhares — caso real: empresa
+        // "Lojão do Bras", cid=332, carteiras de Douglas e Danilo). O
+        // resíduo continua REAL (não é bug de cálculo, `DecomposicaoDeltaTest`
+        // cenário 3 já cobre e documenta essa limitação) — este aviso só
+        // torna a causa mais provável VISÍVEL, nunca escondida, mesmo
+        // espírito de `p1_empresas_sem_diff_pct`.
+        $foraDeCNoAgregadoLegado = collect($linhasEmpresa)
+            ->reject(fn (array $l) => $l['status'] === 'complete')
+            ->filter(fn (array $l) => $l['faturamento_var_pct'] !== null || $l['margem_diff_pct'] !== null)
+            ->values();
+
+        $foraDeCFatExtremo = $foraDeCNoAgregadoLegado
+            ->filter(fn (array $l) => $l['faturamento_var_pct'] !== null && abs($l['faturamento_var_pct']) > 200.0)
+            ->values();
+
+        $avisos = [
+            'p1_empresas_sem_diff_pct'              => $p1EmpresasSemDiffPct,
+            'empresas_fora_de_c_no_agregado_legado' => $foraDeCNoAgregadoLegado->count(),
+            'empresas_fora_de_c_fat_extremo'        => $foraDeCFatExtremo->count(),
+        ];
         if ($p1 === null) {
             $avisos['p1_indisponivel'] = 'todas_as_empresas_de_c_sem_diff_pct_ou_shopee';
         }
