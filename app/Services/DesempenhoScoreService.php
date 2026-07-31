@@ -389,7 +389,17 @@ class DesempenhoScoreService
         // nunca existe janela em que o código novo escreva shape novo sob a
         // chave antiga (T-120-02). (4) As chaves v13 viram órfãs e expiram
         // sozinhas por TTL — não precisa (nem deve) rodar `cache:clear`.
-        return sprintf('desempenho.compute.v14.%d.%s', $userId, $periodKey);
+        // v15 (2026-07-31, quick 260731-pvk): `componentes.var_faturamento_pct`
+        // deixa de ser MÉDIA e passa a ser MEDIANA das % de variação por
+        // empresa (D-1 — nenhuma empresa é excluída, só o peso muda). O VALOR
+        // muda para toda carteira com 3+ empresas e distribuição assimétrica
+        // (ex.: um outlier de baseline residual não manda mais sozinho no
+        // resultado — ver docblock de `computeVarFaturamento()`). Sem este
+        // bump o Redis serviria a nota antiga (média) por até 7 dias em mês
+        // fechado mesmo com o código novo em prod. As chaves v14 viram órfãs
+        // e expiram sozinhas por TTL — não precisa (e não deve) rodar
+        // `cache:clear` (incidente 2026-07-30: derrubou o site inteiro).
+        return sprintf('desempenho.compute.v15.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -1283,7 +1293,9 @@ class DesempenhoScoreService
     }
 
     /**
-     * % variação de faturamento vs mês anterior — média das % por empresa.
+     * % variação de faturamento vs mês anterior — mediana das % por empresa
+     * (quick 260731-pvk, 2026-07-31 — ver docblock completo mais abaixo,
+     * junto ao `return`, para o motivo da troca de média para mediana).
      *
      * Regras (DESEMP-04, DESEMP-11):
      *  - Descartar empresas NOVAS (associadas ao user via `company_users`
@@ -1309,7 +1321,23 @@ class DesempenhoScoreService
      * Fase 109 (SHOP-DES-01): roteia por empresa via `MetricDiffDispatcher`
      * usando o mapa `$fontes` (company_id → 'adman'|'shopee') resolvido em
      * `computeUniverso()` — empresa Shopee devolve `revenue.diff_pct` real
-     * (Shopee TEM faturamento, sem placeholder) e entra na média normalmente.
+     * (Shopee TEM faturamento, sem placeholder) e entra na conta normalmente.
+     *
+     * Quick 260731-pvk (2026-07-31): agregação passa de MÉDIA para MEDIANA.
+     * Motivo (debug `baseline-quase-zero-producao`): a empresa 332 "Lojão do
+     * Bras" faturou R$ 79,98 em maio e R$ 16.666 em junho — a Adman devolve
+     * `.diff` de +20.738% sobre um baseline residual (não zero, então o guard
+     * `anterior <= 0` do `calculated_fallback` não pega), e a MÉDIA repassava
+     * esse número sozinho pra carteira inteira: a do Douglas foi de -2,3%
+     * real (ela encolheu ~R$131 mil) para +766,25% no snapshot congelado de
+     * 2026-06, garantindo 5/5 pontos em crescimento. A mediana neutraliza o
+     * outlier sem excluir ninguém — D-1 (travada): PROIBIDO qualquer piso,
+     * filtro por valor mínimo, winsorização ou cap; toda empresa com
+     * `diff_pct` presente continua entrando em `$vars` e em
+     * `empresas_com_baseline`, só o peso no resultado muda.
+     * `computeVarMargem()` (abaixo) fica com MÉDIA de propósito (D-2) — o
+     * impacto da margem em faixa de bônus não foi simulado; não "consertar
+     * por simetria" sem essa simulação própria.
      *
      * @param  EloquentCollection<int, \App\Models\Company>  $companies  carteira ativa
      * @param  array  $periodo  shape do `MetricPeriodResolver::resolve()`
@@ -1360,7 +1388,7 @@ class DesempenhoScoreService
         }
 
         return [
-            'pct'                   => round($vars->avg(), 2),
+            'pct'                   => round($vars->median(), 2),
             'empresas_com_baseline' => $empresasBaseline,
         ];
     }
