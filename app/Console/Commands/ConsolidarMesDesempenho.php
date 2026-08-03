@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\User;
+use App\Services\Desempenho\CompanyScoreSnapshotWriter;
 use App\Services\DesempenhoScoreService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -62,6 +63,33 @@ use Illuminate\Support\Facades\Log;
  * o rate-limit passar. Nenhuma row placeholder/degradada é criada como
  * contorno (reintroduziria o número envenenado que o gate existe para
  * evitar). Ver `<design_decision>` do `110-02-PLAN.md`.
+ *
+ * Fase 122 (SNAP-03/D-122-05/D-122-06) — persistência por empresa e base do
+ * gate:
+ * - Depois de cada `updateOrCreate` bem-sucedido, o comando chama
+ *   `CompanyScoreSnapshotWriter::sync()` com `origem = 'consolidar_mes'`,
+ *   gravando uma linha por empresa da carteira naquela competência
+ *   (`desempenho_company_score_snapshots`). A origem `consolidar_mes` IGNORA
+ *   a trava de congelamento do writer de propósito — reconsolidar uma
+ *   competência já fechada é o caminho OFICIAL deste comando (SNAP-06,
+ *   comprovado nesta sessão: 2026-06 foi reconsolidada duas vezes na
+ *   prática, ver `122-CONTEXT.md` item 3).
+ * - D-122-06: quando o gate FIXMARG-03 recusa congelar (abaixo), o writer
+ *   NÃO é chamado — gravar linhas por empresa de um resumo recusado criaria
+ *   detalhe órfão contradizendo o snapshot preservado.
+ * - D-122-05: a BASE do gate FIXMARG-03 (qual cobertura de amostra decide
+ *   recusar) segue a feature flag `metrics.performance_company_first_score`,
+ *   não o shape do relatório. Com a flag desligada (estado desta fase e de
+ *   produção), o gate lê `margem_amostra['legado']` — os mesmos números de
+ *   sempre, zero mudança de comportamento. Só quando a flag ligar (fase
+ *   futura, pós GATE MPP-04) o gate passa a ler `margem_amostra` (pp), que é
+ *   a grandeza que `nota_final` passaria a usar. Comentário completo no
+ *   bloco do gate abaixo.
+ * - O texto de `Empresas: N linhas` na linha final de `info()` é
+ *   CONVENIÊNCIA OPERACIONAL, não critério de verificação — a conferência
+ *   oficial é por reconsulta a `desempenho_company_score_snapshots`
+ *   (122-CONTEXT.md item 5: "qualquer verificação que dependa de stdout é
+ *   verificação inválida").
  */
 class ConsolidarMesDesempenho extends Command
 {
@@ -77,8 +105,10 @@ class ConsolidarMesDesempenho extends Command
 
     protected $description = 'Consolida snapshot mensal fechado do mês passado (último dia do mês, após a coleta de NPS de M+1 fechar — v18.0 D2).';
 
-    public function __construct(private DesempenhoScoreService $scoreService)
-    {
+    public function __construct(
+        private DesempenhoScoreService $scoreService,
+        private CompanyScoreSnapshotWriter $snapshotWriter,
+    ) {
         parent::__construct();
     }
 
@@ -133,6 +163,9 @@ class ConsolidarMesDesempenho extends Command
         $fail = 0;
         $semCarteira = 0;
         $degradado = 0;
+        // Fase 122 (SNAP-03) — totalizadores da persistência por empresa.
+        $empresasUpserted = 0;
+        $empresasPruned   = 0;
 
         foreach ($users as $user) {
             try {
@@ -165,20 +198,29 @@ class ConsolidarMesDesempenho extends Command
                 // — ausência de margem Adman (só-Shopee/sem carteira
                 // financeira) NÃO é degradação (cobertura=1.0 nesse caso,
                 // ver `DesempenhoScoreService::compute()`).
-                // Fase 122 (SNAP-05/D-122-04): como este comando SEMPRE chama
-                // compute() com o shadow ligado (linha acima), o topo de
-                // `margem_amostra` passa a vir no shape NOVO (cobertura de
-                // margem_var_pp em pp) — os números LEGADOS (a base que este
-                // gate sempre usou) migram para a sub-chave `legado`. Ler o
-                // topo direto aqui trocaria a base do gate implicitamente,
-                // exatamente o que D-122-04/T-122-07 proíbem: "quem escolhe
-                // a base do gate é o Plano 03 (D-122-05), nunca esta troca
-                // implícita". `?? $margemAmostra` cobre o shadow desligado
-                // (nunca acontece aqui, mas mantém o fallback honesto).
-                $margemAmostra     = $result['margem_amostra'] ?? ['n_real' => 0, 'n_elegivel' => 0, 'cobertura' => 1.0];
-                $margemAmostraGate = $margemAmostra['legado'] ?? $margemAmostra;
-                $nElegivel         = (int) ($margemAmostraGate['n_elegivel'] ?? 0);
-                $cobertura         = (float) ($margemAmostraGate['cobertura'] ?? 1.0);
+                //
+                // Fase 122 (SNAP-05/D-122-05) — a BASE do gate segue a
+                // feature flag, não o shape do relatório: o gate existe para
+                // impedir que uma leitura degradada da Adman sobrescreva o
+                // snapshot que paga bônus, então tem que medir a amostra da
+                // grandeza que ALIMENTA `nota_final` NESTA execução. Flag
+                // desligada (estado desta fase e de produção) → lê
+                // `margem_amostra['legado']`, os mesmos números de sempre —
+                // ZERO mudança de comportamento no fechamento. Flag ligada
+                // (fase futura, depois do GATE MPP-04) → lê `margem_amostra`
+                // (pp), a grandeza que a nota passaria a usar. Fallback
+                // quando a sub-chave `legado` não existe (payload de cache
+                // antigo, shadow desligado): usa o próprio `margem_amostra`,
+                // o shape de hoje. Cautela documentada no Plano 03:
+                // cobertura_prev = 0.6415 medida pelo probe MPP-04 em
+                // 2026-07-29, abaixo do limiar de 0,7 — trocar a base sem
+                // decisão explícita reprovaria quase todo mundo já no
+                // primeiro fechamento.
+                $amostra    = $result['margem_amostra'] ?? ['n_real' => 0, 'n_elegivel' => 0, 'cobertura' => 1.0];
+                $flagLigada = (bool) config('metrics.performance_company_first_score');
+                $base       = $flagLigada ? $amostra : ($amostra['legado'] ?? $amostra);
+                $nElegivel  = (int) ($base['n_elegivel'] ?? 0);
+                $cobertura  = (float) ($base['cobertura'] ?? 1.0);
 
                 if ($nElegivel > 0 && $cobertura < self::MARGEM_COBERTURA_MINIMA_CONGELAMENTO) {
                     $temAnterior = DesempenhoScoreSnapshot::mensal()
@@ -186,14 +228,21 @@ class ConsolidarMesDesempenho extends Command
                         ->whereDate('mes_referencia', $mesStr)
                         ->exists();
 
+                    // As duas coberturas (pp e legada) são sempre registradas
+                    // — mesmo quando o gate decidiu pela legada — para o
+                    // rollout enxergar quanto o veredito mudaria ao ligar a
+                    // flag, sem precisar rodar nada de novo.
                     $logContext = [
                         'user_id'               => $user->id,
                         'user_name'             => $user->name,
                         'mes_referencia'        => $mesStr,
                         'cobertura'             => $cobertura,
-                        'n_real'                => (int) ($margemAmostraGate['n_real'] ?? 0),
+                        'n_real'                => (int) ($base['n_real'] ?? 0),
                         'n_elegivel'            => $nElegivel,
                         'sem_snapshot_anterior' => ! $temAnterior,
+                        'base_gate'             => $flagLigada ? 'margem_var_pp' : 'var_margem_pct',
+                        'cobertura_pp'          => $amostra['cobertura'] ?? null,
+                        'cobertura_legado'      => $amostra['legado']['cobertura'] ?? $amostra['cobertura'] ?? null,
                     ];
 
                     if ($temAnterior) {
@@ -237,6 +286,36 @@ class ConsolidarMesDesempenho extends Command
                         'breakdown_json'       => $result,
                     ]
                 );
+
+                // Fase 122 (SNAP-03/D-122-06) — persistência por empresa
+                // SÓ acontece depois do updateOrCreate bem-sucedido (nunca no
+                // caminho de recusa do gate acima, nem no `sem_carteira`).
+                // `array_key_exists('score_status_por_empresa', $result)` é
+                // o sinal canônico de que o shadow rodou (D-05 da Fase 121)
+                // — este comando sempre passa `incluirEmpresasScore: true`,
+                // então a ausência aqui não deveria acontecer; se acontecer,
+                // é melhor não gravar do que podar as linhas boas com uma
+                // coleção vazia.
+                if (array_key_exists('score_status_por_empresa', $result)) {
+                    $syncResult = $this->snapshotWriter->sync(
+                        $user,
+                        $mes,
+                        $result['empresas_score'] ?? [],
+                        CompanyScoreSnapshotWriter::ORIGEM_CONSOLIDAR_MES,
+                    );
+                    $empresasUpserted += $syncResult['upserted'];
+                    $empresasPruned   += $syncResult['pruned'];
+                } else {
+                    Log::warning(
+                        '[Desempenho Mensal] Shadow não rodou — persistência por empresa PULADA (esperado sempre rodar aqui, pois o compute() acima já pede incluirEmpresasScore: true)',
+                        [
+                            'user_id'        => $user->id,
+                            'user_name'      => $user->name,
+                            'mes_referencia' => $mesStr,
+                        ]
+                    );
+                }
+
                 $ok++;
             } catch (\Throwable $e) {
                 Log::error("[Desempenho Mensal] Falha user {$user->id} ({$user->name}) mês {$mesLabel}: {$e->getMessage()}");
@@ -248,7 +327,7 @@ class ConsolidarMesDesempenho extends Command
         // 2º passo — popular ranking_pos do mês (apenas rows mensais).
         $this->popularRankingPosMensal($mesStr);
 
-        $this->info("[Desempenho Mensal] Mes {$mesLabel} — OK: {$ok} · Falhas: {$fail} · Sem carteira: {$semCarteira} · Degradados: {$degradado}");
+        $this->info("[Desempenho Mensal] Mes {$mesLabel} — OK: {$ok} · Falhas: {$fail} · Sem carteira: {$semCarteira} · Degradados: {$degradado} · Empresas: {$empresasUpserted} linhas (podadas: {$empresasPruned})");
         return self::SUCCESS;
     }
 
