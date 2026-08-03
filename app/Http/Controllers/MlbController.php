@@ -1293,10 +1293,10 @@ class MlbController extends Controller
     /**
      * Revisão de anúncios — uma tela, dois modos.
      *
-     *   Fila (líder)      → o que falta revisar, denso, com ação em lote.
-     *   Supervisão (gestor) → quem revisou o quê, cobertura, aging, retrabalho.
+     *   Fila (líder)     → o que falta revisar, denso, com ação em lote.
+     *   Gráfico (gestor) → quem revisou o quê, cobertura, aging, retrabalho.
      *
-     * A aba Supervisão só existe porque agora há `revisor_id`: antes `revisado`
+     * A aba Gráfico só existe porque agora há `revisor_id`: antes `revisado`
      * era um booleano sem autoria e não havia o que supervisionar.
      */
     public function revisao(Request $request): Response
@@ -1306,9 +1306,9 @@ class MlbController extends Controller
         $user       = $request->user();
         $podeVerTudo = $this->podeVerTodosPub($user);
         $modo       = $request->input('modo', 'fila');
-        if ($modo === 'supervisao' && !$podeVerTudo) $modo = 'fila';
+        if ($modo === 'grafico' && !$podeVerTudo) $modo = 'fila';
 
-        $mesRef = $request->input('mes', now()->format('Y-m'));
+        $mesRef = $request->input('mes') ?: $this->competenciaInicialRevisao();
 
         // Lista quem de fato tem anúncio na competência — não quem tem cargo de
         // publicador hoje. Amarrar ao cargo atual faz sumir do filtro quem mudou
@@ -1322,18 +1322,18 @@ class MlbController extends Controller
             ->toArray();
 
         $comum = [
-            'modo'          => $modo,
-            'publicadores'  => $publicadores,
-            'meses'         => $this->mesesDisponiveis(),
-            'pode_revisar'  => $podeVerTudo,
-            'pode_supervisionar' => $podeVerTudo,
-            'severidades'   => Pendencia::SEVERIDADES,
-            'categorias'    => Pendencia::CATEGORIAS,
-            'status_labels' => Revisao::STATUS,
+            'modo'            => $modo,
+            'publicadores'    => $publicadores,
+            'meses'           => $this->mesesDisponiveis(),
+            'pode_revisar'    => $podeVerTudo,
+            'pode_ver_grafico'=> $podeVerTudo,
+            'severidades'     => Pendencia::SEVERIDADES,
+            'categorias'      => Pendencia::CATEGORIAS,
+            'status_labels'   => Revisao::STATUS,
         ];
 
-        return $modo === 'supervisao'
-            ? Inertia::render('Mlb/Revisao', array_merge($comum, $this->revisaoSupervisao($request, $mesRef)))
+        return $modo === 'grafico'
+            ? Inertia::render('Mlb/Revisao', array_merge($comum, $this->revisaoGrafico($request, $mesRef)))
             : Inertia::render('Mlb/Revisao', array_merge($comum, $this->revisaoFila($request, $mesRef)));
     }
 
@@ -1435,11 +1435,11 @@ class MlbController extends Controller
     }
 
     /**
-     * Aba Supervisão — o que o gestor nunca conseguiu ver:
+     * Aba Gráfico — o que o gestor nunca conseguiu ver:
      * quem revisou o quê, quanto do mês foi coberto, há quanto tempo as
      * pendências estão abertas e onde o time mais erra.
      */
-    private function revisaoSupervisao(Request $request, string $mesRef): array
+    private function revisaoGrafico(Request $request, string $mesRef): array
     {
         $base = Publicacao::doMes($mesRef);
 
@@ -1553,7 +1553,7 @@ class MlbController extends Controller
             ->count();
 
         return [
-            'supervisao' => [
+            'grafico' => [
                 'cobertura'     => $cobertura,
                 'por_revisor'   => $porRevisor,
                 'aging'         => $faixa,
@@ -1570,6 +1570,26 @@ class MlbController extends Controller
             ],
             'filters' => ['mesRef' => $mesRef],
         ];
+    }
+
+    /**
+     * Competência em que a Revisão abre quando nenhuma é pedida.
+     *
+     * Usar sempre o mês corrente fazia a tela abrir zerada nos primeiros dias do
+     * mês (nenhum anúncio publicado ainda) — tudo em 0 e nenhuma linha, o que lê
+     * como "a revisão quebrou" em vez de "este mês ainda não começou".
+     */
+    private function competenciaInicialRevisao(): string
+    {
+        $atual = now()->format('Y-m');
+
+        if (Publicacao::doMes($atual)->exists()) {
+            return $atual;
+        }
+
+        $ultima = Publicacao::max('data');
+
+        return $ultima ? Carbon::parse($ultima)->format('Y-m') : $atual;
     }
 
     /** Primeiro e último instante de uma competência YYYY-MM. */

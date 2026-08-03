@@ -538,7 +538,7 @@ function AbaFila({ publicacoes, kpis, filters, publicadores, podeRevisar, severi
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Aba Supervisão — o que o gestor nunca conseguiu ver
+// Aba Gráfico — o que o gestor nunca conseguiu ver
 // ═══════════════════════════════════════════════════════════════════════
 
 function BarraProporcao({ partes }) {
@@ -559,8 +559,8 @@ function BarraProporcao({ partes }) {
     );
 }
 
-function AbaSupervisao({ supervisao, filters, aplicar }) {
-    const s = supervisao ?? {};
+function AbaGrafico({ grafico, filters, aplicar }) {
+    const s = grafico ?? {};
     const cob = s.cobertura ?? {};
     const aging = s.aging ?? {};
     const maxCategoria = Math.max(1, ...(s.por_categoria ?? []).map(x => x.n));
@@ -717,9 +717,9 @@ function AbaSupervisao({ supervisao, filters, aplicar }) {
 
 export default function Revisao({
     modo = 'fila',
-    publicacoes, kpis, supervisao, filters = {}, publicadores = [], meses = [],
+    publicacoes, kpis, grafico, filters = {}, publicadores = [], meses = [],
     pode_revisar: podeRevisar = false,
-    pode_supervisionar: podeSupervisionar = false,
+    pode_ver_grafico: podeVerGrafico = false,
     severidades = {}, categorias = {},
 }) {
     function aplicar(updates) {
@@ -745,13 +745,13 @@ export default function Revisao({
                 <div>
                     <h1 className="text-white font-display font-bold text-2xl">Revisão de Anúncios</h1>
                     <p className="text-white/40 text-sm mt-0.5">
-                        {modo === 'supervisao'
+                        {modo === 'grafico'
                             ? 'O que foi revisado, por quem, e o que está parado'
                             : 'Aprove o que está correto e registre o que precisa de ajuste'}
                     </p>
                 </div>
 
-                {podeSupervisionar && (
+                {podeVerGrafico && (
                     <div className="flex rounded-xl border border-white/[0.08] bg-white/[0.02] p-1">
                         <button
                             onClick={() => trocarModo('fila')}
@@ -763,20 +763,20 @@ export default function Revisao({
                             <ListChecks size={12} /> Fila
                         </button>
                         <button
-                            onClick={() => trocarModo('supervisao')}
+                            onClick={() => trocarModo('grafico')}
                             className={cn(
                                 'h-8 px-3.5 rounded-lg text-[12px] font-semibold transition-all inline-flex items-center gap-1.5',
-                                modo === 'supervisao' ? 'bg-ecf-yellow text-[#252525]' : 'text-white/40 hover:text-white/70',
+                                modo === 'grafico' ? 'bg-ecf-yellow text-[#252525]' : 'text-white/40 hover:text-white/70',
                             )}
                         >
-                            <BarChart3 size={12} /> Supervisão
+                            <BarChart3 size={12} /> Gráfico
                         </button>
                     </div>
                 )}
             </div>
 
-            {modo === 'supervisao' ? (
-                <AbaSupervisao supervisao={supervisao} filters={filtrosComMeses} aplicar={aplicar} />
+            {modo === 'grafico' ? (
+                <AbaGrafico grafico={grafico} filters={filtrosComMeses} aplicar={aplicar} />
             ) : (
                 <AbaFila
                     publicacoes={publicacoes}
