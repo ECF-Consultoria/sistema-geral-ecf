@@ -95,6 +95,7 @@ class MlbImplementacaoController extends Controller
                 'planilha_produtos'   => MlbImplementacao::ONB_PLANILHA_PRODUTOS_OPCOES,
                 'listagem'            => MlbImplementacao::ONB_LISTAGEM_OPCOES,
                 'publicacao'          => MlbImplementacao::ONB_PUBLICACAO_OPCOES,
+                'decola'              => MlbImplementacao::ONB_DECOLA_OPCOES,
                 'me1'                 => MlbImplementacao::ONB_ME1_OPCOES,
                 'integradora'         => MlbImplementacao::ONB_INTEGRADORA_OPCOES,
                 'places'              => MlbImplementacao::ONB_PLACES_OPCOES,
@@ -678,11 +679,18 @@ class MlbImplementacaoController extends Controller
     {
         $this->checkAccess($request);
 
+        // "Criar novo valor" (Painel Polos): os selects inline deixam o operador cadastrar um
+        // valor fora do catálogo, e ele passa a aparecer para as demais empresas via
+        // `valoresPresentes`. Por isso os campos criáveis são TEXTO LIVRE com limite de
+        // tamanho — as ONB_*_OPCOES são só as sugestões iniciais do dropdown.
+        //
+        // EXCEÇÃO: `fase` continua fechada. Ela alimenta MlbEmpresa::FASE_PARA_PROJETO, que
+        // decide se a empresa pertence ao projeto POLOS; uma fase inventada faria a empresa
+        // sumir do painel sem aviso. O front não oferece "criar novo valor" para fase.
         $validated = $request->validate([
-            'polo'             => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_POLO_OPCOES)],
+            'polo'             => ['nullable', 'string', 'max:100'],
             'fase'             => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_FASE_OPCOES)],
             'data_solicitacao' => ['nullable', 'date'],
-            // Entrada no projeto (planilha V2) — texto livre (aceita "criar novo valor").
             'status_entrada'   => ['nullable', 'string', 'max:150'],
             'chance_entrada'   => ['nullable', 'string', 'max:60'],
         ]);
@@ -724,7 +732,8 @@ class MlbImplementacaoController extends Controller
         $this->checkAccess($request);
 
         $validated = $request->validate([
-            'acesso_colaborador' => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_ACESSO_COLABORADOR_OPCOES)],
+            // Texto livre (ver nota "Criar novo valor" em salvarBlocoIdentificacao).
+            'acesso_colaborador' => ['nullable', 'string', 'max:150'],
             'gmail_colaborador'  => ['nullable', 'string', 'max:150'],
             // Reunião de onboarding (planilha V2) — Sim/Não/Agendada/Não compareceu (texto livre).
             'reuniao_onboarding' => ['nullable', 'string', 'max:60'],
@@ -755,16 +764,16 @@ class MlbImplementacaoController extends Controller
         $this->checkAccess($request);
 
         $validated = $request->validate([
-            'planilha_produtos' => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_PLANILHA_PRODUTOS_OPCOES)],
-            'listagem'          => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_LISTAGEM_OPCOES)],
-            'publicacao'        => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_PUBLICACAO_OPCOES)],
-            // decola: aceita boolean, '0'/'1' e também strings 'true'/'false'
+            // Texto livre (ver nota "Criar novo valor" em salvarBlocoIdentificacao):
+            // ONB_*_OPCOES são SUGESTÕES no select, não um enum fechado.
+            'planilha_produtos' => ['nullable', 'string', 'max:150'],
+            'listagem'          => ['nullable', 'string', 'max:150'],
+            'publicacao'        => ['nullable', 'string', 'max:150'],
+            // decola: era boolean até 2026-08-03; hoje é texto (Sim/Não/Mensagem Enviada/…)
+            'decola'            => ['nullable', 'string', 'max:60'],
         ]);
 
         // Extrair campos boolean com $request->boolean() que aceita 'true', '1', true, etc.
-        if ($request->has('decola')) {
-            $validated['decola'] = $request->boolean('decola');
-        }
         if ($request->has('campanha_criada')) {
             $validated['campanha_criada'] = $request->boolean('campanha_criada');
         }
@@ -788,10 +797,11 @@ class MlbImplementacaoController extends Controller
 
         $validated = $request->validate([
             'contextos_logistica' => ['nullable', 'string'],
-            'me1'                 => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_ME1_OPCOES)],
-            'integradora'         => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_INTEGRADORA_OPCOES)],
-            'places'              => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_PLACES_OPCOES)],
-            'erp'                 => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_ERP_OPCOES)],
+            // Texto livre (ver nota "Criar novo valor" em salvarBlocoIdentificacao).
+            'me1'                 => ['nullable', 'string', 'max:150'],
+            'integradora'         => ['nullable', 'string', 'max:150'],
+            'places'              => ['nullable', 'string', 'max:150'],
+            'erp'                 => ['nullable', 'string', 'max:150'],
         ]);
 
         // Trava manual do ME1 (quick 260722-nwc): ao MUDAR o me1 na mão para um valor

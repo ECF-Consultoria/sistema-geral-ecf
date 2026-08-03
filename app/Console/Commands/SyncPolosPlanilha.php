@@ -75,9 +75,10 @@ class SyncPolosPlanilha extends Command
     ];
 
     // Colunas booleanas (Sim=true / Não=false / vazio=não mexe).
+    // "Decola" saiu daqui em 2026-08-03: virou texto (Sim/Não/Mensagem Enviada/valor criado)
+    // e é normalizada por normDecola() para casar com ONB_DECOLA_OPCOES.
     private const BOOL_IMPL = [
         'Grupo'          => 'grupo_whatsapp',
-        'Decola'         => 'decola',
         'Campanha Criada'=> 'campanha_criada',
     ];
 
@@ -284,6 +285,10 @@ class SyncPolosPlanilha extends Command
                 $fichaData[$campo] = $b;
             }
         }
+        $decola = $this->normDecola($get('Decola'));
+        if ($decola !== null) {
+            $fichaData['decola'] = $decola;
+        }
         $dataSol = $this->parseData($get('Data de Solicitação'));
         if ($dataSol !== null) {
             $fichaData['data_solicitacao'] = $dataSol;
@@ -367,6 +372,25 @@ class SyncPolosPlanilha extends Command
         }
         // Não, Solicitado, Agendada, etc. → false (não concluído)
         return false;
+    }
+
+    /**
+     * Normaliza a coluna "Decola" da planilha para o catálogo ONB_DECOLA_OPCOES.
+     * Vazio → null (não mexe). Valor desconhecido passa VERBATIM (trim) — a planilha
+     * continua sendo a verdade e o painel exibe o valor novo como opção criada.
+     */
+    private function normDecola(string $v): ?string
+    {
+        $v = trim($v);
+        if ($v === '') {
+            return null;
+        }
+        return match (mb_strtoupper($v)) {
+            'SIM', '1', 'TRUE', 'X', 'VERDADEIRO'      => 'Sim',
+            'NÃO', 'NAO', '0', 'FALSE', 'FALSO'        => 'Não',
+            'MENSAGEM ENVIADA', 'MSG ENVIADA'          => 'Mensagem Enviada',
+            default                                    => $v,
+        };
     }
 
     private function parseData(string $v): ?string

@@ -233,40 +233,41 @@ class Phase33OnboardingFichaTest extends TestCase
     }
 
     /**
-     * PATCH bloco/produtos com listagem fora do enum retorna erro de validação.
-     * Inertia retorna 302 (redirect de volta) com errors na sessão — não 422.
+     * Os campos criáveis não são mais enum fechado (ver test_blocos_aceitam_valor_criado_fora_do_catalogo),
+     * mas continuam LIMITADOS: texto acima do máximo é rejeitado.
      */
-    public function test_patch_bloco_produtos_valor_invalido_retorna_422(): void
+    public function test_patch_bloco_produtos_valor_longo_demais_e_rejeitado(): void
     {
         $admin = $this->criarAdmin();
         [$_empresa, $impl] = $this->criarEmpresaComImpl();
 
         $this->actingAs($admin)
             ->patch(route('mlb.implementacao.bloco.produtos', $impl), [
-                'listagem' => 'valor_invalido_que_nao_existe',
+                'listagem' => str_repeat('a', 151),
+                'decola'   => str_repeat('b', 61),
             ])
-            ->assertSessionHasErrors(['listagem']);
+            ->assertSessionHasErrors(['listagem', 'decola']);
     }
 
     /**
-     * PATCH bloco/logistica com me1 fora do enum retorna erro de validação.
+     * Idem para o bloco Logística.
      */
-    public function test_patch_bloco_logistica_me1_invalido_retorna_422(): void
+    public function test_patch_bloco_logistica_valor_longo_demais_e_rejeitado(): void
     {
         $admin = $this->criarAdmin();
         [$_empresa, $impl] = $this->criarEmpresaComImpl();
 
         $this->actingAs($admin)
             ->patch(route('mlb.implementacao.bloco.logistica', $impl), [
-                'me1' => 'opcao_inexistente',
+                'me1' => str_repeat('a', 151),
             ])
             ->assertSessionHasErrors(['me1']);
     }
 
     /**
-     * grupo_whatsapp (bloco acessos) e decola (bloco produtos) aceitam booleano e persistem.
+     * grupo_whatsapp (bloco acessos) aceita booleano e persiste.
      */
-    public function test_grupo_whatsapp_e_decola_persistem_como_boolean(): void
+    public function test_grupo_whatsapp_persiste_como_boolean(): void
     {
         $admin = $this->criarAdmin();
         [$_empresa, $impl] = $this->criarEmpresaComImpl();
@@ -280,16 +281,92 @@ class Phase33OnboardingFichaTest extends TestCase
 
         $impl->refresh();
         $this->assertTrue((bool) $impl->grupo_whatsapp);
+    }
 
-        // Testa decola via bloco produtos — string "true" deve virar boolean true
+    /**
+     * decola virou TEXTO (era boolean): aceita o catálogo ONB_DECOLA_OPCOES, incluindo o
+     * terceiro estado "Mensagem Enviada".
+     */
+    public function test_decola_persiste_como_texto(): void
+    {
+        $admin = $this->criarAdmin();
+        [$_empresa, $impl] = $this->criarEmpresaComImpl();
+
+        foreach (MlbImplementacao::ONB_DECOLA_OPCOES as $valor) {
+            $this->actingAs($admin)
+                ->patch(route('mlb.implementacao.bloco.produtos', $impl), [
+                    'decola' => $valor,
+                ])
+                ->assertRedirect();
+
+            $impl->refresh();
+            $this->assertSame($valor, $impl->decola);
+        }
+    }
+
+    /**
+     * "＋ Criar novo valor" do Painel Polos: os selects do onboarding aceitam valor FORA do
+     * catálogo. Antes os blocos validavam com Rule::in(ONB_*_OPCOES) e devolviam 422 — o
+     * valor criado inline nunca persistia (e o Inertia não mostrava erro na grade).
+     */
+    public function test_blocos_aceitam_valor_criado_fora_do_catalogo(): void
+    {
+        $admin = $this->criarAdmin();
+        [$_empresa, $impl] = $this->criarEmpresaComImpl();
+
         $this->actingAs($admin)
             ->patch(route('mlb.implementacao.bloco.produtos', $impl), [
-                'decola' => 'true',
+                'planilha_produtos' => 'Enviada pela metade',
+                'listagem'          => 'Listando aos poucos',
+                'publicacao'        => 'Em revisão do cliente',
+                'decola'            => 'Aguardando ML',
             ])
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($admin)
+            ->patch(route('mlb.implementacao.bloco.logistica', $impl), [
+                'me1'         => 'Coleta agendada',
+                'integradora' => 'Transportadora do cliente',
+                'places'      => 'Analisando praça',
+                'erp'         => 'ERP proprietário',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($admin)
+            ->patch(route('mlb.implementacao.bloco.acessos', $impl), [
+                'acesso_colaborador' => 'Acesso parcial',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
 
         $impl->refresh();
-        $this->assertTrue((bool) $impl->decola);
+        $this->assertSame('Enviada pela metade', $impl->planilha_produtos);
+        $this->assertSame('Listando aos poucos', $impl->listagem);
+        $this->assertSame('Em revisão do cliente', $impl->publicacao);
+        $this->assertSame('Aguardando ML', $impl->decola);
+        $this->assertSame('Coleta agendada', $impl->me1);
+        $this->assertSame('Transportadora do cliente', $impl->integradora);
+        $this->assertSame('Analisando praça', $impl->places);
+        $this->assertSame('ERP proprietário', $impl->erp);
+        $this->assertSame('Acesso parcial', $impl->acesso_colaborador);
+    }
+
+    /**
+     * `fase` continua sendo domínio FECHADO: alimenta MlbEmpresa::FASE_PARA_PROJETO e uma
+     * fase inventada tiraria a empresa do projeto POLOS sem aviso.
+     */
+    public function test_fase_rejeita_valor_fora_do_catalogo(): void
+    {
+        $admin = $this->criarAdmin();
+        [$_empresa, $impl] = $this->criarEmpresaComImpl();
+
+        $this->actingAs($admin)
+            ->patch(route('mlb.implementacao.bloco.identificacao', $impl), [
+                'fase' => 'M9 turbinado',
+            ])
+            ->assertSessionHasErrors('fase');
     }
 
     /**
@@ -331,7 +408,7 @@ class Phase33OnboardingFichaTest extends TestCase
                 'planilha_produtos' => 'Já enviado',
                 'listagem'          => 'Já listado',
                 'publicacao'        => 'Concluído',
-                'decola'            => false,
+                'decola'            => 'Não',
             ])
             ->assertRedirect();
 
@@ -339,7 +416,7 @@ class Phase33OnboardingFichaTest extends TestCase
         $this->assertEquals('Já enviado', $impl->planilha_produtos);
         $this->assertEquals('Já listado', $impl->listagem);
         $this->assertEquals('Concluído', $impl->publicacao);
-        $this->assertFalse((bool) $impl->decola);
+        $this->assertSame('Não', $impl->decola);
     }
 
     /**

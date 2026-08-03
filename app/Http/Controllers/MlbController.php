@@ -10,13 +10,17 @@ use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\MlbTreinamento;
+use App\Models\Pendencia;
 use App\Models\Publicacao;
 use App\Models\PublicacaoAbsenteismo;
+use App\Models\Revisao;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\PlanoMetasPublicacaoService;
+use App\Services\RevisaoService;
 use App\Services\VendasSyncService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,6 +28,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -695,17 +700,29 @@ class MlbController extends Controller
                 'em'        => $e->problema_em?->format('d/m/Y H:i'),
             ]);
 
-        $anunciosProblema = Publicacao::where('user_id', $user->id)
-            ->where('problema', true)
-            ->orderByDesc('problema_em')
-            ->get(['id', 'empresa', 'mlb_code', 'data', 'problema_nota', 'problema_em'])
-            ->map(fn($p) => [
-                'id'       => $p->id,
-                'empresa'  => $p->empresa,
-                'mlb_code' => $p->mlb_code,
-                'nota'     => $p->problema_nota,
-                'em'       => $p->problema_em?->format('d/m/Y'),
-                'data_pub' => $p->data?->format('d/m/Y'),
+        // Pendências que o líder abriu nos anúncios deste publicador.
+        // Vem do modelo de pendências, então cada item traz severidade, quem
+        // abriu e há quantos dias — e o publicador informa "corrigi" em vez de
+        // dar a pendência como resolvida por conta própria.
+        $anunciosProblema = Pendencia::query()
+            ->pendente()
+            ->whereHas('publicacao', fn($q) => $q->where('user_id', $user->id))
+            ->with('publicacao:id,empresa,mlb_code,data', 'abertaPor:id,name')
+            ->orderByDesc('aberta_em')
+            ->get()
+            ->map(fn($d) => [
+                'id'          => $d->id,
+                'publicacao_id' => $d->publicacao_id,
+                'empresa'     => $d->publicacao?->empresa,
+                'mlb_code'    => $d->publicacao?->mlb_code,
+                'severidade'  => $d->severidade,
+                'categoria'   => $d->categoria ? (Pendencia::CATEGORIAS[$d->categoria] ?? $d->categoria) : null,
+                'nota'        => $d->texto,
+                'status'      => $d->status,
+                'aberta_por'  => $d->abertaPor?->name,
+                'em'          => $d->aberta_em?->format('d/m/Y'),
+                'idade_dias'  => $d->idade_dias,
+                'data_pub'    => $d->publicacao?->data?->format('d/m/Y'),
             ]);
 
         // Ticket médio: evolução mensal + valor do mês atual
@@ -1274,110 +1291,393 @@ class MlbController extends Controller
         ]);
     }
 
+    /**
+     * Revisão de anúncios — uma tela, dois modos.
+     *
+     *   Fila (líder)     → o que falta revisar, denso, com ação em lote.
+     *   Gráfico (gestor) → quem revisou o quê, cobertura, aging, retrabalho.
+     *
+     * A aba Gráfico só existe porque agora há `revisor_id`: antes `revisado`
+     * era um booleano sem autoria e não havia o que supervisionar.
+     */
     public function revisao(Request $request): Response
     {
         $this->checkPubAccess('revisao');
 
-        $mesRef = $request->get('mes', now()->format('Y-m'));
-        $funcId = $request->get('func', '');
-        $status = $request->get('status', 'todos');
-        $busca  = $request->get('busca', '');
+        $user       = $request->user();
+        $podeVerTudo = $this->podeVerTodosPub($user);
+        // `?:` e não `??`: os filtros chegam como null quando vazios
+        // (middleware ConvertEmptyStringsToNull) e como '' quando o JS envia ''.
+        $modo = (string) ($request->input('modo') ?: 'fila');
+        if ($modo === 'grafico' && !$podeVerTudo) $modo = 'fila';
 
-        $publicadores = $this->publicadores()
+        $mesRef = (string) ($request->input('mes') ?: $this->competenciaInicialRevisao());
+
+        // Lista quem de fato tem anúncio na competência — não quem tem cargo de
+        // publicador hoje. Amarrar ao cargo atual faz sumir do filtro quem mudou
+        // de função ou saiu, deixando anúncios órfãos e não revisáveis.
+        $publicadores = User::query()
+            ->whereIn('id', Publicacao::doMes($mesRef)->distinct()->pluck('user_id')->filter())
+            ->orderBy('name')
+            ->get(['id', 'name'])
             ->map(fn($p) => ['id' => $p->id, 'nome' => $p->name])
+            ->values()
             ->toArray();
 
-        $query = Publicacao::with([
-                'user:id,name',
-                'comentarioAutor:id,name',
-                'problemaResolvidoPor:id,name',
-                'comentarioResolvidoPor:id,name',
-            ])
-            ->whereHas('user.setores', function ($q) {
-                $q->where('setores.slug', 'publicacao')
-                  ->whereHas('cargos', fn($qc) => $qc->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao']));
-            })
-            ->whereRaw("DATE_FORMAT(data, '%Y-%m') = ?", [$mesRef]);
+        $comum = [
+            'modo'            => $modo,
+            'publicadores'    => $publicadores,
+            'meses'           => $this->mesesDisponiveis(),
+            'pode_revisar'    => $podeVerTudo,
+            'pode_ver_grafico'=> $podeVerTudo,
+            'severidades'     => Pendencia::SEVERIDADES,
+            'categorias'      => Pendencia::CATEGORIAS,
+            'status_labels'   => Revisao::STATUS,
+        ];
 
-        if ($funcId) $query->where('user_id', $funcId);
+        return $modo === 'grafico'
+            ? Inertia::render('Mlb/Revisao', array_merge($comum, $this->revisaoGrafico($request, $mesRef)))
+            : Inertia::render('Mlb/Revisao', array_merge($comum, $this->revisaoFila($request, $mesRef)));
+    }
 
-        match ($status) {
-            'sem_revisao'    => $query->where('revisado', false),
-            'sem_comentario' => $query->where(fn($q) => $q->whereNull('comentario')->orWhere('comentario', '')),
-            'com_comentario' => $query->whereNotNull('comentario')->where('comentario', '!=', ''),
-            'com_problema'   => $query->where('problema', true),
-            'resolvidos'     => $query->where(fn($q) => $q
-                                    ->whereNotNull('problema_resolvido_em')
-                                    ->orWhere('comentario_resolvido', true)),
-            'vendidos'       => $query->where('vendido', true),
-            'nao_vendidos'   => $query->where('vendido', false),
-            default          => null,
-        };
+    /**
+     * Aba Fila — a lista de trabalho do líder.
+     * Por padrão mostra só o que espera ação dele (não revisado + reconferir).
+     */
+    private function revisaoFila(Request $request, string $mesRef): array
+    {
+        // ATENÇÃO: `input($k, $default)` NÃO cai no default quando a chave existe
+        // com valor nulo — e o middleware global ConvertEmptyStringsToNull
+        // transforma `?sev=` em null. Como a tela reenvia todos os filtros a cada
+        // navegação, os vazios chegam como null. Normalizar aqui.
+        $funcId     = (string) ($request->input('func') ?? '');
+        $status     = (string) ($request->input('status') ?: 'pendentes');
+        $severidade = (string) ($request->input('sev') ?? '');
+        $busca      = (string) ($request->input('busca') ?? '');
 
+        // Sem recorte por cargo de propósito: um anúncio precisa ser revisado
+        // independentemente do cargo que o autor tem hoje. A segmentação por
+        // pessoa fica no filtro, onde é uma escolha e não uma omissão silenciosa.
+        $base = Publicacao::doMes($mesRef);
+
+        if ($funcId) $base->where('user_id', $funcId);
         if ($busca) {
-            $query->where(fn($q) => $q
+            $base->where(fn($q) => $q
                 ->where('mlb_code', 'like', "%{$busca}%")
                 ->orWhere('empresa', 'like', "%{$busca}%")
             );
         }
 
-        $publicacoes = $query->orderByDesc('data')->orderByDesc('id')->limit(120)->get()
-            ->map(fn($p) => [
-                'id'                   => $p->id,
-                'data'                 => $p->data->format('d/m/Y'),
-                'usuario'              => $p->user?->name ?? '—',
-                'usuario_removido'     => $p->user?->deleted_at !== null,
-                'user_id'              => $p->user_id,
-                'empresa'              => $p->empresa,
-                'mlb_code'             => $p->mlb_code,
-                'vendido'              => $p->vendido,
-                'revisado'             => $p->revisado,
-                'problema'                 => $p->problema,
-                'problema_nota'            => $p->problema_nota,
-                'problema_em'              => $p->problema_em?->format('d/m/Y H:i'),
-                'problema_resolvido_por'   => $p->problemaResolvidoPor?->name,
-                'problema_resolvido_em'    => $p->problema_resolvido_em?->format('d/m/Y H:i'),
-                'comentario'               => $p->comentario,
-                'comentario_autor'         => $p->comentarioAutor?->name,
-                'comentario_em'            => $p->comentario_em?->format('d/m/Y'),
-                'comentario_resolvido'     => $p->comentario_resolvido,
-                'comentario_resolvido_por' => $p->comentarioResolvidoPor?->name,
-                'comentario_resolvido_em'  => $p->comentario_resolvido_em?->format('d/m/Y H:i'),
-            ]);
-
-        // Problemas com prioridade no topo
-        $publicacoes = $publicacoes->sortByDesc(fn($p) => $p['problema'] ? 1 : 0)->values();
-
+        // KPIs contados NO BANCO, antes de qualquer paginação.
+        // Antes eram contados sobre os 120 registros carregados — acima disso
+        // os números simplesmente mentiam.
+        $kpiBase = (clone $base);
         $kpis = [
-            'total'          => $publicacoes->count(),
-            'revisados'      => $publicacoes->where('revisado', true)->count(),
-            'vendidos'       => $publicacoes->where('vendido', true)->count(),
-            'com_comentario' => $publicacoes->filter(fn($p) => !empty($p['comentario']))->count(),
-            'com_problema'   => $publicacoes->where('problema', true)->count(),
-            // Pendências fechadas: problema resolvido ou comentário resolvido
-            'resolvidos'     => $publicacoes->filter(fn($p) =>
-                                    !empty($p['problema_resolvido_em']) || !empty($p['comentario_resolvido'])
-                                )->count(),
+            'total'        => (clone $kpiBase)->count(),
+            'nao_revisado' => (clone $kpiBase)->comStatusRevisao(Revisao::ST_NAO_REVISADO)->count(),
+            'aprovado'     => (clone $kpiBase)->comStatusRevisao(Revisao::ST_APROVADO)->count(),
+            'em_ajuste'    => (clone $kpiBase)->comStatusRevisao(Revisao::ST_EM_AJUSTE)->count(),
+            'reconferir'   => (clone $kpiBase)->comStatusRevisao(Revisao::ST_RECONFERIR)->count(),
+        ];
+        $kpis['cobertura'] = $kpis['total'] > 0
+            ? round((($kpis['total'] - $kpis['nao_revisado']) / $kpis['total']) * 100, 1)
+            : null;
+
+        // ─── Visão em colunas (padrão) ───
+        // Agrupa pelo que precisa acontecer, não pela loja: o líder vê de quem
+        // é a bola em cada anúncio. Só vale quando nenhum estado específico foi
+        // pedido — filtrar por um estado vira lista única paginada.
+        if ($status === 'pendentes') {
+            return [
+                'colunas'     => $this->colunasPorEstado($base, $severidade),
+                'publicacoes' => null,
+                'kpis'        => $kpis,
+                'filters'     => compact('mesRef', 'funcId', 'status', 'severidade', 'busca'),
+            ];
+        }
+
+        $query = (clone $base)->with([
+            'user:id,name',
+            'pendencias' => fn($q) => $q->with('abertaPor:id,name', 'corrigidaPor:id,name')->pendente(),
+        ]);
+
+        match ($status) {
+            'nao_revisado' => $query->comStatusRevisao(Revisao::ST_NAO_REVISADO),
+            'aprovado'     => $query->comStatusRevisao(Revisao::ST_APROVADO),
+            'em_ajuste'    => $query->comStatusRevisao(Revisao::ST_EM_AJUSTE),
+            'reconferir'   => $query->comStatusRevisao(Revisao::ST_RECONFERIR),
+            default        => null, // 'todos'
+        };
+
+        if ($severidade) {
+            $query->whereHas('pendencias', fn($q) => $q->pendente()->where('severidade', $severidade));
+        }
+
+        $publicacoes = $query
+            // Bloqueio primeiro, depois reconferir, depois o mais antigo.
+            ->orderByRaw("FIELD(status_revisao, 'em_ajuste', 'reconferir', 'nao_revisado', 'aprovado')")
+            ->orderBy('data')
+            ->orderBy('id')
+            ->paginate(60)
+            ->withQueryString()
+            ->through(fn($p) => $this->publicacaoParaFila($p));
+
+        return [
+            'colunas'     => null,
+            'publicacoes' => $publicacoes,
+            'kpis'        => $kpis,
+            'filters'     => compact('mesRef', 'funcId', 'status', 'severidade', 'busca'),
+        ];
+    }
+
+    /** Quantos cards cada coluna carrega antes de mandar o líder filtrar. */
+    private const REVISAO_COLUNA_LIMITE = 50;
+
+    /**
+     * Monta as três colunas de trabalho da fila.
+     *
+     * Cada coluna traz o total real e no máximo REVISAO_COLUNA_LIMITE cards —
+     * "Não revisado" costuma ter centenas, e despejar tudo de uma vez faria a
+     * coluna virar um paredão inútil. Passando do limite, a tela oferece o
+     * filtro daquele estado, que cai na lista paginada.
+     */
+    private function colunasPorEstado(Builder $base, ?string $severidade = null): array
+    {
+        $severidade = (string) ($severidade ?? '');
+
+        $estados = [
+            Revisao::ST_NAO_REVISADO,
+            Revisao::ST_EM_AJUSTE,
+            Revisao::ST_RECONFERIR,
         ];
 
-        // Empresas com pelo menos um SKU concluído fora do prazo
-        $empresasComAtraso = MlbEmpresa::get()->filter(function ($e) {
-            foreach ([1, 2, 3] as $stage) {
-                foreach ($e->{"skus_estagio{$stage}"} ?? [] as $sku) {
-                    if (!empty($sku['atrasado'])) return true;
-                }
-            }
-            return false;
-        })->pluck('nome')->unique()->values()->toArray();
+        $colunas = [];
 
-        return Inertia::render('Mlb/Revisao', [
-            'publicacoes'       => $publicacoes,
-            'publicadores'      => $publicadores,
-            'meses'             => $this->mesesDisponiveis(),
-            'kpis'              => $kpis,
-            'filters'           => compact('mesRef', 'funcId', 'status', 'busca'),
-            'empresasComAtraso' => $empresasComAtraso,
-        ]);
+        foreach ($estados as $estado) {
+            $q = (clone $base)->comStatusRevisao($estado);
+
+            if ($severidade) {
+                $q->whereHas('pendencias', fn($sub) => $sub->pendente()->where('severidade', $severidade));
+            }
+
+            $total = (clone $q)->count();
+
+            $itens = $q->with([
+                    'user:id,name',
+                    'pendencias' => fn($sub) => $sub->with('abertaPor:id,name', 'corrigidaPor:id,name')->pendente(),
+                ])
+                // O que espera há mais tempo sobe — é a ordem de uma fila.
+                ->orderBy('data')
+                ->orderBy('id')
+                ->limit(self::REVISAO_COLUNA_LIMITE)
+                ->get()
+                ->map(fn($p) => $this->publicacaoParaFila($p))
+                ->values();
+
+            $colunas[$estado] = [
+                'total'     => $total,
+                'itens'     => $itens,
+                'truncado'  => $total > $itens->count(),
+            ];
+        }
+
+        return $colunas;
+    }
+
+    /** Formato de uma publicação na fila — usado pelas colunas e pela lista. */
+    private function publicacaoParaFila(Publicacao $p): array
+    {
+        return [
+            'id'               => $p->id,
+            'data'             => $p->data->format('d/m/Y'),
+            'usuario'          => $p->user?->name ?? '—',
+            'usuario_removido' => $p->user?->deleted_at !== null,
+            'user_id'          => $p->user_id,
+            'empresa'          => $p->empresa,
+            'mlb_code'         => $p->mlb_code,
+            'vendido'          => $p->vendido,
+            'status_revisao'   => $p->status_revisao,
+            'revisado_por'     => $p->revisadoPor?->name,
+            'revisado_em'      => $p->revisado_em?->format('d/m/Y H:i'),
+            'pendencias'       => $p->pendencias->map(fn($d) => [
+                'id'            => $d->id,
+                'severidade'    => $d->severidade,
+                'categoria'     => $d->categoria,
+                'texto'         => $d->texto,
+                'status'        => $d->status,
+                'aberta_por'    => $d->abertaPor?->name,
+                'aberta_em'     => $d->aberta_em?->format('d/m/Y H:i'),
+                'idade_dias'    => $d->idade_dias,
+                'corrigida_por' => $d->corrigidaPor?->name,
+                'corrigida_em'  => $d->corrigida_em?->format('d/m/Y H:i'),
+            ])->values(),
+        ];
+    }
+
+    /**
+     * Aba Gráfico — o que o gestor nunca conseguiu ver:
+     * quem revisou o quê, quanto do mês foi coberto, há quanto tempo as
+     * pendências estão abertas e onde o time mais erra.
+     */
+    private function revisaoGrafico(Request $request, string $mesRef): array
+    {
+        $base = Publicacao::doMes($mesRef);
+
+        $total = (clone $base)->count();
+        $porStatus = (clone $base)
+            ->select('status_revisao', DB::raw('COUNT(*) as n'))
+            ->groupBy('status_revisao')
+            ->pluck('n', 'status_revisao');
+
+        $naoRevisado = (int) ($porStatus[Revisao::ST_NAO_REVISADO] ?? 0);
+
+        $cobertura = [
+            'total'        => $total,
+            'nao_revisado' => $naoRevisado,
+            'aprovado'     => (int) ($porStatus[Revisao::ST_APROVADO] ?? 0),
+            'em_ajuste'    => (int) ($porStatus[Revisao::ST_EM_AJUSTE] ?? 0),
+            'reconferir'   => (int) ($porStatus[Revisao::ST_RECONFERIR] ?? 0),
+            'pct'          => $total > 0 ? round((($total - $naoRevisado) / $total) * 100, 1) : null,
+        ];
+
+        // Tudo abaixo recorta pelos ANÚNCIOS da competência, não pela data do
+        // evento. Filtrar pendência por `aberta_em` descasava da tela: uma
+        // pendência aberta hoje num anúncio de julho não caía em competência
+        // nenhuma, e o gestor via cards vazios sem entender por quê.
+        $daCompetencia = fn($q) => $q->doMes($mesRef);
+
+        // ─── Produção por revisor ───
+        // Resposta direta a "quem revisou os anúncios desta competência".
+        $porRevisor = Revisao::query()
+            ->whereHas('publicacao', $daCompetencia)
+            ->join('users', 'users.id', '=', 'mlb_revisoes.revisor_id')
+            ->select(
+                'mlb_revisoes.revisor_id',
+                'users.name as revisor',
+                DB::raw("SUM(CASE WHEN para_status = 'aprovado' THEN 1 ELSE 0 END) as aprovados"),
+                DB::raw("SUM(CASE WHEN para_status = 'em_ajuste' THEN 1 ELSE 0 END) as ajustes"),
+                DB::raw('COUNT(*) as total'),
+                DB::raw('MAX(mlb_revisoes.created_at) as ultima')
+            )
+            ->groupBy('mlb_revisoes.revisor_id', 'users.name')
+            ->orderByDesc('total')
+            ->get()
+            ->map(fn($r) => [
+                'revisor'   => $r->revisor,
+                'aprovados' => (int) $r->aprovados,
+                'ajustes'   => (int) $r->ajustes,
+                'total'     => (int) $r->total,
+                // Taxa de acerto de primeira: aprovado sem passar por ajuste.
+                'pct_aprovacao' => $r->total > 0 ? round(($r->aprovados / $r->total) * 100, 1) : null,
+                'ultima'    => Carbon::parse($r->ultima)->format('d/m/Y H:i'),
+            ]);
+
+        // ─── Aging das pendências em aberto ───
+        // Total sozinho não diz nada; o que dói é o que está parado há dias.
+        $pendentes = Pendencia::query()
+            ->pendente()
+            ->whereHas('publicacao', $daCompetencia)
+            ->with('publicacao:id,empresa,mlb_code,user_id', 'publicacao.user:id,name', 'abertaPor:id,name')
+            ->orderBy('aberta_em')
+            ->get();
+
+        $faixa = ['ate_2d' => 0, 'de_3_a_7d' => 0, 'mais_7d' => 0];
+        foreach ($pendentes as $p) {
+            $dias = $p->idade_dias ?? 0;
+            if ($dias <= 2)      $faixa['ate_2d']++;
+            elseif ($dias <= 7)  $faixa['de_3_a_7d']++;
+            else                 $faixa['mais_7d']++;
+        }
+
+        $maisAntigas = $pendentes->take(15)->map(fn($p) => [
+            'id'         => $p->id,
+            'empresa'    => $p->publicacao?->empresa,
+            'mlb_code'   => $p->publicacao?->mlb_code,
+            'publicador' => $p->publicacao?->user?->name,
+            'severidade' => $p->severidade,
+            'categoria'  => $p->categoria,
+            'texto'      => $p->texto,
+            'status'     => $p->status,
+            'aberta_por' => $p->abertaPor?->name,
+            'aberta_em'  => $p->aberta_em?->format('d/m/Y'),
+            'idade_dias' => $p->idade_dias,
+        ])->values();
+
+        // ─── Quem mais recebe pendência ───
+        // Substituiu o recorte por categoria: o campo era opcional no formulário
+        // e o time não preencheria, então o gráfico nasceria só com "sem
+        // categoria". Por publicador o dado se preenche sozinho e responde uma
+        // pergunta que o gestor faz de verdade.
+        $porPublicador = Pendencia::query()
+            ->whereHas('publicacao', $daCompetencia)
+            ->join('mlb_publicacoes', 'mlb_publicacoes.id', '=', 'mlb_pendencias.publicacao_id')
+            ->leftJoin('users', 'users.id', '=', 'mlb_publicacoes.user_id')
+            ->select(DB::raw('COALESCE(users.name, "—") as nome'), DB::raw('COUNT(*) as n'))
+            ->groupBy('nome')
+            ->orderByDesc('n')
+            ->limit(10)
+            ->get()
+            ->map(fn($r) => ['publicador' => $r->nome, 'n' => (int) $r->n]);
+
+        $porSeveridade = Pendencia::query()
+            ->whereHas('publicacao', $daCompetencia)
+            ->select('severidade', DB::raw('COUNT(*) as n'))
+            ->groupBy('severidade')
+            ->pluck('n', 'severidade');
+
+        // ─── Tempo de ciclo e retrabalho ───
+        $tempoMedio = Pendencia::query()
+            ->whereNotNull('resolvida_em')
+            ->whereHas('publicacao', $daCompetencia)
+            ->select(DB::raw('AVG(TIMESTAMPDIFF(HOUR, aberta_em, resolvida_em)) as horas'))
+            ->value('horas');
+
+        // Reaberturas: anúncios que voltaram para em_ajuste depois de já terem
+        // recebido um veredicto — o retrabalho que o gestor não enxergava.
+        $reaberturas = Revisao::query()
+            ->whereHas('publicacao', $daCompetencia)
+            ->where('para_status', Revisao::ST_EM_AJUSTE)
+            ->whereIn('de_status', [Revisao::ST_APROVADO, Revisao::ST_RECONFERIR])
+            ->count();
+
+        return [
+            'grafico' => [
+                'cobertura'      => $cobertura,
+                'por_revisor'    => $porRevisor,
+                'aging'          => $faixa,
+                'mais_antigas'   => $maisAntigas,
+                'por_publicador' => $porPublicador,
+                'por_severidade'=> [
+                    'bloqueio'   => (int) ($porSeveridade[Pendencia::SEV_BLOQUEIO] ?? 0),
+                    'ajuste'     => (int) ($porSeveridade[Pendencia::SEV_AJUSTE] ?? 0),
+                    'observacao' => (int) ($porSeveridade[Pendencia::SEV_OBSERVACAO] ?? 0),
+                ],
+                'tempo_medio_horas' => $tempoMedio !== null ? round((float) $tempoMedio, 1) : null,
+                'reaberturas'   => $reaberturas,
+                'pendentes_total' => $pendentes->count(),
+            ],
+            'filters' => ['mesRef' => $mesRef],
+        ];
+    }
+
+    /**
+     * Competência em que a Revisão abre quando nenhuma é pedida.
+     *
+     * Usar sempre o mês corrente fazia a tela abrir zerada nos primeiros dias do
+     * mês (nenhum anúncio publicado ainda) — tudo em 0 e nenhuma linha, o que lê
+     * como "a revisão quebrou" em vez de "este mês ainda não começou".
+     */
+    private function competenciaInicialRevisao(): string
+    {
+        $atual = now()->format('Y-m');
+
+        if (Publicacao::doMes($atual)->exists()) {
+            return $atual;
+        }
+
+        $ultima = Publicacao::max('data');
+
+        return $ultima ? Carbon::parse($ultima)->format('Y-m') : $atual;
     }
 
     // =========================================================================
@@ -1472,117 +1772,215 @@ class MlbController extends Controller
         return back();
     }
 
-    public function marcarRevisado(Request $request, Publicacao $pub)
-    {
-        $this->checkPubAccess();
-        $this->checkPubRole(['gestor', 'lider']);
-        $novoStatus = !$pub->revisado;
-        $pub->update(['revisado' => $novoStatus]);
+    // ═════════════════════════════════════════════════════════════════════
+    // REVISÃO — máquina de estados (nao_revisado → aprovado/em_ajuste/reconferir)
+    // A lógica vive em RevisaoService; aqui só ficam permissão e validação.
+    // ═════════════════════════════════════════════════════════════════════
 
-        activity('mlb')
-            ->causedBy($request->user())
-            ->withProperties(['mlb_code' => $pub->mlb_code, 'empresa' => $pub->empresa, 'revisado' => $novoStatus])
-            ->log('Publicação ' . $pub->mlb_code . ' (' . $pub->empresa . ') marcada como ' . ($novoStatus ? 'revisada' : 'não revisada'));
+    /** Só líder, gestor ou admin dão veredicto de revisão. */
+    private function checkPodeRevisar(): void
+    {
+        if (!$this->podeVerTodosPub(auth()->user())) {
+            abort(403, 'Somente líder, gestor ou admin revisam anúncios.');
+        }
+    }
+
+    /** Aprova: conferido E correto. Fecha as pendências que houver. */
+    public function aprovarRevisao(Request $request, Publicacao $pub, RevisaoService $service)
+    {
+        $this->checkPubAccess('revisao');
+        $this->checkPodeRevisar();
+
+        $dados = $request->validate(['observacao' => 'nullable|string|max:500']);
+        $service->aprovar($pub, $request->user(), $dados['observacao'] ?? null);
 
         return back();
     }
 
-    public function salvarComentario(Request $request, Publicacao $pub)
+    /** Abre uma pendência — substitui "marcar problema" e "deixar comentário". */
+    public function abrirPendencia(Request $request, Publicacao $pub, RevisaoService $service)
     {
-        $this->checkPubAccess();
-        $this->checkPubRole(['gestor', 'lider']);
-        $user = $request->user();
+        $this->checkPubAccess('revisao');
+        $this->checkPodeRevisar();
 
-        $request->validate(['comentario' => 'nullable|string|max:1000']);
-
-        $comentario = trim($request->comentario ?? '');
-
-        $pub->update([
-            'comentario'               => $comentario ?: null,
-            'comentario_autor_id'      => $comentario ? $user->id : null,
-            'comentario_em'            => $comentario ? now() : null,
-            'comentario_resolvido'     => false,
-            'comentario_resolvido_por' => null,
-            'comentario_resolvido_em'  => null,
+        $dados = $request->validate([
+            'severidade' => ['required', Rule::in(array_keys(Pendencia::SEVERIDADES))],
+            'categoria'  => ['nullable', Rule::in(array_keys(Pendencia::CATEGORIAS))],
+            'texto'      => 'required|string|max:1000',
         ]);
 
-        activity('mlb')
-            ->causedBy($user)
-            ->withProperties(['mlb_code' => $pub->mlb_code, 'empresa' => $pub->empresa, 'comentario' => $comentario ?: null])
-            ->log($comentario
-                ? 'Comentário adicionado na publicação ' . $pub->mlb_code . ' (' . $pub->empresa . '): "' . mb_strimwidth($comentario, 0, 100, '…') . '"'
-                : 'Comentário removido da publicação ' . $pub->mlb_code . ' (' . $pub->empresa . ')');
+        $service->abrirPendencia($pub, $request->user(), $dados);
 
         return back();
     }
 
-    /** Publicador resolve (fecha) um comentário recebido. */
-    public function resolverComentario(Request $request, Publicacao $pub)
+    /**
+     * Publicador informa que corrigiu. Não resolve a pendência — devolve para
+     * o líder reconferir. Antes esse passo não existia.
+     */
+    public function corrigirPendencia(Request $request, Pendencia $pendencia, RevisaoService $service)
     {
         $this->checkPubAccess();
         $user = $request->user();
 
-        // Só o dono da publicação, gestor ou líder do setor pode marcar como resolvido
-        $podeOutroDono = $this->userHasPubCargo($user, 'gestor-de-publicacao')
-            || $this->userHasPubCargo($user, 'lider-de-publicacao');
-        if ($pub->user_id !== $user->id && !$podeOutroDono) {
+        // O dono do anúncio ou quem supervisiona.
+        if ($pendencia->publicacao->user_id !== $user->id && !$this->podeVerTodosPub($user)) {
+            abort(403, 'Somente o publicador do anúncio informa a correção.');
+        }
+
+        $service->marcarCorrigida($pendencia, $user);
+
+        return back();
+    }
+
+    /** Líder confirma que a correção ficou boa. */
+    public function resolverPendencia(Request $request, Pendencia $pendencia, RevisaoService $service)
+    {
+        $this->checkPubAccess('revisao');
+        $this->checkPodeRevisar();
+
+        $service->resolverPendencia($pendencia, $request->user());
+
+        return back();
+    }
+
+    /** Líder reabre: a correção não resolveu. */
+    public function reabrirPendencia(Request $request, Pendencia $pendencia, RevisaoService $service)
+    {
+        $this->checkPubAccess('revisao');
+        $this->checkPodeRevisar();
+
+        $dados = $request->validate(['motivo' => 'nullable|string|max:500']);
+        $service->reabrirPendencia($pendencia, $request->user(), $dados['motivo'] ?? null);
+
+        return back();
+    }
+
+    /** Desfaz o veredicto — devolve o anúncio para a fila. */
+    public function reverterRevisao(Request $request, Publicacao $pub, RevisaoService $service)
+    {
+        $this->checkPubAccess('revisao');
+        $this->checkPodeRevisar();
+
+        $service->reverter($pub, $request->user());
+
+        return back();
+    }
+
+    /** Aprovação em lote — o líder revisa dezenas de anúncios por vez. */
+    public function aprovarLote(Request $request, RevisaoService $service)
+    {
+        $this->checkPubAccess('revisao');
+        $this->checkPodeRevisar();
+
+        $dados = $request->validate([
+            'ids'   => 'required|array|min:1|max:200',
+            'ids.*' => 'integer|exists:mlb_publicacoes,id',
+        ]);
+
+        $qtd = $service->aprovarEmLote($dados['ids'], $request->user());
+
+        return back()->with('success', "{$qtd} anúncio(s) aprovado(s).");
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Adaptadores das rotas antigas
+    // Publicações e Meu Painel ainda chamam estes endpoints. Em vez de manter
+    // duas lógicas de escrita, delegam ao RevisaoService — o comportamento
+    // visível continua o mesmo, mas o registro passa a ser o novo.
+    // ═════════════════════════════════════════════════════════════════════
+
+    /** @deprecated Usar aprovarRevisao/reverterRevisao. */
+    public function marcarRevisado(Request $request, Publicacao $pub, RevisaoService $service)
+    {
+        $this->checkPubAccess();
+        $this->checkPodeRevisar();
+
+        $pub->status_revisao === Revisao::ST_APROVADO
+            ? $service->reverter($pub, $request->user())
+            : $service->aprovar($pub, $request->user());
+
+        return back();
+    }
+
+    /** @deprecated Usar abrirPendencia (severidade observacao). */
+    public function salvarComentario(Request $request, Publicacao $pub, RevisaoService $service)
+    {
+        $this->checkPubAccess();
+        $this->checkPodeRevisar();
+
+        $request->validate(['comentario' => 'nullable|string|max:1000']);
+        $texto = trim($request->comentario ?? '');
+
+        if ($texto === '') {
+            // Apagar o texto equivalia a remover o comentário: resolve as
+            // observações pendentes em vez de deixar registro órfão.
+            foreach ($pub->pendencias()->pendente()->where('severidade', Pendencia::SEV_OBSERVACAO)->get() as $p) {
+                $service->resolverPendencia($p, $request->user());
+            }
+            return back();
+        }
+
+        $service->abrirPendencia($pub, $request->user(), [
+            'severidade' => Pendencia::SEV_OBSERVACAO,
+            'texto'      => $texto,
+        ]);
+
+        return back();
+    }
+
+    /** @deprecated Usar corrigirPendencia/resolverPendencia. */
+    public function resolverComentario(Request $request, Publicacao $pub, RevisaoService $service)
+    {
+        $this->checkPubAccess();
+        $user = $request->user();
+
+        if ($pub->user_id !== $user->id && !$this->podeVerTodosPub($user)) {
             abort(403);
         }
 
-        $novoStatus = !$pub->comentario_resolvido;
-        $pub->update([
-            'comentario_resolvido'     => $novoStatus,
-            'comentario_resolvido_por' => $novoStatus ? $user->id : null,
-            'comentario_resolvido_em'  => $novoStatus ? now() : null,
-        ]);
+        $pendencia = $pub->pendencias()->pendente()
+            ->where('severidade', Pendencia::SEV_OBSERVACAO)
+            ->orderByDesc('aberta_em')
+            ->first();
 
-        activity('mlb')
-            ->causedBy($user)
-            ->withProperties(['mlb_code' => $pub->mlb_code, 'empresa' => $pub->empresa])
-            ->log('Comentário ' . ($novoStatus ? 'resolvido' : 'reaberto') . ' na publicação ' . $pub->mlb_code . ' (' . $pub->empresa . ')');
+        if ($pendencia) {
+            // Líder confirma; publicador apenas informa que corrigiu.
+            $this->podeVerTodosPub($user)
+                ? $service->resolverPendencia($pendencia, $user)
+                : $service->marcarCorrigida($pendencia, $user);
+        }
 
         return back();
     }
 
-    /** Publicador marca/desmarca uma publicação com problema. */
-    public function marcarProblema(Request $request, Publicacao $pub)
+    /** @deprecated Usar abrirPendencia (severidade bloqueio). */
+    public function marcarProblema(Request $request, Publicacao $pub, RevisaoService $service)
     {
         $this->checkPubAccess();
         $user = $request->user();
 
-        // Publicador só pode marcar suas próprias publicações
         if ($this->userHasPubCargo($user, 'publicador') && $pub->user_id !== $user->id) {
             abort(403);
         }
 
         $request->validate(['problema_nota' => 'nullable|string|max:500']);
 
-        $problema = !$pub->problema;
+        $bloqueio = $pub->pendencias()->pendente()
+            ->where('severidade', Pendencia::SEV_BLOQUEIO)
+            ->orderByDesc('aberta_em')
+            ->first();
 
-        if ($problema) {
-            // Abrindo o problema — zera qualquer resolução anterior
-            $nota = trim($request->problema_nota ?? '') ?: null;
-            $pub->update([
-                'problema'               => true,
-                'problema_nota'          => $nota,
-                'problema_em'            => now(),
-                'problema_resolvido_por' => null,
-                'problema_resolvido_em'  => null,
-            ]);
+        if ($bloqueio) {
+            $this->podeVerTodosPub($user)
+                ? $service->resolverPendencia($bloqueio, $user)
+                : $service->marcarCorrigida($bloqueio, $user);
         } else {
-            // Resolvendo — preserva nota e data de abertura para o histórico da revisão
-            $nota = $pub->problema_nota;
-            $pub->update([
-                'problema'               => false,
-                'problema_resolvido_por' => $user->id,
-                'problema_resolvido_em'  => now(),
+            $service->abrirPendencia($pub, $user, [
+                'severidade' => Pendencia::SEV_BLOQUEIO,
+                'texto'      => trim($request->problema_nota ?? '') ?: 'Problema registrado',
             ]);
         }
-
-        activity('mlb')
-            ->causedBy($user)
-            ->withProperties(['mlb_code' => $pub->mlb_code, 'empresa' => $pub->empresa, 'nota' => $nota])
-            ->log('Problema ' . ($problema ? 'marcado' : 'resolvido') . ' na publicação ' . $pub->mlb_code . ' (' . $pub->empresa . ')' . ($nota ? ': "' . $nota . '"' : ''));
 
         return back();
     }

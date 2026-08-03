@@ -40,7 +40,9 @@ const temCust      = (e) => !!(e.cust_id && String(e.cust_id).trim());
 const temAcesso    = (e) => e.acesso_colaborador === 'Com acesso';
 const temGrupo     = (e) => e.grupo_whatsapp === true;
 const ehEntrante   = (e) => temCust(e) && temAcesso(e) && temGrupo(e);
-const temDecola    = (e) => e.decola === true;
+// Decola virou texto em 2026-08-03 (era boolean). Só "Sim" conta como Decola ATIVO —
+// "Mensagem Enviada" é convite mandado sem resposta, ainda pendente para o M1.
+const temDecola    = (e) => e.decola === 'Sim';
 const temPublicado = (e) => PUBLICADO_ESTAGIOS.includes(e.estagio);
 const temCampanha  = (e) => e.campanha_criada === true;
 const m1Completo   = (e) => temDecola(e) && temPublicado(e) && temCampanha(e);
