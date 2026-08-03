@@ -77,7 +77,7 @@ const corFase = (f) => COR_FASE[f] ?? 'text-white/70';
 // Cor do texto por valor de onboarding (verde=ok · âmbar=em progresso · vermelho=bloqueio).
 // Espelha a classificação da ficha (corStatus) — só a cor do texto, p/ a grade escaneável.
 const VAL_POS  = ['Com acesso', 'Já enviado', 'Já listado', 'Concluído', 'Concluido', 'Sim', 'Ativo', 'Checklist realizado', 'Feito', 'Alta'];
-const VAL_PROG = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado', 'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora', 'Preenchendo tabela', 'Verificando', 'Agendada', 'em contato', 'Média', 'Reserva - entrada prox mês'];
+const VAL_PROG = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado', 'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora', 'Preenchendo tabela', 'Verificando', 'Agendada', 'em contato', 'Média', 'Reserva - entrada prox mês', 'Mensagem Enviada'];
 const VAL_NEG  = ['Sem acesso', 'Banida', 'Churn', 'Encerrado', 'Não', 'Não enviado', 'Suspensa', 'Falta informação', 'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal', 'Baixo', 'Abandonou o projeto', 'Não compareceu', 'Não responde', 'Não tem CNPJ', 'Não tem conta ML'];
 function corValor(v) {
     if (!v) return 'text-white/25';
@@ -126,8 +126,10 @@ function fmtDataBR(v) {
     return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v);
 }
 
-// Campos de select editável que aceitam "＋ Criar novo valor" inline.
-const CAMPOS_CRIAVEIS = ['fase', 'polo', 'status_entrada', 'chance_entrada', 'reuniao_onboarding', 'acesso_colaborador', 'planilha_produtos', 'listagem', 'publicacao', 'me1', 'integradora', 'places', 'erp'];
+// Campos de select editável cujo valor criado inline vira opção para as demais empresas
+// (alimenta `valoresPresentes`). `fase` entra aqui só para reaproveitar valores legados no
+// dropdown — criar fase nova é bloqueado no EditSelect (ver `criavel`).
+const CAMPOS_CRIAVEIS = ['fase', 'polo', 'status_entrada', 'chance_entrada', 'reuniao_onboarding', 'acesso_colaborador', 'planilha_produtos', 'listagem', 'publicacao', 'decola', 'me1', 'integradora', 'places', 'erp'];
 
 // ─── Edição em MASSA ────────────────────────────────────────────────────────────────
 // Campos que exigem ficha (o backend IGNORA empresas sem ficha p/ estes; fase/polo não).
@@ -402,7 +404,9 @@ function SemFicha({ onCriar }) {
 }
 
 const NOVO_VALOR = '__novo__';
-function EditSelect({ e, campo, opcoes = [], presentes = [], onSave, onCriar, placeholder = '—', cor }) {
+// `criavel={false}` esconde o "＋ Criar novo valor…" — usado só na Fase, domínio fechado que
+// alimenta FASE_PARA_PROJETO no backend (fase inventada tiraria a empresa do projeto POLOS).
+function EditSelect({ e, campo, opcoes = [], presentes = [], onSave, onCriar, placeholder = '—', cor, criavel = true }) {
     if (exigeFicha(campo, e)) return <SemFicha onCriar={onCriar} />;
     const val = e[campo] ?? '';
     const corTxt = val ? (cor ? cor(val) : 'text-white/85') : 'text-white/25';
@@ -430,7 +434,7 @@ function EditSelect({ e, campo, opcoes = [], presentes = [], onSave, onCriar, pl
         >
             <option value="" className="bg-ecf-card text-white/50">{placeholder}</option>
             {lista.map((o) => <option key={o} value={o} className="bg-ecf-card text-white">{o}</option>)}
-            <option value={NOVO_VALOR} className="bg-ecf-card text-ecf-yellow">＋ Criar novo valor…</option>
+            {criavel && <option value={NOVO_VALOR} className="bg-ecf-card text-ecf-yellow">＋ Criar novo valor…</option>}
         </select>
     );
 }
@@ -621,7 +625,7 @@ export default function PolosPainel({
             planilha_produtos:   { key: 'planilha_produtos', label: 'Planilha produtos', accessor: (e) => e.planilha_produtos },
             listagem:            { key: 'listagem', label: 'Listagem', accessor: (e) => e.listagem },
             publicacao:          { key: 'publicacao', label: 'Publicação', accessor: (e) => e.publicacao },
-            decola:              { key: 'decola', label: 'Decola', accessor: (e) => (e.decola === true ? 'Sim' : e.decola === false ? 'Não' : null) },
+            decola:              { key: 'decola', label: 'Decola', accessor: (e) => e.decola },
             campanha_criada:     { key: 'campanha_criada', label: 'Campanha', accessor: (e) => (e.campanha_criada === true ? 'Sim' : e.campanha_criada === false ? 'Não' : null) },
             contextos_logistica: { key: 'contextos_logistica', label: 'Contextos logística', accessor: (e) => e.contextos_logistica },
             me1:                 { key: 'me1', label: 'ME1', accessor: (e) => e.me1 },
@@ -753,12 +757,12 @@ export default function PolosPainel({
         { campo: 'planilha_produtos',  label: 'Planilha produtos',  tipo: 'select', opcoes: enumOpc('planilha_produtos') },
         { campo: 'listagem',           label: 'Listagem',           tipo: 'select', opcoes: enumOpc('listagem') },
         { campo: 'publicacao',         label: 'Publicação',         tipo: 'select', opcoes: enumOpc('publicacao') },
+        { campo: 'decola',             label: 'Decola',             tipo: 'select', opcoes: enumOpc('decola') },
         { campo: 'me1',                label: 'ME1',                tipo: 'select', opcoes: enumOpc('me1') },
         { campo: 'integradora',        label: 'Integradora',        tipo: 'select', opcoes: enumOpc('integradora') },
         { campo: 'places',             label: 'Places',             tipo: 'select', opcoes: enumOpc('places') },
         { campo: 'erp',                label: 'ERP',                tipo: 'select', opcoes: enumOpc('erp') },
         { campo: 'grupo_whatsapp',     label: 'Grupo WhatsApp',     tipo: 'bool' },
-        { campo: 'decola',             label: 'Decola',             tipo: 'bool' },
         { campo: 'campanha_criada',    label: 'Campanha',           tipo: 'bool' },
         { campo: 'data_solicitacao',   label: 'Data solicitação',   tipo: 'date' },
     ], [opcFase, opcPolo, opcResp, opcoes]);
@@ -1445,7 +1449,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
     // Reutilizados na lente própria E concatenados na Geral (planilha completa). A ordem
     // AQUI tem de bater com COLS_POR_LENTE (cabeçalho ↔ corpo) — ver colsDaLente/CabecalhoLente.
     const celIdentidade = (<>
-        <td className={td}><div className="min-w-[88px]"><EditSelect e={e} campo="fase" opcoes={opcoes.fase} presentes={valoresPresentes.fase} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corFase} /></div></td>
+        <td className={td}><div className="min-w-[88px]"><EditSelect e={e} campo="fase" opcoes={opcoes.fase} presentes={valoresPresentes.fase} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corFase} criavel={false} /></div></td>
         <td className={td}>{e.estagio ? <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full', corEstagio(e.estagio))}>{e.estagio}</span> : <span className="text-white/20 text-[12px]">—</span>}</td>
         <td className={td}><div className="min-w-[120px]"><EditSelect e={e} campo="polo" opcoes={opcoes.polo} presentes={valoresPresentes.polo} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>
         <td className={td}>
@@ -1499,7 +1503,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
         <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="planilha_produtos" opcoes={opcoes.planilha_produtos} presentes={valoresPresentes.planilha_produtos} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="listagem" opcoes={opcoes.listagem} presentes={valoresPresentes.listagem} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="publicacao" opcoes={opcoes.publicacao} presentes={valoresPresentes.publicacao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><EditToggle e={e} campo="decola" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
+        <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="decola" opcoes={opcoes.decola} presentes={valoresPresentes.decola} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><EditToggle e={e} campo="campanha_criada" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
     </>);
 

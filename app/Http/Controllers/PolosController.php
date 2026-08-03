@@ -408,7 +408,8 @@ class PolosController extends Controller
                     'planilha_produtos'        => $impl?->planilha_produtos,
                     'listagem'                 => $impl?->listagem,
                     'publicacao'               => $impl?->publicacao,
-                    'decola'                   => $impl ? (bool) $impl->decola : null,
+                    // decola é texto desde 2026-08-03 (Sim/Não/Mensagem Enviada/valor criado).
+                    'decola'                   => $impl?->decola,
                     'campanha_criada'          => $impl ? (bool) $impl->campanha_criada : null,
                     'contextos_logistica'      => $impl?->contextos_logistica,
                     'me1'                      => $impl?->me1,
@@ -493,6 +494,7 @@ class PolosController extends Controller
                 'planilha_produtos'  => MlbImplementacao::ONB_PLANILHA_PRODUTOS_OPCOES,
                 'listagem'           => MlbImplementacao::ONB_LISTAGEM_OPCOES,
                 'publicacao'         => MlbImplementacao::ONB_PUBLICACAO_OPCOES,
+                'decola'             => MlbImplementacao::ONB_DECOLA_OPCOES,
                 'me1'                => MlbImplementacao::ONB_ME1_OPCOES,
                 'integradora'        => MlbImplementacao::ONB_INTEGRADORA_OPCOES,
                 'places'             => MlbImplementacao::ONB_PLACES_OPCOES,
@@ -597,7 +599,8 @@ class PolosController extends Controller
                     'contextos_logistica', 'me1', 'integradora', 'places', 'erp',
                     // Restauração literal do envio (só o "Desfazer" envia estes — snapshot bruto).
                     'link_enviado_em', 'link_enviado_por'];
-        $BOOL      = ['grupo_whatsapp', 'decola', 'campanha_criada'];
+        // decola saiu daqui em 2026-08-03: virou texto (ONB_DECOLA_OPCOES).
+        $BOOL      = ['grupo_whatsapp', 'campanha_criada'];
         $ENVIO     = 'status_envio'; // ação especial (enviado/falta_enviar)
         $permitidos = array_merge($EMPRESA, $IMPL, [$ENVIO]);
 

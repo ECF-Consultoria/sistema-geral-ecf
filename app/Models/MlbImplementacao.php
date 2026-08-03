@@ -50,7 +50,7 @@ class MlbImplementacao extends Model
         // Onboarding
         'data_solicitacao' => 'date',
         'grupo_whatsapp'   => 'boolean',
-        'decola'           => 'boolean',
+        // 'decola' NÃO tem cast: virou string (ONB_DECOLA_OPCOES) em 2026-08-03.
         'campanha_criada'  => 'boolean',
         'me1_manual'       => 'boolean',
         // Rastreio de envio do link (ONB-ENVIO-LINK)
@@ -145,6 +145,17 @@ class MlbImplementacao extends Model
         'Estágio 2',
         'Suspensa',
         'Banida',
+    ];
+
+    /**
+     * Status do Programa Decola. Era boolean (Sim/Não) até 2026-08-03; virou texto para
+     * comportar o estado intermediário "Mensagem Enviada" (convite mandado, sem resposta)
+     * e aceitar valor criado inline no Painel Polos.
+     */
+    public const ONB_DECOLA_OPCOES = [
+        'Sim',
+        'Não',
+        'Mensagem Enviada',
     ];
 
     /** Status do ME1 (Mercado Envios Full nível 1) */

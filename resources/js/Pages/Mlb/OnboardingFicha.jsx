@@ -13,6 +13,7 @@ const ONB_ACESSO_COLABORADOR_OPCOES = ['Com acesso', 'Sem acesso'];
 const ONB_PLANILHA_PRODUTOS_OPCOES  = ['Já enviado', 'Não enviado'];
 const ONB_LISTAGEM_OPCOES           = ['Não', 'Pronto para listar', 'Já listado', 'Falta informação'];
 const ONB_PUBLICACAO_OPCOES         = ['Concluído', 'Estágio 2', 'Suspensa', 'Banida'];
+const ONB_DECOLA_OPCOES             = ['Sim', 'Não', 'Mensagem Enviada'];
 const ONB_ME1_OPCOES = [
     'Sem itens ainda', 'Não é necessário', 'Ativo', 'Em contratação', 'Precisa de ME1',
     'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora',
@@ -41,8 +42,8 @@ function corStatus(valor) {
     const positivos = ['Com acesso', 'Já enviado', 'Já listado', 'Concluído', 'Sim', 'Ativo', 'Checklist realizado'];
     const emProgresso = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado',
         'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora',
-        'Preenchendo tabela', 'Verificando'];
-    const negativos = ['Sem acesso', 'Banida', 'Churn', 'Encerrado', 'Falta informação',
+        'Preenchendo tabela', 'Verificando', 'Mensagem Enviada'];
+    const negativos = ['Sem acesso', 'Banida', 'Churn', 'Encerrado', 'Não', 'Falta informação',
         'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal'];
     const fasesAtivas = ['M1', 'M2', 'M3', 'M4'];
     if (positivos.includes(valor)) return 'text-emerald-300 bg-emerald-500/10';
@@ -620,13 +621,14 @@ function ModalProdutos({ impl, opcoes, onClose }) {
         planilha_produtos: impl.planilha_produtos ?? '',
         listagem:          impl.listagem          ?? '',
         publicacao:        impl.publicacao        ?? '',
-        decola:            impl.decola            ?? null,
+        decola:            impl.decola            ?? '',
     });
     const [saving, setSaving] = useState(false);
 
     const planilhaOpts  = opcoes?.planilha_produtos ?? ONB_PLANILHA_PRODUTOS_OPCOES;
     const listagemOpts  = opcoes?.listagem          ?? ONB_LISTAGEM_OPCOES;
     const publicacaoOpts = opcoes?.publicacao       ?? ONB_PUBLICACAO_OPCOES;
+    const decolaOpts    = opcoes?.decola            ?? ONB_DECOLA_OPCOES;
 
     function submit(e) {
         e.preventDefault();
@@ -694,11 +696,16 @@ function ModalProdutos({ impl, opcoes, onClose }) {
                     </div>
 
                     <div>
-                        <FieldLabel>Decola?</FieldLabel>
-                        <ToggleSimNao
-                            value={form.decola}
-                            onChange={v => setForm(f => ({ ...f, decola: v }))}
-                        />
+                        <FieldLabel>Decola</FieldLabel>
+                        <Select value={form.decola} onValueChange={v => setForm(f => ({ ...f, decola: v }))}>
+                            <SelectTrigger className="w-full h-10 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px]">
+                                <SelectValue placeholder="—" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={SEM_VALOR}>—</SelectItem>
+                                {decolaOpts.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     <div className="flex items-center justify-end gap-3 pt-2">
@@ -1013,7 +1020,7 @@ export default function OnboardingFicha({ impl, empresa, opcoes }) {
                                 }
                             </div>
                             <div>
-                                <StatusBadge valor={impl.decola === true ? 'Sim' : impl.decola === false ? 'Não' : null} />
+                                <StatusBadge valor={impl.decola ?? null} />
                                 {impl.decola !== null && impl.decola !== undefined && (
                                     <span className="text-white/30 text-[11px] ml-1">Decola</span>
                                 )}
