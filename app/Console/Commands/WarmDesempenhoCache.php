@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\User;
+use App\Services\Desempenho\CompanyScoreSnapshotWriter;
 use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricPeriodResolver;
 use Carbon\Carbon;
@@ -26,10 +27,10 @@ use Illuminate\Support\Facades\Log;
  * Filtro canônico: user_setores → cargos.slug IN ['analista','estrategista'].
  * Mesmo escopo do PerformanceController::index e do SnapshotDesempenhoScores.
  *
- * Este comando NÃO grava snapshot — só popula cache Redis (compute()
- * agregado). Snapshot mensal fechado continua no command
- * `desempenho:consolidar-mes`; snapshot diário do mês em curso continua
- * no `desempenho:snapshot-scores`.
+ * Este comando NÃO grava o snapshot AGREGADO (`desempenho_score_snapshots`)
+ * — só popula cache Redis (compute() agregado). Snapshot mensal fechado
+ * continua no command `desempenho:consolidar-mes`; snapshot diário do mês
+ * em curso continua no `desempenho:snapshot-scores`.
  *
  * Fase 106 Plan 01 (SC1 — fix timeout do mês fechado): o warm agendado
  * passou a aquecer DOIS alvos na mesma execução — o mês corrente
@@ -39,6 +40,21 @@ use Illuminate\Support\Facades\Log;
  * também `--mes=YYYY-MM` (catch-up de UMA competência específica, sem
  * tocar o mês corrente) e `--user=*` array (restringe a IDs específicos —
  * insumo do dispatch sob-demanda do Plan 106-02).
+ *
+ * Fase 122 (SNAP-03/D-122-02) — este comando PASSA a gravar a tabela
+ * POR EMPRESA (`desempenho_company_score_snapshots`, distinta do snapshot
+ * agregado acima) via `CompanyScoreSnapshotWriter::sync()`, origem
+ * `warm_cache`. Como o warm roda a cada 8min sobre o mês corrente E o
+ * último mês fechado, a trava de congelamento do writer é essencial: uma
+ * competência já congelada por `desempenho:consolidar-mes` NUNCA é
+ * sobrescrita por este comando — `sync()` devolve `congelado: true` e não
+ * toca em nada. Isso importa porque a margem do bônus é instável na
+ * fronteira do limiar da régua (a mesma competência fechada relida 14h
+ * depois deu 2,52% em vez de 4,24% num caso real — `122-CONTEXT.md` item
+ * 4): sem a trava, o warm reintroduziria essa instabilidade num mês que já
+ * deveria estar congelado. Falha do writer não derruba o ciclo — o
+ * `try/catch (\Throwable)` que já envolve o corpo do laço por user cobre a
+ * chamada.
  */
 class WarmDesempenhoCache extends Command
 {
@@ -51,6 +67,7 @@ class WarmDesempenhoCache extends Command
     public function __construct(
         private DesempenhoScoreService $scoreService,
         private MetricPeriodResolver $periodResolver,
+        private CompanyScoreSnapshotWriter $snapshotWriter,
     ) {
         parent::__construct();
     }
@@ -113,6 +130,10 @@ class WarmDesempenhoCache extends Command
         $ok   = 0;
         $fail = 0;
         $t0   = microtime(true);
+        // Fase 122 (SNAP-03) — totalizadores da persistência por empresa.
+        $empresasUpserted = 0;
+        $empresasPruned   = 0;
+        $pulosCongelados  = 0;
 
         foreach ($mesesAlvo as $mesReferencia) {
             foreach ($users as $user) {
@@ -140,6 +161,33 @@ class WarmDesempenhoCache extends Command
                         $resultado = $this->scoreService->computeCached($user, $mesReferencia, null, incluirEmpresasScore: true);
                     }
 
+                    // Fase 122 (SNAP-03/D-122-02) — grava as linhas por
+                    // empresa da competência que este ciclo aqueceu. O warm
+                    // aquece o mês corrente E o último mês fechado a cada 8
+                    // minutos: para o mês fechado, a trava de congelamento do
+                    // writer devolve `congelado: true` e a competência
+                    // congelada fica intacta — é o cenário exato que D-122-02
+                    // existe para cobrir. Payload pode vir do cache (arrays,
+                    // não stdClass) — o writer normaliza os dois formatos,
+                    // nada a converter aqui. Motivação da robustez a
+                    // re-execução: a margem do bônus é instável na fronteira
+                    // (mesma competência fechada relida 14h depois deu
+                    // 2,52% em vez de 4,24% — 122-CONTEXT.md item 4), e o
+                    // warm reprocessa a mesma competência continuamente.
+                    if (array_key_exists('score_status_por_empresa', $resultado)) {
+                        $syncResult = $this->snapshotWriter->sync(
+                            $user,
+                            $mesReferencia,
+                            $resultado['empresas_score'] ?? [],
+                            CompanyScoreSnapshotWriter::ORIGEM_WARM_CACHE,
+                        );
+                        $empresasUpserted += $syncResult['upserted'];
+                        $empresasPruned   += $syncResult['pruned'];
+                        if ($syncResult['congelado']) {
+                            $pulosCongelados++;
+                        }
+                    }
+
                     $elapsed = round(microtime(true) - $tUser, 2);
                     $this->line("  ✓ user={$user->id} ({$user->name}) mes={$mesReferencia->format('Y-m')} — {$elapsed}s");
                     $ok++;
@@ -154,7 +202,7 @@ class WarmDesempenhoCache extends Command
         }
 
         $total = round(microtime(true) - $t0, 2);
-        $this->info("[Desempenho] Warm cache concluído em {$total}s — OK={$ok}, FAIL={$fail}");
+        $this->info("[Desempenho] Warm cache concluído em {$total}s — OK={$ok}, FAIL={$fail} · Empresas: {$empresasUpserted} linhas (podadas: {$empresasPruned}, pulos por congelamento: {$pulosCongelados})");
 
         return $fail > 0 ? self::FAILURE : self::SUCCESS;
     }

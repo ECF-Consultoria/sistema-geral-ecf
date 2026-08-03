@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\User;
+use App\Services\Desempenho\CompanyScoreSnapshotWriter;
 use App\Services\DesempenhoScoreService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -36,6 +37,20 @@ use Illuminate\Support\Facades\Log;
  * Após o lote: popula `ranking_pos` do dia via UPDATE … ROW_NUMBER() OVER
  * (ORDER BY score DESC) — MariaDB nativo, fallback iterativo para SQLite.
  * Ranking DIÁRIO filtra por `ref_date` + `mes_referencia IS NULL`.
+ *
+ * Fase 122 (SNAP-01/SNAP-03/D-122-07) — o comando passa a rodar com o
+ * shadow LIGADO (`incluirEmpresasScore: true`), então `breakdown_json`
+ * passa a ganhar `empresas_score` também na row DIÁRIA (SNAP-01). Custo:
+ * `computeEmpresasScore()` por user — mas os diffs por empresa vêm do
+ * cache `adman:diff:v6`/`shopee:diff:v2` que `desempenho:warm-cache` já
+ * mantém quente de 8 em 8 minutos, então o acréscimo é de agregação, não
+ * de HTTP novo (T-122-14, aceito — 1 execução/dia para ~11-15
+ * profissionais). Depois de gravar/atualizar a row diária, o comando
+ * chama `CompanyScoreSnapshotWriter::sync()` com
+ * `origem = 'snapshot_diario'`, refrescando as linhas por empresa da
+ * COMPETÊNCIA CORRENTE todo dia até o fechamento mensal congelar — a
+ * trava de congelamento do writer (D-122-02) é o que protege um
+ * `--data=` retroativo de sobrescrever mês já fechado.
  */
 class SnapshotDesempenhoScores extends Command
 {
@@ -45,8 +60,10 @@ class SnapshotDesempenhoScores extends Command
 
     protected $description = 'Grava snapshot diário do score de desempenho (motor v2 4-parâmetros; mês em curso parcial).';
 
-    public function __construct(private DesempenhoScoreService $scoreService)
-    {
+    public function __construct(
+        private DesempenhoScoreService $scoreService,
+        private CompanyScoreSnapshotWriter $snapshotWriter,
+    ) {
         parent::__construct();
     }
 
@@ -83,10 +100,16 @@ class SnapshotDesempenhoScores extends Command
         $ok = 0;
         $fail = 0;
         $semCarteira = 0;
+        // Fase 122 (SNAP-03) — totalizadores da persistência por empresa.
+        $empresasUpserted = 0;
+        $empresasPruned = 0;
+        $pulosCongelados = 0;
 
         foreach ($users as $user) {
             try {
-                $result = $this->scoreService->compute($user, $mesReferencia);
+                // Fase 122 (SNAP-01/D-122-07): shadow ligado — entrega
+                // `empresas_score` no breakdown_json também da row diária.
+                $result = $this->scoreService->compute($user, $mesReferencia, null, incluirEmpresasScore: true);
 
                 // DESEMP-10 — sem carteira: pula o user (não grava row).
                 if (($result['sem_carteira'] ?? false) === true) {
@@ -126,6 +149,26 @@ class SnapshotDesempenhoScores extends Command
                         'ref_date' => $refDateCarbon,
                     ]));
                 }
+
+                // Fase 122 (SNAP-03) — persistência por empresa da
+                // competência CORRENTE. `$mesReferencia` já é o 1º dia do mês
+                // do `--data` (competência correta); a trava de congelamento
+                // do writer (D-122-02) protege um `--data=` retroativo de
+                // sobrescrever mês já fechado por `consolidar_mes`.
+                if (array_key_exists('score_status_por_empresa', $result)) {
+                    $syncResult = $this->snapshotWriter->sync(
+                        $user,
+                        $mesReferencia,
+                        $result['empresas_score'] ?? [],
+                        CompanyScoreSnapshotWriter::ORIGEM_SNAPSHOT_DIARIO,
+                    );
+                    $empresasUpserted += $syncResult['upserted'];
+                    $empresasPruned   += $syncResult['pruned'];
+                    if ($syncResult['congelado']) {
+                        $pulosCongelados++;
+                    }
+                }
+
                 $ok++;
             } catch (\Throwable $e) {
                 Log::error("[Desempenho] Falha snapshot diário user {$user->id} ({$user->name}): {$e->getMessage()}");
@@ -137,7 +180,7 @@ class SnapshotDesempenhoScores extends Command
         // 2º passo — popular ranking_pos do dia (apenas snapshots diários).
         $this->popularRankingPos($refDateStr);
 
-        $this->info("[Desempenho] OK: {$ok} · Falhas: {$fail} · Sem carteira: {$semCarteira}");
+        $this->info("[Desempenho] OK: {$ok} · Falhas: {$fail} · Sem carteira: {$semCarteira} · Empresas: {$empresasUpserted} linhas (podadas: {$empresasPruned}, pulos por congelamento: {$pulosCongelados})");
         return self::SUCCESS;
     }
 
