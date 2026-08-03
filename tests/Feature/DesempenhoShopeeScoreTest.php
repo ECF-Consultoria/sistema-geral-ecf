@@ -588,18 +588,20 @@ class DesempenhoShopeeScoreTest extends TestCase
         );
     }
 
-    // ═══ cacheKey v15 (quick 260731-pvk: bump v14→v15, mediana no faturamento) ══
+    // ═══ cacheKey v16 (Fase 122 · SNAP-05: bump v15→v16, shape novo de
+    // margem_amostra sob o shadow — supersede o bump v14→v15 do quick
+    // 260731-pvk, mediana no faturamento) ══════════════════════════════════
 
     #[Test]
-    public function test_cache_key_bumpado_para_v15(): void
+    public function test_cache_key_bumpado_para_v16(): void
     {
-        $user = $this->criarUserComCargo('Cache V15 pvk');
+        $user = $this->criarUserComCargo('Cache V16 122');
         $mes  = Carbon::parse('2026-08-01');
 
         $service = app(DesempenhoScoreService::class);
         $chave   = $service->cacheKey($user->id, $mes);
 
-        $this->assertSame('desempenho.compute.v15.' . $user->id . '.current_month', $chave);
+        $this->assertSame('desempenho.compute.v16.' . $user->id . '.current_month', $chave);
     }
 }
 
