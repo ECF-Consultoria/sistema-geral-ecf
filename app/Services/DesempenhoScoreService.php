@@ -399,7 +399,19 @@ class DesempenhoScoreService
         // fechado mesmo com o código novo em prod. As chaves v14 viram órfãs
         // e expiram sozinhas por TTL — não precisa (e não deve) rodar
         // `cache:clear` (incidente 2026-07-30: derrubou o site inteiro).
-        return sprintf('desempenho.compute.v15.%d.%s', $userId, $periodKey);
+        // v16 (2026-08-03, Fase 122 · SNAP-05/D-122-04): `margem_amostra`
+        // muda de SHAPE quando o shadow roda — passa a medir cobertura de
+        // `margem_var_pp` (pontos percentuais, por empresa) em vez de
+        // `contribution_margin_pct.diff_pct` (variação relativa agregada), e
+        // ganha as chaves `base`/`legado`. Com o shadow desligado o shape
+        // continua o de sempre (3 chaves, mesmos valores) — o bump é por
+        // causa do ramo shadow, não do payload legado. Sem este bump o Redis
+        // serviria o payload v15 (shape antigo de `margem_amostra` sob o
+        // shadow) por até 7 dias em mês fechado, sob a MESMA chave que o
+        // código novo passaria a escrever. As chaves v15 viram órfãs e
+        // expiram sozinhas por TTL — `cache:clear` no VPS é DESNECESSÁRIO e
+        // PROIBIDO (incidente 2026-07-30 derrubou o site inteiro).
+        return sprintf('desempenho.compute.v16.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -640,6 +652,50 @@ class DesempenhoScoreService
         $diasDecorridos = $ehMesEmCurso ? $hoje->day : $mesCorrente->daysInMonth;
         $diasNoMes      = $mesCorrente->daysInMonth;
 
+        // ── Amostra da margem (Fase 110 · Plan 02 · FIXMARG-03; Fase 122 ·
+        // SNAP-05 · D-122-04) ──────────────────────────────────────────────
+        // Legado: cobertura de `contribution_margin_pct.diff_pct` (variação
+        // RELATIVA, agregada da carteira) — alimenta o gate de qualidade do
+        // congelamento mensal (`ConsolidarMesDesempenho`); cobertura < limiar
+        // RECUSA persistir o snapshot. Preservado INTOCADO — nenhum valor
+        // muda, nem com o shadow ligado.
+        $margemAmostraLegado = [
+            'n_real'     => $nComMargemReal,
+            'n_elegivel' => $nElegivelAdman,
+            'cobertura'  => $nElegivelAdman > 0 ? round($nComMargemReal / $nElegivelAdman, 4) : 1.0,
+        ];
+        $margemAmostra = $margemAmostraLegado;
+
+        if ($empresasScore !== null) {
+            // SNAP-05 — com o shadow rodando, `margem_amostra` passa a medir
+            // cobertura de `margem_var_pp` (PONTOS PERCENTUAIS, por empresa),
+            // a grandeza que a milestone v21.0 usa para pagar (o `.diff`
+            // nativo é instável na fronteira — ver 122-CONTEXT.md item 4).
+            // Denominador: linhas de `$empresasScore` com `fonte_financeira`
+            // não-nula e diferente de `shopee` (Shopee usa placeholder de
+            // margem, D5 da REQUIREMENTS-v21; `sem_fonte` não tem expectativa
+            // de margem) — mesma semântica de "ausência não é degradação" do
+            // denominador legado. `legado` preserva os 3 números de sempre:
+            // o gate FIXMARG-03 mediu `cobertura_prev=0.6415` em produção
+            // (probe MPP-04) e trocar a base do gate junto com a base do
+            // relatório recusaria a persistência mensal para quase todo
+            // mundo — quem escolhe a base do gate é o Plano 03 (D-122-05),
+            // nunca esta troca implícita.
+            $elegiveisPp = $empresasScore->filter(
+                fn ($e) => $e->fonte_financeira !== null && $e->fonte_financeira !== 'shopee'
+            );
+            $nElegivelPp = $elegiveisPp->count();
+            $nRealPp     = $elegiveisPp->filter(fn ($e) => $e->margem_var_pp !== null)->count();
+
+            $margemAmostra = [
+                'n_real'     => $nRealPp,
+                'n_elegivel' => $nElegivelPp,
+                'cobertura'  => $nElegivelPp > 0 ? round($nRealPp / $nElegivelPp, 4) : 1.0,
+                'base'       => 'margem_var_pp',
+                'legado'     => $margemAmostraLegado,
+            ];
+        }
+
         $payload = [
             'user_id'               => $user->id,
             'user_name'             => $user->name,
@@ -651,18 +707,9 @@ class DesempenhoScoreService
             // só-performance; consumidores existentes (Fase 92) não recomputam.
             'empresas_carteira'     => $contadores['empresas_unicas'],
             'empresas_com_baseline' => $empresasBaseline,
-            // ── Amostra da margem (Fase 110 · Plan 02 · FIXMARG-03) ───────────
-            // Alimenta o gate de qualidade do congelamento mensal
-            // (`ConsolidarMesDesempenho`) — cobertura < limiar RECUSA persistir
-            // o snapshot (rede de segurança contra rate-limit 429 no instante
-            // do cron). cobertura=1.0 quando não há empresa Adman elegível
-            // (só-Shopee/sem carteira financeira) — ausência legítima de
-            // expectativa de margem NÃO é degradação (110-CONTEXT.md).
-            'margem_amostra' => [
-                'n_real'     => $nComMargemReal,
-                'n_elegivel' => $nElegivelAdman,
-                'cobertura'  => $nElegivelAdman > 0 ? round($nComMargemReal / $nElegivelAdman, 4) : 1.0,
-            ],
+            // ── Amostra da margem — ver bloco `$margemAmostra` calculado
+            // acima (Fase 110 · FIXMARG-03; Fase 122 · SNAP-05 · D-122-04).
+            'margem_amostra' => $margemAmostra,
             'componentes' => [
                 'nps_medio'           => $nps,
                 'var_faturamento_pct' => $varFat,
