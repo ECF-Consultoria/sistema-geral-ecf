@@ -64,11 +64,19 @@ recalcula o cache a partir das pendências reais. Faz dual-write nas colunas
 legadas, então Histórico, Empresas, Publicações e Dashboard seguem funcionando.
 
 **Tela** — `/mlb/revisao` reescrita, dois modos:
-- *Fila* (líder): linhas densas agrupadas por loja, Aprovar / Pendência por linha,
-  aprovação em lote, severidade e idade visíveis, paginação real.
-- *Supervisão* (gestor): cobertura da competência, quem revisou o quê e quando,
+- *Fila* (líder): **três colunas por estado** — Não revisado / Em ajuste (bola com o
+  publicador) / Reconferir (bola com você). Agrupa pelo que precisa acontecer, não
+  pela loja. Cada coluna traz o total real, carrega no máximo 50 cards e declara o
+  corte ("mostrando 50 de 306 — ver todos", que cai na lista paginada daquele estado).
+  Aprovar / Pendência por card, aprovação em lote, severidade e idade visíveis.
+- *Gráfico* (gestor): cobertura da competência, quem revisou o quê e quando,
   aging (até 2d / 3–7d / +7d), tempo médio de resolução, reaberturas e em que
   categoria o time mais erra.
+
+O layout de linha larga foi descartado a pedido do usuário: a coluna da loja era
+`flex-1` e o nome se repetia em toda linha sob um cabeçalho que já dizia a loja —
+sobrava um vazio no meio. Quatro tratamentos foram comparados em mockup antes da
+escolha (linha compacta, tabela densa, grade de cards, colunas por estado).
 
 **Integrações** — eixo Qualidade do `PublicadorScoreService` lê pendências
 (bloqueio pendente / pendências resolvidas), mantendo a régua 60-40. Meu Painel

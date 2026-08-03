@@ -20,6 +20,7 @@ use App\Services\PlanoMetasPublicacaoService;
 use App\Services\RevisaoService;
 use App\Services\VendasSyncService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -1376,13 +1377,25 @@ class MlbController extends Controller
             ? round((($kpis['total'] - $kpis['nao_revisado']) / $kpis['total']) * 100, 1)
             : null;
 
+        // ─── Visão em colunas (padrão) ───
+        // Agrupa pelo que precisa acontecer, não pela loja: o líder vê de quem
+        // é a bola em cada anúncio. Só vale quando nenhum estado específico foi
+        // pedido — filtrar por um estado vira lista única paginada.
+        if ($status === 'pendentes') {
+            return [
+                'colunas'     => $this->colunasPorEstado($base, $severidade),
+                'publicacoes' => null,
+                'kpis'        => $kpis,
+                'filters'     => compact('mesRef', 'funcId', 'status', 'severidade', 'busca'),
+            ];
+        }
+
         $query = (clone $base)->with([
             'user:id,name',
             'pendencias' => fn($q) => $q->with('abertaPor:id,name', 'corrigidaPor:id,name')->pendente(),
         ]);
 
         match ($status) {
-            'pendentes'    => $query->naFilaDoLider(),
             'nao_revisado' => $query->comStatusRevisao(Revisao::ST_NAO_REVISADO),
             'aprovado'     => $query->comStatusRevisao(Revisao::ST_APROVADO),
             'em_ajuste'    => $query->comStatusRevisao(Revisao::ST_EM_AJUSTE),
@@ -1401,36 +1414,95 @@ class MlbController extends Controller
             ->orderBy('id')
             ->paginate(60)
             ->withQueryString()
-            ->through(fn($p) => [
-                'id'                 => $p->id,
-                'data'               => $p->data->format('d/m/Y'),
-                'usuario'            => $p->user?->name ?? '—',
-                'usuario_removido'   => $p->user?->deleted_at !== null,
-                'user_id'            => $p->user_id,
-                'empresa'            => $p->empresa,
-                'mlb_code'           => $p->mlb_code,
-                'vendido'            => $p->vendido,
-                'status_revisao'     => $p->status_revisao,
-                'revisado_por'       => $p->revisadoPor?->name,
-                'revisado_em'        => $p->revisado_em?->format('d/m/Y H:i'),
-                'pendencias'         => $p->pendencias->map(fn($d) => [
-                    'id'           => $d->id,
-                    'severidade'   => $d->severidade,
-                    'categoria'    => $d->categoria,
-                    'texto'        => $d->texto,
-                    'status'       => $d->status,
-                    'aberta_por'   => $d->abertaPor?->name,
-                    'aberta_em'    => $d->aberta_em?->format('d/m/Y H:i'),
-                    'idade_dias'   => $d->idade_dias,
-                    'corrigida_por'=> $d->corrigidaPor?->name,
-                    'corrigida_em' => $d->corrigida_em?->format('d/m/Y H:i'),
-                ])->values(),
-            ]);
+            ->through(fn($p) => $this->publicacaoParaFila($p));
 
         return [
+            'colunas'     => null,
             'publicacoes' => $publicacoes,
             'kpis'        => $kpis,
             'filters'     => compact('mesRef', 'funcId', 'status', 'severidade', 'busca'),
+        ];
+    }
+
+    /** Quantos cards cada coluna carrega antes de mandar o líder filtrar. */
+    private const REVISAO_COLUNA_LIMITE = 50;
+
+    /**
+     * Monta as três colunas de trabalho da fila.
+     *
+     * Cada coluna traz o total real e no máximo REVISAO_COLUNA_LIMITE cards —
+     * "Não revisado" costuma ter centenas, e despejar tudo de uma vez faria a
+     * coluna virar um paredão inútil. Passando do limite, a tela oferece o
+     * filtro daquele estado, que cai na lista paginada.
+     */
+    private function colunasPorEstado(Builder $base, string $severidade = ''): array
+    {
+        $estados = [
+            Revisao::ST_NAO_REVISADO,
+            Revisao::ST_EM_AJUSTE,
+            Revisao::ST_RECONFERIR,
+        ];
+
+        $colunas = [];
+
+        foreach ($estados as $estado) {
+            $q = (clone $base)->comStatusRevisao($estado);
+
+            if ($severidade) {
+                $q->whereHas('pendencias', fn($sub) => $sub->pendente()->where('severidade', $severidade));
+            }
+
+            $total = (clone $q)->count();
+
+            $itens = $q->with([
+                    'user:id,name',
+                    'pendencias' => fn($sub) => $sub->with('abertaPor:id,name', 'corrigidaPor:id,name')->pendente(),
+                ])
+                // O que espera há mais tempo sobe — é a ordem de uma fila.
+                ->orderBy('data')
+                ->orderBy('id')
+                ->limit(self::REVISAO_COLUNA_LIMITE)
+                ->get()
+                ->map(fn($p) => $this->publicacaoParaFila($p))
+                ->values();
+
+            $colunas[$estado] = [
+                'total'     => $total,
+                'itens'     => $itens,
+                'truncado'  => $total > $itens->count(),
+            ];
+        }
+
+        return $colunas;
+    }
+
+    /** Formato de uma publicação na fila — usado pelas colunas e pela lista. */
+    private function publicacaoParaFila(Publicacao $p): array
+    {
+        return [
+            'id'               => $p->id,
+            'data'             => $p->data->format('d/m/Y'),
+            'usuario'          => $p->user?->name ?? '—',
+            'usuario_removido' => $p->user?->deleted_at !== null,
+            'user_id'          => $p->user_id,
+            'empresa'          => $p->empresa,
+            'mlb_code'         => $p->mlb_code,
+            'vendido'          => $p->vendido,
+            'status_revisao'   => $p->status_revisao,
+            'revisado_por'     => $p->revisadoPor?->name,
+            'revisado_em'      => $p->revisado_em?->format('d/m/Y H:i'),
+            'pendencias'       => $p->pendencias->map(fn($d) => [
+                'id'            => $d->id,
+                'severidade'    => $d->severidade,
+                'categoria'     => $d->categoria,
+                'texto'         => $d->texto,
+                'status'        => $d->status,
+                'aberta_por'    => $d->abertaPor?->name,
+                'aberta_em'     => $d->aberta_em?->format('d/m/Y H:i'),
+                'idade_dias'    => $d->idade_dias,
+                'corrigida_por' => $d->corrigidaPor?->name,
+                'corrigida_em'  => $d->corrigida_em?->format('d/m/Y H:i'),
+            ])->values(),
         ];
     }
 

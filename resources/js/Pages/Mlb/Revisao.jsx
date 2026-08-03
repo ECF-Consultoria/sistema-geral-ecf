@@ -363,10 +363,192 @@ function LinhaPub({ pub, selecionado, onToggleSelecao, podeRevisar, severidades,
 // Aba Fila — a lista de trabalho do líder
 // ═══════════════════════════════════════════════════════════════════════
 
-function AbaFila({ publicacoes, kpis, filters, publicadores, podeRevisar, severidades, categorias, aplicar }) {
+/**
+ * Card de uma publicação dentro da coluna de estado.
+ * Compacto de propósito: nada estica, então não sobra espaço morto no meio
+ * como acontecia na linha larga que repetia o nome da loja.
+ */
+function CardEstado({ pub, selecionado, onToggleSelecao, podeRevisar, severidades, categorias }) {
+    const [abrirForm, setAbrirForm] = useState(false);
+
+    const pendencia = pub.pendencias?.[0];
+    const sev = pendencia ? (SEVERIDADE[pendencia.severidade] ?? SEVERIDADE.ajuste) : null;
+    const IconSev = sev?.icon;
+
+    const aprovar  = () => router.patch(route('mlb.revisao.aprovar', pub.id), {}, { preserveScroll: true, preserveState: true });
+    const reverter = () => router.patch(route('mlb.revisao.reverter', pub.id), {}, { preserveScroll: true, preserveState: true });
+    const resolver = (id) => router.patch(route('mlb.pendencia.resolver', id), {}, { preserveScroll: true, preserveState: true });
+    const reabrir  = (id) => router.patch(route('mlb.pendencia.reabrir', id), {}, { preserveScroll: true, preserveState: true });
+
+    return (
+        <div className={cn(
+            'rounded-lg border p-2.5 transition-colors',
+            pub.status_revisao === 'em_ajuste'  ? 'border-red-500/25 bg-red-500/[0.04]'
+          : pub.status_revisao === 'reconferir' ? 'border-amber-500/25 bg-amber-500/[0.04]'
+          : 'border-white/[0.07] bg-white/[0.015] hover:bg-white/[0.03]',
+        )}>
+            <div className="flex items-center gap-2">
+                {podeRevisar && (
+                    <input
+                        type="checkbox"
+                        checked={selecionado}
+                        onChange={() => onToggleSelecao(pub.id)}
+                        className="shrink-0 w-3.5 h-3.5 rounded border-white/20 bg-white/[0.03] accent-ecf-yellow cursor-pointer"
+                    />
+                )}
+                <a
+                    href={mlbUrl(pub.mlb_code)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 font-mono text-[11.5px] hover:text-purple-300 truncate"
+                >
+                    {pub.mlb_code}
+                </a>
+                <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                    {sev && (
+                        <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold', sev.chip, sev.text)}>
+                            <IconSev size={9} /> {sev.label}
+                        </span>
+                    )}
+                    <IdadeBadge dias={pendencia?.idade_dias} />
+                </div>
+            </div>
+
+            {pendencia?.texto && (
+                <p className="text-white/70 text-[12px] mt-1.5 leading-snug line-clamp-2" title={pendencia.texto}>
+                    {pendencia.texto}
+                </p>
+            )}
+
+            <div className="flex items-center gap-2 mt-1.5">
+                <span className="text-white/35 text-[11px] truncate min-w-0" title={`${pub.empresa} · ${pub.usuario}`}>
+                    {pub.empresa || '— sem loja —'} · {pub.usuario}
+                </span>
+                {pub.usuario_removido && (
+                    <span className="shrink-0 px-1 py-0.5 rounded text-[9px] bg-red-500/15 border border-red-500/30 text-red-400">rem</span>
+                )}
+            </div>
+
+            <div className="flex items-center justify-between gap-2 mt-2">
+                <span className="text-white/20 text-[10.5px] tabular-nums shrink-0">
+                    {pendencia?.status === 'corrigida'
+                        ? `corrigido por ${pendencia.corrigida_por ?? '—'}`
+                        : pub.data}
+                </span>
+
+                {podeRevisar && (
+                    <div className="flex items-center gap-1 shrink-0">
+                        {pendencia ? (
+                            <>
+                                <button
+                                    onClick={() => resolver(pendencia.id)}
+                                    className="h-6 px-2 rounded border border-emerald-500/30 text-emerald-400 text-[10.5px] font-bold hover:bg-emerald-500/15 transition-colors"
+                                >
+                                    Resolver
+                                </button>
+                                {pendencia.status === 'corrigida' && (
+                                    <button
+                                        onClick={() => reabrir(pendencia.id)}
+                                        className="h-6 px-2 rounded border border-white/[0.08] text-white/35 text-[10.5px] font-bold hover:text-white/70 transition-colors"
+                                    >
+                                        Reabrir
+                                    </button>
+                                )}
+                            </>
+                        ) : pub.status_revisao === 'aprovado' ? (
+                            <button
+                                onClick={reverter}
+                                title="Desfazer aprovação"
+                                className="h-6 w-6 rounded border border-white/[0.06] text-white/20 hover:text-white/60 inline-flex items-center justify-center"
+                            >
+                                <Undo2 size={10} />
+                            </button>
+                        ) : (
+                            <>
+                                <button
+                                    onClick={aprovar}
+                                    title="Aprovar — conferido e correto"
+                                    className="h-6 px-2 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-[10.5px] font-bold hover:bg-emerald-500/20 transition-colors inline-flex items-center gap-1"
+                                >
+                                    <CheckCircle2 size={10} /> Aprovar
+                                </button>
+                                <button
+                                    onClick={() => setAbrirForm(v => !v)}
+                                    title="Registrar pendência"
+                                    className="h-6 w-6 rounded border border-white/[0.08] text-white/30 hover:text-white/80 inline-flex items-center justify-center"
+                                >
+                                    <AlertTriangle size={10} />
+                                </button>
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {abrirForm && (
+                <FormPendencia
+                    pubId={pub.id}
+                    severidades={severidades}
+                    categorias={categorias}
+                    onClose={() => setAbrirForm(false)}
+                />
+            )}
+        </div>
+    );
+}
+
+/** Coluna de um estado: cabeçalho com total real, cards e corte explícito. */
+function ColunaEstado({ estado, dados, rotulo, sub, tom, onVerTodos, selecionados = [], ...cardProps }) {
+    const itens = dados?.itens ?? [];
+    const total = dados?.total ?? 0;
+
+    return (
+        <div className="flex flex-col min-w-0">
+            <div className={cn('flex items-center justify-between gap-2 px-3 py-2 rounded-lg border mb-2', tom.head)}>
+                <div className="min-w-0">
+                    <p className={cn('text-[11.5px] font-bold leading-none truncate', tom.text)}>{rotulo}</p>
+                    {sub && <p className="text-white/25 text-[10px] mt-1 truncate">{sub}</p>}
+                </div>
+                <span className={cn('shrink-0 font-display font-bold text-lg tabular-nums leading-none', tom.text)}>
+                    {fmt(total)}
+                </span>
+            </div>
+
+            <div className="space-y-1.5 overflow-y-auto pr-1 max-h-[62vh]">
+                {itens.length === 0 && (
+                    <div className="rounded-lg border border-white/[0.05] bg-white/[0.01] p-6 text-center">
+                        <p className="text-white/20 text-[12px]">Nada aqui.</p>
+                    </div>
+                )}
+
+                {itens.map(p => (
+                    <CardEstado
+                        key={p.id}
+                        pub={p}
+                        selecionado={selecionados.includes(p.id)}
+                        {...cardProps}
+                    />
+                ))}
+
+                {/* Corte explícito: silenciar o resto faria a coluna parecer completa. */}
+                {dados?.truncado && (
+                    <button
+                        onClick={() => onVerTodos(estado)}
+                        className="w-full rounded-lg border border-dashed border-white/[0.1] py-2.5 text-white/35 text-[11.5px] hover:text-white/70 hover:border-white/20 transition-colors"
+                    >
+                        mostrando {itens.length} de {fmt(total)} — ver todos
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function AbaFila({ colunas, publicacoes, kpis, filters, publicadores, podeRevisar, severidades, categorias, aplicar }) {
     const [selecionados, setSelecionados] = useState([]);
     const [busca, setBusca] = useState(filters.busca ?? '');
 
+    const emColunas = !!colunas;
     const linhas = publicacoes?.data ?? [];
 
     const toggleSelecao = (id) =>
@@ -382,7 +564,7 @@ function AbaFila({ publicacoes, kpis, filters, publicadores, podeRevisar, severi
         });
     }
 
-    // Agrupa por loja: o líder revisa loja a loja, não anúncio solto.
+    // Agrupa por loja — só na lista filtrada por um estado específico.
     const grupos = useMemo(() => {
         const mapa = new Map();
         for (const p of linhas) {
@@ -392,6 +574,17 @@ function AbaFila({ publicacoes, kpis, filters, publicadores, podeRevisar, severi
         }
         return [...mapa.entries()];
     }, [linhas]);
+
+    const cardProps = {
+        onToggleSelecao: toggleSelecao,
+        podeRevisar,
+        severidades,
+        categorias,
+    };
+
+    const vazio = emColunas
+        ? Object.values(colunas).every(c => (c?.total ?? 0) === 0)
+        : linhas.length === 0;
 
     return (
         <>
@@ -418,12 +611,12 @@ function AbaFila({ publicacoes, kpis, filters, publicadores, podeRevisar, severi
                     onChange={(e) => aplicar({ status: e.target.value })}
                     className="h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none cursor-pointer"
                 >
-                    <option value="pendentes">Esperando você</option>
-                    <option value="todos">Todos</option>
-                    <option value="nao_revisado">Não revisado</option>
-                    <option value="aprovado">Aprovado</option>
-                    <option value="em_ajuste">Em ajuste</option>
-                    <option value="reconferir">Reconferir</option>
+                    <option value="pendentes">Colunas por estado</option>
+                    <option value="todos">Lista · todos</option>
+                    <option value="nao_revisado">Lista · não revisado</option>
+                    <option value="aprovado">Lista · aprovado</option>
+                    <option value="em_ajuste">Lista · em ajuste</option>
+                    <option value="reconferir">Lista · reconferir</option>
                 </select>
 
                 {publicadores?.length > 0 && (
@@ -459,7 +652,24 @@ function AbaFila({ publicacoes, kpis, filters, publicadores, podeRevisar, severi
                 </div>
             </div>
 
-            {podeRevisar && linhas.length > 0 && (
+            {podeRevisar && selecionados.length > 0 && (
+                <div className="flex items-center gap-3 mb-3 px-1">
+                    <button
+                        onClick={aprovarLote}
+                        className="h-8 px-3 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[12px] font-bold hover:bg-emerald-500/25 transition-colors inline-flex items-center gap-1.5"
+                    >
+                        <CheckCircle2 size={12} /> Aprovar {selecionados.length} selecionado(s)
+                    </button>
+                    <button
+                        onClick={() => setSelecionados([])}
+                        className="text-white/30 text-[12px] hover:text-white/60"
+                    >
+                        limpar seleção
+                    </button>
+                </div>
+            )}
+
+            {podeRevisar && !emColunas && linhas.length > 0 && selecionados.length === 0 && (
                 <div className="flex items-center gap-3 mb-3 px-1">
                     <label className="flex items-center gap-2 cursor-pointer select-none">
                         <input
@@ -470,19 +680,10 @@ function AbaFila({ publicacoes, kpis, filters, publicadores, podeRevisar, severi
                         />
                         <span className="text-white/35 text-[12px]">Selecionar página</span>
                     </label>
-
-                    {selecionados.length > 0 && (
-                        <button
-                            onClick={aprovarLote}
-                            className="h-8 px-3 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[12px] font-bold hover:bg-emerald-500/25 transition-colors inline-flex items-center gap-1.5"
-                        >
-                            <CheckCircle2 size={12} /> Aprovar {selecionados.length} selecionado(s)
-                        </button>
-                    )}
                 </div>
             )}
 
-            {linhas.length === 0 && (
+            {vazio && (
                 <div className="card-ecf rounded-2xl p-12 text-center">
                     <ShieldCheck size={28} className="text-emerald-400/30 mx-auto mb-3" />
                     <p className="text-white/40 text-sm">Nada esperando por você nesta competência.</p>
@@ -490,30 +691,69 @@ function AbaFila({ publicacoes, kpis, filters, publicadores, podeRevisar, severi
                 </div>
             )}
 
-            <div className="space-y-5">
-                {grupos.map(([empresa, pubs]) => (
-                    <div key={empresa}>
-                        <div className="flex items-center gap-2 mb-2 pl-1">
-                            <div className="w-1 h-4 rounded-full bg-ecf-yellow shrink-0" />
-                            <span className="text-white font-semibold text-[14px]">{empresa}</span>
-                            <span className="text-white/25 text-[11px]">{pubs.length} anúncio(s)</span>
+            {/* ─── Colunas por estado: agrupa pelo que precisa acontecer ─── */}
+            {emColunas && !vazio && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                    <ColunaEstado
+                        estado="nao_revisado"
+                        dados={colunas.nao_revisado}
+                        rotulo="Não revisado"
+                        sub="ninguém olhou ainda"
+                        tom={{ head: 'border-white/[0.08] bg-white/[0.03]', text: 'text-white/70' }}
+                        onVerTodos={(e) => aplicar({ status: e })}
+                        {...cardProps}
+                        selecionados={selecionados}
+                    />
+                    <ColunaEstado
+                        estado="em_ajuste"
+                        dados={colunas.em_ajuste}
+                        rotulo="Em ajuste"
+                        sub="bola com o publicador"
+                        tom={{ head: 'border-red-500/25 bg-red-500/10', text: 'text-red-400' }}
+                        onVerTodos={(e) => aplicar({ status: e })}
+                        {...cardProps}
+                        selecionados={selecionados}
+                    />
+                    <ColunaEstado
+                        estado="reconferir"
+                        dados={colunas.reconferir}
+                        rotulo="Reconferir"
+                        sub="bola com você"
+                        tom={{ head: 'border-amber-500/25 bg-amber-500/10', text: 'text-amber-400' }}
+                        onVerTodos={(e) => aplicar({ status: e })}
+                        {...cardProps}
+                        selecionados={selecionados}
+                    />
+                </div>
+            )}
+
+            {/* ─── Lista agrupada por loja: quando um estado é filtrado ─── */}
+            {!emColunas && (
+                <div className="space-y-5">
+                    {grupos.map(([empresa, pubs]) => (
+                        <div key={empresa}>
+                            <div className="flex items-center gap-2 mb-2 pl-1">
+                                <div className="w-1 h-4 rounded-full bg-ecf-yellow shrink-0" />
+                                <span className="text-white font-semibold text-[14px]">{empresa}</span>
+                                <span className="text-white/25 text-[11px]">{pubs.length} anúncio(s)</span>
+                            </div>
+                            <div className="space-y-1.5">
+                                {pubs.map(p => (
+                                    <LinhaPub
+                                        key={p.id}
+                                        pub={p}
+                                        selecionado={selecionados.includes(p.id)}
+                                        onToggleSelecao={toggleSelecao}
+                                        podeRevisar={podeRevisar}
+                                        severidades={severidades}
+                                        categorias={categorias}
+                                    />
+                                ))}
+                            </div>
                         </div>
-                        <div className="space-y-1.5">
-                            {pubs.map(p => (
-                                <LinhaPub
-                                    key={p.id}
-                                    pub={p}
-                                    selecionado={selecionados.includes(p.id)}
-                                    onToggleSelecao={toggleSelecao}
-                                    podeRevisar={podeRevisar}
-                                    severidades={severidades}
-                                    categorias={categorias}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            )}
 
             {publicacoes?.links?.length > 3 && (
                 <div className="flex flex-wrap gap-1 justify-center mt-6">
@@ -717,7 +957,7 @@ function AbaGrafico({ grafico, filters, aplicar }) {
 
 export default function Revisao({
     modo = 'fila',
-    publicacoes, kpis, grafico, filters = {}, publicadores = [], meses = [],
+    colunas, publicacoes, kpis, grafico, filters = {}, publicadores = [], meses = [],
     pode_revisar: podeRevisar = false,
     pode_ver_grafico: podeVerGrafico = false,
     severidades = {}, categorias = {},
@@ -779,6 +1019,7 @@ export default function Revisao({
                 <AbaGrafico grafico={grafico} filters={filtrosComMeses} aplicar={aplicar} />
             ) : (
                 <AbaFila
+                    colunas={colunas}
                     publicacoes={publicacoes}
                     kpis={kpis}
                     filters={filtrosComMeses}
