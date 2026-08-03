@@ -92,7 +92,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 ### SNAP — Persistência e comandos (Fase 122)
 
 - [ ] **SNAP-01**: `empresas_score` é persistido em `desempenho_score_snapshots.breakdown_json`
-- [ ] **SNAP-02**: Tabela `desempenho_company_score_snapshots` explica o resumo empresa por empresa, com `unique(user_id, company_id, mes_referencia)` e índices de leitura
+- [x] **SNAP-02**: Tabela `desempenho_company_score_snapshots` explica o resumo empresa por empresa, com `unique(user_id, company_id, mes_referencia)` e índices de leitura
 - [ ] **SNAP-03**: `ConsolidarMesDesempenho`, `SnapshotDesempenhoScores` e `WarmDesempenhoCache` gravam as linhas por empresa no fechamento
 - [ ] **SNAP-04**: Invalidar empresa por competência remove também as linhas de `desempenho_company_score_snapshots` daquela competência
 - [ ] **SNAP-05**: `margem_amostra` passa a contar cobertura de `margem_var_pp`, não de `var_margem_pct`
@@ -164,7 +164,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 | ROLL-02 | Fase 121 | Complete (2026-07-31) |
 | ROLL-03 | Fase 121 | Complete (2026-07-31) |
 | SNAP-01 | Fase 122 | Pending |
-| SNAP-02 | Fase 122 | Pending |
+| SNAP-02 | Fase 122 | Complete (2026-08-03) |
 | SNAP-03 | Fase 122 | Pending |
 | SNAP-04 | Fase 122 | Pending |
 | SNAP-05 | Fase 122 | Pending |

@@ -1464,10 +1464,10 @@ Plans:
   4. `margem_amostra` conta cobertura de `margem_var_pp`
   5. O rollout inclui `desempenho:consolidar-mes --mes=` para competências fechadas, e o gate `FIXMARG-03` (cobertura < 0,7) é conferido por reconsulta ao snapshot, nunca por stdout
 
-**Plans:** 6 plans
+**Plans:** 1/6 plans executed
 
 Plans:
-- [ ] 122-01-PLAN.md — Fundações: tabela `desempenho_company_score_snapshots`, model e writer idempotente com trava de congelamento [SNAP-02]
+- [x] 122-01-PLAN.md — Fundações: tabela `desempenho_company_score_snapshots`, model e writer idempotente com trava de congelamento [SNAP-02]
 - [ ] 122-02-PLAN.md — `margem_amostra` conta cobertura de `margem_var_pp` (legado preservado em sub-chave) + bump de cache v15→v16 [SNAP-05]
 - [ ] 122-03-PLAN.md — Os três comandos gravam as linhas por empresa; gate FIXMARG-03 escolhe a base pelo estado da flag [SNAP-01, SNAP-03]
 - [ ] 122-04-PLAN.md — Invalidação por competência remove as linhas por empresa daquela competência [SNAP-04]
