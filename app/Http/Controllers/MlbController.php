@@ -1540,12 +1540,16 @@ class MlbController extends Controller
             'pct'          => $total > 0 ? round((($total - $naoRevisado) / $total) * 100, 1) : null,
         ];
 
-        [$inicioMes, $fimMes] = $this->intervaloDoMes($mesRef);
+        // Tudo abaixo recorta pelos ANÚNCIOS da competência, não pela data do
+        // evento. Filtrar pendência por `aberta_em` descasava da tela: uma
+        // pendência aberta hoje num anúncio de julho não caía em competência
+        // nenhuma, e o gestor via cards vazios sem entender por quê.
+        $daCompetencia = fn($q) => $q->doMes($mesRef);
 
         // ─── Produção por revisor ───
-        // Resposta direta a "o que o líder andou revisando".
+        // Resposta direta a "quem revisou os anúncios desta competência".
         $porRevisor = Revisao::query()
-            ->whereBetween('mlb_revisoes.created_at', [$inicioMes, $fimMes])
+            ->whereHas('publicacao', $daCompetencia)
             ->join('users', 'users.id', '=', 'mlb_revisoes.revisor_id')
             ->select(
                 'mlb_revisoes.revisor_id',
@@ -1572,6 +1576,7 @@ class MlbController extends Controller
         // Total sozinho não diz nada; o que dói é o que está parado há dias.
         $pendentes = Pendencia::query()
             ->pendente()
+            ->whereHas('publicacao', $daCompetencia)
             ->with('publicacao:id,empresa,mlb_code,user_id', 'publicacao.user:id,name', 'abertaPor:id,name')
             ->orderBy('aberta_em')
             ->get();
@@ -1598,21 +1603,24 @@ class MlbController extends Controller
             'idade_dias' => $p->idade_dias,
         ])->values();
 
-        // ─── Onde o time mais erra ───
-        // Dado novo: antes o motivo ficava enterrado em texto livre.
-        $porCategoria = Pendencia::query()
-            ->whereBetween('aberta_em', [$inicioMes, $fimMes])
-            ->select('categoria', DB::raw('COUNT(*) as n'))
-            ->groupBy('categoria')
+        // ─── Quem mais recebe pendência ───
+        // Substituiu o recorte por categoria: o campo era opcional no formulário
+        // e o time não preencheria, então o gráfico nasceria só com "sem
+        // categoria". Por publicador o dado se preenche sozinho e responde uma
+        // pergunta que o gestor faz de verdade.
+        $porPublicador = Pendencia::query()
+            ->whereHas('publicacao', $daCompetencia)
+            ->join('mlb_publicacoes', 'mlb_publicacoes.id', '=', 'mlb_pendencias.publicacao_id')
+            ->leftJoin('users', 'users.id', '=', 'mlb_publicacoes.user_id')
+            ->select(DB::raw('COALESCE(users.name, "—") as nome'), DB::raw('COUNT(*) as n'))
+            ->groupBy('nome')
             ->orderByDesc('n')
+            ->limit(10)
             ->get()
-            ->map(fn($r) => [
-                'categoria' => $r->categoria ? (Pendencia::CATEGORIAS[$r->categoria] ?? $r->categoria) : 'Sem categoria',
-                'n'         => (int) $r->n,
-            ]);
+            ->map(fn($r) => ['publicador' => $r->nome, 'n' => (int) $r->n]);
 
         $porSeveridade = Pendencia::query()
-            ->whereBetween('aberta_em', [$inicioMes, $fimMes])
+            ->whereHas('publicacao', $daCompetencia)
             ->select('severidade', DB::raw('COUNT(*) as n'))
             ->groupBy('severidade')
             ->pluck('n', 'severidade');
@@ -1620,25 +1628,25 @@ class MlbController extends Controller
         // ─── Tempo de ciclo e retrabalho ───
         $tempoMedio = Pendencia::query()
             ->whereNotNull('resolvida_em')
-            ->whereBetween('resolvida_em', [$inicioMes, $fimMes])
+            ->whereHas('publicacao', $daCompetencia)
             ->select(DB::raw('AVG(TIMESTAMPDIFF(HOUR, aberta_em, resolvida_em)) as horas'))
             ->value('horas');
 
         // Reaberturas: anúncios que voltaram para em_ajuste depois de já terem
         // recebido um veredicto — o retrabalho que o gestor não enxergava.
         $reaberturas = Revisao::query()
-            ->whereBetween('created_at', [$inicioMes, $fimMes])
+            ->whereHas('publicacao', $daCompetencia)
             ->where('para_status', Revisao::ST_EM_AJUSTE)
             ->whereIn('de_status', [Revisao::ST_APROVADO, Revisao::ST_RECONFERIR])
             ->count();
 
         return [
             'grafico' => [
-                'cobertura'     => $cobertura,
-                'por_revisor'   => $porRevisor,
-                'aging'         => $faixa,
-                'mais_antigas'  => $maisAntigas,
-                'por_categoria' => $porCategoria,
+                'cobertura'      => $cobertura,
+                'por_revisor'    => $porRevisor,
+                'aging'          => $faixa,
+                'mais_antigas'   => $maisAntigas,
+                'por_publicador' => $porPublicador,
                 'por_severidade'=> [
                     'bloqueio'   => (int) ($porSeveridade[Pendencia::SEV_BLOQUEIO] ?? 0),
                     'ajuste'     => (int) ($porSeveridade[Pendencia::SEV_AJUSTE] ?? 0),
@@ -1670,14 +1678,6 @@ class MlbController extends Controller
         $ultima = Publicacao::max('data');
 
         return $ultima ? Carbon::parse($ultima)->format('Y-m') : $atual;
-    }
-
-    /** Primeiro e último instante de uma competência YYYY-MM. */
-    private function intervaloDoMes(string $mesRef): array
-    {
-        $ref = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
-
-        return [$ref->copy()->startOfMonth(), $ref->copy()->endOfMonth()->endOfDay()];
     }
 
     // =========================================================================

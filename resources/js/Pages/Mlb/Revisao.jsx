@@ -90,10 +90,11 @@ function Kpi({ title, value, sub, tone = 'neutral', icon: Icon }) {
 // Registro de pendência
 // ═══════════════════════════════════════════════════════════════════════
 
-function FormPendencia({ pubId, severidades, categorias, onClose }) {
+function FormPendencia({ pubId, severidades, onClose }) {
+    // Sem campo de categoria: era opcional e o time não preencheria, então só
+    // somava atrito. A coluna segue no banco caso volte a fazer sentido.
     const { data, setData, post, processing, errors } = useForm({
         severidade: 'ajuste',
-        categoria: '',
         texto: '',
     });
 
@@ -127,17 +128,6 @@ function FormPendencia({ pubId, severidades, categorias, onClose }) {
                         </button>
                     );
                 })}
-
-                <select
-                    value={data.categoria}
-                    onChange={(e) => setData('categoria', e.target.value)}
-                    className="h-7 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[11px] text-white/70 focus:outline-none focus:border-ecf-yellow/40 cursor-pointer"
-                >
-                    <option value="">Categoria (opcional)</option>
-                    {Object.entries(categorias).map(([k, v]) => (
-                        <option key={k} value={k}>{v}</option>
-                    ))}
-                </select>
             </div>
 
             <textarea
@@ -349,7 +339,6 @@ function LinhaPub({ pub, selecionado, onToggleSelecao, podeRevisar, severidades,
                         <FormPendencia
                             pubId={pub.id}
                             severidades={severidades}
-                            categorias={categorias}
                             onClose={() => setAbrirForm(false)}
                         />
                     )}
@@ -803,7 +792,7 @@ function AbaGrafico({ grafico, filters, aplicar }) {
     const s = grafico ?? {};
     const cob = s.cobertura ?? {};
     const aging = s.aging ?? {};
-    const maxCategoria = Math.max(1, ...(s.por_categoria ?? []).map(x => x.n));
+    const maxPendencias = Math.max(1, ...(s.por_publicador ?? []).map(x => x.n));
 
     return (
         <>
@@ -886,20 +875,20 @@ function AbaGrafico({ grafico, filters, aplicar }) {
                     )}
                 </div>
 
-                {/* Dado novo: antes o motivo ficava enterrado em texto livre */}
+                {/* Quem mais recebe pendência — dado que se preenche sozinho */}
                 <div className="card-ecf rounded-2xl p-5">
-                    <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide mb-3">Onde mais aparecem pendências</p>
-                    {(s.por_categoria ?? []).length === 0 ? (
+                    <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide mb-3">Quem mais recebe pendência</p>
+                    {(s.por_publicador ?? []).length === 0 ? (
                         <p className="text-white/20 text-[12px] py-6 text-center">Sem pendências nesta competência.</p>
                     ) : (
                         <div className="space-y-2">
-                            {s.por_categoria.map((c, i) => (
+                            {s.por_publicador.map((c, i) => (
                                 <div key={i} className="flex items-center gap-3">
-                                    <span className="w-32 shrink-0 text-white/60 text-[12px] truncate">{c.categoria}</span>
+                                    <span className="w-32 shrink-0 text-white/60 text-[12px] truncate" title={c.publicador}>{c.publicador}</span>
                                     <div className="flex-1 h-2 rounded-full bg-white/[0.04] overflow-hidden">
-                                        <div className="h-full rounded-full bg-ecf-yellow/70" style={{ width: `${(c.n / maxCategoria) * 100}%` }} />
+                                        <div className="h-full rounded-full bg-ecf-yellow/70" style={{ width: `${(c.n / maxPendencias) * 100}%` }} />
                                     </div>
-                                    <span className="shrink-0 w-8 text-right text-white/50 text-[12px] font-semibold">{c.n}</span>
+                                    <span className="shrink-0 w-8 text-right text-white/50 text-[12px] font-semibold tabular-nums">{c.n}</span>
                                 </div>
                             ))}
                         </div>
