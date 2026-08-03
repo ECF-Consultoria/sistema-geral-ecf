@@ -1306,10 +1306,12 @@ class MlbController extends Controller
 
         $user       = $request->user();
         $podeVerTudo = $this->podeVerTodosPub($user);
-        $modo       = $request->input('modo', 'fila');
+        // `?:` e não `??`: os filtros chegam como null quando vazios
+        // (middleware ConvertEmptyStringsToNull) e como '' quando o JS envia ''.
+        $modo = (string) ($request->input('modo') ?: 'fila');
         if ($modo === 'grafico' && !$podeVerTudo) $modo = 'fila';
 
-        $mesRef = $request->input('mes') ?: $this->competenciaInicialRevisao();
+        $mesRef = (string) ($request->input('mes') ?: $this->competenciaInicialRevisao());
 
         // Lista quem de fato tem anúncio na competência — não quem tem cargo de
         // publicador hoje. Amarrar ao cargo atual faz sumir do filtro quem mudou
@@ -1344,10 +1346,14 @@ class MlbController extends Controller
      */
     private function revisaoFila(Request $request, string $mesRef): array
     {
-        $funcId     = $request->input('func', '');
-        $status     = $request->input('status', 'pendentes');
-        $severidade = $request->input('sev', '');
-        $busca      = $request->input('busca', '');
+        // ATENÇÃO: `input($k, $default)` NÃO cai no default quando a chave existe
+        // com valor nulo — e o middleware global ConvertEmptyStringsToNull
+        // transforma `?sev=` em null. Como a tela reenvia todos os filtros a cada
+        // navegação, os vazios chegam como null. Normalizar aqui.
+        $funcId     = (string) ($request->input('func') ?? '');
+        $status     = (string) ($request->input('status') ?: 'pendentes');
+        $severidade = (string) ($request->input('sev') ?? '');
+        $busca      = (string) ($request->input('busca') ?? '');
 
         // Sem recorte por cargo de propósito: um anúncio precisa ser revisado
         // independentemente do cargo que o autor tem hoje. A segmentação por
@@ -1435,8 +1441,10 @@ class MlbController extends Controller
      * coluna virar um paredão inútil. Passando do limite, a tela oferece o
      * filtro daquele estado, que cai na lista paginada.
      */
-    private function colunasPorEstado(Builder $base, string $severidade = ''): array
+    private function colunasPorEstado(Builder $base, ?string $severidade = null): array
     {
+        $severidade = (string) ($severidade ?? '');
+
         $estados = [
             Revisao::ST_NAO_REVISADO,
             Revisao::ST_EM_AJUSTE,
