@@ -21,6 +21,14 @@ manualmente quando necessário.
 - **Deploy**: Não executar deploy sem autorização explícita do usuário
 <!-- GSD:project-end -->
 
+## Conhecimento acumulado — LEIA ANTES de mexer em desempenho/bônus
+
+**`.planning/learnings/desempenho-bonificacao.md`** — leitura obrigatória antes de tocar em nota de desempenho, ranking, carteira, snapshot mensal ou bonificação.
+
+Concentra o que já custou caro descobrir e **não é dedutível do código**: regras de agregação que divergem de propósito (faturamento usa mediana, margem usa média — não uniformize), por que as réguas não devem ser recalibradas por conta própria, a fragilidade de fronteira que já tirou o bônus de alguém sem mudança de código, a disciplina de conferir consolidação por reconsulta ao banco e nunca por stdout, as armadilhas de MariaDB que o SQLite dos testes não pega, e o estado dos gates da milestone v21.0.
+
+Este projeto é editado por mais de um desenvolvedor, cada um com sua própria sessão de Claude Code em máquina diferente. Memória de sessão **não** atravessa máquinas — só o repositório atravessa. Se você descobrir algo desta natureza, escreva lá em vez de deixar só na memória da sua sessão.
+
 <!-- GSD:stack-start source:codebase/STACK.md -->
 ## Technology Stack
 
