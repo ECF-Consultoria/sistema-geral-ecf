@@ -83,12 +83,20 @@ return new class extends Migration
 
             // Chave do critério 2 do ROADMAP — 1 linha por (profissional,
             // empresa, competência); base da idempotência do writer.
-            $table->unique(['user_id', 'company_id', 'mes_referencia']);
+            //
+            // O nome do índice é EXPLÍCITO e curto de propósito. O nome que o
+            // Laravel geraria sozinho
+            // (`desempenho_company_score_snapshots_user_id_company_id_mes_referencia_unique`)
+            // tem 75 caracteres e o MariaDB recusa identificadores acima de 64
+            // (erro 1059) — o SQLite dos testes aceita, então isso SÓ aparece
+            // em produção. O nome da tabela já ocupa 34 caracteres, então
+            // qualquer índice multi-coluna auto-nomeado aqui estoura o limite.
+            $table->unique(['user_id', 'company_id', 'mes_referencia'], 'dcss_user_company_mes_unique');
 
             // Leitura "detalhe de um profissional numa competência".
-            $table->index(['mes_referencia', 'user_id']);
+            $table->index(['mes_referencia', 'user_id'], 'dcss_mes_user_idx');
             // Leitura "histórico de uma empresa".
-            $table->index(['company_id', 'mes_referencia']);
+            $table->index(['company_id', 'mes_referencia'], 'dcss_company_mes_idx');
         });
     }
 
