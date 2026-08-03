@@ -862,6 +862,20 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::get('/revisao',     [MlbController::class, 'revisao'])->name('revisao');
 
     Route::patch('/pub/{pub}/vendido',           [MlbController::class, 'marcarVendido'])->name('vendido');
+
+    // ─── Revisão: veredicto do líder e ciclo de pendências ───
+    // "Aprovado" = conferido E correto. "Em ajuste" = bola com o publicador.
+    // "Reconferir" = publicador corrigiu, bola de volta com o líder.
+    Route::patch('/pub/{pub}/aprovar',            [MlbController::class, 'aprovarRevisao'])->name('revisao.aprovar');
+    Route::patch('/pub/{pub}/reverter',           [MlbController::class, 'reverterRevisao'])->name('revisao.reverter');
+    Route::post('/pub/{pub}/pendencia',           [MlbController::class, 'abrirPendencia'])->name('pendencia.abrir');
+    Route::post('/revisao/aprovar-lote',          [MlbController::class, 'aprovarLote'])->name('revisao.aprovar-lote');
+    Route::patch('/pendencia/{pendencia}/corrigida', [MlbController::class, 'corrigirPendencia'])->name('pendencia.corrigida');
+    Route::patch('/pendencia/{pendencia}/resolver',  [MlbController::class, 'resolverPendencia'])->name('pendencia.resolver');
+    Route::patch('/pendencia/{pendencia}/reabrir',   [MlbController::class, 'reabrirPendencia'])->name('pendencia.reabrir');
+
+    // Rotas antigas — mantidas enquanto Publicações/Meu Painel não migram.
+    // Delegam ao RevisaoService (ver adaptadores no MlbController).
     Route::patch('/pub/{pub}/revisado',          [MlbController::class, 'marcarRevisado'])->name('revisado');
     Route::patch('/pub/{pub}/comentario',        [MlbController::class, 'salvarComentario'])->name('comentario');
     Route::patch('/pub/{pub}/resolver',          [MlbController::class, 'resolverComentario'])->name('resolver');

@@ -92,10 +92,14 @@ class Publicacao extends Model
         return $this->belongsTo(User::class, 'revisado_por')->withTrashed();
     }
 
-    /** Histórico completo de revisões — alimenta a aba Supervisão. */
+    /**
+     * Histórico completo de revisões — alimenta a aba Supervisão.
+     * Ordena por id, não por created_at: várias transições podem cair no mesmo
+     * segundo e a trilha sairia embaralhada.
+     */
     public function revisoes(): HasMany
     {
-        return $this->hasMany(Revisao::class, 'publicacao_id')->latest('created_at');
+        return $this->hasMany(Revisao::class, 'publicacao_id')->latest('id');
     }
 
     public function pendencias(): HasMany
