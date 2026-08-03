@@ -237,10 +237,15 @@ class RevisaoService
             // Tudo corrigido, esperando o líder reconferir.
             $status = Revisao::ST_RECONFERIR;
         } else {
-            // Sem pendências: aprovado se já houve veredicto, senão fila.
-            $status = $pub->revisoes()->veredicto()->exists()
-                ? Revisao::ST_APROVADO
-                : Revisao::ST_NAO_REVISADO;
+            // Sem pendências: vale o ÚLTIMO evento, não a existência de algum.
+            // Checar `exists()` de qualquer veredicto fazia "desfazer aprovação"
+            // não sair do lugar — a aprovação antiga ressuscitava o estado.
+            $status = $pub->revisoes()->first()?->para_status ?? Revisao::ST_NAO_REVISADO;
+
+            // Estados que dependem de pendência não sobrevivem sem ela.
+            if (in_array($status, [Revisao::ST_EM_AJUSTE, Revisao::ST_RECONFERIR], true)) {
+                $status = Revisao::ST_APROVADO;
+            }
         }
 
         $bloqueio = $pendentes->firstWhere('severidade', Pendencia::SEV_BLOQUEIO);
