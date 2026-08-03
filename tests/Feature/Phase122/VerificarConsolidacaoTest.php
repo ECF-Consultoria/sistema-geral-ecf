@@ -79,6 +79,28 @@ class VerificarConsolidacaoTest extends TestCase
         return $user;
     }
 
+    /**
+     * Vincula uma empresa à carteira do profissional (D-122-12).
+     *
+     * Sem isto, o profissional é elegível pelo CARGO mas não tem carteira — e
+     * nesse caso o `consolidar-mes` não grava row mensal de propósito, então
+     * `SEM_SNAPSHOT` não se aplica.
+     */
+    private function darCarteira(int $userId): int
+    {
+        $company = Company::factory()->create();
+
+        DB::table('company_users')->insert([
+            'user_id'    => $userId,
+            'company_id' => $company->id,
+            'role'       => 'consultor',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $company->id;
+    }
+
     private function seedMensal(int $userId, string $mesStr, array $overrides = []): DesempenhoScoreSnapshot
     {
         return DesempenhoScoreSnapshot::create(array_merge([
@@ -176,6 +198,7 @@ class VerificarConsolidacaoTest extends TestCase
     public function user_elegivel_sem_row_mensal_gera_sem_snapshot_com_id_e_nome_exit_diferente_de_zero(): void
     {
         $user = $this->criarUserElegivel('Sem Snapshot Nenhum');
+        $this->darCarteira($user->id);
         // Nenhuma row mensal, nenhuma linha por empresa.
 
         [$exitCode, $relatorio] = $this->executar('2026-06');
@@ -187,6 +210,32 @@ class VerificarConsolidacaoTest extends TestCase
         $this->assertNotNull($inc, 'SEM_SNAPSHOT deveria aparecer na lista achatada com id e nome.');
         $this->assertSame($user->id, $inc['user_id']);
         $this->assertSame('Sem Snapshot Nenhum', $inc['user_name']);
+    }
+
+    /**
+     * D-122-12 — achado no rollout em produção (2026-08-03).
+     *
+     * Jhonathan (user 25) é elegível pelo cargo mas tem ZERO empresas na
+     * carteira. O `consolidar-mes` o pula de propósito ("Sem carteira: 1") e
+     * não grava row mensal. Antes deste fix o verificador o acusava de
+     * `SEM_SNAPSHOT` e devolvia exit 1 — o que tornaria o comando inútil como
+     * gate, porque ele reprovaria para sempre por uma situação correta.
+     */
+    #[Test]
+    public function user_elegivel_SEM_carteira_nao_gera_sem_snapshot_e_mantem_exit_zero(): void
+    {
+        $user = $this->criarUserElegivel('Jhonathan Sem Carteira');
+        // Elegível pelo cargo, mas NENHUMA empresa vinculada — e nenhuma row.
+
+        [$exitCode, $relatorio] = $this->executar('2026-06');
+
+        $this->assertSame(0, $exitCode, 'Profissional sem carteira não é inconsistência — o exit code precisa continuar 0.');
+        $this->assertNotContains('SEM_SNAPSHOT', $this->inconsistenciasDoUser($relatorio, $user->id));
+
+        $linha = collect($relatorio['usuarios'])->firstWhere('user_id', $user->id);
+        $this->assertNotNull($linha);
+        $this->assertTrue($linha['elegivel'], 'Continua elegível pelo cargo.');
+        $this->assertFalse($linha['tem_carteira'], 'A ausência de carteira precisa ficar auditável na saída.');
     }
 
     // ═══ Comportamento 3 — SEM_LINHAS ════════════════════════════════════════

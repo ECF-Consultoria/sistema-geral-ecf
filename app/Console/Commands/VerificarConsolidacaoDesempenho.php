@@ -143,6 +143,26 @@ class VerificarConsolidacaoDesempenho extends Command
 
         $idsElegiveis = $usersElegiveis->keys();
 
+        // D-122-12 (achado no rollout do Plano 06, 2026-08-03): elegível pelo
+        // CARGO não significa que exista carteira. O `consolidar-mes` pula
+        // quem o `compute()` devolve como `sem_carteira` (contabilizado como
+        // "Sem carteira: N" na linha final) e, corretamente, não grava row
+        // mensal para essa pessoa. Sem esta checagem, o verificador acusava
+        // `SEM_SNAPSHOT` para ela e devolvia exit 1 PARA SEMPRE — inutilizando
+        // como gate o comando que existe justamente para ser gate.
+        //
+        // A checagem é por consulta ao banco (`company_users`), nunca por
+        // `compute()`: chamar o serviço de nota dispararia HTTP à Adman e
+        // quebraria o contrato read-only de D-122-10.
+        //
+        // `distinct` no company_id porque `company_users` tem VÁRIAS linhas
+        // por (empresa, papel) desde a Fase 76 — uma por serviço.
+        $idsComCarteira = DB::table('company_users')
+            ->whereIn('user_id', $idsElegiveis)
+            ->distinct()
+            ->pluck('user_id')
+            ->flip();
+
         $rowsMensais = DesempenhoScoreSnapshot::mensal()
             ->whereDate('mes_referencia', $mesStr)
             ->get()
@@ -181,7 +201,9 @@ class VerificarConsolidacaoDesempenho extends Command
                 ?? $nomesExtras->get($userId)
                 ?? "user #{$userId}";
 
-            $inconsistencias = $this->detectarInconsistencias($elegivel, $mensal, $companyRows, $mesFechado);
+            $temCarteira = $idsComCarteira->has($userId);
+
+            $inconsistencias = $this->detectarInconsistencias($elegivel, $temCarteira, $mensal, $companyRows, $mesFechado);
 
             foreach ($inconsistencias as $tipo) {
                 $inconsistenciasFlat[] = [
@@ -200,6 +222,10 @@ class VerificarConsolidacaoDesempenho extends Command
                 'user_id'   => $userId,
                 'user_name' => $nome,
                 'elegivel'  => $elegivel,
+                // D-122-12: exposto para a ausência de row mensal ser
+                // auditável — sem isto, "elegível e sem snapshot" parece
+                // defeito quando na verdade a pessoa não tem carteira.
+                'tem_carteira' => $temCarteira,
                 'snapshot_mensal' => [
                     'existe'                          => $mensal !== null,
                     'updated_at'                       => $mensal?->updated_at?->toIso8601String(),
@@ -246,11 +272,14 @@ class VerificarConsolidacaoDesempenho extends Command
      * @param  Collection<int, DesempenhoCompanyScoreSnapshot>  $companyRows
      * @return array<int, string>
      */
-    private function detectarInconsistencias(bool $elegivel, ?DesempenhoScoreSnapshot $mensal, Collection $companyRows, bool $mesFechado): array
+    private function detectarInconsistencias(bool $elegivel, bool $temCarteira, ?DesempenhoScoreSnapshot $mensal, Collection $companyRows, bool $mesFechado): array
     {
         $achadas = [];
 
-        if ($elegivel && $mensal === null) {
+        // `$temCarteira` (D-122-12): quem não tem nenhuma empresa vinculada
+        // não gera row mensal por decisão do próprio `consolidar-mes`, e isso
+        // é comportamento correto — não inconsistência.
+        if ($elegivel && $temCarteira && $mensal === null) {
             $achadas[] = 'SEM_SNAPSHOT';
         }
 
