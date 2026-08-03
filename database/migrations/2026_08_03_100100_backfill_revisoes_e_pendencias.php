@@ -150,11 +150,13 @@ return new class extends Migration
             });
 
         // ─── 3. Recalcula o cache de pendências abertas ───
+        // Sem alias na tabela alvo: `UPDATE <tabela> <alias> SET` é sintaxe só do MySQL e
+        // quebra no SQLite (usado pelo phpunit), derrubando toda a suíte no migrate.
         DB::statement("
-            UPDATE mlb_publicacoes p
+            UPDATE mlb_publicacoes
             SET pendencias_abertas = (
                 SELECT COUNT(*) FROM mlb_pendencias d
-                WHERE d.publicacao_id = p.id AND d.status IN ('aberta', 'corrigida')
+                WHERE d.publicacao_id = mlb_publicacoes.id AND d.status IN ('aberta', 'corrigida')
             )
         ");
     }
