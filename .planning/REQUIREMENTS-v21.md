@@ -94,9 +94,9 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 - [x] **SNAP-01**: `empresas_score` é persistido em `desempenho_score_snapshots.breakdown_json`
 - [x] **SNAP-02**: Tabela `desempenho_company_score_snapshots` explica o resumo empresa por empresa, com `unique(user_id, company_id, mes_referencia)` e índices de leitura
 - [x] **SNAP-03**: `ConsolidarMesDesempenho`, `SnapshotDesempenhoScores` e `WarmDesempenhoCache` gravam as linhas por empresa no fechamento
-- [ ] **SNAP-04**: Invalidar empresa por competência remove também as linhas de `desempenho_company_score_snapshots` daquela competência
+- [x] **SNAP-04**: Invalidar empresa por competência remove também as linhas de `desempenho_company_score_snapshots` daquela competência
 - [x] **SNAP-05**: `margem_amostra` passa a contar cobertura de `margem_var_pp`, não de `var_margem_pct`
-- [ ] **SNAP-06**: O rollout inclui `desempenho:consolidar-mes --mes=` para competências fechadas — sem isso, ranking, dashboard e Relatório de Bonificação continuam mostrando a nota antiga; e o gate `FIXMARG-03` (recusa persistir com cobertura de margem < 0,7) é conferido por reconsulta ao snapshot, nunca por stdout
+- [x] **SNAP-06**: O rollout inclui `desempenho:consolidar-mes --mes=` para competências fechadas — sem isso, ranking, dashboard e Relatório de Bonificação continuam mostrando a nota antiga; e o gate `FIXMARG-03` (recusa persistir com cobertura de margem < 0,7) é conferido por reconsulta ao snapshot, nunca por stdout
 
 ### UIEM — Telas e relatórios (Fase 123)
 
@@ -166,9 +166,9 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 | SNAP-01 | Fase 122 | Complete (2026-08-03) |
 | SNAP-02 | Fase 122 | Complete (2026-08-03) |
 | SNAP-03 | Fase 122 | Complete (2026-08-03) |
-| SNAP-04 | Fase 122 | Pending |
+| SNAP-04 | Fase 122 | Complete (2026-08-03) |
 | SNAP-05 | Fase 122 | Complete (2026-08-03) |
-| SNAP-06 | Fase 122 | Pending |
+| SNAP-06 | Fase 122 | Complete (2026-08-03) |
 | UIEM-01 | Fase 123 | Pending |
 | UIEM-02 | Fase 123 | Pending |
 | UIEM-03 | Fase 123 | Pending |

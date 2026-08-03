@@ -164,3 +164,69 @@ Referências: `.planning/phases/122-persist-ncia-por-empresa-e-comandos-v21-0/12
 `.planning/phases/122-persist-ncia-por-empresa-e-comandos-v21-0/122-05-PLAN.md`,
 `app/Console/Commands/ConsolidarMesDesempenho.php`,
 `app/Console/Commands/VerificarConsolidacaoDesempenho.php`.
+
+---
+
+## Evidência da execução
+
+Rollout executado em **2026-08-03, 14:20–15:05 BRT** (janela limpa, fora do bloco de crons 11:00–13:30).
+
+### Escopo executado
+
+Apenas **2026-06**. O runbook previa também 2026-05 e 2026-04, mas a conferência mostrou que essas competências **nunca tiveram snapshot mensal** (0 linhas cada) — reconsolidá-las não seria acrescentar detalhe por empresa, e sim criar 22 registros de bônus que nunca existiram, calculados com os dados e regras de hoje. Decisão do usuário em 2026-08-03: **só junho**.
+
+### Resultado por competência
+
+| mês | exit_code | profissionais com snapshot | linhas por empresa | SEM_SNAPSHOT |
+|---|---|---|---|---|
+| 2026-06 | **0** | 11 | 286 (todas `origem=consolidar_mes`) | nenhum |
+| 2026-05 | não executado | — | — | — |
+| 2026-04 | não executado | — | — | — |
+
+As 286 linhas serem **todas** de origem `consolidar_mes` prova a trava de congelamento (D-122-02): o `desempenho:warm-cache`, que roda a cada 8 minutos e aquece o último mês fechado, não sobrescreveu a competência congelada.
+
+### Notas de junho — inalteradas pelo rollout
+
+| Profissional | nota | faixa |
+|---|---|---|
+| Gustavo | 2,05 | sem_bonus |
+| Douglas | 3,03 | sem_bonus |
+| Felipe | 3,24 | sem_bonus |
+| Matheus Estrela | 3,31 | sem_bonus |
+| Nathalia Martins | 3,73 | sem_bonus |
+| Danilo | 3,89 | sem_bonus |
+| Gabriela Aguiar | 4,16 | basico |
+| Stefani | 4,28 | basico |
+| Luiz Henrique | 4,36 | basico |
+| Ana Julia | 4,37 | basico |
+| Rubens | 4,91 | intermediario |
+
+Idênticas às de antes do rollout — a fase não mudou nota, faixa nem pagamento, como projetado.
+
+### Cobertura em pontos percentuais (cenário de quando a flag ligar)
+
+| Profissional | cobertura pp | cobertura legado |
+|---|---|---|
+| Felipe | 0,7500 | 0,7500 |
+| Douglas | 0,7586 | 0,8621 |
+| Gustavo | 0,7778 | 0,8889 |
+| Gabriela Aguiar | 0,8750 | 0,8750 |
+| Stefani | 0,9048 | 0,9524 |
+| Rubens | 0,9200 | 1,0000 |
+| Luiz Henrique | 0,9231 | 0,9231 |
+| Danilo | 0,9333 | 1,0000 |
+| Ana Julia | 0,9583 | 0,9583 |
+| Matheus Estrela | 1,0000 | 1,0000 |
+| Nathalia Martins | 1,0000 | 1,0000 |
+
+**Leitura em uma frase: zero dos 11 profissionais ficariam abaixo de 0,7 se o gate FIXMARG-03 passasse a medir em pontos percentuais** — o risco que motivou D-122-04/05 não se concretiza nos dados reais de junho/2026 (a cobertura vai de 0,75 a 1,00).
+
+### Flag
+
+`config('metrics.performance_company_first_score')` conferido em produção após o rollout: **`false`**.
+
+### Dois defeitos encontrados PELO rollout (e corrigidos)
+
+1. **Migration quebrou no MariaDB (erro 1059).** O nome auto-gerado do índice único tinha 75 caracteres, acima do limite de 64. O SQLite dos testes aceita, então passou verde local e só apareceu no deploy — deixando a tabela criada **sem** o índice e a migration como `Pending`. Corrigido nomeando os 3 índices explicitamente (`dcss_*`). A tabela órfã (314 linhas de `warm_cache`, **zero duplicatas** — a lógica do writer se sustentou mesmo sem o índice) foi dropada e recriada pela migration corrigida, provando o fix contra o MariaDB de verdade.
+
+2. **O verificador reprovaria para sempre.** `SEM_SNAPSHOT` era acusado para quem é elegível pelo cargo mas tem carteira vazia — caso do Jhonathan (user 25, 0 empresas), que o `consolidar-mes` pula de propósito. Isso deixaria o exit code em 1 permanentemente, inutilizando como gate o comando criado para ser gate. Corrigido em D-122-12 (checagem por `company_users`, read-only), com teste do caso real.
