@@ -681,11 +681,15 @@ class DesempenhoScoreService
             // relatório recusaria a persistência mensal para quase todo
             // mundo — quem escolhe a base do gate é o Plano 03 (D-122-05),
             // nunca esta troca implícita.
+            // `?? null` defensivo: dublês de teste de outras suítes (Fase
+            // 120/121, anteriores a este plano) montam a linha só com os
+            // campos que seus próprios cenários exercitam — nunca lançar por
+            // propriedade ausente num objeto de teste alheio a este plano.
             $elegiveisPp = $empresasScore->filter(
-                fn ($e) => $e->fonte_financeira !== null && $e->fonte_financeira !== 'shopee'
+                fn ($e) => ($e->fonte_financeira ?? null) !== null && ($e->fonte_financeira ?? null) !== 'shopee'
             );
             $nElegivelPp = $elegiveisPp->count();
-            $nRealPp     = $elegiveisPp->filter(fn ($e) => $e->margem_var_pp !== null)->count();
+            $nRealPp     = $elegiveisPp->filter(fn ($e) => ($e->margem_var_pp ?? null) !== null)->count();
 
             $margemAmostra = [
                 'n_real'     => $nRealPp,

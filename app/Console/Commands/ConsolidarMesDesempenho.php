@@ -165,9 +165,20 @@ class ConsolidarMesDesempenho extends Command
                 // — ausência de margem Adman (só-Shopee/sem carteira
                 // financeira) NÃO é degradação (cobertura=1.0 nesse caso,
                 // ver `DesempenhoScoreService::compute()`).
-                $margemAmostra = $result['margem_amostra'] ?? ['n_real' => 0, 'n_elegivel' => 0, 'cobertura' => 1.0];
-                $nElegivel     = (int) ($margemAmostra['n_elegivel'] ?? 0);
-                $cobertura     = (float) ($margemAmostra['cobertura'] ?? 1.0);
+                // Fase 122 (SNAP-05/D-122-04): como este comando SEMPRE chama
+                // compute() com o shadow ligado (linha acima), o topo de
+                // `margem_amostra` passa a vir no shape NOVO (cobertura de
+                // margem_var_pp em pp) — os números LEGADOS (a base que este
+                // gate sempre usou) migram para a sub-chave `legado`. Ler o
+                // topo direto aqui trocaria a base do gate implicitamente,
+                // exatamente o que D-122-04/T-122-07 proíbem: "quem escolhe
+                // a base do gate é o Plano 03 (D-122-05), nunca esta troca
+                // implícita". `?? $margemAmostra` cobre o shadow desligado
+                // (nunca acontece aqui, mas mantém o fallback honesto).
+                $margemAmostra     = $result['margem_amostra'] ?? ['n_real' => 0, 'n_elegivel' => 0, 'cobertura' => 1.0];
+                $margemAmostraGate = $margemAmostra['legado'] ?? $margemAmostra;
+                $nElegivel         = (int) ($margemAmostraGate['n_elegivel'] ?? 0);
+                $cobertura         = (float) ($margemAmostraGate['cobertura'] ?? 1.0);
 
                 if ($nElegivel > 0 && $cobertura < self::MARGEM_COBERTURA_MINIMA_CONGELAMENTO) {
                     $temAnterior = DesempenhoScoreSnapshot::mensal()
@@ -180,7 +191,7 @@ class ConsolidarMesDesempenho extends Command
                         'user_name'             => $user->name,
                         'mes_referencia'        => $mesStr,
                         'cobertura'             => $cobertura,
-                        'n_real'                => (int) ($margemAmostra['n_real'] ?? 0),
+                        'n_real'                => (int) ($margemAmostraGate['n_real'] ?? 0),
                         'n_elegivel'            => $nElegivel,
                         'sem_snapshot_anterior' => ! $temAnterior,
                     ];

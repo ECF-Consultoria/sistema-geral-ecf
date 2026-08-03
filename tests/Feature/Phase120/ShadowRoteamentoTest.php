@@ -319,7 +319,21 @@ class ShadowRoteamentoTest extends TestCase
         $this->assertSame($semShadow['nota_final'], $comShadow['nota_final']);
         $this->assertSame($semShadow['score_status'], $comShadow['score_status']);
         $this->assertSame($semShadow['faixa_bonus'], $comShadow['faixa_bonus']);
-        $this->assertSame($semShadow['margem_amostra'], $comShadow['margem_amostra']);
+
+        // Fase 122 (SNAP-05/D-122-04) — este invariante FOI REVOGADO DE
+        // PROPÓSITO: com o shadow ligado, margem_amostra passa a medir
+        // cobertura de margem_var_pp (pontos percentuais), não mais os
+        // mesmos 3 números do shadow desligado. Não é afrouxamento do gate
+        // da Fase 120 — os números LEGADOS continuam byte-idênticos, só
+        // mudaram de endereço (foram pra dentro de ['legado']).
+        $this->assertSame($semShadow['margem_amostra'], $comShadow['margem_amostra']['legado'],
+            'Fase 122/SNAP-05: os números legados sobrevivem intocados em margem_amostra.legado.');
+        $this->assertSame('margem_var_pp', $comShadow['margem_amostra']['base'],
+            'Com o shadow ligado, margem_amostra ganha a chave base (Fase 122).');
+        $this->assertArrayHasKey('legado', $comShadow['margem_amostra']);
+        $this->assertArrayNotHasKey('base', $semShadow['margem_amostra'],
+            'Com o shadow desligado, margem_amostra NÃO pode ganhar as chaves novas (gate nº 4 do 121-VALIDATION.md).');
+        $this->assertArrayNotHasKey('legado', $semShadow['margem_amostra']);
 
         // Única divergência permitida: empresas_score (vazio × populado) e
         // componentes.var_margem_pp (null × null ou número).
