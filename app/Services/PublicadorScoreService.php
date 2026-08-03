@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\MlbEmpresa;
+use App\Models\Pendencia;
 use App\Models\Publicacao;
 use Carbon\Carbon;
 
@@ -19,7 +20,7 @@ use Carbon\Carbon;
  *   25%  Produtividade: volume de anúncios vs meta (0%→0, 100%→80, ≥130%→100).
  *   20%  Pontualidade:  % de SKUs sem atraso nas empresas onde responsavel_id=publicador.
  *   10%  Conversão:     % de anúncios com venda no mês (vendido/feito).
- *   10%  Qualidade:     % sem problema (60%) + % feedbacks resolvidos (40%).
+ *   10%  Qualidade:     % sem pendência de bloqueio (60%) + % pendências resolvidas (40%).
  *
  * Quando um eixo não tem dado (ex.: sem publicações → conversão null; sem empresas
  * responsáveis → pontualidade null), o peso dele é redistribuído entre os demais
@@ -120,27 +121,30 @@ class PublicadorScoreService
             ? round(($vendas / $feito) * 100, 1)
             : null;
 
-        // ── Eixo 5: Qualidade — % sem problema (60%) + % feedbacks resolvidos (40%) ──
+        // ── Eixo 5: Qualidade — % sem bloqueio (60%) + % pendências resolvidas (40%) ──
+        // Lê do modelo de pendências. "Problema" virou pendência de severidade
+        // `bloqueio` e "feedback" virou `ajuste`/`observacao` — a régua do eixo
+        // continua a mesma, só a fonte mudou.
         $pubsMes = Publicacao::where('user_id', $userId)
             ->whereBetween('data', [$primeiro, $ultimo])
             ->where('tipo', '!=', 'variacao');
 
-        $totalPubs      = (clone $pubsMes)->count();
-        $comProblema    = (clone $pubsMes)->where('problema', true)->count();
+        $totalPubs   = (clone $pubsMes)->count();
+        $comBloqueio = (clone $pubsMes)
+            ->whereHas('pendencias', fn($q) => $q->pendente()->bloqueio())
+            ->count();
         $pctSemProblema = $totalPubs > 0
-            ? (($totalPubs - $comProblema) / $totalPubs) * 100
+            ? (($totalPubs - $comBloqueio) / $totalPubs) * 100
             : null;
 
-        // Feedbacks: publicações com comentário do líder (acumulado, sem filtro de mês).
-        $totalFeedbacks = Publicacao::where('user_id', $userId)
-            ->whereNotNull('comentario')
-            ->where('comentario', '!=', '')
-            ->count();
-        $feedbacksResolvidos = Publicacao::where('user_id', $userId)
-            ->whereNotNull('comentario')
-            ->where('comentario', '!=', '')
-            ->where('comentario_resolvido', true)
-            ->count();
+        // Pendências recebidas do líder (acumulado, sem filtro de mês).
+        // Resolvida = o líder confirmou. "Corrigida" ainda aguarda conferência,
+        // então não conta como resolvida — antes o publicador fechava sozinho.
+        $pendenciasQ = Pendencia::whereHas('publicacao', fn($q) => $q->where('user_id', $userId));
+
+        $totalFeedbacks      = (clone $pendenciasQ)->count();
+        $feedbacksResolvidos = (clone $pendenciasQ)->where('status', Pendencia::ST_RESOLVIDA)->count();
+
         $pctFeedbacksResolvidos = $totalFeedbacks > 0
             ? ($feedbacksResolvidos / $totalFeedbacks) * 100
             : null; // sem feedbacks = sem dado (não penaliza)

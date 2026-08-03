@@ -390,6 +390,13 @@ function FaturamentoTooltip({ active, payload, label }) {
     );
 }
 
+// Severidade da pendência (espelha App\Models\Pendencia::SEVERIDADES).
+const SEVERIDADE_PEND = {
+    bloqueio:   { label: 'Bloqueio',   chip: 'border-red-500/30 bg-red-500/10 text-red-400',       box: 'border-red-500/20 bg-red-500/5' },
+    ajuste:     { label: 'Ajuste',     chip: 'border-orange-500/30 bg-orange-500/10 text-orange-400', box: 'border-orange-500/20 bg-orange-500/5' },
+    observacao: { label: 'Observação', chip: 'border-blue-500/30 bg-blue-500/10 text-blue-400',    box: 'border-blue-500/20 bg-blue-500/5' },
+};
+
 function ProblemasSection({ problemas, onResolverAnuncio }) {
     if (!problemas) return null;
     const { empresas, anuncios } = problemas;
@@ -441,37 +448,61 @@ function ProblemasSection({ problemas, onResolverAnuncio }) {
                             Anúncios ({anuncios.length})
                         </p>
                         <div className="space-y-2">
-                            {anuncios.map(a => (
-                                <div key={a.id} className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-3">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-white font-medium text-[13px] truncate">{a.empresa}</span>
-                                                <a
-                                                    href={`https://produto.mercadolivre.com.br/${a.mlb_code.replace('MLB', 'MLB-')}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="shrink-0 text-purple-400 font-mono text-[11px] hover:text-purple-300 transition-colors"
-                                                >
-                                                    {a.mlb_code}
-                                                </a>
+                            {anuncios.map(a => {
+                                const sev = SEVERIDADE_PEND[a.severidade] ?? SEVERIDADE_PEND.ajuste;
+                                const aguardando = a.status === 'corrigida';
+                                return (
+                                    <div key={a.id} className={cn('rounded-xl border p-3', aguardando ? 'border-amber-500/25 bg-amber-500/[0.04]' : sev.box)}>
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                    <span className="text-white font-medium text-[13px] truncate">{a.empresa}</span>
+                                                    <a
+                                                        href={`https://produto.mercadolivre.com.br/${String(a.mlb_code ?? '').replace('MLB', 'MLB-')}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="shrink-0 text-purple-400 font-mono text-[11px] hover:text-purple-300 transition-colors"
+                                                    >
+                                                        {a.mlb_code}
+                                                    </a>
+                                                    <span className={cn('shrink-0 px-1.5 py-0.5 rounded border text-[10px] font-bold', sev.chip)}>
+                                                        {sev.label}
+                                                    </span>
+                                                    {a.categoria && (
+                                                        <span className="shrink-0 text-white/40 text-[10px] px-1.5 py-0.5 rounded bg-white/[0.05]">{a.categoria}</span>
+                                                    )}
+                                                    {a.idade_dias != null && a.idade_dias > 2 && (
+                                                        <span className={cn('shrink-0 px-1.5 py-0.5 rounded border text-[10px] font-bold',
+                                                            a.idade_dias > 7 ? 'text-red-400 border-red-500/25 bg-red-500/10' : 'text-orange-400 border-orange-500/25 bg-orange-500/10')}>
+                                                            {a.idade_dias}d
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {a.nota && (
+                                                    <p className="text-white/60 text-[12px] mt-0.5 whitespace-pre-line">↳ {a.nota}</p>
+                                                )}
+                                                <p className="text-white/25 text-[10px] mt-1.5">
+                                                    Publicado em {a.data_pub} · aberta por {a.aberta_por ?? '—'} em {a.em}
+                                                </p>
+                                                {aguardando && (
+                                                    <p className="text-amber-400/80 text-[11px] mt-1 font-medium">
+                                                        Aguardando o líder reconferir
+                                                    </p>
+                                                )}
                                             </div>
-                                            {a.nota && (
-                                                <p className="text-white/60 text-[12px] mt-0.5">↳ {a.nota}</p>
+                                            {/* O publicador informa que corrigiu; quem fecha é o líder. */}
+                                            {onResolverAnuncio && !aguardando && (
+                                                <button
+                                                    onClick={() => onResolverAnuncio(a.id)}
+                                                    className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors"
+                                                >
+                                                    <CheckCheck size={11} /> Corrigi
+                                                </button>
                                             )}
-                                            <p className="text-white/25 text-[10px] mt-1.5">Publicado em {a.data_pub} · Marcado em {a.em}</p>
                                         </div>
-                                        {onResolverAnuncio && (
-                                            <button
-                                                onClick={() => onResolverAnuncio(a.id)}
-                                                className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors"
-                                            >
-                                                <CheckCheck size={11} /> Marcar resolvido
-                                            </button>
-                                        )}
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -578,8 +609,10 @@ export default function MeuPainel({
         router.patch(route('mlb.resolver', id), {}, { preserveScroll: true });
     }
 
-    function handleResolverAnuncio(id) {
-        router.patch(route('mlb.problema', id), {}, { preserveScroll: true });
+    // Informa que a pendência foi corrigida. Não fecha a pendência: ela vai para
+    // "reconferir" e quem confirma é o líder. Recebe o id da PENDÊNCIA.
+    function handleResolverAnuncio(pendenciaId) {
+        router.patch(route('mlb.pendencia.corrigida', pendenciaId), {}, { preserveScroll: true });
     }
 
     const statusColors = { above:'#22c55e', ontrack:'#eab308', below:'#ef4444' };

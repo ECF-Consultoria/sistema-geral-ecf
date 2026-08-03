@@ -699,17 +699,29 @@ class MlbController extends Controller
                 'em'        => $e->problema_em?->format('d/m/Y H:i'),
             ]);
 
-        $anunciosProblema = Publicacao::where('user_id', $user->id)
-            ->where('problema', true)
-            ->orderByDesc('problema_em')
-            ->get(['id', 'empresa', 'mlb_code', 'data', 'problema_nota', 'problema_em'])
-            ->map(fn($p) => [
-                'id'       => $p->id,
-                'empresa'  => $p->empresa,
-                'mlb_code' => $p->mlb_code,
-                'nota'     => $p->problema_nota,
-                'em'       => $p->problema_em?->format('d/m/Y'),
-                'data_pub' => $p->data?->format('d/m/Y'),
+        // Pendências que o líder abriu nos anúncios deste publicador.
+        // Vem do modelo de pendências, então cada item traz severidade, quem
+        // abriu e há quantos dias — e o publicador informa "corrigi" em vez de
+        // dar a pendência como resolvida por conta própria.
+        $anunciosProblema = Pendencia::query()
+            ->pendente()
+            ->whereHas('publicacao', fn($q) => $q->where('user_id', $user->id))
+            ->with('publicacao:id,empresa,mlb_code,data', 'abertaPor:id,name')
+            ->orderByDesc('aberta_em')
+            ->get()
+            ->map(fn($d) => [
+                'id'          => $d->id,
+                'publicacao_id' => $d->publicacao_id,
+                'empresa'     => $d->publicacao?->empresa,
+                'mlb_code'    => $d->publicacao?->mlb_code,
+                'severidade'  => $d->severidade,
+                'categoria'   => $d->categoria ? (Pendencia::CATEGORIAS[$d->categoria] ?? $d->categoria) : null,
+                'nota'        => $d->texto,
+                'status'      => $d->status,
+                'aberta_por'  => $d->abertaPor?->name,
+                'em'          => $d->aberta_em?->format('d/m/Y'),
+                'idade_dias'  => $d->idade_dias,
+                'data_pub'    => $d->publicacao?->data?->format('d/m/Y'),
             ]);
 
         // Ticket médio: evolução mensal + valor do mês atual
