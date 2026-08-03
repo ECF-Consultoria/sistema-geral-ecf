@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BonusInvalidacao;
 use App\Models\Company;
+use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
@@ -155,6 +156,30 @@ class BonusAuditoriaController extends Controller
      * competência dada (a nota deles muda). Também remove o snapshot MENSAL da
      * competência (se existir, mês já congelado) para forçar recomputo com a
      * invalidação vigente.
+     *
+     * Fase 122 (SNAP-04/D-122-08/D-122-09) — a mesma limpeza se estende ao
+     * detalhe por empresa (`desempenho_company_score_snapshots`): sem isso, a
+     * tela de auditoria e o relatório de bonificação passariam a ler detalhe
+     * de uma competência cujo resumo mensal já foi apagado — divergência
+     * silenciosa entre as duas fontes que a Fase 123 vai exibir lado a lado.
+     * Chamado nos DOIS sentidos do toggle (invalidar E reativar, D-122-09):
+     * reativar sem limpar deixaria o detalhe da versão invalidada convivendo
+     * com um resumo recomputado sem a invalidação.
+     *
+     * D-122-08 — escopo `(competência) AND (empresa OU profissional afetado)`:
+     * `company_id = $companyId` pega as linhas da empresa invalidada mesmo de
+     * um profissional que já não está mais em `company_users` (vínculo mudou
+     * depois do congelamento); `user_id IN $userIds` pega as demais linhas dos
+     * profissionais afetados, coerente com o `DesempenhoScoreSnapshot::mensal()
+     * ->delete()` acima — sem isso o detalhe por empresa de um profissional
+     * cujo resumo mensal foi apagado ficaria meio-apagado (T-122-18), o que o
+     * comando verificador do Plano 05 sinalizaria como inconsistência. Sempre
+     * travado em `mes_referencia = $competencia` (T-122-15) — a invalidação é
+     * por competência, nenhuma outra pode ser tocada.
+     *
+     * Este método só APAGA. Quem REGRAVA as linhas é o
+     * `desempenho:consolidar-mes` (SNAP-06) ou o warm/diário da competência
+     * corrente — o controller nunca recomputa nem regrava.
      */
     private function bustarCacheDaEmpresa(int $companyId, Carbon $competencia): void
     {
@@ -170,6 +195,14 @@ class BonusAuditoriaController extends Controller
         DesempenhoScoreSnapshot::mensal()
             ->whereIn('user_id', $userIds)
             ->whereDate('mes_referencia', $competencia->toDateString())
+            ->delete();
+
+        DesempenhoCompanyScoreSnapshot::query()
+            ->whereDate('mes_referencia', $competencia->toDateString())
+            ->where(function ($q) use ($companyId, $userIds) {
+                $q->where('company_id', $companyId)
+                  ->orWhereIn('user_id', $userIds);
+            })
             ->delete();
     }
 
