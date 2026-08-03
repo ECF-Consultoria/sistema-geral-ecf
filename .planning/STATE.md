@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
-status: ready_to_plan
-stopped_at: Phase 122 complete (6/6) — ready to discuss Phase 123
-last_updated: 2026-08-03T18:10:30.754Z
+status: planning
+stopped_at: Phase 123 context gathered
+last_updated: "2026-08-03T18:46:37.150Z"
 last_activity: 2026-08-03
 progress:
   total_phases: 6
   completed_phases: 6
   total_plans: 23
-  completed_plans: 189
+  completed_plans: 23
   percent: 100
 ---
 
@@ -826,8 +826,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-03T17:00:00.262Z
-Stopped at: Completou 122-05-PLAN.md
+Last session: 2026-08-03T18:46:37.126Z
+Stopped at: Phase 123 context gathered
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
