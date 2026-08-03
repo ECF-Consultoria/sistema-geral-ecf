@@ -119,9 +119,15 @@ class Pendencia extends Model
         return $q->where('severidade', self::SEV_BLOQUEIO);
     }
 
-    /** Dias corridos desde a abertura — usado no aging da Supervisão. */
+    /**
+     * Dias corridos desde a abertura — usado no aging da Supervisão.
+     * diffInDays devolve float com sinal; truncar direto emitiria deprecation
+     * a cada linha da listagem.
+     */
     public function getIdadeDiasAttribute(): ?int
     {
-        return $this->aberta_em?->diffInDays(now());
+        if (!$this->aberta_em) return null;
+
+        return (int) abs($this->aberta_em->diffInDays(now()));
     }
 }

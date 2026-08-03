@@ -1293,13 +1293,20 @@ class MlbController extends Controller
 
         $user       = $request->user();
         $podeVerTudo = $this->podeVerTodosPub($user);
-        $modo       = $request->get('modo', 'fila');
+        $modo       = $request->input('modo', 'fila');
         if ($modo === 'supervisao' && !$podeVerTudo) $modo = 'fila';
 
-        $mesRef = $request->get('mes', now()->format('Y-m'));
+        $mesRef = $request->input('mes', now()->format('Y-m'));
 
-        $publicadores = $this->publicadores()
+        // Lista quem de fato tem anúncio na competência — não quem tem cargo de
+        // publicador hoje. Amarrar ao cargo atual faz sumir do filtro quem mudou
+        // de função ou saiu, deixando anúncios órfãos e não revisáveis.
+        $publicadores = User::query()
+            ->whereIn('id', Publicacao::doMes($mesRef)->distinct()->pluck('user_id')->filter())
+            ->orderBy('name')
+            ->get(['id', 'name'])
             ->map(fn($p) => ['id' => $p->id, 'nome' => $p->name])
+            ->values()
             ->toArray();
 
         $comum = [
@@ -1324,12 +1331,15 @@ class MlbController extends Controller
      */
     private function revisaoFila(Request $request, string $mesRef): array
     {
-        $funcId     = $request->get('func', '');
-        $status     = $request->get('status', 'pendentes');
-        $severidade = $request->get('sev', '');
-        $busca      = $request->get('busca', '');
+        $funcId     = $request->input('func', '');
+        $status     = $request->input('status', 'pendentes');
+        $severidade = $request->input('sev', '');
+        $busca      = $request->input('busca', '');
 
-        $base = Publicacao::dePublicadores()->doMes($mesRef);
+        // Sem recorte por cargo de propósito: um anúncio precisa ser revisado
+        // independentemente do cargo que o autor tem hoje. A segmentação por
+        // pessoa fica no filtro, onde é uma escolha e não uma omissão silenciosa.
+        $base = Publicacao::doMes($mesRef);
 
         if ($funcId) $base->where('user_id', $funcId);
         if ($busca) {
@@ -1419,7 +1429,7 @@ class MlbController extends Controller
      */
     private function revisaoSupervisao(Request $request, string $mesRef): array
     {
-        $base = Publicacao::dePublicadores()->doMes($mesRef);
+        $base = Publicacao::doMes($mesRef);
 
         $total = (clone $base)->count();
         $porStatus = (clone $base)
