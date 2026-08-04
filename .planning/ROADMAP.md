@@ -1491,7 +1491,7 @@ Plans:
   4. Relatório de Bonificação e Auditoria de Bônus exibem `nota_empresa` lendo a mesma fonte que o ranking
   5. `npm run build` rodado e checkpoint visual aprovado
 
-**Plans:** 6/6 plans complete
+**Plans:** 6/6 plans complete + 2 gap closure plans pending
 
 Plans:
 - [x] 123-01-PLAN.md — Fundações compartilhadas: `CompanyScoreSnapshotReader` + `desempenhoLabels.js` [UIEM-01, UIEM-02, UIEM-04]
@@ -1500,9 +1500,12 @@ Plans:
 - [x] 123-04-PLAN.md — Performance/Show.jsx — margem sem jargão + lista de empresas com nota [UIEM-01, UIEM-02, UIEM-03]
 - [x] 123-05-PLAN.md — Relatório de Bonificação — linha expansível por profissional (fecha UIEM-04) [UIEM-04]
 - [x] 123-06-PLAN.md — Checkpoint visual humano (fecha a fase) [UIEM-01, UIEM-02, UIEM-03, UIEM-04]
+- [ ] 123-07-PLAN.md — Gap closure: autorização por usuário-alvo em show()/evolucao() (CR-01) + payload enxuto do reader (WR-03) + regex de mês (WR-01) [UIEM-02, UIEM-03]
+- [ ] 123-08-PLAN.md — Gap closure: Auditoria de Bônus snapshot-first para nota_final (CR-02) [UIEM-04]
 
 > **Waves:** 1 = {123-01} · 2 = {123-02, 123-03} · 3 = {123-04} · 4 = {123-05} · 5 = {123-06}
 > UIEM-04 e UIEM-03 só fecham de fato quando 123-05 e 123-04 rodarem — 123-03 entrega só a metade da Auditoria de Bônus.
+> Gap closure (2026-08-04, de `123-VERIFICATION.md`): {123-07, 123-08} — wave 6, sem overlap de arquivos entre si, rodam em paralelo.
 
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
