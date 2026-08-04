@@ -12,7 +12,7 @@ const ONB_FASE_OPCOES     = ['Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 
 const ONB_ACESSO_COLABORADOR_OPCOES = ['Com acesso', 'Sem acesso'];
 const ONB_PLANILHA_PRODUTOS_OPCOES  = ['Já enviado', 'Não enviado'];
 const ONB_LISTAGEM_OPCOES           = ['Não', 'Pronto para listar', 'Já listado', 'Falta informação'];
-const ONB_PUBLICACAO_OPCOES         = ['Concluído', 'Estágio 2', 'Suspensa', 'Banida'];
+const ONB_PUBLICACAO_OPCOES         = ['Não iniciado', 'Concluído', 'Estágio 2', 'Suspensa'];
 const ONB_DECOLA_OPCOES             = ['Sim', 'Não', 'Mensagem Enviada'];
 const ONB_ME1_OPCOES = [
     'Sem itens ainda', 'Não é necessário', 'Ativo', 'Em contratação', 'Precisa de ME1',

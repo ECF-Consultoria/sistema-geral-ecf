@@ -1234,7 +1234,8 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
     // ERP / Integrador
     if (tipo === 'select') {
         // '---' = sentinela "não escolhido" (default) → mantém o check travado até o cliente selecionar uma opção real.
-        const opcoes = item.id === 'erp' ? ['---','Em Contratação','Tiny ERP','Bling','SAP','Netsuite','TOTVS','Omie','Outro'] : ['---','Em Contratação','Melhor Envio','Frenet','DirectLog','Jadlog','Correios','Outro'];
+        // Espelha ERP_OPCOES / INTEGRADOR_OPCOES de App\Models\MlbImplementacao — manter em sincronia manualmente.
+        const opcoes = item.id === 'erp' ? ['---','Em Contratação','Tiny ERP','Bling','SAP','Netsuite','TOTVS','Omie','Outro'] : ['---','Em Contratação','Melhor Envio','Frenet','DirectLog','Jadlog','Correios','Trabalhar apenas com Mercado Envios','Outro'];
         const valor = dado?.valor ?? '---';
         return (
             <div className="mt-3 space-y-3">
