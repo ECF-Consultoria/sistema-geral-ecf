@@ -102,6 +102,10 @@ None - no external service configuration required.
 - Verificação visual da Auditoria de Bônus com dado real de produção continua pendente (adiada para pós-deploy por decisão já documentada do usuário em `123-VERIFICATION.md`), não é bloqueador deste plano.
 - `--filter=Phase123` (52/52), `--filter=Phase120` (18/18) e `npm run test:js` (126/127, mesma falha pré-existente e não relacionada em `estrutura-grade-glide.test.js`) reexecutados sem regressão; `--filter=Desempenho` na mesma baseline conhecida (14 failed/102 passed).
 
+## Self-Check: PASSED
+
+Todos os 6 arquivos citados (controller, 2 suítes de teste, JSX, labels, este SUMMARY) confirmados no disco; os 3 commits (`13805544`, `0c6afb29`, `25a3ca90`) confirmados em `git log`.
+
 ---
 *Phase: 123-telas-e-relat-rios-v21-0*
 *Completed: 2026-08-04*
