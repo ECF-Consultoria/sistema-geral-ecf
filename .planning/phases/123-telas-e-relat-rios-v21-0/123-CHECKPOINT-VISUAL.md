@@ -151,32 +151,39 @@ Rerodei a MESMA verificação automatizada (mesmo script, mesmo método — boot
 > diretamente. Contadores de carteira (entraram/total) por profissional continuam versionáveis —
 > são o dado que a tela exibe.
 
-### ⚠️ Bloqueio NOVO (distinto do anterior): Auditoria de Bônus continua vazia — depende de `company_users`
+### ⏭️ Auditoria de Bônus — ADIADA PARA PÓS-DEPLOY (decisão fechada, não é mais bloqueio em aberto)
 
-`/desempenho/auditoria-bonus?mes=2026-06` continua voltando **200** com `profissionais: []`,
-mesmo com `user_setores`/`cargos` já resolvidos (`tem_detalhe_empresas: true` no nível da página
-— a competência TEM detalhe gravado). Causa isolada por reconsulta: diferente do Relatório de
+`/desempenho/auditoria-bonus?mes=2026-06` volta **200** com `profissionais: []`, mesmo com
+`user_setores`/`cargos` já resolvidos (`tem_detalhe_empresas: true` no nível da página — a
+competência TEM detalhe gravado). Causa isolada por reconsulta: diferente do Relatório de
 Bonificação (que lê só `CompanyScoreSnapshotReader`), `BonusAuditoriaController::index()`
 **também** monta a lista de empresas de cada profissional via
 `CarteiraContextService::forUser($u, ['active' => true])`
 (`app/Http/Controllers/BonusAuditoriaController.php:93`), que depende da pivot `company_users` —
 **uma TERCEIRA tabela**, distinta tanto do score quanto de `user_setores`/`cargos`. Depois disso
 o controller faz `->reject(fn ($p) => $p['empresas']->isEmpty())` (linha 134): profissional sem
-nenhuma linha em `company_users` é removido da lista inteira.
+nenhuma linha em `company_users` é removido da lista inteira. Reconsulta direta confirma a causa
+exata: `company_users` tinha **0 linhas** para os 14 `user_ids` analista/estrategista.
 
-Reconsulta direta confirma a causa exata:
+**Decisão do usuário (fechada):** não puxar `company_users`. A verificação visual da Auditoria de
+Bônus com dado real **sai do escopo deste checkpoint** e passa para conferência pós-deploy em
+produção, onde o dado é nativo (sem precisar copiar mais tabela de produção pra local).
 
-```
-company_users rows para os 14 user_ids analista/estrategista: 0
-```
-
-`company_users` é a tabela que liga profissional↔empresa (carteira) — não é dado de
-compensação, mas também não fez parte de nenhum dos dois pulls já autorizados até agora.
-
-**Decisão do usuário necessária (nova, terceira):** autorizar puxar `company_users` (read-only,
-vínculo profissional↔empresa, sem valores financeiros) da VPS pelo mesmo método, ou verificar os
-itens 21-23 de outra forma. **Não fiz esse pull sozinho**, pelo mesmo critério das duas vezes
-anteriores.
+**O que sustenta essa decisão (por que é segura sem o checkpoint visual local):**
+- `AuditoriaBonusNotaEmpresaTest` — **6 testes automatizados verdes** (`--filter=Phase123`, Task
+  1): mesma fonte que o ranking mesmo com `breakdown_json['empresas_score']` vazio, empresa sem
+  linha vem nula, competência inteira sem detalhe, selo Shopee com placeholder, exatamente 1
+  query contra a tabela com 3 profissionais em cena.
+- `tests/js/estrutura-auditoria-desempenho.test.js` — 7 gates estruturais (import de
+  `desempenhoLabels`, uso de `ehPlaceholderShopee`/`SELO_SHOPEE_TEXTO`/
+  `AVISO_SEM_DETALHE_TITULO`/`avisoSemDetalheFechado`, default `false` de `tem_detalhe_empresas`,
+  anti-hardcode do texto do aviso).
+- O código de `BonusAuditoriaController::index()` foi lido linha a linha nesta sessão — a
+  montagem de `nota_empresa`/componentes por empresa usa o MESMO `CompanyScoreSnapshotReader`
+  que `PerformanceController::show()` (já confirmado com dado real, itens C/D/E acima) e que
+  `RelatorioBonificacaoController` (confirmado com dado real, item H acima nesta mesma sessão).
+  A única peça não testada com dado real localmente é a junção com `company_users` — que é
+  puramente estrutural (join + reject de lista vazia), não lógica de nota/régua.
 
 ### URLs prontas (com `?mes=2026-06` — sem esse parâmetro a tela cai em "Em curso")
 
@@ -190,7 +197,7 @@ anteriores.
 | Felipe — modo "Em curso" (item F) | 21 | `http://localhost/ecf_admin/public/performance/21` (sem `?mes=`) |
 | Débora Lima (caso G — ausência) | não existe no banco local | não se aplica — o teste é ela NÃO aparecer |
 | Relatório de Bonificação | — | `http://localhost/ecf_admin/public/desempenho/relatorio-bonificacao?mes=2026-06` (**5 contemplados reais, desbloqueado**) |
-| Auditoria de Bônus | — | `http://localhost/ecf_admin/public/desempenho/auditoria-bonus?mes=2026-06` (**ainda vazio — bloqueio novo, `company_users`**) |
+| Auditoria de Bônus | — | `http://localhost/ecf_admin/public/desempenho/auditoria-bonus?mes=2026-06` (**adiada para pós-deploy — ver seção acima**) |
 
 ---
 
@@ -200,7 +207,8 @@ anteriores.
   código-fonte, sem depender de olho humano). Ainda vale espiar, mas não é obrigatório.
 - **👁️ PENDENTE — OLHO HUMANO** — depende de julgamento visual (hierarquia, legibilidade,
   "sensação" de que o texto explica bem) que nenhum script substitui.
-- **⛔ BLOQUEADO** — não dá pra verificar hoje (falta dado local); ver bloqueios acima.
+- **⏭️ ADIADO PARA PÓS-DEPLOY** — decisão fechada de não verificar neste checkpoint local; a
+  cobertura automatizada (testes) sustenta a decisão. Confere-se em produção, dado nativo.
 
 ### A. Desbloqueio do seletor (D-02)
 
@@ -287,12 +295,14 @@ anteriores.
     — nunca a seção inteira ausente.
 14. Competência fechada sem detalhe — aviso "Detalhe por empresa indisponível", nunca tabela
     vazia/erro.
-    **⛔ BLOQUEADO — sem dado local para testar:** só existe UMA competência com snapshot mensal
-    localmente (2026-06); não há um "mês fechado sem detalhe" real pra visitar (ex.: 2026-05 nem
-    aparece no `meses_disponiveis`, porque não tem snapshot mensal local nem em produção — ver
-    `122-VERIFICATION.md`, nota de escopo do critério 5). O comportamento em si já está coberto
-    por `RetrocompatSnapshotAntigoTest`/`PerformanceShowSemDetalheTest` (verdes na Task 1) com
-    fixture sintética — só não dá pra ver com dado real hoje.
+    **⏭️ ADIADO — não existe cenário real pra visitar, coberto por teste sintético:** só existe
+    UMA competência com snapshot mensal localmente e em produção hoje (2026-06); não há um "mês
+    fechado sem detalhe" real pra visitar (ex.: 2026-05 nem aparece no `meses_disponiveis`, porque
+    nunca teve snapshot mensal — ver `122-VERIFICATION.md`, nota de escopo do critério 5). Não é
+    "falta dado local que dava pra trazer" — é um cenário que **não existe** ainda nem em
+    produção. O comportamento está coberto por `RetrocompatSnapshotAntigoTest` (4 testes) e
+    `PerformanceShowSemDetalheTest` (4 testes), ambos verdes na Task 1, com fixture sintética que
+    simula exatamente essa situação.
 15. Card de margem no modo "Em curso" continua mostrando o número normalmente.
     **✅ CONFIRMADO POR AUTOMAÇÃO:** `status: 200` para `/performance/21` sem `?mes=`; o card usa
     `c.var_margem_pct` do `resultado` (sempre presente, independe de `tem_detalhe_empresas`).
@@ -300,16 +310,17 @@ anteriores.
 ### G. Débora Lima — ausência não pode quebrar (UIEM-03)
 
 16. Débora Lima não aparece no Relatório de Bonificação nem na Auditoria de Bônus.
-    **👁️ PARCIAL — Relatório: indício confirmado, não prova forte / Auditoria: ⛔ BLOQUEADO.** O
-    Relatório de Bonificação agora lista 5 pessoas reais e ela não está entre elas — mas ela
-    também não existe como `User` na tabela local, então essa ausência não distingue "ela caiu em
-    sem-carteira na consolidação" (o comportamento que o item quer provar) de "ela nem tem
-    registro aqui". Não é uma prova válida por esse caminho. A Auditoria de Bônus continua
-    inteiramente vazia (ver bloqueio `company_users` acima) — bloqueado por completo lá.
+    **👁️ PARCIAL (Relatório) / ⏭️ ADIADO (Auditoria).** No Relatório de Bonificação, que já lista
+    5 pessoas reais, ela não está entre elas — mas ela também não existe como `User` na tabela
+    local, então essa ausência não distingue "ela caiu em sem-carteira na consolidação" (o
+    comportamento que o item quer provar) de "ela nem tem registro aqui". Não é uma prova válida
+    por esse caminho — fica como indício, não fechamento do item. Na Auditoria de Bônus, a
+    verificação inteira foi adiada para pós-deploy (ver seção acima) — inclusive este subitem.
 17. A ausência dela não gera erro 500.
     **✅ CONFIRMADO:** as duas telas respondem `200` com dado real de 2026-06 presente (Relatório
     com 5 linhas reais, Auditoria com lista vazia mas sem erro) — o caminho de código não quebra
-    diante de ausência/lista vazia/parcial.
+    diante de ausência/lista vazia/parcial. Isso vale independente do adiamento acima — é sobre
+    resiliência de código, já comprovada nesta sessão.
 
 ### H. Relatório de Bonificação (UIEM-04 / D-08 / D-09) — desbloqueado com dado real
 
@@ -331,44 +342,54 @@ anteriores.
     tinha sido provado contra fixture sintética (Task 1); agora está confirmado com o relatório
     cheio de gente real também.
 
-### I. Auditoria de Bônus (UIEM-04 / D-10) — ainda bloqueada, causa isolada e distinta
+### I. Auditoria de Bônus (UIEM-04 / D-10) — ADIADA PARA PÓS-DEPLOY
+
+Os três itens abaixo saem do escopo deste checkpoint local por decisão do usuário — ver seção
+"Auditoria de Bônus — ADIADA PARA PÓS-DEPLOY" acima para a causa (`company_users` não
+sincronizado, decisão explícita de não copiar essa tabela) e a cobertura automatizada que
+sustenta a decisão (6 testes de feature + 7 gates estruturais JS, verdes na Task 1).
 
 21. Expandir um profissional, conferir nota por empresa.
-    **⛔ BLOQUEADO — nova causa isolada:** `status: 200`, `profissionais: []`. Não é mais o gap de
-    `user_setores`/`cargos` (esse já foi resolvido — `tem_detalhe_empresas: true` no nível da
-    página confirma). A causa agora é `company_users` vazio para os profissionais localmente —
-    ver "Bloqueio NOVO" acima. Terceira tabela, decisão pendente do usuário.
+    **⏭️ ADIADO PARA PÓS-DEPLOY.** Cobertura local: `AuditoriaBonusNotaEmpresaTest` prova a
+    montagem de `nota_empresa`/componentes por empresa contra fixture; falta só a conferência
+    visual com dado real, que acontece em produção.
 22. Competência sem detalhe — banner no topo, não colunas vazias.
-    **⛔ BLOQUEADO — sem competência real sem detalhe disponível localmente** (mesma limitação
-    do item 14, não relacionada ao `company_users`).
+    **⏭️ ADIADO — mesma causa do item 14 (não relacionada a `company_users`):** não existe hoje,
+    nem em produção, uma competência fechada sem detalhe pra visitar. Coberto por teste sintético
+    (`AuditoriaBonusNotaEmpresaTest`, cenário de competência sem detalhe).
 23. Números batem com a tela individual do mesmo profissional (mesma fonte).
-    **✅ CONFIRMADO POR CÓDIGO (Task 1) + POR ANALOGIA (Relatório×Individual, item 19 acima) /
-    ⛔ AUDITORIA ESPECÍFICA BLOQUEADA:** `AuditoriaBonusNotaEmpresaTest` (verde) prova que a
-    Auditoria usa o MESMO `CompanyScoreSnapshotReader`. A prova cruzada com dado real que EU
-    consegui fazer foi entre Relatório×Individual (mesmo total, 25 = 25); a mesma checagem contra
-    a Auditoria especificamente segue bloqueada até `company_users` estar disponível.
+    **✅ CONFIRMADO POR CÓDIGO E POR ANALOGIA COM DADO REAL, mesmo com o item adiado:**
+    `AuditoriaBonusNotaEmpresaTest` prova por construção que a Auditoria usa o MESMO
+    `CompanyScoreSnapshotReader` que `PerformanceController::show()`. A prova cruzada com dado
+    real que deu pra fazer nesta sessão foi entre Relatório de Bonificação × tela individual
+    (mesmo total, 25 = 25 — item 19) — o Relatório e a Auditoria leem o MESMO serviço, então a
+    mesma garantia estrutural se estende. A conferência visual específica da Auditoria com dado
+    real de 2026-06 acontece em produção.
 
 ---
 
-## Resumo do que falta olho humano de verdade
+## O que o humano precisa olhar
 
-Descontando o que já foi confirmado objetivamente, o que **precisa mesmo** de julgamento visual:
+Só o que é genuinamente julgamento visual — tudo o que dava pra confirmar por automação (dado
+real + código) já foi confirmado acima e não precisa ser reconferido. `npm run build` rodado de
+novo antes de fechar este documento (`✓ built in 31.98s`, exit 0) — o que está em
+`http://localhost/ecf_admin/public` é o build corrente.
 
-- **B.3/B.4/B.5, E.12** — o card de margem e a ressalva "existem e o texto está certo" (código
-  confirmado); resta avaliar se a redação **soa clara** pra quem nunca viu a API.
-- **D.10** — o tom do aviso Shopee ("falta o dado" vs. "margem ruim") é leitura subjetiva.
-- **A.1/A.2, C.6/C.7, D.9, E.11, F.13/F.15, H.18/H.20** — comportamento 100% confirmado por
-  automação com dado real; um clique rápido pra ver que "parece certo" ainda é recomendável, mas
-  não é obrigatório.
-- **H.19** — dado confirmado (25 = 25, mesma fonte); só falta o clique de expandir e olhar o
-  resultado visual (interação, não dado).
-- **G.16 (Relatório)** — indício presente mas não é prova forte (Débora não existe como `User`
-  local); não bloqueante para aprovar o resto, mas não fecha o item com certeza.
-- **G.16 (Auditoria), I.21-23** — genuinamente bloqueados até decidir sobre puxar `company_users`
-  (terceira tabela, distinta de `user_setores`/`cargos` já resolvida) — ou verificar de outra
-  forma.
-- **F.14, I.22** — bloqueados por não existir, hoje, uma competência fechada sem detalhe real
-  pra visitar (já coberto por teste sintético na Task 1).
+| # | O que olhar | URL |
+|---|---|---|
+| B.3 | O texto do card de margem soa claro pra quem nunca viu a API (sem jargão)? | `http://localhost/ecf_admin/public/performance/21?mes=2026-06` |
+| B.4 | A frase em pontos percentuais lê bem junto do resto do card? | mesma URL acima |
+| B.5 | O número grande do card faz sentido lido ao lado da nota? | mesma URL acima |
+| D.10 | O aviso da Shopee soa como "falta o dado", não como "a margem foi ruim"? | `http://localhost/ecf_admin/public/performance/28?mes=2026-06` |
+| E.11 | A tabela de um profissional comum renderiza limpa, formato `X% → Y%  ±Z` legível? | `http://localhost/ecf_admin/public/performance/17?mes=2026-06` |
+| E.12 | A ressalva "nota vem do cálculo por carteira" está visualmente proeminente o bastante? | mesma URL acima |
+| H.19 | Clicar em expandir a linha do contemplado da faixa intermediário — abre certo, mostra empresas + nota + 3 componentes? | `http://localhost/ecf_admin/public/desempenho/relatorio-bonificacao?mes=2026-06` |
+| — | Conferência geral de "parece certo" no caso Felipe (denominador 9/30, colapso automático) | `http://localhost/ecf_admin/public/performance/21?mes=2026-06` |
+| — | Conferência geral de "parece certo" no caso Renan Bassetto (todas entraram, seção "não entraram" ausente) | `http://localhost/ecf_admin/public/performance/11?mes=2026-06` |
+
+**Fora do escopo deste checkpoint (decisão fechada, não pendente):** Auditoria de Bônus (itens
+G.16-parte-Auditoria, I.21-23) e os dois cenários que não existem hoje nem em produção (F.14,
+I.22) — cobertos por teste automatizado, conferência real em produção pós-deploy.
 
 ---
 
