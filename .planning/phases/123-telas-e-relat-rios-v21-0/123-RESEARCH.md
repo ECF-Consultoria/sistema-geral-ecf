@@ -377,14 +377,23 @@ private function seedLinha(int $userId, int $companyId, string $mesStr, array $o
 
 **Nenhum outro claim desta pesquisa depende de fonte não verificada** — todas as afirmações técnicas foram confirmadas por leitura direta do código-fonte já existente no repositório (controllers, models, migration, testes, comandos, e os 3 documentos de fase anteriores: 122-CONTEXT/ROLLOUT/VERIFICATION).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **O que a "Auditoria de Bônus" mostra quando a competência inteira não tem nenhuma linha em `desempenho_company_score_snapshots` (ex.: usuário seleciona 2026-05)?**
+> Ambas as perguntas foram fechadas no planejamento da fase (2026-08-04), sem necessidade de voltar ao discuss-phase.
+> Fechamento registrado aqui para auditabilidade — não reabrir.
+
+1. **RESOLVED — O que a "Auditoria de Bônus" mostra quando a competência inteira não tem nenhuma linha em `desempenho_company_score_snapshots` (ex.: usuário seleciona 2026-05)?**
+
+   **Resolução:** a recomendação abaixo foi adotada integralmente. O Plano 03, Task 1 implementa os dois níveis de ausência — banner no topo quando NENHUM profissional tem detalhe na competência (flag `tem_detalhe_empresas`), e `—` silencioso por linha quando só aquele profissional não tem. O `must_haves` do Plano 03 trava as duas metades: *"Competência sem nenhum detalhe gravado exibe um aviso no topo da página, e não silêncio"* e *"Profissional sem linha de detalhe mostra '—' na coluna de nota, sem repetir o aviso por linha"*.
+
    - What we know: D-10 diz "mesma regra de ausência da D-03" — ou seja, um aviso, não silêncio.
    - What's unclear: D-03 foi desenhada pensando em UMA seção dentro da tela de UM profissional (Show.jsx). Na Auditoria, a ausência pode ser por competência INTEIRA (nenhum profissional tem detalhe) ou PARCIAL (alguns profissionais têm, outros não — ex.: um profissional cuja carteira mudou depois do congelamento). O CONTEXT.md não distingue esses dois casos.
    - Recommendation: Tratar como dois níveis — (a) banner no topo da página quando NENHUM profissional tem detalhe na competência selecionada (mesmo texto/estilo do aviso da D-03); (b) por linha/profissional, mostrar "—" silencioso quando só aquele profissional específico não tem linha (não repetir o banner completo por profissional, que poluiria a tela). O planner deve validar essa interpretação no discuss-phase se quiser confirmar antes de implementar.
 
-2. **A tela `/manual/desempenho-bonificacao` (artigo do manual, linkado como "Como calculamos?" em `Performance/Show.jsx:532-538`) precisa de atualização de texto sobre margem em pp?**
+2. **RESOLVED (fora de escopo) — A tela `/manual/desempenho-bonificacao` (artigo do manual, linkado como "Como calculamos?" em `Performance/Show.jsx:532-538`) precisa de atualização de texto sobre margem em pp?**
+
+   **Resolução:** mantida fora de escopo, conforme a recomendação abaixo. Não está em nenhuma decisão (D-01 a D-11) nem nos 5 critérios do ROADMAP, e nenhum dos 6 planos a inclui. Fica como nota de acompanhamento para uma fase futura, não como tarefa da 123.
+
    - What we know: Não está listada em nenhuma decisão (D-01 a D-11) nem nos critérios do ROADMAP. UIEM-01 fala especificamente do "card" e do "detalhe do profissional".
    - What's unclear: Se o artigo do manual já cita `percentageMargin` ou explica a margem em termos que ficariam desatualizados/inconsistentes depois desta fase.
    - Recommendation: Fora de escopo por não estar nos critérios de sucesso nem nas decisões — não incluir no plano a menos que o usuário peça explicitamente. Se o planner achar a inconsistência incômoda o suficiente, marcar como nota de acompanhamento, não como tarefa da fase.

@@ -18,9 +18,10 @@ created: 2026-08-03
 
 | Property | Value |
 |----------|-------|
-| **Framework** | PHPUnit 11.x (`phpunit/phpunit ^11.5.50`), estilo `#[Test]` attributes |
+| **Framework (PHP)** | PHPUnit 11.x (`phpunit/phpunit ^11.5.50`), estilo `#[Test]` attributes |
+| **Framework (JS)** | `node --test` nativo, via `npm run test:js` — testes em `tests/js/*.test.js`. Alcança apenas função pura (o projeto não tem harness de render React) |
 | **Config file** | `phpunit.xml` (DB sqlite `:memory:`) |
-| **Quick run command** | `php artisan test --filter=Phase123` |
+| **Quick run command** | `php artisan test --filter=Phase123` + `npm run test:js` |
 | **Full suite command** | `php artisan test` |
 | **Estimated runtime** | ~5s (quick) — nenhuma suíte desta fase pode fazer chamada de rede |
 
@@ -30,8 +31,8 @@ created: 2026-08-03
 
 ## Sampling Rate
 
-- **After every task commit:** `php artisan test --filter=Phase123`
-- **After every plan wave:** `php artisan test --filter=Phase122` + `php artisan test --filter=Phase123` + `npm run build`
+- **After every task commit:** `php artisan test --filter=Phase123` (e `npm run test:js` quando a task tocar `resources/js/lib/`)
+- **After every plan wave:** `php artisan test --filter=Phase122` + `php artisan test --filter=Phase123` + `npm run test:js` + `npm run build`
   *(Phase122 garante que a fonte de dados que esta fase apenas lê continua estável.)*
 - **Before `/gsd:verify-work`:** `php artisan test` completo verde (contra a baseline acima)
 - **Max feedback latency:** 30 segundos
@@ -50,7 +51,9 @@ created: 2026-08-03
 | TBD | TBD | TBD | UIEM-02 | — | Render de `show()` com detalhe por empresa não emite nenhuma chamada HTTP (`Http::assertNothingSent()`) | feature | `php artisan test --filter=PerformanceShowEmpresasScoreTest` | ❌ W0 | ⬜ pending |
 | TBD | TBD | TBD | UIEM-02 / D-02 | — | `meses_disponiveis` deriva dos dados; corte fixo `2026-08-01` removido | feature | `php artisan test --filter=PerformanceShowMesesDisponiveisTest` | ❌ W0 | ⬜ pending |
 | TBD | TBD | TBD | UIEM-02 / D-06 | — | Denominador "entraram (N)" / "não entraram (M)" bate com `status==='complete'` vs resto | feature | `php artisan test --filter=PerformanceShowEmpresasScoreTest` | ❌ W0 | ⬜ pending |
+| TBD | TBD | TBD | UIEM-02 / D-06 | — | `dividirPorEntrada()` particiona por `status==='complete'` preservando a ordem; caso Felipe: 3 entram, 27 não, seção nasce colapsada | unit (JS) | `npm run test:js` | ❌ W0 | ⬜ pending |
 | TBD | TBD | TBD | UIEM-02 / D-07 | — | Empresa com `quality.margin_source='placeholder_shopee'` aparece **dentro** de "entraram (N)", nunca excluída | feature | `php artisan test --filter=PerformanceShowEmpresasScoreTest` | ❌ W0 | ⬜ pending |
+| TBD | TBD | TBD | UIEM-02 / D-07 | — | `carteiraTodaShopeeNaEntrada()` devolve `true` só com carteira 100% placeholder (caso Matheus Estrela) e `false` com array vazio | unit (JS) | `npm run test:js` | ❌ W0 | ⬜ pending |
 | TBD | TBD | TBD | UIEM-03 / D-03 | — | Competência fechada sem linha em `desempenho_company_score_snapshots` mostra aviso — não lista vazia, não erro | feature | `php artisan test --filter=PerformanceShowSemDetalheTest` | ❌ W0 | ⬜ pending |
 | TBD | TBD | TBD | UIEM-03 / D-11 | — | `resultado` sem chave `empresas_score` renderiza o visual anterior (4 cards + faixa) sem 500 nem `undefined` | feature | `php artisan test --filter=RetrocompatSnapshotAntigoTest` | ❌ W0 | ⬜ pending |
 | TBD | TBD | TBD | UIEM-04 / D-08 | — | `RelatorioBonificacaoController::index()` expõe `empresas_score` lendo `desempenho_company_score_snapshots` (não `breakdown_json`) | feature | `php artisan test --filter=RelatorioBonificacaoEmpresasTest` | ❌ W0 | ⬜ pending |
@@ -71,8 +74,11 @@ Nenhuma suíte `Phase123` existe ainda. Wave 0 precisa criar:
 - [ ] `tests/Feature/Phase123/RetrocompatSnapshotAntigoTest.php` — UIEM-03 / D-11
 - [ ] `tests/Feature/Phase123/RelatorioBonificacaoEmpresasTest.php` — UIEM-04 / D-08 + D-09
 - [ ] `tests/Feature/Phase123/AuditoriaBonusNotaEmpresaTest.php` — UIEM-04 / D-10
+- [ ] `tests/js/desempenhoLabels.test.js` — copy pt-BR, formatadores e **as três regras puras de particionamento** (`dividirPorEntrada`, `carteiraTodaShopeeNaEntrada`, `deveColapsarNaoEntraram`), com os casos Felipe (3/30, colapso em 27) e Matheus Estrela (carteira toda-Shopee)
 
-**Fixtures:** reaproveitar o helper `seedLinha()` de `tests/Feature/Phase122/VerificarConsolidacaoTest.php`. Framework já instalado — nada a instalar.
+**Fixtures:** reaproveitar o helper `seedLinha()` de `tests/Feature/Phase122/VerificarConsolidacaoTest.php`, promovido para a base `Phase123TestCase` no Plano 01. Ambos os frameworks já instalados — nada a instalar.
+
+**Por que as regras de particionamento viraram função pura:** sem harness de render React, lógica de ramificação dentro do `EmpresasScoreTabela.jsx` só seria verificável por `grep` de presença e pelo checkpoint humano da wave 5 — o fim da cadeia. Extraídas para `desempenhoLabels.js`, as três decisões de maior risco da fase (quem entra na conta, carteira toda-Shopee, estado inicial do colapso) ficam travadas por teste já na wave 1.
 
 ---
 
