@@ -1491,14 +1491,14 @@ Plans:
   4. Relatório de Bonificação e Auditoria de Bônus exibem `nota_empresa` lendo a mesma fonte que o ranking
   5. `npm run build` rodado e checkpoint visual aprovado
 
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 
 Plans:
 - [x] 123-01-PLAN.md — Fundações compartilhadas: `CompanyScoreSnapshotReader` + `desempenhoLabels.js` [UIEM-01, UIEM-02, UIEM-04]
 - [x] 123-02-PLAN.md — Backend do detalhe por empresa + desbloqueio do dropdown de mês fechado [UIEM-02, UIEM-03]
 - [x] 123-03-PLAN.md — Auditoria de Bônus — coluna de nota por empresa (metade de UIEM-04) [UIEM-04, UIEM-03]
 - [x] 123-04-PLAN.md — Performance/Show.jsx — margem sem jargão + lista de empresas com nota [UIEM-01, UIEM-02, UIEM-03]
-- [ ] 123-05-PLAN.md — Relatório de Bonificação — linha expansível por profissional (fecha UIEM-04) [UIEM-04]
+- [x] 123-05-PLAN.md — Relatório de Bonificação — linha expansível por profissional (fecha UIEM-04) [UIEM-04]
 - [ ] 123-06-PLAN.md — Checkpoint visual humano (fecha a fase) [UIEM-01, UIEM-02, UIEM-03, UIEM-04]
 
 > **Waves:** 1 = {123-01} · 2 = {123-02, 123-03} · 3 = {123-04} · 4 = {123-05} · 5 = {123-06}
