@@ -12,6 +12,7 @@ use App\Models\Ppa;
 use App\Models\Publicacao;
 use App\Models\Servico;
 use App\Models\User;
+use App\Services\Desempenho\CompanyScoreSnapshotReader;
 use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\PlanoMetasPublicacaoService;
@@ -28,6 +29,7 @@ class PerformanceController extends Controller
     public function __construct(
         private DesempenhoScoreService $scoreService,
         private MetricPeriodResolver $periodResolver,
+        private CompanyScoreSnapshotReader $companyScoreReader,
     ) {}
 
     public function index(Request $request)
@@ -1316,6 +1318,25 @@ class PerformanceController extends Controller
             ? 0
             : $user->companies()->pluck('companies.id')->intersect($invalidadasComp)->count();
 
+        // Detalhe por empresa (D-01/D-03/D-06 da Fase 123) — leitura pura de
+        // `desempenho_company_score_snapshots` via `CompanyScoreSnapshotReader`.
+        // Esta tela NUNCA aciona o shadow de cálculo por empresa nem lê
+        // via serviço de compute — reabriria o fan-out de HTTP por empresa
+        // que já produziu página de 70s neste módulo (ver
+        // `.planning/learnings/desempenho-bonificacao.md` §5). O guard
+        // `periodo.is_closed` é a D-01 literal — no modo "Em curso" a seção
+        // nem é consultada, custo zero de API nos dois ramos. `is_closed`
+        // sozinho NÃO implica detalhe disponível (2026-05/2026-04 são meses
+        // fechados sem nenhuma consolidação, e snapshot anterior à Fase 122
+        // também não tem linhas) — por isso `$temDetalheEmpresas` é derivado
+        // da EXISTÊNCIA de linhas, nunca de `is_closed` isolado.
+        $empresasScore = collect();
+        if ($ctx['periodo']['is_closed']) {
+            $empresasScore = $this->companyScoreReader->paraUsuario($user->id, $mesReferencia);
+        }
+        $temDetalheEmpresas = $empresasScore->isNotEmpty();
+        $resumoEmpresas     = $this->companyScoreReader->resumo($empresasScore);
+
         return Inertia::render('Performance/Show', [
             'user' => [
                 'id'          => $user->id,
@@ -1324,14 +1345,17 @@ class PerformanceController extends Controller
                 'cargo_slug'  => $cargoSlug,
                 'cargo_label' => $cargoLabel,
             ],
-            'resultado'            => $resultado,
-            'mes_selecionado'      => $mesReferencia->toDateString(),
-            'modo'                 => $ctx['modo'],
-            'meses_disponiveis'    => $mesesFechados,
-            'periodo'              => $ctx['periodo'],
-            'bonus'                => $ctx['bonus'],
-            'nps_window'           => $ctx['nps'],
-            'empresas_invalidadas' => $invalidadasDoUser,
+            'resultado'             => $resultado,
+            'mes_selecionado'       => $mesReferencia->toDateString(),
+            'modo'                  => $ctx['modo'],
+            'meses_disponiveis'     => $mesesFechados,
+            'periodo'               => $ctx['periodo'],
+            'bonus'                 => $ctx['bonus'],
+            'nps_window'            => $ctx['nps'],
+            'empresas_invalidadas'  => $invalidadasDoUser,
+            'empresas_score'        => $empresasScore->values()->all(),
+            'tem_detalhe_empresas'  => $temDetalheEmpresas,
+            'empresas_score_resumo' => $resumoEmpresas,
         ]);
     }
 }
