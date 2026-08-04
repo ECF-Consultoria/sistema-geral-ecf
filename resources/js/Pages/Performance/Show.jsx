@@ -5,7 +5,11 @@ import {
     Trophy, Sparkles, UserX, BookOpen, Info, Briefcase, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MARGEM_CARD_TITULO, MARGEM_CARD_SUBLABEL, fraseVarMargemPp } from '@/lib/desempenhoLabels';
+import EmpresasScoreTabela from '@/Components/Desempenho/EmpresasScoreTabela';
+import {
+    MARGEM_CARD_TITULO, MARGEM_CARD_SUBLABEL, fraseVarMargemPp,
+    AVISO_SEM_DETALHE_TITULO, AVISO_SEM_DETALHE_EM_CURSO, avisoSemDetalheFechado,
+} from '@/lib/desempenhoLabels';
 
 /**
  * Formata a conta que produziu a nota (ex: "(3+5+4)/3 = 4"). Consumido em
@@ -547,6 +551,33 @@ export default function PerformanceShow({
                                 <BookOpen size={12} />
                                 Como calculamos?
                             </Link>
+                        </div>
+
+                        {/* Empresas da carteira (UIEM-02) — lista com nota e três
+                            componentes em competência fechada com detalhe gravado
+                            (D-01/D-06/D-07); aviso explícito quando não há detalhe
+                            para não sumir silenciosamente (D-03/D-11). */}
+                        <div>
+                            <h2 className="text-white text-lg font-display font-bold flex items-center gap-2 mb-3">
+                                <Briefcase size={18} className="text-ecf-yellow" />
+                                Empresas da carteira
+                            </h2>
+
+                            {tem_detalhe_empresas ? (
+                                <EmpresasScoreTabela linhas={empresas_score} resumo={empresas_score_resumo} />
+                            ) : (
+                                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 flex items-start gap-3">
+                                    <Info size={16} className="text-white/40 shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="text-white/80 text-sm font-semibold">{AVISO_SEM_DETALHE_TITULO}</p>
+                                        <p className="text-white/50 text-xs mt-1 leading-relaxed">
+                                            {modoAtivo === 'em_curso'
+                                                ? AVISO_SEM_DETALHE_EM_CURSO
+                                                : avisoSemDetalheFechado(mesExtenso(String(mes_selecionado ?? '').slice(0, 7)))}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </>
                 )}
