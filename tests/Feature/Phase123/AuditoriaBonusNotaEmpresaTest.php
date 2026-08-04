@@ -14,11 +14,16 @@ use PHPUnit\Framework\Attributes\Test;
  * "competência sem detalhe nenhum" (banner de página) de "este profissional
  * sem linha" ("—" silencioso, resolvido no front pela Task 2).
  *
- * `BonusAuditoriaController::index()` NÃO é snapshot-first para
- * `nota_final` — chama `computeCached()` ao vivo (Pitfall 5 do
- * 123-RESEARCH.md, comportamento anterior a esta fase, fora de escopo). Por
- * isso `Http::fake()` está no `setUp()` só para impedir rede real, e esta
- * suíte NÃO usa `Http::assertNothingSent()` (companies de teste não têm
+ * `BonusAuditoriaController::index()` passou a ser snapshot-first para
+ * `nota_final` (CR-02/gap 2 do 123-VERIFICATION.md, fechado pelo
+ * 123-08-PLAN.md Task 1) — mesmo padrão de
+ * `RelatorioBonificacaoController::montarLinhas()`: lê `breakdown_json` do
+ * fechamento mensal quando existe e tem a chave `componentes`, e só cai em
+ * `computeCached()` ao vivo quando a competência não foi consolidada para
+ * aquele profissional. Os 3 cenários de safra (congelada / sem snapshot /
+ * snapshot truncado) estão na classe abaixo. `Http::fake()` continua no
+ * `setUp()` para impedir rede real no caminho de fallback; esta suíte NÃO
+ * usa `Http::assertNothingSent()` (companies de teste não têm
  * `adman_account_id`/`ml_store_id`, então `AdmanMetricDiffService::compute()`
  * já devolve `emptyMetrics()` sem HTTP — mas essa suíte não faz essa prova).
  */
@@ -171,6 +176,83 @@ class AuditoriaBonusNotaEmpresaTest extends Phase123TestCase
                         && $linha['nota_empresa'] === 3.5
                         && ($linha['quality']['margin_source'] ?? null) === 'placeholder_shopee';
                 })
+            );
+    }
+
+    #[Test]
+    public function profissional_com_snapshot_mensal_usa_nota_congelada_do_fechamento(): void
+    {
+        $this->adminLogado();
+        $prof = $this->criarUserElegivel('Profissional Congelado');
+        $c1 = $this->darCarteira($prof);
+        $this->seedLinha($prof->id, $c1, '2026-06-01');
+
+        // Valor fracionário distinguível — não coincide com o que
+        // computeCached() produziria a partir desta fixture (sem
+        // adman_metrics/nps seedados).
+        $this->seedMensal($prof->id, '2026-06-01', [
+            'breakdown_json' => [
+                'nota_final'   => 4.97,
+                'score_status' => 'complete',
+                'componentes'  => [
+                    'nps_medio'           => 4.5,
+                    'var_faturamento_pct' => 3.0,
+                    'var_margem_pct'      => 1.0,
+                    'var_margem_pp'       => 1.0,
+                ],
+                'empresas_score' => [],
+            ],
+        ]);
+
+        $this->get(route('desempenho.auditoria-bonus') . '?mes=2026-06')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Desempenho/Auditoria')
+                ->where('profissionais.0.nota_congelada', true)
+                ->where('profissionais.0.nota_final', fn ($nota) => (float) $nota === 4.97)
+            );
+    }
+
+    #[Test]
+    public function profissional_sem_snapshot_mensal_cai_no_fallback_ao_vivo(): void
+    {
+        $this->adminLogado();
+        $prof = $this->criarUserElegivel('Profissional Sem Snapshot');
+        $c1 = $this->darCarteira($prof);
+        $this->seedLinha($prof->id, $c1, '2026-06-01');
+        // Sem seedMensal() — competência não foi consolidada para este
+        // profissional; cai no fallback computeCached() ao vivo.
+
+        $this->get(route('desempenho.auditoria-bonus') . '?mes=2026-06')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Desempenho/Auditoria')
+                ->where('profissionais.0.nota_congelada', false)
+            );
+    }
+
+    #[Test]
+    public function snapshot_mensal_sem_chave_componentes_tambem_cai_no_fallback(): void
+    {
+        $this->adminLogado();
+        $prof = $this->criarUserElegivel('Profissional Snapshot Truncado');
+        $c1 = $this->darCarteira($prof);
+        $this->seedLinha($prof->id, $c1, '2026-06-01');
+
+        // Simula snapshot truncado / de safra anterior: sem 'componentes'.
+        // Mesma guarda de RelatorioBonificacaoController::montarLinhas().
+        $this->seedMensal($prof->id, '2026-06-01', [
+            'breakdown_json' => [
+                'nota_final'   => 4.97,
+                'score_status' => 'complete',
+            ],
+        ]);
+
+        $this->get(route('desempenho.auditoria-bonus') . '?mes=2026-06')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Desempenho/Auditoria')
+                ->where('profissionais.0.nota_congelada', false)
             );
     }
 
