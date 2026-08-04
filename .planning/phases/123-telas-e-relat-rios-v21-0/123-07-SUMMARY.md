@@ -101,3 +101,7 @@ None - nenhuma configuração de serviço externo necessária.
 ---
 *Phase: 123-telas-e-relat-rios-v21-0*
 *Completed: 2026-08-04*
+
+## Self-Check: PASSED
+
+Todos os arquivos declarados existem no disco (`app/Http/Controllers/PerformanceController.php`, `tests/Feature/Phase123/PerformanceAutorizacaoTest.php`, `app/Services/Desempenho/CompanyScoreSnapshotReader.php`, `tests/Feature/Phase123/CompanyScoreSnapshotReaderTest.php`, este SUMMARY.md) e todos os hashes de commit citados (`85f59fc0`, `e06ddd01`, `476279e2`) foram confirmados em `git log --oneline --all`.
