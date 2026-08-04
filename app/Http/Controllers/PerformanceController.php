@@ -961,6 +961,15 @@ class PerformanceController extends Controller
      */
     public function evolucao(Request $request, User $user): JsonResponse
     {
+        // CR-01 (123-07): mesma regra de autorização de show() — sem isto,
+        // qualquer não-admin com core.performance trocava o {user} na URL
+        // e lia a série de evolução (score/ranking_pos) de outro profissional.
+        abort_unless(
+            $this->autorizadoParaVerDesempenhoDe($request, $user),
+            403,
+            'Você só pode ver o seu próprio desempenho ou o de quem está sob sua liderança.'
+        );
+
         // Clamp period: aceita 7..365; default 30; valores nao-numericos viram 30.
         $raw = $request->query('period', 30);
         $period = is_numeric($raw) ? (int) $raw : 30;
@@ -1231,7 +1240,12 @@ class PerformanceController extends Controller
         if ($modo === 'bonus_atual') {
             $periodo       = $this->periodResolver->resolve(['period_key' => 'last_closed_month']);
             $mesReferencia = Carbon::parse($periodo['bonus_competence_month'] . '-01')->startOfMonth();
-        } elseif ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
+        } elseif ($mesQuery && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $mesQuery)) {
+            // WR-01 (123-07): regex antiga (\d{4}-\d{2}) aceitava mês 00-99 e
+            // deixava o overflow silencioso do Carbon estourar o intervalo
+            // (ex.: '2026-13' viraria 2027-01; '9999-99' quebra o
+            // MetricPeriodResolver::resolve() e derrubava a rota com 500).
+            // Mesmo padrão já usado em indexPolos() (linha ~994).
             $mesReferencia = Carbon::createFromFormat('Y-m-d', $mesQuery . '-01')->startOfMonth();
             $periodo       = $this->periodResolver->resolve(['period_key' => $mesReferencia->format('Y-m')]);
         } else {
@@ -1265,8 +1279,52 @@ class PerformanceController extends Controller
         return compact('modo', 'mesReferencia', 'mesCorrente', 'periodo', 'ehMesEmCurso', 'bonus', 'nps');
     }
 
+    /**
+     * CR-01 (123-07/123-VERIFICATION.md): checagem de autorização por
+     * usuário-alvo, extraída para reuso em show() e evolucao() — evita
+     * duplicar a query. Corpo IDÊNTICO ao de
+     * `PortfolioController::transparencia()` (linhas ~214-226), que já está
+     * em produção para o mesmo tipo de dado (financeiro/compensação de
+     * terceiro): admin, OU o próprio usuário, OU líder de um setor do qual
+     * o usuário-alvo é MEMBRO via `user_setores`.
+     *
+     * Não é `admin || dono` cru: isso quebraria o líder do setor Performance
+     * (que ganha `core.performance` via `Permissions::AUTO_LIDERANCA_PERFORMANCE`
+     * — ver `app/Models/User.php:232-240` — precisamente para "visão
+     * consolidada da equipe") e o botão "Desempenho" de
+     * `Portfolio/Transparencia.jsx:51`, que hoje qualquer líder acessando a
+     * transparência de um membro da equipe usa para voltar a
+     * `performance.show` daquele mesmo membro.
+     */
+    private function autorizadoParaVerDesempenhoDe(Request $request, User $user): bool
+    {
+        $atual = $request->user();
+
+        return $atual->isAdmin()
+            || $atual->id === $user->id
+            || (
+                $atual->isLider()
+                && DB::table('user_setores as us')
+                    ->whereIn('us.setor_id', $atual->setoresLiderados()->pluck('setores.id'))
+                    ->where('us.user_id', $user->id)
+                    ->exists()
+            );
+    }
+
     public function show(Request $request, User $user): \Inertia\Response
     {
+        // CR-01 (123-07): não-admin com core.performance (líder do setor
+        // Performance ou setor com a permission via setor_permissoes) trocava
+        // o {user} na URL e lia nota, faixa de bônus e — desde a Fase 123 —
+        // nome de empresa cliente, faturamento em R$, margem e nota por
+        // empresa de QUALQUER profissional. Precisa ser a PRIMEIRA linha,
+        // antes de qualquer leitura de dado.
+        abort_unless(
+            $this->autorizadoParaVerDesempenhoDe($request, $user),
+            403,
+            'Você só pode ver o seu próprio desempenho ou o de quem está sob sua liderança.'
+        );
+
         // Fase 2 do plano de otimização (2026-07-21) — MESMO contrato de período
         // do ranking (`?modo=em_curso|bonus_atual`, `?mes=YYYY-MM`) via a fonte
         // única `resolveContextoPeriodo()`. Substitui o seletor antigo de mês.
