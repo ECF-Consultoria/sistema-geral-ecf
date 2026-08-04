@@ -67,9 +67,63 @@ checkpoint) fica pendente só da Parte 2 (aprovação visual).**
 
 ## Parte 2 — Roteiro visual em 2026-06 (Task 2 — checkpoint humano)
 
-> Preenchido durante o checkpoint. Rodar `php artisan serve` localmente (assets já buildados pela
-> Task 1) e conferir cada item abaixo na competência **2026-06**. Anotar o resultado observado.
-> **Nenhum deploy nesta fase.**
+> Ambiente de verificação já está de pé: Apache do XAMPP já serve o app em
+> `http://localhost/ecf_admin/public` (confirmado `fetch` → status 200; assets já buildados pela
+> Task 1). **Não precisou subir `php artisan serve`** — o VirtualHost do XAMPP já aponta pra cá.
+> Login como admin (`dev.01@ecfconsultoria.com.br`, id=1, role=admin — mesmo usuário desta sessão).
+
+### ⚠️ Bloqueio encontrado: banco local não tem o detalhe por empresa de 2026-06
+
+Conferido por reconsulta direta ao banco local (`ecf_admin` via XAMPP/MariaDB, nunca por stdout,
+conforme learnings §4):
+
+- `desempenho_company_score_snapshots`: **0 linhas** (produção tem 286, 11 profissionais)
+- `desempenho_score_snapshots`: **0 linhas**
+- `companies`: 169 linhas (existe, sincronizado de alguma sessão anterior)
+- `users`: 20 linhas (existe, sincronizado)
+
+Ou seja: o banco local tem empresas e usuários reais (inclusive **Felipe** e **Matheus Estrela**,
+achados por nome — ver tabela abaixo), mas **nenhuma linha de score/detalhe por empresa** — as
+tabelas que a Fase 122 passou a gravar (`desempenho_company_score_snapshots`/
+`desempenho_score_snapshots`) nunca foram sincronizadas para este ambiente. Isso significa que,
+como está agora, as três telas em 2026-06 vão cair no ramo "Detalhe por empresa indisponível"
+(D-03) para QUALQUER profissional — o que impede conferir de verdade os itens 6-12, 16, 18-23
+(os casos-limite reais que são o propósito desta fase).
+
+**Débora Lima nem existe como usuário no banco local** — mas isso não impede o item 16/17 (a
+ausência dela é justamente o comportamento esperado, existindo ou não localmente).
+
+**Duas rotas possíveis, decisão do usuário:**
+
+1. **Puxar as tabelas de score da VPS para o local** (read-only, `mysqldump --no-create-info`
+   das 2 tabelas + `--insert-ignore` se precisar de `companies`/`users` faltantes), pelo MESMO
+   método já usado nesta casa para trazer dado de NPS pra teste local (`plink`/`pscp` ao lado do
+   `deploy.sh`, credenciais da VPS `177.7.53.164`). **Não pedi autorização pra isso** porque é
+   dado sensível de bônus/compensação de pessoas nomeadas — decisão do usuário, não presumida
+   pelo executor mesmo em modo autônomo.
+2. **Verificar direto na VPS** (se houver acesso a um ambiente com o código desta fase — hoje só
+   existe localmente, nada foi deployado) — não aplicável agora, porque a Fase 123 não está em
+   produção.
+
+**Itens que DÃO pra conferir já, sem dado de 2026-06 (comportamento de ausência/estrutura):**
+A (1-2 parcial — ver nota), F (13-15), G (16-17), a estrutura de H/I (18, 21) e o texto do card
+de margem em B (3) no modo "Em curso".
+
+### URLs prontas (usuários reais encontrados no banco local por nome)
+
+| Quem | User ID local | URL |
+|---|---|---|
+| Felipe (caso C — denominador 3/30) | 21 | `http://localhost/ecf_admin/public/performance/21` |
+| Matheus Estrela (caso D — Shopee) | 28 | `http://localhost/ecf_admin/public/performance/28` |
+| Ana Julia (caso E — comum) | 17 | `http://localhost/ecf_admin/public/performance/17` |
+| Rubens (caso H.19 — contemplado) | 20 | `http://localhost/ecf_admin/public/performance/20` |
+| Luiz Henrique (alternativa ao caso E) | não encontrado no banco local | — |
+| Débora Lima (caso G — ausência) | não encontrada no banco local | não se aplica — o teste é ela NÃO aparecer nas 3 telas |
+| Relatório de Bonificação | — | `http://localhost/ecf_admin/public/desempenho/relatorio-bonificacao?mes=2026-06` |
+| Auditoria de Bônus | — | `http://localhost/ecf_admin/public/desempenho/auditoria-bonus?mes=2026-06` |
+
+Conferir cada item abaixo na competência **2026-06**. Anotar o resultado observado.
+**Nenhum deploy nesta fase.**
 
 ### A. Desbloqueio do seletor (D-02)
 
