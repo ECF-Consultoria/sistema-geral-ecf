@@ -36,6 +36,7 @@ class ReverterRecadastrosCompetencia extends Command
                             {--apply : Grava as alterações (sem esta flag é só relatório)}
                             {--resync : Depois de aplicar, re-sincroniza as competências de origem}
                             {--desfazer= : Restaura um lote de reversão pelo uuid}
+                            {--resync-lote= : Re-sincroniza as competências de um lote já revertido}
                             {--mes= : Limita ao mês de destino (YYYY-MM), ex: 2026-08}';
 
     protected $description = 'Devolve à competência original os anúncios recadastrados em outro mês';
@@ -44,6 +45,14 @@ class ReverterRecadastrosCompetencia extends Command
     {
         if ($lote = $this->option('desfazer')) {
             return $this->desfazer($lote);
+        }
+
+        // Reverter e re-sincronizar são operações separadas na prática: a reversão
+        // é instantânea (banco), o re-sync leva minutos batendo na Adman. Quem
+        // aplicou sem --resync precisa poder sincronizar depois sem reprocessar
+        // nada — daí o lote como chave.
+        if ($lote = $this->option('resync-lote')) {
+            return $this->resyncLote($lote);
         }
 
         $casos = $this->detectarCasos();
@@ -352,6 +361,45 @@ class ReverterRecadastrosCompetencia extends Command
             $pares[$c['cust_id'] . '|' . $mes] = ['cust_id' => $c['cust_id'], 'mes' => $mes];
         }
 
+        $this->sincronizarPares($pares);
+    }
+
+    /**
+     * Re-sincroniza as competências de um lote já revertido.
+     *
+     * Os pares saem da posição ATUAL das publicações do lote — depois da reversão
+     * elas já estão na competência de origem, que é justamente a que precisa ser
+     * reapurada.
+     */
+    private function resyncLote(string $lote): int
+    {
+        $ids = DB::table('mlb_reversao_backup')->where('lote', $lote)->pluck('publicacao_id');
+
+        if ($ids->isEmpty()) {
+            $this->error("Lote {$lote} não encontrado.");
+
+            return self::FAILURE;
+        }
+
+        $pares = [];
+        $linhas = Publicacao::whereIn('id', $ids)
+            ->whereNotNull('cust_id')->where('cust_id', '!=', '')
+            ->get(['cust_id', 'data']);
+
+        foreach ($linhas as $l) {
+            $mes = substr((string) $l->data, 0, 7);
+            $pares[$l->cust_id . '|' . $mes] = ['cust_id' => $l->cust_id, 'mes' => $mes];
+        }
+
+        $this->info(sprintf('Lote %s: %d publicação(ões), %d combinação(ões) loja × competência.', $lote, $ids->count(), count($pares)));
+
+        $this->sincronizarPares($pares);
+
+        return self::SUCCESS;
+    }
+
+    private function sincronizarPares(array $pares): void
+    {
         if (empty($pares)) {
             $this->warn('Nenhuma loja com Cust ID entre as revertidas — nada para sincronizar.');
 
@@ -369,11 +417,20 @@ class ReverterRecadastrosCompetencia extends Command
             $inicio = Carbon::parse($par['mes'] . '-01')->startOfMonth()->toDateString();
             $fim    = Carbon::parse($par['mes'] . '-01')->endOfMonth()->toDateString();
 
+            // Antes/depois por reconsulta ao banco: a saída do serviço diz quantas
+            // linhas ele tocou, não o efeito na competência. Sem isto a conferência
+            // dependeria do stdout, que já enganou nesta casa.
+            $antes = $this->totaisDaLoja($par['cust_id'], $inicio, $fim);
+
             try {
                 $r = $servico->syncEmpresa($par['cust_id'], $inicio, $fim);
+                $depois = $this->totaisDaLoja($par['cust_id'], $inicio, $fim);
                 $this->line(sprintf(
-                    '  %s %s → %d item(ns), %d com venda, %d publicação(ões) atualizada(s)',
-                    $par['cust_id'], $par['mes'], $r['itens'], $r['com_venda'], $r['atualizadas']
+                    '  %-12s %s → %3d item(ns), %2d com venda | vendas %d→%d | R$ %s → R$ %s',
+                    $par['cust_id'], $par['mes'], $r['itens'], $r['com_venda'],
+                    $antes['vendas'], $depois['vendas'],
+                    number_format($antes['net'], 2, ',', '.'),
+                    number_format($depois['net'], 2, ',', '.')
                 ));
             } catch (\Throwable $e) {
                 $this->error("  {$par['cust_id']} {$par['mes']} → falhou: " . $e->getMessage());
@@ -384,6 +441,17 @@ class ReverterRecadastrosCompetencia extends Command
             // demais call-sites.
             usleep(7_000_000);
         }
+    }
+
+    /** @return array{vendas:int, net:float} */
+    private function totaisDaLoja(string $custId, string $inicio, string $fim): array
+    {
+        $r = Publicacao::where('cust_id', $custId)
+            ->whereBetween('data', [$inicio, $fim])
+            ->selectRaw('SUM(vendido) v, SUM(COALESCE(net_billing, 0)) net')
+            ->first();
+
+        return ['vendas' => (int) ($r->v ?? 0), 'net' => (float) ($r->net ?? 0)];
     }
 
     // =========================================================================
