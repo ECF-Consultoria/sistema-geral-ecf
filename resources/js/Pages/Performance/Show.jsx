@@ -5,6 +5,7 @@ import {
     Trophy, Sparkles, UserX, BookOpen, Info, Briefcase, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { MARGEM_CARD_TITULO, MARGEM_CARD_SUBLABEL, fraseVarMargemPp } from '@/lib/desempenhoLabels';
 
 /**
  * Formata a conta que produziu a nota (ex: "(3+5+4)/3 = 4"). Consumido em
@@ -301,10 +302,20 @@ export default function PerformanceShow({
     bonus = null,
     nps_window = null,
     empresas_invalidadas = 0,
+    empresas_score = [],
+    empresas_score_resumo = { entraram: 0, nao_entraram: 0 },
+    tem_detalhe_empresas = false,
 }) {
     const c = resultado?.componentes ?? {};
     const semCarteira = resultado?.sem_carteira === true;
     const isClosed = periodo?.is_closed === true;
+
+    // UIEM-01/D-04 — sublabel do card de margem sem jargão de API. A frase
+    // em pontos percentuais (D-05) só entra quando o shadow já rodou para
+    // esta competência; payload antigo/mês em curso cai no texto legado
+    // sozinho (D-11), nunca em `undefined` na tela.
+    const fraseMargemPp = fraseVarMargemPp(c?.var_margem_pp);
+    const margemSublabel = fraseMargemPp ? `${MARGEM_CARD_SUBLABEL} ${fraseMargemPp}` : MARGEM_CARD_SUBLABEL;
 
     // Modo ativo do segmento (mesmo contrato do ranking).
     const modoAtivo = modo === 'bonus_atual' ? 'bonus_atual' : (isClosed ? 'mes_fechado' : 'em_curso');
@@ -498,9 +509,9 @@ export default function PerformanceShow({
 
                             <ParametroCard
                                 icone={Coins}
-                                titulo="Variação da margem %"
+                                titulo={MARGEM_CARD_TITULO}
                                 valor={formatPercent(c.var_margem_pct)}
-                                sublabel="Variação da margem % (percentageMargin) vs mês anterior · fonte Adman"
+                                sublabel={margemSublabel}
                                 accentColor="blue"
                                 trendDir={c.var_margem_pct != null ? (c.var_margem_pct >= 0 ? 'up' : 'down') : null}
                             />
@@ -547,7 +558,7 @@ export default function PerformanceShow({
                         <span className="text-white/70 text-sm font-semibold">Como interpretar</span>
                     </div>
                     <p className="text-white/60 text-sm leading-relaxed">
-                        A nota final é a média direta dos parâmetros disponíveis (NPS · Var. Faturamento · Var. Margem). O
+                        A nota final é a média direta dos parâmetros disponíveis (NPS · variação do faturamento · variação da margem). O
                         Absenteísmo está em <em>standby</em> nesta versão. A faixa de bônus é configurável pelo admin —
                         detalhes em{' '}
                         <Link href="/manual/desempenho-bonificacao" className="text-ecf-yellow hover:underline">
