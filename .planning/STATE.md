@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
 status: executing
-stopped_at: Completed 123-02-PLAN.md
-last_updated: "2026-08-04T13:36:26.788Z"
+stopped_at: Completed 123-03-PLAN.md
+last_updated: "2026-08-04T14:05:04.175Z"
 last_activity: 2026-08-04
 progress:
   total_phases: 6
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 123 (telas-e-relat-rios-v21-0) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 
 Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. Ordem: 111 fundação ✓ → 112 HubspotValueResolver (núcleo mensal×anual) ✓ → 113 enriquecimento+dedup ✓ → 114 UI+replay → 115 E2E+doc. Phase 111 entregou: config `services.hubspot.props` ampliada + comando `hubspot:inspect-properties` + `HubspotApiClient` (17 props line item + 5 métodos assoc/batch, base v3) + migrations defensivas companies (8 cols) / contratos_servico (11 cols) + $fillable — colunas nullable NÃO usadas ainda; webhook legado intocado. 58/58 testes HubSpot verdes. Falhas pré-existentes NÃO relacionadas (Phase14* Carbon/timezone, Phase37ServicoSetorTest) documentadas em deferred-items.md. Phase 112 Plan 01 entregou `HubspotValueResolver` (resolve valor operacional mensal×anual). Plan 02 entregou `HubspotDealHandoffService` + DTO `HubspotHandoffData` — multi-line-item resolvido individualmente, confidence agregada = a menor entre os contratos, 8/8 testes verdes + 10/10 Phase37WebhookLineItemsTest intacto (controller ainda não tocado). Plan 03 (esta entrega): `HubspotWebhookController::criarEmpresa` delega ao handoff service via `persistirContratos()` — as 11 colunas hubspot_* passam a ser gravadas de verdade, linha legada em observacoes preservada, critério de aceite âncora da milestone (line item mensal 3000 + amount/ARR 36000 → valor_contratado=3000) fechado e comprovado por E2E real via webhook (6/6 testes). Deviation: bug corrigido no ramo "indecidível" de `HubspotValueResolver::resolverSemLineItem()` (adivinhava amount/12 sem evidência, quebrando a invariante Phase34/37 — agora mantém o valor bruto). Gate de regressão 67/67 testes Hubspot verdes. Plan 113-01 entregou `HubspotContactSelector` (regra determinística de contato principal por tiers email/telefone) + `HubspotNameNormalizer` (dedup fraco anti-falso-positivo) — unidades puras TDD. Plan 113-02: `HubspotWebhookController::processar` troca fetch singular de contato por batch (`fetchAssociatedContactIds`+`fetchContacts`) e usa `HubspotContactSelector` para escolher o principal entre TODOS os contatos do deal; `criarEmpresa` grava 7 campos estruturados (`nome_contato`/`cargo_contato`/`hubspot_deal_id`/`hubspot_company_id`/`hubspot_contact_id`/`hubspot_domain`/`hubspot_observacao`) com fallback de telefone estendido até `mobilephone`; `companies.hubspot_snapshot` grava payload completo (deal+company+todos os contatos+line_items+warnings+captured_at) para auditoria/replay da Fase 115; `HubspotDealHandoffService::build()` ganhou 4 parâmetros opcionais que preenchem `company_data`/`contact_data` do DTO sem alterar a lógica de valor/contratos. Linha legada `notes` preservada. Gate de regressão 70/70 testes Hubspot verdes. Plan 113-03 (esta entrega, FECHA a Fase 113): `HubspotCompanyMatcher::encontrar()` resolve empresa existente ANTES de criar (hubspot_company_id > cnpj > email > domain > nome normalizado via `HubspotNameNormalizer`), comparação de cnpj/nome em PHP (discrição, volume baixo de companies). `criarEmpresa` bifurca: match FORTE (hubspot_company_id/cnpj) → `enriquecerEmpresaExistente()` grava só campos vazios (dado manual do Comercial é soberano), não remarca `empresa_nova`, não mexe em `notes`; SEM match forte (null ou fraco) → cria empresa nova igual à 113-02. Guard anti-duplicidade de contrato em `persistirContratos()` (por `hubspot_line_item_id`, ou `servico_id` ativo no fluxo legado sem line item) — zero impacto em empresa nova. Match FRACO (só nome) grava warning `possivel_duplicidade` em `hubspot_eventos.payload` + no `hubspot_snapshot` da empresa nova, sem merge de campos críticos na candidata — humano decide na Fase 114. `hubspot_snapshot` sempre reescrito (sem deep-merge) com o payload do evento novo, mesmo no caminho de match forte. Gate de regressão 84/84 testes `--filter=Hubspot` verdes (14 novos + 70 pré-existentes). Plan 114-01 (esta entrega): `ComercialController::listagem` ganha payload enriquecido — por empresa origem HubSpot expõe `nome_contato`/`cargo_contato`/`hubspot_observacao`/`hubspot_deal_id`/`hubspot_company_id` (Fase 113), e cada `contratos_servico` ganha o bloco `hubspot_valor_original`/`hubspot_valor_normalizado_mensal`/`hubspot_valor_confidence`/`hubspot_valor_warning`/`hubspot_billing_frequency` (Fase 111/112), tudo nullable/best-effort sem tocar `valor_contratado`. `calcularPendenciasComerciais` ganha 3 pendências novas (aditivas, SÓ origem HubSpot): `sem_contato` (nome_contato null/vazio), `valor_revisar` (contrato ativo confidence='low' OU warning não-nulo), `possivel_duplicidade` (snapshot da empresa OU payload do `HubspotEvento` eager-loaded marcando dedup fraco da Fase 113). `pendencia_counts` e a whitelist do filtro ganham as 3 chaves (8 no total); `pendencias_detalhes` ganha `valor_revisar` (nomes de serviço) e `possivel_duplicidade` (array de 1 elemento com o nome real de exibição da candidata, via `Company::find($id)?->name`, fallback só se a candidata sumiu). Gate de não-regressão `Phase37ComercialListagemTest` 17/17 verde sem editar asserções; suite nova `Phase114ComercialListagemEnrichmentTest` 18/18 verde. Pronto para Plan 114-02 (frontend `EmpresasListagem.jsx`). Plan 114-03 (esta entrega, executado fora de ordem — independente do 114-02): comando `php artisan hubspot:reprocess-event {id}` (classe `ReprocessHubspotEvent`) fecha o loop operacional HUB-REPLAY-01. Novo método público `HubspotWebhookController::reprocessarEvento(HubspotEvento $evento, HubspotApiClient $api): array` refaz o mesmo bloco de fetch de `processar()` (deal + company + contatos batch + line items) e chama `criarEmpresa()`, mas SEM o filtro de dealstage nem o early-return `jaProcessado` (guards de INGESTÃO do webhook, não do replay intencional do admin) — a idempotência de DADOS continua garantida pelo `HubspotCompanyMatcher` (não duplica company) e pelo guard `hubspot_line_item_id` em `persistirContratos` (não duplica contrato), já existentes desde a Fase 113. `empresas_enriquecidas` detectado via `Company::wasRecentlyCreated` (sem duplicar a lógica do matcher); `contratos_ignorados` estimado por um helper de leitura que espelha a resolução de mapping do `HubspotDealHandoffService`, sem alterar a assinatura de `persistirContratos`. Caso âncora comprovado: line item sem `HubspotLineItemMapping` → empresa criada sem o contrato → admin cadastra o mapping → replay cria o contrato faltante. Idempotência comprovada (2 execuções não duplicam company/contrato). Log estruturado `[Hubspot] Replay: ...` no canal `ecf-webhooks`, sem token. 3/3 testes `Phase114HubspotReplayTest` + gate de regressão 89/89 `--filter=Hubspot` verdes (86 pré-existentes intactos). Falta Plan 114-02 (frontend) para fechar a Fase 114 por completo.
 
@@ -289,6 +289,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 122 P05 | 40min | 3 tasks | 3 files |
 | Phase 123 P01 | 31min | 2 tasks | 5 files |
 | Phase 123 P02 | 18min | 3 tasks | 4 files |
+| Phase 123 P03 | 20min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -732,6 +733,13 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **Sem contratos**: confidence agregada cai para `'low'` se há warning pendente, `'high'` quando não há nada a reportar (ex.: line item sem nome, ignorado silenciosamente — paridade com o controller atual).
 - Gate de não-regressão intacto: `Phase37WebhookLineItemsTest` 10/10 verde (controller ainda não tocado).
 
+### Decisões do Plan 123-03 (registradas)
+
+- **`darCarteira()` do `Phase123TestCase` passou a criar um contrato de serviço "performance" ativo** — sem ele `CarteiraContextService::forUser()` (ramo legado `servico_id NULL`) não resolvia a empresa, e qualquer suíte que exercite essa camada (ex.: `BonusAuditoriaController::index()`) ficava com o profissional sem carteira. Bug de fixture herdado do Plano 01, não pego pelos Planos 01/02 porque suas suítes liam `desempenho_company_score_snapshots` direto, sem passar pelo contexto de carteira.
+- **`BonusAuditoriaController::index()` lê `desempenho_company_score_snapshots` via `CompanyScoreSnapshotReader::paraUsuarios()` UMA vez, fora do `map()` de profissionais** — UIEM-04/D-10 satisfeita; nota e componentes por empresa vêm da mesma fonte que `PerformanceController::show()` (Plano 02), nunca de `computeCached()` nem de `breakdown_json`.
+- **`computeCached()` de `BonusAuditoriaController::index()` continua ao vivo** (comportamento pré-existente, fora de escopo desta fase — Pitfall 5 do 123-RESEARCH.md) — testes da Auditoria não usam `Http::assertNothingSent()`, só `Http::fake()` para impedir rede real.
+- **Cast `(float)` explícito em asserções numéricas de teste de feature contra `AssertableInertia`** — o round-trip por JSON do helper de teste transforma float "redondo" (`4.0`) em `int(4)`, quebrando comparação `===` estrita.
+
 ### Pending Todos
 
 None.
@@ -828,8 +836,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-04T13:36:26.744Z
-Stopped at: Completed 123-02-PLAN.md
+Last session: 2026-08-04T14:05:04.135Z
+Stopped at: Completed 123-03-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
