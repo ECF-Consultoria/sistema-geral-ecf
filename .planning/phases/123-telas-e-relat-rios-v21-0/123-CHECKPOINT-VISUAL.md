@@ -124,49 +124,59 @@ Bassetto tem as 34 empresas da carteira TODAS em "entraram" (`nao_entraram = 0`)
 **some do DOM** quando zero — não fica com "(0)" vazio. Confirmado objetivamente por dado real +
 leitura de código; vale conferir a olho em `/performance/11?mes=2026-06`.
 
-### ⚠️ Bloqueio NOVO encontrado: Relatório de Bonificação e Auditoria de Bônus vêm vazios
+### ✅ Bloqueio anterior (user_setores/cargos/setores) RESOLVIDO — Relatório de Bonificação confirmado com dado real
 
-As duas telas admin retornaram **200** (sem erro) mas com **zero profissionais** na lista, mesmo
-com os 11 profissionais de 2026-06 presentes em `desempenho_score_snapshots`. Causa raiz
-isolada por reconsulta direta: os dois controllers resolvem a lista de "quem é profissional"
-por um join em `user_setores`/`cargos` **antes** de tocar nos dados de score —
+Depois do pull autorizado de `setores`/`cargos`/`user_setores` (read-only, `--insert-ignore`),
+reconsultado ao banco: `user_setores` 9→39, `cargos` 4→17, `setores` 5→6, join
+`analista`/`estrategista` = **14 vínculos** (era 0).
 
-```php
-$cargosPorUser = DB::table('user_setores as us')
-    ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
-    ->whereIn('c.slug', ['analista', 'estrategista'])
-    ...
+Rerodei a MESMA verificação automatizada (mesmo script, mesmo método — bootstrap real +
+`Auth::setUser()` + chamada direta ao controller) contra `RelatorioBonificacaoController`:
+
+- `/desempenho/relatorio-bonificacao?mes=2026-06` → **200**, agora com **5 linhas** (antes: 0)
+- Distribuição por faixa idêntica à já registrada acima: 1 intermediário + 4 básico
+- Confirmado por reconsulta: o profissional da faixa **intermediário** tem 25 entradas em
+  `empresas_score` na linha do relatório — o MESMO total (25) que a página individual dele
+  (`/performance/20?mes=2026-06`) já mostrava antes deste pull. Mesma fonte, mesmo número, por
+  dois caminhos de código diferentes (confirma UIEM-04 objetivamente, não só por teste sintético).
+- Chamei `RelatorioBonificacaoController::pdf()` direto (mesmo `?mes=2026-06`, 5 contemplados
+  reais): **200**, `Content-Type: application/pdf`, 882.446 bytes gerados sem erro. Confirmado por
+  leitura do arquivo da blade em disco: **não contém** `empresas_score` nem `nota_empresa` —
+  D-09 seguindo intocado mesmo com o relatório cheio de dado real (antes só tinha sido provado
+  contra fixture sintética no `--filter=Phase123` da Task 1).
+
+> **Nota deliberada (regra do coordenador):** quem está em qual faixa, com que nota, não é
+> versionado neste arquivo — é resultado individual de bonificação de pessoas reais. Para
+> identificar "o contemplado da faixa X" e expandir a linha dele na tela, consulte o banco local
+> diretamente. Contadores de carteira (entraram/total) por profissional continuam versionáveis —
+> são o dado que a tela exibe.
+
+### ⚠️ Bloqueio NOVO (distinto do anterior): Auditoria de Bônus continua vazia — depende de `company_users`
+
+`/desempenho/auditoria-bonus?mes=2026-06` continua voltando **200** com `profissionais: []`,
+mesmo com `user_setores`/`cargos` já resolvidos (`tem_detalhe_empresas: true` no nível da página
+— a competência TEM detalhe gravado). Causa isolada por reconsulta: diferente do Relatório de
+Bonificação (que lê só `CompanyScoreSnapshotReader`), `BonusAuditoriaController::index()`
+**também** monta a lista de empresas de cada profissional via
+`CarteiraContextService::forUser($u, ['active' => true])`
+(`app/Http/Controllers/BonusAuditoriaController.php:93`), que depende da pivot `company_users` —
+**uma TERCEIRA tabela**, distinta tanto do score quanto de `user_setores`/`cargos`. Depois disso
+o controller faz `->reject(fn ($p) => $p['empresas']->isEmpty())` (linha 134): profissional sem
+nenhuma linha em `company_users` é removido da lista inteira.
+
+Reconsulta direta confirma a causa exata:
+
+```
+company_users rows para os 14 user_ids analista/estrategista: 0
 ```
 
-— e essa tabela `user_setores`/`cargos` tem **0 linhas com esses slugs no banco local**. Isso é
-uma tabela de **estrutura organizacional** (quem tem cargo analista/estrategista), não a mesma
-tabela de score/bônus que foi puxada — não é dado de compensação, é só mapeamento de papel. Ela
-nunca fez parte do pull autorizado.
+`company_users` é a tabela que liga profissional↔empresa (carteira) — não é dado de
+compensação, mas também não fez parte de nenhum dos dois pulls já autorizados até agora.
 
-**Prova de que o dado de bônus em si está correto e só falta essa camada:** consultei
-`desempenho_score_snapshots.breakdown_json` diretamente (sem passar pelo controller) para os 11
-profissionais de 2026-06. Distribuição por faixa (`faixa_bonus` legado, flag desligada):
-
-| Faixa | Quantos |
-|---|---|
-| `intermediario` | 1 |
-| `básico` | 4 |
-| `sem_bonus` | 6 |
-
-> **Nota deliberada:** o detalhamento nominal (quem está em qual faixa, com que nota) **não é
-> versionado** — é resultado individual de bonificação de pessoas reais, e este repositório é
-> compartilhado. O dado está no banco local de quem executa o checkpoint; para conferir item a
-> item, consulte o banco diretamente. Só o agregado acima fica no histórico.
-
-Isso confirma que **existe exatamente um contemplado na faixa `intermediario`** em 2026-06 — que é
-o caso que o item 19 do roteiro pede para conferir — mas a tela não vai mostrar isso até
-`user_setores`/`cargos` também estar sincronizado localmente.
-
-**Decisão do usuário necessária (nova, separada da anterior):** autorizar puxar `user_setores` +
-`cargos` (read-only, dado de estrutura organizacional, não de compensação) da VPS pelo mesmo
-método, ou verificar os itens 18-23 direto contra outro ambiente que já tenha essa tabela.
-**Não fiz esse pull sozinho** — mesmo sendo dado de sensibilidade bem menor que compensação,
-segui o mesmo critério de pedir antes de tocar em mais tabelas de produção.
+**Decisão do usuário necessária (nova, terceira):** autorizar puxar `company_users` (read-only,
+vínculo profissional↔empresa, sem valores financeiros) da VPS pelo mesmo método, ou verificar os
+itens 21-23 de outra forma. **Não fiz esse pull sozinho**, pelo mesmo critério das duas vezes
+anteriores.
 
 ### URLs prontas (com `?mes=2026-06` — sem esse parâmetro a tela cai em "Em curso")
 
@@ -179,8 +189,8 @@ segui o mesmo critério de pedir antes de tocar em mais tabelas de produção.
 | Renan Bassetto (extra — todas entraram, 34/34) | 11 | `http://localhost/ecf_admin/public/performance/11?mes=2026-06` |
 | Felipe — modo "Em curso" (item F) | 21 | `http://localhost/ecf_admin/public/performance/21` (sem `?mes=`) |
 | Débora Lima (caso G — ausência) | não existe no banco local | não se aplica — o teste é ela NÃO aparecer |
-| Relatório de Bonificação | — | `http://localhost/ecf_admin/public/desempenho/relatorio-bonificacao?mes=2026-06` (**hoje vazio — ver bloqueio acima**) |
-| Auditoria de Bônus | — | `http://localhost/ecf_admin/public/desempenho/auditoria-bonus?mes=2026-06` (**hoje vazio — ver bloqueio acima**) |
+| Relatório de Bonificação | — | `http://localhost/ecf_admin/public/desempenho/relatorio-bonificacao?mes=2026-06` (**5 contemplados reais, desbloqueado**) |
+| Auditoria de Bônus | — | `http://localhost/ecf_admin/public/desempenho/auditoria-bonus?mes=2026-06` (**ainda vazio — bloqueio novo, `company_users`**) |
 
 ---
 
@@ -290,49 +300,53 @@ segui o mesmo critério de pedir antes de tocar em mais tabelas de produção.
 ### G. Débora Lima — ausência não pode quebrar (UIEM-03)
 
 16. Débora Lima não aparece no Relatório de Bonificação nem na Auditoria de Bônus.
-    **⛔ BLOQUEADO pelo bloqueio novo (user_setores/cargos vazio):** as duas telas hoje retornam
-    lista vazia PARA TODOS (não só pra ela), então "ela não aparece" é verdade mas não é uma
-    prova válida — a lista está vazia por outro motivo. Ela também não existe como `User` local,
-    então nem daria pra montar o cenário completo sem o pull adicional. Fica pendente até a
-    decisão do bloqueio novo.
+    **👁️ PARCIAL — Relatório: indício confirmado, não prova forte / Auditoria: ⛔ BLOQUEADO.** O
+    Relatório de Bonificação agora lista 5 pessoas reais e ela não está entre elas — mas ela
+    também não existe como `User` na tabela local, então essa ausência não distingue "ela caiu em
+    sem-carteira na consolidação" (o comportamento que o item quer provar) de "ela nem tem
+    registro aqui". Não é uma prova válida por esse caminho. A Auditoria de Bônus continua
+    inteiramente vazia (ver bloqueio `company_users` acima) — bloqueado por completo lá.
 17. A ausência dela não gera erro 500.
-    **✅ CONFIRMADO PARCIALMENTE:** as duas telas responderam `200` (não `500`) mesmo com dado
-    real de 2026-06 presente — o código não quebra diante de listas vazias/parciais. Não é a
-    MESMA prova que "500 especificamente por causa da Débora", mas é evidência de que o caminho
-    geral é resiliente.
+    **✅ CONFIRMADO:** as duas telas respondem `200` com dado real de 2026-06 presente (Relatório
+    com 5 linhas reais, Auditoria com lista vazia mas sem erro) — o caminho de código não quebra
+    diante de ausência/lista vazia/parcial.
 
-### H. Relatório de Bonificação (UIEM-04 / D-08 / D-09)
+### H. Relatório de Bonificação (UIEM-04 / D-08 / D-09) — desbloqueado com dado real
 
 18. Tabela continua uma linha por profissional.
-    **⛔ BLOQUEADO — ver "Bloqueio NOVO" acima.** `status: 200`, mas `profissionais: []` (0
-    linhas) por causa do gap `user_setores`/`cargos`, não por regressão desta fase.
+    **✅ CONFIRMADO POR AUTOMAÇÃO:** `/desempenho/relatorio-bonificacao?mes=2026-06` → `200`,
+    `profissionais` com **5 entradas**, uma por pessoa contemplada (faixa ≠ `sem_bonus`) — bate
+    com a distribuição por faixa já registrada (1 intermediário + 4 básico).
 19. Expandir a linha de um contemplado — empresas + nota + 3 componentes.
-    **⛔ BLOQUEADO pela mesma causa.** Prova indireta feita: reconsultei
-    `desempenho_score_snapshots` direto e confirmei que existe **exatamente um profissional com
-    `faixa_bonus=intermediario`** em 2026-06 — é essa a linha a expandir. Identifique-o no banco
-    local (não versionamos o nome aqui, ver nota na seção do bloqueio). Só falta a tela em si
-    mostrar isso.
+    **✅ CONFIRMADO POR AUTOMAÇÃO (estrutura de dados) / 👁️ PENDENTE (clique/render):** a linha do
+    contemplado da faixa intermediário (identifique no banco local — não versionado aqui) traz
+    `empresas_score` com **25 entradas**, o MESMO total que a página individual dele já mostrava
+    (`n_linhas_empresas_score = 25` em `/performance/20?mes=2026-06`) — confirma que o Relatório
+    lê da mesma fonte que a tela individual, com dado real, não só por teste sintético. O clique
+    de expandir em si (interação) é humano.
 20. PDF continua resumo, sem lista por empresa.
-    **✅ CONFIRMADO PELA SUÍTE AUTOMATIZADA (Task 1):**
-    `RelatorioBonificacaoEmpresasTest::pdf_continua_resumo_sem_empresas_score_d09` (verde,
-    `--filter=Phase123` 41/41) lê a blade real em disco e assere ausência de `empresas_score`/
-    `nota_empresa`; `git diff resources/views/pdf/relatorio-bonificacao.blade.php` vazio (D-09,
-    Parte 1 deste documento). Esse comportamento independe de qual profissional está na lista —
-    é uma prova de código, não de dado. **Ver o PDF real de um contemplado ainda depende do
-    bloqueio.**
+    **✅ CONFIRMADO COM DADO REAL:** chamei `RelatorioBonificacaoController::pdf()` direto com
+    `?mes=2026-06` (5 contemplados reais) — `200`, `Content-Type: application/pdf`, 882.446 bytes
+    gerados sem erro. Blade em disco confirmada sem `empresas_score`/`nota_empresa`. Antes só
+    tinha sido provado contra fixture sintética (Task 1); agora está confirmado com o relatório
+    cheio de gente real também.
 
-### I. Auditoria de Bônus (UIEM-04 / D-10)
+### I. Auditoria de Bônus (UIEM-04 / D-10) — ainda bloqueada, causa isolada e distinta
 
 21. Expandir um profissional, conferir nota por empresa.
-    **⛔ BLOQUEADO — mesma causa.** `status: 200`, `profissionais: []`.
+    **⛔ BLOQUEADO — nova causa isolada:** `status: 200`, `profissionais: []`. Não é mais o gap de
+    `user_setores`/`cargos` (esse já foi resolvido — `tem_detalhe_empresas: true` no nível da
+    página confirma). A causa agora é `company_users` vazio para os profissionais localmente —
+    ver "Bloqueio NOVO" acima. Terceira tabela, decisão pendente do usuário.
 22. Competência sem detalhe — banner no topo, não colunas vazias.
     **⛔ BLOQUEADO — sem competência real sem detalhe disponível localmente** (mesma limitação
-    do item 14).
+    do item 14, não relacionada ao `company_users`).
 23. Números batem com a tela individual do mesmo profissional (mesma fonte).
-    **✅ CONFIRMADO POR CÓDIGO (Task 1) / ⛔ BLOQUEADO POR DADO REAL:** `AuditoriaBonusNotaEmpresaTest`
-    (verde) já prova que a Auditoria usa o MESMO `CompanyScoreSnapshotReader` que
-    `PerformanceController::show()` — não há como divergir por construção (fonte única). A
-    conferência visual lado a lado com dado real de 2026-06 depende do bloqueio novo.
+    **✅ CONFIRMADO POR CÓDIGO (Task 1) + POR ANALOGIA (Relatório×Individual, item 19 acima) /
+    ⛔ AUDITORIA ESPECÍFICA BLOQUEADA:** `AuditoriaBonusNotaEmpresaTest` (verde) prova que a
+    Auditoria usa o MESMO `CompanyScoreSnapshotReader`. A prova cruzada com dado real que EU
+    consegui fazer foi entre Relatório×Individual (mesmo total, 25 = 25); a mesma checagem contra
+    a Auditoria especificamente segue bloqueada até `company_users` estar disponível.
 
 ---
 
@@ -343,10 +357,16 @@ Descontando o que já foi confirmado objetivamente, o que **precisa mesmo** de j
 - **B.3/B.4/B.5, E.12** — o card de margem e a ressalva "existem e o texto está certo" (código
   confirmado); resta avaliar se a redação **soa clara** pra quem nunca viu a API.
 - **D.10** — o tom do aviso Shopee ("falta o dado" vs. "margem ruim") é leitura subjetiva.
-- **A.1/A.2, C.6/C.7, D.9, E.11, F.13/F.15** — comportamento 100% confirmado por automação; um
-  clique rápido pra ver que "parece certo" ainda é recomendável, mas não é obrigatório.
-- **G.16, H.18-20, I.21-23** — genuinamente bloqueados até a decisão sobre puxar
-  `user_setores`/`cargos` (ou outra forma de verificar).
+- **A.1/A.2, C.6/C.7, D.9, E.11, F.13/F.15, H.18/H.20** — comportamento 100% confirmado por
+  automação com dado real; um clique rápido pra ver que "parece certo" ainda é recomendável, mas
+  não é obrigatório.
+- **H.19** — dado confirmado (25 = 25, mesma fonte); só falta o clique de expandir e olhar o
+  resultado visual (interação, não dado).
+- **G.16 (Relatório)** — indício presente mas não é prova forte (Débora não existe como `User`
+  local); não bloqueante para aprovar o resto, mas não fecha o item com certeza.
+- **G.16 (Auditoria), I.21-23** — genuinamente bloqueados até decidir sobre puxar `company_users`
+  (terceira tabela, distinta de `user_setores`/`cargos` já resolvida) — ou verificar de outra
+  forma.
 - **F.14, I.22** — bloqueados por não existir, hoje, uma competência fechada sem detalhe real
   pra visitar (já coberto por teste sintético na Task 1).
 
