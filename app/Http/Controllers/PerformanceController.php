@@ -1195,7 +1195,12 @@ class PerformanceController extends Controller
      *
      * Fonte dos meses disponíveis (para o toggle):
      *  - `desempenho_score_snapshots` filtrado por `user_id` + `mes_referencia`
-     *     não-null + `>= 2026-08-01` (DESEMP-14).
+     *     não-null (D-02 da Fase 123) — a existência da linha já é o sinal
+     *     correto de competência fechada e consolidada, sem corte fixo de
+     *     data. O corte antigo (DESEMP-14, 1º de agosto de 2026) deixava o
+     *     dropdown vazio em produção: `desempenho:consolidar-mes` congela o
+     *     mês ANTERIOR no último dia do mês, então a primeira competência a
+     *     passar naquele corte só existiria em 30 de setembro de 2026.
      */
     /**
      * Resolve o CONTEXTO DE PERÍODO das telas de desempenho a partir de
@@ -1289,11 +1294,15 @@ class PerformanceController extends Controller
             $resultado = $this->scoreService->computeCached($user, $mesReferencia);
         }
 
-        // Meses fechados disponíveis para o dropdown (DESEMP-14 · >= 2026-08-01),
-        // em 'Y-m' pra bater com o `?mes=` do contrato novo.
+        // Meses fechados disponíveis para o dropdown, derivados dos dados
+        // (D-02 da Fase 123) — existe linha mensal, logo o mês está fechado
+        // e consolidado. O corte fixo antigo (DESEMP-14, 1º de agosto de
+        // 2026) deixava o dropdown vazio em produção: `desempenho:consolidar-mes`
+        // congela o mês ANTERIOR no último dia do mês, então a primeira
+        // competência a passar naquele corte só existiria em 30 de setembro
+        // de 2026. Em 'Y-m' pra bater com o `?mes=` do contrato novo.
         $mesesFechados = DesempenhoScoreSnapshot::mensal()
             ->where('user_id', $user->id)
-            ->whereDate('mes_referencia', '>=', '2026-08-01')
             ->orderByDesc('mes_referencia')
             ->pluck('mes_referencia')
             ->map(fn ($d) => Carbon::parse($d)->format('Y-m'))
