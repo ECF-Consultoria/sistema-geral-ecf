@@ -5,6 +5,7 @@ namespace Tests\Feature\Phase123;
 use App\Models\Company;
 use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoScoreSnapshot;
+use App\Models\Servico;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -28,6 +29,13 @@ abstract class Phase123TestCase extends TestCase
     protected int $cargoAnalistaId;
 
     protected int $cargoEstrategistaId;
+
+    /**
+     * Serviço "performance" ativo, memoizado por instância de teste —
+     * reaproveitado por todas as chamadas de `darCarteira()` na mesma
+     * suíte (123-03-PLAN.md Task 1).
+     */
+    private ?int $servicoPerformanceId = null;
 
     protected function setUp(): void
     {
@@ -112,10 +120,20 @@ abstract class Phase123TestCase extends TestCase
     /**
      * Vincula uma empresa nova à carteira do profissional. Devolve o
      * `company_id` gerado.
+     *
+     * A empresa também recebe um contrato de serviço "performance" ativo:
+     * sem ele, `CarteiraContextService::forUser()` (ramo legado — linha de
+     * `company_users` com `servico_id` NULL, CTX-05) não tem como resolver
+     * o vínculo, e a empresa nunca apareceria em telas que passam pela
+     * camada de contexto de carteira (ex.: Auditoria de Bônus) mesmo com a
+     * linha em `company_users` presente. As suítes 122-01/02 que só leem
+     * `desempenho_company_score_snapshots` direto não são afetadas.
      */
     protected function darCarteira(User $user): int
     {
         $company = Company::factory()->create();
+
+        $this->garantirContratoPerformanceAtivo($company->id);
 
         DB::table('company_users')->insert([
             'user_id'    => $user->id,
@@ -126,6 +144,31 @@ abstract class Phase123TestCase extends TestCase
         ]);
 
         return $company->id;
+    }
+
+    private function garantirContratoPerformanceAtivo(int $companyId): void
+    {
+        if ($this->servicoPerformanceId === null) {
+            $this->servicoPerformanceId = (int) DB::table('servicos')->insertGetId([
+                'nome'          => 'Serviço Performance 123',
+                'valor_padrao'  => 0,
+                'tipo_cobranca' => Servico::TIPO_MENSAL,
+                'ativo'         => true,
+                'setor'         => Servico::SETOR_PERFORMANCE,
+                'created_at'    => now(),
+                'updated_at'    => now(),
+            ]);
+        }
+
+        DB::table('contratos_servico')->insert([
+            'company_id'       => $companyId,
+            'servico_id'       => $this->servicoPerformanceId,
+            'valor_contratado' => 0,
+            'data_contratacao' => now()->toDateString(),
+            'ativo'            => true,
+            'created_at'       => now(),
+            'updated_at'       => now(),
+        ]);
     }
 
     /**

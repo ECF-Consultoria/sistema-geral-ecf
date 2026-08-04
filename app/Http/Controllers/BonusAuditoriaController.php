@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\User;
+use App\Services\Desempenho\CompanyScoreSnapshotReader;
 use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Portfolio\CarteiraContextService;
@@ -30,6 +31,7 @@ class BonusAuditoriaController extends Controller
         private DesempenhoScoreService $scoreService,
         private MetricPeriodResolver $periodResolver,
         private CarteiraContextService $carteiraContext,
+        private CompanyScoreSnapshotReader $companyScoreReader,
     ) {}
 
     public function index(Request $request)
@@ -69,22 +71,51 @@ class BonusAuditoriaController extends Controller
             ->get()
             ->keyBy('company_id');
 
-        $profissionais = $users->map(function ($u) use ($cargosPorUser, $competencia, $invalidadas) {
+        // Nota e componentes por empresa (D-10/UIEM-04) — UMA única leitura,
+        // fora do map() de profissionais, da MESMA fonte que o detalhe do
+        // profissional lê (`CompanyScoreSnapshotReader`), nunca recomputada.
+        $detalhePorUser = $this->companyScoreReader->paraUsuarios($users->pluck('id')->all(), $competencia);
+
+        // D-03 tem dois níveis aqui: banner de página quando NENHUM
+        // profissional tem detalhe nesta competência; "—" silencioso por
+        // linha quando só aquele profissional específico não tem (ver
+        // Open Question 1 do 123-RESEARCH.md, resolvida no 123-03-PLAN.md).
+        $temDetalheCompetencia = $detalhePorUser->contains(fn ($linhas) => $linhas->isNotEmpty());
+
+        $profissionais = $users->map(function ($u) use ($cargosPorUser, $competencia, $invalidadas, $detalhePorUser) {
             $cargoSlug = $cargosPorUser->get($u->id)?->slug ?? 'analista';
             $resultado = $this->scoreService->computeCached($u, $competencia);
+
+            $porCompany = ($detalhePorUser->get($u->id) ?? collect())->keyBy('company_id');
 
             // Empresas da carteira do profissional (todas as áreas — invalidação
             // é da empresa inteira). Deduplica por company_id.
             $empresas = $this->carteiraContext->forUser($u, ['active' => true])
                 ->unique('company_id')
-                ->map(function ($v) use ($invalidadas) {
+                ->map(function ($v) use ($invalidadas, $porCompany) {
                     $inv = $invalidadas->get($v['company_id']);
+                    $detalhe = $porCompany->get($v['company_id']);
+
                     return [
                         'company_id'   => $v['company_id'],
                         'company_name' => $v['company_name'],
                         'setor'        => $v['setor'] ?? null,
                         'invalidada'   => $inv !== null,
                         'motivo'       => $inv?->motivo,
+                        // Nota e componentes por empresa (D-10) — sempre
+                        // presentes, `null` quando a empresa não tem linha
+                        // na competência, para o JSX não precisar de guard.
+                        'nota_empresa'          => $detalhe['nota_empresa'] ?? null,
+                        'nota_empresa_parcial'  => $detalhe['nota_empresa_parcial'] ?? null,
+                        'status'                => $detalhe['status'] ?? null,
+                        'nps_pontos'            => $detalhe['nps_pontos'] ?? null,
+                        'faturamento_var_pct'   => $detalhe['faturamento_var_pct'] ?? null,
+                        'faturamento_pontos'    => $detalhe['faturamento_pontos'] ?? null,
+                        'margem_pct_atual'      => $detalhe['margem_pct_atual'] ?? null,
+                        'margem_pct_anterior'   => $detalhe['margem_pct_anterior'] ?? null,
+                        'margem_var_pp'         => $detalhe['margem_var_pp'] ?? null,
+                        'margem_pontos'         => $detalhe['margem_pontos'] ?? null,
+                        'quality'               => $detalhe['quality'] ?? null,
                     ];
                 })
                 ->sortBy('company_name')
@@ -110,6 +141,7 @@ class BonusAuditoriaController extends Controller
             'competencias_disponiveis' => $competenciasDisponiveis,
             'profissionais'           => $profissionais,
             'total_invalidadas'       => $invalidadas->count(),
+            'tem_detalhe_empresas'    => $temDetalheCompetencia,
         ]);
     }
 
