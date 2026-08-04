@@ -1491,7 +1491,7 @@ Plans:
   4. Relatório de Bonificação e Auditoria de Bônus exibem `nota_empresa` lendo a mesma fonte que o ranking
   5. `npm run build` rodado e checkpoint visual aprovado
 
-**Plans:** 7/8 plans executed
+**Plans:** 8/8 plans complete
 
 Plans:
 - [x] 123-01-PLAN.md — Fundações compartilhadas: `CompanyScoreSnapshotReader` + `desempenhoLabels.js` [UIEM-01, UIEM-02, UIEM-04]
@@ -1501,7 +1501,7 @@ Plans:
 - [x] 123-05-PLAN.md — Relatório de Bonificação — linha expansível por profissional (fecha UIEM-04) [UIEM-04]
 - [x] 123-06-PLAN.md — Checkpoint visual humano (fecha a fase) [UIEM-01, UIEM-02, UIEM-03, UIEM-04]
 - [x] 123-07-PLAN.md — Gap closure: autorização por usuário-alvo em show()/evolucao() (CR-01) + payload enxuto do reader (WR-03) + regex de mês (WR-01) [UIEM-02, UIEM-03]
-- [ ] 123-08-PLAN.md — Gap closure: Auditoria de Bônus snapshot-first para nota_final (CR-02) [UIEM-04]
+- [x] 123-08-PLAN.md — Gap closure: Auditoria de Bônus snapshot-first para nota_final (CR-02) [UIEM-04]
 
 > **Waves:** 1 = {123-01} · 2 = {123-02, 123-03} · 3 = {123-04} · 4 = {123-05} · 5 = {123-06}
 > UIEM-04 e UIEM-03 só fecham de fato quando 123-05 e 123-04 rodarem — 123-03 entrega só a metade da Auditoria de Bônus.
