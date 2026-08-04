@@ -201,6 +201,17 @@ export const NOTA_TOPO_RESSALVA = 'A nota do topo continua vindo do cálculo por
 
 export const LIMIAR_COLAPSO_NAO_ENTRARAM = 8;
 
+/**
+ * Selo de safra da Auditoria de Bônus (CR-02/gap 2 do 123-VERIFICATION.md,
+ * fechado no 123-08-PLAN.md). Aparece ao lado da nota do profissional
+ * SOMENTE quando ela veio de recomputo ao vivo (`nota_congelada === false`)
+ * — nunca quando o campo está ausente, para não gerar alarme falso num
+ * payload antigo sem essa chave.
+ */
+export const NOTA_RECALCULADA_TEXTO = 'recalculada agora';
+
+export const NOTA_RECALCULADA_TITULO = 'Esta nota foi recalculada ao vivo nesta consulta e pode divergir das notas por empresa abaixo, que são as congeladas no fechamento do mês. Isso não significa erro de cálculo — são duas leituras de momentos diferentes.';
+
 // ─── Regras puras de particionamento da lista ─────────────────────────────
 // Moram aqui, não dentro do JSX — o projeto não tem harness de renderização
 // de React, então extraídas ficam travadas por teste desde a wave 1.

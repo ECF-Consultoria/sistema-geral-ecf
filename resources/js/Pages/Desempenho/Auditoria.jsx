@@ -10,6 +10,7 @@ import {
     fmtNotaEmpresa, statusEmpresaLabel, ehPlaceholderShopee,
     SELO_SHOPEE_TEXTO, SELO_SHOPEE_TITULO,
     AVISO_SEM_DETALHE_TITULO, avisoSemDetalheFechado,
+    NOTA_RECALCULADA_TEXTO, NOTA_RECALCULADA_TITULO,
 } from '@/lib/desempenhoLabels';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -29,13 +30,32 @@ const CARGO_COR = {
 
 const fmtNota = (n) => (n === null || n === undefined ? '—' : Number(n).toFixed(2));
 
-function NotaBadge({ nota }) {
+/**
+ * Nota do profissional. `congelada` distingue a safra (CR-02): quando vem
+ * EXPLICITAMENTE `false` — nota recomputada ao vivo, safra diferente das
+ * notas por empresa abaixo (sempre congeladas) — mostra um selo. `undefined`
+ * (payload antigo sem a chave) não mostra nada: ausência de campo não pode
+ * virar alarme falso.
+ */
+function NotaBadge({ nota, congelada }) {
     if (nota === null || nota === undefined) {
         return <span className="text-white/30 text-sm">sem nota</span>;
     }
     const n = Number(nota);
     const cor = n >= 4.5 ? 'text-emerald-400' : n >= 4.0 ? 'text-ecf-yellow' : 'text-white/60';
-    return <span className={cn('font-bold tabular-nums', cor)}>{n.toFixed(2)}</span>;
+    return (
+        <div className="flex items-center gap-1.5">
+            <span className={cn('font-bold tabular-nums', cor)}>{n.toFixed(2)}</span>
+            {congelada === false && (
+                <span
+                    title={NOTA_RECALCULADA_TITULO}
+                    className="inline-flex items-center gap-1 rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-200"
+                >
+                    {NOTA_RECALCULADA_TEXTO}
+                </span>
+            )}
+        </div>
+    );
 }
 
 /**
@@ -183,7 +203,7 @@ function ProfissionalCard({ prof, competencia }) {
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                     <span className="text-[11px] text-white/30">{prof.empresas.length} empresas</span>
-                    <NotaBadge nota={prof.nota_final} />
+                    <NotaBadge nota={prof.nota_final} congelada={prof.nota_congelada} />
                 </div>
             </button>
 

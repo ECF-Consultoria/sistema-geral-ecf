@@ -44,3 +44,21 @@ test('zero regressão: NotaBadge do profissional e o fluxo de invalidar/reativar
     assert.match(fonte, /Invalidar/);
     assert.match(fonte, /Reativar/);
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// Selo de safra da nota (CR-02/gap 2 do 123-VERIFICATION.md, fechado pelo
+// 123-08-PLAN.md Task 2) — a nota do profissional recomputada ao vivo nunca
+// pode aparecer sem sinal ao lado das notas por empresa congeladas.
+// ═══════════════════════════════════════════════════════════════════════
+
+test('NotaBadge referencia a prop congelada e o campo nota_congelada do payload', () => {
+    assert.match(fonte, /congelada/);
+    assert.match(fonte, /nota_congelada/);
+});
+
+test('o selo de safra usa NOTA_RECALCULADA_TEXTO/NOTA_RECALCULADA_TITULO importados, nunca texto escrito à mão no JSX', () => {
+    assert.match(fonte, /NOTA_RECALCULADA_TEXTO/);
+    assert.match(fonte, /NOTA_RECALCULADA_TITULO/);
+    assert.doesNotMatch(fonte, /recalculada agora/,
+        'esse texto só pode existir em resources/js/lib/desempenhoLabels.js');
+});
