@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\BonusFaixa;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\User;
+use App\Services\Desempenho\CompanyScoreSnapshotReader;
 use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricPeriodResolver;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -30,6 +31,7 @@ class RelatorioBonificacaoController extends Controller
     public function __construct(
         private DesempenhoScoreService $scoreService,
         private MetricPeriodResolver $periodResolver,
+        private CompanyScoreSnapshotReader $companyScoreReader,
     ) {}
 
     /** Página Inertia do relatório (tabela filtrável + botão de export PDF). */
@@ -105,7 +107,14 @@ class RelatorioBonificacaoController extends Controller
         // Rótulos das faixas (configuráveis via bonus_faixas) por slug.
         $faixaLabels = BonusFaixa::pluck('nome', 'slug');
 
-        $linhas = $users->map(function ($u) use ($cargosPorUser, $snapshots, $competencia, $faixaLabels) {
+        // Detalhe por empresa (D-08/UIEM-04): UMA única leitura contra
+        // desempenho_company_score_snapshots para todos os profissionais,
+        // fora do map() abaixo — nunca uma query por profissional, e nunca
+        // o blob breakdown_json['empresas_score'] (fonte única exigida
+        // literalmente pela UIEM-04, ver CompanyScoreSnapshotReader).
+        $detalhePorUser = $this->companyScoreReader->paraUsuarios($users->pluck('id')->all(), $competencia);
+
+        $linhas = $users->map(function ($u) use ($cargosPorUser, $snapshots, $competencia, $faixaLabels, $detalhePorUser) {
             $cargoSlug = $cargosPorUser->get($u->id)?->slug ?? 'analista';
 
             // Snapshot-first: breakdown_json do fechamento; fallback computeCached
@@ -125,17 +134,25 @@ class RelatorioBonificacaoController extends Controller
 
             $comp = $resultado['componentes'] ?? [];
 
+            // D-08 — detalhe por empresa deste profissional, já lido acima
+            // numa única query. Ausência de linha (competência sem detalhe
+            // gravado, D-03) vira Collection vazia, nunca erro.
+            $detalheDoUser = $detalhePorUser->get($u->id) ?? collect();
+
             return [
-                'id'                  => $u->id,
-                'name'                => $u->name,
-                'cargo_label'         => $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista',
-                'nps_medio'           => $comp['nps_medio']           ?? null,
-                'var_faturamento_pct' => $comp['var_faturamento_pct'] ?? null,
-                'var_margem_pct'      => $comp['var_margem_pct']      ?? null,
-                'nota_final'          => $nota,
-                'faixa_slug'          => $faixa,
-                'faixa_label'         => $faixaLabels[$faixa] ?? ucfirst($faixa),
-                'faixa_promovida'     => (bool) ($resultado['faixa_promovida'] ?? false),
+                'id'                    => $u->id,
+                'name'                  => $u->name,
+                'cargo_label'           => $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista',
+                'nps_medio'             => $comp['nps_medio']           ?? null,
+                'var_faturamento_pct'   => $comp['var_faturamento_pct'] ?? null,
+                'var_margem_pct'        => $comp['var_margem_pct']      ?? null,
+                'nota_final'            => $nota,
+                'faixa_slug'            => $faixa,
+                'faixa_label'           => $faixaLabels[$faixa] ?? ucfirst($faixa),
+                'faixa_promovida'       => (bool) ($resultado['faixa_promovida'] ?? false),
+                'empresas_score'        => $detalheDoUser->values()->all(),
+                'empresas_score_resumo' => $this->companyScoreReader->resumo($detalheDoUser),
+                'tem_detalhe_empresas'  => ! $detalheDoUser->isEmpty(),
             ];
         })
         ->filter()
