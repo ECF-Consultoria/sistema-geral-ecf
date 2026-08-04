@@ -46,10 +46,10 @@ class CompanyScoreSnapshotReaderTest extends Phase123TestCase
         Http::assertNothingSent();
     }
 
-    // ═══ (b) shape enxuto — exatamente 17 chaves ══════════════════════════
+    // ═══ (b) shape enxuto — exatamente 14 chaves ══════════════════════════
 
     #[Test]
-    public function shape_tem_exatamente_as_17_chaves_esperadas_sem_campos_internos(): void
+    public function shape_tem_exatamente_as_14_chaves_esperadas_sem_campos_internos(): void
     {
         Http::fake();
 
@@ -61,15 +61,18 @@ class CompanyScoreSnapshotReaderTest extends Phase123TestCase
 
         $esperado = [
             'company_id', 'company_name', 'fonte_financeira', 'status', 'nps_pontos',
-            'faturamento_atual', 'faturamento_anterior', 'faturamento_var_pct', 'faturamento_pontos',
+            'faturamento_var_pct', 'faturamento_pontos',
             'margem_pct_atual', 'margem_pct_anterior', 'margem_var_pp', 'margem_pontos',
-            'componentes_presentes', 'nota_empresa', 'nota_empresa_parcial', 'quality',
+            'nota_empresa', 'nota_empresa_parcial', 'quality',
         ];
 
         $this->assertSame($esperado, array_keys($linhas->first()));
 
-        foreach (['origem', 'gerado_em', 'created_at', 'updated_at', 'id', 'user_id'] as $chaveProibida) {
-            $this->assertArrayNotHasKey($chaveProibida, $linhas->first(), "chave interna '{$chaveProibida}' vazou pro shape");
+        // WR-03 (123-07): faturamento_atual/faturamento_anterior/componentes_presentes
+        // saíram do shape (dado financeiro absoluto sem consumidor JSX) — prova a
+        // AUSÊNCIA junto com as chaves internas, não só a presença do shape antigo.
+        foreach (['origem', 'gerado_em', 'created_at', 'updated_at', 'id', 'user_id', 'faturamento_atual', 'faturamento_anterior', 'componentes_presentes'] as $chaveProibida) {
+            $this->assertArrayNotHasKey($chaveProibida, $linhas->first(), "chave '{$chaveProibida}' não deveria estar no shape");
         }
     }
 

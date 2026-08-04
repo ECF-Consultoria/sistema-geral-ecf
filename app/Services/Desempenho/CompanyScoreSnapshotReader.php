@@ -114,10 +114,15 @@ class CompanyScoreSnapshotReader
     }
 
     /**
-     * Mapeia o model para um shape ENXUTO com exatamente 17 chaves. Nunca
+     * Mapeia o model para um shape ENXUTO com exatamente 14 chaves. Nunca
      * serializa o model inteiro: `origem`, `gerado_em`, `created_at`,
      * `updated_at`, `id` e `user_id` são ruído interno e não devem trafegar
-     * para o browser (threat_model T-123-05).
+     * para o browser (threat_model T-123-05). WR-03 (123-07): `faturamento_atual`,
+     * `faturamento_anterior` e `componentes_presentes` também ficam de fora —
+     * nenhum consumidor JSX os lê, e são dado financeiro absoluto (R$) de
+     * terceiro sem necessidade de trafegar para o browser. Os 3 continuam
+     * gravados na tabela (`CompanyScoreSnapshotWriter` não muda) — só param
+     * de sair por este reader.
      */
     private function mapear(DesempenhoCompanyScoreSnapshot $linha): array
     {
@@ -140,15 +145,12 @@ class CompanyScoreSnapshotReader
             'fonte_financeira'      => $linha->fonte_financeira,
             'status'                => $linha->status,
             'nps_pontos'            => $linha->nps_pontos,
-            'faturamento_atual'     => $linha->faturamento_atual,
-            'faturamento_anterior'  => $linha->faturamento_anterior,
             'faturamento_var_pct'   => $linha->faturamento_var_pct,
             'faturamento_pontos'    => $linha->faturamento_pontos,
             'margem_pct_atual'      => $linha->margem_pct_atual,
             'margem_pct_anterior'   => $linha->margem_pct_anterior,
             'margem_var_pp'         => $linha->margem_var_pp,
             'margem_pontos'         => $linha->margem_pontos,
-            'componentes_presentes' => $linha->componentes_presentes,
             'nota_empresa'          => $linha->nota_empresa,
             'nota_empresa_parcial'  => $linha->nota_empresa_parcial,
             'quality'               => $quality,
