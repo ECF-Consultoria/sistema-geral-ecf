@@ -3,9 +3,14 @@ import { router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     ShieldAlert, ChevronDown, ChevronRight, Ban, RotateCcw,
-    Building2, TriangleAlert, CheckCircle2,
+    Building2, TriangleAlert, CheckCircle2, Info,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+    fmtNotaEmpresa, statusEmpresaLabel, ehPlaceholderShopee,
+    SELO_SHOPEE_TEXTO, SELO_SHOPEE_TITULO,
+    AVISO_SEM_DETALHE_TITULO, avisoSemDetalheFechado,
+} from '@/lib/desempenhoLabels';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Auditoria de pagamento de bônus (item 3/4 · 2026-07-21) — admin-only.
@@ -31,6 +36,58 @@ function NotaBadge({ nota }) {
     const n = Number(nota);
     const cor = n >= 4.5 ? 'text-emerald-400' : n >= 4.0 ? 'text-ecf-yellow' : 'text-white/60';
     return <span className={cn('font-bold tabular-nums', cor)}>{n.toFixed(2)}</span>;
+}
+
+/**
+ * Nota da empresa na competência (D-10) — lida da mesma fonte que o detalhe
+ * do profissional (`desempenho_company_score_snapshots`), nunca recomputada.
+ * Três estados: nota oficial, nota parcial (rotulada), ou "—" silencioso
+ * quando o profissional não tem linha nesta competência (a ausência de
+ * página inteira já foi avisada no banner do topo — D-03).
+ */
+function NotaEmpresaCell({ empresa }) {
+    const corNota = (n) => (n >= 4.5 ? 'text-emerald-400' : n >= 4.0 ? 'text-ecf-yellow' : 'text-white/60');
+
+    let conteudo;
+    if (empresa.nota_empresa != null) {
+        conteudo = (
+            <div className="text-right">
+                <div className="text-[10px] uppercase tracking-wider text-white/30">
+                    {statusEmpresaLabel(empresa.status)}
+                </div>
+                <div className={cn('font-bold tabular-nums', corNota(empresa.nota_empresa))}>
+                    {fmtNotaEmpresa(empresa.nota_empresa)}
+                </div>
+            </div>
+        );
+    } else if (empresa.nota_empresa_parcial != null) {
+        conteudo = (
+            <div className="text-right">
+                <div className="text-[10px] uppercase tracking-wider text-white/30">
+                    {statusEmpresaLabel(empresa.status)}
+                </div>
+                <div className="font-bold tabular-nums text-white/50">
+                    {fmtNotaEmpresa(empresa.nota_empresa_parcial)}
+                </div>
+            </div>
+        );
+    } else {
+        conteudo = <div className="text-right text-white/30">—</div>;
+    }
+
+    return (
+        <div className="flex flex-col items-end gap-1">
+            {conteudo}
+            {ehPlaceholderShopee(empresa) && (
+                <span
+                    title={SELO_SHOPEE_TITULO}
+                    className="inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200"
+                >
+                    {SELO_SHOPEE_TEXTO}
+                </span>
+            )}
+        </div>
+    );
 }
 
 function EmpresaRow({ empresa, competencia }) {
@@ -70,6 +127,7 @@ function EmpresaRow({ empresa, competencia }) {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+                <NotaEmpresaCell empresa={empresa} />
                 {!empresa.invalidada && (
                     <input
                         type="text"
@@ -145,6 +203,7 @@ export default function Auditoria() {
     const {
         competencia, competencia_label, competencias_disponiveis,
         profissionais, total_invalidadas, flash,
+        tem_detalhe_empresas = false,
     } = props;
 
     const trocarCompetencia = (mes) => {
@@ -197,6 +256,20 @@ export default function Auditoria() {
                             : 'nenhuma empresa invalidada'}
                     </span>
                 </div>
+
+                {/* Aviso de ausência de detalhe (D-03) — competência inteira sem
+                    nenhuma linha em desempenho_company_score_snapshots. */}
+                {!tem_detalhe_empresas && (
+                    <div className="mb-4 flex items-start gap-3 rounded-xl border border-white/[0.1] bg-white/[0.03] px-4 py-3">
+                        <Info className="h-4 w-4 shrink-0 mt-0.5 text-white/40" />
+                        <div>
+                            <div className="text-sm font-semibold text-white/80">{AVISO_SEM_DETALHE_TITULO}</div>
+                            <div className="mt-1 text-xs leading-relaxed text-white/50">
+                                {avisoSemDetalheFechado(competencia_label)}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Lista */}
                 <div className="flex flex-col gap-2">
