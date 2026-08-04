@@ -375,26 +375,42 @@ real + código) já foi confirmado acima e não precisa ser reconferido. `npm ru
 novo antes de fechar este documento (`✓ built in 31.98s`, exit 0) — o que está em
 `http://localhost/ecf_admin/public` é o build corrente.
 
-| # | O que olhar | URL |
-|---|---|---|
-| B.3 | O texto do card de margem soa claro pra quem nunca viu a API (sem jargão)? | `http://localhost/ecf_admin/public/performance/21?mes=2026-06` |
-| B.4 | A frase em pontos percentuais lê bem junto do resto do card? | mesma URL acima |
-| B.5 | O número grande do card faz sentido lido ao lado da nota? | mesma URL acima |
-| D.10 | O aviso da Shopee soa como "falta o dado", não como "a margem foi ruim"? | `http://localhost/ecf_admin/public/performance/28?mes=2026-06` |
-| E.11 | A tabela de um profissional comum renderiza limpa, formato `X% → Y%  ±Z` legível? | `http://localhost/ecf_admin/public/performance/17?mes=2026-06` |
-| E.12 | A ressalva "nota vem do cálculo por carteira" está visualmente proeminente o bastante? | mesma URL acima |
-| H.19 | Clicar em expandir a linha do contemplado da faixa intermediário — abre certo, mostra empresas + nota + 3 componentes? | `http://localhost/ecf_admin/public/desempenho/relatorio-bonificacao?mes=2026-06` |
-| — | Conferência geral de "parece certo" no caso Felipe (denominador 9/30, colapso automático) | `http://localhost/ecf_admin/public/performance/21?mes=2026-06` |
-| — | Conferência geral de "parece certo" no caso Renan Bassetto (todas entraram, seção "não entraram" ausente) | `http://localhost/ecf_admin/public/performance/11?mes=2026-06` |
+| # | O que olhar | URL | Resultado |
+|---|---|---|---|
+| B.3 | O texto do card de margem soa claro pra quem nunca viu a API (sem jargão)? | `http://localhost/ecf_admin/public/performance/21?mes=2026-06` | ✅ Aprovado |
+| B.4 | A frase em pontos percentuais lê bem junto do resto do card? | mesma URL acima | ✅ Aprovado |
+| B.5 | O número grande do card faz sentido lido ao lado da nota? | mesma URL acima | ✅ Aprovado |
+| D.10 | O aviso da Shopee soa como "falta o dado", não como "a margem foi ruim"? | `http://localhost/ecf_admin/public/performance/28?mes=2026-06` | ✅ Aprovado |
+| E.11 | A tabela de um profissional comum renderiza limpa, formato `X% → Y%  ±Z` legível? | `http://localhost/ecf_admin/public/performance/17?mes=2026-06` | ✅ Aprovado |
+| E.12 | A ressalva "nota vem do cálculo por carteira" está visualmente proeminente o bastante? | mesma URL acima | ✅ Aprovado |
+| H.19 | Clicar em expandir a linha do contemplado da faixa intermediário — abre certo, mostra empresas + nota + 3 componentes? | `http://localhost/ecf_admin/public/desempenho/relatorio-bonificacao?mes=2026-06` | ✅ Aprovado |
+| — | Conferência geral de "parece certo" no caso Felipe (denominador 9/30, colapso automático) | `http://localhost/ecf_admin/public/performance/21?mes=2026-06` | ✅ Aprovado |
+| — | Conferência geral de "parece certo" no caso Renan Bassetto (todas entraram, seção "não entraram" ausente) | `http://localhost/ecf_admin/public/performance/11?mes=2026-06` | ✅ Aprovado |
 
-**Fora do escopo deste checkpoint (decisão fechada, não pendente):** Auditoria de Bônus (itens
+**Os 9 itens de julgamento visual acima foram aprovados pelo usuário em 2026-08-04.** Resposta
+literal: "aprovado".
+
+**Fora do escopo deste checkpoint (decisão fechada, NÃO aprovada nem reprovada — dívida de
+verificação conhecida, registrada para não se perder):** Auditoria de Bônus (itens
 G.16-parte-Auditoria, I.21-23) e os dois cenários que não existem hoje nem em produção (F.14,
-I.22) — cobertos por teste automatizado, conferência real em produção pós-deploy.
+I.22) — cobertos por teste automatizado (`AuditoriaBonusNotaEmpresaTest` + gates estruturais JS),
+conferência visual real fica para produção pós-deploy. Ver seção "Auditoria de Bônus — ADIADA
+PARA PÓS-DEPLOY" acima para a causa completa (`company_users` não sincronizado, decisão explícita
+do usuário de não copiar essa tabela) e a cobertura que sustenta o adiamento.
 
 ---
 
 ## Veredito final
 
-**Aprovação do usuário:** _(pendente)_
+**Aprovação do usuário:** ✅ **APROVADO em 2026-08-04.** Os 9 itens de julgamento visual genuíno
+(card de margem em Felipe, aviso Shopee em Matheus Estrela, ressalva e legibilidade em Ana Julia,
+ausência da seção "não entraram" em Renan Bassetto, expansão da linha do contemplado no Relatório
+de Bonificação) foram conferidos e aprovados. Resposta literal do usuário: "aprovado".
 
-**Ajustes pedidos (se houver):** _(pendente)_
+**Ajustes pedidos:** Nenhum.
+
+**Pendência registrada, não perdida:** Auditoria de Bônus (verificação visual com dado real) fica
+para conferência pós-deploy em produção — decisão explícita do usuário, sustentada por cobertura
+automatizada. Não é item silenciosamente fechado; é dívida de verificação conhecida e documentada.
+
+**Critério 5 do ROADMAP (`npm run build` + checkpoint visual aprovado): SATISFEITO.**

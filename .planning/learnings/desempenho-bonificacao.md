@@ -90,3 +90,9 @@ Várias sessões de Claude Code e mais de um dev editam a **mesma** árvore. Sem
 `deploy.sh` publica exatamente `origin/main` — ou seja, **quem deploya publica o trabalho de todo mundo** que já estiver lá, tenha essa pessoa escolhido o momento ou não. Confira `git log HEAD..origin/main` antes.
 
 `.planning/REQUIREMENTS.md` na raiz parou na v17.0; os IDs das milestones novas só existem em `REQUIREMENTS-vNN.md`, e o `phase.complete` não os alcança — marque os checkboxes à mão ao fechar fase.
+
+## 11. Checkpoint visual com dado real de bônus — nunca versionar resultado individual
+
+Autorização para trazer dado de compensação (score/bônus por profissional) para o **banco local**, a fim de conferir tela com dado real, **não é** autorização para **versionar** esse resultado individual no histórico do git — são duas decisões diferentes, e a segunda exige consentimento à parte, mesmo com a primeira já dada. Aconteceu na Fase 123 (checkpoint 123-06): um commit gravou, num arquivo versionado, tabela nominal pareando profissional com faixa de bônus e nota final; foi corrigido por amend antes de ir mais longe no histórico.
+
+Regra prática para qualquer documento de checkpoint/verificação que toque dado real de bônus: **contadores de carteira por profissional (entraram/total) podem ser versionados** — é o dado que a tela exibe. **Nome pareado com faixa de bônus, nota final ou valor de bonificação, não** — refira-se a "o contemplado da faixa X" e aponte pra conferência no banco local de quem executa.
