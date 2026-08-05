@@ -904,6 +904,9 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::patch('/pub/{pub}/reverter',           [MlbController::class, 'reverterRevisao'])->name('revisao.reverter');
     Route::post('/pub/{pub}/pendencia',           [MlbController::class, 'abrirPendencia'])->name('pendencia.abrir');
     Route::post('/revisao/aprovar-lote',          [MlbController::class, 'aprovarLote'])->name('revisao.aprovar-lote');
+    // Fora da metodologia: o anúncio continua existindo, mas para de contar
+    // em vendas, meta, conversão e score.
+    Route::patch('/pub/{pub}/desconsiderar',      [MlbController::class, 'desconsiderarPublicacao'])->name('revisao.desconsiderar');
     Route::patch('/pendencia/{pendencia}/corrigida', [MlbController::class, 'corrigirPendencia'])->name('pendencia.corrigida');
     Route::patch('/pendencia/{pendencia}/resolver',  [MlbController::class, 'resolverPendencia'])->name('pendencia.resolver');
     Route::patch('/pendencia/{pendencia}/reabrir',   [MlbController::class, 'reabrirPendencia'])->name('pendencia.reabrir');

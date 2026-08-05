@@ -172,7 +172,7 @@ class MlbController extends Controller
         $hoje     = Carbon::today();
 
         $query = Publicacao::whereBetween('data', [$primeiro, $ultimo])
-            ->where('tipo', '!=', 'variacao');
+            ->where('tipo', '!=', 'variacao')->considerado();
         if ($userId !== null) {
             $query->where('user_id', $userId);
         }
@@ -350,7 +350,7 @@ class MlbController extends Controller
         $ultimo   = $ref->copy()->endOfMonth()->toDateString();
 
         $ranking = $publicadores->map(function ($pub) use ($primeiro, $ultimo, $mesRef) {
-            $base           = Publicacao::where('user_id', $pub->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao');
+            $base           = Publicacao::where('user_id', $pub->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->considerado();
             $feito          = $base->count();
             $vendas         = (clone $base)->where('vendido', true)->count();
             $vendasQty      = (clone $base)->sum('vendas_qty');
@@ -366,7 +366,7 @@ class MlbController extends Controller
         })->sortByDesc('feito')->values();
 
         $evolucaoDiaria = Publicacao::whereBetween('data', [$primeiro, $ultimo])
-            ->where('tipo', '!=', 'variacao')
+            ->where('tipo', '!=', 'variacao')->considerado()
             ->when(!$verTodos, fn($q) => $q->where('user_id', $user->id))
             ->selectRaw('data, COUNT(*) as total')
             ->groupBy('data')
@@ -374,7 +374,7 @@ class MlbController extends Controller
             ->get()
             ->map(fn($r) => ['data' => Carbon::parse($r->data)->format('d/m'), 'total' => (int) $r->total]);
 
-        $evolucaoMensal = Publicacao::where('tipo', '!=', 'variacao')
+        $evolucaoMensal = Publicacao::where('tipo', '!=', 'variacao')->considerado()
             ->when(!$verTodos, fn($q) => $q->where('user_id', $user->id))
             ->selectRaw("DATE_FORMAT(data, '%Y-%m') as mes, COUNT(*) as total, SUM(vendido) as vendas")
             ->groupBy('mes')
@@ -451,7 +451,10 @@ class MlbController extends Controller
             ->values()
             ->toArray();
 
+        // Anúncio fora da metodologia não alerta: não há o que cobrar num
+        // anúncio que já saiu da apuração.
         $anunciosProblema = Publicacao::where('problema', true)
+            ->considerado()
             ->when(!$verTodos, fn($q) => $q->where('user_id', $user->id))
             ->orderBy('empresa')
             ->get(['empresa', 'mlb_code', 'problema_nota'])
@@ -538,7 +541,7 @@ class MlbController extends Controller
         ];
 
         // Ticket médio por publicador no mês selecionado
-        $ticketRows = Publicacao::whereNotNull('net_billing')
+        $ticketRows = Publicacao::whereNotNull('net_billing')->considerado()
             ->where('vendido', true)->where('vendas_qty', '>', 0)
             ->whereBetween('data', [$primeiro, $ultimo])
             ->when(!$verTodos, fn($q) => $q->where('user_id', $user->id))
@@ -637,7 +640,7 @@ class MlbController extends Controller
         // Alimenta o card de prazos: on-time = data <= prazo.
         $anunciosPrazo = Publicacao::where('user_id', $user->id)
             ->whereBetween('data', [$primeiro, $ultimo])
-            ->where('tipo', '!=', 'variacao')
+            ->where('tipo', '!=', 'variacao')->considerado()
             ->orderByDesc('data')
             ->orderByDesc('id')
             ->get(['id', 'empresa', 'mlb_code', 'data', 'prazo'])
@@ -652,7 +655,7 @@ class MlbController extends Controller
 
         $evolucaoDiaria = Publicacao::where('user_id', $user->id)
             ->whereBetween('data', [$primeiro, $ultimo])
-            ->where('tipo', '!=', 'variacao')
+            ->where('tipo', '!=', 'variacao')->considerado()
             ->selectRaw('data, COUNT(*) as total')
             ->groupBy('data')
             ->orderBy('data')
@@ -661,7 +664,7 @@ class MlbController extends Controller
 
         $topEmpresas = Publicacao::where('user_id', $user->id)
             ->whereBetween('data', [$primeiro, $ultimo])
-            ->where('tipo', '!=', 'variacao')
+            ->where('tipo', '!=', 'variacao')->considerado()
             ->selectRaw('empresa, COUNT(*) as total')
             ->groupBy('empresa')
             ->orderByDesc('total')
@@ -727,7 +730,7 @@ class MlbController extends Controller
 
         // Ticket médio: evolução mensal + valor do mês atual
         $ticketEvolucao = Publicacao::where('user_id', $user->id)
-            ->whereNotNull('net_billing')->where('vendido', true)->where('vendas_qty', '>', 0)
+            ->considerado()->whereNotNull('net_billing')->where('vendido', true)->where('vendas_qty', '>', 0)
             ->selectRaw("substr(data, 1, 7) as mes, SUM(net_billing) as bill, SUM(vendas_qty) as qty")
             ->groupBy('mes')->orderBy('mes')->limit(12)->get()
             ->map(fn($r) => [
@@ -738,7 +741,7 @@ class MlbController extends Controller
             ]);
 
         $ticketMes = Publicacao::where('user_id', $user->id)
-            ->whereNotNull('net_billing')->where('vendido', true)->where('vendas_qty', '>', 0)
+            ->considerado()->whereNotNull('net_billing')->where('vendido', true)->where('vendas_qty', '>', 0)
             ->whereBetween('data', [$primeiro, $ultimo])
             ->selectRaw('SUM(net_billing) as bill, SUM(vendas_qty) as qty')->first();
         $ticketAtual = ($ticketMes && $ticketMes->qty > 0) ? round($ticketMes->bill / $ticketMes->qty, 2) : 0;
@@ -746,14 +749,14 @@ class MlbController extends Controller
         // Fase 38 — faturamento do mês (SUM net_billing, protegido contra null).
         $faturamentoMes = (float) (Publicacao::where('user_id', $user->id)
             ->whereBetween('data', [$primeiro, $ultimo])
-            ->where('tipo', '!=', 'variacao')
+            ->where('tipo', '!=', 'variacao')->considerado()
             ->sum('net_billing') ?? 0);
 
         // Fase 38 — evolução acumulada do faturamento por dia (net_billing).
         $acumulado = 0.0;
         $netBillingTimeseries = Publicacao::where('user_id', $user->id)
             ->whereBetween('data', [$primeiro, $ultimo])
-            ->where('tipo', '!=', 'variacao')
+            ->where('tipo', '!=', 'variacao')->considerado()
             ->whereNotNull('net_billing')
             ->selectRaw('data, SUM(net_billing) as billing_dia')
             ->groupBy('data')
@@ -814,7 +817,7 @@ class MlbController extends Controller
 
             $faturamento = (float) (Publicacao::where('user_id', $p->id)
                 ->whereBetween('data', [$primeiro, $ultimo])
-                ->where('tipo', '!=', 'variacao')
+                ->where('tipo', '!=', 'variacao')->considerado()
                 ->sum('net_billing') ?? 0);
 
             return [
@@ -873,7 +876,9 @@ class MlbController extends Controller
             }
         }
 
-        $pubsQuery = Publicacao::whereBetween('data', [$primeiro, $ultimo]);
+        // Fora da metodologia sai já na origem: a página inteira (stats, top MLBs,
+        // lista e lojas que venderam) é apuração de vendas.
+        $pubsQuery = Publicacao::whereBetween('data', [$primeiro, $ultimo])->considerado();
         if (!$verTodos) {
             $pubsQuery->where('user_id', $user->id);
         } elseif ($pubFiltro) {
@@ -943,7 +948,7 @@ class MlbController extends Controller
 
         $vendasPorCust = Publicacao::whereIn('cust_id', $todasLojas->pluck('cust_id'))
             ->where('vendido', true)
-            ->where('tipo', '!=', 'variacao')
+            ->where('tipo', '!=', 'variacao')->considerado()
             ->whereBetween('data', [$primeiro, $ultimo])
             ->selectRaw('cust_id, SUM(vendas_qty) as qty, SUM(COALESCE(net_billing,0)) as billing, COUNT(*) as mlbs')
             ->groupBy('cust_id')
@@ -989,7 +994,7 @@ class MlbController extends Controller
         $ticketUserId = $verTodos ? $pubFiltro : $user->id;
         if ($verTodos && !$pubFiltro) {
             // Admin/Gestor: ticket por publicador no mês selecionado
-            $ticketPorPub = Publicacao::whereNotNull('net_billing')
+            $ticketPorPub = Publicacao::whereNotNull('net_billing')->considerado()
                 ->where('vendido', true)->where('vendas_qty', '>', 0)
                 ->whereBetween('data', [$primeiro, $ultimo])
                 ->selectRaw('user_id, SUM(net_billing) as bill, SUM(vendas_qty) as qty')
@@ -1019,6 +1024,7 @@ class MlbController extends Controller
         } else {
             // Publicador (ou publicador filtrado): evolução mensal do ticket nos últimos 12 meses
             $evolucao = Publicacao::where('user_id', $ticketUserId)
+                ->considerado()
                 ->whereNotNull('net_billing')
                 ->where('vendido', true)->where('vendas_qty', '>', 0)
                 ->selectRaw("DATE_FORMAT(data, '%Y-%m') as mes, SUM(net_billing) as bill, SUM(vendas_qty) as qty")
@@ -1128,7 +1134,7 @@ class MlbController extends Controller
         $meta    = $this->metaParaMes($user->id, now()->format('Y-m'));
         $ref     = Carbon::now()->startOfMonth();
         $kpis    = $this->calcularKpis($user->id, $ref, $meta);
-        $hoje    = Publicacao::where('user_id', $user->id)->where('data', now()->toDateString())->where('tipo', '!=', 'variacao')->count();
+        $hoje    = Publicacao::where('user_id', $user->id)->where('data', now()->toDateString())->where('tipo', '!=', 'variacao')->considerado()->count();
 
         // Admin vê todas as empresas de todos os responsáveis; publicador vê apenas as suas
         $empQuery = MlbEmpresa::with('responsavel:id,name', 'implementacao:id,empresa_id,token')
@@ -1368,6 +1374,14 @@ class MlbController extends Controller
             );
         }
 
+        // Fora da metodologia sai da fila e dos KPIs: não há veredicto a dar num
+        // anúncio que não conta em lugar nenhum, e deixá-lo na coluna "não
+        // revisado" cobraria do líder um trabalho sem efeito. Continua alcançável
+        // pelo filtro `desconsiderados` — que é por onde se desfaz.
+        $foraDaMetodologia = (clone $base)->where('desconsiderado', true);
+        $desconsiderados   = (clone $foraDaMetodologia)->count();
+        $base->considerado();
+
         // KPIs contados NO BANCO, antes de qualquer paginação.
         // Antes eram contados sobre os 120 registros carregados — acima disso
         // os números simplesmente mentiam.
@@ -1378,6 +1392,7 @@ class MlbController extends Controller
             'aprovado'     => (clone $kpiBase)->comStatusRevisao(Revisao::ST_APROVADO)->count(),
             'em_ajuste'    => (clone $kpiBase)->comStatusRevisao(Revisao::ST_EM_AJUSTE)->count(),
             'reconferir'   => (clone $kpiBase)->comStatusRevisao(Revisao::ST_RECONFERIR)->count(),
+            'desconsiderados' => $desconsiderados,
         ];
         $kpis['cobertura'] = $kpis['total'] > 0
             ? round((($kpis['total'] - $kpis['nao_revisado']) / $kpis['total']) * 100, 1)
@@ -1396,8 +1411,11 @@ class MlbController extends Controller
             ];
         }
 
-        $query = (clone $base)->with([
+        // A lista de desconsiderados parte da base ANTES do recorte — é a única
+        // visão que os enxerga, e sem ela não haveria como devolvê-los.
+        $query = ($status === 'desconsiderados' ? $foraDaMetodologia : (clone $base))->with([
             'user:id,name',
+            'desconsideradoPor:id,name',
             'pendencias' => fn($q) => $q->with('abertaPor:id,name', 'corrigidaPor:id,name')->pendente(),
         ]);
 
@@ -1406,7 +1424,7 @@ class MlbController extends Controller
             'aprovado'     => $query->comStatusRevisao(Revisao::ST_APROVADO),
             'em_ajuste'    => $query->comStatusRevisao(Revisao::ST_EM_AJUSTE),
             'reconferir'   => $query->comStatusRevisao(Revisao::ST_RECONFERIR),
-            default        => null, // 'todos'
+            default        => null, // 'todos' e 'desconsiderados'
         };
 
         if ($severidade) {
@@ -1499,6 +1517,9 @@ class MlbController extends Controller
             'status_revisao'   => $p->status_revisao,
             'revisado_por'     => $p->revisadoPor?->name,
             'revisado_em'      => $p->revisado_em?->format('d/m/Y H:i'),
+            'desconsiderado'     => (bool) $p->desconsiderado,
+            'desconsiderado_por' => $p->desconsideradoPor?->name,
+            'desconsiderado_em'  => $p->desconsiderado_em?->format('d/m/Y H:i'),
             'pendencias'       => $p->pendencias->map(fn($d) => [
                 'id'            => $d->id,
                 'severidade'    => $d->severidade,
@@ -1521,7 +1542,9 @@ class MlbController extends Controller
      */
     private function revisaoGrafico(Request $request, string $mesRef): array
     {
-        $base = Publicacao::doMes($mesRef);
+        // Mesma base da Fila: anúncio fora da metodologia não entra na cobertura,
+        // senão o gestor cobraria veredicto de algo que não conta.
+        $base = Publicacao::doMes($mesRef)->considerado();
 
         $total = (clone $base)->count();
         $porStatus = (clone $base)
@@ -1865,6 +1888,27 @@ class MlbController extends Controller
         $service->reverter($pub, $request->user());
 
         return back();
+    }
+
+    /**
+     * Marca/desmarca o anúncio como fora da metodologia.
+     *
+     * Fora da metodologia = não conta em vendas, meta, conversão nem score.
+     * O registro continua existindo: apagar destruiria a evidência de que o
+     * anúncio foi publicado, que é justamente o que o líder precisa cobrar.
+     */
+    public function desconsiderarPublicacao(Request $request, Publicacao $pub, RevisaoService $service)
+    {
+        $this->checkPubAccess('revisao');
+        $this->checkPodeRevisar();
+
+        $dados = $request->validate(['desconsiderado' => 'required|boolean']);
+
+        $service->definirDesconsiderado($pub, $request->user(), (bool) $dados['desconsiderado']);
+
+        return back()->with('success', $dados['desconsiderado']
+            ? "{$pub->mlb_code} não conta mais em vendas, meta e score."
+            : "{$pub->mlb_code} voltou a contar na apuração.");
     }
 
     /** Aprovação em lote — o líder revisa dezenas de anúncios por vez. */
