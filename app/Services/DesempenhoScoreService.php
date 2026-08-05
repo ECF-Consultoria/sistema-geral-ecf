@@ -411,7 +411,15 @@ class DesempenhoScoreService
         // código novo passaria a escrever. As chaves v15 viram órfãs e
         // expiram sozinhas por TTL — `cache:clear` no VPS é DESNECESSÁRIO e
         // PROIBIDO (incidente 2026-07-30 derrubou o site inteiro).
-        return sprintf('desempenho.compute.v16.%d.%s', $userId, $periodKey);
+        // v17 (2026-08-05): a NOTA muda de método. `nota_final` passa a vir de
+        // `computeNotaFinalPorIndicador()` (régua por loja → média por
+        // indicador, denominador independente), `pontos_componentes` passa a
+        // ser fracionário e a loja Shopee sai da média de margem. É o bump
+        // mais consequente da série: sem ele o dashboard serviria a nota
+        // ANTIGA — que decide bônus — por até 7 dias em mês fechado, sob a
+        // mesma chave que o código novo escreve. Chaves v16 viram órfãs e
+        // expiram por TTL; `cache:clear` no VPS continua PROIBIDO.
+        return sprintf('desempenho.compute.v17.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -515,19 +523,22 @@ class DesempenhoScoreService
                 ->values();
         }
 
-        // ── Shadow (Fase 120 · AGRE-02, C-01) ─────────────────────────────────
-        // Dois sinais independentes: `$incluirEmpresasScore` (SE roda) e a
-        // feature flag (QUAL resultado vira nota_final/score_status — ainda
-        // não consumida neste plano, a bifurcação é do Plano 03). `$mes`,
-        // `$periodo` e `$invalidadas` já prontos — exatamente os insumos que
-        // `computeEmpresasScore()` exige. `$invalidadas` SEMPRE explícito
-        // (nunca null) — deixar o serviço reresolver duplicaria a query;
-        // nunca `collect()` vazio, que silenciaria a invalidação por
-        // competência já resolvida acima.
-        $empresasScore = null;
-        if ($incluirEmpresasScore || config('metrics.performance_company_first_score')) {
-            $empresasScore = $this->companyScoreService->computeEmpresasScore($user, $mes, $periodo, $invalidadas);
-        }
+        // ── Score por empresa (Fase 119/120 · AGRE-02) ────────────────────────
+        // Nasceu como shadow opcional (rodava só sob `$incluirEmpresasScore`
+        // ou com a feature flag ligada). Desde 2026-08-05 roda SEMPRE: a nota
+        // oficial é a agregação POR INDICADOR sobre estas linhas
+        // (`computeNotaFinalPorIndicador`), então elas viraram insumo
+        // obrigatório de todo `compute()`. `$incluirEmpresasScore` sobrevive
+        // apenas para decidir se as linhas vão EXPOSTAS no payload — são uma
+        // por loja da carteira, e embuti-las em todo payload incharia cache e
+        // snapshots à toa.
+        //
+        // `$mes`, `$periodo` e `$invalidadas` já prontos — exatamente os
+        // insumos que `computeEmpresasScore()` exige. `$invalidadas` SEMPRE
+        // explícito (nunca null): deixar o serviço reresolver duplicaria a
+        // query, e `collect()` vazio silenciaria a invalidação por competência
+        // já resolvida acima.
+        $empresasScore = $this->companyScoreService->computeEmpresasScore($user, $mes, $periodo, $invalidadas);
 
         // ── 4 componentes independentes ──────────────────────────────────────
         // Faturamento/margem usam SÓ as empresas elegíveis financeiramente
@@ -567,63 +578,60 @@ class DesempenhoScoreService
             ->count();
         $margemPontos = $this->margemPontos($varMargem, $nComMargemReal, $nShopeePlaceholder);
 
-        // ── Nota final e score_status — bifurcação (Fase 120 · AGRE-01/05/06) ──
-        // Risco herdado da Fase 119 (`119-04-SUMMARY.md`), registrado aqui
-        // porque é o ponto exato onde ele passa a valer: régua-da-média NÃO é
-        // média-das-réguas. `margemPontos()` aplica a régua de margem UMA VEZ
-        // sobre a variação agregada da carteira inteira (e pondera os
-        // placeholders Shopee por contagem, Fase 109); o caminho novo
-        // (`computeNotaFinalPorEmpresa`/`computeScoreStatusPorEmpresa`) aplica
-        // a régua POR EMPRESA dentro do `CompanyScoreService` e promedia
-        // DEPOIS. O invariante que o docblock de `margemPontos()` declara —
-        // "só-performance devolve exatamente `reguaMargem($varMargemReal)`,
-        // regressão zero" — NÃO VALE no ramo novo. Isso é esperado: é o ponto
-        // central da milestone v21.0. Ligar a flag MUDA NOTAS; quantificar
-        // quanto é trabalho da Fase 121. Ativar em produção depende do GATE
-        // MPP-04 (hoje `reprovado`) aprovar E do delta da Fase 121 ser aceito
-        // pelo usuário — nenhum dos dois pré-requisitos está satisfeito nesta
-        // fase, e a flag permanece `false`.
+        // ── Métricas de comparação entre modelos de agregação ─────────────────
+        // Registrado aqui porque é o ponto exato onde a distinção importa:
+        // régua-da-média NÃO é média-das-réguas. `margemPontos()` (legado)
+        // aplica a régua de margem UMA VEZ sobre a variação agregada da
+        // carteira inteira; `computeNotaFinalPorEmpresa`/
+        // `computeNotaFinalPorIndicador` aplicam a régua POR EMPRESA dentro do
+        // `CompanyScoreService` e promediam DEPOIS. O invariante que o docblock
+        // de `margemPontos()` declara — "só-performance devolve exatamente
+        // `reguaMargem($varMargemReal)`, regressão zero" — NÃO vale nos
+        // caminhos por empresa. Isso é esperado: é o ponto central da
+        // milestone v21.0.
         //
-        // O `if` só ESCOLHE qual par de funções chamar — nunca uma função
-        // híbrida. Os legados `computeNotaFinal`/`computeScoreStatus` não
-        // recebem `$empresasScore` nem leem a flag; os novos
-        // `computeNotaFinalPorEmpresa`/`computeScoreStatusPorEmpresa` não
-        // recebem os 4 componentes agregados. As duas árvores de chamada
-        // ficam fisicamente separadas.
-        // ── D-05 (Fase 121) — o par novo é calculado UMA VEZ aqui, antes da
-        // bifurcação, e reaproveitado tanto pelo ramo da flag ligada quanto
-        // pela exposição condicional no `$payload` mais adiante (nunca uma
-        // segunda chamada aos métodos privados para o mesmo resultado).
-        // Fronteira revisada pelo usuário em 2026-07-31: substitui as duas
-        // alternativas rejeitadas (Reflection em código de produção e uma
-        // terceira duplicação da média que decide bônus) — as Fases
-        // 121/122/123 passam a consumir `nota_final_por_empresa`/
-        // `score_status_por_empresa` prontos do payload. A exposição é
-        // CONDICIONAL ao shadow (`$empresasScore !== null`) porque o gate
-        // nº 4 do 121-VALIDATION.md exige que o teste dourado da Fase 120
-        // (`PayloadBaselineFlagOffTest`) continue byte-idêntico com o
-        // shadow desligado — ver `<design_decision>` do 121-01-PLAN.md.
-        $notaPorEmpresa   = null;
-        $statusPorEmpresa = null;
-        if ($empresasScore !== null) {
-            $statusPorEmpresa = $this->computeScoreStatusPorEmpresa($empresasScore);
-            $notaPorEmpresa   = $this->computeNotaFinalPorEmpresa($empresasScore);
+        // `nota_final_por_empresa`/`score_status_por_empresa` seguem
+        // calculados e expostos no payload como metadado de auditoria, para
+        // comparar os modelos numa mesma competência sem recomputar nada.
+        $statusPorEmpresa = $this->computeScoreStatusPorEmpresa($empresasScore);
+        $notaPorEmpresa   = $this->computeNotaFinalPorEmpresa($empresasScore);
 
-            // D-91-01 aplicada também ao par exposto: o valor que a Fase 121
-            // compara tem que ser byte-idêntico ao que `nota_final` seria
-            // com a flag ligada, inclusive esta regra.
-            if ($statusPorEmpresa === 'blocked') {
-                $notaPorEmpresa = null;
-            }
+        // D-91-01 aplicada também ao par exposto: o valor que a Fase 121
+        // compara tem que ser byte-idêntico ao que `nota_final` seria
+        // com a flag ligada, inclusive esta regra.
+        if ($statusPorEmpresa === 'blocked') {
+            $notaPorEmpresa = null;
         }
 
-        if (config('metrics.performance_company_first_score') && $empresasScore !== null) {
-            $nota        = $notaPorEmpresa;
-            $scoreStatus = $statusPorEmpresa;
-        } else {
-            $nota        = $this->computeNotaFinal($nps, $varFat, $margemPontos);
-            $scoreStatus = $this->computeScoreStatus($contadores, $varFat, $margemPontos);
-        }
+        // ── Nota oficial: agregação POR INDICADOR (2026-08-05) ───────────────
+        // Substituiu a bifurcação por feature flag entre o legado
+        // (`computeNotaFinal`, régua UMA vez sobre a média da carteira) e o
+        // company-first da Fase 120 (`computeNotaFinalPorEmpresa`, que exige a
+        // loja completa). Nenhum dos dois é mais o caminho oficial:
+        //
+        //  - o legado invertia a ordem das operações — "régua da média" não é
+        //    "média das réguas", e era a causa de a nota do sistema divergir
+        //    do fechamento manual do time;
+        //  - o company-first acertava a ordem, mas descartava a loja inteira
+        //    por falta de UM indicador (47 lojas sem faturamento e 75 sem
+        //    margem na competência 2026-06 medida em produção).
+        //
+        // `computeNotaFinalPorIndicador` mantém a régua por loja e usa
+        // denominador independente por indicador. Os dois métodos anteriores
+        // continuam sendo calculados como metadado de auditoria/comparação —
+        // `nota_final_por_empresa` no payload e o legado no relatório de
+        // impacto — mas NÃO decidem mais bônus.
+        $porIndicador = $this->computeNotaFinalPorIndicador($empresasScore);
+
+        $nota        = $porIndicador['nota'];
+        $scoreStatus = $statusPorEmpresa;
+
+        // Nota pelo método LEGADO (régua aplicada uma vez sobre a % agregada da
+        // carteira), preservada como metadado de auditoria. Não decide nada —
+        // é o "antes" que o `desempenho:comparar-score-empresa` usa para
+        // decompor o delta contra a nota oficial, e o que permite medir o
+        // impacto da mudança numa competência sem recomputar duas vezes.
+        $notaLegado = $this->computeNotaFinal($nps, $varFat, $margemPontos);
 
         // D-91-01: blocked (zero vínculos financeiros elegíveis — ex.:
         // só-Shopee) força nota_final=null/faixa_bonus=null. Decisão do
@@ -666,39 +674,38 @@ class DesempenhoScoreService
         ];
         $margemAmostra = $margemAmostraLegado;
 
-        if ($empresasScore !== null) {
-            // SNAP-05 — com o shadow rodando, `margem_amostra` passa a medir
-            // cobertura de `margem_var_pp` (PONTOS PERCENTUAIS, por empresa),
-            // a grandeza que a milestone v21.0 usa para pagar (o `.diff`
-            // nativo é instável na fronteira — ver 122-CONTEXT.md item 4).
-            // Denominador: linhas de `$empresasScore` com `fonte_financeira`
-            // não-nula e diferente de `shopee` (Shopee usa placeholder de
-            // margem, D5 da REQUIREMENTS-v21; `sem_fonte` não tem expectativa
-            // de margem) — mesma semântica de "ausência não é degradação" do
-            // denominador legado. `legado` preserva os 3 números de sempre:
-            // o gate FIXMARG-03 mediu `cobertura_prev=0.6415` em produção
-            // (probe MPP-04) e trocar a base do gate junto com a base do
-            // relatório recusaria a persistência mensal para quase todo
-            // mundo — quem escolhe a base do gate é o Plano 03 (D-122-05),
-            // nunca esta troca implícita.
-            // `?? null` defensivo: dublês de teste de outras suítes (Fase
-            // 120/121, anteriores a este plano) montam a linha só com os
-            // campos que seus próprios cenários exercitam — nunca lançar por
-            // propriedade ausente num objeto de teste alheio a este plano.
-            $elegiveisPp = $empresasScore->filter(
-                fn ($e) => ($e->fonte_financeira ?? null) !== null && ($e->fonte_financeira ?? null) !== 'shopee'
-            );
-            $nElegivelPp = $elegiveisPp->count();
-            $nRealPp     = $elegiveisPp->filter(fn ($e) => ($e->margem_var_pp ?? null) !== null)->count();
+        // SNAP-05 — `margem_amostra` mede cobertura de `margem_var_pp`
+        // (PONTOS PERCENTUAIS, por empresa), a grandeza que a milestone v21.0
+        // usa para pagar (o `.diff` nativo é instável na fronteira — ver
+        // 122-CONTEXT.md item 4).
+        // Denominador: linhas de `$empresasScore` com `fonte_financeira`
+        // não-nula e diferente de `shopee` (Shopee não fornece margem;
+        // `sem_fonte` não tem expectativa de margem) — mesma semântica de
+        // "ausência não é degradação" do denominador legado. `legado` preserva
+        // os 3 números de sempre: o gate FIXMARG-03 mediu
+        // `cobertura_prev=0.6415` em produção (probe MPP-04) e trocar a base
+        // do gate junto com a base do relatório recusaria a persistência
+        // mensal para quase todo mundo — quem escolhe a base do gate é o
+        // Plano 03 (D-122-05), nunca esta troca implícita.
+        // `?? null` defensivo: dublês de teste de outras suítes (Fase
+        // 120/121, anteriores a este plano) montam a linha só com os
+        // campos que seus próprios cenários exercitam — nunca lançar por
+        // propriedade ausente num objeto de teste alheio a este plano.
+        // 2026-08-05: deixou de ser condicional ao shadow — `$empresasScore`
+        // agora é sempre computado (é insumo da nota oficial).
+        $elegiveisPp = $empresasScore->filter(
+            fn ($e) => ($e->fonte_financeira ?? null) !== null && ($e->fonte_financeira ?? null) !== 'shopee'
+        );
+        $nElegivelPp = $elegiveisPp->count();
+        $nRealPp     = $elegiveisPp->filter(fn ($e) => ($e->margem_var_pp ?? null) !== null)->count();
 
-            $margemAmostra = [
-                'n_real'     => $nRealPp,
-                'n_elegivel' => $nElegivelPp,
-                'cobertura'  => $nElegivelPp > 0 ? round($nRealPp / $nElegivelPp, 4) : 1.0,
-                'base'       => 'margem_var_pp',
-                'legado'     => $margemAmostraLegado,
-            ];
-        }
+        $margemAmostra = [
+            'n_real'     => $nRealPp,
+            'n_elegivel' => $nElegivelPp,
+            'cobertura'  => $nElegivelPp > 0 ? round($nRealPp / $nElegivelPp, 4) : 1.0,
+            'base'       => 'margem_var_pp',
+            'legado'     => $margemAmostraLegado,
+        ];
 
         $payload = [
             'user_id'               => $user->id,
@@ -727,14 +734,20 @@ class DesempenhoScoreService
             // UI expor a conta que gerou a nota (ex: "(3+5+4)/3 = 4,00") em
             // vez do denominador fixo "/5,00". Nulls preservados — só entram
             // na média os componentes disponíveis.
-            // Fase 109 (SHOP-DES-02): 'margem' passa a ser `$margemPontos`
-            // (blend real+placeholder Shopee), não mais `reguaMargem($varMargem)`
-            // direto — `componentes.var_margem_pct` acima CONTINUA a % real,
-            // sem placeholder (não vaza pro número exibido).
+            //
+            // 2026-08-05: passa a vir de `computeNotaFinalPorIndicador()` —
+            // média dos pontos POR LOJA, com denominador independente. Antes
+            // eram os pontos da régua aplicada sobre a % agregada da carteira,
+            // que é justamente a conta que deixou de valer. Como a UI monta a
+            // string da nota a partir daqui, manter a fonte antiga exibiria
+            // uma conta que não fecha com a `nota_final` mostrada ao lado.
+            //
+            // Os valores agora são fracionários (ex: 3,8261), não mais
+            // inteiros de 1 a 5 — é a média de N lojas, não uma régua única.
             'pontos_componentes' => [
-                'nps'         => $nps !== null ? max(1.0, min(5.0, $nps)) : null,
-                'faturamento' => $this->reguaFaturamento($varFat),
-                'margem'      => $margemPontos,
+                'nps'         => $porIndicador['nps'],
+                'faturamento' => $porIndicador['faturamento'],
+                'margem'      => $porIndicador['margem'],
             ],
             'nota_final'      => $nota,
             'faixa_bonus'     => $faixaFinal,
@@ -788,28 +801,24 @@ class DesempenhoScoreService
                 'var_faturamento_pct' => $varFat !== null,
                 'var_margem_pct'      => $varMargem !== null,
             ],
-            // Fase 120 (AGRE-02/04) — payload ADITIVO do shadow: linha por
-            // empresa do `CompanyScoreService` (Fase 119), vazia quando o
-            // shadow não rodou (`$incluirEmpresasScore=false` E flag
-            // desligada). Nenhum consumidor de produção lê esta chave nesta
-            // fase — a bifurcação de `nota_final`/`score_status` é o Plano 03.
-            'empresas_score' => $empresasScore?->values()->all() ?? [],
+            // Linha por empresa do `CompanyScoreService` (Fase 119). Desde
+            // 2026-08-05 ela SEMPRE é calculada (alimenta a nota oficial),
+            // mas só vai EXPOSTA no payload quando `$incluirEmpresasScore`
+            // pede — são N linhas por profissional, e enfiá-las em todo
+            // payload incharia o cache e os snapshots à toa.
+            'empresas_score' => $incluirEmpresasScore ? $empresasScore->values()->all() : [],
         ];
 
-        // ── Fase 121 (D-05) — chaves aditivas, condicionais ao shadow ─────────
-        // Gate nº 4 do 121-VALIDATION.md: com o shadow desligado, `$payload`
-        // não pode ganhar NENHUMA chave nova, senão o teste dourado da Fase
-        // 120 (`PayloadBaselineFlagOffTest`) reprova. Quando o shadow roda,
-        // `nota_final_por_empresa`/`score_status_por_empresa` entregam o
-        // resultado do caminho novo JÁ pronto (D-91-01 aplicada acima) — sem
-        // isso as Fases 121/122/123 seriam obrigadas a escolher entre
-        // Reflection em código de produção e uma terceira duplicação da
-        // média que decide bônus (as duas alternativas rejeitadas pelo
-        // usuário em 2026-07-31).
-        if ($empresasScore !== null) {
-            $payload['nota_final_por_empresa']   = $notaPorEmpresa;
-            $payload['score_status_por_empresa'] = $statusPorEmpresa;
-        }
+        // ── Fase 121 (D-05) — comparação entre os métodos de agregação ────────
+        // `nota_final_por_empresa` (company-first, exige loja completa) segue
+        // exposta como METADADO de auditoria, ao lado da nota oficial que hoje
+        // vem de `computeNotaFinalPorIndicador()`. Serve para comparar os dois
+        // modelos numa mesma competência sem recomputar nada.
+        // 2026-08-05: deixou de ser condicional ao shadow — `$empresasScore`
+        // agora é sempre computado.
+        $payload['nota_final_por_empresa']   = $notaPorEmpresa;
+        $payload['score_status_por_empresa'] = $statusPorEmpresa;
+        $payload['nota_final_legado']        = $notaLegado;
 
         return $payload;
     }
@@ -916,6 +925,11 @@ class DesempenhoScoreService
      */
     private function computeScoreStatus(array $contadores, ?float $varFat, ?float $margemPontos): string
     {
+        // APOSENTADO EM 2026-08-05 — `compute()` usa
+        // `computeScoreStatusPorEmpresa()`, que deriva o status da
+        // DISTRIBUIÇÃO por empresa em vez da presença binária de dois sinais
+        // agregados. Preservado como referência histórica e para o relatório
+        // de impacto; não reintroduzir sem decisão explícita.
         if ($contadores['vinculos_financeiros'] === 0) {
             return 'blocked';
         }
@@ -1557,6 +1571,12 @@ class DesempenhoScoreService
      */
     private function computeNotaFinal(?float $nps, ?float $varFat, ?float $margemPontos): ?float
     {
+        // APOSENTADO EM 2026-08-05 — não é mais chamado por `compute()`. A nota
+        // oficial vem de `computeNotaFinalPorIndicador()`. Preservado porque
+        // encapsula a fórmula histórica (régua aplicada UMA vez sobre a média
+        // da carteira) e é o "antes" do relatório de impacto do
+        // `desempenho:comparar-score-empresa`. Não reintroduzir em caminho de
+        // produção sem decisão explícita: inverte a ordem das operações.
         // NPS já é 1-5 (escala do formulário) — clamp defensivo.
         $npsPts = $nps !== null ? max(1.0, min(5.0, $nps)) : null;
 
@@ -1694,6 +1714,59 @@ class DesempenhoScoreService
         }
 
         return round($completas->avg('nota_empresa'), 2);
+    }
+
+    /**
+     * Nota final POR INDICADOR — o modelo do fechamento manual do time
+     * (`Fechamento Junho _ Time de performance.xlsx`), adotado em 2026-08-05
+     * por decisão do usuário. É o caminho OFICIAL desde então.
+     *
+     * A régua já foi aplicada LOJA A LOJA dentro do `CompanyScoreService`;
+     * aqui só se promedia. Três médias independentes — faturamento, margem e
+     * NPS — e a nota é a média dessas três.
+     *
+     * ─── Denominador INDEPENDENTE por indicador ───────────────────────────
+     * Cada indicador tem seu próprio denominador, exatamente como o `AVERAGE`
+     * do Excel ignora célula vazia: uma loja sem margem continua contando no
+     * faturamento e no NPS, em vez de sair da conta inteira. É o que separa
+     * este método de `computeNotaFinalPorEmpresa()` (que exige a loja
+     * `complete` e descarta a linha toda) — os dois coincidem quando nenhuma
+     * loja tem lacuna, e divergem exatamente onde há lacuna.
+     *
+     * Na competência 2026-06 medida em produção: 47 das 286 lojas sem
+     * faturamento, 75 sem margem. Descartar essas linhas inteiras jogaria
+     * fora medição boa dos outros dois indicadores.
+     *
+     * ─── Sem arredondamento intermediário ─────────────────────────────────
+     * Nenhum `round()` aqui — nem nas médias por indicador, nem na nota.
+     * Arredondar 3,9130 para 3,91 antes de somar desloca o resultado, e a
+     * régua de bônus tem fronteiras duras (4,00 separa `sem_bonus` de
+     * `basico`). Quem arredonda é a exibição, com 2 casas fixas.
+     *
+     * @param  Collection<int, object>  $empresasScore  linhas de
+     *   `CompanyScoreService::computeEmpresasScore()` — já filtradas por
+     *   carteira/invalidação por competência, nunca reabertas aqui.
+     * @return array{faturamento: ?float, margem: ?float, nps: ?float, nota: ?float}
+     *   `null` em cada posição sem nenhum valor presente.
+     */
+    private function computeNotaFinalPorIndicador(Collection $empresasScore): array
+    {
+        $medir = static function (Collection $valores): ?float {
+            $presentes = $valores->reject(fn ($v) => $v === null);
+
+            return $presentes->isEmpty() ? null : $presentes->sum() / $presentes->count();
+        };
+
+        $faturamento = $medir($empresasScore->map(fn ($e) => $e->faturamento_pontos ?? null));
+        $margem      = $medir($empresasScore->map(fn ($e) => $e->margem_pontos ?? null));
+        $nps         = $medir($empresasScore->map(fn ($e) => $e->nps_pontos ?? null));
+
+        return [
+            'faturamento' => $faturamento,
+            'margem'      => $margem,
+            'nps'         => $nps,
+            'nota'        => $medir(collect([$faturamento, $margem, $nps])),
+        ];
     }
 
     /**

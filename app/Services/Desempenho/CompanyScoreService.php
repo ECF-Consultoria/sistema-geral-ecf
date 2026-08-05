@@ -24,12 +24,23 @@ use Illuminate\Support\Facades\Log;
  *
  * ─── Regras travadas (119-CONTEXT.md) ─────────────────────────────────────
  *  - D-01 · a linha reporta DOIS números: `nota_empresa` (estrita — `null`
- *    se faltar qualquer um dos 3 componentes) e `nota_empresa_parcial`
- *    (média dos presentes), mais `componentes_presentes` e `quality.motivos`.
- *  - D-02 · empresa Shopee entra como `status='complete'`, com
- *    `margem_pontos=1.0` fixo (placeholder da Fase 109) e
- *    `quality.margin_source='placeholder_shopee'` — nunca aplica a régua de
+ *    se faltar qualquer um dos componentes ESPERADOS) e
+ *    `nota_empresa_parcial` (média dos presentes), mais
+ *    `componentes_presentes`, `componentes_esperados` e `quality.motivos`.
+ *    REVISADO EM 2026-08-05: "estrita" era "exatamente 3"; virou "todos os
+ *    esperados", para acomodar a loja Shopee, que só tem 2 dimensões
+ *    mensuráveis (ver D-02).
+ *  - D-02 · empresa Shopee entra como `status='complete'` com apenas 2
+ *    componentes (`componentes_esperados=2`), `margem_pontos=null` e
+ *    `quality.margin_source='sem_margem_shopee'` — nunca aplica a régua de
  *    margem sobre Shopee.
+ *    REVISADO EM 2026-08-05: até então entrava com `margem_pontos=1.0` fixo
+ *    (placeholder da Fase 109) e `margin_source='placeholder_shopee'`. O
+ *    placeholder era a nota MÍNIMA, então a loja Shopee arrastava a média de
+ *    margem do profissional para baixo por uma dimensão que a plataforma não
+ *    fornece (a Shopee não expõe CMV). Decisão do usuário: ausência de dado
+ *    da plataforma não é desempenho ruim — a loja sai do denominador da
+ *    margem e segue contando no faturamento e no NPS.
  *  - D-03 · empresa sem fonte financeira elegível permanece listada, com
  *    todos os campos financeiros `null`, `status='sem_fonte'` e
  *    `quality.motivos=['sem_fonte_financeira']`.
@@ -101,9 +112,10 @@ class CompanyScoreService
      *
      * `status` (Resposta 6 do RESEARCH — `blocked`/`invalidada`/
      * `sem_baseline` são deliberadamente inexistentes): `sem_fonte` quando
-     * não há fonte financeira elegível (D-03); `complete` quando os 3
-     * componentes estão presentes; `sem_dados` quando nenhum componente está
-     * presente; `partial` no meio-termo.
+     * não há fonte financeira elegível (D-03); `complete` quando todos os
+     * componentes ESPERADOS estão presentes (3 no caso geral, 2 para Shopee —
+     * ver D-02); `sem_dados` quando nenhum componente está presente;
+     * `partial` no meio-termo.
      *
      * @return Collection<int, object{
      *   company_id: int, company_name: string, fonte_financeira: ?string,
@@ -112,7 +124,8 @@ class CompanyScoreService
      *   faturamento_var_pct: ?float, faturamento_pontos: ?float,
      *   margem_pct_atual: ?float, margem_pct_anterior: ?float,
      *   margem_var_pp: ?float, margem_pontos: ?float,
-     *   componentes_presentes: int, nota_empresa: ?float, nota_empresa_parcial: ?float,
+     *   componentes_presentes: int, componentes_esperados: int,
+     *   nota_empresa: ?float, nota_empresa_parcial: ?float,
      *   status: string,
      *   quality: array{revenue_diff_source: ?string, margin_diff_source: ?string, margin_source: ?string, motivos: array<int,string>},
      * }> chaveada por `company_id`.
@@ -191,6 +204,20 @@ class CompanyScoreService
             if ($notasNps->has($companyId)) {
                 $linhaNps  = $notasNps->get($companyId);
                 $npsPontos = $linhaNps->nota ?? null;
+
+                // NPS não gerado e NPS não respondido valem 1,00 — regra
+                // reafirmada pelo usuário em 2026-08-05. É deliberado que a
+                // nota da carteira caia quando a pesquisa não sai: sem isso,
+                // deixar de disparar o link sairia mais barato do que disparar
+                // e receber nota baixa.
+                //
+                // Consequência conhecida e aceita: a nota do sistema fica
+                // ABAIXO do fechamento manual em `Fechamento Junho _ Time de
+                // performance.xlsx`, que não aplica essa penalidade. Na
+                // competência 2026-06 isso atingia 92 das 286 lojas (32%) e
+                // era a maior causa isolada da divergência entre os dois.
+                // Não "corrigir" para bater com a planilha — a diferença é a
+                // regra, não um defeito.
                 if ($npsPontos === null) {
                     // Fase 119.1 (D1) — distinguir "não elegível" de "janela
                     // aberta" pela `origem` da linha. Leitura defensiva
@@ -240,9 +267,22 @@ class CompanyScoreService
 
             $faturamentoPontos = $this->reguaFaturamento($faturamentoVarPct);
 
-            // D-02 — Shopee nunca aplica a régua de margem: placeholder 1.0 fixo.
+            // D-02 — Shopee nunca aplica a régua de margem.
+            //
+            // Até 2026-08-05 a loja Shopee entrava com placeholder 1,0 (a nota
+            // mínima). Passou a ficar FORA da média de margem, por decisão do
+            // usuário: a Shopee não fornece CMV, então a ausência é falta de
+            // dado da plataforma, não desempenho ruim do profissional —
+            // penalizar por isso castigava quem tem carteira Shopee por algo
+            // que não está sob seu controle. Com o denominador independente
+            // por indicador (ver `computeNotaFinalPorIndicador`), a loja
+            // continua contando no faturamento e no NPS; só não entra no
+            // denominador da margem.
+            //
+            // Efeito medido na competência 2026-07: Matheus 2,86 → 4,73 e
+            // Felipe 2,31 → 3,20 (51 das 288 lojas da base são Shopee).
             $margemPontos = match (true) {
-                $fonteFinanceira === 'shopee' => 1.0,
+                $fonteFinanceira === 'shopee' => null,
                 $margemVarPp === null         => null,
                 default                       => $this->reguaMargem($margemVarPp),
             };
@@ -254,23 +294,42 @@ class CompanyScoreService
             if ($fonteFinanceira === 'adman' && $margemVarPp === null) {
                 $motivos[] = 'margem_pp_indisponivel';
             }
+            if ($fonteFinanceira === 'shopee') {
+                $motivos[] = 'margem_nao_fornecida_shopee';
+            }
             if ($npsMotivo !== null) {
                 $motivos[] = $npsMotivo;
             }
 
+            // Componentes ESPERADOS da loja (2026-08-05) — a Shopee não fornece
+            // CMV, então margem não é um buraco na medição dela: é uma dimensão
+            // que a plataforma não entrega. Sem esta distinção, tirar o
+            // placeholder 1,0 jogaria TODA loja Shopee em `partial`, e o
+            // `computeScoreStatusPorEmpresa` (cobertura mínima de 0,7)
+            // rebaixaria o profissional de carteira Shopee para `partial` ou
+            // `blocked` — trocando uma punição na nota por outra no status.
+            //
+            // Mesmo princípio que `margem_amostra` já aplica ao denominador
+            // desde a Fase 110: ausência legítima de expectativa não conta
+            // como degradação.
+            $componentesEsperados = $fonteFinanceira === 'shopee' ? 2 : 3;
+
             // D-01 — os DOIS números: nota_empresa (estrita) e
-            // nota_empresa_parcial (média dos presentes).
+            // nota_empresa_parcial (média dos presentes). "Estrita" passou a
+            // significar "todos os componentes ESPERADOS presentes", não
+            // "exatamente 3" — do contrário loja Shopee jamais fecharia nota,
+            // e o status diria `complete` com `nota_empresa` nula.
             $componentes = collect([$npsPontos, $faturamentoPontos, $margemPontos])
                 ->reject(fn ($v) => $v === null);
 
             $componentesPresentes = $componentes->count();
             $notaEmpresaParcial    = $componentes->isEmpty() ? null : round($componentes->avg(), 2);
-            $notaEmpresa           = $componentesPresentes === 3 ? $notaEmpresaParcial : null;
+            $notaEmpresa           = $componentesPresentes === $componentesEsperados ? $notaEmpresaParcial : null;
 
             $status = match (true) {
-                $componentesPresentes === 3 => 'complete',
-                $componentesPresentes === 0 => 'sem_dados',
-                default                     => 'partial',
+                $componentesPresentes === $componentesEsperados => 'complete',
+                $componentesPresentes === 0                     => 'sem_dados',
+                default                                         => 'partial',
             };
 
             return [$companyId => (object) [
@@ -287,13 +346,14 @@ class CompanyScoreService
                 'margem_var_pp'         => $margemVarPp,
                 'margem_pontos'         => $margemPontos,
                 'componentes_presentes' => $componentesPresentes,
+                'componentes_esperados' => $componentesEsperados,
                 'nota_empresa'          => $notaEmpresa,
                 'nota_empresa_parcial'  => $notaEmpresaParcial,
                 'status'                => $status,
                 'quality'               => [
                     'revenue_diff_source' => $revenueDiffSource,
                     'margin_diff_source'  => $margemDiffSource,
-                    'margin_source'       => $fonteFinanceira === 'shopee' ? 'placeholder_shopee' : null,
+                    'margin_source'       => $fonteFinanceira === 'shopee' ? 'sem_margem_shopee' : null,
                     'motivos'             => $motivos,
                 ],
             ]];
@@ -325,6 +385,10 @@ class CompanyScoreService
             'margem_var_pp'         => null,
             'margem_pontos'         => null,
             'componentes_presentes' => $npsPontos !== null ? 1 : 0,
+            // Sem fonte financeira, o único componente possível é o NPS — mas
+            // `sem_fonte` continua sendo um status próprio (nunca `complete`),
+            // então o esperado permanece 3 para não mascarar a lacuna real.
+            'componentes_esperados' => 3,
             'nota_empresa'          => null,
             'nota_empresa_parcial'  => $npsPontos,
             'status'                => 'sem_fonte',
