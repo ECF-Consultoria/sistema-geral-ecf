@@ -1354,20 +1354,33 @@ class PerformanceController extends Controller
             $resultado = $this->scoreService->computeCached($user, $mesReferencia);
         }
 
-        // Meses fechados disponíveis para o dropdown, derivados dos dados
-        // (D-02 da Fase 123) — existe linha mensal, logo o mês está fechado
-        // e consolidado. O corte fixo antigo (DESEMP-14, 1º de agosto de
-        // 2026) deixava o dropdown vazio em produção: `desempenho:consolidar-mes`
-        // congela o mês ANTERIOR no último dia do mês, então a primeira
-        // competência a passar naquele corte só existiria em 30 de setembro
-        // de 2026. Em 'Y-m' pra bater com o `?mes=` do contrato novo.
-        $mesesFechados = DesempenhoScoreSnapshot::mensal()
-            ->where('user_id', $user->id)
-            ->orderByDesc('mes_referencia')
-            ->pluck('mes_referencia')
-            ->map(fn ($d) => Carbon::parse($d)->format('Y-m'))
-            ->unique()
-            ->values();
+        // Meses do seletor — últimos 6, MESMO formato das demais telas
+        // (`{value, label, em_curso}`).
+        //
+        // 2026-08-05: passou a listar os últimos 6 meses em vez de só os
+        // CONGELADOS (`DesempenhoScoreSnapshot::mensal()`). Enquanto existia o
+        // toggle "Em curso / Bônus atual / Mês fechado", o dropdown só
+        // precisava cobrir os fechados — os outros dois períodos tinham botão
+        // próprio. Com o toggle removido, essa lista virou o ÚNICO controle de
+        // período da tela, e restringi-la aos congelados prendia o usuário:
+        // em produção só a competência 2026-06 está consolidada, então o
+        // select tinha uma única opção e não dava para ver o mês corrente nem
+        // julho.
+        //
+        // `resolveContextoPeriodo()` já aceita `?mes=YYYY-MM` de qualquer mês
+        // (fechado ou em curso) — a limitação era só da lista oferecida.
+        // Marcar `em_curso` deixa o mês corrente auto-explicativo, que é o que
+        // o segmento "Em curso" fazia.
+        $mesCorrenteShow   = Carbon::now()->startOfMonth();
+        $mesesDisponiveis  = [];
+        for ($i = 0; $i < 6; $i++) {
+            $m = $mesCorrenteShow->copy()->subMonthsNoOverflow($i);
+            $mesesDisponiveis[] = [
+                'value'    => $m->format('Y-m'),
+                'label'    => mb_strtolower($m->translatedFormat('F/Y')),
+                'em_curso' => $m->equalTo($mesCorrenteShow),
+            ];
+        }
 
         // Empresas invalidadas para bônus nesta competência (item 3/4) que
         // saíram da conta DESTE profissional.
@@ -1406,7 +1419,7 @@ class PerformanceController extends Controller
             'resultado'             => $resultado,
             'mes_selecionado'       => $mesReferencia->toDateString(),
             'modo'                  => $ctx['modo'],
-            'meses_disponiveis'     => $mesesFechados,
+            'meses_disponiveis'     => $mesesDisponiveis,
             'periodo'               => $ctx['periodo'],
             'bonus'                 => $ctx['bonus'],
             'nps_window'            => $ctx['nps'],

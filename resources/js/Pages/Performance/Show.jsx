@@ -41,7 +41,7 @@ function formatContaNota(pontos, notaFinal) {
  *
  * Consome o shape v2 do DesempenhoScoreService:
  *   { user, resultado (compute() shape), mes_selecionado, mes_fechado,
- *     meses_disponiveis: string[] }
+ *     meses_disponiveis: Array<{value: string, label: string, em_curso: bool}> }
  *
  * Card por parâmetro (NPS/Faturamento/Margem/Absenteísmo) + card destaque
  * Faixa de bônus + placeholder "Em breve" no Absenteísmo (DESEMP-06) + toggle
@@ -386,9 +386,21 @@ export default function PerformanceShow({
                                 title="Selecionar mês"
                                 className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer capitalize"
                             >
-                                {meses_disponiveis.map(m => (
-                                    <option key={m} value={m}>{mesExtenso(m)}</option>
-                                ))}
+                                {/* Aceita os dois formatos: objeto {value,label,em_curso}
+                                    (contrato atual, alinhado às demais telas) e string
+                                    'YYYY-MM' (formato antigo — snapshot de payload em
+                                    cache ainda pode chegar assim logo após o deploy). */}
+                                {meses_disponiveis.map((m) => {
+                                    const value = typeof m === 'string' ? m : m.value;
+                                    const label = typeof m === 'string' ? mesExtenso(m) : m.label;
+                                    const emCurso = typeof m === 'string' ? false : m.em_curso;
+
+                                    return (
+                                        <option key={value} value={value}>
+                                            {label}{emCurso ? ' (em curso)' : ''}
+                                        </option>
+                                    );
+                                })}
                             </select>
                         )}
                     </div>
