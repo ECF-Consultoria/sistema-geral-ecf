@@ -55,24 +55,18 @@ derivando da distribuição por empresa, a trava precisava ser explícita.
 
 ## Impacto medido em produção (leitura apenas)
 
-Competência **2026-06** (única congelada por `consolidar_mes`):
+Competência **2026-06** (única congelada por `consolidar_mes`), 11 profissionais
+com carteira:
 
-| | Hoje | Novo |
-|---|---|---|
-| Rubens | 4,91 intermediário | 4,01 **básico** |
-| Ana Julia | 4,37 básico | 3,40 |
-| Luiz Henrique | 4,36 básico | 3,28 |
-| Stefani | 4,28 básico | 3,64 |
-| Gabriela | 4,16 básico | 3,34 |
-| Danilo | 3,89 | 3,44 |
-| Nathalia | 3,73 | 3,62 |
-| Matheus | 3,31 | 3,43 |
-| Felipe | 3,24 | 3,43 |
-| Douglas | 3,03 | 2,55 |
-| Gustavo | 2,05 | 2,80 |
+- **Contemplados: 5 → 1.** O único que permanece cai de faixa (de
+  `intermediario` para `basico`).
+- **8 das 11 notas caem**, em média ~0,7 ponto; as 3 que sobem são as carteiras
+  com participação Shopee, porque a margem deixou de puxá-las para baixo.
+- A maior queda isolada passa de `basico` para `sem_bonus` por ~1,1 ponto.
 
-**Contemplados: 5 → 1.** Quem tem carteira Shopee sobe (a margem deixou de
-puxar para baixo); os demais caem, porque a régua passa a valer loja a loja.
+Nome pareado com nota/faixa NÃO é versionado aqui — ver
+`.planning/learnings/desempenho-bonificacao.md` §11. Para conferir por
+profissional, reconsulte `desempenho_company_score_snapshots` na competência.
 
 Não é defeito de cálculo — é o efeito da mudança sob as faixas atuais (básico
 começa em 4,00). **Recalibrar faixa é pauta de diretoria e não entrou aqui.**

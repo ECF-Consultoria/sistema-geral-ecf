@@ -22,7 +22,7 @@ Medições sobre a competência 2026-06 (286 linhas de
 
 | Causa | Medição |
 |---|---|
-| Agregação (régua da média × média das réguas) | já existe como `nota_final_por_empresa`; no Rubens dá 4,03 — idêntico à planilha |
+| Agregação (régua da média × média das réguas) | já existe como `nota_final_por_empresa`; no caso conferido bate exatamente com a planilha |
 | NPS de loja sem link de pesquisa valendo 1,00 | 92 de 286 lojas (32%); maior causa isolada da diferença |
 | Loja Shopee entrando na margem com placeholder 1,0 | 51 de 286 lojas |
 | Unidade da margem | planilha e sistema usam a MESMA grandeza (pontos percentuais): erro médio 0,62 p.p. contra 16,66 se fosse variação relativa |
