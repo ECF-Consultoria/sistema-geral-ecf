@@ -2484,7 +2484,13 @@ class MlbController extends Controller
      */
     public function updateCustIdEmpresa(Request $request, MlbEmpresa $empresa)
     {
-        $this->checkPubAccess('empresas');
+        // Escrita de UM campo (cust_id), chamada por Painel Polos e pelo Onboarding.
+        // Quem tem mlb.implementacao já CRIA MlbEmpresa em implementacao.criar — negar só
+        // o cust_id deixaria o botão da listagem de Onboarding tomando 403.
+        $user = $request->user();
+        if (!$user?->isAdmin() && !$user?->hasPermission('mlb.implementacao')) {
+            $this->checkPubAccess('empresas');
+        }
 
         $data = $request->validate([
             'cust_id' => 'nullable|string|max:50',
