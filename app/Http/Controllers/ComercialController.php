@@ -358,6 +358,10 @@ class ComercialController extends Controller
                 'nome_contato'          => $c->nome_contato,
                 'cargo_contato'         => $c->cargo_contato,
                 'hubspot_observacao'    => $c->hubspot_observacao,
+                // Quick task 260805-eqk — lista de Notes do deal (com data) +
+                // origem do lead do contato principal.
+                'hubspot_notas'         => $c->hubspot_notas ?? [],
+                'origem_lead'           => $c->origem_lead,
                 // Campos SPIN do deal HubSpot (do snapshot) — exibidos no modal Detalhes HubSpot.
                 'spin'                  => $c->hubspot_spin,
                 'hubspot_deal_id'       => $c->hubspot_deal_id,

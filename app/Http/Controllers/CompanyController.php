@@ -501,6 +501,10 @@ class CompanyController extends Controller
                 'telefone'         => $company->telefone,
                 // Campos SPIN do deal HubSpot (do snapshot) — seção SPIN na página da empresa.
                 'spin'             => $company->hubspot_spin,
+                // Quick task 260805-eqk — Notes do deal (bloco "Observações
+                // (HubSpot)") + origem do lead vinda do contato principal.
+                'hubspot_notas'    => $company->hubspot_notas ?? [],
+                'origem_lead'      => $company->origem_lead,
                 // Phase 34 Plan 34-03 — info do close comercial. Quick task
                 // 260805-eqk removeu nicho/dor/vende_ml/faturamento_mensal/
                 // marketplaces_extras da seção "Informações comerciais".

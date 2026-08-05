@@ -5,7 +5,7 @@
 // Quem sabe o que o cliente fechou é o time Comercial. A página recebe a
 // empresa pré-resolvida via route model binding (rota
 // /comercial/atribuir-servico/{company}) e renderiza:
-//   - Header contextual com info da empresa (nome, cust_id, nicho/segment,
+//   - Header contextual com info da empresa (nome, cust_id, segment,
 //     contato).
 //   - Lista de contratos existentes (ativos em destaque + inativos como
 //     referência).
@@ -221,12 +221,9 @@ export default function AtribuirServico({ company, contratos = [], servicos_disp
                                     </span>
                                 )}
                             </div>
+                            {/* Quick task 260805-eqk — badge de nicho removido
+                                junto com a coluna companies.nicho. */}
                             <div className="mt-2 flex flex-wrap gap-2">
-                                {company.nicho && (
-                                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-fuchsia-500/10 text-fuchsia-300 border border-fuchsia-500/20">
-                                        {company.nicho}
-                                    </span>
-                                )}
                                 {company.segment && (
                                     <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
                                         {company.segment}

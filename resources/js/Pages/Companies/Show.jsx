@@ -649,24 +649,39 @@ export default function CompanyShow({
 
                 {/* ─── 8. Informações comerciais (fechamento / Close) ───────── */}
                 <Section icon={FileText} title="Informações comerciais" glow="radial-gradient(circle, rgba(168,85,247,0.35), transparent 70%)">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
-                        <div>
-                            <InfoRow label="Nicho" value={company.nicho} />
-                            <InfoRow label="Principal dor" value={company.dor} />
-                            <InfoRow label="Vende no Mercado Livre" value={company.vende_ml === null || company.vende_ml === undefined ? null : (company.vende_ml ? 'Sim' : 'Não')} />
-                            <InfoRow label="Faturamento declarado" value={company.faturamento_mensal != null ? formatCurrency(company.faturamento_mensal) : null} />
-                        </div>
-                        <div>
-                            <InfoRow label="Marketplaces extras" value={(company.marketplaces_extras || []).length ? company.marketplaces_extras.join(', ') : null} />
-                            <InfoRow label="E-mail do cliente" value={company.email_cliente} />
-                            <InfoRow label="Telefone" value={company.telefone} />
-                            <InfoRow label="E-mail do colaborador" value={company.email_colaborador} />
-                        </div>
+                    {/* Quick task 260805-eqk — sobraram 3 campos, então o grid de
+                        2 colunas virou coluna única. */}
+                    <div>
+                        <InfoRow label="Origem do lead" value={company.origem_lead} />
+                        <InfoRow label="E-mail do cliente" value={company.email_cliente} />
+                        <InfoRow label="Telefone" value={company.telefone} />
                     </div>
                     {company.notes && (
                         <div className="mt-4 pt-3 border-t border-white/[0.06]">
                             <p className="text-white/40 text-[11px] uppercase tracking-wide mb-1">Observações</p>
                             <p className="text-white/70 text-[13px] whitespace-pre-line leading-relaxed">{company.notes}</p>
+                        </div>
+                    )}
+                    {/* Quick task 260805-eqk — Notes do deal HubSpot, mais antiga
+                        primeiro. Não renderiza o bloco quando não há nota. */}
+                    {(company.hubspot_notas || []).length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-white/[0.06] space-y-3">
+                            <p className="text-white/40 text-[11px] uppercase tracking-wide">Observações (HubSpot)</p>
+                            {company.hubspot_notas.map((nota, idx) => {
+                                // Armadilha Rollup conhecida: computar tudo DENTRO
+                                // do callback, nunca reaproveitar var do escopo
+                                // do componente aqui.
+                                const chave = nota?.id ? `nota-${nota.id}` : `nota-idx-${idx}`;
+                                const data  = nota?.timestamp ? formatDate(nota.timestamp) : null;
+                                return (
+                                    <div key={chave}>
+                                        {data && (
+                                            <p className="text-white/35 text-[10px] uppercase tracking-wide mb-0.5">{data}</p>
+                                        )}
+                                        <p className="text-white/70 text-[13px] whitespace-pre-line leading-relaxed">{nota?.body || '—'}</p>
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
                     {/* SPIN (HubSpot) — sempre os 4 campos, '—' nos vazios */}

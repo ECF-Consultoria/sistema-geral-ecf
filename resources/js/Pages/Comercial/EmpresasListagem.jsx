@@ -3,7 +3,6 @@ import { Card, CardContent } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
-import { Textarea } from '@/Components/ui/textarea';
 import { Badge } from '@/Components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
@@ -13,7 +12,7 @@ import {
     Building2, Search, Tag, Eye, Briefcase, ChevronLeft, ChevronRight,
     AlertCircle, Plus, ListChecks, Webhook, Pencil, Trash2, Save, Info,
 } from 'lucide-react';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import GruposManager from '@/Components/GruposManager';
 
 /**
@@ -35,7 +34,6 @@ const PENDENCIAS_LABELS = {
     sem_valor:               'Sem valor',
     servico_nao_reconhecido: 'Serviço não reconhecido',
     sem_setor:               'Sem setor (catálogo)',
-    dados_close_incompletos: 'Close incompleto',
     // Fase 114-02 — pendências novas, aditivas, só para origem HubSpot.
     sem_contato:             'Sem contato',
     valor_revisar:           'Revisar valor',
@@ -47,7 +45,6 @@ const PENDENCIAS_CLS = {
     sem_valor:               'bg-orange-500/10 text-orange-400 border-orange-500/20',
     servico_nao_reconhecido: 'bg-amber-500/10 text-amber-300 border-amber-500/20',
     sem_setor:               'bg-sky-500/10 text-sky-400 border-sky-500/20',
-    dados_close_incompletos: 'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20',
     sem_contato:             'bg-slate-500/10 text-slate-300 border-slate-500/20',
     valor_revisar:           'bg-yellow-500/10 text-yellow-300 border-yellow-500/20',
     possivel_duplicidade:    'bg-rose-500/10 text-rose-400 border-rose-500/20',
@@ -201,12 +198,10 @@ function Paginator({ paginator }) {
 // ─── Modal de edição da empresa (close fields + contratos) ────────────────────
 
 function EditarEmpresaModal({ empresa, open, onClose }) {
-    // Form dos campos do close — alimenta a pendência dados_close_incompletos.
+    // Quick task 260805-eqk — os campos do close (nicho/dor/faturamento_mensal)
+    // saíram junto com a pendência "Close incompleto".
     const empresaForm = useForm({
         name:               empresa?.name ?? '',
-        nicho:              empresa?.nicho ?? '',
-        dor:                empresa?.dor ?? '',
-        faturamento_mensal: empresa?.faturamento_mensal ?? '',
         email_cliente:      empresa?.email_cliente ?? '',
         telefone:           empresa?.telefone ?? '',
     });
@@ -220,9 +215,6 @@ function EditarEmpresaModal({ empresa, open, onClose }) {
         if (open && empresa) {
             empresaForm.setData({
                 name:               empresa.name ?? '',
-                nicho:              empresa.nicho ?? '',
-                dor:                empresa.dor ?? '',
-                faturamento_mensal: empresa.faturamento_mensal ?? '',
                 email_cliente:      empresa.email_cliente ?? '',
                 telefone:           empresa.telefone ?? '',
             });
@@ -289,40 +281,7 @@ function EditarEmpresaModal({ empresa, open, onClose }) {
                         </div>
                     </div>
 
-                    {/* ── Bloco 2: informações do close (resolve a pendência) ── */}
-                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
-                        <div className="flex items-center gap-2">
-                            <AlertCircle size={14} className="text-fuchsia-400" />
-                            <h3 className="text-white/85 text-sm font-semibold">Informações do close</h3>
-                            <span className="text-[10px] text-white/40">resolve a tag "Close incompleto"</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <Label>Nicho</Label>
-                                <Input value={empresaForm.data.nicho} onChange={e => empresaForm.setData('nicho', e.target.value)} placeholder="Ex: Moda feminina, Auto peças" />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label>Faturamento mensal (R$)</Label>
-                                <Input
-                                    type="number" step="0.01" min="0"
-                                    value={empresaForm.data.faturamento_mensal ?? ''}
-                                    onChange={e => empresaForm.setData('faturamento_mensal', e.target.value)}
-                                    placeholder="0.00"
-                                />
-                            </div>
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label>Dor</Label>
-                            <Textarea
-                                value={empresaForm.data.dor}
-                                onChange={e => empresaForm.setData('dor', e.target.value)}
-                                placeholder="Principal dor / motivação do cliente coletada no fechamento."
-                                rows={3}
-                            />
-                        </div>
-                    </div>
-
-                    {/* ── Bloco 3: contratos ativos (editar valor / desativar) ── */}
+                    {/* ── Bloco 2: contratos ativos (editar valor / desativar) ── */}
                     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -413,14 +372,33 @@ function DetalheHubspotModal({ empresa, open, onClose }) {
                         {empresa.cargo_contato && (
                             <p className="text-white/40 text-[12px]">{empresa.cargo_contato}</p>
                         )}
+                        {/* Quick task 260805-eqk — a origem do lead nasce no
+                            contato, por isso fica junto dele. */}
+                        <p className="text-white/40 text-[12px] pt-1">
+                            Origem do lead: <span className="text-white/70">{empresa.origem_lead || '—'}</span>
+                        </p>
                     </div>
 
-                    {/* ── Observação ─────────────────────────────────────── */}
-                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-1">
-                        <h3 className="text-white/85 text-sm font-semibold mb-2">Observação</h3>
-                        <p className="text-white/60 text-[12px] whitespace-pre-wrap">
-                            {empresa.hubspot_observacao || '—'}
-                        </p>
+                    {/* ── Observações (Notes do deal HubSpot) ────────────── */}
+                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
+                        <h3 className="text-white/85 text-sm font-semibold">Observações</h3>
+                        {(empresa.hubspot_notas ?? []).length === 0 ? (
+                            <p className="text-white/60 text-[12px]">—</p>
+                        ) : (
+                            (empresa.hubspot_notas ?? []).map((nota, idx) => {
+                                // Armadilha Rollup: computar tudo DENTRO do callback.
+                                const chave = nota?.id ? `nota-${nota.id}` : `nota-idx-${idx}`;
+                                const data  = nota?.timestamp ? formatDate(nota.timestamp) : null;
+                                return (
+                                    <div key={chave}>
+                                        {data && (
+                                            <p className="text-white/40 text-[11px] uppercase tracking-wide mb-0.5">{data}</p>
+                                        )}
+                                        <p className="text-white/60 text-[12px] whitespace-pre-wrap">{nota?.body || '—'}</p>
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
 
                     {/* ── SPIN (Situação/Problema/Implicação/Necessidade) ── */}

@@ -21,14 +21,8 @@ import NpsPendingBadge from '@/Components/Nps/NpsPendingBadge';
 // sem_servico migrou para o Comercial).
 import { IMaskInput } from 'react-imask';
 
-// Phase 34 D-09 — lista canonica de marketplaces extras (espelha Rule::in no backend)
-const MARKETPLACES_EXTRAS = [
-    { value: 'shopee',  label: 'Shopee'  },
-    { value: 'amazon',  label: 'Amazon'  },
-    { value: 'magalu',  label: 'Magalu'  },
-    { value: 'temu',    label: 'Temu'    },
-    { value: 'tiktok',  label: 'TikTok'  },
-];
+// Quick task 260805-eqk — MARKETPLACES_EXTRAS removida junto com a coluna
+// companies.marketplaces_extras (substituida pela tabela company_marketplaces).
 
 /**
  * Badges dos contratos ativos de uma empresa.
@@ -272,23 +266,15 @@ export default function Companies({ companies, users, estrategistas = [], analis
     };
 
     // ── Form empresa (somente edição — cadastro é via /comercial/empresas) ───
-    // Phase 34 Plan 34-03 — 6 campos novos do close comercial + email_colaborador SEPARADO de email_cliente.
-    // vende_ml usa '' (Nao sei) / 'true' / 'false' no UI, convertido pra null/true/false no submit via transform.
+    // Phase 34 Plan 34-03 — email_colaborador SEPARADO de email_cliente. Quick
+    // task 260805-eqk removeu os 5 campos mortos do close (nicho/dor/vende_ml/
+    // faturamento_mensal/marketplaces_extras) e, com eles, o transform().
     const form = useForm({
         name: '', cnpj: '', adman_store_id: '', ml_store_id: '', segment: '', notes: '',
         consultor_id: '', estrategista_id: '', email_cliente: '', telefone: '', company_group_id: '',
-        // Phase 34 close fields
-        nicho: '', dor: '', vende_ml: '', faturamento_mensal: '',
-        marketplaces_extras: [], email_colaborador: '',
+        email_colaborador: '',
     });
     const { data, setData, processing, errors } = form;
-    // Phase 34 Plan 34-03 — transform converte tipos no submit (vende_ml ''/'true'/'false' -> null/bool;
-    // faturamento_mensal '' -> null pra nao quebrar `numeric` no backend).
-    form.transform((d) => ({
-        ...d,
-        vende_ml: d.vende_ml === 'true' ? true : d.vende_ml === 'false' ? false : null,
-        faturamento_mensal: d.faturamento_mensal === '' || d.faturamento_mensal == null ? null : d.faturamento_mensal,
-    }));
     const put = form.put;
 
     const openEdit = (c) => {
@@ -305,29 +291,14 @@ export default function Companies({ companies, users, estrategistas = [], analis
             email_cliente: c.email_cliente || '',
             telefone: c.telefone || '',
             company_group_id: c.company_group_id ? String(c.company_group_id) : '',
-            // Phase 34 Plan 34-03 — pre-popula campos do close
-            nicho: c.nicho || '',
-            dor: c.dor || '',
-            // vende_ml: bool puro do backend (true/false/null) -> string '' / 'true' / 'false' no UI
-            vende_ml: c.vende_ml === true ? 'true' : c.vende_ml === false ? 'false' : '',
-            faturamento_mensal: c.faturamento_mensal != null ? String(c.faturamento_mensal) : '',
-            marketplaces_extras: Array.isArray(c.marketplaces_extras) ? [...c.marketplaces_extras] : [],
+            // Phase 34 Plan 34-03 — pre-popula o campo do close que sobrou.
             email_colaborador: c.email_colaborador || '',
         });
         setOpen(true);
     };
 
-    // Phase 34 Plan 34-03 — toggle helper pros checkboxes de marketplaces_extras
-    const toggleMpExtra = (value) => {
-        setData('marketplaces_extras', data.marketplaces_extras.includes(value)
-            ? data.marketplaces_extras.filter(v => v !== value)
-            : [...data.marketplaces_extras, value]);
-    };
-
     const submit = (e) => {
         e.preventDefault();
-        // Phase 34 Plan 34-03 — useForm.transform converte vende_ml '' / 'true' / 'false' pra null/true/false
-        // e faturamento_mensal '' pra null (vazio nao deve mandar '' que falha numeric no backend).
         put(route('companies.update', editing.id), {
             preserveScroll: true,
             onSuccess: () => setOpen(false),
@@ -767,89 +738,28 @@ export default function Companies({ companies, users, estrategistas = [], analis
                         </div>
 
                         {/* ─── Phase 34 Plan 34-03 — Informacoes do close ──────────────
-                            6 campos novos coletados no fechamento comercial. Bloco
-                            SEPARADO do bloco de identificacao acima para deixar claro
-                            que o admin pode editar tudo o que o Comercial preencheu. */}
+                            Quick task 260805-eqk esvaziou este bloco: nicho, dor,
+                            vende_ml, faturamento_mensal e marketplaces_extras
+                            deixaram de existir. Sobrou o email_colaborador, que o
+                            admin continua podendo preencher (alimenta a pendencia
+                            sem_email_colaborador). */}
                         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-4">
                             <div className="flex items-center gap-2">
                                 <Briefcase size={14} className="text-ecf-yellow/70" />
                                 <h3 className="text-white/85 text-sm font-semibold">Informacoes do close</h3>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <Label>Nicho</Label>
-                                    <Input value={data.nicho} onChange={e => setData('nicho', e.target.value)} placeholder="Ex: Moda feminina, Auto pecas" />
-                                    {errors.nicho && <p className="text-destructive text-xs">{errors.nicho}</p>}
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label>Faturamento mensal (R$)</Label>
-                                    <Input
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        value={data.faturamento_mensal}
-                                        onChange={e => setData('faturamento_mensal', e.target.value)}
-                                        placeholder="50000.00"
-                                    />
-                                    {errors.faturamento_mensal && <p className="text-destructive text-xs">{errors.faturamento_mensal}</p>}
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label>Ja vende no Mercado Livre?</Label>
-                                    <Select value={data.vende_ml || 'unknown'} onValueChange={v => setData('vende_ml', v === 'unknown' ? '' : v)}>
-                                        <SelectTrigger><SelectValue placeholder="Nao sei" /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="unknown">Nao sei</SelectItem>
-                                            <SelectItem value="true">Sim</SelectItem>
-                                            <SelectItem value="false">Nao</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    {errors.vende_ml && <p className="text-destructive text-xs">{errors.vende_ml}</p>}
-                                </div>
-                                {/* Phase 34 D-07 — email_colaborador SEPARADO de email_cliente.
-                                    Labels claras pra evitar confusao operacional. */}
-                                <div className="space-y-1.5">
-                                    <Label>Email colaborador ECF</Label>
-                                    <Input
-                                        type="email"
-                                        value={data.email_colaborador}
-                                        onChange={e => setData('email_colaborador', e.target.value)}
-                                        placeholder="colaborador@ecfconsultoria.com.br"
-                                    />
-                                    {errors.email_colaborador && <p className="text-destructive text-xs">{errors.email_colaborador}</p>}
-                                    <p className="text-white/30 text-[11px]">Email que a ECF criou para acesso colaborador no ML.</p>
-                                </div>
-                            </div>
+                            {/* Phase 34 D-07 — email_colaborador SEPARADO de email_cliente.
+                                Labels claras pra evitar confusao operacional. */}
                             <div className="space-y-1.5">
-                                {/* Phase 35 Plan 35-01 (D-08) — label reformulado pra deixar claro
-                                    que sao marketplaces que o CLIENTE ja opera (nao servicos da ECF). */}
-                                <Label>Em quais outros marketplaces o cliente já vende?</Label>
-                                <p className="text-xs text-white/40 -mt-1">
-                                    Marketplaces que o cliente já opera por conta própria. Não confundir com serviços que vamos prestar.
-                                </p>
-                                <div className="flex flex-wrap gap-3">
-                                    {MARKETPLACES_EXTRAS.map(mp => (
-                                        <label key={mp.value} className="inline-flex items-center gap-2 cursor-pointer select-none rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 hover:bg-white/[0.06]">
-                                            <input
-                                                type="checkbox"
-                                                checked={data.marketplaces_extras.includes(mp.value)}
-                                                onChange={() => toggleMpExtra(mp.value)}
-                                                className="h-4 w-4 accent-ecf-yellow"
-                                            />
-                                            <span className="text-white/80 text-sm">{mp.label}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                                {errors.marketplaces_extras && <p className="text-destructive text-xs">{errors.marketplaces_extras}</p>}
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label>Dor / contexto</Label>
-                                <Textarea
-                                    value={data.dor}
-                                    onChange={e => setData('dor', e.target.value)}
-                                    rows={3}
-                                    placeholder="Dor ou contexto do cliente capturado no fechamento."
+                                <Label>Email colaborador ECF</Label>
+                                <Input
+                                    type="email"
+                                    value={data.email_colaborador}
+                                    onChange={e => setData('email_colaborador', e.target.value)}
+                                    placeholder="colaborador@ecfconsultoria.com.br"
                                 />
-                                {errors.dor && <p className="text-destructive text-xs">{errors.dor}</p>}
+                                {errors.email_colaborador && <p className="text-destructive text-xs">{errors.email_colaborador}</p>}
+                                <p className="text-white/30 text-[11px]">Email que a ECF criou para acesso colaborador no ML.</p>
                             </div>
                         </div>
 
