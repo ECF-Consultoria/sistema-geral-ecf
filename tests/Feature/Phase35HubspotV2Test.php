@@ -43,10 +43,6 @@ class Phase35HubspotV2Test extends TestCase
             'services.hubspot.access_token'           => 'token-fake',
             'services.hubspot.stage_fechado_ganho_id' => '1352209026,closedwon',
             'services.hubspot.props.deal' => [
-                'nicho'              => 'nicho',
-                'dor'                => 'dor',
-                'vende_ml'           => 'vende_ml',
-                'faturamento_mensal' => 'faturamento_mensal',
                 'servico'            => 'servico_ecf',
             ],
             'services.hubspot.props.company' => [
@@ -131,10 +127,6 @@ class Phase35HubspotV2Test extends TestCase
             'dealname'           => 'Cliente Teste',
             'amount'             => '1500.00',
             'dealstage'          => 'closedwon',
-            'nicho'              => 'Moda',
-            'dor'                => 'Vendas baixas',
-            'vende_ml'           => 'true',
-            'faturamento_mensal' => '50000.00',
             'servico_ecf'        => 'Mentoria Avançada',
         ], $dealProps);
 

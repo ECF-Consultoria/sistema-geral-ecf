@@ -19,8 +19,13 @@ use Tests\TestCase;
  *  T4. /companies index → pendencia 'sem_email_colaborador' agora olha
  *      email_colaborador (D-07 bug fix): empresa com email_cliente populado
  *      mas email_colaborador vazio AINDA mostra a pendencia
- *  T5. Casts: empresa_nova=>bool, marketplaces_extras=>array
+ *  T5. Cast empresa_nova=>bool
  *  T6. Company recem-criada por factory tem empresa_nova=true (default DB)
+ *
+ * Quick task 260805-eqk — a cobertura dos campos de close foi reduzida a
+ * `email_colaborador`: nicho, dor, vende_ml, faturamento_mensal e
+ * marketplaces_extras deixaram de existir (properties inexistentes no HubSpot
+ * / substituída por company_marketplaces).
  */
 class Phase34CompaniesCloseFieldsTest extends TestCase
 {
@@ -205,16 +210,16 @@ class Phase34CompaniesCloseFieldsTest extends TestCase
             '(independente de email_cliente estar populado — D-07 fix)');
     }
 
-    public function test_payload_inclui_campos_de_close(): void
+    /**
+     * Quick task 260805-eqk — dos campos do close sobrou apenas
+     * `email_colaborador`; nicho/dor/vende_ml/faturamento_mensal/
+     * marketplaces_extras foram removidos do payload e do banco.
+     */
+    public function test_payload_inclui_email_colaborador(): void
     {
         $admin   = $this->criarAdmin();
         $empresa = $this->criarEmpresa([
-            'nicho'               => 'Moda feminina',
-            'dor'                 => 'Vendas estagnadas',
-            'vende_ml'            => true,
-            'faturamento_mensal'  => 50000.75,
-            'marketplaces_extras' => ['shopee', 'amazon'],
-            'email_colaborador'   => 'colab@empresa.com',
+            'email_colaborador' => 'colab@empresa.com',
         ]);
         // Phase 37 Plan 37-06 — contrato Performance pra empresa aparecer em /companies.
         $this->attachPerformanceContract($empresa);
@@ -223,25 +228,27 @@ class Phase34CompaniesCloseFieldsTest extends TestCase
         $alvo = collect($response->viewData('page')['props']['companies'])
             ->firstWhere('id', $empresa->id);
 
-        $this->assertSame('Moda feminina', $alvo['nicho']);
-        $this->assertSame('Vendas estagnadas', $alvo['dor']);
-        // vende_ml cast=>bool, deve refletir true.
-        $this->assertTrue((bool) $alvo['vende_ml']);
-        // faturamento_mensal castado para decimal:2; payload converte para float.
-        $this->assertEqualsWithDelta(50000.75, (float) $alvo['faturamento_mensal'], 0.001);
-        $this->assertSame(['shopee', 'amazon'], $alvo['marketplaces_extras']);
         $this->assertSame('colab@empresa.com', $alvo['email_colaborador']);
+
+        foreach (['nicho', 'dor', 'vende_ml', 'faturamento_mensal', 'marketplaces_extras'] as $removido) {
+            $this->assertArrayNotHasKey($removido, $alvo, "Campo morto {$removido} não deveria voltar ao payload");
+        }
     }
 
-    public function test_marketplaces_extras_castado_para_array(): void
+    /**
+     * Quick task 260805-eqk — as 5 colunas mortas sumiram do schema, mas
+     * `email_colaborador` continua existindo (decisão do usuário: 6 gmails
+     * reais de onboarding, sem duplicata em nenhum outro lugar).
+     */
+    public function test_colunas_mortas_sumiram_e_email_colaborador_permanece(): void
     {
-        $empresa = $this->criarEmpresa([
-            'marketplaces_extras' => ['shopee', 'magalu', 'temu'],
-        ]);
-        $empresa->refresh();
+        foreach (['nicho', 'dor', 'vende_ml', 'faturamento_mensal', 'marketplaces_extras'] as $removido) {
+            $this->assertFalse(
+                \Illuminate\Support\Facades\Schema::hasColumn('companies', $removido),
+                "Coluna {$removido} deveria ter sido dropada",
+            );
+        }
 
-        $this->assertIsArray($empresa->marketplaces_extras);
-        $this->assertCount(3, $empresa->marketplaces_extras);
-        $this->assertContains('magalu', $empresa->marketplaces_extras);
+        $this->assertTrue(\Illuminate\Support\Facades\Schema::hasColumn('companies', 'email_colaborador'));
     }
 }

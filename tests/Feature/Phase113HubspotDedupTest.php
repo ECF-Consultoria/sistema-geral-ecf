@@ -191,10 +191,6 @@ class Phase113HubspotDedupTest extends TestCase
             'services.hubspot.access_token'           => 'token-fake',
             'services.hubspot.stage_fechado_ganho_id' => 'closedwon',
             'services.hubspot.props.deal' => [
-                'nicho'              => 'nicho',
-                'dor'                => 'dor',
-                'vende_ml'           => 'vende_ml',
-                'faturamento_mensal' => 'faturamento_mensal',
                 'servico'            => 'servico_ecf',
                 'observacao'         => 'observacao',
             ],
@@ -298,18 +294,18 @@ class Phase113HubspotDedupTest extends TestCase
 
         // Empresa ja existe com cnpj (dedup por cnpj, dígitos) e um campo
         // MANUAL ja preenchido — nao pode ser sobrescrito pelo webhook.
+        // Quick task 260805-eqk — o campo manual da asserção passou de `dor`
+        // (coluna removida) para `telefone`, que segue a MESMA regra de
+        // enriquecimento "so preenche se vazio".
         $existente = Company::factory()->create([
             'cnpj'          => '77.788.899/0001-11',
-            'dor'           => 'Dor preenchida manualmente pelo Comercial',
+            'telefone'      => '11911112222', // preenchido a mao pelo Comercial
             'email_cliente' => null, // vazio — deve ser ENRIQUECIDO
             'empresa_nova'  => false, // ja "vista" pelo Comercial — nao pode ser remarcada
         ]);
 
         $this->mockaHubSpotSemLineItemsNemContatos(
-            dealProps: [
-                'nicho' => 'Nicho vindo do HubSpot',
-                // 'dor' OMITIDO no deal — nao interfere na asserção do campo manual
-            ],
+            dealProps: [],
             companyProps: [
                 'name'   => 'Cliente Dedup CNPJ LTDA',
                 'cnpj'   => '77788899000111', // mesmos digitos, sem formatacao
@@ -327,13 +323,11 @@ class Phase113HubspotDedupTest extends TestCase
 
         $existente->refresh();
 
-        // Campo manual intocado.
-        $this->assertSame('Dor preenchida manualmente pelo Comercial', $existente->dor);
+        // Campo manual intocado (o HubSpot mandou 11966665555 e foi ignorado).
+        $this->assertSame('11911112222', $existente->telefone);
 
         // Campo vazio enriquecido.
         $this->assertSame('novo@clientededup.com', $existente->email_cliente);
-        $this->assertSame('11966665555', $existente->telefone);
-        $this->assertSame('Nicho vindo do HubSpot', $existente->nicho);
         $this->assertSame('90001', $existente->hubspot_company_id);
         $this->assertSame('clientededup.com.br', $existente->hubspot_domain);
 

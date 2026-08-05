@@ -19,12 +19,16 @@ class Phase111HubspotConfigPropsTest extends TestCase
     {
         $deal = config('services.hubspot.props.deal');
 
-        // Chaves antigas (Phase 34/35) — nunca podem sumir.
-        $this->assertArrayHasKey('nicho', $deal);
-        $this->assertArrayHasKey('dor', $deal);
-        $this->assertArrayHasKey('vende_ml', $deal);
-        $this->assertArrayHasKey('faturamento_mensal', $deal);
+        // Chave antiga (Phase 34/35) que sobreviveu.
         $this->assertArrayHasKey('servico', $deal);
+
+        // Quick task 260805-eqk — nicho/dor/vende_ml/faturamento_mensal saíram:
+        // as properties não existem na conta HubSpot da ECF e as colunas
+        // correspondentes foram removidas de `companies`.
+        $this->assertArrayNotHasKey('nicho', $deal);
+        $this->assertArrayNotHasKey('dor', $deal);
+        $this->assertArrayNotHasKey('vende_ml', $deal);
+        $this->assertArrayNotHasKey('faturamento_mensal', $deal);
 
         // Chaves novas (Phase 111).
         $this->assertArrayHasKey('observacao', $deal);
@@ -68,11 +72,32 @@ class Phase111HubspotConfigPropsTest extends TestCase
         $this->assertArrayHasKey('mobilephone', $contact);
         $this->assertArrayHasKey('jobtitle', $contact);
         $this->assertArrayHasKey('additional_emails', $contact);
+
+        // Quick task 260805-eqk — origem do lead (e irmãs) vivem no CONTATO.
+        $this->assertArrayHasKey('origem_do_lead', $contact);
+        $this->assertArrayHasKey('campanha_origem', $contact);
+        $this->assertArrayHasKey('criativo_origem', $contact);
+    }
+
+    /**
+     * Quick task 260805-eqk — as Notes (observações) do deal ganharam bloco
+     * próprio de props, porque a property `observacao` não existe no HubSpot.
+     */
+    public function test_props_note_existe_com_body_e_timestamp(): void
+    {
+        $note = config('services.hubspot.props.note');
+
+        $this->assertIsArray($note);
+        $this->assertArrayHasKey('body', $note);
+        $this->assertArrayHasKey('timestamp', $note);
+        $this->assertSame('hs_note_body', $note['body']);
+        $this->assertSame('hs_timestamp', $note['timestamp']);
     }
 
     public function test_defaults_seguros_sem_env_configurado(): void
     {
         $this->assertSame('hs_additional_emails', config('services.hubspot.props.contact.additional_emails'));
+        $this->assertSame('origem_do_lead', config('services.hubspot.props.contact.origem_do_lead'));
         $this->assertSame('hs_mrr', config('services.hubspot.props.deal.hs_mrr'));
         $this->assertSame('domain', config('services.hubspot.props.company.domain'));
     }

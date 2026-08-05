@@ -47,10 +47,6 @@ class Phase113HubspotEnrichmentTest extends TestCase
             'services.hubspot.access_token'           => 'token-fake',
             'services.hubspot.stage_fechado_ganho_id' => 'closedwon',
             'services.hubspot.props.deal' => [
-                'nicho'              => 'nicho',
-                'dor'                => 'dor',
-                'vende_ml'           => 'vende_ml',
-                'faturamento_mensal' => 'faturamento_mensal',
                 'servico'            => 'servico_ecf',
                 'observacao'         => 'observacao',
             ],
@@ -187,6 +183,11 @@ class Phase113HubspotEnrichmentTest extends TestCase
             'results' => [],
         ]);
 
+        // Quick task 260805-eqk — deal sem Notes associadas.
+        $fakes['api.hubapi.com/crm/v3/objects/deals/9876/associations/notes'] = Http::response([
+            'results' => [],
+        ]);
+
         $fakes['api.hubapi.com/crm/v3/objects/deals/9876*'] = Http::response([
             'id'         => '9876',
             'properties' => [
@@ -228,7 +229,12 @@ class Phase113HubspotEnrichmentTest extends TestCase
         $this->assertSame('9876', $company->hubspot_deal_id);
         $this->assertSame('88001', $company->hubspot_company_id);
         $this->assertSame('clientemulti.com.br', $company->hubspot_domain);
-        $this->assertSame('Cliente estrategico — prioridade alta', $company->hubspot_observacao);
+        // Quick task 260805-eqk — a property `observacao` do deal NAO existe no
+        // HubSpot e deixou de ser lida: mesmo vindo preenchida no mock, o valor
+        // e ignorado. `hubspot_observacao` agora e derivada das Notes do deal
+        // (aqui, deal sem nota => null).
+        $this->assertNull($company->hubspot_observacao);
+        $this->assertSame([], $company->hubspot_notas);
 
         // Linha legada em notes continua existindo (fonte legada preservada).
         $this->assertStringContainsString('Contato (HubSpot): Ana Costa', (string) $company->notes);

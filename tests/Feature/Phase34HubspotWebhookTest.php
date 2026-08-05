@@ -40,11 +40,9 @@ class Phase34HubspotWebhookTest extends TestCase
             'services.hubspot.access_token'           => 'token-fake',
             // Hotfix multi-pipeline: aceita CSV. Testa com 1 ID custom + closedwon.
             'services.hubspot.stage_fechado_ganho_id' => '1352209026,closedwon',
+            // Quick task 260805-eqk — props.deal enxuta (nicho/dor/vende_ml/
+            // faturamento_mensal não existem no HubSpot nem em `companies`).
             'services.hubspot.props.deal' => [
-                'nicho'              => 'nicho',
-                'dor'                => 'dor',
-                'vende_ml'           => 'vende_ml',
-                'faturamento_mensal' => 'faturamento_mensal',
                 'servico'            => 'servico_ecf',
             ],
             'services.hubspot.props.company' => [
@@ -203,10 +201,6 @@ class Phase34HubspotWebhookTest extends TestCase
                     'dealname'           => 'Cliente Teste LTDA',
                     'amount'             => '1500.00',
                     'dealstage'          => 'closedwon',
-                    'nicho'              => 'Moda feminina',
-                    'dor'                => 'Vendas estagnadas',
-                    'vende_ml'           => 'true',
-                    'faturamento_mensal' => '80000.50',
                     'servico_ecf'        => 'Mentoria Avançada',
                 ],
             ]),
@@ -243,10 +237,6 @@ class Phase34HubspotWebhookTest extends TestCase
         $this->assertSame('12345678000199', $company->cnpj);
         $this->assertSame('contato@cliente.com', $company->email_cliente);
         $this->assertSame('11999998888', $company->telefone);
-        $this->assertSame('Moda feminina', $company->nicho);
-        $this->assertSame('Vendas estagnadas', $company->dor);
-        $this->assertTrue($company->vende_ml);
-        $this->assertEqualsWithDelta(80000.50, (float) $company->faturamento_mensal, 0.01);
         $this->assertTrue($company->empresa_nova);
         $this->assertSame('pendente', $company->status);
 

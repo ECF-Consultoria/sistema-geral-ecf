@@ -494,7 +494,7 @@ class Phase114ComercialListagemEnrichmentTest extends TestCase
         $this->marcarOrigemHubspot($e1);
         $this->criarContrato($e1, $servico, ['hubspot_valor_confidence' => 'low']);
 
-        $e2 = $this->criarEmpresa(['name' => 'Filtro Sem Pendencia', 'nicho' => 'X', 'dor' => 'Y', 'faturamento_mensal' => 10]);
+        $e2 = $this->criarEmpresa(['name' => 'Filtro Sem Pendencia']);
         $this->marcarOrigemHubspot($e2);
         $this->criarContrato($e2, $servico, ['hubspot_valor_confidence' => 'high']);
 

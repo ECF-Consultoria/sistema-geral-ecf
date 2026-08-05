@@ -622,8 +622,11 @@ class HubspotWebhookController extends Controller
                 if ($nomeContato !== '') {
                     $notesAtuais = (string) ($company->notes ?? '');
                     $linhaContato = "Contato (HubSpot): {$nomeContato}";
-                    $notes = trim($notesAtuais === '' ? $linhaContato : $notesAtuais . "\n" . $linhaContato);
-                    $company->update(['notes' => $notes]);
+                    // Quick task 260805-eqk — variavel renomeada para nao
+                    // SOBRESCREVER o parametro $notes (lista de Notes do
+                    // HubSpot) usado mais abaixo no update final.
+                    $notesLegado = trim($notesAtuais === '' ? $linhaContato : $notesAtuais . "\n" . $linhaContato);
+                    $company->update(['notes' => $notesLegado]);
                 }
             }
 

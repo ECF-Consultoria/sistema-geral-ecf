@@ -32,10 +32,6 @@ class Phase112HandoffServiceTest extends TestCase
     use RefreshDatabase;
 
     private array $propsDeal = [
-        'nicho'              => 'nicho',
-        'dor'                => 'dor',
-        'vende_ml'           => 'vende_ml',
-        'faturamento_mensal' => 'faturamento_mensal',
         'servico'            => 'servico_ecf',
     ];
 

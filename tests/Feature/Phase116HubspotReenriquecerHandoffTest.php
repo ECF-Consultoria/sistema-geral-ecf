@@ -50,10 +50,6 @@ class Phase116HubspotReenriquecerHandoffTest extends TestCase
             'services.hubspot.access_token'           => 'token-fake',
             'services.hubspot.stage_fechado_ganho_id' => 'closedwon',
             'services.hubspot.props.deal' => [
-                'nicho'              => 'nicho',
-                'dor'                => 'dor',
-                'vende_ml'           => 'vende_ml',
-                'faturamento_mensal' => 'faturamento_mensal',
                 'servico'            => 'servico_ecf',
                 'observacao'         => 'observacao',
             ],

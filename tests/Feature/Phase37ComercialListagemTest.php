@@ -17,7 +17,8 @@ use Tests\TestCase;
  * Cobre o endpoint GET /comercial/empresas/listagem:
  *  - Filtros snake_case empilháveis (servico, setor, ordem, pendencia, q)
  *  - Cards de pendência comercial (sem_servico, sem_valor,
- *    servico_nao_reconhecido, sem_setor, dados_close_incompletos)
+ *    servico_nao_reconhecido, sem_setor). A quick task 260805-eqk removeu
+ *    `dados_close_incompletos` junto com as colunas que a alimentavam.
  *  - Origem HubSpot via EXISTS(hubspot_eventos.company_id_criada)
  *  - REQ-37-10: empresas legacy (sem hubspot_evento) NAO geram pendencia
  *  - Autorizacao via permission comercial.cadastrar_empresa + isAdmin()
@@ -334,17 +335,17 @@ class Phase37ComercialListagemTest extends TestCase
         $this->assertContains('sem_setor', $row['pendencias_comerciais']);
     }
 
-    public function test_pendencia_dados_close_incompletos(): void
+    /**
+     * Quick task 260805-eqk — a pendência `dados_close_incompletos` foi
+     * removida por completo (cálculo, filtro, counts e detalhes) junto com as
+     * colunas nicho/dor/faturamento_mensal que a alimentavam. Este teste virou
+     * a guarda de que ela não volta.
+     */
+    public function test_pendencia_dados_close_incompletos_nao_existe_mais(): void
     {
         $this->actingAsAdmin();
 
-        // nicho=null → pendencia
-        $e = $this->criarEmpresa([
-            'name'                 => 'HubSpot Close Incompleto',
-            'nicho'                => null,
-            'dor'                  => 'Dor preenchida',
-            'faturamento_mensal'   => 5000,
-        ]);
+        $e = $this->criarEmpresa(['name' => 'HubSpot Sem Close']);
         $this->marcarOrigemHubspot($e);
 
         $response = $this->get('/comercial/empresas/listagem');
@@ -353,7 +354,8 @@ class Phase37ComercialListagemTest extends TestCase
         $props = $response->viewData('page')['props'];
         $row = collect($props['companies']['data'])->firstWhere('id', $e->id);
         $this->assertNotNull($row);
-        $this->assertContains('dados_close_incompletos', $row['pendencias_comerciais']);
+        $this->assertNotContains('dados_close_incompletos', $row['pendencias_comerciais']);
+        $this->assertArrayNotHasKey('dados_close_incompletos', $props['pendencia_counts']);
     }
 
     public function test_pendencia_sem_valor(): void
@@ -393,11 +395,10 @@ class Phase37ComercialListagemTest extends TestCase
         $response->assertOk();
         $props = $response->viewData('page')['props'];
         $this->assertSame(2, $props['pendencia_counts']['sem_servico']);
-        // Counts existem para as 5 chaves
+        // Counts existem para as 4 chaves (260805-eqk removeu dados_close_incompletos)
         $this->assertArrayHasKey('sem_valor', $props['pendencia_counts']);
         $this->assertArrayHasKey('servico_nao_reconhecido', $props['pendencia_counts']);
         $this->assertArrayHasKey('sem_setor', $props['pendencia_counts']);
-        $this->assertArrayHasKey('dados_close_incompletos', $props['pendencia_counts']);
     }
 
     public function test_filtro_pendencia_aplicado(): void
@@ -415,7 +416,7 @@ class Phase37ComercialListagemTest extends TestCase
 
         // E4: origem HubSpot COM contrato (sem pendencia sem_servico)
         $servico = $this->criarServico('Servico OK', Servico::SETOR_PERFORMANCE);
-        $e4 = $this->criarEmpresa(['name' => 'HS OK', 'nicho' => 'Nicho', 'dor' => 'Dor', 'faturamento_mensal' => 1000]);
+        $e4 = $this->criarEmpresa(['name' => 'HS OK']);
         $this->marcarOrigemHubspot($e4);
         $this->criarContrato($e4, $servico);
 
