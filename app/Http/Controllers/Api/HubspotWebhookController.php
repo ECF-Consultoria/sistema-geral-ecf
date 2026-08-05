@@ -198,13 +198,15 @@ class HubspotWebhookController extends Controller
                     $mapaContatos = $api->fetchContacts($contactIds, array_values($propsContact));
                     foreach ($mapaContatos as $contactId => $props) {
                         $contatos[] = [
-                            'id'          => (string) $contactId,
-                            'firstname'   => $props[$propsContact['firstname'] ?? 'firstname'] ?? null,
-                            'lastname'    => $props[$propsContact['lastname'] ?? 'lastname'] ?? null,
-                            'email'       => $props[$propsContact['email'] ?? 'email'] ?? null,
-                            'phone'       => $props[$propsContact['phone'] ?? 'phone'] ?? null,
-                            'mobilephone' => $props[$propsContact['mobilephone'] ?? 'mobilephone'] ?? null,
-                            'jobtitle'    => $props[$propsContact['jobtitle'] ?? 'jobtitle'] ?? null,
+                            'id'             => (string) $contactId,
+                            'firstname'      => $props[$propsContact['firstname'] ?? 'firstname'] ?? null,
+                            'lastname'       => $props[$propsContact['lastname'] ?? 'lastname'] ?? null,
+                            'email'          => $props[$propsContact['email'] ?? 'email'] ?? null,
+                            'phone'          => $props[$propsContact['phone'] ?? 'phone'] ?? null,
+                            'mobilephone'    => $props[$propsContact['mobilephone'] ?? 'mobilephone'] ?? null,
+                            'jobtitle'       => $props[$propsContact['jobtitle'] ?? 'jobtitle'] ?? null,
+                            // Quick task 260805-eqk — origem do lead vive no CONTATO.
+                            'origem_do_lead' => $props[$propsContact['origem_do_lead'] ?? 'origem_do_lead'] ?? null,
                         ];
                     }
                 }
@@ -216,13 +218,28 @@ class HubspotWebhookController extends Controller
             }
             $contatoPrincipal = HubspotContactSelector::selecionar($contatos);
 
+            // ── Quick task 260805-eqk — Notes (observacoes) do deal ────────────
+            // A property `observacao` do deal nao existe na conta da ECF; as
+            // observacoes reais sao Notes associadas ao DEAL. Mesmo padrao
+            // resiliente do bloco de contatos: falha so gera warning e segue
+            // com [] — nunca quebra o webhook.
+            $notes = [];
+            try {
+                $notes = $api->fetchNotes('deals', (string) $evento->object_id);
+            } catch (\Throwable $e) {
+                Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Falha ao buscar notes do deal', [
+                    'evento_id' => $evento->id,
+                    'msg'       => $e->getMessage(),
+                ]);
+            }
+
             // Phase 37 Plan 37-04 (REQ-37-04) — busca line items do deal.
             // Quando vazio, criarEmpresa cai no fluxo legado (Servico::where nome
             // do deal + amount). Quando >=1 line item retornado, processarLineItems
             // tem prioridade total sobre o servico_ecf do deal.
             $lineItems = $api->fetchDealLineItems((string) $evento->object_id);
 
-            $company = $this->criarEmpresa($deal, $hubCompany, $contatoPrincipal, $contatos, $companyId, $lineItems, $evento);
+            $company = $this->criarEmpresa($deal, $hubCompany, $contatoPrincipal, $contatos, $companyId, $lineItems, $evento, notes: $notes);
 
             $evento->update([
                 'status'            => 'processado',
@@ -314,13 +331,15 @@ class HubspotWebhookController extends Controller
                     $mapaContatos = $api->fetchContacts($contactIds, array_values($propsContact));
                     foreach ($mapaContatos as $contactId => $props) {
                         $contatos[] = [
-                            'id'          => (string) $contactId,
-                            'firstname'   => $props[$propsContact['firstname'] ?? 'firstname'] ?? null,
-                            'lastname'    => $props[$propsContact['lastname'] ?? 'lastname'] ?? null,
-                            'email'       => $props[$propsContact['email'] ?? 'email'] ?? null,
-                            'phone'       => $props[$propsContact['phone'] ?? 'phone'] ?? null,
-                            'mobilephone' => $props[$propsContact['mobilephone'] ?? 'mobilephone'] ?? null,
-                            'jobtitle'    => $props[$propsContact['jobtitle'] ?? 'jobtitle'] ?? null,
+                            'id'             => (string) $contactId,
+                            'firstname'      => $props[$propsContact['firstname'] ?? 'firstname'] ?? null,
+                            'lastname'       => $props[$propsContact['lastname'] ?? 'lastname'] ?? null,
+                            'email'          => $props[$propsContact['email'] ?? 'email'] ?? null,
+                            'phone'          => $props[$propsContact['phone'] ?? 'phone'] ?? null,
+                            'mobilephone'    => $props[$propsContact['mobilephone'] ?? 'mobilephone'] ?? null,
+                            'jobtitle'       => $props[$propsContact['jobtitle'] ?? 'jobtitle'] ?? null,
+                            // Quick task 260805-eqk — origem do lead vive no CONTATO.
+                            'origem_do_lead' => $props[$propsContact['origem_do_lead'] ?? 'origem_do_lead'] ?? null,
                         ];
                     }
                 }
@@ -333,6 +352,20 @@ class HubspotWebhookController extends Controller
             }
             $contatoPrincipal = HubspotContactSelector::selecionar($contatos);
 
+            // ── Quick task 260805-eqk — Notes do deal (mesmo padrao resiliente) ──
+            // No replay a falha tambem entra em $warnings (visivel no resumo do
+            // comando), mas nunca aborta o reprocessamento.
+            $notes = [];
+            try {
+                $notes = $api->fetchNotes('deals', (string) $evento->object_id);
+            } catch (\Throwable $e) {
+                $warnings[] = 'Falha ao buscar notes do deal: ' . $e->getMessage();
+                Log::channel('ecf-webhooks')->warning('[Hubspot] Replay: falha ao buscar notes do deal', [
+                    'evento_id' => $evento->id,
+                    'msg'       => $e->getMessage(),
+                ]);
+            }
+
             $lineItems = $api->fetchDealLineItems((string) $evento->object_id);
 
             // ── Baseline ANTES de criarEmpresa — mede o efeito real do replay ──
@@ -342,7 +375,7 @@ class HubspotWebhookController extends Controller
                 ? ContratoServico::where('company_id', $evento->company_id_criada)->count()
                 : 0;
 
-            $company = $this->criarEmpresa($deal, $hubCompany, $contatoPrincipal, $contatos, $companyId, $lineItems, $evento);
+            $company = $this->criarEmpresa($deal, $hubCompany, $contatoPrincipal, $contatos, $companyId, $lineItems, $evento, notes: $notes);
 
             $contratosDepois  = ContratoServico::where('company_id', $company->id)->count();
             $contratosCriados = max(0, $contratosDepois - $contratosAntes);
@@ -459,6 +492,7 @@ class HubspotWebhookController extends Controller
      * @param  string|null        $companyId         id HubSpot da company associada (gravado em hubspot_company_id)
      * @param  array              $lineItems         line items normalizados (Plan 37-03); array vazio cai no legado
      * @param  HubspotEvento|null $evento            necessario para gravar warnings (line_items_nao_mapeados)
+     * @param  array              $notes             Quick task 260805-eqk — Notes do deal [{id, body, timestamp}], ordem cronologica
      */
     private function criarEmpresa(
         array $deal,
@@ -468,13 +502,14 @@ class HubspotWebhookController extends Controller
         ?string $companyId = null,
         array $lineItems = [],
         ?HubspotEvento $evento = null,
+        array $notes = [],
     ): Company {
         $propsDeal    = config('services.hubspot.props.deal');
         $propsCompany = config('services.hubspot.props.company');
         $dprops       = $deal['properties'] ?? [];
         $cprops       = $hubCompany['properties'] ?? [];
 
-        return DB::transaction(function () use ($deal, $dprops, $cprops, $propsDeal, $propsCompany, $lineItems, $evento, $contatoPrincipal, $contatos, $companyId, $hubCompany) {
+        return DB::transaction(function () use ($deal, $dprops, $cprops, $propsDeal, $propsCompany, $lineItems, $evento, $contatoPrincipal, $contatos, $companyId, $hubCompany, $notes) {
             $venderMlRaw = $dprops[$propsDeal['vende_ml']] ?? null;
             $vendeMl     = $venderMlRaw === null || $venderMlRaw === ''
                 ? null
@@ -505,11 +540,25 @@ class HubspotWebhookController extends Controller
             $lastname     = trim((string) ($contatoPrincipal['lastname'] ?? ''));
             $nomeContato  = trim($firstname . ' ' . $lastname);
             $cargoContatoRaw = trim((string) ($contatoPrincipal['jobtitle'] ?? ''));
-            $observacaoRaw   = trim((string) ($dprops[$propsDeal['observacao'] ?? 'observacao'] ?? ''));
             $domainRaw       = trim((string) ($cprops[$propsCompany['domain'] ?? 'domain'] ?? ''));
             $cnpjRaw         = $cprops[$propsCompany['cnpj']] ?? null;
             $nameRaw         = $cprops[$propsCompany['name']] ?? ($deal['properties']['dealname'] ?? null);
             $dealIdStr       = $evento?->object_id !== null ? (string) $evento->object_id : null;
+
+            // ── Quick task 260805-eqk — observacoes vindas das Notes do deal ────
+            // Texto consolidado = bodies unidos por linha em branco, na ordem
+            // cronologica recebida (mais antigo primeiro, mais recente por
+            // ultimo). Sem nota => null.
+            $bodiesNotes        = array_values(array_filter(array_map(
+                static fn ($n) => trim((string) ($n['body'] ?? '')),
+                $notes,
+            ), static fn ($b) => $b !== ''));
+            $observacaoNotes    = !empty($bodiesNotes) ? implode("\n\n", $bodiesNotes) : null;
+
+            // Origem do lead do CONTATO principal. Ao contrario das notas, esse
+            // campo respeita valor preenchido a mao pelo Comercial.
+            $origemLeadRaw = trim((string) ($contatoPrincipal['origem_do_lead'] ?? ''));
+            $origemLead    = $origemLeadRaw !== '' ? $origemLeadRaw : null;
 
             // ── Fase 113 plano 03 (HUB-DEDUP-01/02) — resolve empresa existente
             // ANTES de decidir criar/enriquecer. Ordem de precedencia dentro do
@@ -545,13 +594,13 @@ class HubspotWebhookController extends Controller
                     foneFinal: $foneFinal,
                     nomeContato: $nomeContato,
                     cargoContatoRaw: $cargoContatoRaw,
-                    observacaoRaw: $observacaoRaw,
                     domainRaw: $domainRaw,
                     faturamento: $faturamento,
                     vendeMl: $vendeMl,
                     companyId: $companyId,
                     contactId: $contatoPrincipal['id'] ?? null,
                     dealIdStr: $dealIdStr,
+                    origemLead: $origemLead,
                 );
             } else {
                 // ── SEM match forte (null ou fraco) — cria empresa nova. ────────
@@ -576,7 +625,10 @@ class HubspotWebhookController extends Controller
                     'hubspot_company_id' => $companyId,
                     'hubspot_contact_id' => $contatoPrincipal['id'] ?? null,
                     'hubspot_domain'     => $domainRaw !== '' ? $domainRaw : null,
-                    'hubspot_observacao' => $observacaoRaw !== '' ? $observacaoRaw : null,
+                    // Quick task 260805-eqk — origem_lead segue a regra normal
+                    // (dado manual e soberano). hubspot_notas/hubspot_observacao
+                    // sao gravados no update final (espelho, sempre reescrito).
+                    'origem_lead'        => $origemLead,
                 ]);
 
                 // ── Phase 35 D-04 — anexa nome do contato em notes ────────────
@@ -655,13 +707,23 @@ class HubspotWebhookController extends Controller
             // caminho de match forte, o snapshot NAO faz deep-merge do antigo —
             // e sempre o retrato do ULTIMO evento processado; o historico do
             // evento anterior fica preservado em hubspot_eventos.payload.
+            //
+            // Quick task 260805-eqk — `hubspot_notas` e `hubspot_observacao`
+            // entram AQUI de proposito: sao ESPELHO do HubSpot, nao input
+            // humano, e por isso ficam FORA da regra "so preenche se vazio" do
+            // enriquecerEmpresaExistente(). Caso concreto que motivou a regra:
+            // a Metalform ganhou uma nota em 03/08 DEPOIS de a empresa ja
+            // existir — sob a regra antiga essa nota nunca apareceria no ECF.
             $company->update([
+                'hubspot_notas'      => $notes,
+                'hubspot_observacao' => $observacaoNotes,
                 'hubspot_snapshot' => [
                     'deal'               => $dprops,
                     'company'            => $hubCompany['properties'] ?? null,
                     'contacts'           => $contatos,
                     'primary_contact_id' => $contatoPrincipal['id'] ?? null,
                     'line_items'         => $lineItems,
+                    'notes'              => $notes,
                     'warnings'           => $warnings,
                     'captured_at'        => now()->toIso8601String(),
                 ],
@@ -678,6 +740,11 @@ class HubspotWebhookController extends Controller
      * NUNCA sobrescrito (T-113-03-02). Nao remarca `empresa_nova` (a empresa
      * ja existia) nem mexe em `notes` (linha legada so e anexada no fluxo de
      * CRIACAO de empresa nova).
+     *
+     * Quick task 260805-eqk — `hubspot_observacao` SAIU daqui de proposito:
+     * junto com `hubspot_notas` ela e espelho do HubSpot e e sempre reescrita
+     * no update final de criarEmpresa(). Se ficasse nesta regra, nota criada
+     * depois que a empresa ja existe nunca apareceria no ECF.
      */
     private function enriquecerEmpresaExistente(
         Company $company,
@@ -688,13 +755,13 @@ class HubspotWebhookController extends Controller
         ?string $foneFinal,
         string $nomeContato,
         string $cargoContatoRaw,
-        string $observacaoRaw,
         string $domainRaw,
         ?float $faturamento,
         ?bool $vendeMl,
         ?string $companyId,
         ?string $contactId,
         ?string $dealIdStr,
+        ?string $origemLead = null,
     ): Company {
         $candidatos = [
             'cnpj'               => $cnpjRaw,
@@ -710,7 +777,9 @@ class HubspotWebhookController extends Controller
             'hubspot_company_id' => $companyId,
             'hubspot_contact_id' => $contactId,
             'hubspot_domain'     => $domainRaw !== '' ? $domainRaw : null,
-            'hubspot_observacao' => $observacaoRaw !== '' ? $observacaoRaw : null,
+            // Quick task 260805-eqk — origem do lead pode ser corrigida a mao
+            // pelo Comercial; entra na regra "so preenche se vazio".
+            'origem_lead'        => $origemLead,
         ];
 
         $updates = [];

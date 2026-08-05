@@ -300,6 +300,181 @@ class HubspotApiClient
     }
 
     /**
+     * Quick task 260805-eqk — busca as Notes (engagements) associadas a um
+     * objeto HubSpot (na pratica, ao DEAL).
+     *
+     * Contexto validado contra a conta real da ECF: a property `observacao` NAO
+     * existe em deal/company/contact. As observacoes que o Comercial escreve sao
+     * Notes associadas ao DEAL (as associadas ao CONTATO vieram sempre vazias).
+     *
+     * Encadeia 2 chamadas, no mesmo padrao de fetchDealLineItems:
+     *   1. GET /crm/v3/objects/{objectType}/{objectId}/associations/notes
+     *   2. GET /crm/v3/objects/notes/{noteId}?properties=...  (uma por nota)
+     *
+     * Resiliente: falha na associacao retorna [] (warning); falha no detalhe
+     * individual pula SO aquela nota e segue com as demais. Nunca lanca excecao
+     * — o webhook nao pode quebrar por causa de observacao.
+     *
+     * `hs_note_body` vem em HTML. A sanitizacao converte quebras estruturais
+     * (<br>, </p>, </div>) em "\n" ANTES do strip_tags, senao palavras de
+     * paragrafos distintos colam ("primeirasegunda").
+     *
+     * IMPORTANTE (T-EQK-01): os warnings carregam apenas IDs + status HTTP —
+     * NUNCA o token nem a string "Bearer".
+     *
+     * @param  string $objectType tipo do objeto de origem (ex: 'deals')
+     * @param  string $objectId   id do objeto de origem no HubSpot
+     * @return array<int, array{id: string, body: string, timestamp: ?string}>
+     *         ordenado por timestamp ASCENDENTE (mais antigo primeiro); notas
+     *         sem timestamp vao para o fim preservando a ordem de chegada.
+     */
+    public function fetchNotes(string $objectType, string $objectId): array
+    {
+        // ─── Chamada 1: associations ───
+        $assocRes = Http::withToken($this->token)
+            ->get(self::BASE . "/crm/v3/objects/{$objectType}/{$objectId}/associations/notes");
+
+        if (!$assocRes->ok()) {
+            Log::channel('ecf-webhooks')->warning(
+                '[HubSpot] fetchNotes: associations falhou',
+                [
+                    'object_type' => $objectType,
+                    'object_id'   => $objectId,
+                    'status'      => $assocRes->status(),
+                ]
+            );
+            return [];
+        }
+
+        $results = $assocRes->json('results') ?? [];
+        $ids     = [];
+        foreach ($results as $r) {
+            // v3 /associations devolve {id, type} — a chave é `id`, NAO
+            // `toObjectId` (shape da v4). Fallback por robustez.
+            $id = $r['id'] ?? $r['toObjectId'] ?? null;
+            if ($id !== null && $id !== '') {
+                $ids[] = (string) $id;
+            }
+        }
+
+        if (empty($ids)) {
+            return [];
+        }
+
+        // ─── Chamada 2..N: detalhe de cada nota ───
+        $propsNote = config('services.hubspot.props.note') ?? [];
+        $propBody  = $propsNote['body'] ?? 'hs_note_body';
+        $propTs    = $propsNote['timestamp'] ?? 'hs_timestamp';
+
+        $properties = implode(',', array_unique(array_merge(
+            array_values($propsNote),
+            ['hs_createdate'],
+        )));
+
+        $out = [];
+        foreach ($ids as $noteId) {
+            $res = Http::withToken($this->token)
+                ->get(self::BASE . "/crm/v3/objects/notes/{$noteId}", [
+                    'properties' => $properties,
+                ]);
+
+            if (!$res->ok()) {
+                // Falha individual: warning + pula. Nunca aborta o lote.
+                Log::channel('ecf-webhooks')->warning(
+                    '[HubSpot] fetchNotes: falha ao buscar nota',
+                    [
+                        'object_id' => $objectId,
+                        'note_id'   => $noteId,
+                        'status'    => $res->status(),
+                    ]
+                );
+                continue;
+            }
+
+            $props = $res->json('properties') ?? [];
+            $body  = $this->sanitizarCorpoNota((string) ($props[$propBody] ?? ''));
+
+            // Nota sem texto util (body vazio ou so markup) nao entra.
+            if ($body === '') {
+                continue;
+            }
+
+            $ts = $props[$propTs] ?? null;
+            if ($ts === null || $ts === '') {
+                $ts = $props['hs_createdate'] ?? null;
+            }
+
+            $out[] = [
+                'id'        => (string) $noteId,
+                'body'      => $body,
+                'timestamp' => ($ts !== null && $ts !== '') ? (string) $ts : null,
+            ];
+        }
+
+        // ─── Ordenacao ASCENDENTE por timestamp (mais antigo primeiro) ───
+        // usort nao e estavel em toda versao do PHP; o indice de chegada como
+        // desempate garante que notas sem timestamp fiquem no fim na ordem
+        // original.
+        $indexado = [];
+        foreach ($out as $i => $nota) {
+            $indexado[] = ['ordem' => $i, 'nota' => $nota];
+        }
+
+        usort($indexado, static function (array $a, array $b): int {
+            $tsA = $a['nota']['timestamp'];
+            $tsB = $b['nota']['timestamp'];
+
+            // Sem timestamp vai para o fim.
+            if ($tsA === null && $tsB === null) {
+                return $a['ordem'] <=> $b['ordem'];
+            }
+            if ($tsA === null) {
+                return 1;
+            }
+            if ($tsB === null) {
+                return -1;
+            }
+
+            $cmp = strcmp($tsA, $tsB);
+            return $cmp !== 0 ? $cmp : ($a['ordem'] <=> $b['ordem']);
+        });
+
+        return array_map(static fn (array $i) => $i['nota'], $indexado);
+    }
+
+    /**
+     * Quick task 260805-eqk — converte o HTML de `hs_note_body` em texto puro.
+     *
+     * Quebras estruturais viram "\n" ANTES do strip_tags para nao colar palavras
+     * de paragrafos distintos. Depois decodifica entidades, remove o markup
+     * restante e normaliza o excesso de linhas em branco.
+     */
+    private function sanitizarCorpoNota(string $html): string
+    {
+        if (trim($html) === '') {
+            return '';
+        }
+
+        // Decodifica entidades ANTES do strip_tags para que markup escapado
+        // (&lt;script&gt;) tambem seja removido, e nao volte a virar tag depois
+        // (T-EQK-02 — o valor persistido tem que ser texto puro).
+        $texto = html_entity_decode($html, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // <br>, <br/>, <br />, </p> e </div> viram quebra de linha ANTES do
+        // strip_tags, senao palavras de paragrafos distintos colam.
+        $texto = preg_replace('#<\s*br\s*/?\s*>#i', "\n", $texto) ?? $texto;
+        $texto = preg_replace('#</\s*(p|div)\s*>#i', "\n", $texto) ?? $texto;
+
+        $texto = strip_tags($texto);
+
+        // Normaliza CRLF e colapsa 3+ quebras seguidas em 2.
+        $texto = str_replace("\r\n", "\n", $texto);
+        $texto = preg_replace("/\n{3,}/", "\n\n", $texto) ?? $texto;
+
+        return trim($texto);
+    }
+
+    /**
      * Phase 111 Plan 111-02 (HUB-API-03) — GET generico de associacoes v3.
      *
      * GET /crm/v3/objects/{fromObject}/{fromId}/associations/{toObject}

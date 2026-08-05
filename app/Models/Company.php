@@ -46,6 +46,9 @@ class Company extends Model
         'hubspot_deal_id', 'hubspot_company_id', 'hubspot_contact_id',
         'nome_contato', 'cargo_contato', 'hubspot_domain',
         'hubspot_observacao', 'hubspot_snapshot',
+        // Quick task 260805-eqk — Notes do deal (espelho do HubSpot) + origem
+        // do lead vinda do contato principal.
+        'hubspot_notas', 'origem_lead',
     ];
 
     protected $casts = [
@@ -66,6 +69,8 @@ class Company extends Model
         'digisac_group_verified_at' => 'datetime',
         // Phase 111 — snapshot bruto das propriedades HubSpot (HUB-SCHEMA-01).
         'hubspot_snapshot' => 'array',
+        // Quick task 260805-eqk — lista de Notes do deal [{id, body, timestamp}].
+        'hubspot_notas'    => 'array',
     ];
 
     /**

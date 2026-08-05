@@ -161,11 +161,24 @@ return [
                 'state'         => env('HUBSPOT_PROP_COMPANY_STATE', 'state'),
                 'country'       => env('HUBSPOT_PROP_COMPANY_COUNTRY', 'country'),
             ],
+            // Quick task 260805-eqk — Notes (engagements) associadas ao DEAL.
+            // A property `observacao` do deal NAO existe na conta da ECF; as
+            // observacoes reais sao Notes. `hs_note_body` vem em HTML e e
+            // sanitizado no HubspotApiClient::fetchNotes.
+            'note' => [
+                'body'      => env('HUBSPOT_PROP_NOTE_BODY', 'hs_note_body'),
+                'timestamp' => env('HUBSPOT_PROP_NOTE_TIMESTAMP', 'hs_timestamp'),
+            ],
             // Phase 35 Plan 35-02 — contato vinculado ao deal (D-04).
             // Usado pra preencher email_cliente/telefone da Company quando
             // a HubSpot Company nao tem esses campos (fallback). firstname +
             // lastname concatenados viram linha "Contato (HubSpot): ..." em
             // notes da Company.
+            //
+            // Quick task 260805-eqk — `origem_do_lead` (e as irmas
+            // `campanha_origem` / `criativo_origem`) vivem no CONTATO, nao no
+            // deal nem na company. Validado contra a conta real da ECF em
+            // 2026-08-05 (contato 235433492313 => "Parceiro de Polos").
             'contact' => [
                 'firstname'         => env('HUBSPOT_PROP_CONTACT_FIRSTNAME', 'firstname'),
                 'lastname'          => env('HUBSPOT_PROP_CONTACT_LASTNAME', 'lastname'),
@@ -174,6 +187,9 @@ return [
                 'mobilephone'       => env('HUBSPOT_PROP_CONTACT_MOBILEPHONE', 'mobilephone'),
                 'jobtitle'          => env('HUBSPOT_PROP_CONTACT_JOBTITLE', 'jobtitle'),
                 'additional_emails' => env('HUBSPOT_PROP_CONTACT_ADDITIONAL_EMAILS', 'hs_additional_emails'),
+                'origem_do_lead'    => env('HUBSPOT_PROP_CONTACT_ORIGEM_LEAD', 'origem_do_lead'),
+                'campanha_origem'   => env('HUBSPOT_PROP_CONTACT_CAMPANHA_ORIGEM', 'campanha_origem'),
+                'criativo_origem'   => env('HUBSPOT_PROP_CONTACT_CRIATIVO_ORIGEM', 'criativo_origem'),
             ],
         ],
     ],
