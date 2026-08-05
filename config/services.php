@@ -172,8 +172,9 @@ return [
             // Phase 35 Plan 35-02 — contato vinculado ao deal (D-04).
             // Usado pra preencher email_cliente/telefone da Company quando
             // a HubSpot Company nao tem esses campos (fallback). firstname +
-            // lastname concatenados viram linha "Contato (HubSpot): ..." em
-            // notes da Company.
+            // lastname concatenados alimentam a coluna estruturada
+            // `companies.nome_contato` (Fase 113). Quick task 260805-ohs: a
+            // linha "Contato (HubSpot): ..." em `companies.notes` foi removida.
             //
             // Quick task 260805-eqk — `origem_do_lead` (e as irmas
             // `campanha_origem` / `criativo_origem`) vivem no CONTATO, nao no

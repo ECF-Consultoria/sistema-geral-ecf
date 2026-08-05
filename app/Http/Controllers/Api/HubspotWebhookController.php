@@ -48,7 +48,8 @@ use Illuminate\Support\Facades\Notification;
  *  - fetchDeal + fetchAssociatedCompanyId + fetchCompany via HubspotApiClient.
  *  - Cria Company em DB::transaction com empresa_nova=true, status='pendente'.
  *    Se nome do servico bate com Servico::where('nome', X)->first() ativo →
- *    cria ContratoServico. Caso contrario grava o nome em notes.
+ *    cria ContratoServico. Caso contrario grava o nome como pendencia no
+ *    payload do evento (quick task 260805-ohs; antes ia pra notes da Company).
  *  - Erro inesperado: status='erro' + erro_msg, retorna 200 (HubSpot nao retenta).
  *
  * Seguranca:
@@ -575,8 +576,9 @@ class HubspotWebhookController extends Controller
                 // ── Match FORTE (hubspot_company_id ou cnpj) — NAO duplica. ─────
                 // Enriquece SOMENTE colunas vazias da empresa ja existente; dado
                 // manual do Comercial e soberano (T-113-03-02). Nao remarca
-                // empresa_nova (a empresa ja existia) nem mexe em notes (a linha
-                // legada so e anexada no fluxo de CRIACAO abaixo).
+                // empresa_nova (a empresa ja existia) nem mexe em notes (quick
+                // task 260805-ohs: o webhook nao escreve mais em notes em
+                // caminho nenhum).
                 $company = $this->enriquecerEmpresaExistente(
                     company: $resultadoMatch['company'],
                     cnpjRaw: $cnpjRaw,
@@ -615,19 +617,13 @@ class HubspotWebhookController extends Controller
                     'origem_lead'        => $origemLead,
                 ]);
 
-                // ── Phase 35 D-04 — anexa nome do contato em notes ────────────
-                // Concatena firstname + lastname (trim). Fonte LEGADA preservada —
-                // coexiste com a coluna estruturada `nome_contato` (Fase 113).
-                // Linha "Contato (HubSpot): {nome}".
-                if ($nomeContato !== '') {
-                    $notesAtuais = (string) ($company->notes ?? '');
-                    $linhaContato = "Contato (HubSpot): {$nomeContato}";
-                    // Quick task 260805-eqk — variavel renomeada para nao
-                    // SOBRESCREVER o parametro $notes (lista de Notes do
-                    // HubSpot) usado mais abaixo no update final.
-                    $notesLegado = trim($notesAtuais === '' ? $linhaContato : $notesAtuais . "\n" . $linhaContato);
-                    $company->update(['notes' => $notesLegado]);
-                }
+                // Quick task 260805-ohs — REMOVIDA a linha legada
+                // "Contato (HubSpot): {nome}" que era anexada em `notes`
+                // (Phase 35 D-04). `companies.notes` e campo de texto livre do
+                // time (Comercial/NovaEmpresa + Companies/Index) e o webhook
+                // nao escreve nele em caminho nenhum. O nome do contato ja vive
+                // na coluna estruturada `nome_contato` (Fase 113) e aparece no
+                // modal "Detalhes HubSpot".
             }
 
             // ── Fase 112 Plan 112-03 (HUB-VAL-05) — controller fino delega a ────
@@ -725,8 +721,8 @@ class HubspotWebhookController extends Controller
      * (null/'') de uma Company ja existente (match FORTE por hubspot_company_id
      * ou cnpj). Dado ja preenchido manualmente pelo Comercial e soberano —
      * NUNCA sobrescrito (T-113-03-02). Nao remarca `empresa_nova` (a empresa
-     * ja existia) nem mexe em `notes` (linha legada so e anexada no fluxo de
-     * CRIACAO de empresa nova).
+     * ja existia) nem mexe em `notes` (quick task 260805-ohs: `notes` e campo
+     * humano; o webhook nao escreve nele em caminho nenhum).
      *
      * Quick task 260805-eqk — `hubspot_observacao` SAIU daqui de proposito:
      * junto com `hubspot_notas` ela e espelho do HubSpot e e sempre reescrita
@@ -784,9 +780,10 @@ class HubspotWebhookController extends Controller
      * Fase 112 Plan 112-03 (HUB-VAL-05 + HUB-VAL-03 + HUB-VAL-02) — persiste os
      * `contracts_to_create` do `HubspotHandoffData` como `ContratoServico`, gravando
      * o valor operacional + as 11 colunas de auditoria HubSpot (Fase 111), e trata
-     * os `warnings` do handoff (line item sem mapping → payload do evento; servico
-     * legado sem match no catalogo → notes da Company) — MESMO comportamento
-     * observavel das antigas `processarLineItems()`/`processarServicoLegado()`.
+     * os `warnings` do handoff (quick task 260805-ohs: line item sem mapping E
+     * servico legado sem match no catalogo vao AMBOS para o payload do evento,
+     * em `line_items_nao_mapeados`; o segundo caso gravava em `notes` da Company
+     * e nunca se auto-limpava).
      *
      * A linha legada `observacoes = "tipo_cobranca: {mensal|unica} (HubSpot
      * line_item: {nome})"` (Phase 37) e preservada quando o contrato vem de um
@@ -878,22 +875,18 @@ class HubspotWebhookController extends Controller
         }
 
         // ── Warnings do handoff: 2 shapes distintos (Plan 112-02) ───────────────
-        // {name, motivo:'servico_nao_encontrado'} → fluxo legado, grava em notes;
-        // {name, price, recurringbillingfrequency} → line item sem mapping, grava
-        // no payload do evento (paridade com processarLineItems Phase 37).
-        $naoMapeados = [];
-        foreach ($handoff->warnings as $w) {
-            if (($w['motivo'] ?? null) === 'servico_nao_encontrado') {
-                $servicoNome = $w['name'];
-                $notesAtuais = $company->notes ?? '';
-                $linhaNova   = "Serviço (HubSpot): {$servicoNome}";
-                $notes       = trim($notesAtuais === '' ? $linhaNova : $notesAtuais . "\n" . $linhaNova);
-                $company->update(['notes' => $notes]);
-                continue;
-            }
-
-            $naoMapeados[] = $w;
-        }
+        // {name, motivo:'servico_nao_encontrado'} → fluxo legado;
+        // {name, price, recurringbillingfrequency} → line item sem mapping.
+        //
+        // Quick task 260805-ohs — os DOIS shapes agora caem no MESMO lugar: o
+        // payload do evento (`line_items_nao_mapeados`). O shape legado gravava
+        // "Serviço (HubSpot): {nome}" em `companies.notes`, o que era pior que
+        // a linha do contato: `notes` so ACUMULA e nunca limpa, entao bastava
+        // mapear o servico e reprocessar o evento para a pendencia JA RESOLVIDA
+        // ficar la para sempre. O bloco do payload logo abaixo tem auto-limpeza
+        // (o `elseif` remove a chave quando a pendencia some). Ambos os shapes
+        // tem a chave `name`, entao o array_column do log segue valido.
+        $naoMapeados = array_values($handoff->warnings);
 
         // Fase 115 Plano 02 (Rule 1 — bug corrigido durante auditoria SC4): o
         // payload precisa refletir o estado ATUAL, não só acumular. Sem este
