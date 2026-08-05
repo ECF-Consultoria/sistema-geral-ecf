@@ -125,11 +125,11 @@ return [
             // as antigas permanecem intactas para o consumidor legado do
             // webhook, que acessa por chave nomeada). Regra: propriedade
             // ausente na conta HubSpot = null no payload, nunca quebra o fluxo.
+            // Quick task 260805-eqk — nicho/dor/vende_ml/faturamento_mensal
+            // saíram: essas properties NÃO existem na conta HubSpot da ECF (o
+            // webhook pedia e o HubSpot ignorava) e as colunas correspondentes
+            // em `companies` foram removidas.
             'deal' => [
-                'nicho'              => env('HUBSPOT_PROP_DEAL_NICHO', 'nicho'),
-                'dor'                => env('HUBSPOT_PROP_DEAL_DOR', 'dor'),
-                'vende_ml'           => env('HUBSPOT_PROP_DEAL_VENDE_ML', 'vende_ml'),
-                'faturamento_mensal' => env('HUBSPOT_PROP_DEAL_FATURAMENTO', 'faturamento_mensal'),
                 'servico'            => env('HUBSPOT_PROP_DEAL_SERVICO', 'servico_ecf'),
                 'observacao'         => env('HUBSPOT_PROP_DEAL_OBSERVACAO', 'observacao'),
                 'description'        => env('HUBSPOT_PROP_DEAL_DESCRIPTION', 'description'),

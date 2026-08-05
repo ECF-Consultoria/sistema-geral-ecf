@@ -33,9 +33,10 @@ class Company extends Model
         'parent_company_id', 'company_group_id', 'ml_link_generated_at', 'ml_link_url',
         // Link pendente de autorização Shopee (espelha ml_link_*).
         'shopee_link_generated_at', 'shopee_link_url',
-        // Phase 34 Plan 34-01 — info do close comercial.
-        'nicho', 'dor', 'vende_ml', 'faturamento_mensal',
-        'marketplaces_extras', 'email_colaborador',
+        // Phase 34 Plan 34-01 — info do close comercial. Quick task 260805-eqk
+        // removeu nicho/dor/vende_ml/faturamento_mensal/marketplaces_extras
+        // (properties inexistentes no HubSpot); email_colaborador permanece.
+        'email_colaborador',
         // Phase 34 Plan 34-01 — tag "Empresa nova" (D-06).
         'empresa_nova', 'empresa_nova_visto_em', 'empresa_nova_visto_por',
         // v15.5 — Mapeamento Digisac (grupo WhatsApp por empresa).
@@ -58,11 +59,8 @@ class Company extends Model
         'ml_link_generated_at' => 'datetime',
         'shopee_link_generated_at' => 'datetime',
         // Phase 34 Plan 34-01 — D-01 + D-09.
-        'vende_ml'              => 'boolean',
         'empresa_nova'          => 'boolean',
-        'marketplaces_extras'   => 'array',
         'empresa_nova_visto_em' => 'datetime',
-        'faturamento_mensal'    => 'decimal:2',
         'empresa_nova_visto_por'=> 'integer',
         // v15.5 — Timestamps do mapeamento Digisac.
         'digisac_group_mapped_at'   => 'datetime',
@@ -474,8 +472,10 @@ class Company extends Model
      * são legacy e NÃO geram pendência comercial na listagem Comercial.
      *
      * Usado por ComercialController::listagem para classificar a origem da
-     * empresa (HubSpot vs Legacy) e gatear o cálculo das 5 pendências comerciais
-     * (sem_servico, sem_valor, servico_nao_reconhecido, sem_setor, dados_close_incompletos).
+     * empresa (HubSpot vs Legacy) e gatear o cálculo das 4 pendências comerciais
+     * (sem_servico, sem_valor, servico_nao_reconhecido, sem_setor).
+     * Quick task 260805-eqk removeu `dados_close_incompletos` — as colunas que
+     * a alimentavam (nicho/dor/faturamento_mensal) não existem mais.
      */
     public function hubspotEventoOrigem()
     {

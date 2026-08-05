@@ -147,12 +147,10 @@ class CompanyController extends Controller
                 // Phase 31 D-04 + Quick 260611-eml — contato do cliente (preenche o openEdit do modal admin)
                 'email_cliente'    => $c->email_cliente,
                 'telefone'         => $c->telefone,
-                // Phase 34 Plan 34-01 — info do close comercial (alimentam Companies/Show + modal admin Plan 34-03).
-                'nicho'               => $c->nicho,
-                'dor'                 => $c->dor,
-                'vende_ml'            => $c->vende_ml,
-                'faturamento_mensal'  => $c->faturamento_mensal !== null ? (float) $c->faturamento_mensal : null,
-                'marketplaces_extras' => $c->marketplaces_extras ?? [],
+                // Phase 34 Plan 34-01 — info do close comercial (alimenta o modal
+                // admin Plan 34-03). Quick task 260805-eqk removeu nicho/dor/
+                // vende_ml/faturamento_mensal/marketplaces_extras; o
+                // email_colaborador permanece editável aqui.
                 'email_colaborador'   => $c->email_colaborador,
                 // Phase 34 Plan 34-01 — tag "Empresa nova" (D-06). Bool puro alimenta o badge na linha.
                 'empresa_nova'        => (bool) $c->empresa_nova,
@@ -503,12 +501,9 @@ class CompanyController extends Controller
                 'telefone'         => $company->telefone,
                 // Campos SPIN do deal HubSpot (do snapshot) — seção SPIN na página da empresa.
                 'spin'             => $company->hubspot_spin,
-                // Phase 34 Plan 34-03 — info do close comercial (alimenta secao "Informacoes do Close" no Show.jsx).
-                'nicho'               => $company->nicho,
-                'dor'                 => $company->dor,
-                'vende_ml'            => $company->vende_ml,
-                'faturamento_mensal'  => $company->faturamento_mensal !== null ? (float) $company->faturamento_mensal : null,
-                'marketplaces_extras' => $company->marketplaces_extras ?? [],
+                // Phase 34 Plan 34-03 — info do close comercial. Quick task
+                // 260805-eqk removeu nicho/dor/vende_ml/faturamento_mensal/
+                // marketplaces_extras da seção "Informações comerciais".
                 'email_colaborador'   => $company->email_colaborador,
                 'adman_account_id' => $company->adman_account_id,
                 'adman_store_id'   => $company->adman_store_id,
@@ -671,14 +666,9 @@ class CompanyController extends Controller
             'email_cliente'    => 'nullable|email|max:255',
             // Quick 260611-eml — contato comercial.
             'telefone'         => 'nullable|string|max:20',
-            // Phase 34 Plan 34-03 — info do close comercial (capturado no cadastro
-            // pelo Comercial; pode ser editada no modal admin de /companies).
-            'nicho'                  => 'nullable|string|max:255',
-            'dor'                    => 'nullable|string|max:5000',
-            'vende_ml'               => 'nullable|boolean',
-            'faturamento_mensal'     => 'nullable|numeric|min:0|max:99999999.99',
-            'marketplaces_extras'    => 'nullable|array',
-            'marketplaces_extras.*'  => [Rule::in(['shopee', 'amazon', 'magalu', 'temu', 'tiktok'])],
+            // Phase 34 Plan 34-03 — info do close comercial. Quick task
+            // 260805-eqk removeu nicho/dor/vende_ml/faturamento_mensal/
+            // marketplaces_extras (colunas inexistentes).
             // Phase 34 D-07 — email criado pela ECF para acesso colaborador no ML
             // (separado de email_cliente, que é o email do proprietário usado pelo NPS).
             'email_colaborador'      => 'nullable|email|max:255',

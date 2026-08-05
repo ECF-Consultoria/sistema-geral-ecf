@@ -103,7 +103,7 @@ class ComercialController extends Controller
      * Migrada de `/administrativo/empresas` (Admin/Empresas.jsx modal — D-06)
      * — quem sabe o que o cliente fechou é o time Comercial. A página recebe
      * a `Company` via route model binding e expõe:
-     *   - dados contextuais da empresa (nome, cust_id, nicho, segment, contato)
+     *   - dados contextuais da empresa (nome, cust_id, segment, contato)
      *   - histórico de contratos (ativos + inativos) para conferência
      *   - catálogo `servicos_disponiveis` (Servico::ativo=true) para o form
      *
@@ -148,7 +148,6 @@ class ComercialController extends Controller
                 'name'          => $company->name,
                 'cnpj'          => $company->cnpj,
                 'cust_id'       => $company->cust_id ?? null,
-                'nicho'         => $company->nicho,
                 'segment'       => $company->segment ?? null,
                 'email_cliente' => $company->email_cliente,
                 'telefone'      => $company->telefone,
@@ -164,9 +163,10 @@ class ComercialController extends Controller
      * Endpoint GET /comercial/empresas/listagem renderiza
      * `Comercial/EmpresasListagem` com TODAS as empresas (todos os setores),
      * filtros snake_case empilhaveis (servico, setor, ordem, pendencia, q),
-     * 5 cards de pendencia comercial (sem_servico, sem_valor,
-     * servico_nao_reconhecido, sem_setor, dados_close_incompletos) calculadas
-     * APENAS para empresas com origem HubSpot (REQ-37-10), e
+     * 4 cards de pendencia comercial (sem_servico, sem_valor,
+     * servico_nao_reconhecido, sem_setor) calculadas APENAS para empresas com
+     * origem HubSpot (REQ-37-10) — a quick task 260805-eqk removeu
+     * `dados_close_incompletos` junto com as colunas que a alimentavam —, e
      * `grupos`/`servicos_disponiveis` para a aba de gestao de grupos
      * (reaproveita GruposManager + rotas company-groups.* existentes).
      *
@@ -192,7 +192,7 @@ class ComercialController extends Controller
                 ? $request->input('ordem')
                 : 'recentes',
             'pendencia' => in_array($request->input('pendencia'), [
-                'sem_servico', 'sem_valor', 'servico_nao_reconhecido', 'sem_setor', 'dados_close_incompletos',
+                'sem_servico', 'sem_valor', 'servico_nao_reconhecido', 'sem_setor',
                 // Phase 114 (HUB-UI-02) — 3 pendencias novas, so origem HubSpot.
                 'sem_contato', 'valor_revisar', 'possivel_duplicidade',
             ], true) ? $request->input('pendencia') : null,
@@ -248,7 +248,6 @@ class ComercialController extends Controller
             'sem_valor'               => 0,
             'servico_nao_reconhecido' => 0,
             'sem_setor'               => 0,
-            'dados_close_incompletos' => 0,
             // Phase 114 (HUB-UI-02) — 3 pendencias novas, aditivas.
             'sem_contato'             => 0,
             'valor_revisar'           => 0,
@@ -290,13 +289,6 @@ class ComercialController extends Controller
             // Cada chave eh o slug da pendencia; valor eh a lista de itens faltantes.
             // Frontend mostra como title="..." no badge correspondente.
             $detalhes = [];
-            if (in_array('dados_close_incompletos', $c->pendencias_comerciais, true)) {
-                $faltam = [];
-                if ($c->nicho === null)              $faltam[] = 'Nicho';
-                if ($c->dor === null)                $faltam[] = 'Dor';
-                if ($c->faturamento_mensal === null) $faltam[] = 'Faturamento mensal';
-                $detalhes['dados_close_incompletos'] = $faltam;
-            }
             if (in_array('servico_nao_reconhecido', $c->pendencias_comerciais, true)) {
                 $nomesPendentes = [];
                 foreach ($c->hubspotEventos as $ev) {
@@ -357,9 +349,6 @@ class ComercialController extends Controller
                 'pendencias_comerciais' => $c->pendencias_comerciais,
                 'pendencias_detalhes'   => $detalhes,
                 'setor_dominante'       => $setorDominante,
-                'nicho'                 => $c->nicho,
-                'dor'                   => $c->dor,
-                'faturamento_mensal'    => $c->faturamento_mensal !== null ? (float) $c->faturamento_mensal : null,
                 'email_cliente'         => $c->email_cliente,
                 'telefone'              => $c->telefone,
                 // Phase 114 (HUB-UI-01) — contato principal + observacao +
@@ -543,10 +532,9 @@ class ComercialController extends Controller
             }
         }
 
-        // dados_close_incompletos: nicho|dor|faturamento_mensal NULL
-        if ($c->nicho === null || $c->dor === null || $c->faturamento_mensal === null) {
-            $pendencias[] = 'dados_close_incompletos';
-        }
+        // Quick task 260805-eqk — a pendencia `dados_close_incompletos` foi
+        // removida: nicho/dor/faturamento_mensal nunca chegavam do HubSpot
+        // (properties inexistentes) e as colunas deixaram de existir.
 
         // ── Phase 114 (HUB-UI-02) — 3 pendencias novas, aditivas, SO para
         // origem HubSpot (guarda no topo do metodo ja cobre o isolamento).
@@ -618,15 +606,10 @@ class ComercialController extends Controller
             'gmail_colaborador'           => 'nullable|email|max:150',
             'polo'                        => 'nullable|string|max:255',
             'grupo_whatsapp'              => 'nullable|boolean',
-            // Phase 34 Plan 02 — campos do "close" comercial (todos opcionais).
-            // Schema das colunas garantido pela migration do Plan 34-01.
+            // Phase 34 Plan 02 — campo do "close" comercial (opcional).
             // Backend NÃO valida formato CNPJ/Telefone — máscara só no front (D-08).
-            'nicho'                       => 'nullable|string|max:255',
-            'dor'                         => 'nullable|string|max:5000',
-            'vende_ml'                    => 'nullable|boolean',
-            'faturamento_mensal'          => 'nullable|numeric|min:0|max:99999999.99',
-            'marketplaces_extras'         => 'nullable|array',
-            'marketplaces_extras.*'       => [Rule::in(['shopee', 'amazon', 'magalu', 'temu', 'tiktok'])],
+            // Quick task 260805-eqk removeu nicho/dor/vende_ml/
+            // faturamento_mensal/marketplaces_extras (colunas inexistentes).
             'email_colaborador'           => 'nullable|email|max:255',
             'servicos'                    => 'required|array|min:1',
             'servicos.*.servico_id'       => [
@@ -660,16 +643,9 @@ class ComercialController extends Controller
                 // Quick 260611-eml — contato comercial + destinatário NPS mensal.
                 'email_cliente'       => $validated['email_cliente'] ?? null,
                 'telefone'            => $validated['telefone'] ?? null,
-                // Phase 34 Plan 02 — campos do "close" comercial (todos opcionais).
-                // Capturados pelo Comercial no fechamento; ajudam o estrategista/analista
-                // a entender o cliente sem precisar reentrevistar. Cast 'array' do model
-                // serializa marketplaces_extras como JSON; vende_ml é tinyint nullable
-                // (null = "não sei"). Schema garantido pelo Plan 34-01.
-                'nicho'               => $validated['nicho'] ?? null,
-                'dor'                 => $validated['dor'] ?? null,
-                'vende_ml'            => $validated['vende_ml'] ?? null,
-                'faturamento_mensal'  => $validated['faturamento_mensal'] ?? null,
-                'marketplaces_extras' => $validated['marketplaces_extras'] ?? null,
+                // Phase 34 Plan 02 — e-mail do colaborador do onboarding (opcional).
+                // Único campo do "close" que sobreviveu à quick task 260805-eqk;
+                // os demais nunca chegavam do HubSpot e foram removidos.
                 'email_colaborador'   => $validated['email_colaborador'] ?? null,
                 'status'              => 'pendente',
                 'active'              => true,
@@ -798,13 +774,9 @@ class ComercialController extends Controller
             'email_cliente' => 'nullable|email|max:255',
             // Quick 260611-eml — contato comercial.
             'telefone'      => 'nullable|string|max:20',
-            // Phase 34 Plan 34-03 — info do close comercial
-            'nicho'                  => 'nullable|string|max:255',
-            'dor'                    => 'nullable|string|max:5000',
-            'vende_ml'               => 'nullable|boolean',
-            'faturamento_mensal'     => 'nullable|numeric|min:0|max:99999999.99',
-            'marketplaces_extras'    => 'nullable|array',
-            'marketplaces_extras.*'  => [Rule::in(['shopee', 'amazon', 'magalu', 'temu', 'tiktok'])],
+            // Phase 34 Plan 34-03 — info do close comercial. Quick task
+            // 260805-eqk removeu nicho/dor/vende_ml/faturamento_mensal/
+            // marketplaces_extras (colunas inexistentes).
             // Phase 34 D-07 — email criado pela ECF para acesso colaborador no ML
             // (separado de email_cliente, que é o email do proprietário usado pelo NPS).
             'email_colaborador'      => 'nullable|email|max:255',

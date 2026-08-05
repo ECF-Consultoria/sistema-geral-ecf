@@ -510,14 +510,6 @@ class HubspotWebhookController extends Controller
         $cprops       = $hubCompany['properties'] ?? [];
 
         return DB::transaction(function () use ($deal, $dprops, $cprops, $propsDeal, $propsCompany, $lineItems, $evento, $contatoPrincipal, $contatos, $companyId, $hubCompany, $notes) {
-            $venderMlRaw = $dprops[$propsDeal['vende_ml']] ?? null;
-            $vendeMl     = $venderMlRaw === null || $venderMlRaw === ''
-                ? null
-                : filter_var($venderMlRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-
-            $faturamentoRaw = $dprops[$propsDeal['faturamento_mensal']] ?? null;
-            $faturamento    = is_numeric($faturamentoRaw) ? (float) $faturamentoRaw : null;
-
             // ── Phase 35 D-04 / Fase 113 — fallback contato p/ email/telefone ──
             // Prioridade: Company > Contato PRINCIPAL (Fase 113 plano 01 escolhe
             // entre TODOS os contatos do deal, nao so o primeiro). Strings vazias
@@ -587,16 +579,12 @@ class HubspotWebhookController extends Controller
                 // legada so e anexada no fluxo de CRIACAO abaixo).
                 $company = $this->enriquecerEmpresaExistente(
                     company: $resultadoMatch['company'],
-                    dprops: $dprops,
-                    propsDeal: $propsDeal,
                     cnpjRaw: $cnpjRaw,
                     emailFinal: $emailFinal,
                     foneFinal: $foneFinal,
                     nomeContato: $nomeContato,
                     cargoContatoRaw: $cargoContatoRaw,
                     domainRaw: $domainRaw,
-                    faturamento: $faturamento,
-                    vendeMl: $vendeMl,
                     companyId: $companyId,
                     contactId: $contatoPrincipal['id'] ?? null,
                     dealIdStr: $dealIdStr,
@@ -610,10 +598,6 @@ class HubspotWebhookController extends Controller
                     'cnpj'               => $cnpjRaw,
                     'email_cliente'      => ($emailFinal !== null && $emailFinal !== '') ? $emailFinal : null,
                     'telefone'           => ($foneFinal !== null && $foneFinal !== '') ? $foneFinal : null,
-                    'nicho'              => $dprops[$propsDeal['nicho']] ?? null,
-                    'dor'                => $dprops[$propsDeal['dor']] ?? null,
-                    'vende_ml'           => $vendeMl,
-                    'faturamento_mensal' => $faturamento,
                     'empresa_nova'       => true,
                     'status'             => 'pendente',
                     'active'             => true,
@@ -748,16 +732,12 @@ class HubspotWebhookController extends Controller
      */
     private function enriquecerEmpresaExistente(
         Company $company,
-        array $dprops,
-        array $propsDeal,
         ?string $cnpjRaw,
         ?string $emailFinal,
         ?string $foneFinal,
         string $nomeContato,
         string $cargoContatoRaw,
         string $domainRaw,
-        ?float $faturamento,
-        ?bool $vendeMl,
         ?string $companyId,
         ?string $contactId,
         ?string $dealIdStr,
@@ -769,10 +749,6 @@ class HubspotWebhookController extends Controller
             'telefone'           => ($foneFinal !== null && $foneFinal !== '') ? $foneFinal : null,
             'nome_contato'       => $nomeContato !== '' ? $nomeContato : null,
             'cargo_contato'      => $cargoContatoRaw !== '' ? $cargoContatoRaw : null,
-            'nicho'              => $dprops[$propsDeal['nicho']] ?? null,
-            'dor'                => $dprops[$propsDeal['dor']] ?? null,
-            'faturamento_mensal' => $faturamento,
-            'vende_ml'           => $vendeMl,
             'hubspot_deal_id'    => $dealIdStr,
             'hubspot_company_id' => $companyId,
             'hubspot_contact_id' => $contactId,
