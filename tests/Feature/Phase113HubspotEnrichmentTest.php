@@ -236,8 +236,11 @@ class Phase113HubspotEnrichmentTest extends TestCase
         $this->assertNull($company->hubspot_observacao);
         $this->assertSame([], $company->hubspot_notas);
 
-        // Linha legada em notes continua existindo (fonte legada preservada).
-        $this->assertStringContainsString('Contato (HubSpot): Ana Costa', (string) $company->notes);
+        // Quick task 260805-ohs — CONTRATO INVERTIDO. Antes este assert exigia
+        // a linha "Contato (HubSpot): Ana Costa" em `notes`. `notes` e campo de
+        // texto livre do time e o webhook nao escreve mais nele: o nome do
+        // contato vive so na coluna estruturada `nome_contato` (assertado acima).
+        $this->assertNull($company->notes, 'Webhook nao pode escrever em companies.notes');
     }
 
     public function test_snapshot_completo_contem_todos_os_contatos_e_metadados(): void

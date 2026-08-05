@@ -656,9 +656,14 @@ export default function CompanyShow({
                         <InfoRow label="E-mail do cliente" value={company.email_cliente} />
                         <InfoRow label="Telefone" value={company.telefone} />
                     </div>
+                    {/* Quick task 260805-ohs — rótulo era "Observações" e ficava
+                        colado em "Observações (HubSpot)" logo abaixo, dando a
+                        impressão de dois blocos iguais. Este aqui é o campo de
+                        texto livre digitado pelo time; o de baixo é espelho do
+                        HubSpot. O bloco continua se auto-escondendo quando vazio. */}
                     {company.notes && (
                         <div className="mt-4 pt-3 border-t border-white/[0.06]">
-                            <p className="text-white/40 text-[11px] uppercase tracking-wide mb-1">Observações</p>
+                            <p className="text-white/40 text-[11px] uppercase tracking-wide mb-1">Observação interna</p>
                             <p className="text-white/70 text-[13px] whitespace-pre-line leading-relaxed">{company.notes}</p>
                         </div>
                     )}

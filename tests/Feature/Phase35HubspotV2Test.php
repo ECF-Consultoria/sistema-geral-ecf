@@ -21,7 +21,12 @@ use Tests\TestCase;
  *  T4. Contato.email preenche email_cliente quando Company.email vazio (D-04)
  *  T5. Contato.phone preenche telefone quando Company.phone vazio (D-04)
  *  T6. Sem contato associado → fluxo completa sem erro (resiliencia)
- *  T7. Nome do contato (firstname + lastname) anexado em notes (D-04)
+ *  T7. Nome do contato (firstname + lastname) → coluna estruturada nome_contato
+ *
+ * Quick task 260805-ohs — os asserts sobre `notes` foram INVERTIDOS: o webhook
+ * nao escreve mais em `companies.notes` (campo de texto livre do time). A
+ * pendencia de servico nao mapeado agora vive no payload do evento, que se
+ * auto-limpa no replay.
  *
  * Usa Http::fake para mockar HubSpot API. HMAC v3 calculado da mesma forma
  * que Phase34HubspotWebhookTest (POST + URL + body + ts).
@@ -317,12 +322,19 @@ class Phase35HubspotV2Test extends TestCase
         $this->assertSame('company@cliente.com', $company->email_cliente);
         $this->assertSame('11999998888', $company->telefone);
 
-        // Sem contato → nada em notes (servico Inexistente vai pra notes
-        // como 'Serviço (HubSpot)...', mas sem linha 'Contato (HubSpot)').
-        $this->assertStringNotContainsString('Contato (HubSpot):', (string) $company->notes);
+        // Quick task 260805-ohs — `notes` fica NULL. Nem a linha do contato nem
+        // a do servico nao mapeado ('Servico Inexistente') sao gravadas ali.
+        $this->assertNull($company->notes, 'Webhook nao pode escrever em companies.notes');
     }
 
-    public function test_nome_contato_anexado_em_notes(): void
+    /**
+     * Quick task 260805-ohs — CONTRATO INVERTIDO. O antigo
+     * `test_nome_contato_anexado_em_notes` exigia a linha
+     * "Contato (HubSpot): Maria Souza" em `notes` (Phase 35 D-04). O campo e de
+     * texto livre do time e o webhook nao escreve mais nele; o nome do contato
+     * vive na coluna estruturada `nome_contato` (Fase 113).
+     */
+    public function test_nome_contato_vai_para_coluna_estruturada_e_nao_para_notes(): void
     {
         $this->mockaHubSpot(
             dealProps: ['servico_ecf' => 'Servico Inexistente'],
@@ -337,10 +349,98 @@ class Phase35HubspotV2Test extends TestCase
         $r->assertStatus(200);
 
         $company = Company::first();
-        $this->assertStringContainsString(
-            'Contato (HubSpot): Maria Souza',
-            (string) $company->notes,
-            'Notes deve conter linha do contato HubSpot'
+        $this->assertSame('Maria Souza', $company->nome_contato);
+        $this->assertNull($company->notes, 'Nome do contato nunca mais em notes');
+    }
+
+    /**
+     * Quick task 260805-ohs — texto digitado por humano em `notes` sobrevive a
+     * um evento do webhook. Este e o motivo de existir da mudanca: o campo e do
+     * time, nao do HubSpot.
+     */
+    public function test_notes_digitado_por_humano_sobrevive_ao_webhook(): void
+    {
+        // Empresa ja existente, com observacao manual e match FORTE por cnpj.
+        $company = Company::create([
+            'name'   => 'Cliente Teste',
+            'cnpj'   => '12345678000199',
+            'notes'  => '3 CNPJS ATIVOS',
+            'active' => true,
+        ]);
+
+        $this->mockaHubSpot(
+            dealProps: ['servico_ecf' => 'Servico Inexistente'],
+            companyProps: [],
+            contactProps: ['firstname' => 'Maria', 'lastname' => 'Souza'],
         );
+
+        $r = $this->disparaWebhook([$this->eventoPadrao()]);
+        $r->assertStatus(200);
+
+        $this->assertSame(
+            '3 CNPJS ATIVOS',
+            $company->refresh()->notes,
+            'Observacao manual do time nao pode ser tocada pelo webhook'
+        );
+    }
+
+    /**
+     * Quick task 260805-ohs — o warning `servico_nao_encontrado` passa a cair em
+     * hubspot_eventos.payload['line_items_nao_mapeados'], NAO em notes.
+     */
+    public function test_servico_nao_encontrado_vai_para_payload_do_evento(): void
+    {
+        $this->mockaHubSpot(dealProps: ['servico_ecf' => 'Servico Inexistente']);
+
+        $r = $this->disparaWebhook([$this->eventoPadrao()]);
+        $r->assertStatus(200);
+
+        $company = Company::first();
+        $this->assertNull($company->notes, 'Pendencia de servico nao pode ir para notes');
+
+        $evento = HubspotEvento::first();
+        $naoMapeados = $evento->payload['line_items_nao_mapeados'] ?? null;
+        $this->assertIsArray($naoMapeados, 'Pendencia deve estar no payload do evento');
+        $this->assertSame(
+            ['Servico Inexistente'],
+            array_column($naoMapeados, 'name'),
+            'Shape do warning legado precisa manter a chave `name` (usada no log)'
+        );
+    }
+
+    /**
+     * Quick task 260805-ohs — a auto-limpeza que a gravacao em `notes` nunca
+     * teve: cadastrado o Servico e reprocessado o evento, a pendencia SOME do
+     * payload. Era exatamente esse o defeito — em `notes` a linha ficaria la
+     * para sempre, porque `notes` so acumula.
+     */
+    public function test_replay_que_resolve_pendencia_limpa_a_chave_do_payload(): void
+    {
+        $this->mockaHubSpot(dealProps: ['servico_ecf' => 'Servico Inexistente']);
+
+        $this->disparaWebhook([$this->eventoPadrao()])->assertStatus(200);
+
+        $evento = HubspotEvento::first();
+        $this->assertArrayHasKey('line_items_nao_mapeados', $evento->payload);
+
+        // Servico cadastrado depois → replay materializa o contrato.
+        Servico::create([
+            'nome'          => 'Servico Inexistente',
+            'valor_padrao'  => 1500.00,
+            'tipo_cobranca' => Servico::TIPO_MENSAL,
+            'ativo'         => true,
+        ]);
+
+        // Segundo evento (mesmo deal) reprocessa e deve limpar a pendencia.
+        $evento->update(['company_id_criada' => null]);
+        $this->disparaWebhook([$this->eventoPadrao()])->assertStatus(200);
+
+        $eventoFinal = HubspotEvento::orderByDesc('id')->first();
+        $this->assertArrayNotHasKey(
+            'line_items_nao_mapeados',
+            $eventoFinal->payload ?? [],
+            'Pendencia resolvida deve sumir do payload (auto-limpeza)'
+        );
+        $this->assertNull(Company::first()->notes);
     }
 }
