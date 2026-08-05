@@ -772,10 +772,22 @@ class DesempenhoScoreServiceTest extends TestCase
             'Mediana de [-4,00;-2,50;-1,50;+2,00;+20000,00] = -1,50 (empresa C, valor do meio).');
         $this->assertNotEqualsWithDelta(3998.80, $r['componentes']['var_faturamento_pct'], 0.001,
             'NÃO pode ser a média (3998,80) — é exatamente esse número que a mediana existe para evitar: o outlier E sozinho mandaria na carteira.');
-        $this->assertSame(2.0, $r['pontos_componentes']['faturamento'],
-            'reguaFaturamento(-1,50) = 2,0 ("queda leve"). Com a média (3998,80) seria 5,0 ("crescimento excelente") — nota máxima por artefato de baseline residual.');
+
+        // 2026-08-05 — `pontos_componentes.faturamento` deixou de ser
+        // "régua(mediana)" e passou a ser a MÉDIA DOS PONTOS POR LOJA:
+        //   -4,00% → 2 │ -2,50% → 2 │ -1,50% → 2 │ +2,00% → 4 │ +20.000% → 5
+        //   (2+2+2+4+5) / 5 = 3,0
+        //
+        // O invariante que este teste protege sobrevive, e por um caminho mais
+        // direto: o outlier de +20.000% vira UM voto de 5 pontos entre cinco,
+        // em vez de arrastar a média das % para 3998,80 e render nota máxima à
+        // carteira inteira. É o caso real do "Lojão do Bras" (R$ 79,98 → R$
+        // 16.666), que motivou a mediana em 31/07 — a régua por loja contém o
+        // outlier por construção, sem depender da escolha de estatística.
+        $this->assertSame(3.0, $r['pontos_componentes']['faturamento'],
+            'Média dos pontos por loja: (2+2+2+4+5)/5 = 3,0. O outlier pesa 1/5, não manda na carteira.');
         $this->assertSame(5, $r['empresas_com_baseline'],
-            'D-1: o outlier CONTINUA na conta — nenhuma empresa é excluída, filtrada ou capada. Mediana muda o peso, não o universo.');
+            'D-1: o outlier CONTINUA na conta — nenhuma empresa é excluída, filtrada ou capada.');
     }
 
     #[Test]

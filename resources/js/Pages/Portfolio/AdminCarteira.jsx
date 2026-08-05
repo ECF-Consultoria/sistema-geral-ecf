@@ -90,35 +90,6 @@ function formatMesSolo(yyyyMm) {
     return MESES_EXTENSO[parseInt(m, 10) - 1] ?? '—';
 }
 
-const PERIODO_SEGMENTOS = [
-    { key: 'em_curso', label: 'Em curso' },
-    { key: 'bonus_atual', label: 'Bônus atual' },
-    { key: 'mes_fechado', label: 'Mês fechado' },
-];
-
-function PeriodoToggle({ segmentoAtivo, onSelect }) {
-    return (
-        <div className="flex rounded-xl border border-white/[0.08] overflow-hidden">
-            {PERIODO_SEGMENTOS.map((opt, i) => (
-                <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => onSelect(opt.key)}
-                    className={cn(
-                        'px-3 h-9 text-[13px] font-medium transition-colors',
-                        segmentoAtivo === opt.key
-                            ? 'bg-ecf-yellow/[0.12] text-ecf-yellow'
-                            : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]',
-                        i > 0 && 'border-l border-white/[0.08]',
-                    )}
-                >
-                    {opt.label}
-                </button>
-            ))}
-        </div>
-    );
-}
-
 // ─── KPI compacto ─────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, icon: Icon, accent = 'text-white', badge }) {
     return (
@@ -188,12 +159,12 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
     const [sortCol, setSortCol] = useState('faturamento');
     const [sortDir, setSortDir] = useState('desc');
 
-    // Fase 104 (UIP-01) — segmento ativo lido da URL (?modo=), não de estado
-    // local — reflete exatamente o que o backend resolveu.
+    // 2026-08-05 — o toggle "Em curso / Bônus atual / Mês fechado" saiu; o mês
+    // passa a ser escolhido só pelo dropdown. `?modo=bonus_atual` continua
+    // sendo aceito e preservado na navegação (links antigos), só não há mais
+    // botão que o gere.
     const modoUrl = new URLSearchParams(window.location.search).get('modo');
-    const segmentoAtivo = modoUrl === 'bonus_atual'
-        ? 'bonus_atual'
-        : (periodo?.em_curso ? 'em_curso' : 'mes_fechado');
+    const modoBonusAtual = modoUrl === 'bonus_atual';
 
     // Navegação unificada — preserva ?contexto= e, quando presente, ?modo=,
     // sobrescrevendo só o que o `overrides` pedir. Usada pelos 3 controles
@@ -205,19 +176,6 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
             if (v !== undefined && v !== null && v !== '') params.set(k, v);
         });
         router.visit(window.location.pathname + '?' + params.toString(), { preserveScroll: true });
-    };
-
-    // Troca de segmento do toggle — 'mes_fechado' sem seleção prévia cai no
-    // mês fechado mais recente disponível na lista já carregada.
-    const applyPeriodo = (segmento) => {
-        if (segmento === 'bonus_atual') {
-            navigate({ modo: 'bonus_atual', mes: undefined });
-        } else if (segmento === 'mes_fechado') {
-            const fallback = periodo?.meses_disponiveis?.find((m) => !m.em_curso)?.value;
-            navigate({ modo: undefined, mes: periodo?.em_curso ? fallback : periodo?.mes_selecionado });
-        } else {
-            navigate({ modo: undefined, mes: undefined });
-        }
     };
 
     const empresasView = useMemo(() => {
@@ -290,10 +248,6 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
-                        {/* Fase 104 (UIP-01) — toggle de contexto de período: Em curso /
-                            Bônus atual / Mês fechado (usa o dropdown de mês ao lado). */}
-                        <PeriodoToggle segmentoAtivo={segmentoAtivo} onSelect={applyPeriodo} />
-
                         {/* Fase 90 (CART-07) · filtro de contexto (Todos/Mercado Livre/Shopee),
                             preserva o ?mes= e ?modo= ativos ao trocar (decisão travada). */}
                         <div className="flex items-center gap-2">
@@ -342,9 +296,10 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                     </div>
                 </header>
 
-                {/* Fase 104 (UIP-03) — no modo Bônus atual, deixa explícito qual
-                    competência está sendo avaliada e quando ela é paga. */}
-                {segmentoAtivo === 'bonus_atual' && bonus && (
+                {/* Fase 104 (UIP-03) — quando a URL veio com ?modo=bonus_atual,
+                    deixa explícito qual competência está sendo avaliada e
+                    quando ela é paga. */}
+                {modoBonusAtual && bonus && (
                     <div className="rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] px-4 py-2.5 text-ecf-yellow/90 text-sm font-medium">
                         Competência {formatCompetencia(bonus.competence_month)} · pago em {formatMesSolo(bonus.payment_month)}
                     </div>

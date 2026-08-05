@@ -440,6 +440,8 @@ class MlbImplementacaoController extends Controller
                 return [
                     'id'             => $e->id,
                     'nome'           => $e->nome,
+                    // Cust ID inline na listagem (copiar/criar/editar) — mesma célula do Painel Polos
+                    'cust_id'        => $e->cust_id,
                     'estagio'        => $e->estagio,
                     'polo'           => $e->polo,
                     'fase'           => $e->fase,

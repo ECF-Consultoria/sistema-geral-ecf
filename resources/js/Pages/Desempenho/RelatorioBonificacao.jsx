@@ -1,7 +1,10 @@
 import AppLayout from '@/Layouts/AppLayout';
+import { Fragment, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { FileBarChart, Download, Trophy, Sparkles } from 'lucide-react';
+import { FileBarChart, Download, Trophy, Sparkles, ChevronRight, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import EmpresasScoreTabela from '@/Components/Desempenho/EmpresasScoreTabela';
+import { AVISO_SEM_DETALHE_TITULO, avisoSemDetalheFechado } from '@/lib/desempenhoLabels';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Fase 107 — Relatório de bonificação (MVP · admin-only).
@@ -44,6 +47,23 @@ export default function RelatorioBonificacao() {
     } = props;
 
     const cargoAtual = cargo ?? 'todos';
+
+    // D-08 — expansão por profissional (nasce tudo fechado: a leitura
+    // primária da tela é "quem bateu o bônus"; a justificativa empresa a
+    // empresa fica a um clique, não na cara).
+    const [abertos, setAbertos] = useState(() => new Set());
+
+    const alternar = (id) => {
+        setAbertos((atual) => {
+            const proximo = new Set(atual);
+            if (proximo.has(id)) {
+                proximo.delete(id);
+            } else {
+                proximo.add(id);
+            }
+            return proximo;
+        });
+    };
 
     const trocar = (patch) => {
         const params = { mes: competencia, ...(cargoAtual !== 'todos' ? { cargo: cargoAtual } : {}), ...patch };
@@ -144,18 +164,57 @@ export default function RelatorioBonificacao() {
                                         </td>
                                     </tr>
                                 )}
-                                {profissionais.map((p, i) => (
-                                    <tr key={p.id} className="border-b border-white/[0.05] hover:bg-white/[0.02]">
-                                        <td className="px-4 py-3 text-white/40 tabular-nums">{i + 1}</td>
-                                        <td className="px-4 py-3 text-white/90 font-medium">{p.name}</td>
-                                        <td className="px-3 py-3 text-white/60">{p.cargo_label}</td>
-                                        <td className="px-3 py-3 text-right tabular-nums text-white/80">{fmtNps(p.nps_medio)}</td>
-                                        <td className={cn('px-3 py-3 text-right tabular-nums', corPct(p.var_faturamento_pct))}>{fmtPct(p.var_faturamento_pct)}</td>
-                                        <td className={cn('px-3 py-3 text-right tabular-nums', corPct(p.var_margem_pct))}>{fmtPct(p.var_margem_pct)}</td>
-                                        <td className="px-3 py-3 text-right tabular-nums font-bold text-white">{fmtNota(p.nota_final)}</td>
-                                        <td className="px-3 py-3"><FaixaBadge slug={p.faixa_slug} label={p.faixa_label} promovida={p.faixa_promovida} /></td>
-                                    </tr>
-                                ))}
+                                {profissionais.map((p, i) => {
+                                    const empresasScore = p.empresas_score ?? [];
+                                    const empresasScoreResumo = p.empresas_score_resumo ?? { entraram: 0, nao_entraram: 0 };
+                                    const temDetalheEmpresas = p.tem_detalhe_empresas === true;
+                                    const aberto = abertos.has(p.id);
+
+                                    return (
+                                        <Fragment key={p.id}>
+                                            <tr
+                                                onClick={() => alternar(p.id)}
+                                                className="border-b border-white/[0.05] hover:bg-white/[0.02] cursor-pointer"
+                                            >
+                                                <td className="px-4 py-3 text-white/40 tabular-nums">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); alternar(p.id); }}
+                                                            aria-expanded={aberto}
+                                                            aria-label={`Ver empresas de ${p.name}`}
+                                                            className="text-white/40 hover:text-white transition-colors"
+                                                        >
+                                                            {aberto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                                                        </button>
+                                                        {i + 1}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-white/90 font-medium">{p.name}</td>
+                                                <td className="px-3 py-3 text-white/60">{p.cargo_label}</td>
+                                                <td className="px-3 py-3 text-right tabular-nums text-white/80">{fmtNps(p.nps_medio)}</td>
+                                                <td className={cn('px-3 py-3 text-right tabular-nums', corPct(p.var_faturamento_pct))}>{fmtPct(p.var_faturamento_pct)}</td>
+                                                <td className={cn('px-3 py-3 text-right tabular-nums', corPct(p.var_margem_pct))}>{fmtPct(p.var_margem_pct)}</td>
+                                                <td className="px-3 py-3 text-right tabular-nums font-bold text-white">{fmtNota(p.nota_final)}</td>
+                                                <td className="px-3 py-3"><FaixaBadge slug={p.faixa_slug} label={p.faixa_label} promovida={p.faixa_promovida} /></td>
+                                            </tr>
+                                            {aberto && (
+                                                <tr>
+                                                    <td colSpan={8} className="px-4 py-4 bg-black/20 border-b border-white/[0.05]">
+                                                        {temDetalheEmpresas ? (
+                                                            <EmpresasScoreTabela linhas={empresasScore} resumo={empresasScoreResumo} />
+                                                        ) : (
+                                                            <div className="rounded-xl border border-white/[0.1] bg-white/[0.03] px-4 py-3">
+                                                                <div className="text-white/80 text-sm font-semibold">{AVISO_SEM_DETALHE_TITULO}</div>
+                                                                <div className="text-white/50 text-xs mt-1 leading-relaxed">{avisoSemDetalheFechado(competencia_label)}</div>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </Fragment>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -163,7 +222,8 @@ export default function RelatorioBonificacao() {
 
                 <p className="mt-3 text-xs text-white/40">
                     "Atingiu o bônus" = nota final ≥ 4,00 (faixa acima de "Sem bônus"). Os números batem com o
-                    ranking de desempenho da mesma competência.
+                    ranking de desempenho da mesma competência. Clique na seta ao lado do nome para ver as
+                    empresas que formaram a nota daquele profissional.
                 </p>
             </div>
         </AppLayout>

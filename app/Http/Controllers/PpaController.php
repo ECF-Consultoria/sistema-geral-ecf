@@ -14,7 +14,11 @@ class PpaController extends Controller
     {
         $user = $request->user();
 
-        $query = Ppa::with(['company', 'mentor'])->orderBy('created_at', 'desc');
+        // Escopo geral: PPA de carteira. Os PPAs de Polos vivem na mesma tabela,
+        // mas têm tela própria (PolosPpaController) — não se misturam aqui.
+        $query = Ppa::with(['company', 'mentor'])
+            ->doEscopo(Ppa::ESCOPO_GERAL)
+            ->orderBy('created_at', 'desc');
 
         // Ajuste UAT 2026-07-07: qualquer user não-admin só vê PPAs que ELE
         // criou. Antes o filtro era só isMentor(), o que deixava Analistas
@@ -26,7 +30,7 @@ class PpaController extends Controller
         $ppas = $query->paginate(20)->through(fn($p) => [
             'id'               => $p->id,
             'title'            => $p->title,
-            'company_name'     => $p->company->name,
+            'company_name'     => $p->nomeEmpresa(),
             'company_id'       => $p->company_id,
             'mentor_name'      => $p->mentor->name,
             'status'           => $p->status,
@@ -63,6 +67,7 @@ class PpaController extends Controller
 
         Ppa::create([
             ...$data,
+            'escopo'    => Ppa::ESCOPO_GERAL,
             'mentor_id' => $request->user()->id,
             'status'    => 'draft',
         ]);
@@ -117,7 +122,7 @@ class PpaController extends Controller
             'ppa' => [
                 'id'              => $ppa->id,
                 'title'           => $ppa->title,
-                'company_name'    => $ppa->company->name,
+                'company_name'    => $ppa->nomeEmpresa(),
                 'mentor_name'     => $ppa->mentor->name,
                 'status'          => $ppa->status,
                 'workspace_token' => $ppa->workspace_token,
@@ -133,7 +138,8 @@ class PpaController extends Controller
 
     public function workspace(string $token)
     {
-        $ppa = Ppa::with(['company', 'tasks'])->where('workspace_token', $token)->firstOrFail();
+        // mlbEmpresa junto: o workspace público serve os dois escopos (o link é por token).
+        $ppa = Ppa::with(['company', 'mlbEmpresa', 'tasks'])->where('workspace_token', $token)->firstOrFail();
 
         $tasks = $ppa->tasks->map(fn($t) => [
             'id'          => $t->id,
@@ -147,7 +153,7 @@ class PpaController extends Controller
             'ppa' => [
                 'id'           => $ppa->id,
                 'title'        => $ppa->title,
-                'company_name' => $ppa->company->name,
+                'company_name' => $ppa->nomeEmpresa(),
                 'token'        => $token,
             ],
             'tasks' => $tasks,

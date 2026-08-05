@@ -114,6 +114,10 @@ const NAV_TREE = [
             { label: 'Painel Polos',      routeName: 'mlb.polos-painel',        page: 'Polos/Painel',      icon: LayoutDashboard, permission: 'mlb.projetos' },
             { label: 'Onboarding',        routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao', icon: ListChecks, permission: 'mlb.implementacao' },
             { label: 'Empresas Polos',    routeName: 'mlb.polos-empresas',      page: 'Polos/EmpresasPorM', icon: Building2,  permission: 'mlb.projetos' },
+            // PPA Polos (quick 260805-dzu): mesmo módulo do PPA de carteira, só com as
+            // empresas POLOS. page 'Polos/Ppa' não colide com o item PPA (page 'Ppa'),
+            // que casa por prefixo do nome do componente.
+            { label: 'PPA Polos',         routeName: 'mlb.polos-ppa.index',     page: 'Polos/Ppa',          icon: FileText,   permission: 'mlb.projetos' },
             // Gate por permission dedicada mlb.faturamento_polos (concedida ao setor Polos).
             // Antes era excludeRoles admin-only; migrado p/ liberar o setor Polos ver o financeiro.
             { label: 'Faturamento Polos', routeName: 'polos.index',             page: 'Polos/Index',        icon: PieChart,   permission: 'mlb.faturamento_polos' },

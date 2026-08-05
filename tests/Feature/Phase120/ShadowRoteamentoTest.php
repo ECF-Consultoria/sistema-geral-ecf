@@ -242,10 +242,8 @@ class ShadowRoteamentoTest extends TestCase
     // ═══ Testes 4-6 (Task 3) — o shadow não vaza para a tela + isolamento ═════
 
     #[Test]
-    public function test_leitura_interativa_nao_dispara_company_score_service_com_a_flag_desligada(): void
+    public function test_leitura_interativa_dispara_company_score_service_exatamente_uma_vez(): void
     {
-        config(['metrics.performance_company_first_score' => false]);
-
         $user = $this->montarFixture('2026-06');
         $mes  = Carbon::parse('2026-06-01');
 
@@ -256,9 +254,23 @@ class ShadowRoteamentoTest extends TestCase
         // hoje — exatamente 2 argumentos, sem o parâmetro de shadow.
         $service->computeCached($user, $mes);
 
-        $this->assertSame(0, ContadorCompanyScoreService::$chamadas,
-            'D-04 em runtime: com a flag desligada, a leitura interativa NUNCA paga o custo do caminho novo '
-            . '(dispatcher por empresa + NPS por empresa, HTTP síncrono à Adman).');
+        // 2026-08-05 — INVERTEU de propósito. Este teste garantia que a leitura
+        // interativa NUNCA pagasse o custo do score por empresa (D-04, quando
+        // ele era um shadow opcional). Agora esse cálculo É a nota oficial:
+        // pular seria não ter nota.
+        //
+        // O que continua sendo protegido é o que de fato importa para o tempo
+        // de tela: UMA única chamada por `compute()`, nunca uma por
+        // consumidor. O custo incremental é menor do que parece — o
+        // `AdmanMetricDiffService` já é acionado por empresa pelos componentes
+        // agregados e serve as chamadas seguintes de cache/memo; o que entra
+        // de novo é sobretudo query local de NPS por empresa.
+        //
+        // A defesa real do tempo de tela continua sendo `computeCached()` —
+        // ver `test_warm_cache_nao_forca_recomputo_quando_ja_ha_payload_fase_120`
+        // acima, que impede o ciclo de warm de recomputar sem necessidade.
+        $this->assertSame(1, ContadorCompanyScoreService::$chamadas,
+            'O score por empresa alimenta a nota oficial — roda 1× por compute(), nunca 1× por consumidor.');
     }
 
     #[Test]
@@ -320,26 +332,21 @@ class ShadowRoteamentoTest extends TestCase
         $this->assertSame($semShadow['score_status'], $comShadow['score_status']);
         $this->assertSame($semShadow['faixa_bonus'], $comShadow['faixa_bonus']);
 
-        // Fase 122 (SNAP-05/D-122-04) — este invariante FOI REVOGADO DE
-        // PROPÓSITO: com o shadow ligado, margem_amostra passa a medir
-        // cobertura de margem_var_pp (pontos percentuais), não mais os
-        // mesmos 3 números do shadow desligado. Não é afrouxamento do gate
-        // da Fase 120 — os números LEGADOS continuam byte-idênticos, só
-        // mudaram de endereço (foram pra dentro de ['legado']).
-        $this->assertSame($semShadow['margem_amostra'], $comShadow['margem_amostra']['legado'],
-            'Fase 122/SNAP-05: os números legados sobrevivem intocados em margem_amostra.legado.');
-        $this->assertSame('margem_var_pp', $comShadow['margem_amostra']['base'],
-            'Com o shadow ligado, margem_amostra ganha a chave base (Fase 122).');
+        // 2026-08-05 — `margem_amostra` tem o MESMO shape nas duas chamadas
+        // (cobertura sobre `margem_var_pp`, mais `base` e `legado`), porque o
+        // score por empresa deixou de ser condicional e roda sempre.
+        // `$incluirEmpresasScore` hoje decide APENAS se as linhas por empresa
+        // vão expostas no payload — nunca se o cálculo acontece.
+        $this->assertSame($semShadow['margem_amostra'], $comShadow['margem_amostra'],
+            'margem_amostra não pode depender de o payload expor ou não as linhas por empresa.');
+        $this->assertSame('margem_var_pp', $comShadow['margem_amostra']['base']);
         $this->assertArrayHasKey('legado', $comShadow['margem_amostra']);
-        $this->assertArrayNotHasKey('base', $semShadow['margem_amostra'],
-            'Com o shadow desligado, margem_amostra NÃO pode ganhar as chaves novas (gate nº 4 do 121-VALIDATION.md).');
-        $this->assertArrayNotHasKey('legado', $semShadow['margem_amostra']);
+        $this->assertArrayHasKey('legado', $semShadow['margem_amostra']);
 
-        // Única divergência permitida: empresas_score (vazio × populado) e
-        // componentes.var_margem_pp (null × null ou número).
-        $this->assertSame([], $semShadow['empresas_score'], 'Shadow desligado: empresas_score vazio.');
-        $this->assertNotSame([], $comShadow['empresas_score'], 'Shadow ligado: empresas_score populado.');
-        $this->assertNull($semShadow['componentes']['var_margem_pp'], 'Shadow desligado: var_margem_pp sempre null (C-03).');
+        // Única divergência permitida: `empresas_score` (vazio × populado) —
+        // é literalmente o que o parâmetro controla.
+        $this->assertSame([], $semShadow['empresas_score'], 'Sem incluirEmpresasScore: linhas não vão no payload.');
+        $this->assertNotSame([], $comShadow['empresas_score'], 'Com incluirEmpresasScore: linhas vão no payload.');
     }
 }
 

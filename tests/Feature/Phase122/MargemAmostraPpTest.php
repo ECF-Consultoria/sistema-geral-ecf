@@ -188,10 +188,19 @@ class MargemAmostraPpTest extends TestCase
         $r = app(DesempenhoScoreService::class)
             ->compute($fixture['user'], Carbon::parse('2026-08-01'), null, incluirEmpresasScore: false);
 
+        // 2026-08-05 — `margem_amostra` passou a ter SEMPRE as 5 chaves, mesmo
+        // sem `incluirEmpresasScore`: o score por empresa deixou de ser um
+        // shadow condicional e virou insumo da nota oficial, então a cobertura
+        // reportada é sempre a de `margem_var_pp`. Os 3 números históricos
+        // seguem intactos em `legado`, que é o que o gate FIXMARG-03 lê.
+        $this->assertSame(
+            ['n_real', 'n_elegivel', 'cobertura', 'base', 'legado'],
+            array_keys($r['margem_amostra'])
+        );
         $this->assertSame(
             ['n_real', 'n_elegivel', 'cobertura'],
-            array_keys($r['margem_amostra']),
-            'Com o shadow desligado, margem_amostra não pode ganhar nenhuma chave nova (gate nº 4 do 121-VALIDATION.md).'
+            array_keys($r['margem_amostra']['legado']),
+            'O bloco legado preserva exatamente os 3 números que o gate de congelamento consome.'
         );
     }
 
@@ -283,10 +292,18 @@ class MargemAmostraPpTest extends TestCase
         $comShadow = app(DesempenhoScoreService::class)
             ->compute($fixture['user'], $mes, null, incluirEmpresasScore: true);
 
+        // O bloco `legado` é o mesmo nas duas chamadas: ele não depende de o
+        // payload expor ou não as linhas por empresa, e é justamente por isso
+        // que o gate FIXMARG-03 pode continuar lendo dele sem mudar de
+        // comportamento (2026-08-05).
         $this->assertSame(
-            $semShadow['margem_amostra'],
+            $semShadow['margem_amostra']['legado'],
             $comShadow['margem_amostra']['legado'],
-            'legado tem que reproduzir EXATAMENTE os 3 números que o shadow desligado devolve.'
+            'legado tem que ser idêntico independente de incluirEmpresasScore.'
+        );
+        $this->assertSame(
+            ['n_real', 'n_elegivel', 'cobertura'],
+            array_keys($semShadow['margem_amostra']['legado'])
         );
     }
 }

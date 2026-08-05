@@ -50,12 +50,24 @@ class PayloadBaselineFlagOffTest extends TestCase
     ];
 
     /**
-     * Task 3 (AGRE-02/04) — `empresas_score` é a ÚNICA chave nova de topo
-     * permitida, o payload aditivo do shadow. É a única concessão auditável
-     * do gate: qualquer chave nova que apareça sem passar por uma edição
-     * explícita desta constante reprova o teste.
+     * Task 3 (AGRE-02/04) — chaves novas de topo permitidas. Qualquer chave
+     * que apareça sem passar por uma edição explícita desta constante reprova
+     * o teste; é a concessão auditável do gate.
+     *
+     * 2026-08-05: `nota_final_por_empresa`/`score_status_por_empresa` deixaram
+     * de ser condicionais ao shadow e passaram a estar SEMPRE no payload —
+     * viraram metadado de auditoria ao lado da nota oficial, que agora vem da
+     * agregação por indicador.
      */
-    private const CHAVES_ADITIVAS_PERMITIDAS = ['empresas_score'];
+    private const CHAVES_ADITIVAS_PERMITIDAS = [
+        'empresas_score',
+        'nota_final_por_empresa',
+        'score_status_por_empresa',
+        // `nota_final_legado` — a nota pelo método antigo (régua sobre a %
+        // agregada da carteira), preservada como metadado de auditoria para
+        // comparar contra a nota oficial sem recomputar.
+        'nota_final_legado',
+    ];
 
     private int $setorId;
     private int $cargoAnalistaId;
@@ -245,7 +257,20 @@ class PayloadBaselineFlagOffTest extends TestCase
         );
 
         $this->assertSame(['nps', 'faturamento', 'margem'], array_keys($payload['pontos_componentes']));
-        $this->assertSame(['n_real', 'n_elegivel', 'cobertura'], array_keys($payload['margem_amostra']));
+        // 2026-08-05 — `margem_amostra` passou a trazer SEMPRE `base`/`legado`:
+        // o score por empresa deixou de ser shadow condicional e agora roda em
+        // todo `compute()`, então a cobertura reportada é sempre a de
+        // `margem_var_pp` (pontos percentuais), com os números antigos
+        // preservados em `legado` para o gate FIXMARG-03.
+        $this->assertSame(
+            ['n_real', 'n_elegivel', 'cobertura', 'base', 'legado'],
+            array_keys($payload['margem_amostra'])
+        );
+        $this->assertSame('margem_var_pp', $payload['margem_amostra']['base']);
+        $this->assertSame(
+            ['n_real', 'n_elegivel', 'cobertura'],
+            array_keys($payload['margem_amostra']['legado'])
+        );
         $this->assertSame(
             ['nps_medio', 'var_faturamento_pct', 'var_margem_pct'],
             array_keys($payload['componentes_disponiveis'])
@@ -275,47 +300,86 @@ class PayloadBaselineFlagOffTest extends TestCase
     }
 
     #[Test]
-    public function test_valores_congelados_do_caminho_legado(): void
+    public function test_valores_congelados_da_agregacao_por_indicador(): void
     {
         $payload = $this->computePayload();
 
-        // Fotografia do comportamento ATUAL (2026-07-30, capturada em execução
-        // contra o código não modificado) — NÃO é expectativa teórica.
-        // Qualquer divergência futura é o sinal que este gate existe para dar.
+        // ─── Valores DERIVADOS do fixture, não copiados da saída ────────────
+        // Reescrito em 2026-08-05, quando a nota passou a vir de
+        // `computeNotaFinalPorIndicador()`. Os números abaixo foram calculados
+        // à mão a partir da fixture ANTES de rodar o teste, de propósito: um
+        // gate preenchido com o que o código imprimiu não prova nada — só
+        // registra o comportamento, inclusive se estiver errado.
         //
-        // Nota sobre var_margem_pct=null: o hotfix de 2026-07-24
-        // (AdmanMetricDiffService::resolveMargemPct) faz a variação de margem
-        // usar SEMPRE o `.diff` nativo da Adman, nunca cálculo local — e isso
-        // só é permitido quando `comparison_mode === 'previous_equal_length_window'`.
-        // O mês EM CURSO (`current_month`) resolve pra
-        // `comparison_mode = 'same_interval_previous_month'` (MetricPeriodResolver),
-        // então `var_margem_pct` fica `null` MESMO com dado de margem real
-        // sincronizado (empresa A) — não é um efeito do fixture desta suíte,
-        // é o comportamento vigente de produção hoje.
+        // Régua POR LOJA (CompanyScoreService), com as réguas de sempre:
+        //   empresaA  fat +3,00%  → 4 pts │ margem null │ nps 1,0
+        //   empresaB  fat +10,00% → 5 pts │ margem null (Shopee não fornece CMV)
+        //                                 │ nps 1,0
+        //   empresaC  fat null (sem baseline em julho) │ margem null │ nps 1,0
+        //
+        // Média POR INDICADOR, cada um com seu próprio denominador:
+        //   faturamento = (4 + 5) / 2 = 4,50   ← C não entra, não tem valor
+        //   margem      = null                 ← nenhuma loja tem margem
+        //   nps         = (1 + 1 + 1) / 3 = 1,00
+        //   nota        = (4,50 + 1,00) / 2 = 2,75
+        //
+        // Por que margem é null em TODA loja: o hotfix de 2026-07-24
+        // (AdmanMetricDiffService::resolveMargemPct) só aceita o `.diff` nativo
+        // da Adman quando `comparison_mode === 'previous_equal_length_window'`.
+        // Mês EM CURSO resolve para `same_interval_previous_month`, então não
+        // há variação de margem — comportamento de produção, não artefato do
+        // fixture.
+        //
+        // Contraste com o método antigo, que dava 2,33: ele tirava a MEDIANA
+        // das % (+3% e +10% → 6,5%) e só então aplicava a régua (6,5% > 5% →
+        // 5 pts), premiando a carteira com a nota máxima de faturamento quando
+        // nenhuma das duas lojas individualmente merecia 5. É exatamente a
+        // inversão de ordem que esta mudança corrige.
         $this->assertSame(3, $payload['empresas_carteira']);
         $this->assertSame(2, $payload['empresas_com_baseline']);
         $this->assertSame(3, $payload['vinculos_financeiros']);
-        $this->assertSame('official', $payload['score_status']);
         $this->assertSame('sem_bonus', $payload['faixa_bonus']);
+
+        // `partial` (não mais `official`): das 3 lojas só a Shopee fecha os
+        // componentes que se espera dela (2 de 2); A e C ficam incompletas por
+        // falta de margem, e 1/3 de cobertura está abaixo do patamar de 0,7.
+        // Em mês FECHADO — o que paga bônus — a margem existe e o status volta
+        // a `official`.
+        $this->assertSame('partial', $payload['score_status']);
 
         $this->assertEqualsWithDelta(1.0, $payload['componentes']['nps_medio'], 0.001,
             'Mês em curso (agosto) → piso NPS 1.0 (computeNpsWindow, mês não fechado).');
         $this->assertEqualsWithDelta(6.50, $payload['componentes']['var_faturamento_pct'], 0.001,
-            'Média das % com baseline: A (+3.00%) e B/Shopee (+10.00%) — C sem baseline anterior fica de fora.');
+            'Metadado legado preservado: mediana das % com baseline — A (+3%) e B (+10%).');
         $this->assertNull($payload['componentes']['var_margem_pct'],
             'Mês em curso: comparison_mode=same_interval_previous_month nunca usa calculated_fallback pra margem % (hotfix 2026-07-24).');
 
-        $this->assertEqualsWithDelta(1.0, $payload['pontos_componentes']['margem'], 0.001,
-            'margemPontos: nComMargemReal=0 (var_margem_pct null pra todos) + nShopeePlaceholder=1 → placeholder puro 1.0.');
-        $this->assertEqualsWithDelta(5.00, $payload['pontos_componentes']['faturamento'], 0.001,
-            'reguaFaturamento(6.50%) > 5% → 5.0 pts.');
+        $this->assertEqualsWithDelta(4.50, $payload['pontos_componentes']['faturamento'], 0.001,
+            'Média dos pontos POR LOJA: A=4 (+3%) e B=5 (+10%); C sem baseline fica fora do denominador.');
+        $this->assertNull($payload['pontos_componentes']['margem'],
+            'Nenhuma loja tem margem: A e C sem diff no mês em curso, B é Shopee (fora da média desde 2026-08-05).');
+        $this->assertEqualsWithDelta(1.00, $payload['pontos_componentes']['nps'], 0.001,
+            'Piso 1,0 nas 3 lojas.');
 
         $this->assertSame(0, $payload['margem_amostra']['n_real']);
         $this->assertSame(2, $payload['margem_amostra']['n_elegivel']);
         $this->assertEqualsWithDelta(0.0, $payload['margem_amostra']['cobertura'], 0.0001);
 
-        $this->assertEqualsWithDelta(2.33, $payload['nota_final'], 0.001,
-            '(nps piso 1.0 + fatPts 5.0 + margemPts 1.0) / 3 = 2.333... → 2.33.');
+        // (faturamento 4,50 + nps 1,00) / 2 = 2,75 — margem não entra no
+        // denominador porque nenhuma loja tem o indicador.
+        // Método antigo dava 2,33: (1,0 + 5,0 + 1,0)/3, com o faturamento
+        // valendo 5 por causa da régua aplicada sobre a mediana das % (6,5%) e
+        // a margem valendo o placeholder Shopee 1,0.
+        $this->assertEqualsWithDelta(2.75, $payload['nota_final'], 0.001,
+            '(faturamento 4,50 + nps 1,00) / 2 = 2,75.');
+
+        // Sem arredondamento intermediário: a nota é o quociente exato, não o
+        // resultado de somar componentes já arredondados.
+        $this->assertSame(
+            ($payload['pontos_componentes']['faturamento'] + $payload['pontos_componentes']['nps']) / 2,
+            $payload['nota_final'],
+            'nota_final tem que ser o quociente exato dos componentes presentes.'
+        );
     }
 
     #[Test]
@@ -341,8 +405,12 @@ class PayloadBaselineFlagOffTest extends TestCase
             $chavesLegadasSemCarteira,
             array_values(array_intersect(array_keys($payload), $chavesLegadasSemCarteira))
         );
+        // `shapeSemCarteira()` é um retorno ANTECIPADO: sai antes de calcular o
+        // score por empresa, então não ganha `nota_final_por_empresa` nem
+        // `score_status_por_empresa` — só `empresas_score` (vazio). Por isso a
+        // lista aqui é própria, e não `CHAVES_ADITIVAS_PERMITIDAS`.
         $this->assertSame(
-            self::CHAVES_ADITIVAS_PERMITIDAS,
+            ['empresas_score'],
             array_values(array_diff(array_keys($payload), $chavesLegadasSemCarteira))
         );
 

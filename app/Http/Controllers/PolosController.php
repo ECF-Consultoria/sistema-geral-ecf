@@ -266,7 +266,8 @@ class PolosController extends Controller
             $gross  = (float) ($adman[$id] ?? 0.0);
             $tgmv   = (float) ($lookup[$id]['tgmv'] ?? 0.0);
             $limiar = (float) ($limiares[$a['fase']] ?? 0);
-            $prob   = (bool) ($a['problema'] ?? false);
+            // Só o problema marcado como "fora da meta" muda o status (quick 260805-dzu).
+            $prob   = $this->desconsideraDaMeta($a);
             $linhasOut[] = [
                 'cust_id'      => $id,
                 'nome'         => (string) ($a['nome'] ?? ''),
@@ -375,6 +376,9 @@ class PolosController extends Controller
                     'contexto'                 => $e->contexto,
                     'problema'                 => (bool) $e->problema,
                     'problema_nota'            => $e->problema_nota,
+                    // true = o problema tira a empresa da meta (status 'Problema' na
+                    // Distribuição de status); false = ela segue contando (quick 260805-dzu).
+                    'problema_desconsidera_meta' => (bool) $e->problema_desconsidera_meta,
                     'ads_desligado'            => (bool) $e->ads_desligado,
                     'progresso_skus'           => $e->progresso(),
                     'empresa_responsavel_nome' => $e->responsavel?->name,
@@ -1267,7 +1271,7 @@ class PolosController extends Controller
             return MlbEmpresa::whereIn('fase', ['M2', 'M3', 'M4', 'Fechamento'])
                 ->where('projeto', 'POLOS')
                 ->whereNull('arquivado_em') // arquivadas não contam em meta/faturamento
-                ->get(['id', 'nome', 'cust_id', 'polo', 'fase', 'problema', 'problema_nota', 'ads_desligado'])
+                ->get(['id', 'nome', 'cust_id', 'polo', 'fase', 'problema', 'problema_nota', 'problema_desconsidera_meta', 'ads_desligado'])
                 ->toArray();
         }
 
@@ -1301,6 +1305,7 @@ class PolosController extends Controller
                 'fase'          => $fase,
                 'problema'      => false, // flag histórico indisponível no CSV
                 'problema_nota' => null,
+                'problema_desconsidera_meta' => false, // idem: não existe no CSV
                 'ads_desligado' => null,
             ];
         }
@@ -1491,13 +1496,30 @@ class PolosController extends Controller
     }
 
     /**
+     * A empresa sai da meta por causa do problema?
+     *
+     * Quick 260805-dzu: ter problema deixou de tirar a empresa da meta por si só.
+     * Só sai quem foi marcado explicitamente com `problema_desconsidera_meta`
+     * (problemas básicos seguem contando em No alvo / Em progresso / Não).
+     * Roster histórico reconstruído do CSV não tem nenhum dos dois flags → false.
+     *
+     * @param  array<string,mixed>  $ativo  Linha do roster (MlbEmpresa::toArray ou CSV)
+     */
+    private function desconsideraDaMeta(array $ativo): bool
+    {
+        return (bool) ($ativo['problema'] ?? false)
+            && (bool) ($ativo['problema_desconsidera_meta'] ?? false);
+    }
+
+    /**
      * Calcula o status de uma empresa com base na precedência D-11 (CONTEXT.md):
-     *   Problema (flag MlbEmpresa.problema=true) → maior precedência
+     *   Problema (problema marcado como "desconsiderar da meta") → maior precedência
      *   Não     (faturamento <= 0) → ativo sem dado ou zerado (D-12)
      *   Sim     (faturamento >= limiar do estágio) → bateu a meta
      *   Em progresso (0 < faturamento < limiar) → menor precedência
      *
-     * @param  bool   $problema  Flag da empresa (MlbEmpresa.problema)
+     * @param  bool   $problema  Problema QUE DESCONSIDERA DA META (ver desconsideraDaMeta);
+     *                           um problema comum não muda o status desde a quick 260805-dzu
      * @param  float  $fat       Faturamento TGMV_LC (0 quando ausente no CSV)
      * @param  float  $limiar    Meta do estágio (M2=1k, M3=4k, M4=8k)
      * @return string            Status: 'Problema' | 'Não' | 'Sim' | 'Em progresso'
@@ -1579,7 +1601,7 @@ class PolosController extends Controller
                 : ($ativo['polo'] ?: 'Sem polo');
 
             $limiar = (float) ($limiares[$ativo['fase']] ?? 0);
-            $status = $this->calcularStatus((bool) $ativo['problema'], $tgmv, $limiar);
+            $status = $this->calcularStatus($this->desconsideraDaMeta($ativo), $tgmv, $limiar);
 
             if (! isset($grupos[$localidade])) {
                 $grupos[$localidade] = ['faturamentos' => [], 'limiares' => [], 'statuses' => [], 'empresas' => []];
@@ -1600,6 +1622,8 @@ class PolosController extends Controller
                 'status'        => $status,
                 'ads'           => $ads,
                 'problema'      => (bool) ($ativo['problema'] ?? false),
+                // Distingue "tem problema" de "problema que tira da meta" no detalhe do polo.
+                'problema_fora_da_meta' => $this->desconsideraDaMeta($ativo),
                 'problema_nota' => $ativo['problema_nota'] ?? null,
                 'ads_desligado' => isset($ativo['ads_desligado']) ? (bool) $ativo['ads_desligado'] : null,
             ];
@@ -1659,7 +1683,7 @@ class PolosController extends Controller
             $tgmv = $fatAdman[$id] ?? 0.0;
 
             $limiar = (float) ($limiares[$ativo['fase']] ?? 0);
-            $status = $this->calcularStatus((bool) $ativo['problema'], $tgmv, $limiar);
+            $status = $this->calcularStatus($this->desconsideraDaMeta($ativo), $tgmv, $limiar);
 
             $contadores[$status]++;
         }

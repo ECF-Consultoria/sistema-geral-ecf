@@ -5,8 +5,8 @@ import {
     AlertTriangle, RefreshCw, Search, FileText, FilePlus2, ExternalLink,
     Wallet, Target, Building2, ChevronDown, ChevronRight, Link2, BookUser,
     Sparkles, MegaphoneOff, ShieldAlert, Pencil, Trash2, Check, X,
-    Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2, Copy,
-    Archive, Plus,
+    Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2,
+    Archive,
 } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -14,6 +14,8 @@ import { useAutoFilter, VAZIO } from '@/hooks/useAutoFilter';
 import ColumnFilter from '@/Components/ColumnFilter';
 import BulkActionBar from '@/Components/BulkActionBar';
 import { STATUS_META, STATUS_ORDEM } from './components/statusMeta';
+// Célula de Cust ID compartilhada com o Onboarding (/mlb/implementacao).
+import { CustIdCell } from './components/CustIdCell';
 import StatusBadge from './components/StatusBadge';
 import HeroKpi from './components/HeroKpi';
 import FatVsMetaChart from './components/FatVsMetaChart';
@@ -104,6 +106,7 @@ const COL_LENTE = {
 // linha vira um conjunto de flags ativos; o funil filtra por qualquer um deles.
 const SITUACAO_LABEL = {
     problema:       'Com problema',
+    fora_meta:      'Desconsiderada da meta',
     fora_prazo:     'Fora do prazo',
     pendente_envio: 'Pendente de envio',
     sem_ficha:      'Sem ficha',
@@ -113,6 +116,8 @@ const SITUACAO_LABEL = {
 function situacaoDe(e) {
     const f = [];
     if (e.problema)                      f.push('problema');
+    // Problema que tira da meta é um recorte próprio (curadoria da Distribuição de status).
+    if (e.problema_desconsidera_meta)    f.push('fora_meta');
     if (e.fora_do_prazo)                 f.push('fora_prazo');
     if (e.status_envio === 'falta_enviar') f.push('pendente_envio');
     if (!e.impl_id)                      f.push('sem_ficha');
@@ -804,11 +809,17 @@ export default function PolosPainel({
     };
     const trocarResponsavel = (e, v) =>
         router.patch(route('mlb.implementacao.responsavel', e.impl_id), { responsavel_id: v === SEM_RESP ? null : Number(v) }, reloadOpts);
-    const toggleProblema = (e) =>
-        router.patch(route('mlb.empresas.problema', e.id), { acao: 'toggle' }, reloadOpts);
+    // `desconsidera` decide se o problema tira a empresa da meta (status Problema na
+    // Distribuição) ou se ela segue contando em No alvo / Em progresso / Não.
+    const toggleProblema = (e, desconsidera = false) =>
+        router.patch(route('mlb.empresas.problema', e.id), { acao: 'toggle', desconsidera_meta: desconsidera }, reloadOpts);
     const salvarNota = (e) =>
-        router.patch(route('mlb.empresas.problema', e.id), { acao: 'editar', problema_nota: editNota[e.id] ?? '' },
+        router.patch(route('mlb.empresas.problema', e.id),
+            { acao: 'editar', problema_nota: editNota[e.id] ?? '', desconsidera_meta: e.problema_desconsidera_meta === true },
             { ...reloadOpts, onSuccess: () => setEditNota((s) => { const n = { ...s }; delete n[e.id]; return n; }) });
+    // Só troca o flag de meta, preservando o problema e a nota.
+    const alternarMeta = (e, desconsidera) =>
+        router.patch(route('mlb.empresas.problema', e.id), { acao: 'meta', desconsidera_meta: desconsidera }, reloadOpts);
     const removerProblema = (e) => { if (window.confirm('Remover o problema desta conta?')) router.patch(route('mlb.empresas.problema', e.id), { acao: 'remover' }, reloadOpts); };
     const marcarEnviado = (e) => router.post(route('mlb.implementacao.marcar-enviado', e.impl_id), {}, reloadOpts);
     const desfazerEnvio = (e) => router.post(route('mlb.implementacao.desfazer-envio', e.impl_id), {}, reloadOpts);
@@ -863,7 +874,7 @@ export default function PolosPainel({
         window.axios.post(route('mlb.polos-painel.meta-faturamento'), { meta: n }, { headers: { 'X-CSRF-TOKEN': csrf_token } }).catch(() => {});
     }, [metaInput, csrf_token]);
 
-    const handlers = { salvarCampo, trocarResponsavel, toggleProblema, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal, salvarCustId };
+    const handlers = { salvarCampo, trocarResponsavel, toggleProblema, alternarMeta, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal, salvarCustId };
 
     // ── Modo TELA CHEIA (planilha): overlay que estoura sidebar/max-width + Fullscreen API. ──
     const toggleTelaCheia = useCallback(() => {
@@ -1313,132 +1324,6 @@ function CabecalhoLente({ keys = [], af, colunas }) {
     );
 }
 
-// ─── Cust ID clicável (copia ao clicar) ──────────────────────────────────────────────
-// Chip ao lado do nome da empresa: clicar copia o cust_id p/ a área de transferência.
-function CustIdChip({ cust }) {
-    const [copiado, setCopiado] = useState(false);
-    if (!cust) return null;
-
-    const copiar = (ev) => {
-        ev.stopPropagation(); // não dispara "Ver"/expandir da célula
-        const txt = String(cust);
-        const ok = () => { setCopiado(true); setTimeout(() => setCopiado(false), 1200); };
-        if (navigator.clipboard?.writeText) {
-            navigator.clipboard.writeText(txt).then(ok).catch(() => fallbackCopiar(txt, ok));
-        } else {
-            fallbackCopiar(txt, ok);
-        }
-    };
-
-    return (
-        <button
-            type="button"
-            onClick={copiar}
-            title={copiado ? 'Copiado!' : `Copiar Cust ID (${cust})`}
-            className={cn(
-                'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-mono tabular-nums transition shrink-0',
-                copiado
-                    ? 'border-emerald-400/40 bg-emerald-500/[0.12] text-emerald-300'
-                    : 'border-white/10 bg-white/[0.04] text-white/45 hover:text-white/80 hover:border-white/25',
-            )}
-        >
-            {copiado ? <Check size={9} /> : <Copy size={9} />}
-            {copiado ? 'copiado' : cust}
-        </button>
-    );
-}
-
-// ─── Célula de Cust ID (coluna Empresa) ──────────────────────────────────────────────
-// Tem cust_id → chip que copia + lápis que abre o MESMO input já preenchido (corrigir um
-// id errado sem sair do Painel). Não tem → botão "+" p/ cadastrar inline. Nos dois casos
-// evita a ida à tela de Empresas/Publicações.
-function CustIdCell({ e, onSalvar }) {
-    const [editando, setEditando] = useState(false);
-    const [valor, setValor] = useState('');
-
-    if (e.cust_id && !editando) {
-        return (
-            <span className="group/cust inline-flex items-center gap-1 shrink-0">
-                <CustIdChip cust={e.cust_id} />
-                <button
-                    type="button"
-                    onClick={(ev) => { ev.stopPropagation(); setValor(String(e.cust_id)); setEditando(true); }}
-                    title={`Editar Cust ID (${e.cust_id})`}
-                    className="text-white/25 opacity-0 transition hover:text-ecf-yellow focus:opacity-100 group-hover/cust:opacity-100"
-                >
-                    <Pencil size={10} />
-                </button>
-            </span>
-        );
-    }
-
-    if (!editando) {
-        return (
-            <button
-                type="button"
-                onClick={(ev) => { ev.stopPropagation(); setValor(''); setEditando(true); }}
-                title="Adicionar Cust ID"
-                className="inline-flex items-center gap-1 rounded-md border border-dashed border-white/15 px-1.5 py-0.5 text-[10px] font-medium text-white/40 transition hover:border-ecf-yellow/40 hover:text-ecf-yellow shrink-0"
-            >
-                <Plus size={9} /> cust_id
-            </button>
-        );
-    }
-
-    const anterior  = String(e.cust_id ?? '');
-    const v         = valor.trim();
-    // Esvaziar um id que existia = REMOVER (o endpoint grava null em string vazia). Fica
-    // explícito no botão p/ não ser uma remoção silenciosa.
-    const removendo = anterior !== '' && v === '';
-
-    const salvar = (ev) => {
-        ev?.stopPropagation();
-        setEditando(false);
-        if (v === anterior) return;              // nada mudou → não gasta request
-        if (v === '' && anterior === '') return; // cadastro abandonado em branco
-        onSalvar(e, v);
-    };
-
-    return (
-        <span className="inline-flex items-center gap-1 shrink-0" onClick={(ev) => ev.stopPropagation()}>
-            <input
-                autoFocus
-                type="text"
-                inputMode="numeric"
-                value={valor}
-                onChange={(ev) => setValor(ev.target.value)}
-                onKeyDown={(ev) => { if (ev.key === 'Enter') salvar(ev); if (ev.key === 'Escape') setEditando(false); }}
-                placeholder={anterior ? 'vazio remove' : 'cust_id…'}
-                className="h-6 w-24 rounded-md border border-white/15 bg-white/[0.05] px-1.5 font-mono text-[11px] text-white outline-none focus:border-ecf-yellow/40"
-            />
-            <button
-                type="button"
-                onClick={salvar}
-                title={removendo ? 'Remover Cust ID' : 'Salvar'}
-                className={cn('transition', removendo ? 'text-rose-300 hover:text-rose-200' : 'text-emerald-300 hover:text-emerald-200')}
-            >
-                {removendo ? <Trash2 size={12} /> : <Check size={12} />}
-            </button>
-            <button type="button" onClick={(ev) => { ev.stopPropagation(); setEditando(false); }} title="Cancelar" className="text-white/40 transition hover:text-white/70"><X size={12} /></button>
-        </span>
-    );
-}
-
-// Fallback de cópia p/ contextos sem Clipboard API (ex.: http não-seguro).
-function fallbackCopiar(txt, done) {
-    try {
-        const ta = document.createElement('textarea');
-        ta.value = txt;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        done?.();
-    } catch { /* silencioso: sem clipboard disponível */ }
-}
-
 // ─── Linha ──────────────────────────────────────────────────────────────────────────
 function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, editNota, setEditNota, on }) {
     const precisaAcao = e.problema || e.fora_do_prazo || e.status_envio === 'falta_enviar';
@@ -1554,7 +1439,17 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                                     <span className="text-white text-[13.5px] font-semibold truncate max-w-[220px]">{e.nome}</span>
                                 )}
                                 <CustIdCell e={e} onSalvar={on.salvarCustId} />
-                                {e.problema && <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full text-red-300 bg-red-500/10 border border-red-500/20" title={e.problema_nota ?? 'Problema'}><ShieldAlert size={9} /> problema</span>}
+                                {/* Roxo (cor do status Problema no donut) = problema que tira da meta. */}
+                                {e.problema && (
+                                    <span
+                                        className={cn('inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border',
+                                            e.problema_desconsidera_meta
+                                                ? 'text-purple-200 bg-purple-500/10 border-purple-500/25'
+                                                : 'text-red-300 bg-red-500/10 border-red-500/20')}
+                                        title={`${e.problema_nota ?? 'Problema'}${e.problema_desconsidera_meta ? ' — desconsiderada da meta' : ' — continua contando pra meta'}`}>
+                                        <ShieldAlert size={9} /> problema{e.problema_desconsidera_meta ? ' · fora da meta' : ''}
+                                    </span>
+                                )}
                                 {e.fora_do_prazo && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full text-red-300 bg-red-500/10 border border-red-500/20">fora do prazo</span>}
                                 {e.ads_desligado && <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full text-white/50 bg-white/[0.05] border border-white/10" title="ADS desligado"><MegaphoneOff size={9} /> ads off</span>}
                                 {!e.impl_id && <span className="text-[9px] px-1.5 py-0.5 rounded-full text-amber-200/70 bg-amber-500/[0.08] border border-amber-500/20" title="Sem ficha de onboarding">sem ficha</span>}
@@ -1598,13 +1493,33 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                                     <div className="space-y-2">
                                         <textarea value={editNota[e.id] ?? e.problema_nota ?? ''} onChange={(ev) => setEditNota((s) => ({ ...s, [e.id]: ev.target.value }))} rows={2} placeholder="Descreva o problema…"
                                             className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[12px] p-2 outline-none focus:border-ecf-yellow/40" />
+                                        {/* Decide se ESTE problema tira a empresa da meta. Desmarcado (padrão)
+                                            ela continua contando em No alvo / Em progresso / Não. */}
+                                        <label className="flex items-start gap-2 cursor-pointer select-none rounded-lg bg-white/[0.02] border border-white/[0.06] p-2">
+                                            <input type="checkbox" checked={e.problema_desconsidera_meta === true}
+                                                onChange={(ev) => on.alternarMeta(e, ev.target.checked)}
+                                                className="mt-0.5 h-3.5 w-3.5 rounded border-white/20 bg-transparent accent-purple-500" />
+                                            <span className="text-[11px] leading-snug">
+                                                <span className="text-white/70 font-semibold">Desconsiderar da meta</span>
+                                                <span className="block text-white/35">
+                                                    {e.problema_desconsidera_meta
+                                                        ? 'Fica no status Problema e sai da meta do polo.'
+                                                        : 'Segue contando pra meta (No alvo / Em progresso / Não).'}
+                                                </span>
+                                            </span>
+                                        </label>
                                         <div className="flex items-center gap-2">
                                             <button onClick={() => on.salvarNota(e)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-ecf-yellow/10 text-ecf-yellow text-[11px] font-semibold hover:bg-ecf-yellow/20 transition"><Pencil size={11} /> Salvar nota</button>
                                             <button onClick={() => on.removerProblema(e)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.04] text-white/50 text-[11px] hover:text-red-300 transition"><Trash2 size={11} /> Remover</button>
                                         </div>
                                     </div>
                                 ) : (
-                                    <button onClick={() => on.toggleProblema(e)} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-white/60 text-[12px] hover:text-red-300 hover:bg-red-500/10 transition"><ShieldAlert size={12} /> Marcar problema</button>
+                                    // Duas portas de entrada: o problema comum (continua na meta) e o
+                                    // que desconsidera. A escolha é feita no ato de marcar.
+                                    <div className="flex flex-col gap-1.5 items-start">
+                                        <button onClick={() => on.toggleProblema(e, false)} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-white/60 text-[12px] hover:text-red-300 hover:bg-red-500/10 transition"><ShieldAlert size={12} /> Marcar problema <span className="text-white/30">· conta pra meta</span></button>
+                                        <button onClick={() => on.toggleProblema(e, true)} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-purple-500/[0.08] text-purple-200/80 text-[12px] hover:bg-purple-500/[0.16] transition"><ShieldAlert size={12} /> Marcar e tirar da meta</button>
+                                    </div>
                                 )}
                                 {e.contexto && <p className="text-white/35 text-[11px] mt-2 italic">Contexto: {e.contexto}</p>}
                             </div>

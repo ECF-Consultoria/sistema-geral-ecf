@@ -168,6 +168,15 @@ class AgregacaoProfissionalTest extends TestCase
      * `CompanyScoreService::computeEmpresasScore()` — só os campos que
      * `computeNotaFinalPorEmpresa()`/`computeScoreStatusPorEmpresa()`/
      * `varMargemPpAgregado()` de fato leem.
+     *
+     * NOTA (2026-08-05): estes dublês NÃO trazem `faturamento_pontos`/
+     * `margem_pontos`/`nps_pontos`, que é o que `computeNotaFinalPorIndicador()`
+     * — a nota OFICIAL desde então — consome. Por isso os testes deste arquivo
+     * asseguram `nota_final_por_empresa`/`score_status_por_empresa` (o
+     * company-first da Fase 120, que continua exposto como metadado de
+     * auditoria) e não `nota_final`. Quem cobre a nota oficial ponta a ponta,
+     * com linhas REAIS do `CompanyScoreService`, é
+     * `PayloadBaselineFlagOffTest::test_valores_congelados_da_agregacao_por_indicador`.
      */
     private function linhaEmpresa(
         int $companyId,
@@ -179,6 +188,12 @@ class AgregacaoProfissionalTest extends TestCase
         return (object) [
             'company_id'           => $companyId,
             'company_name'         => "Empresa {$companyId}",
+            // `fonte_financeira` é obrigatória desde 2026-08-05: a trava
+            // D-91-01 em `computeScoreStatusPorEmpresa()` devolve `blocked`
+            // quando NENHUMA linha tem fonte financeira (carteira só-Polos /
+            // só-Publicação não recebe nota oficial). Dublê sem esta chave
+            // cairia nessa trava e mediria outra coisa que não o cenário.
+            'fonte_financeira'     => 'adman',
             'status'               => $status,
             'nota_empresa'         => $notaEmpresa,
             'nota_empresa_parcial' => $notaEmpresaParcial,
@@ -209,13 +224,13 @@ class AgregacaoProfissionalTest extends TestCase
             2003 => $this->linhaEmpresa(2003, 'complete', 5.00, 5.00),
         ]));
 
-        $r = app(DesempenhoScoreService::class)->compute($fixture['user'], Carbon::parse('2026-08-01'));
+        $r = app(DesempenhoScoreService::class)->compute($fixture['user'], Carbon::parse('2026-08-01'), incluirEmpresasScore: true);
 
         $mediaEsperada = round(collect($r['empresas_score'])->avg(fn ($e) => $e->nota_empresa), 2);
 
-        $this->assertEqualsWithDelta($mediaEsperada, $r['nota_final'], 0.001,
-            'nota_final tem que ser EXATAMENTE a média das nota_empresa das 3 completas.');
-        $this->assertEqualsWithDelta(4.23, $r['nota_final'], 0.001,
+        $this->assertEqualsWithDelta($mediaEsperada, $r['nota_final_por_empresa'], 0.001,
+            'nota_final_por_empresa tem que ser EXATAMENTE a média das nota_empresa das 3 completas.');
+        $this->assertEqualsWithDelta(4.23, $r['nota_final_por_empresa'], 0.001,
             '(3.50+4.20+5.00)/3 = 4.2333... -> 4.23.');
         $this->assertSame('official', $r['score_status'], 'Cobertura 100% (3 de 3 complete) -> official.');
     }
@@ -237,10 +252,10 @@ class AgregacaoProfissionalTest extends TestCase
             3002 => $this->linhaEmpresa(3002, 'partial', null, 4.80),
         ]));
 
-        $r = app(DesempenhoScoreService::class)->compute($fixture['user'], Carbon::parse('2026-08-01'));
+        $r = app(DesempenhoScoreService::class)->compute($fixture['user'], Carbon::parse('2026-08-01'), incluirEmpresasScore: true);
 
-        $this->assertEqualsWithDelta(4.53, $r['nota_final'], 0.001,
-            'nota_final é a nota da COMPLETA, não a média das duas (que seria (4.53+4.80)/2=4.665, MAIOR).');
+        $this->assertEqualsWithDelta(4.53, $r['nota_final_por_empresa'], 0.001,
+            'nota_final_por_empresa é a nota da COMPLETA, não a média das duas (que seria (4.53+4.80)/2=4.665, MAIOR).');
 
         $porEmpresa = collect($r['empresas_score'])->keyBy('company_id');
         $this->assertNull($porEmpresa[3002]->nota_empresa,
@@ -268,11 +283,11 @@ class AgregacaoProfissionalTest extends TestCase
         }
         $this->mockCompanyScoreService($linhasBaixa);
 
-        $rBaixa = app(DesempenhoScoreService::class)->compute($fixtureBaixa['user'], Carbon::parse('2026-08-01'));
+        $rBaixa = app(DesempenhoScoreService::class)->compute($fixtureBaixa['user'], Carbon::parse('2026-08-01'), incluirEmpresasScore: true);
 
         $this->assertSame('partial', $rBaixa['score_status'], 'Cobertura 30% (3 de 10) < 70% -> partial.');
-        $this->assertNotNull($rBaixa['nota_final'], 'partial NÃO zera a nota — continua a média das completas.');
-        $this->assertEqualsWithDelta(3.00, $rBaixa['nota_final'], 0.001);
+        $this->assertNotNull($rBaixa['nota_final_por_empresa'], 'partial NÃO zera a nota — continua a média das completas.');
+        $this->assertEqualsWithDelta(3.00, $rBaixa['nota_final_por_empresa'], 0.001);
 
         // Cenário 2 — 8 de 10 complete = 80% (>= 70%) -> official. Caso
         // concreto do 120-CONTEXT.md: 20 de 26 é 77% (official); 15 de 26 é
@@ -286,10 +301,10 @@ class AgregacaoProfissionalTest extends TestCase
         }
         $this->mockCompanyScoreService($linhasAlta);
 
-        $rAlta = app(DesempenhoScoreService::class)->compute($fixtureAlta['user'], Carbon::parse('2026-08-01'));
+        $rAlta = app(DesempenhoScoreService::class)->compute($fixtureAlta['user'], Carbon::parse('2026-08-01'), incluirEmpresasScore: true);
 
         $this->assertSame('official', $rAlta['score_status'], 'Cobertura 80% (8 de 10) >= 70% -> official.');
-        $this->assertEqualsWithDelta(4.00, $rAlta['nota_final'], 0.001);
+        $this->assertEqualsWithDelta(4.00, $rAlta['nota_final_por_empresa'], 0.001);
     }
 
     // ═══ Teste 4 — AGRE-06: só-Shopee continua official sem if especial ═════
@@ -301,23 +316,28 @@ class AgregacaoProfissionalTest extends TestCase
 
         $fixture = $this->criarFixtureBase('So Shopee AGRE06');
 
-        // Todas as linhas 'complete' — o placeholder de margem 1.0 conta como
-        // componente presente (D-02 da Fase 119), então uma carteira 100%
-        // Shopee tem cobertura 100% e cai em 'official' pela MESMA regra de
-        // cobertura usada para qualquer outra carteira — nenhum `if` de
-        // exceção para Shopee em computeScoreStatusPorEmpresa().
+        // Todas as linhas 'complete' — uma carteira 100% Shopee tem cobertura
+        // 100% e cai em 'official' pela MESMA regra de cobertura usada para
+        // qualquer outra carteira, sem nenhum `if` de exceção para Shopee em
+        // computeScoreStatusPorEmpresa().
+        //
+        // 2026-08-05: o que faz a loja Shopee ser `complete` mudou de mecanismo
+        // — era o placeholder de margem 1,0 contando como componente presente
+        // (D-02 da Fase 119); passou a ser `componentes_esperados = 2`, já que
+        // a Shopee não fornece CMV e a margem saiu da conta. O efeito
+        // observável aqui é o mesmo, e é isso que o teste protege.
         $this->mockCompanyScoreService(collect([
             6001 => $this->linhaEmpresa(6001, 'complete', 3.07, 3.07, margemVarPp: null),
             6002 => $this->linhaEmpresa(6002, 'complete', 3.50, 3.50, margemVarPp: null),
         ]));
 
-        $r = app(DesempenhoScoreService::class)->compute($fixture['user'], Carbon::parse('2026-08-01'));
+        $r = app(DesempenhoScoreService::class)->compute($fixture['user'], Carbon::parse('2026-08-01'), incluirEmpresasScore: true);
 
         $this->assertSame('official', $r['score_status']);
-        $this->assertNotNull($r['nota_final']);
+        $this->assertNotNull($r['nota_final_por_empresa']);
         $this->assertTrue(
             collect($r['empresas_score'])->every(fn ($e) => $e->status === 'complete'),
-            'Trava da Fase 109 preservada: todas as empresas Shopee entram complete (placeholder de margem).'
+            'Carteira 100% Shopee: todas as lojas entram complete.'
         );
     }
 
@@ -388,7 +408,7 @@ class AgregacaoProfissionalTest extends TestCase
         $this->mockAdman($empresaD, '2026-08', revenue: 999999999);
         $this->mockAdman($empresaD, '2026-07', revenue: 1);
 
-        $r = app(DesempenhoScoreService::class)->compute($userX, Carbon::parse('2026-08-01'));
+        $r = app(DesempenhoScoreService::class)->compute($userX, Carbon::parse('2026-08-01'), incluirEmpresasScore: true);
 
         $idsEsperados = collect([$empresaA->id, $empresaB->id])->sort()->values()->all();
         $idsObtidos   = collect($r['empresas_score'])->pluck('company_id')->sort()->values()->all();

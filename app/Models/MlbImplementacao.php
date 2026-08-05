@@ -139,12 +139,12 @@ class MlbImplementacao extends Model
         'Falta informação',
     ];
 
-    /** Status da publicação dos anúncios */
+    /** Status da publicação dos anúncios ("Banida" saiu do select em 2026-08-04) */
     public const ONB_PUBLICACAO_OPCOES = [
+        'Não iniciado',
         'Concluído',
         'Estágio 2',
         'Suspensa',
-        'Banida',
     ];
 
     /**
@@ -337,7 +337,10 @@ class MlbImplementacao extends Model
     ];
 
     public const INTEGRADOR_OPCOES = [
-        'Em Contratação', 'Melhor Envio', 'Frenet', 'DirectLog', 'Jadlog', 'Correios', 'Outro',
+        'Em Contratação', 'Melhor Envio', 'Frenet', 'DirectLog', 'Jadlog', 'Correios',
+        // Empresa que não usa integrador — despacha tudo pelo Mercado Envios (quick 260804)
+        'Trabalhar apenas com Mercado Envios',
+        'Outro',
     ];
 
     public static function dadosPadrao(): array

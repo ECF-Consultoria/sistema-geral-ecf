@@ -12,6 +12,14 @@ import { Badge } from '@/Components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { cn } from '@/lib/utils';
 
+// Nomes de rota do PPA de carteira. O PPA Polos (quick 260805-dzu) reaproveita
+// este componente passando `rotas` proprio — as tarefas (ppa.tasks.*) e o
+// workspace publico do cliente sao compartilhados pelos dois escopos.
+const ROTAS_PADRAO = {
+    index:     'ppa.index',
+    workspace: 'ppa.workspace.generate',
+};
+
 const COLUMNS = [
     { key: 'todo',  label: 'A Fazer',       color: 'border-white/20',      dot: 'bg-white/30' },
     { key: 'doing', label: 'Em Andamento',   color: 'border-ecf-yellow/40', dot: 'bg-ecf-yellow' },
@@ -65,7 +73,8 @@ function TaskCard({ task, onMove, onEdit, onDelete, ppaId }) {
     );
 }
 
-export default function PpaKanban({ ppa, tasks: initialTasks }) {
+export default function PpaKanban({ ppa, tasks: initialTasks, rotas }) {
+    const R = { ...ROTAS_PADRAO, ...(rotas ?? {}) };
     const { flash } = usePage().props;
     const [tasks, setTasks] = useState(initialTasks);
     const [editTask, setEditTask] = useState(null);
@@ -135,7 +144,7 @@ export default function PpaKanban({ ppa, tasks: initialTasks }) {
     };
 
     const generateLink = () => {
-        router.post(route('ppa.workspace.generate', ppa.id), {}, {
+        router.post(route(R.workspace, ppa.id), {}, {
             preserveScroll: true,
             onSuccess: (page) => {
                 const url = page.props.flash?.workspace_url || '';
@@ -174,7 +183,7 @@ export default function PpaKanban({ ppa, tasks: initialTasks }) {
                                 <LinkIcon size={14} className="mr-1.5" /> Gerar Link do Cliente
                             </Button>
                         )}
-                        <Button size="sm" variant="ghost" onClick={() => router.get(route('ppa.index'))}>
+                        <Button size="sm" variant="ghost" onClick={() => router.get(route(R.index))}>
                             ← Voltar
                         </Button>
                     </div>

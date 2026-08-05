@@ -100,10 +100,10 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### UIEM — Telas e relatórios (Fase 123)
 
-- [ ] **UIEM-01**: A dimensão de margem é rotulada e explicada em linguagem simples ("quantos pontos percentuais a margem subiu ou caiu"), sem jargão não auto-explicativo
-- [ ] **UIEM-02**: O detalhe do profissional lista as empresas da carteira com a nota de cada uma e seus três componentes
-- [ ] **UIEM-03**: Snapshots antigos sem `empresas_score` continuam renderizando no visual anterior; sem `var_margem_pp`, exibe `var_margem_pct` com rótulo legado
-- [ ] **UIEM-04**: Relatório de Bonificação e Auditoria de Bônus exibem `nota_empresa` e os componentes por empresa, lendo a mesma fonte de snapshot/payload que o ranking
+- [x] **UIEM-01**: A dimensão de margem é rotulada e explicada em linguagem simples ("quantos pontos percentuais a margem subiu ou caiu"), sem jargão não auto-explicativo
+- [x] **UIEM-02**: O detalhe do profissional lista as empresas da carteira com a nota de cada uma e seus três componentes
+- [x] **UIEM-03**: Snapshots antigos sem `empresas_score` continuam renderizando no visual anterior; sem `var_margem_pp`, exibe `var_margem_pct` com rótulo legado
+- [x] **UIEM-04**: Relatório de Bonificação e Auditoria de Bônus exibem `nota_empresa` e os componentes por empresa, lendo a mesma fonte de snapshot/payload que o ranking
 
 ## Critérios de aceite globais (do plano canônico §7)
 
@@ -169,7 +169,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 | SNAP-04 | Fase 122 | Complete (2026-08-03) |
 | SNAP-05 | Fase 122 | Complete (2026-08-03) |
 | SNAP-06 | Fase 122 | Complete (2026-08-03) |
-| UIEM-01 | Fase 123 | Pending |
-| UIEM-02 | Fase 123 | Pending |
-| UIEM-03 | Fase 123 | Pending |
-| UIEM-04 | Fase 123 | Pending |
+| UIEM-01 | Fase 123 | Complete (2026-08-04) |
+| UIEM-02 | Fase 123 | Complete (2026-08-04) |
+| UIEM-03 | Fase 123 | Complete (2026-08-04) |
+| UIEM-04 | Fase 123 | Complete (2026-08-04) |

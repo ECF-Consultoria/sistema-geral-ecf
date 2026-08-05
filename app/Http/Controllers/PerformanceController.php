@@ -12,6 +12,7 @@ use App\Models\Ppa;
 use App\Models\Publicacao;
 use App\Models\Servico;
 use App\Models\User;
+use App\Services\Desempenho\CompanyScoreSnapshotReader;
 use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\PlanoMetasPublicacaoService;
@@ -28,6 +29,7 @@ class PerformanceController extends Controller
     public function __construct(
         private DesempenhoScoreService $scoreService,
         private MetricPeriodResolver $periodResolver,
+        private CompanyScoreSnapshotReader $companyScoreReader,
     ) {}
 
     public function index(Request $request)
@@ -959,6 +961,15 @@ class PerformanceController extends Controller
      */
     public function evolucao(Request $request, User $user): JsonResponse
     {
+        // CR-01 (123-07): mesma regra de autorização de show() — sem isto,
+        // qualquer não-admin com core.performance trocava o {user} na URL
+        // e lia a série de evolução (score/ranking_pos) de outro profissional.
+        abort_unless(
+            $this->autorizadoParaVerDesempenhoDe($request, $user),
+            403,
+            'Você só pode ver o seu próprio desempenho ou o de quem está sob sua liderança.'
+        );
+
         // Clamp period: aceita 7..365; default 30; valores nao-numericos viram 30.
         $raw = $request->query('period', 30);
         $period = is_numeric($raw) ? (int) $raw : 30;
@@ -1195,7 +1206,12 @@ class PerformanceController extends Controller
      *
      * Fonte dos meses disponíveis (para o toggle):
      *  - `desempenho_score_snapshots` filtrado por `user_id` + `mes_referencia`
-     *     não-null + `>= 2026-08-01` (DESEMP-14).
+     *     não-null (D-02 da Fase 123) — a existência da linha já é o sinal
+     *     correto de competência fechada e consolidada, sem corte fixo de
+     *     data. O corte antigo (DESEMP-14, 1º de agosto de 2026) deixava o
+     *     dropdown vazio em produção: `desempenho:consolidar-mes` congela o
+     *     mês ANTERIOR no último dia do mês, então a primeira competência a
+     *     passar naquele corte só existiria em 30 de setembro de 2026.
      */
     /**
      * Resolve o CONTEXTO DE PERÍODO das telas de desempenho a partir de
@@ -1224,7 +1240,12 @@ class PerformanceController extends Controller
         if ($modo === 'bonus_atual') {
             $periodo       = $this->periodResolver->resolve(['period_key' => 'last_closed_month']);
             $mesReferencia = Carbon::parse($periodo['bonus_competence_month'] . '-01')->startOfMonth();
-        } elseif ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
+        } elseif ($mesQuery && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $mesQuery)) {
+            // WR-01 (123-07): regex antiga (\d{4}-\d{2}) aceitava mês 00-99 e
+            // deixava o overflow silencioso do Carbon estourar o intervalo
+            // (ex.: '2026-13' viraria 2027-01; '9999-99' quebra o
+            // MetricPeriodResolver::resolve() e derrubava a rota com 500).
+            // Mesmo padrão já usado em indexPolos() (linha ~994).
             $mesReferencia = Carbon::createFromFormat('Y-m-d', $mesQuery . '-01')->startOfMonth();
             $periodo       = $this->periodResolver->resolve(['period_key' => $mesReferencia->format('Y-m')]);
         } else {
@@ -1258,8 +1279,52 @@ class PerformanceController extends Controller
         return compact('modo', 'mesReferencia', 'mesCorrente', 'periodo', 'ehMesEmCurso', 'bonus', 'nps');
     }
 
+    /**
+     * CR-01 (123-07/123-VERIFICATION.md): checagem de autorização por
+     * usuário-alvo, extraída para reuso em show() e evolucao() — evita
+     * duplicar a query. Corpo IDÊNTICO ao de
+     * `PortfolioController::transparencia()` (linhas ~214-226), que já está
+     * em produção para o mesmo tipo de dado (financeiro/compensação de
+     * terceiro): admin, OU o próprio usuário, OU líder de um setor do qual
+     * o usuário-alvo é MEMBRO via `user_setores`.
+     *
+     * Não é `admin || dono` cru: isso quebraria o líder do setor Performance
+     * (que ganha `core.performance` via `Permissions::AUTO_LIDERANCA_PERFORMANCE`
+     * — ver `app/Models/User.php:232-240` — precisamente para "visão
+     * consolidada da equipe") e o botão "Desempenho" de
+     * `Portfolio/Transparencia.jsx:51`, que hoje qualquer líder acessando a
+     * transparência de um membro da equipe usa para voltar a
+     * `performance.show` daquele mesmo membro.
+     */
+    private function autorizadoParaVerDesempenhoDe(Request $request, User $user): bool
+    {
+        $atual = $request->user();
+
+        return $atual->isAdmin()
+            || $atual->id === $user->id
+            || (
+                $atual->isLider()
+                && DB::table('user_setores as us')
+                    ->whereIn('us.setor_id', $atual->setoresLiderados()->pluck('setores.id'))
+                    ->where('us.user_id', $user->id)
+                    ->exists()
+            );
+    }
+
     public function show(Request $request, User $user): \Inertia\Response
     {
+        // CR-01 (123-07): não-admin com core.performance (líder do setor
+        // Performance ou setor com a permission via setor_permissoes) trocava
+        // o {user} na URL e lia nota, faixa de bônus e — desde a Fase 123 —
+        // nome de empresa cliente, faturamento em R$, margem e nota por
+        // empresa de QUALQUER profissional. Precisa ser a PRIMEIRA linha,
+        // antes de qualquer leitura de dado.
+        abort_unless(
+            $this->autorizadoParaVerDesempenhoDe($request, $user),
+            403,
+            'Você só pode ver o seu próprio desempenho ou o de quem está sob sua liderança.'
+        );
+
         // Fase 2 do plano de otimização (2026-07-21) — MESMO contrato de período
         // do ranking (`?modo=em_curso|bonus_atual`, `?mes=YYYY-MM`) via a fonte
         // única `resolveContextoPeriodo()`. Substitui o seletor antigo de mês.
@@ -1289,16 +1354,33 @@ class PerformanceController extends Controller
             $resultado = $this->scoreService->computeCached($user, $mesReferencia);
         }
 
-        // Meses fechados disponíveis para o dropdown (DESEMP-14 · >= 2026-08-01),
-        // em 'Y-m' pra bater com o `?mes=` do contrato novo.
-        $mesesFechados = DesempenhoScoreSnapshot::mensal()
-            ->where('user_id', $user->id)
-            ->whereDate('mes_referencia', '>=', '2026-08-01')
-            ->orderByDesc('mes_referencia')
-            ->pluck('mes_referencia')
-            ->map(fn ($d) => Carbon::parse($d)->format('Y-m'))
-            ->unique()
-            ->values();
+        // Meses do seletor — últimos 6, MESMO formato das demais telas
+        // (`{value, label, em_curso}`).
+        //
+        // 2026-08-05: passou a listar os últimos 6 meses em vez de só os
+        // CONGELADOS (`DesempenhoScoreSnapshot::mensal()`). Enquanto existia o
+        // toggle "Em curso / Bônus atual / Mês fechado", o dropdown só
+        // precisava cobrir os fechados — os outros dois períodos tinham botão
+        // próprio. Com o toggle removido, essa lista virou o ÚNICO controle de
+        // período da tela, e restringi-la aos congelados prendia o usuário:
+        // em produção só a competência 2026-06 está consolidada, então o
+        // select tinha uma única opção e não dava para ver o mês corrente nem
+        // julho.
+        //
+        // `resolveContextoPeriodo()` já aceita `?mes=YYYY-MM` de qualquer mês
+        // (fechado ou em curso) — a limitação era só da lista oferecida.
+        // Marcar `em_curso` deixa o mês corrente auto-explicativo, que é o que
+        // o segmento "Em curso" fazia.
+        $mesCorrenteShow   = Carbon::now()->startOfMonth();
+        $mesesDisponiveis  = [];
+        for ($i = 0; $i < 6; $i++) {
+            $m = $mesCorrenteShow->copy()->subMonthsNoOverflow($i);
+            $mesesDisponiveis[] = [
+                'value'    => $m->format('Y-m'),
+                'label'    => mb_strtolower($m->translatedFormat('F/Y')),
+                'em_curso' => $m->equalTo($mesCorrenteShow),
+            ];
+        }
 
         // Empresas invalidadas para bônus nesta competência (item 3/4) que
         // saíram da conta DESTE profissional.
@@ -1306,6 +1388,25 @@ class PerformanceController extends Controller
         $invalidadasDoUser = $invalidadasComp->isEmpty()
             ? 0
             : $user->companies()->pluck('companies.id')->intersect($invalidadasComp)->count();
+
+        // Detalhe por empresa (D-01/D-03/D-06 da Fase 123) — leitura pura de
+        // `desempenho_company_score_snapshots` via `CompanyScoreSnapshotReader`.
+        // Esta tela NUNCA aciona o shadow de cálculo por empresa nem lê
+        // via serviço de compute — reabriria o fan-out de HTTP por empresa
+        // que já produziu página de 70s neste módulo (ver
+        // `.planning/learnings/desempenho-bonificacao.md` §5). O guard
+        // `periodo.is_closed` é a D-01 literal — no modo "Em curso" a seção
+        // nem é consultada, custo zero de API nos dois ramos. `is_closed`
+        // sozinho NÃO implica detalhe disponível (2026-05/2026-04 são meses
+        // fechados sem nenhuma consolidação, e snapshot anterior à Fase 122
+        // também não tem linhas) — por isso `$temDetalheEmpresas` é derivado
+        // da EXISTÊNCIA de linhas, nunca de `is_closed` isolado.
+        $empresasScore = collect();
+        if ($ctx['periodo']['is_closed']) {
+            $empresasScore = $this->companyScoreReader->paraUsuario($user->id, $mesReferencia);
+        }
+        $temDetalheEmpresas = $empresasScore->isNotEmpty();
+        $resumoEmpresas     = $this->companyScoreReader->resumo($empresasScore);
 
         return Inertia::render('Performance/Show', [
             'user' => [
@@ -1315,14 +1416,17 @@ class PerformanceController extends Controller
                 'cargo_slug'  => $cargoSlug,
                 'cargo_label' => $cargoLabel,
             ],
-            'resultado'            => $resultado,
-            'mes_selecionado'      => $mesReferencia->toDateString(),
-            'modo'                 => $ctx['modo'],
-            'meses_disponiveis'    => $mesesFechados,
-            'periodo'              => $ctx['periodo'],
-            'bonus'                => $ctx['bonus'],
-            'nps_window'           => $ctx['nps'],
-            'empresas_invalidadas' => $invalidadasDoUser,
+            'resultado'             => $resultado,
+            'mes_selecionado'       => $mesReferencia->toDateString(),
+            'modo'                  => $ctx['modo'],
+            'meses_disponiveis'     => $mesesDisponiveis,
+            'periodo'               => $ctx['periodo'],
+            'bonus'                 => $ctx['bonus'],
+            'nps_window'            => $ctx['nps'],
+            'empresas_invalidadas'  => $invalidadasDoUser,
+            'empresas_score'        => $empresasScore->values()->all(),
+            'tem_detalhe_empresas'  => $temDetalheEmpresas,
+            'empresas_score_resumo' => $resumoEmpresas,
         ]);
     }
 }

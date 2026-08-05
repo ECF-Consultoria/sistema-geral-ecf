@@ -5,23 +5,35 @@ import {
     Trophy, Sparkles, UserX, BookOpen, Info, Briefcase, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import EmpresasScoreTabela from '@/Components/Desempenho/EmpresasScoreTabela';
+import {
+    MARGEM_CARD_TITULO, MARGEM_CARD_SUBLABEL, fraseVarMargemPp,
+    AVISO_SEM_DETALHE_TITULO, AVISO_SEM_DETALHE_EM_CURSO, avisoSemDetalheFechado,
+} from '@/lib/desempenhoLabels';
 
 /**
- * Formata a conta que produziu a nota (ex: "(3+5+4)/3 = 4"). Consumido em
- * FaixaBonusCard abaixo da nota final — mesmo formato usado no Ranking
- * (Performance/Index.jsx). Nulls (componentes indisponíveis) ficam de fora.
+ * Nota em escala 0-5 com 2 casas SEMPRE — "4,03", nunca "4" nem "4,1".
+ * Desde 2026-08-05 os componentes são médias de N lojas, então quase nunca
+ * caem em valor redondo; casas variáveis faziam a mesma tela mostrar "4",
+ * "4,1" e "4,03" lado a lado, e a conta parecia não fechar.
+ */
+function formatNota(v) {
+    if (v == null || Number.isNaN(Number(v))) return '—';
+    return Number(v).toFixed(2).replace('.', ',');
+}
+
+/**
+ * Formata a conta que produziu a nota (ex: "(4,65+3,83+3,61)/3 = 4,03").
+ * Consumido em FaixaBonusCard abaixo da nota final — mesmo formato usado no
+ * Ranking (Performance/Index.jsx). Nulls (componentes indisponíveis) ficam
+ * de fora, e o denominador acompanha quantos componentes sobraram.
  */
 function formatContaNota(pontos, notaFinal) {
     if (!pontos) return null;
     const pts = [pontos.nps, pontos.faturamento, pontos.margem].filter((v) => v != null);
     if (pts.length === 0) return null;
-    const fmt = (v) => {
-        const n = Number(v);
-        if (Number.isNaN(n)) return '?';
-        return Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
-    };
-    const notaFmt = notaFinal != null ? Number(notaFinal).toFixed(2).replace('.', ',') : '?';
-    return `(${pts.map(fmt).join('+')})/${pts.length} = ${notaFmt}`;
+    const notaFmt = notaFinal != null ? formatNota(notaFinal) : '?';
+    return `(${pts.map(formatNota).join('+')})/${pts.length} = ${notaFmt}`;
 }
 
 /**
@@ -29,7 +41,7 @@ function formatContaNota(pontos, notaFinal) {
  *
  * Consome o shape v2 do DesempenhoScoreService:
  *   { user, resultado (compute() shape), mes_selecionado, mes_fechado,
- *     meses_disponiveis: string[] }
+ *     meses_disponiveis: Array<{value: string, label: string, em_curso: bool}> }
  *
  * Card por parâmetro (NPS/Faturamento/Margem/Absenteísmo) + card destaque
  * Faixa de bônus + placeholder "Em breve" no Absenteísmo (DESEMP-06) + toggle
@@ -207,7 +219,7 @@ function FaixaBonusCard({ resultado, user }) {
                             Nota final
                         </span>
                         <span className="text-white text-4xl font-display font-black tabular-nums leading-none">
-                            {nota != null ? Number(nota).toFixed(2) : '—'}
+                            {formatNota(nota)}
                         </span>
                         <span className="text-white/40 text-sm">/ 5,00</span>
                         {/* Fase 92 (DESEMP-08) · badge de status da nota. 'official' não
@@ -301,10 +313,20 @@ export default function PerformanceShow({
     bonus = null,
     nps_window = null,
     empresas_invalidadas = 0,
+    empresas_score = [],
+    empresas_score_resumo = { entraram: 0, nao_entraram: 0 },
+    tem_detalhe_empresas = false,
 }) {
     const c = resultado?.componentes ?? {};
     const semCarteira = resultado?.sem_carteira === true;
     const isClosed = periodo?.is_closed === true;
+
+    // UIEM-01/D-04 — sublabel do card de margem sem jargão de API. A frase
+    // em pontos percentuais (D-05) só entra quando o shadow já rodou para
+    // esta competência; payload antigo/mês em curso cai no texto legado
+    // sozinho (D-11), nunca em `undefined` na tela.
+    const fraseMargemPp = fraseVarMargemPp(c?.var_margem_pp);
+    const margemSublabel = fraseMargemPp ? `${MARGEM_CARD_SUBLABEL} ${fraseMargemPp}` : MARGEM_CARD_SUBLABEL;
 
     // Modo ativo do segmento (mesmo contrato do ranking).
     const modoAtivo = modo === 'bonus_atual' ? 'bonus_atual' : (isClosed ? 'mes_fechado' : 'em_curso');
@@ -351,46 +373,34 @@ export default function PerformanceShow({
                         </div>
                     </div>
 
-                    {/* Segmento de período — MESMO contrato do ranking (Fase 2) */}
+                    {/* Seletor de mês — único controle de período desde 2026-08-05.
+                        O toggle "Em curso / Bônus atual / Mês fechado" saiu: ele
+                        mudava o período por atalho e deixava ambíguo QUAL mês
+                        estava na tela. O dropdown é explícito e marca o mês em
+                        curso com seu próprio rótulo. */}
                     <div className="flex items-center gap-2 flex-wrap">
-                        <div className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.03] p-0.5 text-[13px]">
-                            <button
-                                type="button"
-                                onClick={() => irPara({})}
-                                className={cn('px-3 h-8 rounded-lg transition-colors',
-                                    modoAtivo === 'em_curso' ? 'bg-ecf-yellow/15 text-ecf-yellow font-semibold' : 'text-white/50 hover:text-white/80')}
-                            >
-                                Em curso
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => irPara({ modo: 'bonus_atual' })}
-                                className={cn('px-3 h-8 rounded-lg transition-colors',
-                                    modoAtivo === 'bonus_atual' ? 'bg-ecf-yellow/15 text-ecf-yellow font-semibold' : 'text-white/50 hover:text-white/80')}
-                            >
-                                Bônus atual
-                            </button>
-                            <button
-                                type="button"
-                                disabled={meses_disponiveis.length === 0}
-                                onClick={() => meses_disponiveis.length && trocarMes(meses_disponiveis[0])}
-                                className={cn('px-3 h-8 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed',
-                                    modoAtivo === 'mes_fechado' ? 'bg-ecf-yellow/15 text-ecf-yellow font-semibold' : 'text-white/50 hover:text-white/80')}
-                                title={meses_disponiveis.length === 0 ? 'Nenhum mês fechado disponível ainda' : undefined}
-                            >
-                                Mês fechado
-                            </button>
-                        </div>
-
-                        {modoAtivo === 'mes_fechado' && meses_disponiveis.length > 0 && (
+                        {meses_disponiveis.length > 0 && (
                             <select
                                 value={String(mes_selecionado ?? '').slice(0, 7)}
                                 onChange={(e) => trocarMes(e.target.value)}
-                                className="appearance-none h-8 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer"
+                                title="Selecionar mês"
+                                className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer capitalize"
                             >
-                                {meses_disponiveis.map(m => (
-                                    <option key={m} value={m}>{mesExtenso(m)}</option>
-                                ))}
+                                {/* Aceita os dois formatos: objeto {value,label,em_curso}
+                                    (contrato atual, alinhado às demais telas) e string
+                                    'YYYY-MM' (formato antigo — snapshot de payload em
+                                    cache ainda pode chegar assim logo após o deploy). */}
+                                {meses_disponiveis.map((m) => {
+                                    const value = typeof m === 'string' ? m : m.value;
+                                    const label = typeof m === 'string' ? mesExtenso(m) : m.label;
+                                    const emCurso = typeof m === 'string' ? false : m.em_curso;
+
+                                    return (
+                                        <option key={value} value={value}>
+                                            {label}{emCurso ? ' (em curso)' : ''}
+                                        </option>
+                                    );
+                                })}
                             </select>
                         )}
                     </div>
@@ -482,7 +492,7 @@ export default function PerformanceShow({
                             <ParametroCard
                                 icone={Star}
                                 titulo="NPS médio"
-                                valor={c.nps_medio != null ? Number(c.nps_medio).toFixed(2) : '—'}
+                                valor={formatNota(c.nps_medio)}
                                 sublabel={npsSublabel}
                                 accentColor="ecf-yellow"
                             />
@@ -498,9 +508,9 @@ export default function PerformanceShow({
 
                             <ParametroCard
                                 icone={Coins}
-                                titulo="Variação da margem %"
+                                titulo={MARGEM_CARD_TITULO}
                                 valor={formatPercent(c.var_margem_pct)}
-                                sublabel="Variação da margem % (percentageMargin) vs mês anterior · fonte Adman"
+                                sublabel={margemSublabel}
                                 accentColor="blue"
                                 trendDir={c.var_margem_pct != null ? (c.var_margem_pct >= 0 ? 'up' : 'down') : null}
                             />
@@ -537,6 +547,33 @@ export default function PerformanceShow({
                                 Como calculamos?
                             </Link>
                         </div>
+
+                        {/* Empresas da carteira (UIEM-02) — lista com nota e três
+                            componentes em competência fechada com detalhe gravado
+                            (D-01/D-06/D-07); aviso explícito quando não há detalhe
+                            para não sumir silenciosamente (D-03/D-11). */}
+                        <div>
+                            <h2 className="text-white text-lg font-display font-bold flex items-center gap-2 mb-3">
+                                <Briefcase size={18} className="text-ecf-yellow" />
+                                Empresas da carteira
+                            </h2>
+
+                            {tem_detalhe_empresas ? (
+                                <EmpresasScoreTabela linhas={empresas_score} resumo={empresas_score_resumo} />
+                            ) : (
+                                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 flex items-start gap-3">
+                                    <Info size={16} className="text-white/40 shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="text-white/80 text-sm font-semibold">{AVISO_SEM_DETALHE_TITULO}</p>
+                                        <p className="text-white/50 text-xs mt-1 leading-relaxed">
+                                            {modoAtivo === 'em_curso'
+                                                ? AVISO_SEM_DETALHE_EM_CURSO
+                                                : avisoSemDetalheFechado(mesExtenso(String(mes_selecionado ?? '').slice(0, 7)))}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </>
                 )}
 
@@ -547,7 +584,7 @@ export default function PerformanceShow({
                         <span className="text-white/70 text-sm font-semibold">Como interpretar</span>
                     </div>
                     <p className="text-white/60 text-sm leading-relaxed">
-                        A nota final é a média direta dos parâmetros disponíveis (NPS · Var. Faturamento · Var. Margem). O
+                        A nota final é a média direta dos parâmetros disponíveis (NPS · variação do faturamento · variação da margem). O
                         Absenteísmo está em <em>standby</em> nesta versão. A faixa de bônus é configurável pelo admin —
                         detalhes em{' '}
                         <Link href="/manual/desempenho-bonificacao" className="text-ecf-yellow hover:underline">

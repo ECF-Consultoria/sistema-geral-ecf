@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 // Mapa de estágio extraído para módulo compartilhado (padroniza Onboarding + Painel Polos).
 import { ESTAGIO_COLORS } from '@/Pages/Polos/components/estagioBadge';
+// Célula de Cust ID — MESMO componente do Painel Polos (copiar / criar / editar inline).
+import { CustIdCell } from '@/Pages/Polos/components/CustIdCell';
 
 // Status do envio do link ao cliente (ONB-ENVIO-LINK)
 const STATUS_ENVIO_LABELS = {
@@ -834,6 +836,13 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
     // Contador de empresas que ainda faltam ter o link enviado
     const faltamEnviar = empresas.filter(e => e.status_envio === 'falta_enviar').length;
 
+    // Salva SÓ o cust_id (endpoint dedicado que não zera os demais campos da empresa).
+    const salvarCustId = (e, valor) =>
+        router.patch(route('mlb.empresas.cust-id', e.id), { cust_id: String(valor ?? '').trim() }, {
+            preserveScroll: true,
+            preserveState: true,
+        });
+
     // Busca local (complementar aos filtros de Polo/Fase do backend)
     const filtradas = empresas.filter(e => e.nome.toLowerCase().includes(busca.toLowerCase()));
 
@@ -998,6 +1007,8 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2 flex-wrap">
                                             <span className="text-white text-[13px] font-medium">{empresa.nome}</span>
+                                            {/* Cust ID inline: copia (chip), cadastra ("+") e corrige (lápis) sem sair da tela */}
+                                            <CustIdCell e={empresa} onSalvar={salvarCustId} />
                                             {/* Badge "Fora do prazo" — apenas exibe prop calculada no backend (plano 02) */}
                                             {empresa.fora_do_prazo && (
                                                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-red-300 bg-red-500/10 border border-red-500/20 whitespace-nowrap">

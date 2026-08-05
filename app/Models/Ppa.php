@@ -13,7 +13,7 @@ class Ppa extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['company_id', 'title', 'status', 'due_date', 'sent_at', 'completed_at'])
+            ->logOnly(['escopo', 'company_id', 'mlb_empresa_id', 'title', 'status', 'due_date', 'sent_at', 'completed_at'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
@@ -24,8 +24,14 @@ class Ppa extends Model
             });
     }
 
+    /** PPA de carteira (módulo PPA original, alvo = Company). */
+    public const ESCOPO_GERAL = 'geral';
+
+    /** PPA Polos (quick 260805-dzu; alvo = MlbEmpresa do projeto POLOS). */
+    public const ESCOPO_POLOS = 'polos';
+
     protected $fillable = [
-        'company_id', 'mentor_id', 'title', 'description', 'actions',
+        'escopo', 'company_id', 'mlb_empresa_id', 'mentor_id', 'title', 'description', 'actions',
         'status', 'trello_board_url', 'workspace_token', 'due_date', 'sent_at', 'completed_at',
     ];
 
@@ -37,6 +43,24 @@ class Ppa extends Model
     ];
 
     public function company() { return $this->belongsTo(Company::class); }
+    public function mlbEmpresa() { return $this->belongsTo(MlbEmpresa::class, 'mlb_empresa_id'); }
     public function mentor() { return $this->belongsTo(User::class, 'mentor_id'); }
     public function tasks() { return $this->hasMany(PpaTask::class)->orderBy('order'); }
+
+    /** Filtra por escopo ('geral' ou 'polos'); PPA antigo sem escopo conta como geral. */
+    public function scopeDoEscopo($query, string $escopo)
+    {
+        return $escopo === self::ESCOPO_GERAL
+            ? $query->where(fn ($q) => $q->where('escopo', self::ESCOPO_GERAL)->orWhereNull('escopo'))
+            : $query->where('escopo', $escopo);
+    }
+
+    /**
+     * Nome da empresa dona do plano, seja ela Company (escopo geral) ou
+     * MlbEmpresa (escopo polos). Evita espalhar o ?? pelas telas.
+     */
+    public function nomeEmpresa(): string
+    {
+        return $this->company?->name ?? $this->mlbEmpresa?->nome ?? '—';
+    }
 }

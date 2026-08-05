@@ -15,6 +15,16 @@ import { Plus, Pencil, Trash2, FileText, LayoutDashboard } from 'lucide-react';
 const statusColor = { draft: 'secondary', sent: 'default', completed: 'success' };
 const statusLabel = { draft: 'Rascunho', sent: 'Enviado', completed: 'Concluído' };
 
+// Nomes de rota do PPA de carteira. O PPA Polos (quick 260805-dzu) renderiza este
+// mesmo componente passando `rotas` próprio — a tela é a mesma, só o escopo muda.
+const ROTAS_PADRAO = {
+    index:   'ppa.index',
+    store:   'ppa.store',
+    update:  'ppa.update',
+    destroy: 'ppa.destroy',
+    kanban:  'ppa.kanban',
+};
+
 function ProgressBar({ done, total }) {
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
     return (
@@ -30,7 +40,9 @@ function ProgressBar({ done, total }) {
     );
 }
 
-export default function PpaIndex({ ppas, companies }) {
+export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas }) {
+    const R = { ...ROTAS_PADRAO, ...(rotas ?? {}) };
+    const ehPolos = escopo === 'polos';
     const [open, setOpen] = useState(false);
     const [editOpen, setEditOpen] = useState(false);
     const [editing, setEditing] = useState(null);
@@ -61,20 +73,20 @@ export default function PpaIndex({ ppas, companies }) {
 
     const submit = (e) => {
         e.preventDefault();
-        post(route('ppa.store'), { onSuccess: () => { reset(); setOpen(false); } });
+        post(route(R.store), { onSuccess: () => { reset(); setOpen(false); } });
     };
 
     const submitEdit = (e) => {
         e.preventDefault();
-        editForm.put(route('ppa.update', editing.id), { onSuccess: () => setEditOpen(false) });
+        editForm.put(route(R.update, editing.id), { onSuccess: () => setEditOpen(false) });
     };
 
     const remove = (id) => {
-        if (confirm('Remover este PPA?')) router.delete(route('ppa.destroy', id));
+        if (confirm('Remover este PPA?')) router.delete(route(R.destroy, id));
     };
 
     return (
-        <AppLayout title="PPA — Plano Prático de Ação">
+        <AppLayout title={ehPolos ? 'PPA Polos — Plano Prático de Ação' : 'PPA — Plano Prático de Ação'}>
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
                     <p className="text-white/40 text-sm">{ppas.total} PPA(s)</p>
@@ -116,7 +128,7 @@ export default function PpaIndex({ ppas, companies }) {
                                                     size="icon"
                                                     variant="ghost"
                                                     title="Abrir Kanban"
-                                                    onClick={() => router.get(route('ppa.kanban', p.id))}
+                                                    onClick={() => router.get(route(R.kanban, p.id))}
                                                 >
                                                     <LayoutDashboard className="h-4 w-4" />
                                                 </Button>
@@ -146,11 +158,11 @@ export default function PpaIndex({ ppas, companies }) {
                 {ppas.last_page > 1 && (
                     <div className="flex justify-center gap-2">
                         {ppas.current_page > 1 && (
-                            <Button variant="outline" size="sm" onClick={() => router.get(route('ppa.index'), { page: ppas.current_page - 1 })}>Anterior</Button>
+                            <Button variant="outline" size="sm" onClick={() => router.get(route(R.index), { page: ppas.current_page - 1 })}>Anterior</Button>
                         )}
                         <span className="text-sm text-muted-foreground self-center">Página {ppas.current_page} de {ppas.last_page}</span>
                         {ppas.current_page < ppas.last_page && (
-                            <Button variant="outline" size="sm" onClick={() => router.get(route('ppa.index'), { page: ppas.current_page + 1 })}>Próxima</Button>
+                            <Button variant="outline" size="sm" onClick={() => router.get(route(R.index), { page: ppas.current_page + 1 })}>Próxima</Button>
                         )}
                     </div>
                 )}
