@@ -38,6 +38,7 @@ use App\Http\Controllers\NpsTemplateOptionController;
 use App\Http\Controllers\NpsTemplateQuestionController;
 use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PolosController;
+use App\Http\Controllers\PolosPpaController;
 use App\Http\Controllers\BonusAuditoriaController;
 use App\Http\Controllers\RelatorioBonificacaoController;
 use App\Http\Controllers\PerformanceController;
@@ -870,6 +871,17 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     // Arquivar / desarquivar empresa Polos (aba "Arquivados"; mesmo gate operacional).
     Route::post('/polos-painel/{empresa}/arquivar',    [PolosController::class, 'arquivar'])->name('polos-painel.arquivar');
     Route::post('/polos-painel/{empresa}/desarquivar', [PolosController::class, 'desarquivar'])->name('polos-painel.desarquivar');
+    // PPA Polos (quick 260805-dzu): mesmo módulo PPA recortado nas empresas POLOS.
+    // Divide a tabela `ppas` (coluna escopo), as tarefas (ppa.tasks.*) e o workspace
+    // público do cliente (ppa.workspace, por token) com o PPA de carteira.
+    Route::middleware('permission:mlb.projetos')->group(function () {
+        Route::get('/polos-ppa',                    [PolosPpaController::class, 'index'])->name('polos-ppa.index');
+        Route::post('/polos-ppa',                   [PolosPpaController::class, 'store'])->name('polos-ppa.store');
+        Route::put('/polos-ppa/{ppa}',              [PolosPpaController::class, 'update'])->name('polos-ppa.update');
+        Route::delete('/polos-ppa/{ppa}',           [PolosPpaController::class, 'destroy'])->name('polos-ppa.destroy');
+        Route::get('/polos-ppa/{ppa}/kanban',       [PolosPpaController::class, 'kanban'])->name('polos-ppa.kanban');
+        Route::post('/polos-ppa/{ppa}/workspace-link', [PolosPpaController::class, 'generateWorkspaceLink'])->name('polos-ppa.workspace.generate');
+    });
     Route::get('/treinamentos',   [MlbController::class, 'treinamentos'])->name('treinamentos');
     Route::post('/treinamentos',  [MlbController::class, 'storeTreinamento'])->name('treinamentos.store');
     Route::put('/treinamentos/{treinamento}',    [MlbController::class, 'updateTreinamento'])->name('treinamentos.update');
