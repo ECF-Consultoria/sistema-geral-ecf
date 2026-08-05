@@ -40,7 +40,7 @@ class MlbEmpresa extends Model
         'skus_estagio1', 'skus_estagio2', 'skus_estagio3',
         'prazo_estagio1', 'prazo_estagio2', 'prazo_estagio3',
         'encerramento', 'criado_por',
-        'problema', 'problema_nota', 'problema_em', 'ads_desligado',
+        'problema', 'problema_nota', 'problema_em', 'problema_desconsidera_meta', 'ads_desligado',
         'company_id',
         'arquivado_em', 'arquivado_por', 'arquivado_motivo',
     ];
@@ -55,6 +55,9 @@ class MlbEmpresa extends Model
         'encerramento'   => 'date',
         'problema'       => 'boolean',
         'problema_em'    => 'datetime',
+        // true = o problema tira a empresa da meta (status 'Problema'); false = ela
+        // segue contando normalmente (No alvo / Em progresso / Não).
+        'problema_desconsidera_meta' => 'boolean',
         'ads_desligado'  => 'boolean',
         'arquivado_em'   => 'datetime',
     ];

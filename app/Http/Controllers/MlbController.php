@@ -2561,28 +2561,63 @@ class MlbController extends Controller
         return back()->with('success', 'Empresa removida.');
     }
 
-    /** Publicador ou líder marca/edita/remove problema na conta da empresa. */
+    /**
+     * Publicador ou líder marca/edita/remove problema na conta da empresa.
+     *
+     * `desconsidera_meta` (quick 260805-dzu): decide se ESTE problema tira a empresa
+     * da meta dos Polos. Ausente no payload = false, ou seja, a empresa continua
+     * contando (No alvo / Em progresso / Não). Só quem marca explicitamente joga a
+     * empresa pro status 'Problema' da Distribuição de status.
+     */
     public function marcarProblemaEmpresa(Request $request, MlbEmpresa $empresa)
     {
         $this->checkPubAccess();
 
-        $request->validate(['problema_nota' => 'nullable|string|max:500']);
+        $request->validate([
+            'problema_nota'     => 'nullable|string|max:500',
+            'desconsidera_meta' => 'nullable|boolean',
+        ]);
 
-        $acao = $request->input('acao', 'toggle');
-        $user = $request->user();
+        $acao        = $request->input('acao', 'toggle');
+        $user        = $request->user();
+        $desconsidera = $request->boolean('desconsidera_meta');
+        $rotuloMeta   = fn (bool $v) => $v ? 'fora da meta' : 'contando pra meta';
+
+        // Só troca o flag de meta, sem mexer no problema em si (toggle do drawer).
+        if ($acao === 'meta') {
+            if (! $empresa->problema) {
+                return back()->with('error', 'A empresa não tem problema registrado.');
+            }
+            $empresa->update(['problema_desconsidera_meta' => $desconsidera]);
+            activity('mlb')
+                ->causedBy($user)
+                ->withProperties(['empresa' => $empresa->nome, 'desconsidera_meta' => $desconsidera])
+                ->log('Problema da empresa MLB "' . $empresa->nome . '" passou a contar como ' . $rotuloMeta($desconsidera));
+            return back()->with('success', $desconsidera
+                ? 'Empresa desconsiderada da meta.'
+                : 'Empresa voltou a contar pra meta.');
+        }
 
         if ($acao === 'editar' && $empresa->problema) {
             $nota = trim($request->problema_nota ?? '');
-            $empresa->update(['problema_nota' => $nota]);
+            $empresa->update([
+                'problema_nota'              => $nota,
+                'problema_desconsidera_meta' => $desconsidera,
+            ]);
             activity('mlb')
                 ->causedBy($user)
-                ->withProperties(['empresa' => $empresa->nome, 'nota' => $nota])
+                ->withProperties(['empresa' => $empresa->nome, 'nota' => $nota, 'desconsidera_meta' => $desconsidera])
                 ->log('Nota de problema atualizada na empresa MLB "' . $empresa->nome . '"');
             return back()->with('success', 'Nota atualizada.');
         }
 
         if ($acao === 'remover') {
-            $empresa->update(['problema' => false, 'problema_nota' => null, 'problema_em' => null]);
+            $empresa->update([
+                'problema'                   => false,
+                'problema_nota'              => null,
+                'problema_em'                => null,
+                'problema_desconsidera_meta' => false,
+            ]);
             activity('mlb')
                 ->causedBy($user)
                 ->withProperties(['empresa' => $empresa->nome])
@@ -2597,14 +2632,18 @@ class MlbController extends Controller
             'problema'      => $problema,
             'problema_nota' => $nota,
             'problema_em'   => $problema ? now() : null,
+            // Ao remover, o flag de meta volta ao neutro; ao marcar, vale a escolha do payload.
+            'problema_desconsidera_meta' => $problema ? $desconsidera : false,
         ]);
 
         activity('mlb')
             ->causedBy($user)
-            ->withProperties(['empresa' => $empresa->nome, 'nota' => $nota])
-            ->log('Problema ' . ($problema ? 'registrado' : 'removido') . ' na empresa MLB "' . $empresa->nome . '"' . ($nota ? ': "' . $nota . '"' : ''));
+            ->withProperties(['empresa' => $empresa->nome, 'nota' => $nota, 'desconsidera_meta' => $problema && $desconsidera])
+            ->log('Problema ' . ($problema ? 'registrado (' . $rotuloMeta($desconsidera) . ')' : 'removido') . ' na empresa MLB "' . $empresa->nome . '"' . ($nota ? ': "' . $nota . '"' : ''));
 
-        return back()->with('success', $problema ? 'Problema registrado na conta.' : 'Problema removido da conta.');
+        return back()->with('success', $problema
+            ? ($desconsidera ? 'Problema registrado — empresa fora da meta.' : 'Problema registrado — empresa segue contando pra meta.')
+            : 'Problema removido da conta.');
     }
 
     /** Publicador marca/desmarca um SKU como concluído. */
