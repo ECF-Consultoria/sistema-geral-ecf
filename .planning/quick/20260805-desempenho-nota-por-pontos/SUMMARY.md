@@ -4,7 +4,7 @@ slug: desempenho-nota-por-pontos
 created: 2026-08-05
 completed: 2026-08-05
 status: complete
-deployed: false
+deployed: true
 ---
 
 # Sumário — nota por pontos + filtro por mês
@@ -95,11 +95,58 @@ execução. Removidos os 4 espelhos "com flag ligada" de
 
 ## Não feito (deliberadamente)
 
-- **Deploy** — exige autorização explícita.
-- **Reconsolidar competência fechada** — junho segue congelado com os 5
-  contemplados. O comando de backup está pronto para quando for autorizado.
-- **Recalibrar faixas de bônus.**
+- **Recalibrar faixas de bônus** — pauta de diretoria.
+- **Reconsolidar 2026-07 e 2026-08** — julho ainda está sem NPS (coletado em
+  agosto) e agosto está em curso. Reconsolidar agora congelaria número sem
+  significado. Abril e maio não têm base (o histórico de métricas começa em
+  ~21/05).
 - **Decompor delta contra a nota oficial** — `desempenho:comparar-score-empresa`
   segue comparando legado × company-first, que é o par que a matemática dele
   modela. Para o efeito desta mudança, comparar `nota_final_legado` ×
   `nota_final`, ambos expostos no payload.
+
+## Deploy e reconsolidação de junho (2026-08-05)
+
+**DEPLOYADO** — commits `8b33f39e..e113b066`, dois deploys isolados (o segundo
+corrigiu o seletor de mês da tela individual, regressão descrita abaixo).
+Workers travaram em `STOPPING` nas duas vezes e foram destravados com
+`supervisorctl signal KILL` — comportamento já conhecido neste projeto.
+
+**Competência 2026-06 RECONSOLIDADA** com autorização do usuário, após ele ver
+na tela que junho ainda exibia o cálculo antigo (4,91 numa carteira cujas lojas
+não sustentavam aquilo).
+
+- Backup ANTES: `storage/app/private/backups/desempenho/desempenho-2026-06-20260805-145721.json`
+  (11 resumos + 286 linhas por empresa, 501 KB) — preservado na VPS.
+- `desempenho:consolidar-mes --mes=2026-06` → **exit code 0**, 11 consolidados,
+  0 falhas, 0 degradados, 286 linhas por empresa. O gate FIXMARG-03 não recusou.
+- Conferido por **reconsulta ao banco**, nunca por stdout.
+
+Resultado: **de 5 contemplados para 1**. O que permanece caiu de
+`intermediario` para `basico`.
+
+### O caso que motivou a reconsolidação
+
+O snapshot antigo de uma carteira mostrava `(4,72 + 5,00 + 5,00) / 3 = 4,91`.
+Os dois 5,00 vinham da régua aplicada UMA vez sobre a % agregada: faturamento
+da carteira 7,87% (> 5% → 5,00) e margem 13,51% (> 4% → 5,00).
+
+Só que as 25 lojas dessa carteira pontuavam assim, uma a uma:
+
+- faturamento: 5 lojas com 1 · 2 com 2 · 4 com 3 · 1 com 4 · 13 com 5 → média **3,60**
+- margem: 3 lojas com 2 · 6 com 3 · 9 com 4 · 5 com 5 → média **3,70**
+
+Cinco lojas em queda severa, e a carteira marcava 5/5 em crescimento. É a
+demonstração mais limpa do vício que a mudança corrige — e o motivo de a régua
+sobre a média ter sido abandonada.
+
+Pelo método novo: `(3,60 + 3,70 + 4,72) / 3 = 4,0051`, contra 4,03 no
+fechamento manual da equipe.
+
+## Regressão pós-deploy corrigida
+
+Seletor de mês da tela individual (`/performance/{user}`) ficou preso a um
+único mês. `meses_disponiveis` do `show()` listava apenas competências
+CONGELADAS, e em produção só 2026-06 estava consolidada. Enquanto existia o
+toggle, o dropdown só precisava cobrir os fechados; sem ele, virou o único
+controle de período. Passou a listar os últimos 6 meses, como as demais telas.

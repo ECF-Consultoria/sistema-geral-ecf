@@ -37,6 +37,19 @@ performance.xlsx`). Consequências que valem saber antes de mexer:
 4,00 e somar componentes já arredondados desloca o resultado. Quem arredonda é
 a exibição, com 2 casas fixas.
 
+**DEPLOYADO em 2026-08-05, e a competência 2026-06 FOI RECONSOLIDADA** com
+backup prévio em `storage/app/private/backups/desempenho/`. Junho saiu de 5
+contemplados para 1 — o histórico do sistema deixou de justificar o pagamento
+já feito daquela competência. Julho e agosto NÃO foram reconsolidados: julho
+ainda está sem NPS (coletado em agosto) e agosto está em curso.
+
+O caso que tornou o vício do método antigo inegável: uma carteira exibia
+`(4,72 + 5,00 + 5,00)/3 = 4,91`, com os dois 5,00 vindo da régua sobre a %
+agregada (faturamento 7,87% > 5%; margem 13,51% > 4%). Loja a loja, porém, a
+mesma carteira tinha **5 das 25 lojas tirando 1 ponto em faturamento** — média
+real 3,60 — e a margem em 3,70. Cinco lojas em queda severa, e o conjunto
+marcava 5/5 em crescimento.
+
 ## 0.1. A trava D-91-01 precisa ser EXPLÍCITA no caminho por empresa
 
 Carteira com zero vínculos financeiros elegíveis (só-Polos, só-Publicação) não
