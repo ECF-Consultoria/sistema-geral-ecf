@@ -7,6 +7,90 @@ Escrito em 2026-08-03, ao fim da Fase 122.
 
 ---
 
+## 0. A nota mudou de MÉTODO em 2026-08-05 — leia antes de tudo
+
+A nota final deixou de aplicar a régua **uma vez sobre a % agregada da
+carteira** e passou a usar a régua já aplicada **loja a loja**, promediando
+depois (`DesempenhoScoreService::computeNotaFinalPorIndicador()`). Média por
+indicador, com **denominador independente** por indicador — loja sem margem
+continua contando no faturamento e no NPS.
+
+É o modelo do fechamento manual do time (`Fechamento Junho _ Time de
+performance.xlsx`). Consequências que valem saber antes de mexer:
+
+- **Régua-da-média ≠ média-das-réguas.** Não é refinamento, é outra conta. Sob
+  as faixas atuais, a competência 2026-06 sai de 5 contemplados para 1.
+- **A mediana do faturamento (item 1) perdeu a razão de existir**, embora
+  continue no código como metadado. Com a régua por loja, o outlier de
+  +20.738% vira um voto de 5 pontos entre N lojas, em vez de arrastar a média
+  da carteira. Se um dia a mediana for removida, o teste que prova isso é
+  `Phase74\DesempenhoScoreServiceTest::test_var_faturamento_usa_mediana_e_outlier_nao_manda_na_carteira`.
+- Os dois métodos anteriores seguem calculados como metadado — `nota_final_legado`
+  (régua da média) e `nota_final_por_empresa` (company-first, exige loja
+  completa) — e **não decidem bônus**. Servem para comparar sem recomputar.
+- **`desempenho:comparar-score-empresa` NÃO compara contra a nota oficial.** A
+  decomposição do delta dele (P1 margem pp×relativa, P2 régua-por-empresa×
+  régua-da-média, P3 denominador) modela legado × company-first. Apontá-la para
+  a agregação por indicador dá parcelas que não somam o delta.
+
+**Nenhum arredondamento intermediário.** A régua de bônus tem fronteira dura em
+4,00 e somar componentes já arredondados desloca o resultado. Quem arredonda é
+a exibição, com 2 casas fixas.
+
+## 0.1. A trava D-91-01 precisa ser EXPLÍCITA no caminho por empresa
+
+Carteira com zero vínculos financeiros elegíveis (só-Polos, só-Publicação) não
+recebe nota oficial — decisão do usuário em 2026-07-16, até a diretoria aprovar
+régua própria.
+
+O cálculo legado barrava isso sozinho, olhando `vinculos_financeiros`. Com o
+status derivando da distribuição por empresa, **a trava sumiu por omissão**: o
+denominador independente simplesmente tirava faturamento e margem da conta, e a
+pessoa passava a receber nota calculada **só com NPS**, entrando no ranking
+medida por uma única dimensão e podendo alcançar faixa de bônus.
+
+Hoje `computeScoreStatusPorEmpresa()` devolve `blocked` quando nenhuma linha
+tem `fonte_financeira`. Foi regressão pega por teste; se você reescrever esse
+método, essa guarda tem que sobreviver.
+
+## 0.2. O NPS de loja sem link é a maior divergência contra o fechamento manual
+
+Empresa elegível que passou o mês **sem nenhum link de pesquisa** recebe nota
+1,00 (`NpsSemLinkService`, Fase 119.1). Isso atingia **92 das 286 lojas** da
+competência 2026-06 — quase um terço da base — e é a maior causa isolada de a
+nota do sistema ficar abaixo do fechamento manual, que não aplica essa
+penalidade.
+
+**É deliberado e foi reafirmado pelo usuário em 2026-08-05**: sem isso, deixar
+de disparar a pesquisa sairia mais barato do que disparar e receber nota baixa.
+Não "conserte" para bater com a planilha — a diferença é a regra, não um bug.
+Medida de referência: excluindo os não-gerados do denominador, o sistema passa a
+reproduzir o fechamento manual com erro médio de 0,17.
+
+## 0.3. Ponto aberto: nota vinda de uma única dimensão
+
+Com a Shopee fora da média de margem (ela não fornece CMV) e o NPS de um mês só
+sendo coletado no mês seguinte, uma carteira **só-Shopee** pode produzir nota
+formada **apenas pelo faturamento**. Caso real na competência 2026-07: 4,82,
+faixa `intermediario`, com margem ausente por ser Shopee e NPS ainda não
+coletado.
+
+O `score_status` sinaliza a fragilidade, mas a faixa de bônus é calculada assim
+mesmo. Uma exigência de cobertura mínima de dimensões para valer bônus
+resolveria — é decisão de negócio, não foi tomada.
+
+## 0.4. A planilha de fechamento tem erros de digitação
+
+Ao usar `Fechamento Junho _ Time de performance.xlsx` como referência, saiba que
+ela contém pelo menos 4 erros de entrada, todos confirmados contra produção:
+faturamento de 12.450% (real: 124,46%), −7.520% (real: −75,16%), margem de 880%
+(real: 7,79%) e uma margem com o sinal trocado (−9,34 na planilha, +9,26 real).
+
+Fora esses, os dados batem: erro médio de **0,03 p.p.** no faturamento (96 lojas
+pareadas) e **0,62 p.p.** na margem (92 lojas). E a coluna "Margem Mr" da
+planilha É pontos percentuais, a mesma grandeza de `margem_var_pp` — comparada
+contra variação relativa, o erro médio sobe para 16,66.
+
 ## 1. Regras de cálculo que divergem DE PROPÓSITO
 
 **Faturamento usa MEDIANA. Margem usa MÉDIA.** Não uniformize.
@@ -43,7 +127,7 @@ Armadilha de shell que já enganou nesta casa: `comando | tail -20; echo $?` dev
 
 ## 5. Cache
 
-`DesempenhoScoreService` cacheia por `desempenho.compute.vNN` (hoje `v16`). **Qualquer mudança de cálculo exige bump** — sem ele o dashboard serve a nota velha. O bump quebra strings hardcoded em testes (Phase96/V16/V18/Phase116/Phase110): atualize todas no mesmo commit.
+`DesempenhoScoreService` cacheia por `desempenho.compute.vNN` (hoje `v17`). **Qualquer mudança de cálculo exige bump** — sem ele o dashboard serve a nota velha. O bump quebra strings hardcoded em testes (Phase96/V16/V18/Phase116/Phase110): atualize todas no mesmo commit.
 
 **NUNCA rodar `php artisan cache:clear` no VPS.** Em 30/07/2026 isso derrubou o site inteiro: apaga o cache aquecido da Adman, o dashboard passa a esperar a API, as requisições lentas ocupam os workers do php-fpm e até o login para. Depois de um bump de chave o clear é desnecessário. Se precisar recarregar config: `systemctl reload php8.2-fpm` e reaquecer com `adman:warm-diff`.
 
