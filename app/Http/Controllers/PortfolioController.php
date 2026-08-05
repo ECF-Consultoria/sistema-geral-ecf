@@ -1094,6 +1094,20 @@ class PortfolioController extends Controller
             $periodo = $this->periodResolver->resolve(['period_key' => 'current_month']);
         }
 
+        // Meses do seletor (últimos 6) — mesmo formato de `transparencia()`.
+        // O mês corrente vem marcado `em_curso` para a tela rotular sozinha,
+        // sem precisar de um segmento próprio no controle.
+        $mesCorrenteOwn   = now()->startOfMonth();
+        $mesesDisponiveis = [];
+        for ($i = 0; $i < 6; $i++) {
+            $m = $mesCorrenteOwn->copy()->subMonths($i);
+            $mesesDisponiveis[] = [
+                'value'    => $m->format('Y-m'),
+                'label'    => mb_strtolower($m->translatedFormat('F/Y')),
+                'em_curso' => $m->equalTo($mesCorrenteOwn),
+            ];
+        }
+
         // `bonus` só existe quando o período resolvido é FECHADO — mesma regra
         // do PerformanceController/renderCarteiraProfissional (Plan 104-01).
         $bonusMeta = null;
@@ -1387,7 +1401,14 @@ class PortfolioController extends Controller
             // Escopo MINIMO (decisao travada 3 do 103-02-PLAN.md): so as 4
             // datas + metadados do resolver, SEM baseline/variacao nova por
             // card (isso e Fase 104).
+            // 2026-08-05: ganhou `mes_selecionado`/`meses_disponiveis`. A tela
+            // perdeu o toggle "Em curso / Bônus atual" e passou a ter seletor
+            // de mês, como as demais — sem estas duas chaves ela ficaria sem
+            // NENHUM controle de período (o `?mes=` já era aceito aqui, só não
+            // havia como escolher pela interface).
             'periodo'         => [
+                'mes_selecionado'  => Carbon::parse($periodo['current_start'])->format('Y-m'),
+                'meses_disponiveis' => $mesesDisponiveis,
                 'current_start'    => $periodo['current_start'],
                 'current_end'      => $periodo['current_end'],
                 'baseline_start'   => $periodo['baseline_start'],

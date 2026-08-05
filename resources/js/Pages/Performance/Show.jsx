@@ -12,21 +12,28 @@ import {
 } from '@/lib/desempenhoLabels';
 
 /**
- * Formata a conta que produziu a nota (ex: "(3+5+4)/3 = 4"). Consumido em
- * FaixaBonusCard abaixo da nota final — mesmo formato usado no Ranking
- * (Performance/Index.jsx). Nulls (componentes indisponíveis) ficam de fora.
+ * Nota em escala 0-5 com 2 casas SEMPRE — "4,03", nunca "4" nem "4,1".
+ * Desde 2026-08-05 os componentes são médias de N lojas, então quase nunca
+ * caem em valor redondo; casas variáveis faziam a mesma tela mostrar "4",
+ * "4,1" e "4,03" lado a lado, e a conta parecia não fechar.
+ */
+function formatNota(v) {
+    if (v == null || Number.isNaN(Number(v))) return '—';
+    return Number(v).toFixed(2).replace('.', ',');
+}
+
+/**
+ * Formata a conta que produziu a nota (ex: "(4,65+3,83+3,61)/3 = 4,03").
+ * Consumido em FaixaBonusCard abaixo da nota final — mesmo formato usado no
+ * Ranking (Performance/Index.jsx). Nulls (componentes indisponíveis) ficam
+ * de fora, e o denominador acompanha quantos componentes sobraram.
  */
 function formatContaNota(pontos, notaFinal) {
     if (!pontos) return null;
     const pts = [pontos.nps, pontos.faturamento, pontos.margem].filter((v) => v != null);
     if (pts.length === 0) return null;
-    const fmt = (v) => {
-        const n = Number(v);
-        if (Number.isNaN(n)) return '?';
-        return Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
-    };
-    const notaFmt = notaFinal != null ? Number(notaFinal).toFixed(2).replace('.', ',') : '?';
-    return `(${pts.map(fmt).join('+')})/${pts.length} = ${notaFmt}`;
+    const notaFmt = notaFinal != null ? formatNota(notaFinal) : '?';
+    return `(${pts.map(formatNota).join('+')})/${pts.length} = ${notaFmt}`;
 }
 
 /**
@@ -212,7 +219,7 @@ function FaixaBonusCard({ resultado, user }) {
                             Nota final
                         </span>
                         <span className="text-white text-4xl font-display font-black tabular-nums leading-none">
-                            {nota != null ? Number(nota).toFixed(2) : '—'}
+                            {formatNota(nota)}
                         </span>
                         <span className="text-white/40 text-sm">/ 5,00</span>
                         {/* Fase 92 (DESEMP-08) · badge de status da nota. 'official' não
@@ -366,42 +373,18 @@ export default function PerformanceShow({
                         </div>
                     </div>
 
-                    {/* Segmento de período — MESMO contrato do ranking (Fase 2) */}
+                    {/* Seletor de mês — único controle de período desde 2026-08-05.
+                        O toggle "Em curso / Bônus atual / Mês fechado" saiu: ele
+                        mudava o período por atalho e deixava ambíguo QUAL mês
+                        estava na tela. O dropdown é explícito e marca o mês em
+                        curso com seu próprio rótulo. */}
                     <div className="flex items-center gap-2 flex-wrap">
-                        <div className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.03] p-0.5 text-[13px]">
-                            <button
-                                type="button"
-                                onClick={() => irPara({})}
-                                className={cn('px-3 h-8 rounded-lg transition-colors',
-                                    modoAtivo === 'em_curso' ? 'bg-ecf-yellow/15 text-ecf-yellow font-semibold' : 'text-white/50 hover:text-white/80')}
-                            >
-                                Em curso
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => irPara({ modo: 'bonus_atual' })}
-                                className={cn('px-3 h-8 rounded-lg transition-colors',
-                                    modoAtivo === 'bonus_atual' ? 'bg-ecf-yellow/15 text-ecf-yellow font-semibold' : 'text-white/50 hover:text-white/80')}
-                            >
-                                Bônus atual
-                            </button>
-                            <button
-                                type="button"
-                                disabled={meses_disponiveis.length === 0}
-                                onClick={() => meses_disponiveis.length && trocarMes(meses_disponiveis[0])}
-                                className={cn('px-3 h-8 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed',
-                                    modoAtivo === 'mes_fechado' ? 'bg-ecf-yellow/15 text-ecf-yellow font-semibold' : 'text-white/50 hover:text-white/80')}
-                                title={meses_disponiveis.length === 0 ? 'Nenhum mês fechado disponível ainda' : undefined}
-                            >
-                                Mês fechado
-                            </button>
-                        </div>
-
-                        {modoAtivo === 'mes_fechado' && meses_disponiveis.length > 0 && (
+                        {meses_disponiveis.length > 0 && (
                             <select
                                 value={String(mes_selecionado ?? '').slice(0, 7)}
                                 onChange={(e) => trocarMes(e.target.value)}
-                                className="appearance-none h-8 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer"
+                                title="Selecionar mês"
+                                className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer capitalize"
                             >
                                 {meses_disponiveis.map(m => (
                                     <option key={m} value={m}>{mesExtenso(m)}</option>
@@ -497,7 +480,7 @@ export default function PerformanceShow({
                             <ParametroCard
                                 icone={Star}
                                 titulo="NPS médio"
-                                valor={c.nps_medio != null ? Number(c.nps_medio).toFixed(2) : '—'}
+                                valor={formatNota(c.nps_medio)}
                                 sublabel={npsSublabel}
                                 accentColor="ecf-yellow"
                             />

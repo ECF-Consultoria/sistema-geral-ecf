@@ -151,38 +151,6 @@ function formatRangeCurto(iso) {
     return `${d}/${m}`;
 }
 
-const PERIODO_SEGMENTOS = [
-    { key: 'em_curso', label: 'Em curso' },
-    { key: 'bonus_atual', label: 'Bônus atual' },
-    { key: 'mes_fechado', label: 'Mês fechado' },
-];
-
-// 3 botões-segmento reaproveitados nas 3 telas de período (Performance/
-// AdminCarteira/Carteiras) — repetido de propósito (sem módulo compartilhado
-// pra só 3 usos, mesma convenção de CONTEXTO_OPTIONS duplicada no projeto).
-function PeriodoToggle({ segmentoAtivo, onSelect }) {
-    return (
-        <div className="flex rounded-xl border border-white/[0.08] overflow-hidden">
-            {PERIODO_SEGMENTOS.map((opt, i) => (
-                <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => onSelect(opt.key)}
-                    className={cn(
-                        'px-3 h-9 text-[13px] font-medium transition-colors',
-                        segmentoAtivo === opt.key
-                            ? 'bg-ecf-yellow/[0.12] text-ecf-yellow'
-                            : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]',
-                        i > 0 && 'border-l border-white/[0.08]',
-                    )}
-                >
-                    {opt.label}
-                </button>
-            ))}
-        </div>
-    );
-}
-
 // % com sinal + 1 casa; null → "—".
 function formatPercent(v) {
     if (v == null || Number.isNaN(Number(v))) return '—';
@@ -190,18 +158,23 @@ function formatPercent(v) {
     return `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 }
 
-// Conta usada pra montar a nota final ("(3+5+4)/3"). Fallback pro "/ 5,00" antigo
-// quando o backend não expõe o breakdown (snapshots antigos, users sem carteira).
+// Nota em escala 0-5 com 2 casas SEMPRE — "4,03", nunca "4" nem "4,1".
+// Desde 2026-08-05 os componentes são médias de N lojas, então quase nunca
+// caem em valor redondo; exibir com casas variáveis fazia a mesma tela
+// mostrar "4", "4,1" e "4,03" lado a lado, e a conta parecia não fechar.
+export function formatNota(v) {
+    if (v == null || Number.isNaN(Number(v))) return '—';
+    return Number(v).toFixed(2).replace('.', ',');
+}
+
+// Conta usada pra montar a nota final ("(3,83+3,61+4,65)/3"). Fallback pro
+// "/ 5,00" antigo quando o backend não expõe o breakdown (snapshots antigos,
+// users sem carteira).
 function formatContaNota(pontos) {
     if (!pontos) return '/ 5,00';
     const pts = [pontos.nps, pontos.faturamento, pontos.margem].filter((v) => v != null);
     if (pts.length === 0) return '/ 5,00';
-    const fmt = (v) => {
-        const n = Number(v);
-        if (Number.isNaN(n)) return '?';
-        return Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
-    };
-    return `(${pts.map(fmt).join('+')})/${pts.length}`;
+    return `(${pts.map(formatNota).join('+')})/${pts.length}`;
 }
 
 export default function PerformanceIndex({
@@ -244,29 +217,16 @@ export default function PerformanceIndex({
         );
     };
 
-    // Fase 104 (UIP-01) — segmento ativo do toggle de período lido da própria
-    // URL (?modo=), não de estado local — reflete exatamente o que o backend
-    // resolveu (evita divergência entre o que o usuário clicou e o que o
-    // Inertia efetivamente carregou). 'mes_fechado' é o fallback quando o
-    // mês selecionado não é o corrente e não veio de ?modo=bonus_atual.
+    // 2026-08-05 — o toggle "Em curso / Bônus atual / Mês fechado" saiu. Ele
+    // trocava o período por um atalho implícito, e o usuário perdia de vista
+    // QUAL mês estava vendo: clicar num segmento mexia na seleção de mês sem
+    // dizer para onde. Agora o mês é escolhido só pelo dropdown ao lado, que
+    // é explícito e já rotula o mês em curso.
+    //
+    // `?modo=bonus_atual` continua sendo aceito pelo backend (links salvos e
+    // e-mails antigos apontam pra lá) — só não há mais botão que o gere.
     const modoUrl = isPolos ? null : new URLSearchParams(window.location.search).get('modo');
-    const segmentoAtivo = modoUrl === 'bonus_atual'
-        ? 'bonus_atual'
-        : (mes_em_curso ? 'em_curso' : 'mes_fechado');
-
-    // Troca de segmento — preserva setor/cargo já filtrados. 'mes_fechado'
-    // sem seleção prévia cai no mês fechado mais recente disponível.
-    const applyPeriodo = (segmento) => {
-        const params = { setor, cargo };
-        if (segmento === 'bonus_atual') {
-            params.modo = 'bonus_atual';
-        } else if (segmento === 'mes_fechado') {
-            const fallback = meses_disponiveis.find((m) => !m.em_curso)?.value;
-            params.mes = mes_em_curso ? fallback : mes_selecionado;
-        }
-        // 'em_curso' → sem mes/modo → backend resolve o mês corrente.
-        applyFilter(params);
-    };
+    const modoBonusAtual = modoUrl === 'bonus_atual';
 
     // Phase 46-03 — user selecionado abre o EvolucaoDrawer à direita
     const [userSelecionado, setUserSelecionado] = useState(null);
@@ -381,9 +341,10 @@ export default function PerformanceIndex({
                                     ? 'Ranking parcial — a consolidação mensal fecha dia 1 do mês seguinte.'
                                     : 'Ranking consolidado — dados do mês fechado (usados na régua de bônus).'}
                             </p>
-                            {/* Fase 104 (UIP-03) — no modo Bônus atual, deixa explícito qual
-                                competência está sendo avaliada e quando ela é paga. */}
-                            {segmentoAtivo === 'bonus_atual' && bonus && (
+                            {/* Fase 104 (UIP-03) — quando a URL veio com ?modo=bonus_atual,
+                                deixa explícito qual competência está sendo avaliada e
+                                quando ela é paga. */}
+                            {modoBonusAtual && bonus && (
                                 <p className="text-ecf-yellow/80 text-xs mt-1 font-medium">
                                     Competência {formatCompetencia(bonus.competence_month)} · pago em {formatMesSolo(bonus.payment_month)}
                                 </p>
@@ -400,12 +361,8 @@ export default function PerformanceIndex({
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {/* Fase 104 (UIP-01) — toggle de contexto de período: Em curso /
-                            Bônus atual / Mês fechado (usa o dropdown de mês ao lado). */}
-                        {!isPolos && (
-                            <PeriodoToggle segmentoAtivo={segmentoAtivo} onSelect={applyPeriodo} />
-                        )}
-                        {/* Ajuste 2026-07-09 — Filtro de mês (auditar bônus consolidados) */}
+                        {/* Filtro de mês — único controle de período da tela desde
+                            2026-08-05 (o toggle de contexto foi removido). */}
                         {Array.isArray(meses_disponiveis) && meses_disponiveis.length > 0 && (
                             <select
                                 value={mes_selecionado ?? ''}
@@ -453,15 +410,12 @@ export default function PerformanceIndex({
                                 <div key={opt.value ?? 'geral'} className="flex">
                                     <button
                                         onClick={() => applyFilter(
-                                            segmentoAtivo === 'bonus_atual'
-                                                // Fase 104 — preserva o segmento "Bônus atual" ao trocar de
-                                                // cargo (não perde o modo pra "mês fechado" comum).
-                                                ? (opt.value
-                                                    ? { setor: 'consultoria', cargo: opt.value, modo: 'bonus_atual' }
-                                                    : { setor: 'consultoria', modo: 'bonus_atual' })
-                                                : (opt.value
-                                                    ? { setor: 'consultoria', cargo: opt.value, mes: mes_selecionado }
-                                                    : { setor: 'consultoria', mes: mes_selecionado })
+                                            // Trocar de cargo preserva o mês selecionado — o mês
+                                            // é escolhido só no dropdown, nunca por efeito colateral
+                                            // de outro filtro.
+                                            opt.value
+                                                ? { setor: 'consultoria', cargo: opt.value, mes: mes_selecionado }
+                                                : { setor: 'consultoria', mes: mes_selecionado }
                                         )}
                                         className={cn(
                                             'px-3 h-9 text-[13px] font-medium transition-colors',
@@ -625,7 +579,7 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                     const faixaSlug = u.faixa_bonus ?? 'sem_bonus';
                     const faixaCls = FAIXA_BADGE_CLS[faixaSlug] ?? FAIXA_BADGE_CLS.sem_bonus;
                     const faixaLbl = FAIXA_LABEL[faixaSlug] ?? faixaSlug;
-                    const nota = u.nota_final != null ? Number(u.nota_final).toFixed(2) : '—';
+                    const nota = formatNota(u.nota_final);
 
                     return (
                         <div
@@ -719,7 +673,7 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                             <div className="text-right">
                                 {!calculando && u.componentes?.nps_medio != null ? (
                                     <span className="text-white/85 font-semibold tabular-nums text-[12px]">
-                                        {Number(u.componentes.nps_medio).toFixed(2)}
+                                        {formatNota(u.componentes.nps_medio)}
                                     </span>
                                 ) : (
                                     <span className="text-white/20 font-bold">—</span>
@@ -877,7 +831,7 @@ function EvolucaoDrawer({ rankingItem, allRankingIds, onClose }) {
     // Phase 74 D-05 · o payload v2 do controller passa `nota_final` (0-5).
     // Preservamos fallback para `score` (0-100) caso venha de contexto legacy.
     const notaAtual = rankingItem.nota_final != null
-        ? Number(rankingItem.nota_final).toFixed(2)
+        ? formatNota(rankingItem.nota_final)
         : rankingItem.score != null
             ? Number(rankingItem.score).toFixed(0)
             : '—';
