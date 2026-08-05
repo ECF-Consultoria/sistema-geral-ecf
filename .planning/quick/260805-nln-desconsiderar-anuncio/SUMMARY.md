@@ -80,6 +80,32 @@ apuração.
 - `npm run build` verde, `Revisao-*.js` no manifest.
 - `php artisan migrate` aplicado no local.
 
-## NÃO deployado
+## DEPLOYADO 2026-08-05
 
-Aguarda autorização.
+Deploy isolado, `3456b7b8..46cab623` (push fast-forward + `deploy.sh`).
+
+Os 5 commits foram **rebasados** sobre a `origin/main`, que tinha avançado 8
+commits de outra sessão (handoff comercial HubSpot + coluna "Cadastrado em").
+Conflito só no `STATE.md` — as duas sessões inseriram linha no topo da mesma
+tabela; resolvido preservando as três. Testes revalidados sobre a base
+rebasada: 4 verdes.
+
+**A VPS já estava em `3456b7b8`** antes deste deploy, ou seja, o trabalho
+comercial (incluindo a migration que dropa 5 colunas de `companies`) já tinha
+ido ao ar pela outra sessão — por isso este deploy publicou só o desta tarefa.
+A checagem vale sempre: `deploy.sh` publica exatamente `origin/main`, então é
+preciso comparar `git log HEAD..origin/main` **e** o HEAD da VPS antes de
+concluir que um deploy é isolado.
+
+Conferido em produção por reconsulta, não por stdout do deploy:
+
+- HEAD da VPS = `46cab62`.
+- As 3 colunas presentes em `mlb_publicacoes`.
+- Rota `mlb.revisao.desconsiderar` registrada.
+- Bundle buildado na VPS (`Revisao-DMLzjQ-v.js`) contém "Fora da metodologia" e
+  o texto do tooltip.
+- Smoke HTTP: `/mlb/revisao` 302 (auth), `/login` 200 — sem 500.
+- Workers reiniciaram limpos, sem travar em STOPPING.
+
+O `ERROR The [public/storage] link already exists` na saída do deploy é
+esperado e inofensivo.
