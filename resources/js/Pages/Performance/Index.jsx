@@ -557,15 +557,15 @@ export default function PerformanceIndex({
 function RankingConsultoria({ ranking, onSelectUser }) {
     return (
         <div className="rounded-2xl border border-white/[0.06] bg-ecf-card overflow-hidden">
-            <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/40 text-[11px] font-semibold uppercase tracking-wide">
+            <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_6.5rem_6rem_5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/40 text-[11px] font-semibold uppercase tracking-wide">
                 <span>#</span>
                 <span>Nome</span>
                 <span className="text-right" title="Nota final do mês (média direta dos parâmetros disponíveis, escala 0-5).">Nota</span>
                 <span title="Faixa de bônus com base na nota final do mês.">Faixa</span>
                 <span className="text-right" title="Delta vs mês passado fechado.">Δ mês</span>
-                <span className="text-right" title="NPS médio das respostas do mês (escala 0-5). Sem respostas → 0.">NPS</span>
-                <span className="text-right" title="% variação faturamento vs mês anterior (média das % por empresa; empresas novas excluídas).">Var Fat</span>
-                <span className="text-right" title="% variação margem de contribuição vs mês anterior (fonte Adman canônica). Empresas Shopee ainda não fornecem margem — usam placeholder 1,0 pt na nota, sem % exibida aqui.">Var Margem</span>
+                <span className="text-right" title="Pontos de NPS (escala 1-5) — média dos pontos das lojas da carteira.">NPS</span>
+                <span className="text-right" title="Pontos de faturamento (escala 1-5) — média dos pontos das lojas da carteira. A régua é aplicada loja a loja; a % de variação fica no tooltip de cada valor.">Faturamento</span>
+                <span className="text-right" title="Pontos de margem (escala 1-5) — média dos pontos das lojas da carteira. Loja Shopee não entra (a plataforma não fornece CMV).">Margem</span>
                 <span className="text-right" title="Empresas usadas no cálculo / total na carteira. As não usadas são empresas novas (menos de 2 meses) ou sem dados do mês anterior para comparar.">Empresas</span>
                 <span />
             </div>
@@ -585,7 +585,7 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                         <div
                             key={u.id}
                             className={cn(
-                                'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors',
+                                'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_6.5rem_6rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors',
                                 idx === 0 && 'bg-ecf-yellow/[0.03]',
                                 calculando ? 'cursor-default' : 'hover:bg-white/[0.04] cursor-pointer',
                             )}
@@ -669,38 +669,37 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 <DeltaMes delta={calculando ? null : u.delta_vs_mes_passado} />
                             </div>
 
-                            {/* NPS médio */}
+                            {/* NPS — pontos (média dos pontos por loja) */}
                             <div className="text-right">
-                                {!calculando && u.componentes?.nps_medio != null ? (
-                                    <span className="text-white/85 font-semibold tabular-nums text-[12px]">
-                                        {formatNota(u.componentes.nps_medio)}
-                                    </span>
-                                ) : (
-                                    <span className="text-white/20 font-bold">—</span>
-                                )}
+                                <PontosToneCell
+                                    pontos={calculando ? null : u.pontos_componentes?.nps}
+                                    titulo="Média dos pontos de NPS das lojas da carteira"
+                                />
                             </div>
 
-                            {/* Var Faturamento */}
+                            {/* Faturamento — pontos */}
                             <div className="text-right">
-                                <PctToneCell value={calculando ? null : u.componentes?.var_faturamento_pct} />
+                                <PontosToneCell
+                                    pontos={calculando ? null : u.pontos_componentes?.faturamento}
+                                    pct={u.componentes?.var_faturamento_pct}
+                                    titulo="Média dos pontos de faturamento das lojas da carteira"
+                                />
                             </div>
 
-                            {/* Var Margem — Fase 109 (SHOP-DES-02): quando a % real é
-                                null mas pontos_componentes.margem não é, o placeholder=1
-                                (empresa Shopee, que ainda não fornece margem) está em
-                                jogo — mostra um indicador em vez de "—" puro, pra não
-                                parecer dado ausente quando na verdade contribui pra nota. */}
+                            {/* Margem — pontos. Carteira 100% Shopee não tem margem
+                                (a plataforma não fornece CMV), então a coluna fica "—"
+                                com explicação no tooltip, em vez de número inventado. */}
                             <div className="text-right">
-                                {!calculando && u.componentes?.var_margem_pct == null && u.pontos_componentes?.margem != null ? (
-                                    <span
-                                        className="text-amber-300/70 text-[10px] font-semibold tabular-nums"
-                                        title="Margem Shopee ainda não é fornecida pela plataforma — usa o piso da régua (1,0 pt) como placeholder até haver o dado real."
-                                    >
-                                        Shopee
-                                    </span>
-                                ) : (
-                                    <PctToneCell value={calculando ? null : u.componentes?.var_margem_pct} />
-                                )}
+                                <PontosToneCell
+                                    pontos={calculando ? null : u.pontos_componentes?.margem}
+                                    pct={u.componentes?.var_margem_pp}
+                                    sufixoPct=" p.p."
+                                    titulo={
+                                        !calculando && u.pontos_componentes?.margem == null
+                                            ? 'Sem margem na carteira — a Shopee não fornece CMV e loja sem baseline não entra'
+                                            : 'Média dos pontos de margem das lojas da carteira'
+                                    }
+                                />
                             </div>
 
                             {/* Empresas — tooltip com os metadados de elegibilidade (Fase 92 · SC2):
@@ -753,6 +752,40 @@ function PctToneCell({ value }) {
     return (
         <span className={cn('font-semibold tabular-nums text-[12px]', cls)}>
             {sign}{n.toFixed(1)}%
+        </span>
+    );
+}
+
+// Célula de PONTOS (escala 1-5) das colunas NPS / Faturamento / Margem.
+//
+// 2026-08-05 — o ranking mostrava a % de variação nessas colunas, enquanto a
+// nota já vinha dos PONTOS. Isso deixava a tela impossível de conferir de
+// cabeça: o topo dizia "+34,1%" e a nota final somava "5,00" sem que a ligação
+// entre os dois aparecesse em lugar nenhum. Agora a coluna mostra o mesmo
+// número que entra na conta, igual à tabela por empresa de `/performance/{id}`.
+//
+// A % continua acessível no tooltip — deixou de ser protagonista, não sumiu.
+// Tom pela faixa da régua: 1-2 é queda, 3 é estável, 4-5 é crescimento.
+function PontosToneCell({ pontos, pct, sufixoPct = '%', titulo }) {
+    if (pontos == null || Number.isNaN(Number(pontos))) {
+        return <span className="text-white/20 font-bold" title={titulo}>—</span>;
+    }
+
+    const n   = Number(pontos);
+    const cls = n >= 4 ? 'text-emerald-300' : n <= 2 ? 'text-rose-300' : 'text-white/60';
+
+    // Tooltip: a % agregada que a régua enxergava, quando existir. Serve de
+    // pista de auditoria — nunca é o número que decide a nota.
+    const dica = [
+        titulo,
+        pct != null && !Number.isNaN(Number(pct))
+            ? `Variação agregada: ${Number(pct) > 0 ? '+' : ''}${Number(pct).toFixed(1)}${sufixoPct}`
+            : null,
+    ].filter(Boolean).join(' · ');
+
+    return (
+        <span className={cn('font-semibold tabular-nums text-[12px]', cls)} title={dica || undefined}>
+            {formatNota(n)}
         </span>
     );
 }
