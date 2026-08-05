@@ -162,6 +162,10 @@ class ShadowNotaNovaExpostaTest extends TestCase
         return (object) [
             'company_id'           => $companyId,
             'company_name'         => "Empresa {$companyId}",
+            // Obrigatória desde 2026-08-05 — ver nota idêntica em
+            // `AgregacaoProfissionalTest::linhaEmpresa()`: sem fonte
+            // financeira, a trava D-91-01 devolve `blocked`.
+            'fonte_financeira'     => 'adman',
             'status'               => $status,
             'nota_empresa'         => $notaEmpresa,
             'nota_empresa_parcial' => $notaEmpresaParcial,

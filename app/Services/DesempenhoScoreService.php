@@ -1788,17 +1788,33 @@ class DesempenhoScoreService
      * Caso concreto (`120-CONTEXT.md`): 26 empresas com 20 `complete` dá
      * cobertura 77% e `official`; com 15 `complete` dá 58% e `partial`.
      *
-     * AGRE-06 — profissional só-Shopee tem TODAS as empresas `complete`,
-     * porque o placeholder de margem 1.0 conta como componente presente
-     * (D-02 da Fase 119), logo cobertura 100% e `official` — SEM nenhum
-     * `if` especial para Shopee. É assim que a trava da Fase 109 é
-     * preservada neste método.
+     * AGRE-06 — profissional só-Shopee tem TODAS as empresas `complete`
+     * (`componentes_esperados = 2`, já que a Shopee não fornece CMV), logo
+     * cobertura 100% e `official` — SEM nenhum `if` especial para Shopee.
      *
      * @param  Collection<int, object>  $empresasScore
      */
     private function computeScoreStatusPorEmpresa(Collection $empresasScore): string
     {
         if ($empresasScore->every(fn ($e) => $e->nota_empresa_parcial === null)) {
+            return 'blocked';
+        }
+
+        // D-91-01 (decisão do usuário em 2026-07-16) — carteira com ZERO
+        // vínculos financeiros elegíveis não recebe nota oficial enquanto a
+        // diretoria não aprovar uma régua de bônus para esse caso. É o
+        // profissional só-Polos / só-Publicação: os setores sem fonte
+        // financeira caem no branch default de
+        // `CarteiraContextService::flagsFinanceirasPorSetor()`.
+        //
+        // Sem esta regra, a agregação por indicador daria nota a essa carteira
+        // usando SÓ o NPS — faturamento e margem ausentes simplesmente sairiam
+        // do denominador, e a pessoa entraria no ranking (podendo até alcançar
+        // faixa de bônus) medida por uma única dimensão. O cálculo legado
+        // barrava isso em `computeScoreStatus()`, que olhava
+        // `vinculos_financeiros`; aqui a trava precisa ser explícita, porque o
+        // status passou a derivar da distribuição por empresa.
+        if ($empresasScore->every(fn ($e) => ($e->fonte_financeira ?? null) === null)) {
             return 'blocked';
         }
 

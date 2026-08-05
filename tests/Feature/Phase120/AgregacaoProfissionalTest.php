@@ -188,6 +188,12 @@ class AgregacaoProfissionalTest extends TestCase
         return (object) [
             'company_id'           => $companyId,
             'company_name'         => "Empresa {$companyId}",
+            // `fonte_financeira` é obrigatória desde 2026-08-05: a trava
+            // D-91-01 em `computeScoreStatusPorEmpresa()` devolve `blocked`
+            // quando NENHUMA linha tem fonte financeira (carteira só-Polos /
+            // só-Publicação não recebe nota oficial). Dublê sem esta chave
+            // cairia nessa trava e mediria outra coisa que não o cenário.
+            'fonte_financeira'     => 'adman',
             'status'               => $status,
             'nota_empresa'         => $notaEmpresa,
             'nota_empresa_parcial' => $notaEmpresaParcial,
