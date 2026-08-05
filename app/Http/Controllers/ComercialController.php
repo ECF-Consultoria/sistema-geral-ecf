@@ -366,7 +366,9 @@ class ComercialController extends Controller
                 'spin'                  => $c->hubspot_spin,
                 'hubspot_deal_id'       => $c->hubspot_deal_id,
                 'hubspot_company_id'    => $c->hubspot_company_id,
-                'created_at'            => $c->created_at?->toDateString(),
+                // ISO 8601 (com hora) e nao toDateString(): a coluna "Cadastrado em"
+                // da listagem exibe data E hora de entrada do lead.
+                'created_at'            => $c->created_at?->toIso8601String(),
                 'consultor'             => $c->consultor->first()?->only(['id', 'name']),
                 'estrategista'          => $c->estrategista->first()?->only(['id', 'name']),
                 'company_group_id'      => $c->company_group_id,

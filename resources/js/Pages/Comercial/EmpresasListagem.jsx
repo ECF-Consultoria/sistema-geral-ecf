@@ -12,7 +12,7 @@ import {
     Building2, Search, Tag, Eye, Briefcase, ChevronLeft, ChevronRight,
     AlertCircle, Plus, ListChecks, Webhook, Pencil, Trash2, Save, Info,
 } from 'lucide-react';
-import { cn, formatCurrency, formatDate } from '@/lib/utils';
+import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 import GruposManager from '@/Components/GruposManager';
 
 /**
@@ -688,13 +688,14 @@ export default function EmpresasListagem({
                                             <TableHead>Serviços</TableHead>
                                             <TableHead>Setor</TableHead>
                                             <TableHead>Pendências</TableHead>
+                                            <TableHead>Cadastrado em</TableHead>
                                             <TableHead className="text-right">Ações</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {companies.data?.length === 0 && (
                                             <TableRow>
-                                                <TableCell colSpan={6} className="text-center text-white/40 py-8">
+                                                <TableCell colSpan={7} className="text-center text-white/40 py-8">
                                                     Nenhuma empresa encontrada com os filtros aplicados.
                                                 </TableCell>
                                             </TableRow>
@@ -718,6 +719,13 @@ export default function EmpresasListagem({
                                                 </TableCell>
                                                 <TableCell>
                                                     <PendenciaBadges pendencias={c.pendencias_comerciais} detalhes={c.pendencias_detalhes} />
+                                                </TableCell>
+                                                <TableCell>
+                                                    {/* Quando o lead entrou no sistema (data + hora). A lista ja e
+                                                        ordenada por esse campo pelo seletor "Mais recentes/antigas". */}
+                                                    <span className="text-white/60 text-[12px] whitespace-nowrap">
+                                                        {c.created_at ? formatDateTime(c.created_at) : '—'}
+                                                    </span>
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="inline-flex items-center gap-1">

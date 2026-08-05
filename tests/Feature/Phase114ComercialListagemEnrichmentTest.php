@@ -382,6 +382,41 @@ class Phase114ComercialListagemEnrichmentTest extends TestCase
         $this->assertSame('comp-456', $row['hubspot_company_id']);
     }
 
+    /**
+     * A coluna "Cadastrado em" da listagem mostra data E hora — o payload
+     * precisa chegar em ISO 8601 completo, nao no 'Y-m-d' de antes, senao a
+     * tela exibiria sempre 00:00 (o front so formata o que recebe).
+     */
+    public function test_payload_expoe_created_at_com_hora_em_iso8601(): void
+    {
+        $this->actingAsAdmin();
+
+        $momento = \Carbon\Carbon::parse('2026-08-05 14:37:52');
+        $e = $this->criarEmpresa(['name' => 'Empresa Com Horario']);
+        $e->forceFill(['created_at' => $momento])->save();
+
+        $response = $this->get('/comercial/empresas/listagem');
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+        $row = $this->linhaDaEmpresa($props, $e->id);
+        $this->assertNotNull($row);
+
+        // Nao pode ser so a data: 'Y-m-d' tem 10 chars e nao carrega hora.
+        $this->assertNotSame('2026-08-05', $row['created_at']);
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/',
+            $row['created_at'],
+            'created_at deveria vir em ISO 8601 com hora.'
+        );
+        // A hora preservada precisa ser a que foi gravada.
+        $this->assertSame(
+            $momento->toIso8601String(),
+            $row['created_at'],
+            'created_at deveria refletir o horario real de criacao.'
+        );
+    }
+
     public function test_payload_campos_novos_sao_null_quando_ausentes(): void
     {
         $this->actingAsAdmin();
