@@ -4,13 +4,15 @@ slug: ppa-polos-problema-meta
 date: 2026-08-05
 branch: quick/260805-dzu-ppa-polos-problema-meta
 status: complete
-deployed: false
+deployed: true
+deploy_commit: 4902b154
+deploy_date: 2026-08-05
 ---
 
 # Sumário — PPA Polos + problema que não desconsidera da meta
 
-Branch criada a partir de `origin/main` (a9864c9b). **Não deployado** — aguardando
-autorização explícita.
+Branch criada a partir de `origin/main` (a9864c9b). **DEPLOYADO 2026-08-05** —
+deploy isolado (push FF `a9864c9b..4902b154` + `deploy.sh`), nada de outras sessões junto.
 
 ## O que mudou
 
@@ -74,8 +76,29 @@ Item **PPA Polos** na seção Polos do menu, gated por `permission:mlb.projetos`
   para a Adman e a assinatura do `SyncPolosFaturamentoJob` mudou, mas os testes não
   acompanharam. Nenhuma delas foi introduzida aqui — e não foram corrigidas (fora de escopo).
 
+## Deploy (2026-08-05)
+
+Push fast-forward `a9864c9b..4902b154` para `main` + `deploy.sh`. VPS estava limpa
+(só untracked) e no mesmo commit do remoto antes do `reset --hard`.
+
+Conferido em produção **por reconsulta**, não por stdout do deploy:
+
+- `HEAD` da VPS = `4902b15`; as duas migrations aplicadas (`100ms` / `219ms`).
+- Colunas presentes: `mlb_empresas.problema_desconsidera_meta`, `ppas.escopo`, `ppas.mlb_empresa_id`.
+- **41 empresas com problema em produção, 0 fora da meta** — o backfill retroativo pegou
+  todas (local eram 30; prod tinha mais).
+- **402 empresas POLOS ativas** — o select do PPA Polos nasce cheio.
+- 6 referências a `Pages/Polos/Ppa` no manifest buildado na VPS; rotas `mlb.polos-ppa.*` registradas.
+- Smoke HTTP: `/mlb/polos-ppa`, `/mlb/polos-painel` e `/ppa` → 302 (redirect de auth, sem 500); `/login` → 200.
+
+**Gate parcial, declarado**: a suíte completa (`php artisan test` sem filtro) **não conclui
+neste ambiente** — aborta em `MercadoLivreAdsService.php:215` com *"Maximum execution time of
+300 seconds exceeded"* (backoff de rede num teste de ADS, pré-existente e sem relação com este
+diff). Os gates usados foram os filtros: 16 testes novos verdes, `--filter=Ppa` 11/11, e a
+suíte de Polos comparada ao baseline de `origin/main` com paridade exata de falhas.
+
 ## Pendências
 
-- Deploy isolado desta branch (aguardando autorização).
-- Curadoria: decidir empresa a empresa quais problemas devem, de fato, sair da meta.
+- Curadoria: decidir empresa a empresa quais problemas devem, de fato, sair da meta
+  (todas as 41 estão contando pra meta agora).
 - Dívida pré-existente: atualizar os 10 testes quebrados de `PolosControllerTest`/`PolosFaturamentoSnapshotTest`.
