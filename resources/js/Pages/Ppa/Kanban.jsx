@@ -73,7 +73,7 @@ function TaskCard({ task, onMove, onEdit, onDelete, ppaId }) {
     );
 }
 
-export default function PpaKanban({ ppa, tasks: initialTasks, escopo = 'geral', rotas }) {
+export default function PpaKanban({ ppa, tasks: initialTasks, rotas }) {
     const R = { ...ROTAS_PADRAO, ...(rotas ?? {}) };
     const { flash } = usePage().props;
     const [tasks, setTasks] = useState(initialTasks);

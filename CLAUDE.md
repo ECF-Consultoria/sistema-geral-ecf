@@ -21,9 +21,11 @@ manualmente quando necessário.
 - **Deploy**: Não executar deploy sem autorização explícita do usuário
 <!-- GSD:project-end -->
 
-## Conhecimento acumulado — LEIA ANTES de mexer em desempenho/bônus
+## Conhecimento acumulado — LEIA ANTES de mexer em desempenho/bônus e em Polos
 
 **`.planning/learnings/desempenho-bonificacao.md`** — leitura obrigatória antes de tocar em nota de desempenho, ranking, carteira, snapshot mensal ou bonificação.
+
+**`.planning/learnings/painel-polos-status-e-meta.md`** — leitura obrigatória antes de tocar em status de empresa, Distribuição de status, meta por polo ou no flag de problema. Por que "problema" deixou de tirar a empresa da meta (e por que o default retroativo é intencional), as 10 falhas antigas da suíte de Polos que não são regressão sua, por que "empresa polo" é `MlbEmpresa` e não `Company`, e a página React que some do manifest do Vite.
 
 Concentra o que já custou caro descobrir e **não é dedutível do código**: regras de agregação que divergem de propósito (faturamento usa mediana, margem usa média — não uniformize), por que as réguas não devem ser recalibradas por conta própria, a fragilidade de fronteira que já tirou o bônus de alguém sem mudança de código, a disciplina de conferir consolidação por reconsulta ao banco e nunca por stdout, as armadilhas de MariaDB que o SQLite dos testes não pega, e o estado dos gates da milestone v21.0.
 
