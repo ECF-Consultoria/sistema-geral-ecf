@@ -212,15 +212,18 @@ class DesempenhoElegibilidadeTest extends TestCase
         $this->assertNotSame('blocked', $r['score_status'],
             'Fase 109: Shopee é fonte financeira elegível — só-Shopee não é mais blocked.');
         $this->assertSame('official', $r['score_status'],
-            'faturamento com baseline (shopee_metrics) + margem placeholder → official.');
+            'Loja Shopee com faturamento fecha as 2 dimensões esperadas dela → complete → official.');
         $this->assertNotNull($r['nota_final']);
         $this->assertNotNull($r['faixa_bonus']);
         $this->assertEqualsWithDelta(10.0, $r['componentes']['var_faturamento_pct'], 0.001,
             'Faturamento Shopee real via dispatcher — NÃO vem do AdmanMetric absurdo da mesma empresa.');
         $this->assertNull($r['componentes']['var_margem_pct'],
             'Shopee não fornece margem real (arquitetura future-ready) — % exposta continua null.');
-        $this->assertEqualsWithDelta(1.0, $r['pontos_componentes']['margem'], 0.001,
-            'margemPontos: só-Shopee (nComMargemReal=0) → placeholder puro = 1.0.');
+        // 2026-08-05 — a loja Shopee saiu da média de margem em vez de entrar
+        // com o placeholder 1,0 (a nota MÍNIMA), que penalizava o profissional
+        // por uma dimensão que a plataforma não fornece.
+        $this->assertNull($r['pontos_componentes']['margem'],
+            'Shopee fica FORA da média de margem — sem placeholder.');
         // Item 2 (2026-07-21) — mês EM CURSO (setTestNow 15/08/2026) usa PISO
         // NPS 1.0 (supera a exclusão da Fase 105).
         $this->assertSame(1.0, $r['componentes']['nps_medio'],
@@ -273,7 +276,18 @@ class DesempenhoElegibilidadeTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($user, Carbon::parse('2026-08-01'));
 
-        $this->assertSame('official', $r['score_status']);
+        // 2026-08-05 — `score_status` passou a derivar da DISTRIBUIÇÃO de
+        // status por empresa (`computeScoreStatusPorEmpresa`), em vez da
+        // presença binária dos dois sinais agregados que o cálculo legado
+        // olhava. Aqui, em mês EM CURSO, nenhuma das duas lojas fecha o que se
+        // espera dela — a empresa A não tem margem (o hotfix de 2026-07-24
+        // impede margem em mês corrente) e a B/Shopee não tem faturamento
+        // (sem shopee_metrics no fixture) — então a cobertura de `complete` é
+        // 0 e o status honesto é `partial`.
+        //
+        // `partial` NÃO zera a nota: só `blocked` faz isso. É rótulo de
+        // confiança do dado, e mês em curso é mesmo parcial por natureza.
+        $this->assertSame('partial', $r['score_status']);
         $this->assertEqualsWithDelta(3.00, $r['componentes']['var_faturamento_pct'], 0.001);
         $this->assertEqualsWithDelta(2.80, $r['componentes']['var_margem_pct'], 0.001,
             'var_margem_pct exposto continua a % REAL (só da empresa A) — placeholder NÃO vaza aqui.');

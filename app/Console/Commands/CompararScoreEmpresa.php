@@ -191,7 +191,21 @@ class CompararScoreEmpresa extends Command
                         $companiesCache
                     );
 
-                    $notaAntiga = $payload['nota_final'] ?? null;
+                    // 2026-08-05 — o par comparado continua sendo LEGADO ×
+                    // COMPANY-FIRST, que é o que a decomposição do delta
+                    // (P1 margem pp×relativa, P2 régua-por-empresa×régua-da-
+                    // média, P3 denominador) sabe explicar. Só a ORIGEM da nota
+                    // antiga mudou de endereço: era `nota_final` enquanto o
+                    // legado era o oficial, e passou a ser `nota_final_legado`
+                    // quando a nota oficial virou a agregação por indicador.
+                    //
+                    // Este comando NÃO compara contra a nota oficial de hoje —
+                    // a decomposição não modela o denominador independente por
+                    // indicador, e forçá-la a isso daria parcelas que não
+                    // somam o delta. Para o efeito da mudança de 2026-08-05,
+                    // comparar `nota_final_legado` × `nota_final` direto no
+                    // payload (ambos expostos por `compute()`).
+                    $notaAntiga = $payload['nota_final_legado'] ?? null;
                     $notaNova   = $payload['nota_final_por_empresa'] ?? null;
                     // Nunca tratar null como zero — delta só existe quando as
                     // duas notas existem.

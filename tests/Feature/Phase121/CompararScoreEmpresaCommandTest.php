@@ -447,11 +447,15 @@ class CompararScoreEmpresaCommandTest extends TestCase
             ->where('periodo_key', '2026-07')
             ->firstOrFail();
 
-        $this->assertEqualsWithDelta($payload['nota_final'], $linhaProfissional->nota_antiga, 0.001);
+        // 2026-08-05 — a nota antiga do comparador passou a ler
+        // `nota_final_legado`. Enquanto o legado era a nota oficial, ela vinha
+        // de `nota_final`; hoje `nota_final` é a agregação por indicador, que
+        // este comando não compara (a decomposição do delta não a modela).
+        $this->assertEqualsWithDelta($payload['nota_final_legado'], $linhaProfissional->nota_antiga, 0.001);
         $this->assertEqualsWithDelta($payload['nota_final_por_empresa'], $linhaProfissional->nota_nova, 0.001);
         $this->assertEqualsWithDelta(3.0, $linhaProfissional->nota_nova, 0.001, '(4.0+2.0)/2 = 3.0.');
         $this->assertEqualsWithDelta(
-            $payload['nota_final_por_empresa'] - $payload['nota_final'],
+            $payload['nota_final_por_empresa'] - $payload['nota_final_legado'],
             $linhaProfissional->delta,
             0.001
         );

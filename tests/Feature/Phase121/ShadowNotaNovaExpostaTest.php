@@ -189,15 +189,22 @@ class ShadowNotaNovaExpostaTest extends TestCase
     // ═══ Teste 1 — ausência quando o shadow não roda ═════════════════════════
 
     #[Test]
-    public function test_chaves_novas_ausentes_quando_o_shadow_nao_roda(): void
+    public function test_chaves_novas_presentes_mesmo_sem_expor_as_linhas_por_empresa(): void
     {
         $fixture = $this->criarFixtureBase('Ausencia Shadow 121');
 
         $service = app(DesempenhoScoreService::class);
         $payload = $service->compute($fixture['user'], Carbon::parse('2026-08-01'));
 
-        $this->assertArrayNotHasKey('nota_final_por_empresa', $payload);
-        $this->assertArrayNotHasKey('score_status_por_empresa', $payload);
+        // 2026-08-05 — INVERTEU de propósito. Estas chaves eram condicionais ao
+        // shadow; agora o score por empresa roda sempre (é insumo da nota
+        // oficial), então elas estão SEMPRE no payload, como metadado de
+        // auditoria ao lado da nota. `$incluirEmpresasScore` passou a controlar
+        // apenas a exposição das linhas por empresa, que são pesadas.
+        $this->assertArrayHasKey('nota_final_por_empresa', $payload);
+        $this->assertArrayHasKey('score_status_por_empresa', $payload);
+        $this->assertSame([], $payload['empresas_score'],
+            'Sem incluirEmpresasScore as LINHAS continuam fora do payload — só o par agregado entra.');
     }
 
     // ═══ Teste 2 — presença + valor, flag off ════════════════════════════════
@@ -238,11 +245,9 @@ class ShadowNotaNovaExpostaTest extends TestCase
     // ═══ Teste 3 — flag ligada dentro do teste ═══════════════════════════════
 
     #[Test]
-    public function test_com_a_flag_ligada_nota_final_e_score_status_sao_identicos_ao_par_novo(): void
+    public function test_score_status_oficial_vem_do_par_por_empresa(): void
     {
-        config(['metrics.performance_company_first_score' => true]);
-
-        $fixture = $this->criarFixtureBase('Flag Ligada 121');
+        $fixture = $this->criarFixtureBase('Status Por Empresa 121');
 
         $this->mockCompanyScoreService(collect([
             8101 => $this->linhaEmpresa(8101, 'complete', 4.00, 4.00),
@@ -252,10 +257,19 @@ class ShadowNotaNovaExpostaTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $payload = $service->compute($fixture['user'], Carbon::parse('2026-08-01'), null, incluirEmpresasScore: true);
 
-        $this->assertSame($payload['nota_final_por_empresa'], $payload['nota_final'],
-            'nota_final === nota_final_por_empresa quando a flag está ligada.');
+        // 2026-08-05 — `score_status` oficial passou a ser SEMPRE o derivado da
+        // distribuição por empresa (não há mais bifurcação por flag).
         $this->assertSame($payload['score_status_por_empresa'], $payload['score_status'],
-            'score_status === score_status_por_empresa quando a flag está ligada.');
+            'score_status oficial é o derivado da distribuição por empresa.');
+
+        // Já `nota_final` NÃO é mais igual a `nota_final_por_empresa`: a
+        // oficial vem de `computeNotaFinalPorIndicador()` (média por indicador,
+        // denominador independente), e a por-empresa continua exposta ao lado,
+        // para comparação. Com estes dublês, que não trazem os campos de
+        // pontos, a oficial nem se forma — o que este teste assegura é
+        // justamente que os dois números são de origens diferentes.
+        $this->assertEqualsWithDelta(4.50, $payload['nota_final_por_empresa'], 0.001,
+            '(4,00 + 5,00) / 2 = 4,50 — média das notas por empresa completa.');
     }
 
     // ═══ Teste 4 — blocked ════════════════════════════════════════════════════
