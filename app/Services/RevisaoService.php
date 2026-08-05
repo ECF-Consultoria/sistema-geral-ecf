@@ -184,6 +184,33 @@ class RevisaoService
         });
     }
 
+    /**
+     * Tira (ou devolve) o anúncio da apuração por estar fora da metodologia.
+     *
+     * NÃO é um estado de revisão — por isso não passa por `registrarEvento()`.
+     * Um anúncio fora da metodologia ainda pode ter pendência e ser aprovado;
+     * o que muda é só se ele conta em vendas, meta, conversão e score. Misturar
+     * os dois eixos faria "desconsiderar" apagar o veredicto do líder.
+     */
+    public function definirDesconsiderado(Publicacao $pub, User $autor, bool $desconsiderado): Publicacao
+    {
+        $pub->update([
+            'desconsiderado'     => $desconsiderado,
+            'desconsiderado_por' => $desconsiderado ? $autor->id : null,
+            'desconsiderado_em'  => $desconsiderado ? now() : null,
+        ]);
+
+        $this->log(
+            $autor,
+            $pub,
+            $desconsiderado
+                ? 'desconsiderado da apuração (fora da metodologia)'
+                : 'devolvido à apuração',
+        );
+
+        return $pub->refresh();
+    }
+
     /** Aprovação em lote — o líder revisa dezenas de anúncios por vez. */
     public function aprovarEmLote(array $publicacaoIds, User $revisor): int
     {

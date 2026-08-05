@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import {
     AlertOctagon, AlertTriangle, MessageSquare, CheckCircle2, RotateCcw,
     ExternalLink, Clock, ListChecks, BarChart3, ChevronDown, ChevronRight,
-    Search, Undo2, ShieldCheck, Timer, Repeat,
+    Search, Undo2, ShieldCheck, Timer, Repeat, Ban,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -64,6 +64,59 @@ function IdadeBadge({ dias }) {
         <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold', tom)}>
             <Clock size={9} /> {dias}d
         </span>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Fora da metodologia
+// Anúncio publicado fora do método continua registrado — apagar destruiria a
+// evidência de que foi feito. O que muda é que ele para de contar.
+// ═══════════════════════════════════════════════════════════════════════
+
+const TIRAR_DA_APURACAO = 'Fora da metodologia: deixa de contar em vendas, meta, conversão e score. O anúncio continua registrado.';
+const VOLTAR_A_CONTAR   = 'Voltar a contar em vendas, meta, conversão e score.';
+
+const alternarDesconsiderado = (pub) =>
+    router.patch(
+        route('mlb.revisao.desconsiderar', pub.id),
+        { desconsiderado: !pub.desconsiderado },
+        { preserveScroll: true, preserveState: true },
+    );
+
+function SeloForaMetodologia({ pub }) {
+    if (!pub.desconsiderado) return null;
+
+    const autoria = [pub.desconsiderado_por, pub.desconsiderado_em].filter(Boolean).join(' · ');
+
+    return (
+        <span
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-orange-500/30 bg-orange-500/10 text-orange-400 text-[10px] font-bold whitespace-nowrap"
+            title={autoria ? `${TIRAR_DA_APURACAO}\nMarcado por ${autoria}` : TIRAR_DA_APURACAO}
+        >
+            <Ban size={9} /> Fora da metodologia
+        </span>
+    );
+}
+
+/** Botão de alternância. `compacto` usa só o ícone, para caber no card. */
+function BotaoDesconsiderar({ pub, compacto = false }) {
+    const fora = pub.desconsiderado;
+
+    return (
+        <button
+            onClick={() => alternarDesconsiderado(pub)}
+            title={fora ? VOLTAR_A_CONTAR : TIRAR_DA_APURACAO}
+            className={cn(
+                'rounded-lg border transition-colors inline-flex items-center justify-center gap-1 font-bold',
+                compacto ? 'h-6 w-6' : 'h-7 px-2.5 text-[11px]',
+                fora
+                    ? 'border-orange-500/30 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
+                    : 'border-white/[0.08] text-white/30 hover:text-orange-400 hover:border-orange-500/30',
+            )}
+        >
+            {fora ? <Undo2 size={compacto ? 10 : 11} /> : <Ban size={compacto ? 10 : 11} />}
+            {!compacto && (fora ? 'Voltar a contar' : 'Desconsiderar')}
+        </button>
     );
 }
 
@@ -237,38 +290,45 @@ function LinhaPub({ pub, selecionado, onToggleSelecao, podeRevisar, severidades,
                             </span>
                         );
                     })}
+                    <SeloForaMetodologia pub={pub} />
                     <StatusChip status={pub.status_revisao} />
                 </div>
 
                 {podeRevisar && (
                     <div className="shrink-0 flex items-center gap-1">
-                        {pub.status_revisao !== 'aprovado' && !temPendencia && (
-                            <button
-                                onClick={aprovar}
-                                title="Aprovar — conferido e correto"
-                                className="h-7 px-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-[11px] font-bold hover:bg-emerald-500/20 transition-colors inline-flex items-center gap-1"
-                            >
-                                <CheckCircle2 size={11} /> Aprovar
-                            </button>
+                        {/* Fora da apuração não há veredicto a dar: sobra só o desfazer. */}
+                        {!pub.desconsiderado && (
+                            <>
+                                {pub.status_revisao !== 'aprovado' && !temPendencia && (
+                                    <button
+                                        onClick={aprovar}
+                                        title="Aprovar — conferido e correto"
+                                        className="h-7 px-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-[11px] font-bold hover:bg-emerald-500/20 transition-colors inline-flex items-center gap-1"
+                                    >
+                                        <CheckCircle2 size={11} /> Aprovar
+                                    </button>
+                                )}
+                                {!abrirForm && (
+                                    <button
+                                        onClick={() => setAbrirForm(true)}
+                                        title="Registrar pendência"
+                                        className="h-7 px-2.5 rounded-lg border border-white/[0.08] text-white/40 text-[11px] font-semibold hover:text-white/80 hover:border-white/20 transition-colors inline-flex items-center gap-1"
+                                    >
+                                        <AlertTriangle size={11} /> Pendência
+                                    </button>
+                                )}
+                                {pub.status_revisao === 'aprovado' && (
+                                    <button
+                                        onClick={reverter}
+                                        title="Desfazer aprovação"
+                                        className="h-7 w-7 rounded-lg border border-white/[0.06] text-white/20 hover:text-white/60 transition-colors inline-flex items-center justify-center"
+                                    >
+                                        <Undo2 size={11} />
+                                    </button>
+                                )}
+                            </>
                         )}
-                        {!abrirForm && (
-                            <button
-                                onClick={() => setAbrirForm(true)}
-                                title="Registrar pendência"
-                                className="h-7 px-2.5 rounded-lg border border-white/[0.08] text-white/40 text-[11px] font-semibold hover:text-white/80 hover:border-white/20 transition-colors inline-flex items-center gap-1"
-                            >
-                                <AlertTriangle size={11} /> Pendência
-                            </button>
-                        )}
-                        {pub.status_revisao === 'aprovado' && (
-                            <button
-                                onClick={reverter}
-                                title="Desfazer aprovação"
-                                className="h-7 w-7 rounded-lg border border-white/[0.06] text-white/20 hover:text-white/60 transition-colors inline-flex items-center justify-center"
-                            >
-                                <Undo2 size={11} />
-                            </button>
-                        )}
+                        <BotaoDesconsiderar pub={pub} />
                     </div>
                 )}
             </div>
@@ -394,6 +454,7 @@ function CardEstado({ pub, selecionado, onToggleSelecao, podeRevisar, severidade
                     {pub.mlb_code}
                 </a>
                 <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                    <SeloForaMetodologia pub={pub} />
                     {sev && (
                         <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold', sev.chip, sev.text)}>
                             <IconSev size={9} /> {sev.label}
@@ -470,6 +531,7 @@ function CardEstado({ pub, selecionado, onToggleSelecao, podeRevisar, severidade
                                 </button>
                             </>
                         )}
+                        <BotaoDesconsiderar pub={pub} compacto />
                     </div>
                 )}
             </div>
@@ -577,13 +639,16 @@ function AbaFila({ colunas, publicacoes, kpis, filters, publicadores, podeRevisa
 
     return (
         <>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
                 <Kpi title="Na competência" value={fmt(kpis?.total)} icon={ListChecks}
                      sub={kpis?.cobertura != null ? `${kpis.cobertura}% com veredicto` : null} />
                 <Kpi title="Não revisado" value={fmt(kpis?.nao_revisado)} />
                 <Kpi title="Aprovado" value={fmt(kpis?.aprovado)} tone="green" icon={ShieldCheck} />
                 <Kpi title="Em ajuste" value={fmt(kpis?.em_ajuste)} tone="red" sub="bola com o publicador" />
                 <Kpi title="Reconferir" value={fmt(kpis?.reconferir)} tone="amber" sub="bola com você" />
+                {/* Fora do total acima de propósito: não entram na apuração. */}
+                <Kpi title="Fora da metodologia" value={fmt(kpis?.desconsiderados)} icon={Ban}
+                     sub="não contam em vendas nem meta" />
             </div>
 
             <div className="card-ecf rounded-2xl p-3 mb-4 flex flex-wrap gap-2 items-center">
@@ -606,6 +671,8 @@ function AbaFila({ colunas, publicacoes, kpis, filters, publicadores, podeRevisa
                     <option value="aprovado">Lista · aprovado</option>
                     <option value="em_ajuste">Lista · em ajuste</option>
                     <option value="reconferir">Lista · reconferir</option>
+                    {/* Única visão que enxerga os desconsiderados — é por onde se desfaz. */}
+                    <option value="desconsiderados">Lista · fora da metodologia</option>
                 </select>
 
                 {publicadores?.length > 0 && (

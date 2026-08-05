@@ -18,7 +18,7 @@ class Publicacao extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['user_id', 'empresa', 'mlb_empresa_id', 'tipo', 'mlb_code', 'sku_stage', 'vendido', 'status_revisao', 'revisado', 'problema', 'problema_nota', 'comentario'])
+            ->logOnly(['user_id', 'empresa', 'mlb_empresa_id', 'tipo', 'mlb_code', 'sku_stage', 'vendido', 'status_revisao', 'revisado', 'desconsiderado', 'problema', 'problema_nota', 'comentario'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
@@ -48,6 +48,12 @@ class Publicacao extends Model
         'revisado_por',
         'revisado_em',
         'pendencias_abertas',
+        // ─── Fora da metodologia ───
+        // Ortogonal à revisão: o anúncio segue existindo e revisável, só para
+        // de contar em vendas, meta, conversão e score.
+        'desconsiderado',
+        'desconsiderado_por',
+        'desconsiderado_em',
         // ─── Colunas legadas ───
         // Mantidas em dual-write pelo RevisaoService enquanto Histórico,
         // Empresas e relatórios antigos ainda leem daqui. Não escrever
@@ -73,6 +79,8 @@ class Publicacao extends Model
         'vendas_qty'           => 'integer',
         'revisado_em'          => 'datetime',
         'pendencias_abertas'   => 'integer',
+        'desconsiderado'       => 'boolean',
+        'desconsiderado_em'    => 'datetime',
         'revisado'             => 'boolean',
         'problema'                 => 'boolean',
         'problema_em'              => 'datetime',
@@ -110,6 +118,12 @@ class Publicacao extends Model
         return $this->belongsTo(User::class, 'revisado_por')->withTrashed();
     }
 
+    /** Quem tirou o anúncio da apuração por estar fora da metodologia. */
+    public function desconsideradoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'desconsiderado_por')->withTrashed();
+    }
+
     /**
      * Histórico completo de revisões — alimenta a aba Supervisão.
      * Ordena por id, não por created_at: várias transições podem cair no mesmo
@@ -144,6 +158,19 @@ class Publicacao extends Model
     public function scopeComStatusRevisao(Builder $q, string $status): Builder
     {
         return $q->where('status_revisao', $status);
+    }
+
+    /**
+     * O que entra em apuração — vendas, meta, conversão, faturamento e score.
+     *
+     * Anúncio fora da metodologia continua no banco e nas telas de registro
+     * (Publicações, Histórico, Revisão), mas some de qualquer número que meça
+     * o trabalho do time. Toda query que CONTA precisa deste scope; toda query
+     * que LISTA, não.
+     */
+    public function scopeConsiderado(Builder $q): Builder
+    {
+        return $q->where('desconsiderado', false);
     }
 
     /**

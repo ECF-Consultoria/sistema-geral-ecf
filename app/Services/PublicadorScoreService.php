@@ -127,7 +127,7 @@ class PublicadorScoreService
         // continua a mesma, só a fonte mudou.
         $pubsMes = Publicacao::where('user_id', $userId)
             ->whereBetween('data', [$primeiro, $ultimo])
-            ->where('tipo', '!=', 'variacao');
+            ->where('tipo', '!=', 'variacao')->considerado();
 
         $totalPubs   = (clone $pubsMes)->count();
         $comBloqueio = (clone $pubsMes)
