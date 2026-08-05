@@ -159,6 +159,7 @@ class CalculateSetorGoalResults implements ShouldQueue
         if ($userIds->isEmpty()) return 0.0;
 
         return (float) \App\Models\Publicacao::query()
+            ->considerado()
             ->whereIn('user_id', $userIds)
             ->whereBetween('created_at', [$inicio, $fim])
             ->count();

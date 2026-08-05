@@ -207,7 +207,7 @@ class PlanoMetasPublicacaoService
     {
         $comPrazo = Publicacao::where('user_id', $userId)
             ->whereBetween('data', [$primeiro, $ultimo])
-            ->where('tipo', '!=', 'variacao')
+            ->where('tipo', '!=', 'variacao')->considerado()
             ->whereNotNull('prazo')
             ->get(['data', 'prazo']);
 

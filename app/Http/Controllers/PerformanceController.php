@@ -1048,8 +1048,8 @@ class PerformanceController extends Controller
 
         $ranking = $users->map(function ($u) use ($primeiro, $ultimo, $diasDecorridos, $diasTotal, $mesRef, $plano) {
             $meta       = $this->metaParaMes($u->id, $mesRef);
-            $feito      = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->count();
-            $vendas     = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->where('vendido', true)->count();
+            $feito      = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->considerado()->count();
+            $vendas     = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->considerado()->where('vendido', true)->count();
 
             $pm = $plano->compute($u->id, $mesRef, $feito, $vendas, $diasDecorridos);
 
@@ -1138,8 +1138,8 @@ class PerformanceController extends Controller
         $plano = new PlanoMetasPublicacaoService();
 
         $raw = $users->map(function ($u) use ($primeiro, $ultimo, $mesRef, $diasUteis, $plano) {
-            $feito  = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->count();
-            $vendas = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->where('vendido', true)->count();
+            $feito  = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->considerado()->count();
+            $vendas = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->considerado()->where('vendido', true)->count();
             $pm     = $plano->compute($u->id, $mesRef, $feito, $vendas, $diasUteis);
 
             return ['id' => $u->id, 'feito' => $feito, 'nota' => $pm['nota']];
