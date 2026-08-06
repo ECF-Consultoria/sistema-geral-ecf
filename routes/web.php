@@ -538,6 +538,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('permission:core.performance')
         ->name('performance.evolucao');
 
+    // Detalhe por empresa para a expansão inline do ranking (quick 260806-l58).
+    // Leitura pura de snapshot — nunca dispara cálculo por empresa.
+    Route::get('/api/performance/{user}/empresas', [PerformanceController::class, 'empresasScore'])
+        ->middleware('permission:core.performance')
+        ->name('performance.empresas');
+
     // Auditoria de pagamento de bônus (item 3/4 · 2026-07-21) — admin-only.
     // Invalida o resultado de uma empresa para bônus numa competência (empresa
     // sem custo preenchido infla margem injustamente). Ver BonusAuditoriaController.
