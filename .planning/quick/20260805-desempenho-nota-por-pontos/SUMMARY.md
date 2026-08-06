@@ -150,3 +150,41 @@ Seletor de mês da tela individual (`/performance/{user}`) ficou preso a um
 CONGELADAS, e em produção só 2026-06 estava consolidada. Enquanto existia o
 toggle, o dropdown só precisava cobrir os fechados; sem ele, virou o único
 controle de período. Passou a listar os últimos 6 meses, como as demais telas.
+## Reconciliação com o fechamento manual (2026-08-06)
+
+Cruzadas as 286 lojas da competência contra as 10 abas da planilha: **74
+divergências**, separadas em dois grupos porque `BonusInvalidacao` é por
+EMPRESA, não por profissional.
+
+- **30 empresas invalidadas** — não contavam para ninguém no fechamento
+  manual: lojas de teste, produto M.A.P, cliente novo/sem 30 dias, cliente em
+  bônus de saída, e as ausentes da planilha. Duas delas (ARMONARE,
+  EZIOFREDIANI) o usuário já havia invalidado pela tela; as outras 28 entraram
+  por comando, com dry-run conferido antes.
+- **16 empresas NÃO invalidadas** — contam para OUTRO profissional na
+  planilha. Invalidar tiraria a loja de quem legitimamente a tem. Decisão do
+  usuário: nesses casos **o sistema está certo** (a loja é atendida por dois,
+  um por ML e outro por Shopee) e a planilha é que não reflete isso.
+
+Depois de reconsolidar (exit 0, 11 profissionais, 219 linhas, 42 podadas):
+
+| | antes | depois |
+|---|---|---|
+| erro médio vs planilha | 0,363 | **0,190** |
+| carteiras com contagem de lojas idêntica à planilha | 3 | **5** |
+| caso âncora (Ruben) | 4,01 | **4,03 — idêntico** |
+
+A diferença que resta é o **NPS de loja sem link**, regra que o usuário
+manteve deliberadamente.
+
+### Incidente diagnosticado no caminho
+
+Invalidar empresa pela tela de Auditoria **apaga** o snapshot mensal de todos
+os profissionais vinculados a ela e **não regrava** — comportamento
+documentado no controller, mas sem aviso na interface. As duas invalidações
+feitas pela tela deixaram **três profissionais sem nota nenhuma** em junho
+(resumo e detalhe zerados), o que só apareceu quando o universo caiu de 11/286
+para 8/211. A reconsolidação trouxe os três de volta.
+
+Regra registrada em `learnings/desempenho-bonificacao.md` §0.05: toda
+invalidação pela tela exige `desempenho:consolidar-mes` em seguida.
