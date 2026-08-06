@@ -911,11 +911,53 @@ class MlbImplementacaoController extends Controller
                 'empresa_nome' => $impl->empresa->nome,
                 'dados'        => $dados,
                 'criado_em'    => $impl->created_at->format('d/m/Y'),
+                // Mapa {sku => true} do check-in do publicador (implementações
+                // antigas não têm a chave — default vazio).
+                'checkin'      => (object) ($dados['publicador_checkin'] ?? []),
             ],
             'checklist'         => MlbImplementacao::CHECKLIST,
             'erp_opcoes'        => MlbImplementacao::ERP_OPCOES,
             'integrador_opcoes' => MlbImplementacao::INTEGRADOR_OPCOES,
         ]);
+    }
+
+    /**
+     * Marca/desmarca o check-in de um SKU na visão do Publicador.
+     *
+     * Rota pública por token (mesmo modelo do resto de /implementacao/*). Grava em
+     * `dados.publicador_checkin` — chave top-level, FORA de itens.planilha_produtos,
+     * para que o salvamento da planilha pelo cliente (que reescreve o array inteiro
+     * de produtos) não apague o que o publicador já marcou.
+     *
+     * @return JsonResponse {ok: bool, total: int} — total de SKUs marcados
+     */
+    public function checkinPublicador(Request $request, string $token): JsonResponse
+    {
+        $impl = MlbImplementacao::where('token', $token)->firstOrFail();
+
+        $request->validate([
+            'sku'   => ['required', 'string', 'max:120'],
+            'feito' => ['required', 'boolean'],
+        ]);
+
+        $sku   = trim($request->string('sku')->toString());
+        $feito = $request->boolean('feito');
+
+        abort_if($sku === '', 422);
+
+        $dados   = $impl->dados ?? MlbImplementacao::dadosPadrao();
+        $checkin = $dados['publicador_checkin'] ?? [];
+
+        if ($feito) {
+            $checkin[$sku] = true;
+        } else {
+            unset($checkin[$sku]);
+        }
+
+        $dados['publicador_checkin'] = $checkin;
+        $impl->update(['dados' => $dados]);
+
+        return response()->json(['ok' => true, 'total' => count($checkin)]);
     }
 
     public function workspace(string $token)
