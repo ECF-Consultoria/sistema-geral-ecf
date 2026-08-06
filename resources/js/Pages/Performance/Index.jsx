@@ -589,7 +589,8 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 idx === 0 && 'bg-ecf-yellow/[0.03]',
                                 calculando ? 'cursor-default' : 'hover:bg-white/[0.04] cursor-pointer',
                             )}
-                            onClick={() => { if (!calculando) router.visit(route('performance.show', u.id)); }}
+                            title={calculando ? undefined : 'Ver por que essa nota — abre aqui mesmo'}
+                            onClick={() => { if (!calculando) onSelectUser(u); }}
                         >
                             {/* Posição */}
                             <div className="flex items-center justify-center">
@@ -711,10 +712,21 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 {u.empresas_com_baseline ?? 0}/{u.empresas_carteira ?? 0}
                             </div>
 
-                            {/* Chevron visual apenas — a linha inteira é clicável e leva
-                                pra performance.show (detalhes da nota). Ajuste 2026-07-13. */}
+                            {/* 2026-08-06 — a linha abre o drawer (detalhe sobre a tela
+                                atual); o chevron é a saída explícita para a tela cheia,
+                                que tem o que o drawer não tem: a tabela por empresa.
+                                Entre 2026-07-13 e hoje a linha inteira navegava e o
+                                EvolucaoDrawer ficou órfão — existia, com fetch e gráfico,
+                                sem nada que o abrisse. */}
                             <div className="flex items-center justify-end">
-                                <ChevronRight size={14} className="text-white/30" />
+                                <button
+                                    type="button"
+                                    title="Abrir a página completa (inclui a tabela por empresa)"
+                                    onClick={(e) => { e.stopPropagation(); router.visit(route('performance.show', u.id)); }}
+                                    className="rounded-md p-1 text-white/30 hover:text-white hover:bg-white/[0.08] transition-colors"
+                                >
+                                    <ChevronRight size={14} />
+                                </button>
                             </div>
                         </div>
                     );
@@ -869,6 +881,11 @@ function EvolucaoDrawer({ rankingItem, allRankingIds, onClose }) {
             ? Number(rankingItem.score).toFixed(0)
             : '—';
 
+    // `formatContaNota` devolve a sentinela '/ 5,00' quando não há nenhum ponto —
+    // nunca null. Sem esta guarda o drawer renderizaria "/ 5,00 = —".
+    const contaBruta = formatContaNota(rankingItem.pontos_componentes);
+    const contaNota  = contaBruta === '/ 5,00' ? null : contaBruta;
+
     return (
         <div className="fixed inset-0 z-50 flex justify-end">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -890,6 +907,62 @@ function EvolucaoDrawer({ rankingItem, allRankingIds, onClose }) {
                         aria-label="Fechar"
                     >
                         <X size={18} />
+                    </button>
+                </div>
+
+                {/* Por que essa nota — 2026-08-06.
+                    Os pontos por indicador e a conta JÁ vêm na linha do ranking
+                    (`pontos_componentes`), então este bloco não custa requisição
+                    nenhuma. É o que fazia o usuário abrir a tela cheia: agora o
+                    "por quê" resolve aqui, e a navegação fica só para a tabela
+                    por empresa, que o drawer não tem como mostrar. */}
+                <div className="px-5 py-4 border-b border-white/[0.06]">
+                    <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+                        <h3 className="text-white/60 text-xs uppercase tracking-wider">Por que essa nota</h3>
+                        <span className={cn(
+                            'inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border',
+                            FAIXA_BADGE_CLS[rankingItem.faixa_bonus ?? 'sem_bonus'] ?? FAIXA_BADGE_CLS.sem_bonus,
+                        )}>
+                            {FAIXA_LABEL[rankingItem.faixa_bonus ?? 'sem_bonus'] ?? rankingItem.faixa_bonus}
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                        {[
+                            { k: 'NPS',         pontos: rankingItem.pontos_componentes?.nps,         apoio: null },
+                            { k: 'Faturamento', pontos: rankingItem.pontos_componentes?.faturamento, apoio: rankingItem.componentes?.var_faturamento_pct, sufixo: '%' },
+                            { k: 'Margem',      pontos: rankingItem.pontos_componentes?.margem,      apoio: rankingItem.componentes?.var_margem_pp, sufixo: ' p.p.' },
+                        ].map(({ k, pontos, apoio, sufixo }) => (
+                            <div key={k} className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
+                                <p className="text-white/30 text-[10px] uppercase tracking-wider">{k}</p>
+                                <p className="text-white font-display font-extrabold text-xl mt-0.5 tabular-nums">
+                                    {formatNota(pontos)}
+                                </p>
+                                {apoio != null && !Number.isNaN(Number(apoio)) && (
+                                    <p className="text-white/40 text-[11px] tabular-nums">
+                                        {Number(apoio) > 0 ? '+' : ''}{Number(apoio).toFixed(1)}{sufixo}
+                                    </p>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    {contaNota && (
+                        <p
+                            className="text-white/40 text-xs tabular-nums mt-2"
+                            title="Média dos pontos NPS, faturamento e margem (régua 1-5)"
+                        >
+                            {contaNota} = {notaAtual}
+                        </p>
+                    )}
+
+                    <button
+                        type="button"
+                        onClick={() => router.visit(route('performance.show', rankingItem.id))}
+                        className="inline-flex items-center gap-1.5 text-ecf-yellow text-xs font-semibold hover:underline mt-3 group"
+                    >
+                        Ver empresa por empresa
+                        <ChevronRight size={12} className="text-ecf-yellow/60 group-hover:translate-x-0.5 transition-transform" />
                     </button>
                 </div>
 
