@@ -3,7 +3,7 @@ id: 260806-l58
 slug: desempenho-pontos-menos-saltos
 status: complete
 date: 2026-08-06
-commits: [995aba6e, 07aeeadc, ca3db475, 34a59b16]
+commits: [995aba6e, 07aeeadc, ca3db475, 5728e2c3]
 ---
 
 # Quick 260806-l58 — Desempenho: pontos como unidade principal, menos saltos de tela
@@ -45,24 +45,43 @@ A tabela "Empresas em carteira" foi mantida e ganhou coluna **NPS**, pontos sob
 faturamento, pontos sob margem e coluna **Nota** — sempre em texto pequeno abaixo
 do número operacional, nunca como valor principal.
 
-### `/performance` — o drawer estava morto
+### `/performance` — duas tentativas, ambas revertidas
 
-`onSelectUser` era passado ao `RankingConsultoria` e **nunca chamado lá dentro**:
-a linha inteira navegava para `performance.show`. O `EvolucaoDrawer` existia, com
-fetch e gráfico, e **nada o abria** — ficou órfão no ajuste de 2026-07-13 que
-tornou a linha clicável.
+O pedido dizia para trocar o salto de página por "drawer/expansão inline". Foram
+duas tentativas, e **as duas foram recusadas pelo usuário na tela**:
 
-Religado: a linha abre o drawer, o chevron virou a saída explícita para a tela
-cheia. O drawer ganhou o bloco **"Por que essa nota"** (pontos por indicador, a
-conta e a faixa), a **custo zero de requisição** — `pontos_componentes` e
-`componentes` já vêm na linha do ranking. Era isso que obrigava a abrir a tela
-cheia; agora o "por quê" resolve sobre a própria tela, e a navegação fica só para
-a tabela por empresa, que o drawer não tem como mostrar.
+1. **Drawer** (`34a59b16`): a linha abria o `EvolucaoDrawer` com um bloco "por que
+   essa nota". Recusado com uma crítica correta — *"só foi adicionado mais clique
+   mesmo"*. O drawer não comportava a tabela por empresa, então exigia um
+   **segundo** clique em "Ver empresa por empresa". Antes era 1 clique para a
+   página com tudo; a mudança fez 2.
+2. **Expansão inline** (`02f6b649`): a linha se expandia no lugar, com os pontos
+   instantâneos e a tabela por empresa carregada sob demanda por um endpoint novo.
+   Também recusado: *"melhor deixar como era antes, clica no user e vai para
+   aquela aba"*.
 
-Armadilha local: `formatContaNota()` do `Index.jsx` devolve a **sentinela
-`'/ 5,00'`** quando não há ponto algum, nunca `null` — sem guarda o drawer
-renderizaria `"/ 5,00 = —"`. (É outra função, de mesmo nome e assinatura
-diferente, da que vive em `desempenhoLabels.js`.)
+**Revertido em `5728e2c3`.** O ranking voltou a navegar para `/performance/{id}`
+ao clicar, como antes desta tarefa. O endpoint
+`GET /api/performance/{user}/empresas` foi removido junto: endpoint sem
+consumidor, com superfície de autorização, é pior que endpoint nenhum.
+
+**A lição que fica**: "menos cliques" não é a mesma coisa que "sem navegar".
+Trocar 1 navegação por 2 interações locais é pior, mesmo quando a segunda não
+muda de página. A conta que importa é *quantas ações até o dado que a pessoa
+veio buscar* — e nas duas tentativas o dado final (empresa por empresa) ficou
+atrás de uma ação a mais do que já estava.
+
+**PENDENTE, sem decisão:** o `EvolucaoDrawer` volta a ser **código morto**.
+`onSelectUser` é passado ao `RankingConsultoria` e **nunca chamado lá dentro**
+desde o ajuste de 2026-07-13 que tornou a linha inteira clicável. O componente
+existe, com fetch e gráfico Recharts, e nada o abre. Ou se dá um gatilho a ele,
+ou se remove — hoje é peso morto no bundle.
+
+Achado colateral que sobrevive à reversão, para quem for mexer ali:
+`formatContaNota()` do `Index.jsx` é **outra função**, de mesmo nome e assinatura
+diferente da que vive em `desempenhoLabels.js`, e devolve a **sentinela
+`'/ 5,00'`** quando não há ponto algum — nunca `null`. Testar por `if (conta)`
+não funciona.
 
 ### Menos repetição
 
@@ -162,8 +181,9 @@ Parado antes do deploy, conforme pedido.
 
 ## Fora de escopo
 
-- O **layout** do ranking segue intocado (é a referência aprovada); mudou só o
-  destino do clique e o conteúdo do drawer que já existia.
+- `Performance/Index.jsx` (ranking) termina **exatamente como estava**: as duas
+  tentativas de tirar o salto de página foram recusadas na tela e revertidas.
+- Dar gatilho ao `EvolucaoDrawer` órfão, ou removê-lo — decisão em aberto.
 - `resumo.margem_media_pct` continua no payload sem leitor. Remover é churn
   adjacente ao cálculo, sem ganho.
 - `fraseVarMargemPp()` ficou sem uso na aplicação (segue coberta por teste
