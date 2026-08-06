@@ -215,7 +215,9 @@ const PRODUTOS_COLS = [
 ];
 
 // Campo de texto/textarea/select rotulado (cadastro guiado de produto).
-function CampoTexto({ label, dica, value, onChange, placeholder, tipo, opcoes }) {
+function CampoTexto({ label, dica, value, onChange, placeholder, tipo, opcoes, destaque = false }) {
+    // `destaque` marca o campo que o cliente ainda precisa preencher (borda âmbar).
+    const borda = destaque ? 'border-amber-500/40' : 'border-white/[0.1]';
     return (
         <div>
             <label className="text-white/60 text-[12px] font-medium block mb-1">
@@ -225,10 +227,10 @@ function CampoTexto({ label, dica, value, onChange, placeholder, tipo, opcoes })
                 <CustomSelect value={value || opcoes[0]} onChange={onChange} opcoes={opcoes} className="w-full" />
             ) : tipo === 'textarea' ? (
                 <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={3}
-                    className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 resize-none" />
+                    className={cn('w-full px-3 py-2 rounded-xl bg-white/[0.04] border text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 resize-none', borda)} />
             ) : (
                 <input value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-                    className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20" />
+                    className={cn('w-full h-10 px-3 rounded-xl bg-white/[0.04] border text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20', borda)} />
             )}
         </div>
     );
@@ -313,6 +315,8 @@ function TabelaProdutos({ produtos, onSave }) {
     const [view, setView] = useState('guiado');
     const [selIdx, setSelIdx] = useState(0);
     const [saving, setSaving] = useState(false);
+    // Aviso de uma vez só, logo depois de criar um grupo de variação.
+    const [avisoGrupo, setAvisoGrupo] = useState(false);
     const debRef    = useRef(null);
     const pendingRef = useRef(null);
     const onSaveRef  = useRef(onSave);
@@ -337,10 +341,16 @@ function TabelaProdutos({ produtos, onSave }) {
         const idx  = Math.min(selIdx, Math.max(0, base.length - 1));
         handleChange(base.map((r, i) => i === idx ? { ...r, [campo]: valor } : r));
     }
+    // Trocar de produto encerra o aviso do grupo recém-criado.
+    function selecionar(i) {
+        setSelIdx(i);
+        setAvisoGrupo(false);
+    }
     function addProduto() {
         const novo = [...rows, { ...PROD_VAZIO }];
         handleChange(novo);
         setSelIdx(novo.length - 1);
+        setAvisoGrupo(false);
     }
     function delProduto(idx) {
         const novo = rows.filter((_, i) => i !== idx);
@@ -357,7 +367,8 @@ function TabelaProdutos({ produtos, onSave }) {
     function addVariacao() {
         const base = rows[selIdx];
         if (!base) return;
-        const grupo = String(base.variacao_grupo ?? '').trim() || novoGrupoId();
+        const grupoNovo = String(base.variacao_grupo ?? '').trim() === '';
+        const grupo = grupoNovo ? novoGrupoId() : String(base.variacao_grupo).trim();
         const tipo  = base.variacao_tipo || 'Cor';
 
         const arr = rows.map((r, i) => i === selIdx ? { ...r, variacao_grupo: grupo, variacao_tipo: tipo } : r);
@@ -367,7 +378,11 @@ function TabelaProdutos({ produtos, onSave }) {
         arr.splice(ultimo + 1, 0, { ...base, sku: '', estoque: '', variacao_grupo: grupo, variacao_tipo: tipo, variacao_valor: '' });
 
         handleChange(arr);
-        setSelIdx(ultimo + 1);
+        // Ao CRIAR o grupo, o produto atual também passa a precisar dizer qual
+        // variação ele é — campo que não existia até agora. Pular direto para a
+        // variação nova deixaria o primeiro produto sem cor e o cliente sem ver.
+        setSelIdx(grupoNovo ? selIdx : ultimo + 1);
+        setAvisoGrupo(grupoNovo);
     }
 
     /** Troca o eixo da variação (Cor → Tamanho…) em TODAS as linhas do grupo. */
@@ -440,7 +455,7 @@ function TabelaProdutos({ produtos, onSave }) {
                         <div className="flex flex-wrap items-start gap-2">
                             {chips.map((c, ci) => c.tipo === 'solo' ? (
                                 <ChipProduto key={`s${ci}`} p={rows[c.idx]} i={c.idx} ativo={c.idx === selIdx}
-                                    onSel={setSelIdx} onDel={delProduto} />
+                                    onSel={selecionar} onDel={delProduto} />
                             ) : (
                                 <div key={`g${ci}`} className="rounded-xl border border-violet-500/25 bg-violet-500/[0.04] p-2">
                                     <p className="text-violet-300/70 text-[10px] uppercase tracking-wider px-1 pb-1.5">
@@ -487,6 +502,15 @@ function TabelaProdutos({ produtos, onSave }) {
                                     Este produto e as demais variações viram <span className="text-white/70 font-semibold">um único anúncio</span> no
                                     Mercado Livre. Só o que muda entre elas precisa ser diferente.
                                 </p>
+                                {avisoGrupo && !String(row.variacao_valor ?? '').trim() && (
+                                    <div className="rounded-lg bg-amber-500/[0.08] border border-amber-500/20 px-3 py-2 mb-3">
+                                        <p className="text-amber-300 text-[12px]">
+                                            A nova variação já foi criada e está ali nos chips acima. Antes de ir para ela,
+                                            preencha <span className="font-semibold">qual {String(row.variacao_tipo || 'variação').toLowerCase()} é ESTE produto</span> —
+                                            até agora ele não precisava dessa informação.
+                                        </p>
+                                    </div>
+                                )}
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                                     <div>
                                         <label className="text-white/60 text-[12px] font-medium block mb-1">
@@ -497,6 +521,7 @@ function TabelaProdutos({ produtos, onSave }) {
                                     </div>
                                     <CampoTexto label={row.variacao_tipo || 'Valor'} dica="desta variação"
                                         placeholder={row.variacao_tipo === 'Tamanho' ? 'ex: M' : 'ex: Azul'}
+                                        destaque={!String(row.variacao_valor ?? '').trim()}
                                         value={row.variacao_valor} onChange={v => editProduto('variacao_valor', v)} />
                                     <button type="button" onClick={() => removerDoGrupo(selIdx)}
                                         className="h-10 rounded-xl border border-white/[0.1] text-white/40 hover:text-white hover:border-white/25 text-[13px] transition">
