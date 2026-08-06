@@ -92,9 +92,35 @@ arquivo desta tarefa, o trabalho foi movido via `stash` para a branch
 `quick/260806-fnh-checkin-publicador-e-variacoes` criada **a partir de
 `origin/main`**.
 
-## NÃO deployado
+## DEPLOYADO 260806
 
-Aguardando autorização explícita.
+Deploy isolado (`8b802912..f35f1b0c`, push FF + `deploy.sh`). Sem migrations.
+
+Os 6 commits foram **rebasados** sobre a `origin/main`, que havia avançado 6
+commits de outra sessão (ajustes do handoff HubSpot + aba Empresas) enquanto o
+trabalho corria. Conflito só no `STATE.md` — as duas sessões inserindo linha no
+topo da mesma tabela —, resolvido preservando as duas; testes e build
+revalidados **na base rebasada**, não na antiga.
+
+**O deploy saiu isolado porque a VPS já estava em `8b802912`**: o trabalho da
+outra sessão já tinha ido ao ar. Conferido antes de disparar, junto com
+`git status` da VPS (só arquivos não-rastreados `.bak`, que `reset --hard` não
+toca — diferente do incidente de 260731, que envolvia arquivo rastreado sujo).
+
+Conferido em produção **por reconsulta**, não pelo stdout do deploy:
+
+- `HEAD` da VPS em `f35f1b0`;
+- rota `implementacao.publicador.checkin` (PATCH) registrada;
+- bundles buildados **na VPS** (`ImplementacaoPublica-CuJNnfPF.js` contendo
+  "Este produto tem variações", `ImplementacaoPublicador-CWFWy4Rt.js` contendo
+  "Check-in");
+- smoke HTTP 200 em `/implementacao/{token}/publicador`,
+  `/implementacao/{token}` e `/login`, sem 500;
+- **endpoint exercitado de ponta a ponta**: PATCH marcando `__smoke_deploy__`
+  devolveu `{"ok":true,"total":1}` e o banco passou a ter
+  `{"__smoke_deploy__":true}`; PATCH desmarcando devolveu `total:0` e o registro
+  voltou a `[]` — mesmo estado do padrão, nada deixado para trás;
+- workers reiniciaram sem travar em STOPPING.
 
 ## Fora de escopo
 
