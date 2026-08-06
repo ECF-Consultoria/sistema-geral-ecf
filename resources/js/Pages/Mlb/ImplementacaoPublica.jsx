@@ -264,14 +264,25 @@ const PROD_VAZIO = { curva: 'Curva A', sku: '', produto: '', altura: '', largura
     altura_emb: '', largura_emb: '', prof_emb: '', peso_emb_kg: '', estoque: '', especificacoes: '', descricao: '',
     variacao_grupo: '', variacao_tipo: '', variacao_valor: '' };
 
-const PROD_OBRIG = ['sku', 'produto', 'altura', 'largura', 'profundidade', 'peso_kg', 'estoque', 'descricao'];
-function faltamCampos(p) {
-    const faltam = PROD_OBRIG.filter(k => String(p[k] ?? '').trim() === '');
+// Obrigatórios do PRODUTO (valem para o anúncio inteiro) e da VARIAÇÃO (por linha).
+const PROD_OBRIG_ITEM     = ['produto', 'altura', 'largura', 'profundidade', 'peso_kg', 'descricao'];
+const PROD_OBRIG_VARIACAO = ['sku', 'estoque'];
+
+const vazio = (v) => String(v ?? '').trim() === '';
+
+function faltamDoProduto(p) {
+    return PROD_OBRIG_ITEM.filter(k => vazio(p[k]));
+}
+function faltamDaVariacao(p) {
+    const faltam = PROD_OBRIG_VARIACAO.filter(k => vazio(p[k]));
     // Quem faz parte de um grupo de variação precisa dizer QUAL variação é.
-    if (String(p.variacao_grupo ?? '').trim() !== '' && String(p.variacao_valor ?? '').trim() === '') {
+    if (!vazio(p.variacao_grupo) && vazio(p.variacao_valor)) {
         faltam.push(String(p.variacao_tipo || 'variação').toLowerCase());
     }
     return faltam;
+}
+function faltamCampos(p) {
+    return [...faltamDoProduto(p), ...faltamDaVariacao(p)];
 }
 
 /** Gera um id de grupo de variação estável (não depende do SKU, que o cliente edita). */
@@ -279,23 +290,28 @@ function novoGrupoId() {
     return 'v' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
 }
 
-// Chip de um produto no catálogo do modo Guiado.
-function ChipProduto({ p, i, ativo, onSel, onDel, variacao = false }) {
-    const faltam = faltamCampos(p);
+// Campos que pertencem a CADA variação. Todo o resto (nome, medidas, descrição…)
+// é do produto e vale para o grupo inteiro — mesmo modelo do Mercado Livre, onde
+// o anúncio é um só e a variação carrega apenas SKU, estoque e a combinação.
+const VARIACAO_CAMPOS = ['sku', 'estoque', 'variacao_valor'];
+
+// Chip de um produto no catálogo do modo Guiado. Um grupo de variações ocupa UM
+// chip só — as variações são editadas dentro da tela do produto.
+function ChipProduto({ nome, faltam, sub, ativo, onSel, onDel }) {
     return (
-        <div onClick={() => onSel(i)}
+        <div onClick={onSel}
             className={cn('group relative rounded-xl border pl-3 pr-7 py-2 transition cursor-pointer',
                 ativo ? 'border-ecf-yellow/50 bg-ecf-yellow/[0.08]' : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05]')}>
-            <p className="text-white/90 text-[13px] font-medium truncate max-w-[170px]">
-                {variacao
-                    ? (p.variacao_valor || `${p.variacao_tipo || 'Variação'} sem valor`)
-                    : (p.produto || p.sku || `Produto ${i + 1}`)}
+            <p className="text-white/90 text-[13px] font-medium truncate max-w-[170px]">{nome}</p>
+            <p className="text-[11px]">
+                {sub && <span className="text-violet-300/70">{sub}</span>}
+                {sub && ' · '}
+                <span className={faltam === 0 ? 'text-green-400/80' : 'text-amber-400/80'}>
+                    {faltam === 0 ? '✓ Completo' : `Faltam ${faltam}`}
+                </span>
             </p>
-            <p className={cn('text-[11px]', faltam.length === 0 ? 'text-green-400/80' : 'text-amber-400/80')}>
-                {faltam.length === 0 ? '✓ Completo' : `Faltam ${faltam.length}`}
-            </p>
-            <button type="button" title="Excluir produto"
-                onClick={e => { e.stopPropagation(); onDel(i); }}
+            <button type="button" title="Excluir"
+                onClick={e => { e.stopPropagation(); onDel(); }}
                 className="absolute top-1.5 right-1.5 text-white/25 hover:text-red-400 opacity-0 group-hover:opacity-100 transition">
                 <X size={13} />
             </button>
@@ -315,8 +331,6 @@ function TabelaProdutos({ produtos, onSave }) {
     const [view, setView] = useState('guiado');
     const [selIdx, setSelIdx] = useState(0);
     const [saving, setSaving] = useState(false);
-    // Aviso de uma vez só, logo depois de criar um grupo de variação.
-    const [avisoGrupo, setAvisoGrupo] = useState(false);
     const debRef    = useRef(null);
     const pendingRef = useRef(null);
     const onSaveRef  = useRef(onSave);
@@ -336,85 +350,106 @@ function TabelaProdutos({ produtos, onSave }) {
         debRef.current = setTimeout(() => { onSaveRef.current(newRows); pendingRef.current = null; setSaving(false); }, 800);
     }
 
+    const grupoDe = (r) => String(r?.variacao_grupo ?? '').trim();
+
+    /**
+     * Edita um campo do produto selecionado. Campo COMPARTILHADO (nome, medidas,
+     * descrição…) vale para o grupo inteiro — o anúncio é um só; campo de
+     * variação (SKU, estoque, valor) fica na linha dela.
+     */
     function editProduto(campo, valor) {
         const base = rows.length > 0 ? rows : [{ ...PROD_VAZIO }];
         const idx  = Math.min(selIdx, Math.max(0, base.length - 1));
-        handleChange(base.map((r, i) => i === idx ? { ...r, [campo]: valor } : r));
+        const grupo = grupoDe(base[idx]);
+        const propaga = grupo !== '' && !VARIACAO_CAMPOS.includes(campo);
+        handleChange(base.map((r, i) =>
+            i === idx || (propaga && grupoDe(r) === grupo) ? { ...r, [campo]: valor } : r));
     }
-    // Trocar de produto encerra o aviso do grupo recém-criado.
-    function selecionar(i) {
-        setSelIdx(i);
-        setAvisoGrupo(false);
+    /** Edita um campo de UMA variação (SKU, estoque, valor). */
+    function editVariacao(idx, campo, valor) {
+        handleChange(rows.map((r, i) => i === idx ? { ...r, [campo]: valor } : r));
     }
     function addProduto() {
         const novo = [...rows, { ...PROD_VAZIO }];
         handleChange(novo);
         setSelIdx(novo.length - 1);
-        setAvisoGrupo(false);
     }
     function delProduto(idx) {
         const novo = rows.filter((_, i) => i !== idx);
         handleChange(novo);
         setSelIdx(s => Math.max(0, Math.min(s >= idx ? s - 1 : s, novo.length - 1)));
     }
+    /** Exclui o produto inteiro, com todas as suas variações. */
+    function delGrupo(grupo) {
+        const novo = rows.filter(r => grupoDe(r) !== grupo);
+        handleChange(novo);
+        setSelIdx(s => Math.max(0, Math.min(s, novo.length - 1)));
+    }
 
     /**
-     * Cria uma variação do produto selecionado: copia tudo que já foi preenchido
-     * e zera só o que muda de uma variação para outra (SKU, estoque e o valor da
-     * variação). Se o produto ainda não pertencia a um grupo, ele passa a ser a
-     * primeira variação do grupo recém-criado.
+     * Acrescenta uma variação ao produto selecionado. Na primeira vez o próprio
+     * produto vira a variação 1 e uma segunda é criada junto — variação sozinha
+     * não existe. As linhas copiam tudo do produto e zeram só o que muda.
      */
     function addVariacao() {
         const base = rows[selIdx];
         if (!base) return;
-        const grupoNovo = String(base.variacao_grupo ?? '').trim() === '';
-        const grupo = grupoNovo ? novoGrupoId() : String(base.variacao_grupo).trim();
+        const grupoNovo = grupoDe(base) === '';
+        const grupo = grupoNovo ? novoGrupoId() : grupoDe(base);
         const tipo  = base.variacao_tipo || 'Cor';
 
         const arr = rows.map((r, i) => i === selIdx ? { ...r, variacao_grupo: grupo, variacao_tipo: tipo } : r);
-        // Insere logo depois da última linha do grupo, para as variações ficarem juntas.
         let ultimo = selIdx;
-        arr.forEach((r, i) => { if (String(r.variacao_grupo ?? '').trim() === grupo) ultimo = i; });
+        arr.forEach((r, i) => { if (grupoDe(r) === grupo) ultimo = i; });
+        // A nova entra depois da última do grupo — a inserção é sempre à frente de
+        // selIdx, então o produto aberto continua sendo o mesmo (sem trocar de tela).
         arr.splice(ultimo + 1, 0, { ...base, sku: '', estoque: '', variacao_grupo: grupo, variacao_tipo: tipo, variacao_valor: '' });
 
         handleChange(arr);
-        // Ao CRIAR o grupo, o produto atual também passa a precisar dizer qual
-        // variação ele é — campo que não existia até agora. Pular direto para a
-        // variação nova deixaria o primeiro produto sem cor e o cliente sem ver.
-        setSelIdx(grupoNovo ? selIdx : ultimo + 1);
-        setAvisoGrupo(grupoNovo);
     }
 
     /** Troca o eixo da variação (Cor → Tamanho…) em TODAS as linhas do grupo. */
     function setTipoGrupo(grupo, tipo) {
-        handleChange(rows.map(r => String(r.variacao_grupo ?? '').trim() === grupo ? { ...r, variacao_tipo: tipo } : r));
+        handleChange(rows.map(r => grupoDe(r) === grupo ? { ...r, variacao_tipo: tipo } : r));
     }
 
-    /** Tira a linha do grupo; se sobrar uma só, o grupo deixa de existir. */
-    function removerDoGrupo(idx) {
-        const grupo = String(rows[idx]?.variacao_grupo ?? '').trim();
-        let arr = rows.map((r, i) => i === idx ? { ...r, variacao_grupo: '', variacao_tipo: '', variacao_valor: '' } : r);
-        const restantes = arr.filter(r => String(r.variacao_grupo ?? '').trim() === grupo);
-        if (restantes.length === 1) {
-            arr = arr.map(r => String(r.variacao_grupo ?? '').trim() === grupo
+    /** Remove UMA variação. Sobrando uma só, o grupo se desfaz e vira produto normal. */
+    function delVariacao(idx) {
+        const grupo = grupoDe(rows[idx]);
+        let arr = rows.filter((_, i) => i !== idx);
+        if (arr.filter(r => grupoDe(r) === grupo).length <= 1) {
+            arr = arr.map(r => grupoDe(r) === grupo
                 ? { ...r, variacao_grupo: '', variacao_tipo: '', variacao_valor: '' } : r);
         }
         handleChange(arr);
+        setSelIdx(s => Math.max(0, Math.min(s > idx ? s - 1 : s, arr.length - 1)));
     }
 
-    // Ordena os chips deixando as variações do mesmo grupo juntas, sem mexer nos índices.
+    /** Desfaz o grupo inteiro: as variações voltam a ser produtos independentes. */
+    function desfazerGrupo(grupo) {
+        handleChange(rows.map(r => grupoDe(r) === grupo
+            ? { ...r, variacao_grupo: '', variacao_tipo: '', variacao_valor: '' } : r));
+    }
+
+    // Um chip por produto: o grupo de variações ocupa UM chip só.
     const chips = [];
     const posGrupo = new Map();
     rows.forEach((r, i) => {
-        const g = String(r.variacao_grupo ?? '').trim();
+        const g = grupoDe(r);
         if (!g) { chips.push({ tipo: 'solo', idx: i }); return; }
         if (!posGrupo.has(g)) { posGrupo.set(g, chips.length); chips.push({ tipo: 'grupo', chave: g, idxs: [i] }); }
         else chips[posGrupo.get(g)].idxs.push(i);
     });
 
     const row      = rows[selIdx] ?? PROD_VAZIO;
-    const rowGrupo = String(row.variacao_grupo ?? '').trim();
+    const rowGrupo = grupoDe(row);
+    // Linhas do grupo do produto aberto — cada uma vira um card de variação.
+    const variacoes = rowGrupo ? rows.map((r, i) => ({ r, i })).filter(({ r }) => grupoDe(r) === rowGrupo) : [];
     const podeVariar = rows.length > 0 && (String(row.produto ?? '').trim() !== '' || String(row.sku ?? '').trim() !== '');
+    // Com variações, SKU e estoque saem do formulário do produto e vão para os cards.
+    const gruposForm = PROD_GRUPOS
+        .map(g => ({ ...g, campos: g.campos.filter(c => !(rowGrupo && VARIACAO_CAMPOS.includes(c.id))) }))
+        .filter(g => g.campos.length > 0);
 
     return (
         <div className="mt-3 space-y-4">
@@ -454,83 +489,34 @@ function TabelaProdutos({ produtos, onSave }) {
                         <p className="text-white/40 text-[11px] uppercase tracking-wider mb-2">Meus produtos ({rows.length})</p>
                         <div className="flex flex-wrap items-start gap-2">
                             {chips.map((c, ci) => c.tipo === 'solo' ? (
-                                <ChipProduto key={`s${ci}`} p={rows[c.idx]} i={c.idx} ativo={c.idx === selIdx}
-                                    onSel={selecionar} onDel={delProduto} />
+                                <ChipProduto key={`s${ci}`} nome={rows[c.idx].produto || rows[c.idx].sku || `Produto ${c.idx + 1}`}
+                                    faltam={faltamCampos(rows[c.idx]).length} ativo={c.idx === selIdx}
+                                    onSel={() => setSelIdx(c.idx)} onDel={() => delProduto(c.idx)} />
                             ) : (
-                                <div key={`g${ci}`} className="rounded-xl border border-violet-500/25 bg-violet-500/[0.04] p-2">
-                                    <p className="text-violet-300/70 text-[10px] uppercase tracking-wider px-1 pb-1.5">
-                                        {rows[c.idxs[0]].produto || 'Produto'} · {c.idxs.length} variações
-                                    </p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {c.idxs.map(i => (
-                                            <ChipProduto key={i} p={rows[i]} i={i} ativo={i === selIdx}
-                                                onSel={setSelIdx} onDel={delProduto} variacao />
-                                        ))}
-                                    </div>
-                                </div>
+                                <ChipProduto key={`g${ci}`} nome={rows[c.idxs[0]].produto || `Produto ${c.idxs[0] + 1}`}
+                                    sub={`${c.idxs.length} ${(rows[c.idxs[0]].variacao_tipo || 'variação').toLowerCase()}${c.idxs.length > 1 ? 's' : ''}`}
+                                    faltam={c.idxs.reduce((t, i) => t + faltamCampos(rows[i]).length, 0)}
+                                    ativo={c.idxs.includes(selIdx)}
+                                    onSel={() => setSelIdx(c.idxs[0])} onDel={() => delGrupo(c.chave)} />
                             ))}
-                            <div className="flex flex-wrap gap-2">
-                                <button type="button" onClick={addProduto}
-                                    className="rounded-xl border border-dashed border-white/[0.15] px-4 py-2 text-white/50 hover:text-white hover:border-white/30 text-[13px] font-medium transition">
-                                    + Adicionar produto
-                                </button>
-                                <button type="button" onClick={addVariacao} disabled={!podeVariar}
-                                    title={podeVariar
-                                        ? 'Cria uma cópia deste produto para você mudar só a cor, o tamanho…'
-                                        : 'Preencha o produto selecionado primeiro'}
-                                    className={cn('rounded-xl border border-dashed px-4 py-2 text-[13px] font-medium transition',
-                                        podeVariar
-                                            ? 'border-violet-500/30 text-violet-300/80 hover:text-violet-200 hover:border-violet-400/50'
-                                            : 'border-white/[0.08] text-white/20 cursor-not-allowed')}>
-                                    + Adicionar variação deste produto
-                                </button>
-                            </div>
+                            <button type="button" onClick={addProduto}
+                                className="rounded-xl border border-dashed border-white/[0.15] px-4 py-2 text-white/50 hover:text-white hover:border-white/30 text-[13px] font-medium transition">
+                                + Adicionar produto
+                            </button>
                         </div>
                     </div>
 
                     {/* Formulário do produto selecionado */}
                     <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-5">
-                        {faltamCampos(row).length > 0 && (
+                        {/* Com variações, SKU e estoque são cobrados dentro de cada card, não aqui. */}
+                        {(rowGrupo ? faltamDoProduto(row) : faltamCampos(row)).length > 0 && (
                             <div className="flex items-start gap-2 rounded-lg bg-amber-500/[0.08] border border-amber-500/20 px-3 py-2">
-                                <span className="text-amber-300 text-[12px]">Faltam preencher: <span className="font-semibold">{faltamCampos(row).join(', ')}</span></span>
+                                <span className="text-amber-300 text-[12px]">Faltam preencher: <span className="font-semibold">
+                                    {(rowGrupo ? faltamDoProduto(row) : faltamCampos(row)).join(', ')}
+                                </span></span>
                             </div>
                         )}
-                        {rowGrupo !== '' && (
-                            <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.05] p-4">
-                                <p className="text-violet-300/80 text-[11px] uppercase tracking-wider mb-1">Variação</p>
-                                <p className="text-white/40 text-[12px] mb-3">
-                                    Este produto e as demais variações viram <span className="text-white/70 font-semibold">um único anúncio</span> no
-                                    Mercado Livre. Só o que muda entre elas precisa ser diferente.
-                                </p>
-                                {avisoGrupo && !String(row.variacao_valor ?? '').trim() && (
-                                    <div className="rounded-lg bg-amber-500/[0.08] border border-amber-500/20 px-3 py-2 mb-3">
-                                        <p className="text-amber-300 text-[12px]">
-                                            A nova variação já foi criada e está ali nos chips acima. Antes de ir para ela,
-                                            preencha <span className="font-semibold">qual {String(row.variacao_tipo || 'variação').toLowerCase()} é ESTE produto</span> —
-                                            até agora ele não precisava dessa informação.
-                                        </p>
-                                    </div>
-                                )}
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                                    <div>
-                                        <label className="text-white/60 text-[12px] font-medium block mb-1">
-                                            O que muda<span className="text-white/30 font-normal"> · vale para todas</span>
-                                        </label>
-                                        <CustomSelect value={row.variacao_tipo || 'Cor'} opcoes={VARIACAO_TIPOS} className="w-full"
-                                            onChange={v => setTipoGrupo(rowGrupo, v)} />
-                                    </div>
-                                    <CampoTexto label={row.variacao_tipo || 'Valor'} dica="desta variação"
-                                        placeholder={row.variacao_tipo === 'Tamanho' ? 'ex: M' : 'ex: Azul'}
-                                        destaque={!String(row.variacao_valor ?? '').trim()}
-                                        value={row.variacao_valor} onChange={v => editProduto('variacao_valor', v)} />
-                                    <button type="button" onClick={() => removerDoGrupo(selIdx)}
-                                        className="h-10 rounded-xl border border-white/[0.1] text-white/40 hover:text-white hover:border-white/25 text-[13px] transition">
-                                        Não é variação
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                        {PROD_GRUPOS.map(g => (
+                        {gruposForm.map(g => (
                             <div key={g.titulo}>
                                 <p className="text-white/40 text-[11px] uppercase tracking-wider mb-2">{g.titulo}</p>
                                 <div className={cn('grid gap-3', g.cols === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-4')}>
@@ -546,6 +532,87 @@ function TabelaProdutos({ produtos, onSave }) {
                                 value={row.especificacoes} onChange={v => editProduto('especificacoes', v)} />
                             <CampoTexto label="Descrição" tipo="textarea" placeholder="texto que vai no anúncio"
                                 value={row.descricao} onChange={v => editProduto('descricao', v)} />
+                        </div>
+
+                        {/* Variações — mesmo produto, muda só a cor/tamanho. Um anúncio só. */}
+                        <div className={cn('rounded-xl border p-4',
+                            rowGrupo ? 'border-violet-500/25 bg-violet-500/[0.05]' : 'border-white/[0.08] bg-white/[0.02]')}>
+                            <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
+                                <p className={cn('text-[11px] uppercase tracking-wider', rowGrupo ? 'text-violet-300/80' : 'text-white/40')}>
+                                    Variações{rowGrupo && ` · ${variacoes.length}`}
+                                </p>
+                                {rowGrupo && (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-white/40 text-[12px]">O que muda:</span>
+                                        <CustomSelect small value={row.variacao_tipo || 'Cor'} opcoes={VARIACAO_TIPOS}
+                                            onChange={v => setTipoGrupo(rowGrupo, v)} />
+                                    </div>
+                                )}
+                            </div>
+
+                            {!rowGrupo ? (
+                                <>
+                                    <p className="text-white/40 text-[12px] mb-3">
+                                        É o mesmo produto mudando só a cor, o tamanho, a voltagem? Cadastre aqui — as
+                                        variações viram <span className="text-white/70 font-semibold">um anúncio só</span> no
+                                        Mercado Livre e reaproveitam tudo que você já preencheu acima.
+                                    </p>
+                                    <button type="button" onClick={addVariacao} disabled={!podeVariar}
+                                        title={podeVariar ? '' : 'Preencha o nome do produto primeiro'}
+                                        className={cn('rounded-xl border border-dashed px-4 py-2 text-[13px] font-medium transition',
+                                            podeVariar
+                                                ? 'border-violet-500/30 text-violet-300/80 hover:text-violet-200 hover:border-violet-400/50'
+                                                : 'border-white/[0.08] text-white/20 cursor-not-allowed')}>
+                                        + Este produto tem variações
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <p className="text-white/40 text-[12px] mb-3">
+                                        Tudo que você preencheu acima vale para todas. Aqui só o que muda de uma para outra.
+                                    </p>
+                                    <div className="space-y-2">
+                                        {variacoes.map(({ r, i }, ord) => {
+                                            const faltam = faltamDaVariacao(r);
+                                            return (
+                                                <div key={i} className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+                                                    <div className="flex items-center justify-between gap-2 mb-2">
+                                                        <p className="text-white/50 text-[11px] font-semibold uppercase tracking-wider">
+                                                            Variação {ord + 1}
+                                                            {faltam.length > 0 && <span className="text-amber-400/80 font-normal normal-case tracking-normal"> · falta {faltam.join(', ')}</span>}
+                                                        </p>
+                                                        <button type="button" title="Excluir variação" onClick={() => delVariacao(i)}
+                                                            className="text-white/25 hover:text-red-400 transition"><X size={13} /></button>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                        <CampoTexto label={r.variacao_tipo || 'Valor'}
+                                                            placeholder={r.variacao_tipo === 'Tamanho' ? 'ex: M' : 'ex: Azul'}
+                                                            destaque={vazio(r.variacao_valor)}
+                                                            value={r.variacao_valor} onChange={v => editVariacao(i, 'variacao_valor', v)} />
+                                                        <CampoTexto label="SKU" dica="código desta variação" placeholder="ex: CAD-001-AZ"
+                                                            destaque={vazio(r.sku)}
+                                                            value={r.sku} onChange={v => editVariacao(i, 'sku', v)} />
+                                                        <CampoTexto label="Estoque" dica="unidades"
+                                                            destaque={vazio(r.estoque)}
+                                                            value={r.estoque} onChange={v => editVariacao(i, 'estoque', v)} />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 mt-3">
+                                        <button type="button" onClick={addVariacao}
+                                            className="rounded-xl border border-dashed border-violet-500/30 px-4 py-2 text-violet-300/80 hover:text-violet-200 hover:border-violet-400/50 text-[13px] font-medium transition">
+                                            + Adicionar variação
+                                        </button>
+                                        <button type="button" onClick={() => desfazerGrupo(rowGrupo)}
+                                            title="As variações voltam a ser produtos separados"
+                                            className="rounded-xl border border-white/[0.1] px-4 py-2 text-white/40 hover:text-white hover:border-white/25 text-[13px] transition">
+                                            Não tem variação
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
