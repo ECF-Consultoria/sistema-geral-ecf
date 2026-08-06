@@ -649,10 +649,11 @@ export default function CompanyShow({
 
                 {/* ─── 8. Informações comerciais (fechamento / Close) ───────── */}
                 <Section icon={FileText} title="Informações comerciais" glow="radial-gradient(circle, rgba(168,85,247,0.35), transparent 70%)">
-                    {/* Quick task 260805-eqk — sobraram 3 campos, então o grid de
-                        2 colunas virou coluna única. */}
+                    {/* Quick task 260805-eqk — sobraram poucos campos, então o grid
+                        de 2 colunas virou coluna única. A "Origem do lead" saiu da
+                        tela a pedido do usuário (fast-260806); a captura e a coluna
+                        `companies.origem_lead` seguem ativas, só não são exibidas. */}
                     <div>
-                        <InfoRow label="Origem do lead" value={company.origem_lead} />
                         <InfoRow label="E-mail do cliente" value={company.email_cliente} />
                         <InfoRow label="Telefone" value={company.telefone} />
                     </div>

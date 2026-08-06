@@ -372,11 +372,6 @@ function DetalheHubspotModal({ empresa, open, onClose }) {
                         {empresa.cargo_contato && (
                             <p className="text-white/40 text-[12px]">{empresa.cargo_contato}</p>
                         )}
-                        {/* Quick task 260805-eqk — a origem do lead nasce no
-                            contato, por isso fica junto dele. */}
-                        <p className="text-white/40 text-[12px] pt-1">
-                            Origem do lead: <span className="text-white/70">{empresa.origem_lead || '—'}</span>
-                        </p>
                     </div>
 
                     {/* ── Observações (Notes do deal HubSpot) ────────────── */}
