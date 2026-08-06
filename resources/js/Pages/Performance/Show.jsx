@@ -1,14 +1,16 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router, Link } from '@inertiajs/react';
 import {
-    ArrowLeft, Star, TrendingUp, TrendingDown, Coins, Calendar,
+    ArrowLeft, Star, TrendingUp, TrendingDown, Coins,
     Trophy, Sparkles, UserX, BookOpen, Info, Briefcase, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import EmpresasScoreTabela from '@/Components/Desempenho/EmpresasScoreTabela';
+import PeriodoBanner from '@/Components/Desempenho/PeriodoBanner';
 import {
-    MARGEM_CARD_TITULO, MARGEM_CARD_SUBLABEL, fraseVarMargemPp,
+    MARGEM_CARD_TITULO, MARGEM_CARD_SUBLABEL,
     AVISO_SEM_DETALHE_TITULO, AVISO_SEM_DETALHE_EM_CURSO, avisoSemDetalheFechado,
+    resumoCarteiraLinha, fmtPp,
 } from '@/lib/desempenhoLabels';
 
 /**
@@ -115,7 +117,13 @@ function fmtDia(iso) {
 }
 
 // ─── Card de parâmetro ───────────────────────────────────────────────────
-function ParametroCard({ icone: Icone, titulo, valor, sublabel, accentColor = 'ecf-yellow', emBreve = false, trendDir }) {
+//
+// 2026-08-06 — o valor principal passou a ser o PONTO (régua 1-5), com a % de
+// variação rebaixada a linha pequena. A unidade de decisão do time é ponto: a
+// nota final é a média dos pontos, e a tela mostrava "+34,1%" como protagonista
+// sem que a ligação com a nota aparecesse em lugar nenhum. Mesma inversão que o
+// ranking já tinha recebido em `PontosToneCell` (Performance/Index.jsx).
+function ParametroCard({ icone: Icone, titulo, valor, sublabel, accentColor = 'ecf-yellow', emBreve = false, trendDir, destaque = null }) {
     return (
         <div className="relative overflow-hidden rounded-2xl bg-ecf-card border border-white/[0.08] p-6 min-h-[168px] flex flex-col">
             <div
@@ -145,6 +153,7 @@ function ParametroCard({ icone: Icone, titulo, valor, sublabel, accentColor = 'e
                 <strong className="text-white text-4xl font-display font-black tabular-nums leading-none">
                     {valor ?? '—'}
                 </strong>
+                <span className="text-white/30 text-sm">/ 5,00</span>
                 {trendDir === 'up'   && <TrendingUp   size={18} className="text-emerald-300" />}
                 {trendDir === 'down' && <TrendingDown size={18} className="text-rose-300" />}
                 {emBreve && (
@@ -153,6 +162,14 @@ function ParametroCard({ icone: Icone, titulo, valor, sublabel, accentColor = 'e
                     </span>
                 )}
             </div>
+
+            {/* A % / p.p. que era o valor principal até 2026-08-06 — continua na
+                tela, agora como coadjuvante do ponto que decide a nota. */}
+            {destaque && (
+                <p className="relative mt-1.5 text-white/60 text-[13px] tabular-nums font-medium">
+                    {destaque}
+                </p>
+            )}
 
             {sublabel && (
                 <p className="relative mt-auto text-white/50 text-xs pt-3">
@@ -179,9 +196,20 @@ function FaixaBonusCard({ resultado, user }) {
         || resultado?.vinculos_financeiros != null
         || resultado?.vinculos_sem_fonte_financeira != null;
 
+    // Linha única de composição da carteira (2026-08-06): substitui o grid de 4
+    // tiles daqui MAIS o card "Info carteira" que repetia baseline/carteira logo
+    // abaixo — dois blocos sobre o mesmo assunto. Os 4 números seguem acessíveis
+    // no tooltip, mesmo padrão do ranking.
+    const carteiraLinha = resumoCarteiraLinha({
+        comBaseline: resultado?.empresas_com_baseline,
+        carteira:    resultado?.empresas_carteira ?? resultado?.empresas_unicas,
+        vinculos:    resultado?.vinculos_servico,
+        semFonte:    resultado?.vinculos_sem_fonte_financeira,
+    });
+
     return (
         <div className={cn(
-            'relative overflow-hidden rounded-2xl border p-6 md:col-span-2 xl:col-span-4',
+            'relative overflow-hidden rounded-2xl border p-6 md:col-span-3',
             cor.bg,
             cor.border,
         )}>
@@ -258,46 +286,40 @@ function FaixaBonusCard({ resultado, user }) {
                 </p>
             )}
 
-            {/* Fase 92 (SC2) · metadados de elegibilidade — bloco discreto,
-                pt-BR sem jargão técnico. */}
-            {temMetadados && (
-                <div className="relative mt-4 pt-4 border-t border-white/[0.06] grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div>
-                        <p className="text-white/30 text-[10px] uppercase tracking-wider">Empresas únicas</p>
-                        <p className="text-white/80 text-sm font-semibold tabular-nums mt-0.5">{resultado?.empresas_unicas ?? 0}</p>
-                    </div>
-                    <div>
-                        <p className="text-white/30 text-[10px] uppercase tracking-wider">Vínculos de serviço</p>
-                        <p className="text-white/80 text-sm font-semibold tabular-nums mt-0.5">{resultado?.vinculos_servico ?? 0}</p>
-                    </div>
-                    <div>
-                        <p className="text-white/30 text-[10px] uppercase tracking-wider">Vínculos c/ fonte financeira</p>
-                        <p className="text-white/80 text-sm font-semibold tabular-nums mt-0.5">{resultado?.vinculos_financeiros ?? 0}</p>
-                    </div>
-                    <div>
-                        <p className="text-white/30 text-[10px] uppercase tracking-wider" title="Vínculos ainda sem uma fonte de dados financeiros associada (ex.: aguardando régua de bônus da Shopee)">
-                            Vínculos sem fonte financeira
-                        </p>
-                        <p className="text-white/80 text-sm font-semibold tabular-nums mt-0.5">{resultado?.vinculos_sem_fonte_financeira ?? 0}</p>
-                    </div>
-                </div>
-            )}
+            {/* Composição da carteira + saídas da tela, numa faixa só. */}
+            <div className="relative mt-4 pt-4 border-t border-white/[0.06] flex items-center justify-between gap-4 flex-wrap">
+                {temMetadados && (
+                    <p className="text-white/50 text-xs tabular-nums cursor-help" title={carteiraLinha.titulo}>
+                        {carteiraLinha.texto}
+                    </p>
+                )}
 
-            {/* Ajuste 2026-07-13 · link pra carteira do profissional. Coloca a
-                nota em contexto: quais empresas geraram a média, faturamento,
-                margem etc. */}
-            {user?.id && (
-                <div className="relative mt-4 pt-4 border-t border-white/[0.06]">
+                <div className="flex items-center gap-4 flex-wrap ml-auto">
                     <Link
-                        href={route('portfolio.show', user.id)}
-                        className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors group"
+                        href="/manual/desempenho-bonificacao"
+                        className="inline-flex items-center gap-1.5 text-ecf-yellow text-xs font-semibold hover:underline"
                     >
-                        <Briefcase size={14} className="text-ecf-yellow" />
-                        <span>Detalhes sobre as empresas da carteira</span>
-                        <ChevronRight size={14} className="text-white/40 group-hover:text-white/80 group-hover:translate-x-0.5 transition-all" />
+                        <BookOpen size={12} />
+                        Como calculamos?
                     </Link>
+
+                    {/* O link para a carteira sobrevive porque o destino tem o que
+                        esta tela NÃO tem: faturamento em R$, ADS/TACoS, vínculos de
+                        serviço por empresa e conexão ML. O rótulo diz isso — antes
+                        prometia "detalhes sobre as empresas", que é justamente o que
+                        a tabela logo abaixo já entrega, e o clique frustrava. */}
+                    {user?.id && (
+                        <Link
+                            href={route('portfolio.show', user.id)}
+                            className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors group"
+                        >
+                            <Briefcase size={14} className="text-ecf-yellow" />
+                            <span>Ver operação da carteira (faturamento, ADS, serviços)</span>
+                            <ChevronRight size={14} className="text-white/40 group-hover:text-white/80 group-hover:translate-x-0.5 transition-all" />
+                        </Link>
+                    )}
                 </div>
-            )}
+            </div>
         </div>
     );
 }
@@ -318,15 +340,17 @@ export default function PerformanceShow({
     tem_detalhe_empresas = false,
 }) {
     const c = resultado?.componentes ?? {};
+    // Pontos por indicador (régua 1-5) — o que decide a nota e, desde
+    // 2026-08-06, o valor principal dos cards.
+    const p = resultado?.pontos_componentes ?? {};
     const semCarteira = resultado?.sem_carteira === true;
     const isClosed = periodo?.is_closed === true;
 
-    // UIEM-01/D-04 — sublabel do card de margem sem jargão de API. A frase
-    // em pontos percentuais (D-05) só entra quando o shadow já rodou para
-    // esta competência; payload antigo/mês em curso cai no texto legado
-    // sozinho (D-11), nunca em `undefined` na tela.
-    const fraseMargemPp = fraseVarMargemPp(c?.var_margem_pp);
-    const margemSublabel = fraseMargemPp ? `${MARGEM_CARD_SUBLABEL} ${fraseMargemPp}` : MARGEM_CARD_SUBLABEL;
+    // UIEM-01 — sublabel do card de margem sem jargão de API. A frase em
+    // pontos percentuais que era concatenada aqui saiu em 2026-08-06: a
+    // variação em p.p. virou a linha de destaque do próprio card, e repeti-la
+    // em prosa logo abaixo dizia a mesma coisa três vezes.
+    const margemSublabel = MARGEM_CARD_SUBLABEL;
 
     // Modo ativo do segmento (mesmo contrato do ranking).
     const modoAtivo = modo === 'bonus_atual' ? 'bonus_atual' : (isClosed ? 'mes_fechado' : 'em_curso');
@@ -406,61 +430,23 @@ export default function PerformanceShow({
                     </div>
                 </div>
 
-                {/* Banner de contexto de período (Fase 2 · mesmo modelo do ranking) */}
+                {/* Contexto de período — uma linha, explicação no tooltip
+                    (2026-08-06). O parágrafo longo empurrava a nota para baixo da
+                    dobra e era o mesmo texto repetido em três telas. */}
                 {!semCarteira && (
-                    modoAtivo === 'bonus_atual' ? (
-                        <div className="rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] p-4 flex items-start gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-ecf-yellow/15 flex items-center justify-center shrink-0">
-                                <Trophy size={16} className="text-ecf-yellow" />
-                            </div>
-                            <div className="text-sm">
-                                <div className="text-ecf-yellow font-semibold">
-                                    Bônus atual — competência {mesExtenso(bonus?.competence_month)}
-                                    {bonus?.payment_month && <>, pago em {mesExtenso(bonus.payment_month)}</>}
-                                </div>
-                                <div className="text-white/60 text-xs mt-1 leading-relaxed">
-                                    Usa os resultados financeiros de <span className="text-white font-medium">{mesExtenso(bonus?.competence_month)}</span> comparados
-                                    com a janela anterior de mesmo tamanho, e o <span className="text-white font-medium">NPS coletado em {mesExtenso(nps_window?.collection_month)}</span>
-                                    {nps_window?.status === 'coletando' ? ' (ainda em coleta)' : ' (coleta encerrada)'}.
-                                    O NPS pertence ao mês de coleta seguinte à competência financeira.
-                                </div>
-                            </div>
-                        </div>
-                    ) : modoAtivo === 'em_curso' ? (
-                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4 flex items-start gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
-                                <Calendar size={16} className="text-amber-300" />
-                            </div>
-                            <div className="text-sm">
-                                <div className="text-amber-200 font-semibold">
-                                    Mês em curso — acompanhamento operacional
-                                </div>
-                                <div className="text-amber-100/70 text-xs mt-1 leading-relaxed">
-                                    Não é fechamento de bônus. As variações comparam
-                                    <span className="text-white font-medium"> dia 1 até a data disponível </span>
-                                    contra o <span className="text-white font-medium">mesmo intervalo do mês anterior</span>.
-                                    O NPS deste mês só é coletado no mês seguinte — até lá entra com <span className="text-white font-medium">piso 1,0</span>.
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="rounded-xl border border-white/[0.1] bg-white/[0.03] p-4 flex items-start gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center shrink-0">
-                                <Calendar size={16} className="text-white/50" />
-                            </div>
-                            <div className="text-sm">
-                                <div className="text-white/80 font-semibold">
-                                    Mês fechado — {mesExtenso(String(mes_selecionado).slice(0, 7))}
-                                </div>
-                                <div className="text-white/50 text-xs mt-1 leading-relaxed">
-                                    Comparação contra a janela anterior oficial (mesmo tamanho).
-                                    {periodo?.baseline_start && periodo?.baseline_end && (
-                                        <> Baseline: {fmtDia(periodo.baseline_start)}–{fmtDia(periodo.baseline_end)}.</>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )
+                    <PeriodoBanner
+                        modo={modoAtivo}
+                        mesLabel={mesExtenso(String(mes_selecionado ?? '').slice(0, 7))}
+                        resumo={
+                            modoAtivo === 'bonus_atual'
+                                ? `competência ${mesExtenso(bonus?.competence_month)}${bonus?.payment_month ? `, pago em ${mesExtenso(bonus.payment_month)}` : ''}`
+                                : modoAtivo === 'em_curso'
+                                    ? 'NPS entra com piso 1,0 até a coleta do mês seguinte'
+                                    : (periodo?.baseline_start && periodo?.baseline_end
+                                        ? `baseline ${fmtDia(periodo.baseline_start)}–${fmtDia(periodo.baseline_end)}`
+                                        : null)
+                        }
+                    />
                 )}
 
                 {/* Empresas invalidadas para bônus nesta competência (item 3/4) */}
@@ -487,12 +473,23 @@ export default function PerformanceShow({
                     </div>
                 ) : (
                     <>
-                        {/* 4 CARDS DE PARÂMETROS */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                        {/* 3 CARDS DE PARÂMETROS — em PONTOS (a unidade que decide a nota).
+                            O card "Absenteísmo" saiu em 2026-08-06: exibia "—" com selo
+                            "Em breve" desde a criação da tela, sem fonte de dados definida
+                            — ocupava 1/4 da grade para não informar nada. Volta quando a
+                            fonte existir. */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* ATENÇÃO: o ponto vem de `pontos_componentes.nps`, NÃO de
+                                `componentes.nps_medio`. São números diferentes — o médio é
+                                a média das notas de NPS, o ponto é a média dos PONTOS por
+                                loja, e é este que entra na conta do card de bônus abaixo.
+                                Usar o médio fazia o card não fechar com a própria conta
+                                exibida logo ao lado. */}
                             <ParametroCard
                                 icone={Star}
-                                titulo="NPS médio"
-                                valor={formatNota(c.nps_medio)}
+                                titulo="NPS"
+                                valor={formatNota(p.nps)}
+                                destaque={c.nps_medio != null ? `NPS médio ${formatNota(c.nps_medio)}` : null}
                                 sublabel={npsSublabel}
                                 accentColor="ecf-yellow"
                             />
@@ -500,8 +497,9 @@ export default function PerformanceShow({
                             <ParametroCard
                                 icone={c.var_faturamento_pct != null && c.var_faturamento_pct >= 0 ? TrendingUp : TrendingDown}
                                 titulo="Faturamento"
-                                valor={formatPercent(c.var_faturamento_pct)}
-                                sublabel="Variação vs mês anterior · média das % por empresa da carteira"
+                                valor={formatNota(p.faturamento)}
+                                destaque={c.var_faturamento_pct != null ? `${formatPercent(c.var_faturamento_pct)} vs janela anterior` : null}
+                                sublabel="Média dos pontos de faturamento das empresas da carteira"
                                 accentColor="emerald"
                                 trendDir={c.var_faturamento_pct != null ? (c.var_faturamento_pct >= 0 ? 'up' : 'down') : null}
                             />
@@ -509,43 +507,15 @@ export default function PerformanceShow({
                             <ParametroCard
                                 icone={Coins}
                                 titulo={MARGEM_CARD_TITULO}
-                                valor={formatPercent(c.var_margem_pct)}
+                                valor={formatNota(p.margem)}
+                                destaque={c.var_margem_pp != null ? `${fmtPp(c.var_margem_pp)} p.p. de margem` : null}
                                 sublabel={margemSublabel}
                                 accentColor="blue"
-                                trendDir={c.var_margem_pct != null ? (c.var_margem_pct >= 0 ? 'up' : 'down') : null}
+                                trendDir={c.var_margem_pp != null ? (c.var_margem_pp >= 0 ? 'up' : 'down') : null}
                             />
 
-                            <ParametroCard
-                                icone={Calendar}
-                                titulo="Absenteísmo"
-                                valor="—"
-                                sublabel="Fonte de dados em definição"
-                                accentColor="amber"
-                                emBreve
-                            />
-
-                            {/* Faixa de bônus */}
+                            {/* Faixa de bônus — ocupa a linha inteira abaixo dos 3 cards */}
                             <FaixaBonusCard resultado={resultado} user={user} />
-                        </div>
-
-                        {/* Info carteira */}
-                        <div className="rounded-2xl bg-ecf-card border border-white/[0.08] p-5 flex items-center justify-between gap-4 flex-wrap">
-                            <div className="flex items-center gap-3">
-                                <Info size={16} className="text-white/40" />
-                                <p className="text-white/70 text-sm">
-                                    <strong className="text-white">{resultado?.empresas_com_baseline ?? 0}</strong>
-                                    <span className="text-white/50"> empresas com baseline · </span>
-                                    <strong className="text-white">{resultado?.empresas_carteira ?? 0}</strong>
-                                    <span className="text-white/50"> na carteira</span>
-                                </p>
-                            </div>
-                            <Link
-                                href="/manual/desempenho-bonificacao"
-                                className="inline-flex items-center gap-1.5 text-ecf-yellow text-xs font-semibold hover:underline"
-                            >
-                                <BookOpen size={12} />
-                                Como calculamos?
-                            </Link>
                         </div>
 
                         {/* Empresas da carteira (UIEM-02) — lista com nota e três
@@ -584,8 +554,9 @@ export default function PerformanceShow({
                         <span className="text-white/70 text-sm font-semibold">Como interpretar</span>
                     </div>
                     <p className="text-white/60 text-sm leading-relaxed">
-                        A nota final é a média direta dos parâmetros disponíveis (NPS · variação do faturamento · variação da margem). O
-                        Absenteísmo está em <em>standby</em> nesta versão. A faixa de bônus é configurável pelo admin —
+                        Cada indicador vira <strong className="text-white/80">pontos</strong> pela régua de 1 a 5, empresa por
+                        empresa; o ponto do card é a média das empresas da carteira, e a nota final é a média dos pontos
+                        disponíveis — é a conta que aparece abaixo da nota. A faixa de bônus é configurável pelo admin —
                         detalhes em{' '}
                         <Link href="/manual/desempenho-bonificacao" className="text-ecf-yellow hover:underline">
                             /manual/desempenho-bonificacao
