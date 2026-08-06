@@ -61,9 +61,20 @@ export function formatDate(date) {
     return new Date(date).toLocaleDateString('pt-BR', { timeZone: TZ });
 }
 
+// Os componentes de DATA (day/month/year) sao explicitos de proposito: quando o
+// Intl recebe so componentes de hora, ele emite SO a hora e descarta a data em
+// silencio — a funcao virava um clone do formatTime abaixo. Nao "simplificar"
+// removendo day/month/year.
 export function formatDateTime(date) {
     if (!date) return '-';
-    return new Date(date).toLocaleString('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+    return new Date(date).toLocaleString('pt-BR', {
+        timeZone: TZ,
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
 }
 
 export function formatTime(date) {
