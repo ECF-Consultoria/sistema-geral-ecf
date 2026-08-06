@@ -3,7 +3,7 @@ id: 260806-l58
 slug: desempenho-pontos-menos-saltos
 status: complete
 date: 2026-08-06
-commits: [995aba6e, 07aeeadc, ca3db475]
+commits: [995aba6e, 07aeeadc, ca3db475, 34a59b16]
 ---
 
 # Quick 260806-l58 — Desempenho: pontos como unidade principal, menos saltos de tela
@@ -44,6 +44,25 @@ ela virou.
 A tabela "Empresas em carteira" foi mantida e ganhou coluna **NPS**, pontos sob
 faturamento, pontos sob margem e coluna **Nota** — sempre em texto pequeno abaixo
 do número operacional, nunca como valor principal.
+
+### `/performance` — o drawer estava morto
+
+`onSelectUser` era passado ao `RankingConsultoria` e **nunca chamado lá dentro**:
+a linha inteira navegava para `performance.show`. O `EvolucaoDrawer` existia, com
+fetch e gráfico, e **nada o abria** — ficou órfão no ajuste de 2026-07-13 que
+tornou a linha clicável.
+
+Religado: a linha abre o drawer, o chevron virou a saída explícita para a tela
+cheia. O drawer ganhou o bloco **"Por que essa nota"** (pontos por indicador, a
+conta e a faixa), a **custo zero de requisição** — `pontos_componentes` e
+`componentes` já vêm na linha do ranking. Era isso que obrigava a abrir a tela
+cheia; agora o "por quê" resolve sobre a própria tela, e a navegação fica só para
+a tabela por empresa, que o drawer não tem como mostrar.
+
+Armadilha local: `formatContaNota()` do `Index.jsx` devolve a **sentinela
+`'/ 5,00'`** quando não há ponto algum, nunca `null` — sem guarda o drawer
+renderizaria `"/ 5,00 = —"`. (É outra função, de mesmo nome e assinatura
+diferente, da que vive em `desempenhoLabels.js`.)
 
 ### Menos repetição
 
@@ -143,11 +162,8 @@ Parado antes do deploy, conforme pedido.
 
 ## Fora de escopo
 
-- `Performance/Index.jsx` (ranking) **não** foi tocado: é a referência aprovada,
-  e os três itens pedidos para ela (pontos, conta, detalhe sem sair da tela) já
-  estavam feitos desde 2026-08-05.
-- Trocar o clique da linha do ranking por drawer — proposto ao usuário, não
-  decidido; mexeria no gesto principal de uma tela em uso.
+- O **layout** do ranking segue intocado (é a referência aprovada); mudou só o
+  destino do clique e o conteúdo do drawer que já existia.
 - `resumo.margem_media_pct` continua no payload sem leitor. Remover é churn
   adjacente ao cálculo, sem ganho.
 - `fraseVarMargemPp()` ficou sem uso na aplicação (segue coberta por teste
