@@ -10,10 +10,6 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { cn, formatPercent as fmtPctUtil, formatCurrency } from '@/lib/utils';
-import EmpresasScoreTabela from '@/Components/Desempenho/EmpresasScoreTabela';
-import {
-    AVISO_SEM_DETALHE_TITULO, AVISO_SEM_DETALHE_EM_CURSO, avisoSemDetalheFechado,
-} from '@/lib/desempenhoLabels';
 import HeroKpi from '@/Pages/Polos/components/HeroKpi';
 import RadialGauge from '@/Pages/Polos/components/RadialGauge';
 
@@ -508,11 +504,7 @@ export default function PerformanceIndex({
                         </p>
                     </div>
                 ) : (
-                    <RankingConsultoria
-                        ranking={rankingFiltrado}
-                        mes={mes_selecionado}
-                        onVerEvolucao={setUserSelecionado}
-                    />
+                    <RankingConsultoria ranking={rankingFiltrado} onSelectUser={setUserSelecionado} />
                 )}
 
                 {/* DESEMP-10 · Bloco de transparência — excluídos por falta de carteira */}
@@ -562,117 +554,7 @@ export default function PerformanceIndex({
 // Sem menções às métricas v1 (crescimento_ajustado_pct, atingimento_meta_pct,
 // recuperacao, execucao_ads) — big bang DESEMP-14.
 // ═══════════════════════════════════════════════════════════════════════
-/**
- * Detalhe que se abre DENTRO da linha do ranking (quick 260806-l58).
- *
- * "Por que essa nota" é instantâneo — `pontos_componentes` e `componentes` já
- * vêm na linha. A tabela por empresa é buscada sob demanda em
- * `/api/performance/{id}/empresas`, leitura pura de snapshot (nunca dispara
- * cálculo por empresa: com N linhas expansíveis isso multiplicaria o fan-out
- * de HTTP que já produziu página de 70s).
- *
- * A primeira versão desta tarefa usou drawer, e estava errada: o drawer não
- * cabia a tabela por empresa, então exigia um SEGUNDO clique para chegar nela —
- * somava um passo em vez de tirar. Aqui tudo desce na própria tela e o resto é
- * rolagem.
- */
-function LinhaExpandida({ u, mes, onVerEvolucao }) {
-    const [dados, setDados]     = useState(null);
-    const [carregando, setCarregando] = useState(true);
-
-    useEffect(() => {
-        let vivo = true;
-        setCarregando(true);
-
-        const url = route('performance.empresas', u.id) + (mes ? `?mes=${encodeURIComponent(mes)}` : '');
-        fetch(url, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
-            .then((r) => r.json())
-            .catch(() => ({ tem_detalhe: false, empresas: [], resumo: { entraram: 0, nao_entraram: 0 }, em_curso: true }))
-            .then((d) => { if (vivo) { setDados(d); setCarregando(false); } });
-
-        return () => { vivo = false; };
-    }, [u.id, mes]);
-
-    const contaBruta = formatContaNota(u.pontos_componentes);
-    const conta      = contaBruta === '/ 5,00' ? null : contaBruta;
-
-    return (
-        <div className="border-t border-white/[0.06] bg-white/[0.015] px-5 py-4 space-y-4">
-            {/* 1. Por que essa nota — instantâneo, sem requisição */}
-            <div>
-                <h4 className="text-white/50 text-[11px] uppercase tracking-wider mb-2">Por que essa nota</h4>
-                <div className="grid grid-cols-3 gap-2 max-w-xl">
-                    {[
-                        { k: 'NPS',         pontos: u.pontos_componentes?.nps },
-                        { k: 'Faturamento', pontos: u.pontos_componentes?.faturamento, apoio: u.componentes?.var_faturamento_pct, sufixo: '%' },
-                        { k: 'Margem',      pontos: u.pontos_componentes?.margem,      apoio: u.componentes?.var_margem_pp, sufixo: ' p.p.' },
-                    ].map(({ k, pontos, apoio, sufixo }) => (
-                        <div key={k} className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2">
-                            <p className="text-white/30 text-[10px] uppercase tracking-wider">{k}</p>
-                            <p className="text-white font-display font-extrabold text-lg tabular-nums leading-tight">
-                                {formatNota(pontos)}
-                            </p>
-                            {apoio != null && !Number.isNaN(Number(apoio)) && (
-                                <p className="text-white/40 text-[11px] tabular-nums">
-                                    {Number(apoio) > 0 ? '+' : ''}{Number(apoio).toFixed(1)}{sufixo}
-                                </p>
-                            )}
-                        </div>
-                    ))}
-                </div>
-                {conta && (
-                    <p className="text-white/40 text-xs tabular-nums mt-2" title="Média dos pontos NPS, faturamento e margem (régua 1-5)">
-                        {conta} = {formatNota(u.nota_final)}
-                    </p>
-                )}
-            </div>
-
-            {/* 2. Empresa por empresa — o que antes exigia trocar de tela */}
-            <div>
-                <h4 className="text-white/50 text-[11px] uppercase tracking-wider mb-2">Empresa por empresa</h4>
-
-                {carregando ? (
-                    <div className="flex items-center gap-2 py-6 text-white/40 text-[13px]">
-                        <span className="h-2 w-2 animate-pulse rounded-full bg-white/40" />
-                        carregando…
-                    </div>
-                ) : dados?.tem_detalhe ? (
-                    <EmpresasScoreTabela linhas={dados.empresas} resumo={dados.resumo} />
-                ) : (
-                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
-                        <p className="text-white/70 text-[13px] font-semibold">{AVISO_SEM_DETALHE_TITULO}</p>
-                        <p className="text-white/40 text-xs mt-1 leading-relaxed">
-                            {dados?.em_curso ? AVISO_SEM_DETALHE_EM_CURSO : avisoSemDetalheFechado(dados?.mes ?? 'esta competência')}
-                        </p>
-                    </div>
-                )}
-            </div>
-
-            {/* Saídas — nenhuma no caminho principal */}
-            <div className="flex items-center gap-4 flex-wrap pt-1">
-                <button
-                    type="button"
-                    onClick={() => onVerEvolucao(u)}
-                    className="text-white/50 hover:text-white text-xs font-semibold transition-colors"
-                >
-                    Ver evolução dos últimos 30 dias
-                </button>
-                <button
-                    type="button"
-                    onClick={() => router.visit(route('performance.show', u.id))}
-                    className="text-white/50 hover:text-white text-xs font-semibold transition-colors"
-                >
-                    Abrir página completa
-                </button>
-            </div>
-        </div>
-    );
-}
-
-function RankingConsultoria({ ranking, mes, onVerEvolucao }) {
-    // Linha aberta (id do profissional) — uma por vez, para a tela não virar
-    // uma parede de tabelas.
-    const [expandido, setExpandido] = useState(null);
+function RankingConsultoria({ ranking, onSelectUser }) {
     return (
         <div className="rounded-2xl border border-white/[0.06] bg-ecf-card overflow-hidden">
             <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_6.5rem_6rem_5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/40 text-[11px] font-semibold uppercase tracking-wide">
@@ -699,18 +581,15 @@ function RankingConsultoria({ ranking, mes, onVerEvolucao }) {
                     const faixaLbl = FAIXA_LABEL[faixaSlug] ?? faixaSlug;
                     const nota = formatNota(u.nota_final);
 
-                    const aberto = expandido === u.id;
-
                     return (
-                        <div key={u.id} className={cn(aberto && 'bg-white/[0.02]')}>
                         <div
+                            key={u.id}
                             className={cn(
                                 'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_6.5rem_6rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors',
-                                idx === 0 && !aberto && 'bg-ecf-yellow/[0.03]',
+                                idx === 0 && 'bg-ecf-yellow/[0.03]',
                                 calculando ? 'cursor-default' : 'hover:bg-white/[0.04] cursor-pointer',
                             )}
-                            title={calculando ? undefined : (aberto ? 'Fechar' : 'Abrir o detalhe aqui mesmo')}
-                            onClick={() => { if (!calculando) setExpandido(aberto ? null : u.id); }}
+                            onClick={() => { if (!calculando) router.visit(route('performance.show', u.id)); }}
                         >
                             {/* Posição */}
                             <div className="flex items-center justify-center">
@@ -832,20 +711,11 @@ function RankingConsultoria({ ranking, mes, onVerEvolucao }) {
                                 {u.empresas_com_baseline ?? 0}/{u.empresas_carteira ?? 0}
                             </div>
 
-                            {/* 2026-08-06 — o chevron deixou de ser link para outra tela
-                                e virou o indicador de aberto/fechado da própria linha.
-                                A tela cheia continua alcançável de dentro da expansão. */}
+                            {/* Chevron visual apenas — a linha inteira é clicável e leva
+                                pra performance.show (detalhes da nota). Ajuste 2026-07-13. */}
                             <div className="flex items-center justify-end">
-                                <ChevronRight
-                                    size={14}
-                                    className={cn('text-white/30 transition-transform', aberto && 'rotate-90 text-white/60')}
-                                />
+                                <ChevronRight size={14} className="text-white/30" />
                             </div>
-                        </div>
-
-                        {aberto && !calculando && (
-                            <LinhaExpandida u={u} mes={mes} onVerEvolucao={onVerEvolucao} />
-                        )}
                         </div>
                     );
                 })}
@@ -998,7 +868,6 @@ function EvolucaoDrawer({ rankingItem, allRankingIds, onClose }) {
         : rankingItem.score != null
             ? Number(rankingItem.score).toFixed(0)
             : '—';
-
 
     return (
         <div className="fixed inset-0 z-50 flex justify-end">

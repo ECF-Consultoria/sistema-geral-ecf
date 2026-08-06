@@ -959,49 +959,6 @@ class PerformanceController extends Controller
      *
      * Série ordenada ASC por date — Recharts consome direto.
      */
-    /**
-     * Detalhe por empresa de um profissional, para a expansão inline do ranking
-     * (quick 260806-l58).
-     *
-     * Leitura PURA de `desempenho_company_score_snapshots` via
-     * `CompanyScoreSnapshotReader` — exatamente a mesma fonte que `show()`
-     * consome. Nenhum cálculo, nenhuma chamada à Adman: acionar cálculo por
-     * empresa a partir de uma listagem multiplicaria o fan-out de HTTP por
-     * profissional expandido (learnings §5, a página de 70s).
-     *
-     * `tem_detalhe` deriva da EXISTÊNCIA de linhas, nunca de `is_closed`
-     * isolado — mês fechado sem consolidação, ou anterior à Fase 122, não tem
-     * linha gravada (mesma regra de `show()`).
-     */
-    public function empresasScore(Request $request, User $user): JsonResponse
-    {
-        // CR-01: mesma regra de autorização de show()/evolucao(). Sem isto, um
-        // não-admin com core.performance troca o {user} e lê nome de empresa
-        // cliente, faturamento, margem e nota por empresa de qualquer um.
-        abort_unless(
-            $this->autorizadoParaVerDesempenhoDe($request, $user),
-            403,
-            'Você só pode ver o seu próprio desempenho ou o de quem está sob sua liderança.'
-        );
-
-        $ctx           = $this->resolveContextoPeriodo($request);
-        $mesReferencia = $ctx['mesReferencia'];
-
-        $linhas = collect();
-        if ($ctx['periodo']['is_closed']) {
-            $linhas = $this->companyScoreReader->paraUsuario($user->id, $mesReferencia);
-        }
-
-        return response()->json([
-            'user_id'     => $user->id,
-            'mes'         => $mesReferencia->format('Y-m'),
-            'em_curso'    => ! $ctx['periodo']['is_closed'],
-            'tem_detalhe' => $linhas->isNotEmpty(),
-            'empresas'    => $linhas->values()->all(),
-            'resumo'      => $this->companyScoreReader->resumo($linhas),
-        ]);
-    }
-
     public function evolucao(Request $request, User $user): JsonResponse
     {
         // CR-01 (123-07): mesma regra de autorização de show() — sem isto,
