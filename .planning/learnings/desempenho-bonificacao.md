@@ -50,6 +50,41 @@ mesma carteira tinha **5 das 25 lojas tirando 1 ponto em faturamento** — médi
 real 3,60 — e a margem em 3,70. Cinco lojas em queda severa, e o conjunto
 marcava 5/5 em crescimento.
 
+## 0.05. Invalidar empresa pela tela APAGA snapshot — e exige reconsolidar
+
+`BonusAuditoriaController::bustarCacheDaEmpresa()` **só apaga**. Ao invalidar
+(ou reativar) uma empresa numa competência, ele deleta o snapshot mensal e o
+detalhe por empresa de **TODOS os profissionais vinculados àquela empresa** em
+`company_users` — e nunca regrava. Está no docblock: "Quem REGRAVA as linhas é
+o `desempenho:consolidar-mes`".
+
+Consequência real, observada em 2026-08-05: duas empresas foram invalidadas
+pela tela e **três profissionais sumiram inteiros do fechamento de junho** —
+sem resumo, sem linha por empresa, sem nota. Ninguém percebeu na hora, porque a
+tela não avisa e o profissional simplesmente deixa de aparecer.
+
+**Toda invalidação pela tela precisa ser seguida de
+`desempenho:consolidar-mes --mes=YYYY-MM`.** Se você invalidar várias empresas,
+faça todas e reconsolide UMA vez no fim.
+
+## 0.06. `BonusInvalidacao` é por EMPRESA, não por profissional
+
+A invalidação tira a empresa da conta de **todo mundo** que a tem na carteira.
+Isso importa porque o sistema atribui a mesma loja a mais profissionais que o
+fechamento manual: uma loja pode estar na carteira de quem atende ML **e** de
+quem atende Shopee, enquanto a planilha lista só um deles.
+
+Ao reconciliar sistema × planilha em 2026-08-05, das 74 divergências, **30 eram
+seguras** (a loja não contava para ninguém) e **16 eram armadilha** (a loja
+conta para OUTRO profissional — invalidar tiraria dele também). Exemplos:
+TSOCKS BRASIL sobrava para dois, mas era loja legítima de outros dois;
+LYAMDECOR, MPozenato, GRAN BELO e mais quatro sobravam para a dupla Shopee mas
+eram da carteira de ML de outra pessoa.
+
+Antes de invalidar em lote, cheque se a loja conta para alguém em QUALQUER aba
+do fechamento. Decisão do usuário para esses casos: **o sistema está certo**, a
+loja é atendida pelos dois e a planilha é que não reflete isso.
+
 ## 0.1. A trava D-91-01 precisa ser EXPLÍCITA no caminho por empresa
 
 Carteira com zero vínculos financeiros elegíveis (só-Polos, só-Publicação) não
