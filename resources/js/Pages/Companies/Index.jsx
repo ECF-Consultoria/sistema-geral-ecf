@@ -205,8 +205,18 @@ export default function Companies({ companies, users, estrategistas = [], analis
     const analistasOptions = analistas.length > 0 ? analistas : users.filter(u => u.role === 'consultor');
     const estrategistasOptions = estrategistas.length > 0 ? estrategistas : users.filter(u => u.role === 'mentor');
 
+    // ── Aba Empresas: só quem está EM OPERAÇÃO ───────────────────────────────
+    // fast-260806 — empresa sem analista E sem estrategista não está em operação
+    // (ninguém cuida dela) e por isso não entra nem na lista nem na contagem
+    // desta aba; ela vive na aba "Pendências", onde a barra de ações em massa
+    // permite atribuir os responsáveis. Antes aparecia nas DUAS abas e inflava
+    // o total de carteira ativa.
+    // `em_operacao` vem do CompanyController (E de analista+estrategista) e é
+    // proposital que NÃO seja a negação da pendência `sem_responsavel` (um OU).
+    const emOperacao = companies.filter(c => c.em_operacao);
+
     // ── Filtro da aba Empresas (busca por nome/segmento/cust id + serviço) ────
-    const filtered = companies.filter(c => {
+    const filtered = emOperacao.filter(c => {
         const q = search.toLowerCase();
         const buscaOk = c.name.toLowerCase().includes(q)
             || (c.segment || '').toLowerCase().includes(q)
@@ -216,7 +226,7 @@ export default function Companies({ companies, users, estrategistas = [], analis
         return buscaOk && servicoOk;
     });
 
-    const totalAtivas = companies.filter(c => c.active).length;
+    const totalAtivas = emOperacao.filter(c => c.active).length;
 
     // ── Pendências (empresas ativas com ≥1 pendência) ────────────────────────
     // Phase 34 Plan 34-03 — pendCounts ganhou sem_servico (5o card existente) e empresa_nova (D-06).

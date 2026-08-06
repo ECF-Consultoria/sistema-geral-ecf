@@ -339,4 +339,88 @@ class Phase37CompaniesPerformanceFilterTest extends TestCase
         $this->assertSame([$recente->id, $antiga->id], $idsTeste,
             'Sort nova_recente deve ordenar empresas recentes primeiro');
     }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // 12. fast-260806 — flag `em_operacao`
+    //
+    // Empresa sem analista E sem estrategista nao entrou em operacao: some da
+    // aba "Empresas" (lista e contagem) e vive so na aba "Pendencias", onde a
+    // barra de acoes em massa permite atribuir os responsaveis.
+    //
+    // A flag e um E, de proposito — NAO e a negacao da pendencia
+    // `sem_responsavel`, que e um OU. Empresa com estrategista mas sem analista
+    // continua em operacao (alguem cuida dela) e permanece nas duas listas.
+    // ═════════════════════════════════════════════════════════════════════════
+
+    /** Vincula um usuario a empresa pelo pivot que as relacoes de Performance leem. */
+    private function vincular(Company $empresa, string $role): User
+    {
+        $user = User::create([
+            'name'     => 'Resp ' . $role . ' ' . uniqid(),
+            'email'    => 'resp.' . $role . '.' . uniqid() . '@ecf.test',
+            'password' => bcrypt('senha'),
+            'role'     => $role === 'consultor' ? 'consultor' : 'mentor',
+            'active'   => true,
+        ]);
+
+        // servico_id null + contrato Performance ativo casa com o ramo
+        // "consolidado" de analistaPerformance()/estrategistaPerformance().
+        $empresa->users()->attach($user->id, [
+            'role'        => $role,
+            'servico_id'  => null,
+            'assigned_at' => now(),
+        ]);
+
+        return $user;
+    }
+
+    public function test_empresa_sem_analista_e_sem_estrategista_nao_esta_em_operacao(): void
+    {
+        $this->actingAsAdmin();
+        $servico = $this->criarServico('Gestao', Servico::SETOR_PERFORMANCE);
+        $empresa = $this->criarEmpresa();
+        $this->criarContrato($empresa, $servico, true);
+
+        $alvo = $this->payloadCompanies($this->get('/companies'))->firstWhere('id', $empresa->id);
+
+        $this->assertNotNull($alvo);
+        $this->assertFalse($alvo['em_operacao'],
+            'Sem nenhum responsavel a empresa nao esta em operacao');
+        // Continua sendo cobrada na aba Pendencias.
+        $this->assertContains('sem_responsavel', $alvo['pendencias']);
+    }
+
+    public function test_empresa_com_estrategista_mas_sem_analista_continua_em_operacao(): void
+    {
+        $this->actingAsAdmin();
+        $servico = $this->criarServico('Gestao', Servico::SETOR_PERFORMANCE);
+        $empresa = $this->criarEmpresa();
+        $this->criarContrato($empresa, $servico, true);
+        $this->vincular($empresa, 'estrategista');
+
+        $alvo = $this->payloadCompanies($this->get('/companies'))->firstWhere('id', $empresa->id);
+
+        $this->assertNotNull($alvo);
+        $this->assertTrue($alvo['em_operacao'],
+            'Com estrategista alguem cuida da empresa — ela segue na aba Empresas');
+        // E ainda assim cobra o analista que falta (a pendencia e um OU).
+        $this->assertContains('sem_responsavel', $alvo['pendencias'],
+            'em_operacao NAO pode ser a negacao de sem_responsavel');
+    }
+
+    public function test_empresa_com_analista_e_estrategista_esta_em_operacao_sem_pendencia(): void
+    {
+        $this->actingAsAdmin();
+        $servico = $this->criarServico('Gestao', Servico::SETOR_PERFORMANCE);
+        $empresa = $this->criarEmpresa();
+        $this->criarContrato($empresa, $servico, true);
+        $this->vincular($empresa, 'consultor');
+        $this->vincular($empresa, 'estrategista');
+
+        $alvo = $this->payloadCompanies($this->get('/companies'))->firstWhere('id', $empresa->id);
+
+        $this->assertNotNull($alvo);
+        $this->assertTrue($alvo['em_operacao']);
+        $this->assertNotContains('sem_responsavel', $alvo['pendencias']);
+    }
 }

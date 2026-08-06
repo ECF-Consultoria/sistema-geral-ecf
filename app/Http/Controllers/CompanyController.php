@@ -162,6 +162,21 @@ class CompanyController extends Controller
                 'ml_store_id'      => $c->ml_store_id,
                 'consultor'        => $c->analistaPerformance->first()?->only(['id', 'name']),
                 'estrategista'     => $c->estrategistaPerformance->first()?->only(['id', 'name']),
+                // fast-260806 — empresa SEM analista E SEM estrategista nao entrou
+                // em operacao: ninguem cuida dela. O frontend usa esta flag para
+                // deixa-la SO na aba "Pendencias", fora da contagem e da lista da
+                // aba "Empresas" (onde ela inflava o total de carteira ativa).
+                //
+                // Repare que NAO e a negacao da pendencia `sem_responsavel` logo
+                // abaixo: aquela e um OU (falta analista OU estrategista) e serve
+                // para cobrar o papel faltante; esta e um E (nao tem nenhum dos
+                // dois). Empresa com estrategista mas sem analista CONTINUA em
+                // operacao — alguem cuida dela — e segue na aba "Empresas", ainda
+                // aparecendo em Pendencias pedindo o analista.
+                //
+                // Mesma regua que NpsController ja aplica ("sem estrategista
+                // atribuido, a empresa ainda nao entrou na operacao").
+                'em_operacao'      => ! ($c->analistaPerformance->isEmpty() && $c->estrategistaPerformance->isEmpty()),
                 // Contratos ativos: payload mínimo para a coluna Serviço (badges + tooltip)
                 'contratos_servico' => $c->contratosServico->map(fn($ct) => [
                     'id'               => $ct->id,
