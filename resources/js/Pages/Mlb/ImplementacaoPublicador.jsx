@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { router } from '@inertiajs/react';
 import axios from 'axios';
 import { cn } from '@/lib/utils';
-import { Copy, Check, RefreshCw } from 'lucide-react';
+import { Copy, Check, RefreshCw, Maximize2, X } from 'lucide-react';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -56,6 +56,11 @@ function mergeProdutos(produtos, precif) {
             estoque:       p.estoque       || '—',
             especificacoes:p.especificacoes|| '—',
             descricao:     p.descricao     || '—',
+            // Variação (cadastrada pelo cliente): N SKUs do mesmo grupo = 1 anúncio
+            // no ML, com attribute_combinations (ex: Cor = Azul).
+            variacao_grupo: p.variacao_grupo || '',
+            variacao_tipo:  p.variacao_tipo  || '',
+            variacao_valor: p.variacao_valor || '',
             custo:         pr.custo        || null,
             frete_classico: fc,
             frete_premium:  fp,
@@ -70,6 +75,42 @@ function mergeProdutos(produtos, precif) {
             cfg,
         };
     });
+}
+
+/**
+ * Reordena a lista deixando as variações do mesmo grupo adjacentes, na ordem em
+ * que o grupo apareceu pela primeira vez. Produtos sem grupo ficam onde estão.
+ * Devolve cada item com `_grupoPos`: 'unica' | 'inicio' | 'meio' | 'fim'.
+ */
+function agruparVariacoes(produtos) {
+    const ordem   = [];
+    const buckets = new Map();
+
+    produtos.forEach(p => {
+        const g = p.variacao_grupo || null;
+        if (!g) { ordem.push({ tipo: 'solto', item: p }); return; }
+        if (!buckets.has(g)) { buckets.set(g, []); ordem.push({ tipo: 'grupo', chave: g }); }
+        buckets.get(g).push(p);
+    });
+
+    const saida = [];
+    ordem.forEach(o => {
+        if (o.tipo === 'solto') { saida.push({ ...o.item, _grupoPos: 'unica' }); return; }
+        const itens = buckets.get(o.chave);
+        itens.forEach((p, i) => saida.push({
+            ...p,
+            _grupoPos: itens.length === 1 ? 'unica' : i === 0 ? 'inicio' : i === itens.length - 1 ? 'fim' : 'meio',
+        }));
+    });
+    return saida;
+}
+
+/** Quantos anúncios os SKUs representam no ML (grupo de variação = 1 anúncio). */
+function contarAnuncios(produtos) {
+    const grupos = new Set();
+    let avulsos = 0;
+    produtos.forEach(p => { p.variacao_grupo ? grupos.add(p.variacao_grupo) : avulsos++; });
+    return grupos.size + avulsos;
 }
 
 // ─── Componentes de seção ─────────────────────────────────────────────────────
@@ -99,7 +140,7 @@ function InfoRow({ label, value, link }) {
     );
 }
 
-function CopyCell({ value, maxW = 'max-w-[180px]', tdCls }) {
+function CopyCell({ value, maxW = 'max-w-[180px]', tdCls, extra = null }) {
     const [copied, setCopied] = useState(false);
     if (!value || value === '—') return <td className={tdCls}><span className="text-white/20">—</span></td>;
 
@@ -113,7 +154,8 @@ function CopyCell({ value, maxW = 'max-w-[180px]', tdCls }) {
     return (
         <td className={cn(tdCls, 'group')}>
             <div className="flex items-center gap-1.5">
-                <span className={cn('truncate flex-1', maxW)} title={value}>{value}</span>
+                <span className={cn('truncate', maxW)} title={value}>{value}</span>
+                {extra}
                 <button
                     onClick={copy}
                     className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-white/30 hover:text-white hover:bg-white/[0.08]"
@@ -123,6 +165,107 @@ function CopyCell({ value, maxW = 'max-w-[180px]', tdCls }) {
                 </button>
             </div>
         </td>
+    );
+}
+
+/**
+ * TextoCell — célula de texto longo (Especificações / Descrição): preview
+ * truncado, botão copiar e botão expandir, que abre o card com o texto inteiro.
+ */
+function TextoCell({ value, titulo, subtitulo, tdCls, onExpand }) {
+    const [copied, setCopied] = useState(false);
+    if (!value || value === '—') return <td className={tdCls}><span className="text-white/20">—</span></td>;
+
+    function copy(e) {
+        e.stopPropagation();
+        navigator.clipboard.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    }
+
+    return (
+        <td className={cn(tdCls, 'group')}>
+            <div className="flex items-center gap-1">
+                <button
+                    type="button"
+                    onClick={() => onExpand({ titulo, subtitulo, texto: value })}
+                    className="truncate max-w-[180px] text-left hover:text-white hover:underline decoration-white/20 underline-offset-2"
+                    title="Ver texto completo"
+                >
+                    {value}
+                </button>
+                <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => onExpand({ titulo, subtitulo, texto: value })}
+                        className="p-1 rounded text-white/30 hover:text-white hover:bg-white/[0.08]" title="Ver completo">
+                        <Maximize2 size={12} />
+                    </button>
+                    <button onClick={copy}
+                        className="p-1 rounded text-white/30 hover:text-white hover:bg-white/[0.08]" title="Copiar">
+                        {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                    </button>
+                </div>
+            </div>
+        </td>
+    );
+}
+
+/** Card de leitura do texto completo de Especificações / Descrição. */
+function TextoModal({ titulo, subtitulo, texto, onClose }) {
+    const [copied, setCopied] = useState(false);
+
+    useEffect(() => {
+        const onKey = e => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onClose]);
+
+    function copy() {
+        navigator.clipboard.writeText(texto);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    }
+
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
+            <div className="w-full max-w-2xl max-h-[80vh] bg-[#0b0c14] border border-white/[0.1] rounded-2xl shadow-2xl flex flex-col"
+                onClick={e => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-white/[0.07] shrink-0">
+                    <div className="min-w-0">
+                        <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wider">{titulo}</p>
+                        <p className="text-white font-semibold text-[14px] mt-0.5 truncate">{subtitulo}</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={copy} title="Copiar tudo"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[12px] transition">
+                            {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                            {copied ? 'Copiado' : 'Copiar'}
+                        </button>
+                        <button onClick={onClose} className="p-1.5 text-white/30 hover:text-white/70 transition"><X size={16} /></button>
+                    </div>
+                </div>
+                <div className="overflow-y-auto px-5 py-4">
+                    <p className="text-white/80 text-[13px] leading-relaxed whitespace-pre-wrap break-words">{texto}</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/** Quadradinho de check-in do publicador (feito / pendente) por SKU. */
+function CheckinBox({ marcado, onToggle, disabled }) {
+    return (
+        <button
+            type="button"
+            disabled={disabled}
+            onClick={onToggle}
+            title={disabled ? 'Produto sem SKU — não dá para marcar' : marcado ? 'Marcado como feito · clique para desmarcar' : 'Marcar como feito'}
+            className={cn('h-[18px] w-[18px] rounded-[5px] border flex items-center justify-center transition',
+                disabled ? 'border-white/[0.08] cursor-not-allowed'
+                    : marcado ? 'bg-emerald-500 border-emerald-500 hover:brightness-110'
+                              : 'border-white/25 hover:border-white/60')}
+        >
+            {marcado && <Check size={12} strokeWidth={3} className="text-[#052e16]" />}
+        </button>
     );
 }
 
@@ -262,6 +405,10 @@ function PrecificacaoAcao({ produtos, precif, token }) {
 
 export default function ImplementacaoPublicador({ impl, checklist }) {
     const [lastUpdate, setLastUpdate] = useState(new Date());
+    const [texto, setTexto]     = useState(null);   // card de texto completo aberto
+    const [checkin, setCheckin] = useState(() => impl.checkin ?? {});
+    // SKUs com PATCH em voo — o reload de 30s não pode reverter o clique recém-dado.
+    const emVooRef = useRef(new Set());
 
     useEffect(() => {
         const id = setInterval(() => {
@@ -269,6 +416,26 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
         }, 30000);
         return () => clearInterval(id);
     }, []);
+
+    // Reconcilia o check-in vindo do servidor preservando o que ainda está em voo.
+    useEffect(() => {
+        setCheckin(local => {
+            const servidor = { ...(impl.checkin ?? {}) };
+            emVooRef.current.forEach(sku => {
+                if (local[sku]) servidor[sku] = true; else delete servidor[sku];
+            });
+            return servidor;
+        });
+    }, [impl.checkin]);
+
+    function toggleCheckin(sku) {
+        if (!sku) return;
+        const feito = !checkin[sku];
+        setCheckin(c => { const n = { ...c }; if (feito) n[sku] = true; else delete n[sku]; return n; });
+        emVooRef.current.add(sku);
+        axios.patch(route('implementacao.publicador.checkin', impl.token), { sku, feito })
+            .finally(() => emVooRef.current.delete(sku));
+    }
 
     function refresh() {
         router.reload({ only: ['impl'], onSuccess: () => setLastUpdate(new Date()) });
@@ -281,6 +448,8 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
     const produtosBase  = itens.planilha_produtos?.produtos ?? [];
     const precif        = itens.precificacao ?? {};
     const produtos      = mergeProdutos(produtosBase, precif);
+    const catalogo      = agruparVariacoes(produtos);
+    const feitos        = produtos.filter(p => p.sku && checkin[p.sku]).length;
 
     const cfgC = precif.classico ?? { comissao: 0.115, imposto: 0.19, margem: 0.32 };
     const cfgP = precif.premium  ?? { comissao: 0.165, imposto: 0.19, margem: 0.35 };
@@ -314,11 +483,14 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                         </button>
                         {[
                             { label: 'Produtos',    value: produtos.length },
+                            { label: 'Anúncios',    value: contarAnuncios(produtos) },
+                            { label: 'Check-in',    value: `${feitos}/${produtos.length}`, destaque: feitos > 0 && feitos === produtos.length },
                             { label: 'Com Preço C', value: produtos.filter(p => p.preco_classico).length },
                             { label: 'Com Preço P', value: produtos.filter(p => p.preco_premium).length },
-                        ].map(({ label, value }) => (
-                            <div key={label} className="text-center px-4 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-                                <p className="text-white font-bold text-lg">{value}</p>
+                        ].map(({ label, value, destaque }) => (
+                            <div key={label} className={cn('text-center px-4 py-2 rounded-xl border',
+                                destaque ? 'bg-emerald-500/[0.08] border-emerald-500/25' : 'bg-white/[0.03] border-white/[0.06]')}>
+                                <p className={cn('font-bold text-lg', destaque ? 'text-emerald-300' : 'text-white')}>{value}</p>
                                 <p className="text-white/30 text-[11px]">{label}</p>
                             </div>
                         ))}
@@ -390,10 +562,16 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                 {/* Catálogo de Produtos */}
                 {produtos.length > 0 && (
                     <SectionCard title={`Catálogo de Produtos — ${produtos.length} SKU${produtos.length !== 1 ? 's' : ''}`}>
+                        <p className="text-white/35 text-[12px] mb-3">
+                            Marque o <span className="text-emerald-300 font-semibold">quadradinho</span> conforme
+                            for publicando. SKUs com a barra roxa são <span className="text-violet-300 font-semibold">variações
+                            do mesmo anúncio</span>.
+                        </p>
                         <div className="overflow-x-auto -mx-1">
-                            <table className="w-full" style={{ minWidth: '900px' }}>
+                            <table className="w-full" style={{ minWidth: '940px' }}>
                                 <thead>
                                     <tr className="border-b border-white/[0.06]">
+                                        <th className={cn(thCls, 'w-8')} title="Check-in do publicador">✓</th>
                                         <th className={thCls}>SKU</th>
                                         <th className={thCls}>Produto</th>
                                         <th className={thCls}>Curva</th>
@@ -405,18 +583,38 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {produtos.map((p, i) => (
-                                        <tr key={i} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]">
-                                            <td className={cn(tdCls, 'font-mono text-ecf-yellow/80')}>{p.sku}</td>
-                                            <td className={cn(tdCls, 'max-w-[200px] truncate')} title={p.produto}>{p.produto}</td>
-                                            <td className={tdCls}>{p.curva}</td>
-                                            <td className={tdCls}>{p.altura} × {p.largura} × {p.profundidade}</td>
-                                            <td className={tdCls}>{p.peso_kg}</td>
-                                            <td className={tdCls}>{p.estoque}</td>
-                                            <CopyCell value={p.especificacoes} tdCls={tdCls} />
-                                            <CopyCell value={p.descricao} tdCls={tdCls} />
-                                        </tr>
-                                    ))}
+                                    {catalogo.map((p, i) => {
+                                        const marcado = !!(p.sku && checkin[p.sku]);
+                                        const emGrupo = p._grupoPos !== 'unica';
+                                        return (
+                                            <tr key={i} className={cn('border-b border-white/[0.04] last:border-0 transition-colors',
+                                                marcado ? 'bg-emerald-500/[0.04] hover:bg-emerald-500/[0.07]' : 'hover:bg-white/[0.02]')}>
+                                                <td className={cn(tdCls, 'relative')}>
+                                                    {emGrupo && (
+                                                        <span className={cn('absolute left-0 w-[3px] bg-violet-500/50',
+                                                            p._grupoPos === 'inicio' ? 'top-1.5 bottom-0 rounded-t'
+                                                                : p._grupoPos === 'fim' ? 'top-0 bottom-1.5 rounded-b' : 'inset-y-0')} />
+                                                    )}
+                                                    <CheckinBox marcado={marcado} disabled={!p.sku} onToggle={() => toggleCheckin(p.sku)} />
+                                                </td>
+                                                <td className={cn(tdCls, 'font-mono', marcado ? 'text-emerald-400/70 line-through' : 'text-ecf-yellow/80')}>{p.sku}</td>
+                                                <CopyCell value={p.produto} maxW="max-w-[200px]" tdCls={tdCls}
+                                                    extra={p.variacao_valor && (
+                                                        <span className="ml-1.5 shrink-0 px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 text-[10px] font-medium whitespace-nowrap">
+                                                            {p.variacao_tipo || 'Variação'}: {p.variacao_valor}
+                                                        </span>
+                                                    )} />
+                                                <td className={tdCls}>{p.curva}</td>
+                                                <td className={tdCls}>{p.altura} × {p.largura} × {p.profundidade}</td>
+                                                <td className={tdCls}>{p.peso_kg}</td>
+                                                <td className={tdCls}>{p.estoque}</td>
+                                                <TextoCell value={p.especificacoes} tdCls={tdCls} onExpand={setTexto}
+                                                    titulo="Especificações técnicas" subtitulo={`${p.sku ? p.sku + ' · ' : ''}${p.produto}`} />
+                                                <TextoCell value={p.descricao} tdCls={tdCls} onExpand={setTexto}
+                                                    titulo="Descrição" subtitulo={`${p.sku ? p.sku + ' · ' : ''}${p.produto}`} />
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -434,8 +632,12 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                     </div>
                 )}
 
-                <p className="text-center text-white/20 text-[11px] pb-4">ECF Consultoria · Visão somente leitura</p>
+                <p className="text-center text-white/20 text-[11px] pb-4">
+                    ECF Consultoria · Dados do cliente em somente leitura — só o check-in e o frete são seus
+                </p>
             </div>
+
+            {texto && <TextoModal {...texto} onClose={() => setTexto(null)} />}
         </div>
     );
 }
