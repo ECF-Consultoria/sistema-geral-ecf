@@ -4,10 +4,15 @@ import { Link, router } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
 import {
     ArrowLeft, Search, TrendingUp, TrendingDown, Building2,
-    Briefcase, DollarSign, Calendar, Percent, Users,
+    Briefcase, DollarSign, Calendar, Users, Trophy, Sparkles, ChevronRight, Info,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
 import { FonteBadge, StatusBadge, VarBadge } from '@/Pages/Portfolio/components/CarteiraBadges';
+import PeriodoBanner from '@/Components/Desempenho/PeriodoBanner';
+import {
+    fmtNotaEmpresa, formatContaNota, faixaBonusLabel, faixaBonusCls,
+    AVISO_SEM_DETALHE_TITULO, AVISO_SEM_DETALHE_EM_CURSO, avisoSemDetalheFechado,
+} from '@/lib/desempenhoLabels';
 
 // Margem % (valor) — "35.8%". Null → "—".
 const fmtPctVal = (n) => (n === null || n === undefined ? '—' : `${Number(n).toFixed(1)}%`);
@@ -135,6 +140,83 @@ function ClientesBadge({ variacao }) {
     );
 }
 
+/**
+ * Ponto do mês — nota 0-5 + faixa de bônus + a conta que produziu a nota.
+ *
+ * Entrou em 2026-08-06 no lugar do KPI "Margem média (percentageMargin)": a
+ * margem média é um dos insumos da nota, e exibi-la sozinha aqui obrigava a
+ * abrir uma terceira tela para saber o que ela virou. A unidade de decisão do
+ * time é PONTO, então é o ponto que ancora a carteira.
+ *
+ * A nota vem da MESMA precedência do `/performance/{id}` (snapshot congelado
+ * antes de cálculo cacheado) — ver o comentário no controller. Aqui é só
+ * apresentação; nenhum número é recalculado nesta tela.
+ */
+function NotaMesCard({ score, userId }) {
+    const nota = score?.nota_final;
+    const conta = formatContaNota(score?.pontos_componentes, nota);
+    const semCarteira = score?.sem_carteira === true;
+
+    return (
+        <div className="rounded-2xl border border-white/[0.08] bg-ecf-card p-5">
+            <div className="flex items-center gap-2 text-white/50 text-[11px] uppercase tracking-wider font-semibold">
+                <Trophy size={13} />
+                Ponto do mês
+            </div>
+
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <div className="text-3xl font-bold tabular-nums text-white">
+                    {semCarteira ? '—' : fmtNotaEmpresa(nota)}
+                </div>
+                {!semCarteira && nota != null && <span className="text-white/30 text-sm">/ 5,00</span>}
+                {!semCarteira && (
+                    <span className={cn(
+                        'inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border',
+                        faixaBonusCls(score?.faixa_bonus),
+                    )}>
+                        {faixaBonusLabel(score?.faixa_bonus)}
+                    </span>
+                )}
+                {score?.faixa_promovida && (
+                    <span
+                        title="Promovida por 2 meses consecutivos em Intermediário"
+                        className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                    >
+                        <Sparkles size={9} />
+                        PROMOVIDA
+                    </span>
+                )}
+            </div>
+
+            {semCarteira ? (
+                <div className="text-white/40 text-xs mt-1">Sem carteira no mês selecionado.</div>
+            ) : conta ? (
+                <div
+                    className="text-white/40 text-xs mt-1 tabular-nums"
+                    title="Média dos pontos de NPS, faturamento e margem (régua 1-5)"
+                >
+                    {conta}
+                </div>
+            ) : (
+                <div className="text-white/40 text-xs mt-1">Sem dados suficientes para classificação.</div>
+            )}
+
+            {/* Par inverso do link do card de bônus: lá se vai para a operação,
+                aqui se volta para a formação da nota. Cada tela aponta para o
+                que a outra tem de exclusivo. */}
+            {userId && (
+                <Link
+                    href={route('performance.show', userId)}
+                    className="inline-flex items-center gap-1.5 text-ecf-yellow text-xs font-semibold hover:underline mt-2.5 group"
+                >
+                    Ver como a nota foi formada
+                    <ChevronRight size={12} className="text-ecf-yellow/60 group-hover:translate-x-0.5 transition-transform" />
+                </Link>
+            )}
+        </div>
+    );
+}
+
 // ─── Chip de variação (+/-) ───────────────────────────────────────────────
 function VariacaoChip({ pct, size = 'sm' }) {
     if (pct === null || pct === undefined) {
@@ -154,7 +236,10 @@ function VariacaoChip({ pct, size = 'sm' }) {
     );
 }
 
-export default function AdminCarteira({ profissional, resumo, empresas = [], periodo, contexto = 'todos', bonus = null }) {
+export default function AdminCarteira({
+    profissional, resumo, empresas = [], periodo, contexto = 'todos', bonus = null,
+    score = null, tem_detalhe_empresas = false,
+}) {
     const [busca, setBusca] = useState('');
     const [sortCol, setSortCol] = useState('faturamento');
     const [sortDir, setSortDir] = useState('desc');
@@ -296,57 +381,21 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                     </div>
                 </header>
 
-                {/* Fase 104 (UIP-03) — quando a URL veio com ?modo=bonus_atual,
-                    deixa explícito qual competência está sendo avaliada e
-                    quando ela é paga. */}
-                {modoBonusAtual && bonus && (
-                    <div className="rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] px-4 py-2.5 text-ecf-yellow/90 text-sm font-medium">
-                        Competência {formatCompetencia(bonus.competence_month)} · pago em {formatMesSolo(bonus.payment_month)}
-                    </div>
-                )}
-
-                {/* ─── Banner de contexto do período — muda conforme mês em curso vs fechado ─── */}
-                <div className={cn(
-                    'rounded-xl border p-4 flex items-start gap-3',
-                    periodo?.em_curso
-                        ? 'border-amber-500/25 bg-amber-500/[0.05]'
-                        : 'border-emerald-500/25 bg-emerald-500/[0.05]',
-                )}>
-                    <div className={cn(
-                        'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
-                        periodo?.em_curso ? 'bg-amber-500/15' : 'bg-emerald-500/15',
-                    )}>
-                        <Calendar size={16} className={periodo?.em_curso ? 'text-amber-300' : 'text-emerald-300'} />
-                    </div>
-                    <div className="text-sm">
-                        <div className={cn(
-                            'font-semibold capitalize',
-                            periodo?.em_curso ? 'text-amber-200' : 'text-emerald-200',
-                        )}>
-                            {periodo?.mes_label ?? 'Mês em curso'} {periodo?.em_curso ? '— comparação dia-a-dia' : '— mês fechado'}
-                        </div>
-                        <div className={cn(
-                            'text-xs mt-1 leading-relaxed',
-                            periodo?.em_curso ? 'text-amber-100/70' : 'text-emerald-100/70',
-                        )}>
-                            {periodo?.em_curso ? (
-                                <>
-                                    Faturamento e margem comparam <span className="text-white font-medium">{periodo?.range_atual}</span>
-                                    {' '}com <span className="text-white font-medium">{periodo?.range_anterior}</span> do mês anterior — janela
-                                    do mesmo tamanho ({periodo?.dia_atual} dia{periodo?.dia_atual === 1 ? '' : 's'})
-                                    para evitar queda artificial. Nota consolidada oficial (para bônus) sai quando o mês fecha
-                                    ({periodo?.dias_no_mes} dias).
-                                </>
-                            ) : (
-                                <>
-                                    Dados consolidados do mês fechado — comparam <span className="text-white font-medium">{periodo?.range_atual}</span>
-                                    {' '}com <span className="text-white font-medium">{periodo?.range_anterior}</span>.
-                                    Estes são os valores usados na régua de bônus daquele mês.
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                {/* Contexto de período — uma linha, explicação no tooltip
+                    (2026-08-06). Antes eram DOIS blocos aqui: a faixa de
+                    competência do modo bônus e um parágrafo de 4 linhas sobre a
+                    janela de comparação, o mesmo texto que existia em outras duas
+                    telas. O intervalo comparado continua visível, agora ao lado do
+                    rótulo em vez de dentro de um parágrafo. */}
+                <PeriodoBanner
+                    modo={modoBonusAtual && bonus ? 'bonus_atual' : (periodo?.em_curso ? 'em_curso' : 'mes_fechado')}
+                    mesLabel={periodo?.mes_label}
+                    resumo={
+                        modoBonusAtual && bonus
+                            ? `competência ${formatCompetencia(bonus.competence_month)} · pago em ${formatMesSolo(bonus.payment_month)}`
+                            : `${periodo?.range_atual ?? ''} vs ${periodo?.range_anterior ?? ''}`
+                    }
+                />
 
                 {/* ─── KPIs principais ──────────────────────────────────── */}
                 {/* Card "Empresas conectadas ao ML" removido — badge SVG na listagem
@@ -359,17 +408,7 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                         icon={DollarSign}
                         accent="text-white"
                     />
-                    <KpiCard
-                        label="Margem média"
-                        value={
-                            resumo?.margem_media_pct !== null && resumo?.margem_media_pct !== undefined
-                                ? `${resumo.margem_media_pct.toFixed(1)}%`
-                                : '—'
-                        }
-                        sub="Média da margem % (percentageMargin) das empresas da carteira"
-                        icon={Percent}
-                        accent={resumo?.margem_media_pct == null ? 'text-white/50' : 'text-emerald-300'}
-                    />
+                    <NotaMesCard score={score} userId={profissional?.id} />
                     <KpiCard
                         label="Clientes na carteira"
                         value={resumo?.total_empresas ?? 0}
@@ -424,6 +463,7 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                 <h2 className="text-white font-semibold text-lg">Empresas em carteira</h2>
                                 <p className="text-white/50 text-xs mt-0.5">
                                     Faturamento e variação de margem por empresa · fonte Adman (margem) / Shopee (faturamento, sem margem)
+                                    {tem_detalhe_empresas && ' · pontos da régua abaixo de cada número'}
                                 </p>
                             </div>
                             <div className="flex items-center gap-2 flex-1 max-w-xs">
@@ -438,21 +478,45 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                             </div>
                         </div>
 
+                        {/* Sem detalhe gravado, a tela DIZ que não tem — nunca calcula
+                            por empresa na hora. Acionar o cálculo aqui reabriria o
+                            fan-out de HTTP por empresa que já produziu página de 70s
+                            neste módulo (learning §5). */}
+                        {!tem_detalhe_empresas && (
+                            <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 flex items-start gap-3">
+                                <Info size={16} className="text-white/40 shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="text-white/80 text-sm font-semibold">{AVISO_SEM_DETALHE_TITULO}</p>
+                                    <p className="text-white/50 text-xs mt-1 leading-relaxed">
+                                        {periodo?.em_curso
+                                            ? AVISO_SEM_DETALHE_EM_CURSO
+                                            : avisoSemDetalheFechado(periodo?.mes_label ?? 'esta competência')}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="overflow-x-auto -mx-1">
-                            <table className="w-full text-[13px] min-w-[840px]">
+                            <table className="w-full text-[13px] min-w-[960px]">
                                 <thead>
                                     <tr className="text-white/50 text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
                                         <th className="text-left font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('name')}>Empresa</th>
                                         <th className="text-left font-semibold px-3 py-3">Fonte de dados</th>
+                                        {tem_detalhe_empresas && (
+                                            <th className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('nps_pontos')} title="Pontos de NPS da empresa no fechamento (régua 1-5)">NPS</th>
+                                        )}
                                         <th className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('faturamento')}>Faturamento</th>
                                         <th className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('margem_pct')} title="Margem como % da receita (percentageMargin da Adman)">Margem %</th>
+                                        {tem_detalhe_empresas && (
+                                            <th className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('nota_empresa')} title="Nota da empresa no fechamento do mês">Nota</th>
+                                        )}
                                         <th className="text-left font-semibold px-3 py-3">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {empresasView.length === 0 && (
                                         <tr>
-                                            <td colSpan={5} className="text-center text-white/40 py-8">
+                                            <td colSpan={tem_detalhe_empresas ? 7 : 5} className="text-center text-white/40 py-8">
                                                 {busca ? 'Nenhuma empresa encontrada com esse filtro.' : 'Este profissional não tem empresas ativas em carteira.'}
                                             </td>
                                         </tr>
@@ -490,14 +554,34 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                                 )}
                                             </td>
                                             <td className="px-3 py-3"><FonteBadge fonte={c.fonte} /></td>
+                                            {/* Pontos da régua (só em competência fechada consolidada):
+                                                sempre em texto pequeno ABAIXO do número operacional —
+                                                a carteira responde pela operação, o ponto é a âncora. */}
+                                            {tem_detalhe_empresas && (
+                                                <td className="px-3 py-3 text-right tabular-nums">
+                                                    <div className="text-white/80">{fmtNotaEmpresa(c.nps_pontos)}</div>
+                                                    <div className="text-[10px] text-white/30">pontos</div>
+                                                </td>
+                                            )}
                                             <td className="px-3 py-3 text-right">
                                                 <div className="text-white/90 tabular-nums">{c.faturamento !== null && c.faturamento !== undefined ? formatCurrencyCompact(c.faturamento) : '—'}</div>
                                                 <div className="flex justify-end"><VarBadge v={c.faturamento_var_pct} /></div>
+                                                {tem_detalhe_empresas && (
+                                                    <div className="text-[10px] text-white/30 tabular-nums">{fmtNotaEmpresa(c.faturamento_pontos)} pontos</div>
+                                                )}
                                             </td>
                                             <td className="px-3 py-3 text-right" title={c.fonte === 'shopee' ? 'Shopee ainda não fornece margem' : undefined}>
                                                 <div className="text-white/80 tabular-nums">{fmtPctVal(c.margem_pct)}</div>
                                                 <div className="flex justify-end"><VarBadge v={c.margem_pct_var_pct} /></div>
+                                                {tem_detalhe_empresas && (
+                                                    <div className="text-[10px] text-white/30 tabular-nums">{fmtNotaEmpresa(c.margem_pontos)} pontos</div>
+                                                )}
                                             </td>
+                                            {tem_detalhe_empresas && (
+                                                <td className="px-3 py-3 text-right tabular-nums font-bold text-white/90">
+                                                    {fmtNotaEmpresa(c.nota_empresa)}
+                                                </td>
+                                            )}
                                             <td className="px-3 py-3"><StatusBadge status={c.status} invalidada={c.invalidada} /></td>
                                         </tr>
                                         );
