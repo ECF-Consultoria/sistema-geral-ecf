@@ -86,8 +86,15 @@ class HubspotValueResolver
 
         $price      = $this->numericoOuNull($lineItem['price'] ?? null);
         $amount     = $this->numericoOuNull($lineItem['amount'] ?? null);
-        $hsMrr      = $this->numericoOuNull($lineItem['hs_mrr'] ?? null);
-        $hsArr      = $this->numericoOuNull($lineItem['hs_arr'] ?? null);
+        // ⚠ NAO trocar por numericoOuNull() puro. No HubSpot, hs_mrr/hs_arr = 0
+        // num line item significa "NAO e recorrente" — e o que a API devolve
+        // quando `recurringbillingfrequency` e null —, jamais "custa zero".
+        // Aceitar o 0 como valor autoritativo gravou R$ 0,00 num contrato de
+        // R$ 3.000 (empresa #410 "Empresa Completa", line item MAP, deal
+        // 63434160016), com confidence 'high' e sem warning nenhum. Contrato
+        // legitimamente zerado continua chegando a 0 pelos ramos de price.
+        $hsMrr      = $this->numericoPositivoOuNull($lineItem['hs_mrr'] ?? null);
+        $hsArr      = $this->numericoPositivoOuNull($lineItem['hs_arr'] ?? null);
         $frequency  = $lineItem['recurringbillingfrequency'] ?? null;
         $period     = $lineItem['hs_recurring_billing_period'] ?? null;
         $valorPadrao = (float) ($servico->valor_padrao ?? 0);
@@ -165,6 +172,29 @@ class HubspotValueResolver
                 'warning'             => $confidence === 'medium'
                     ? 'valor operacional inferido de price*quantity/12 — período de cobrança não confirma 12 meses (P1Y)'
                     : null,
+            ]);
+        }
+
+        // Price presente e NENHUMA recorrencia declarada pelo HubSpot.
+        // Sem frequencia, nao ha evidencia de contrato anual — dividir por 12
+        // aqui seria adivinhar (transformaria os R$ 3.000 do MAP em R$ 250).
+        // E o mesmo principio que resolverSemLineItem() ja aplica no ramo
+        // indecidivel: manter o valor bruto observado, nunca inferir divisao
+        // sem evidencia. Fica ANTES do ramo do amount de proposito — aquele
+        // ramo e, pelo proprio docblock, para line item "sem price".
+        // 'medium' e nao 'high' porque price e evidencia direta mas a ausencia
+        // de frequencia merece conferencia humana; nao e 'low'/'valor_revisar'
+        // porque nao ha chute nenhum no numero.
+        if ($price !== null) {
+            $valor = $price * $quantity;
+
+            return array_merge($base, [
+                'valor_operacional'   => $valor,
+                'valor_original'      => $valor,
+                'valor_original_tipo' => 'unit_price',
+                'normalizado_mensal'  => $valor,
+                'confidence'          => 'medium',
+                'warning'             => 'HubSpot nao declarou recorrencia (recurringbillingfrequency vazio) — price*quantity foi tomado como valor operacional; confirmar',
             ]);
         }
 
@@ -318,5 +348,19 @@ class HubspotValueResolver
     private function numericoOuNull(mixed $valor): ?float
     {
         return is_numeric($valor) ? (float) $valor : null;
+    }
+
+    /**
+     * Igual ao numericoOuNull(), mas trata ZERO como AUSENCIA.
+     *
+     * Existe só para hs_mrr/hs_arr: no HubSpot esses campos vem 0 quando o line
+     * item nao e recorrente, e 0 ali e "sem recorrencia", nao "de graca".
+     * Ler 0 como valor valido zerou um contrato de R$ 3.000 em producao.
+     */
+    private function numericoPositivoOuNull(mixed $valor): ?float
+    {
+        $numero = $this->numericoOuNull($valor);
+
+        return ($numero !== null && $numero > 0) ? $numero : null;
     }
 }

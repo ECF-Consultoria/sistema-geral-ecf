@@ -205,4 +205,121 @@ class HubspotValueResolverTest extends TestCase
         $this->assertNotNull($out['warning']);
         $this->assertStringContainsString('valor_revisar', $out['warning']);
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // fast-260806 — line item NAO recorrente (hs_mrr/hs_arr = 0)
+    //
+    // Caso real de producao: empresa #410 "Empresa Completa", deal
+    // 63434160016, line item "MAP" a R$ 3.000. Chegou no sistema como
+    // R$ 0,00 com confidence 'high' e sem warning. Duas causas encadeadas:
+    //   1) hs_mrr = 0 lido como MRR autoritativo (0 no HubSpot significa
+    //      "nao e recorrente", nunca "de graca");
+    //   2) sem frequencia declarada, o fluxo caia no ramo amount/12 e
+    //      devolveria R$ 250 mesmo depois de corrigir (1).
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /** Line item nao recorrente com price: vale o price, nao 0 e nem price/12. */
+    public function test_line_item_map_nao_recorrente_vale_o_price_e_nao_zero(): void
+    {
+        $servico = $this->servico(Servico::TIPO_MENSAL, 0);
+        $lineItem = [
+            'name'                        => 'MAP',
+            'price'                       => 3000,
+            'amount'                      => 3000,
+            'quantity'                    => 1,
+            'hs_mrr'                      => 0,
+            'hs_arr'                      => 0,
+            'hs_tcv'                      => 3000,
+            'hs_acv'                      => 3000,
+            'recurringbillingfrequency'   => null,
+            'hs_recurring_billing_period' => null,
+        ];
+
+        $out = $this->resolver()->resolve($servico, $lineItem, ['amount' => '3000']);
+
+        // O numero e o que importa: nem 0 (bug do hs_mrr), nem 250 (amount/12).
+        $this->assertEqualsWithDelta(3000.0, $out['valor_operacional'], 0.01);
+        $this->assertNotEqualsWithDelta(0.0, $out['valor_operacional'], 0.01);
+        $this->assertNotEqualsWithDelta(250.0, $out['valor_operacional'], 0.01);
+        $this->assertSame('unit_price', $out['valor_original_tipo']);
+        $this->assertEqualsWithDelta(3000.0, $out['normalizado_mensal'], 0.01);
+        // Sem recorrencia declarada, pede conferencia humana — mas nao e chute.
+        $this->assertSame('medium', $out['confidence']);
+        $this->assertNotNull($out['warning']);
+    }
+
+    /** hs_mrr = 0 nao pode mais ser a proveniencia do valor. */
+    public function test_hs_mrr_zero_nao_vira_proveniencia_mrr(): void
+    {
+        $servico = $this->servico(Servico::TIPO_MENSAL, 0);
+        $lineItem = [
+            'price'                     => 1500,
+            'quantity'                  => 1,
+            'hs_mrr'                    => 0,
+            'hs_arr'                    => 0,
+            'recurringbillingfrequency' => null,
+        ];
+
+        $out = $this->resolver()->resolve($servico, $lineItem, []);
+
+        $this->assertNotSame('mrr', $out['valor_original_tipo']);
+        $this->assertEqualsWithDelta(1500.0, $out['valor_operacional'], 0.01);
+    }
+
+    /** NAO-REGRESSAO: hs_mrr > 0 continua sendo fonte forte, com 'high'. */
+    public function test_hs_mrr_positivo_continua_prevalecendo_com_high(): void
+    {
+        $servico = $this->servico(Servico::TIPO_MENSAL, 0);
+        $lineItem = [
+            'price'                     => 9999,
+            'quantity'                  => 1,
+            'hs_mrr'                    => 500,
+            'hs_arr'                    => 6000,
+            'recurringbillingfrequency' => 'monthly',
+        ];
+
+        $out = $this->resolver()->resolve($servico, $lineItem, []);
+
+        $this->assertEqualsWithDelta(500.0, $out['valor_operacional'], 0.01);
+        $this->assertSame('mrr', $out['valor_original_tipo']);
+        $this->assertEqualsWithDelta(6000.0, $out['valor_original'], 0.01);
+        $this->assertSame('high', $out['confidence']);
+        $this->assertNull($out['warning']);
+    }
+
+    /** Contrato legitimamente zerado continua chegando a 0, sem explodir. */
+    public function test_line_item_genuinamente_zerado_resulta_em_zero(): void
+    {
+        $servico = $this->servico(Servico::TIPO_MENSAL, 0);
+        $lineItem = [
+            'price'                     => 0,
+            'amount'                    => 0,
+            'quantity'                  => 1,
+            'hs_mrr'                    => 0,
+            'hs_arr'                    => 0,
+            'recurringbillingfrequency' => null,
+        ];
+
+        $out = $this->resolver()->resolve($servico, $lineItem, []);
+
+        $this->assertEqualsWithDelta(0.0, $out['valor_operacional'], 0.01);
+    }
+
+    /** NAO-REGRESSAO: o ramo amount/12 segue valendo quando NAO ha price. */
+    public function test_ramo_amount_dividido_por_12_so_vale_sem_price(): void
+    {
+        // amount 36000 / 12 = 3000, que bate com valor_padrao 3000 → medium.
+        $servico = $this->servico(Servico::TIPO_MENSAL, 3000);
+        $lineItem = [
+            'amount'                    => 36000,
+            'quantity'                  => 1,
+            'recurringbillingfrequency' => null,
+        ];
+
+        $out = $this->resolver()->resolve($servico, $lineItem, []);
+
+        $this->assertEqualsWithDelta(3000.0, $out['valor_operacional'], 0.01);
+        $this->assertSame('deal_amount_annual', $out['valor_original_tipo']);
+        $this->assertSame('medium', $out['confidence']);
+    }
 }
