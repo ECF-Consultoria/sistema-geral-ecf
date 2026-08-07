@@ -92,3 +92,9 @@ None - nenhuma configuração de serviço externo necessária.
 ---
 *Phase: 124-extra-o-de-services-sem-mudar-comportamento-kill-switch-inst*
 *Completed: 2026-08-07*
+
+## Self-Check: PASSED
+
+- FOUND: tests/Feature/Phase124RegressaoComercialTest.php
+- FOUND: commit dab006d2 (test)
+- FOUND: commit 29708468 (docs — este mesmo SUMMARY)
