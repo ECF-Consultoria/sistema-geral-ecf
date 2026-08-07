@@ -128,10 +128,10 @@ São algoritmos diferentes que produzem hashes diferentes. Implementar o errado 
 - [ ] **FLUXO-02**: Empresa cadastrada à mão pelo Comercial segue exatamente o mesmo caminho, sem porta dos fundos (D2) — mesma exceção do FLUXO-01
 - [ ] **FLUXO-08**: A lista de serviços que exigem contrato é um dado configurável, não um `if` espalhado pelo código; empresa de serviço isento (Polos) vai direto para a operação e **não** aparece como pendente na tela do Administrativo (D9)
 - [x] **FLUXO-03**: A regra de pendências comerciais vive num único lugar, consumida por Comercial, HubSpot e Administrativo
-- [ ] **FLUXO-04**: O roteamento operacional vive num único lugar, sem a duplicação atual entre `ComercialController::store()` e `HubspotWebhookController::rotearImplementacao()`
-- [ ] **FLUXO-05**: Empresa que já tem `MlbEmpresa` (legada, já roteada) não é afetada por nada desta milestone
-- [ ] **FLUXO-06**: Reprocessar um evento antigo do HubSpot (`hubspot:reprocess-event`) não prende retroativamente uma empresa que já está operando
-- [ ] **FLUXO-07**: A extração dos services preserva o `gmail_colaborador` no caminho do Comercial (regressão identificada na pesquisa: `rotearImplementacao` roda em laço por serviço; `liberarEmpresa` não)
+- [x] **FLUXO-04**: O roteamento operacional vive num único lugar, sem a duplicação atual entre `ComercialController::store()` e `HubspotWebhookController::rotearImplementacao()`
+- [x] **FLUXO-05**: Empresa que já tem `MlbEmpresa` (legada, já roteada) não é afetada por nada desta milestone
+- [x] **FLUXO-06**: Reprocessar um evento antigo do HubSpot (`hubspot:reprocess-event`) não prende retroativamente uma empresa que já está operando
+- [x] **FLUXO-07**: A extração dos services preserva o `gmail_colaborador` no caminho do Comercial (regressão identificada na pesquisa: `rotearImplementacao` roda em laço por serviço; `liberarEmpresa` não)
 
 ### Estrutura de dados
 
@@ -164,7 +164,7 @@ São algoritmos diferentes que produzem hashes diferentes. Implementar o errado 
 
 ### Rede de segurança (D4)
 
-- [ ] **REDE-01**: Um admin consegue desligar o bloqueio do operacional sem precisar de deploy, voltando ao roteamento imediato
+- [x] **REDE-01**: Um admin consegue desligar o bloqueio do operacional sem precisar de deploy, voltando ao roteamento imediato
 - [ ] **REDE-02**: O sistema avisa quando uma empresa está parada aguardando assinatura além do prazo aceitável
 - [ ] **REDE-03**: Um admin consegue liberar uma empresa ao operacional manualmente quando a Clicksign falha, e essa liberação fica registrada com autor e motivo
 - [ ] **REDE-04**: Uma varredura periódica reconcilia com a Clicksign os contratos cujo webhook nunca chegou (D3)
@@ -230,10 +230,10 @@ Consolidado da pesquisa. Cada item trava a fase indicada:
 | FLUXO-01 | Fase 133 | Pending |
 | FLUXO-02 | Fase 133 | Pending |
 | FLUXO-03 | Fase 124 | Done |
-| FLUXO-04 | Fase 124 | Pending |
-| FLUXO-05 | Fase 124 | Pending |
-| FLUXO-06 | Fase 124 | Pending |
-| FLUXO-07 | Fase 124 | Pending |
+| FLUXO-04 | Fase 124 | Done |
+| FLUXO-05 | Fase 124 | Done |
+| FLUXO-06 | Fase 124 | Done |
+| FLUXO-07 | Fase 124 | Done |
 | DADOS-01 | Fase 125 | Pending |
 | DADOS-02 | Fase 125 | Pending |
 | DADOS-03 | Fase 129 | Pending |
@@ -254,7 +254,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada:
 | PDF-01 | Fase 126 | Pending |
 | PDF-02 | Fase 126 | Pending |
 | PDF-03 | Fase 126 | Pending |
-| REDE-01 | Fase 124 | Pending |
+| REDE-01 | Fase 124 | Done |
 | REDE-02 | Fase 130 | Pending |
 | REDE-03 | Fase 130 | Pending |
 | REDE-04 | Fase 130 | Pending |

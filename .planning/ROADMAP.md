@@ -1538,14 +1538,14 @@ Plans:
   4. Reprocessar um evento antigo do HubSpot (`hubspot:reprocess-event`) contra uma empresa que já tem `MlbEmpresa` continua sem criar nada duplicado nem prender a empresa retroativamente
   5. Existe uma chave `Configuracao` (`administrativo_bloqueio_ativo`, default `false`) que, ligada manualmente em ambiente de teste, interrompe a chamada automática ao roteamento — comprovado por teste isolado, ainda não usada em produção
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 - [x] 124-01-PLAN.md — Caracteriza o roteamento do cadastro manual antes da extração (gmail_colaborador, Incubadora, divergência D-08, inércia do interruptor)
 - [x] 124-02-PLAN.md — Caracteriza o roteamento do webhook HubSpot antes da extração (Incubadora, assimetria do gmail, FLUXO-05, FLUXO-06)
 - [x] 124-03-PLAN.md — Congela o baseline nominal e extrai `PendenciasComerciaisService` (FLUXO-03)
 - [x] 124-04-PLAN.md — Cria `EmpresaOperacionalRouter` com o interruptor inerte instalado (REDE-01)
-- [ ] 124-05-PLAN.md — Religa os dois controllers ao roteador, remove o código duplicado e fecha o gate de regressão
+- [x] 124-05-PLAN.md — Religa os dois controllers ao roteador, remove o código duplicado e fecha o gate de regressão
 
 > **Waves:** 1 = {124-01, 124-02} · 2 = {124-03, 124-04} · 3 = {124-05}
 > Os testes de caracterização (wave 1) existem ANTES de qualquer refatoração — é isso que caracteriza refatoração pura. O gate compara por NOME de teste (`baseline-antes.txt` × `baseline-depois-05.txt`), nunca por contagem.
