@@ -13,14 +13,13 @@ use App\Models\Publicacao;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Desempenho\CompanyScoreSnapshotReader;
+use App\Services\Desempenho\WarmDesempenhoDispatcher;
 use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\PlanoMetasPublicacaoService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
@@ -30,6 +29,7 @@ class PerformanceController extends Controller
         private DesempenhoScoreService $scoreService,
         private MetricPeriodResolver $periodResolver,
         private CompanyScoreSnapshotReader $companyScoreReader,
+        private WarmDesempenhoDispatcher $warmDispatcher,
     ) {}
 
     public function index(Request $request)
@@ -250,15 +250,13 @@ class PerformanceController extends Controller
         // query interna já filtrada (nunca de input cru — T-106-04);
         // `$mesReferencia` já validado por preg_match no bloco de resolução
         // de mês acima.
-        if (! empty($usuariosFrios)) {
-            $lockKey = 'desempenho.warm.lock.' . $mesReferencia->format('Y-m');
-            if (Cache::add($lockKey, true, now()->addMinutes(3))) {
-                Artisan::queue('desempenho:warm-cache', [
-                    '--mes'  => $mesReferencia->format('Y-m'),
-                    '--user' => array_values(array_unique($usuariosFrios)),
-                ]);
-            }
-        }
+        //
+        // 2026-08-07: o corpo saiu daqui pro `WarmDesempenhoDispatcher` —
+        // comportamento idêntico (mesma chave de lock, mesma janela, mesmos
+        // argumentos), só deixou de ser exclusivo desta tela. A carteira e o
+        // `/performance/{id}` passaram a usar o MESMO gate, que é o que faltava
+        // pra elas não pagarem o compute() síncrono na cara do usuário.
+        $this->warmDispatcher->agendarWarm($usuariosFrios, $mesReferencia);
 
         // DESEMP-10 · remove users sem carteira antes do sort.
         $rankingRaw = $rankingRaw->reject(fn ($r) => $r['sem_carteira'] === true);
@@ -1347,8 +1345,24 @@ class PerformanceController extends Controller
             ->whereDate('mes_referencia', $mesReferencia->toDateString())
             ->first();
 
+        // 2026-08-07 — gate quente/frio (mesma regra do ranking, Fase 106).
+        // Sem ele esta tela chamava `computeCached()` direto e, no cache frio,
+        // pagava o fan-out HTTP síncrono à Adman por empresa da carteira —
+        // 110s medidos para um profissional de 25 empresas. O navegador ficava
+        // "carregando pra sempre" (teto = max_execution_time de 300s).
+        //
+        // Snapshot mensal congelado tem precedência e NUNCA passa pelo gate:
+        // é leitura de tabela, custo zero, e é o que garante que competência
+        // consolidada abre instantânea.
+        $aquecendo = false;
+
         if ($snap && is_array($snap->breakdown_json) && isset($snap->breakdown_json['componentes'])) {
             $resultado = $snap->breakdown_json;
+        } elseif ($this->warmDispatcher->gateIndividual($user, $mesReferencia)) {
+            // Frio: NÃO computa aqui. Placeholder + warm em background; o front
+            // faz poll e preenche sozinho.
+            $aquecendo = true;
+            $resultado = ['calculando' => true];
         } else {
             // Ajuste 2026-07-10 (audit performance-lentidao): cacheado.
             $resultado = $this->scoreService->computeCached($user, $mesReferencia);
@@ -1401,8 +1415,10 @@ class PerformanceController extends Controller
         // fechados sem nenhuma consolidação, e snapshot anterior à Fase 122
         // também não tem linhas) — por isso `$temDetalheEmpresas` é derivado
         // da EXISTÊNCIA de linhas, nunca de `is_closed` isolado.
+        // Enquanto aquece não há nota a detalhar — e consultar aqui só somaria
+        // trabalho a uma tela que já está esperando o worker.
         $empresasScore = collect();
-        if ($ctx['periodo']['is_closed']) {
+        if ($ctx['periodo']['is_closed'] && ! $aquecendo) {
             $empresasScore = $this->companyScoreReader->paraUsuario($user->id, $mesReferencia);
         }
         $temDetalheEmpresas = $empresasScore->isNotEmpty();
@@ -1427,6 +1443,10 @@ class PerformanceController extends Controller
             'empresas_score'        => $empresasScore->values()->all(),
             'tem_detalhe_empresas'  => $temDetalheEmpresas,
             'empresas_score_resumo' => $resumoEmpresas,
+            // 2026-08-07 — true enquanto o warm sob-demanda roda em background;
+            // o front usa pra exibir "calculando…" e pollar. Mesmo nome de prop
+            // do ranking (Performance/Index.jsx) de propósito.
+            'aquecendo'             => $aquecendo,
         ]);
     }
 }

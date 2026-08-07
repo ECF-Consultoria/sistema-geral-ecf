@@ -1,8 +1,9 @@
+import { useEffect, useRef, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { router, Link } from '@inertiajs/react';
 import {
     ArrowLeft, Star, TrendingUp, TrendingDown, Coins,
-    Trophy, Sparkles, UserX, BookOpen, Info, Briefcase, ChevronRight,
+    Trophy, Sparkles, UserX, BookOpen, Info, Briefcase, ChevronRight, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import EmpresasScoreTabela from '@/Components/Desempenho/EmpresasScoreTabela';
@@ -342,6 +343,9 @@ export default function PerformanceShow({
     empresas_score = [],
     empresas_score_resumo = { entraram: 0, nao_entraram: 0 },
     tem_detalhe_empresas = false,
+    // 2026-08-07 — true enquanto o warm sob-demanda calcula a nota em
+    // background. Mesma prop do ranking (Performance/Index.jsx).
+    aquecendo = false,
 }) {
     const c = resultado?.componentes ?? {};
     // Pontos por indicador (régua 1-5) — o que decide a nota e, desde
@@ -390,6 +394,51 @@ export default function PerformanceShow({
     const voltarAoRanking = () => router.visit(
         route('performance.index', mesDetalhe ? { mes: mesDetalhe } : {}),
     );
+
+    // ── Poll de aquecimento (2026-08-07) ──────────────────────────────────
+    // Espelha o do ranking (Performance/Index.jsx, Fase 106): a tela abre NA
+    // HORA com "calculando…" e o worker preenche. Antes, esta página chamava
+    // computeCached() de forma síncrona e o navegador ficava pendurado até
+    // 110s no cache frio. Teto de tentativas pra não pollar pra sempre se o
+    // job de warm falhar; `document.hidden` evita queimar request em aba
+    // esquecida aberta.
+    const POLL_AQUECENDO_TETO = 20; // ~20 x 6s ≈ 2min
+    const tentativasAquecendoRef = useRef(0);
+    const [pollEsgotado, setPollEsgotado] = useState(false);
+
+    useEffect(() => {
+        if (!aquecendo) {
+            tentativasAquecendoRef.current = 0;
+            setPollEsgotado(false);
+            return undefined;
+        }
+        const id = setInterval(() => {
+            if (tentativasAquecendoRef.current >= POLL_AQUECENDO_TETO) {
+                clearInterval(id);
+                setPollEsgotado(true);
+                return;
+            }
+            if (!document.hidden) {
+                tentativasAquecendoRef.current += 1;
+                router.reload({
+                    only: ['resultado', 'aquecendo', 'empresas_score', 'tem_detalhe_empresas', 'empresas_score_resumo'],
+                    preserveScroll: true,
+                    preserveState: true,
+                });
+            }
+        }, 6000);
+        return () => clearInterval(id);
+    }, [aquecendo]);
+
+    const recarregarAquecendoManual = () => {
+        tentativasAquecendoRef.current = 0;
+        setPollEsgotado(false);
+        router.reload({
+            only: ['resultado', 'aquecendo', 'empresas_score', 'tem_detalhe_empresas', 'empresas_score_resumo'],
+            preserveScroll: true,
+            preserveState: true,
+        });
+    };
 
     return (
         <AppLayout title={`Desempenho — ${user?.name ?? 'Analista'}`}>
@@ -483,8 +532,33 @@ export default function PerformanceShow({
                     </div>
                 )}
 
-                {/* SEM CARTEIRA — bloco amarelo grande (DESEMP-10) */}
-                {semCarteira ? (
+                {/* AQUECENDO (2026-08-07) — a nota deste mês ainda não estava em
+                    cache e está sendo calculada no worker. Precisa vir ANTES do
+                    ramo normal: `resultado` chega vazio nesse estado, e os cards
+                    mostrariam "—" em toda parte, que se lê como "não tem nota"
+                    em vez de "ainda não calculei". */}
+                {aquecendo ? (
+                    <div className="rounded-2xl border border-white/[0.08] bg-ecf-card p-10 flex flex-col items-center text-center gap-3">
+                        <Loader2 size={36} className="text-ecf-yellow animate-spin" />
+                        <h3 className="text-white text-xl font-display font-bold">
+                            Calculando a nota de {mesExtenso(String(mes_selecionado ?? '').slice(0, 7))}…
+                        </h3>
+                        <p className="text-white/60 text-sm max-w-lg">
+                            Esta competência ainda não estava calculada. O cálculo percorre empresa
+                            por empresa da carteira e roda em segundo plano — a página se atualiza
+                            sozinha quando terminar, normalmente em menos de dois minutos.
+                        </p>
+                        {pollEsgotado && (
+                            <button
+                                type="button"
+                                onClick={recarregarAquecendoManual}
+                                className="mt-1 rounded-lg border border-white/[0.12] bg-white/[0.04] px-4 py-2 text-sm text-white/80 hover:bg-white/[0.08] transition-colors"
+                            >
+                                Ainda calculando — verificar de novo
+                            </button>
+                        )}
+                    </div>
+                ) : semCarteira ? (
                     <div className="rounded-2xl border border-ecf-yellow/30 bg-ecf-yellow/[0.05] p-10 flex flex-col items-center text-center gap-3">
                         <UserX size={40} className="text-ecf-yellow" />
                         <h3 className="text-white text-2xl font-display font-bold">

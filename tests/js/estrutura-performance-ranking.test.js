@@ -199,3 +199,76 @@ describe('/performance/{id} — escopo do card de faixa (Show.jsx)', () => {
         );
     });
 });
+
+// ── Terceira ocorrência do mesmo par: o card da carteira. ────────────────────
+describe('/admin/users/{id}/portfolio — escopo do card de nota (AdminCarteira.jsx)', () => {
+    const CART      = lerSemComentarios('resources/js/Pages/Portfolio/AdminCarteira.jsx');
+    const paginaBody = corpoDaFuncao(CART, 'AdminCarteira');
+    const cardBody   = corpoDaFuncao(CART, 'NotaMesCard');
+
+    test('NotaMesCard não referencia nada declarado dentro de AdminCarteira', () => {
+        const daPagina  = nomesDeclarados(paginaBody);
+        const doCard    = nomesDeclarados(cardBody);
+        const referidos = nomesReferenciados(cardBody);
+        const vazando   = [...referidos].filter((n) => daPagina.has(n) && !doCard.has(n));
+
+        assert.deepEqual(
+            vazando,
+            [],
+            `NotaMesCard referencia identificador(es) do escopo de AdminCarteira: `
+            + `${vazando.join(', ')}. Em runtime isso é ReferenceError. Passe por PROP.`,
+        );
+    });
+
+    test('o link "Ver como a nota foi formada" leva o mês', () => {
+        const link = cardBody.match(/route\(\s*['"]performance\.show['"][\s\S]{0,160}/);
+        assert.ok(link, 'link para performance.show não encontrado em NotaMesCard');
+        assert.match(link[0], /mesDetalhe/, 'o link deve levar o mês selecionado');
+        assert.match(
+            paginaBody,
+            /<NotaMesCard[^>]*mesDetalhe=\{/,
+            'AdminCarteira precisa repassar mesDetalhe ao NotaMesCard',
+        );
+    });
+});
+
+// ── Gate de LENTIDÃO (2026-08-07) ───────────────────────────────────────────
+// `DesempenhoScoreService::compute()` faz HTTP síncrono à Adman por empresa —
+// 110s medidos para um profissional de 25 empresas num mês frio. Nenhuma tela
+// pode chamar `computeCached()` sem antes passar pelo gate quente/frio, senão
+// o navegador pendura até o `max_execution_time` de 300s do php-fpm.
+describe('telas de desempenho nunca computam score frio de forma síncrona', () => {
+    const CONTROLLERS = [
+        ['app/Http/Controllers/PerformanceController.php', 'PerformanceController'],
+        ['app/Http/Controllers/PortfolioController.php', 'PortfolioController'],
+    ];
+
+    for (const [caminho, nome] of CONTROLLERS) {
+        test(`${nome} usa o WarmDesempenhoDispatcher`, () => {
+            const src = lerSemComentarios(caminho);
+            assert.match(
+                src,
+                /WarmDesempenhoDispatcher\s+\$warmDispatcher/,
+                `${nome} precisa injetar o WarmDesempenhoDispatcher`,
+            );
+            assert.match(
+                src,
+                /warmDispatcher->(gateIndividual|agendarWarm)\(/,
+                `${nome} precisa passar pelo gate antes de computar`,
+            );
+        });
+    }
+
+    test('o gate individual precede o computeCached nas duas telas de detalhe', () => {
+        for (const [caminho, nome] of CONTROLLERS) {
+            const src = lerSemComentarios(caminho);
+            // Todo `computeCached` numa tela de detalhe tem que estar no ramo
+            // `else` de um `gateIndividual` — nunca solto.
+            const ramos = [...src.matchAll(/gateIndividual\([\s\S]{0,600}?computeCached\(/g)];
+            assert.ok(
+                ramos.length > 0,
+                `${nome}: nenhum computeCached protegido por gateIndividual encontrado`,
+            );
+        }
+    });
+});

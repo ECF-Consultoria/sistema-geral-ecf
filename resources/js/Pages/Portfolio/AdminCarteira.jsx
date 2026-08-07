@@ -1,10 +1,10 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Link, router } from '@inertiajs/react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
     ArrowLeft, Search, TrendingUp, TrendingDown, Building2,
-    Briefcase, DollarSign, Calendar, Users, Trophy, Sparkles, ChevronRight, Info,
+    Briefcase, DollarSign, Calendar, Users, Trophy, Sparkles, ChevronRight, Info, Loader2,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
 import { FonteBadge, StatusBadge, VarBadge } from '@/Pages/Portfolio/components/CarteiraBadges';
@@ -152,10 +152,34 @@ function ClientesBadge({ variacao }) {
  * antes de cálculo cacheado) — ver o comentário no controller. Aqui é só
  * apresentação; nenhum número é recalculado nesta tela.
  */
-function NotaMesCard({ score, userId }) {
+// `mesDetalhe` vem por PROP (o link daqui não enxerga o escopo do
+// AdminCarteira); `score.calculando` = nota ainda sendo apurada no worker.
+function NotaMesCard({ score, userId, mesDetalhe = null }) {
     const nota = score?.nota_final;
     const conta = formatContaNota(score?.pontos_componentes, nota);
     const semCarteira = score?.sem_carteira === true;
+    const calculando = score?.calculando === true;
+
+    // Enquanto calcula, o card mostra o estado em vez de "—": um traço aqui se
+    // lê como "este profissional não tem nota", que é outra coisa.
+    if (calculando) {
+        return (
+            <div className="rounded-2xl border border-white/[0.08] bg-ecf-card p-5">
+                <div className="flex items-center gap-2 text-white/50 text-[11px] uppercase tracking-wider font-semibold">
+                    <Trophy size={13} />
+                    Ponto do mês
+                </div>
+                <div className="flex items-center gap-2 mt-3">
+                    <Loader2 size={18} className="text-ecf-yellow animate-spin shrink-0" />
+                    <span className="text-white/70 text-sm font-medium">Calculando…</span>
+                </div>
+                <p className="text-white/40 text-xs mt-2 leading-relaxed">
+                    Esta competência ainda não estava calculada. Roda em segundo plano,
+                    empresa por empresa — o card se preenche sozinho.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="rounded-2xl border border-white/[0.08] bg-ecf-card p-5">
@@ -206,7 +230,7 @@ function NotaMesCard({ score, userId }) {
                 que a outra tem de exclusivo. */}
             {userId && (
                 <Link
-                    href={route('performance.show', userId)}
+                    href={route('performance.show', mesDetalhe ? { user: userId, mes: mesDetalhe } : { user: userId })}
                     className="inline-flex items-center gap-1.5 text-ecf-yellow text-xs font-semibold hover:underline mt-2.5 group"
                 >
                     Ver como a nota foi formada
@@ -239,6 +263,9 @@ function VariacaoChip({ pct, size = 'sm' }) {
 export default function AdminCarteira({
     profissional, resumo, empresas = [], periodo, contexto = 'todos', bonus = null,
     score = null, tem_detalhe_empresas = false,
+    // 2026-08-07 — true enquanto o warm sob-demanda calcula a nota em
+    // background. Mesma prop do ranking e do /performance/{id}.
+    aquecendo = false,
 }) {
     const [busca, setBusca] = useState('');
     const [sortCol, setSortCol] = useState('faturamento');
@@ -261,6 +288,55 @@ export default function AdminCarteira({
             if (v !== undefined && v !== null && v !== '') params.set(k, v);
         });
         router.visit(window.location.pathname + '?' + params.toString(), { preserveScroll: true });
+    };
+
+    // Mês a repassar no link "Ver como a nota foi formada" — null no mês
+    // corrente, pra não trocar `current_month` pelo ramo `YYYY-MM` do
+    // MetricPeriodResolver no destino.
+    const mesDetalhe = (!periodo?.em_curso && periodo?.mes_selecionado)
+        ? String(periodo.mes_selecionado).slice(0, 7)
+        : null;
+
+    // ── Poll de aquecimento (2026-08-07) ──────────────────────────────────
+    // Espelha o do ranking (Fase 106) e o do /performance/{id}. Sem isso esta
+    // tela chamava computeCached() de forma síncrona e pendurava o navegador
+    // até 110s no cache frio — era o "carregando infinito" ao trocar o mês.
+    const POLL_AQUECENDO_TETO = 20; // ~20 x 6s ≈ 2min
+    const tentativasAquecendoRef = useRef(0);
+    const [pollEsgotado, setPollEsgotado] = useState(false);
+
+    useEffect(() => {
+        if (!aquecendo) {
+            tentativasAquecendoRef.current = 0;
+            setPollEsgotado(false);
+            return undefined;
+        }
+        const id = setInterval(() => {
+            if (tentativasAquecendoRef.current >= POLL_AQUECENDO_TETO) {
+                clearInterval(id);
+                setPollEsgotado(true);
+                return;
+            }
+            if (!document.hidden) {
+                tentativasAquecendoRef.current += 1;
+                router.reload({
+                    only: ['score', 'aquecendo', 'tem_detalhe_empresas', 'empresas'],
+                    preserveScroll: true,
+                    preserveState: true,
+                });
+            }
+        }, 6000);
+        return () => clearInterval(id);
+    }, [aquecendo]);
+
+    const recarregarAquecendoManual = () => {
+        tentativasAquecendoRef.current = 0;
+        setPollEsgotado(false);
+        router.reload({
+            only: ['score', 'aquecendo', 'tem_detalhe_empresas', 'empresas'],
+            preserveScroll: true,
+            preserveState: true,
+        });
     };
 
     const empresasView = useMemo(() => {
@@ -408,7 +484,7 @@ export default function AdminCarteira({
                         icon={DollarSign}
                         accent="text-white"
                     />
-                    <NotaMesCard score={score} userId={profissional?.id} />
+                    <NotaMesCard score={score} userId={profissional?.id} mesDetalhe={mesDetalhe} />
                     <KpiCard
                         label="Clientes na carteira"
                         value={resumo?.total_empresas ?? 0}
