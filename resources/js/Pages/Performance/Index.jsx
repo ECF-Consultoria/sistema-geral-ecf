@@ -232,11 +232,18 @@ export default function PerformanceIndex({
     // /performance/{user} caía no default (mês em curso) e o usuário tinha que
     // reescolher no dropdown do Show a competência que acabara de selecionar.
     //
-    // Só anexa quando NÃO é o mês corrente: `?mes=` do mês em curso resolveria
-    // pelo ramo `YYYY-MM` do MetricPeriodResolver em vez do `current_month`
+    // `null` quando é o mês corrente: `?mes=` do mês em curso resolveria pelo
+    // ramo `YYYY-MM` do MetricPeriodResolver em vez do `current_month`
     // (mode=operational, baseline de janela parcial), trocando o modo da tela
     // sem o usuário ter pedido. No mês corrente o default já é o certo.
-    const paramsDoMes = () => (mes_selecionado && !mes_em_curso ? { mes: mes_selecionado } : {});
+    //
+    // Vai como PROP para `RankingConsultoria` — quem monta a linha clicável é
+    // aquele componente, não este. A primeira versão desta mudança usava um
+    // helper declarado aqui direto no `onClick` de lá: identificador fora de
+    // escopo, o handler lançava e o clique não fazia nada. Não há linter neste
+    // projeto para pegar isso e o build passa igual; o gate é
+    // `tests/js/estrutura-performance-ranking.test.js`.
+    const mesDetalhe = (mes_selecionado && !mes_em_curso) ? mes_selecionado : null;
 
     // Phase 46-03 — user selecionado abre o EvolucaoDrawer à direita
     const [userSelecionado, setUserSelecionado] = useState(null);
@@ -514,7 +521,7 @@ export default function PerformanceIndex({
                         </p>
                     </div>
                 ) : (
-                    <RankingConsultoria ranking={rankingFiltrado} onSelectUser={setUserSelecionado} />
+                    <RankingConsultoria ranking={rankingFiltrado} onSelectUser={setUserSelecionado} mesDetalhe={mesDetalhe} />
                 )}
 
                 {/* DESEMP-10 · Bloco de transparência — excluídos por falta de carteira */}
@@ -564,7 +571,10 @@ export default function PerformanceIndex({
 // Sem menções às métricas v1 (crescimento_ajustado_pct, atingimento_meta_pct,
 // recuperacao, execucao_ads) — big bang DESEMP-14.
 // ═══════════════════════════════════════════════════════════════════════
-function RankingConsultoria({ ranking, onSelectUser }) {
+// `mesDetalhe` — 'YYYY-MM' quando o ranking está num mês que NÃO é o corrente,
+// senão null. Precisa chegar por prop: o handler da linha roda no escopo DESTE
+// componente e não enxerga nada declarado no `PerformanceIndex`.
+function RankingConsultoria({ ranking, onSelectUser, mesDetalhe = null }) {
     return (
         <div className="rounded-2xl border border-white/[0.06] bg-ecf-card overflow-hidden">
             <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_6.5rem_6rem_5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/40 text-[11px] font-semibold uppercase tracking-wide">
@@ -599,7 +609,7 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 idx === 0 && 'bg-ecf-yellow/[0.03]',
                                 calculando ? 'cursor-default' : 'hover:bg-white/[0.04] cursor-pointer',
                             )}
-                            onClick={() => { if (!calculando) router.visit(route('performance.show', { user: u.id, ...paramsDoMes() })); }}
+                            onClick={() => { if (!calculando) router.visit(route('performance.show', mesDetalhe ? { user: u.id, mes: mesDetalhe } : { user: u.id })); }}
                         >
                             {/* Posição */}
                             <div className="flex items-center justify-center">
