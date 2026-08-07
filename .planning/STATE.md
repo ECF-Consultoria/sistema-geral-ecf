@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: Defining requirements
-stopped_at: Fase 124 — contexto capturado
-last_updated: "2026-08-07T17:15:36.865Z"
-last_activity: 2026-08-07 — Milestone v22.0 started
+status: executing
+stopped_at: Completed 124-01-PLAN.md
+last_updated: "2026-08-07T18:44:27.938Z"
+last_activity: 2026-08-07
 progress:
   total_phases: 10
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 5
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Milestone complete
+**Current focus:** Phase 124 — extra-o-de-services-sem-mudar-comportamento-kill-switch-inst
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-08-07 — Milestone v22.0 started
+Phase: 124 (extra-o-de-services-sem-mudar-comportamento-kill-switch-inst) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-08-07
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
@@ -275,6 +275,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 123 P06 | 1h53min | 2 tasks | 3 files |
 | Phase 123 P07 | 10min | 2 tasks | 4 files |
 | Phase 123 P08 | 15min | 2 tasks | 5 files |
+| Phase 124 P01 | 20min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -847,8 +848,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-07T17:15:36.831Z
-Stopped at: Fase 124 — contexto capturado
+Last session: 2026-08-07T18:44:27.904Z
+Stopped at: Completed 124-01-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
