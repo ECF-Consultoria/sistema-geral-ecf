@@ -127,7 +127,7 @@ São algoritmos diferentes que produzem hashes diferentes. Implementar o errado 
 - [ ] **FLUXO-01**: Empresa criada pelo webhook HubSpot deixa de ser roteada automaticamente ao operacional e passa a aguardar a etapa administrativa — **exceto** serviços isentos de contrato (D9)
 - [ ] **FLUXO-02**: Empresa cadastrada à mão pelo Comercial segue exatamente o mesmo caminho, sem porta dos fundos (D2) — mesma exceção do FLUXO-01
 - [ ] **FLUXO-08**: A lista de serviços que exigem contrato é um dado configurável, não um `if` espalhado pelo código; empresa de serviço isento (Polos) vai direto para a operação e **não** aparece como pendente na tela do Administrativo (D9)
-- [ ] **FLUXO-03**: A regra de pendências comerciais vive num único lugar, consumida por Comercial, HubSpot e Administrativo
+- [x] **FLUXO-03**: A regra de pendências comerciais vive num único lugar, consumida por Comercial, HubSpot e Administrativo
 - [ ] **FLUXO-04**: O roteamento operacional vive num único lugar, sem a duplicação atual entre `ComercialController::store()` e `HubspotWebhookController::rotearImplementacao()`
 - [ ] **FLUXO-05**: Empresa que já tem `MlbEmpresa` (legada, já roteada) não é afetada por nada desta milestone
 - [ ] **FLUXO-06**: Reprocessar um evento antigo do HubSpot (`hubspot:reprocess-event`) não prende retroativamente uma empresa que já está operando
@@ -229,7 +229,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada:
 |-------------|------|--------|
 | FLUXO-01 | Fase 133 | Pending |
 | FLUXO-02 | Fase 133 | Pending |
-| FLUXO-03 | Fase 124 | Pending |
+| FLUXO-03 | Fase 124 | Done |
 | FLUXO-04 | Fase 124 | Pending |
 | FLUXO-05 | Fase 124 | Pending |
 | FLUXO-06 | Fase 124 | Pending |
