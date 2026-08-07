@@ -15,7 +15,30 @@ Dar ao admin visibilidade total sobre operações internas: o sync Adman, o fech
 financeiro de cada empresa e a comunicação interna (notificações de metas e mensagens
 manuais) — sem precisar de acesso direto ao servidor.
 
-## Current Milestone: v21.0 Desempenho por nota individual de empresa
+## Current Milestone: v22.0 Administrativo + Clicksign
+
+**Goal:** Contrato assinado passa a ser a porta de entrada do operacional. Hoje a empresa vai direto do fechamento comercial para o setor operacional; passa a existir uma etapa administrativa no meio — gerar contrato, enviar pela Clicksign, aguardar a assinatura de todas as partes e só então liberar.
+
+**Target features (fases a partir da 124):**
+- **Refatoração sem quebrar o fluxo atual:** extrair `PendenciasComerciaisService` e `EmpresaOperacionalRouter` dos dois controllers que hoje duplicam a lógica (`ComercialController::store()` e `HubspotWebhookController::rotearImplementacao()`).
+- **Estrutura de dados administrativa:** `contrato_assinaturas`, `contrato_assinatura_signatarios` e `contrato_assinatura_eventos` (esta última com `payload_hash` único, para idempotência de webhook).
+- **Integração Clicksign (API v3, conceito de Envelope):** client HTTP, criação de envelope, documento, signatários, requisitos e notificação. Sandbox até homologação.
+- **PDF do contrato** via DomPDF, com o texto jurídico isolado para troca futura.
+- **Webhook Clicksign → liberação do operacional**, idempotente por evento.
+- **Tela administrativa de contratos** + permissão `admin.contratos` + badge de status na listagem Comercial.
+- **Rede de segurança (não estava no plano original, entrou como requisito de primeira classe):** kill switch sem deploy, alerta de contrato preso além de N dias, e liberação manual pelo admin com registro de quem liberou e por quê.
+
+**Key context:**
+- Plano canônico: `plano-administrativo-clicksign.md` (raiz) · Requirements: `.planning/REQUIREMENTS-v22.md`
+- **Risco central:** a partir do deploy, nenhuma empresa nova chega ao operacional até o contrato ser assinado. Se a Clicksign falhar, ficar em sandbox ou o webhook não chegar, a operação para de receber empresas **sem alarme**. Por isso a rede de segurança é requisito, não melhoria futura, e a ordem de entrega precisa permitir ir a produção em modo "observa mas não bloqueia" antes de ligar o bloqueio.
+- **Código recém-mexido:** o caminho a ser alterado (`criarEmpresa` → `persistirContratos` → `rotearImplementacao`) teve 3 bugs corrigidos em 05-06/08/2026, um deles zerando contratos de R$ 3.000 (`hs_mrr = 0` lido como valor). Ler as quick tasks `260805-eqk`, `260805-ohs` e `fast-260806` antes de planejar mudanças ali.
+- **Idempotência:** `persistirContratos()` já tem guard por `hubspot_line_item_id` que faz replay ignorar contrato existente — precedente direto para a idempotência exigida no webhook Clicksign.
+- **Verificado contra o código:** `ComercialController::servicoDisparaImplementacao()` existe e é reusado pelo webhook; `store()` cria `MlbEmpresa` inline; `rotearImplementacao()` já tem guard anti-duplicidade.
+- **Fora de escopo:** Conta Azul, regularidade financeira, fechamento mensal progressivo.
+- Outro dev trabalha na mesma branch `main` em sessão paralela e deploya com frequência — árvore compartilhada.
+- pt-BR em tudo
+
+## Milestone anterior: v21.0 Desempenho por nota individual de empresa
 
 **Goal:** Trocar a granularidade do motor de bonificação: em vez de agregar os componentes da carteira e só então aplicar a régua, calcular primeiro a nota de **cada empresa** (`nota_empresa = (NPS + faturamento + margem_pp) / 3`) e derivar a nota do profissional como a média das notas das empresas. Junto disso, a dimensão de margem migra de variação relativa para **pontos percentuais** — o que também resolve, como opção (A), a pendência de fragilidade estrutural da métrica de margem do bônus.
 
