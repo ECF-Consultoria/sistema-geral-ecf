@@ -8,11 +8,11 @@ use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
 use App\Models\HubspotLineItemMapping;
 use App\Models\MlbEmpresa;
-use App\Models\MlbImplementacao;
 use App\Models\Servico;
 use App\Models\Setor;
 use App\Notifications\EmpresaCadastradaNotification;
 use App\Services\Comercial\PendenciasComerciaisService;
+use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -519,6 +519,7 @@ class ComercialController extends Controller
         $servicosCriados = collect();
 
         DB::transaction(function () use ($validated, &$company, &$servicosCriados) {
+            $router = app(EmpresaOperacionalRouter::class);
             // (a) Cria company com status pendente
             $company = Company::create([
                 'name'                => $validated['nome'],
@@ -558,39 +559,13 @@ class ComercialController extends Controller
                 $servicosCriados->push($servico);
             }
 
-            // (c) Roteamento Phase 13 PRESERVADO — inspeciona NOMES dos serviços
-            // (e não slugs legacy) via helper estático.
-            $tiposImplementacao = $servicosCriados
-                ->map(fn($s) => self::servicoDisparaImplementacao($s->nome))
-                ->filter()
-                ->unique()
-                ->values();
-
-            foreach ($tiposImplementacao as $tipo) {
-                if ($tipo === 'polos') {
-                    $mlbEmp = MlbEmpresa::create([
-                        'nome'       => $company->name,
-                        'tipo'       => 'POLO',
-                        'projeto'    => 'POLOS',
-                        'company_id' => $company->id,
-                    ]);
-                    $this->criarImplementacaoPolo($mlbEmp, $validated);
-                } elseif ($tipo === 'assessoria') {
-                    MlbEmpresa::create([
-                        'nome'       => $company->name,
-                        'tipo'       => 'ASSESSORIA',
-                        'company_id' => $company->id,
-                    ]);
-                } elseif ($tipo === 'incubadora') {
-                    MlbEmpresa::create([
-                        'nome'       => $company->name,
-                        'tipo'       => 'INCUBADORA',
-                        'company_id' => $company->id,
-                    ]);
-                }
-                // Publicidade/Gestão/Publicação (helper retorna null) — sem
-                // mlb_empresas, apenas company (COM-06 preservado).
-            }
+            // (c) Roteamento — Fase 124 (FLUXO-04): a mecânica que antes vivia
+            // inline aqui (dedup por TIPO, sem guard entre iterações — D-08)
+            // agora mora no EmpresaOperacionalRouter, lugar único
+            // compartilhado com o caminho HubSpot. `$validated` é o pacote
+            // opcional do wizard (D-02) de onde a factory de Polos lê o
+            // `gmail_colaborador`.
+            $router->rotearCadastro($company, $servicosCriados->pluck('nome'), $validated);
         });
 
         // (4) Activity log — fora da transaction para não afetar rollback
@@ -833,28 +808,4 @@ class ComercialController extends Controller
         };
     }
 
-
-    /**
-     * Cria uma MlbImplementacao para uma empresa POLO com os dados padrão
-     * configurados em MlbConfiguracao::implementacaoPadroes().
-     *
-     * Lógica extraída de MlbImplementacaoController::criar() (linhas 192-207)
-     * para reutilização no fluxo do Comercial sem duplicação de código (D-20).
-     *
-     * @param  MlbEmpresa  $empresa  Empresa POLO recém-criada.
-     * @param  array        $handoff  Campos do wizard (usa só gmail_colaborador aqui).
-     * @return MlbImplementacao
-     */
-    /**
-     * Phase 35 Plan 35-02 — proxy para `MlbImplementacaoFactory::criarParaPolo`.
-     *
-     * Lógica original extraída para a factory estática reutilizável (D-05),
-     * permitindo o `HubspotWebhookController` chamar o mesmo fluxo quando um
-     * deal "Fechado Ganho" do HubSpot dispara cadastro automático. Mantemos
-     * o método private aqui para preservar a API interna do controller.
-     */
-    private function criarImplementacaoPolo(MlbEmpresa $empresa, array $handoff = []): MlbImplementacao
-    {
-        return \App\Services\MlbImplementacaoFactory::criarParaPolo($empresa, $handoff);
-    }
 }
