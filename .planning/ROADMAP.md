@@ -1587,11 +1587,13 @@ Plans:
 ### Phase 128: Gatilhos do fluxo em modo observação (v22.0)
 
 **Goal:** A decisão de gerar contrato passa a acontecer nos dois pontos de entrada de empresa, rodando lado a lado com o roteamento automático de hoje — sem desligar nada ainda.
-**Requirements**: REDE-06
+**Requirements**: REDE-06, FLUXO-08
 **Depends on:** Fases 124, 127
+**Decisões a resolver aqui:** A4 (quais das 7 pendências valem para cadastro manual) e **A5 (quais serviços, além de Polos, são isentos de contrato)** — A5 precisa estar resolvida ANTES de escrever o desvio, porque é ela que define quem passa por ele
 **Success Criteria** (o que deve ser VERDADE):
 
-  1. Empresa criada pelo webhook HubSpot passa por `PendenciasComerciaisService::calcular` como GATE administrativo; sem pendência, `ContratoClicksignService::iniciarParaEmpresa()` é chamado de verdade (envelope real criado no sandbox) — e a empresa CONTINUA sendo roteada ao operacional na mesma hora, porque `administrativo_bloqueio_ativo` está desligado
+  0. A lista de serviços que EXIGEM contrato é um dado configurável, não um `if` espalhado; empresa cujo serviço é **Polos** não entra no fluxo administrativo em momento nenhum e continua indo direto para a operação (D9 — Polos não tem contrato), e não aparece como pendente na tela do Administrativo
+  1. Empresa criada pelo webhook HubSpot **cujo serviço exige contrato** passa por `PendenciasComerciaisService::calcular` como GATE administrativo; sem pendência, `ContratoClicksignService::iniciarParaEmpresa()` é chamado de verdade (envelope real criado no sandbox) — e a empresa CONTINUA sendo roteada ao operacional na mesma hora, porque `administrativo_bloqueio_ativo` está desligado
   2. Empresa cadastrada à mão pelo Comercial passa pelo mesmo GATE e pelo mesmo disparo de contrato que o caminho HubSpot — decisão A4 (quais das 7 pendências valem para cadastro manual) tomada e aplicada
   3. Com pendência comercial em aberto segundo a regra do GATE, a empresa fica marcada `aguardando_comercial` e nenhuma chamada é feita à Clicksign
   4. Em nenhum momento desta fase uma empresa deixa de ser roteada ao operacional imediatamente — o corte só existe no código, atrás da flag desligada; testável ligando a flag manualmente em ambiente de teste e observando o roteamento parar só ali
@@ -1669,8 +1671,9 @@ Plans:
 **Depends on:** Fases 128, 130, 131, 132
 **Success Criteria** (o que deve ser VERDADE):
 
-  1. Com `administrativo_bloqueio_ativo=true`, uma empresa criada pelo webhook HubSpot já não é roteada ao operacional na mesma transação — fica aguardando a etapa administrativa
+  1. Com `administrativo_bloqueio_ativo=true`, uma empresa criada pelo webhook HubSpot **cujo serviço exige contrato** já não é roteada ao operacional na mesma transação — fica aguardando a etapa administrativa
   2. Uma empresa cadastrada à mão pelo Comercial segue exatamente o mesmo caminho, sem atalho
+  2b. Empresa de **Polos continua indo direto para a operação mesmo com o bloqueio ligado** (D9 — Polos não tem contrato); provado por teste com a chave ligada, e conferido em produção no dia do rollout
   3. Uma empresa só chega ao operacional depois que o webhook confirma assinatura completa (reconsultada) ou um admin libera manualmente com motivo registrado
   4. Desligar a chave `administrativo_bloqueio_ativo` sem deploy volta o sistema ao roteamento imediato de antes, imediatamente
 

@@ -58,7 +58,34 @@ Decisão do usuário (2026-08-07, durante o discuss-phase da Fase 124). A empres
 - O campo `gmail_colaborador` sai do formulário do Comercial **na mesma entrega** em que o Administrativo ganha onde preenchê-lo (ADM-03) — nunca antes, para não abrir uma janela em que ninguém consegue cadastrar o dado.
 - A Fase 124 **não muda**: refatoração pura preserva o comportamento de hoje, inclusive o `gmail_colaborador` vindo do Comercial. O teste de regressão daquela fase fixa um comportamento **transitório**, não um contrato permanente.
 
+### D9 — POLOS NÃO TEM CONTRATO: fica fora do gate da Clicksign
+Decisão do usuário (2026-08-07, durante o plan-phase da Fase 124): *"Descobri agora que empresas de polos não é feito contrato, então para as empresas de polos se mantém o fluxo atual do comercial direto para o setor polos."*
+
+**Empresa cujo serviço é Polos continua indo direto para a operação, sem contrato, sem Clicksign, sem etapa administrativa.** O bloqueio da Fase 133 não se aplica a ela.
+
+**Critério é o SERVIÇO, não o caminho de entrada.** ⚠️ *Assunção a confirmar:* empresas Polos também chegam pelo webhook HubSpot — o catálogo `hubspot_line_item_mapping` tem `Polo`, `Polo Iniciante`, `Polo Pleno` e `Polo Pré-Pleno` mapeados para o serviço Polos. A isenção foi registrada como valendo para os dois caminhos. Se a intenção era isentar só o cadastro manual, corrigir antes da Fase 128.
+
+**Consequências:**
+- **FLUXO-01 e FLUXO-02 ganham exceção explícita** para serviços que não geram contrato.
+- As Fases **128** (desvio inerte) e **133** (liga o bloqueio) precisam da regra "quais serviços passam pelo contrato" como dado, não como `if` espalhado.
+- A tela do Administrativo (Fase 131) não deve listar empresa Polos como pendente de contrato — senão vira fila fantasma que nunca esvazia.
+- Fica em aberto **quais outros serviços** além de Polos não têm contrato (Publicidade? Publicação?) — ver A5.
+
+### D10 — A divergência de "duas fichas de operação" é preservada, não corrigida
+Descoberta pela pesquisa da Fase 124 (2026-08-07): quando uma empresa contrata dois serviços que geram ficha na mesma submissão, o Comercial cria **duas** `MlbEmpresa` (não tem guard no laço) e o HubSpot cria **uma** (guard entre iterações).
+
+**Decisão: preservar a diferença.** A Fase 124 é refatoração pura e não pode mudar comportamento observável.
+
+**Por que isso é seguro:** o caso é **inalcançável na prática**.
+- Medido em produção (2026-08-07): **zero** empresas com 2+ fichas e **zero** com contrato ativo em 2+ serviços que geram ficha.
+- Regra de negócio do usuário: empresa de Polos nunca tem outro serviço junto.
+- Só Polos, Assessoria e Incubadora geram ficha (`servicoDisparaImplementacao()`); os pares que de fato ocorrem — Gestão Mercado Livre + Gestão Shopee — retornam `null` e não geram ficha nenhuma.
+- Resíduo teórico: Assessoria + Incubadora juntas. Nunca ocorreu; fica coberto por um teste de caracterização que torna a divergência visível se alguém a alcançar.
+
 ## DECISÕES EM ABERTO (resolver no discuss-phase da fase indicada)
+
+**A5 — Quais serviços, além de Polos, não passam pelo contrato?** (ver D9). O catálogo tem 9 serviços ativos: Publicação, Polos, Assessoria, Incubadora, Publicidade, Gestão, Mentoria, Implantação, Gestão de ADS Shopee. Polos está confirmado como isento. Definir a lista completa **antes da Fase 128**, porque é ela que constrói o desvio.
+
 
 **A1 — Algoritmo de validação do webhook (BLOQUEANTE, fase do webhook).**
 As duas pesquisas chegaram a fórmulas **contraditórias** a partir da mesma documentação oficial, ambas com confiança MÉDIA:
@@ -77,8 +104,9 @@ São algoritmos diferentes que produzem hashes diferentes. Implementar o errado 
 
 ### Fluxo administrativo e refatoração
 
-- [ ] **FLUXO-01**: Empresa criada pelo webhook HubSpot deixa de ser roteada automaticamente ao operacional e passa a aguardar a etapa administrativa
-- [ ] **FLUXO-02**: Empresa cadastrada à mão pelo Comercial segue exatamente o mesmo caminho, sem porta dos fundos (D2)
+- [ ] **FLUXO-01**: Empresa criada pelo webhook HubSpot deixa de ser roteada automaticamente ao operacional e passa a aguardar a etapa administrativa — **exceto** serviços isentos de contrato (D9)
+- [ ] **FLUXO-02**: Empresa cadastrada à mão pelo Comercial segue exatamente o mesmo caminho, sem porta dos fundos (D2) — mesma exceção do FLUXO-01
+- [ ] **FLUXO-08**: A lista de serviços que exigem contrato é um dado configurável, não um `if` espalhado pelo código; empresa de serviço isento (Polos) vai direto para a operação e **não** aparece como pendente na tela do Administrativo (D9)
 - [ ] **FLUXO-03**: A regra de pendências comerciais vive num único lugar, consumida por Comercial, HubSpot e Administrativo
 - [ ] **FLUXO-04**: O roteamento operacional vive num único lugar, sem a duplicação atual entre `ComercialController::store()` e `HubspotWebhookController::rotearImplementacao()`
 - [ ] **FLUXO-05**: Empresa que já tem `MlbEmpresa` (legada, já roteada) não é afetada por nada desta milestone

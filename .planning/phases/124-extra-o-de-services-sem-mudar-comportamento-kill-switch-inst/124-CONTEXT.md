@@ -55,6 +55,20 @@ Acabar com a duplicação de regra entre os dois caminhos de entrada de empresa 
 
 - **D-07:** O guard existente é **reaproveitado como está**, não reescrito. Ele é o backstop real contra liberação duplicada e cobre também o caso do `hubspot:reprocess-event` (FLUXO-06): reprocessar evento antigo de empresa que já tem ficha não cria nada.
 
+- **D-08:** A **divergência de "duas fichas"** entre os caminhos é **preservada**, não corrigida. *(decisão do usuário; registrada como D10 em `REQUIREMENTS-v22.md`)*
+
+  A pesquisa descobriu que, com dois serviços que geram ficha na mesma submissão, o Comercial cria **duas** `MlbEmpresa` (sem guard no laço) e o HubSpot cria **uma** (guard entre iterações). Aplicar o guard literalmente no laço unificado faria o Comercial passar a criar uma — mudança de comportamento, proibida nesta fase.
+
+  **Seguro porque o caso é inalcançável:** medido em produção (2026-08-07) — zero empresas com 2+ fichas e zero com contrato ativo em 2+ serviços que geram ficha. Só Polos/Assessoria/Incubadora geram ficha; os pares que de fato ocorrem (Gestão Mercado Livre + Gestão Shopee) retornam `null` e não geram nenhuma. E empresa de Polos nunca vem acompanhada (regra do usuário).
+
+  **Ação no plano:** um teste de caracterização torna a divergência visível, para que ninguém a "conserte" sem decidir.
+
+### Regra de negócio descoberta durante o planejamento (impacto além desta fase)
+
+- **D-09 (milestone, não fase): POLOS NÃO TEM CONTRATO.** Decisão do usuário: *"empresas de polos não é feito contrato, então para as empresas de polos se mantém o fluxo atual do comercial direto para o setor polos"*. Registrada como **D9** em `REQUIREMENTS-v22.md`, com o requisito novo **FLUXO-08** e a decisão aberta **A5** (quais outros serviços são isentos), atribuída à Fase 128.
+
+  **Impacto nesta fase: nenhum no código.** A Fase 124 não liga bloqueio nenhum — o desvio é da 128 e a ativação da 133. Mas o roteador extraído aqui é o lugar onde a isenção vai morar, então quem planejar deve deixar o ponto de leitura do interruptor preparado para consultar "este serviço exige contrato?", sem implementar a regra agora.
+
 ### Claude's Discretion
 
 O usuário pediu explicitamente para não decidir detalhe de implementação (*"não entendi essa pergunta"* na assinatura do método). Ficam a meu critério, já registrados acima onde relevante:
@@ -65,9 +79,20 @@ O usuário pediu explicitamente para não decidir detalhe de implementação (*"
 
 ### Gate de regressão — como provar "zero mudança de comportamento"
 
-**Achado que muda a estratégia:** os dois arquivos que cobrem o cadastro manual do Comercial (`tests/Feature/Phase13ComercialTest.php` e `tests/Feature/Phase14ComercialTest.php`) estão com **11 de 20 testes falhando** — medido em 2026-08-07. São testes obsoletos que ainda enviam `service_type`, campo extinto do sistema. Na prática, **o caminho manual está sem cobertura viva do roteamento**.
+**Achado que muda a estratégia — CORRIGIDO em 2026-08-07 após medição por arquivo:**
 
-Consequência: não dá para provar "zero mudança" nesse caminho com o que existe. A estratégia precisa ser:
+A leitura inicial ("11 de 20 falhando, caminho manual sem cobertura viva") vinha de rodar os dois arquivos juntos e ler o total. Medindo separado:
+
+| Arquivo | Resultado | Leitura |
+|---|---|---|
+| `tests/Feature/Phase14ComercialTest.php` | **7 de 8 passam** | **Cobre o roteamento manual e está vivo.** Serve de baseline. |
+| `tests/Feature/Phase13ComercialTest.php` | **2 de 12 passam** | Obsoleto — envia `service_type`, campo extinto. |
+
+Ou seja: o caminho manual **tem** cobertura viva, via `Phase14ComercialTest`. O que está morto é o `Phase13ComercialTest`. A estratégia continua válida, mas com uma correção importante: **congelar `Phase14ComercialTest` e `Phase35HubspotV2Test` (10/10) como baseline** em vez de tratá-los como inexistentes.
+
+Gaps reais confirmados por grep (não suposição): nenhum teste cobre `gmail_colaborador` **na criação** (só na edição, por outro endpoint), nenhum cobre Incubadora ponta a ponta, e nenhum cobre `hubspot:reprocess-event` contra empresa que já tem ficha (FLUXO-06). São esses que precisam ser escritos.
+
+A estratégia:
 
 1. **Escrever testes de caracterização ANTES de refatorar**, fixando o comportamento observável atual dos DOIS caminhos: quais `MlbEmpresa` nascem (com que `tipo` e `projeto`), se a implementação de Polos é criada, e se o `gmail_colaborador` chega em `dados.links_admin.gmail_colaborador`. Esses testes devem passar **sem alteração** antes e depois da refatoração — é isso que caracteriza refatoração pura.
 2. **Baseline por subconjunto, comparado por NOME de teste e não por contagem.** A suíte completa tem ~117 falhas pré-existentes não relacionadas e não roda num processo só (`set_time_limit(300)` em `SyncGrantsFromEcfDrive`/`SyncGrantsFromSftp` reinicia o limite do phpunit). Rodar o subconjunto relevante antes de mexer, guardar a lista de nomes que falham, e comparar depois — a lição do projeto é explícita: *conferido por diff dos nomes de teste, não por contagem*.
