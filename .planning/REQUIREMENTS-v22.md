@@ -63,13 +63,33 @@ Decisão do usuário (2026-08-07, durante o plan-phase da Fase 124): *"Descobri 
 
 **Empresa cujo serviço é Polos continua indo direto para a operação, sem contrato, sem Clicksign, sem etapa administrativa.** O bloqueio da Fase 133 não se aplica a ela.
 
-**Critério é o SERVIÇO, não o caminho de entrada.** ⚠️ *Assunção a confirmar:* empresas Polos também chegam pelo webhook HubSpot — o catálogo `hubspot_line_item_mapping` tem `Polo`, `Polo Iniciante`, `Polo Pleno` e `Polo Pré-Pleno` mapeados para o serviço Polos. A isenção foi registrada como valendo para os dois caminhos. Se a intenção era isentar só o cadastro manual, corrigir antes da Fase 128.
+**Critério é o SERVIÇO, não o caminho de entrada — CONFIRMADO.** Empresas Polos chegam pelos DOIS caminhos: há **9 empresas com contrato de serviço ativo em Polos**, e o catálogo `hubspot_line_item_mapping` mapeia `Polo`, `Polo Iniciante`, `Polo Pleno` e `Polo Pré-Pleno` para o serviço. Isentar só o cadastro manual deixaria essas 9 presas.
+
+**Cuidado com a palavra "contrato":** `contratos_servico` é o registro **interno** do que a empresa paga (Polos tem 9 ativos). O que Polos não tem é **contrato assinado**. São coisas diferentes — não confundir na implementação.
+
+**A LISTA COMPLETA (A5 respondida pelo usuário em 2026-08-07): só Polos é isento.** Os outros 8 serviços do catálogo exigem contrato assinado:
+
+| Serviço | Empresas hoje | Entra por | Exige contrato |
+|---|---|---|---|
+| **Polos** | 9 | HubSpot + manual | **NÃO — isento** |
+| Gestão | 149 | HubSpot + manual | sim |
+| Gestão de ADS Shopee | 30 | só cadastro manual | sim |
+| Mentoria | 5 | HubSpot + manual | sim |
+| Publicação | 4 | HubSpot + manual | sim |
+| Assessoria | 0 | só cadastro manual | sim |
+| Incubadora | 0 | só cadastro manual | sim |
+| Implantação | 0 | só cadastro manual | sim |
+| Publicidade | 0 | só cadastro manual | sim |
+
+**Dimensionamento que isso revela:**
+- **Gestão (149 empresas) é o volume real** da fila do Administrativo. Qualquer decisão de UX da Fase 131 deve ser pensada para essa ordem de grandeza, não para dezenas.
+- **Gestão de ADS Shopee (30 empresas) só entra por cadastro manual.** O gate do caminho manual (D2) não é caso de borda — são 30 empresas que hoje passariam direto.
 
 **Consequências:**
 - **FLUXO-01 e FLUXO-02 ganham exceção explícita** para serviços que não geram contrato.
 - As Fases **128** (desvio inerte) e **133** (liga o bloqueio) precisam da regra "quais serviços passam pelo contrato" como dado, não como `if` espalhado.
 - A tela do Administrativo (Fase 131) não deve listar empresa Polos como pendente de contrato — senão vira fila fantasma que nunca esvazia.
-- Fica em aberto **quais outros serviços** além de Polos não têm contrato (Publicidade? Publicação?) — ver A5.
+- A lista completa está fechada (tabela acima) — **A5 respondida, não é mais decisão em aberto**.
 
 ### D10 — A divergência de "duas fichas de operação" é preservada, não corrigida
 Descoberta pela pesquisa da Fase 124 (2026-08-07): quando uma empresa contrata dois serviços que geram ficha na mesma submissão, o Comercial cria **duas** `MlbEmpresa` (não tem guard no laço) e o HubSpot cria **uma** (guard entre iterações).
@@ -84,7 +104,7 @@ Descoberta pela pesquisa da Fase 124 (2026-08-07): quando uma empresa contrata d
 
 ## DECISÕES EM ABERTO (resolver no discuss-phase da fase indicada)
 
-**A5 — Quais serviços, além de Polos, não passam pelo contrato?** (ver D9). O catálogo tem 9 serviços ativos: Publicação, Polos, Assessoria, Incubadora, Publicidade, Gestão, Mentoria, Implantação, Gestão de ADS Shopee. Polos está confirmado como isento. Definir a lista completa **antes da Fase 128**, porque é ela que constrói o desvio.
+~~**A5 — Quais serviços, além de Polos, não passam pelo contrato?**~~ **RESPONDIDA em 2026-08-07:** *"Apenas polos é isento de contrato"*. A lista completa está na tabela da D9. Nenhuma decisão pendente aqui.
 
 
 **A1 — Algoritmo de validação do webhook (BLOQUEANTE, fase do webhook).**

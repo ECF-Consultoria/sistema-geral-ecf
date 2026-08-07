@@ -1589,7 +1589,8 @@ Plans:
 **Goal:** A decisão de gerar contrato passa a acontecer nos dois pontos de entrada de empresa, rodando lado a lado com o roteamento automático de hoje — sem desligar nada ainda.
 **Requirements**: REDE-06, FLUXO-08
 **Depends on:** Fases 124, 127
-**Decisões a resolver aqui:** A4 (quais das 7 pendências valem para cadastro manual) e **A5 (quais serviços, além de Polos, são isentos de contrato)** — A5 precisa estar resolvida ANTES de escrever o desvio, porque é ela que define quem passa por ele
+**Decisões a resolver aqui:** A4 (quais das 7 pendências valem para cadastro manual). ~~A5~~ já foi respondida: **só Polos é isento**; os outros 8 serviços exigem contrato (tabela na D9 de `REQUIREMENTS-v22.md`)
+**Dimensionamento:** Gestão (149 empresas) é o volume real da fila; Gestão de ADS Shopee (30) entra SÓ por cadastro manual — o gate manual da D2 vale para essas 30, não é caso de borda
 **Success Criteria** (o que deve ser VERDADE):
 
   0. A lista de serviços que EXIGEM contrato é um dado configurável, não um `if` espalhado; empresa cujo serviço é **Polos** não entra no fluxo administrativo em momento nenhum e continua indo direto para a operação (D9 — Polos não tem contrato), e não aparece como pendente na tela do Administrativo
