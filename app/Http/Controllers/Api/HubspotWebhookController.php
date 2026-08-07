@@ -2,13 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\ComercialController;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
 use App\Models\HubspotLineItemMapping;
-use App\Models\MlbEmpresa;
 use App\Models\Servico;
 use App\Notifications\EmpresaHubspotPendenteNotification;
 use App\Services\Hubspot\HubspotCompanyMatcher;
@@ -17,7 +15,7 @@ use App\Services\Hubspot\HubspotDealHandoffService;
 use App\Services\Hubspot\HubspotHandoffData;
 use App\Services\Hubspot\HubspotNameNormalizer;
 use App\Services\HubspotApiClient;
-use App\Services\MlbImplementacaoFactory;
+use App\Services\Operacional\EmpresaOperacionalRouter;
 use App\Support\AudienciaComercial;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -644,10 +642,14 @@ class HubspotWebhookController extends Controller
             $servicosCriados = $this->persistirContratos($company, $handoff, $evento);
 
             // ── Roteamento MlbEmpresa por CADA servico criado ───────────────────────────
-            // Phase 35 D-05 + Phase 37: avalia servicoDisparaImplementacao em cada nome;
-            // guard contra duplicacao se 2 line items mapeiam para servicos Polo/Assessoria.
+            // Fase 124 (FLUXO-04): a mecanica migrou para o EmpresaOperacionalRouter,
+            // lugar unico compartilhado com o caminho Comercial. O laco por servico
+            // continua igual — e ele que faz o guard anti-duplicidade (D-06/D-07,
+            // FLUXO-05) rodar ENTRE servicos, backstop contra 2 line items que mapeiam
+            // para servicos Polo/Assessoria/Incubadora na mesma empresa.
+            $router = app(EmpresaOperacionalRouter::class);
             foreach ($servicosCriados as $nomeServico) {
-                $this->rotearImplementacao($company, $nomeServico);
+                $router->rotearServico($company, $nomeServico);
             }
 
             $warnings = $handoff->warnings;
@@ -913,53 +915,6 @@ class HubspotWebhookController extends Controller
         }
 
         return $servicosCriados;
-    }
-
-    /**
-     * Phase 37 Plan 37-04 — roteamento MlbEmpresa por servico (extraido de criarEmpresa).
-     *
-     * Reusa helper estatico ComercialController::servicoDisparaImplementacao
-     * (fonte unica de verdade Polos/Assessoria/Incubadora).
-     *
-     * Guard contra duplicacao: empresa pode ter 2 line items que mapeiam para
-     * servicos Polo+Assessoria; cria o 1o, pula o 2o (1 MlbEmpresa por empresa).
-     * Implementacao Phase 35 D-05: Publicidade/Gestao/Publicacao retornam null
-     * e nao criam mlb_empresas.
-     */
-    private function rotearImplementacao(Company $company, string $nomeServico): void
-    {
-        $tipoImpl = ComercialController::servicoDisparaImplementacao($nomeServico);
-        if ($tipoImpl === null) {
-            return;
-        }
-
-        // Guard: nao duplica MlbEmpresa quando ha 2+ line items mapeados para
-        // servicos do tipo Polos/Assessoria/Incubadora na mesma empresa.
-        if (MlbEmpresa::where('company_id', $company->id)->exists()) {
-            return;
-        }
-
-        if ($tipoImpl === 'polos') {
-            $mlbEmp = MlbEmpresa::create([
-                'nome'       => $company->name,
-                'tipo'       => 'POLO',
-                'projeto'    => 'POLOS',
-                'company_id' => $company->id,
-            ]);
-            MlbImplementacaoFactory::criarParaPolo($mlbEmp);
-        } elseif ($tipoImpl === 'assessoria') {
-            MlbEmpresa::create([
-                'nome'       => $company->name,
-                'tipo'       => 'ASSESSORIA',
-                'company_id' => $company->id,
-            ]);
-        } elseif ($tipoImpl === 'incubadora') {
-            MlbEmpresa::create([
-                'nome'       => $company->name,
-                'tipo'       => 'INCUBADORA',
-                'company_id' => $company->id,
-            ]);
-        }
     }
 
     /**
