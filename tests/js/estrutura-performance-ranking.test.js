@@ -73,6 +73,11 @@ function nomesReferenciados(corpo) {
     // sumiria da análise — foi exatamente assim que a primeira versão deste gate
     // passou no código quebrado que ele deveria pegar.
     const src = semLiterais(corpo)
+        // Tag JSX em MINÚSCULA é elemento nativo (`<p>`, `<div>`), não
+        // identificador — sem isto o `<p>` do card era acusado de vazar o
+        // `const p` do componente pai. Tag Capitalizada é componente React e
+        // FICA, porque referenciar um componente fora de escopo é bug de verdade.
+        .replace(/<\/?[a-z][\w-]*/g, '<')
         .replace(/(?<!\.)\.\s*[A-Za-z_$][\w$]*/g, '')  // acesso a propriedade (não spread)
         .replace(/([A-Za-z_$][\w$]*)\s*:/g, '');       // chave de objeto / atributo JSX
 
@@ -141,6 +146,56 @@ describe('/performance — escopo do ranking (Index.jsx)', () => {
             indexBody,
             /const\s+mesDetalhe\s*=\s*\(?\s*mes_selecionado\s*&&\s*!\s*mes_em_curso/,
             'mesDetalhe deve ser null quando mes_em_curso',
+        );
+    });
+});
+
+// ── Mesma armadilha no Show.jsx: o link "Ver operação da carteira" vive dentro
+//    de `FaixaBonusCard`, não de `PerformanceShow`. ────────────────────────────
+describe('/performance/{id} — escopo do card de faixa (Show.jsx)', () => {
+    const SHOW      = lerSemComentarios('resources/js/Pages/Performance/Show.jsx');
+    const showBody  = corpoDaFuncao(SHOW, 'PerformanceShow');
+    const cardBody  = corpoDaFuncao(SHOW, 'FaixaBonusCard');
+
+    test('FaixaBonusCard não referencia nada declarado dentro de PerformanceShow', () => {
+        const doShow    = nomesDeclarados(showBody);
+        const doCard    = nomesDeclarados(cardBody);
+        const referidos = nomesReferenciados(cardBody);
+        const vazando   = [...referidos].filter((n) => doShow.has(n) && !doCard.has(n));
+
+        assert.deepEqual(
+            vazando,
+            [],
+            `FaixaBonusCard referencia identificador(es) do escopo de PerformanceShow: `
+            + `${vazando.join(', ')}. Em runtime isso é ReferenceError. Passe por PROP.`,
+        );
+    });
+
+    test('o link da carteira leva o mês recebido por prop', () => {
+        const link = cardBody.match(/route\(\s*['"]portfolio\.show['"][\s\S]{0,160}/);
+        assert.ok(link, 'link para portfolio.show não encontrado em FaixaBonusCard');
+        assert.match(
+            link[0],
+            /mesDetalhe/,
+            'o link "Ver operação da carteira" deve levar o mês — o controller já aceita ?mes=',
+        );
+        assert.match(
+            cardBody.split('\n')[0],
+            /mesDetalhe/,
+            'mesDetalhe precisa estar na ASSINATURA de FaixaBonusCard, não vir de fora',
+        );
+        assert.match(
+            showBody,
+            /<FaixaBonusCard[^>]*mesDetalhe=\{/,
+            'PerformanceShow precisa repassar mesDetalhe ao FaixaBonusCard',
+        );
+    });
+
+    test('o "Ranking" volta preservando o mês', () => {
+        assert.match(
+            showBody,
+            /route\(\s*['"]performance\.index['"]\s*,\s*mesDetalhe\s*\?/,
+            'o botão Ranking deve devolver o mês visto aqui',
         );
     });
 });

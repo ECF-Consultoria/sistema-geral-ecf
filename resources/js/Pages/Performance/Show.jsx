@@ -181,7 +181,11 @@ function ParametroCard({ icone: Icone, titulo, valor, sublabel, accentColor = 'e
 }
 
 // ─── Card destaque Faixa de bônus ────────────────────────────────────────
-function FaixaBonusCard({ resultado, user }) {
+// `mesDetalhe` — 'YYYY-MM' quando a tela está num mês que NÃO é o corrente,
+// senão null. Vem por PROP: o link daqui roda no escopo DESTE componente e não
+// enxerga nada declarado no `PerformanceShow` (ver o incidente registrado em
+// tests/js/estrutura-performance-ranking.test.js).
+function FaixaBonusCard({ resultado, user, mesDetalhe = null }) {
     const slug = resultado?.faixa_bonus;
     const nota = resultado?.nota_final;
     const promovida = resultado?.faixa_promovida === true;
@@ -310,7 +314,7 @@ function FaixaBonusCard({ resultado, user }) {
                         a tabela logo abaixo já entrega, e o clique frustrava. */}
                     {user?.id && (
                         <Link
-                            href={route('portfolio.show', user.id)}
+                            href={route('portfolio.show', mesDetalhe ? { user: user.id, mes: mesDetalhe } : { user: user.id })}
                             className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors group"
                         >
                             <Briefcase size={14} className="text-ecf-yellow" />
@@ -368,15 +372,24 @@ export default function PerformanceShow({
     );
     const trocarMes = (ym) => irPara({ mes: ym });
 
-    // 2026-08-07 — o "Ranking" devolve o mês que está sendo visto aqui, fechando
-    // o ida-e-volta com o dropdown do /performance (que passou a mandar `?mes=`
-    // no clique da linha). Mesma regra de borda do ranking: no mês corrente o
-    // param é omitido pra não trocar `current_month` pelo ramo `YYYY-MM` do
-    // MetricPeriodResolver.
-    const voltarAoRanking = () => {
-        const ym = String(mes_selecionado ?? '').slice(0, 7);
-        router.visit(route('performance.index', (ym && !periodo?.is_current_month) ? { mes: ym } : {}));
-    };
+    // 2026-08-07 — o mês visto aqui acompanha TODA saída desta tela: o "Ranking"
+    // (volta pro /performance no mesmo mês, fechando o ida-e-volta com o dropdown
+    // de lá) e o "Ver operação da carteira" (que abre /admin/users/{id}/portfolio,
+    // cujo controller já aceita ?mes=YYYY-MM pelo mesmo contrato).
+    //
+    // null no mês corrente: `?mes=` do mês em curso resolveria pelo ramo `YYYY-MM`
+    // do MetricPeriodResolver em vez do `current_month` (mode=operational), e as
+    // duas telas de destino trocariam de modo sem o usuário ter pedido.
+    //
+    // `mes_selecionado` chega como 'YYYY-MM-DD' aqui (toDateString no controller),
+    // ao contrário do ranking, que manda 'YYYY-MM' — daí o slice.
+    const mesDetalhe = (!periodo?.is_current_month && mes_selecionado)
+        ? String(mes_selecionado).slice(0, 7)
+        : null;
+
+    const voltarAoRanking = () => router.visit(
+        route('performance.index', mesDetalhe ? { mes: mesDetalhe } : {}),
+    );
 
     return (
         <AppLayout title={`Desempenho — ${user?.name ?? 'Analista'}`}>
@@ -525,7 +538,7 @@ export default function PerformanceShow({
                             />
 
                             {/* Faixa de bônus — ocupa a linha inteira abaixo dos 3 cards */}
-                            <FaixaBonusCard resultado={resultado} user={user} />
+                            <FaixaBonusCard resultado={resultado} user={user} mesDetalhe={mesDetalhe} />
                         </div>
 
                         {/* Empresas da carteira (UIEM-02) — lista com nota e três
