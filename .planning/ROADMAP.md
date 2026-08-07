@@ -1678,7 +1678,7 @@ Plans:
 ### Phase 133: Liga o bloqueio — ativação real (v22.0)
 
 **Goal:** A partir de agora, contrato assinado é de fato a porta de entrada do operacional — e existe uma saída rápida se algo der errado.
-**Requirements**: FLUXO-01, FLUXO-02
+**Requirements**: FLUXO-01, FLUXO-02, FLUXO-09
 **Depends on:** Fases 128, 130, 131, 132
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -1687,6 +1687,7 @@ Plans:
   2b. Empresa de **Polos continua indo direto para a operação mesmo com o bloqueio ligado** (D9 — Polos não tem contrato); provado por teste com a chave ligada, e conferido em produção no dia do rollout
   3. Uma empresa só chega ao operacional depois que o webhook confirma assinatura completa (reconsultada) ou um admin libera manualmente com motivo registrado
   4. Desligar a chave `administrativo_bloqueio_ativo` sem deploy volta o sistema ao roteamento imediato de antes, imediatamente
+  5. **(FLUXO-09)** Com o bloqueio ligado, a ativação manual do time de Publicação (`MlbController::ativarEmpresaPendente()`, tela `/mlb/empresas`) também não cria ficha operacional — provado por teste. Lacuna descoberta na verificação da Fase 124: esse método cria `MlbEmpresa`+`MlbImplementacao` por cópia inline, fora do `EmpresaOperacionalRouter` e sem consultar a chave
 
 **Plans:** TBD
 
