@@ -1629,16 +1629,18 @@ Plans:
 
 **Plans:** TBD
 
-### Phase 131: Tela administrativa de contratos + badge Comercial + permissões (v22.0)
+### Phase 131: Tela administrativa — completar cadastro + contratos + badge Comercial + permissões (v22.0)
 
-**Goal:** Quem trabalha no Administrativo enxerga o estado real de cada contrato sem abrir o banco, e o Comercial para de se perguntar "para onde foi essa empresa depois do fechamento".
-**Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, UI-06, CLICK-07, CLICK-09, CLICK-10
+**Goal:** O Administrativo completa o cadastro que o Comercial deixou pela metade e enxerga o estado real de cada contrato sem abrir o banco, e o Comercial para de se perguntar "para onde foi essa empresa depois do fechamento".
+**Requirements**: ADM-01, ADM-02, ADM-03, UI-01, UI-02, UI-03, UI-04, UI-05, UI-06, CLICK-07, CLICK-09, CLICK-10
 **Depends on:** Fases 125, 127, 129, 130
 **UI hint:** yes
 **Success Criteria** (o que deve ser VERDADE):
 
+  0. Um usuário do Administrativo completa, na própria tela, os dados que a empresa não trouxe do Comercial (CNPJ, Gmail do colaborador, datas de início e término do contrato); a tela mostra o que ainda falta para poder gerar contrato (D8 — a cobrança NÃO volta para o Comercial)
+  0b. O campo Gmail do colaborador sai do formulário do Comercial NESTA MESMA fase — nunca antes, para não existir janela em que ninguém consegue cadastrar o dado (ADM-03)
   1. Um usuário do Administrativo filtra a lista de contratos por situação, busca por empresa, e vê um resumo com a contagem de cada situação
-  2. O botão "Gerar contrato" só aparece quando a empresa está sem pendência comercial e sem contrato em andamento; clicar dispara o mesmo fluxo manual da Fase 127
+  2. O botão "Gerar contrato" só aparece quando a empresa está com o cadastro completo, sem pendência comercial e sem contrato em andamento; clicar dispara o mesmo fluxo manual da Fase 127
   3. A listagem do Comercial mostra em que pé está o contrato de cada empresa, sem precisar abrir outra tela
   4. Um usuário reenvia a notificação de assinatura para quem ainda não assinou, corrige o e-mail de um signatário sem cancelar o contrato (gate empírico #8 resolvido para o endpoint certo), e cancela um contrato em andamento informando o motivo — a tela deixa claro que corrigir e-mail é diferente de trocar a pessoa (a segunda exige cancelar e reemitir)
   5. Só quem tem a permissão `admin.contratos` vê o módulo no menu e acessa as rotas; nenhum texto da tela usa jargão de Clicksign ou de assinatura eletrônica sem explicação

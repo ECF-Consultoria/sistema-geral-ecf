@@ -47,6 +47,17 @@ Decisão derivada da pesquisa. O webhook nunca libera a empresa lendo apenas o p
 
 Motivo: a Clicksign **não documenta** garantia de ordem nem política de retry. Assumir o pior caso (entrega fora de ordem, at-least-once) é a prática segura. É a mesma disciplina que o projeto já aplica na consolidação financeira: conferir por reconsulta, nunca por payload.
 
+### D8 — Quem completa o cadastro da empresa é o ADMINISTRATIVO, não o Comercial
+Decisão do usuário (2026-08-07, durante o discuss-phase da Fase 124). A empresa chega do Comercial **incompleta de propósito**. O Administrativo complementa antes de gerar o contrato: Gmail do colaborador, CNPJ, contrato, data de início e de término, entre outros.
+
+**Isto inverte uma responsabilidade que estava escrita ao contrário** no plano canônico (*"se faltar e-mail do cliente ou nome do contato, devolver erro claro **para o Comercial** corrigir"*) e na redação original do REDE-05. O que falta passa a aparecer **na tela do Administrativo**, onde é preenchido — não volta como cobrança para o Comercial.
+
+**Consequências:**
+- Nova categoria de requisitos **ADM** (completar cadastro), mapeada para a Fase 131.
+- **REDE-05 reescrito** para refletir a inversão.
+- O campo `gmail_colaborador` sai do formulário do Comercial **na mesma entrega** em que o Administrativo ganha onde preenchê-lo (ADM-03) — nunca antes, para não abrir uma janela em que ninguém consegue cadastrar o dado.
+- A Fase 124 **não muda**: refatoração pura preserva o comportamento de hoje, inclusive o `gmail_colaborador` vindo do Comercial. O teste de regressão daquela fase fixa um comportamento **transitório**, não um contrato permanente.
+
 ## DECISÕES EM ABERTO (resolver no discuss-phase da fase indicada)
 
 **A1 — Algoritmo de validação do webhook (BLOQUEANTE, fase do webhook).**
@@ -109,8 +120,14 @@ São algoritmos diferentes que produzem hashes diferentes. Implementar o errado 
 - [ ] **REDE-02**: O sistema avisa quando uma empresa está parada aguardando assinatura além do prazo aceitável
 - [ ] **REDE-03**: Um admin consegue liberar uma empresa ao operacional manualmente quando a Clicksign falha, e essa liberação fica registrada com autor e motivo
 - [ ] **REDE-04**: Uma varredura periódica reconcilia com a Clicksign os contratos cujo webhook nunca chegou (D3)
-- [ ] **REDE-05**: O sistema valida os dados mínimos (e-mail, CNPJ, nome do contato — presença e formato) ANTES de gerar o PDF e criar o envelope, devolvendo erro claro para o Comercial corrigir
+- [ ] **REDE-05**: O sistema valida os dados mínimos (CNPJ, e-mail e nome de quem assina, datas do contrato — presença e formato) ANTES de gerar o PDF e criar o envelope, e mostra o que falta **na tela do Administrativo**, onde é preenchido (D8 — não volta como cobrança para o Comercial)
 - [ ] **REDE-06**: O bloqueio do operacional pode rodar em produção em modo observação (construído mas inerte) antes de ser ligado de verdade
+
+### Completar o cadastro no Administrativo (D8)
+
+- [ ] **ADM-01**: Um usuário do Administrativo consegue completar, na própria tela, os dados que a empresa não trouxe do Comercial — CNPJ, Gmail do colaborador, datas de início e término do contrato, entre outros
+- [ ] **ADM-02**: A tela mostra claramente o que ainda falta para a empresa poder gerar contrato, e o botão de gerar só fica disponível quando está completo
+- [ ] **ADM-03**: O campo Gmail do colaborador sai do formulário do Comercial na MESMA entrega em que o Administrativo passa a ter onde preenchê-lo (nunca antes — senão fica uma janela sem ninguém cadastrando o dado)
 
 ### Telas e acesso
 
