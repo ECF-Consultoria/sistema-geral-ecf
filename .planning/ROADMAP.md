@@ -1533,12 +1533,22 @@ Plans:
 **Success Criteria** (o que deve ser VERDADE):
 
   1. Comercial, HubSpot e a futura tela Administrativa calculam pendência comercial pela mesma função (`PendenciasComerciaisService::calcular`); a suíte de regressão comprova resultado idêntico ao comportamento anterior para toda empresa hoje cadastrada
-  2. Uma empresa criada pelo HubSpot ou pelo Comercial continua sendo roteada ao operacional imediatamente, na mesma hora — nenhuma mudança de comportamento observável nesta fase, apesar do código interno estar reorganizado em `EmpresaOperacionalRouter::liberarEmpresa()`
+  2. Uma empresa criada pelo HubSpot ou pelo Comercial continua sendo roteada ao operacional imediatamente, na mesma hora — nenhuma mudança de comportamento observável nesta fase, apesar do código interno estar reorganizado em `EmpresaOperacionalRouter` (métodos `rotearCadastro()` e `rotearServico()` — são DOIS de propósito: a D-01 proíbe o roteador derivar os serviços sozinho, e a D-08 exige preservar a divergência entre os caminhos; o nome `liberarEmpresa()` volta a fazer sentido na Fase 129/130, quando a liberação acontece dias depois da criação)
   3. Um cadastro manual do Comercial com dados do wizard (ex.: `gmail_colaborador`) preserva esse dado na implementação criada — teste de regressão explícito prova que a extração não perdeu esse preenchimento (achado da pesquisa de arquitetura)
   4. Reprocessar um evento antigo do HubSpot (`hubspot:reprocess-event`) contra uma empresa que já tem `MlbEmpresa` continua sem criar nada duplicado nem prender a empresa retroativamente
   5. Existe uma chave `Configuracao` (`administrativo_bloqueio_ativo`, default `false`) que, ligada manualmente em ambiente de teste, interrompe a chamada automática ao roteamento — comprovado por teste isolado, ainda não usada em produção
 
-**Plans:** TBD
+**Plans:** 5 plans
+
+Plans:
+- [ ] 124-01-PLAN.md — Caracteriza o roteamento do cadastro manual antes da extração (gmail_colaborador, Incubadora, divergência D-08, inércia do interruptor)
+- [ ] 124-02-PLAN.md — Caracteriza o roteamento do webhook HubSpot antes da extração (Incubadora, assimetria do gmail, FLUXO-05, FLUXO-06)
+- [ ] 124-03-PLAN.md — Congela o baseline nominal e extrai `PendenciasComerciaisService` (FLUXO-03)
+- [ ] 124-04-PLAN.md — Cria `EmpresaOperacionalRouter` com o interruptor inerte instalado (REDE-01)
+- [ ] 124-05-PLAN.md — Religa os dois controllers ao roteador, remove o código duplicado e fecha o gate de regressão
+
+> **Waves:** 1 = {124-01, 124-02} · 2 = {124-03, 124-04} · 3 = {124-05}
+> Os testes de caracterização (wave 1) existem ANTES de qualquer refatoração — é isso que caracteriza refatoração pura. O gate compara por NOME de teste (`baseline-antes.txt` × `baseline-depois-05.txt`), nunca por contagem.
 
 ### Phase 125: Estrutura de dados administrativa (v22.0)
 
@@ -1597,7 +1607,7 @@ Plans:
   1. Empresa criada pelo webhook HubSpot **cujo serviço exige contrato** passa por `PendenciasComerciaisService::calcular` como GATE administrativo; sem pendência, `ContratoClicksignService::iniciarParaEmpresa()` é chamado de verdade (envelope real criado no sandbox) — e a empresa CONTINUA sendo roteada ao operacional na mesma hora, porque `administrativo_bloqueio_ativo` está desligado
   2. Empresa cadastrada à mão pelo Comercial passa pelo mesmo GATE e pelo mesmo disparo de contrato que o caminho HubSpot — decisão A4 (quais das 7 pendências valem para cadastro manual) tomada e aplicada
   3. Com pendência comercial em aberto segundo a regra do GATE, a empresa fica marcada `aguardando_comercial` e nenhuma chamada é feita à Clicksign
-  4. Em nenhum momento desta fase uma empresa deixa de ser roteada ao operacional imediatamente — o corte só existe no código, atrás da flag desligada; testável ligando a flag manualmente em ambiente de teste e observando o roteamento parar só ali
+  4. Em nenhum momento desta fase uma empresa deixa de ser roteada ao operacional imediatamente — o desvio administrativo existe no código e roda em paralelo, mas a flag `administrativo_bloqueio_ativo` continua desligada (a mecânica da flag em si já foi construída e provada na Fase 124; aqui o foco é o desvio e a decisão A4)
 
 **Plans:** TBD
 

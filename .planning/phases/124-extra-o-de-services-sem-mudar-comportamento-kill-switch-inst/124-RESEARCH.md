@@ -553,11 +553,19 @@ centrais (testes passando/falhando, comportamento do guard, ausência de trait c
 ausência de cobertura de `gmail_colaborador`/Incubadora/reprocess-event) foram confirmados por
 leitura direta do código-fonte e execução real da suíte nesta máquina, não por suposição.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Opção A vs Opção B do Achado Crítico (Q4)** — preservar literalmente o comportamento
+1. **[RESOLVED — Opção A]** ~~Opção A vs Opção B do Achado Crítico (Q4)~~ — preservar literalmente o comportamento
    "2 `MlbEmpresa` no mesmo request" (Opção A, recomendada) ou aceitar a unificação via guard
    como mudança consciente (Opção B)?
+
+   **Decisão: Opção A — preservar a divergência.** Registrada como **D-08** em `124-CONTEXT.md`
+   e como **D10** em `.planning/REQUIREMENTS-v22.md`. Implementada nos planos: `124-01` tem o
+   teste de caracterização que torna a divergência visível, `124-04` mantém duas mecânicas de
+   iteração (`rotearServico` com guard, `rotearCadastro` sem), e `124-05` reexecuta o teste sem
+   edição. Seguro porque o caso é inalcançável: zero ocorrências em produção (medido 2026-08-07),
+   Polos nunca vem acompanhado, e os pares que de fato ocorrem (Gestão ML + Gestão Shopee) não
+   geram ficha nenhuma.
    - O que sabemos: o comportamento atual diverge entre os dois caminhos; nenhum teste hoje
      cobre esse cenário; o Phase Boundary exige zero mudança observável.
    - O que não sabemos: se alguma empresa real em produção já foi cadastrada com 2 serviços de
