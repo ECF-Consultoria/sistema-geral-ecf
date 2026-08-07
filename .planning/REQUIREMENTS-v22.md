@@ -158,4 +158,71 @@ Consolidado da pesquisa. Cada item trava a fase indicada:
 
 ## Traceability
 
-*(preenchido pelo roadmap)*
+**Cobertura:** 39/39 requirements mapeados — 0 órfãos.
+
+| Requirement | Fase | Status |
+|-------------|------|--------|
+| FLUXO-01 | Fase 133 | Pending |
+| FLUXO-02 | Fase 133 | Pending |
+| FLUXO-03 | Fase 124 | Pending |
+| FLUXO-04 | Fase 124 | Pending |
+| FLUXO-05 | Fase 124 | Pending |
+| FLUXO-06 | Fase 124 | Pending |
+| FLUXO-07 | Fase 124 | Pending |
+| DADOS-01 | Fase 125 | Pending |
+| DADOS-02 | Fase 125 | Pending |
+| DADOS-03 | Fase 129 | Pending |
+| DADOS-04 | Fase 125 | Pending |
+| DADOS-05 | Fase 130 | Pending |
+| DADOS-06 | Fase 127 | Pending |
+| CLICK-01 | Fase 126 | Pending |
+| CLICK-02 | Fase 127 | Pending |
+| CLICK-03 | Fase 129 | Pending |
+| CLICK-04 | Fase 129 | Pending |
+| CLICK-05 | Fase 129 | Pending |
+| CLICK-06 | Fase 129 | Pending |
+| CLICK-07 | Fase 131 | Pending |
+| CLICK-08 | Fase 127 | Pending |
+| CLICK-09 | Fase 131 | Pending |
+| CLICK-10 | Fase 131 | Pending |
+| CLICK-11 | Fase 129 | Pending |
+| PDF-01 | Fase 126 | Pending |
+| PDF-02 | Fase 126 | Pending |
+| PDF-03 | Fase 126 | Pending |
+| REDE-01 | Fase 124 | Pending |
+| REDE-02 | Fase 130 | Pending |
+| REDE-03 | Fase 130 | Pending |
+| REDE-04 | Fase 130 | Pending |
+| REDE-05 | Fase 127 | Pending |
+| REDE-06 | Fase 128 | Pending |
+| UI-01 | Fase 131 | Pending |
+| UI-02 | Fase 131 | Pending |
+| UI-03 | Fase 131 | Pending |
+| UI-04 | Fase 131 | Pending |
+| UI-05 | Fase 131 | Pending |
+| UI-06 | Fase 131 | Pending |
+
+**Decisões em aberto → fase de resolução:**
+
+| Decisão | Fase |
+|---------|------|
+| A1 — Algoritmo do `Content-Hmac` (BLOQUEANTE) | Fase 129 |
+| A2 — Rollback de envelope montado pela metade | Fase 127 |
+| A3 — Resposta HTTP do webhook em erro interno | Fase 129 |
+| A4 — Quais das 7 pendências comerciais valem para empresa manual | Fase 128 |
+
+**Gate empírico de sandbox → fase que trava:**
+
+| # | Item | Fase |
+|---|------|------|
+| 1 | Algoritmo do `Content-Hmac` (A1, bloqueante) | Fase 129 |
+| 2 | Formato do header `Authorization` | Fase 126 |
+| 3 | URL base de produção | Fase 132 |
+| 4 | Formato de `content_base64` | Fase 126 |
+| 5 | Limite de tamanho de arquivo no upload | Fase 126 |
+| 6 | Expiração de prazo — evento distinguível | Fases 125 + 129 |
+| 7 | Recusa de signatário — evento distinguível | Fases 125 + 129 |
+| 8 | Endpoint de correção de e-mail de signatário | Fase 131 |
+| 9 | Formato do certificado de autenticação do signatário | Fase 125 |
+| 10 | Granularidade da consulta de envelope | Fase 130 |
+| 11 | Política de retry e garantia de ordem dos webhooks | Fase 129 |

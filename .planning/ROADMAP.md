@@ -1507,9 +1507,180 @@ Plans:
 > UIEM-04 e UIEM-03 só fecham de fato quando 123-05 e 123-04 rodarem — 123-03 entrega só a metade da Auditoria de Bônus.
 > Gap closure (2026-08-04, de `123-VERIFICATION.md`): {123-07, 123-08} — wave 6, sem overlap de arquivos entre si, rodam em paralelo.
 
+## Milestone v22.0 — Administrativo + Clicksign (Fases 124-133)
+
+**Plano canônico:** `plano-administrativo-clicksign.md` (raiz) · **Requirements:** `.planning/REQUIREMENTS-v22.md` · **Pesquisa:** `.planning/research/SUMMARY.md` (+ STACK, FEATURES, ARCHITECTURE, PITFALLS)
+
+**Goal:** Contrato assinado passa a ser a porta de entrada do operacional. A empresa deixa de ir direto do fechamento comercial para a operação e passa por uma etapa administrativa: gerar contrato → enviar pela Clicksign → aguardar a assinatura de todas as partes → só então liberar. O gate vale para os **dois** caminhos de entrada (webhook HubSpot e cadastro manual do Comercial).
+
+**Nota de contagem:** a pesquisa/requirements desta milestone somam **39 REQ-IDs** (FLUXO 7 + DADOS 6 + CLICK 11 + PDF 3 + REDE 6 + UI 6), não 33 — a contagem de 33 do brief inicial não bate com o `REQUIREMENTS-v22.md` real; a cobertura abaixo reflete os 39 REQ-IDs efetivamente escritos no arquivo.
+
+**Regra dura de sequenciamento (não é opcional):** desligar o roteamento automático (Fase 133) e ter o webhook que libera a empresa de volta (Fase 129) NUNCA vão a produção em momentos diferentes sem proteção. A saída escolhida é a (b) do PITFALLS.md: o bloqueio nasce **atrás de uma flag `Configuracao` (`administrativo_bloqueio_ativo`) desligada por padrão** desde a Fase 124. Todas as Fases 124-132 vão a produção com a flag **desligada** — nada muda no comportamento observável do roteamento operacional até a Fase 133 ligar o interruptor. REDE-01 (kill switch), REDE-02 (alerta de preso), REDE-03 (liberação manual) e REDE-06 (modo observação) existem e já foram testados **antes** da Fase 133 — nunca depois.
+
+**Decisões travadas (usuário, 2026-08-07):** D1 geração/envio sempre manuais nesta milestone (sem disparo automático) · D2 gate vale para HubSpot e manual · D3 entram reconciliação + prazo por contrato como diferenciais · D4 rede de segurança é requisito de primeira classe, não melhoria futura · D5 `recusado` e `expirado` são estados próprios, nunca colapsados em `cancelado`/`erro` · D6 PDF assinado é baixado e guardado localmente · D7 liberação operacional só a partir de estado reconsultado, nunca do payload isolado do evento.
+
+**Decisões em aberto, resolvidas no discuss-phase da fase indicada:** A1 algoritmo do `Content-Hmac` — **BLOQUEANTE da Fase 129**, duas fórmulas contraditórias na pesquisa, resolução só por webhook real de sandbox · A2 rollback de envelope montado pela metade — Fase 127 · A3 resposta HTTP do webhook em erro interno — Fase 129 · A4 quais das 7 pendências comerciais valem para empresa cadastrada à mão — Fase 128.
+
+**Reuso já identificado (não construir do zero):** `Configuracao` (kill switch) · `BonusInvalidacao`/`BonusAuditoriaController` (molde de override manual auditado) · guard `MlbEmpresa::where('company_id')->exists()` linha ~938 (backstop de liberação duplicada) · `RelatorioMensalPdfService` + `relatorio-bonificacao.blade.php` (DomPDF pt-BR resolvido) · `remind_interval` nativo da Clicksign (dispensa scheduler próprio) · padrão de 2 camadas de idempotência do webhook HubSpot.
+
+**Risco central:** o caminho alterado (`criarEmpresa` → `persistirContratos` → `rotearImplementacao`) teve 3 bugs corrigidos em 05-06/08/2026, um deles zerando contratos de R$ 3.000. A Fase 124 (extração dos services) mexe exatamente nesse código e exige gate de regressão forte. Outro dev trabalha na mesma branch `main` em paralelo.
+
+### Phase 124: Extração de services sem mudar comportamento + kill switch instalado (v22.0)
+
+**Goal:** A duplicação de regra e de mecânica entre o caminho HubSpot e o caminho Comercial deixa de existir, e existe um interruptor pronto para bloquear o roteamento automático — mas ainda apagado, então nada muda no que o usuário observa hoje.
+**Requirements**: FLUXO-03, FLUXO-04, FLUXO-05, FLUXO-06, FLUXO-07, REDE-01
+**Depends on:** Nada (fundação)
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Comercial, HubSpot e a futura tela Administrativa calculam pendência comercial pela mesma função (`PendenciasComerciaisService::calcular`); a suíte de regressão comprova resultado idêntico ao comportamento anterior para toda empresa hoje cadastrada
+  2. Uma empresa criada pelo HubSpot ou pelo Comercial continua sendo roteada ao operacional imediatamente, na mesma hora — nenhuma mudança de comportamento observável nesta fase, apesar do código interno estar reorganizado em `EmpresaOperacionalRouter::liberarEmpresa()`
+  3. Um cadastro manual do Comercial com dados do wizard (ex.: `gmail_colaborador`) preserva esse dado na implementação criada — teste de regressão explícito prova que a extração não perdeu esse preenchimento (achado da pesquisa de arquitetura)
+  4. Reprocessar um evento antigo do HubSpot (`hubspot:reprocess-event`) contra uma empresa que já tem `MlbEmpresa` continua sem criar nada duplicado nem prender a empresa retroativamente
+  5. Existe uma chave `Configuracao` (`administrativo_bloqueio_ativo`, default `false`) que, ligada manualmente em ambiente de teste, interrompe a chamada automática ao roteamento — comprovado por teste isolado, ainda não usada em produção
+
+**Plans:** TBD
+
+### Phase 125: Estrutura de dados administrativa (v22.0)
+
+**Goal:** O processo de assinatura de cada empresa passa a ser um dado persistido e consultável, com estados que nunca confundem "cliente recusou" com "a API caiu".
+**Requirements**: DADOS-01, DADOS-02, DADOS-04
+**Depends on:** Nada (fundação, paralela à Fase 124)
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Toda empresa pode ter um `ContratoAssinatura` com estado atual e datas de envio, assinatura e liberação — schema comprovado por migration + factory testadas
+  2. Cada signatário de um contrato é registrado com papel, contato e situação individual de assinatura, vinculado ao contrato correto
+  3. `recusado` e `expirado` existem como estados próprios do model, nunca colapsados em `cancelado` ou `erro` — teste unitário comprova que os dois nunca resolvem para o mesmo valor interno
+  4. Gate empírico #9 (formato do certificado de autenticação do signatário) resolvido e refletido no campo de payload do signatário
+
+**Plans:** TBD
+
+### Phase 126: Client Clicksign + PDF do contrato (v22.0)
+
+**Goal:** O sistema sabe conversar com a Clicksign sem nunca vazar credencial, e sabe gerar um PDF de contrato correto em pt-BR — os dois blocos prontos para serem combinados na fase seguinte.
+**Requirements**: CLICK-01, PDF-01, PDF-02, PDF-03
+**Depends on:** Nada (fundação, paralela às Fases 124/125)
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. `ClicksignClient` faz as chamadas HTTP (envelope, documento, signatário, requisito, notificação, consulta, cancelamento) contra o sandbox e nenhuma linha de log jamais contém o token — comprovado por teste que inspeciona o conteúdo logado em cenário de erro
+  2. Gate empírico resolvido e aplicado: formato do header `Authorization` (#2), formato de `content_base64` (#4), limite de tamanho de upload (#5)
+  3. O PDF do contrato traz razão social, CNPJ, contato, serviços contratados e valores de uma empresa real do banco (não só fixture curta), sem quebra de layout
+  4. O texto jurídico das cláusulas vive isolado da lógica de montagem de dados (view/config separado), permitindo trocar o texto sem mexer em código
+  5. PDF gerado com nome de empresa real extremo (longo, com caractere especial) mantém acentuação pt-BR correta e não corta cláusula no meio de uma página — reusando literalmente o precedente de `RelatorioMensalPdfService`
+
+**Plans:** TBD
+
+### Phase 127: Service administrativo de contrato — orquestração (v22.0)
+
+**Goal:** Existe um único ponto que decide se uma empresa está pronta para contrato, monta o envelope na Clicksign com prazo e lembrete configurados, e nunca gasta uma chamada HTTP com dado que já sabia estar incompleto.
+**Requirements**: CLICK-02, CLICK-08, DADOS-06, REDE-05
+**Depends on:** Fases 125, 126
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. `ContratoClicksignService::iniciarParaEmpresa()` recusa continuar (sem chamar a Clicksign) quando falta e-mail do cliente, CNPJ válido ou nome do contato — devolve erro claro apontando o campo, antes de gerar PDF ou criar envelope
+  2. Empresa com dados completos gera envelope na Clicksign com documento, signatários e requisitos de assinatura corretos, e o lembrete automático nativo (`remind_interval`) vem configurado — sem scheduler próprio
+  3. Um contrato pode ter prazo de assinatura diferente do padrão do sistema, refletido no requisito criado na Clicksign
+  4. Decisão A2 tomada e aplicada: quando a montagem falha no meio (documento criado, signatário falhou), o comportamento — cancelar o envelope parcial na Clicksign ou marcar `erro` com o id para retomada — é determinístico e coberto por teste
+  5. `iniciarParaEmpresa()` chamado duas vezes para a mesma empresa não cria dois envelopes — idempotente por si só, independente de qualquer guard de webhook
+
+**Plans:** TBD
+
+### Phase 128: Gatilhos do fluxo em modo observação (v22.0)
+
+**Goal:** A decisão de gerar contrato passa a acontecer nos dois pontos de entrada de empresa, rodando lado a lado com o roteamento automático de hoje — sem desligar nada ainda.
+**Requirements**: REDE-06
+**Depends on:** Fases 124, 127
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Empresa criada pelo webhook HubSpot passa por `PendenciasComerciaisService::calcular` como GATE administrativo; sem pendência, `ContratoClicksignService::iniciarParaEmpresa()` é chamado de verdade (envelope real criado no sandbox) — e a empresa CONTINUA sendo roteada ao operacional na mesma hora, porque `administrativo_bloqueio_ativo` está desligado
+  2. Empresa cadastrada à mão pelo Comercial passa pelo mesmo GATE e pelo mesmo disparo de contrato que o caminho HubSpot — decisão A4 (quais das 7 pendências valem para cadastro manual) tomada e aplicada
+  3. Com pendência comercial em aberto segundo a regra do GATE, a empresa fica marcada `aguardando_comercial` e nenhuma chamada é feita à Clicksign
+  4. Em nenhum momento desta fase uma empresa deixa de ser roteada ao operacional imediatamente — o corte só existe no código, atrás da flag desligada; testável ligando a flag manualmente em ambiente de teste e observando o roteamento parar só ali
+
+**Plans:** TBD
+
+> ⚠️ **Esta fase é o coração do REDE-06 (modo observação).** O pior caso de bug aqui é um `ContratoAssinatura` com status errado — nunca uma empresa presa fora do operacional, porque o roteamento imediato antigo continua rodando em paralelo enquanto a flag estiver desligada.
+
+### Phase 129: Webhook Clicksign (v22.0)
+
+**Goal:** Quando a Clicksign avisa que algo mudou num contrato, o sistema confia apenas no que reconsultou, nunca no evento isolado — e a fórmula do HMAC deixa de ser uma dúvida de documentação para virar um fato verificado contra o sandbox real.
+**Requirements**: CLICK-03, CLICK-04, CLICK-05, CLICK-06, CLICK-11, DADOS-03
+**Depends on:** Fases 125, 126, 127
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. **GATE A1 (bloqueante):** um webhook real do sandbox Clicksign foi disparado, as duas fórmulas de HMAC candidatas (`hash('sha256', body+secret)` vs. `hmac_sha256(secret, body)`) foram calculadas e logadas — nunca o secret — e a fórmula vencedora foi implementada com teste automatizado cujo fixture de HMAC foi calculado fora do código de produção
+  2. Webhook com assinatura inválida é recusado (401) mas o evento é gravado bruto mesmo assim; webhook repetido (mesmo `payload_hash`) nunca duplica evento, signatário, assinatura, `MlbEmpresa` nem implementação operacional; decisão A3 (resposta HTTP diferenciada entre erro de validação e erro de processamento interno) tomada e testada
+  3. Um evento de conclusão chegando antes de um evento de assinatura individual (ordem trocada) não libera a empresa cedo nem deixa de liberar — a decisão de liberar sempre reconsulta o estado agregado do envelope, nunca confia em qual evento chegou por último; recusa e expiração (gate empírico #6/#7, quando distinguíveis no payload) gravam estado próprio, nunca `cancelado`/`erro`
+  4. O processamento pesado (buscar envelope, atualizar signatários, decidir liberação) roda em job de fila — a resposta HTTP ao provedor é rápida; retry/ordem de entrega (gate empírico #11) tratados como pior caso, sem garantia assumida
+  5. Quando o envelope conclui, o PDF assinado é baixado da Clicksign e guardado no storage do próprio sistema — deixa de depender de `clicksign_download_url` para sempre
+
+**Plans:** TBD
+
+### Phase 130: Rede de segurança — reconciliação, alerta e liberação manual (v22.0)
+
+**Goal:** Se a Clicksign falhar silenciosamente, alguém sabe em minutos, não em dias — e sempre existe um jeito de destravar uma empresa presa, com registro de quem e por quê.
+**Requirements**: REDE-02, REDE-03, REDE-04, DADOS-05
+**Depends on:** Fases 124, 126, 129
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Um comando agendado reconsulta periodicamente a Clicksign para todo contrato em `enviado`/`aguardando_assinaturas` e corrige o estado local quando a assinatura já concluiu do lado da Clicksign mas o webhook nunca chegou — testado manualmente em sandbox com pelo menos um caso corrigido de fato; gate empírico #10 (granularidade da consulta de envelope) resolvido e suficiente
+  2. Um alerta dispara quando uma empresa está sem liberação e com envio há mais dias que o aceitável — disparo comprovado pelo menos uma vez em sandbox
+  3. Um admin libera uma empresa ao operacional preenchendo motivo (campo obrigatório); a liberação registra quem liberou e por quê, e usa o mesmo `EmpresaOperacionalRouter::liberarEmpresa()` do fluxo automático — testada ponta a ponta pelo menos uma vez
+  4. Liberar manualmente uma empresa que o webhook também está tentando liberar ao mesmo tempo (corrida) não cria `MlbEmpresa` duplicada
+
+**Plans:** TBD
+
+### Phase 131: Tela administrativa de contratos + badge Comercial + permissões (v22.0)
+
+**Goal:** Quem trabalha no Administrativo enxerga o estado real de cada contrato sem abrir o banco, e o Comercial para de se perguntar "para onde foi essa empresa depois do fechamento".
+**Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05, UI-06, CLICK-07, CLICK-09, CLICK-10
+**Depends on:** Fases 125, 127, 129, 130
+**UI hint:** yes
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Um usuário do Administrativo filtra a lista de contratos por situação, busca por empresa, e vê um resumo com a contagem de cada situação
+  2. O botão "Gerar contrato" só aparece quando a empresa está sem pendência comercial e sem contrato em andamento; clicar dispara o mesmo fluxo manual da Fase 127
+  3. A listagem do Comercial mostra em que pé está o contrato de cada empresa, sem precisar abrir outra tela
+  4. Um usuário reenvia a notificação de assinatura para quem ainda não assinou, corrige o e-mail de um signatário sem cancelar o contrato (gate empírico #8 resolvido para o endpoint certo), e cancela um contrato em andamento informando o motivo — a tela deixa claro que corrigir e-mail é diferente de trocar a pessoa (a segunda exige cancelar e reemitir)
+  5. Só quem tem a permissão `admin.contratos` vê o módulo no menu e acessa as rotas; nenhum texto da tela usa jargão de Clicksign ou de assinatura eletrônica sem explicação
+
+**Plans:** TBD
+
+### Phase 132: Cutover sandbox → produção (checkpoint humano) (v22.0)
+
+**Goal:** A troca de sandbox para a Clicksign de produção acontece checada por um humano, não assumida como "só trocar a URL".
+**Requirements**: nenhum REQ-ID novo — fase de checkpoint de risco operacional (gate empírico #3); PITFALLS.md exige que o cutover não fique embutido numa fase técnica
+**Depends on:** Fases 126, 127, 129, 130, 131
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Checklist de cutover conferido manualmente: `CLICKSIGN_ENV=production`, `CLICKSIGN_BASE_URL` de produção, `CLICKSIGN_ACCESS_TOKEN` de produção, `CLICKSIGN_WEBHOOK_SECRET` de produção
+  2. A URL `/api/webhooks/clicksign` foi cadastrada manualmente na conta de PRODUÇÃO da Clicksign (não só sandbox) — confirmado, não assumido
+  3. O primeiro envelope de produção foi criado com uma empresa de teste controlada (ex.: a própria ECF Consultoria), não com um cliente real, e o webhook de produção chegou e foi processado corretamente
+  4. Gate empírico #3 (URL base de produção) confirmado contra o ambiente real
+  5. **CHECKPOINT HUMANO:** usuário aprova explicitamente que o cutover está correto antes de qualquer contrato real de cliente ser gerado em produção
+
+**Plans:** TBD
+
+### Phase 133: Liga o bloqueio — ativação real (v22.0)
+
+**Goal:** A partir de agora, contrato assinado é de fato a porta de entrada do operacional — e existe uma saída rápida se algo der errado.
+**Requirements**: FLUXO-01, FLUXO-02
+**Depends on:** Fases 128, 130, 131, 132
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Com `administrativo_bloqueio_ativo=true`, uma empresa criada pelo webhook HubSpot já não é roteada ao operacional na mesma transação — fica aguardando a etapa administrativa
+  2. Uma empresa cadastrada à mão pelo Comercial segue exatamente o mesmo caminho, sem atalho
+  3. Uma empresa só chega ao operacional depois que o webhook confirma assinatura completa (reconsultada) ou um admin libera manualmente com motivo registrado
+  4. Desligar a chave `administrativo_bloqueio_ativo` sem deploy volta o sistema ao roteamento imediato de antes, imediatamente
+
+**Plans:** TBD
+
+> 🚦 **CHECKPOINT HUMANO — bloqueia a ATIVAÇÃO, não a escrita.** A flag `administrativo_bloqueio_ativo` só pode ser ligada em produção depois de confirmar, com o usuário: (a) o webhook chegou de forma confiável durante o período de observação (Fase 128/129 rodando em produção por tempo suficiente); (b) o alerta de contrato preso já disparou pelo menos uma vez em sandbox (Fase 130); (c) a liberação manual foi testada em produção ao menos uma vez (Fase 130); (d) o cutover para produção Clicksign foi concluído e aprovado (Fase 132). Rollback de código sozinho nunca é o plano de saída — desligar a flag é.
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
 *Roadmap atualizado: 2026-07-24 — Milestone v20.0 (Handoff Comercial HubSpot) anexada: 5 fases (111-115) derivadas do plano canônico `prompt-claude-otimizacao-comercial-hubspot.md`, preservando a estrutura de 10 estágios do prompt. Fundação (111) → HubspotValueResolver + handoff service (112, núcleo do valor mensal×anual) → enriquecimento contato/empresa + dedup (113) → UI Comercial + replay (114) → E2E + doc (115). Trabalho ADITIVO: fluxo legado (Fases 34-37) e testes atuais preservados; nenhum teste chama HubSpot real. Conflict-detection do import: só INFO (sem locked-decisions HubSpot pré-CONTEXT); 1 WARNING = mudança semântica de como `valor_contratado` é populado em closes futuros (histórico intacto). Fases 100-110 (v18/v19) preservadas.*
 
 *Roadmap atualizado: 2026-07-27 — Milestone v21.0 (Desempenho por nota individual de empresa) anexada: 7 fases (117-123) cobrindo as 38 REQs (MPP/NPSE/EMPS/AGRE/ROLL/SNAP/UIEM) do REQUIREMENTS-v21.md, derivadas do plano canônico `plano-implementacao-desempenho-por-empresa.md`. Conflict-detection do import: 3 BLOCKERS, todos resolvidos por decisão do usuário em 2026-07-27 — (1) fonte de margem em pp reabre o hotfix a413e823 de 24/07, (2) régua atual reusada como pp sem recalibrar, (3) empresa sem baseline segue como decisão em aberto para o discuss-phase da Fase 120. Correções ao plano verificadas contra o código: `cacheKey` já está em `v12` (alvo real `v13`, com 4 suítes hardcoded), `adman:diff` em `v5` (→`v6` ok). **Fase 118 bloqueada até a Fase 116 fechar** (116-06/07/08) — adiciona um 4º call-site da regra de piso de NPS. Fases 117 e 121 são gates humanos explícitos (estabilidade de `prev`; delta antigo×novo). Esta milestone é a opção (A) da pendência `.planning/todos/pending/metrica-margem-bonus-fragil.md`, mas NÃO fica pronta antes do freeze de junho em 31/07 14h BRT — o freeze é decisão separada. `phases.clear` NÃO foi executado: Fases 1-116 preservadas, incluindo a 116 em execução, seguindo a convenção de anexar milestones deste roadmap.*
+
+*Roadmap atualizado: 2026-08-07 — Milestone v22.0 (Administrativo + Clicksign) anexada: 10 fases (124-133) cobrindo os 39 REQ-IDs (FLUXO/DADOS/CLICK/PDF/REDE/UI) do REQUIREMENTS-v22.md, derivadas do plano canonico `plano-administrativo-clicksign.md` e corrigidas pela pesquisa (STACK/FEATURES/ARCHITECTURE/PITFALLS). Ordem de construcao dita pelo PITFALLS.md: extracao pura de services + kill switch inerte (124) -> schema (125) -> client+PDF (126) -> service de orquestracao com REDE-05 na mesma fase que gera o envelope (127) -> gatilhos em modo observacao/REDE-06 (128) -> webhook com GATE A1 bloqueante do HMAC (129) -> rede de seguranca REDE-02/03/04 (130) -> tela administrativa (131) -> cutover checkpoint humano dedicado (132) -> liga o bloqueio com checkpoint humano (133). Bloqueio nasce atras da flag `Configuracao.administrativo_bloqueio_ativo` desligada por padrao desde a Fase 124 ate a Fase 133 — nenhuma fase intermediaria muda o roteamento operacional observavel. Decisoes em aberto A1-A4 atribuidas as fases 129 (A1 bloqueante, A3) e 127 (A2) e 128 (A4). Fases 1-123 preservadas.*
