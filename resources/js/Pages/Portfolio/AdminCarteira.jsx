@@ -1,10 +1,10 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Link, router } from '@inertiajs/react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
     ArrowLeft, Search, TrendingUp, TrendingDown, Building2,
-    Briefcase, DollarSign, Calendar, Users, Trophy, Sparkles, ChevronRight, Info,
+    Briefcase, DollarSign, Calendar, Users, Trophy, Sparkles, ChevronRight, Info, Loader2,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
 import { FonteBadge, StatusBadge, VarBadge } from '@/Pages/Portfolio/components/CarteiraBadges';
@@ -152,10 +152,34 @@ function ClientesBadge({ variacao }) {
  * antes de cálculo cacheado) — ver o comentário no controller. Aqui é só
  * apresentação; nenhum número é recalculado nesta tela.
  */
-function NotaMesCard({ score, userId }) {
+// `mesDetalhe` vem por PROP (o link daqui não enxerga o escopo do
+// AdminCarteira); `score.calculando` = nota ainda sendo apurada no worker.
+function NotaMesCard({ score, userId, mesDetalhe = null }) {
     const nota = score?.nota_final;
     const conta = formatContaNota(score?.pontos_componentes, nota);
     const semCarteira = score?.sem_carteira === true;
+    const calculando = score?.calculando === true;
+
+    // Enquanto calcula, o card mostra o estado em vez de "—": um traço aqui se
+    // lê como "este profissional não tem nota", que é outra coisa.
+    if (calculando) {
+        return (
+            <div className="rounded-2xl border border-white/[0.08] bg-ecf-card p-5">
+                <div className="flex items-center gap-2 text-white/50 text-[11px] uppercase tracking-wider font-semibold">
+                    <Trophy size={13} />
+                    Ponto do mês
+                </div>
+                <div className="flex items-center gap-2 mt-3">
+                    <Loader2 size={18} className="text-ecf-yellow animate-spin shrink-0" />
+                    <span className="text-white/70 text-sm font-medium">Calculando…</span>
+                </div>
+                <p className="text-white/40 text-xs mt-2 leading-relaxed">
+                    Esta competência ainda não estava calculada. Roda em segundo plano,
+                    empresa por empresa — o card se preenche sozinho.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="rounded-2xl border border-white/[0.08] bg-ecf-card p-5">
@@ -206,7 +230,7 @@ function NotaMesCard({ score, userId }) {
                 que a outra tem de exclusivo. */}
             {userId && (
                 <Link
-                    href={route('performance.show', userId)}
+                    href={route('performance.show', mesDetalhe ? { user: userId, mes: mesDetalhe } : { user: userId })}
                     className="inline-flex items-center gap-1.5 text-ecf-yellow text-xs font-semibold hover:underline mt-2.5 group"
                 >
                     Ver como a nota foi formada
@@ -239,6 +263,11 @@ function VariacaoChip({ pct, size = 'sm' }) {
 export default function AdminCarteira({
     profissional, resumo, empresas = [], periodo, contexto = 'todos', bonus = null,
     score = null, tem_detalhe_empresas = false,
+    // 2026-08-07 — true enquanto QUALQUER das duas camadas aquece em background
+    // (nota e tabela têm caches distintos); `aquecendo_tabela` diz se é a tabela.
+    // Mesma prop do ranking e do /performance/{id}.
+    aquecendo = false,
+    aquecendo_tabela = false,
 }) {
     const [busca, setBusca] = useState('');
     const [sortCol, setSortCol] = useState('faturamento');
@@ -261,6 +290,55 @@ export default function AdminCarteira({
             if (v !== undefined && v !== null && v !== '') params.set(k, v);
         });
         router.visit(window.location.pathname + '?' + params.toString(), { preserveScroll: true });
+    };
+
+    // Mês a repassar no link "Ver como a nota foi formada" — null no mês
+    // corrente, pra não trocar `current_month` pelo ramo `YYYY-MM` do
+    // MetricPeriodResolver no destino.
+    const mesDetalhe = (!periodo?.em_curso && periodo?.mes_selecionado)
+        ? String(periodo.mes_selecionado).slice(0, 7)
+        : null;
+
+    // ── Poll de aquecimento (2026-08-07) ──────────────────────────────────
+    // Espelha o do ranking (Fase 106) e o do /performance/{id}. Sem isso esta
+    // tela chamava computeCached() de forma síncrona e pendurava o navegador
+    // até 110s no cache frio — era o "carregando infinito" ao trocar o mês.
+    const POLL_AQUECENDO_TETO = 20; // ~20 x 6s ≈ 2min
+    const tentativasAquecendoRef = useRef(0);
+    const [pollEsgotado, setPollEsgotado] = useState(false);
+
+    useEffect(() => {
+        if (!aquecendo) {
+            tentativasAquecendoRef.current = 0;
+            setPollEsgotado(false);
+            return undefined;
+        }
+        const id = setInterval(() => {
+            if (tentativasAquecendoRef.current >= POLL_AQUECENDO_TETO) {
+                clearInterval(id);
+                setPollEsgotado(true);
+                return;
+            }
+            if (!document.hidden) {
+                tentativasAquecendoRef.current += 1;
+                router.reload({
+                    only: ['score', 'aquecendo', 'aquecendo_tabela', 'tem_detalhe_empresas', 'empresas', 'resumo'],
+                    preserveScroll: true,
+                    preserveState: true,
+                });
+            }
+        }, 6000);
+        return () => clearInterval(id);
+    }, [aquecendo]);
+
+    const recarregarAquecendoManual = () => {
+        tentativasAquecendoRef.current = 0;
+        setPollEsgotado(false);
+        router.reload({
+            only: ['score', 'aquecendo', 'aquecendo_tabela', 'tem_detalhe_empresas', 'empresas', 'resumo'],
+            preserveScroll: true,
+            preserveState: true,
+        });
     };
 
     const empresasView = useMemo(() => {
@@ -408,7 +486,7 @@ export default function AdminCarteira({
                         icon={DollarSign}
                         accent="text-white"
                     />
-                    <NotaMesCard score={score} userId={profissional?.id} />
+                    <NotaMesCard score={score} userId={profissional?.id} mesDetalhe={mesDetalhe} />
                     <KpiCard
                         label="Clientes na carteira"
                         value={resumo?.total_empresas ?? 0}
@@ -496,6 +574,32 @@ export default function AdminCarteira({
                             </div>
                         )}
 
+                        {/* Tabela aquecendo (2026-08-07) — os números por empresa
+                            vêm de HTTP síncrono à Adman e estavam frios. Precisa
+                            substituir a TABELA inteira: renderizá-la vazia diria
+                            "carteira sem empresas", que é outra coisa. */}
+                        {aquecendo_tabela ? (
+                            <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-8 flex flex-col items-center text-center gap-3">
+                                <Loader2 size={28} className="text-ecf-yellow animate-spin" />
+                                <p className="text-white/80 text-sm font-semibold">
+                                    Carregando os números de {periodo?.mes_label ?? 'esta competência'}…
+                                </p>
+                                <p className="text-white/50 text-xs max-w-lg leading-relaxed">
+                                    Faturamento e margem são buscados empresa por empresa e ainda não
+                                    estavam em cache para este mês. A busca roda em segundo plano e a
+                                    tabela aparece sozinha — normalmente em menos de dois minutos.
+                                </p>
+                                {pollEsgotado && (
+                                    <button
+                                        type="button"
+                                        onClick={recarregarAquecendoManual}
+                                        className="mt-1 rounded-lg border border-white/[0.12] bg-white/[0.04] px-4 py-2 text-sm text-white/80 hover:bg-white/[0.08] transition-colors"
+                                    >
+                                        Ainda carregando — verificar de novo
+                                    </button>
+                                )}
+                            </div>
+                        ) : (
                         <div className="overflow-x-auto -mx-1">
                             <table className="w-full text-[13px] min-w-[960px]">
                                 <thead>
@@ -589,6 +693,7 @@ export default function AdminCarteira({
                                 </tbody>
                             </table>
                         </div>
+                        )}
 
                         {empresasView.length > 0 && (
                             <div className="text-white/40 text-[11px] pt-2 border-t border-white/[0.04]">

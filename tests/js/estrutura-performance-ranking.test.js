@@ -73,6 +73,11 @@ function nomesReferenciados(corpo) {
     // sumiria da análise — foi exatamente assim que a primeira versão deste gate
     // passou no código quebrado que ele deveria pegar.
     const src = semLiterais(corpo)
+        // Tag JSX em MINÚSCULA é elemento nativo (`<p>`, `<div>`), não
+        // identificador — sem isto o `<p>` do card era acusado de vazar o
+        // `const p` do componente pai. Tag Capitalizada é componente React e
+        // FICA, porque referenciar um componente fora de escopo é bug de verdade.
+        .replace(/<\/?[a-z][\w-]*/g, '<')
         .replace(/(?<!\.)\.\s*[A-Za-z_$][\w$]*/g, '')  // acesso a propriedade (não spread)
         .replace(/([A-Za-z_$][\w$]*)\s*:/g, '');       // chave de objeto / atributo JSX
 
@@ -142,5 +147,128 @@ describe('/performance — escopo do ranking (Index.jsx)', () => {
             /const\s+mesDetalhe\s*=\s*\(?\s*mes_selecionado\s*&&\s*!\s*mes_em_curso/,
             'mesDetalhe deve ser null quando mes_em_curso',
         );
+    });
+});
+
+// ── Mesma armadilha no Show.jsx: o link "Ver operação da carteira" vive dentro
+//    de `FaixaBonusCard`, não de `PerformanceShow`. ────────────────────────────
+describe('/performance/{id} — escopo do card de faixa (Show.jsx)', () => {
+    const SHOW      = lerSemComentarios('resources/js/Pages/Performance/Show.jsx');
+    const showBody  = corpoDaFuncao(SHOW, 'PerformanceShow');
+    const cardBody  = corpoDaFuncao(SHOW, 'FaixaBonusCard');
+
+    test('FaixaBonusCard não referencia nada declarado dentro de PerformanceShow', () => {
+        const doShow    = nomesDeclarados(showBody);
+        const doCard    = nomesDeclarados(cardBody);
+        const referidos = nomesReferenciados(cardBody);
+        const vazando   = [...referidos].filter((n) => doShow.has(n) && !doCard.has(n));
+
+        assert.deepEqual(
+            vazando,
+            [],
+            `FaixaBonusCard referencia identificador(es) do escopo de PerformanceShow: `
+            + `${vazando.join(', ')}. Em runtime isso é ReferenceError. Passe por PROP.`,
+        );
+    });
+
+    test('o link da carteira leva o mês recebido por prop', () => {
+        const link = cardBody.match(/route\(\s*['"]portfolio\.show['"][\s\S]{0,160}/);
+        assert.ok(link, 'link para portfolio.show não encontrado em FaixaBonusCard');
+        assert.match(
+            link[0],
+            /mesDetalhe/,
+            'o link "Ver operação da carteira" deve levar o mês — o controller já aceita ?mes=',
+        );
+        assert.match(
+            cardBody.split('\n')[0],
+            /mesDetalhe/,
+            'mesDetalhe precisa estar na ASSINATURA de FaixaBonusCard, não vir de fora',
+        );
+        assert.match(
+            showBody,
+            /<FaixaBonusCard[^>]*mesDetalhe=\{/,
+            'PerformanceShow precisa repassar mesDetalhe ao FaixaBonusCard',
+        );
+    });
+
+    test('o "Ranking" volta preservando o mês', () => {
+        assert.match(
+            showBody,
+            /route\(\s*['"]performance\.index['"]\s*,\s*mesDetalhe\s*\?/,
+            'o botão Ranking deve devolver o mês visto aqui',
+        );
+    });
+});
+
+// ── Terceira ocorrência do mesmo par: o card da carteira. ────────────────────
+describe('/admin/users/{id}/portfolio — escopo do card de nota (AdminCarteira.jsx)', () => {
+    const CART      = lerSemComentarios('resources/js/Pages/Portfolio/AdminCarteira.jsx');
+    const paginaBody = corpoDaFuncao(CART, 'AdminCarteira');
+    const cardBody   = corpoDaFuncao(CART, 'NotaMesCard');
+
+    test('NotaMesCard não referencia nada declarado dentro de AdminCarteira', () => {
+        const daPagina  = nomesDeclarados(paginaBody);
+        const doCard    = nomesDeclarados(cardBody);
+        const referidos = nomesReferenciados(cardBody);
+        const vazando   = [...referidos].filter((n) => daPagina.has(n) && !doCard.has(n));
+
+        assert.deepEqual(
+            vazando,
+            [],
+            `NotaMesCard referencia identificador(es) do escopo de AdminCarteira: `
+            + `${vazando.join(', ')}. Em runtime isso é ReferenceError. Passe por PROP.`,
+        );
+    });
+
+    test('o link "Ver como a nota foi formada" leva o mês', () => {
+        const link = cardBody.match(/route\(\s*['"]performance\.show['"][\s\S]{0,160}/);
+        assert.ok(link, 'link para performance.show não encontrado em NotaMesCard');
+        assert.match(link[0], /mesDetalhe/, 'o link deve levar o mês selecionado');
+        assert.match(
+            paginaBody,
+            /<NotaMesCard[^>]*mesDetalhe=\{/,
+            'AdminCarteira precisa repassar mesDetalhe ao NotaMesCard',
+        );
+    });
+});
+
+// ── Gate de LENTIDÃO (2026-08-07) ───────────────────────────────────────────
+// `DesempenhoScoreService::compute()` faz HTTP síncrono à Adman por empresa —
+// 110s medidos para um profissional de 25 empresas num mês frio. Nenhuma tela
+// pode chamar `computeCached()` sem antes passar pelo gate quente/frio, senão
+// o navegador pendura até o `max_execution_time` de 300s do php-fpm.
+describe('telas de desempenho nunca computam score frio de forma síncrona', () => {
+    const CONTROLLERS = [
+        ['app/Http/Controllers/PerformanceController.php', 'PerformanceController'],
+        ['app/Http/Controllers/PortfolioController.php', 'PortfolioController'],
+    ];
+
+    for (const [caminho, nome] of CONTROLLERS) {
+        test(`${nome} usa o WarmDesempenhoDispatcher`, () => {
+            const src = lerSemComentarios(caminho);
+            assert.match(
+                src,
+                /WarmDesempenhoDispatcher\s+\$warmDispatcher/,
+                `${nome} precisa injetar o WarmDesempenhoDispatcher`,
+            );
+            assert.match(
+                src,
+                /warmDispatcher->(gateIndividual|agendarWarm)\(/,
+                `${nome} precisa passar pelo gate antes de computar`,
+            );
+        });
+    }
+
+    test('o gate individual precede o computeCached nas duas telas de detalhe', () => {
+        for (const [caminho, nome] of CONTROLLERS) {
+            const src = lerSemComentarios(caminho);
+            // Todo `computeCached` numa tela de detalhe tem que estar no ramo
+            // `else` de um `gateIndividual` — nunca solto.
+            const ramos = [...src.matchAll(/gateIndividual\([\s\S]{0,600}?computeCached\(/g)];
+            assert.ok(
+                ramos.length > 0,
+                `${nome}: nenhum computeCached protegido por gateIndividual encontrado`,
+            );
+        }
     });
 });

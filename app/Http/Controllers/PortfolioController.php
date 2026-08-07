@@ -20,6 +20,7 @@ use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\Desempenho\CompanyScoreSnapshotReader;
+use App\Services\Desempenho\WarmDesempenhoDispatcher;
 use App\Services\DesempenhoScoreService;
 use App\Services\Nps\NpsPendingService;
 use App\Services\Portfolio\CarteiraContextService;
@@ -44,6 +45,9 @@ class PortfolioController extends Controller
         // que `Performance/Show` consome. A carteira nunca calcula score por
         // empresa ao vivo (ver `.planning/learnings/desempenho-bonificacao.md` §5).
         private CompanyScoreSnapshotReader $companyScoreReader,
+        // Gate quente/frio do score (Fase 106, extraído em 2026-08-07): esta
+        // tela NUNCA computa desempenho frio de forma síncrona — 110s medidos.
+        private WarmDesempenhoDispatcher $warmDispatcher,
     ) {}
 
     /**
@@ -542,6 +546,23 @@ class PortfolioController extends Controller
             ->orderBy('name')
             ->get();
 
+        // 2026-08-07 — gate da TABELA (camada distinta da nota, gateada mais
+        // abaixo). O laço de montagem chama `MetricDiffDispatcher::compute()`
+        // por empresa, que é HTTP síncrono à Adman: 157s medidos para as 25
+        // empresas do user 20 numa competência fria (19 delas acima de 1s
+        // cada). Blindar só a nota deixou esta página levando 115s — foi a
+        // medição PÓS-DEPLOY que expôs este segundo fan-out.
+        //
+        // Zerar `$rawCompanies` é o que efetivamente evita o custo: todo o
+        // pipeline abaixo (custIds → getCachedGrossBillingsMany → map com o
+        // dispatcher) passa a operar sobre coleção vazia, sem tocar a rede, e
+        // o shape das props continua válido. O front mostra "calculando…" no
+        // lugar da tabela e polla.
+        $aquecendoCarteira = $this->warmDispatcher->gateCarteira($rawCompanies, $periodo, $mesSelecionado);
+        if ($aquecendoCarteira) {
+            $rawCompanies = collect();
+        }
+
         // Dedup financeiro (CART-04/05): a lista de company_id consultada em
         // AdmanMetric contém SÓ empresas com AO MENOS UM vínculo elegível do
         // profissional, e ->unique() garante que uma empresa com 2 vínculos
@@ -997,9 +1018,24 @@ class PortfolioController extends Controller
             ->whereDate('mes_referencia', $mesSelecionado->toDateString())
             ->first();
 
-        $scoreDoMes = ($snapMensal && is_array($snapMensal->breakdown_json) && isset($snapMensal->breakdown_json['componentes']))
-            ? $snapMensal->breakdown_json
-            : $this->scoreService->computeCached($user, $mesSelecionado);
+        // 2026-08-07 — gate quente/frio (mesma regra do ranking, Fase 106, agora
+        // no `WarmDesempenhoDispatcher`). Sem ele esta tela chamava
+        // `computeCached()` direto e, no cache frio, pagava o fan-out HTTP
+        // síncrono à Adman por empresa: 110s medidos para um profissional de 25
+        // empresas. Era o "carregando infinito" ao trocar o mês.
+        //
+        // Snapshot mensal congelado tem precedência e NÃO passa pelo gate —
+        // leitura de tabela, custo zero.
+        $aquecendoScore = false;
+
+        if ($snapMensal && is_array($snapMensal->breakdown_json) && isset($snapMensal->breakdown_json['componentes'])) {
+            $scoreDoMes = $snapMensal->breakdown_json;
+        } elseif ($this->warmDispatcher->gateIndividual($user, $mesSelecionado)) {
+            $aquecendoScore = true;
+            $scoreDoMes     = ['calculando' => true];
+        } else {
+            $scoreDoMes = $this->scoreService->computeCached($user, $mesSelecionado);
+        }
 
         // ─── Pontos por empresa ──────────────────────────────────────────────
         // Só existem em competência FECHADA já consolidada. `is_closed` sozinho
@@ -1061,7 +1097,18 @@ class PortfolioController extends Controller
                 'score_status'       => $scoreDoMes['score_status']       ?? null,
                 'pontos_componentes' => $scoreDoMes['pontos_componentes'] ?? null,
                 'sem_carteira'       => $scoreDoMes['sem_carteira']       ?? false,
+                // true = nota ainda sendo calculada em background; o front
+                // mostra "calculando…" no lugar do número em vez de exibir
+                // "—", que se confunde com "sem nota".
+                'calculando'         => $aquecendoScore,
             ],
+            // Mesmo nome de prop do ranking e do /performance/{id}, de propósito.
+            // As DUAS camadas contam: a nota e a tabela têm caches distintos e
+            // podem estar frias em momentos diferentes — a tela só volta ao
+            // normal quando nenhuma das duas está aquecendo.
+            'aquecendo' => $aquecendoScore || $aquecendoCarteira,
+            // Separada porque é a tabela que some, não a página inteira.
+            'aquecendo_tabela' => $aquecendoCarteira,
             'tem_detalhe_empresas' => $temDetalheEmpresas,
             'periodo' => [
                 // Campos de display já existentes (Fase 89, PRESERVADOS).
