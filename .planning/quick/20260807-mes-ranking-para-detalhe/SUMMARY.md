@@ -52,4 +52,25 @@ Mesma regra dos dois lados (ida e volta), para o par de telas não divergir.
   no `public/build/manifest.json`.
 - Sem migration, sem rota nova, sem mudança de autorização.
 
-**NÃO deployado.**
+## Deploy
+
+**DEPLOYADO 260807** — deploy isolado `ece12384..f1461653` (push FF + `deploy.sh`),
+sem migrations. Saiu isolado porque a VPS já estava em `ece12384` = `origin/main`.
+
+`deploy.sh` estourou o timeout de 10 min do lado do cliente, mas **completou** —
+o `chown -R www-data:www-data` sobre a árvore inteira consumiu ~9 min entre o
+`view:cache` (13:18:52 UTC) e o `supervisorctl restart` (~13:27:27 UTC), que é a
+última linha do script. Timeout do cliente não é sinal de deploy incompleto:
+verificar sempre pelo estado da VPS, nunca pelo stdout que morreu junto.
+
+Conferido em produção por reconsulta:
+
+- HEAD `f146165`; caches `config.php`/`routes-v7.php` regravados às 13:18:52.
+- Workers `ecf-worker_00`/`_01` **RUNNING** (a prova de que a última linha rodou);
+  árvore em `www-data:www-data`.
+- Bundle **buildado na VPS** (`assets/Index-DHwlQcGP.js`) contém
+  `performance.show",{user:s.id,...paramsDoMes()}` e o padrão antigo
+  (`performance.show",<var>.id`) está **ausente**; `assets/Show-DrtDKRJF.js`
+  contém `performance.index",r&&!i?.is_current_month?{mes:r}:{}`.
+- Smoke: `/login` 200, `/performance` 302, `/performance/20?mes=2026-06` 302
+  (redirect ao login sem sessão — nenhum 500). Zero `production.ERROR` novo.
