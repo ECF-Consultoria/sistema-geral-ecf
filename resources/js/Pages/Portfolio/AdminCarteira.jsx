@@ -263,9 +263,11 @@ function VariacaoChip({ pct, size = 'sm' }) {
 export default function AdminCarteira({
     profissional, resumo, empresas = [], periodo, contexto = 'todos', bonus = null,
     score = null, tem_detalhe_empresas = false,
-    // 2026-08-07 — true enquanto o warm sob-demanda calcula a nota em
-    // background. Mesma prop do ranking e do /performance/{id}.
+    // 2026-08-07 — true enquanto QUALQUER das duas camadas aquece em background
+    // (nota e tabela têm caches distintos); `aquecendo_tabela` diz se é a tabela.
+    // Mesma prop do ranking e do /performance/{id}.
     aquecendo = false,
+    aquecendo_tabela = false,
 }) {
     const [busca, setBusca] = useState('');
     const [sortCol, setSortCol] = useState('faturamento');
@@ -320,7 +322,7 @@ export default function AdminCarteira({
             if (!document.hidden) {
                 tentativasAquecendoRef.current += 1;
                 router.reload({
-                    only: ['score', 'aquecendo', 'tem_detalhe_empresas', 'empresas'],
+                    only: ['score', 'aquecendo', 'aquecendo_tabela', 'tem_detalhe_empresas', 'empresas', 'resumo'],
                     preserveScroll: true,
                     preserveState: true,
                 });
@@ -333,7 +335,7 @@ export default function AdminCarteira({
         tentativasAquecendoRef.current = 0;
         setPollEsgotado(false);
         router.reload({
-            only: ['score', 'aquecendo', 'tem_detalhe_empresas', 'empresas'],
+            only: ['score', 'aquecendo', 'aquecendo_tabela', 'tem_detalhe_empresas', 'empresas', 'resumo'],
             preserveScroll: true,
             preserveState: true,
         });
@@ -572,6 +574,32 @@ export default function AdminCarteira({
                             </div>
                         )}
 
+                        {/* Tabela aquecendo (2026-08-07) — os números por empresa
+                            vêm de HTTP síncrono à Adman e estavam frios. Precisa
+                            substituir a TABELA inteira: renderizá-la vazia diria
+                            "carteira sem empresas", que é outra coisa. */}
+                        {aquecendo_tabela ? (
+                            <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-8 flex flex-col items-center text-center gap-3">
+                                <Loader2 size={28} className="text-ecf-yellow animate-spin" />
+                                <p className="text-white/80 text-sm font-semibold">
+                                    Carregando os números de {periodo?.mes_label ?? 'esta competência'}…
+                                </p>
+                                <p className="text-white/50 text-xs max-w-lg leading-relaxed">
+                                    Faturamento e margem são buscados empresa por empresa e ainda não
+                                    estavam em cache para este mês. A busca roda em segundo plano e a
+                                    tabela aparece sozinha — normalmente em menos de dois minutos.
+                                </p>
+                                {pollEsgotado && (
+                                    <button
+                                        type="button"
+                                        onClick={recarregarAquecendoManual}
+                                        className="mt-1 rounded-lg border border-white/[0.12] bg-white/[0.04] px-4 py-2 text-sm text-white/80 hover:bg-white/[0.08] transition-colors"
+                                    >
+                                        Ainda carregando — verificar de novo
+                                    </button>
+                                )}
+                            </div>
+                        ) : (
                         <div className="overflow-x-auto -mx-1">
                             <table className="w-full text-[13px] min-w-[960px]">
                                 <thead>
@@ -665,6 +693,7 @@ export default function AdminCarteira({
                                 </tbody>
                             </table>
                         </div>
+                        )}
 
                         {empresasView.length > 0 && (
                             <div className="text-white/40 text-[11px] pt-2 border-t border-white/[0.04]">

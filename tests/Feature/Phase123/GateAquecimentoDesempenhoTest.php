@@ -4,6 +4,7 @@ namespace Tests\Feature\Phase123;
 
 use App\Services\Desempenho\WarmDesempenhoDispatcher;
 use App\Services\DesempenhoScoreService;
+use App\Services\Metrics\AdmanMetricDiffService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
@@ -149,6 +150,60 @@ class GateAquecimentoDesempenhoTest extends Phase123TestCase
         $this->assertTrue($dispatcher->agendarWarm([$alvo->id], $mes), '1o request deve disparar');
         $this->assertFalse($dispatcher->agendarWarm([$alvo->id], $mes), '2o request nao pode disparar');
         $this->assertFalse($dispatcher->agendarWarm([$alvo->id], $mes), '3o request nao pode disparar');
+    }
+
+    /**
+     * A carteira tem DOIS fan-outs independentes — a nota e a TABELA (o laço
+     * que chama `MetricDiffDispatcher::compute()` por empresa). Blindar só o
+     * primeiro deixou a página levando 115s, e foi a medição PÓS-DEPLOY que
+     * expôs isso: com a nota gateada, o `/performance/{id}` caiu para 0,1s
+     * mas `/admin/users/{id}/portfolio` continuou pendurando.
+     */
+    #[Test]
+    public function carteira_com_diff_frio_nao_monta_a_tabela(): void
+    {
+        Queue::fake();
+
+        $alvo = $this->criarUserElegivel('Tabela Fria');
+        $this->darCarteira($alvo);
+        $this->adminLogado();
+
+        $this->mock(AdmanMetricDiffService::class, function ($mock) {
+            $mock->shouldReceive('isCached')->andReturn(false);
+            // O gate existe exatamente para este método não ser chamado.
+            $mock->shouldNotReceive('compute');
+        });
+
+        $this->get(route('portfolio.show', $alvo) . '?mes=2026-07')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Portfolio/AdminCarteira')
+                ->where('aquecendo_tabela', true)
+                ->where('aquecendo', true)
+                ->where('empresas', [])
+            );
+    }
+
+    #[Test]
+    public function carteira_com_diff_quente_monta_a_tabela_normalmente(): void
+    {
+        $alvo = $this->criarUserElegivel('Tabela Quente');
+        $this->darCarteira($alvo);
+        $this->adminLogado();
+
+        // Mock PARCIAL: só `isCached` é stubado; `compute()` continua real.
+        // Um mock completo devolveria null de `compute()` e a tela dava 500 —
+        // o teste passaria a medir o mock, não o gate.
+        $this->partialMock(AdmanMetricDiffService::class, function ($mock) {
+            $mock->shouldReceive('isCached')->andReturn(true);
+        });
+
+        $this->get(route('portfolio.show', $alvo) . '?mes=2026-07')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Portfolio/AdminCarteira')
+                ->where('aquecendo_tabela', false)
+            );
     }
 
     #[Test]

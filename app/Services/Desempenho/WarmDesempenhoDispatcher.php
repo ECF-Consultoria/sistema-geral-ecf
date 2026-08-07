@@ -4,6 +4,7 @@ namespace App\Services\Desempenho;
 
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
+use App\Services\Metrics\AdmanMetricDiffService;
 use App\Services\Portfolio\CarteiraContextService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Artisan;
@@ -41,6 +42,7 @@ class WarmDesempenhoDispatcher
     public function __construct(
         private DesempenhoScoreService $scoreService,
         private CarteiraContextService $carteiraContext,
+        private AdmanMetricDiffService $admanDiff,
     ) {}
 
     /**
@@ -105,6 +107,40 @@ class WarmDesempenhoDispatcher
      *
      * @return bool  true quando a tela deve renderizar em modo "calculando"
      */
+    /**
+     * Gate da TABELA da carteira — camada diferente da nota.
+     *
+     * A carteira tem DOIS fan-outs independentes: o da nota (gateIndividual
+     * acima) e o dela própria, que chama `MetricDiffDispatcher::compute()` por
+     * empresa para montar faturamento/margem/ADS. Blindar só o primeiro deixou
+     * `/admin/users/{id}/portfolio` levando 115s em produção depois do deploy
+     * de 2026-08-07 — foi a medição pós-deploy que expôs o segundo.
+     *
+     * Frio se QUALQUER empresa da lista estiver fria: basta uma para o laço
+     * pagar HTTP síncrono, e a tabela é montada inteira ou nenhuma.
+     *
+     * @param  \Illuminate\Support\Collection<int,\App\Models\Company>  $companies
+     * @param  array  $periodo  shape do MetricPeriodResolver
+     */
+    public function gateCarteira($companies, array $periodo, Carbon $mes): bool
+    {
+        $temFria = $companies->contains(
+            fn ($c) => ! $this->admanDiff->isCached($c, $periodo)
+        );
+
+        if (! $temFria) {
+            return false;
+        }
+
+        $lockKey = 'adman.diff.warm.lock.' . $mes->format('Y-m');
+        if (Cache::add($lockKey, true, now()->addMinutes(self::LOCK_MINUTOS))) {
+            // `--period` aceita `YYYY-MM` (mesmo contrato do MetricPeriodResolver).
+            Artisan::queue('adman:warm-diff', ['--period' => $mes->format('Y-m')]);
+        }
+
+        return true;
+    }
+
     public function gateIndividual(User $user, Carbon $mes): bool
     {
         if (! $this->estaFrio($user, $mes)) {

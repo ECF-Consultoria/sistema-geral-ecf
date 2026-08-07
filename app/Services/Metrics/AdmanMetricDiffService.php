@@ -105,6 +105,42 @@ class AdmanMetricDiffService
      *     quality: array{status: string, source: string, computed_at: string, diff_pp_disponivel: bool},
      * }
      */
+    /**
+     * Chave do cache do diff — FONTE ÚNICA (extraída em 2026-08-07 para o
+     * `isCached()` abaixo poder perguntar sem duplicar o formato; duas cópias
+     * do prefixo `v6` divergiriam no próximo bump e o gate passaria a mentir).
+     *
+     * As versões `v2`..`v6` estão documentadas em `compute()`, onde cada bump
+     * foi decidido — não repetir o histórico aqui.
+     */
+    private function cacheKey(string $marketplace, string $custId, array $periodo): string
+    {
+        return "adman:diff:v6:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
+    }
+
+    /**
+     * Este (empresa, período) já está em cache?
+     *
+     * Existe para a carteira poder decidir se pode montar a tabela AGORA ou se
+     * precisa aquecer em background: `compute()` faz HTTP síncrono à Adman, e
+     * 25 empresas frias custaram 157s medidos em produção (2026-08-07) — a
+     * página pendurava até o `max_execution_time` de 300s do php-fpm.
+     *
+     * Empresa sem `cust_id` conta como QUENTE: `compute()` devolve o shape
+     * vazio na hora, sem tocar a rede — não há nada a aquecer.
+     */
+    public function isCached(Company $company, array $periodo): bool
+    {
+        $custId      = $company->adman_account_id ?: $company->ml_store_id;
+        $marketplace = $company->marketplace ?? 'meli';
+
+        if (empty($custId)) {
+            return true;
+        }
+
+        return Cache::has($this->cacheKey($marketplace, (string) $custId, $periodo));
+    }
+
     public function compute(Company $company, array $periodo): array
     {
         // Prioriza adman_account_id (alinhado com Company::cust_id — padrão do AdmanService).
@@ -125,7 +161,7 @@ class AdmanMetricDiffService
         // "sem fonte" antigas dessas empresas.
         // v6 (2026-07-27): shape ganha prev_value/diff_pp (Fase 117, MPP-01/02/03) —
         // o bump invalida as entradas com shape antigo.
-        $cacheKey = "adman:diff:v6:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
+        $cacheKey = $this->cacheKey($marketplace, $custId, $periodo);
 
         // Memo do request: devolve o resultado real já computado nesta passada
         // (evita reler um ERROR_SENTINEL gravado pela 1ª de duas chamadas ao

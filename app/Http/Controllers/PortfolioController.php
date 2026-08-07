@@ -546,6 +546,23 @@ class PortfolioController extends Controller
             ->orderBy('name')
             ->get();
 
+        // 2026-08-07 — gate da TABELA (camada distinta da nota, gateada mais
+        // abaixo). O laço de montagem chama `MetricDiffDispatcher::compute()`
+        // por empresa, que é HTTP síncrono à Adman: 157s medidos para as 25
+        // empresas do user 20 numa competência fria (19 delas acima de 1s
+        // cada). Blindar só a nota deixou esta página levando 115s — foi a
+        // medição PÓS-DEPLOY que expôs este segundo fan-out.
+        //
+        // Zerar `$rawCompanies` é o que efetivamente evita o custo: todo o
+        // pipeline abaixo (custIds → getCachedGrossBillingsMany → map com o
+        // dispatcher) passa a operar sobre coleção vazia, sem tocar a rede, e
+        // o shape das props continua válido. O front mostra "calculando…" no
+        // lugar da tabela e polla.
+        $aquecendoCarteira = $this->warmDispatcher->gateCarteira($rawCompanies, $periodo, $mesSelecionado);
+        if ($aquecendoCarteira) {
+            $rawCompanies = collect();
+        }
+
         // Dedup financeiro (CART-04/05): a lista de company_id consultada em
         // AdmanMetric contém SÓ empresas com AO MENOS UM vínculo elegível do
         // profissional, e ->unique() garante que uma empresa com 2 vínculos
@@ -1086,7 +1103,12 @@ class PortfolioController extends Controller
                 'calculando'         => $aquecendoScore,
             ],
             // Mesmo nome de prop do ranking e do /performance/{id}, de propósito.
-            'aquecendo' => $aquecendoScore,
+            // As DUAS camadas contam: a nota e a tabela têm caches distintos e
+            // podem estar frias em momentos diferentes — a tela só volta ao
+            // normal quando nenhuma das duas está aquecendo.
+            'aquecendo' => $aquecendoScore || $aquecendoCarteira,
+            // Separada porque é a tabela que some, não a página inteira.
+            'aquecendo_tabela' => $aquecendoCarteira,
             'tem_detalhe_empresas' => $temDetalheEmpresas,
             'periodo' => [
                 // Campos de display já existentes (Fase 89, PRESERVADOS).
