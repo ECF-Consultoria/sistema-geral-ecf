@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router, Link } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Tv, X, ExternalLink, Loader2, AlertTriangle } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 import { SourceBadge } from '@/Components/ui/source-badge';
@@ -71,6 +71,9 @@ export default function AdminDashboard({
     margin_chart = [],
     nps_distribution = { positivas: 0, negativas: 0 },
     performance_equipe = [],
+    // 2026-08-07 — true enquanto o warm calcula as notas frias em background.
+    // Mesma prop do ranking e das telas de detalhe.
+    performance_aquecendo = false,
     period = '30',
     filters = {},
     users = [],
@@ -98,6 +101,39 @@ export default function AdminDashboard({
     dashboard_route_name = 'dashboard',
 }) {
     const [tvMode, setTvMode] = useState(false);
+
+    // ── Poll de aquecimento (2026-08-07) ──────────────────────────────────
+    // Esta é a landing page: com o cache de desempenho frio, o widget "Score
+    // da equipe" media 124s e derrubava a experiência do sistema inteiro. O
+    // controller passou a devolver placeholder `calculando` e a agendar o
+    // warm; aqui só recarregamos a prop quando ele terminar. Teto de
+    // tentativas para não pollar pra sempre se o job falhar, e `document.hidden`
+    // para não queimar request em aba esquecida aberta — a landing page é
+    // justamente a que fica aberta o dia todo.
+    const POLL_AQUECENDO_TETO = 20; // ~20 x 6s ≈ 2min
+    const tentativasAquecendoRef = useRef(0);
+
+    useEffect(() => {
+        if (!performance_aquecendo) {
+            tentativasAquecendoRef.current = 0;
+            return undefined;
+        }
+        const id = setInterval(() => {
+            if (tentativasAquecendoRef.current >= POLL_AQUECENDO_TETO) {
+                clearInterval(id);
+                return;
+            }
+            if (!document.hidden) {
+                tentativasAquecendoRef.current += 1;
+                router.reload({
+                    only: ['performance_equipe', 'performance_aquecendo'],
+                    preserveScroll: true,
+                    preserveState: true,
+                });
+            }
+        }, 6000);
+        return () => clearInterval(id);
+    }, [performance_aquecendo]);
 
     // Fase 97 Plan 04 — estados REAIS de carregando/erro (sem toggle de
     // demo): `isNavigating` acompanha uma navegação Inertia em andamento

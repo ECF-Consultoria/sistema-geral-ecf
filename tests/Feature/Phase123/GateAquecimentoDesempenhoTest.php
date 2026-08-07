@@ -165,7 +165,11 @@ class GateAquecimentoDesempenhoTest extends Phase123TestCase
         Queue::fake();
 
         $alvo = $this->criarUserElegivel('Tabela Fria');
-        $this->darCarteira($alvo);
+        // Acima da TOLERANCIA_EMPRESAS_FRIAS (3) — o gate é proporcional, então
+        // uma carteira de 1 empresa fria NÃO gateia (ver o teste da tolerância).
+        for ($i = 0; $i < 4; $i++) {
+            $this->darCarteira($alvo);
+        }
         $this->adminLogado();
 
         $this->mock(AdmanMetricDiffService::class, function ($mock) {
@@ -203,6 +207,75 @@ class GateAquecimentoDesempenhoTest extends Phase123TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Portfolio/AdminCarteira')
                 ->where('aquecendo_tabela', false)
+            );
+    }
+
+    /**
+     * O gate da tabela é PROPORCIONAL, não "qualquer uma fria".
+     *
+     * Medido em produção: o warm converge em ondas (25 → 9 → 1 de 25). Com a
+     * regra binária, 1 retardatária escondia a tabela inteira com 24/25 dos
+     * dados prontos — e, como o ERROR_SENTINEL do diff expira em 10min, uma
+     * empresa que erre cronicamente faria a tabela piscar para sempre.
+     */
+    #[Test]
+    public function poucas_empresas_frias_nao_escondem_a_tabela_mas_disparam_o_warm(): void
+    {
+        Queue::fake();
+
+        $alvo = $this->criarUserElegivel('Uma Retardatária');
+        $this->darCarteira($alvo);
+        $this->adminLogado();
+
+        // 1 fria (abaixo da tolerância): renderiza normal.
+        $this->partialMock(AdmanMetricDiffService::class, function ($mock) {
+            $mock->shouldReceive('isCached')->once()->andReturn(false);
+            $mock->shouldReceive('isCached')->andReturn(true);
+        });
+
+        $this->get(route('portfolio.show', $alvo) . '?mes=2026-07')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Portfolio/AdminCarteira')
+                ->where('aquecendo_tabela', false)
+            );
+
+        // ...e mesmo sem gatear, o warm foi agendado para a retardatária.
+        $this->assertNotNull(
+            Cache::get('adman.diff.warm.lock.2026-07'),
+            'aquecer e gatear sao decisoes separadas: abaixo do limite ainda aquece',
+        );
+    }
+
+    /**
+     * O /dashboard e a LANDING PAGE de todo usuario logado — era o pior caso
+     * do sistema inteiro. O widget "Score da equipe" percorria os
+     * profissionais chamando computeCached(): 124s medidos em producao com o
+     * cache frio (2026-08-07). "Sistema nao carrega nada" era daqui, nao de um
+     * modulo especifico.
+     */
+    #[Test]
+    public function dashboard_com_cache_frio_nao_computa_e_marca_calculando(): void
+    {
+        Queue::fake();
+
+        $alvo = $this->criarUserElegivel('Frio no Dashboard');
+        $this->darCarteira($alvo);
+        $admin = $this->adminLogado();
+
+        $this->mock(DesempenhoScoreService::class, function ($mock) {
+            $mock->shouldReceive('isCached')->andReturn(false);
+            // O gate existe exatamente para isto nao acontecer na landing page.
+            $mock->shouldNotReceive('compute');
+            $mock->shouldNotReceive('computeCached');
+        });
+
+        $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('performance_aquecendo', true)
+                ->where('performance_equipe.0.calculando', true)
+                ->where('performance_equipe.0.nota_final', null)
             );
     }
 

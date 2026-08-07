@@ -52,6 +52,26 @@ export default function ScoreEquipe({ membros = [] }) {
                             ? `TACoS ${Number(b.tacos).toFixed(1)}`
                             : `Faturamento ${b.faturamento != null ? Number(b.faturamento).toFixed(1) : '—'}`;
 
+                        // 2026-08-07 — linha "fria": o gate do controller devolveu
+                        // placeholder em vez de pagar o compute() síncrono (que
+                        // media 124s na landing page inteira). "—" aqui se leria
+                        // como "sem nota"; o estado tem que aparecer.
+                        if (m.calculando === true) {
+                            return (
+                                <div key={m.id}>
+                                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                                        <span className="text-white/85 text-[13px] font-bold truncate">{m.name}</span>
+                                        <span className="text-[12px] font-semibold shrink-0 text-white/40 animate-pulse">
+                                            calculando…
+                                        </span>
+                                    </div>
+                                    <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                                        <div className="h-full w-1/4 rounded-full bg-white/15 animate-pulse" />
+                                    </div>
+                                </div>
+                            );
+                        }
+
                         return (
                             <div key={m.id}>
                                 <div className="flex items-center justify-between gap-2 mb-1.5">

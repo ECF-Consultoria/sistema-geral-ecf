@@ -1123,8 +1123,43 @@ class DashboardController extends Controller
             'sem_bonus'     => 'critico',
         ];
 
+        // 2026-08-07 — gate quente/frio, o MESMO do ranking e das telas de
+        // detalhe (`WarmDesempenhoDispatcher`). Este widget era o pior caso do
+        // sistema inteiro: `/dashboard` é a landing page de TODO usuário
+        // logado, e o laço abaixo paga `computeCached()` por profissional. Com
+        // o cache frio isso mediu **124s** em produção (2026-08-07) — o
+        // "sistema não carrega nada" não era de um módulo, era daqui.
+        //
+        // "Cacheado" (ajuste de 2026-07-10) não bastava: o TTL do mês corrente
+        // é de 10min e o warm agendado roda a cada 8min SÓ das 7h às 22h, então
+        // toda janela em que o warm não acompanha joga a landing page no
+        // caminho síncrono — e ela é a primeira coisa que todo mundo abre.
+        $perfFrios = [];
+
         $perfMembros = $perfMembrosQuery->orderBy('name')->get(['id', 'name'])
-            ->map(function ($u) use ($scoreService, $mesReferenciaPerf, $faixaParaClassificacao) {
+            ->map(function ($u) use ($scoreService, $mesReferenciaPerf, $faixaParaClassificacao, &$perfFrios) {
+                // Frio: NÃO computa aqui. Devolve placeholder `calculando` e
+                // coleta o ID pro warm em background, igual ao ranking.
+                if (! $scoreService->isCached($u, $mesReferenciaPerf)) {
+                    $perfFrios[] = $u->id;
+
+                    return [
+                        'id'              => $u->id,
+                        'name'            => $u->name,
+                        'nota_final'      => null,
+                        'faixa_bonus'     => null,
+                        'faixa_promovida' => false,
+                        'sem_carteira'    => false,
+                        'calculando'      => true,
+                        'score'           => null,
+                        'classificacao'   => null,
+                        'breakdown'       => [
+                            'carteira' => 0, 'nps' => null, 'margem' => null,
+                            'faturamento' => null, 'tacos' => null,
+                        ],
+                    ];
+                }
+
                 // Ajuste 2026-07-10 (audit performance-lentidao): cacheado.
                 // Antes: 11 users × até 4 HTTP calls por empresa = 70s cold.
                 $r = $scoreService->computeCached($u, $mesReferenciaPerf);
@@ -1168,12 +1203,21 @@ class DashboardController extends Controller
                         'faturamento' => $r['pontos_componentes']['faturamento'] ?? null,
                         'tacos'       => null,
                     ],
+                    'calculando'      => false,
                 ];
             })
             // DESEMP-10 — remove users sem carteira do ranking.
             ->reject(fn ($r) => $r['sem_carteira'] === true)
             ->sortByDesc(fn ($r) => $r['nota_final'] ?? -1)
             ->values();
+
+        // Dispara o warm em background pros frios (lock de 3min no dispatcher
+        // evita empilhar job a cada refresh da landing page). Resolvido pelo
+        // container aqui, como o `$scoreService` acima — o construtor deste
+        // controller não é o lugar (só o dashboard admin usa).
+        app(\App\Services\Desempenho\WarmDesempenhoDispatcher::class)
+            ->agendarWarm($perfFrios, $mesReferenciaPerf);
+        $perfAquecendo = ! empty($perfFrios);
 
         // Phase 61 Plan 61-01 — enriquecimento condicional com `source` por
         // empresa (dicionário id→enum) e `source_counts` agregado. Quando
@@ -1282,6 +1326,9 @@ class DashboardController extends Controller
             // Quick 260623 — alimenta widget "Performance da equipe" que
             // substituiu NPS Distribuicao no Dashboard/Admin.jsx.
             'performance_equipe' => $perfMembros,
+            // 2026-08-07 — true enquanto o warm calcula em background. Mesma
+            // prop do ranking e das telas de detalhe; o front polla e preenche.
+            'performance_aquecendo' => $perfAquecendo,
             'period'         => $period,
             // Phase 18 (W1-T1) — chaves em snake_case alinhadas com os query params lidos
             // nas linhas 68-70 (mesma fonte de verdade). Antes usava compact() que produzia
