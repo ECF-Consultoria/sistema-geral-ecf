@@ -368,6 +368,16 @@ export default function PerformanceShow({
     );
     const trocarMes = (ym) => irPara({ mes: ym });
 
+    // 2026-08-07 — o "Ranking" devolve o mês que está sendo visto aqui, fechando
+    // o ida-e-volta com o dropdown do /performance (que passou a mandar `?mes=`
+    // no clique da linha). Mesma regra de borda do ranking: no mês corrente o
+    // param é omitido pra não trocar `current_month` pelo ramo `YYYY-MM` do
+    // MetricPeriodResolver.
+    const voltarAoRanking = () => {
+        const ym = String(mes_selecionado ?? '').slice(0, 7);
+        router.visit(route('performance.index', (ym && !periodo?.is_current_month) ? { mes: ym } : {}));
+    };
+
     return (
         <AppLayout title={`Desempenho — ${user?.name ?? 'Analista'}`}>
             <div className="space-y-6 max-w-6xl mx-auto">
@@ -377,7 +387,7 @@ export default function PerformanceShow({
                     <div className="flex items-center gap-3">
                         <button
                             type="button"
-                            onClick={() => router.visit(route('performance.index'))}
+                            onClick={voltarAoRanking}
                             className="flex items-center gap-1.5 text-white/40 hover:text-white text-[13px] transition-colors"
                         >
                             <ArrowLeft size={14} /> Ranking

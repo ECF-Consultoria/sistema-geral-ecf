@@ -228,6 +228,16 @@ export default function PerformanceIndex({
     const modoUrl = isPolos ? null : new URLSearchParams(window.location.search).get('modo');
     const modoBonusAtual = modoUrl === 'bonus_atual';
 
+    // 2026-08-07 — o mês escolhido aqui acompanha o clique na linha. Sem isso
+    // /performance/{user} caía no default (mês em curso) e o usuário tinha que
+    // reescolher no dropdown do Show a competência que acabara de selecionar.
+    //
+    // Só anexa quando NÃO é o mês corrente: `?mes=` do mês em curso resolveria
+    // pelo ramo `YYYY-MM` do MetricPeriodResolver em vez do `current_month`
+    // (mode=operational, baseline de janela parcial), trocando o modo da tela
+    // sem o usuário ter pedido. No mês corrente o default já é o certo.
+    const paramsDoMes = () => (mes_selecionado && !mes_em_curso ? { mes: mes_selecionado } : {});
+
     // Phase 46-03 — user selecionado abre o EvolucaoDrawer à direita
     const [userSelecionado, setUserSelecionado] = useState(null);
 
@@ -589,7 +599,7 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 idx === 0 && 'bg-ecf-yellow/[0.03]',
                                 calculando ? 'cursor-default' : 'hover:bg-white/[0.04] cursor-pointer',
                             )}
-                            onClick={() => { if (!calculando) router.visit(route('performance.show', u.id)); }}
+                            onClick={() => { if (!calculando) router.visit(route('performance.show', { user: u.id, ...paramsDoMes() })); }}
                         >
                             {/* Posição */}
                             <div className="flex items-center justify-center">
