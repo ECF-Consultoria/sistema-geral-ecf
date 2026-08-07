@@ -158,7 +158,15 @@ export function ehPlaceholderShopee(linha) {
 
 export const MARGEM_CARD_TITULO = 'Margem';
 
-export const MARGEM_CARD_SUBLABEL = 'Variação relativa da margem contra a janela anterior, na média das empresas da carteira. Ex.: de 10% para 11% aparece como +10%.';
+/**
+ * 2026-08-06 — o card de margem passou a exibir PONTOS como valor principal,
+ * então o sublabel deixou de descrever a variação relativa (que saiu do card) e
+ * passou a explicar de onde vem o ponto. O texto antigo era
+ * "Variação relativa da margem contra a janela anterior, na média das empresas
+ * da carteira. Ex.: de 10% para 11% aparece como +10%." — descrevia um número
+ * que não está mais ali.
+ */
+export const MARGEM_CARD_SUBLABEL = 'Régua de 1 a 5 aplicada empresa por empresa, na média da carteira. A variação em pontos percentuais aparece logo acima.';
 
 export const SELO_SHOPEE_TEXTO = 'Shopee: sem dado de margem';
 
@@ -200,6 +208,99 @@ export const SECAO_NAO_ENTRARAM_SUBTITULO = 'Empresas sem os três componentes �
 export const NOTA_TOPO_RESSALVA = 'A nota do topo continua vindo do cálculo por carteira. As notas por empresa abaixo mostram como cada empresa foi avaliada no fechamento.';
 
 export const LIMIAR_COLAPSO_NAO_ENTRARAM = 8;
+
+// ─── Faixa de bônus e conta da nota ───────────────────────────────────────
+// Rótulo e cor da faixa nunca renderizam o slug cru. Vivem aqui porque a
+// carteira passou a exibir a mesma faixa que o ranking e a tela de desempenho
+// — três telas, um vocabulário.
+
+export const FAIXA_BONUS_LABEL = {
+    sem_bonus:     'Sem bônus',
+    basico:        'Básico',
+    intermediario: 'Intermediário',
+    maximo:        'Máximo',
+};
+
+export const FAIXA_BONUS_CLS = {
+    sem_bonus:     'bg-white/[0.04] border-white/[0.08] text-white/60',
+    basico:        'bg-sky-500/10 border-sky-500/30 text-sky-300',
+    intermediario: 'bg-violet-500/10 border-violet-500/30 text-violet-300',
+    maximo:        'bg-ecf-yellow/10 border-ecf-yellow/40 text-ecf-yellow',
+};
+
+export function faixaBonusLabel(slug) {
+    if (!slug) return 'Sem classificação';
+    return FAIXA_BONUS_LABEL[slug] ?? slug;
+}
+
+export function faixaBonusCls(slug) {
+    return FAIXA_BONUS_CLS[slug] ?? FAIXA_BONUS_CLS.sem_bonus;
+}
+
+/**
+ * A conta que produziu a nota — "(4,65+3,83+3,61)/3 = 4,03". Mesmo formato do
+ * ranking e da tela de desempenho: componente indisponível fica de fora e o
+ * denominador acompanha quantos sobraram, senão a conta exibida não fecha com
+ * a nota exibida ao lado dela.
+ */
+export function formatContaNota(pontos, notaFinal) {
+    if (!pontos) return null;
+    const pts = [pontos.nps, pontos.faturamento, pontos.margem].filter((v) => v != null);
+    if (pts.length === 0) return null;
+    const notaFmt = notaFinal != null ? fmtNotaEmpresa(notaFinal) : '?';
+    return `(${pts.map(fmtNotaEmpresa).join('+')})/${pts.length} = ${notaFmt}`;
+}
+
+// ─── Banner de período — texto curto na tela, longo no tooltip ────────────
+// O mesmo parágrafo de contexto de período existia escrito à mão em
+// Performance/Show, Performance/Index e Portfolio/AdminCarteira. Três cópias
+// do mesmo texto é exatamente o que este arquivo existe para evitar: quando o
+// texto muda, uma das três fica para trás. A tela mostra UMA linha; a
+// explicação completa vive no `title`.
+
+export const PERIODO_EM_CURSO_TITULO = 'Mês em curso';
+
+export const PERIODO_EM_CURSO_DETALHE = 'Não é fechamento de bônus. Faturamento e margem comparam do dia 1 até a data disponível contra o mesmo intervalo do mês anterior, para não gerar queda artificial. O NPS deste mês só é coletado no mês seguinte — até lá entra com piso 1,0.';
+
+export const PERIODO_FECHADO_TITULO = 'Mês fechado';
+
+export const PERIODO_FECHADO_DETALHE = 'Comparação contra a janela anterior oficial, de mesmo tamanho. São estes os valores usados na régua de bônus da competência.';
+
+export const PERIODO_BONUS_TITULO = 'Bônus atual';
+
+export const PERIODO_BONUS_DETALHE = 'Usa os resultados financeiros da competência comparados com a janela anterior de mesmo tamanho, e o NPS coletado no mês seguinte. O NPS pertence ao mês de coleta seguinte à competência financeira.';
+
+/**
+ * Linha única de composição da carteira, com os quatro metadados de
+ * elegibilidade. Substitui o grid de 4 tiles do card de bônus MAIS o card
+ * "Info carteira" que repetia baseline/carteira logo abaixo — dois blocos
+ * sobre o mesmo assunto. Devolve `{ texto, titulo }`; o `titulo` carrega os
+ * rótulos por extenso, como o ranking já faz no tooltip da coluna Empresas.
+ */
+export function resumoCarteiraLinha({ comBaseline, carteira, vinculos, semFonte } = {}) {
+    const nBaseline = Number(comBaseline ?? 0);
+    const nCarteira = Number(carteira ?? 0);
+    const nVinculos = Number(vinculos ?? 0);
+    const nSemFonte = Number(semFonte ?? 0);
+
+    const partes = [
+        `${nBaseline} de ${nCarteira} empresa${nCarteira === 1 ? '' : 's'} com baseline`,
+        `${nVinculos} vínculo${nVinculos === 1 ? '' : 's'} de serviço`,
+    ];
+    if (nSemFonte > 0) {
+        partes.push(`${nSemFonte} sem fonte financeira`);
+    }
+
+    return {
+        texto: partes.join(' · '),
+        titulo: [
+            `Empresas únicas na carteira: ${nCarteira}`,
+            `Empresas com baseline para comparação: ${nBaseline}`,
+            `Vínculos de serviço: ${nVinculos}`,
+            `Vínculos sem fonte financeira: ${nSemFonte}`,
+        ].join(' · '),
+    };
+}
 
 /**
  * Selo de safra da Auditoria de Bônus (CR-02/gap 2 do 123-VERIFICATION.md,

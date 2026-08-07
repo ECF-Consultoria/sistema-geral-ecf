@@ -19,6 +19,7 @@ use App\Services\Metrics\AdmanMetricDiffService;
 use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
+use App\Services\Desempenho\CompanyScoreSnapshotReader;
 use App\Services\DesempenhoScoreService;
 use App\Services\Nps\NpsPendingService;
 use App\Services\Portfolio\CarteiraContextService;
@@ -39,6 +40,10 @@ class PortfolioController extends Controller
         private MetricPeriodResolver $periodResolver,
         private AdmanMetricDiffService $admanDiffService,
         private MetricDiffDispatcher $diffDispatcher,
+        // Leitura pura de `desempenho_company_score_snapshots` — a MESMA fonte
+        // que `Performance/Show` consome. A carteira nunca calcula score por
+        // empresa ao vivo (ver `.planning/learnings/desempenho-bonificacao.md` §5).
+        private CompanyScoreSnapshotReader $companyScoreReader,
     ) {}
 
     /**
@@ -972,6 +977,57 @@ class PortfolioController extends Controller
         // (ver vinculosParaContadoresDisplay()).
         $contadoresResumo = $this->carteiraContext->contadores($this->vinculosParaContadoresDisplay($vinculos));
 
+        // ─── Ponto do mês (2026-08-06) ───────────────────────────────────────
+        // A carteira ganhou a nota/faixa do profissional como âncora, no lugar
+        // do KPI "Margem média". Precedência IDÊNTICA à de
+        // `PerformanceController::show()`: snapshot mensal congelado primeiro,
+        // `computeCached()` só como fallback.
+        //
+        // Não é detalhe de implementação — é o que impede as duas telas de
+        // mostrarem números diferentes para a mesma competência fechada. A
+        // margem é frágil na fronteira (learning §2: 0,24 p.p. entre duas
+        // leituras da mesma competência já tirou o bônus de alguém), então ler
+        // ao vivo aqui produziria divergência sem nenhuma mudança de dado.
+        // Como efeito colateral bom, mês fechado nem chega a computar.
+        //
+        // `compute()` puro NUNCA entra aqui: sem cache esta página espera HTTP
+        // da Adman por empresa e vai a dezenas de segundos (learning §5).
+        $snapMensal = DesempenhoScoreSnapshot::mensal()
+            ->where('user_id', $user->id)
+            ->whereDate('mes_referencia', $mesSelecionado->toDateString())
+            ->first();
+
+        $scoreDoMes = ($snapMensal && is_array($snapMensal->breakdown_json) && isset($snapMensal->breakdown_json['componentes']))
+            ? $snapMensal->breakdown_json
+            : $this->scoreService->computeCached($user, $mesSelecionado);
+
+        // ─── Pontos por empresa ──────────────────────────────────────────────
+        // Só existem em competência FECHADA já consolidada. `is_closed` sozinho
+        // não basta (mês fechado sem consolidação, ou anterior à Fase 122, não
+        // tem linha gravada), por isso a flag deriva da EXISTÊNCIA de linhas —
+        // mesma regra do `PerformanceController::show()`. Em mês em curso a
+        // tela mostra aviso explícito; jamais número calculado na hora.
+        $linhasScore = collect();
+        if ($periodo['is_closed']) {
+            $linhasScore = $this->companyScoreReader->paraUsuario($user->id, $mesSelecionado);
+        }
+        $temDetalheEmpresas = $linhasScore->isNotEmpty();
+
+        // Mapa company_id → pontos, para casar com as linhas operacionais já
+        // montadas em $empresas sem refazer nenhuma consulta.
+        $pontosPorEmpresa = $linhasScore->keyBy('company_id');
+
+        $empresas = $empresas->map(function (array $e) use ($pontosPorEmpresa) {
+            $linha = $pontosPorEmpresa->get($e['id']);
+
+            $e['nps_pontos']         = $linha['nps_pontos']         ?? null;
+            $e['faturamento_pontos'] = $linha['faturamento_pontos'] ?? null;
+            $e['margem_pontos']      = $linha['margem_pontos']      ?? null;
+            $e['nota_empresa']       = $linha['nota_empresa']       ?? null;
+
+            return $e;
+        });
+
         return Inertia::render('Portfolio/AdminCarteira', [
             'profissional' => [
                 'id'          => $user->id,
@@ -996,6 +1052,17 @@ class PortfolioController extends Controller
             ],
             'contexto' => $contextoFiltro['param'],
             'empresas' => $empresas,
+            // Ponto do mês (2026-08-06) — o mesmo shape que `Performance/Show`
+            // consome em `resultado`, para as duas telas formatarem igual.
+            'score' => [
+                'nota_final'         => $scoreDoMes['nota_final']         ?? null,
+                'faixa_bonus'        => $scoreDoMes['faixa_bonus']        ?? null,
+                'faixa_promovida'    => $scoreDoMes['faixa_promovida']    ?? false,
+                'score_status'       => $scoreDoMes['score_status']       ?? null,
+                'pontos_componentes' => $scoreDoMes['pontos_componentes'] ?? null,
+                'sem_carteira'       => $scoreDoMes['sem_carteira']       ?? false,
+            ],
+            'tem_detalhe_empresas' => $temDetalheEmpresas,
             'periodo' => [
                 // Campos de display já existentes (Fase 89, PRESERVADOS).
                 'em_curso'         => $ehMesEmCurso,

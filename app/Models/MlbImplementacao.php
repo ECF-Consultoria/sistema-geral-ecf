@@ -358,6 +358,11 @@ class MlbImplementacao extends Model
                 'app_ecf'           => '',
                 'programa_decola'   => '',
             ],
+            // Check-in do Publicador por SKU: mapa {sku => true} marcado na visão
+            // /publicador enquanto os anúncios vão sendo feitos. Fica FORA de
+            // itens.planilha_produtos.produtos de propósito — o cliente salva aquele
+            // array inteiro e sobrescreveria as marcações do publicador.
+            'publicador_checkin' => [],
             'itens' => [
                 'conta_ml'             => ['feito' => false],
                 'acesso_colaborador'   => ['gmail' => '', 'feito' => false],

@@ -90,8 +90,9 @@ Route::patch('/ppa/workspace/{token}/tasks/{task}', [PpaTaskController::class, '
 Route::get('/implementacao/{token}', [MlbImplementacaoController::class, 'workspace'])->name('implementacao.workspace');
 Route::patch('/implementacao/{token}', [MlbImplementacaoController::class, 'salvarItem'])->name('implementacao.salvar');
 
-// Visão do publicador (sem autenticação, somente leitura)
+// Visão do publicador (sem autenticação) — leitura + check-in por SKU
 Route::get('/implementacao/{token}/publicador', [MlbImplementacaoController::class, 'publicador'])->name('implementacao.publicador');
+Route::patch('/implementacao/{token}/publicador/checkin', [MlbImplementacaoController::class, 'checkinPublicador'])->name('implementacao.publicador.checkin');
 
 // ML OAuth — callback público (o cliente autoriza fora do painel)
 Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])
