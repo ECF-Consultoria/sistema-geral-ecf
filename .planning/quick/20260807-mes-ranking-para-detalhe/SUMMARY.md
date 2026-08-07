@@ -142,3 +142,78 @@ na semana inteira — pré-existente e alheio a esta tarefa.
 
 Falta a confirmação do usuário clicando na tela — é o único teste que exercita
 o caminho real, e foi a sua ausência que deixou a v1 ir ao ar quebrada.
+
+## O "carregando infinito" — não era de um módulo
+
+O usuário reportou: *"não é só nesse módulo. tem vez que o sistema simplesmente
+não carrega nada"*. Varri as 19 telas principais cronometrando em produção,
+em vez de supor:
+
+| tela | tempo |
+|---|---|
+| **`/dashboard`** | **124,1s** |
+| `/nps` | 10,0s |
+| `/dashboard/mercadolivre` | 2,2s |
+| outras 16 | < 1,5s |
+
+**Causa raiz única, em 4 telas.** `DesempenhoScoreService::compute()` faz HTTP
+SÍNCRONO à Adman por empresa da carteira (110s medidos para 25 empresas), e
+`MetricDiffDispatcher::compute()` faz o mesmo para a tabela da carteira (157,6s
+para as mesmas 25). A Fase 106 blindou só o **ranking**, com o gate inline no
+`index()`. As outras quatro pagavam o custo na cara do usuário:
+
+- `/dashboard` — a **landing page**, no widget "Score da equipe" (12 profissionais)
+- `/performance/{id}` — a nota
+- `/admin/users/{id}/portfolio` — a nota **e** a tabela (dois fan-outs distintos)
+
+O comentário de 2026-07-10 dizia "cacheado", mas cache não ajuda FRIO: o TTL do
+mês corrente é 10min e o warm agendado roda a cada 8min **só das 7h às 22h**.
+Toda janela em que o warm não acompanha joga a landing page no caminho síncrono.
+
+**Descartado por medição, não por palpite:** esgotamento do pool php-fpm
+(`pm.max_children=20`, **zero** "reached pm.max_children" no log) e timeout de
+gateway (**zero** "upstream timed out").
+
+**Fix:** gate extraído para `WarmDesempenhoDispatcher` e aplicado nas 4 telas —
+o `index()` passou a usar o mesmo código em vez de manter uma cópia. Frio vira
+placeholder `calculando`, warm vai pra background com lock, front polla de 6s
+com teto de 20 tentativas.
+
+**Duas decisões que só apareceram medindo:**
+
+1. **Carteira vazia não entra no gate.** Sem carteira não há fan-out; `compute()`
+   corta em `computeUniverso` e devolve `sem_carteira` na hora. Um teste de
+   retrocompat da Fase 123 pegou a primeira versão, que engolia esse estado.
+2. **O gate da tabela é proporcional, não binário.** Vendo o warm convergir em
+   ondas (25 → 9 → 1 de 25), UMA retardatária escondia a tabela inteira com
+   24/25 dos dados prontos — e como o `ERROR_SENTINEL` do diff expira em 10min,
+   uma empresa que erre cronicamente faria a tabela piscar para sempre.
+   Tolerância de 3 frias (~19s de pior caso); aquecer e gatear viraram decisões
+   SEPARADAS (abaixo do limite ainda aquece, para a próxima visita achar pronto).
+
+**Resultado medido em produção, pós-deploy:**
+
+| tela (mês frio) | antes | depois |
+|---|---|---|
+| `/dashboard` | 124,1s | **3,1s** |
+| `/performance/{id}` | 110s | **0,1s** |
+| `/admin/users/{id}/portfolio` | 115s → 157s | **0,0s** |
+
+Confirmado pelo payload real (`data-page`), não por tempo isolado: `aquecendo=true`,
+`resultado.calculando=true`, `aquecendo_tabela=true`, `empresas=0`. Página rápida
+SEM a flag seria outro bug — tela vazia sem explicação.
+
+Prova extra do mecanismo: ao esfriar 1 profissional de propósito, o dashboard
+acusou **3** em "calculando" — os outros 2 tinham esfriado sozinhos no intervalo,
+o que confirma o rodízio do TTL de 10min sem precisar de argumento.
+
+### PEGADINHA: `Artisan::queue` roda INLINE sob o driver `sync`
+
+Nos testes, o `Artisan::queue('desempenho:warm-cache')` do gate executa na hora,
+e o próprio comando de warm chama `computeCached()` — o teste acusava a TELA de
+computar quando quem computava era o warm. `Queue::fake()` é obrigatório nesses
+testes. Em produção (`QUEUE_CONNECTION=database` + workers) é assíncrono de verdade.
+
+### ABERTO
+
+`/nps` em **10,0s** — medido, não investigado. Segundo colocado da varredura.
