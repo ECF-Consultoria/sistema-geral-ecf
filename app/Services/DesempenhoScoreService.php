@@ -419,7 +419,15 @@ class DesempenhoScoreService
         // ANTIGA — que decide bônus — por até 7 dias em mês fechado, sob a
         // mesma chave que o código novo escreve. Chaves v16 viram órfãs e
         // expiram por TTL; `cache:clear` no VPS continua PROIBIDO.
-        return sprintf('desempenho.compute.v17.%d.%s', $userId, $periodKey);
+        // v18 (2026-08-10, quick 260810-mbv): a margem volta a existir no MÊS
+        // CORRENTE — `AdmanMetricDiffService` passa a comparar contra a janela
+        // baseline do período em vez de ficar sem `diff_pp` fora da
+        // janela-igual. Muda `margem_pontos` por empresa, a média do indicador
+        // e, por consequência, `nota_final` do mês em curso (mês fechado é
+        // intocado). Sem o bump o payload v17 do mês corrente — com a margem
+        // vazia — continuaria sendo servido. Chaves v17 viram órfãs e expiram
+        // por TTL; `cache:clear` no VPS continua PROIBIDO.
+        return sprintf('desempenho.compute.v18.%d.%s', $userId, $periodKey);
     }
 
     /**
