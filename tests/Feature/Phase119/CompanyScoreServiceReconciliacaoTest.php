@@ -41,7 +41,8 @@ class CompanyScoreServiceReconciliacaoTest extends TestCase
 
     /** Hash de referência do gate de aditividade (119-VALIDATION.md). */
     /** Rotacionado pela Fase 119.1 (D1) — 4º ramo (D) somado a DesempenhoScoreService.php. */
-    private const HASH_DESEMPENHO_SCORE_SERVICE = 'e5e65532ba990f17c481737daae5c8555dfbe0de765f7507b1cc587abb9cc917';
+    /** Rotacionado pela quick 260810-mbv (2026-08-10) — bump da chave de cache v17 → v18. O gate já estava vermelho desde as Fases 120/122/v17, que alteraram o arquivo sem rotacionar. */
+    private const HASH_DESEMPENHO_SCORE_SERVICE = '0e670f23b8943891ed4f02543da63654d2102b6abcd479c5cee5178cf69869d0';
 
     protected function setUp(): void
     {
