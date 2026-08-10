@@ -1594,12 +1594,12 @@ Plans:
   4. O texto jurídico das cláusulas vive isolado da lógica de montagem de dados (view/config separado), permitindo trocar o texto sem mexer em código
   5. PDF gerado com nome de empresa real extremo (longo, com caractere especial) mantém acentuação pt-BR correta e não corta cláusula no meio de uma página — reusando literalmente o precedente de `RelatorioMensalPdfService`
 
-**Plans:** 6 plans
+**Plans:** 1/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 126-01-PLAN.md — Fundação do client: bloco `config('services.clicksign')`, `ClicksignException`, núcleo HTTP (header sem `Bearer`, retry só 429/5xx, log que não vaza token), `criarEnvelope`/`anexarDocumento` com Data URI, fixtures anonimizadas do sandbox (CLICK-01)
+- [x] 126-01-PLAN.md — Fundação do client: bloco `config('services.clicksign')`, `ClicksignException`, núcleo HTTP (header sem `Bearer`, retry só 429/5xx, log que não vaza token), `criarEnvelope`/`anexarDocumento` com Data URI, fixtures anonimizadas do sandbox (CLICK-01)
 - [ ] 126-03-PLAN.md — Migration aditiva `pdf_path`/`pdf_assinado_path` + `$fillable` na mesma entrega + guarda estática das 3 armadilhas de schema + states `comSnapshot()`/`comEmpresaDeNomeExtremo()` na factory (PDF-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*

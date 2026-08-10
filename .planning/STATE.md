@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Fase 126 contexto capturado - 15 decisoes, pronta para planejar
-last_updated: "2026-08-10T17:45:02.671Z"
-last_activity: 2026-08-10 -- Phase 126 planning complete
+stopped_at: Fase 126 Plano 01 concluido - ClicksignClient fundacao (30 testes verdes)
+last_updated: "2026-08-10T18:15:16.246Z"
+last_activity: 2026-08-10
 progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 14
-  completed_plans: 8
+  completed_plans: 9
   percent: 20
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 126 — client clicksign + pdf do contrato (v22.0)
+**Current focus:** Phase 126 — client-clicksign-pdf-do-contrato-v22-0
 
 ## Current Position
 
-Phase: 126
-Plan: Not started
+Phase: 126 (client-clicksign-pdf-do-contrato-v22-0) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-08-10 -- Phase 126 planning complete
+Last activity: 2026-08-10
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
@@ -285,6 +285,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 125 P01 | 20min | 2 tasks | 6 files |
 | Phase 125 P02 | 15min | 2 tasks | 6 files |
 | Phase 125 P03 | 25min | 3 tasks | 1 files |
+| Phase 126 P01 | 55min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -859,8 +860,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-10T16:57:19.448Z
-Stopped at: Fase 126 contexto capturado - 15 decisoes, pronta para planejar
+Last session: 2026-08-10T18:15:16.226Z
+Stopped at: Fase 126 Plano 01 concluido - ClicksignClient fundacao (30 testes verdes)
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
