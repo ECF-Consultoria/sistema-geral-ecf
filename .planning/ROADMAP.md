@@ -1562,7 +1562,12 @@ Plans:
   3. `recusado` e `expirado` existem como estados próprios do model, nunca colapsados em `cancelado` ou `erro` — teste unitário comprova que os dois nunca resolvem para o mesmo valor interno
   4. Gate empírico #9 (formato do certificado de autenticação do signatário) resolvido e refletido no campo de payload do signatário
 
-**Plans:** TBD
+**Plans:** 3 plans (3 waves)
+
+Plans:
+- [ ] 125-01-PLAN.md — Tabela contrato_assinaturas, model com os 7 estados, factory e relação em Company (DADOS-01, DADOS-04)
+- [ ] 125-02-PLAN.md — Tabela contrato_assinatura_signatarios, model, factory e a evidência do Gate #9 (DADOS-02)
+- [ ] 125-03-PLAN.md — Guarda estática das 3 cicatrizes de schema + gate de MariaDB real (checkpoint humano)
 
 ### Phase 126: Client Clicksign + PDF do contrato (v22.0)
 
