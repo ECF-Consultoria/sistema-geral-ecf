@@ -56,6 +56,10 @@ class ContratoAssinatura extends Model
         'liberado_em',
         'erro_mensagem',
         'servicos_snapshot',
+        // Fase 126 (D-03) — sem isto o mass assignment das duas colunas
+        // novas falharia EM SILÊNCIO.
+        'pdf_path',
+        'pdf_assinado_path',
     ];
 
     protected $casts = [
