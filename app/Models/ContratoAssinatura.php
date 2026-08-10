@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -147,5 +148,12 @@ class ContratoAssinatura extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    // Fase 125 (Plano 02) — cada pessoa que assina este contrato
+    // (DADOS-02). Ver App\Models\ContratoAssinaturaSignatario.
+    public function signatarios(): HasMany
+    {
+        return $this->hasMany(ContratoAssinaturaSignatario::class);
     }
 }
