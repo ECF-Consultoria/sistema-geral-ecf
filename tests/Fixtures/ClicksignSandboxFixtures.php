@@ -292,4 +292,132 @@ class ClicksignSandboxFixtures
             'body' => 'Too many requests',
         ];
     }
+
+    /**
+     * SAÍDA. `GET /templates` — MEDIDO em
+     * CLICKSIGN-SANDBOX-EMPIRICO.md §9.4: a conta sandbox devolveu
+     * `{"data":[],"meta":{"record_count":0},"links":{...}}` (lista vazia,
+     * sem modelo cadastrado). O envelope (`data`/`meta`/`links`) é o que foi
+     * medido; o ITEM abaixo é **sintético** — não existia modelo real na
+     * conta para medir a forma de um item da lista — e serve só para
+     * exercitar o desembrulho de `listarModelos()`. Forma do item (`id`,
+     * `name`, `color`, `created`, `modified`) vem do schema documentado em
+     * `api-visualizar-modelo` (126-RESEARCH-MODELOS.md §Sources, secondary).
+     *
+     * @return array<string, mixed>
+     */
+    public static function modelosListados(): array
+    {
+        return [
+            'data' => [
+                [
+                    'id'   => '00000000-0000-4000-8000-000000000007',
+                    'type' => 'templates',
+                    'attributes' => [
+                        // Item sintético (NÃO MEDIDO) — só o envelope acima é medido.
+                        'name'     => 'Modelo de Teste.docx',
+                        'color'    => '#1474f5',
+                        'created'  => '2026-08-10T10:00:00.000-03:00',
+                        'modified' => '2026-08-10T10:00:00.000-03:00',
+                    ],
+                ],
+            ],
+            'meta'  => ['record_count' => 1],
+            'links' => [
+                'self'  => 'https://sandbox.clicksign.com/api/v3/templates?page%5Bnumber%5D=1&page%5Bsize%5D=20',
+                'first' => 'https://sandbox.clicksign.com/api/v3/templates?page%5Bnumber%5D=1&page%5Bsize%5D=20',
+                'last'  => 'https://sandbox.clicksign.com/api/v3/templates?page%5Bnumber%5D=1&page%5Bsize%5D=20',
+            ],
+        ];
+    }
+
+    /**
+     * SAÍDA, **NÃO MEDIDO** — a conta sandbox da ECF não tinha modelo
+     * cadastrado no momento da medição (§9.4/§9.6). Forma derivada do schema
+     * documentado (`api-visualizar-modelo`, `modelo-campos-e-regras-de-
+     * negocio`): `id`/`name`/`color`/`created`/`modified`.
+     *
+     * @return array<string, mixed>
+     */
+    public static function modeloCriado(): array
+    {
+        return [
+            'data' => [
+                'id'   => '00000000-0000-4000-8000-000000000008',
+                'type' => 'templates',
+                'attributes' => [
+                    'name'     => 'Contrato ECF.docx',
+                    'color'    => '#1474f5',
+                    'created'  => '2026-08-10T10:05:00.000-03:00',
+                    'modified' => '2026-08-10T10:05:00.000-03:00',
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * SAÍDA, MEDIDO §9.4 do empírico — cópia LITERAL da mensagem devolvida
+     * por `POST /templates` com um `.docx` inválido de propósito. A
+     * mensagem entrega o contrato inteiro do recurso (formato .docx, chaves
+     * duplas, caracteres proibidos na variável). `code` não foi anotado
+     * literalmente no empírico — NÃO MEDIDO.
+     *
+     * @return array<string, mixed>
+     */
+    public static function erro422ModeloInvalido(): array
+    {
+        return [
+            'errors' => [
+                [
+                    'code'   => 'unprocessable_entity', // NÃO MEDIDO
+                    'status' => 422,
+                    'detail' => 'Ops! Houve um erro ao processar o documento. Verifique se o arquivo está no formato .docx, se as chaves duplas foram inseridas corretamente e evite o uso de caracteres especiais nas variáveis (@, #, !).',
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * SAÍDA, MEDIDO §9.6 do empírico — cópia LITERAL do ponteiro e do
+     * detalhe devolvidos quando `template.data` é mandado como STRING
+     * `json_encode()` em vez de hash nativo. `code` NÃO foi anotado
+     * literalmente — NÃO MEDIDO.
+     *
+     * @return array<string, mixed>
+     */
+    public static function erro400TemplateDataNaoEhHash(): array
+    {
+        return [
+            'errors' => [
+                [
+                    'code'   => 'bad_request', // NÃO MEDIDO
+                    'status' => 400,
+                    'source' => ['pointer' => '/data/attributes/template/data'],
+                    'detail' => 'data deve ser um hash',
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * SAÍDA, **NÃO MEDIDO — texto da doc oficial** (`api-criar-modelo`,
+     * `api-editar-modelo`, ver `126-RESEARCH-MODELOS.md` §5). É o 403
+     * dedicado a "conta sem plano com acesso a modelos" — diferente do 403
+     * de "e-mail do usuário da API não configurado" (medido, §1 do
+     * empírico). `code` é palpite por analogia com `erro403EmailApiNaoConfigurado()`.
+     *
+     * @return array<string, mixed>
+     */
+    public static function erro403ContaSemAcessoAModelos(): array
+    {
+        return [
+            'errors' => [
+                [
+                    'code'   => 'forbidden', // NÃO MEDIDO
+                    'status' => 403,
+                    'detail' => 'A conta não possui acesso a essa funcionalidade',
+                ],
+            ],
+        ];
+    }
 }
