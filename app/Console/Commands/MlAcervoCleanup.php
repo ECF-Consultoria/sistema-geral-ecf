@@ -50,10 +50,20 @@ class MlAcervoCleanup extends Command
      * Remove em blocos de 10.000 linhas em laço, até não sobrar nada — um
      * DELETE único sobre dezenas de milhões de linhas prenderia a tabela.
      * `mamd_data_idx` sustenta o filtro por `data`.
+     *
+     * `startOfDay()` é obrigatório aqui: a coluna `data` tem cast `date`, e
+     * o setter do Eloquent grava o formato completo do grammar
+     * (`Y-m-d 00:00:00`) mesmo assim (mesmo achado do 134-05, ver
+     * `MlAcervoDetalheService::gravarVisitasSerieDiaria()`). Sem
+     * `startOfDay()`, `now()->subDays($keepDays)` carrega a hora atual da
+     * execução — a linha de exatamente `$keepDays` dias atrás (gravada à
+     * meia-noite) compararia como "menor que" o limite e seria apagada,
+     * quebrando a fronteira exata que o D-07 exige (90 preservado, 91
+     * removido).
      */
     private function removerSerieAntiga(int $keepDays): int
     {
-        $limite = now()->subDays($keepDays);
+        $limite = now()->subDays($keepDays)->startOfDay();
         $total = 0;
 
         do {
