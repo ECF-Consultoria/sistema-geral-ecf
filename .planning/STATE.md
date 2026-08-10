@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: Defining requirements
-stopped_at: Fase 124 — contexto capturado
-last_updated: "2026-08-07T17:15:36.865Z"
+stopped_at: Fase 134 — contexto capturado
+last_updated: "2026-08-10T14:51:11.804Z"
 last_activity: 2026-08-07 — Milestone v22.0 started
 progress:
-  total_phases: 10
+  total_phases: 11
   completed_phases: 0
-  total_plans: 0
+  total_plans: 5
   completed_plans: 0
   percent: 0
 ---
@@ -849,8 +849,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-07T17:15:36.831Z
-Stopped at: Fase 124 — contexto capturado
+Last session: 2026-08-10T14:51:11.774Z
+Stopped at: Fase 134 — contexto capturado
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
