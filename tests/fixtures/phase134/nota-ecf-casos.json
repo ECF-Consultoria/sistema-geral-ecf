@@ -1,0 +1,287 @@
+{
+  "_comentario": "Fixture compartilhado (Fase 134, Plano 03) — lido pelo teste PHP (tests/Unit/Phase134/NotaEcfFecharComContaTest.php) e pelo teste JS (tests/js/notaEcfConcordancia.test.js). Em cada caso, o bloco 'wizard' é DERIVADO do bloco 'item_ml' do mesmo caso (mesmo titulo/categoria/preco/atributos preenchidos) — dois blocos descrevendo itens diferentes fariam o teste de concordância passar por acaso. O caso 3 usa payload real de tests/fixtures/phase134/multiget-item-com-variacoes.json (picture_ids/attribute_combinations truncados por brevidade, ids mantidos reais).",
+  "casos": [
+    {
+      "nome": "1. item completo — todos os 7 sinais verdadeiros, nota 86",
+      "atributos_categoria": [
+        { "id": "BRAND", "tags": { "required": true } },
+        { "id": "MODEL", "tags": { "required": true } },
+        { "id": "COLOR", "tags": { "required": true, "allow_variations": true } },
+        { "id": "MATERIAL", "tags": {} },
+        { "id": "STYLE", "tags": {} },
+        { "id": "WARRANTY_TYPE", "tags": {} },
+        { "id": "GTIN", "tags": {} },
+        { "id": "SELLER_SKU", "tags": {} },
+        { "id": "CATALOG_PRODUCT_ID", "tags": {} }
+      ],
+      "item_ml": {
+        "id": "MLB1000000001",
+        "title": "Kit Completo Ferramentas Profissionais 50 Peças Maleta",
+        "category_id": "MLB1234",
+        "price": 199.9,
+        "pictures": [{ "id": "pic1" }],
+        "attributes": [
+          { "id": "BRAND", "value_id": "111", "value_name": "Acme" },
+          { "id": "MODEL", "value_id": null, "value_name": "X100" },
+          { "id": "COLOR", "value_id": "52055", "value_name": "Azul" },
+          { "id": "MATERIAL", "value_id": null, "value_name": "Aço" },
+          { "id": "STYLE", "value_id": null, "value_name": "Moderno" },
+          { "id": "WARRANTY_TYPE", "value_id": "2311084", "value_name": "Garantia do vendedor" },
+          { "id": "PACKAGE_WEIGHT", "value_id": null, "value_name": "1000 g" },
+          { "id": "PACKAGE_LENGTH", "value_id": null, "value_name": "30 cm" },
+          { "id": "PACKAGE_WIDTH", "value_id": null, "value_name": "20 cm" },
+          { "id": "PACKAGE_HEIGHT", "value_id": null, "value_name": "15 cm" }
+        ],
+        "variations": [],
+        "available_quantity": 10,
+        "status": "active"
+      },
+      "wizard": {
+        "titulo": "Kit Completo Ferramentas Profissionais 50 Peças Maleta",
+        "categoryId": "MLB1234",
+        "preco": 199.9,
+        "imagemUrl": "https://http2.mlstatic.com/pic1.jpg",
+        "descricao": "Ferramenta profissional completa com maleta organizadora, cabos emborrachados antiderrapantes e acabamento resistente para uso diário em oficina ou em casa.",
+        "temVariacoes": false,
+        "variacoes": [],
+        "atributosPreenchidos": ["BRAND", "MODEL", "COLOR", "MATERIAL", "STYLE", "WARRANTY_TYPE", "PACKAGE_WEIGHT", "PACKAGE_LENGTH", "PACKAGE_WIDTH", "PACKAGE_HEIGHT"],
+        "pesoG": 1000,
+        "comprimentoCm": 30,
+        "larguraCm": 20,
+        "alturaCm": 15
+      },
+      "esperado": { "nota_ecf_86": 86, "score_wizard_100": 100, "descricao_ok": true }
+    },
+    {
+      "nome": "2. item sem foto e com ficha obrigatória incompleta",
+      "atributos_categoria": [
+        { "id": "BRAND", "tags": { "required": true } },
+        { "id": "MODEL", "tags": { "required": true } },
+        { "id": "COLOR", "tags": { "required": true, "allow_variations": true } },
+        { "id": "MATERIAL", "tags": {} },
+        { "id": "STYLE", "tags": {} },
+        { "id": "WARRANTY_TYPE", "tags": {} },
+        { "id": "GTIN", "tags": {} },
+        { "id": "SELLER_SKU", "tags": {} },
+        { "id": "CATALOG_PRODUCT_ID", "tags": {} }
+      ],
+      "item_ml": {
+        "id": "MLB1000000002",
+        "title": "Suporte de Parede Ajustável para TV 32 a 65 Polegadas",
+        "category_id": "MLB5678",
+        "price": 89.9,
+        "pictures": [],
+        "attributes": [
+          { "id": "BRAND", "value_id": "111", "value_name": "Acme" },
+          { "id": "COLOR", "value_id": "52055", "value_name": "Preto" },
+          { "id": "MATERIAL", "value_id": null, "value_name": "Aço" },
+          { "id": "WARRANTY_TYPE", "value_id": "2311084", "value_name": "Garantia do vendedor" },
+          { "id": "PACKAGE_WEIGHT", "value_id": null, "value_name": "800 g" },
+          { "id": "PACKAGE_LENGTH", "value_id": null, "value_name": "25 cm" },
+          { "id": "PACKAGE_WIDTH", "value_id": null, "value_name": "10 cm" },
+          { "id": "PACKAGE_HEIGHT", "value_id": null, "value_name": "5 cm" }
+        ],
+        "variations": [],
+        "available_quantity": 5,
+        "status": "active"
+      },
+      "wizard": {
+        "titulo": "Suporte de Parede Ajustável para TV 32 a 65 Polegadas",
+        "categoryId": "MLB5678",
+        "preco": 89.9,
+        "imagemUrl": "",
+        "descricao": "",
+        "temVariacoes": false,
+        "variacoes": [],
+        "atributosPreenchidos": ["BRAND", "COLOR", "MATERIAL", "WARRANTY_TYPE", "PACKAGE_WEIGHT", "PACKAGE_LENGTH", "PACKAGE_WIDTH", "PACKAGE_HEIGHT"],
+        "pesoG": 800,
+        "comprimentoCm": 25,
+        "larguraCm": 10,
+        "alturaCm": 5
+      },
+      "esperado": { "nota_ecf_86": 50, "score_wizard_100": 50, "descricao_ok": false }
+    },
+    {
+      "nome": "3. item com variações, foto só em variations[].picture_ids (payload real MLB5512320238)",
+      "atributos_categoria": [
+        { "id": "BRAND", "tags": { "required": true } },
+        { "id": "MODEL", "tags": { "required": true } },
+        { "id": "COLOR", "tags": { "required": true, "allow_variations": true } },
+        { "id": "VOLTAGE", "tags": { "required": true, "allow_variations": true } },
+        { "id": "WATER_CAPACITY", "tags": {} },
+        { "id": "CHARGE_TIME", "tags": {} },
+        { "id": "MAX_PRESSURE", "tags": {} }
+      ],
+      "item_ml": {
+        "id": "MLB5512320238",
+        "title": "Irrigador Limpeza Bucal Jato Água Potente Bivolt Elétrico",
+        "category_id": "MLB70647",
+        "price": 65.3,
+        "pictures": [],
+        "attributes": [
+          { "id": "BRAND", "value_id": "67491281", "value_name": "Boxlisboa" },
+          { "id": "MODEL", "value_id": null, "value_name": "irrigador higiêne bocal" },
+          { "id": "WATER_CAPACITY", "value_id": null, "value_name": "220 mL" },
+          { "id": "CHARGE_TIME", "value_id": null, "value_name": "4 h" },
+          { "id": "MAX_PRESSURE", "value_id": null, "value_name": "160 psi" }
+        ],
+        "variations": [
+          {
+            "id": 175468259396,
+            "picture_ids": ["944043-MLB90062003256_082025", "631903-MLB88365594467_072025"],
+            "attribute_combinations": [{ "id": "COLOR", "value_name": "Branco" }, { "id": "VOLTAGE", "value_name": "Bivolt" }]
+          },
+          {
+            "id": 175468259397,
+            "picture_ids": [],
+            "attribute_combinations": [{ "id": "COLOR", "value_name": "Rosa" }, { "id": "VOLTAGE", "value_name": "Bivolt" }]
+          }
+        ],
+        "available_quantity": 36,
+        "status": "closed"
+      },
+      "wizard": {
+        "titulo": "Irrigador Limpeza Bucal Jato Água Potente Bivolt Elétrico",
+        "categoryId": "MLB70647",
+        "preco": 65.3,
+        "imagemUrl": "",
+        "descricao": "Irrigador bucal elétrico recarregável, bivolt, com múltiplos níveis de pressão e bicos intercambiáveis para uma limpeza profunda das gengivas e entre os dentes.",
+        "temVariacoes": true,
+        "variacoes": [
+          { "picture_ids": ["944043-MLB90062003256_082025", "631903-MLB88365594467_072025"] },
+          { "picture_ids": [] }
+        ],
+        "atributosPreenchidos": ["BRAND", "MODEL", "WATER_CAPACITY", "CHARGE_TIME", "MAX_PRESSURE"],
+        "pesoG": null,
+        "comprimentoCm": null,
+        "larguraCm": null,
+        "alturaCm": null
+      },
+      "esperado": { "nota_ecf_86": 78, "score_wizard_100": 92, "descricao_ok": true }
+    },
+    {
+      "nome": "4. item com categoria sem nenhum atributo opcional — opcPct=100 por definição",
+      "atributos_categoria": [
+        { "id": "BRAND", "tags": { "required": true } },
+        { "id": "SIZE_GRID_ID", "tags": { "required": true } },
+        { "id": "GTIN", "tags": {} },
+        { "id": "CATALOG_PRODUCT_ID", "tags": {} },
+        { "id": "SELLER_SKU", "tags": {} }
+      ],
+      "item_ml": {
+        "id": "MLB1000000004",
+        "title": "Camiseta Básica Algodão Premium Unissex Confortável",
+        "category_id": "MLB9999",
+        "price": 39.9,
+        "pictures": [{ "id": "picA" }],
+        "attributes": [
+          { "id": "BRAND", "value_id": "222", "value_name": "MarcaX" },
+          { "id": "GTIN", "value_id": null, "value_name": "7891234567890" },
+          { "id": "PACKAGE_WEIGHT", "value_id": null, "value_name": "150 g" },
+          { "id": "PACKAGE_LENGTH", "value_id": null, "value_name": "25 cm" },
+          { "id": "PACKAGE_WIDTH", "value_id": null, "value_name": "20 cm" },
+          { "id": "PACKAGE_HEIGHT", "value_id": null, "value_name": "2 cm" }
+        ],
+        "variations": [],
+        "available_quantity": 20,
+        "status": "active"
+      },
+      "wizard": {
+        "titulo": "Camiseta Básica Algodão Premium Unissex Confortável",
+        "categoryId": "MLB9999",
+        "preco": 39.9,
+        "imagemUrl": "https://http2.mlstatic.com/picA.jpg",
+        "descricao": "Camiseta confortável de algodão.",
+        "temVariacoes": false,
+        "variacoes": [],
+        "atributosPreenchidos": ["BRAND", "GTIN", "PACKAGE_WEIGHT", "PACKAGE_LENGTH", "PACKAGE_WIDTH", "PACKAGE_HEIGHT"],
+        "pesoG": 150,
+        "comprimentoCm": 25,
+        "larguraCm": 20,
+        "alturaCm": 2
+      },
+      "esperado": { "nota_ecf_86": 86, "score_wizard_100": 86, "descricao_ok": false }
+    },
+    {
+      "nome": "5. item com exatamente 60% dos opcionais preenchidos — fronteira do >=60",
+      "atributos_categoria": [
+        { "id": "BRAND", "tags": { "required": true } },
+        { "id": "OPC1", "tags": {} },
+        { "id": "OPC2", "tags": {} },
+        { "id": "OPC3", "tags": {} },
+        { "id": "OPC4", "tags": {} },
+        { "id": "OPC5", "tags": {} }
+      ],
+      "item_ml": {
+        "id": "MLB1000000005",
+        "title": "Caneca Térmica",
+        "category_id": "MLB4321",
+        "price": 55.0,
+        "pictures": [{ "id": "picB" }],
+        "attributes": [
+          { "id": "BRAND", "value_id": "333", "value_name": "MarcaY" },
+          { "id": "OPC1", "value_id": null, "value_name": "Valor 1" },
+          { "id": "OPC2", "value_id": null, "value_name": "Valor 2" },
+          { "id": "OPC3", "value_id": null, "value_name": "Valor 3" },
+          { "id": "PACKAGE_WEIGHT", "value_id": null, "value_name": "300 g" },
+          { "id": "PACKAGE_LENGTH", "value_id": null, "value_name": "15 cm" },
+          { "id": "PACKAGE_WIDTH", "value_id": null, "value_name": "10 cm" },
+          { "id": "PACKAGE_HEIGHT", "value_id": null, "value_name": "10 cm" }
+        ],
+        "variations": [],
+        "available_quantity": 8,
+        "status": "active"
+      },
+      "wizard": {
+        "titulo": "Caneca Térmica",
+        "categoryId": "MLB4321",
+        "preco": 55.0,
+        "imagemUrl": "https://http2.mlstatic.com/picB.jpg",
+        "descricao": "Caneca térmica de aço inoxidável com parede dupla, mantém a temperatura da bebida por horas, tampa rosqueável antivazamento e alça ergonômica para o dia a dia.",
+        "temVariacoes": false,
+        "variacoes": [],
+        "atributosPreenchidos": ["BRAND", "OPC1", "OPC2", "OPC3", "PACKAGE_WEIGHT", "PACKAGE_LENGTH", "PACKAGE_WIDTH", "PACKAGE_HEIGHT"],
+        "pesoG": 300,
+        "comprimentoCm": 15,
+        "larguraCm": 10,
+        "alturaCm": 10
+      },
+      "esperado": { "nota_ecf_86": 74, "score_wizard_100": 88, "descricao_ok": true }
+    },
+    {
+      "nome": "6. item sem dimensões de pacote e sem preço — nota mínima, sem piso implícito",
+      "atributos_categoria": [
+        { "id": "BRAND", "tags": { "required": true } },
+        { "id": "MODEL", "tags": { "required": true } },
+        { "id": "MATERIAL", "tags": {} },
+        { "id": "STYLE", "tags": {} }
+      ],
+      "item_ml": {
+        "id": "MLB1000000006",
+        "title": "",
+        "category_id": "",
+        "price": null,
+        "pictures": [],
+        "attributes": [],
+        "variations": [],
+        "available_quantity": 0,
+        "status": "active"
+      },
+      "wizard": {
+        "titulo": "",
+        "categoryId": "",
+        "preco": null,
+        "imagemUrl": "",
+        "descricao": "",
+        "temVariacoes": false,
+        "variacoes": [],
+        "atributosPreenchidos": [],
+        "pesoG": null,
+        "comprimentoCm": null,
+        "larguraCm": null,
+        "alturaCm": null
+      },
+      "esperado": { "nota_ecf_86": 0, "score_wizard_100": 0, "descricao_ok": false }
+    }
+  ]
+}
