@@ -1566,7 +1566,7 @@ Plans:
   3. `recusado` e `expirado` existem como estados próprios do model, nunca colapsados em `cancelado` ou `erro` — teste unitário comprova que os dois nunca resolvem para o mesmo valor interno
   4. Gate empírico #9 (formato do certificado de autenticação do signatário) resolvido e refletido no campo de payload do signatário
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -1579,7 +1579,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 125-03-PLAN.md — Guarda estática das 3 cicatrizes de schema + gate de MariaDB real (checkpoint humano)
+- [x] 125-03-PLAN.md — Guarda estática das 3 cicatrizes de schema + gate de MariaDB real (checkpoint humano)
 
 ### Phase 126: Client Clicksign + PDF do contrato (v22.0)
 

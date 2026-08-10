@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: executing
-stopped_at: Completed 125-02-PLAN.md
-last_updated: "2026-08-10T14:01:40.831Z"
+status: verifying
+stopped_at: Completed 125-03-PLAN.md — Fase 125 fechada (3/3 planos)
+last_updated: "2026-08-10T15:11:29.114Z"
 last_activity: 2026-08-10
 progress:
   total_phases: 10
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
-  percent: 10
+  completed_plans: 8
+  percent: 20
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 125 (estrutura-de-dados-administrativa-v22-0) — EXECUTING
+Phase: 125 (estrutura-de-dados-administrativa-v22-0) — COMPLETA (3/3 planos)
 Plan: 3 of 3
-Status: Ready to execute
+Status: Fase 125 fechada. Prova em MariaDB de produção (VPS) aprovada pelo usuário no gate da 125-03. Pronta para /gsd:verify-work e para a próxima fase (126).
 Last activity: 2026-08-10
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
@@ -283,10 +283,13 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 124 P05 | 35min | 3 tasks | 5 files |
 | Phase 125 P01 | 20min | 2 tasks | 6 files |
 | Phase 125 P02 | 15min | 2 tasks | 6 files |
+| Phase 125 P03 | 25min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
+
+- 2026-08-10 — **Fase 125 FECHADA (3/3 planos) — estrutura de dados administrativa da v22.0 (DADOS-01/02).** Tabelas `contrato_assinaturas` e `contrato_assinatura_signatarios` criadas com models/factories/testes (125-01/125-02) mais guarda estática das 3 cicatrizes de schema do MariaDB (`enum`, FK `nullOnDelete` sem `nullable`, índice > 64 chars) e prova empírica de que ambas as migrations rodam sem erro 1830/1059 (125-03). **Gate humano da 125-03 rodou no VPS de produção, não no MariaDB local** (que estava fora do ar) — decisão explícita do usuário, caminho cirúrgico via `pscp` + `migrate --force --path=` nos 2 arquivos de migration, sem `deploy.sh` nem `git push`. Evidência: `migrate:status` sem `Pending`, os 7 índices/chaves nomeados confirmados via `db:table` (`ca_company_andamento_uniq`, `ca_clicksign_envelope_uniq`, `ca_company_status_idx`, `cas_contrato_fk` ON DELETE CASCADE, `cas_user_fk` ON DELETE SET NULL com `user_id` nullable). **Ressalva registrada:** a unicidade da D-01 foi provada de forma indireta em produção (índice confirmado + teste SQLite verde), sem INSERT duplicado real — o orquestrador optou por não gravar linhas de teste no banco de produção. **Dívida registrada:** as duas tabelas já existem em produção antes da verificação formal da fase; correção de schema exigiria `migrate:rollback --path=` (nenhum código ainda as lê — primeiro consumidor nasce na Fase 126/131). 30/30 testes de `tests/Feature/Phase125/` verdes. Próximo: Fase 126 (integração Clicksign).
 
 - 2026-07-27 — **Fase 116 adicionada — NPS não respondido conta como nota mínima (1).** Pedido direto do usuário: todo NPS efetivamente disparado e não respondido passa a valer nota 1 em TODOS os consumidores da média (área NPS, Desempenho/bonificação, demais telas), para criar senso de dever no envio. A queda da média das pessoas é **esperada e desejada**, não regressão. **Decisões travadas (AskUserQuestion 2026-07-27):** (a) rota = nova fase na v20.0 em vez de milestone nova ou quick task, porque mexe no cálculo do bônus; (b) retroatividade = **SIM, com backfill** das competências já fechadas — usuário informado e ciente de que pode mudar quem bateu o bônus em meses fechados, mitigado por `--dry-run` com relatório antes/depois por pessoa/competência antes de aplicar. **Desafio estrutural:** `nps_score_assignments` só nasce quando a resposta chega (`NpsSnapshotService`) — não respondido hoje simplesmente não existe como registro e é ignorado silenciosamente na média; escolha entre materializar assignments de nota 1 vs contar o não-respondido na agregação fica para o plan-phase. **Invariante crítico:** só vira 1 o NPS efetivamente DISPARADO — empresa sem disparo nunca entra, senão pune quem não tinha o que enviar. **Armadilhas mapeadas no CONTEXT:** precedência de `bonus_invalidacoes` (empresa invalidada não puxa 1), não confundir com o gap conhecido do responsável consolidado sem assignment (`company_users.servico_id` NULL), janela de competência M lida em M+1, não-respondido parcial no multi-modelo v16.0, bump obrigatório da cacheKey `desempenho.compute.vN` (hardcoded em testes Phase96/V16/V18), branch SQLite se mexer em enum. `116-CONTEXT.md` escrito com decisões, restrições, mapa de código e 9 critérios de aceite. **Próximo:** `/gsd-plan-phase 116`.
 
@@ -855,8 +858,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-10T14:01:40.786Z
-Stopped at: Completed 125-02-PLAN.md
+Last session: 2026-08-10T15:11:29.052Z
+Stopped at: Completed 125-03-PLAN.md — Fase 125 fechada (3/3 planos)
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
