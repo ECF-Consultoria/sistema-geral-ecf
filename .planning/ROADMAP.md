@@ -1594,7 +1594,26 @@ Plans:
   4. O texto jurídico das cláusulas vive isolado da lógica de montagem de dados (view/config separado), permitindo trocar o texto sem mexer em código
   5. PDF gerado com nome de empresa real extremo (longo, com caractere especial) mantém acentuação pt-BR correta e não corta cláusula no meio de uma página — reusando literalmente o precedente de `RelatorioMensalPdfService`
 
-**Plans:** TBD
+**Plans:** 6 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 126-01-PLAN.md — Fundação do client: bloco `config('services.clicksign')`, `ClicksignException`, núcleo HTTP (header sem `Bearer`, retry só 429/5xx, log que não vaza token), `criarEnvelope`/`anexarDocumento` com Data URI, fixtures anonimizadas do sandbox (CLICK-01)
+- [ ] 126-03-PLAN.md — Migration aditiva `pdf_path`/`pdf_assinado_path` + `$fillable` na mesma entrega + guarda estática das 3 armadilhas de schema + states `comSnapshot()`/`comEmpresaDeNomeExtremo()` na factory (PDF-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 126-02-PLAN.md — Signatários, requisitos (`agree`+`role` / `provide_evidence`+`auth email`), ativação com prazo 30d e lembrete 3d explícitos, consulta, notificação, cancelamento e `montarEnvelope()` com rollback (CLICK-01)
+- [ ] 126-04-PLAN.md — `ContratoPdfService::montarDados()`: leitura exclusiva do `servicos_snapshot`, formatação pt-BR e placeholder visível `A DEFINIR` + `campos_pendentes` (PDF-01, PDF-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 126-05-PLAN.md — Views `contratos/pdf.blade.php` e `contratos/clausulas.blade.php` (texto jurídico isolado), `gerar()`/`gerarESalvar()` em `storage/app` privado e teste de acentuação + nome extremo + quebra de página (PDF-01, PDF-02, PDF-03)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 126-06-PLAN.md — Gates humanos: inspeção visual do PDF, confirmação de razão social e do placeholder, gate #5 (tamanho de upload) no sandbox e migration no MariaDB real (CLICK-01, PDF-03)
 
 ### Phase 127: Service administrativo de contrato — orquestração (v22.0)
 
