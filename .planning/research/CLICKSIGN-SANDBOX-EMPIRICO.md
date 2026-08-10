@@ -196,13 +196,91 @@ de produção, isso precisa ser testado de verdade antes da Fase 133.**
 | Gate | Item | Trava | Como fechar |
 |---|---|---|---|
 | #1 | Algoritmo do `Content-Hmac` | Fase 129 | Doc diz `SHA256(body + secret)` — confirmado em 2 leituras, **não** testado contra webhook real. Segundo candidato: `hash_hmac('sha256', $body, $secret)` |
-| #5 | Limite de tamanho de arquivo | Fase 126 | O PDF de teste tinha 1,5 KB. Testar com contrato real |
+| #5 | Limite de tamanho de arquivo | Fase 126 | **PARCIAL — ver §9.** 10 MB aceitos; acima disso a trava do nosso client barrou antes de chegar na API |
 | #6 | Expiração emite evento distinguível | Schema + 129 | Deixar um envelope vencer |
 | #7 | Recusa emite evento distinguível | Schema + 129 | Recusar uma assinatura |
 | #8 | Endpoint de correção de e-mail | CLICK-09 | — |
 | #11 | Retry e ordem dos webhooks | CLICK-04/05 | Só com webhook ativo |
 
 **Nenhum deles bloqueia a Fase 125.**
+
+---
+
+## 9. Segunda sessão de medição — 2026-08-10, checkpoint do plano 126-06
+
+**Método:** envelopes descartáveis criados na mesma conta sandbox, com o PDF de empresa fictícia
+gerado pelos testes da Fase 126. Todas as afirmações abaixo são respostas HTTP observadas.
+
+### 9.1. `communicate_by` NÃO é atributo de entrada — o client estava errado
+
+```
+POST /envelopes/{id}/signers
+{"data":{"type":"signers","attributes":{"name":"...","email":"...","group":1,
+                                        "communicate_by":"email"}}}
+=> 400 {"errors":[{"code":"bad_request","status":400,
+        "source":{"pointer":"/data/attributes/communicate_by"},
+        "detail":"communicate_by não está disponível"}]}
+```
+
+Mesmo erro com `"whatsapp"`. **Só `name` + `email` (+ `group`) são aceitos** — as duas variantes
+sem `communicate_by` responderam `201`.
+
+⚠️ **Como o erro entrou:** o campo `communicate_by: "email"` aparece na §3 deste arquivo, dentro
+do bloco `data.signer` de um **evento** — ou seja, é campo de **saída**. A fixture do plano 126-01
+foi modelada a partir dessa resposta, e o plano 126-02 assumiu que o que sai também entra. O
+`Http::fake()` confirmava alegremente o payload errado. **Lição que vale para toda a milestone:
+forma de resposta não é contrato de entrada.**
+
+### 9.2. Cancelamento é `DELETE`, não `PATCH status`
+
+```
+PATCH /envelopes/{id}  {"data":{...,"attributes":{"status":"canceled"}}}
+=> 400 {"errors":[{"code":"bad_request","status":400,
+        "source":{"pointer":"/data/attributes/status"},
+        "detail":"status deve estar em: draft, running"}]}
+
+DELETE /envelopes/{id}   => 204, corpo vazio
+GET    /envelopes/{id}   => 404
+```
+
+`"canceled"` **não existe** no vocabulário de `status` (some da §6). O rollback da D-12 roda antes
+da ativação, com o envelope ainda em `draft`, então `DELETE` é a primitiva certa.
+
+⚠️ **Não medido:** `DELETE` em envelope já ativado (`running`). Medir antes de a Fase 127 assumir
+qualquer cancelamento pós-ativação.
+
+### 9.3. Gate #5 — parcial
+
+| Tamanho do arquivo | base64 no payload | Resultado |
+|---|---|---|
+| 1 MB | 1,33 MB | **aceito** |
+| 5 MB | 6,67 MB | **aceito** |
+| 10 MB | 13,33 MB | **aceito** |
+| 20 MB | — | barrado pela trava do nosso client (`max_upload_bytes`), nunca chegou à API |
+
+**O limite real da API acima de 10 MB segue não medido.** Para fechar, subir
+`CLICKSIGN_MAX_UPLOAD_BYTES` temporariamente e sondar 15/20/30 MB. Um contrato real de 15 páginas
+tem ~180 KB, então 10 MB já é ~55× a necessidade — o gate deixou de ser risco prático, mas o valor
+`20971520` em `config/services.php` continua sendo palpite, não medida.
+
+### 9.4. A API v3 EXPÕE modelos (templates)
+
+```
+GET /templates => 200 {"data":[],"meta":{"record_count":0},"links":{...}}
+```
+
+O endpoint **existe** e é paginado (`page[number]`/`page[size]`); a conta sandbox é que não tem
+modelo cadastrado. `GET /models` e `GET /document_templates` dão 404 — o nome do recurso é
+`templates`. Medição feita para responder à decisão do usuário de 2026-08-10 de reverter a D-02 e
+usar o modelo da plataforma em vez de renderizar o PDF aqui. **O que ainda falta medir:** como se
+cria um documento a partir de um modelo (provável `POST /envelopes/{id}/documents` com
+`template_id` + valores dos campos dinâmicos) e como os campos dinâmicos são nomeados.
+
+### 9.5. Forma da resposta — o `data` já vem desembrulhado pelo client
+
+`criarEnvelope()` devolve `$res->json('data')`, então o `id` fica no **topo** do array retornado
+(`$envelope['id']`), não em `$envelope['data']['id']`. Conferido contra a resposta real; o
+`montarEnvelope()` já lia certo.
 
 ---
 
