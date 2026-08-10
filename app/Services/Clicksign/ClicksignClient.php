@@ -13,27 +13,36 @@ use Illuminate\Support\Facades\Log;
 /**
  * Fase 126 Plan 126-01 (CLICK-01) — client HTTP para a API Clicksign v3
  * (conceito de Envelope). A Fase 126-01 cobriu a fundação — headers, retry,
- * log seguro — exercitada por `criarEnvelope()` + `anexarDocumento()`. Este
- * plano (126-02) acrescenta signatário, requisito, ativação, consulta,
+ * log seguro — exercitada por `criarEnvelope()` + `anexarDocumento()`. O
+ * plano 126-02 acrescentou signatário, requisito, ativação, consulta,
  * notificação e cancelamento sobre o mesmo núcleo privado `enviar()` — como
- * ele nasceu seguro, os demais métodos herdam a garantia — mais o método
- * composto `montarEnvelope()`, que executa a sequência inteira com rollback
- * (D-12) se algo falhar no meio.
+ * ele nasceu seguro, os demais métodos herdam a garantia.
+ *
+ * **Dois caminhos de documento (Fase 126 Plan 126-07, D-16):**
+ *   - `montarEnvelope()` — upload de PDF binário (`anexarDocumento()`).
+ *     Continua existindo como capacidade genérica do client, com os gates
+ *     #4/#5 medidos pendurados nele.
+ *   - `montarEnvelopePorModelo()` — instancia um `.docx` cadastrado na
+ *     Clicksign (`anexarDocumentoPorModelo()`). O contrato passou a sair
+ *     daqui — a D-16 reverteu a renderização local (D-02 original).
+ * Ambos compartilham o mesmo rollback (D-12) via `montarEnvelopeComum()` e
+ * o mesmo orçamento de **15 chamadas contra a janela medida de 20**.
  *
  * Referência: `.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` — respostas
  * reais medidas contra o sandbox, com precedência sobre a doc oficial (dois
  * pontos dela estavam errados: prefixo do token no header e formato do
  * `content_base64`).
  *
- * ⚠️ Restrição medida (`126-CONTEXT.md` §restricao_medida): `montarEnvelope()`
+ * ⚠️ Restrição medida (`126-CONTEXT.md` §restricao_medida): cada envelope
  * consome 15 chamadas contra uma janela medida de 20 (§1 do empírico). Não
  * acrescentar nenhuma chamada redundante (ex.: reconsultar o envelope após
  * cada passo) — dois contratos seguidos já batem em 429. A Fase 127 precisa
  * espaçar a geração em lote.
  *
  * O client é feito para rodar dentro de um job de fila (D-14) — sem estado
- * de request, sem `sleep()` longo. A Fase 127 chama `montarEnvelope()` de
- * dentro de um job (precedente: `app/Jobs/AnalyzeCompanySugadoresJob.php`).
+ * de request, sem `sleep()` longo. A Fase 127 chama `montarEnvelope()`/
+ * `montarEnvelopePorModelo()` de dentro de um job (precedente:
+ * `app/Jobs/AnalyzeCompanySugadoresJob.php`).
  */
 class ClicksignClient
 {
@@ -116,6 +125,58 @@ class ClicksignClient
                 ],
             ],
         ], 'anexar documento');
+    }
+
+    /**
+     * POST /envelopes/{envelopeId}/documents — variante por MODELO (D-16),
+     * MESMO endpoint de `anexarDocumento()`, corpo diferente. Medido em
+     * CLICKSIGN-SANDBOX-EMPIRICO.md §9.6: `attributes.template` — não
+     * `template_id` (a tentativa com `template_id` da §9.4 falhou por nome
+     * de campo errado, não por rota inexistente). `content_base64` NUNCA
+     * entra aqui — ele some da lista de obrigatórios quando `template` está
+     * presente; misturar os dois não foi medido e não é o payload certo.
+     *
+     * Duas guardas ANTES de qualquer requisição — o custo de descobrir isso
+     * na API é uma chamada da janela de 20 e uma mensagem genérica:
+     *   - toda chave de `$variaveis` casa com `/^[a-z0-9_]+$/i` — `@`, `#`
+     *     e `!` são recusados pela Clicksign no cadastro do modelo (medido,
+     *     §9.4), e chave numérica faria o hash virar array JSON na
+     *     serialização.
+     *
+     * ⚠️ **O ponto que os testes vigiam:** `template.data` sai como objeto
+     * (`{}`), NUNCA como array (`[]`) — array PHP vazio serializa como `[]`
+     * e a API responde "data deve ser um hash" (medido, §9.6). `stdClass`
+     * vazio força objeto mesmo sem variável nenhuma.
+     *
+     * @param  array<string, mixed>  $variaveis  valores de `{{chave}}` do `.docx`
+     * @return array<string, mixed>
+     */
+    public function anexarDocumentoPorModelo(string $envelopeId, string $nomeArquivo, string $templateId, array $variaveis): array
+    {
+        foreach (array_keys($variaveis) as $chave) {
+            if (!is_string($chave) || !preg_match('/^[a-z0-9_]+$/i', $chave)) {
+                throw new ClicksignException(
+                    "Nome de variável inválido para o modelo: \"{$chave}\". A Clicksign recusa \"@\", \"#\" e \"!\" no nome do modelo (§9.4 do empírico), e chave numérica não é aceita."
+                );
+            }
+        }
+
+        // stdClass vazio força "{}" no JSON — array PHP vazio serializaria
+        // como "[]" e a API recusa (medido, §9.6). Ver docblock acima.
+        $data = empty($variaveis) ? new \stdClass() : $variaveis;
+
+        return $this->enviar('post', "/envelopes/{$envelopeId}/documents", [
+            'data' => [
+                'type'       => 'documents',
+                'attributes' => [
+                    'filename' => $nomeArquivo,
+                    'template' => [
+                        'key'  => $templateId,
+                        'data' => $data,
+                    ],
+                ],
+            ],
+        ], 'anexar documento por modelo');
     }
 
     /**
@@ -448,12 +509,60 @@ class ClicksignClient
     }
 
     /**
-     * Monta um envelope de ponta a ponta: cria o envelope, anexa o
-     * documento, adiciona os 4 signatários (o `$signatarioCliente` +
-     * os 3 fixos da ECF de `config('services.clicksign.signatarios_ecf')`,
-     * D-08), cria os 8 requisitos (qualificação + autenticação por
-     * signatário) e ativa. Caminho feliz: 15 requisições — ver o docblock
-     * de classe sobre a restrição medida de janela.
+     * Monta um envelope de ponta a ponta com o documento por UPLOAD de PDF
+     * binário: cria o envelope, anexa o documento, adiciona os 4
+     * signatários (o `$signatarioCliente` + os 3 fixos da ECF de
+     * `config('services.clicksign.signatarios_ecf')`, D-08), cria os 8
+     * requisitos (qualificação + autenticação por signatário) e ativa.
+     * Caminho feliz: 15 requisições — ver o docblock de classe sobre a
+     * restrição medida de janela.
+     *
+     * A sequência (signatários, requisitos, ativação, rollback D-12) é
+     * compartilhada com `montarEnvelopePorModelo()` via
+     * `montarEnvelopeComum()` — só a forma de anexar o documento muda entre
+     * os dois (Fase 126 Plan 126-07, D-16).
+     *
+     * @param  array<string, mixed>  $dadosEnvelope  atributos de `criarEnvelope()`
+     * @param  array{nome: string, email: string, papel: string}  $signatarioCliente  papel esperado: `contratante`
+     * @return array{envelope_id: string, document_id: string, signatarios: array<int, array<string, mixed>>}
+     */
+    public function montarEnvelope(array $dadosEnvelope, string $nomeArquivo, string $pdfBinario, array $signatarioCliente): array
+    {
+        return $this->montarEnvelopeComum(
+            $dadosEnvelope,
+            $signatarioCliente,
+            'anexar documento',
+            fn (string $envelopeId) => $this->anexarDocumento($envelopeId, $nomeArquivo, $pdfBinario)
+        );
+    }
+
+    /**
+     * Monta um envelope de ponta a ponta com o documento por MODELO (D-16):
+     * cria o envelope, instancia o `.docx` cadastrado via
+     * `anexarDocumentoPorModelo()`, e segue a MESMA sequência de
+     * `montarEnvelope()` (4 signatários, 8 requisitos, ativação, 15
+     * chamadas, rollback D-12) por baixo de `montarEnvelopeComum()`.
+     *
+     * @param  array<string, mixed>  $dadosEnvelope  atributos de `criarEnvelope()`
+     * @param  array<string, mixed>  $variaveis  valores de `{{chave}}` do `.docx`
+     * @param  array{nome: string, email: string, papel: string}  $signatarioCliente  papel esperado: `contratante`
+     * @return array{envelope_id: string, document_id: string, signatarios: array<int, array<string, mixed>>}
+     */
+    public function montarEnvelopePorModelo(array $dadosEnvelope, string $nomeArquivo, string $templateId, array $variaveis, array $signatarioCliente): array
+    {
+        return $this->montarEnvelopeComum(
+            $dadosEnvelope,
+            $signatarioCliente,
+            'anexar documento por modelo',
+            fn (string $envelopeId) => $this->anexarDocumentoPorModelo($envelopeId, $nomeArquivo, $templateId, $variaveis)
+        );
+    }
+
+    /**
+     * Núcleo comum aos dois caminhos de `montarEnvelope*()` (Fase 126 Plan
+     * 126-07): cria o envelope, anexa o documento pela forma que o
+     * `$anexarDocumento` (closure) decidir — upload ou modelo —, adiciona
+     * os 4 signatários, cria os 8 requisitos e ativa.
      *
      * Rollback (D-12): o `envelope_id` é guardado assim que a criação
      * retorna. Se QUALQUER passo seguinte falhar, `cancelarEnvelope()` é
@@ -464,17 +573,18 @@ class ClicksignClient
      *
      * @param  array<string, mixed>  $dadosEnvelope  atributos de `criarEnvelope()`
      * @param  array{nome: string, email: string, papel: string}  $signatarioCliente  papel esperado: `contratante`
+     * @param  \Closure(string): array<string, mixed>  $anexarDocumento  recebe o `$envelopeId`, devolve o bloco `data` do documento criado
      * @return array{envelope_id: string, document_id: string, signatarios: array<int, array<string, mixed>>}
      */
-    public function montarEnvelope(array $dadosEnvelope, string $nomeArquivo, string $pdfBinario, array $signatarioCliente): array
+    private function montarEnvelopeComum(array $dadosEnvelope, array $signatarioCliente, string $passoAnexar, \Closure $anexarDocumento): array
     {
         $envelope   = $this->criarEnvelope($dadosEnvelope);
         $envelopeId = $envelope['id'];
 
-        $passoAtual = 'anexar documento';
+        $passoAtual = $passoAnexar;
 
         try {
-            $documento  = $this->anexarDocumento($envelopeId, $nomeArquivo, $pdfBinario);
+            $documento  = $anexarDocumento($envelopeId);
             $documentId = $documento['id'];
 
             $signatariosParaCriar = array_merge(
