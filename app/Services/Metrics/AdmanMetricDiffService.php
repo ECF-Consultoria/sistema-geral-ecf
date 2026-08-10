@@ -110,12 +110,12 @@ class AdmanMetricDiffService
      * `isCached()` abaixo poder perguntar sem duplicar o formato; duas cópias
      * do prefixo `v6` divergiriam no próximo bump e o gate passaria a mentir).
      *
-     * As versões `v2`..`v6` estão documentadas em `compute()`, onde cada bump
+     * As versões `v2`..`v7` estão documentadas em `compute()`, onde cada bump
      * foi decidido — não repetir o histórico aqui.
      */
     private function cacheKey(string $marketplace, string $custId, array $periodo): string
     {
-        return "adman:diff:v6:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
+        return "adman:diff:v7:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
     }
 
     /**
@@ -161,6 +161,11 @@ class AdmanMetricDiffService
         // "sem fonte" antigas dessas empresas.
         // v6 (2026-07-27): shape ganha prev_value/diff_pp (Fase 117, MPP-01/02/03) —
         // o bump invalida as entradas com shape antigo.
+        // v7 (2026-08-10, quick 260810-mbv): no modo operacional a margem passa a
+        // comparar contra a JANELA BASELINE do período (lida da Adman), em vez de
+        // ficar sem variação. As entradas v6 do mês corrente guardam `prev_value`
+        // da janela imediatamente anterior (o `prev` nativo) e `diff_pp` null —
+        // shape igual, semântica outra, então precisam sair de circulação.
         $cacheKey = $this->cacheKey($marketplace, $custId, $periodo);
 
         // Memo do request: devolve o resultado real já computado nesta passada
@@ -233,7 +238,11 @@ class AdmanMetricDiffService
                 $marginValueAdman, $isJanelaIgual,
                 fn () => null,
             ),
-            'contribution_margin_pct'   => $this->resolveMargemPct($marginPctAdman, $isJanelaIgual),
+            'contribution_margin_pct'   => $this->resolveMargemPct(
+                $marginPctAdman,
+                $isJanelaIgual,
+                $isJanelaIgual ? null : $this->fetchMargemPctBaseline($custId, $periodo, $marketplace),
+            ),
         ];
 
         $resultado = $this->buildResult($company, $periodo, $metrics);
@@ -324,10 +333,41 @@ class AdmanMetricDiffService
      * consumido por ninguém nesta fase — quem consome é a Fase 119, e só
      * depois do gate do probe de estabilidade do Plano 117-02 aprovar.
      *
+     * ### quick 260810-mbv (2026-08-10) — a margem volta a existir no mês corrente
+     * O gate acima deixava o mês em curso SEM variação de margem: sem `diff_pp`,
+     * `CompanyScoreService` devolve `margem_pontos = null` e a coluna Margem do
+     * ranking, o card do profissional e a célula da tabela por empresa ficam
+     * vazios o mês inteiro. Demanda do Maycon: "não está trazendo no mês atual e
+     * deveria trazer".
+     *
+     * A saída NÃO é aceitar o `prev` nativo fora da janela-igual. Medido ao vivo
+     * (LUCCMAX, 2026-08-10): na janela 08-01..10 a Adman devolve `prev = 22,51`,
+     * enquanto 07-01..10 vale de fato `21,64` — o `prev` é a janela
+     * IMEDIATAMENTE ANTERIOR, não o mesmo intervalo do mês passado, que é o
+     * baseline com que o faturamento já se compara. Usar o `prev` cru daria
+     * +4,72 p.p. no lugar dos +5,59 p.p. corretos.
+     *
+     * Então, no modo operacional, `$baselinePct` chega lido da PRÓPRIA Adman na
+     * janela `baseline_start..baseline_end` do período
+     * (`fetchMargemPctBaseline()`), e o par vira `prev_value`/`diff_pp`. Os dois
+     * lados da subtração seguem sendo valor nativo — o hotfix de 2026-07-24
+     * ("nunca calcular a variação local") continua respeitado; o que muda é a
+     * janela apontada, não a fonte.
+     *
+     * `prev_value` acompanha o `diff_pp` de propósito: a tabela por empresa
+     * exibe "antes → depois" ao lado da variação, e mostrar o `prev` nativo com
+     * um p.p. de outra janela seria uma conta que não fecha na tela.
+     *
+     * `diff_pct` continua `null` fora da janela-igual — é o metadado legado
+     * (`componentes.var_margem_pct` / `nota_final_legado`), e a nota oficial lê
+     * `diff_pp`. Sem baseline disponível, cai no comportamento anterior.
+     *
      * @param  ?array{value: ?float, diff: ?float, prev: ?float}  $marginPctAdman
+     * @param  ?float  $baselinePct  margem % da janela baseline (só no modo
+     *   operacional; `null` em janela-igual ou quando a Adman não respondeu).
      * @return array{value: ?float, prev_value: ?float, diff_pct: ?float, diff_pp: ?float, diff_source: ?string}
      */
-    private function resolveMargemPct(?array $marginPctAdman, bool $isJanelaIgual): array
+    private function resolveMargemPct(?array $marginPctAdman, bool $isJanelaIgual, ?float $baselinePct = null): array
     {
         $value     = isset($marginPctAdman['value']) ? (float) $marginPctAdman['value'] : null;
         $prevValue = isset($marginPctAdman['prev']) ? (float) $marginPctAdman['prev'] : null;
@@ -351,6 +391,17 @@ class AdmanMetricDiffService
             ];
         }
 
+        // Modo operacional com a janela baseline lida da Adman (quick 260810-mbv).
+        if (! $isJanelaIgual && $value !== null && $baselinePct !== null) {
+            return [
+                'value'       => $value,
+                'prev_value'  => $baselinePct,
+                'diff_pct'    => null,
+                'diff_pp'     => round($value - $baselinePct, 2),
+                'diff_source' => 'adman_janela_baseline',
+            ];
+        }
+
         return [
             'value'       => $value,
             'prev_value'  => $prevValue,
@@ -358,6 +409,42 @@ class AdmanMetricDiffService
             'diff_pp'     => $diffPp,
             'diff_source' => 'adman_indisponivel',
         ];
+    }
+
+    /**
+     * Margem % da JANELA BASELINE do período, lida da própria Adman
+     * (quick 260810-mbv).
+     *
+     * Existe só para o modo operacional: é o segundo valor nativo de que
+     * `resolveMargemPct()` precisa para produzir `diff_pp` contra o mesmo
+     * baseline que o faturamento já usa (dia 1..N do mês anterior), em vez do
+     * `prev` da Adman, que aponta para a janela imediatamente anterior.
+     *
+     * CUSTO: uma chamada a mais ao endpoint detalhado por empresa, ~2s medidos,
+     * e só quando o cache do diff (`adman:diff:v7`) dá miss no mês corrente. O
+     * endpoint tem cache próprio por dia e retry com backoff+jitter contra 429,
+     * então na prática é uma chamada por empresa por dia. Mês fechado nunca
+     * passa por aqui.
+     *
+     * Fail-open: `fetchAccountMetricsDetailedCached()` já devolve `null` em vez
+     * de lançar, e o chamador cai no comportamento anterior (sem variação).
+     */
+    private function fetchMargemPctBaseline(string $custId, array $periodo, string $marketplace): ?float
+    {
+        $inicio = $periodo['baseline_start'] ?? null;
+        $fim    = $periodo['baseline_end'] ?? null;
+
+        if (empty($inicio) || empty($fim)) {
+            return null;
+        }
+
+        $metrics = $this->admanService->fetchAccountMetricsDetailedCached(
+            $custId, $inicio, $fim, 1440, false, $marketplace
+        );
+
+        $valor = $metrics['percentageMargin']['value'] ?? null;
+
+        return $valor !== null ? (float) $valor : null;
     }
 
     // ─────────────────────── calculated_fallback (guards cicatrizados) ───────────────────────
