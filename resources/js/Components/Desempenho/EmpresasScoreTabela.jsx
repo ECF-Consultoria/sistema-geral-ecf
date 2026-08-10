@@ -7,6 +7,7 @@ import {
     AVISO_CARTEIRA_SO_SHOPEE, SELO_SHOPEE_TEXTO, SELO_SHOPEE_TITULO, MARGEM_SEM_DADO_TEXTO,
     fmtPctAbs, fmtPp, fmtVarPct, fmtNotaEmpresa, fmtMargemAntesDepois, motivoLabel,
     dividirPorEntrada, carteiraTodaShopeeNaEntrada, deveColapsarNaoEntraram, ehPlaceholderShopee,
+    marketplaceLabel, MARKETPLACE_TOOLTIP,
 } from '@/lib/desempenhoLabels';
 
 /**
@@ -46,12 +47,25 @@ function corNotaOficial(v) {
     return 'text-white/70';
 }
 
+/**
+ * Nome da loja + marketplace (quick 260810-n5b).
+ *
+ * A linha de baixo imprimia `fonte_financeira` cru — "ADMAN"/"SHOPEE". "Adman"
+ * é o nome da API de onde o número vem, não um marketplace, e não significa
+ * nada para quem lê a tela. Agora mostra "Mercado Livre" / "Shopee", traduzido
+ * pelo `marketplaceLabel()` (ver o comentário longo em `desempenhoLabels.js`
+ * sobre por que a fonte é essa e não `companies.marketplace`).
+ */
 function CelulaEmpresa({ linha }) {
+    const marketplace = marketplaceLabel(linha.fonte_financeira);
+
     return (
         <td className="px-3 py-3">
             <div className="text-white/80 truncate max-w-[220px]">{linha.company_name}</div>
-            {linha.fonte_financeira != null && (
-                <div className="text-[10px] uppercase tracking-wider text-white/30">{linha.fonte_financeira}</div>
+            {marketplace !== null && (
+                <div className="text-[10px] tracking-wide text-white/30" title={MARKETPLACE_TOOLTIP}>
+                    {marketplace}
+                </div>
             )}
         </td>
     );

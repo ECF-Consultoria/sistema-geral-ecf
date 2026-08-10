@@ -237,6 +237,71 @@ export function faixaBonusCls(slug) {
     return FAIXA_BONUS_CLS[slug] ?? FAIXA_BONUS_CLS.sem_bonus;
 }
 
+// ─── Marketplace da conta (quick 260810-n5b) ──────────────────────────────
+//
+// O marketplace do Desempenho vem da FONTE FINANCEIRA, que por sua vez vem do
+// serviço contratado (`CarteiraContextService::flagsFinanceirasPorSetor()`):
+// setor `performance` → 'adman' → Mercado Livre; setor `shopee` → 'shopee'.
+//
+// NÃO usar `companies.marketplace` para isto. Aquele campo é o marketplace da
+// conta ADMAN, usado para montar a URL da API, com default 'meli' — medido em
+// 2026-08-10: 171 de 171 empresas com valor estavam em 'meli' e a pivot
+// `company_marketplaces` tinha ZERO linhas. Ele diria "Mercado Livre" para
+// toda loja Shopee.
+//
+// `fonte_financeira` existe tanto no cálculo ao vivo quanto na coluna do
+// snapshot congelado, então a tradução vale igual em mês corrente e em
+// competência fechada.
+
+export const MARKETPLACE_LABEL = {
+    adman:  'Mercado Livre',
+    shopee: 'Shopee',
+};
+
+/**
+ * Nome do marketplace a partir da fonte financeira da linha. Fonte nula (setor
+ * sem fonte financeira: polos, publicação) devolve `null` — a chamadora decide
+ * se omite ou escreve outra coisa. Fonte desconhecida (uma 4ª plataforma
+ * futura) devolve o próprio slug capitalizado, nunca `undefined`.
+ */
+export function marketplaceLabel(fonte) {
+    if (fonte == null || fonte === '') return null;
+    if (Object.prototype.hasOwnProperty.call(MARKETPLACE_LABEL, fonte)) {
+        return MARKETPLACE_LABEL[fonte];
+    }
+    const s = String(fonte);
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Composição da carteira por marketplace — `[{ label, total }]`, do mais
+ * frequente para o menos, com empate resolvido por nome para a ordem não
+ * oscilar entre renders.
+ *
+ * Empresa sem fonte financeira fica FORA da contagem: ela não tem marketplace,
+ * e inventar um balde "sem marketplace" competindo com Mercado Livre e Shopee
+ * confunde mais do que informa (a tabela já mostra essas linhas com o motivo
+ * "Sem fonte financeira vinculada").
+ *
+ * Função PURA sobre `empresas_score` — nada é recalculado, só contado.
+ */
+export function composicaoPorMarketplace(linhas) {
+    if (!Array.isArray(linhas) || linhas.length === 0) return [];
+
+    const contagem = new Map();
+    for (const linha of linhas) {
+        const label = marketplaceLabel(linha?.fonte_financeira);
+        if (label === null) continue;
+        contagem.set(label, (contagem.get(label) ?? 0) + 1);
+    }
+
+    return [...contagem.entries()]
+        .map(([label, total]) => ({ label, total }))
+        .sort((a, b) => (b.total - a.total) || a.label.localeCompare(b.label));
+}
+
+export const MARKETPLACE_TOOLTIP = 'Marketplace de cuja métrica saiu a pontuação desta loja, definido pelo serviço contratado. Loja atendida nos dois aparece como Mercado Livre, que é a fonte usada no cálculo.';
+
 /**
  * Explicação do zero na conta — o indicador que a carteira não tem aparece
  * como 0,00 e o divisor continua 3. Sem esta frase num `title`, a tela mostra
