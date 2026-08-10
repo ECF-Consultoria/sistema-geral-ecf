@@ -1566,7 +1566,7 @@ Plans:
   3. `recusado` e `expirado` existem como estados próprios do model, nunca colapsados em `cancelado` ou `erro` — teste unitário comprova que os dois nunca resolvem para o mesmo valor interno
   4. Gate empírico #9 (formato do certificado de autenticação do signatário) resolvido e refletido no campo de payload do signatário
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 **Wave 1**
@@ -1575,7 +1575,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 125-02-PLAN.md — Tabela contrato_assinatura_signatarios, model, factory e a evidência do Gate #9 (DADOS-02)
+- [x] 125-02-PLAN.md — Tabela contrato_assinatura_signatarios, model, factory e a evidência do Gate #9 (DADOS-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
