@@ -47,17 +47,28 @@ Hoje o módulo **não lê nada do ML depois de publicar** — os únicos endpoin
 - **D-15:** O módulo **continua `role:admin`, sem item de menu**. A fase não mexe no gate. O filtro por `responsavel_id` segue dormente como está hoje.
 - **D-16:** A **"Saúde do anúncio" do wizard fica intacta** no aside (`AnunciarML.jsx:2761`) — ali ela guia a criação e alimenta o guard-rail de `publicar()`. A fase só **remove o bloco de Rascunhos recentes** do aside (`AnunciarML.jsx:2831`). Nenhuma alteração no caminho de publicação.
 
+### Resolvidas na pesquisa — decisões travadas em 2026-08-10
+
+Estas fecham A-01, A-02, A-03 e as três Open Questions do `134-RESEARCH.md`. Números medidos contra produção real, não estimados.
+
+- **D-17 — Variações: 1 linha por item** (resolve A-01). O ML já devolve `available_quantity`/`sold_quantity` **agregados no item-pai** — confirmado em 3 contas. Snapshot grava a linha do item com os agregados + `has_variations` (bool) + `variations` (json, payload bruto). **Não** normalizar em N linhas nem em tabela filha: D-09/D-12 operam no nível do anúncio, e contas de moda chegam a 70% de itens com variação (explodiria a tabela em até 32×). Mesma filosofia de `ml_anuncio_rascunhos.payload`.
+- **D-18 — Buy box via `price_to_win`, na camada cara** (resolve A-02). `GET /items/{id}/price_to_win?version=v2` funciona e é estável para item próprio (`status`: `winning`/`losing`/`sharing_first_place`/`listed`), mas é **1 chamada por item, sem lote**. `catalog_listing`/`catalog_product_id` vêm de graça no multiget — dá para saber SE o item é de catálogo sem custo; só o ganhando/perdendo custa. Item ainda não coberto pela rotação aparece como **"não avaliado"** na triagem — nunca inventar status.
+- **D-19 — Coleta em duas camadas de custo** (resolve A-03). Medido: **406.932 itens ativos em 74 contas**, com 6 contas somando 78,5% do total (mediana ~400 itens, média ~5.500 — mesma distorção por outlier que `desempenho-bonificacao.md` documenta). Camada **barata** (status, sub_status, estoque, vendas, tier, frete, tags, catálogo-flag, variações, preço, fotos, atributos) vem no multiget `/items?ids=` em lotes de **20 ids** e cobre o acervo inteiro em ~20.347 chamadas (~14 min) — roda diária para tudo. Camada **cara** (visitas e `price_to_win`) é 1 call/item e não cabe no diário-para-tudo.
+- **D-20 — Varredura por `scroll_id`, não `offset`.** Paginação por `offset` em `/users/{id}/items/search` **estoura em ~1000-1100 itens** (erro real capturado na pesquisa). Usar `search_type=scan` + `scroll_id` desde o dia 1, para toda conta — não só para as grandes.
+
+### Decisões do usuário em 2026-08-10 (pós-pesquisa)
+
+- **D-21 — Saúde do ML: sondar antes de descartar.** O campo `health` do multiget vem **sempre `null`** e `/item/{id}/performance` falhou nos 2 testes da pesquisa (ambos em item com `user_product_id`). **Primeira task do plano:** testar o endpoint contra um item **clássico** real (sem `user_product_id`) e verificar o escopo/permissão do app. Se responder, o D-10 sai completo com as duas medidas lado a lado. Se falhar, cai no fallback: tela exibe **só a nota ECF**, com texto explícito de que o ML não expõe mais um score comparável. **Nunca simular, aproximar ou inventar um número de saúde do ML.**
+- **D-22 — Nota ECF em base 86 explícita, sem o sinal de descrição.** Dos 8 sinais de `calcularScore()`, 7 são computáveis na camada barata (86 dos 100 pontos); só "descrição ≥120 chars" (14 pts) exigiria `GET /items/{id}/description`, 1 call/item sem lote (~500 mil chamadas/dia). **Fica de fora.** A nota é exibida como **"X de 86"** e **nunca renormalizada para 100** — renormalizar seria recalibrar a régua por conta própria, proibido pelo D-10, e faria a nota não fechar com a conta mostrada na tela (o caso `nps_medio` ≠ `pontos_componentes.nps`). Os pesos numéricos (12/12/20/14/16/8/4, sem os 14 da descrição) vivem em **um lugar citável pelos dois scorers**, com teste de regressão que roda o mesmo fixture pelo JS e pelo PHP e assere concordância.
+- **D-23 — Camada cara em rotação por fatia, cobertura de 100% em N dias.** Cada execução diária processa **1/N do acervo da empresa**; todo item acaba coberto dentro da janela, sem cauda longa permanentemente cega. `N` é parâmetro do comando (não constante hardcoded). O selo de defasagem do D-08 se estende a esses campos — a tela diz "visitas de N dias atrás", nunca apresenta dado velho como fresco.
+
 ### Claude's Discretion
 
 - Nome exato da tabela/migration, do comando artisan e do job.
-- Throttle e paginação da coleta (rate limit / 429): o módulo já usa delay escalonado em `publicarLote` — replicar o padrão, parâmetros a cargo do planner.
+- Valor inicial de `N` na rotação do D-23 e tamanho da fatia por execução — dimensionar a partir dos números do `134-RESEARCH.md` §3/§4.
+- Throttle e pacing dentro do job (rate limit / 429): reusar `MercadoLivreService::comRetry429()`, que já honra `Retry-After` com backoff — **não reimplementar**. Delay entre empresas replica o padrão de 2s já em produção no `ml:sync`.
 - Layout fino e escolha de gráfico para a série temporal (Recharts já está no projeto) — cabe ao `/gsd:ui-phase`.
-
-### Perguntas em aberto — decidir na pesquisa/planejamento, NÃO assumir
-
-- **A-01 — Variações.** Anúncio com variações é **uma linha ou N**? No ML, estoque e venda são por variação. Muda o modelo de dados do snapshot. O usuário optou por fechar o discuss antes de decidir isso; trazer opção fundamentada no `134-RESEARCH.md`.
-- **A-02 — Catálogo / buy box.** Anúncio de catálogo merece tratamento próprio? "Ganhando ou perdendo a buy box" é das métricas mais acionáveis que existem para quem anuncia. Confirmar se a API expõe isso de forma estável para item próprio e, se sim, propor onde entra na triagem (D-09).
-- **A-03 — Volume real.** Quantos itens ativos as contas conectadas de fato têm? O desenho de coleta (D-05/D-06) e a retenção (D-07) dependem da ordem de grandeza. Medir contra conta real antes de dimensionar.
+- Se a série diária grava linha todo dia ou só quando algum campo muda (otimização sugerida pela pesquisa; ~45 mi de linhas em regime se gravar sempre).
 
 </decisions>
 
