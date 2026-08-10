@@ -1594,7 +1594,7 @@ Plans:
   4. O texto jurídico das cláusulas vive isolado da lógica de montagem de dados (view/config separado), permitindo trocar o texto sem mexer em código
   5. PDF gerado com nome de empresa real extremo (longo, com caractere especial) mantém acentuação pt-BR correta e não corta cláusula no meio de uma página — reusando literalmente o precedente de `RelatorioMensalPdfService`
 
-**Plans:** 3/6 plans executed
+**Plans:** 4/6 plans executed
 
 Plans:
 **Wave 1**
@@ -1605,7 +1605,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 126-02-PLAN.md — Signatários, requisitos (`agree`+`role` / `provide_evidence`+`auth email`), ativação com prazo 30d e lembrete 3d explícitos, consulta, notificação, cancelamento e `montarEnvelope()` com rollback (CLICK-01)
-- [ ] 126-04-PLAN.md — `ContratoPdfService::montarDados()`: leitura exclusiva do `servicos_snapshot`, formatação pt-BR e placeholder visível `A DEFINIR` + `campos_pendentes` (PDF-01, PDF-02)
+- [x] 126-04-PLAN.md — `ContratoPdfService::montarDados()`: leitura exclusiva do `servicos_snapshot`, formatação pt-BR e placeholder visível `A DEFINIR` + `campos_pendentes` (PDF-01, PDF-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
