@@ -56,6 +56,30 @@ O recorte de POLOS é `projeto = 'POLOS'` com fallback em `MlbEmpresa::FASE_PARA
 (campo `projeto` é canônico desde a migration 000010) — e **sempre** com `scopeAtivas()`:
 empresa arquivada não conta em meta, faturamento nem listagem.
 
+## 3b. Coluna nova no Painel Polos: onde o campo mora decide tudo (quick 260810-dv6)
+
+As colunas da planilha se dividem em duas famílias, e escolher a errada custa um endpoint:
+
+- **`mlb_empresas`** — só `fase` e `polo` (`SEM_FICHA_OK` no `Painel.jsx`). Salvam via
+  `mlb.empresas.update`, que **zera campos omitidos** — por isso o painel manda o
+  `payload_empresa` inteiro junto. Campo novo aqui exige um PATCH dedicado (foi o que o
+  `cust_id` ganhou).
+- **`mlb_implementacoes`** — todo o resto. Salva por bloco (`BLOCO_DE[campo]` →
+  `mlb.implementacao.bloco.{identificacao,acessos,produtos,logistica}`), PATCH parcial, sem
+  rota nova: basta uma entrada em `BLOCO_DE`, a validação no bloco e a prop em
+  `PolosController::painel`. **Custo**: empresa sem ficha mostra "criar ficha" na célula —
+  eram **15 de 284** POLOS ativas em 2026-08-10 (95% têm ficha).
+
+**Não reaproveite `grupo_whatsapp` para outra coisa.** É `boolean` e `MetasPanel` /
+`EntrantesM0Panel` derivam o realizado da aba Metas dele (`e.grupo_whatsapp === true`) —
+mudar o tipo quebra a contagem de entrantes **sem erro nenhum**. Quando faltou guardar o
+link do grupo, entrou campo separado (`link_whatsapp`) em vez de alargar o boolean.
+
+Ao acrescentar coluna, três lugares têm de andar juntos ou o cabeçalho desalinha do corpo:
+`COLUNAS` (defs do AutoFiltro), `COLS_POR_LENTE` (ordem por lente) e o fragmento de célula
+correspondente em `LinhaPainel`. E confira o `colSpan` do drawer — é um número fixo que já
+ficou defasado duas vezes.
+
 ## 4. Página React que só delega precisa ser componente de verdade
 
 `export { default } from '../../Ppa/Index'` **não entra no manifest do Vite**: o bundler
