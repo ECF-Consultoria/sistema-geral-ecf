@@ -33,9 +33,9 @@ class SondagemSaudeMlTest extends TestCase
         $config = config('mlb_acervo');
 
         $this->assertSame(
-            ['rotacao_n', 'chunk_detalhe', 'lote_multiget', 'pagina_scroll', 'retencao_dias', 'defasagem_horas', 'saude_ml_disponivel'],
+            ['rotacao_n', 'chunk_detalhe', 'lote_multiget', 'pagina_scroll', 'retencao_dias', 'defasagem_horas', 'saude_ml_disponivel', 'health_multiget_confiavel'],
             array_keys($config),
-            'config/mlb_acervo.php precisa ter exatamente estas 7 chaves, nesta ordem — '
+            'config/mlb_acervo.php precisa ter exatamente estas 8 chaves, nesta ordem — '
             . 'mudar N silenciosamente aqui muda o custo de coleta da fase inteira'
         );
 
@@ -45,6 +45,51 @@ class SondagemSaudeMlTest extends TestCase
         $this->assertSame(50, $config['pagina_scroll']);
         $this->assertSame(90, $config['retencao_dias']);
         $this->assertSame(24, $config['defasagem_horas']);
+
+        // D-21 — sondagem concluída em 2026-08-10 contra produção: o endpoint
+        // `GET /item/{id}/performance` RESPONDE (score 98, level "good",
+        // buckets com variables acionáveis em pt-BR). A fase segue na
+        // Variante A do UI-SPEC — as duas medidas de saúde lado a lado.
+        $this->assertTrue(
+            $config['saude_ml_disponivel'],
+            'D-21 foi resolvido como DISPONIVEL pela sondagem real; voltar para false '
+            . 'derrubaria a tela para a Variante B sem evidência que justifique'
+        );
+
+        // Achado da mesma sondagem: o `health` do multiget não é sempre null.
+        // Vem preenchido (0.7/0.8) para item ativo/pausado fora de catálogo —
+        // sinal de saúde do ML de graça na camada barata.
+        $this->assertTrue($config['health_multiget_confiavel']);
+    }
+
+    /**
+     * @test
+     *
+     * Trava o achado central da sondagem do D-21 contra a fixture real: se
+     * alguém trocar a fixture por um payload inventado, ou se o contrato do
+     * endpoint mudar, este teste cai. É o que sustenta a Variante A da tela.
+     */
+    public function fixture_de_performance_tem_o_contrato_que_a_variante_a_consome(): void
+    {
+        $path = base_path('tests/fixtures/phase134/performance-sondagem.json');
+        $this->assertFileExists($path, 'A Variante A do UI-SPEC depende desta fixture real.');
+
+        $p = json_decode(file_get_contents($path), true);
+
+        $this->assertIsInt($p['score'], 'score é o número que a tela exibe ao lado da Nota ECF');
+        $this->assertContains($p['level'], ['good', 'medium', 'low', 'incomplete']);
+        $this->assertNotEmpty($p['buckets'], 'os buckets são os grupos da triagem do D-09');
+
+        // Cada variable traz `title` já redigido em pt-BR pelo próprio ML —
+        // é o texto acionável que a tela mostra sem precisar inventar cópia.
+        $variables = collect($p['buckets'])->flatMap(fn ($b) => $b['variables'] ?? []);
+        $this->assertNotEmpty($variables, 'sem variables não há ação sugerida para exibir');
+
+        $variables->each(function (array $v): void {
+            $this->assertArrayHasKey('status', $v);
+            $this->assertContains($v['status'], ['PENDING', 'COMPLETED']);
+            $this->assertNotEmpty($v['title'] ?? null);
+        });
     }
 
     /** @test */
@@ -115,6 +160,26 @@ class SondagemSaudeMlTest extends TestCase
             'available_quantity',
             $itemComVariacoes,
             'available_quantity precisa estar no nível do item-pai (agregado do D-17)'
+        );
+
+        // O D-17 decidiu 1 linha por item porque o próprio ML já agrega
+        // estoque e venda no item-pai. Isso não é suposição: contra a fixture
+        // real (MLB5512320238, 4 variações), a soma das variações bate na
+        // unha com o valor do pai. Se um dia o ML parar de agregar, este
+        // teste cai e o modelo de 1 linha precisa ser reaberto — em vez de
+        // a tela passar a mostrar estoque errado em silêncio.
+        $somaDisponivel = array_sum(array_column($itemComVariacoes['variations'], 'available_quantity'));
+        $somaVendida    = array_sum(array_column($itemComVariacoes['variations'], 'sold_quantity'));
+
+        $this->assertSame(
+            $itemComVariacoes['available_quantity'],
+            $somaDisponivel,
+            'available_quantity do pai precisa ser a soma das variações — é a premissa do D-17'
+        );
+        $this->assertSame(
+            $itemComVariacoes['sold_quantity'],
+            $somaVendida,
+            'sold_quantity do pai precisa ser a soma das variações — é a premissa do D-17'
         );
     }
 }

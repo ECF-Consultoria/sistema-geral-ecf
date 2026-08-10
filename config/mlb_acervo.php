@@ -48,22 +48,40 @@ return [
     // defasagem ("coletado há N dias").
     'defasagem_horas' => (int) env('MLB_ACERVO_DEFASAGEM_HORAS', 24),
 
-    // D-21 — veredicto da sondagem deste plano (134-01, Task 2). false =
-    // Variante B do 134-UI-SPEC.md (só Nota ECF, com tooltip explicando que
-    // o ML não expõe mais um score comparável). Só vira true se a Task 2
-    // provar que `GET /item/{id}/performance` responde para item clássico.
+    // D-21 — veredicto da sondagem deste plano (134-01, Task 2).
     //
-    // SONDAGEM PENDENTE (tentada em 2026-08-10, não concluída). O banco
-    // local não tem nenhuma empresa com MlToken ativo (134-RESEARCH.md §
-    // Environment Availability), então a sondagem só produz resposta
-    // contra produção. A Task 2 tentou abrir sessão SSH na VPS (plink,
-    // reusando SSH_ARGS de deploy.sh) e foi BLOQUEADA pelo classificador
-    // de permissões do ambiente de execução — não por indisponibilidade
-    // de rede/credencial. Mantido em `false` (fallback honesto do D-21,
-    // Variante B) até um humano rodar a sondagem manualmente. Comando
-    // exato para repetir (direto na VPS, ou via SSH com permissão
-    // concedida): `php artisan mlb:acervo-sondar --fixtures` em
-    // `/var/www/ecf_admin`. Ver 134-01-SUMMARY.md para o relato completo.
-    'saude_ml_disponivel' => (bool) env('MLB_ACERVO_SAUDE_ML', false),
+    // SONDAGEM CONCLUÍDA em 2026-08-10 contra produção (leitura, D-11
+    // respeitado). VEREDICTO: **DISPONÍVEL** → Variante A do 134-UI-SPEC.md
+    // (as duas medidas de saúde lado a lado, ML + Nota ECF).
+    //
+    // `GET /item/{id}/performance` RESPONDE. Medido no item MLB5318502460
+    // (empresa 298): score=98, level="good", mais `buckets[]` agrupados
+    // ("Dados do produto", "Condições de venda") e, dentro deles,
+    // `variables[]` com `key` (UP_PICTURES, UP_STOCK_AVAILABILITY_TIME,
+    // UP_GTIN, UP_TITLE, UP_FREE_SHIPPING…), `status` (PENDING/COMPLETED) e
+    // `title` já redigido em pt-BR pelo próprio ML. É exatamente o "health
+    // /quality + ações sugeridas de qualidade" que o 134-CONTEXT.md listou
+    // como candidato. Fixture real em tests/fixtures/phase134/.
+    //
+    // O 134-RESEARCH.md havia registrado este endpoint como falho — a
+    // pesquisa testou um item que devolveu "Product items are not
+    // supported". A sondagem provou que ele responde; o erro anterior era
+    // do item de amostra, não do endpoint. Ver 134-01-SUMMARY.md.
+    //
+    // Custo: 1 chamada por item, sem lote → camada CARA (rotação do D-23),
+    // ao lado de visits e price_to_win.
+    'saude_ml_disponivel' => (bool) env('MLB_ACERVO_SAUDE_ML', true),
+
+    // ACHADO ADICIONAL da mesma sondagem — o campo `health` do multiget
+    // (camada BARATA, custo zero) NÃO é sempre null como a pesquisa
+    // registrou. Medido em 20 itens da empresa 298: 11 trazem valor real
+    // (0.7 / 0.8, escala 0-1). O padrão é determinístico:
+    //   • `catalog_listing = true`  → health null (4/4) — anúncio de
+    //     catálogo não tem ficha própria, a ficha é do catálogo
+    //   • `status` closed/inactive  → health null (5/5)
+    //   • ativo/pausado fora de catálogo → health preenchido (11/11)
+    // Ou seja: existe um sinal de saúde do ML DE GRAÇA para a maior parte
+    // do acervo ativo. `performance` (caro) fica para o detalhe acionável.
+    'health_multiget_confiavel' => true,
 
 ];
