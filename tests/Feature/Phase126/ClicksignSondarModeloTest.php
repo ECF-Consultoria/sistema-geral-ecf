@@ -329,7 +329,7 @@ class ClicksignSondarModeloTest extends TestCase
         $saida  = Artisan::output();
 
         Http::assertSent(fn ($r) => $r->method() === 'DELETE' && str_contains($r->url(), '/templates/'));
-        $this->assertStringContainsString('draft', $saida);
+        $this->assertStringContainsString('DRAFT', $saida);
         $this->assertSame(0, $codigo);
     }
 

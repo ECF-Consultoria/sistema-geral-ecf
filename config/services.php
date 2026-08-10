@@ -210,6 +210,14 @@ return [
         'api_user_email'   => env('CLICKSIGN_API_USER_EMAIL'),
         'max_upload_bytes' => env('CLICKSIGN_MAX_UPLOAD_BYTES', 20971520),
 
+        // Fase 126 Plan 126-10 — UUID do modelo (.docx) de contrato cadastrado
+        // na conta Clicksign, lido pelo comando `clicksign:sondar-modelo` e,
+        // depois, pela Fase 127. Sandbox e produção têm UUIDs DIFERENTES —
+        // valor real só no `.env` local ou nas variáveis do servidor, nunca
+        // aqui nem no `.env.example` (mesmo não sendo segredo, um exemplo
+        // preenchido vira produção por engano).
+        'template_id'      => env('CLICKSIGN_TEMPLATE_ID'),
+
         // Fase 126 Plan 126-02 (D-08) — os 3 signatários FIXOS da ECF que
         // entram em todo contrato (dois sócios como "contratada" + Comercial
         // como "testemunha"), lidos de `env()`. Nome e e-mail reais NUNCA
