@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 126-08-PLAN.md
-last_updated: "2026-08-10T21:46:56.729Z"
+stopped_at: Completed 126-09-PLAN.md
+last_updated: "2026-08-10T21:59:33.221Z"
 last_activity: 2026-08-10
 progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 20
-  completed_plans: 16
+  completed_plans: 17
   percent: 20
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 126 (client-clicksign-pdf-do-contrato-v22-0) — EXECUTING
-Plan: 8 of 12 (126-01..04 executados, 126-05 superado, 126-06 descartado, 126-07 executado nesta sessão; 126-08..12 pendentes — ver ROADMAP.md § Phase 126)
+Plan: 9 of 12 (126-01..04 executados, 126-05 superado, 126-06 descartado, 126-07 executado nesta sessão; 126-08..12 pendentes — ver ROADMAP.md § Phase 126)
 Status: Ready to execute
 Last activity: 2026-08-10
 
@@ -292,6 +292,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 126 P05 | 35min | 3 tasks | 5 files |
 | Phase 126 P07 | 35min | 3 tasks | 5 files |
 | Phase 126 P08 | ~25min | 3 tasks | 2 files |
+| Phase 126 P09 | 35min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -765,6 +766,14 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **`comEmpresaDeNomeExtremo()` virou state da própria factory**, não inline no teste do plano 126-05 — nome de 109 caracteres, acentuado, com hífen, centralizando a disciplina de "nome inventado, nunca copiado de empresa real" (D-15).
 - `$fillable` de `ContratoAssinatura` ganhou `pdf_path`/`pdf_assinado_path` na MESMA entrega da migration (não em commit separado) — sem isso o mass assignment falharia em silêncio (Pitfall 4 do 126-RESEARCH.md).
 
+### Decisões do Plan 126-09 (registradas)
+
+- **`servico_contratado` concatena todos os serviços do snapshot (D-19 opção B)**, não índice fixo, não tabela em loop — um serviço devolve o próprio nome, dois ou mais são unidos por vírgula com `" e "` antes do último.
+- **`nomes()` deriva de um mapa privado único (closures) compartilhado com `montar()`** — decisão de design para satisfazer "sem lista de nomes duplicada à mão" da forma mais robusta: `nomes()` só lê `array_keys()` do mapa, sem precisar de um contrato de verdade.
+- **`data_primeira_parcela` resolvida como placeholder direto na ponte**, não repassada de `campos_pendentes` de `montarDados()` (lá ela nem existe como conceito) — não inventa uma pendência que `montarDados()` não relatou.
+- **`data_assinatura` por extenso via helper privado na própria classe**, seguindo o precedente exato de `RelatorioMensalPdfService::mesLabelPt()` — sem criar helper global novo.
+- Suíte `tests/Feature/Phase126/` + `tests/Feature/Phase125/`: 139/139 verde (129 baseline + 10 novos).
+
 ### Pending Todos
 
 None.
@@ -873,8 +882,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-10T21:46:55.749Z
-Stopped at: Completed 126-08-PLAN.md
+Last session: 2026-08-10T21:59:33.127Z
+Stopped at: Completed 126-09-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
