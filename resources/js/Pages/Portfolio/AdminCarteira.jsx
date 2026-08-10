@@ -12,6 +12,7 @@ import PeriodoBanner from '@/Components/Desempenho/PeriodoBanner';
 import {
     fmtNotaEmpresa, formatContaNota, faixaBonusLabel, faixaBonusCls,
     AVISO_SEM_DETALHE_TITULO, AVISO_SEM_DETALHE_EM_CURSO, avisoSemDetalheFechado,
+    CONTA_NOTA_TOOLTIP,
 } from '@/lib/desempenhoLabels';
 
 // Margem % (valor) — "35.8%". Null → "—".
@@ -217,7 +218,7 @@ function NotaMesCard({ score, userId, mesDetalhe = null }) {
             ) : conta ? (
                 <div
                     className="text-white/40 text-xs mt-1 tabular-nums"
-                    title="Média dos pontos de NPS, faturamento e margem (régua 1-5)"
+                    title={CONTA_NOTA_TOOLTIP}
                 >
                     {conta}
                 </div>

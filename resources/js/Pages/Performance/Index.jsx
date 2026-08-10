@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { cn, formatPercent as fmtPctUtil, formatCurrency } from '@/lib/utils';
+import { CONTA_NOTA_TOOLTIP } from '@/lib/desempenhoLabels';
 import HeroKpi from '@/Pages/Polos/components/HeroKpi';
 import RadialGauge from '@/Pages/Polos/components/RadialGauge';
 
@@ -167,14 +168,19 @@ export function formatNota(v) {
     return Number(v).toFixed(2).replace('.', ',');
 }
 
-// Conta usada pra montar a nota final ("(3,83+3,61+4,65)/3"). Fallback pro
+// Conta usada pra montar a nota final ("(3,83+3,61+0,00)/3"). Fallback pro
 // "/ 5,00" antigo quando o backend não expõe o breakdown (snapshots antigos,
 // users sem carteira).
+//
+// Divisor FIXO 3 e indicador ausente somando 0 desde 2026-08-10 (quick
+// 260810-mt8) — espelha `computeNotaFinalPorIndicador()`. Esta função é
+// HOMÔNIMA da de `@/lib/desempenhoLabels` mas tem contrato diferente (devolve
+// a sentinela `'/ 5,00'`, nunca `null`), então as duas mudam juntas.
 function formatContaNota(pontos) {
     if (!pontos) return '/ 5,00';
-    const pts = [pontos.nps, pontos.faturamento, pontos.margem].filter((v) => v != null);
-    if (pts.length === 0) return '/ 5,00';
-    return `(${pts.map(formatNota).join('+')})/${pts.length}`;
+    const pts = [pontos.nps, pontos.faturamento, pontos.margem];
+    if (pts.every((v) => v == null)) return '/ 5,00';
+    return `(${pts.map((v) => formatNota(v ?? 0)).join('+')})/3`;
 }
 
 export default function PerformanceIndex({
@@ -650,7 +656,7 @@ function RankingConsultoria({ ranking, onSelectUser, mesDetalhe = null }) {
                                         ) : (
                                             <span
                                                 className="text-white/30 text-[10px] block leading-none mt-0.5 tabular-nums"
-                                                title="Média dos pontos NPS, faturamento e margem (régua 1-5)"
+                                                title={CONTA_NOTA_TOOLTIP}
                                             >
                                                 {formatContaNota(u.pontos_componentes)}
                                             </span>
