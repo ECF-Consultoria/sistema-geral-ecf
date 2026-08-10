@@ -21,7 +21,7 @@ manuais) — sem precisar de acesso direto ao servidor.
 
 **Target features (fases a partir da 124):**
 - ✅ **Refatoração sem quebrar o fluxo atual** *(Fase 124, concluída 2026-08-07)*: `PendenciasComerciaisService` e `EmpresaOperacionalRouter` extraídos; `ComercialController::store()` e `HubspotWebhookController::criarEmpresa()` religados ao roteador e o código duplicado removido (`criarImplementacaoPolo()` e `rotearImplementacao()` não existem mais). Kill switch `administrativo_bloqueio_ativo` instalado, lido num ponto só, provado dos dois lados e **desligado**. Refatoração pura comprovada por diff nominal vazio contra baseline congelada.
-- **Estrutura de dados administrativa:** `contrato_assinaturas`, `contrato_assinatura_signatarios` e `contrato_assinatura_eventos` (esta última com `payload_hash` único, para idempotência de webhook).
+- ✅ **Estrutura de dados administrativa** *(Fase 125, concluída 2026-08-10)*: `contrato_assinaturas` e `contrato_assinatura_signatarios` criadas, com models, factories e 30 testes. Migrations provadas contra o **MariaDB de produção** (batches 110/111) — as três cicatrizes de schema do projeto (enum+SQLite, FK 1830, índice 1059) confirmadas evitadas no engine real. `contrato_assinatura_eventos` (com `payload_hash` único para idempotência de webhook) fica para a Fase 129.
 - **Integração Clicksign (API v3, conceito de Envelope):** client HTTP, criação de envelope, documento, signatários, requisitos e notificação. Sandbox até homologação.
 - **PDF do contrato** via DomPDF, com o texto jurídico isolado para troca futura.
 - **Webhook Clicksign → liberação do operacional**, idempotente por evento.
