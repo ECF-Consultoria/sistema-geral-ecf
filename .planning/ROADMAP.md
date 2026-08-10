@@ -1716,7 +1716,7 @@ Plans:
   5. Coleta falha ou está velha → a tela mostra o último snapshot com selo de defasagem, nunca uma tela em branco
   6. O bloco "Rascunhos recentes" saiu do aside do wizard e vive na sub-aba Rascunhos, junto com o "Publicar lote"; a "Saúde do anúncio" continua intacta no aside do wizard
 
-**Plans:** 6/10 plans executed
+**Plans:** 7/10 plans executed
 
 Plans:
 **Wave 1**
@@ -1736,7 +1736,7 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 134-06-PLAN.md — Comandos mlb:sync-acervo e mlb:acervo-cleanup + agendamento diário [wave 4]
-- [ ] 134-07-PLAN.md — Rota mlb.anuncios.meus: listagem, triagem, ordenação, defasagem e Atualizar agora [wave 4]
+- [x] 134-07-PLAN.md — Rota mlb.anuncios.meus: listagem, triagem, ordenação, defasagem e Atualizar agora [wave 4]
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
