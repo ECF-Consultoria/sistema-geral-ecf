@@ -11,7 +11,7 @@ import PeriodoBanner from '@/Components/Desempenho/PeriodoBanner';
 import {
     MARGEM_CARD_TITULO, MARGEM_CARD_SUBLABEL,
     AVISO_SEM_DETALHE_TITULO, AVISO_SEM_DETALHE_EM_CURSO, avisoSemDetalheFechado,
-    resumoCarteiraLinha, fmtPp,
+    resumoCarteiraLinha, fmtPp, CONTA_NOTA_TOOLTIP,
 } from '@/lib/desempenhoLabels';
 
 /**
@@ -26,17 +26,20 @@ function formatNota(v) {
 }
 
 /**
- * Formata a conta que produziu a nota (ex: "(4,65+3,83+3,61)/3 = 4,03").
+ * Formata a conta que produziu a nota (ex: "(4,65+3,83+0,00)/3 = 2,83").
  * Consumido em FaixaBonusCard abaixo da nota final — mesmo formato usado no
- * Ranking (Performance/Index.jsx). Nulls (componentes indisponíveis) ficam
- * de fora, e o denominador acompanha quantos componentes sobraram.
+ * Ranking (Performance/Index.jsx).
+ *
+ * Divisor FIXO 3 e indicador ausente somando 0 desde 2026-08-10 (quick
+ * 260810-mt8) — espelha `computeNotaFinalPorIndicador()`. Sem nenhum ponto
+ * devolve `null`: carteira sem dado não tem conta a mostrar.
  */
 function formatContaNota(pontos, notaFinal) {
     if (!pontos) return null;
-    const pts = [pontos.nps, pontos.faturamento, pontos.margem].filter((v) => v != null);
-    if (pts.length === 0) return null;
+    const pts = [pontos.nps, pontos.faturamento, pontos.margem];
+    if (pts.every((v) => v == null)) return null;
     const notaFmt = notaFinal != null ? formatNota(notaFinal) : '?';
-    return `(${pts.map(formatNota).join('+')})/${pts.length} = ${notaFmt}`;
+    return `(${pts.map((v) => formatNota(v ?? 0)).join('+')})/3 = ${notaFmt}`;
 }
 
 /**
@@ -274,7 +277,7 @@ function FaixaBonusCard({ resultado, user, mesDetalhe = null }) {
                     {contaNota && (
                         <span
                             className="text-white/40 text-xs tabular-nums"
-                            title="Média dos pontos NPS, faturamento e margem (régua 1-5)"
+                            title={CONTA_NOTA_TOOLTIP}
                         >
                             {contaNota}
                         </span>

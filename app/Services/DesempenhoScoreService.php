@@ -120,6 +120,17 @@ class DesempenhoScoreService
     private const COBERTURA_MINIMA_SCORE_STATUS = 0.7;
 
     /**
+     * Divisor FIXO da nota final — decisão do Maycon em 2026-08-10
+     * (quick 260810-mt8): "Pontuação Final = Soma das 3 pontuações ÷ 3".
+     *
+     * É constante, e não `count()` dos presentes, exatamente porque o pedido é
+     * que o indicador ausente PESE: ele entra como zero e o divisor não
+     * encolhe. Trocar por contagem dinâmica reverte a regra em silêncio — ver
+     * `computeNotaFinalPorIndicador()` para o efeito na carteira só-Shopee.
+     */
+    private const DIVISOR_NOTA_FINAL = 3;
+
+    /**
      * Cache in-memory das faixas ativas — evita re-query em loops de ranking
      * (ex: consolidação mensal itera 15-20 users e cada um chama classificar).
      * Preenche na primeira chamada de `classificarFaixa()`; invalidação natural
@@ -427,7 +438,15 @@ class DesempenhoScoreService
         // intocado). Sem o bump o payload v17 do mês corrente — com a margem
         // vazia — continuaria sendo servido. Chaves v17 viram órfãs e expiram
         // por TTL; `cache:clear` no VPS continua PROIBIDO.
-        return sprintf('desempenho.compute.v18.%d.%s', $userId, $periodKey);
+        // v19 (2026-08-10, quick 260810-mt8): a nota passa a dividir SEMPRE por
+        // 3, com indicador ausente valendo zero (antes promediava só os
+        // presentes). Muda `nota_final` e, por consequência, `faixa_bonus` de
+        // toda carteira que não tem os três indicadores — o caso vivo é a
+        // só-Shopee, que sai de média-de-dois para teto de 3,33. Sem o bump o
+        // Redis serviria a nota do método anterior por até 7 dias em mês
+        // fechado. Chaves v18 viram órfãs e expiram por TTL; `cache:clear` no
+        // VPS continua PROIBIDO.
+        return sprintf('desempenho.compute.v19.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -1741,6 +1760,30 @@ class DesempenhoScoreService
      * `complete` e descarta a linha toda) — os dois coincidem quando nenhuma
      * loja tem lacuna, e divergem exatamente onde há lacuna.
      *
+     * ─── A NOTA divide sempre por 3 (2026-08-10, quick 260810-mt8) ─────────
+     * Decisão do Maycon: "Pontuação Final = Soma das 3 pontuações ÷ 3".
+     * O indicador que a carteira não tem entra como ZERO, e o divisor é fixo.
+     *
+     * Antes a nota promediava só os indicadores presentes, então uma carteira
+     * sem margem era medida por dois. O caso concreto é a carteira só-Shopee:
+     * a plataforma não fornece CMV, a margem sai do denominador e a nota vinha
+     * da média de faturamento e NPS. Foi perguntado a ele com esse caso na
+     * mesa, e a opção escolhida foi a mais severa das três (a alternativa era
+     * o ausente entrar com 1,0, o piso da régua).
+     *
+     * CONSEQUÊNCIA que precisa estar visível para quem mexer aqui: carteira
+     * só-Shopee passa a ter TETO de (5 + 0 + 5) / 3 = 3,33 — nunca alcança os
+     * 4,00 da primeira faixa de bônus. Não é efeito colateral, é a regra.
+     *
+     * O zero entra no nível do INDICADOR, nunca por loja. Loja sem margem
+     * continua apenas fora da média de margem (o parágrafo acima), não vira
+     * zero dentro dela — eram 75 das 286 lojas em 2026-06, e zerar por loja
+     * seria outra regra, muito mais severa, que o pedido não descreve.
+     *
+     * Carteira sem NENHUM indicador continua `null`, jamais 0: ausência total
+     * de dado não é desempenho zero, e a trava D-91-01 (`blocked`) depende
+     * disso.
+     *
      * Na competência 2026-06 medida em produção: 47 das 286 lojas sem
      * faturamento, 75 sem margem. Descartar essas linhas inteiras jogaria
      * fora medição boa dos outros dois indicadores.
@@ -1769,11 +1812,20 @@ class DesempenhoScoreService
         $margem      = $medir($empresasScore->map(fn ($e) => $e->margem_pontos ?? null));
         $nps         = $medir($empresasScore->map(fn ($e) => $e->nps_pontos ?? null));
 
+        // Os três indicadores continuam expostos com `null` quando ausentes —
+        // é o que distingue "a carteira não tem esse indicador" de "tirou
+        // zero". Quem transforma o ausente em 0 é a NOTA, logo abaixo, e a
+        // exibição da conta na tela; o payload nunca fabrica o zero.
+        $algumPresente = collect([$faturamento, $margem, $nps])
+            ->contains(fn ($v) => $v !== null);
+
         return [
             'faturamento' => $faturamento,
             'margem'      => $margem,
             'nps'         => $nps,
-            'nota'        => $medir(collect([$faturamento, $margem, $nps])),
+            'nota'        => $algumPresente
+                ? (($faturamento ?? 0.0) + ($margem ?? 0.0) + ($nps ?? 0.0)) / self::DIVISOR_NOTA_FINAL
+                : null,
         ];
     }
 

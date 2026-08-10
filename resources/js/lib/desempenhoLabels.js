@@ -238,17 +238,30 @@ export function faixaBonusCls(slug) {
 }
 
 /**
- * A conta que produziu a nota — "(4,65+3,83+3,61)/3 = 4,03". Mesmo formato do
- * ranking e da tela de desempenho: componente indisponível fica de fora e o
- * denominador acompanha quantos sobraram, senão a conta exibida não fecha com
- * a nota exibida ao lado dela.
+ * Explicação do zero na conta — o indicador que a carteira não tem aparece
+ * como 0,00 e o divisor continua 3. Sem esta frase num `title`, a tela mostra
+ * um zero que parece nota ruim quando na verdade é dado que não existe.
+ */
+export const CONTA_NOTA_TOOLTIP = 'Soma dos três indicadores (NPS, faturamento e margem) dividida por 3. Indicador que a carteira não tem entra como 0,00 — a Shopee, por exemplo, não fornece CMV, então não há margem.';
+
+/**
+ * A conta que produziu a nota — "(4,65+3,83+0,00)/3 = 2,83".
+ *
+ * Divisor FIXO 3 e indicador ausente somando 0 desde 2026-08-10 (decisão do
+ * Maycon, quick 260810-mt8) — antes o ausente saía da conta e o denominador
+ * encolhia. A conta exibida precisa fechar com a nota ao lado, então ela
+ * espelha exatamente `DesempenhoScoreService::computeNotaFinalPorIndicador()`:
+ * mudou lá, muda aqui.
+ *
+ * Continua devolvendo `null` quando não há ponto NENHUM — carteira sem dado
+ * não tem conta a mostrar, e a nota nesse caso também é nula (nunca 0).
  */
 export function formatContaNota(pontos, notaFinal) {
     if (!pontos) return null;
-    const pts = [pontos.nps, pontos.faturamento, pontos.margem].filter((v) => v != null);
-    if (pts.length === 0) return null;
+    const pts = [pontos.nps, pontos.faturamento, pontos.margem];
+    if (pts.every((v) => v == null)) return null;
     const notaFmt = notaFinal != null ? fmtNotaEmpresa(notaFinal) : '?';
-    return `(${pts.map(fmtNotaEmpresa).join('+')})/${pts.length} = ${notaFmt}`;
+    return `(${pts.map((v) => fmtNotaEmpresa(v ?? 0)).join('+')})/3 = ${notaFmt}`;
 }
 
 // ─── Banner de período — texto curto na tela, longo no tooltip ────────────
