@@ -28,6 +28,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // SEL-01: um card por empresa; escopo por responsavel_id no controller (SEL-02)
         Route::get('/', [MlbAnuncioController::class, 'index'])->name('index');
 
+        // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
+        // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do
+        // cliente). D-05: leitura 100% do banco, zero chamada síncrona ao ML
+        // no request — a coleta roda em job (agendado ou via "Atualizar
+        // agora"). Mesmo gate role:admin do grupo, sem middleware novo (D-15).
+        Route::get('/meus/{company}', [MlbAnuncioController::class, 'meus'])->name('meus');
+        Route::post('/meus/{company}/atualizar', [MlbAnuncioController::class, 'atualizarAgora'])->name('meus.atualizar');
+
         // ─── Momento 2: wizard com empresa fixada (âncora = company com ml_token) ───
         Route::get('/wizard/{company}', [MlbAnuncioController::class, 'wizard'])->name('wizard');
 

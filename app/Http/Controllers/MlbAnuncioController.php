@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Jobs\PublicarAnuncioMlJob;
 use App\Models\Company;
+use App\Models\MlAcervoItem;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\User;
+use App\Services\Mlb\Acervo\AnuncioSaudeService;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
 use App\Services\Mlb\Publicacao\MlCompatibilidadeService;
 use App\Services\Mlb\Publicacao\MlFreteService;
@@ -287,6 +289,198 @@ class MlbAnuncioController extends Controller
             ],
             'filtros'  => ['busca' => $busca],
         ]);
+    }
+
+    /**
+     * "Meus Anúncios" (Fase 134) — acervo vivo da conta ML, lido EXCLUSIVAMENTE
+     * do snapshot em `ml_acervo_itens` (D-05). Nenhuma chamada HTTP acontece
+     * aqui: a coleta é feita por SyncMlAcervoCompanyJob/SyncMlAcervoDetalheJob
+     * (134-04/134-05), agendados diariamente (134-06) ou disparados pelo botão
+     * "Atualizar agora" (atualizarAgora(), abaixo).
+     *
+     * D-01: lista o acervo INTEIRO da conta, não só o que este módulo
+     * publicou — `Publicacao::considerado()` não entra aqui, essa query LISTA,
+     * não CONTA (regra travada em 134-CONTEXT.md, canonical_refs).
+     */
+    public function meus(Request $request, Company $company)
+    {
+        // Mesma trava de todas as outras actions do módulo — nenhuma exceção (D-02, T-134-01/02).
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+
+        $busca = trim((string) $request->query('busca', ''));
+
+        // D-03: só ativos por padrão. Valor fora da lista fechada cai no default —
+        // nunca interpolar querystring em SQL.
+        $statusFiltro = (string) $request->query('status', 'ativos');
+        if (! in_array($statusFiltro, ['ativos', 'pausados', 'encerrados', 'todos'], true)) {
+            $statusFiltro = 'ativos';
+        }
+
+        // Motivo é validado contra a whitelist fechada de MlAcervoItem::MOTIVO_*
+        // antes de qualquer uso — nunca aceito de forma livre.
+        $motivosDef     = $this->motivosTriagemDef();
+        $motivosValidos = array_column($motivosDef, 'chave');
+        $motivo         = $request->query('motivo');
+        $motivo         = in_array($motivo, $motivosValidos, true) ? $motivo : null;
+
+        // Decisão A2 do UI-SPEC: Publicados é a sub-aba padrão. A listagem de
+        // Rascunhos em si é escopo do 134-09 — aqui só o contador da sub-aba.
+        $sub = (string) $request->query('sub', 'publicados');
+        if (! in_array($sub, ['publicados', 'rascunhos'], true)) {
+            $sub = 'publicados';
+        }
+
+        // ─── Listagem — ordenação por gravidade (D-12), determinística, sem
+        // nenhum dado da camada cara: 3 níveis de desempate + tie-break estável. ───
+        $anuncios = $this->escopoAcervo($company, $busca, $statusFiltro)
+            ->when($motivo !== null, fn ($q) => $q->where('motivos', 'like', '%"' . $motivo . '"%'))
+            ->orderByDesc('severidade')
+            ->orderByRaw('nota_ecf IS NULL ASC') // não avaliado vai para o fim, não para o topo (D-12/D-18)
+            ->orderBy('nota_ecf')
+            ->orderBy('ml_item_id') // tie-break estável entre requests
+            ->paginate(50)
+            ->withQueryString();
+
+        $anuncios->through(fn (MlAcervoItem $item) => [
+            'ml_item_id'          => $item->ml_item_id,
+            'titulo'              => (string) $item->title,
+            'thumbnail'           => $item->thumbnail,
+            'permalink'           => $item->permalink,
+            'origem'              => $item->origem,
+            'rascunho_id'         => $item->rascunho_id,
+            'listing_tier'        => $item->listing_type_id,
+            'status'              => $item->status,
+            'estoque'             => $item->available_quantity,
+            'vendas'              => $item->sold_quantity,
+            'visitas'             => $item->visitas_30d,
+            'visitas_dias'        => $item->detalhe_coletado_em !== null
+                ? $item->detalhe_coletado_em->diffInDays(now())
+                : null,
+            'buybox_status'       => $item->buybox_status,
+            'buybox_nao_avaliado' => $item->naoAvaliadoBuyBox(),
+            'nota_ecf'            => $item->nota_ecf,
+            'nota_base'           => AnuncioSaudeService::BASE, // literal — "X de 86" (D-22), nunca renormalizada
+            'motivos'             => $item->motivos ?? [],
+            'severidade'          => $item->severidade,
+        ]);
+
+        // ─── Triagem (D-09) — UMA query agregada, nunca um laço de ->count()
+        // por motivo. Reusa os MESMOS filtros de status/busca, mas SEM o
+        // filtro de motivo: os chips precisam continuar mostrando os outros
+        // motivos quando um já está filtrado. ───
+        $selects = [
+            // Total = anúncios DISTINTOS com >=1 motivo, nunca soma dos chips
+            // (severidade > 0 <=> motivos não vazio, ver AnuncioSaudeService::triagem()).
+            'SUM(CASE WHEN severidade > 0 THEN 1 ELSE 0 END) as total_com_motivo',
+            'SUM(CASE WHEN catalog_listing = 1 AND buybox_status IS NULL THEN 1 ELSE 0 END) as nao_avaliado',
+        ];
+        foreach ($motivosDef as $i => $m) {
+            // $m['chave'] vem da whitelist fechada (constantes do model), nunca da querystring.
+            $selects[] = "SUM(CASE WHEN motivos LIKE '%\"{$m['chave']}\"%' THEN 1 ELSE 0 END) as motivo_{$i}";
+        }
+
+        $linhaTriagem = $this->escopoAcervo($company, $busca, $statusFiltro)
+            ->selectRaw(implode(', ', $selects))
+            ->first();
+
+        $chips = [];
+        foreach ($motivosDef as $i => $m) {
+            $chips[] = [
+                'chave' => $m['chave'],
+                'label' => $m['label'],
+                'count' => (int) ($linhaTriagem->{"motivo_{$i}"} ?? 0),
+                'cor'   => $m['cor'],
+            ];
+        }
+
+        $triagem = [
+            'total'        => (int) ($linhaTriagem->total_com_motivo ?? 0),
+            'chips'        => $chips,
+            'nao_avaliado' => (int) ($linhaTriagem->nao_avaliado ?? 0),
+        ];
+
+        // ─── Defasagem (D-08) — nunca resposta vazia. ───
+        $temLinhas     = MlAcervoItem::where('company_id', $company->id)->exists();
+        $nuncaColetado = ! $temLinhas;
+        $coletadoEmRaw = $nuncaColetado ? null : MlAcervoItem::where('company_id', $company->id)->max('coletado_em');
+        $coletadoEm    = $coletadoEmRaw !== null ? \Illuminate\Support\Carbon::parse($coletadoEmRaw) : null;
+        $horas         = $coletadoEm !== null ? $coletadoEm->diffInHours(now()) : null;
+        $limiteHoras   = (int) config('mlb_acervo.defasagem_horas');
+        $motivoErro    = MlAcervoItem::where('company_id', $company->id)
+            ->whereNotNull('coleta_erro')
+            ->orderByDesc('updated_at')
+            ->value('coleta_erro');
+
+        $defasagem = [
+            'coletado_em'    => $coletadoEm?->toIso8601String(),
+            'horas'          => $horas,
+            'defasado'       => $horas !== null && $horas > $limiteHoras,
+            'nunca_coletado' => $nuncaColetado,
+            'motivo'         => $motivoErro,
+        ];
+
+        return Inertia::render('Mlb/MeusAnuncios', [
+            'empresa'   => ['id' => $company->id, 'nome' => $company->name],
+            'sub'       => $sub,
+            'subTotais' => [
+                'publicados' => MlAcervoItem::where('company_id', $company->id)->count(),
+                'rascunhos'  => MlAnuncioRascunho::where('company_id', $company->id)->count(),
+            ],
+            'anuncios'          => $anuncios,
+            'triagem'           => $triagem,
+            'filtros'           => ['busca' => $busca, 'status' => $statusFiltro, 'motivo' => $motivo],
+            'defasagem'         => $defasagem,
+            'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
+            'rotacaoN'          => (int) config('mlb_acervo.rotacao_n'),
+        ]);
+    }
+
+    /**
+     * Escopo base do acervo por empresa (T-134-01) — company_id é a fronteira
+     * de segurança inteira desta tela e não pode sair de nenhum caminho:
+     * busca, triagem, contagem, paginação. A busca é OBRIGATORIAMENTE
+     * agrupada dentro de where(function...): um orWhere solto sobe ao topo
+     * do WHERE e anula o escopo por empresa (mesma pegadinha travada em
+     * historico(), Fase 86).
+     */
+    private function escopoAcervo(Company $company, string $busca, string $statusFiltro)
+    {
+        $statusColuna = match ($statusFiltro) {
+            'ativos'     => 'active',
+            'pausados'   => 'paused',
+            'encerrados' => 'closed',
+            default      => null, // 'todos' não filtra
+        };
+
+        return MlAcervoItem::where('company_id', $company->id)
+            ->when($busca !== '', function ($q) use ($busca) {
+                $q->where(function ($s) use ($busca) {
+                    $s->where('title', 'like', "%{$busca}%")
+                      ->orWhere('ml_item_id', 'like', "%{$busca}%");
+                });
+            })
+            ->when($statusColuna !== null, fn ($q) => $q->where('status', $statusColuna));
+    }
+
+    /**
+     * Definição fechada dos 5 motivos de triagem (D-09), na mesma ordem de
+     * gravidade do D-12: pausado/sem estoque (crítica, red) antes de ficha
+     * incompleta/perdendo catálogo/foto insuficiente (atenção, amber).
+     * Fonte única para a whitelist de validação e para os chips/selects
+     * agregados — nunca duplicar esta lista.
+     *
+     * @return array<int, array{chave:string, label:string, cor:string}>
+     */
+    private function motivosTriagemDef(): array
+    {
+        return [
+            ['chave' => MlAcervoItem::MOTIVO_PAUSADO,           'label' => 'Pausado',           'cor' => 'red'],
+            ['chave' => MlAcervoItem::MOTIVO_SEM_ESTOQUE,       'label' => 'Sem estoque',        'cor' => 'red'],
+            ['chave' => MlAcervoItem::MOTIVO_FICHA_INCOMPLETA,  'label' => 'Ficha incompleta',   'cor' => 'amber'],
+            ['chave' => MlAcervoItem::MOTIVO_PERDENDO_CATALOGO, 'label' => 'Perdendo catálogo',  'cor' => 'amber'],
+            ['chave' => MlAcervoItem::MOTIVO_FOTO_INSUFICIENTE, 'label' => 'Foto insuficiente',  'cor' => 'amber'],
+        ];
     }
 
     /**
