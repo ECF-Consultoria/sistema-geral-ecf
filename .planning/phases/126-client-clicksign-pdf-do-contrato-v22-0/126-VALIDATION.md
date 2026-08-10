@@ -64,8 +64,8 @@ suíte inteira.** Sempre arquivo ou diretório explícito.
 | **PDF-02** | Trocar o texto do Blade não muda nenhum dado montado | `ContratoPdfServiceTest` | feature | ❌ Wave 0 |
 | **PDF-03** | Nome extremo mantém acentuação e não corta cláusula no meio da página | `ContratoPdfServiceTest::nome_extremo` | feature | ❌ Wave 0 |
 | **D-03** | `pdf_path`/`pdf_assinado_path` existem, sem violar as 3 armadilhas | `MigrationFase126ConvencoesTest` | schema | ❌ Wave 0 |
-| **D-11** | Retry só em 429/5xx, **nunca** em 4xx | `ClicksignClientTest::retry` | feature | ❌ Wave 0 |
-| **D-12** | Falha no meio cancela o envelope antes de propagar | `ClicksignClientTest::rollback` | feature | ❌ Wave 0 |
+| **D-11** | Retry só em 429/5xx, **nunca** em 4xx | `ClicksignClientTest::retry` (nome final confirmado no plano `126-01`) | feature | ❌ Wave 0 |
+| **D-12** | Falha no meio cancela o envelope antes de propagar | `ClicksignClientEnvelopeTest::rollback` | feature | ❌ Wave 0 |
 
 ### A régua do CLICK-01
 

@@ -116,7 +116,9 @@ As duas pesquisas chegaram a fórmulas **contraditórias** a partir da mesma doc
 
 São algoritmos diferentes que produzem hashes diferentes. Implementar o errado faz **100% dos webhooks reais falharem em silêncio** — e webhook rejeitado significa contrato assinado que nunca libera a empresa. **Resolver empiricamente**: disparar webhook real do sandbox, calcular as duas fórmulas, logar os dois valores (nunca o secret) e ver qual bate. Só então escrever o teste automatizado, com fixture calculado fora do código de produção.
 
-**A2 — Rollback de envelope montado pela metade.** Não há estratégia definida para quando a montagem falha no meio (documento criado, signatário falha). Decidir: apagar o envelope parcial na Clicksign, ou deixar e marcar `erro` com o id para retomada.
+**A2 — Rollback de envelope montado pela metade.** ✅ **RESOLVIDA no discuss-phase da Fase 126 (2026-08-10), não na 127.** Decisão do usuário: **o client cancela o que criou** — guarda o id do envelope e, ao falhar no meio, cancela na Clicksign antes de propagar o erro. A conta não acumula lixo e tentar de novo começa limpo; envelope em `draft` não dispara e-mail, então cancelar é invisível para o cliente. Custa 1 chamada extra no caminho de erro. Ver `126-CONTEXT.md` D-12.
+
+Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou — complexidade herdada pela 127); deixar e ignorar (cada falha deixaria envelope órfão em `draft`).
 
 **A3 — Resposta HTTP do webhook em erro interno.** O webhook do HubSpot responde 200 sempre. Para a Clicksign, responder 5xx permitiria retry do provedor — e a idempotência por `payload_hash` torna isso seguro. Decidir na fase do webhook.
 
@@ -281,7 +283,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | Decisão | Fase |
 |---------|------|
 | A1 — Algoritmo do `Content-Hmac` (BLOQUEANTE) | Fase 129 |
-| A2 — Rollback de envelope montado pela metade | Fase 127 |
+| A2 — Rollback de envelope montado pela metade | ✅ Resolvida na Fase **126** (D-12) |
 | A3 — Resposta HTTP do webhook em erro interno | Fase 129 |
 | A4 — Quais das 7 pendências comerciais valem para empresa manual | Fase 128 |
 

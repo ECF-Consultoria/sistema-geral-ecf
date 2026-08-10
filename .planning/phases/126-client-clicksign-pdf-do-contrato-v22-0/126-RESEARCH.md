@@ -445,7 +445,12 @@ verificado nesta pesquisa (LOW confidence, ver Assumptions Log).
 | A1 | `companies.name` contém a razão social (não apenas nome fantasia) | Tensão de Dados | Se `name` for nome fantasia, o PDF sairia juridicamente incorreto — precisa confirmação humana antes de assumir |
 | A2 | O texto de placeholder ("A definir" ou similar) é aceitável para os campos faltantes num documento que vai à Clicksign | Tensão de Dados / Opção C | Se o time jurídico da ECF não aceitar isso, o planner precisa de outra estratégia (ex.: bloquear geração até 131 existir) |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> **Ambas resolvidas no planejamento de 2026-08-10, exatamente como recomendado abaixo.**
+> (1) o bloco `clicksign` em `config/services.php` &mdash; criado no plano `126-01` Task 1;
+> (2) o mapa D-08 → vocabulário da Clicksign &mdash; constante `PAPEL_PARA_CLICKSIGN_ROLE` no plano `126-02` Task 1.
+> Este bloco preserva o raciocínio original da pesquisa.
 
 1. **`config/services.php` precisa do bloco `clicksign`?**
    - What we know: `.env.example` já tem as 5 chaves; `HubspotApiClient` lê via
