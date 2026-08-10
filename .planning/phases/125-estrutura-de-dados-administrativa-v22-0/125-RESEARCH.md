@@ -540,9 +540,16 @@ anterior a substituir.
 | A2 | O padrão "coluna auxiliar nullable + índice único" (Pattern 4) não tem precedente idêntico no codebase — comportamento de múltiplos NULL em índice único é conhecimento geral de SQL (MariaDB/SQLite), não verificado experimentalmente nesta sessão contra o MariaDB real do projeto | Pattern 4 | Baixo-médio — é comportamento documentado do padrão SQL e ambos os drivers (InnoDB e SQLite) seguem a mesma regra; ainda assim, o teste de schema desta fase (Validation Architecture) deve provar isso na suíte, não só confiar na teoria |
 | A3 | O nome de índice sugerido `contrato_assin_company_andamento_uniq` (38 chars) e os demais nomes de índice sugeridos nesta pesquisa cabem em 64 caracteres — contagem manual, não executada via script | Pattern 1, Pattern 4 | Baixo — contagem simples de string; o plano/execução deve recontar o nome FINAL escolhido antes de aplicar |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Um arquivo de migration ou dois?**
+> **Ambas resolvidas no planejamento de 2026-08-10.** As decisões estão materializadas nos
+> PLAN.md com rationale — este bloco preserva o raciocínio original da pesquisa.
+
+1. **Um arquivo de migration ou dois?** — **RESOLVED: dois arquivos separados.** O planner
+   divergiu da recomendação abaixo de propósito, para dar exclusividade de arquivo a cada plano:
+   assim a Wave 2 (`125-02`) não reabre a migration escrita pela Wave 1 (`125-01`). O
+   `125-CONTEXT.md` deixa "ordem das migrations" como discricionário do plano, então a divergência
+   é legítima. Ver `125-01-PLAN.md` e `125-02-PLAN.md`.
    - O que sabemos: o projeto tem exemplos dos dois formatos — uma migration com múltiplas
      `Schema::create` (molde `nps_snapshot_tables.php`, 3 tabelas relacionadas por FK em ordem) e
      migrations separadas por tabela (a maioria dos outros exemplos).
@@ -555,6 +562,9 @@ anterior a substituir.
      a pesquisa recomenda por consistência com o precedente mais próximo em forma.
 
 2. **`cascadeOnDelete` de `signatarios` a partir de `contrato_assinaturas` — confirmar consequência.**
+   — **RESOLVED: `cascadeOnDelete` confirmado**, via `cas_contrato_fk` no `125-02-PLAN.md`, com o
+   racional escrito na própria migration e registrado como ameaça `accept` (`T-125-16`) para que a
+   Fase 131 saiba disso **antes** de criar qualquer botão de excluir contrato.
    - O que sabemos: CONTEXT.md já marca isso como "provável" e deixa a decisão final para o plano.
    - O que é incerto: se apagar um `ContratoAssinatura` (histórico) deve arrastar os signatários
      junto, ou se soft-delete/preservação seria mais alinhado ao princípio "evidência jurídica não
