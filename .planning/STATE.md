@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 126-03-PLAN.md
-last_updated: "2026-08-10T18:25:40.893Z"
+stopped_at: Completed 126-02-PLAN.md
+last_updated: "2026-08-10T18:40:36.949Z"
 last_activity: 2026-08-10
 progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 14
-  completed_plans: 10
+  completed_plans: 11
   percent: 20
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 126 (client-clicksign-pdf-do-contrato-v22-0) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-08-10
 
@@ -287,6 +287,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 125 P03 | 25min | 3 tasks | 1 files |
 | Phase 126 P01 | 55min | 3 tasks | 7 files |
 | Phase 126 P03 | 25min | 2 tasks | 5 files |
+| Phase 126 P02 | 50min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -868,8 +869,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-10T18:25:40.866Z
-Stopped at: Completed 126-03-PLAN.md
+Last session: 2026-08-10T18:40:36.924Z
+Stopped at: Completed 126-02-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
