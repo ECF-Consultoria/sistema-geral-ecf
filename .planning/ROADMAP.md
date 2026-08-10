@@ -1716,7 +1716,7 @@ Plans:
   5. Coleta falha ou está velha → a tela mostra o último snapshot com selo de defasagem, nunca uma tela em branco
   6. O bloco "Rascunhos recentes" saiu do aside do wizard e vive na sub-aba Rascunhos, junto com o "Publicar lote"; a "Saúde do anúncio" continua intacta no aside do wizard
 
-**Plans:** 3/10 plans executed
+**Plans:** 4/10 plans executed
 
 Plans:
 **Wave 1**
@@ -1730,7 +1730,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 134-04-PLAN.md — Coleta camada barata: scroll_id, multiget de 20, upsert, selo de origem e série diária [wave 3]
+- [x] 134-04-PLAN.md — Coleta camada barata: scroll_id, multiget de 20, upsert, selo de origem e série diária [wave 3]
 - [ ] 134-05-PLAN.md — Camada cara: visitas e price_to_win em rotação por fatia (D-23) [wave 3]
 
 **Wave 4** *(blocked on Wave 3 completion)*
