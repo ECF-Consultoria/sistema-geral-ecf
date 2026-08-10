@@ -433,19 +433,22 @@ $buyBoxStatus = $r['status'] ?? null; // 'winning' | 'sharing_first_place' | 'lo
 | A4 | A proporção pausados/ativos observada em 1 conta (23%) generaliza para as outras 73 | §4, §A-03 | Se a proporção variar muito por segmento, a estimativa de ~500 mil linhas na tabela corrente pode estar sub ou superestimada |
 | A5 | % `catalog_listing=true` medida em amostras de 20-50 itens por conta representa a conta inteira | §A-02 | Amostra pequena por conta (não censo); a % real pode variar por categoria dentro da mesma conta |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **O lado "ML" do D-10 (health/quality externo) não tem dado disponível hoje — o que exibir?**
+   - **RESOLVED:** ver **D-21** do `134-CONTEXT.md` — sondar `/item/{id}/performance` contra um item clássico real antes de descartar; se falhar, a tela exibe só a nota ECF, com texto explícito. Nunca simular um número. Virou a Task de sondagem do plano `134-01` e a flag `mlb_acervo.saude_ml_disponivel`.
    - O que sabemos: `health` no payload é sempre `null`; `/item/{id}/performance` devolveu erro nos 2 testes reais desta pesquisa (`"Product items are not supported"` para um item com `user_product_id`, e `/items/{id}/performance` plural deu 404 simples).
    - O que está incerto: se `/item/{id}/performance` funciona para itens do modelo "clássico" (sem `user_product_id`) — não testei essa variação por falta de item de amostra nesse formato nas contas usadas. Também não testei se o app tem o escopo/permissão necessário para esse endpoint (pode ser um endpoint que exige aprovação de acesso separada da ML).
    - Recomendação: o planner deve decidir entre (a) tentar `/item/{id}/performance` em um item clássico real antes de descartar de vez, ou (b) assumir que a "saúde do ML" fica ausente nesta fase e desenhar a UI para esse caso desde já (ex.: mostrar só a nota ECF, com nota explicando que o ML não expõe mais um score comparável) — **não simular ou aproximar um número**.
 
 2. **A nota ECF pós-publicação inclui o sinal de descrição (14 pontos) ou não?**
+   - **RESOLVED:** ver **D-22** do `134-CONTEXT.md` — fica de fora. Nota em base 86 explícita, nunca renormalizada para 100. Virou `AnuncioSaudeService::PESOS`/`BASE` no plano `134-03`, com o teste de concordância PHP + JS sobre o mesmo fixture.
    - O que sabemos: incluir custa 1 chamada extra por item, sem lote, na mesma faixa de custo de visitas/buy-box.
    - O que está incerto: se o ganho de sinal vale o custo de coleta, dado que a maioria dos outros 7 sinais (86 pontos) já é gratuita.
    - Recomendação: **decisão explícita do usuário no planning**, não herdar silenciosamente a fórmula de 100 pontos do wizard — D-10 exige isso textualmente.
 
 3. **Qual o corte exato para "camada cara" ser coberta em rotação vs. diariamente?**
+   - **RESOLVED:** ver **D-23** do `134-CONTEXT.md` — rotação por fatia de 1/N do acervo ativo, cobertura completa em N execuções, `N` como parâmetro (`mlb_acervo.rotacao_n`) e não constante. Virou `MlAcervoDetalheService::selecionarFatia()` no plano `134-05`, com gate de cobertura em N execuções.
    - O que sabemos: full-coverage diário de visitas (407k) + buy-box (~150-180k) para todo o acervo está na faixa de horas, não minutos.
    - O que está incerto: o corte exato (por tamanho de conta? por % do acervo coberto por execução? por dias de rotação?) é uma decisão de produto/operação que a pesquisa não deve travar sozinha — dado que "Claude's Discretion" do CONTEXT.md já delega throttle/paginação ao planner.
    - Recomendação: o planner apresenta 1-2 opções concretas (ex.: "cobertura completa a cada 3 dias" vs. "top N itens por prioridade todo dia") com os números desta pesquisa, para decisão explícita — não assumir.
