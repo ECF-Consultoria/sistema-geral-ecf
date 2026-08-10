@@ -55,6 +55,39 @@ que o usuário escolheu conscientemente.
 assinado que ele enviou. O `montarDados()` (plano 126-04) **sobrevive e vira mais central**: ele já
 produz exatamente o conjunto de valores que preenche as variáveis.
 
+**D-19 — Um envelope por empresa, com os serviços concatenados numa variável só (opção B da Task 1
+do plano 126-08).** `{{servico_contratado}}` recebe os nomes dos serviços já unidos em texto (ex.:
+"Gestão de ADS para Mercado Livre e Shopee"), não um por serviço e não uma tabela em loop.
+- Recusado: **A** — um contrato (envelope) por serviço custaria 30 chamadas para uma empresa com 2
+  serviços, contra a janela medida de 20/min (`<restricao_medida>` abaixo já mostra que 1 envelope
+  sozinho consome 15/20); o cliente também assinaria dois documentos. **C** — um modelo `.docx` por
+  serviço exigiria replicar à mão cada mudança de cláusula em N arquivos, e ainda não resolveria
+  sozinho o caso da empresa com 2 serviços. **D** — tabela em loop (`{{#servicos}}...{{/servicos}}`)
+  é o único caminho **NÃO MEDIDO** neste projeto (confiança MÉDIA, só documentado); montar tabela em
+  loop no Word tem mais chance de erro do que trocar uma palavra por variável.
+- ⚠️ **Consequência para o `.docx` (instrução de montagem, ver `126-VARIAVEIS-DO-MODELO.md` §3 e
+  §4):** o valor e a vigência **por serviço** somem do documento — sobra só o total
+  (`{{valor_mensal}}`) e a vigência consolidada. As **cláusulas 1 e 2 do contrato real citam
+  "Mercado Livre" no corpo do texto** e precisam ser reescritas de forma genérica no `.docx`, senão
+  um contrato de Shopee sai falando de Mercado Livre. Este é o risco principal da decisão.
+
+**D-20 — O rodapé do modelo nomeia exatamente os 4 signatários do arranjo da D-08 (opção B da
+Task 2 do plano 126-08).** Dois sócios como parte CONTRATADA, o Comercial como TESTEMUNHA, e o
+cliente como CONTRATANTE — os papéis batem com o que a API de fato cria (D-08), não com o contrato
+antigo.
+- Recusado: **A** (rodapé genérico, sem nome fixo) perderia a identificação visual de quem
+  testemunhou no documento impresso. **C** (nomes das testemunhas como variável do modelo) criaria
+  mais um ponto onde um nome pode divergir de quem realmente assinou, e mais variável para manter em
+  sincronia com `signatarios_ecf`.
+- ⚠️ **Consequência de manutenção:** trocar de sócio ou de pessoa do Comercial exige **refazer o
+  `.docx` e cadastrar modelo novo** — o conteúdo do modelo não é editável via API, só excluir e
+  recriar.
+- ⚠️ **O desalinhamento que originou a decisão:** no contrato real o Emerson está nomeado como
+  TESTEMUNHA, mas no arranjo da D-08 ele assina como parte CONTRATADA. Ao montar o rodapé, o papel
+  de cada um segue a D-08, não o contrato antigo — senão o documento nomeia um papel e a Clicksign
+  registra outro. Nomes e e-mails reais **não** entram aqui nem no `.docx` fonte versionado — vêm de
+  `config('services.clicksign.signatarios_ecf')`, lida do `.env` (T-126-37).
+
 **O que a reversão NÃO muda:** planos 126-01, 126-02, 126-03 e 126-04 seguem válidos e executados.
 O `ClicksignClient` continua sendo o caminho de integração — ele só ganha os métodos de modelo.
 
@@ -63,6 +96,10 @@ endereçar ou escalar: (a) `endereco`/`dia_vencimento`/`data_primeira_parcela` n
 saem `A DEFINIR` em pontos de peso do documento; (b) variável em `.docx` não faz loop, e
 `servicos_snapshot` tem N serviços; (c) as testemunhas do contrato real não batem com o arranjo de
 4 signatários da D-08.
+
+**Atualização (plano 126-08, 2026-08-10): as três tensões estão RESOLVIDAS.** (a) já tinha resposta
+do `126-06-CHECKPOINT.md` (manter `A DEFINIR`); (b) e (c) ganharam D-19 e D-20 acima. O detalhamento
+e a lista final de variáveis vivem em `126-VARIAVEIS-DO-MODELO.md` §2 e §4.
 
 ---
 
