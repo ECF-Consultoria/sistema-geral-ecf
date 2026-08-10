@@ -1360,6 +1360,7 @@ Plans:
 **Plans:** 9/9 plans complete
 
 Plans:
+
 - [x] 119.1-01-PLAN.md — Fundação: `NpsElegibilidadeService` (fonte única de "quem deveria ter recebido") + desligamento do agendamento diário (wave 1)
 - [x] 119.1-02-PLAN.md — Guard de duplicidade no disparo manual, devolvendo o link que já existe (wave 2)
 - [x] 119.1-03-PLAN.md — D1 no bônus: 4º ramo de leitura em `computeNpsMedio()` + cache `v13` + 5 hash-gates da Fase 119 (wave 2)
@@ -1417,7 +1418,6 @@ Plans:
   4. As chaves legadas continuam presentes (`empresas_carteira`, `empresas_com_baseline`, `margem_amostra`, `componentes_disponiveis`, `score_status`, `faixa_bonus`, `faixa_promovida`, `componentes.var_margem_pct`)
   5. Empresa sem baseline segue a decisão do discuss-phase, sem contradizer `DESEMP-06` nem a trava da Fase 109 — profissional só-Shopee continua produzindo `nota_final`
 
-
 **Plans:** 3 plans
 
 Plans:
@@ -1445,6 +1445,7 @@ Plans:
 **Plans:** 5/5 plans complete
 
 Plans:
+
 - [x] 121-01-PLAN.md — Fundações: o shadow expõe a nota nova (D-05) e as duas tabelas insert-only do comparador
 - [x] 121-02-PLAN.md — O comando: competências fixas, uma chamada de compute() por profissional, releitura interleaved e persistência (gate nº 1)
 - [x] 121-03-PLAN.md — Decomposição da causa do delta com resíduo explícito e réguas espelho (gate nº 2)
@@ -1467,6 +1468,7 @@ Plans:
 **Plans:** 6/6 plans complete
 
 Plans:
+
 - [x] 122-01-PLAN.md — Fundações: tabela `desempenho_company_score_snapshots`, model e writer idempotente com trava de congelamento [SNAP-02]
 - [x] 122-02-PLAN.md — `margem_amostra` conta cobertura de `margem_var_pp` (legado preservado em sub-chave) + bump de cache v15→v16 [SNAP-05]
 - [x] 122-03-PLAN.md — Os três comandos gravam as linhas por empresa; gate FIXMARG-03 escolhe a base pelo estado da flag [SNAP-01, SNAP-03]
@@ -1494,6 +1496,7 @@ Plans:
 **Plans:** 8/8 plans complete
 
 Plans:
+
 - [x] 123-01-PLAN.md — Fundações compartilhadas: `CompanyScoreSnapshotReader` + `desempenhoLabels.js` [UIEM-01, UIEM-02, UIEM-04]
 - [x] 123-02-PLAN.md — Backend do detalhe por empresa + desbloqueio do dropdown de mês fechado [UIEM-02, UIEM-03]
 - [x] 123-03-PLAN.md — Auditoria de Bônus — coluna de nota por empresa (metade de UIEM-04) [UIEM-04, UIEM-03]
@@ -1541,6 +1544,7 @@ Plans:
 **Plans:** 5/5 plans complete
 
 Plans:
+
 - [x] 124-01-PLAN.md — Caracteriza o roteamento do cadastro manual antes da extração (gmail_colaborador, Incubadora, divergência D-08, inércia do interruptor)
 - [x] 124-02-PLAN.md — Caracteriza o roteamento do webhook HubSpot antes da extração (Incubadora, assimetria do gmail, FLUXO-05, FLUXO-06)
 - [x] 124-03-PLAN.md — Congela o baseline nominal e extrai `PendenciasComerciaisService` (FLUXO-03)
@@ -1565,8 +1569,16 @@ Plans:
 **Plans:** 3 plans (3 waves)
 
 Plans:
+**Wave 1**
+
 - [ ] 125-01-PLAN.md — Tabela contrato_assinaturas, model com os 7 estados, factory e relação em Company (DADOS-01, DADOS-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 125-02-PLAN.md — Tabela contrato_assinatura_signatarios, model, factory e a evidência do Gate #9 (DADOS-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 125-03-PLAN.md — Guarda estática das 3 cicatrizes de schema + gate de MariaDB real (checkpoint humano)
 
 ### Phase 126: Client Clicksign + PDF do contrato (v22.0)
@@ -1657,6 +1669,7 @@ Plans:
 
   0. Um usuário do Administrativo completa, na própria tela, os dados que a empresa não trouxe do Comercial (CNPJ, Gmail do colaborador, datas de início e término do contrato); a tela mostra o que ainda falta para poder gerar contrato (D8 — a cobrança NÃO volta para o Comercial)
   0b. O campo Gmail do colaborador sai do formulário do Comercial NESTA MESMA fase — nunca antes, para não existir janela em que ninguém consegue cadastrar o dado (ADM-03)
+
   1. Um usuário do Administrativo filtra a lista de contratos por situação, busca por empresa, e vê um resumo com a contagem de cada situação
   2. O botão "Gerar contrato" só aparece quando a empresa está com o cadastro completo, sem pendência comercial e sem contrato em andamento; clicar dispara o mesmo fluxo manual da Fase 127
   3. A listagem do Comercial mostra em que pé está o contrato de cada empresa, sem precisar abrir outra tela
@@ -1690,6 +1703,7 @@ Plans:
   1. Com `administrativo_bloqueio_ativo=true`, uma empresa criada pelo webhook HubSpot **cujo serviço exige contrato** já não é roteada ao operacional na mesma transação — fica aguardando a etapa administrativa
   2. Uma empresa cadastrada à mão pelo Comercial segue exatamente o mesmo caminho, sem atalho
   2b. Empresa de **Polos continua indo direto para a operação mesmo com o bloqueio ligado** (D9 — Polos não tem contrato); provado por teste com a chave ligada, e conferido em produção no dia do rollout
+
   3. Uma empresa só chega ao operacional depois que o webhook confirma assinatura completa (reconsultada) ou um admin libera manualmente com motivo registrado
   4. Desligar a chave `administrativo_bloqueio_ativo` sem deploy volta o sistema ao roteamento imediato de antes, imediatamente
   5. **(FLUXO-09)** Com o bloqueio ligado, a ativação manual do time de Publicação (`MlbController::ativarEmpresaPendente()`, tela `/mlb/empresas`) também não cria ficha operacional — provado por teste. Lacuna descoberta na verificação da Fase 124: esse método cria `MlbEmpresa`+`MlbImplementacao` por cópia inline, fora do `EmpresaOperacionalRouter` e sem consultar a chave

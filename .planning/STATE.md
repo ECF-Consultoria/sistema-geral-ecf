@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: planning
+status: executing
 stopped_at: "Fase 125 contexto capturado — BLOQUEADA aguardando sandbox Clicksign (gate empirico #9)"
-last_updated: "2026-08-07T20:29:29.646Z"
-last_activity: 2026-08-07
+last_updated: "2026-08-10T13:33:51.903Z"
+last_activity: 2026-08-10 -- Phase 125 planning complete
 progress:
   total_phases: 10
   completed_phases: 1
-  total_plans: 5
+  total_plans: 8
   completed_plans: 5
   percent: 10
 ---
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 125
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-07
+Status: Ready to execute
+Last activity: 2026-08-10 -- Phase 125 planning complete
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
