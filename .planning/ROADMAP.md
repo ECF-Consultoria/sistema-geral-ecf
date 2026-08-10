@@ -1716,7 +1716,7 @@ Plans:
   5. Coleta falha ou está velha → a tela mostra o último snapshot com selo de defasagem, nunca uma tela em branco
   6. O bloco "Rascunhos recentes" saiu do aside do wizard e vive na sub-aba Rascunhos, junto com o "Publicar lote"; a "Saúde do anúncio" continua intacta no aside do wizard
 
-**Plans:** 2/10 plans executed
+**Plans:** 3/10 plans executed
 
 Plans:
 **Wave 1**
@@ -1726,7 +1726,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 134-03-PLAN.md — Nota ECF em PHP (base 86) + teste de concordância com o scorer JS [wave 2]
+- [x] 134-03-PLAN.md — Nota ECF em PHP (base 86) + teste de concordância com o scorer JS [wave 2]
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
