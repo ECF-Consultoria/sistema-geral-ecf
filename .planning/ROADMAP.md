@@ -1692,6 +1692,28 @@ Plans:
 
 > 🚦 **CHECKPOINT HUMANO — bloqueia a ATIVAÇÃO, não a escrita.** A flag `administrativo_bloqueio_ativo` só pode ser ligada em produção depois de confirmar, com o usuário: (a) o webhook chegou de forma confiável durante o período de observação (Fase 128/129 rodando em produção por tempo suficiente); (b) o alerta de contrato preso já disparou pelo menos uma vez em sandbox (Fase 130); (c) a liberação manual foi testada em produção ao menos uma vez (Fase 130); (d) o cutover para produção Clicksign foi concluído e aprovado (Fase 132). Rollback de código sozinho nunca é o plano de saída — desligar a flag é.
 
+## Fase avulsa — Módulo Anunciar Mercado Livre (fora de milestone)
+
+### Phase 134: "Meus Anúncios" — saúde analítica do anúncio publicado
+
+**Goal:** Quem cuida dos anúncios de uma empresa abre uma tela e, em segundos, sabe quais anúncios estão saudáveis, quais estão perdendo venda e por quê — com dado real vindo da API do Mercado Livre, não com a análise de formulário que hoje só existe durante a criação e some no instante em que o anúncio é publicado.
+
+**Requirements**: (fase avulsa — sem REQ-IDs de milestone; requisitos derivados do `134-CONTEXT.md`)
+**Depends on:** Phase 86 (Histórico dos publicados — a aba sobrevive e continua sendo a base do "Anunciar semelhante em massa")
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Existe a rota `mlb.anuncios.meus` por empresa, e ela é a **aba inicial** do módulo — Meus Anúncios | Individual | Em massa | Histórico
+  2. A tela lista **todos os anúncios ativos da conta ML do cliente**, não só os que este módulo publicou, e cada linha diz de onde o anúncio veio (ECF · time · legado do cliente)
+  3. A tela lê **exclusivamente do banco** — nenhuma chamada síncrona ao ML no caminho do request; a coleta é comando agendado + job por empresa
+  4. O topo da tela é triagem acionável agrupada por motivo (pausado, sem estoque, ficha incompleta, …), e clicar num motivo filtra a lista
+  5. Coleta falha ou está velha → a tela mostra o último snapshot com selo de defasagem, nunca uma tela em branco
+  6. O bloco "Rascunhos recentes" saiu do aside do wizard e vive na sub-aba Rascunhos, junto com o "Publicar lote"; a "Saúde do anúncio" continua intacta no aside do wizard
+
+**Plans:** TBD
+
+> **Fora de escopo (fase própria):** qualquer write na API do ML (pausar, editar, mover anúncio) — ação destrutiva na conta do cliente em produção, exige confirmação dupla, `activity_log` e undo, na mesma linha do todo `260626-acoes-ml-mover-sgi-pausar-via-api.md`. Também fora: abrir o módulo ao time de publicação (`role:admin` → `permission:mlb.anunciar`).
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
