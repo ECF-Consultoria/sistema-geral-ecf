@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\PublicarAnuncioMlJob;
+use App\Jobs\SyncMlAcervoCompanyJob;
 use App\Models\Company;
 use App\Models\MlAcervoItem;
 use App\Models\MlAnuncioRascunho;
@@ -434,6 +435,33 @@ class MlbAnuncioController extends Controller
             'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
             'rotacaoN'          => (int) config('mlb_acervo.rotacao_n'),
         ]);
+    }
+
+    /**
+     * "Atualizar agora" (D-05) — enfileira a coleta da camada barata da
+     * empresa e devolve na hora. NUNCA coleta nada em processo: nenhuma
+     * chamada a MlAcervoService, nenhuma chamada HTTP. Molde exato:
+     * ShopeeOAuthController::sync() — enfileira 1 job para 1 empresa e volta
+     * com flash, sem bloquear o request. NÃO copiar
+     * MercadoLivreOAuthController::syncNow(), que é síncrono e violaria D-05.
+     */
+    public function atualizarAgora(Request $request, Company $company)
+    {
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+
+        if ($company->mlToken->status !== 'active') {
+            return back()->with('error', "{$company->name} não tem conexão com o Mercado Livre ativa — reconecte a conta antes de atualizar.");
+        }
+
+        // ShouldBeUnique do job já impede que cliques repetidos empilhem
+        // execuções da mesma empresa (134-04) — o cooldown do botão no
+        // cliente (134-08) é conforto, não a garantia.
+        SyncMlAcervoCompanyJob::dispatch($company);
+
+        Log::info("[MLB Anuncios] coleta manual enfileirada — empresa {$company->id} ({$company->name}) por " . auth()->user()?->name);
+
+        return back()->with('success', 'Coleta enfileirada — pode levar alguns minutos. A tela mostra os dados mais novos na próxima visita.');
     }
 
     /**
