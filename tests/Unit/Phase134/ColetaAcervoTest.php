@@ -267,6 +267,61 @@ class ColetaAcervoTest extends TestCase
         );
     }
 
+    /**
+     * @test
+     *
+     * Contar linhas não basta. O bug real encontrado no plano 134-05 era um
+     * `updateOrCreate(['data' => $hoje])` que NUNCA achava a linha do dia (a
+     * coluna tem cast `date` mas é gravada como `Y-m-d H:i:s`, então a
+     * comparação SQL não bate) e caía num INSERT que colidia com o UNIQUE —
+     * engolido pelo `try/catch` fail-open de `processarLote()`. A contagem
+     * continuava certa **pelo motivo errado**: a linha existia, só nunca era
+     * atualizada. Este teste olha o VALOR, não a contagem.
+     */
+    public function serie_diaria_atualiza_de_verdade_a_linha_do_mesmo_dia(): void
+    {
+        [$company] = $this->criarFixture();
+
+        $ids = $this->idsDoMultigetLote();
+        $loteOriginal = $this->fixture('multiget-lote.json');
+
+        $vendidoInicial = (int) $loteOriginal[0]['body']['sold_quantity'];
+        $vendidoDepois  = $vendidoInicial + 7;
+
+        $loteAlterado = $loteOriginal;
+        $loteAlterado[0]['body']['sold_quantity'] = $vendidoDepois;
+
+        $pagina = ['results' => $ids, 'scroll_id' => 'scroll-fake', 'paging' => ['limit' => 50, 'total' => count($ids)]];
+        $terminador = ['results' => [], 'scroll_id' => null, 'paging' => ['limit' => 50, 'total' => count($ids)]];
+
+        Http::fake([
+            '*/items/search*' => Http::sequence()
+                ->push($pagina)->push($terminador)
+                ->push($pagina)->push($terminador),
+            '*/items?ids=*' => Http::sequence()
+                ->push($loteOriginal)
+                ->push($loteAlterado),
+            'api.mercadolibre.com/categories/*/attributes' => Http::response([], 200),
+        ]);
+
+        $servico = $this->service();
+
+        $servico->coletarCamadaBarata($company);
+        $servico->coletarCamadaBarata($company); // mesmo dia, valor diferente
+
+        $linhas = MlAcervoMetricaDiaria::where('company_id', $company->id)
+            ->where('ml_item_id', $ids[0])
+            ->get();
+
+        $this->assertCount(1, $linhas, 'ainda é UMA linha para o dia — não duplicou');
+        $this->assertSame(
+            $vendidoDepois,
+            $linhas->first()->sold_quantity,
+            'a linha do dia precisa carregar o valor da ÚLTIMA coleta; se vier o valor antigo, '
+            . 'o update silenciosamente não aconteceu e a evolução do D-07 está congelada'
+        );
+    }
+
     // ─── Teste 6 — D-11: zero write na API do ML ───────────────────────────
 
     /** @test */

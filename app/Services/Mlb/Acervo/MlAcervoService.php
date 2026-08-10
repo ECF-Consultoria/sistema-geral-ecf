@@ -454,7 +454,7 @@ class MlAcervoService
             ->where('ml_item_id', $mlItemId)
             ->orderByDesc('data')
             ->orderByDesc('id')
-            ->first(['data', 'sold_quantity', 'nota_ecf', 'health_ml']);
+            ->first(['id', 'data', 'sold_quantity', 'nota_ecf', 'health_ml']);
 
         $jaExisteHoje = $ultima !== null && $ultima->data->toDateString() === $hoje;
 
@@ -474,9 +474,36 @@ class MlAcervoService
             }
         }
 
-        MlAcervoMetricaDiaria::updateOrCreate(
-            ['company_id' => $company->id, 'ml_item_id' => $mlItemId, 'data' => $hoje],
-            ['sold_quantity' => $soldQuantity, 'nota_ecf' => $notaEcf, 'health_ml' => $healthMl]
-        );
+        $valores = [
+            'sold_quantity' => $soldQuantity,
+            'nota_ecf'      => $notaEcf,
+            'health_ml'     => $healthMl,
+        ];
+
+        // NÃO usar `updateOrCreate(['data' => $hoje], ...)` aqui. A coluna
+        // `data` tem cast `date`, e o setter do Eloquent grava o formato
+        // completo do grammar (`Y-m-d H:i:s`) mesmo assim — só o getter
+        // trunca na leitura. A comparação SQL crua
+        // `'2026-08-10' = '2026-08-10 00:00:00'` nunca bate, então a linha de
+        // hoje jamais é encontrada e toda reexecução no mesmo dia vira um
+        // INSERT que colide com o UNIQUE (company_id, ml_item_id, data).
+        // O `try/catch` fail-open de `processarLote()` engolia isso: a
+        // contagem de linhas continuava "certa" pelo motivo errado, e o
+        // sintoma só aparecia como Log::warning. Achado durante o plano
+        // 134-05 — ver deferred-items.md.
+        //
+        // `$jaExisteHoje` já foi decidido acima por comparação em memória de
+        // objetos Carbon, que é imune ao problema de formato. Reusar.
+        if ($jaExisteHoje) {
+            $ultima->forceFill($valores)->save();
+
+            return;
+        }
+
+        MlAcervoMetricaDiaria::create($valores + [
+            'company_id' => $company->id,
+            'ml_item_id' => $mlItemId,
+            'data'       => $hoje,
+        ]);
     }
 }
