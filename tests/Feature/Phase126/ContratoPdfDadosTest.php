@@ -26,14 +26,24 @@ class ContratoPdfDadosTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Monta um contrato com snapshot de 3 serviços e retorna a tupla
-     * [contrato, valores_originais_do_snapshot] para os testes reaproveitarem.
+     * Monta um contrato com snapshot de 3 serviços, com uma empresa cujo
+     * contato já está preenchido por padrão — isola os testes de
+     * `campos_pendentes` para o que cada um realmente quer provar (D-05: só
+     * dia de vencimento, forma de pagamento e endereço são garantidamente
+     * ausentes no banco hoje). `$atributosCompany` sobrescreve o padrão
+     * quando um teste específico precisa simular contato vazio/nulo.
      */
     private function contratoComSnapshot(array $atributosCompany = []): ContratoAssinatura
     {
+        $atributosPadrao = [
+            'nome_contato'  => 'Contato Padrão do Teste',
+            'email_cliente' => 'contato@empresa-teste.com.br',
+            'telefone'      => '(11) 4000-0000',
+        ];
+
         return ContratoAssinatura::factory()
             ->comSnapshot()
-            ->for(Company::factory()->state($atributosCompany), 'company')
+            ->for(Company::factory()->state(array_merge($atributosPadrao, $atributosCompany)), 'company')
             ->create();
     }
 
