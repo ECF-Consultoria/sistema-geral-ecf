@@ -405,6 +405,12 @@ class Company extends Model
         return $this->hasMany(ContratoServico::class);
     }
 
+    // Fase 125 — contratos de assinatura (Clicksign) da empresa.
+    public function contratoAssinaturas()
+    {
+        return $this->hasMany(ContratoAssinatura::class);
+    }
+
     public function mlToken()
     {
         return $this->hasOne(MlToken::class);
