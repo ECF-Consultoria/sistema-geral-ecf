@@ -299,11 +299,46 @@ POST /envelopes/{id}/documents  {"...":"template_id": "<uuid>"}
 Ou seja, `POST /envelopes/{id}/documents` só aceita binário enviado; `template_id` é ignorado —
 tanto em `attributes` quanto em `relationships`.
 
-⚠️ **O que ainda falta medir:** qual endpoint instancia um modelo em documento, e com que nome ele
-recebe os valores das variáveis. `POST /templates/{id}/documents` e `POST /templates/{id}/envelopes`
-devolveram **404 em HTML** (página de erro, não JSON da API) — o que *sugere* rota inexistente, mas
-o UUID usado também não existia, então o teste é inconclusivo. **Só dá para fechar com um modelo
-real cadastrado na conta.** É a primeira coisa a medir quando o `.docx` do contrato da ECF existir.
+### 9.6. Instanciar modelo em documento — **MEDIDO, e a doc estava ambígua**
+
+A rota é a **mesma** `POST /envelopes/{envelopeId}/documents` que já se usa para upload. O que muda
+é o atributo: `template`, **não** `template_id`. As tentativas com `template_id` (§9.4) falharam por
+nome de campo errado, não por rota inexistente — e as 404 em `/templates/{id}/documents` eram rota
+que não existe mesmo.
+
+Sondado com UUID de modelo inexistente, o que basta para validar a FORMA sem ter modelo cadastrado
+— a API valida o payload antes de resolver a chave:
+
+```
+POST /envelopes/{id}/documents
+{"data":{"type":"documents","attributes":{"template":{"key":"<uuid>","data":{"razao_social":"..."}}}}}
+=> 400  [filename deve ser informado(a)]                       <- só isso
+
+... com "data" como STRING json:
+=> 400  [filename deve ser informado(a)]
+        [/data/attributes/template/data: "data deve ser um hash"]
+
+... sem "data":
+=> 400  [filename deve ser informado(a)]
+        [/data/attributes/template/data: "data deve ser informado(a)"]
+```
+
+Quatro fatos que saem daí:
+
+1. **`attributes.template` é o campo certo** — a API valida o que tem dentro dele
+   (`/data/attributes/template/data` aparece no ponteiro do erro).
+2. **`template.data` é um HASH, não string serializada.** ✅ Isso **resolve a divergência entre duas
+   páginas da doc oficial** registrada em `126-RESEARCH-MODELOS.md`: mandar `json_encode()` devolve
+   "data deve ser um hash". Objeto nativo, medido.
+3. **`template.data` é obrigatório** — omitir dá "data deve ser informado(a)".
+4. **`filename` continua obrigatório, mas `content_base64` NÃO.** Com `template` presente,
+   `content_base64` some da lista de campos exigidos. O payload certo é
+   `filename` + `template:{key,data}` — não é "um ou outro", o `filename` é o nome que o documento
+   gerado vai ter.
+
+⚠️ **Continua não medido** (exige modelo real cadastrado): se as chaves de `template.data` precisam
+bater exatamente com os `{{nomes}}` do `.docx`, o que acontece com variável faltando ou sobrando, e
+o comportamento de tabela em loop (`{{#array}}…{{/array}}`).
 
 ### 9.5. Forma da resposta — o `data` já vem desembrulhado pelo client
 
