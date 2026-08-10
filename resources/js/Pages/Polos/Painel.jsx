@@ -42,7 +42,7 @@ const SEM_ESTAGIO = '__sem__';
 const BLOCO_DE = {
     polo: 'identificacao', fase: 'identificacao', data_solicitacao: 'identificacao',
     status_entrada: 'identificacao', chance_entrada: 'identificacao',
-    acesso_colaborador: 'acessos', gmail_colaborador: 'acessos', grupo_whatsapp: 'acessos', reuniao_onboarding: 'acessos',
+    acesso_colaborador: 'acessos', gmail_colaborador: 'acessos', grupo_whatsapp: 'acessos', link_whatsapp: 'acessos', reuniao_onboarding: 'acessos',
     planilha_produtos: 'produtos', listagem: 'produtos', publicacao: 'produtos', decola: 'produtos', campanha_criada: 'produtos',
     contextos_logistica: 'logistica', me1: 'logistica', integradora: 'logistica', places: 'logistica', erp: 'logistica',
 };
@@ -123,6 +123,20 @@ function situacaoDe(e) {
     if (!e.impl_id)                      f.push('sem_ficha');
     if (e.ads_desligado)                 f.push('ads_off');
     return f.length ? f : ['ok'];
+}
+
+// ── Link do grupo de WhatsApp ───────────────────────────────────────────────────────
+// O time cola o que tiver na mão: convite (chat.whatsapp.com/XXXX), wa.me/55… e às vezes
+// sem o protocolo. Guardamos o texto como veio; só o href é normalizado na hora de abrir.
+function hrefWhats(v) {
+    const s = String(v ?? '').trim();
+    if (!s) return null;
+    return /^https?:\/\//i.test(s) ? s : `https://${s.replace(/^\/+/, '')}`;
+}
+// Rótulo curto p/ o funil de filtro: só o "miolo" do link (o convite inteiro estoura a lista).
+function encurtaLink(v) {
+    const s = String(v ?? '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    return s.length > 34 ? `${s.slice(0, 18)}…${s.slice(-12)}` : s;
 }
 
 // Data ISO (Y-m-d) → rótulo BR nas opções do filtro (sem fuso: string pura).
@@ -482,6 +496,39 @@ function EditText({ e, campo, onSave, onCriar, placeholder = '—', wide }) {
     );
 }
 
+// Link do grupo de WhatsApp: mesma célula-fantasma do EditText + atalho p/ abrir o grupo.
+// O input guarda a URL inteira (editável); o ícone só aparece quando há link salvo.
+function EditLink({ e, campo, onSave, onCriar, placeholder = 'link do grupo…' }) {
+    // Hooks SEMPRE no topo — ver nota em EditText (impl_id muda em runtime ao "criar ficha").
+    const [v, setV] = useState(e[campo] ?? '');
+    useEffect(() => { setV(e[campo] ?? ''); }, [e[campo]]);
+    if (exigeFicha(campo, e)) return <SemFicha onCriar={onCriar} />;
+    const salvar = () => {
+        const limpo = (v ?? '').trim();
+        if (limpo !== (e[campo] ?? '')) onSave(e, campo, limpo === '' ? null : limpo);
+    };
+    const href = hrefWhats(e[campo]);
+    return (
+        <div className="flex items-center gap-1 min-w-[210px]">
+            <input
+                type="text"
+                value={v}
+                placeholder={placeholder}
+                onChange={(ev) => setV(ev.target.value)}
+                onBlur={salvar}
+                onKeyDown={(ev) => { if (ev.key === 'Enter') ev.currentTarget.blur(); }}
+                className={cn(CELL_TXT, 'flex-1 min-w-0', v ? 'text-emerald-300/90' : 'text-white/40')}
+            />
+            {href && (
+                <a href={href} target="_blank" rel="noopener noreferrer" title="Abrir o grupo no WhatsApp"
+                    className="shrink-0 rounded-md p-1 text-emerald-300/70 transition hover:bg-emerald-500/10 hover:text-emerald-300">
+                    <ExternalLink size={12} />
+                </a>
+            )}
+        </div>
+    );
+}
+
 function EditDate({ e, campo, onSave, onCriar }) {
     if (exigeFicha(campo, e)) return <SemFicha onCriar={onCriar} />;
     return (
@@ -624,6 +671,9 @@ export default function PolosPainel({
             acesso_colaborador:  { key: 'acesso_colaborador', label: 'Acesso colaborador', accessor: (e) => e.acesso_colaborador },
             gmail_colaborador:   { key: 'gmail_colaborador', label: 'Gmail colaborador', accessor: (e) => e.gmail_colaborador },
             grupo_whatsapp:      { key: 'grupo_whatsapp', label: 'Grupo WhatsApp', accessor: (e) => (e.grupo_whatsapp === true ? 'Sim' : e.grupo_whatsapp === false ? 'Não' : null) },
+            // Filtrável de propósito: o uso real é isolar "(Sem link)" e cobrar quem falta.
+            // O funil mostra o link encurtado (a URL inteira estouraria o dropdown).
+            link_whatsapp:       { key: 'link_whatsapp', label: 'Link do Whats', accessor: (e) => e.link_whatsapp, format: (v) => (v === VAZIO ? '(Sem link)' : encurtaLink(v)) },
             reuniao_onboarding:  { key: 'reuniao_onboarding', label: 'Reunião onboarding', accessor: (e) => e.reuniao_onboarding },
             data_solicitacao:    { key: 'data_solicitacao', label: 'Data solicitação', type: 'date', accessor: (e) => e.data_solicitacao, format: (v) => (v === VAZIO ? '(Vazios)' : fmtDataBR(v)) },
             data_cadastro:       { key: 'data_cadastro', label: 'Cadastro', type: 'date', sortable: true, accessor: (e) => e.data_cadastro, format: (v) => (v === VAZIO ? '(Sem data)' : fmtDataBR(v)) },
@@ -1267,13 +1317,13 @@ const COLS_POR_LENTE = {
     geral: [
         'data_cadastro',
         'fase', 'estagio', 'polo', 'responsavel', 'onboarding', 'envio', 'status_entrada', 'chance_entrada',
-        'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'reuniao_onboarding', 'data_solicitacao',
+        'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'data_solicitacao',
         'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada',
         'contextos_logistica', 'me1', 'integradora', 'places', 'erp',
         'fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status',
         '__acoes__',
     ],
-    acessos:    ['acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'reuniao_onboarding', 'data_solicitacao'],
+    acessos:    ['acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'data_solicitacao'],
     produtos:   ['planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada'],
     logistica:  ['contextos_logistica', 'me1', 'integradora', 'places', 'erp'],
     financeiro: ['fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status'],
@@ -1367,6 +1417,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
         <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="acesso_colaborador" opcoes={opcoes.acesso_colaborador} presentes={valoresPresentes.acesso_colaborador} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><div className="min-w-[200px]"><EditText e={e} campo="gmail_colaborador" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="gmail…" wide /></div></td>
         <td className={td}><EditToggle e={e} campo="grupo_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
+        <td className={td}><EditLink e={e} campo="link_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
         <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="reuniao_onboarding" opcoes={opcoes.reuniao_onboarding} presentes={valoresPresentes.reuniao_onboarding} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><div className="min-w-[140px]"><EditDate e={e} campo="data_solicitacao" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>
     </>);
@@ -1483,8 +1534,9 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
             {/* Drawer (detalhe pesado sob demanda) */}
             {aberta && (
                 <tr className="bg-white/[0.02]">
-                    {/* colSpan alto: o navegador limita ao total real de colunas (Geral chega a ~27). */}
-                    <td colSpan={30} className="px-5 py-4">
+                    {/* colSpan alto: o navegador limita ao total real de colunas (Geral, com
+                        as 2 congeladas, chega a ~33 desde a coluna "Link do Whats"). */}
+                    <td colSpan={40} className="px-5 py-4">
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                             {/* Problema */}
                             <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
