@@ -1,7 +1,7 @@
 ---
 phase: 134
 slug: meus-anuncios-saude-analitica-do-anuncio-publicado
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-10
@@ -9,7 +9,13 @@ created: 2026-08-10
 
 # Phase 134 — Contrato de Design de UI
 
-> Contrato visual e de interação para a tela "Meus Anúncios" (`mlb.anuncios.meus`). Gerado por gsd-ui-researcher em modo `--auto` a partir de `134-CONTEXT.md` (23 decisões travadas) e `134-RESEARCH.md`. Verificado por gsd-ui-checker. **Revisão 2**: corrige as 2 issues bloqueantes apontadas pelo checker (Typography com 7 tamanhos na prática vs. 4 declarados; Spacing legitimando meio-passo) — ver seções Typography e Spacing Scale abaixo. As demais 4 dimensões e todas as travas específicas da fase (D-11, D-22, D-21, D-18/D-23, D-08, escala 400–66.747 itens, zero lib nova) **não foram alteradas** nesta revisão.
+> Contrato visual e de interação para a tela "Meus Anúncios" (`mlb.anuncios.meus`). Gerado por gsd-ui-researcher em modo `--auto` a partir de `134-CONTEXT.md` (23 decisões travadas) e `134-RESEARCH.md`. Verificado por gsd-ui-checker. **Revisão 3 — APROVADO, 6/6 dimensões.**
+
+Histórico do loop de verificação:
+- **Revisão 2** corrigiu as 2 issues bloqueantes da iteração 1: Typography usava 7 tamanhos na prática (10/11/12/13/14/16/20px) contra 4 declarados → consolidado em 4, com o papel Label redefinido para 11px; Spacing legitimava meio-passo (2/6/10px) numa seção "Exceptions" → removido do código novo, com o legado do módulo escopado numa seção própria de débito herdado.
+- **Revisão 3** corrigiu a issue da iteração 2: `font-medium` (peso 500) aparecia em 3 elementos novos contra os 2 pesos declarados → sub-aba passou a carregar o peso no estado (600 ativa / 400 inativa), botão "Atualizar agora" e selo de origem foram para 600, e a seção Typography ganhou tabela peso-por-elemento declarando que 500 não é usado em lugar nenhum.
+
+Todas as travas específicas da fase (D-08, D-11, D-18, D-21, D-22, D-23, escala 400–66.747 itens, zero lib de UI nova) foram verificadas como honradas em **todas** as três iterações e **não foram alteradas** por nenhuma delas.
 
 ---
 
@@ -100,7 +106,17 @@ Declared values (must be multiples of 4 — **nenhum meio-passo nesta fase**):
 
 11px em vez de 12px (`text-xs`) para o papel Label foi escolhido porque a tabela de até 66.747 itens (decisões A3/A4) é o elemento que mais precisa de densidade nesta fase — usar `text-xs` (12px) nos 8 locais de micro-texto listados acima infla mais linhas do que o `text-[11px]` que já era usado em metade deles na versão anterior.
 
-**Pesos:** só 400 e 600 nesta fase. Nota: o painel "Saúde do anúncio" do wizard (que **fica intacto**, D-16) usa `font-bold` (700) para o número do score — essa fase **não herda** esse terceiro peso; o número da Nota ECF aqui usa `font-semibold` (600), simplificação deliberada para manter a disciplina de 2 pesos.
+**Pesos:** só 400 (`font-normal`) e 600 (`font-semibold`) nesta fase. **`font-medium` (500) não é usado em lugar nenhum** — o Tailwind deste projeto não tem override de `fontWeight`, então `font-medium` seria um terceiro peso silencioso. Onde ele apareceria naturalmente por hábito, a regra é:
+
+| Elemento | Peso | Por quê |
+|---|---|---|
+| Sub-aba **ativa** (Publicados/Rascunhos) | 600 | O peso é parte do sinal de seleção, junto com a borda `ecf-yellow` e o texto branco |
+| Sub-aba **inativa** | 400 | Recessivo por definição |
+| Botão "Atualizar agora" | 600 | É um CTA, mesmo tratamento de peso da pill ativa das abas principais (`ModoAnuncioTabs.jsx`) |
+| Selo de origem (D-04) | 600 | Uppercase em 11px com `tracking-wide` perde legibilidade em 400 |
+| Todo o resto de Body e Label | 400 | Default |
+
+Nota: o painel "Saúde do anúncio" do wizard (que **fica intacto**, D-16) usa `font-bold` (700) para o número do score — essa fase **não herda** esse terceiro peso; o número da Nota ECF aqui usa `font-semibold` (600), simplificação deliberada para manter a disciplina de 2 pesos.
 
 **Fora desta escala — rótulos internos do Recharts:** o gráfico de evolução (seção "Modal de Detalhe do Anúncio") usa `fontSize: 10` nos eixos X/Y via prop inline do próprio Recharts (renderização SVG, não classe Tailwind, não texto de interface) — mesmo padrão já em produção em `MeuPainel.jsx` (fontSize 10–12 em eixos/tooltip de gráfico, linhas 733-745). Rótulo de eixo de gráfico é convenção de visualização de dados, não texto de UI, e segue a mesma lógica já aprovada na seção Color desta fase para a cor da linha "Nota ECF" (item 6 do accent): não conta contra os 4 tamanhos declarados acima, porque não é um elemento de interface — é uma codificação de dado dentro do próprio gráfico.
 
@@ -208,10 +224,10 @@ Nível 2, visualmente **subordinado** ao nível 1: estilo sublinhado (não pill)
       type="button"
       onClick={() => trocarSubAba(tab.chave)}
       className={cn(
-        '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition',
+        '-mb-px border-b-2 px-3 py-2 text-sm transition',
         ativo === tab.chave
-          ? 'border-ecf-yellow text-white'
-          : 'border-transparent text-white/40 hover:text-white/70',
+          ? 'border-ecf-yellow font-semibold text-white'
+          : 'border-transparent font-normal text-white/40 hover:text-white/70',
       )}
     >
       {tab.label}
@@ -330,7 +346,7 @@ Tratamento outline-amarelo (**não** sólido — reservado para "Publicar lote",
   type="button"
   disabled={enfileirando}
   className={cn(
-    'inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-sm font-medium transition',
+    'inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-sm font-semibold transition',
     enfileirando
       ? 'cursor-wait border-white/[0.06] text-white/30'
       : 'border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12]',
@@ -350,7 +366,7 @@ Tratamento outline-amarelo (**não** sólido — reservado para "Publicar lote",
 
 ## 7. Selo de origem (D-04)
 
-3 valores, cada um um badge compacto (mesmo padrão visual de `source-badge.jsx`: pill uppercase + `title` nativo para tooltip — **sem** reusar o componente em si, ver decisão A13). Classe base compartilhada por todos os variants: `inline-flex items-center gap-1 rounded-full border px-1 py-1 text-[11px] font-medium uppercase tracking-wide` (Label, 11px, xs=4px de padding) + a cor específica de cada variant abaixo:
+3 valores, cada um um badge compacto (mesmo padrão visual de `source-badge.jsx`: pill uppercase + `title` nativo para tooltip — **sem** reusar o componente em si, ver decisão A13). Classe base compartilhada por todos os variants: `inline-flex items-center gap-1 rounded-full border px-1 py-1 text-[11px] font-semibold uppercase tracking-wide` (Label, 11px, xs=4px de padding; peso 600 porque uppercase em 11px perde legibilidade em 400) + a cor específica de cada variant abaixo:
 
 | Variant | Label | Cor | Tooltip |
 |---|---|---|---|
