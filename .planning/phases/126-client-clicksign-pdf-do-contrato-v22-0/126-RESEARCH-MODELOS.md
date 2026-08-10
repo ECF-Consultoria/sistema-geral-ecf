@@ -403,27 +403,34 @@ da documentação oficial errados — gate #1 e #4 do empírico).
 
 ---
 
-## Open Questions
+## Open Questions (estado atualizado — ver o rótulo de cada uma)
 
-1. **`template.data` é objeto ou string serializada?**
-   - O que se sabe: a recipe oficial (exemplo `curl` executável) mostra objeto nativo; um resumo de
-     outra página da mesma documentação sugeriu string.
-   - O que está incerto: qual das duas está certa — ou se a API aceita as duas por tolerância.
-   - Recomendação: testar as duas formas contra o sandbox assim que houver modelo cadastrado; usar
-     objeto nativo como primeira tentativa (mais consistente com o padrão JSON:API do resto da API
-     v3, e vem de fonte mais literal).
+> ⚠️ Esta seção foi escrita antes da medição da §9.6 do
+> `.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md`. A Q1 abaixo **já foi resolvida por medição**;
+> as outras duas seguem abertas, cada uma com o lugar onde fecha.
+
+1. **`template.data` é objeto ou string serializada?** — ✅ **RESOLVIDA (MEDIDA em 10/08/2026)**
+   - **Resposta: objeto nativo (hash).** Medido no sandbox: mandar `json_encode()` devolve
+     `400` com `/data/attributes/template/data: "data deve ser um hash"`. Ver §9.6 do empírico.
+   - A recipe oficial estava certa e o resumo da outra página estava errado. **A medição vence a
+     documentação** — não reabrir esta questão a partir da doc.
+   - Medido junto: `template.data` é **obrigatório**, e `filename` continua obrigatório enquanto
+     `content_base64` deixa de ser exigido quando `template` está presente.
 
 2. **"Instâncias associadas" removidas na exclusão do modelo — inclui documento já assinado?**
+   - **Fecha em:** item 6 da Task 2 do **plano 126-11**, que mede empiricamente (cria modelo, gera
+     documento, exclui modelo, reconsulta). É gate **bloqueante**: se o documento não sobreviver, o
+     plano para e escala em vez de seguir.
    - O que se sabe: o aviso existe, com essa redação exata, sem qualificação.
    - O que está incerto: se o termo inclui documentos dentro de envelopes `closed`.
-   - Recomendação: ver §3 — testar antes de depender disso em produção; até lá, tratar como se a
-     resposta pudesse ser "sim" (nunca excluir modelo com envelope pendente do mesmo).
+   - Recomendação: até fechar, tratar como se a resposta pudesse ser "sim" (nunca excluir modelo com
+     envelope pendente do mesmo). É a dívida que a decisão original D-02 cobria e a D-16 ainda não.
 
-3. **Limite de tamanho do `.docx` e de número de variáveis.**
+3. **Limite de tamanho do `.docx` e de número de variáveis.** — ABERTA, **não bloqueante**
+   - **Fecha em:** nunca, por decisão — só se um modelo real esbarrar em erro de tamanho.
    - O que se sabe: nada documentado; o contrato real da ECF é pequeno o suficiente para não ser
      risco prático.
    - O que está incerto: o valor exato, caso o modelo cresça (ex.: aditivos, anexos).
-   - Recomendação: não bloqueia a fase; medir só se um modelo real esbarrar em erro de tamanho.
 
 ---
 

@@ -13,6 +13,28 @@ created: 2026-08-10
 > Derivado da seção `## Validation Architecture` de `126-RESEARCH.md`, **com uma correção**
 > (ver "Divergência" abaixo).
 
+> ## ⚠️ ADENDO DE 2026-08-10 — a régua do bloco "PDF" mudou de natureza
+>
+> Este documento foi escrito quando o PDF era renderizado aqui com dompdf. O usuário **reverteu**
+> essa decisão (D-16/D-17/D-18 — ver o bloco de revisão no topo de `126-CONTEXT.md`): quem renderiza
+> o contrato agora é a **Clicksign, a partir de um modelo `.docx`**. Tudo abaixo que cite
+> `resources/views/contratos/*.blade.php`, `ContratoPdfServiceTest` ou `gerar()`/`gerarESalvar()`
+> descreve o caminho **superado**, que o plano **126-12** remove.
+>
+> **Como a régua fica para os planos novos (126-07 a 126-12):**
+>
+> | Bloco | Como se prova agora | Onde |
+> |---|---|---|
+> | Client (CLICK-01) | inalterado — ausência do token + forma de chamada contra fixtures | 126-07 |
+> | Ponte de variáveis (PDF-01, PDF-02) | mapa explícito, chave por linha, confrontado com os `{{nomes}}` do `.docx` | 126-09, gate no 126-11 |
+> | Documento gerado (PDF-03) | **conferência humana do PDF que a Clicksign devolve** — acentuação, layout, variáveis preenchidas | 126-11, Task 3 |
+>
+> **A mudança de natureza que importa:** antes, o bloco do PDF se provava por teste automatizado
+> sobre HTML/CSS/binário que nós produzíamos. Agora o artefato final é produzido por um terceiro a
+> partir de um arquivo que nós não versionamos — então a prova final **tem** que ser humana e contra
+> a API real. Nenhum `Http::fake()` pode substituir o gate do 126-11. É exatamente a lição da §9.1 do
+> empírico, que já custou dois bugs nesta fase.
+
 **A particularidade desta fase:** são dois blocos independentes com réguas diferentes. O client
 prova-se por **ausência** (o token não aparece em lugar nenhum) e por **forma de chamada** contra
 fixtures reais. O PDF prova-se por **conteúdo renderizado** sob condições extremas. Nenhum dos
