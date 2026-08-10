@@ -81,7 +81,9 @@ class ClicksignConfigEFixturesTest extends TestCase
             ['signatarioCriado'],
             ['requisitoCriado'],
             ['envelopeAtivado'],
-            ['envelopeCancelado'],
+            // `envelopeCancelado` saiu em 10/08/2026: o cancelamento medido é
+            // `DELETE` → `204` com corpo vazio, então não há fixture de corpo
+            // para varrer (ver `envelopeDescartadoStatusHttp()`, que devolve int).
             ['eventoSignDoDocumento'],
             ['erroContentBase64NaoDataUri'],
             ['erro401TokenInvalido'],

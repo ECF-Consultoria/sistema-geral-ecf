@@ -143,22 +143,18 @@ class ClicksignSandboxFixtures
     }
 
     /**
-     * PATCH /envelopes/{id} (cancelamento) — resposta de sucesso.
-     * ⚠️ **NÃO MEDIDO:** o arquivo empírico não registrou literalmente o
-     * valor de `status` devolvido após um cancelamento (D-12 desta fase é
-     * quem introduz o cancelamento — a sessão de sandbox não cobriu esse
-     * caminho). `"canceled"` é a suposição mais provável dado o vocabulário
-     * medido (`draft`/`running`/`closed`), mas não é fato observado.
+     * `DELETE /envelopes/{id}` (descarte de envelope em rascunho) — ✅ MEDIDO
+     * no sandbox em 10/08/2026 (checkpoint do plano 126-06): responde
+     * **`204 No Content`, com corpo VAZIO**, e o `GET` seguinte devolve 404.
      *
-     * @return array<string, mixed>
+     * Não existe fixture de corpo porque não existe corpo. A suposição
+     * anterior — `PATCH` com `status: "canceled"` devolvendo o envelope — é
+     * falsa: a API recusa com `400` e "status deve estar em: draft, running".
+     * Quem for testar o cancelamento usa `Http::response('', 204)` direto.
      */
-    public static function envelopeCancelado(): array
+    public static function envelopeDescartadoStatusHttp(): int
     {
-        $envelope = self::envelopeCriado();
-        $envelope['data']['attributes']['status']     = 'canceled'; // NÃO MEDIDO
-        $envelope['data']['attributes']['updated_at'] = '2026-08-10T10:05:00.000-03:00';
-
-        return $envelope;
+        return 204;
     }
 
     /**

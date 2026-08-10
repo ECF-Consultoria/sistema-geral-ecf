@@ -53,8 +53,16 @@ class ClicksignClientEnvelopeTest extends TestCase
 
     // ─── Task 1: signatários e requisitos ───
 
+    /**
+     * Regressão medida no sandbox em 10/08/2026 (checkpoint do plano 126-06):
+     * `communicate_by` existe na RESPOSTA do signatário mas NÃO é aceito na
+     * entrada — a API devolve `400 bad_request` com ponteiro
+     * `/data/attributes/communicate_by`. Mandá-lo quebrava 100% dos envelopes
+     * no primeiro signatário, e o `Http::fake()` não tinha como pegar isso.
+     * Este teste trava a ausência do campo, não só a presença dos outros.
+     */
     #[Test]
-    public function adicionar_signatario_envia_communicate_by_email_e_group_1(): void
+    public function adicionar_signatario_envia_group_1_e_nunca_communicate_by(): void
     {
         Http::fake([
             self::BASE . '/envelopes/*/signers' => Http::response(ClicksignSandboxFixtures::signatarioCriado(), 200),
@@ -67,8 +75,8 @@ class ClicksignClientEnvelopeTest extends TestCase
 
             return ($atributos['name'] ?? null) === 'Fulano de Tal'
                 && ($atributos['email'] ?? null) === 'fulano@example.com'
-                && ($atributos['communicate_by'] ?? null) === 'email'
-                && ($atributos['group'] ?? null) === 1;
+                && ($atributos['group'] ?? null) === 1
+                && ! array_key_exists('communicate_by', $atributos);
         });
     }
 
@@ -222,16 +230,25 @@ class ClicksignClientEnvelopeTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    /**
+     * Regressão medida no sandbox em 10/08/2026 (checkpoint do plano 126-06):
+     * `PATCH` com `status: "canceled"` não existe — a API responde `400` com
+     * "status deve estar em: draft, running". O descarte de envelope em
+     * rascunho é `DELETE /envelopes/{id}` → `204` com corpo vazio. O teste
+     * trava o VERBO, porque era exatamente ele que estava errado.
+     */
     #[Test]
-    public function cancelar_envelope_sucesso_devolve_true(): void
+    public function cancelar_envelope_usa_delete_e_devolve_true(): void
     {
         Http::fake([
-            self::BASE . '/envelopes/*' => Http::response(ClicksignSandboxFixtures::envelopeCancelado(), 200),
+            self::BASE . '/envelopes/*' => Http::response('', ClicksignSandboxFixtures::envelopeDescartadoStatusHttp()),
         ]);
 
         $resultado = $this->client()->cancelarEnvelope(self::ENVELOPE_ID);
 
         $this->assertTrue($resultado);
+
+        Http::assertSent(fn ($request) => $request->method() === 'DELETE');
     }
 
     #[Test]
@@ -291,7 +308,7 @@ class ClicksignClientEnvelopeTest extends TestCase
                 ['errors' => [['code' => 'unprocessable_entity', 'status' => 422, 'detail' => 'role inválido']]],
                 422
             ),
-            self::BASE . '/envelopes/*'              => Http::response(ClicksignSandboxFixtures::envelopeCancelado(), 200),
+            self::BASE . '/envelopes/*'              => Http::response('', ClicksignSandboxFixtures::envelopeDescartadoStatusHttp()),
         ]);
 
         try {
@@ -306,10 +323,11 @@ class ClicksignClientEnvelopeTest extends TestCase
             $this->assertSame(422, $e->httpStatus);
         }
 
-        // Exatamente 1 requisição de cancelamento: PATCH direto em
+        // Exatamente 1 requisição de cancelamento: DELETE direto em
         // /envelopes/{id}, sem sufixo de documents/signers/requirements.
+        // Era PATCH até 10/08/2026 — medido no sandbox que a API recusa.
         Http::assertSent(function ($request) {
-            return $request->method() === 'PATCH'
+            return $request->method() === 'DELETE'
                 && $request->url() === self::BASE . '/envelopes/' . self::ENVELOPE_ID;
         });
 

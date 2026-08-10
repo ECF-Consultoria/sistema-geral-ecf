@@ -124,6 +124,14 @@ class ClicksignClient
      * simultânea, sem ordenação — não confiar no default `1` medido em §5 do
      * empírico, que pode não valer para sempre).
      *
+     * ⚠️ NÃO mandar `communicate_by` aqui. Ele aparece na RESPOSTA do recurso
+     * de signatário (§5 do empírico), mas não é atributo aceito na entrada:
+     * medido no sandbox em 10/08/2026 (checkpoint do plano 126-06), a API
+     * devolve `400 bad_request` com ponteiro `/data/attributes/communicate_by`
+     * e detalhe "communicate_by não está disponível" — tanto para o valor
+     * `email` quanto para `whatsapp`. Enviar o campo quebra 100% dos
+     * envelopes no primeiro signatário. Só `name`/`email`/`group` passam.
+     *
      * @return array<string, mixed>
      */
     public function adicionarSignatario(string $envelopeId, string $nome, string $email): array
@@ -132,10 +140,9 @@ class ClicksignClient
             'data' => [
                 'type'       => 'signers',
                 'attributes' => [
-                    'name'            => $nome,
-                    'email'           => $email,
-                    'communicate_by'  => 'email',
-                    'group'           => 1,
+                    'name'  => $nome,
+                    'email' => $email,
+                    'group' => 1,
                 ],
             ],
         ], 'adicionar signatário');
@@ -315,25 +322,22 @@ class ClicksignClient
      * cancelar não substitua o erro original. Loga só `envelope_id` e
      * `status` — nenhum dado do signatário.
      *
-     * ⚠️ **NÃO MEDIDO:** o valor exato de `status` que a Clicksign espera
-     * para cancelamento não foi observado no sandbox (a sessão empírica não
-     * cobriu esse caminho — D-12 é quem introduz o cancelamento). `"canceled"`
-     * é a suposição mais provável dado o vocabulário medido
-     * (`draft`/`running`/`closed`), a confirmar no checkpoint humano do
-     * plano 126-06.
+     * ✅ **MEDIDO** no sandbox em 10/08/2026 (checkpoint do plano 126-06):
+     * `PATCH` com `status: "canceled"` NÃO existe — a API devolve
+     * `400 bad_request` com detalhe "status deve estar em: draft, running".
+     * O descarte de um envelope em rascunho é `DELETE /envelopes/{id}`, que
+     * responde `204` e faz o `GET` seguinte devolver `404`. É exatamente o
+     * caminho de que o rollback da D-12 precisa, porque ele só roda antes da
+     * ativação — o envelope ainda está em `draft`.
+     *
+     * ⚠️ Envelope já ATIVADO (`running`) não foi medido: `DELETE` pode ser
+     * recusado nesse estado. Quando a Fase 127 introduzir cancelamento pós-
+     * ativação, medir antes de assumir.
      */
     public function cancelarEnvelope(string $envelopeId): bool
     {
         try {
-            $this->enviar('patch', "/envelopes/{$envelopeId}", [
-                'data' => [
-                    'id'         => $envelopeId,
-                    'type'       => 'envelopes',
-                    'attributes' => [
-                        'status' => 'canceled', // NÃO MEDIDO
-                    ],
-                ],
-            ], 'cancelar envelope');
+            $this->enviar('delete', "/envelopes/{$envelopeId}", [], 'cancelar envelope');
 
             return true;
         } catch (ClicksignException $e) {
