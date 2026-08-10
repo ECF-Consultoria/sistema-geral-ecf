@@ -9,7 +9,7 @@ created: 2026-08-10
 
 # Phase 134 — Contrato de Design de UI
 
-> Contrato visual e de interação para a tela "Meus Anúncios" (`mlb.anuncios.meus`). Gerado por gsd-ui-researcher em modo `--auto` a partir de `134-CONTEXT.md` (23 decisões travadas) e `134-RESEARCH.md`. Verificado por gsd-ui-checker.
+> Contrato visual e de interação para a tela "Meus Anúncios" (`mlb.anuncios.meus`). Gerado por gsd-ui-researcher em modo `--auto` a partir de `134-CONTEXT.md` (23 decisões travadas) e `134-RESEARCH.md`. Verificado por gsd-ui-checker. **Revisão 2**: corrige as 2 issues bloqueantes apontadas pelo checker (Typography com 7 tamanhos na prática vs. 4 declarados; Spacing legitimando meio-passo) — ver seções Typography e Spacing Scale abaixo. As demais 4 dimensões e todas as travas específicas da fase (D-11, D-22, D-21, D-18/D-23, D-08, escala 400–66.747 itens, zero lib nova) **não foram alteradas** nesta revisão.
 
 ---
 
@@ -61,11 +61,11 @@ O `134-CONTEXT.md` trava 23 decisões de produto, mas delega explicitamente a es
 
 ## Spacing Scale
 
-Declared values (must be multiples of 4):
+Declared values (must be multiples of 4 — **nenhum meio-passo nesta fase**):
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| xs | 4px | Gaps de ícone, `gap-1` |
+| xs | 4px | Gaps de ícone e badges/chips compactos, `gap-1`, `px-1`, `py-1` |
 | sm | 8px | Espaçamento compacto, `gap-2`, `px-2` |
 | md | 16px | Espaçamento padrão de elemento, `p-4`, `gap-4` |
 | lg | 24px | Padding de seção, `p-6` |
@@ -73,7 +73,11 @@ Declared values (must be multiples of 4):
 | 2xl | 48px | Quebras de seção maiores |
 | 3xl | 64px | Espaçamento de nível de página |
 
-Exceptions: meio-passo (`0.5`=2px, `1.5`=6px, `2.5`=10px) usado em badges e botões compactos — **precedente já estabelecido** em `AnunciosHistorico.jsx` (`px-2.5 py-1.5`, `gap-1.5`) e `AnunciarML.jsx` (painel Saúde do anúncio, blocos de Rascunhos). Esta fase reusa o mesmo meio-passo para badges de severidade/origem e para os chips de triagem — não inventa uma escala nova.
+**Sem exceções de meio-passo nesta fase.** Onde `sm` (8px) é grande demais para um badge/chip compacto — que era a razão real do meio-passo na versão anterior deste contrato — o token correto é **`xs` (4px)**: `gap-1`, `px-1`, `py-1`. Nunca `0.5` (2px), `1.5` (6px) ou `2.5` (10px). Todo elemento novo desta fase (Triagem, selos, Nota ECF, cards de Rascunho, botão "Atualizar agora") usa exclusivamente xs/sm/md/lg/xl/2xl/3xl — ver cada seção numerada abaixo, onde os valores em meio-passo da revisão anterior foram substituídos por `xs`.
+
+### Débito técnico herdado (fora da Spacing Scale desta fase)
+
+`AnunciosHistorico.jsx` e `AnunciarML.jsx` — arquivos que esta fase **reusa como referência de padrão visual e migra copy/lógica de, mas não reescreve** (ver decisões A3, A13 e seção 9) — usam meio-passo no código já em produção (`px-2.5 py-1.5`, `gap-1.5`, painel "Saúde do anúncio", blocos de Rascunhos). Isso é débito técnico pré-existente do módulo, **não desta fase**: reescrever esses arquivos para a grade de 4 está fora do escopo da Fase 134, e o executor não deve tocar neles só para corrigir espaçamento. A regra é assimétrica e deliberada: **código novo escrito por esta fase segue a grade de 4 sem exceção; tocar no legado para "arrumar" o espaçamento dele não é escopo da 134.**
 
 ---
 
@@ -82,19 +86,23 @@ Exceptions: meio-passo (`0.5`=2px, `1.5`=6px, `2.5`=10px) usado em badges e bot�
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Body | 14px (`text-sm`) | 400 (regular) | 1.5 |
-| Label | 12px (`text-xs`) | 400 (regular) | 1.5 |
+| Label | 11px (`text-[11px]`) | 400 (regular) | 1.5 |
 | Heading | 16px (`text-base`) | 600 (semibold) | 1.2 |
 | Display | 20px (`text-xl`) | 600 (semibold) | 1.2 |
 
 **Uso por elemento:**
 - Display → título H1 da página ("Meus Anúncios")
 - Heading → cabeçalho da Triagem ("N anúncios precisam de você"), título do Modal de Detalhe, cabeçalhos de seção
-- Body → título do anúncio na tabela/card, valores primários de célula
-- Label → meta-informação, contadores, texto de badge, cabeçalho de coluna
+- Body → título do anúncio na tabela/card, valores primários de célula, texto do banner de defasagem (seção 5a — é uma frase de conteúdo lida de uma vez, não um meta-dado tabular)
+- Label → meta-informação, contadores, texto de badge, cabeçalho de coluna, selo de defasagem em nível de campo, chip "Não avaliado", categoria/tier do card de Rascunho, badge de status do card de Rascunho, sufixo "de 86" da Nota ECF, selo de origem
 
-**Exceção documentada (micro-texto):** `text-[10px]`/`text-[11px]` para badges de severidade, contadores tabulares e o selo de defasagem — **já é o padrão do módulo** (`AnunciosHistorico.jsx` usa `text-[10px]`/`text-[11px]` em badges e meta; `AnunciarML.jsx` usa o mesmo no bloco de Rascunhos). Esta fase segue a mesma convenção em vez de promover esses elementos a `text-xs`, o que quebraria a densidade visual já estabelecida no módulo.
+**Escala final — 4 tamanhos, sem quinto.** Esta revisão consolida os 7 tamanhos que apareciam na prática na versão anterior (10/11/12/13/14/16/20px) nos 4 papéis acima. O papel **Label passa a ser 11px** (não mais 12px/`text-xs`) e absorve todo micro-texto que antes estava fragmentado entre `text-[10px]`, `text-[11px]` e `text-xs`: badge de origem, chip "Não avaliado", selo de defasagem nível-campo, contador da sub-aba, nota de sobreposição da Triagem, categoria/tier do card de Rascunho, badge de status do card de Rascunho, sufixo "de 86" da Nota ECF. O **banner de defasagem (seção 5a)** — que antes usava `text-[13px]`, um sexto/sétimo tamanho não declarado — sobe para **Body (14px)**: é a única frase de conteúdo lida por inteiro fora da tabela, e 14px preserva a legibilidade sem inflar a densidade da tabela abaixo dela (que continua em Label/11px).
+
+11px em vez de 12px (`text-xs`) para o papel Label foi escolhido porque a tabela de até 66.747 itens (decisões A3/A4) é o elemento que mais precisa de densidade nesta fase — usar `text-xs` (12px) nos 8 locais de micro-texto listados acima infla mais linhas do que o `text-[11px]` que já era usado em metade deles na versão anterior.
 
 **Pesos:** só 400 e 600 nesta fase. Nota: o painel "Saúde do anúncio" do wizard (que **fica intacto**, D-16) usa `font-bold` (700) para o número do score — essa fase **não herda** esse terceiro peso; o número da Nota ECF aqui usa `font-semibold` (600), simplificação deliberada para manter a disciplina de 2 pesos.
+
+**Fora desta escala — rótulos internos do Recharts:** o gráfico de evolução (seção "Modal de Detalhe do Anúncio") usa `fontSize: 10` nos eixos X/Y via prop inline do próprio Recharts (renderização SVG, não classe Tailwind, não texto de interface) — mesmo padrão já em produção em `MeuPainel.jsx` (fontSize 10–12 em eixos/tooltip de gráfico, linhas 733-745). Rótulo de eixo de gráfico é convenção de visualização de dados, não texto de UI, e segue a mesma lógica já aprovada na seção Color desta fase para a cor da linha "Nota ECF" (item 6 do accent): não conta contra os 4 tamanhos declarados acima, porque não é um elemento de interface — é uma codificação de dado dentro do próprio gráfico.
 
 ---
 
@@ -134,6 +142,7 @@ Exceptions: meio-passo (`0.5`=2px, `1.5`=6px, `2.5`=10px) usado em badges e bot�
 | Erro — falha ao carregar detalhe do anúncio | **"Não foi possível carregar a evolução deste anúncio agora."** + botão "Tentar de novo" |
 | Botão "Atualizar agora" — estado de espera | Idle: "Atualizar agora" / Clicado: "Enfileirando…" (spinner) / Sucesso: banner "Coleta enfileirada — pode levar alguns minutos. A tela mostra os dados mais novos na próxima visita." |
 | Destructive confirmation | "Excluir rascunho": **"Excluir este rascunho («{título}»)? Isso não remove o anúncio já publicado no Mercado Livre."** — copy **migrada verbatim** de `AnunciarML.jsx:1283`, não reescrever |
+| Controles ícone-só — `aria-label` obrigatório | Permalink (`ExternalLink`, coluna Ação da tabela): `aria-label="Abrir no Mercado Livre"`. Botão excluir (`Trash2`, card de Rascunho): `aria-label="Excluir rascunho"`. Nenhum dos dois tem texto visível ao lado do ícone — sem `aria-label`, é um botão mudo para leitor de tela |
 
 ---
 
@@ -166,6 +175,8 @@ Nenhum registry de terceiros foi declarado nesta fase — gate de vetting não s
 ```
 
 A Triagem (passo 5a) só existe em Publicados — não é um bloco "global" da página. Isso resolve a ordem "banner → triagem → placar/tabela" pedida no escopo: não há placar algum antes da tabela além da própria Triagem, que É a leitura acionável pedida por D-09.
+
+**A Triagem acionável é o foco visual primário da sub-aba Publicados.** Na leitura de cima para baixo do conteúdo (passo 4a em diante), ela é o primeiro bloco depois do banner opcional de defasagem, o único texto em peso Heading (16px/600) na página principal fora do H1 (Display) do cabeçalho, e o ponto onde o accent `ecf-yellow` sinaliza atenção via ícone (`AlertTriangle`, quando N>0). A barra utilitária e a tabela que vêm depois são deliberadamente mais neutras (Body/Label, sem accent) para não competir com ela — a ordem vertical e a hierarquia tipográfica convergem no mesmo ponto de propósito.
 
 ---
 
@@ -204,7 +215,7 @@ Nível 2, visualmente **subordinado** ao nível 1: estilo sublinhado (não pill)
       )}
     >
       {tab.label}
-      <span className="ml-1.5 text-[11px] tabular-nums text-white/30">({tab.total})</span>
+      <span className="ml-1 text-[11px] tabular-nums text-white/30">({tab.total})</span>
     </button>
   ))}
 </div>
@@ -220,7 +231,7 @@ Bloco full-width no topo do conteúdo de Publicados, `bg-ecf-card border border-
 
 **Heading:** "**{N}** anúncios precisam de você" (Heading, 16px/600) com ícone `AlertTriangle` em `text-ecf-yellow` quando N>0. Quando N=0: heading muda para "**Nenhum anúncio precisa de atenção agora**" com ícone `CheckCircle2` em `text-emerald-400` — **é um estado real, não a ausência do bloco** (D-09 pede o "N" mesmo quando é zero — celebrar, não esconder).
 
-**Regra de contagem que precisa fechar com a conta (mesma disciplina do D-10):** N = **anúncios distintos com ≥1 motivo**, nunca soma dos chips. Um anúncio pode ter 2+ motivos simultâneos (ex.: pausado E ficha incompleta) e é contado 1× em N mas aparece em 2 chips. Nota abaixo do heading, sempre visível quando há sobreposição: *"(um anúncio pode aparecer em mais de um motivo)"*, `text-[11px] text-white/30`.
+**Regra de contagem que precisa fechar com a conta (mesma disciplina do D-10):** N = **anúncios distintos com ≥1 motivo**, nunca soma dos chips. Um anúncio pode ter 2+ motivos simultâneos (ex.: pausado E ficha incompleta) e é contado 1× em N mas aparece em 2 chips. Nota abaixo do heading, sempre visível quando há sobreposição: *"(um anúncio pode aparecer em mais de um motivo)"*, `text-[11px] text-white/30` (Label).
 
 **Chips por motivo**, em linha, ordenados por gravidade (mesma ordem de D-12):
 
@@ -269,7 +280,7 @@ Componente base: `Table`/`TableHeader`/`TableRow`/`TableCell` de `resources/js/C
 | 5 | Visitas | valor + selo de defasagem inline (seção 5) OU chip "Não avaliado" (seção 11) | fixa, direita |
 | 6 | Nota ECF | mini barra de progresso (X/86) + número — abre Modal de Detalhe ao clicar (seção 7/A9) | fixa, 96px |
 | 7 | Motivo(s) | chips compactos (mesmas cores da Triagem), até 2 visíveis + "+N" se houver mais | fixa, wrap |
-| 8 | Ação | link permalink (`ExternalLink`, sempre) + botão "Abrir rascunho" (`Pencil`, só se origem=ECF **e** existir rascunho correspondente) | fixa, direita |
+| 8 | Ação | link permalink (`ExternalLink`, sempre, `aria-label="Abrir no Mercado Livre"` — ícone só, sem texto visível ao lado) + botão "Abrir rascunho" (`Pencil`, só se origem=ECF **e** existir rascunho correspondente) | fixa, direita |
 
 **Clique no título/thumbnail** (não na linha inteira — evita o bug de botão aninhado já documentado em `AnunciosHistorico.jsx` sobre `BlocoLote`) abre o Modal de Detalhe (seção 7). Título/thumbnail agrupados num único `<button type="button">`; permalink (`<a>`) e "Abrir rascunho" (`<button>`) ficam na coluna Ação, como irmãos, nunca aninhados dentro do botão de detalhe.
 
@@ -288,20 +299,20 @@ Sort por coluna (clicar em "Visitas" pra ordenar por visitas) é **fora de escop
 
 Dois níveis, nunca tela em branco:
 
-**(a) Nível de página** — banner âmbar entre o Cabeçalho e a Triagem, só quando a coleta está velha (>24h, por exemplo — threshold exato é decisão de backend) ou falhou:
+**(a) Nível de página** — banner âmbar entre o Cabeçalho e a Triagem, só quando a coleta está velha (>24h, por exemplo — threshold exato é decisão de backend) ou falhou. Texto em **Body (14px)** — é a única frase de conteúdo lida por inteiro fora da tabela (ver Typography):
 
 ```jsx
-<div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[13px] text-amber-300">
+<div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-300">
   <Clock size={14} className="shrink-0" />
   Última coleta há {n} dia(s){motivo && `, motivo: ${motivo}`} — os dados abaixo podem estar desatualizados.
   <button className="ml-auto shrink-0 ..."> {/* mesmo tratamento do botão Atualizar agora */} </button>
 </div>
 ```
 
-**(b) Nível de campo** — visitas e status de catálogo (camada cara, rotação D-23) têm frescor PRÓPRIO, diferente do resto da linha (que é sempre de hoje/ontem). Micro-badge inline, discreto, ao lado do valor:
+**(b) Nível de campo** — visitas e status de catálogo (camada cara, rotação D-23) têm frescor PRÓPRIO, diferente do resto da linha (que é sempre de hoje/ontem). Micro-badge inline, discreto, ao lado do valor, em **Label (11px)**:
 
 ```jsx
-<span title={`Coletado em ${dataCompleta}`} className="ml-1 inline-flex items-center gap-0.5 text-[10px] text-white/30">
+<span title={`Coletado em ${dataCompleta}`} className="ml-1 inline-flex items-center gap-1 text-[11px] text-white/30">
   <Clock size={9} /> há {n}d
 </span>
 ```
@@ -319,7 +330,7 @@ Tratamento outline-amarelo (**não** sólido — reservado para "Publicar lote",
   type="button"
   disabled={enfileirando}
   className={cn(
-    'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition',
+    'inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-sm font-medium transition',
     enfileirando
       ? 'cursor-wait border-white/[0.06] text-white/30'
       : 'border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12]',
@@ -339,9 +350,9 @@ Tratamento outline-amarelo (**não** sólido — reservado para "Publicar lote",
 
 ## 7. Selo de origem (D-04)
 
-3 valores, cada um um badge compacto (mesmo padrão visual de `source-badge.jsx`: pill uppercase 10px + `title` nativo para tooltip — **sem** reusar o componente em si, ver decisão A13):
+3 valores, cada um um badge compacto (mesmo padrão visual de `source-badge.jsx`: pill uppercase + `title` nativo para tooltip — **sem** reusar o componente em si, ver decisão A13). Classe base compartilhada por todos os variants: `inline-flex items-center gap-1 rounded-full border px-1 py-1 text-[11px] font-medium uppercase tracking-wide` (Label, 11px, xs=4px de padding) + a cor específica de cada variant abaixo:
 
-| Variant | Label | Classe | Tooltip |
+| Variant | Label | Cor | Tooltip |
 |---|---|---|---|
 | `ecf` | **ECF** | `bg-ecf-yellow/15 text-ecf-yellow border-ecf-yellow/40` | "Este anúncio nasceu no módulo Anunciar Mercado Livre" |
 | `time` | **Time** | `bg-blue-500/10 border-blue-500/30 text-blue-400` | "Publicado pelo time e registrado em Publicações" |
@@ -356,12 +367,12 @@ Cor `time` reusa exatamente `bg-blue-500/10 border-blue-500/30 text-blue-400` �
 **Nota ECF — sempre visível, formato fixo "X de 86", nunca renormalizada:**
 
 ```jsx
-<div className="flex items-center gap-1.5">
-  <div className="h-1.5 w-12 overflow-hidden rounded-full bg-white/[0.08]">
+<div className="flex items-center gap-1">
+  <div className="h-1 w-12 overflow-hidden rounded-full bg-white/[0.08]">
     <div className={cn('h-full rounded-full', corPorFaixa)} style={{ width: `${Math.min(100, Math.round(pontos/86*100))}%` }} />
   </div>
   <span className={cn('text-sm font-semibold tabular-nums', corTextoPorFaixa)}>
-    {pontos}<span className="text-[10px] font-normal text-white/30"> de 86</span>
+    {pontos}<span className="text-[11px] font-normal text-white/30"> de 86</span>
   </span>
 </div>
 ```
@@ -423,7 +434,7 @@ Nota de rodapé do checklist: *"Descrição (14 pts) fica fora da nota — exigi
 </ResponsiveContainer>
 ```
 
-**`connectNulls={false}` é obrigatório, não estético:** a rotação por fatia (D-23) deixa buracos reais na série de visitas/saúde. Interpolar esses buracos mentiria sobre dado que não existe — mesma disciplina de honestidade do selo de defasagem (D-08). Paleta: azul=Visitas (métrica nova, hue neutro), esmeralda=Vendas (mesma cor de "Realizado" em `MeuPainel.jsx:744`, reforça a associação já existente esmeralda=receita/vendas), amarelo=Nota ECF (mesma cor de "Publicações" em `MeuPainel.jsx:803`, reforça amarelo=métrica-ECF/pontuação).
+**`connectNulls={false}` é obrigatório, não estético:** a rotação por fatia (D-23) deixa buracos reais na série de visitas/saúde. Interpolar esses buracos mentiria sobre dado que não existe — mesma disciplina de honestidade do selo de defasagem (D-08). Paleta: azul=Visitas (métrica nova, hue neutro), esmeralda=Vendas (mesma cor de "Realizado" em `MeuPainel.jsx:744`, reforça a associação já existente esmeralda=receita/vendas), amarelo=Nota ECF (mesma cor de "Publicações" em `MeuPainel.jsx:803`, reforça amarelo=métrica-ECF/pontuação). Os rótulos de eixo (`fontSize: 10`) são internos ao Recharts — ver nota "Fora desta escala" na seção Typography.
 
 5. **Rodapé:** permalink ML + "Abrir rascunho no wizard" (só se origem=ECF) — mesmas duas ações da coluna Ação da tabela, sem ação nova.
 
@@ -443,8 +454,8 @@ Resolve a queixa literal do usuário: *"Do jeito que está não gostei"* sobre o
   'border-white/[0.06] bg-ecf-card/60 hover:border-ecf-yellow/40 hover:bg-ecf-card/80',
 )}>
   <div className="flex items-center gap-2 px-3 pt-3">
-    <input type="checkbox" className="accent-ecf-yellow h-3.5 w-3.5 shrink-0 cursor-pointer" checked={...} onChange={...} />
-    <span className={cn('ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px]', STATUS_BADGE[r.status])}>
+    <input type="checkbox" className="accent-ecf-yellow h-4 w-4 shrink-0 cursor-pointer" checked={...} onChange={...} />
+    <span className={cn('ml-auto shrink-0 rounded px-1 py-1 text-[11px]', STATUS_BADGE[r.status])}>
       {STATUS_LABEL[r.status]}
     </span>
   </div>
@@ -461,16 +472,16 @@ Resolve a queixa literal do usuário: *"Do jeito que está não gostei"* sobre o
     </div>
   </button>
 
-  <div className="flex items-center gap-1.5 border-t border-white/[0.06] p-2">
+  <div className="flex items-center gap-1 border-t border-white/[0.06] p-2">
     <span className="flex-1 text-[11px] text-white/40 group-hover:text-ecf-yellow transition">Clique para abrir →</span>
-    <button type="button" onClick={() => excluirRascunho(r)} className="shrink-0 ...">  <Trash2 size={11}/> </button>
+    <button type="button" onClick={() => excluirRascunho(r)} aria-label="Excluir rascunho" className="shrink-0 ...">  <Trash2 size={11}/> </button>
   </div>
 </div>
 ```
 
 **Decisão-chave:** o clique-alvo é o card inteiro (foto+título+categoria+tier), não mais um link de 10px — resolve a queixa diretamente. O checkbox de seleção e o botão Excluir ficam **fora** do `<button>` de abrir (irmãos, não aninhados — mesma disciplina HTML já documentada em `AnunciosHistorico.jsx`).
 
-**Barra de lote** (acima do grid), migrada do aside do wizard: "Selecionar todos" + contador + "**Publicar lote (N)**" sólido-amarelo (precedente BULK-01 inalterado) + painel de `errosLote` se houver. `STATUS_BADGE`/`STATUS_LABEL` migram junto (mesmas classes, `AnunciarML.jsx:15-25`) — **não redesenhar as cores de status**, só o container do card.
+**Barra de lote** (acima do grid), migrada do aside do wizard: "Selecionar todos" + contador + "**Publicar lote (N)**" sólido-amarelo (precedente BULK-01 inalterado) + painel de `errosLote` se houver. `STATUS_BADGE`/`STATUS_LABEL` migram junto (mesmas classes, `AnunciarML.jsx:15-25`) — **não redesenhar as cores de status**, só o container do card e o padding do badge (ver nota de spacing acima: `px-1 py-1` em vez do `px-1.5 py-0.5` original).
 
 ---
 
@@ -486,7 +497,7 @@ Estado de primeira classe — nunca inventar status, nunca célula em branco.
 
 ```jsx
 <span title={`Ainda não coletado pela rotação — cobertura completa em até ${nDias} dias`}
-      className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/20 px-2 py-0.5 text-[10px] text-white/40">
+      className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/20 px-2 py-1 text-[11px] text-white/40">
   <CircleDashed size={10} /> Não avaliado
 </span>
 ```
@@ -523,6 +534,7 @@ Usado em: célula "Visitas" quando nunca coletado, chip de motivo "Perdendo cat�
 - Polling/websocket para status de "Atualizar agora" em tempo real
 - Marcação local de "já tratado"/"ignorar" um item da Triagem (deferred no CONTEXT.md)
 - Indicador de saúde agregado no painel de cards de `/mlb/anuncios` (deferred no CONTEXT.md)
+- Reescrever o espaçamento em meio-passo já existente em `AnunciosHistorico.jsx`/`AnunciarML.jsx` (ver "Débito técnico herdado" na seção Spacing Scale) — débito do módulo, não desta fase
 
 ---
 
