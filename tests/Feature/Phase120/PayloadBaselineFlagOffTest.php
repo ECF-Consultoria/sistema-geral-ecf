@@ -365,20 +365,25 @@ class PayloadBaselineFlagOffTest extends TestCase
         $this->assertSame(2, $payload['margem_amostra']['n_elegivel']);
         $this->assertEqualsWithDelta(0.0, $payload['margem_amostra']['cobertura'], 0.0001);
 
-        // (faturamento 4,50 + nps 1,00) / 2 = 2,75 — margem não entra no
-        // denominador porque nenhuma loja tem o indicador.
-        // Método antigo dava 2,33: (1,0 + 5,0 + 1,0)/3, com o faturamento
-        // valendo 5 por causa da régua aplicada sobre a mediana das % (6,5%) e
-        // a margem valendo o placeholder Shopee 1,0.
-        $this->assertEqualsWithDelta(2.75, $payload['nota_final'], 0.001,
-            '(faturamento 4,50 + nps 1,00) / 2 = 2,75.');
+        // (faturamento 4,50 + margem ausente 0 + nps 1,00) / 3 = 1,8333…
+        //
+        // ATUALIZADO em 2026-08-10 (quick 260810-mt8): o divisor é FIXO 3 e o
+        // indicador que a carteira não tem soma zero — decisão do Maycon. Até
+        // então a nota promediava só os presentes e dava 2,75; antes disso, com
+        // o placeholder Shopee de margem, dava 2,33.
+        $this->assertEqualsWithDelta(1.8333, $payload['nota_final'], 0.001,
+            '(faturamento 4,50 + margem 0 + nps 1,00) / 3 = 1,8333…');
 
         // Sem arredondamento intermediário: a nota é o quociente exato, não o
-        // resultado de somar componentes já arredondados.
+        // resultado de somar componentes já arredondados. O `?? 0` espelha o
+        // serviço — `pontos_componentes.margem` continua NULL no payload
+        // (ausente ≠ zero), quem transforma em zero é só a conta da nota.
         $this->assertSame(
-            ($payload['pontos_componentes']['faturamento'] + $payload['pontos_componentes']['nps']) / 2,
+            ($payload['pontos_componentes']['faturamento']
+                + ($payload['pontos_componentes']['margem'] ?? 0)
+                + $payload['pontos_componentes']['nps']) / 3,
             $payload['nota_final'],
-            'nota_final tem que ser o quociente exato dos componentes presentes.'
+            'nota_final tem que ser o quociente exato sobre o divisor fixo 3.'
         );
     }
 
