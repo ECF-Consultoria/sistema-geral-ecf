@@ -257,11 +257,23 @@ class MlAcervoDetalheService
      * D-07b — série diária: grava `visitas` (mesmo valor de `visitas_30d`)
      * pela mesma regra "só quando muda" do plano 134-04 — reexecução no
      * mesmo dia sempre atualiza a linha do dia; se a última linha é de dia
-     * anterior, só cria linha nova quando o valor muda. `updateOrCreate`
-     * grava SÓ a chave `visitas` além da chave lógica
-     * (company_id, ml_item_id, data): passar `sold_quantity`/`nota_ecf`
-     * nulos aqui apagaria o que a camada barata já tivesse escrito na
+     * anterior, só cria linha nova quando o valor muda. Toca SÓ a coluna
+     * `visitas` (update nomeado ou create explícito): nunca `sold_quantity`/
+     * `nota_ecf`, que apagaria o que a camada barata já tivesse escrito na
      * linha do mesmo dia.
+     *
+     * Resolve a linha de hoje pelo getter com cast (`$ultima->data`, uma
+     * comparação em memória) em vez de um `where('data', '=', $hoje)`/
+     * `updateOrCreate()` com igualdade direta: o cast `date` do Eloquent
+     * grava a coluna com componente de hora (`fromDateTime()` usa o formato
+     * completo do grammar, `Y-m-d H:i:s`) mesmo a leitura truncando para
+     * `Y-m-d` — uma string crua sem hora NUNCA bate nesse `where`, e
+     * `updateOrCreate()` tentaria inserir de novo, colidindo com o unique
+     * `(company_id, ml_item_id, data)`. Achado durante a execução deste
+     * plano — o mesmo padrão em `MlAcervoService::gravarSerieDiaria()`
+     * (134-04) tem esse bug latente, mascarado em silêncio pelo fail-open
+     * por item; documentado em deferred-items.md, fora do escopo deste
+     * plano corrigir o arquivo alheio.
      */
     private function gravarVisitasSerieDiaria(Company $company, string $mlItemId, int $visitas30d, string $hoje): void
     {
@@ -269,18 +281,26 @@ class MlAcervoDetalheService
             ->where('ml_item_id', $mlItemId)
             ->orderByDesc('data')
             ->orderByDesc('id')
-            ->first(['data', 'visitas']);
+            ->first(['id', 'data', 'visitas']);
 
-        $jaExisteHoje = $ultima !== null && $ultima->data->toDateString() === $hoje;
+        $linhaDeHoje = ($ultima !== null && $ultima->data->toDateString() === $hoje) ? $ultima : null;
 
-        if (! $jaExisteHoje && $ultima !== null && $ultima->visitas === $visitas30d) {
+        if ($linhaDeHoje === null && $ultima !== null && $ultima->visitas === $visitas30d) {
             // Mesmo valor do último dado conhecido — nenhuma linha nova.
             return;
         }
 
-        MlAcervoMetricaDiaria::updateOrCreate(
-            ['company_id' => $company->id, 'ml_item_id' => $mlItemId, 'data' => $hoje],
-            ['visitas' => $visitas30d]
-        );
+        if ($linhaDeHoje !== null) {
+            $linhaDeHoje->update(['visitas' => $visitas30d]);
+
+            return;
+        }
+
+        MlAcervoMetricaDiaria::create([
+            'company_id' => $company->id,
+            'ml_item_id' => $mlItemId,
+            'data' => $hoje,
+            'visitas' => $visitas30d,
+        ]);
     }
 }
