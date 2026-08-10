@@ -1594,7 +1594,7 @@ Plans:
   4. O texto jurídico das cláusulas vive isolado da lógica de montagem de dados (view/config separado), permitindo trocar o texto sem mexer em código
   5. PDF gerado com nome de empresa real extremo (longo, com caractere especial) mantém acentuação pt-BR correta e não corta cláusula no meio de uma página — reusando literalmente o precedente de `RelatorioMensalPdfService`
 
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -1609,7 +1609,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 126-05-PLAN.md — Views `contratos/pdf.blade.php` e `contratos/clausulas.blade.php` (texto jurídico isolado), `gerar()`/`gerarESalvar()` em `storage/app` privado e teste de acentuação + nome extremo + quebra de página (PDF-01, PDF-02, PDF-03)
+- [x] 126-05-PLAN.md — Views `contratos/pdf.blade.php` e `contratos/clausulas.blade.php` (texto jurídico isolado), `gerar()`/`gerarESalvar()` em `storage/app` privado e teste de acentuação + nome extremo + quebra de página (PDF-01, PDF-02, PDF-03)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 

@@ -163,9 +163,9 @@ Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou
 
 ### Contrato em PDF
 
-- [ ] **PDF-01**: O contrato gerado traz os dados da empresa, do contato, os serviços contratados e os valores
-- [ ] **PDF-02**: O texto jurídico fica isolado do código, para ser trocado sem mexer na geração
-- [ ] **PDF-03**: O PDF sai com acentuação pt-BR correta e layout íntegro (reusar o precedente já resolvido em `RelatorioMensalPdfService`)
+- [x] **PDF-01**: O contrato gerado traz os dados da empresa, do contato, os serviços contratados e os valores
+- [x] **PDF-02**: O texto jurídico fica isolado do código, para ser trocado sem mexer na geração
+- [x] **PDF-03**: O PDF sai com acentuação pt-BR correta e layout íntegro (reusar o precedente já resolvido em `RelatorioMensalPdfService`)
 
 ### Rede de segurança (D4)
 
@@ -262,9 +262,9 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | CLICK-09 | Fase 131 | Pending |
 | CLICK-10 | Fase 131 | Pending |
 | CLICK-11 | Fase 129 | Pending |
-| PDF-01 | Fase 126 | Pending |
-| PDF-02 | Fase 126 | Pending |
-| PDF-03 | Fase 126 | Pending |
+| PDF-01 | Fase 126 | Done |
+| PDF-02 | Fase 126 | Done |
+| PDF-03 | Fase 126 | Done |
 | REDE-01 | Fase 124 | Done |
 | REDE-02 | Fase 130 | Pending |
 | REDE-03 | Fase 130 | Pending |
