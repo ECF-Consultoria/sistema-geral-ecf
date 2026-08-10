@@ -7,6 +7,119 @@ Escrito em 2026-08-03, ao fim da Fase 122.
 
 ---
 
+## 0.00. A nota divide SEMPRE por 3 desde 2026-08-10 — e a margem voltou ao mês corrente
+
+Duas mudanças no mesmo dia, pedidas pelo Maycon no PDF "Demandas e Fluxos –
+Sistema ECF" (seção Desempenho). Leia junto com o §0 abaixo, que continua
+válido no resto.
+
+**(a) Divisor fixo.** `computeNotaFinalPorIndicador()` promediava só os
+indicadores presentes — dividia por 2 quando faltava um. Agora o divisor é a
+constante `DIVISOR_NOTA_FINAL = 3` e o indicador ausente entra como **zero**.
+
+- O zero entra no nível do **indicador**, nunca por loja. O denominador
+  independente dentro de cada indicador (§0 abaixo) continua igual: loja sem
+  margem segue apenas fora da média de margem, contando no faturamento e no
+  NPS. Zerar por loja seria outra regra, muito mais severa — eram 75 das 286
+  lojas em 2026-06.
+- Carteira sem **nenhum** indicador continua `null`, jamais 0. A trava D-91-01
+  (§0.1) depende disso.
+- **Carteira só-Shopee passa a ter teto de (5+0+5)/3 = 3,33 e nunca alcança os
+  4,00 da primeira faixa de bônus.** A Shopee não fornece CMV, então a margem
+  dessa carteira é estruturalmente ausente. Isso foi perguntado ao Maycon com o
+  caso na mesa e ele escolheu a opção mais severa das três (a alternativa era o
+  ausente entrar com 1,0). O ponto aberto do §0.3 deixa de ser "nota de uma
+  dimensão só" e vira "carteira só-Shopee tem teto".
+- Efeito na mesma carteira só-Shopee do teste âncora, nos três métodos:
+  placeholder 1,0 (até 05/08) → **2,33**; média dos presentes (05/08→10/08) →
+  **3,00**; divisor fixo → **2,00**.
+- `pontos_componentes` continua expondo `null` no ausente. O payload nunca
+  fabrica o zero — senão "a carteira não tem o indicador" fica indistinguível
+  de "tirou zero". Quem soma como zero é a nota e a conta na tela.
+
+**(b) A margem voltou a existir no mês corrente.** O mês em curso resolve
+`comparison_mode='same_interval_previous_month'`, e o `diff_pp` só nascia em
+`previous_equal_length_window` (gate D-07/MPP-02 da Fase 117) — resultado: a
+coluna Margem do ranking, o card do profissional e a célula da tabela ficavam
+**vazios o mês inteiro**.
+
+O gate não era descuido: **o `prev` que a Adman devolve é a janela
+imediatamente anterior, não o mesmo intervalo do mês passado.** Medido ao vivo
+(LUCCMAX, cust 1039099160, 2026-08-10):
+
+| janela | value | prev (Adman) |
+|---|---|---|
+| 2026-08-01..10 | 27,23 | 22,51 |
+| 2026-07-01..10 | 21,64 | 19,87 |
+
+Aceitar o `prev` cru daria +4,72 p.p. no lugar dos **+5,59** corretos. A saída
+foi pedir à Adman a margem % da **janela baseline exata** do período
+(`fetchMargemPctBaseline()`) e fazer `diff_pp = atual − baseline`, com
+`prev_value` apontando para essa mesma janela (senão o "antes → depois" da
+tabela não fecha com o p.p. ao lado). `diff_source='adman_janela_baseline'`.
+
+O hotfix de 2026-07-24 (§1 do que vem depois — "variação de margem sempre do
+valor nativo, nunca cálculo local") **continua valendo**: os dois lados da
+subtração são valor nativo da Adman. Muda a janela apontada, não a fonte.
+Custo: +1 chamada ao endpoint detalhado por empresa, **só no mês corrente**,
+com cache próprio de 1 dia.
+
+**Mês fechado / competência de bônus: intocado por (b).** Mas (a) muda a nota
+de qualquer competência que for reconsolidada — **inclusive as já pagas**.
+Nenhuma consolidação foi rodada em 2026-08-10.
+
+Chaves de cache: `desempenho.compute` foi de **v17 → v18 → v19** no mesmo dia,
+e `adman:diff` de **v6 → v7**.
+
+## 0.01. O gate de hash da Fase 119 estava vermelho havia semanas
+
+`assertHashDesempenhoScoreServiceIntocado()`, repetido nos 5 arquivos de
+`tests/Feature/Phase119/`, comparava o SHA-256 do `DesempenhoScoreService.php`
+com uma constante congelada na Fase 119.1. As Fases 120/122 e a troca de método
+da nota (v17, 2026-08-05) alteraram o arquivo **sem rotacionar a constante** —
+resultado: **17 testes falhavam na PRIMEIRA asserção** e mascaravam tudo que
+vinha depois.
+
+Rotacionado em 2026-08-10. Com o gate verde, 3 testes revelaram que afirmavam
+contrato revogado em 2026-08-05 (loja Shopee entrando na margem com placeholder
+1,0, quando hoje ela fica fora do denominador). **Quem alterar o
+`DesempenhoScoreService.php` precisa rotacionar a constante nos 5 arquivos** —
+senão a suíte inteira volta a mentir.
+
+## 0.02. As 9 falhas de teste que NÃO são regressão sua
+
+Medidas em 2026-08-10 com as mudanças em `git stash`, falham idênticas com o
+código revertido:
+
+- `V18\CarteiraPeriodoDiffTest` (2), `V18\DesempenhoPeriodoOficialTest` (1),
+  `DesempenhoShopeeScoreTest` (3) — todas cobram a variação **relativa** de
+  margem vinda do `calculated_fallback` local, revogado pelo hotfix de
+  2026-07-24.
+- `V18\ConsolidarMesJanelaNpsTest` (2), `V18\JanelaNpsBonusTest` (1).
+
+Antes de investigar "regressão" nessas suítes, meça a baseline com as suas
+mudanças em stash. É barato e evita perseguir fantasma.
+
+## 0.03. Marketplace: `companies.marketplace` não diz de qual marketplace é a conta
+
+Parece o campo certo e não é. É o marketplace da conta **Adman**, usado para
+montar a URL da API (`/{marketplace}/accounts/...`), com default `'meli'`.
+Medido em 2026-08-10: **171 de 171** empresas com valor estavam em `meli`, e a
+pivot `company_marketplaces` (Fase 57) tinha **ZERO linhas**. Usá-lo diria
+"Mercado Livre" para toda loja Shopee.
+
+Quem responde "qual marketplace?" no Desempenho é a **fonte financeira**,
+derivada do serviço contratado em
+`CarteiraContextService::flagsFinanceirasPorSetor()`: setor `performance` →
+`adman` → Mercado Livre; setor `shopee` → Shopee; polos/publicação → sem fonte.
+Traduzido no front por `marketplaceLabel()` — e a tradução vale igual em mês
+corrente e em competência fechada porque `fonte_financeira` também é **coluna**
+do snapshot congelado.
+
+Empresa com os dois vínculos elegíveis resolve `adman` pela regra de desempate
+e aparece como Mercado Livre. É o marketplace que produziu os números daquela
+linha — não é omissão.
+
 ## 0. A nota mudou de MÉTODO em 2026-08-05 — leia antes de tudo
 
 A nota final deixou de aplicar a régua **uma vez sobre a % agregada da
