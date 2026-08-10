@@ -52,11 +52,11 @@ class ContratoAssinaturaSignatarioModelTest extends TestCase
 
         $payloadEsperado = [
             'sign_as'                    => 'contractor',
-            'key'                        => '3ec39713-9f0e-4667-bd17-923ff0e58c66',
+            'key'                        => '00000000-0000-4000-8000-000000000001',
             'email'                      => $signatario->email,
             'name'                       => $signatario->nome,
             'auths'                      => ['email'],
-            'address'                    => '187.56.206.108',
+            'address'                    => '203.0.113.10',
             'latitude'                   => null,
             'longitude'                  => null,
             'selfie_enabled'             => false,
@@ -70,7 +70,7 @@ class ContratoAssinaturaSignatarioModelTest extends TestCase
             'phone_number'               => null,
             'phone_number_hash'          => null,
             'communicate_by'             => 'email',
-            'url'                        => 'https://sandbox.clicksign.com/notarial/widget/signatures/3ec39713-9f0e-4667-bd17-923ff0e58c66/redirect',
+            'url'                        => 'https://sandbox.clicksign.com/notarial/widget/signatures/00000000-0000-4000-8000-000000000001/redirect',
         ];
 
         $fresh = $signatario->fresh();

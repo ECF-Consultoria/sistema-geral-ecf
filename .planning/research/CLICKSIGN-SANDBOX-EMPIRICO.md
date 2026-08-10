@@ -85,7 +85,7 @@ em `attributes.data.signer`:
   "key": "3ec39713-...",
   "email": "...", "name": "...",
   "auths": ["email"],
-  "address": "187.56.206.108",
+  "address": "203.0.113.10",
   "latitude": null, "longitude": null,
   "selfie_enabled": false,
   "handwritten_enabled": false,
@@ -208,10 +208,17 @@ de produção, isso precisa ser testado de verdade antes da Fase 133.**
 
 ## Dados do teste (sandbox, descartável)
 
-- Envelope: `dad2a057-9c61-46c3-9e0a-a31dbc3e8eba` — "TESTE gate #9 - ECF Admin", `closed`
-- Documento: `9a0907f9-0511-4cb4-8343-29aa586b5014`
-- Signatário: `3ec39713-9f0e-4667-bd17-923ff0e58c66`
-- Conta: `71db7df8-5355-47d1-b4c6-9f331320f0a4`
+Identificadores e IP **anonimizados** — ver aviso abaixo. Os valores reais estão no envelope de
+teste da conta sandbox, se alguém precisar reconferir.
+
+- Envelope: "TESTE gate #9 - ECF Admin", `closed`, criado 2026-08-07 e assinado 2026-08-10
+
+> ⚠️ **Anonimize antes de colar resposta de API aqui.** A primeira versão deste documento trazia
+> o IP público real de quem assinou e a chave real do signatário. Alguém copiou esses valores
+> daqui para uma factory e um teste (`ContratoAssinaturaSignatarioFactory`), e viraram PII
+> permanente no histórico do git — achado WR-07 do code review da Fase 125. O IP de exemplo usado
+> acima é da faixa de documentação RFC 5737 (`203.0.113.0/24`); UUIDs de exemplo usam
+> `00000000-0000-4000-8000-00000000000N`.
 
 Credenciais do sandbox estão no `.env` local (gitignored). O `.env.example` traz as chaves vazias
 com o aviso do `Bearer`.

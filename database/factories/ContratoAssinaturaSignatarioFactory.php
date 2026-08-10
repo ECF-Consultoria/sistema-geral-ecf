@@ -35,25 +35,32 @@ class ContratoAssinaturaSignatarioFactory extends Factory
     }
 
     /**
-     * State: signatário que assinou, com a evidência do Gate #9 na forma
-     * REAL confirmada contra o sandbox (CLICKSIGN-SANDBOX-EMPIRICO.md
-     * §3). É a fixture canônica do Gate #9 para as Fases 126 e 129 — todas
-     * as chaves do bloco `data.signer` real, sem poda.
+     * State: signatário que assinou, com a evidência do Gate #9 na FORMA
+     * real confirmada contra o sandbox (CLICKSIGN-SANDBOX-EMPIRICO.md §3):
+     * todas as chaves do bloco `data.signer`, sem poda.
+     *
+     * ⚠️ Os VALORES são sintéticos de propósito. A primeira versão desta
+     * factory trazia o IP público e a chave de signatário reais colhidos na
+     * rodada do Gate #9 — PII de verdade, que ficaria permanente no
+     * histórico do git. Trocados no code review da Fase 125 por um IP de
+     * documentação (RFC 5737, `203.0.113.0/24`) e um UUID obviamente falso.
+     * Ao atualizar esta fixture com dados novos da Clicksign, anonimize
+     * antes de colar.
      */
     public function assinou(): static
     {
         return $this->state(fn (array $attributes) => [
             'situacao'    => ContratoAssinaturaSignatario::SITUACAO_ASSINOU,
             'assinado_em' => now()->subMinutes(5),
-            'ip_address'  => '187.56.206.108',
+            'ip_address'  => '203.0.113.10',
             'auths'       => ['email'],
             'evidencia_signer' => [
                 'sign_as'                    => 'contractor',
-                'key'                        => '3ec39713-9f0e-4667-bd17-923ff0e58c66',
+                'key'                        => '00000000-0000-4000-8000-000000000001',
                 'email'                      => $attributes['email'] ?? fake()->safeEmail(),
                 'name'                       => $attributes['nome'] ?? fake()->name(),
                 'auths'                      => ['email'],
-                'address'                    => '187.56.206.108',
+                'address'                    => '203.0.113.10',
                 'latitude'                   => null,
                 'longitude'                  => null,
                 'selfie_enabled'             => false,
@@ -67,7 +74,7 @@ class ContratoAssinaturaSignatarioFactory extends Factory
                 'phone_number'               => null,
                 'phone_number_hash'          => null,
                 'communicate_by'             => 'email',
-                'url'                        => 'https://sandbox.clicksign.com/notarial/widget/signatures/3ec39713-9f0e-4667-bd17-923ff0e58c66/redirect',
+                'url'                        => 'https://sandbox.clicksign.com/notarial/widget/signatures/00000000-0000-4000-8000-000000000001/redirect',
             ],
         ]);
     }

@@ -96,12 +96,32 @@ class ContratoAssinatura extends Model
     ];
 
     /**
-     * Sincroniza a coluna auxiliar `company_id_em_andamento` com o
-     * `status` a cada save: espelha `company_id` enquanto o contrato está
-     * em andamento, e zera fora disso. Isso torna impossível a coluna
-     * auxiliar desincronizar do `status` — mas a garantia FINAL da D-01
-     * continua sendo o índice único do banco (`ca_company_andamento_uniq`);
-     * este hook é conveniência, não a trava.
+     * Sincroniza a coluna auxiliar `company_id_em_andamento` com o `status`
+     * a cada save: espelha `company_id` enquanto o contrato está em
+     * andamento, e zera fora disso.
+     *
+     * ⚠️ LEIA ANTES DE CONFIAR NA D-01 (corrigido no code review da Fase 125):
+     *
+     * `company_id_em_andamento` é coluna **derivada**, e este hook é o ÚNICO
+     * lugar que a preenche. O índice único `ca_company_andamento_uniq` não
+     * enxerga o `status` — ele só garante unicidade daquilo que este hook
+     * escreveu. Ou seja: **o hook não é conveniência sobre a trava do banco,
+     * ele é o que alimenta a trava.** Onde o hook não roda, a D-01 desliga
+     * em silêncio:
+     *
+     *   - `updateQuietly()` / `saveQuietly()` / `withoutEvents()`
+     *   - `->update()` de query builder (ex.: `ContratoAssinatura::where(...)->update([...])`)
+     *   - `insert()` / `upsert()` diretos
+     *   - seeders que escrevem via query builder
+     *
+     * A falha acontece nos dois sentidos: pode **liberar** um segundo contrato
+     * em andamento (coluna ficou NULL), ou **travar a empresa para sempre**
+     * (coluna presa a um contrato já encerrado).
+     *
+     * Consequência prática para quem vier depois: expirar contratos vencidos
+     * (Fase 127) é um bulk update por natureza — se for feito por query
+     * builder, precisa zerar `company_id_em_andamento` na MESMA query, senão
+     * a empresa fica impedida de gerar contrato novo.
      */
     protected static function booted(): void
     {
@@ -122,10 +142,17 @@ class ContratoAssinatura extends Model
      * ou `null` se não houver nenhum. Quem for criar contrato (Fase 127)
      * deve chamar isto ANTES, para o usuário ver "esta empresa já tem
      * contrato em andamento" em vez de um 500 de constraint do banco.
+     *
+     * Consulta por `company_id` + `status`, que é a FONTE da verdade, e não
+     * por `company_id_em_andamento`, que é o espelho derivado. Assim esta
+     * leitura continua correta mesmo se algum bulk update tiver
+     * dessincronizado a coluna auxiliar (ver o aviso em `booted()`).
      */
     public static function emAndamentoDaEmpresa(int $companyId): ?self
     {
-        return self::where('company_id_em_andamento', $companyId)->first();
+        return self::where('company_id', $companyId)
+            ->whereIn('status', self::STATUS_EM_ANDAMENTO)
+            ->first();
     }
 
     public function getActivitylogOptions(): LogOptions
