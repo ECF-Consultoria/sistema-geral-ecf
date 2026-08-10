@@ -139,3 +139,7 @@ Nenhuma superfície nova fora do `<threat_model>` do plano. Confirmado: nenhuma 
 ---
 *Phase: 125-estrutura-de-dados-administrativa-v22-0*
 *Completed: 2026-08-10*
+
+## Self-Check: PASSED
+
+Todos os 6 arquivos criados/modificados encontrados no disco; os 3 commits de task (`15fb2beb`, `62732b7f`) e o commit deste summary (`19c1ecba`) confirmados em `git log`.
