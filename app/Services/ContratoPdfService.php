@@ -3,17 +3,24 @@
 namespace App\Services;
 
 use App\Models\ContratoAssinatura;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Storage;
 
 /**
- * ContratoPdfService — Fase 126 (Plano 04, PDF-01/PDF-02).
+ * ContratoPdfService — Fase 126 (Planos 04 e 05, PDF-01/PDF-02/PDF-03).
  *
- * Parte pura da geração do PDF do contrato: transforma um `ContratoAssinatura`
- * no array de dados que a view vai renderizar. O plano 126-05 acrescenta
- * `gerar()`/`gerarESalvar()` (Dompdf) em cima deste arquivo — este service
- * NÃO chama `view()`, `Pdf::`, `loadView()` nem `render()` (PDF-02): a
- * montagem de dados é comprovadamente independente de qualquer view, e trocar
- * o texto jurídico do Blade não pode mudar um único dado daqui.
+ * `montarDados()` é a parte pura: transforma um `ContratoAssinatura` no array
+ * de dados que a view vai renderizar. Ela NÃO chama `view()`, `Pdf::`,
+ * `loadView()` nem `render()` (PDF-02) — prova por asserção estática em
+ * `ContratoPdfDadosTest` escopada ao corpo deste método: a montagem de dados
+ * é comprovadamente independente de qualquer view, e trocar o texto jurídico
+ * do Blade não pode mudar um único dado daqui.
+ *
+ * `gerar()`/`gerarESalvar()` (plano 126-05) SÃO a parte que renderiza: usam
+ * `Pdf::loadView()` e, no caso de `gerarESalvar()`, `Storage::disk('local')`.
+ * Isso é intencional e não contradiz a garantia acima — a garantia é sobre
+ * `montarDados()` especificamente, não sobre a classe inteira.
  *
  * D-04 (126-CONTEXT.md): serviços e valores saem EXCLUSIVAMENTE do
  * `servicos_snapshot` congelado em `contrato_assinaturas` — nunca da tabela
@@ -21,9 +28,6 @@ use Carbon\Carbon;
  * contrato, mesmo PDF, sempre. Motivo vivido: um `hs_mrr = 0` do HubSpot já
  * zerou 3 contratos de R$ 3.000 neste projeto quando um valor "ao vivo" foi
  * lido no lugar do valor congelado.
- *
- * Este service não acessa Storage, Log, Cache nem Http — é montagem pura,
- * como o precedente `RelatorioMensalPdfService`.
  */
 class ContratoPdfService
 {
@@ -191,5 +195,46 @@ class ContratoPdfService
     private function formatarData(string $data): string
     {
         return Carbon::parse($data)->format('d/m/Y');
+    }
+
+    /**
+     * Renderiza o PDF do contrato via Dompdf — mesmo molde do precedente
+     * `RelatorioMensalPdfService`: `Pdf::loadView(...)->setPaper('A4')->output()`.
+     * Devolve o binário; quem grava em disco é `gerarESalvar()`.
+     */
+    public function gerar(ContratoAssinatura $contrato, array $complementos = []): string
+    {
+        $dados = $this->montarDados($contrato, $complementos);
+
+        $pdf = Pdf::loadView('contratos.pdf', ['dados' => $dados])->setPaper('A4');
+
+        return $pdf->output();
+    }
+
+    /**
+     * Gera o PDF e grava em `storage/app/contratos/contrato-{id}.pdf`, disco
+     * `local` — privado, fora de `public/` (D-06, T-126-20). Anota o caminho
+     * relativo em `pdf_path` do contrato e devolve esse caminho.
+     *
+     * ⚠️ D-02: é ESTE arquivo que vai para a Clicksign e é ele que vale
+     * juridicamente — um contrato assinado NUNCA é re-renderizado a partir
+     * das views. Trocar o texto de `clausulas.blade.php` depois de um
+     * contrato já ter sido gerado não afeta nada do que já foi salvo.
+     *
+     * Fronteira desta fase: só `pdf_path` é atualizado aqui. Status do
+     * contrato, `servicos_snapshot` e qualquer orquestração de envio
+     * continuam sendo escopo da Fase 127 — não mexer neles neste método.
+     */
+    public function gerarESalvar(ContratoAssinatura $contrato, array $complementos = []): string
+    {
+        $binario = $this->gerar($contrato, $complementos);
+
+        $caminho = "contratos/contrato-{$contrato->id}.pdf";
+
+        Storage::disk('local')->put($caminho, $binario);
+
+        $contrato->update(['pdf_path' => $caminho]);
+
+        return $caminho;
     }
 }

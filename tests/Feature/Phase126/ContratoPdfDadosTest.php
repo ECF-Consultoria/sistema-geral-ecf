@@ -265,18 +265,22 @@ class ContratoPdfDadosTest extends TestCase
     {
         // PDF-02: a montagem de dados não pode chamar view()/Pdf::/loadView()/render() —
         // trocar o texto jurídico não pode mudar um dado sequer. Prova por asserção
-        // estática sobre o código-fonte, lido com comentários removidos (mesma
-        // técnica da guarda de migration da Fase 125), para que os próprios
-        // comentários que citam essas palavras não confundam a checagem.
+        // estática sobre o CÓDIGO DE montarDados() especificamente — não o arquivo
+        // inteiro: a partir do plano 126-05 o arquivo também tem gerar()/gerarESalvar(),
+        // que legitimamente usam Pdf::/loadView() para renderizar o PDF, e essas duas
+        // chamadas não fazem parte desta garantia. Lido com comentários removidos (mesma
+        // técnica da guarda de migration da Fase 125), para que os próprios comentários
+        // que citam essas palavras não confundam a checagem.
         $caminho = app_path('Services/ContratoPdfService.php');
         $this->assertFileExists($caminho, 'ContratoPdfService.php ainda não existe.');
 
         $codigo = $this->codigoSemComentarios($caminho);
+        $metodo = $this->extrairMetodo($codigo, 'montarDados');
 
-        $this->assertDoesNotMatchRegularExpression('/\bview\s*\(/', $codigo);
-        $this->assertDoesNotMatchRegularExpression('/Pdf::/', $codigo);
-        $this->assertDoesNotMatchRegularExpression('/\bloadView\s*\(/', $codigo);
-        $this->assertDoesNotMatchRegularExpression('/->render\s*\(/', $codigo);
+        $this->assertDoesNotMatchRegularExpression('/\bview\s*\(/', $metodo);
+        $this->assertDoesNotMatchRegularExpression('/Pdf::/', $metodo);
+        $this->assertDoesNotMatchRegularExpression('/\bloadView\s*\(/', $metodo);
+        $this->assertDoesNotMatchRegularExpression('/->render\s*\(/', $metodo);
     }
 
     private function codigoSemComentarios(string $caminho): string
@@ -287,5 +291,24 @@ class ContratoPdfDadosTest extends TestCase
         $semLinhas = preg_replace('/\/\/.*$/m', '', $semBlocos);
 
         return $semLinhas;
+    }
+
+    /**
+     * Extrai o corpo de um método público específico — de `function {$nome}(` até
+     * a próxima assinatura `public function` (ou fim do arquivo). Escopa asserções
+     * estáticas a UM método, em vez do arquivo inteiro, porque a partir do plano
+     * 126-05 o arquivo passou a ter outros métodos públicos com responsabilidades
+     * diferentes (gerar()/gerarESalvar(), que legitimamente usam Pdf::/loadView()).
+     */
+    private function extrairMetodo(string $codigo, string $nome): string
+    {
+        $inicio = strpos($codigo, "function {$nome}(");
+        $this->assertNotFalse($inicio, "Método {$nome}() não encontrado no arquivo.");
+
+        $proximoPublico = strpos($codigo, 'public function', $inicio + 1);
+
+        return $proximoPublico === false
+            ? substr($codigo, $inicio)
+            : substr($codigo, $inicio, $proximoPublico - $inicio);
     }
 }
