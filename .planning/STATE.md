@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: verifying
-stopped_at: Completed 125-03-PLAN.md — Fase 125 fechada (3/3 planos)
-last_updated: "2026-08-10T15:11:29.114Z"
+status: ready_to_plan
+stopped_at: Phase 125 complete (3/3) — ready to discuss Phase 126
+last_updated: 2026-08-10T16:27:07.341Z
 last_activity: 2026-08-10
 progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 8
-  completed_plans: 8
+  completed_plans: 205
   percent: 20
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 125 — estrutura-de-dados-administrativa-v22-0
+**Current focus:** Phase 126 — client clicksign + pdf do contrato (v22.0)
 
 ## Current Position
 
-Phase: 125 (estrutura-de-dados-administrativa-v22-0) — COMPLETA (3/3 planos)
-Plan: 3 of 3
-Status: Fase 125 fechada. Prova em MariaDB de produção (VPS) aprovada pelo usuário no gate da 125-03. Pronta para /gsd:verify-work e para a próxima fase (126).
+Phase: 126
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-08-10
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
@@ -96,7 +96,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 
 **Velocity:**
 
-- Total plans completed: 73
+- Total plans completed: 76
 - Average duration: ~15 min/plan
 - Total execution time: ~1.5 hours
 
@@ -125,6 +125,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | 122 | 6 | - | - |
 | 123 | 8 | - | - |
 | 124 | 5 | - | - |
+| 125 | 3 | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
