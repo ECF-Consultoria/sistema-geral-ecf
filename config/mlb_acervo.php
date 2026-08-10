@@ -53,12 +53,17 @@ return [
     // o ML não expõe mais um score comparável). Só vira true se a Task 2
     // provar que `GET /item/{id}/performance` responde para item clássico.
     //
-    // Sondagem pendente — banco local não tem nenhuma empresa com MlToken
-    // ativo (134-RESEARCH.md § Environment Availability) e o acesso à VPS
-    // de produção não foi executado nesta sessão. Mantido em `false`
-    // (fallback honesto do D-21) até a Task 2 ser repetida com acesso à
-    // produção. Comando para repetir:
-    // `php artisan mlb:acervo-sondar --fixtures` na VPS (`/var/www/ecf_admin`).
+    // SONDAGEM PENDENTE (tentada em 2026-08-10, não concluída). O banco
+    // local não tem nenhuma empresa com MlToken ativo (134-RESEARCH.md §
+    // Environment Availability), então a sondagem só produz resposta
+    // contra produção. A Task 2 tentou abrir sessão SSH na VPS (plink,
+    // reusando SSH_ARGS de deploy.sh) e foi BLOQUEADA pelo classificador
+    // de permissões do ambiente de execução — não por indisponibilidade
+    // de rede/credencial. Mantido em `false` (fallback honesto do D-21,
+    // Variante B) até um humano rodar a sondagem manualmente. Comando
+    // exato para repetir (direto na VPS, ou via SSH com permissão
+    // concedida): `php artisan mlb:acervo-sondar --fixtures` em
+    // `/var/www/ecf_admin`. Ver 134-01-SUMMARY.md para o relato completo.
     'saude_ml_disponivel' => (bool) env('MLB_ACERVO_SAUDE_ML', false),
 
 ];
