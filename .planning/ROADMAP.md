@@ -1616,7 +1616,7 @@ Plans:
   4. O texto jurídico das cláusulas vive isolado da lógica de montagem de dados (view/config separado), permitindo trocar o texto sem mexer em código
   5. PDF gerado com nome de empresa real extremo (longo, com caractere especial) mantém acentuação pt-BR correta e não corta cláusula no meio de uma página — reusando literalmente o precedente de `RelatorioMensalPdfService`
 
-**Plans:** 5/6 plans executed
+**Plans:** 11 planos (5 executados nas Waves 1-2; 126-05 superado e 126-06 descartado; 6 novos nas Waves 5-9 para o caminho de modelo)
 
 Plans:
 **Wave 1**
@@ -1636,6 +1636,27 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] ~~126-06-PLAN.md~~ — **DESCARTADO pela reversão de 10/08/2026.** Dos 3 gates: a inspeção visual do PDF perdeu o sentido; as 2 confirmações jurídicas foram respondidas (`companies.name` mistura razão social e nome fantasia → entrada da Fase 131; placeholder `A DEFINIR` mantido); o gate #5 ficou parcial (10 MB aceitos) e a migration no MariaDB segue pendente de autorização. Registro completo em `126-06-CHECKPOINT.md`
+
+**Wave 5** *(replanejamento de 10/08/2026 — o caminho de MODELO da Clicksign, sobre os planos 01-04 preservados)*
+
+- [ ] 126-07-PLAN.md — Métodos de modelo no `ClicksignClient`: CRUD do recurso `templates` (listar/criar/excluir, `content_base64` como Data URI de `.docx`), `anexarDocumentoPorModelo()` com `filename` + `template:{key,data}` na forma medida na §9.6 do empírico, `montarEnvelopePorModelo()` com o mesmo rollback (D-12), e o 403 de conta sem acesso a modelos deixando de ser diagnosticado como e-mail da API não configurado (CLICK-01)
+- [ ] 126-08-PLAN.md — **Checkpoint de decisão do usuário:** como um contrato com N serviços vira documento (4 opções, incluindo a tabela em loop `{{#servicos}}` que a pesquisa encontrou) e quem aparece nomeado no rodapé do modelo; fecha as tensões 2.2 e 2.3 como D-19/D-20 e produz a lista FINAL de variáveis do `.docx` (PDF-01, PDF-02)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 126-09-PLAN.md — `ContratoVariaveisModeloService`: a ponte do array aninhado de `montarDados()` para o hash plano de `template.data`, com mapa explícito (nada de achatamento automático), regras de nome vigiadas por regex e `nomes()` consultável sem contrato (PDF-01)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 126-10-PLAN.md — Comando `clicksign:sondar-modelo`: dry-run por padrão, guarda de ambiente, contagem declarada de requisições contra a janela medida de 20/min, e a tabela de confronto entre as variáveis que o código emite e os `{{nomes}}` do `.docx` real (CLICK-01)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 126-11-PLAN.md — **Gate de medição com `.docx` real** (autonomous: false): o usuário entrega o arquivo, a sondagem roda contra o sandbox e fecha os 7 itens em aberto — inclusive a **dívida da D-16** (excluir o modelo derruba o documento já gerado?) — e o usuário confirma visualmente o documento que a Clicksign gera (CLICK-01, PDF-01, PDF-03)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 126-12-PLAN.md — Remoção do caminho superado do plano 126-05: `contratos/pdf.blade.php`, `contratos/clausulas.blade.php`, `gerar()`/`gerarESalvar()` e `ContratoPdfServiceTest.php`. `montarDados()`, as colunas `pdf_path`/`pdf_assinado_path` e o dompdf permanecem; `ContratoPdfDadosTest` tem que passar **sem ser editado** (PDF-02)
 
 ### Phase 127: Service administrativo de contrato — orquestração (v22.0)
 
