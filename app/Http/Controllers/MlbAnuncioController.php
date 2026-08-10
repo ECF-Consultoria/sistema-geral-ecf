@@ -313,9 +313,17 @@ class MlbAnuncioController extends Controller
 
         // D-03: só ativos por padrão. Valor fora da lista fechada cai no default —
         // nunca interpolar querystring em SQL.
-        $statusFiltro = (string) $request->query('status', 'ativos');
-        if (! in_array($statusFiltro, ['ativos', 'pausados', 'encerrados', 'todos'], true)) {
-            $statusFiltro = 'ativos';
+        // Default 'acionaveis' = active + paused (decisão do usuário em
+        // 2026-08-10, emenda ao D-03 registrada no 134-CONTEXT.md). O D-03
+        // original dizia "só ativos por padrão", mas a justificativa dele era
+        // custo ("a primeira tela não paga por isso") — e o volume morto é
+        // encerrado/inativo, não pausado. Com só 'active' no default, o chip
+        // "Pausado" do D-09 ficava permanentemente em 0 e o topo da ordenação
+        // do D-12 (pausado primeiro) nunca tinha pausado: dois requisitos
+        // travados anulados por um default.
+        $statusFiltro = (string) $request->query('status', 'acionaveis');
+        if (! in_array($statusFiltro, ['acionaveis', 'ativos', 'pausados', 'encerrados', 'todos'], true)) {
+            $statusFiltro = 'acionaveis';
         }
 
         // Motivo é validado contra a whitelist fechada de MlAcervoItem::MOTIVO_*
@@ -474,10 +482,14 @@ class MlbAnuncioController extends Controller
      */
     private function escopoAcervo(Company $company, string $busca, string $statusFiltro)
     {
-        $statusColuna = match ($statusFiltro) {
-            'ativos'     => 'active',
-            'pausados'   => 'paused',
-            'encerrados' => 'closed',
+        // 'acionaveis' (default) cobre DOIS status — é o universo sobre o qual
+        // a triagem do D-09 conta e a ordenação do D-12 opera. Os demais
+        // filtros recortam um status só; 'todos' não filtra.
+        $statusColunas = match ($statusFiltro) {
+            'acionaveis' => ['active', 'paused'],
+            'ativos'     => ['active'],
+            'pausados'   => ['paused'],
+            'encerrados' => ['closed'],
             default      => null, // 'todos' não filtra
         };
 
@@ -488,7 +500,7 @@ class MlbAnuncioController extends Controller
                       ->orWhere('ml_item_id', 'like', "%{$busca}%");
                 });
             })
-            ->when($statusColuna !== null, fn ($q) => $q->where('status', $statusColuna));
+            ->when($statusColunas !== null, fn ($q) => $q->whereIn('status', $statusColunas));
     }
 
     /**

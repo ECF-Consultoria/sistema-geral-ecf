@@ -205,6 +205,53 @@ class MeusAnunciosTest extends TestCase
     }
 
     /** @test */
+    /**
+     * @test
+     *
+     * O filtro default é `acionaveis` (active + paused), não `ativos`.
+     *
+     * O D-03 dizia "só ativos por padrão", mas a justificativa dele era custo
+     * — e o volume morto do acervo é encerrado/inativo, não pausado. Com o
+     * default em `active` puro, o chip "Pausado" do D-09 ficava em 0 para
+     * sempre e o topo da ordenação do D-12 ("pausado primeiro") nunca tinha
+     * pausado: dois requisitos travados anulados em silêncio por um default.
+     * Decisão do usuário em 2026-08-10, emenda registrada no 134-CONTEXT.md.
+     *
+     * Encerrado continua fora do default — esse sim é volume morto, e ninguém
+     * "precisa agir" sobre anúncio que já acabou.
+     */
+    public function default_da_tela_traz_pausados_e_deixa_encerrados_de_fora(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, ['ml_item_id' => 'MLB1000000001', 'status' => 'active']);
+        $this->criarItem($company, [
+            'ml_item_id' => 'MLB1000000002',
+            'status'     => 'paused',
+            'motivos'    => [MlAcervoItem::MOTIVO_PAUSADO],
+            'severidade' => MlAcervoItem::SEVERIDADE_CRITICA,
+        ]);
+        $this->criarItem($company, ['ml_item_id' => 'MLB1000000003', 'status' => 'closed']);
+
+        // Sem nenhum parâmetro de status — o default é o que está sob teste.
+        $props = $this->propsDaTela($admin, $company);
+
+        $idsNaTela = collect($props['anuncios']['data'])->pluck('ml_item_id')->all();
+
+        $this->assertContains('MLB1000000001', $idsNaTela, 'ativo tem que aparecer no default');
+        $this->assertContains('MLB1000000002', $idsNaTela, 'pausado tem que aparecer no default — é o sinal mais óbvio de "precisa de você"');
+        $this->assertNotContains('MLB1000000003', $idsNaTela, 'encerrado fica atrás de filtro — é o volume morto que o D-03 quis evitar');
+
+        // E o chip precisa contar de verdade, não nascer zerado.
+        $chipsPorChave = collect($props['triagem']['chips'])->keyBy('chave');
+        $this->assertSame(
+            1,
+            $chipsPorChave[MlAcervoItem::MOTIVO_PAUSADO]['count'],
+            'o chip "Pausado" conta sob o filtro default; se vier 0, o D-09 voltou a ter um chip morto'
+        );
+    }
+
+    /** @test */
     public function triagem_agrupa_por_motivo_e_o_clique_filtra(): void
     {
         [$company, , $admin] = $this->criarFixture();
@@ -231,9 +278,10 @@ class MeusAnunciosTest extends TestCase
             'ml_item_id' => 'MLB1000000004', // saudável, nenhum motivo
         ]);
 
-        // status=todos: a triagem obedece o MESMO filtro de status da listagem
-        // (decisão do plano) — sem isso, o item "pausado" desapareceria da
-        // conta sob o filtro padrão "ativos" (D-03).
+        // A triagem obedece o MESMO filtro de status da listagem, e o default
+        // ('acionaveis' = active + paused) já cobre o item pausado — é o que
+        // faz o chip "Pausado" do D-09 e o topo da ordenação do D-12
+        // existirem de verdade. Ver o teste dedicado logo abaixo.
         $props = $this->propsDaTela($admin, $company, ['status' => 'todos']);
 
         $this->assertSame(3, $props['triagem']['total'], 'total = anúncios distintos com motivo, não soma dos chips');

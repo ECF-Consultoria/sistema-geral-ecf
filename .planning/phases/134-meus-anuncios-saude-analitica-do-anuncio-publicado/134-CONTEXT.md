@@ -21,7 +21,13 @@ Hoje o módulo **não lê nada do ML depois de publicar** — os únicos endpoin
 
 - **D-01:** A tela lista **todos os itens da conta ML do cliente** (varredura via endpoint de busca de itens do vendedor), não apenas o que este módulo publicou. Justificativa do usuário: é a única leitura que responde de verdade "meus anúncios estão saudáveis?" — o módulo é admin-only e publicou pouco, então limitar ao acervo local faria a tela nascer quase vazia e mentir por omissão.
 - **D-02:** Escopo **por empresa**, com a mesma âncora `{company}` das rotas existentes (`wizard`, `massa`, `historico`), entrando pelo painel de cards de `/mlb/anuncios`. Consistente com as 3 abas atuais e com o token ML, que é por empresa. **Descartado explicitamente:** indicador de saúde agregado por empresa no painel de cards (exigiria coleta de todas as empresas para alimentar a home) — ver Deferred.
-- **D-03:** A tela carrega **só anúncios ativos por padrão**; pausados e encerrados ficam atrás de filtro. A coleta pode varrer a conta inteira, mas a primeira tela não paga por isso.
+- **D-03:** A tela não carrega o acervo inteiro por padrão — a coleta pode varrer a conta toda, mas a primeira tela não paga por isso.
+
+  > **Emenda em 2026-08-10 (decisão do usuário, durante a execução):** o default passou de **"só ativos"** para **"acionáveis" = ativos + pausados**. Encerrados e inativos ficam atrás de filtro.
+  >
+  > Motivo: com o default em `active` puro, o chip **"Pausado"** do D-09 ficava permanentemente em 0 e o topo da ordenação do D-12 ("pausado/sem estoque no topo") nunca continha um pausado — dois requisitos travados anulados em silêncio por um default. A justificativa original do D-03 era **custo**, e o volume morto do acervo é encerrado/inativo, não pausado. A letra mudou; o espírito, não. Anúncio pausado é o sinal mais óbvio de "esse aqui parou de vender", que é exatamente o que a fase existe para mostrar.
+  >
+  > Travado pelo teste `default_da_tela_traz_pausados_e_deixa_encerrados_de_fora`.
 - **D-04:** Cada anúncio traz **selo de origem com 3 valores**: (a) nasceu neste módulo — casar por `MlAnuncioRascunho.ml_item_id` / `ml_item_id_classico` / `ml_item_id_premium`; (b) publicado pelo time e registrado em `Publicacao.mlb_code`; (c) nenhum dos dois = legado do cliente. O join com `Publicacao` é **decisão travada**, não opcional: além da origem, ele traz `vendas_qty` e o flag `desconsiderado`.
 
 ### Frescor — como a métrica do ML chega
