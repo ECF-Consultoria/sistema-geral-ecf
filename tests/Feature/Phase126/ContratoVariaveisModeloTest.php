@@ -1,0 +1,247 @@
+<?php
+
+namespace Tests\Feature\Phase126;
+
+use App\Models\Company;
+use App\Models\ContratoAssinatura;
+use App\Models\ContratoServico;
+use App\Models\Servico;
+use App\Services\Clicksign\ContratoVariaveisModeloService;
+use App\Services\ContratoPdfService;
+use Carbon\Carbon;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
+use Tests\TestCase;
+
+/**
+ * Contrato da ponte `montarDados()` (aninhado) → `template.data` (plano) —
+ * Fase 126, plano 09 (PDF-01). Especificação executável de
+ * `ContratoVariaveisModeloService`, escrita ANTES da implementação (RED).
+ *
+ * Lista de variáveis: `126-VARIAVEIS-DO-MODELO.md` §4 ("Lista final"),
+ * fechada pelas decisões D-19 (serviços concatenados numa variável só, um
+ * envelope por empresa) e D-20 (rodapé literal, fora do escopo de código
+ * deste plano — não vira variável).
+ */
+class ContratoVariaveisModeloTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
+    /**
+     * Mesmo molde de `ContratoPdfDadosTest::contratoComSnapshot()` — contato
+     * preenchido por padrão, para isolar cada teste do que ele realmente
+     * quer provar.
+     */
+    private function contratoComSnapshot(array $atributosCompany = []): ContratoAssinatura
+    {
+        $atributosPadrao = [
+            'nome_contato'  => 'Contato Padrão do Teste',
+            'email_cliente' => 'contato@empresa-teste.com.br',
+            'telefone'      => '(11) 4000-0000',
+        ];
+
+        return ContratoAssinatura::factory()
+            ->comSnapshot()
+            ->for(Company::factory()->state(array_merge($atributosPadrao, $atributosCompany)), 'company')
+            ->create();
+    }
+
+    private function service(): ContratoVariaveisModeloService
+    {
+        return new ContratoVariaveisModeloService(new ContratoPdfService());
+    }
+
+    #[Test]
+    public function montar_devolve_um_array_com_exatamente_as_chaves_variaveis_e_campos_pendentes(): void
+    {
+        $contrato = $this->contratoComSnapshot();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame(['variaveis', 'campos_pendentes'], array_keys($resultado));
+    }
+
+    #[Test]
+    public function toda_chave_de_variaveis_casa_com_a_regra_de_nome_da_clicksign(): void
+    {
+        $contrato = $this->contratoComSnapshot();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertNotEmpty($resultado['variaveis']);
+
+        foreach (array_keys($resultado['variaveis']) as $chave) {
+            $this->assertMatchesRegularExpression(
+                '/^[a-z][a-z0-9_]*$/',
+                $chave,
+                "Chave '{$chave}' não obedece à regra de nome da Clicksign (minúscula, sem acento/espaço/@/#/!)."
+            );
+        }
+    }
+
+    #[Test]
+    public function conjunto_de_chaves_de_variaveis_e_exatamente_igual_a_nomes_mesmo_sem_complementos(): void
+    {
+        // Sem nenhum $complementos preenchido — o caso que mais tenta esconder
+        // variável, já que metade dos campos cai no placeholder.
+        $contrato = $this->contratoComSnapshot();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $nomesEsperados = ContratoVariaveisModeloService::nomes();
+        sort($nomesEsperados);
+
+        $chavesObtidas = array_keys($resultado['variaveis']);
+        sort($chavesObtidas);
+
+        $this->assertSame($nomesEsperados, $chavesObtidas);
+    }
+
+    #[Test]
+    public function campo_ausente_vale_exatamente_a_definir_via_a_constante_do_service_de_pdf(): void
+    {
+        $contrato = $this->contratoComSnapshot();
+
+        $resultado = $this->service()->montar($contrato);
+
+        // Referencia a constante — nunca a string 'A DEFINIR' redigitada.
+        $this->assertSame(ContratoPdfService::PLACEHOLDER, $resultado['variaveis']['endereco']);
+        $this->assertSame(ContratoPdfService::PLACEHOLDER, $resultado['variaveis']['dia_vencimento']);
+        $this->assertSame(ContratoPdfService::PLACEHOLDER, $resultado['variaveis']['data_primeira_parcela']);
+
+        foreach ($resultado['variaveis'] as $chave => $valor) {
+            $this->assertNotNull($valor, "Variável '{$chave}' veio null — documento jurídico não pode ter campo em branco silencioso.");
+            $this->assertNotSame('', $valor, "Variável '{$chave}' veio string vazia — documento jurídico não pode ter campo em branco silencioso.");
+        }
+    }
+
+    #[Test]
+    public function razao_social_cnpj_valor_mensal_e_vigencia_batem_com_montardados_para_o_mesmo_contrato(): void
+    {
+        $contrato = $this->contratoComSnapshot([
+            'name' => 'Empresa Exemplo Ltda',
+            'cnpj' => '12.345.678/0001-90',
+        ]);
+
+        $pdfService = new ContratoPdfService();
+        $dados      = $pdfService->montarDados($contrato);
+
+        $resultado = (new ContratoVariaveisModeloService($pdfService))->montar($contrato);
+
+        // A ponte não reformata nem recalcula — repassa exatamente o que
+        // montarDados() já produziu.
+        $this->assertSame($dados['empresa']['razao_social'], $resultado['variaveis']['razao_social']);
+        $this->assertSame($dados['empresa']['cnpj'], $resultado['variaveis']['cnpj']);
+        $this->assertSame($dados['totais']['valor_mensal_formatado'], $resultado['variaveis']['valor_mensal']);
+        $this->assertSame($dados['vigencia']['inicio'], $resultado['variaveis']['vigencia_inicio']);
+        $this->assertSame($dados['vigencia']['fim'], $resultado['variaveis']['vigencia_fim']);
+    }
+
+    #[Test]
+    public function alterar_contratos_servico_ao_vivo_depois_do_snapshot_nao_muda_nenhuma_variavel(): void
+    {
+        // D-04 herdado: mesmo caso vivido do hs_mrr=0 do HubSpot que já zerou
+        // 3 contratos de R$ 3.000 lendo dado "ao vivo" — aqui grava um valor
+        // divergente em contratos_servico e prova que a ponte ignora essa
+        // tabela por completo (ela nem consulta ContratoServico).
+        $contrato = $this->contratoComSnapshot();
+
+        $servico = Servico::create([
+            'nome'          => 'Serviço Ao Vivo (não deve aparecer na variável)',
+            'valor_padrao'  => 99999.99,
+            'tipo_cobranca' => Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => Servico::SETOR_OUTROS,
+        ]);
+        ContratoServico::create([
+            'company_id'       => $contrato->company_id,
+            'servico_id'       => $servico->id,
+            'valor_contratado' => 99999.99,
+            'data_contratacao' => '2020-01-01',
+            'data_vencimento'  => '2020-12-31',
+            'ativo'            => true,
+        ]);
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertStringNotContainsString('99.999,99', $resultado['variaveis']['valor_mensal']);
+        $this->assertStringNotContainsString('Serviço Ao Vivo', $resultado['variaveis']['servico_contratado']);
+    }
+
+    #[Test]
+    public function data_assinatura_sai_por_extenso_em_pt_br_derivada_de_gerado_em(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 8, 10, 14, 32));
+
+        $contrato = $this->contratoComSnapshot();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame('10 de agosto de 2026', $resultado['variaveis']['data_assinatura']);
+    }
+
+    #[Test]
+    public function campos_pendentes_repassa_fielmente_a_lista_de_montardados(): void
+    {
+        $contrato = $this->contratoComSnapshot();
+
+        $pdfService = new ContratoPdfService();
+        $dados      = $pdfService->montarDados($contrato);
+
+        $resultado = (new ContratoVariaveisModeloService($pdfService))->montar($contrato);
+
+        $this->assertSame($dados['campos_pendentes'], $resultado['campos_pendentes']);
+        $this->assertNotEmpty($resultado['campos_pendentes'], 'Este contrato de teste não preenche complementos — a pendência tem que aparecer.');
+    }
+
+    #[Test]
+    public function nomes_e_chamavel_sem_contrato_e_devolve_lista_sem_repeticao(): void
+    {
+        $nomes = ContratoVariaveisModeloService::nomes();
+
+        $this->assertNotEmpty($nomes);
+        $this->assertSame(array_values(array_unique($nomes)), array_values($nomes));
+
+        foreach ($nomes as $nome) {
+            $this->assertMatchesRegularExpression('/^[a-z][a-z0-9_]*$/', $nome);
+        }
+    }
+
+    #[Test]
+    public function com_dois_servicos_no_snapshot_servico_contratado_concatena_os_dois_nomes(): void
+    {
+        // D-19 (opção B): um envelope por empresa, N serviços viram UMA
+        // variável concatenada — não um serviço por índice, não tabela em loop.
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de ADS para Mercado Livre',
+                    'valor_contratado' => 1500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+                [
+                    'servico'          => 'Gestão de ADS para Shopee',
+                    'valor_contratado' => 800.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame(
+            'Gestão de ADS para Mercado Livre e Gestão de ADS para Shopee',
+            $resultado['variaveis']['servico_contratado']
+        );
+    }
+}
