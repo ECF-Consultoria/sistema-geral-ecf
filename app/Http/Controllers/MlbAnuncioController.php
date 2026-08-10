@@ -372,6 +372,20 @@ class MlbAnuncioController extends Controller
             'nota_base'           => AnuncioSaudeService::BASE, // literal — "X de 86" (D-22), nunca renormalizada
             'motivos'             => $item->motivos ?? [],
             'severidade'          => $item->severidade,
+            // D-21 (emenda 2026-08-10, veredicto DISPONÍVEL — Variante A do
+            // UI-SPEC): duas medidas de saúde do próprio ML, em escalas
+            // PRÓPRIAS que a tela nunca converte uma na outra nem preenche
+            // uma a partir da outra. `health_ml` é a camada barata (0.00–1.00,
+            // vem de graça no multiget); `performance_score` é a camada cara
+            // rotativa (0–100, D-23). `saudeMlNaoSeAplica()` distingue "não se
+            // aplica" (catálogo/encerrado) de "ainda não avaliado" (rotação
+            // não chegou lá) — os dois são estados diferentes e a tela precisa
+            // dizer coisas diferentes.
+            'health_ml'              => $item->health_ml !== null ? round((float) $item->health_ml, 2) : null,
+            'performance_score'      => $item->performance_score,
+            'performance_level'      => $item->performance_level,
+            'performance_acoes'      => $item->performance_acoes ?? [], // title já redigido em pt-BR pelo ML — nunca reescrito
+            'saude_ml_nao_se_aplica' => $item->saudeMlNaoSeAplica(),
         ]);
 
         // ─── Triagem (D-09) — UMA query agregada, nunca um laço de ->count()

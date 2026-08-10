@@ -315,6 +315,52 @@ class MeusAnunciosTest extends TestCase
     }
 
     /** @test */
+    public function expoe_health_ml_e_performance_score_sem_conversao(): void
+    {
+        // D-21 (emenda 2026-08-10): a tela precisa das DUAS medidas de saúde
+        // do ML, cada uma em sua própria escala, mais o booleano que distingue
+        // "não se aplica" (catálogo/encerrado) de "ainda não avaliado" (rotação
+        // não chegou lá) — plano 134-08 consome isto na coluna Saúde.
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, [
+            'ml_item_id'         => 'MLB1000000001',
+            'status'             => 'active',
+            'catalog_listing'    => false,
+            'health_ml'          => 0.72,
+            'performance_score'  => 91,
+            'performance_level'  => 'good',
+            'performance_acoes'  => [['key' => 'UP_PICTURES', 'title' => 'Melhore as fotos para ter mais visitas']],
+        ]);
+        $this->criarItem($company, [
+            'ml_item_id'      => 'MLB1000000002',
+            'status'          => 'active',
+            'catalog_listing' => true, // item de catálogo — ML não pontua (D-21)
+        ]);
+        $this->criarItem($company, [
+            'ml_item_id'      => 'MLB1000000003',
+            'status'          => 'active',
+            'catalog_listing' => false, // fora de catálogo, mas rotação ainda não chegou
+        ]);
+
+        $props = $this->propsDaTela($admin, $company, ['status' => 'todos']);
+        $itens = collect($props['anuncios']['data'])->keyBy('ml_item_id');
+
+        $this->assertSame(0.72, $itens['MLB1000000001']['health_ml'], 'health_ml chega intacto, sem virar percentual de outra escala');
+        $this->assertSame(91, $itens['MLB1000000001']['performance_score']);
+        $this->assertSame('good', $itens['MLB1000000001']['performance_level']);
+        $this->assertSame('Melhore as fotos para ter mais visitas', $itens['MLB1000000001']['performance_acoes'][0]['title'], 'title do ML preservado, nunca reescrito');
+        $this->assertFalse($itens['MLB1000000001']['saude_ml_nao_se_aplica']);
+
+        $this->assertTrue($itens['MLB1000000002']['saude_ml_nao_se_aplica'], 'catálogo: "não se aplica", não "não avaliado"');
+        $this->assertNull($itens['MLB1000000002']['health_ml']);
+        $this->assertNull($itens['MLB1000000002']['performance_score']);
+
+        $this->assertFalse($itens['MLB1000000003']['saude_ml_nao_se_aplica'], 'fora de catálogo: rotação pode não ter chegado ainda, mas o conceito se aplica');
+        $this->assertNull($itens['MLB1000000003']['performance_score'], '"não avaliado" — rotação da camada cara ainda não cobriu este item');
+    }
+
+    /** @test */
     public function atualizar_agora_enfileira_e_rejeita_empresa_sem_token(): void
     {
         Queue::fake();
