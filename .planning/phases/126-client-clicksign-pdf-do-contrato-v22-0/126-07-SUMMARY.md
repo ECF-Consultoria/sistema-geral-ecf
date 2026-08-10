@@ -129,3 +129,7 @@ Nenhum. Todos os métodos novos são funcionais de ponta a ponta contra `Http::f
 ---
 *Phase: 126-client-clicksign-pdf-do-contrato-v22-0*
 *Completed: 2026-08-10*
+
+## Self-Check: PASSED
+
+Todos os arquivos citados e os 4 hashes de commit (`d42204a6`, `287ca0cf`, `39f95b6a`, `a7484bd9`) foram confirmados no disco e no `git log`.
