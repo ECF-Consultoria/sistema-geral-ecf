@@ -1586,6 +1586,28 @@ Plans:
 **Goal:** O sistema sabe conversar com a Clicksign sem nunca vazar credencial, e sabe gerar um PDF de contrato correto em pt-BR — os dois blocos prontos para serem combinados na fase seguinte.
 **Requirements**: CLICK-01, PDF-01, PDF-02, PDF-03
 **Depends on:** Nada (fundação, paralela às Fases 124/125)
+
+> 🔁 **REVERSÃO EM 2026-08-10, com a fase em execução (decisão do usuário).** No checkpoint humano
+> do plano 126-06 o usuário abriu o PDF gerado, apontou que ele não se parece com o contrato real da
+> ECF, e decidiu **usar o modelo cadastrado na Clicksign** em vez de renderizar aqui — *"se ficarmos
+> gerando o contrato por aqui perdemos todo o benefício da plataforma"*. Isso reverte as decisões
+> travadas D-01 e D-02 (ver bloco de revisão no topo de `126-CONTEXT.md`, decisões D-16/D-17/D-18).
+>
+> **Efeito nos Success Criteria:** o nº 3 continua valendo em conteúdo (os dados corretos precisam
+> chegar ao documento), mas quem renderiza passa a ser a Clicksign. Os nº 4 e nº 5 **caem** — o texto
+> jurídico sai do git e vai para o modelo `.docx`, e não há mais layout nosso para quebrar.
+>
+> **Efeito nos planos:** 126-01 a 126-04 seguem válidos e executados. O **126-05 está SUPERADO** —
+> as views e o `gerar()`/`gerarESalvar()` viram código morto e saem num plano dedicado. O **126-06
+> foi descartado**: dois dos seus três gates perderam o sentido, e o que ele mediu de fato está em
+> `126-06-CHECKPOINT.md` (achou e corrigiu 2 bugs reais do client).
+>
+> **Bônus do gate humano:** a medição contra o sandbox real derrubou os dois pontos `NÃO MEDIDO` do
+> client — `communicate_by` não é aceito na entrada (quebrava 100% dos envelopes no primeiro
+> signatário) e o cancelamento é `DELETE`, não `PATCH status=canceled`. Ambos corrigidos em
+> `d5256f3a`. Lição registrada em `CLICKSIGN-SANDBOX-EMPIRICO.md` §9.1: **forma de resposta da API
+> não é contrato de entrada** — a fixture foi modelada a partir da resposta e o `Http::fake()`
+> confirmava o payload errado.
 **Success Criteria** (o que deve ser VERDADE):
 
   1. `ClicksignClient` faz as chamadas HTTP (envelope, documento, signatário, requisito, notificação, consulta, cancelamento) contra o sandbox e nenhuma linha de log jamais contém o token — comprovado por teste que inspeciona o conteúdo logado em cenário de erro
@@ -1609,11 +1631,11 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [x] 126-05-PLAN.md — Views `contratos/pdf.blade.php` e `contratos/clausulas.blade.php` (texto jurídico isolado), `gerar()`/`gerarESalvar()` em `storage/app` privado e teste de acentuação + nome extremo + quebra de página (PDF-01, PDF-02, PDF-03)
+- [x] ~~126-05-PLAN.md~~ — **SUPERADO pela reversão de 10/08/2026.** Foi executado (views `contratos/pdf.blade.php` e `contratos/clausulas.blade.php`, `gerar()`/`gerarESalvar()`, 13 testes), mas a renderização passa a ser da Clicksign. O código sai num plano dedicado, depois que o caminho de modelo estiver funcionando
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 126-06-PLAN.md — Gates humanos: inspeção visual do PDF, confirmação de razão social e do placeholder, gate #5 (tamanho de upload) no sandbox e migration no MariaDB real (CLICK-01, PDF-03)
+- [x] ~~126-06-PLAN.md~~ — **DESCARTADO pela reversão de 10/08/2026.** Dos 3 gates: a inspeção visual do PDF perdeu o sentido; as 2 confirmações jurídicas foram respondidas (`companies.name` mistura razão social e nome fantasia → entrada da Fase 131; placeholder `A DEFINIR` mantido); o gate #5 ficou parcial (10 MB aceitos) e a migration no MariaDB segue pendente de autorização. Registro completo em `126-06-CHECKPOINT.md`
 
 ### Phase 127: Service administrativo de contrato — orquestração (v22.0)
 
