@@ -70,5 +70,29 @@ voltar a cobrir a linha inteira.
 
 ## Status de deploy
 
-**NÃO deployado** — aguardando autorização. Sai com migration
-(`2026_08_10_100000_add_link_whatsapp_to_mlb_implementacoes`).
+**DEPLOYADO 260810** (`159f6f98..63461dde`, push FF + `deploy.sh` exit 0, ~4 min).
+
+Saiu **isolado**: a VPS estava 1 commit atrás de `origin/main`, mas esse commit
+(`159f6f98`) toca só `.planning/` — o único código que mudou em produção foi o desta task.
+Conferido `HEAD..origin/main` **e** o HEAD da VPS antes do push, como manda o playbook.
+Árvore da VPS sem nenhum arquivo *rastreado* sujo (só `.bak`/`.env.bak` não rastreados, que
+o `reset --hard` não toca e o script não limpa) — sem repetir o incidente de 260731.
+
+Verificado em produção por reconsulta, não por stdout do script:
+
+- HEAD da VPS = `63461dde`;
+- migration aplicada (147.87ms) e `Schema::hasColumn('mlb_implementacoes','link_whatsapp')`
+  → **existe** no banco de prod;
+- bundle **buildado na VPS**: o manifest resolve `Pages/Polos/Painel.jsx` →
+  `assets/Painel-BCphPUpl.js` (resolvido pelo manifest de propósito — havia **dois**
+  `Painel-*.js`, e assertar o errado daria falso positivo). Nele: `Link do Whats` presente,
+  `link_whatsapp` 7×, e **zero** ocorrências de `hrefWhats`/`encurtaLink`/`EditLink`.
+  Essa última é a asserção que importa: pela lição de 260807, identificador livre que
+  **sobrevive literal** à minificação é sinal de que o esbuild não o resolveu (escopo
+  vazado). Minificados = resolvidos;
+- workers `_00`/`_01` RUNNING com uptime de 28s — prova de que a última linha do script
+  rodou, já que o `supervisorctl restart` é o fim dele;
+- smoke: `/mlb/polos-painel` → 302 (sem sessão), `/login` → 200.
+
+O `ERROR The [public/storage] link already exists` no log é idempotente e esperado
+(`storage:link || true`).
