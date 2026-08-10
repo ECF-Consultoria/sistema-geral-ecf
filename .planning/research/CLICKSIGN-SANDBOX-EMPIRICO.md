@@ -272,9 +272,38 @@ GET /templates => 200 {"data":[],"meta":{"record_count":0},"links":{...}}
 O endpoint **existe** e é paginado (`page[number]`/`page[size]`); a conta sandbox é que não tem
 modelo cadastrado. `GET /models` e `GET /document_templates` dão 404 — o nome do recurso é
 `templates`. Medição feita para responder à decisão do usuário de 2026-08-10 de reverter a D-02 e
-usar o modelo da plataforma em vez de renderizar o PDF aqui. **O que ainda falta medir:** como se
-cria um documento a partir de um modelo (provável `POST /envelopes/{id}/documents` com
-`template_id` + valores dos campos dinâmicos) e como os campos dinâmicos são nomeados.
+usar o modelo da plataforma em vez de renderizar o PDF aqui.
+
+**Como o modelo é criado — `POST /templates` exige `name` + `content_base64`:**
+
+```
+POST /templates {"data":{"type":"templates","attributes":{}}}
+=> 400 name deve ser informado(a) / content_base64 deve ser informado(a)
+
+POST /templates  (com name + content_base64 de um .docx inválido de propósito)
+=> 422 "Ops! Houve um erro ao processar o documento. Verifique se o arquivo está no
+        formato .docx, se as chaves duplas foram inseridas corretamente e evite o uso
+        de caracteres especiais nas variáveis (@, #, !)."
+```
+
+A mensagem de erro entrega o contrato inteiro do recurso: **o modelo é um arquivo `.docx` com
+variáveis em chaves duplas** (`{{razao_social}}`), e nomes de variável não aceitam `@`, `#`, `!`.
+
+**O modelo NÃO entra pelo endpoint de documento do envelope:**
+
+```
+POST /envelopes/{id}/documents  {"...":"template_id": "<uuid>"}
+=> 400 filename deve ser informado(a) / content_base64 deve ser informado(a)
+```
+
+Ou seja, `POST /envelopes/{id}/documents` só aceita binário enviado; `template_id` é ignorado —
+tanto em `attributes` quanto em `relationships`.
+
+⚠️ **O que ainda falta medir:** qual endpoint instancia um modelo em documento, e com que nome ele
+recebe os valores das variáveis. `POST /templates/{id}/documents` e `POST /templates/{id}/envelopes`
+devolveram **404 em HTML** (página de erro, não JSON da API) — o que *sugere* rota inexistente, mas
+o UUID usado também não existia, então o teste é inconclusivo. **Só dá para fechar com um modelo
+real cadastrado na conta.** É a primeira coisa a medir quando o `.docx` do contrato da ECF existir.
 
 ### 9.5. Forma da resposta — o `data` já vem desembrulhado pelo client
 
