@@ -209,6 +209,29 @@ return [
         'webhook_secret'   => env('CLICKSIGN_WEBHOOK_SECRET'),
         'api_user_email'   => env('CLICKSIGN_API_USER_EMAIL'),
         'max_upload_bytes' => env('CLICKSIGN_MAX_UPLOAD_BYTES', 20971520),
+
+        // Fase 126 Plan 126-02 (D-08) — os 3 signatários FIXOS da ECF que
+        // entram em todo contrato (dois sócios como "contratada" + Comercial
+        // como "testemunha"), lidos de `env()`. Nome e e-mail reais NUNCA
+        // entram aqui hardcoded nem no `.env.example` — só no `.env` local
+        // (gitignored) ou nas variáveis de ambiente do servidor.
+        'signatarios_ecf' => [
+            [
+                'nome'  => env('CLICKSIGN_SIG1_NOME', ''),
+                'email' => env('CLICKSIGN_SIG1_EMAIL', ''),
+                'papel' => 'contratada',
+            ],
+            [
+                'nome'  => env('CLICKSIGN_SIG2_NOME', ''),
+                'email' => env('CLICKSIGN_SIG2_EMAIL', ''),
+                'papel' => 'contratada',
+            ],
+            [
+                'nome'  => env('CLICKSIGN_SIG3_NOME', ''),
+                'email' => env('CLICKSIGN_SIG3_EMAIL', ''),
+                'papel' => 'testemunha',
+            ],
+        ],
     ],
 
 ];
