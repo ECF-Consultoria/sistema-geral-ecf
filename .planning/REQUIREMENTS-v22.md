@@ -42,6 +42,8 @@ Decisão derivada da pesquisa (FEATURES.md). Não basta guardar `clicksign_downl
 
 Motivo: evidência jurídica não pode depender de URL de terceiro. Se a Clicksign mudar política de retenção ou a conta for encerrada, o contrato assinado some.
 
+**Reforçado empiricamente em 2026-08-10 — o risco é MUITO maior do que esta redação sugeria.** Os links `files.original` / `files.signed` / `files.ziped` são URLs S3 pré-assinadas com **`X-Amz-Expires=300`**: valem **5 minutos**. Não é um risco de longo prazo ("se a conta for encerrada"), é um link morto na próxima vez que alguém abrir a tela. Baixar e persistir o PDF deixa de ser preferência e passa a ser a única forma de o documento existir. Ver `.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` §7.
+
 ### D7 — Liberação operacional só a partir de estado reconsultado
 Decisão derivada da pesquisa. O webhook nunca libera a empresa lendo apenas o payload do próprio evento; sempre reconsulta o estado agregado do envelope na Clicksign antes de liberar.
 
@@ -206,20 +208,25 @@ São algoritmos diferentes que produzem hashes diferentes. Implementar o errado 
 
 ## Gate empírico de sandbox (antes de codificar as fases correspondentes)
 
-Consolidado da pesquisa. Cada item trava a fase indicada:
+Consolidado da pesquisa. Cada item trava a fase indicada.
 
-| # | A validar | Trava |
-|---|---|---|
-| 1 | Algoritmo do `Content-Hmac` (A1) — **bloqueante** | Webhook |
-| 2 | Formato do header `Authorization` (com ou sem `Bearer`) | Client |
-| 3 | URL base de produção | Cutover |
-| 4 | `content_base64` exige prefixo data URI ou string pura | Client |
-| 5 | Limite de tamanho de arquivo no upload | Client |
-| 6 | Expiração de prazo emite evento distinguível | Schema + Webhook |
-| 7 | Recusa de signatário emite evento distinguível | Schema + Webhook |
-| 8 | Endpoint de correção de e-mail de signatário na v3 | CLICK-09 |
-| 9 | Formato do certificado de autenticação do signatário | DADOS-02 |
-| 10 | Granularidade da consulta de envelope (suficiente para reconciliação) | REDE-04 |
+> **Rodada empírica de 2026-08-10** — envelope real criado, assinado e consultado no sandbox.
+> Resultados completos em **`.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md`**, que tem
+> **precedência sobre a pesquisa** onde houver divergência (dois pontos da doc oficial estavam
+> errados). Gates 2, 3, 4, 9 e 10 fechados.
+
+| # | A validar | Trava | Situação |
+|---|---|---|---|
+| 1 | Algoritmo do `Content-Hmac` (A1) — **bloqueante** | Webhook | ⏳ aberto — doc diz `SHA256(body + secret)`, não testado contra webhook real |
+| 2 | Formato do header `Authorization` (com ou sem `Bearer`) | Client | ✅ **token PURO**; com `Bearer` → 401. Não usar `Http::withToken()` |
+| 3 | URL base de produção | Cutover | ✅ `https://app.clicksign.com/api/v3` |
+| 4 | `content_base64` exige prefixo data URI ou string pura | Client | ✅ **exige Data URI completo**; base64 puro → 400 (a doc mostra o contrário) |
+| 5 | Limite de tamanho de arquivo no upload | Client | ⏳ aberto — testado só com PDF de 1,5 KB |
+| 6 | Expiração de prazo emite evento distinguível | Schema + Webhook | ⏳ aberto — não bloqueia a Fase 125 (a D5 já trava o estado por decisão) |
+| 7 | Recusa de signatário emite evento distinguível | Schema + Webhook | ⏳ aberto — idem |
+| 8 | Endpoint de correção de e-mail de signatário na v3 | CLICK-09 | ⏳ aberto |
+| 9 | Formato do certificado de autenticação do signatário | DADOS-02 | ✅ **`documents/{id}/events` → evento `sign` → `data.signer`** (`auths[]`, `address` = IP, timestamp no `created`). O recurso `/signers/{id}` **não** carrega evidência nenhuma |
+| 10 | Granularidade da consulta de envelope (suficiente para reconciliação) | REDE-04 | ✅ suficiente — `status` + `meta.record_count` + eventos paginados; rate limit **20** no sandbox |
 | 11 | Política de retry e garantia de ordem dos webhooks | CLICK-04/05 |
 
 ## Traceability

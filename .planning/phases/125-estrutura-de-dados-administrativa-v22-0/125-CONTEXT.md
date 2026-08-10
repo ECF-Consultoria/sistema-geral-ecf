@@ -1,7 +1,7 @@
 # Phase 125: Estrutura de dados administrativa (v22.0) - Context
 
-**Gathered:** 2026-08-07
-**Status:** ⚠️ BLOQUEADA — ver `<blockers>`. Decisões prontas; planejamento espera o sandbox Clicksign.
+**Gathered:** 2026-08-07 · **Desbloqueada:** 2026-08-10
+**Status:** ✅ Pronta para planejamento. O gate #9 foi resolvido empiricamente contra o sandbox.
 
 <domain>
 ## Phase Boundary
@@ -26,26 +26,63 @@ O processo de assinatura de cada empresa vira **dado persistido e consultável**
 </domain>
 
 <blockers>
-## Bloqueio ativo — planejar só depois de resolvido
+## Bloqueio RESOLVIDO em 2026-08-10
 
-**Gate empírico #9 — formato do certificado de autenticação do signatário** (trava DADOS-02 e o
-Success Criteria 4 desta fase no ROADMAP).
+**Gate empírico #9 — formato do certificado de autenticação do signatário** (travava DADOS-02 e o
+Success Criteria 4 desta fase).
 
-**Decisão do usuário (2026-08-07):** montar o sandbox da Clicksign **antes** de planejar a fase.
-Foram apresentadas três saídas — coluna JSON flexível agora, montar o sandbox antes, ou empurrar
-o critério 4 para a Fase 126 — e o usuário escolheu a segunda.
+O usuário escolheu, em 2026-08-07, montar o sandbox antes de planejar — em vez de modelar a
+coluna como JSON genérico. A conta foi criada, um envelope real foi criado, ativado e
+**efetivamente assinado**, e a resposta da API foi consultada. **Decisão certa:** o formato real
+contrariou o que se supunha, e três coisas abaixo mudaram por causa disso.
 
-**O que precisa existir antes de `/gsd:plan-phase 125`:**
-1. Conta sandbox da Clicksign criada
-2. Token de API do sandbox no `.env` (hoje **não existe nenhuma chave Clicksign** no projeto —
-   verificado em `.env` e `.env.example`)
-3. Confirmação, contra a API real, de qual endpoint retorna a evidência de autenticação do
-   signatário e em que formato
+**Onde a evidência vive** (e onde ela **não** vive):
 
-Só então o campo de evidência do signatário pode ser modelado com o tipo certo em vez de um
-JSON genérico. Todas as outras decisões abaixo **independem** do sandbox e já estão fechadas.
+- ❌ `GET /envelopes/{id}/signers/{signerId}` — **não carrega evidência nenhuma.** Comparado antes
+  e depois da assinatura, o único campo alterado foi `modified`. O recurso do signatário não
+  informa nem se aquela pessoa assinou.
+- ❌ `GET /envelopes/{id}/requirements` — idem, só `modified`.
+- ✅ `GET /envelopes/{id}/documents/{docId}/events` → evento `name: "sign"` →
+  `attributes.data.signer`: `auths[]` (métodos de autenticação), `address` (IP), `sign_as`
+  (papel), flags de biometria/selfie/liveness, `federal_data_validation`, `phone_number_hash`,
+  e o **timestamp da assinatura no `created` do evento**.
+
+Detalhes completos, com payloads literais: **`.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md`**.
 
 </blockers>
+
+<empirical_findings>
+## O que a rodada empírica mudou nesta fase
+
+**1. A D-09 deixou de ser conveniência e virou necessidade.** A decisão de dar lista própria e
+curta ao signatário (`pendente` / `assinou` / `recusou`) foi tomada por clareza de tela. Agora ela
+é a **única fonte consultável**: não existe forma de perguntar à Clicksign "fulano assinou?" —
+só varrer eventos e deduzir. Se não persistirmos, o dado não existe.
+
+**2. A D-10 (congelar valores em JSON) ganhou reforço independente.** Os links de arquivo da
+Clicksign são S3 pré-assinados com **`X-Amz-Expires=300`** — 5 minutos. Nada que venha da
+Clicksign por URL pode ser tratado como armazenamento. Mesmo princípio, mesma conclusão.
+
+**3. A D-03 (deixar `expira_em` para a Fase 127) ficou mais defensável.** A API preenche
+`deadline_at` sozinha com **+30 dias**. A coluna local é espelho, não fonte — e espelho sem
+consumidor não precisa nascer agora.
+
+**4. Ponto de atenção para quem planejar:** o campo de evidência do signatário deve persistir o
+bloco `data.signer` inteiro como JSON, e **promover a colunas próprias** o que a tela e a
+auditoria consultam de fato: `auths[]`, `address` (IP) e o timestamp. Isso mantém a evidência
+íntegra e ainda deixa o dado consultável por SQL.
+
+**5. Vocabulário:** nossa D-08 (`contratante`, `contratada`, `testemunha`) é **interno**. A API usa
+`role: "sign" | "party" | "contractor"` (que reaparece como `sign_as` no evento). O mapa entre os
+dois é tarefa da Fase 126, não desta — mas o schema não deve gravar o vocabulário da Clicksign.
+
+**6. Fora do escopo desta fase, mas confirmado e valioso:** os 7 eventos observados (`upload`,
+`update_block_after_refusal`, `add_signer`, `signature_started`, `sign`, `auto_close`,
+`document_closed`) dão forma concreta ao `contrato_assinatura_eventos` da DADOS-03 (Fase 129). E
+`signature_started` é separado de `sign` — dá para distinguir "abriu e não concluiu" de "nem
+abriu", exatamente o que o alerta da REDE-02 precisa.
+
+</empirical_findings>
 
 <decisions>
 ## Implementation Decisions
@@ -168,8 +205,13 @@ Referência viva: `.planning/learnings/` e o índice de memória do projeto.
   pesquisa, vale a pesquisa.**
 
 ### Pesquisa da milestone
+- **`.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` — LEITURA OBRIGATÓRIA.** Achados medidos
+  contra a API real em 2026-08-10. **Tem precedência sobre a pesquisa e sobre a documentação
+  oficial da Clicksign** onde houver divergência — dois pontos da doc oficial estavam errados
+  (`content_base64` e o formato do `Authorization`).
 - `.planning/research/FEATURES.md` §5 — certificado/evidência de autenticação do signatário: o
-  que é table stakes e por que o formato exato **não foi confirmado** (é a origem do gate #9)
+  que é table stakes e por que o formato exato **não foi confirmado** na pesquisa (é a origem do
+  gate #9, agora fechado pelo arquivo empírico acima)
 - `.planning/research/FEATURES.md` §6 — cancelamento de envelope parcialmente assinado; origem da
   D-02 (reemissão cria registro novo)
 - `.planning/research/PITFALLS.md` — armadilhas de sequenciamento da milestone
