@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Fase 134 — contexto capturado
-last_updated: "2026-08-10T18:14:13.314Z"
-last_activity: 2026-08-10 -- Phase 134 planning complete
+stopped_at: Concluido 134-01-PLAN.md (D-21 pendente - sondagem bloqueada)
+last_updated: "2026-08-10T19:10:07.936Z"
+last_activity: 2026-08-10
 progress:
   total_phases: 11
   completed_phases: 0
   total_plans: 15
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Milestone complete
+**Current focus:** Phase 134 — meus-anuncios-saude-analitica-do-anuncio-publicado
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
+Phase: 134 (meus-anuncios-saude-analitica-do-anuncio-publicado) — EXECUTING
+Plan: 2 of 10
 Status: Ready to execute
-Last activity: 2026-08-10 -- Phase 134 planning complete
+Last activity: 2026-08-10
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
@@ -275,6 +275,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 123 P06 | 1h53min | 2 tasks | 3 files |
 | Phase 123 P07 | 10min | 2 tasks | 4 files |
 | Phase 123 P08 | 15min | 2 tasks | 5 files |
+| Phase 134 P01 | 14min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -747,6 +748,7 @@ None.
 
 - **Rate limit 429 da Adman**: problema crônico, não relacionado à Phase 15. Endpoint `/sugadores/{id}/mlbs` retorna 502 quando MCP da Adman bate 429. Logs mostram 429 sequencial em vários `SyncAdmanCompanyJob` em produção. Mensagem formal enviada ao grupo da Adman em 2026-05-27 pedindo aumento de limite.
 - Fase 94: verificacao manual pos-deploy pendente — confirmar topologia de proxy do VPS (open_ip_address = IP publico real do cliente, nao 127.0.0.1/proxy). Se nao bater, configurar trustProxies em bootstrap/app.php antes de confiar na Regra 1 do NpsSuspicionService (Fases 95/96).
+- D-21 (Fase 134) pendente: sondagem GET /item/{id}/performance nao executada contra producao — acesso SSH bloqueado pelo classificador do ambiente. Rodar 'php artisan mlb:acervo-sondar --fixtures' na VPS manualmente antes de avancar planos 134-08/134-10.
 
 ### Quick Tasks Completed
 
@@ -849,8 +851,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-10T14:51:11.774Z
-Stopped at: Fase 134 — contexto capturado
+Last session: 2026-08-10T19:09:50.873Z
+Stopped at: Concluido 134-01-PLAN.md (D-21 pendente - sondagem bloqueada)
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 

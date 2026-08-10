@@ -1716,12 +1716,12 @@ Plans:
   5. Coleta falha ou está velha → a tela mostra o último snapshot com selo de defasagem, nunca uma tela em branco
   6. O bloco "Rascunhos recentes" saiu do aside do wizard e vive na sub-aba Rascunhos, junto com o "Publicar lote"; a "Saúde do anúncio" continua intacta no aside do wizard
 
-**Plans:** 10 planos em 7 waves
+**Plans:** 1/10 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 134-01-PLAN.md — Sondagem D-21 (saúde do ML), config da fase e fixtures reais da API [wave 1]
+- [x] 134-01-PLAN.md — Sondagem D-21 (saúde do ML), config da fase e fixtures reais da API [wave 1]
 - [ ] 134-02-PLAN.md — Schema: ml_acervo_itens + ml_acervo_metricas_diarias, com índices nomeados à mão [wave 1]
 
 **Wave 2** *(blocked on Wave 1 completion)*
