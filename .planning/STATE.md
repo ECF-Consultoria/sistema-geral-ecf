@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: planning
+status: executing
 stopped_at: Fase 126 contexto capturado - 15 decisoes, pronta para planejar
-last_updated: "2026-08-10T16:57:19.500Z"
-last_activity: 2026-08-10
+last_updated: "2026-08-10T17:45:02.671Z"
+last_activity: 2026-08-10 -- Phase 126 planning complete
 progress:
   total_phases: 10
   completed_phases: 2
-  total_plans: 8
+  total_plans: 14
   completed_plans: 8
   percent: 20
 ---
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 126
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-10
+Status: Ready to execute
+Last activity: 2026-08-10 -- Phase 126 planning complete
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
