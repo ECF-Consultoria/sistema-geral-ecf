@@ -26,6 +26,46 @@ não previu.
 </domain>
 
 <decisions>
+## ⚠️ REVISÃO DE 2026-08-10 — a D-01 e a D-02 foram REVERTIDAS pelo usuário
+
+Leia este bloco ANTES do resto. Ele tem precedência sobre as decisões abaixo onde houver conflito.
+Registro completo em `126-06-CHECKPOINT.md`; medições em `.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` §9.
+
+**O que aconteceu:** no checkpoint humano do plano 126-06, o usuário abriu o PDF gerado e apontou
+que ele não se parece com o contrato que a ECF usa, e que gerar o documento aqui joga fora o
+benefício da plataforma. Palavras dele: *"vamos usar o contrato modelos do clicksign pois se
+ficarmos gerando o contrato por aqui perdemos todo o benefício da plataforma"*.
+
+**D-16 — O contrato sai de um MODELO cadastrado na Clicksign, não de renderização local.**
+Substitui a D-02. Medido: `GET /templates` responde 200 e `POST /templates` exige um `.docx` com
+variáveis em **chaves duplas**, sem `@`/`#`/`!` nos nomes.
+- Consequência: `pdf.blade.php`, `clausulas.blade.php` e `gerar()`/`gerarESalvar()` (plano 126-05)
+  estão **SUPERADOS**. Saem num plano dedicado, depois que o caminho de modelo funcionar (decisão
+  do usuário: remover, não manter como fallback).
+- ⚠️ **Dívida aberta que a D-02 cobria e a D-16 ainda não:** contrato assinado não pode mudar
+  quando alguém editar o modelo. Presumir que a Clicksign congela o documento gerado **não basta** —
+  tem que ser verificado antes de a Fase 127 gerar contrato de cliente real.
+
+**D-17 — O texto jurídico deixa de viver no git e passa a viver no modelo da Clicksign.**
+Substitui a D-01. Perde-se a revisão por diff; ganha-se edição pelo time sem deploy. Foi a troca
+que o usuário escolheu conscientemente.
+
+**D-18 — As variáveis do modelo são definidas a partir do contrato real, e quem monta o `.docx`
+é o usuário.** A proposta de nomes está em `126-VARIAVEIS-DO-MODELO.md`, extraída do contrato real
+assinado que ele enviou. O `montarDados()` (plano 126-04) **sobrevive e vira mais central**: ele já
+produz exatamente o conjunto de valores que preenche as variáveis.
+
+**O que a reversão NÃO muda:** planos 126-01, 126-02, 126-03 e 126-04 seguem válidos e executados.
+O `ClicksignClient` continua sendo o caminho de integração — ele só ganha os métodos de modelo.
+
+**Três tensões abertas** (detalhadas em `126-VARIAVEIS-DO-MODELO.md` §2), que o planejamento precisa
+endereçar ou escalar: (a) `endereco`/`dia_vencimento`/`data_primeira_parcela` não existem no banco e
+saem `A DEFINIR` em pontos de peso do documento; (b) variável em `.docx` não faz loop, e
+`servicos_snapshot` tem N serviços; (c) as testemunhas do contrato real não batem com o arranjo de
+4 signatários da D-08.
+
+---
+
 ## Implementation Decisions
 
 ### PDF — texto jurídico e congelamento
