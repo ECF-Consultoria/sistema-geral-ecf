@@ -185,6 +185,13 @@ class ClicksignClientTest extends TestCase
         }
     }
 
+    /**
+     * Fase 126 Plan 126-07 (D-16) — a mensagem de 403 passou a compor o
+     * `detail` da própria API com as DUAS causas conhecidas (email da API
+     * não configurado × conta sem acesso a modelos). A asserção não pode
+     * afrouxar: o caso do e-mail da API continua apontando literalmente
+     * "Configurações → API", não só citando o e-mail em abstrato.
+     */
     #[Test]
     public function mensagem_de_403_menciona_email_do_usuario_da_api(): void
     {
@@ -197,6 +204,7 @@ class ClicksignClientTest extends TestCase
             $this->fail('Esperava ClicksignException por 403.');
         } catch (ClicksignException $e) {
             $this->assertStringContainsString('e-mail do usuário da API', $e->getMessage());
+            $this->assertStringContainsString('Configurações → API', $e->getMessage());
             $this->assertSame(403, $e->httpStatus);
         }
     }

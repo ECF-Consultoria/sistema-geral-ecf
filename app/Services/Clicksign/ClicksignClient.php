@@ -248,6 +248,103 @@ class ClicksignClient
     }
 
     /**
+     * GET /templates — lista os modelos cadastrados na conta (paginação
+     * JSON:API, `page[number]`/`page[size]`, default 20 — §1 do empírico).
+     * Devolve a LISTA já desembrulhada (`data`), não o envelope JSON:API
+     * inteiro (`meta`/`links` ficam de fora, mesmo padrão de
+     * `listarEventosDoDocumento()`).
+     *
+     * Fase 126 Plan 126-07 (CLICK-01, D-16) — parte do caminho de MODELO:
+     * o contrato passa a sair de um `.docx` cadastrado na Clicksign, não de
+     * renderização local (ver docblock de classe).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function listarModelos(int $pagina = 1, int $porPagina = 20): array
+    {
+        return $this->enviar('get', '/templates', [], 'listar modelos', [
+            'page' => [
+                'number' => $pagina,
+                'size'   => $porPagina,
+            ],
+        ]);
+    }
+
+    /**
+     * POST /templates — cadastra um modelo `.docx` na conta.
+     *
+     * ⚠️ `content_base64` sai como Data URI COMPLETO com o MIME de `.docx`
+     * — a mesma armadilha do gate #4 do empírico (que já custou uma sessão
+     * de debug com o PDF de upload). Base64 puro não funciona aqui, assim
+     * como não funciona em `anexarDocumento()`.
+     *
+     * Guarda ANTES de qualquer requisição: `$nome` tem que terminar em
+     * `.docx` — regra de negócio documentada do recurso (`modelo-campos-e-
+     * regras-de-negocio`), não uma opinião deste client.
+     *
+     * `color` só entra em `attributes` quando informado — enviar `color:
+     * null` não foi medido e não é necessário (a API já tem default
+     * `#1474f5`, §2 da 126-RESEARCH-MODELOS.md).
+     *
+     * @return array<string, mixed>
+     */
+    public function criarModelo(string $nome, string $docxBinario, ?string $cor = null): array
+    {
+        if (!str_ends_with(strtolower($nome), '.docx')) {
+            throw new ClicksignException(
+                "O nome do modelo precisa terminar em \".docx\": \"{$nome}\"."
+            );
+        }
+
+        $atributos = [
+            'name'            => $nome,
+            'content_base64'  => 'data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,' . base64_encode($docxBinario),
+        ];
+
+        if ($cor !== null) {
+            $atributos['color'] = $cor;
+        }
+
+        return $this->enviar('post', '/templates', [
+            'data' => [
+                'type'       => 'templates',
+                'attributes' => $atributos,
+            ],
+        ], 'criar modelo');
+    }
+
+    /**
+     * DELETE /templates/{templateId} — exclui um modelo. Mesmo contrato de
+     * `cancelarEnvelope()`: devolve booleano e NUNCA propaga exceção nova —
+     * quem chama este método é rotina de limpeza/sondagem, onde uma falha
+     * ao excluir não pode substituir o erro que interessa. Loga só
+     * `template_id` e `status`.
+     *
+     * ⚠️ **Dívida da D-16 (126-CONTEXT.md):** a doc oficial da Clicksign diz
+     * que excluir um modelo remove "todas as suas instâncias associadas" e
+     * NÃO esclarece se isso inclui documento já gerado/assinado
+     * (126-RESEARCH-MODELOS.md §3, confiança BAIXA). Enquanto o plano
+     * 126-11 não medir isso contra o sandbox, este método NÃO deve ser
+     * chamado contra um modelo com envelope ainda `running` gerado a partir
+     * dele.
+     */
+    public function excluirModelo(string $templateId): bool
+    {
+        try {
+            $this->enviar('delete', "/templates/{$templateId}", [], 'excluir modelo');
+
+            return true;
+        } catch (ClicksignException $e) {
+            Log::channel('ecf-webhooks')->warning('[Clicksign] Falha ao excluir modelo', [
+                'template_id' => $templateId,
+                'status'      => $e->httpStatus,
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
      * GET /envelopes/{envelopeId}/documents/{documentId}/events — lista os
      * eventos do documento. ⚠️ §3 do empírico: a situação individual do
      * signatário NÃO existe no recurso `signers` (comparado antes×depois da
@@ -457,12 +554,28 @@ class ClicksignClient
      * (T-126-01 — só `contexto`/`status`/`codigo`/`ponteiro`, nunca a
      * resposta ou a exceção inteiras) e conversão para `ClicksignException`.
      *
+     * `$query` (Fase 126 Plan 126-07, CLICK-01) é parâmetro OPCIONAL novo —
+     * `listarModelos()` é o primeiro chamador que precisa de query string
+     * (paginação JSON:API, `page[number]`/`page[size]`). Nenhum chamador
+     * existente muda: default `[]` preserva o comportamento anterior.
+     *
      * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $query
      * @return array<string, mixed>
      */
-    private function enviar(string $metodo, string $caminho, array $payload, string $contexto): array
+    private function enviar(string $metodo, string $caminho, array $payload, string $contexto, array $query = []): array
     {
         $url = rtrim((string) $this->baseUrl, '/') . '/' . ltrim($caminho, '/');
+
+        $opcoes = [];
+
+        if (!empty($payload)) {
+            $opcoes['json'] = $payload;
+        }
+
+        if (!empty($query)) {
+            $opcoes['query'] = $query;
+        }
 
         $res = $this->baseRequest()
             ->retry(3, static fn (int $tentativa) => $tentativa * 200, function (\Throwable $excecao) {
@@ -478,7 +591,7 @@ class ClicksignClient
 
                 return false;
             }, false)
-            ->send($metodo, $url, empty($payload) ? [] : ['json' => $payload]);
+            ->send($metodo, $url, $opcoes);
 
         if ($res->successful()) {
             Log::channel('ecf-webhooks')->info('[Clicksign] ' . $contexto, [
