@@ -3,6 +3,11 @@
 namespace App\Services\Mlb\Acervo;
 
 use App\Models\Company;
+use App\Models\MlAcervoItem;
+use App\Models\MlAcervoMetricaDiaria;
+use App\Models\MlAnuncioRascunho;
+use App\Models\MlbEmpresa;
+use App\Models\Publicacao;
 use App\Services\MercadoLivreService;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
 use Illuminate\Support\Facades\Log;
@@ -178,26 +183,300 @@ class MlAcervoService
         $falhas = 0;
         $loteIds = [];
 
-        foreach ($this->enumerarIds($company) as $id) {
-            $loteIds[] = $id;
+        // Mapas carregados 1x por empresa (D-04) — nunca consulta
+        // MlAnuncioRascunho/Publicacao item a item: dezenas/centenas de
+        // linhas por empresa contra dezenas de milhares de itens.
+        $rascunhoPorMlItemId = $this->mapaRascunhos($company);
+        $publicacaoPorMlbCode = $this->mapaPublicacoes($company);
 
-            if (count($loteIds) >= $loteSize) {
+        // Buy box já persistido pela camada CARA (134-05) — LEITURA ESTRITA,
+        // usado só para alimentar triagem(); esta camada nunca o reescreve
+        // (ver comentário do upsert() abaixo, D-23/D-18).
+        $buyboxPorMlItemId = MlAcervoItem::where('company_id', $company->id)
+            ->pluck('buybox_status', 'ml_item_id')
+            ->all();
+
+        try {
+            foreach ($this->enumerarIds($company) as $id) {
+                $loteIds[] = $id;
+
+                if (count($loteIds) >= $loteSize) {
+                    $lotes++;
+                    [$processados, $falhasLote] = $this->processarLote(
+                        $company, $loteIds, $rascunhoPorMlItemId, $publicacaoPorMlbCode, $buyboxPorMlItemId
+                    );
+                    $itens += $processados;
+                    $falhas += $falhasLote;
+                    $loteIds = [];
+                }
+            }
+
+            if ($loteIds !== []) {
                 $lotes++;
-                $bodies = $this->buscarLotes($company, $loteIds);
-                $itens += count($bodies);
-                $loteIds = [];
+                [$processados, $falhasLote] = $this->processarLote(
+                    $company, $loteIds, $rascunhoPorMlItemId, $publicacaoPorMlbCode, $buyboxPorMlItemId
+                );
+                $itens += $processados;
+                $falhas += $falhasLote;
+            }
+        } catch (\Throwable $e) {
+            // Falha em nível de EMPRESA (token inválido, scroll expirado 2x
+            // etc.): grava coleta_erro nas linhas já existentes — update
+            // nomeado só dessa coluna, nunca upsert de linha inteira — e
+            // propaga. O D-08 exige que a tela saiba POR QUE a coleta está
+            // velha, não só que está; quem decide o resto (retry, log) é o
+            // job (SyncMlAcervoCompanyJob::failed()).
+            MlAcervoItem::where('company_id', $company->id)->update(['coleta_erro' => $e->getMessage()]);
+
+            throw $e;
+        }
+
+        return ['itens' => $itens, 'lotes' => $lotes, 'falhas' => $falhas];
+    }
+
+    /**
+     * Processa um lote de até 20 ids: multiget, nota/triagem, selo de
+     * origem, upsert da linha corrente e série diária.
+     *
+     * @return array{0:int,1:int}  [itens processados, falhas]
+     */
+    private function processarLote(
+        Company $company,
+        array $ids,
+        array $rascunhoPorMlItemId,
+        array $publicacaoPorMlbCode,
+        array $buyboxPorMlItemId,
+    ): array {
+        $bodies = $this->buscarLotes($company, $ids);
+
+        $linhas = [];
+        $falhas = 0;
+        $hoje = now()->toDateString();
+        $agora = now();
+
+        foreach ($bodies as $item) {
+            try {
+                $mlItemId = (string) ($item['id'] ?? '');
+                if ($mlItemId === '') {
+                    continue;
+                }
+
+                $categoryId = (string) ($item['category_id'] ?? '');
+                $atributosCategoria = $categoryId !== '' ? $this->meta->atributos($categoryId) : [];
+
+                $avaliacao = $this->saude->avaliar($item, $atributosCategoria);
+                $buyboxStatus = $buyboxPorMlItemId[$mlItemId] ?? null;
+                $triagem = $this->saude->triagem($item, $avaliacao['sinais'], $buyboxStatus);
+
+                $origem = $this->resolverOrigem($mlItemId, $rascunhoPorMlItemId, $publicacaoPorMlbCode);
+
+                $variations = is_array($item['variations'] ?? null) ? $item['variations'] : [];
+                $pictures = is_array($item['pictures'] ?? null) ? $item['pictures'] : [];
+
+                $linhas[] = [
+                    'company_id' => $company->id,
+                    'ml_item_id' => $mlItemId,
+
+                    'title' => $item['title'] ?? null,
+                    'category_id' => $categoryId !== '' ? $categoryId : null,
+                    'status' => $item['status'] ?? null,
+                    'sub_status' => json_encode(is_array($item['sub_status'] ?? null) ? $item['sub_status'] : []),
+                    'listing_type_id' => $item['listing_type_id'] ?? null,
+                    'price' => $item['price'] ?? null,
+                    // D-17: available_quantity/sold_quantity vêm do NÍVEL DO
+                    // ITEM-PAI — é onde o ML já entrega o agregado das
+                    // variações. Nunca somar variações[] à mão.
+                    'available_quantity' => isset($item['available_quantity']) ? (int) $item['available_quantity'] : null,
+                    'sold_quantity' => isset($item['sold_quantity']) ? (int) $item['sold_quantity'] : null,
+                    'permalink' => $item['permalink'] ?? null,
+                    'thumbnail' => $item['thumbnail'] ?? null,
+                    'fotos_count' => count($pictures),
+                    'has_variations' => $variations !== [],
+                    'variations' => json_encode($variations),
+                    'catalog_listing' => (bool) ($item['catalog_listing'] ?? false),
+                    'catalog_product_id' => $item['catalog_product_id'] ?? null,
+                    'shipping' => json_encode(is_array($item['shipping'] ?? null) ? $item['shipping'] : []),
+                    'tags' => json_encode(is_array($item['tags'] ?? null) ? $item['tags'] : []),
+                    // D-21: campo `health` do multiget, de graça. null aqui é
+                    // "não se aplica" (catálogo/encerrado) ou "não avaliado"
+                    // — MlAcervoItem::saudeMlNaoSeAplica()/saudeMlNaoAvaliada()
+                    // distinguem os dois casos. Nunca inventar valor.
+                    'health_ml' => $item['health'] ?? null,
+                    'nota_ecf' => $avaliacao['nota'],
+                    'nota_sinais' => json_encode($avaliacao['sinais']),
+                    'motivos' => json_encode($triagem['motivos']),
+                    'severidade' => $triagem['severidade'],
+                    'origem' => $origem['origem'],
+                    'rascunho_id' => $origem['rascunho_id'],
+                    'publicacao_vendas_qty' => $origem['publicacao_vendas_qty'],
+                    'publicacao_desconsiderado' => $origem['publicacao_desconsiderado'],
+                    'coletado_em' => $agora,
+                    'coleta_erro' => null,
+                    'updated_at' => $agora,
+                ];
+
+                $this->gravarSerieDiaria($company, $mlItemId, $item, $avaliacao['nota'], $hoje);
+            } catch (\Throwable $e) {
+                $falhas++;
+                Log::warning(
+                    "[MLB Anuncios] falha ao processar item empresa {$company->id} MLB " . ($item['id'] ?? '?') . ': ' . $e->getMessage()
+                );
             }
         }
 
-        if ($loteIds !== []) {
-            $lotes++;
-            $bodies = $this->buscarLotes($company, $loteIds);
-            $itens += count($bodies);
+        if ($linhas !== []) {
+            // 3º argumento OBRIGATÓRIO e LITERAL — nunca omitir. No Laravel
+            // 12 (Illuminate\Database\Eloquent\Builder::upsert()), omitir o
+            // 3º argumento faz o conflito atualizar TODAS as chaves
+            // presentes no array de valores. Esta camada roda todo dia
+            // (D-06) E a cada clique em "Atualizar agora" (134-07 despacha
+            // só este job, nunca o da camada cara) — se buybox_status/
+            // visitas_30d/performance_*/detalhe_coletado_em entrassem aqui,
+            // cada passagem apagaria o trabalho da rotação do D-23: a
+            // economia de 587 mil para 84 mil chamadas/dia iria a zero, e
+            // todo item já avaliado voltaria ao "não avaliado" do D-18 —
+            // que passaria a MENTIR por omissão em vez de dizer a verdade.
+            MlAcervoItem::upsert($linhas, ['company_id', 'ml_item_id'], self::COLUNAS_CAMADA_BARATA);
         }
 
-        // TODO (Task 2 deste plano): calcular nota/triagem por item, resolver
-        // o selo de origem (D-04) e fazer o upsert da linha corrente + série
-        // diária. Por ora esta camada só enumera e busca — nenhuma escrita.
-        return ['itens' => $itens, 'lotes' => $lotes, 'falhas' => $falhas];
+        return [count($linhas), $falhas];
+    }
+
+    /**
+     * D-04: mapa MLB id → rascunho_id, carregado 1x por empresa. Cobre os 3
+     * ids possíveis do rascunho (clássico/premium podem divergir do
+     * ml_item_id "principal" — DUP-04).
+     *
+     * @return array<string,int>
+     */
+    private function mapaRascunhos(Company $company): array
+    {
+        $mapa = [];
+
+        MlAnuncioRascunho::where('company_id', $company->id)
+            ->get(['id', 'ml_item_id', 'ml_item_id_classico', 'ml_item_id_premium'])
+            ->each(function (MlAnuncioRascunho $rascunho) use (&$mapa) {
+                foreach ([$rascunho->ml_item_id, $rascunho->ml_item_id_classico, $rascunho->ml_item_id_premium] as $mlbId) {
+                    if ($mlbId !== null && $mlbId !== '') {
+                        $mapa[$mlbId] = $rascunho->id;
+                    }
+                }
+            });
+
+        return $mapa;
+    }
+
+    /**
+     * D-04: mapa Publicacao.mlb_code → [vendas_qty, desconsiderado],
+     * carregado 1x por empresa. O scope considerado() NÃO entra aqui — a
+     * tela LISTA, não conta (Publicacao.php:171). Publicacao não tem
+     * company_id direto: o vínculo é via MlbEmpresa.company_id.
+     *
+     * @return array<string,array{vendas_qty:?int,desconsiderado:bool}>
+     */
+    private function mapaPublicacoes(Company $company): array
+    {
+        $mlbEmpresaId = MlbEmpresa::where('company_id', $company->id)->value('id');
+
+        if ($mlbEmpresaId === null) {
+            return [];
+        }
+
+        return Publicacao::where('mlb_empresa_id', $mlbEmpresaId)
+            ->get(['mlb_code', 'vendas_qty', 'desconsiderado'])
+            ->keyBy('mlb_code')
+            ->map(fn (Publicacao $publicacao) => [
+                'vendas_qty' => $publicacao->vendas_qty,
+                'desconsiderado' => (bool) $publicacao->desconsiderado,
+            ])
+            ->all();
+    }
+
+    /**
+     * D-04: selo de origem — ecf (rascunho deste módulo) > time (Publicacao,
+     * time publicou) > legado (nenhum dos dois, cliente já tinha).
+     *
+     * @return array{origem:string,rascunho_id:?int,publicacao_vendas_qty:?int,publicacao_desconsiderado:bool}
+     */
+    private function resolverOrigem(string $mlItemId, array $rascunhoPorMlItemId, array $publicacaoPorMlbCode): array
+    {
+        if (isset($rascunhoPorMlItemId[$mlItemId])) {
+            return [
+                'origem' => MlAcervoItem::ORIGEM_ECF,
+                'rascunho_id' => $rascunhoPorMlItemId[$mlItemId],
+                'publicacao_vendas_qty' => null,
+                'publicacao_desconsiderado' => false,
+            ];
+        }
+
+        if (isset($publicacaoPorMlbCode[$mlItemId])) {
+            $publicacao = $publicacaoPorMlbCode[$mlItemId];
+
+            return [
+                'origem' => MlAcervoItem::ORIGEM_TIME,
+                'rascunho_id' => null,
+                'publicacao_vendas_qty' => $publicacao['vendas_qty'],
+                'publicacao_desconsiderado' => $publicacao['desconsiderado'],
+            ];
+        }
+
+        return [
+            'origem' => MlAcervoItem::ORIGEM_LEGADO,
+            'rascunho_id' => null,
+            'publicacao_vendas_qty' => null,
+            'publicacao_desconsiderado' => false,
+        ];
+    }
+
+    /**
+     * D-07b — série diária ENXUTA: só grava linha nova quando o ESTADO do
+     * item (sold_quantity, nota_ecf, health_ml) difere da última linha
+     * conhecida. Gravar sempre chegaria a ~45 milhões de linhas em regime
+     * (500 mil itens × 90 dias de retenção) — a maioria idêntica ao dia
+     * anterior em contas de catálogo estático (autopeças, que são as
+     * maiores). A série tem buracos por desenho: sold_quantity/nota_ecf/
+     * health_ml são ESTADO e o consumidor (134-10) preenche para frente;
+     * `visitas` é FLUXO (campo da camada cara — NUNCA escrito aqui) e um
+     * buraco ali é ausência real de coleta, exibido como buraco mesmo
+     * (connectNulls={false} no gráfico, 134-UI-SPEC.md).
+     *
+     * updateOrCreate por (company_id, ml_item_id, data): reexecuções no
+     * MESMO dia atualizam a mesma linha em vez de duplicar. `visitas` NUNCA
+     * entra no array de valores — passar null aqui apagaria a visita que a
+     * camada cara já tivesse gravado no mesmo dia.
+     */
+    private function gravarSerieDiaria(Company $company, string $mlItemId, array $item, int $notaEcf, string $hoje): void
+    {
+        $soldQuantity = isset($item['sold_quantity']) ? (int) $item['sold_quantity'] : null;
+        $healthMl = isset($item['health']) && $item['health'] !== null ? (float) $item['health'] : null;
+
+        $ultima = MlAcervoMetricaDiaria::where('company_id', $company->id)
+            ->where('ml_item_id', $mlItemId)
+            ->orderByDesc('data')
+            ->orderByDesc('id')
+            ->first(['data', 'sold_quantity', 'nota_ecf', 'health_ml']);
+
+        $jaExisteHoje = $ultima !== null && $ultima->data->toDateString() === $hoje;
+
+        if (! $jaExisteHoje) {
+            $healthAnterior = $ultima?->health_ml !== null ? round((float) $ultima->health_ml, 2) : null;
+            $healthAtual = $healthMl !== null ? round($healthMl, 2) : null;
+
+            $mudou = $ultima === null
+                || $ultima->sold_quantity !== $soldQuantity
+                || $ultima->nota_ecf !== $notaEcf
+                || $healthAnterior !== $healthAtual;
+
+            if (! $mudou) {
+                // ESTADO igual ao último dia conhecido — nenhuma linha nova
+                // (é exatamente o que evita os ~45 milhões em regime).
+                return;
+            }
+        }
+
+        MlAcervoMetricaDiaria::updateOrCreate(
+            ['company_id' => $company->id, 'ml_item_id' => $mlItemId, 'data' => $hoje],
+            ['sold_quantity' => $soldQuantity, 'nota_ecf' => $notaEcf, 'health_ml' => $healthMl]
+        );
     }
 }
