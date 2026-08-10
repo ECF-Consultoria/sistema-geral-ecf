@@ -12,6 +12,7 @@ import {
     MARGEM_CARD_TITULO, MARGEM_CARD_SUBLABEL,
     AVISO_SEM_DETALHE_TITULO, AVISO_SEM_DETALHE_EM_CURSO, avisoSemDetalheFechado,
     resumoCarteiraLinha, fmtPp, CONTA_NOTA_TOOLTIP,
+    composicaoPorMarketplace, MARKETPLACE_TOOLTIP,
 } from '@/lib/desempenhoLabels';
 
 /**
@@ -332,6 +333,42 @@ function FaixaBonusCard({ resultado, user, mesDetalhe = null }) {
     );
 }
 
+/**
+ * Composição da carteira por marketplace (quick 260810-n5b).
+ *
+ * Item 3 da demanda do Maycon: "incluir no Desempenho a informação de qual
+ * marketplace pertence a conta". A tabela abaixo diz o marketplace loja a
+ * loja; esta faixa responde a pergunta no atacado — quantas lojas de cada
+ * marketplace formam a nota deste profissional.
+ *
+ * Conta as linhas de `empresas_score`, que a página já recebeu: nada é
+ * recalculado e nenhuma chamada nova é feita. Renderiza apenas quando há
+ * marketplace a mostrar — carteira 100% sem fonte financeira (só Polos, só
+ * Publicação) não ganha uma faixa vazia.
+ */
+function ComposicaoMarketplaces({ linhas = [] }) {
+    const composicao = composicaoPorMarketplace(linhas);
+
+    if (composicao.length === 0) return null;
+
+    return (
+        <div className="mb-3 flex items-center gap-2 flex-wrap" title={MARKETPLACE_TOOLTIP}>
+            <span className="text-white/40 text-[11px] uppercase tracking-wider font-semibold">
+                Marketplaces da carteira
+            </span>
+            {composicao.map(({ label, total }) => (
+                <span
+                    key={label}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-0.5 text-xs text-white/70"
+                >
+                    {label}
+                    <strong className="text-white font-semibold tabular-nums">{total}</strong>
+                </span>
+            ))}
+        </div>
+    );
+}
+
 // ─── Página principal ────────────────────────────────────────────────────
 export default function PerformanceShow({
     user,
@@ -629,7 +666,10 @@ export default function PerformanceShow({
                             </h2>
 
                             {tem_detalhe_empresas ? (
-                                <EmpresasScoreTabela linhas={empresas_score} resumo={empresas_score_resumo} />
+                                <>
+                                    <ComposicaoMarketplaces linhas={empresas_score} />
+                                    <EmpresasScoreTabela linhas={empresas_score} resumo={empresas_score_resumo} />
+                                </>
                             ) : (
                                 <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 flex items-start gap-3">
                                     <Info size={16} className="text-white/40 shrink-0 mt-0.5" />
