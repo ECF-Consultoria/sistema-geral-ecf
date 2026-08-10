@@ -37,7 +37,7 @@ key-decisions:
   - "comSnapshot() com 3 serviços fixos (não fake() aleatório) para o teste ser determinístico e a régua do Success Criteria 3 (forma e volume de dado real) ser auditável"
   - "comEmpresaDeNomeExtremo() como state dedicado na factory, não no teste do plano 126-05 — evita que cada teste invente seu próprio nome extremo"
 
-requirements-completed: [PDF-01]
+requirements-completed: []  # PDF-01 é multi-plano (também em 126-04/05 no REQUIREMENTS-v22.md) — este plano só entrega o alicerce de schema; checkbox fica pendente até o PDF de fato ser gerado.
 
 # Metrics
 duration: 25min
@@ -91,6 +91,16 @@ None.
 ## User Setup Required
 
 None - no external service configuration required.
+
+## Requisitos
+
+`PDF-01` está listado no frontmatter deste plano, mas é requisito **multi-plano** — também aparece
+em `126-04` e `126-05` no `REQUIREMENTS-v22.md` (que é onde os IDs da v22 vivem; o
+`REQUIREMENTS.md` raiz parou na v17). `gsd-sdk query requirements.mark-complete PDF-01` devolveu
+`not_found` (esperado — confirma o achado `project_requirements_raiz_desatualizado_v17`). Decisão
+consciente: **não marcar o checkbox à mão agora** — este plano só entrega o alicerce de schema
+(colunas + `$fillable` + factory), não o PDF de fato renderizado. Marcar fica para quando 126-04/05
+entregarem o conteúdo real, seguindo a convenção do projeto de checar caixas ao fechar a fase.
 
 ## Next Phase Readiness
 - As colunas e o `$fillable` estão prontos para os planos 126-04/05 (`ContratoPdfService`) gravarem `pdf_path` ao gerar o PDF.

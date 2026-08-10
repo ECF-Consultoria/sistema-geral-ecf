@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Fase 126 Plano 01 concluido - ClicksignClient fundacao (30 testes verdes)
-last_updated: "2026-08-10T18:15:16.246Z"
+stopped_at: Completed 126-03-PLAN.md
+last_updated: "2026-08-10T18:25:40.893Z"
 last_activity: 2026-08-10
 progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 14
-  completed_plans: 9
+  completed_plans: 10
   percent: 20
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 126 (client-clicksign-pdf-do-contrato-v22-0) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-08-10
 
@@ -286,6 +286,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 125 P02 | 15min | 2 tasks | 6 files |
 | Phase 125 P03 | 25min | 3 tasks | 1 files |
 | Phase 126 P01 | 55min | 3 tasks | 7 files |
+| Phase 126 P03 | 25min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -752,6 +753,13 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **Texto do selo centralizado em `desempenhoLabels.js`** (`NOTA_RECALCULADA_TEXTO`/`NOTA_RECALCULADA_TITULO`), mesmo padrão de nomenclatura do selo Shopee já existente no arquivo, com paleta visual distinta (`sky`) para não ser confundido com o aviso `amber` de placeholder Shopee.
 - **Nenhuma régua, agregação ou flag de negócio tocada** — `metrics.performance_company_first_score` continua `false`, conforme os limites da fase (D-fase 123: "esta fase não calcula nada").
 
+### Decisões do Plan 126-03 (registradas)
+
+- **Guarda estática de índice adaptada, não copiada do molde da Fase 125** — a migration `2026_08_10_120000_add_pdf_paths_to_contrato_assinaturas_table` não cria nenhum índice (as colunas `pdf_path`/`pdf_assinado_path` são carga, não critério de busca), então `MigrationFase126ConvencoesTest` aceita zero ocorrências de índice/chave sem falhar — o molde da Fase 125 usava `assertNotEmpty` porque a migration dela sempre tinha índice.
+- **`comSnapshot()` da `ContratoAssinaturaFactory` usa dados fixos, não `fake()` aleatório** — 3 serviços com valores com centavos (não redondos) e datas `Y-m-d`, garantindo teste determinístico e a régua "forma e volume de dado real" do Success Criteria 3 (126-VALIDATION.md) auditável a olho.
+- **`comEmpresaDeNomeExtremo()` virou state da própria factory**, não inline no teste do plano 126-05 — nome de 109 caracteres, acentuado, com hífen, centralizando a disciplina de "nome inventado, nunca copiado de empresa real" (D-15).
+- `$fillable` de `ContratoAssinatura` ganhou `pdf_path`/`pdf_assinado_path` na MESMA entrega da migration (não em commit separado) — sem isso o mass assignment falharia em silêncio (Pitfall 4 do 126-RESEARCH.md).
+
 ### Pending Todos
 
 None.
@@ -860,8 +868,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-10T18:15:16.226Z
-Stopped at: Fase 126 Plano 01 concluido - ClicksignClient fundacao (30 testes verdes)
+Last session: 2026-08-10T18:25:40.866Z
+Stopped at: Completed 126-03-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
