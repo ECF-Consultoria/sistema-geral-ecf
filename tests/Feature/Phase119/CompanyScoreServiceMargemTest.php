@@ -40,7 +40,8 @@ class CompanyScoreServiceMargemTest extends TestCase
     /** Hash de referência do gate de aditividade (119-VALIDATION.md). */
     /** Rotacionado pela Fase 119.1 (D1) — 4º ramo (D) somado a DesempenhoScoreService.php. */
     /** Rotacionado pela quick 260810-mbv (2026-08-10) — bump da chave de cache v17 → v18. O gate já estava vermelho desde as Fases 120/122/v17, que alteraram o arquivo sem rotacionar. */
-    private const HASH_DESEMPENHO_SCORE_SERVICE = '0e670f23b8943891ed4f02543da63654d2102b6abcd479c5cee5178cf69869d0';
+    /** Rotacionado pela quick 260810-mt8 (2026-08-10) — nota final passa a dividir sempre por 3. */
+    private const HASH_DESEMPENHO_SCORE_SERVICE = '5b6cb40da43773c19c24c1bbf8b6dffe20672cc6b223e8cc8f27676473064f24';
 
     protected function setUp(): void
     {
