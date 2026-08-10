@@ -138,10 +138,10 @@ São algoritmos diferentes que produzem hashes diferentes. Implementar o errado 
 
 ### Estrutura de dados
 
-- [ ] **DADOS-01**: O sistema registra o processo de assinatura de cada empresa, com o estado atual e as datas de envio, assinatura e liberação
+- [x] **DADOS-01**: O sistema registra o processo de assinatura de cada empresa, com o estado atual e as datas de envio, assinatura e liberação
 - [ ] **DADOS-02**: O sistema registra cada signatário do contrato com seu papel, contato e situação individual de assinatura
 - [ ] **DADOS-03**: Todo evento recebido da Clicksign é gravado bruto, e um evento repetido nunca é processado duas vezes
-- [ ] **DADOS-04**: Recusa de assinatura e prazo expirado são estados próprios, distintos de cancelamento e de falha técnica (D5)
+- [x] **DADOS-04**: Recusa de assinatura e prazo expirado são estados próprios, distintos de cancelamento e de falha técnica (D5)
 - [ ] **DADOS-05**: Quando um admin libera a empresa manualmente, o sistema registra quem liberou e por quê
 - [ ] **DADOS-06**: Cada contrato pode ter seu próprio prazo de assinatura (D3)
 
@@ -243,10 +243,10 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | FLUXO-06 | Fase 124 | Done |
 | FLUXO-07 | Fase 124 | Done |
 | FLUXO-09 | Fase 133 | Pending |
-| DADOS-01 | Fase 125 | Pending |
+| DADOS-01 | Fase 125 | Done |
 | DADOS-02 | Fase 125 | Pending |
 | DADOS-03 | Fase 129 | Pending |
-| DADOS-04 | Fase 125 | Pending |
+| DADOS-04 | Fase 125 | Done |
 | DADOS-05 | Fase 130 | Pending |
 | DADOS-06 | Fase 127 | Pending |
 | CLICK-01 | Fase 126 | Pending |

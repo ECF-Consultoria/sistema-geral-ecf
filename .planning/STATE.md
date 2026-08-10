@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: "Fase 125 contexto capturado — BLOQUEADA aguardando sandbox Clicksign (gate empirico #9)"
-last_updated: "2026-08-10T13:33:51.903Z"
-last_activity: 2026-08-10 -- Phase 125 planning complete
+stopped_at: Completed 125-01-PLAN.md
+last_updated: "2026-08-10T13:49:33.494Z"
+last_activity: 2026-08-10
 progress:
   total_phases: 10
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
   percent: 10
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 125 — estrutura de dados administrativa (v22.0)
+**Current focus:** Phase 125 — estrutura-de-dados-administrativa-v22-0
 
 ## Current Position
 
-Phase: 125
-Plan: Not started
+Phase: 125 (estrutura-de-dados-administrativa-v22-0) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-08-10 -- Phase 125 planning complete
+Last activity: 2026-08-10
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
@@ -281,6 +281,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 124 P03 | 25min | 3 tasks | 2 files |
 | Phase 124 P04 | ~20min | 2 tasks | 2 files |
 | Phase 124 P05 | 35min | 3 tasks | 5 files |
+| Phase 125 P01 | 20min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -853,8 +854,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-07T20:29:29.622Z
-Stopped at: Fase 125 contexto capturado — BLOQUEADA aguardando sandbox Clicksign (gate empirico #9)
+Last session: 2026-08-10T13:49:33.454Z
+Stopped at: Completed 125-01-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
