@@ -82,7 +82,94 @@ class OnboardingEngineService
 
         $this->montarPassos($onboarding);
 
+        // D-17: a sugestão nasce junto, mas sugerir não é confirmar (D-05) —
+        // o onboarding continua em rascunho até a Coordenação confirmar pela
+        // Tela 1 via confirmarResponsavel().
+        $sugerido = $this->sugerirResponsavel($onboarding);
+        if ($sugerido) {
+            $onboarding->responsavel_id = $sugerido->id;
+            $onboarding->save();
+        }
+
         return $onboarding;
+    }
+
+    /**
+     * Sugere quem deve atender o onboarding a partir do vínculo já existente
+     * da empresa naquele serviço (D-17) — percorre
+     * {@see Onboarding::ROLES_RESPONSAVEL_SUGERIDO} em ordem, consultando
+     * `Company::responsavelDoServicoOuConsolidado()`, e devolve o primeiro
+     * `User` da primeira coleção não-vazia. Sem vínculo em nenhum papel →
+     * `null` (o onboarding nasce/permanece sem responsável).
+     */
+    public function sugerirResponsavel(Onboarding $onboarding): ?User
+    {
+        foreach (Onboarding::ROLES_RESPONSAVEL_SUGERIDO as $role) {
+            $vinculados = $onboarding->company
+                ->responsavelDoServicoOuConsolidado($role, $onboarding->servico_id);
+
+            if ($vinculados->isNotEmpty()) {
+                return $vinculados->first();
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Confirma o responsável e transiciona o onboarding de `rascunho` para
+     * `andamento` — o único caminho para essa transição (D-05/SC-04). Grava
+     * `responsavel_id`/`iniciado_em` e chama `reavaliar()`, que é quem
+     * carimba `disponivel_em` dos passos sem dependência.
+     *
+     * Só aceita onboarding em `rascunho`; qualquer outro status é erro de
+     * uso (a Coordenação não confirma duas vezes nem reabre um onboarding já
+     * em andamento por aqui).
+     */
+    public function confirmarResponsavel(Onboarding $onboarding, User $responsavel): Onboarding
+    {
+        if ($onboarding->status !== Onboarding::STATUS_RASCUNHO) {
+            throw new \DomainException(
+                "Onboarding {$onboarding->id} não está em rascunho (status atual: {$onboarding->status}) "
+                . '— responsável só pode ser confirmado uma vez, a partir do rascunho (D-05).'
+            );
+        }
+
+        $onboarding->responsavel_id = $responsavel->id;
+        $onboarding->status = Onboarding::STATUS_ANDAMENTO;
+        $onboarding->iniciado_em = now();
+        $onboarding->save();
+
+        $this->reavaliar($onboarding);
+
+        activity('onboarding')
+            ->performedOn($onboarding)
+            ->withProperties(['responsavel_id' => $responsavel->id])
+            ->log("Responsável confirmado — onboarding {$onboarding->id} em andamento");
+
+        return $onboarding;
+    }
+
+    /**
+     * `true` só quando há template congelado, todos os passos do template
+     * já foram montados e existe um responsável disponível — confirmado ou
+     * (ainda) apenas sugerido (D-17). Usado pela Tela 1 para decidir se o
+     * botão de confirmar responsável fica habilitado.
+     */
+    public function podeIniciar(Onboarding $onboarding): bool
+    {
+        if (! $onboarding->template_id) {
+            return false;
+        }
+
+        $totalPassosMontados = OnboardingPasso::where('onboarding_id', $onboarding->id)->count();
+        $totalPassosDoTemplate = TemplatePasso::where('template_id', $onboarding->template_id)->count();
+
+        if ($totalPassosMontados === 0 || $totalPassosMontados !== $totalPassosDoTemplate) {
+            return false;
+        }
+
+        return $onboarding->responsavel_id !== null || $this->sugerirResponsavel($onboarding) !== null;
     }
 
     /**

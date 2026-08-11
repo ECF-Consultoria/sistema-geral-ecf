@@ -51,6 +51,20 @@ class Onboarding extends Model
         self::STATUS_CONCLUIDO,
     ];
 
+    /**
+     * Ordem de papéis consultados para SUGERIR o responsável do onboarding
+     * (D-17), via `Company::responsavelDoServicoOuConsolidado()`. O primeiro
+     * papel com vínculo (específico do serviço ou consolidado) vence.
+     *
+     * ATENÇÃO — isto é uma leitura de discrição (Assumption A2 do Plano 05),
+     * não um fato de negócio verificado com o usuário: o operacional de
+     * Gestão hoje é tratado como `'consultor'` na pivot `company_users`, com
+     * fallback para `'estrategista'`. Se o negócio disser outra coisa, este
+     * é o único ponto a mexer. Vínculo vazio nos dois papéis → sugestão
+     * `null`, e o onboarding não sai de `rascunho` (D-05).
+     */
+    public const ROLES_RESPONSAVEL_SUGERIDO = ['consultor', 'estrategista'];
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
