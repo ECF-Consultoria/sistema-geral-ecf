@@ -1616,7 +1616,7 @@ Plans:
   4. O texto jurídico das cláusulas vive isolado da lógica de montagem de dados (view/config separado), permitindo trocar o texto sem mexer em código
   5. PDF gerado com nome de empresa real extremo (longo, com caractere especial) mantém acentuação pt-BR correta e não corta cláusula no meio de uma página — reusando literalmente o precedente de `RelatorioMensalPdfService`
 
-**Plans:** 10/12 plans executed
+**Plans:** 12/12 plans complete
 
 Plans:
 **Wave 1**
@@ -1652,11 +1652,11 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 126-11-PLAN.md — **Gate de medição com `.docx` real** (autonomous: false): o usuário entrega o arquivo, a sondagem roda contra o sandbox e fecha os 7 itens em aberto — inclusive a **dívida da D-16** (excluir o modelo derruba o documento já gerado?) — e o usuário confirma visualmente o documento que a Clicksign gera (CLICK-01, PDF-01, PDF-03)
+- [x] 126-11-PLAN.md — **Gate de medição com `.docx` real** (autonomous: false): o usuário entrega o arquivo, a sondagem roda contra o sandbox e fecha os 7 itens em aberto — inclusive a **dívida da D-16** (excluir o modelo derruba o documento já gerado?) — e o usuário confirma visualmente o documento que a Clicksign gera (CLICK-01, PDF-01, PDF-03)
 
 **Wave 9** *(blocked on Wave 8 completion)*
 
-- [ ] 126-12-PLAN.md — Remoção do caminho superado do plano 126-05: `contratos/pdf.blade.php`, `contratos/clausulas.blade.php`, `gerar()`/`gerarESalvar()` e `ContratoPdfServiceTest.php`. `montarDados()`, as colunas `pdf_path`/`pdf_assinado_path` e o dompdf permanecem; `ContratoPdfDadosTest` tem que passar **sem ser editado** (PDF-02)
+- [x] 126-12-PLAN.md — Remoção do caminho superado do plano 126-05: `contratos/pdf.blade.php`, `contratos/clausulas.blade.php`, `gerar()`/`gerarESalvar()` e `ContratoPdfServiceTest.php`. `montarDados()`, as colunas `pdf_path`/`pdf_assinado_path` e o dompdf permanecem; `ContratoPdfDadosTest` tem que passar **sem ser editado** (PDF-02)
 
 ### Phase 127: Service administrativo de contrato — orquestração (v22.0)
 

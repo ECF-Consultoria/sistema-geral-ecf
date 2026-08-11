@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 126-09-PLAN.md
-last_updated: "2026-08-10T21:59:33.221Z"
-last_activity: 2026-08-10
+stopped_at: Completed 126-12-PLAN.md
+last_updated: "2026-08-11T17:57:04.370Z"
+last_activity: 2026-08-11
 progress:
   total_phases: 10
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 20
-  completed_plans: 17
-  percent: 20
+  completed_plans: 20
+  percent: 30
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 126 (client-clicksign-pdf-do-contrato-v22-0) — EXECUTING
-Plan: 9 of 12 (126-01..04 executados, 126-05 superado, 126-06 descartado, 126-07 executado nesta sessão; 126-08..12 pendentes — ver ROADMAP.md § Phase 126)
-Status: Ready to execute
-Last activity: 2026-08-10
+Phase: 126 (client-clicksign-pdf-do-contrato-v22-0) — 12/12 PLANOS EXECUTADOS
+Plan: 12 of 12 (126-01..04 executados, 126-05 superado e removido pelo 126-12, 126-06 descartado, 126-07/09 executados, 126-11 GATE APROVADO, 126-12 remove o caminho local de PDF — ver ROADMAP.md § Phase 126)
+Status: Fase 126 concluída — próxima fase da milestone v22.0 a definir
+Last activity: 2026-08-11
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
@@ -293,6 +293,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 126 P07 | 35min | 3 tasks | 5 files |
 | Phase 126 P08 | ~25min | 3 tasks | 2 files |
 | Phase 126 P09 | 35min | 2 tasks | 2 files |
+| Phase 126 P12 | 20min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -773,6 +774,21 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **`data_primeira_parcela` resolvida como placeholder direto na ponte**, não repassada de `campos_pendentes` de `montarDados()` (lá ela nem existe como conceito) — não inventa uma pendência que `montarDados()` não relatou.
 - **`data_assinatura` por extenso via helper privado na própria classe**, seguindo o precedente exato de `RelatorioMensalPdfService::mesLabelPt()` — sem criar helper global novo.
 - Suíte `tests/Feature/Phase126/` + `tests/Feature/Phase125/`: 139/139 verde (129 baseline + 10 novos).
+
+### Decisões do Plan 126-11 (registradas)
+
+- **GATE 126-11: aprovado** — caminho de modelo `.docx` da Clicksign provado ponta a ponta contra a API real; usuário confirmou o `.docx` gerado. Dívida D-16 fechada por medição (excluir o modelo não derruba documento já gerado).
+- **Um modelo por serviço**, não um modelo genérico com nome do serviço em variável — decisão do usuário no meio do plano; altera a D-19 (que previa serviços concatenados num contrato só). Hoje só existe o modelo de Gestão de ADS Mercado Livre.
+- Suíte `tests/Feature/Phase126/` + `tests/Feature/Phase125/`: **158/158 verde** (153 baseline + 5 novos do guard de `filename`).
+
+### Decisões do Plan 126-12 (registradas)
+
+- **Removido o caminho de renderização local de PDF** (`ContratoPdfService::gerar()`/`gerarESalvar()` + `resources/views/contratos/pdf.blade.php`/`clausulas.blade.php`), agora que o gate do plano 126-11 aprovou o caminho de modelo da Clicksign — decisão do usuário de manter só um caminho de geração de contrato, nunca dois concorrendo pelo mesmo documento jurídico.
+- **`montarDados()` intocado** — continua a única responsabilidade da classe, agora servindo `ContratoVariaveisModeloService` em vez de uma view; `ContratoPdfDadosTest.php` passa sem edição (`git status --porcelain` vazio), conferido antes do commit.
+- **`ContratoPdfServiceTest.php` (13 testes) removido sem migração** — os 13 casos cobriam exclusivamente `gerar()`/`gerarESalvar()`/views removidos; nenhum provava comportamento de `montarDados()` fora do que `ContratoPdfDadosTest` já cobre.
+- **Dompdf continua instalado** (`RelatorioMensalPdfService` depende dele) — nenhuma mudança em `composer.json`.
+- Suíte `tests/Feature/Phase126/` + `tests/Feature/Phase125/`: **158 → 145** (queda de 13 esperada, não regressão — o código que esses testes provavam foi removido de propósito).
+- Fase 126 concluída — 12/12 planos executados.
 
 ### Pending Todos
 
