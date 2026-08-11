@@ -90,6 +90,29 @@ class MlbAnuncioController extends Controller
             ->with('implementacao')
             ->first();
 
+        // Fase 134 Plano 09: a sub-aba Rascunhos (meus()) agora lista o acervo
+        // INTEIRO de rascunhos, não só os 50 mais recentes — o publicador passa a
+        // clicar em rascunhos antigos com frequência. Sem esta busca complementar,
+        // o efeito de `abrirRascunhoId` em AnunciarML.jsx (linha ~1276) procura o
+        // alvo dentro dos 50 recebidos aqui, não encontra, e a tela abre em branco
+        // sem nenhum erro visível. Escopada por company_id — mesma fronteira do
+        // resto da action (T-134-01).
+        $rascunhoAlvoId = $request->query('rascunho') ? (int) $request->query('rascunho') : null;
+
+        $rascunhosRecentes = MlAnuncioRascunho::where('company_id', $company->id)
+            ->latest()
+            ->limit(50)
+            ->get();
+
+        if ($rascunhoAlvoId !== null && ! $rascunhosRecentes->contains('id', $rascunhoAlvoId)) {
+            $rascunhoAlvo = MlAnuncioRascunho::where('company_id', $company->id)
+                ->where('id', $rascunhoAlvoId)
+                ->first();
+            if ($rascunhoAlvo !== null) {
+                $rascunhosRecentes->push($rascunhoAlvo);
+            }
+        }
+
         return Inertia::render('Mlb/AnunciarML', [
             'empresa' => [
                 'id'         => $company->id,   // âncora = company_id
@@ -97,10 +120,7 @@ class MlbAnuncioController extends Controller
                 'company_id' => $company->id,
                 'tem_token'  => true,
             ],
-            'rascunhos' => MlAnuncioRascunho::where('company_id', $company->id)
-                ->latest()
-                ->limit(50)
-                ->get()
+            'rascunhos' => $rascunhosRecentes
                 ->map(fn ($r) => [
                     'id'            => $r->id,
                     'status'        => $r->status,
@@ -121,7 +141,7 @@ class MlbAnuncioController extends Controller
             'produtos'  => $this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados),
             // HIST-86-2: quando o "Anunciar semelhante" do histórico manda ?rascunho=N,
             // o wizard já abre com o clone carregado. Sem o parâmetro vem null e nada muda.
-            'abrirRascunhoId' => $request->query('rascunho') ? (int) $request->query('rascunho') : null,
+            'abrirRascunhoId' => $rascunhoAlvoId,
         ]);
     }
 
@@ -443,6 +463,30 @@ class MlbAnuncioController extends Controller
             'motivo'         => $motivoErro,
         ];
 
+        // Fase 134 Plano 09: sub-aba Rascunhos — a tela oficial de rascunhos, com
+        // TODOS os registros da empresa (não só os 50 mais recentes do wizard).
+        // Sem `payload`: é o campo mais pesado do registro e esta listagem só
+        // precisa mostrar; quem precisa do payload completo é o wizard, que
+        // carrega o rascunho por conta própria ao abrir (T-134-23).
+        // Publicados não paga por este dado — array vazio.
+        $rascunhosProp = $sub === 'rascunhos'
+            ? MlAnuncioRascunho::where('company_id', $company->id)
+                ->orderByDesc('updated_at')
+                ->get()
+                ->map(fn ($r) => [
+                    'id'           => $r->id,
+                    'status'       => $r->status,
+                    'titulo'       => (string) data_get($r->payload, 'title', ''),
+                    'categoria'    => $this->nomeCategoria($r->category_id),
+                    'category_id'  => $r->category_id,
+                    'listing_tier' => $r->listing_tier,
+                    'foto'         => data_get($r->payload, 'pictures.0.source'),
+                    'updated_at'   => $r->updated_at,
+                    'erro_resumo'  => $this->resumoErro($r->validation_errors),
+                    'ml_item_id'   => $r->ml_item_id,
+                ])
+            : [];
+
         return Inertia::render('Mlb/MeusAnuncios', [
             'empresa'   => ['id' => $company->id, 'nome' => $company->name],
             'sub'       => $sub,
@@ -451,6 +495,7 @@ class MlbAnuncioController extends Controller
                 'rascunhos'  => MlAnuncioRascunho::where('company_id', $company->id)->count(),
             ],
             'anuncios'          => $anuncios,
+            'rascunhos'         => $rascunhosProp,
             'triagem'           => $triagem,
             'filtros'           => ['busca' => $busca, 'status' => $statusFiltro, 'motivo' => $motivo],
             'defasagem'         => $defasagem,
