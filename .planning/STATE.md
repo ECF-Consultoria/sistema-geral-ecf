@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 135-03-PLAN.md
-last_updated: "2026-08-11T18:43:10.146Z"
-last_activity: 2026-08-11 -- Phase 136 planning complete
+stopped_at: Completed 135-04-PLAN.md
+last_updated: "2026-08-11T18:59:58.578Z"
+last_activity: 2026-08-11 -- Phase 136 execution started
 progress:
   total_phases: 13
   completed_phases: 1
   total_plans: 35
-  completed_plans: 13
+  completed_plans: 14
   percent: 8
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 135 — onboarding-geral-por-servico-motor-dirigido-por-template-com
+**Current focus:** Phase 136 — m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api-
 
 ## Current Position
 
-Phase: 135 (onboarding-geral-por-servico-motor-dirigido-por-template-com) — EXECUTING
-Plan: 4 of 13
-Status: Ready to execute
-Last activity: 2026-08-11 -- Phase 136 planning complete
+Phase: 136 (m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api-) — EXECUTING
+Plan: 1 of 7
+Status: Executing Phase 136
+Last activity: 2026-08-11 -- Phase 136 execution started
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
@@ -287,6 +287,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 135 P01 | 9min | 2 tasks | 4 files |
 | Phase 135 P02 | 23min | 3 tasks | 8 files |
 | Phase 135 P03 | 25min | 3 tasks | 8 files |
+| Phase 135 P04 | 45min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -885,8 +886,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-11T18:07:19.745Z
-Stopped at: Completed 135-03-PLAN.md
+Last session: 2026-08-11T18:59:57.423Z
+Stopped at: Completed 135-04-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
