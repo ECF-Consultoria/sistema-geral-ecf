@@ -214,6 +214,12 @@ class NpsGrupoController extends Controller
                 'estrategista_name' => null,
                 'analista_name'     => null,
                 'tem_analista'      => false,
+                // Nulas pelo mesmo motivo dos nomes acima: um NPS de grupo
+                // cobre várias empresas e não tem responsável único. Chaves
+                // presentes só para o payload de grupo não divergir do
+                // individual (`NpsController::respond`).
+                'estrategista_foto' => null,
+                'analista_foto'     => null,
                 'textos'            => $textosRender,
                 // Plan 07 (UI) consome estas duas chaves para saber que é um
                 // submit de grupo e para onde postar o formulário.

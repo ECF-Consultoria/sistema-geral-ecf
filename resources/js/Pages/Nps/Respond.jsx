@@ -135,7 +135,9 @@ function RespondV15({ survey, template }) {
                     <form onSubmit={submit} style={{ animation: 'ecfrise .55s ease both' }}>
                         <ResponsaveisCard
                             estrategista={survey.estrategista_name}
+                            estrategistaFoto={survey.estrategista_foto}
                             analista={survey.tem_analista ? survey.analista_name : null}
+                            analistaFoto={survey.tem_analista ? survey.analista_foto : null}
                         />
 
                         <IntroCard
@@ -304,10 +306,10 @@ function BrandHeader({ companyName }) {
  * link de GRUPO (NpsGrupoController manda os três campos nulos de propósito,
  * porque um NPS de grupo cobre várias empresas e não tem responsável único).
  */
-function ResponsaveisCard({ estrategista, analista }) {
+function ResponsaveisCard({ estrategista, estrategistaFoto, analista, analistaFoto }) {
     const pessoas = [
-        estrategista ? { papel: 'Estrategista', nome: estrategista, cor: ACCENT } : null,
-        analista ? { papel: 'Analista', nome: analista, cor: ACCENT_ALT } : null,
+        estrategista ? { papel: 'Estrategista', nome: estrategista, foto: estrategistaFoto, cor: ACCENT } : null,
+        analista ? { papel: 'Analista', nome: analista, foto: analistaFoto, cor: ACCENT_ALT } : null,
     ].filter(Boolean);
 
     if (pessoas.length === 0) return null;
@@ -353,22 +355,7 @@ function ResponsaveisCard({ estrategista, analista }) {
                             border: '1px solid rgba(255,255,255,.07)',
                         }}
                     >
-                        <div style={{
-                            flexShrink: 0,
-                            width: 40,
-                            height: 40,
-                            borderRadius: '50%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontFamily: "'Space Grotesk', sans-serif",
-                            fontWeight: 700,
-                            fontSize: 14,
-                            color: '#fff',
-                            background: `linear-gradient(135deg, ${p.cor}, ${p.cor}66)`,
-                        }}>
-                            {iniciaisDe(p.nome)}
-                        </div>
+                        <AvatarResponsavel nome={p.nome} foto={p.foto} cor={p.cor} />
                         <div style={{ minWidth: 0 }}>
                             <div style={{
                                 fontSize: 10.5,
@@ -394,6 +381,51 @@ function ResponsaveisCard({ estrategista, analista }) {
                     </div>
                 ))}
             </div>
+        </div>
+    );
+}
+
+/**
+ * Avatar do responsável: foto quando existe, iniciais quando não.
+ *
+ * Mesmo contrato do `Avatar` de `Performance/Index.jsx` — inclusive o
+ * `onError`, que é o que importa: `users.avatar_url` pode apontar para arquivo
+ * já apagado ou para foto externa (Google) que deixou de responder, e sem esse
+ * fallback o cliente veria um ícone de imagem quebrada no lugar do rosto de
+ * quem o atende. O estado de erro é por avatar, não global.
+ */
+function AvatarResponsavel({ nome, foto, cor }) {
+    const [erro, setErro] = useState(false);
+    const usaFoto = Boolean(foto) && !erro;
+
+    return (
+        <div style={{
+            flexShrink: 0,
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: "'Space Grotesk', sans-serif",
+            fontWeight: 700,
+            fontSize: 14,
+            color: '#fff',
+            // Com foto, o gradiente vira só a borda de cor do papel; sem foto,
+            // ele é o próprio fundo das iniciais.
+            background: usaFoto ? 'rgba(255,255,255,.06)' : `linear-gradient(135deg, ${cor}, ${cor}66)`,
+            boxShadow: usaFoto ? `0 0 0 2px ${cor}` : 'none',
+        }}>
+            {usaFoto ? (
+                <img
+                    src={foto}
+                    alt=""
+                    loading="lazy"
+                    onError={() => setErro(true)}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+            ) : iniciaisDe(nome)}
         </div>
     );
 }

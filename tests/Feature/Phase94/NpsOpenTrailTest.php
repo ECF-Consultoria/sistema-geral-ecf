@@ -126,8 +126,22 @@ class NpsOpenTrailTest extends TestCase
     }
 
     /**
-     * Cenário 6 — payload Inertia público NÃO ganha nenhuma chave nova:
-     * `survey` continua com exatamente as 6 chaves pré-existentes.
+     * Cenário 6 — o payload Inertia público expõe SOMENTE o conjunto de chaves
+     * decidido conscientemente. O `has('survey', N)` é o coração do teste: ele
+     * quebra quando alguém acrescenta uma chave ao `Inertia::render` do
+     * `NpsController::respond()`, obrigando a decisão a passar por aqui.
+     *
+     * O que ele defende: a página é PÚBLICA (o cliente não tem login). O rastro
+     * de auditoria que a Phase 94 gravou no mesmo request — `first_opened_at`,
+     * `open_ip_address`, `open_user_agent`, `generated_by` — não pode vazar
+     * junto por descuido de `->only()` ou de um `$survey->toArray()`.
+     *
+     * 2026-08-11 (quick 260811-r4k): 6 → 8 chaves. Entraram
+     * `estrategista_foto` e `analista_foto` (`users.avatar_url`) para o card
+     * "Quem cuida da sua conta" mostrar o rosto do responsável. Exposição
+     * deliberada e do MESMO nível do que já havia: o nome dessas pessoas já era
+     * público neste payload desde a Phase 31, e a foto é a de perfil interno de
+     * quem atende aquele cliente. Nada do rastro de auditoria entrou.
      */
     public function test_payload_inertia_survey_nao_ganha_chaves_novas(): void
     {
@@ -138,15 +152,24 @@ class NpsOpenTrailTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Nps/Respond')
-                ->has('survey', 6)
+                ->has('survey', 8)
                 ->has('survey.token')
                 ->has('survey.company_name')
                 ->has('survey.estrategista_name')
                 ->has('survey.analista_name')
                 ->has('survey.tem_analista')
+                ->has('survey.estrategista_foto')
+                ->has('survey.analista_foto')
                 ->has('survey.textos')
                 ->has('perguntas_extras')
                 ->has('template')
+                // Blindagem explícita: o rastro de abertura da Phase 94 NUNCA
+                // pode aparecer no payload público, por mais chaves que ele
+                // venha a ter no futuro.
+                ->missing('survey.open_ip_address')
+                ->missing('survey.open_user_agent')
+                ->missing('survey.first_opened_at')
+                ->missing('survey.generated_by')
             );
     }
 }
