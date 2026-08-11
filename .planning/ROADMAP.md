@@ -1752,6 +1752,40 @@ Plans:
 
 > **Fora de escopo (fase própria):** qualquer write na API do ML (pausar, editar, mover anúncio) — ação destrutiva na conta do cliente em produção, exige confirmação dupla, `activity_log` e undo, na mesma linha do todo `260626-acoes-ml-mover-sgi-pausar-via-api.md`. Também fora: abrir o módulo ao time de publicação (`role:admin` → `permission:mlb.anunciar`).
 
+### Phase 135: Onboarding Geral por Serviço — motor dirigido por template com passos automáticos
+
+**Goal:** Qualquer serviço do catálogo (não só Polos) passa a ter onboarding de verdade: a Coordenação escolhe o serviço, o sistema monta o checklist a partir de um template versionado, e os passos que o sistema já sabe responder — anúncios ativos/inativos, faturamento, reputação, medalha, grants — chegam **preenchidos** em vez de virarem formulário para alguém digitar o que já está no banco.
+
+**Requirements**: (fase avulsa — sem REQ-IDs de milestone; requisitos derivados do `135-CONTEXT.md`)
+**Depends on:** Phase 134 (`ml_acervo_itens` é a fonte do passo automático de anúncios ativos/inativos; `mlb:sync-acervo --company` é o gatilho sob demanda para empresa recém-onboardada)
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Existe `/onboarding` cobrindo **qualquer** serviço do catálogo, ancorado em `Company × Servico` — um onboarding por contrato, não um por empresa
+  2. O onboarding de Polos (`mlb_implementacoes`, `/mlb/implementacao`, `/implementacao/{token}`) continua **byte-a-byte intocado** e em produção; o motor novo nasce ao lado
+  3. Contrato de serviço criado por **qualquer** dos 4 caminhos (HubSpot webhook · Comercial · Company/Show · CompanyGroup) gera onboarding em `rascunho` — via Observer em `ContratoServico`, não por lógica duplicada em cada controller
+  4. Onboarding em `rascunho` não corre SLA e não expõe link; só vira `andamento` quando a Coordenação confirma o responsável (sugerido por `responsavelDoServicoOuConsolidado()`)
+  5. Passo tem **dono** (`cliente` · `interno` · `sistema`), dependência declarada, SLA próprio e condição de existência — passo dependente nasce bloqueado e destrava sozinho
+  6. Os 5 passos de `dono=sistema` do template de Gestão se resolvem sem digitação humana, por resolvers registrados em código: `adman_account_id`, `company_grants.status`, `ml_tokens.status`, `ml_acervo_itens`, `MercadoLivreService::fetchUserInfo()`
+  7. Resolver distingue **"ainda não coletado"** de **"realmente zero"** — empresa nova dispara `mlb:sync-acervo --company` e só então lê; nunca aceita tabela vazia como resposta
+  8. Admin monta e edita templates pela UI, escolhendo `auto_fonte` de um **catálogo fechado** de resolvers (nunca texto livre), com guarda contra ciclo em `depende_de`
+  9. Salvar template publica versão N+1 e vale só para onboardings novos; os em andamento seguem na versão em que nasceram, com ação explícita para migrá-los
+  10. Cliente recebe **um link por empresa** que agrega os passos `dono=cliente` de todos os serviços ativos; passo de mesma `chave` em serviços diferentes fecha uma vez só
+  11. O painel responde "o que está travando, há quantos dias e de quem é a bola" — não uma barra de porcentagem
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 135 to break down)
+
+> **Escopo da v1:** só o template de **Gestão (Performance)** — 13 passos, 5 automáticos. Publicação, Shopee, Assessoria/Incubadora/Implantação ganham template depois, sem tocar no motor.
+>
+> **Fora de escopo (já é a milestone v22.0, Fases 124-133):** "Contrato Solicitado → Administrativo", revisão e assinatura de contrato via Clicksign. Contrato assinado é **pré-requisito** do onboarding nascer, não passo dele.
+>
+> **Fora de escopo (fase própria):** geração automática do relatório inicial de onboarding (cenário, métricas, estrutura, pontos de atenção, oportunidades, próximos passos). Os passos 7 e 8 já produzem quase todo o dado e `RelatorioMensalPdfService` é o molde — mas montar o PDF é fase separada.
+>
+> **Assunção a derrubar se estiver errada:** "Grant com o Sistema ECF" (item 11 do fluxo do cliente) = autorizar o app ECF por OAuth → `MlToken`; "Grant com a Consultoria" = programa de parceiros do ML → `company_grants`, populado por `SyncGrantsFromEcfDrive`/`SyncGrantsFromSftp`. É a leitura que faz os dois grants do documento baterem com as duas fontes do código sem sobrar nem faltar. Se na prática for outra coisa, muda o passo 5 do template — **não** muda a arquitetura.
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
