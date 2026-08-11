@@ -50,7 +50,7 @@ class ClicksignSondarModeloTest extends TestCase
 
     private function respostaDocumentoCriado(): array
     {
-        return ['data' => ['id' => self::DOCUMENT_ID, 'type' => 'documents', 'attributes' => ['filename' => 'Sondagem-modelo.pdf', 'status' => 'draft']]];
+        return ['data' => ['id' => self::DOCUMENT_ID, 'type' => 'documents', 'attributes' => ['filename' => 'Sondagem-modelo.docx', 'status' => 'draft']]];
     }
 
     private function respostaEventosVazia(): array
@@ -417,5 +417,93 @@ class ClicksignSondarModeloTest extends TestCase
 
         Http::assertSentCount(3);
         $this->assertStringContainsString('Requisições feitas: 3', $saida);
+    }
+
+    // ─── --baixar: regressão do 4º bug da fase (gate do plano 126-11) ───
+
+    /**
+     * MEDIDO em 11/08/2026, com envelope real ativado no sandbox: o link do
+     * arquivo gerado vive em **`data.links.files.original`**, NÃO em
+     * `data.attributes.files.original` — que era onde o código do plano
+     * 126-10 procurava, e por isso nunca achava nada.
+     *
+     * Medido junto (§10.4 do empírico): o link **não existe** enquanto o
+     * envelope está em `draft` (a Clicksign só materializa o arquivo na
+     * ativação), e o que ela devolve é o **`.docx`**, não um PDF — por isso o
+     * método salva com a extensão que veio no `filename`, e não `.pdf` fixo.
+     */
+    #[Test]
+    public function baixar_le_o_link_de_links_files_original_e_nao_de_attributes(): void
+    {
+        $urlArquivo = 'https://clicksign-sandbox-content.s3.amazonaws.com/exemplo/contrato.docx?X-Amz-Expires=300';
+
+        Http::fake(function ($request) use ($urlArquivo) {
+            $url    = $request->url();
+            $metodo = $request->method();
+
+            if ($metodo === 'POST' && $url === self::BASE . '/envelopes') {
+                return Http::response($this->respostaEnvelopeCriado(), 200);
+            }
+
+            if ($metodo === 'POST' && str_contains($url, '/documents')) {
+                // Forma REAL medida: `links.files.original`, e o filename `.docx`.
+                return Http::response(['data' => [
+                    'id'         => self::DOCUMENT_ID,
+                    'type'       => 'documents',
+                    'attributes' => ['filename' => 'Sondagem-modelo.docx', 'status' => 'draft'],
+                    'links'      => ['files' => ['original' => $urlArquivo]],
+                ]], 200);
+            }
+
+            if ($metodo === 'GET' && str_contains($url, '/events')) {
+                return Http::response($this->respostaEventosVazia(), 200);
+            }
+
+            if (str_contains($url, 's3.amazonaws.com')) {
+                return Http::response('PK conteudo binario falso do docx', 200);
+            }
+
+            if ($metodo === 'DELETE') {
+                return Http::response('', 204);
+            }
+
+            return Http::response(['errors' => [['code' => 'rota_nao_faqueada']]], 599);
+        });
+
+        Artisan::call('clicksign:sondar-modelo', [
+            '--template'  => self::TEMPLATE_ID,
+            '--baixar'    => true,
+            '--confirmar' => true,
+        ]);
+        $saida = Artisan::output();
+
+        $this->assertStringContainsString('Arquivo gerado baixado em:', $saida);
+        // Extensão vem do filename devolvido pela API, não `.pdf` presumido.
+        $this->assertStringContainsString('.docx', $saida);
+        $this->assertStringNotContainsString('Sem link de download', $saida);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 's3.amazonaws.com'));
+    }
+
+    /**
+     * Sem `links.files.original` — o caso do envelope em `draft`, que é o
+     * normal na sondagem. Não é erro: o comando avisa e segue, em vez de
+     * falhar ou de inventar um caminho de arquivo.
+     */
+    #[Test]
+    public function baixar_sem_link_avisa_que_e_esperado_em_rascunho_e_nao_falha(): void
+    {
+        $this->fakeTudo();
+
+        $codigo = Artisan::call('clicksign:sondar-modelo', [
+            '--template'  => self::TEMPLATE_ID,
+            '--baixar'    => true,
+            '--confirmar' => true,
+        ]);
+        $saida = Artisan::output();
+
+        $this->assertSame(0, $codigo, 'Ausência de link não é falha do comando.');
+        $this->assertStringContainsString('Sem link de download', $saida);
+        $this->assertStringContainsString('rascunho', $saida);
     }
 }

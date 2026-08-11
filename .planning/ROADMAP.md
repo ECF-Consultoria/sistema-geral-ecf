@@ -1663,6 +1663,24 @@ Plans:
 **Goal:** Existe um único ponto que decide se uma empresa está pronta para contrato, monta o envelope na Clicksign com prazo e lembrete configurados, e nunca gasta uma chamada HTTP com dado que já sabia estar incompleto.
 **Requirements**: CLICK-02, CLICK-08, DADOS-06, REDE-05
 **Depends on:** Fases 125, 126
+
+> ⚠️ **ENTRADA OBRIGATÓRIA DA FASE 126 — ler antes de planejar.** A Fase 126 provou o caminho de
+> modelo contra a API real e o gate humano foi aprovado, mas deixou **quatro coisas que esta fase
+> precisa resolver**, todas registradas na **D-21** de `126-CONTEXT.md` e no `126-11-SUMMARY.md`:
+>
+> 1. **Um modelo `.docx` por serviço** (D-21 superou a D-19). Empresa com N serviços recebe **N
+>    contratos** → 2 serviços = 30 chamadas contra a janela **medida** de 20/min. **Espaçar a
+>    geração não é opcional.**
+> 2. **Escolher o modelo pelo serviço** — hoje há um único `CLICKSIGN_TEMPLATE_ID`. Código que não
+>    existe.
+> 3. **Variável faltando vira BRANCO no contrato, sem erro nenhum** (§10.5 do empírico). Não há
+>    resposta HTTP que denuncie. Regra: recadastrou o `.docx`, roda `clicksign:sondar-modelo` antes
+>    de gerar contrato de cliente.
+> 4. **Não existe pré-visualizar sem enviar** (§10.4). Ver o contrato preenchido exige ativar o
+>    envelope, o que dispara e-mail ao cliente. Se o Comercial quiser conferir antes, é pela
+>    interface web da Clicksign — decisão de produto desta fase.
+>
+> ✅ A **dívida D-16 está fechada** (§10.6): excluir o modelo **não** derruba documento já gerado.
 **Success Criteria** (o que deve ser VERDADE):
 
   1. `ContratoClicksignService::iniciarParaEmpresa()` recusa continuar (sem chamar a Clicksign) quando falta e-mail do cliente, CNPJ válido ou nome do contato — devolve erro claro apontando o campo, antes de gerar PDF ou criar envelope

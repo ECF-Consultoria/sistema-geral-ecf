@@ -88,6 +88,32 @@ antigo.
   registra outro. Nomes e e-mails reais **não** entram aqui nem no `.docx` fonte versionado — vêm de
   `config('services.clicksign.signatarios_ecf')`, lida do `.env` (T-126-37).
 
+**D-21 — A D-19 acima foi SUPERADA em 11/08/2026: é UM MODELO `.docx` POR SERVIÇO.**
+⚠️ **Leia esta decisão junto com a D-19 — ela inverte a escolha registrada lá.** A D-19 dizia
+"serviços concatenados numa variável, um envelope por empresa". Na prática isso não se sustentou.
+
+**O que fez o usuário mudar de ideia** (e o argumento é dele, não meu): o escopo da cláusula 2.1 do
+contrato fala de ROAS, ACOS, TACOS, Product Ads e Trello de Implementação — isso é Gestão de ADS, não
+"qualquer serviço". Um contrato com escopo específico e nome de serviço variável **se contradiz**:
+um contrato de Shopee sairia com escopo de Mercado Livre. Palavras dele: *"o escopo do serviço são
+relacionados ao serviço de gestão de Ads e acho que não seria adequado colocar o escopo todo em
+variável"*.
+
+Consequências, todas ENTRADA OBRIGATÓRIA da Fase 127:
+- **`{{servico_contratado}}` deixou de existir no modelo.** O serviço é literal. O modelo de Gestão
+  de ADS Mercado Livre ficou com **7 variáveis**, não 8. O `ContratoVariaveisModeloService` continua
+  emitindo 10 — as 3 não usadas (`servico_contratado`, `vigencia_inicio`, `vigencia_fim`) são
+  inofensivas (medido: variável sobrando é aceita, §10.5 do empírico).
+- **Empresa com N serviços recebe N contratos.** Volta o custo que a D-19 tinha evitado: 2 serviços
+  = 2 envelopes = 30 chamadas contra a janela medida de 20/min. **A Fase 127 precisa espaçar a
+  geração** — não é opcional.
+- **O sistema precisa escolher o modelo pelo serviço.** Hoje existe um único
+  `CLICKSIGN_TEMPLATE_ID` em `config/services.php`. Isso tem que virar um modelo por serviço.
+  **Código que ainda não existe.**
+- **Faltam os modelos dos demais serviços.** O `.docx` entregue cobre só Gestão de ADS Mercado
+  Livre. Shopee e os outros precisam cada um do seu, com o escopo da cláusula 2.1 reescrito para o
+  que aquele serviço de fato entrega.
+
 **O que a reversão NÃO muda:** planos 126-01, 126-02, 126-03 e 126-04 seguem válidos e executados.
 O `ClicksignClient` continua sendo o caminho de integração — ele só ganha os métodos de modelo.
 
