@@ -1773,10 +1773,22 @@ Plans:
   10. Cliente recebe **um link por empresa** que agrega os passos `dono=cliente` de todos os serviços ativos; passo de mesma `chave` em serviços diferentes fecha uma vez só
   11. O painel responde "o que está travando, há quantos dias e de quem é a bola" — não uma barra de porcentagem
 
-**Plans:** 0 plans
+**Plans:** 13 plans em 7 waves
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 135 to break down)
+- [ ] 135-01-PLAN.md — Wave 0: baseline de regressao do Polos, ContratoServicoFactory e scaffold da suite [wave 1]
+- [ ] 135-02-PLAN.md — Schema do motor: 5 tabelas versionadas (com disponivel_em) + 5 models com catalogo fechado [wave 2]
+- [ ] 135-03-PLAN.md — Catalogo fechado de resolvers: Contract, resultado de 3 estados, registry + 2 resolvers locais [wave 3]
+- [ ] 135-04-PLAN.md — Template de Gestao v1 (13 passos) + engine de montagem, dependencias e condicoes [wave 3]
+- [ ] 135-05-PLAN.md — Observer de ContratoServico nos 4 call-sites + transicao rascunho→andamento [wave 4]
+- [ ] 135-06-PLAN.md — Resolvers de rede (sonda de grant Adman, metricas da conta) + Job assincrono [wave 4]
+- [ ] 135-07-PLAN.md — Resolver de acervo (SC-07: vazio ≠ zero) + comando de reavaliacao agendado [wave 5]
+- [ ] 135-08-PLAN.md — CRUD de template: versao N+1 imutavel, guarda de ciclo, migracao explicita [wave 4]
+- [ ] 135-09-PLAN.md — Painel operacional (backend): permission core.onboarding, props de "o que trava" [wave 5]
+- [ ] 135-10-PLAN.md — Tela 2: builder de template (React) [wave 5]
+- [ ] 135-11-PLAN.md — Link publico por empresa + Tela 3: portal do cliente [wave 6]
+- [ ] 135-12-PLAN.md — Tela 1: painel operacional (React) + item de menu [wave 6]
+- [ ] 135-13-PLAN.md — Gate de regressao do Polos, mapa de evidencia SC/D e verificacoes manuais [wave 7]
 
 > **Escopo da v1:** só o template de **Gestão (Performance)** — 13 passos, 5 automáticos. Publicação, Shopee, Assessoria/Incubadora/Implantação ganham template depois, sem tocar no motor.
 >
