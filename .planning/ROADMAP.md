@@ -1773,7 +1773,7 @@ Plans:
   10. Cliente recebe **um link por empresa** que agrega os passos `dono=cliente` de todos os serviços ativos; passo de mesma `chave` em serviços diferentes fecha uma vez só
   11. O painel responde "o que está travando, há quantos dias e de quem é a bola" — não uma barra de porcentagem
 
-**Plans:** 1/13 plans executed
+**Plans:** 2/13 plans executed
 
 Plans:
 **Wave 1**
@@ -1782,7 +1782,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 135-02-PLAN.md — Schema do motor: 5 tabelas versionadas (com disponivel_em) + 5 models com catalogo fechado [wave 2]
+- [x] 135-02-PLAN.md — Schema do motor: 5 tabelas versionadas (com disponivel_em) + 5 models com catalogo fechado [wave 2]
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
