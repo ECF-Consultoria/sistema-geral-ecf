@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: ready_to_plan
-stopped_at: Phase 126 complete (12/12) — ready to discuss Phase 127
-last_updated: 2026-08-11T18:39:31.810Z
+status: planning
+stopped_at: Phase 127 context gathered
+last_updated: "2026-08-11T20:26:43.502Z"
 last_activity: 2026-08-11
 progress:
-  total_phases: 10
-  completed_phases: 3
-  total_plans: 20
-  completed_plans: 217
-  percent: 30
+  total_phases: 12
+  completed_phases: 4
+  total_plans: 33
+  completed_plans: 30
+  percent: 33
 ---
 
 # Project State
@@ -814,6 +814,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **Dompdf continua instalado** (`RelatorioMensalPdfService` depende dele) — nenhuma mudança em `composer.json`.
 - Suíte `tests/Feature/Phase126/` + `tests/Feature/Phase125/`: **158 → 145** (queda de 13 esperada, não regressão — o código que esses testes provavam foi removido de propósito).
 - Fase 126 concluída — 12/12 planos executados.
+
 ### Decisões do Plan 134-09 (registradas)
 
 - **`usarComoTemplate()` fica em `AnunciarML.jsx` sem nenhum caller neste arquivo** — o botão "Template" que a chamava morava dentro do bloco "Rascunhos recentes" removido (D-16) e não está na seção 9 do UI-SPEC (que só define checkbox + badge + botão abrir + botão excluir). A função em si é citada **por linha** em `134-PATTERNS.md` (#17) e `134-10-PLAN.md` como o padrão de referência de "fetch lazy com try/finally" para o Modal de Detalhe do Anúncio do próximo plano — removê-la quebraria essas duas referências cruzadas sem necessidade.
@@ -942,8 +943,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-10T21:59:33.127Z
-Stopped at: Completed 126-09-PLAN.md
+Last session: 2026-08-11T20:26:42.887Z
+Stopped at: Phase 127 context gathered
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
