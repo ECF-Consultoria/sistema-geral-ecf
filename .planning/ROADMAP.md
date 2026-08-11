@@ -1776,18 +1776,38 @@ Plans:
 **Plans:** 13 plans em 7 waves
 
 Plans:
+**Wave 1**
+
 - [ ] 135-01-PLAN.md — Wave 0: baseline de regressao do Polos, ContratoServicoFactory e scaffold da suite [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 135-02-PLAN.md — Schema do motor: 5 tabelas versionadas (com disponivel_em) + 5 models com catalogo fechado [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 135-03-PLAN.md — Catalogo fechado de resolvers: Contract, resultado de 3 estados, registry + 2 resolvers locais [wave 3]
 - [ ] 135-04-PLAN.md — Template de Gestao v1 (13 passos) + engine de montagem, dependencias e condicoes [wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 135-05-PLAN.md — Observer de ContratoServico nos 4 call-sites + transicao rascunho→andamento [wave 4]
 - [ ] 135-06-PLAN.md — Resolvers de rede (sonda de grant Adman, metricas da conta) + Job assincrono [wave 4]
-- [ ] 135-07-PLAN.md — Resolver de acervo (SC-07: vazio ≠ zero) + comando de reavaliacao agendado [wave 5]
 - [ ] 135-08-PLAN.md — CRUD de template: versao N+1 imutavel, guarda de ciclo, migracao explicita [wave 4]
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 135-07-PLAN.md — Resolver de acervo (SC-07: vazio ≠ zero) + comando de reavaliacao agendado [wave 5]
 - [ ] 135-09-PLAN.md — Painel operacional (backend): permission core.onboarding, props de "o que trava" [wave 5]
 - [ ] 135-10-PLAN.md — Tela 2: builder de template (React) [wave 5]
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 135-11-PLAN.md — Link publico por empresa + Tela 3: portal do cliente [wave 6]
 - [ ] 135-12-PLAN.md — Tela 1: painel operacional (React) + item de menu [wave 6]
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 135-13-PLAN.md — Gate de regressao do Polos, mapa de evidencia SC/D e verificacoes manuais [wave 7]
 
 > **Escopo da v1:** só o template de **Gestão (Performance)** — 13 passos, 5 automáticos. Publicação, Shopee, Assessoria/Incubadora/Implantação ganham template depois, sem tocar no motor.
@@ -1807,6 +1827,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (run /gsd-plan-phase 136 to break down)
 
 ---

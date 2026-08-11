@@ -4,12 +4,12 @@ milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
 stopped_at: Phase 135 UI-SPEC approved
-last_updated: "2026-08-11T14:06:58.440Z"
-last_activity: 2026-08-11
+last_updated: "2026-08-11T15:34:23.911Z"
+last_activity: 2026-08-11 -- Phase 135 planning complete
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 1
-  total_plans: 15
+  total_plans: 28
   completed_plans: 10
   percent: 8
 ---
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 Phase: 134 (meus-anuncios-saude-analitica-do-anuncio-publicado) — EXECUTING
 Plan: 10 of 10
 Status: Ready to execute
-Last activity: 2026-08-11
+Last activity: 2026-08-11 -- Phase 135 planning complete
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
