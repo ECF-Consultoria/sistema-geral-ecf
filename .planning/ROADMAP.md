@@ -1786,6 +1786,17 @@ Plans:
 >
 > **Assunção fechada pelo usuário em 2026-08-11 (D-18 do `135-CONTEXT.md`):** "Grant com o Sistema ECF" (item 11 do fluxo do cliente) = autorizar o app ECF por OAuth → `ml_tokens` — **confirmado**. "Grant com a Consultoria" = grant com a **Adman** (`api.adman.com.br`), a plataforma que a consultoria usa — **corrigido**: não é `company_grants`. O que `company_grants` guarda (populado por `SyncGrantsFromEcfDrive`/`SyncGrantsFromSftp`) é o programa de parceiros do ML — medalha, programa, iniciativa — dado que a ECF *recebe*, não acesso que o cliente *concede*; segue como fonte dentro do passo 7, não como passo próprio. Pendência para o `RESEARCH.md`: qual chamada do `AdmanService` serve de sonda barata de "grant ativo para este cust_id" — se nenhuma servir, o passo 4 cai para dono `interno` com checagem manual. **Nada disso muda a arquitetura do motor.**
 
+### Phase 136: Métricas manuais por empresa/mês no Desempenho
+
+**Goal:** Permitir que o admin decida, por empresa e por mês, se faturamento e margem vêm da API ou de um valor lançado à mão — sem o qual carteira Shopee fica estruturalmente sem margem (a plataforma não expõe CMV) e empresa sem conexão OAuth fica sem faturamento nenhum. A margem manual se lança pelo **CMV do mês**: o sistema já tem o faturamento e deriva `margem % = (fat − CMV) / fat`, e daí os p.p. contra o mês anterior — mantém o "antes → depois" da tela e o número auditável. Vale **só para competência em curso e não consolidada** (a trava de congelamento continua valendo), é **admin-only**, e o lançamento acontece em **tela própria, em grade empresa × mês**, porque o CMV chega em lote no fechamento. Inclui a correção do desempate de fonte financeira: hoje `'adman'` vence sobre `'shopee'` sem verificar se a empresa tem conta Adman, o que faz a mesma empresa mostrar faturamento para um profissional e nada para outro.
+
+**Requirements**: TBD
+**Depends on:** Phase 135
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 136 to break down)
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
