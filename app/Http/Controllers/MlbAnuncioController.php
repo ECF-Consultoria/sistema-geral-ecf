@@ -6,6 +6,7 @@ use App\Jobs\PublicarAnuncioMlJob;
 use App\Jobs\SyncMlAcervoCompanyJob;
 use App\Models\Company;
 use App\Models\MlAcervoItem;
+use App\Models\MlAcervoMetricaDiaria;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
@@ -529,6 +530,155 @@ class MlbAnuncioController extends Controller
         Log::info("[MLB Anuncios] coleta manual enfileirada — empresa {$company->id} ({$company->name}) por " . auth()->user()?->name);
 
         return back()->with('success', 'Coleta enfileirada — pode levar alguns minutos. A tela mostra os dados mais novos na próxima visita.');
+    }
+
+    /**
+     * Detalhe de um anúncio (Fase 134 Plano 10) — checklist de sinais que
+     * fecha com a nota (D-10/D-22) e série de até 90 dias (D-07b), lidos
+     * EXCLUSIVAMENTE do banco (D-05). Carregado lazy pelo modal ao abrir —
+     * não vem no payload de meus() (decisão A10 do UI-SPEC): 50 itens × até
+     * 90 pontos de série seriam milhares de registros que a maioria das
+     * aberturas de página nunca usa.
+     */
+    public function detalheAnuncio(Request $request, Company $company, string $mlItemId): JsonResponse
+    {
+        // Mesma trava de todas as outras actions do módulo (D-02, T-134-01/02).
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+
+        // T-134-01: company_id na cláusula é o que impede que um mlItemId de
+        // outra empresa seja lido trocando a URL.
+        $item = MlAcervoItem::where('company_id', $company->id)
+            ->where('ml_item_id', $mlItemId)
+            ->firstOrFail();
+
+        // ─── Checklist (D-10/D-22) — montado a partir de nota_sinais JÁ
+        // PERSISTIDO pela coleta (MlAcervoService::avaliar), nunca
+        // recalculado aqui. Pesos vêm de AnuncioSaudeService::PESOS, nunca
+        // escritos à mão — a ordem do array já é a ordem do UI-SPEC. ───
+        $sinaisPersistidos = $item->nota_sinais ?? [];
+        $labels = [
+            'titulo'            => 'Título ≥ 20 caracteres',
+            'categoria'         => 'Categoria definida',
+            'ficha_obrigatoria' => 'Ficha técnica obrigatória completa',
+            'ficha_opcional'    => 'Ficha técnica opcional ≥ 60%',
+            'foto'              => 'Ao menos 1 foto',
+            'dimensoes'         => 'Dimensões de pacote completas',
+            'preco'             => 'Preço definido',
+        ];
+        // Os dois únicos sinais que analisarAnuncio() classifica como `erro`
+        // bloqueante no wizard — a distinção crítico/neutro espelha essa
+        // mesma separação, não é arbitrária (UI-SPEC, "Checklist dos sinais").
+        $criticos = ['ficha_obrigatoria', 'foto'];
+
+        $checklist = [];
+        $somaOk    = 0;
+        foreach (AnuncioSaudeService::PESOS as $chave => $peso) {
+            $ok = (bool) ($sinaisPersistidos[$chave]['ok'] ?? false);
+            if ($ok) {
+                $somaOk += $peso;
+            }
+            $checklist[] = [
+                'chave'   => $chave,
+                'label'   => $labels[$chave],
+                'peso'    => $peso,
+                'ok'      => $ok,
+                'critico' => in_array($chave, $criticos, true),
+            ];
+        }
+
+        // Asserção defensiva (T-134-21): a soma dos sinais verdadeiros
+        // PRECISA fechar com nota_ecf. Não silenciar quando não fecha — a
+        // tela precisa poder mostrar que algo está errado em vez de exibir
+        // uma conta que não bate (o mesmo modo de falha já vivido com
+        // nps_medio ≠ pontos_componentes.nps, .planning/learnings/desempenho-bonificacao.md).
+        $divergencia = $somaOk !== (int) $item->nota_ecf;
+        if ($divergencia) {
+            Log::warning("[MLB Anuncios] checklist não fecha com a nota — empresa {$company->id}, item {$mlItemId}");
+        }
+
+        // ─── Série de até 90 dias (D-07b) — a coleta grava em
+        // ml_acervo_metricas_diarias só quando algo muda (decisão do plano
+        // 134-04), então a série chega esparsa. Um ponto por dia do
+        // intervalo é montado abaixo, com uma assimetria deliberada entre
+        // campos de ESTADO e campos de FLUXO (mesma disciplina de
+        // honestidade do selo de defasagem, D-08):
+        //   • ESTADO (vendas, notaEcf): buraco = "não mudou" — o último
+        //     valor conhecido continua válido até a próxima linha gravada.
+        //     Preenchimento para frente.
+        //   • FLUXO (visitas): buraco = a rotação do D-23 não passou por
+        //     este item naquele dia. Preencher aqui inventaria tráfego que
+        //     ninguém mediu — fica nulo, e o `connectNulls={false}` do
+        //     gráfico existe justamente para mostrar esse buraco como
+        //     buraco. ───
+        $inicio = now()->subDays(89)->startOfDay();
+        $fim    = now()->startOfDay();
+
+        $registros = MlAcervoMetricaDiaria::where('company_id', $company->id)
+            ->where('ml_item_id', $mlItemId)
+            ->whereBetween('data', [$inicio->toDateString(), $fim->toDateString()])
+            ->orderBy('data')
+            ->get()
+            ->keyBy(fn ($r) => $r->data->toDateString());
+
+        $serie        = [];
+        $ultimoVendas = null;
+        $ultimoNota   = null;
+        for ($d = $inicio->copy(); $d->lte($fim); $d->addDay()) {
+            $chave    = $d->toDateString();
+            $registro = $registros->get($chave);
+
+            if ($registro !== null) {
+                // ESTADO: só atualiza o "último valor conhecido" quando existe registro nesse dia.
+                $ultimoVendas = $registro->sold_quantity;
+                $ultimoNota   = $registro->nota_ecf;
+            }
+
+            $serie[] = [
+                'data'    => $chave,
+                'visitas' => $registro?->visitas, // FLUXO — nunca preenchido para frente
+                'vendas'  => $ultimoVendas,        // ESTADO — preenchimento para frente
+                'notaEcf' => $ultimoNota,          // ESTADO — preenchimento para frente
+            ];
+        }
+
+        return response()->json([
+            'item' => [
+                'ml_item_id'          => $item->ml_item_id,
+                'titulo'              => (string) $item->title,
+                'thumbnail'           => $item->thumbnail,
+                'permalink'           => $item->permalink,
+                'origem'              => $item->origem,
+                'rascunho_id'         => $item->rascunho_id,
+                'status'              => $item->status,
+                'listing_tier'        => $item->listing_type_id,
+                'estoque'             => $item->available_quantity,
+                'vendas'              => $item->sold_quantity,
+                'visitas'             => $item->visitas_30d,
+                'visitas_dias'        => $item->detalhe_coletado_em !== null
+                    ? $item->detalhe_coletado_em->diffInDays(now())
+                    : null,
+                'buybox_status'       => $item->buybox_status,
+                'buybox_nao_avaliado' => $item->naoAvaliadoBuyBox(),
+                'nota_ecf'            => $item->nota_ecf,
+                'nota_base'           => AnuncioSaudeService::BASE, // literal — "X de 86" (D-22), nunca renormalizada
+                'motivos'             => $item->motivos ?? [],
+                // D-21 (Variante A, veredicto DISPONÍVEL) — mesma disciplina
+                // de meus(): escalas próprias, nunca convertidas uma na
+                // outra; ausência vira "não se aplica" ou "não avaliado",
+                // nunca um número inventado.
+                'health_ml'              => $item->health_ml !== null ? round((float) $item->health_ml, 2) : null,
+                'performance_score'      => $item->performance_score,
+                'performance_level'      => $item->performance_level,
+                'performance_acoes'      => $item->performance_acoes ?? [], // title já redigido em pt-BR pelo ML — nunca reescrito
+                'saude_ml_nao_se_aplica' => $item->saudeMlNaoSeAplica(),
+            ],
+            'checklist'         => $checklist,
+            'checklistTotal'    => AnuncioSaudeService::BASE, // nunca somado no cliente
+            'divergencia'       => $divergencia,
+            'serie'             => $serie,
+            'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
+        ]);
     }
 
     /**
