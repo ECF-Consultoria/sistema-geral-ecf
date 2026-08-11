@@ -56,6 +56,7 @@ function travaVocabularioVisual(caminho) {
 
 travaVocabularioVisual('resources/js/Pages/Mlb/MeusAnuncios.jsx');
 travaVocabularioVisual('resources/js/Pages/Mlb/components/RascunhosPainel.jsx');
+travaVocabularioVisual('resources/js/Pages/Mlb/components/ModalDetalheAnuncio.jsx');
 
 // text-xl (Display) só existe no H1 do cabeçalho de MeusAnuncios.jsx — não
 // faz parte do contrato por arquivo do helper (RascunhosPainel.jsx não tem
