@@ -1824,13 +1824,13 @@ Plans:
 
 **Requirements**: TBD — a unidade de rastreabilidade desta fase sao os IDs de decisao do `136-CONTEXT.md` (D-01..D-12 + D-EXC-01), todos cobertos pelos planos abaixo.
 **Depends on:** Phase 135
-**Plans:** 7 plans em 5 waves
+**Plans:** 1/7 plans executed
 
 Plans:
 
 **Wave 1** *(paralelos, sem sobreposicao de arquivos)*
 
-- [ ] 136-01-PLAN.md — D-10: resolvedor unico de fonte financeira nos 3 call-sites + bump de cache v19->v20 + rotacao do gate de hash da Fase 119 + baseline de falhas [wave 1]
+- [x] 136-01-PLAN.md — D-10: resolvedor unico de fonte financeira nos 3 call-sites + bump de cache v19->v20 + rotacao do gate de hash da Fase 119 + baseline de falhas [wave 1]
 - [ ] 136-02-PLAN.md — Fundacao de dados: tabela `desempenho_metricas_manuais`, model com activitylog, helper de competencia consolidada e FormRequest (D-01/D-02/D-07/D-09/D-12) [wave 1]
 
 **Wave 2** *(blocked on Wave 1)*
