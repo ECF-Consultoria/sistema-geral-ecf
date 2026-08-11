@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
 import RascunhosPainel from '@/Pages/Mlb/components/RascunhosPainel';
+import ModalDetalheAnuncio from '@/Pages/Mlb/components/ModalDetalheAnuncio';
 import { rotuloTier } from '@/Pages/Mlb/anuncioHistoricoUtils';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/Components/ui/select';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/Components/ui/table';
@@ -201,6 +202,7 @@ export default function MeusAnuncios({
     const [busca, setBusca] = useState(filtros.busca ?? '');
     const [atualizando, setAtualizando] = useState(false);
     const [cooldown, setCooldown] = useState(false);
+    const [detalheAberto, setDetalheAberto] = useState(null);
 
     // ─── Round-trip único: toda troca de sub-aba/filtro/busca vai ao
     // servidor — nunca useState local decidindo o que aparece na tabela. ───
@@ -228,12 +230,11 @@ export default function MeusAnuncios({
         navegar({ motivo: filtros.motivo === chave ? null : chave });
     }
 
-    // 134-10 abre aqui o Modal de Detalhe do Anúncio (série temporal +
-    // checklist de sinais). Handler existe e ainda não faz nada — ligado
-    // por antecipação (decisão A9 do UI-SPEC).
-    // eslint-disable-next-line no-unused-vars
+    // Abre o Modal de Detalhe do Anúncio (série temporal + checklist de
+    // sinais) — decisão A9 do UI-SPEC: título, thumbnail e Nota ECF da
+    // linha compartilham o mesmo gatilho.
     function abrirDetalhe(item) {
-        // Modal de Detalhe chega no plano 134-10.
+        setDetalheAberto(item.ml_item_id);
     }
 
     // "Atualizar agora" — cooldown de 30s só depois de SUCESSO no enqueue;
@@ -488,10 +489,10 @@ export default function MeusAnuncios({
                                                                     )}
                                                                 </TableCell>
                                                                 <TableCell className="px-2 py-2">
-                                                                    <div className="flex flex-col items-start gap-1">
+                                                                    <button type="button" onClick={() => abrirDetalhe(item)} className="flex flex-col items-start gap-1 text-left">
                                                                         {saudeMlDisponivel && <SaudeMl item={item} rotacaoN={rotacaoN} />}
                                                                         <BarraNotaEcf pontos={item.nota_ecf} />
-                                                                    </div>
+                                                                    </button>
                                                                 </TableCell>
                                                                 <TableCell className="px-2 py-2">
                                                                     <div className="flex flex-wrap items-center gap-1">
@@ -582,6 +583,14 @@ export default function MeusAnuncios({
                     <RascunhosPainel empresaId={empresa.id} rascunhos={rascunhos ?? []} />
                 )}
             </div>
+
+            {/* Modal de Detalhe do Anúncio (134-10) — carregamento lazy por mlItemId */}
+            <ModalDetalheAnuncio
+                empresaId={empresa.id}
+                mlItemId={detalheAberto}
+                saudeMlDisponivel={saudeMlDisponivel}
+                onClose={() => setDetalheAberto(null)}
+            />
         </AppLayout>
     );
 }
