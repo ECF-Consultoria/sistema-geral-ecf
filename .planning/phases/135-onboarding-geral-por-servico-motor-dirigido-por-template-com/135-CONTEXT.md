@@ -6,8 +6,10 @@
 > as derivadas (D-09..D-17) foram tomadas por discrição e estão marcadas como tal.
 >
 > **Este documento substitui o `discuss-phase`** — as decisões abaixo não devem ser
-> reabertas sem motivo novo. A única questão genuinamente aberta é a assunção sobre os
-> dois grants, isolada no fim do documento.
+> reabertas sem motivo novo. A única questão que estava aberta — a assunção sobre os
+> dois grants — foi levada ao usuário em 2026-08-11 e fechada na **D-18**, no fim do
+> documento: o grant do Sistema ECF confirmou-se OAuth (`ml_tokens`); o "Grant com a
+> Consultoria" **não** é `company_grants`, é o grant com a **Adman**.
 
 ## Contexto de origem
 
@@ -133,7 +135,7 @@ onboarding_links            company_id, token          ← um por EMPRESA (D-06)
 | 1 | Ficha do cliente recebida | interno | — | |
 | 2 | Acesso colaborador ML | cliente | — | |
 | 3 | Planilha de custos ADMAN | **sistema** | — | `adman_account_id` preenchido |
-| 4 | Grant com a Consultoria | **sistema** | — | `company_grants.status = active` |
+| 4 | Grant com a Consultoria (Adman) | **sistema** | 3 | Adman responde dado para o `cust_id` — ver D-18 |
 | 5 | Grant com o Sistema ECF (OAuth) | cliente | 2 | `ml_tokens.status = active` |
 | 6 | Confirmação de pagamento | interno · financeiro | — | |
 | 7 | Métricas da conta | **sistema** | 3, 5 | Adman + `fetchUserInfo()` |
@@ -147,19 +149,38 @@ onboarding_links            company_id, token          ← um por EMPRESA (D-06)
 **SLA:** alvo de 15 dias corridos ponta a ponta. Acesso colaborador 3d · grants 5d ·
 mapeamento 1d após destravar · reunião realizada 10d.
 
-## Assunção aberta — a única que pode estar errada
+## D-18 — Os dois grants, resolvido pelo usuário (2026-08-11)
 
-**"Grant com o Sistema ECF" = OAuth do app ECF (`MlToken`)** e **"Grant com a
-Consultoria" = programa de parceiros do ML (`company_grants`)**.
+A assunção que este documento carregava em aberto foi levada ao usuário. Veredicto:
 
-O documento do usuário lista os dois grants como coisas separadas. No código existe
-`company_grants`, populado por `SyncGrantsFromEcfDrive` / `SyncGrantsFromSftp` — vem da
-**planilha do Mercado Livre**, nada que a ECF marque. Esta leitura faz os dois grants do
-documento baterem com as duas fontes do código sem sobrar nem faltar nada, e transforma
-os dois em auto-verificáveis.
+**"Grant com o Sistema ECF" — CONFIRMADO.** É o OAuth do app ECF → `ml_tokens`.
+Passo 5 fica como estava: `ml_tokens.status = active`, dono `cliente`, depende do passo 2.
 
-**Se estiver errada, muda o passo 5 do template — não muda a arquitetura.**
-Validar com o usuário no `discuss-phase`.
+**"Grant com a Consultoria" — CORRIGIDO.** Não é `company_grants`. É o **grant com a
+Adman** — a plataforma de gestão de anúncios que a consultoria usa (`api.adman.com.br`).
+O que o CONTEXT chamava de `company_grants` é outra coisa: o **programa de parceiros do
+Mercado Livre** (`ml_grant_token`, `medalha`, `programa`, `iniciativa`, `parceiro`),
+populado por `SyncGrantsFromEcfDrive` a partir da API do ECF Drive. É um dado que a ECF
+recebe, não um acesso que o cliente concede.
+
+**Consequência no template — passo 4:**
+
+`companies.adman_account_id` é *"alimentado pela planilha Adman"*
+(`SyncGrantsFromEcfDrive.php:145`). Campo preenchido prova cadastro, **não prova acesso
+funcionando** — e é exatamente a distinção que a D-11 exige. O resolver do passo 4 deve
+provar o grant **pela resposta da Adman para aquele `cust_id`**, não pela presença do
+campo. Isso também separa o passo 4 do passo 3, que continua sendo sobre a planilha de
+custos estar preenchida.
+
+**Pendência para o `RESEARCH.md` (não é decisão de produto, é leitura de código):**
+qual chamada do `AdmanService` é a sonda barata e confiável de "grant ativo para este
+cust_id" — e como o resolver distingue *sem grant* de *grant ok, conta sem movimento*
+(D-11). Se nenhuma chamada servir de sonda, o passo 4 cai para dono `interno` com
+checagem manual e a automação dele vira fase seguinte. **Nada disso muda a arquitetura
+do motor.**
+
+**Onde `company_grants` continua útil:** como fonte de medalha / programa de parceiros
+dentro do passo 7 (Métricas da conta), junto com `fetchUserInfo()`. Não é passo próprio.
 
 ## Fora de escopo, explicitamente
 
