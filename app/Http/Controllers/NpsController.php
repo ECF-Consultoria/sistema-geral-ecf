@@ -1553,6 +1553,15 @@ class NpsController extends Controller
                 'estrategista_name'  => $estrategistaNome,
                 'analista_name'      => $analistaNome,
                 'tem_analista'       => $temAnalista,
+                // 2026-08-11 — foto do responsável no card "Quem cuida da sua
+                // conta". `users.avatar_url` já guarda a URL pronta para uso
+                // (upload local vira `/storage/avatars/...` via Storage::url;
+                // foto do Google/externa vem absoluta), então vai crua, sem
+                // prefixo — mesmo contrato do `foto` do PerformanceController.
+                // Null quando o responsável não subiu foto: a UI cai nas
+                // iniciais, que continuam sendo o comportamento padrão.
+                'estrategista_foto'  => $estrategista?->avatar_url,
+                'analista_foto'      => $analista?->avatar_url,
                 'textos'             => $textosRender,
             ],
             'perguntas_extras' => $perguntasExtras,
