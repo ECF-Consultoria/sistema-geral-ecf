@@ -38,7 +38,7 @@ class AppServiceProvider extends ServiceProvider
         // mais resolvers a esta mesma lista.
         $this->app->singleton(\App\Services\Onboarding\OnboardingResolverFactory::class, function ($app) {
             return new \App\Services\Onboarding\OnboardingResolverFactory([
-                //
+                $app->make(\App\Services\Onboarding\Resolvers\AdmanAccountIdResolver::class),
             ]);
         });
     }
