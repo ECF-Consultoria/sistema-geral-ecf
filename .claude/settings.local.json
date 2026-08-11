@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "Bash(./plink.exe *)",
+      "Bash(./pscp.exe *)",
       "Bash(/c/xampp/php/php.exe artisan *)",
       "Bash(npm run *)",
       "Bash(bash deploy.sh)",
