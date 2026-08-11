@@ -153,6 +153,23 @@ class ClicksignClient
      */
     public function anexarDocumentoPorModelo(string $envelopeId, string $nomeArquivo, string $templateId, array $variaveis): array
     {
+        // ⚠️ MEDIDO no sandbox em 11/08/2026 (gate do plano 126-11): o
+        // documento instanciado a partir de modelo NASCE de um `.docx`, e a
+        // API exige que o `filename` reflita isso. Medido com modelo real:
+        //   "contrato.docx"          => 201 ACEITO
+        //   "contrato_sondagem.docx" => 201 ACEITO
+        //   "Sondagem-modelo.pdf"    => 400 "filename não está em um formato válido"
+        //   "contrato" (sem extensão) => 400, mesma mensagem
+        // A guarda é local de propósito: descobrir isso na API custa uma das
+        // 20 requisições/min e devolve mensagem genérica que não diz qual é o
+        // formato certo. Note que `anexarDocumento()` (upload de binário) usa
+        // `.pdf` normalmente — a exigência é DESTE caminho, não do outro.
+        if (!preg_match('/\.docx$/i', $nomeArquivo)) {
+            throw new ClicksignException(
+                "O nome de arquivo \"{$nomeArquivo}\" não serve para documento gerado a partir de modelo: a Clicksign exige extensão .docx (medido — .pdf e nome sem extensão devolvem 400 \"filename não está em um formato válido\")."
+            );
+        }
+
         foreach (array_keys($variaveis) as $chave) {
             if (!is_string($chave) || !preg_match('/^[a-z0-9_]+$/i', $chave)) {
                 throw new ClicksignException(

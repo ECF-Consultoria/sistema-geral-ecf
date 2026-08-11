@@ -195,7 +195,7 @@ class ClicksignClientModeloTest extends TestCase
 
         $this->client()->anexarDocumentoPorModelo(
             self::ENVELOPE_ID,
-            'Contrato de teste.pdf',
+            'Contrato de teste.docx',
             self::TEMPLATE_ID,
             ['razao_social' => 'Empresa Teste LTDA', 'dia' => 1]
         );
@@ -204,7 +204,7 @@ class ClicksignClientModeloTest extends TestCase
             $atributos = $request['data']['attributes'] ?? [];
 
             $this->assertSame(['filename', 'template'], array_keys($atributos));
-            $this->assertSame('Contrato de teste.pdf', $atributos['filename']);
+            $this->assertSame('Contrato de teste.docx', $atributos['filename']);
             $this->assertSame(['key', 'data'], array_keys($atributos['template']));
             $this->assertSame(self::TEMPLATE_ID, $atributos['template']['key']);
             $this->assertSame(
@@ -223,7 +223,7 @@ class ClicksignClientModeloTest extends TestCase
             self::BASE . '/envelopes/*/documents' => Http::response(ClicksignSandboxFixtures::documentoCriado(), 200),
         ]);
 
-        $this->client()->anexarDocumentoPorModelo(self::ENVELOPE_ID, 'Contrato.pdf', self::TEMPLATE_ID, []);
+        $this->client()->anexarDocumentoPorModelo(self::ENVELOPE_ID, 'Contrato.docx', self::TEMPLATE_ID, []);
 
         Http::assertSent(function ($request) {
             $atributos = $request['data']['attributes'] ?? [];
@@ -248,7 +248,7 @@ class ClicksignClientModeloTest extends TestCase
             self::BASE . '/envelopes/*/documents' => Http::response(ClicksignSandboxFixtures::documentoCriado(), 200),
         ]);
 
-        $this->client()->anexarDocumentoPorModelo(self::ENVELOPE_ID, 'Contrato.pdf', self::TEMPLATE_ID, []);
+        $this->client()->anexarDocumentoPorModelo(self::ENVELOPE_ID, 'Contrato.docx', self::TEMPLATE_ID, []);
 
         Http::assertSent(function ($request) {
             $corpoBruto = $request->body();
@@ -266,13 +266,80 @@ class ClicksignClientModeloTest extends TestCase
         Http::fake();
 
         try {
-            $this->client()->anexarDocumentoPorModelo(self::ENVELOPE_ID, 'Contrato.pdf', self::TEMPLATE_ID, [0 => 'valor']);
+            $this->client()->anexarDocumentoPorModelo(self::ENVELOPE_ID, 'Contrato.docx', self::TEMPLATE_ID, [0 => 'valor']);
             $this->fail('Esperava ClicksignException por chave numérica em $variaveis.');
         } catch (ClicksignException $e) {
             // ok — chave numérica faria o hash virar array JSON
         }
 
         Http::assertNothingSent();
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function nomesDeArquivoRecusadosPelaApi(): array
+    {
+        return [
+            'extensao pdf'  => ['Sondagem-modelo.pdf'],
+            'sem extensao'  => ['contrato'],
+            'extensao doc'  => ['contrato.doc'],
+            'docx no meio'  => ['contrato.docx.pdf'],
+        ];
+    }
+
+    /**
+     * Regressão MEDIDA no sandbox em 11/08/2026 (gate do plano 126-11), com
+     * modelo real cadastrado: documento instanciado a partir de modelo NASCE
+     * de um `.docx`, e a API exige que o `filename` reflita isso.
+     *
+     *   "contrato.docx"          => 201 ACEITO
+     *   "contrato_sondagem.docx" => 201 ACEITO
+     *   "Sondagem-modelo.pdf"    => 400 "filename não está em um formato válido"
+     *   "contrato" (sem extensão) => 400, mesma mensagem
+     *
+     * O comando `clicksign:sondar-modelo` mandava `.pdf` e falhava contra a
+     * API real — o `Http::fake()` do plano 126-07 não tinha como pegar.
+     * A guarda é local para não gastar uma das 20 requisições/min descobrindo
+     * isso, e porque a mensagem da API não diz qual é o formato certo.
+     */
+    #[Test]
+    #[DataProvider('nomesDeArquivoRecusadosPelaApi')]
+    public function anexar_documento_por_modelo_exige_extensao_docx_no_filename(string $nomeInvalido): void
+    {
+        Http::fake();
+
+        try {
+            $this->client()->anexarDocumentoPorModelo(
+                self::ENVELOPE_ID,
+                $nomeInvalido,
+                self::TEMPLATE_ID,
+                ['razao_social' => 'Empresa Teste']
+            );
+            $this->fail("Esperava ClicksignException para o filename \"{$nomeInvalido}\".");
+        } catch (ClicksignException $e) {
+            $this->assertStringContainsString('.docx', $e->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
+    /**
+     * O caminho de UPLOAD de binário (`anexarDocumento`) continua usando
+     * `.pdf` — a exigência de `.docx` é só do caminho de modelo. Este teste
+     * existe para a guarda nova não ser generalizada por engano para o outro
+     * método numa refatoração futura.
+     */
+    #[Test]
+    public function anexar_documento_por_upload_continua_aceitando_pdf(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes/*/documents' => Http::response(ClicksignSandboxFixtures::documentoCriado(), 200),
+        ]);
+
+        $this->client()->anexarDocumento(self::ENVELOPE_ID, 'contrato.pdf', '%PDF-1.4 binário falso');
+
+        Http::assertSentCount(1);
     }
 
     /**
@@ -294,7 +361,7 @@ class ClicksignClientModeloTest extends TestCase
         Http::fake();
 
         try {
-            $this->client()->anexarDocumentoPorModelo(self::ENVELOPE_ID, 'Contrato.pdf', self::TEMPLATE_ID, [$nomeInvalido => 'valor']);
+            $this->client()->anexarDocumentoPorModelo(self::ENVELOPE_ID, 'Contrato.docx', self::TEMPLATE_ID, [$nomeInvalido => 'valor']);
             $this->fail("Esperava ClicksignException para o nome de variável \"{$nomeInvalido}\".");
         } catch (ClicksignException $e) {
             // ok — @, # e ! são recusados pela Clicksign no cadastro do modelo (medido, §9.4)
@@ -315,7 +382,7 @@ class ClicksignClientModeloTest extends TestCase
         ]);
 
         try {
-            $this->client()->anexarDocumentoPorModelo(self::ENVELOPE_ID, 'Contrato.pdf', self::TEMPLATE_ID, ['razao_social' => 'Empresa Teste']);
+            $this->client()->anexarDocumentoPorModelo(self::ENVELOPE_ID, 'Contrato.docx', self::TEMPLATE_ID, ['razao_social' => 'Empresa Teste']);
             $this->fail('Esperava ClicksignException por 400.');
         } catch (ClicksignException $e) {
             $this->assertSame(400, $e->httpStatus);
@@ -340,7 +407,7 @@ class ClicksignClientModeloTest extends TestCase
 
         $resultado = $this->client()->montarEnvelopePorModelo(
             ['name' => 'Contrato de teste — ECF Admin'],
-            'Contrato de teste.pdf',
+            'Contrato de teste.docx',
             self::TEMPLATE_ID,
             ['razao_social' => 'Empresa Teste LTDA'],
             ['nome' => 'Cliente Teste', 'email' => 'cliente@example.com', 'papel' => ContratoAssinaturaSignatario::PAPEL_CONTRATANTE]
@@ -372,7 +439,7 @@ class ClicksignClientModeloTest extends TestCase
         try {
             $this->client()->montarEnvelopePorModelo(
                 ['name' => 'Contrato de teste — ECF Admin'],
-                'Contrato de teste.pdf',
+                'Contrato de teste.docx',
                 self::TEMPLATE_ID,
                 ['razao_social' => 'Empresa Teste LTDA'],
                 ['nome' => 'Cliente Teste', 'email' => 'cliente@example.com', 'papel' => ContratoAssinaturaSignatario::PAPEL_CONTRATANTE]

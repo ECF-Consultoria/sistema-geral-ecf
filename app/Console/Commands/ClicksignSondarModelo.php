@@ -277,7 +277,9 @@ class ClicksignSondarModelo extends Command
         $documento  = [];
 
         try {
-            $documento = $client->anexarDocumentoPorModelo($envelopeId, 'Sondagem-modelo.pdf', $templateId, $variaveis);
+            // `.docx`, não `.pdf`: o documento nasce do modelo Word, e a API
+            // recusa qualquer outra extensão (medido no gate do plano 126-11).
+            $documento = $client->anexarDocumentoPorModelo($envelopeId, 'Sondagem-modelo.docx', $templateId, $variaveis);
             $requisicoes++;
             $documentId = $documento['id'];
 
