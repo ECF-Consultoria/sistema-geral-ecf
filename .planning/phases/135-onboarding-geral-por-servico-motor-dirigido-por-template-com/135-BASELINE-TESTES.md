@@ -57,3 +57,32 @@ trabalho. **Qualquer falha nova** nessas mesmas 6 suítes — uma que passa aqui
 depois, um erro que não existia e passa a existir, ou uma queda no número de `Passed` — viola
 D-02/SC-02 e **trava a fase**. A comparação é sempre numérica, suíte a suíte, contra esta
 tabela — nunca por impressão.
+
+## Medição "depois do Observer" (Plano 05, Task 3)
+
+> Rodada após `ContratoServicoObserver` entrar em cena (commit `d7f86c25`, registrado em
+> `#[ObservedBy(ContratoServicoObserver::class)]` em `app/Models/ContratoServico.php`), com o
+> HEAD em `d8e0bcaa` — mesmo comando, um por vez, mesma metodologia da coluna "antes".
+
+| Suíte | Passed | Failed | Comparação vs. "antes" |
+|---|---|---|---|
+| `PolosControllerTest` | 6 | 6 | idêntico |
+| `PolosFaturamentoSnapshotTest` | 0 | 4 | idêntico |
+| `Phase112HubspotHandoffWebhookTest` | 6 | 0 | idêntico — zero falha nova |
+| `Phase113HubspotDedupTest` | 14 | 0 | idêntico — zero falha nova |
+| `Phase37ComercialListagemTest` | 17 | 0 | idêntico — zero falha nova |
+| `Phase37CompaniesPerformanceFilterTest` | 15 | 0 | idêntico — zero falha nova |
+
+**Zero regressão em todas as 6 suítes.** Os 4 arquivos de risco do Observer seguem 100% verdes
+(52/52, mesma contagem do Plano 04); `PolosControllerTest`/`PolosFaturamentoSnapshotTest`
+mantêm exatamente as mesmas 10 falhas pré-existentes (6+4), sem nenhuma mudança de mensagem ou
+contagem.
+
+**Um ajuste de fixture foi necessário fora das 6 suítes de risco** — `OnboardingSchemaTest`
+(suíte do próprio motor de Onboarding, Plano 02): o teste
+`dois_onboardings_do_mesmo_contrato_lancam_query_exception_sc01` criava o `ContratoServico` via
+Eloquent com um `OnboardingTemplate` já ativo para o mesmo serviço — com o Observer presente,
+isso passou a criar o primeiro onboarding sozinho, antes do ponto em que o teste esperava
+lançar a exceção de unicidade. Fix (commit `47be2771`): o contrato agora nasce via
+`DB::table('contratos_servico')->insertGetId(...)`, contornando o Observer — a constraint de
+banco sendo provada é a mesma, sem depender de nenhum efeito colateral do Eloquent.
