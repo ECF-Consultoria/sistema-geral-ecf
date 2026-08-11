@@ -1,9 +1,13 @@
-# Fase 135 — Decisões prévias (antes do discuss-phase)
+# Fase 135 — CONTEXT
 
-> Trabalho de ideação feito com o usuário em 2026-08-11, a partir do PDF
+> **Origem:** ideação conversacional com o usuário em 2026-08-11, a partir do PDF
 > **"Demandas e Fluxos – Sistema ECF"** e do resumo de reunião **`contexto-sistema-ecf.md`**.
-> Este documento é INSUMO do `discuss-phase`, não substituto: as 8 decisões abaixo
-> estão travadas pelo usuário e não devem ser reabertas sem motivo novo.
+> Duas rodadas de `AskUserQuestion` produziram as 8 decisões travadas (D-01..D-08);
+> as derivadas (D-09..D-17) foram tomadas por discrição e estão marcadas como tal.
+>
+> **Este documento substitui o `discuss-phase`** — as decisões abaixo não devem ser
+> reabertas sem motivo novo. A única questão genuinamente aberta é a assunção sobre os
+> dois grants, isolada no fim do documento.
 
 ## Contexto de origem
 
