@@ -7,6 +7,7 @@ import {
     ImageOff, ExternalLink, Pencil, Info, CircleDashed,
 } from 'lucide-react';
 import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
+import RascunhosPainel from '@/Pages/Mlb/components/RascunhosPainel';
 import { rotuloTier } from '@/Pages/Mlb/anuncioHistoricoUtils';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/Components/ui/select';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/Components/ui/table';
@@ -195,7 +196,7 @@ function decodificarRotuloPaginacao(label) {
 }
 
 export default function MeusAnuncios({
-    empresa, sub, subTotais, anuncios, triagem, filtros, defasagem, saudeMlDisponivel, rotacaoN,
+    empresa, sub, subTotais, anuncios, rascunhos, triagem, filtros, defasagem, saudeMlDisponivel, rotacaoN,
 }) {
     const [busca, setBusca] = useState(filtros.busca ?? '');
     const [atualizando, setAtualizando] = useState(false);
@@ -577,9 +578,8 @@ export default function MeusAnuncios({
                         )}
                     </>
                 ) : (
-                    // Sub-aba Rascunhos: o plano 134-09 preenche este contêiner (grid de
-                    // cards + barra de lote). Vazio de propósito — sem placeholder visível.
-                    <div />
+                    // Sub-aba Rascunhos (D-14) — barra de lote + grid de cards clicáveis.
+                    <RascunhosPainel empresaId={empresa.id} rascunhos={rascunhos ?? []} />
                 )}
             </div>
         </AppLayout>
