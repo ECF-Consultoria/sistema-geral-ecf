@@ -14,8 +14,7 @@ use Illuminate\Support\Facades\Log;
  * serviço de Gestão (Performance): 13 passos, 5 automáticos (D-08/D-19).
  *
  * Escopo travado: só o serviço de Gestão nesta v1 (D-08) — nenhum outro
- * serviço do catálogo (Publicação, Shopee, Assessoria, Incubadora,
- * Implantação) ganha template aqui.
+ * serviço do catálogo ganha template aqui.
  *
  * Idempotente: se já existe um OnboardingTemplate para o servico_id
  * resolvido, o seeder não cria nada — registra um log e retorna. Rodar

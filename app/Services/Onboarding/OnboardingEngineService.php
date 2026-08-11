@@ -7,6 +7,7 @@ use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
 use App\Models\OnboardingTemplate;
 use App\Models\TemplatePasso;
+use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -121,5 +122,266 @@ class OnboardingEngineService
         ])->all();
 
         OnboardingPasso::insert($linhas);
+    }
+
+    /**
+     * Chave denormalizada do passo "Anúncios ativos / inativos" — alvo fixo
+     * da condição {@see TemplatePasso::CONDICAO_ANUNCIOS_INATIVOS}.
+     */
+    private const CHAVE_PASSO_ANUNCIOS_ATIVOS_INATIVOS = 'anuncios_ativos_inativos';
+
+    /**
+     * Recalcula o estado de TODOS os passos do onboarding: destrava quem
+     * pode, carimba `disponivel_em`, aplica condição e conclui o onboarding
+     * quando cabe (regras 1 a 10b do plano).
+     *
+     * Onboarding em `rascunho` não destrava nada e retorna cedo (regra 1 —
+     * D-05/SC-04, rascunho não corre SLA). Itera em laço até estabilizar
+     * (destravar um passo pode destravar outro na mesma passada), com um
+     * limite de passadas igual ao número de passos — defesa contra um
+     * `depende_de` cíclico que escapasse da guarda de ciclo do CRUD de
+     * template (Plano 08); o cenário normal nunca chega perto do limite.
+     */
+    public function reavaliar(Onboarding $onboarding): void
+    {
+        if ($onboarding->status === Onboarding::STATUS_RASCUNHO) {
+            return;
+        }
+
+        $passos = OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->with('templatePasso')
+            ->get()
+            ->keyBy('chave');
+
+        if ($passos->isEmpty()) {
+            return;
+        }
+
+        $limiteDePassadas = $passos->count();
+
+        for ($passada = 0; $passada < $limiteDePassadas; $passada++) {
+            $algumPassoMudou = false;
+
+            foreach ($passos as $passo) {
+                if ($passo->status !== OnboardingPasso::STATUS_BLOQUEADO) {
+                    continue;
+                }
+
+                $templatePasso = $passo->templatePasso;
+                $dependeDe = $templatePasso->depende_de ?? [];
+
+                $todasAsDependenciasResolvidas = collect($dependeDe)->every(
+                    fn (string $chave) => $this->dependenciaResolvida($passos->get($chave))
+                );
+
+                if (! $todasAsDependenciasResolvidas) {
+                    continue;
+                }
+
+                $novoStatus = OnboardingPasso::STATUS_ABERTO;
+                $novoAutoEm = null;
+
+                if ($templatePasso->condicao) {
+                    $avaliacao = $this->avaliarCondicao($passo);
+
+                    if ($avaliacao === null) {
+                        // Regra 5: ainda não dá para saber — segue bloqueado,
+                        // sem carimbar disponivel_em (o passo não destravou).
+                        continue;
+                    }
+
+                    if ($avaliacao === false) {
+                        $novoStatus = OnboardingPasso::STATUS_NAO_APLICAVEL;
+                        $novoAutoEm = now();
+                    }
+                }
+
+                // Regra 4: disponivel_em é gravado uma única vez.
+                if ($passo->disponivel_em === null) {
+                    $passo->disponivel_em = now();
+                }
+
+                $passo->status = $novoStatus;
+                if ($novoAutoEm !== null) {
+                    $passo->auto_em = $novoAutoEm;
+                }
+                $passo->save();
+
+                $algumPassoMudou = true;
+            }
+
+            if (! $algumPassoMudou) {
+                break;
+            }
+        }
+
+        $this->avaliarConclusaoDoOnboarding($onboarding);
+    }
+
+    /** Uma dependência está resolvida quando o passo referenciado concluiu ou não se aplica (regra 3). */
+    private function dependenciaResolvida(?OnboardingPasso $passoDependido): bool
+    {
+        return $passoDependido !== null && in_array(
+            $passoDependido->status,
+            [OnboardingPasso::STATUS_CONCLUIDO, OnboardingPasso::STATUS_NAO_APLICAVEL],
+            true
+        );
+    }
+
+    /**
+     * Traduz o resultado de 3 estados de um resolver automático (Planos
+     * 03/06/07) para `status`/`valor`/`auto_em`/`coleta_iniciada_em` —
+     * regras 10 e 10b. Não recebe o resolver: o único canal de "coleta
+     * disparada" é a chave reservada dentro de `$resultado`, lida via
+     * {@see \App\Services\Onboarding\OnboardingResolverResultado::sinalizouColetaEmAndamento()}.
+     *
+     * Em nenhum ramo de `nao_coletado`/`indeterminado` o `valor` do passo é
+     * escrito (D-11 — só `concluido` grava valor numérico definitivo); e a
+     * chave reservada nunca é copiada para `onboarding_passos.valor` (é
+     * canal de controle, não dado de negócio).
+     */
+    public function aplicarResultado(OnboardingPasso $passo, OnboardingResolverResultado $resultado): void
+    {
+        if ($resultado->ehConcluido()) {
+            $passo->status = OnboardingPasso::STATUS_CONCLUIDO;
+            $passo->valor = $resultado->valor;
+            $passo->auto_em = now();
+        } elseif ($resultado->ehIndeterminado()) {
+            $passo->status = OnboardingPasso::STATUS_INDETERMINADO;
+            $passo->tentativas = $passo->tentativas + 1;
+            $passo->ultimo_erro = $resultado->motivo;
+        } else {
+            // nao_coletado — regra 10: só vira aguardando_coleta quando o
+            // resolver sinalizou coleta em curso; senão segue aberto (passo
+            // travado por pendência humana continua visível — SC-11/D-11).
+            $passo->ultimo_erro = $resultado->motivo;
+
+            if ($resultado->sinalizouColetaEmAndamento()) {
+                $passo->status = OnboardingPasso::STATUS_AGUARDANDO_COLETA;
+
+                // Regra 10b: carimbo de DISPARO, gravado uma única vez —
+                // reconfirmação da mesma coleta em curso não reescreve.
+                if ($passo->coleta_iniciada_em === null) {
+                    $passo->coleta_iniciada_em = now();
+                }
+            } else {
+                $passo->status = OnboardingPasso::STATUS_ABERTO;
+            }
+        }
+
+        $passo->save();
+
+        $this->reavaliar($passo->onboarding);
+    }
+
+    /**
+     * `null` quando o passo não tem `condicao` (equivale a "sempre aplica")
+     * ou quando ainda não dá para decidir (regra 5). Condição fora do
+     * catálogo fechado ({@see TemplatePasso::CONDICOES}) lança
+     * `\RuntimeException` — nunca interpreta expressão livre (D-09/D-12).
+     */
+    public function avaliarCondicao(OnboardingPasso $passo): ?bool
+    {
+        $condicao = $passo->templatePasso->condicao ?? null;
+
+        if (! $condicao) {
+            return null;
+        }
+
+        $tipo = $condicao['tipo'] ?? null;
+
+        return match ($tipo) {
+            TemplatePasso::CONDICAO_ANUNCIOS_INATIVOS => $this->avaliarCondicaoAnunciosInativos($passo),
+            default => throw new \RuntimeException(
+                "Condição \"{$tipo}\" fora do catálogo fechado (TemplatePasso::CONDICOES) — D-09/D-12."
+            ),
+        };
+    }
+
+    /**
+     * D-12: só se aplica se o passo "Anúncios ativos / inativos" do MESMO
+     * onboarding apurou inativos > 0. Passo ainda não concluído → `null`
+     * (regra 6 — não decide por omissão).
+     */
+    private function avaliarCondicaoAnunciosInativos(OnboardingPasso $passo): ?bool
+    {
+        $passoAnuncios = OnboardingPasso::where('onboarding_id', $passo->onboarding_id)
+            ->where('chave', self::CHAVE_PASSO_ANUNCIOS_ATIVOS_INATIVOS)
+            ->first();
+
+        if (! $passoAnuncios || $passoAnuncios->status !== OnboardingPasso::STATUS_CONCLUIDO) {
+            return null;
+        }
+
+        return (($passoAnuncios->valor['inativos'] ?? 0)) > 0;
+    }
+
+    /**
+     * Conclusão manual de um passo pelo dono humano. Lança `\DomainException`
+     * quando o `TemplatePasso` tem `auto_fonte` preenchido (D-19) — nem
+     * cliente nem interno fecha na mão um passo que só o resolver fecha.
+     */
+    public function concluirManualmente(OnboardingPasso $passo, User $usuario): void
+    {
+        $templatePasso = $passo->templatePasso;
+
+        if ($templatePasso->auto_fonte !== null) {
+            throw new \DomainException(
+                "O passo \"{$templatePasso->titulo}\" tem verificação automática — conclusão manual não é permitida (D-19)."
+            );
+        }
+
+        $passo->status = OnboardingPasso::STATUS_CONCLUIDO;
+        $passo->feito_por = $usuario->id;
+        $passo->feito_em = now();
+        $passo->save();
+
+        $this->reavaliar($passo->onboarding);
+    }
+
+    /**
+     * Fecha o onboarding (`status=concluido`, `concluido_em`) quando todo
+     * passo `obrigatorio` está em `concluido` ou `nao_aplicavel` (regra 8).
+     * Registrado via activity log, mesma disciplina do `MlbEmpresaObserver`.
+     */
+    private function avaliarConclusaoDoOnboarding(Onboarding $onboarding): void
+    {
+        if ($onboarding->status === Onboarding::STATUS_CONCLUIDO) {
+            return;
+        }
+
+        $passos = OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->with('templatePasso')
+            ->get();
+
+        if ($passos->isEmpty()) {
+            return;
+        }
+
+        $temObrigatorioPendente = $passos
+            ->filter(fn (OnboardingPasso $p) => (bool) ($p->templatePasso->obrigatorio ?? true))
+            ->contains(fn (OnboardingPasso $p) => ! in_array(
+                $p->status,
+                [OnboardingPasso::STATUS_CONCLUIDO, OnboardingPasso::STATUS_NAO_APLICAVEL],
+                true
+            ));
+
+        if ($temObrigatorioPendente) {
+            return;
+        }
+
+        $onboarding->status = Onboarding::STATUS_CONCLUIDO;
+        $onboarding->concluido_em = now();
+        $onboarding->save();
+
+        Log::info(
+            "[Onboarding] onboarding {$onboarding->id} concluído — todos os passos obrigatórios "
+            . 'em concluido/nao_aplicavel.'
+        );
+
+        activity('onboarding')
+            ->performedOn($onboarding)
+            ->withProperties(['status' => Onboarding::STATUS_CONCLUIDO])
+            ->log('Onboarding concluído');
     }
 }
