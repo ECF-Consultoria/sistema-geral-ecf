@@ -47,7 +47,7 @@ class ClicksignSondarModelo extends Command
                             {--contrato= : ID de um ContratoAssinatura para montar variáveis reais (sem isso, usa um conjunto sintético)}
                             {--listar : Lista os modelos cadastrados na conta (GET /templates) — modo isolado}
                             {--criar-modelo= : Caminho de um .docx local para cadastrar como modelo antes de sondar}
-                            {--baixar : Baixa o PDF gerado por files.original (o link expira em 5 minutos)}
+                            {--baixar : Baixa o arquivo gerado (links.files.original — .docx, e só existe com o envelope ativado; link expira em 5 min)}
                             {--excluir-modelo : Ao final, exclui o modelo e reconsulta o documento (mede a dívida D-16)}
                             {--producao : Autoriza rodar fora do sandbox (exige confirmação interativa)}
                             {--confirmar : Executa de fato — sem esta flag, o comando só mostra o plano}';
@@ -315,7 +315,7 @@ class ClicksignSondarModelo extends Command
 
         if ($baixar) {
             $this->line('');
-            $requisicoes += $this->baixarPdf($documento);
+            $requisicoes += $this->baixarArquivoGerado($documento);
         }
 
         if ($excluirModelo) {
@@ -456,30 +456,50 @@ class ClicksignSondarModelo extends Command
     // =========================================================================
 
     /**
-     * @param  array<string, mixed>  $documento  bloco `data` de `anexarDocumentoPorModelo()`
+     * ⚠️ MEDIDO em 11/08/2026 (gate do plano 126-11) — três coisas que a
+     * versão anterior deste método errava, e que nenhum teste local pegaria:
+     *
+     * 1. **O link vive em `links.files.original`, não em `attributes.files`.**
+     *    A primeira versão lia `attributes` e nunca achava nada.
+     * 2. **Ele não aparece enquanto o envelope está em `draft`.** A Clicksign
+     *    só materializa o arquivo na ATIVAÇÃO. Documento recém-instanciado
+     *    não tem link nenhum — não é erro, é o ciclo de vida do recurso.
+     * 3. **O arquivo é `.docx`, não PDF.** `files.original` devolve o
+     *    documento gerado a partir do modelo, no formato de origem. O PDF
+     *    assinado é outro artefato, posterior à assinatura (Fase 129).
+     *
+     * O link é pré-assinado em S3 e expira em 5 minutos (`X-Amz-Expires=300`),
+     * por isso é buscado e consumido na mesma execução.
+     *
+     * @param  array<string, mixed>  $documento  bloco `data` do documento
      * @return int  número de requisições consumidas (0 ou 1)
      */
-    private function baixarPdf(array $documento): int
+    private function baixarArquivoGerado(array $documento): int
     {
-        $url = $documento['attributes']['files']['original'] ?? null;
+        $url = $documento['links']['files']['original'] ?? null;
 
         if ($url === null) {
-            $this->warn('Link de download (files.original) não veio nesta resposta — não é possível baixar nesta sondagem.');
+            $this->warn('Sem link de download em links.files.original.');
+            $this->line('  Isso é ESPERADO com o envelope em rascunho: a Clicksign só materializa o arquivo na ativação (medido, §10.4 do empírico).');
 
             return 0;
         }
 
-        $resposta = Http::get($url);
+        $resposta = Http::timeout(180)->get($url);
 
         if (!$resposta->successful()) {
-            $this->warn('Falha ao baixar o PDF — o link (files.original) expira em 5 minutos, pode já ter vencido.');
+            $this->warn('Falha ao baixar — o link é pré-assinado e expira em 5 minutos (X-Amz-Expires=300); pode ter vencido.');
 
             return 1;
         }
 
-        $destino = storage_path('app/clicksign-sondagem-' . now()->format('Ymd-His') . '.pdf');
+        // Extensão do que a API de fato devolveu, não `.pdf` presumido.
+        $nome      = $documento['attributes']['filename'] ?? 'documento.docx';
+        $extensao  = pathinfo($nome, PATHINFO_EXTENSION) ?: 'docx';
+        $destino   = storage_path('app/private/clicksign-sondagem-' . now()->format('Ymd-His') . '.' . $extensao);
+
         file_put_contents($destino, $resposta->body());
-        $this->info("PDF baixado em: {$destino}");
+        $this->info("Arquivo gerado baixado em: {$destino}");
 
         return 1;
     }
