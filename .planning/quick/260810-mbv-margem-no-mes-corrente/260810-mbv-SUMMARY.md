@@ -106,3 +106,27 @@ código, sem afrouxar o que guardavam.
 - Item 2 — nota final sempre ÷3, indicador ausente = 0 (decisão dele hoje).
   **Muda bônus**: carteira só-Shopee passa a ter teto de 3,33.
 - Item 3 — marketplace da conta na tabela por empresa e no card do profissional.
+
+## DEPLOYADO em 2026-08-10
+
+Deploy **isolado** junto com as quicks `260810-mt8` e `260810-n5b`:
+`b9c3ca90..2c60d5cc`, `deploy.sh` exit 0, **"Nothing to migrate"**.
+
+Isolamento foi necessário e deliberado: a árvore local tinha **33 commits não
+publicados**, e 24 deles eram a fase 134 (Meus Anúncios) de outra sessão, em
+andamento, **com duas migrations**. Um push da `main` levaria tudo. A saída foi
+worktree a partir de `origin/main` + cherry-pick dos 9 commits de Desempenho,
+com o diff dos arquivos tocados contra a `main` local **vazio** (paridade byte
+a byte com o código testado). Nenhum arquivo de código colidia com a 134 — a
+única interseção era o `.planning/STATE.md`, que auto-mergeou.
+
+Verificado em produção por reconsulta: HEAD `2c60d5cc`, workers RUNNING com
+uptime de 25s (prova de que a última linha do script rodou), smoke 302/200/302
+e **zero** `production.ERROR` desde o corte do deploy.
+
+**A margem no mês corrente rodou em produção com dado real** — período
+2026-08-01..10 vs baseline 2026-07-01..10, `diff_source='adman_janela_baseline'`
+nas três empresas medidas: LUCCMAX 26,43 vs 21,64 = **+4,79 p.p.**, KAPRAKAZA
++1,71, CARAIBAALUMINIO +15,23. (Os valores diferem levemente da medição local
+de horas antes porque a Adman reprocessa o dia corrente — o que importa é a
+fonte da variação, que passou a existir.)

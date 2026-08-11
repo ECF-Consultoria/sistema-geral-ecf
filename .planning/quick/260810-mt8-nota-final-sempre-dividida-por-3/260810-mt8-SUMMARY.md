@@ -89,3 +89,19 @@ do admin) — sem isso a tela mostra um zero que se lê como nota ruim.
 ## Pendente da mesma demanda
 
 Item 3 — marketplace da conta na tabela por empresa e no card do profissional.
+
+## DEPLOYADO em 2026-08-10
+
+Deploy isolado junto com `260810-mbv` e `260810-n5b`: `b9c3ca90..2c60d5cc`,
+`deploy.sh` exit 0, "Nothing to migrate". Detalhes do isolamento no SUMMARY da
+`260810-mbv`.
+
+Bundle de produção conferido **pelos dois lados**, resolvendo o arquivo pelo
+manifest da VPS: o divisor fixo `join("+")})/3` está em `Index-r6AlAvqb.js`,
+`Show-Crw4PMys.js` e no chunk `desempenhoLabels-*`, e o denominador dinâmico
+antigo tem **zero** ocorrências em todo o `public/build/assets/`.
+
+**A regra nova NÃO alterou nenhuma competência fechada** — ranking e Relatório
+de Bonificação leem snapshot congelado. O ÷3 só alcança competência fechada
+quando alguém rodar `desempenho:consolidar-mes`, e aí reescreve **inclusive as
+já pagas**. Não foi rodado.

@@ -94,3 +94,13 @@ congeladas. Sem backend ⇒ **sem bump de cache**, nenhum cálculo mudou.
 - Não foi populada a pivot `company_marketplaces` nem corrigido
   `companies.marketplace` — é outro trabalho (o comando
   `companies:backfill-marketplaces` existe), e nenhuma tela depende disso agora.
+
+## DEPLOYADO em 2026-08-10
+
+Deploy isolado junto com `260810-mbv` e `260810-mt8`: `b9c3ca90..2c60d5cc`,
+`deploy.sh` exit 0. Detalhes do isolamento no SUMMARY da `260810-mbv`.
+
+No bundle de produção resolvido pelo manifest: "Marketplaces da carteira"
+presente em `Show-Crw4PMys.js`, "Mercado Livre" no chunk `desempenhoLabels-*`,
+e os identificadores novos com **zero** ocorrências literais em
+`public/build/assets/` — sobreviver à minificação seria sinal de escopo vazado.

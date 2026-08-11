@@ -63,10 +63,33 @@ MESMA escala, não uma exceção.
 
 ## Typography
 
-O projeto já opera com **3 pesos** estabelecidos (não 2) — `font-normal` (400, corpo),
-`font-semibold` (600, badges/labels/subtítulos) e `font-bold` (700, títulos `font-display`).
-Forçar 2 pesos quebraria a consistência com as páginas irmãs no mesmo grupo de navegação
-(Serviços, NPS, Polos). Esta fase **herda** o padrão existente em vez de reabri-lo.
+### ⚠ Exceção deliberada ao contrato de design: 3 pesos de fonte, não 2
+
+O contrato genérico de UI-SPEC do GSD limita a **2 pesos**. Esta fase **assume
+explicitamente a exceção e opera com 3** — `font-normal` (400), `font-semibold` (600) e
+`font-bold` (700). Não é herança passiva nem descuido: é uma escolha tomada e assumida
+aqui, com dono e motivo.
+
+**Quem decide isto não é esta fase.** O `CLAUDE.md` do projeto lista, entre as
+*Constraints* de nível de projeto:
+
+> **Design**: Tailwind com tokens `ecf-*`, dark theme, componente `DevCard` e `cn()` já
+> existentes — **manter consistência**
+
+Os 3 pesos já estão **em produção** nas páginas irmãs do mesmo grupo de navegação —
+Serviços (`Servicos/Index.jsx`), NPS (`Nps/Configuracao.jsx`) e Polos (`Polos/Painel.jsx`)
+— e cada um está citado com `arquivo:linha` na tabela abaixo. Reduzir para 2 **apenas nas
+telas desta fase** produziria o pior dos dois mundos: telas novas visivelmente diferentes
+das vizinhas, sem corrigir nada no resto do app.
+
+**Como a exceção deixaria de valer:** unificar a tipografia é um trabalho de design system
+que atravessa ~40 páginas existentes. Se o projeto decidir fazê-lo, é fase própria e estas
+telas vêm junto — não o contrário. Enquanto isso não acontecer, **3 pesos é o padrão
+correto aqui**, e a alternativa é que seria a regressão.
+
+**Escopo da exceção:** limitada a peso de fonte. Todas as demais dimensões do contrato
+(espaçamento, cor, copy, hierarquia) seguem sem exceção — ver "Exceções: nenhuma" na
+seção Spacing e a lista fechada de 5 usos do accent na seção Color.
 
 | Role | Size | Weight | Line Height | Evidência |
 |------|------|--------|-------------|-----------|
@@ -208,7 +231,7 @@ passos do template de Gestão, cada um como uma linha/card com:
 |---|---|
 | Título do passo | `template_passos.titulo` |
 | Badge de **dono** | `cliente` (sky-300) · `interno` (violet-300, + `setor_id` se houver, ex. "interno · financeiro") · `sistema` (ecf-yellow/70) — eixo independente de automação (D-19) |
-| Selo de **automação** (separado do dono) | Ícone `Zap` accent SÓ quando o passo tem `auto_fonte` preenchido — aparece mesmo em passos `dono=cliente` (ex. passo 5: cliente autoriza, sistema fecha sozinho) |
+| Selo de **automação** (separado do dono) | Ícone `Zap` accent SÓ quando o passo tem `auto_fonte` preenchido — aparece mesmo em passos `dono=cliente` (ex. passo 5: cliente autoriza, sistema fecha sozinho). **Obrigatório:** `aria-label="Passo verificado automaticamente pelo sistema"` + `title` com o mesmo texto — é o único indicador de status sem rótulo textual ao lado, então precisa do rótulo acessível |
 | Estado | Um dos 7 da paleta semântica (seção Color) — nunca um número solto tipo "0/1" |
 | Dias | "há X dias" contado desde `disponivel_em` (ver gap acima); passos bloqueados NÃO mostram contador de dias (não é uma pendência ainda) |
 | SLA | "{sla_dias}d" ao lado do contador, só em passos abertos-e-parados |
@@ -265,7 +288,7 @@ templates fixa.
 
 Como v1 só tem 1 serviço com template (Gestão), a grade é pequena, mas desenhada para escalar:
 card por serviço mostrando nome, versão publicada atual, quantos onboardings ativos rodam nela,
-data de publicação, botão "Editar" (abre a versão atual **em modo de edição, que ao salvar cria
+data de publicação, botão "Editar template" (abre a versão atual **em modo de edição, que ao salvar cria
 N+1** — nunca edita in-place) e "Nova versão" (mesmo botão, rótulo alternativo se preferir).
 Serviços sem template publicado mostram o empty state já especificado na Copywriting Contract.
 
@@ -342,7 +365,7 @@ por ciclo ao tentar publicar:
   toast simples "Versão {N} publicada." — sem dialog, sem fricção artificial
 - **Migração é ação separada**, nunca uma checkbox dentro do dialog de publicar (D-07: "ação
   explícita"). Vive numa lista própria — "Onboardings em versões anteriores" — visível a partir
-  da tela do template (ou do painel operacional). Cada item tem botão "Migrar", que abre seu
+  da tela do template (ou do painel operacional). Cada item tem botão "Migrar onboarding", que abre seu
   próprio `Dialog` com o texto de confirmação já especificado na Copywriting Contract
 
 ---
