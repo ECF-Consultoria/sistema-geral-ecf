@@ -1,0 +1,243 @@
+<?php
+
+namespace Tests\Feature\Phase135;
+
+use App\Models\Company;
+use App\Models\CompanyGrant;
+use App\Models\MlToken;
+use App\Models\Onboarding;
+use App\Models\OnboardingPasso;
+use App\Models\OnboardingTemplate;
+use App\Models\Servico;
+use App\Models\TemplatePasso;
+use App\Services\Onboarding\OnboardingEngineService;
+use App\Services\Onboarding\Resolvers\MetricasContaResolver;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+/**
+ * Fase 135 Plano 06 (Task 2) — passo 7 (`metricas_da_conta`), parsing
+ * defensivo agregando `MercadoLivreService::fetchUserInfo()` + faturamento
+ * Adman dos últimos 3 meses + `CompanyGrant::active()`.
+ */
+class OnboardingResolverMetricasTest extends TestCase
+{
+    use RefreshDatabase;
+
+    /**
+     * Monta um Onboarding + OnboardingPasso mínimos com `auto_fonte =
+     * metricas_conta`, para exercitar o resolver isoladamente — mesmo molde
+     * de `OnboardingResolversLocaisTest::criarOnboardingComPasso()`.
+     */
+    private function criarOnboardingComPasso(Company $company): array
+    {
+        $servico = Servico::create([
+            'nome'          => 'Gestao ' . uniqid(),
+            'valor_padrao'  => 3000,
+            'tipo_cobranca' => Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => Servico::SETOR_PERFORMANCE,
+        ]);
+
+        $template = OnboardingTemplate::create([
+            'servico_id'   => $servico->id,
+            'versao'       => 1,
+            'ativo'        => true,
+            'publicado_em' => now(),
+        ]);
+
+        $templatePasso = TemplatePasso::create([
+            'template_id' => $template->id,
+            'ordem'       => 1,
+            'chave'       => 'metricas_da_conta',
+            'titulo'      => 'Métricas da conta',
+            'dono'        => TemplatePasso::DONO_SISTEMA,
+            'auto_fonte'  => TemplatePasso::AUTO_FONTE_METRICAS,
+        ]);
+
+        $onboarding = Onboarding::create([
+            'company_id'  => $company->id,
+            'servico_id'  => $servico->id,
+            'template_id' => $template->id,
+        ]);
+
+        $passo = OnboardingPasso::create([
+            'onboarding_id'     => $onboarding->id,
+            'template_passo_id' => $templatePasso->id,
+            'chave'             => 'metricas_da_conta',
+        ]);
+
+        return [$onboarding, $passo];
+    }
+
+    private function comMlTokenAtivo(Company $company): MlToken
+    {
+        return MlToken::create([
+            'company_id'    => $company->id,
+            'ml_user_id'    => '777888999',
+            'access_token'  => 'fake-access-token',
+            'refresh_token' => 'fake-refresh-token',
+            'expires_at'    => now()->addDays(30),
+            'status'        => 'active',
+            'connected_at'  => now(),
+        ]);
+    }
+
+    private function comGrantAtivo(Company $company): CompanyGrant
+    {
+        return CompanyGrant::create([
+            'company_id'        => $company->id,
+            'status'            => 'active',
+            'medalha_fecha_in'  => now()->subMonths(2)->toDateString(),
+            'medalha_fecha_out' => now()->addMonths(4)->toDateString(),
+            'programa'          => 'Full',
+            'iniciativa'        => 'Mentoria',
+            'parceiro'          => 'ECF Consultoria',
+        ]);
+    }
+
+    // ─── Payload completo ─────────────────────────────────────────────────
+
+    /** @test */
+    public function payload_completo_resolve_concluido_com_nao_obtidos_vazio(): void
+    {
+        Http::fake([
+            '*/users/*'       => Http::response([
+                'id'                => 777888999,
+                'nickname'          => 'LOJA_TESTE',
+                'seller_reputation' => [
+                    'level_id'            => '5_green',
+                    'power_seller_status' => 'platinum',
+                ],
+                'tags' => ['full', 'normal'],
+            ], 200),
+            '*/performance/*' => Http::response([
+                'summarizedData' => ['grossBilling' => ['value' => 45000.0]],
+            ], 200),
+        ]);
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST_METRICAS']);
+        $this->comMlTokenAtivo($company);
+        $this->comGrantAtivo($company);
+
+        [$onboarding, $passo] = $this->criarOnboardingComPasso($company);
+
+        $resultado = app(MetricasContaResolver::class)->resolver($onboarding, $passo);
+
+        $this->assertTrue($resultado->ehConcluido());
+        $this->assertSame('LOJA_TESTE', $resultado->valor['nickname']);
+        $this->assertSame('5_green', $resultado->valor['reputacao']['level_id']);
+        $this->assertSame([], $resultado->valor['nao_obtidos']);
+    }
+
+    /** @test */
+    public function payload_sem_seller_reputation_ainda_resolve_concluido_com_campo_null(): void
+    {
+        Http::fake([
+            '*/users/*'       => Http::response([
+                'id'       => 777888999,
+                'nickname' => 'LOJA_SEM_REPUTACAO',
+            ], 200),
+            '*/performance/*' => Http::response([
+                'summarizedData' => ['grossBilling' => ['value' => 12000.0]],
+            ], 200),
+        ]);
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST_SEM_REP']);
+        $this->comMlTokenAtivo($company);
+
+        [$onboarding, $passo] = $this->criarOnboardingComPasso($company);
+
+        $resultado = app(MetricasContaResolver::class)->resolver($onboarding, $passo);
+
+        $this->assertTrue($resultado->ehConcluido());
+        $this->assertContains('seller_reputation', $resultado->valor['nao_obtidos']);
+        $this->assertNull($resultado->valor['reputacao']['level_id']);
+        $this->assertNull($resultado->valor['reputacao']['power_seller_status']);
+        $this->assertNotSame(false, $resultado->valor['reputacao']['level_id']);
+        $this->assertNotSame(0, $resultado->valor['reputacao']['level_id']);
+    }
+
+    // ─── Falta de token (pendência humana) ──────────────────────────────────
+
+    /** @test */
+    public function empresa_sem_ml_token_resolve_nao_coletado_sem_chamar_a_api(): void
+    {
+        Http::preventStrayRequests();
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST_SEM_TOKEN']);
+        [$onboarding, $passo] = $this->criarOnboardingComPasso($company);
+
+        $resultado = app(MetricasContaResolver::class)->resolver($onboarding, $passo);
+
+        $this->assertTrue($resultado->ehNaoColetado());
+        $this->assertFalse($resultado->ehIndeterminado());
+        Http::assertNothingSent();
+    }
+
+    // ─── 429 do Mercado Livre ────────────────────────────────────────────────
+
+    /** @test */
+    public function erro_429_da_api_ml_resolve_indeterminado(): void
+    {
+        Http::fake(['*/users/*' => Http::response('rate limit', 429)]);
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST_429_ML']);
+        $this->comMlTokenAtivo($company);
+
+        [$onboarding, $passo] = $this->criarOnboardingComPasso($company);
+
+        $resultado = app(MetricasContaResolver::class)->resolver($onboarding, $passo);
+
+        $this->assertTrue($resultado->ehIndeterminado());
+        $this->assertFalse($resultado->ehNaoColetado());
+    }
+
+    // ─── Falha isolada da Adman não derruba o passo ─────────────────────────
+
+    /** @test */
+    public function falha_da_adman_com_fetch_user_info_ok_ainda_resolve_concluido(): void
+    {
+        Http::fake([
+            '*/users/*'       => Http::response([
+                'id'                => 777888999,
+                'nickname'          => 'LOJA_ADMAN_FALHOU',
+                'seller_reputation' => ['level_id' => '5_green', 'power_seller_status' => 'platinum'],
+                'tags'              => ['full'],
+            ], 200),
+            '*/performance/*' => Http::response('erro interno', 500),
+        ]);
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST_ADMAN_FALHOU']);
+        $this->comMlTokenAtivo($company);
+
+        [$onboarding, $passo] = $this->criarOnboardingComPasso($company);
+
+        $resultado = app(MetricasContaResolver::class)->resolver($onboarding, $passo);
+
+        $this->assertTrue($resultado->ehConcluido());
+        $this->assertContains('faturamento_3_meses', $resultado->valor['nao_obtidos']);
+        $this->assertNull($resultado->valor['faturamento_3_meses']);
+    }
+
+    // ─── Teste negativo do sinal de coleta (protege o SC-11) ────────────────
+
+    /** @test */
+    public function nao_coletado_por_falta_de_token_nao_sinaliza_coleta_e_engine_mantem_aberto(): void
+    {
+        Http::preventStrayRequests();
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST_SEM_TOKEN_2']);
+        [$onboarding, $passo] = $this->criarOnboardingComPasso($company);
+
+        $resultado = app(MetricasContaResolver::class)->resolver($onboarding, $passo);
+
+        $this->assertFalse($resultado->sinalizouColetaEmAndamento());
+        $this->assertArrayNotHasKey('coleta_em_andamento', $resultado->valor);
+
+        (new OnboardingEngineService())->aplicarResultado($passo, $resultado);
+
+        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passo->fresh()->status);
+    }
+}
