@@ -103,3 +103,8 @@ None — nenhuma configuração de serviço externo necessária.
 ---
 *Phase: 136-m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api-*
 *Completed: 2026-08-11*
+
+## Self-Check: PASSED
+
+- Todos os 6 arquivos-chave (criados/modificados) verificados no disco — FOUND
+- Todos os 3 commits (b7b67cd4, ea0c2b3c, dda0cd95) verificados em `git log --oneline --all` — FOUND
