@@ -5,6 +5,7 @@ namespace App\Services\Desempenho;
 use App\Models\BonusInvalidacao;
 use App\Models\Company;
 use App\Models\User;
+use App\Services\Metrics\FinancialSourceResolver;
 use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Portfolio\CarteiraContextService;
 use Carbon\Carbon;
@@ -80,6 +81,7 @@ class CompanyScoreService
         private CarteiraContextService $carteiraContext,
         private MetricDiffDispatcher $diffDispatcher,
         private NpsPorEmpresaService $npsPorEmpresaService,
+        private FinancialSourceResolver $financialSourceResolver,
     ) {
     }
 
@@ -160,29 +162,36 @@ class CompanyScoreService
             $nomesPorEmpresa[$vinculo['company_id']] ??= $vinculo['company_name'];
         }
 
-        // 5. Fonte financeira vencedora — SÓ entre os vínculos elegíveis
-        //    (financial_metrics_eligible=true). 'adman' vence sobre 'shopee'
-        //    quando a MESMA empresa tem os dois vínculos elegíveis. Empresa
-        //    sem NENHUM vínculo elegível fica FORA do mapa (D-03) — o
-        //    universo permanece o COMPLETO, nunca pré-filtrado.
-        $fontesPorEmpresa = $vinculos
-            ->where('financial_metrics_eligible', true)
-            ->groupBy('company_id')
-            ->map(function (Collection $grupo) {
-                $sources = $grupo->pluck('financial_source');
+        // 5. Vínculos elegíveis (financial_metrics_eligible=true) e as
+        //    empresas correspondentes, carregadas ANTES do desempate — Fase
+        //    136 (D-10): o critério de "tem Adman de fato" (`Company::cust_id`)
+        //    precisa do model `Company` disponível DURANTE a resolução da
+        //    fonte, não depois. Mesma quantidade de linhas que a query
+        //    buscava antes (era o subconjunto já resolvido, ver `git blame`
+        //    pré-136) — aqui é reordenada sobre o universo elegível completo,
+        //    não é query nova.
+        $vinculosElegiveis   = $vinculos->where('financial_metrics_eligible', true);
+        $companyIdsElegiveis = $vinculosElegiveis->pluck('company_id')->unique();
+        $companies           = Company::whereIn('id', $companyIdsElegiveis)->get()->keyBy('id');
 
-                return $sources->contains('adman') ? 'adman' : $sources->first();
-            });
+        // Fonte financeira vencedora — Fase 136 (D-10): 'adman' vence sobre
+        // 'shopee' quando a MESMA empresa tem os dois vínculos elegíveis
+        // **e a empresa tem `cust_id`** (conta Adman de fato — antes desta
+        // fase, 'adman' vencia sem checar isso, e a mesma empresa aparecia
+        // com número para um profissional e em branco para outro, ver
+        // `.planning/learnings/desempenho-bonificacao.md` §0.04). Empresa
+        // sem NENHUM vínculo elegível fica FORA do mapa (D-03) — o universo
+        // permanece o COMPLETO, nunca pré-filtrado. `FinancialSourceResolver`
+        // é a fonte ÚNICA desta regra — os outros 2 call-sites
+        // (`DesempenhoScoreService::computeUniverso()` e
+        // `PortfolioController::fontesFinanceirasPorEmpresa()`) delegam ao
+        // MESMO resolvedor, nunca duplicam esta lógica.
+        $fontesPorEmpresa = $this->financialSourceResolver->resolverPorEmpresa($vinculosElegiveis, $companies);
 
         // 6. UMA chamada cobrindo toda a carteira — nunca em loop por
         //    empresa. O MESMO $invalidadas repassado garante universo
         //    idêntico ao deste método.
         $notasNps = $this->npsPorEmpresaService->notasNpsPorEmpresa($user, $mes, $mesFechado, $invalidadas);
-
-        // 7. Só as empresas com fonte financeira não-nula precisam do
-        //    dispatcher — carrega os models de uma vez, fora do loop.
-        $companyIdsComFonte = $fontesPorEmpresa->keys()->all();
-        $companies = Company::whereIn('id', $companyIdsComFonte)->get()->keyBy('id');
 
         // 8. Monta a linha por empresa.
         return $companiesUniverso->mapWithKeys(function (int $companyId) use (

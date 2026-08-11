@@ -8,8 +8,9 @@ use Illuminate\Support\Collection;
 /**
  * Fase 136 (D-10) — fonte ÚNICA da regra de desempate de fonte financeira.
  *
- * Até esta fase, `$sources->contains('adman') ? 'adman' : $sources->first()`
- * estava duplicado byte-a-byte em 3 call-sites: `CompanyScoreService::
+ * Até esta fase, a regra de desempate ("'adman' vence se estiver presente,
+ * senão pega a primeira fonte") estava duplicada byte-a-byte em 3 call-sites:
+ * `CompanyScoreService::
  * computeEmpresasScore()`, `DesempenhoScoreService::computeUniverso()` e
  * `PortfolioController::fontesFinanceirasPorEmpresa()`. Nos três, 'adman'
  * vencia sobre 'shopee' **sem checar se a empresa tinha conta Adman de

@@ -404,7 +404,7 @@ class DesempenhoShopeeScoreTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $chave   = $service->cacheKey($user->id, $mes);
 
-        $this->assertSame('desempenho.compute.v19.' . $user->id . '.current_month', $chave);
+        $this->assertSame('desempenho.compute.v20.' . $user->id . '.current_month', $chave);
     }
 
     // ═══ Divisor fixo 3 (quick 260810-mt8, 2026-08-10) ══════════════════════

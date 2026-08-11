@@ -11,6 +11,7 @@ use App\Models\NpsResponse;
 use App\Models\NpsScoreAssignment;
 use App\Models\NpsSurvey;
 use App\Models\User;
+use App\Services\Metrics\FinancialSourceResolver;
 use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
@@ -159,6 +160,7 @@ class DesempenhoScoreService
         private NpsImputationService $imputationService,
         private NpsSemLinkService $npsSemLinkService,
         private CompanyScoreService $companyScoreService,
+        private FinancialSourceResolver $financialSourceResolver,
     ) {
     }
 
@@ -446,7 +448,20 @@ class DesempenhoScoreService
         // Redis serviria a nota do método anterior por até 7 dias em mês
         // fechado. Chaves v18 viram órfãs e expiram por TTL; `cache:clear` no
         // VPS continua PROIBIDO.
-        return sprintf('desempenho.compute.v19.%d.%s', $userId, $periodKey);
+        // v20 (2026-08-11, Fase 136/D-10): o desempate de fonte financeira
+        // (`FinancialSourceResolver`) passa a exigir `cust_id` — 'adman' não
+        // vence mais 'shopee' só por estar presente. Muda `fonte_financeira`,
+        // os campos de faturamento/margem e `nota_final` de qualquer carteira
+        // que tenha empresa com vínculo performance+shopee sem conta Adman de
+        // fato (ver `.planning/learnings/desempenho-bonificacao.md` §0.04). O
+        // mesmo payload também passa a poder carregar o override de métrica
+        // manual da Fase 136 (Plano 02+). UMA ÚNICA versão para a fase
+        // inteira — o Plano 03 volta a mudar cálculo neste payload e NÃO
+        // bumpa para v21 (nada foi deployado entre os planos). Sem o bump o
+        // Redis serviria a nota do desempate antigo por até 7 dias em mês
+        // fechado. Chaves v19 viram órfãs e expiram por TTL; `cache:clear` no
+        // VPS continua PROIBIDO.
+        return sprintf('desempenho.compute.v20.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -907,13 +922,15 @@ class DesempenhoScoreService
         $companiesElegiveis = Company::whereIn('id', $companyIdsElegiveis)->get();
 
         // Mapa company_id → fonte financeira vencedora ('adman'|'shopee').
-        // 'adman' vence quando a MESMA empresa tem os dois vínculos elegíveis.
-        $fontes = $elegiveis
-            ->groupBy('company_id')
-            ->map(function (Collection $vs) {
-                $sources = $vs->pluck('financial_source');
-                return $sources->contains('adman') ? 'adman' : $sources->first();
-            });
+        // Fase 136 (D-10): 'adman' vence quando a MESMA empresa tem os dois
+        // vínculos elegíveis **e a empresa tem `cust_id`** (conta Adman de
+        // fato) — antes desta fase, 'adman' vencia sem checar isso. Delegado
+        // ao `FinancialSourceResolver`, a fonte ÚNICA desta regra (também
+        // usada por `CompanyScoreService::computeEmpresasScore()` e
+        // `PortfolioController::fontesFinanceirasPorEmpresa()`). Nenhuma
+        // query nova: `$companiesElegiveis` já é carregado ACIMA, antes do
+        // desempate.
+        $fontes = $this->financialSourceResolver->resolverPorEmpresa($elegiveis, $companiesElegiveis->keyBy('id'));
 
         $nShopeePlaceholder = $fontes->filter(fn ($f) => $f === 'shopee')->count();
 

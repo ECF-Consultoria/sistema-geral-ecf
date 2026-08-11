@@ -3,10 +3,18 @@
 namespace Tests\Feature\Phase136;
 
 use App\Models\Company;
+use App\Models\Servico;
+use App\Models\ShopeeMetric;
+use App\Models\User;
+use App\Services\Desempenho\CompanyScoreService;
+use App\Services\Desempenho\NpsPorEmpresaService;
 use App\Services\Metrics\FinancialSourceResolver;
+use App\Services\Metrics\MetricPeriodResolver;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Feature\V16\CriaCenarioResponsaveis;
 use Tests\TestCase;
 
 /**
@@ -22,13 +30,22 @@ use Tests\TestCase;
 class FinancialSourceResolverTest extends TestCase
 {
     use RefreshDatabase;
+    use CriaCenarioResponsaveis;
 
     protected function setUp(): void
     {
         parent::setUp();
 
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
+
         // Nenhum teste desta suíte pode disparar HTTP real à Adman.
         Http::preventStrayRequests();
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     private function resolver(): FinancialSourceResolver
@@ -162,5 +179,56 @@ class FinancialSourceResolverTest extends TestCase
 
         $this->assertSame('shopee', $resultado->get($companyId),
             'Empresa ausente de $companiesById deve cair no ramo "adman inválido" (company === null), nunca lançar exceção.');
+    }
+
+    /**
+     * Task 2(f) — prova de integração: a correção de D-10 chega ao motor de
+     * nota, não só ao resolvedor isolado. Carteira mista (performance +
+     * shopee) SEM `cust_id`, com dado em `shopee_metrics` nas duas janelas
+     * (molde `montarCenarioSoShopee()` de `Phase119\CompanyScoreServiceFonteTest`),
+     * chamando `CompanyScoreService::computeEmpresasScore()` diretamente —
+     * nenhum HTTP real (`Http::preventStrayRequests()` no setUp), a fonte
+     * 'shopee' só lê `shopee_metrics`.
+     */
+    #[Test]
+    public function test_integracao_carteira_mista_sem_cust_id_chega_shopee_ate_o_motor_de_nota(): void
+    {
+        $user    = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $empresa = Company::factory()->create([
+            'active'            => true,
+            'adman_account_id'  => null,
+            'ml_store_id'       => null,
+        ]);
+
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($empresa->id, $servicoPerf, true);
+        $this->inserirPivot($empresa->id, $user->id, 'consultor', $servicoPerf);
+
+        $servicoShopee = $this->criarServico(Servico::SETOR_SHOPEE, true);
+        $this->inserirPivot($empresa->id, $user->id, 'consultor', $servicoShopee);
+
+        // Janela current (2026-06) e baseline (janela-de-mesmo-tamanho, mai/2026).
+        ShopeeMetric::create(['company_id' => $empresa->id, 'reference_date' => '2026-06-15', 'revenue' => 102000]);
+        ShopeeMetric::create(['company_id' => $empresa->id, 'reference_date' => '2026-05-15', 'revenue' => 100000]);
+
+        $this->mock(NpsPorEmpresaService::class, function ($mock) use ($empresa) {
+            $mock->shouldReceive('notasNpsPorEmpresa')
+                ->andReturn(collect([$empresa->id => (object) ['nota' => 4.2]]));
+        });
+
+        $periodo = app(MetricPeriodResolver::class)->resolve(['period_key' => '2026-06']);
+
+        $resultado = app(CompanyScoreService::class)->computeEmpresasScore(
+            $user,
+            Carbon::parse('2026-06-01'),
+            $periodo,
+        );
+
+        $linha = $resultado->get($empresa->id);
+        $this->assertNotNull($linha);
+        $this->assertSame('shopee', $linha->fonte_financeira,
+            'Sem cust_id, a fonte vencedora precisa ser shopee, mesmo com vínculo performance também elegível (D-10).');
+        $this->assertNotNull($linha->faturamento_var_pct,
+            'A correção precisa produzir dado de faturamento — antes de D-10 esta empresa resolveria adman e ficaria em branco.');
     }
 }
