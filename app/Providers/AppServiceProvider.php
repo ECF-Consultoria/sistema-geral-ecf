@@ -31,6 +31,16 @@ class AppServiceProvider extends ServiceProvider
         // a do ShadowRunService devolve zeros — quebrando o objetivo do Plan 41-04
         // (telemetria ml_metrics no summary JSON usada pelo cut-over Phase 42).
         $this->app->singleton(\App\Services\Sugadores\MercadoLivreAdsService::class);
+
+        // Fase 135 Plano 03 — catálogo fechado de resolvers automáticos do
+        // Onboarding geral (D-09). Lista EXPLÍCITA de instâncias — nunca
+        // descoberta implícita por diretório. Os Planos 05/06 acrescentam
+        // mais resolvers a esta mesma lista.
+        $this->app->singleton(\App\Services\Onboarding\OnboardingResolverFactory::class, function ($app) {
+            return new \App\Services\Onboarding\OnboardingResolverFactory([
+                //
+            ]);
+        });
     }
 
     public function boot(): void
