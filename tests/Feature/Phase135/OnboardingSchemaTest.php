@@ -12,6 +12,7 @@ use App\Models\Servico;
 use App\Models\TemplatePasso;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -176,9 +177,21 @@ class OnboardingSchemaTest extends TestCase
         $servico = $this->criarServico();
         $template = OnboardingTemplate::create(['servico_id' => $servico->id, 'versao' => 1, 'ativo' => true]);
         $company = Company::factory()->create();
-        $contrato = ContratoServico::factory()
-            ->paraServico($servico)
-            ->create(['company_id' => $company->id]);
+
+        // Fase 135 Plano 05 — inserção via DB::table (não Eloquent) de propósito:
+        // este teste prova a constraint de UNICIDADE do BANCO, não o comportamento
+        // do ContratoServicoObserver (que, com o template acima já ativo, criaria
+        // sozinho o primeiro onboarding e quebraria a sequência esperada abaixo).
+        $contratoId = DB::table('contratos_servico')->insertGetId([
+            'company_id'       => $company->id,
+            'servico_id'       => $servico->id,
+            'valor_contratado' => 0,
+            'data_contratacao' => now()->toDateString(),
+            'ativo'            => true,
+            'created_at'       => now(),
+            'updated_at'       => now(),
+        ]);
+        $contrato = ContratoServico::find($contratoId);
 
         Onboarding::create([
             'company_id'           => $company->id,
