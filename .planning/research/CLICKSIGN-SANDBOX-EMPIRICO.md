@@ -348,6 +348,86 @@ o comportamento de tabela em loop (`{{#array}}…{{/array}}`).
 
 ---
 
+## 10. Terceira sessão — modelo REAL cadastrado, 2026-08-11 (gate do plano 126-11)
+
+Primeira sessão com um **modelo `.docx` de verdade** na conta sandbox. Fecha três gates que só
+podiam ser fechados assim.
+
+**Modelo de referência no sandbox:** `5b4196cc-63d5-4537-83c7-2d07ec432a4a`
+("Contrato gestão de ADS Mercado Livre", 7 variáveis). Deixado cadastrado de propósito — serve de
+fixture viva para medir a dívida D-16 depois.
+
+### 10.1. `POST /templates` aceita `.docx` montado programaticamente — gate FECHADO
+
+O `.docx` do contrato foi gerado por código (OOXML escrito à mão, `ZipArchive`, sem PHPWord) e a
+Clicksign **aceitou**: modelo cadastrado, 201. Antes disso só se sabia que ela recusava arquivo
+inválido. Um pacote mínimo de 4 entradas basta:
+
+```
+[Content_Types].xml
+_rels/.rels
+word/document.xml
+word/_rels/document.xml.rels
+```
+
+⚠️ **Vantagem colateral de gerar o `.docx` por código:** cada `{{variavel}}` fica num único run de
+XML. O Word costuma quebrar um `{{nome}}` em vários runs (por causa de verificação ortográfica ou
+formatação), e aí o motor de template **não reconhece a variável** — armadilha clássica de quem
+monta modelo à mão. Arquivo gerado por código não tem esse problema.
+
+### 10.2. `filename` exige extensão `.docx` — bug encontrado no nosso código
+
+```
+filename: "contrato.docx"           => 201 ACEITO
+filename: "contrato_sondagem.docx"  => 201 ACEITO
+filename: "Sondagem-modelo.pdf"     => 400 "filename não está em um formato válido"
+                                            [/data/attributes/filename]
+filename: "contrato" (sem extensão) => 400, mesma mensagem
+```
+
+O documento instanciado **nasce de um `.docx`**, e o `filename` tem que refletir isso. O comando
+`clicksign:sondar-modelo` mandava `.pdf` e falhava contra a API real — corrigido em `3f7fe13a`, com
+guarda local em `anexarDocumentoPorModelo()`.
+
+⚠️ A exigência é **só do caminho de modelo**. `anexarDocumento()` (upload de binário) segue com
+`.pdf` normalmente — há teste dedicado provando que a guarda não vazou para o outro caminho.
+
+**Terceiro bug desta fase achado por medição real, e o terceiro que o `Http::fake()` não pegaria.**
+Ver §9.1: o padrão se repete o suficiente para virar regra — *nesta integração, forma de payload só
+é verdade depois de medida*.
+
+### 10.3. `template.data` como hash confirmado com modelo REAL
+
+A §9.6 tinha medido com UUID inexistente (a API valida o payload antes de resolver a chave). Agora
+confirmado ponta a ponta com modelo de verdade: o documento é gerado e os valores entram. A
+divergência da doc oficial (objeto × string) está definitivamente resolvida a favor do **objeto**.
+
+### 10.4. Não há link de download enquanto o documento está em `draft`
+
+`GET /envelopes/{id}/documents/{id}` devolve, para documento gerado de modelo em `draft`:
+
+```
+status, filename, template{key,data}, metadata{position_sign_fields}, migrated, created, modified
+```
+
+**Nenhum `files`, nenhum `original`, nenhuma URL.** A Clicksign só materializa o PDF quando o
+envelope é ativado. Isso explica o *known stub* do `--baixar` registrado no `126-10-SUMMARY.md`: não
+era código incompleto, é a API que não expõe o arquivo nesse estado.
+
+**Consequência para a Fase 127:** conferir o documento gerado antes de mandar para o cliente exige
+**ativar o envelope** — o que dispara e-mail para os signatários. Não existe "pré-visualizar sem
+ativar" pela API. Quem quiser preview sem enviar precisa usar a interface web da Clicksign.
+
+### 10.5. Ainda não medido
+
+- Se excluir o modelo derruba documento já gerado (**dívida D-16**) — o modelo de referência
+  `5b4196cc…` está cadastrado justamente para permitir esse teste.
+- Comportamento com variável **faltando** ou **sobrando** em `template.data`.
+- Tabela em loop `{{#servicos}}` — caminho recusado na D-19, sem uso previsto.
+- `GET /templates` contra a conta de **produção**.
+
+---
+
 ## Dados do teste (sandbox, descartável)
 
 Identificadores e IP **anonimizados** — ver aviso abaixo. Os valores reais estão no envelope de
