@@ -1773,12 +1773,12 @@ Plans:
   10. Cliente recebe **um link por empresa** que agrega os passos `dono=cliente` de todos os serviços ativos; passo de mesma `chave` em serviços diferentes fecha uma vez só
   11. O painel responde "o que está travando, há quantos dias e de quem é a bola" — não uma barra de porcentagem
 
-**Plans:** 13 plans em 7 waves
+**Plans:** 1/13 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 135-01-PLAN.md — Wave 0: baseline de regressao do Polos, ContratoServicoFactory e scaffold da suite [wave 1]
+- [x] 135-01-PLAN.md — Wave 0: baseline de regressao do Polos, ContratoServicoFactory e scaffold da suite [wave 1]
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
