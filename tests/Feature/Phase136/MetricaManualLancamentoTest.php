@@ -3,11 +3,14 @@
 namespace Tests\Feature\Phase136;
 
 use App\Models\Company;
+use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoMetricaManual;
 use App\Models\Servico;
 use App\Models\ShopeeMetric;
 use App\Models\User;
 use App\Services\Desempenho\CompanyScoreService;
+use App\Services\Desempenho\CompanyScoreSnapshotReader;
+use App\Services\Desempenho\CompanyScoreSnapshotWriter;
 use App\Services\Desempenho\NpsPorEmpresaService;
 use App\Services\Metrics\MetricPeriodResolver;
 use Carbon\Carbon;
@@ -377,5 +380,110 @@ class MetricaManualLancamentoTest extends TestCase
         $this->assertNull($linha->faturamento_pontos);
         $this->assertSame('auto', $linha->quality['faturamento_fonte']);
         $this->assertSame('auto', $linha->quality['margem_fonte']);
+    }
+
+    // ═══ D-03 (Task 3) — o sinal sobrevive ao snapshot congelado ═════════════
+
+    #[Test]
+    public function d03_snapshot_gravado_por_consolidar_mes_carrega_margem_fonte_manual_conferido_por_reconsulta_ao_banco(): void
+    {
+        $admin   = User::factory()->create(['role' => 'admin', 'name' => 'Administradora Fase 136']);
+        $company = Company::factory()->create(['active' => true]);
+
+        // Lançamento manual real na base — prova que o rastro de D-12 (autor)
+        // existe no banco, mas não é isso que o reader devolve (T-136-08).
+        DesempenhoMetricaManual::create([
+            'company_id'     => $company->id,
+            'mes_referencia' => '2026-07-01',
+            'metrica'        => DesempenhoMetricaManual::METRICA_MARGEM_CMV,
+            'valor'          => 40000,
+            'ativo'          => true,
+            'lancado_por'    => $admin->id,
+            'lancado_em'     => now(),
+        ]);
+
+        $linha = (object) [
+            'company_id'            => $company->id,
+            'company_name'          => $company->name,
+            'fonte_financeira'      => 'shopee',
+            'status'                => 'complete',
+            'nps_pontos'            => 4.5,
+            'faturamento_atual'     => 100000.0,
+            'faturamento_anterior'  => 90000.0,
+            'faturamento_var_pct'   => 11.11,
+            'faturamento_pontos'    => 5.0,
+            'margem_pct_atual'      => 60.0,
+            'margem_pct_anterior'   => 50.0,
+            'margem_var_pp'         => 10.0,
+            'margem_pontos'         => 5.0,
+            'componentes_presentes' => 3,
+            'nota_empresa'          => 4.83,
+            'nota_empresa_parcial'  => 4.83,
+            'quality'               => [
+                'revenue_diff_source' => 'calculated_fallback',
+                'margin_diff_source'  => 'manual_mes_calendario',
+                'margin_source'       => null,
+                'motivos'             => [],
+                'faturamento_fonte'   => 'auto',
+                'margem_fonte'        => 'manual',
+            ],
+        ];
+
+        app(CompanyScoreSnapshotWriter::class)->sync(
+            $admin,
+            Carbon::parse('2026-07-01'),
+            collect([$linha]),
+            CompanyScoreSnapshotWriter::ORIGEM_CONSOLIDAR_MES,
+        );
+
+        // Reconsulta ao BANCO — nunca o retorno em memória do writer
+        // (learnings §4, `<verification>` do plano).
+        $snapshotDoBanco = DesempenhoCompanyScoreSnapshot::query()
+            ->where('user_id', $admin->id)
+            ->where('company_id', $company->id)
+            ->whereDate('mes_referencia', '2026-07-01')
+            ->first();
+
+        $this->assertNotNull($snapshotDoBanco);
+        $this->assertSame('manual', $snapshotDoBanco->quality['margem_fonte']);
+
+        $linhasLidas = app(CompanyScoreSnapshotReader::class)->paraUsuario($admin->id, Carbon::parse('2026-07-01'));
+        $linhaLida   = $linhasLidas->firstWhere('company_id', $company->id);
+
+        $this->assertNotNull($linhaLida, 'A chave sobreviveu ao mapear() do reader.');
+        $this->assertSame('manual', $linhaLida['quality']['margem_fonte']);
+
+        // T-136-08 — o payload do reader nunca expõe quem lançou.
+        $payloadSerializado = json_encode($linhasLidas->toArray());
+        $this->assertStringNotContainsString('lancado_por', $payloadSerializado);
+        $this->assertStringNotContainsString($admin->name, $payloadSerializado);
+    }
+
+    #[Test]
+    public function d03_snapshot_com_quality_nulo_no_banco_devolve_auto_e_auto_no_reader(): void
+    {
+        $user    = User::factory()->create(['role' => 'consultor']);
+        $company = Company::factory()->create();
+
+        // Linha "antiga" — gravada sem `quality` (simula snapshot anterior à
+        // Fase 136, onde a coluna nunca chegou a ser preenchida).
+        DesempenhoCompanyScoreSnapshot::create([
+            'user_id'               => $user->id,
+            'company_id'            => $company->id,
+            'mes_referencia'        => '2026-07-01',
+            'company_name'          => $company->name,
+            'fonte_financeira'      => 'adman',
+            'status'                => 'complete',
+            'componentes_presentes' => 3,
+            'origem'                => CompanyScoreSnapshotWriter::ORIGEM_SNAPSHOT_DIARIO,
+            'gerado_em'             => now(),
+        ]);
+
+        $linhas = app(CompanyScoreSnapshotReader::class)->paraUsuario($user->id, Carbon::parse('2026-07-01'));
+        $linha  = $linhas->firstWhere('company_id', $company->id);
+
+        $this->assertNotNull($linha);
+        $this->assertSame('auto', $linha['quality']['faturamento_fonte']);
+        $this->assertSame('auto', $linha['quality']['margem_fonte']);
     }
 }
