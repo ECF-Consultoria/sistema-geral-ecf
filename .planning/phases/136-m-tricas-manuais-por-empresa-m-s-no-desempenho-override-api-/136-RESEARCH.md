@@ -628,19 +628,34 @@ Nenhuma outra divergência foi encontrada — os demais números do CONTEXT.md (
 | A4 | `quality.faturamento_fonte`/`quality.margem_fonte` dentro do JSON existente é suficiente para D-03/D-04 sem colunas novas | Q5 | Se D-11 precisar de agregação SQL pesada sobre "quantas células são manuais", a falta de colunas dedicadas pode exigir retrabalho — mitigado ao apontar a alternativa de colunas explícitas como opção B |
 | A5 | A ferramenta é admin-global (sem escopo de carteira) por leitura do goal, não decisão explícita | Q9 | Se o usuário realmente quis "admin só edita empresas da própria carteira" (improvável dado o texto do goal, mas não impossível), a validação de IDOR precisaria ser mais restritiva | 
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> **Back-anotado em 2026-08-11, após o planejamento.** As três perguntas foram decididas
+> explicitamente nos PLAN.md, com justificativa. Nenhuma ficou para o executor decidir.
+> A resolução de cada uma está registrada inline abaixo, com o plano de origem.
 
 1. **Granularidade do selo de D-04 (por linha vs. por métrica).**
+   - **RESOLVIDO em `136-05-PLAN.md`: marcador POR MÉTRICA, não por linha.** Motivo: D-07 tornou
+     os eixos independentes; um selo de linha diria "manual" para empresa cujo faturamento foi
+     medido e só o CMV foi digitado. Dois pontos de inserção (`CelulaFaturamento`/`CelulaMargem`),
+     ícone discreto com `title=`, não o badge completo do padrão Shopee.
    - O que sabemos: D-04 diz "a linha... recebe marcador" (singular); D-07 torna faturamento e margem independentes.
    - O que é incerto: se um único selo na linha basta (perde granularidade de QUAL eixo é manual) ou se são necessários dois pontos de inserção (`CelulaFaturamento`/`CelulaMargem`).
    - Recomendação: decisão de UX para o planner ou para uma pergunta rápida ao usuário — o dado (`quality.faturamento_fonte`/`margem_fonte`) suporta qualquer uma das duas opções sem mudança de schema.
 
 2. **Onde D-06 (cascata) roda de fato — na tela (ao vivo) ou num job/command que popula a base de comparação com antecedência?**
+   - **RESOLVIDO em `136-03-PLAN.md`: síncrono, mas SÓ para célula com lançamento ativo.** O caminho
+     rápido devolve o resultado do dispatcher sem nenhuma resolução extra quando não há lançamento;
+     `totalMesCheio()` memoiza por (empresa, janela, fonte). O fan-out fica em
+     `(células manuais) × 2 janelas`, não `N empresas × 2`. Nenhuma infraestrutura assíncrona nova.
    - O que sabemos: o custo de HTTP síncrono por empresa é real e documentado (Q4).
    - O que é incerto: se o planner vai aceitar o custo síncrono limitado (D-09 já restringe a 2 meses abertos por padrão) ou vai preferir aquecimento assíncrono antes da tela abrir.
    - Recomendação: medir o número real de empresas visíveis por padrão na grade antes de decidir — se for pequeno (dezenas, não centenas), síncrono pode ser aceitável na prática.
 
 3. **Coluna dedicada vs. JSON para o sinal de fonte manual no snapshot (Q5).**
+   - **RESOLVIDO em `136-03-PLAN.md`: só JSON `quality`, sem coluna dedicada.** O relatório de D-11
+     conta células manuais consultando `desempenho_metricas_manuais` (fonte de verdade, indexada) —
+     não precisa agregar JSON, que era o único argumento a favor da coluna extra.
    - O que sabemos: JSON é o caminho de menor atrito de pipeline; colunas são mais amigáveis a agregação SQL do relatório D-11.
    - O que é incerto: o volume/frequência de uso do relatório D-11 justifica a coluna extra.
    - Recomendação: planner decide com base na complexidade esperada do relatório de D-11.

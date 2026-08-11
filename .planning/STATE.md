@@ -4,12 +4,12 @@ milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
 stopped_at: Completed 135-03-PLAN.md
-last_updated: "2026-08-11T18:07:20.068Z"
-last_activity: 2026-08-11
+last_updated: "2026-08-11T18:43:10.146Z"
+last_activity: 2026-08-11 -- Phase 136 planning complete
 progress:
   total_phases: 13
   completed_phases: 1
-  total_plans: 28
+  total_plans: 35
   completed_plans: 13
   percent: 8
 ---
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 Phase: 135 (onboarding-geral-por-servico-motor-dirigido-por-template-com) — EXECUTING
 Plan: 4 of 13
 Status: Ready to execute
-Last activity: 2026-08-11
+Last activity: 2026-08-11 -- Phase 136 planning complete
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 

@@ -1,8 +1,8 @@
 ---
 phase: 136
 slug: m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-11
 ---
@@ -90,12 +90,17 @@ created: 2026-08-11
 
 ## Validation Sign-Off
 
-- [ ] Toda task tem verificação `<automated>` ou dependência de Wave 0
-- [ ] Continuidade de amostragem: sem 3 tasks consecutivas sem verificação automatizada
-- [ ] Wave 0 cobre todas as referências MISSING
-- [ ] Sem flags de watch-mode
-- [ ] Feedback latency < 180s
-- [ ] Baseline de 9 falhas pré-existentes reconfirmada antes de investigar qualquer "regressão"
-- [ ] `nyquist_compliant: true` no frontmatter
+> Verificado pelo `gsd-plan-checker` em 2026-08-11 por análise cruzada dos 7 `*-PLAN.md`.
 
-**Approval:** pending
+- [x] Toda task tem verificação `<automated>` ou dependência de Wave 0
+- [x] Continuidade de amostragem: sem 3 tasks consecutivas sem verificação automatizada
+- [x] Wave 0 cobre todas as referências MISSING — os 4 arquivos atribuídos a tasks: `FinancialSourceResolverTest` (136-01), `MetricaManualLancamentoTest` (136-03), `MetricaManualTravaConsolidacaoTest` (136-02), `RelatorioImpactoDesempateTest` (136-06)
+- [x] Sem flags de watch-mode
+- [x] Feedback latency < 180s
+- [x] Todos os comandos usam `C:\xampp\php\php.exe` — nenhum `php` bare (confirmado nos 7 planos)
+- [ ] Baseline de 9 falhas pré-existentes reconfirmada antes de investigar qualquer "regressão" — **item de execução**, marcado por `136-01` Task 1a
+- [x] `nyquist_compliant: true` no frontmatter
+
+**Approval:** approved 2026-08-11 (planos verificados, 0 blockers)
+
+> `wave_0_complete` permanece `false` até os 4 arquivos de teste existirem em disco — é estado de execução, não de planejamento.
