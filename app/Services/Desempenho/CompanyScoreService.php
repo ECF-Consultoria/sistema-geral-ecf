@@ -6,6 +6,7 @@ use App\Models\BonusInvalidacao;
 use App\Models\Company;
 use App\Models\User;
 use App\Services\Metrics\FinancialSourceResolver;
+use App\Services\Metrics\ManualMetricOverrideService;
 use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Portfolio\CarteiraContextService;
 use Carbon\Carbon;
@@ -82,6 +83,10 @@ class CompanyScoreService
         private MetricDiffDispatcher $diffDispatcher,
         private NpsPorEmpresaService $npsPorEmpresaService,
         private FinancialSourceResolver $financialSourceResolver,
+        // Fase 136 (D-01/D-02/D-05/D-06/D-07/D-08) — decorator que substitui
+        // o eixo `manual` sobre o resultado do dispatcher. Ver `aplicar()`
+        // logo após a chamada ao `MetricDiffDispatcher::compute()` abaixo.
+        private ManualMetricOverrideService $manualOverride,
     ) {
     }
 
@@ -129,8 +134,13 @@ class CompanyScoreService
      *   componentes_presentes: int, componentes_esperados: int,
      *   nota_empresa: ?float, nota_empresa_parcial: ?float,
      *   status: string,
-     *   quality: array{revenue_diff_source: ?string, margin_diff_source: ?string, margin_source: ?string, motivos: array<int,string>},
+     *   quality: array{revenue_diff_source: ?string, margin_diff_source: ?string, margin_source: ?string, motivos: array<int,string>, faturamento_fonte: string, margem_fonte: string},
      * }> chaveada por `company_id`.
+     *
+     * Fase 136 (D-03) — `quality.faturamento_fonte`/`quality.margem_fonte`
+     * (`'auto'|'manual'`) sinalizam se o eixo veio de lançamento manual
+     * (`ManualMetricOverrideService::aplicar()`). Sempre presentes, mesmo
+     * quando a célula não tem nenhum lançamento (`'auto'` nos dois).
      */
     public function computeEmpresasScore(User $user, Carbon $mes, array $periodo, ?Collection $invalidadas = null): Collection
     {
@@ -188,6 +198,14 @@ class CompanyScoreService
         // MESMO resolvedor, nunca duplicam esta lógica.
         $fontesPorEmpresa = $this->financialSourceResolver->resolverPorEmpresa($vinculosElegiveis, $companies);
 
+        // Fase 136 — pré-carga em LOTE dos lançamentos manuais ativos da
+        // competência (e do mês anterior, para a cascata de D-06), UMA única
+        // query para a carteira inteira. Só as empresas com fonte financeira
+        // resolvida chegam ao dispatcher — são as únicas que podem ter
+        // célula manual (a linha `sem_fonte` nunca chega lá, D-91-01).
+        $companyIdsComFonte = $fontesPorEmpresa->keys()->all();
+        $lancamentosManuais = $this->manualOverride->carregarLancamentos($mes, $companyIdsComFonte);
+
         // 6. UMA chamada cobrindo toda a carteira — nunca em loop por
         //    empresa. O MESMO $invalidadas repassado garante universo
         //    idêntico ao deste método.
@@ -202,6 +220,7 @@ class CompanyScoreService
             $fontesPorEmpresa,
             $notasNps,
             $companies,
+            $lancamentosManuais,
         ): array {
             $companyName     = $nomesPorEmpresa[$companyId] ?? '';
             $fonteFinanceira = $fontesPorEmpresa[$companyId] ?? null;
@@ -263,6 +282,12 @@ class CompanyScoreService
             $company   = $companies->get($companyId);
             $resultado = $this->diffDispatcher->compute($company, $periodo, $fonteFinanceira);
 
+            // Fase 136 — o override substitui o eixo marcado `manual` (D-01/
+            // D-02/D-05/D-06/D-07/D-08). Empresa sem lançamento na célula sai
+            // idêntica (caminho rápido do próprio serviço); todas as leituras
+            // abaixo continuam vindo do mesmo shape.
+            $resultado = $this->manualOverride->aplicar($company, $mes, $periodo, $fonteFinanceira, $resultado, $lancamentosManuais);
+
             $faturamentoAtual    = $resultado['metrics']['revenue']['value'] ?? null;
             $faturamentoAnterior = $resultado['metrics']['revenue']['prev_value'] ?? null;
             $faturamentoVarPct   = $resultado['metrics']['revenue']['diff_pct'] ?? null;
@@ -276,7 +301,16 @@ class CompanyScoreService
 
             $faturamentoPontos = $this->reguaFaturamento($faturamentoVarPct);
 
-            // D-02 — Shopee nunca aplica a régua de margem.
+            // Fase 136 (D-07) — sinal de margem manual, lido do override.
+            // A exceção abaixo (Shopee deixando de ser incondicionalmente
+            // excluída da régua de margem) vale EXCLUSIVAMENTE para célula
+            // marcada `manual`: é o mecanismo pelo qual um CMV lançado à mão
+            // passa a pontuar, mesmo numa loja cuja plataforma não fornece
+            // CMV nativo.
+            $margemManual = ($resultado['quality']['margem_fonte'] ?? 'auto') === 'manual';
+
+            // D-02 — Shopee nunca aplica a régua de margem, SALVO quando a
+            // célula tem CMV manual (Fase 136, D-07) — `$margemManual` acima.
             //
             // Até 2026-08-05 a loja Shopee entrava com placeholder 1,0 (a nota
             // mínima). Passou a ficar FORA da média de margem, por decisão do
@@ -286,25 +320,44 @@ class CompanyScoreService
             // que não está sob seu controle. Com o denominador independente
             // por indicador (ver `computeNotaFinalPorIndicador`), a loja
             // continua contando no faturamento e no NPS; só não entra no
-            // denominador da margem.
+            // denominador da margem. ESSA REGRA CONTINUA VALENDO
+            // INTEGRALMENTE para Shopee SEM CMV lançado — o que mudou na
+            // Fase 136 é que agora existe um caminho pelo qual o CMV pode
+            // existir (lançamento manual), e nesse caso a loja passa a
+            // pontuar como qualquer outra fonte.
             //
             // Efeito medido na competência 2026-07: Matheus 2,86 → 4,73 e
             // Felipe 2,31 → 3,20 (51 das 288 lojas da base são Shopee).
             $margemPontos = match (true) {
-                $fonteFinanceira === 'shopee' => null,
-                $margemVarPp === null         => null,
-                default                       => $this->reguaMargem($margemVarPp),
+                $fonteFinanceira === 'shopee' && ! $margemManual => null,
+                $margemVarPp === null                            => null,
+                default                                          => $this->reguaMargem($margemVarPp),
             };
 
             $motivos = [];
             if ($faturamentoPontos === null) {
                 $motivos[] = 'faturamento_sem_baseline';
             }
-            if ($fonteFinanceira === 'adman' && $margemVarPp === null) {
+            // Fase 136 (D-07) — `margem_pp_indisponivel` passa a valer também
+            // para Shopee com margem manual sem `diff_pp` (ex.: CMV lançado
+            // no mês, mas sem CMV manual no mês anterior para formar a base).
+            // A exceção é exclusiva de célula `manual` — Shopee sem CMV
+            // lançado continua reportando `margem_nao_fornecida_shopee`
+            // abaixo, nunca este motivo.
+            if (($fonteFinanceira === 'adman' || $margemManual) && $margemVarPp === null) {
                 $motivos[] = 'margem_pp_indisponivel';
             }
-            if ($fonteFinanceira === 'shopee') {
+            // Regra de 2026-08-05 intacta para quem NÃO tem CMV manual —
+            // Shopee segue fora da média de margem por falta de dado da
+            // plataforma. `! $margemManual` é a única condição nova aqui.
+            if ($fonteFinanceira === 'shopee' && ! $margemManual) {
                 $motivos[] = 'margem_nao_fornecida_shopee';
+            }
+            // D-08 — o override sinaliza este caso quando há CMV manual mas
+            // nenhum faturamento (nem manual nem via API) para derivar a
+            // margem dele.
+            if (in_array('margem_manual_sem_faturamento', $resultado['quality']['motivos_manual'] ?? [], true)) {
+                $motivos[] = 'margem_manual_sem_faturamento';
             }
             if ($npsMotivo !== null) {
                 $motivos[] = $npsMotivo;
@@ -320,8 +373,10 @@ class CompanyScoreService
             //
             // Mesmo princípio que `margem_amostra` já aplica ao denominador
             // desde a Fase 110: ausência legítima de expectativa não conta
-            // como degradação.
-            $componentesEsperados = $fonteFinanceira === 'shopee' ? 2 : 3;
+            // como degradação. Fase 136 (D-07): com margem manual presente, a
+            // loja Shopee passa a esperar os 3 componentes, como qualquer
+            // outra fonte — `! $margemManual` é a única condição nova aqui.
+            $componentesEsperados = $fonteFinanceira === 'shopee' && ! $margemManual ? 2 : 3;
 
             // D-01 — os DOIS números: nota_empresa (estrita) e
             // nota_empresa_parcial (média dos presentes). "Estrita" passou a
@@ -364,6 +419,10 @@ class CompanyScoreService
                     'margin_diff_source'  => $margemDiffSource,
                     'margin_source'       => $fonteFinanceira === 'shopee' ? 'sem_margem_shopee' : null,
                     'motivos'             => $motivos,
+                    // Fase 136 (D-03) — sinal de origem por eixo, sempre
+                    // presente ('auto' quando a célula não tem lançamento).
+                    'faturamento_fonte'   => $resultado['quality']['faturamento_fonte'] ?? 'auto',
+                    'margem_fonte'        => $resultado['quality']['margem_fonte'] ?? 'auto',
                 ],
             ]];
         });
@@ -374,6 +433,16 @@ class CompanyScoreService
      * (D-03) — nunca chega ao `MetricDiffDispatcher` (guard C-04). Único
      * componente possível é o NPS; os 3 campos financeiros ficam `null` e
      * `nota_empresa` também (D-01 — só fecha com os 3 componentes).
+     *
+     * Fase 136 — o `ManualMetricOverrideService` NUNCA alcança esta linha,
+     * de propósito: ela retorna ANTES do dispatcher (guard C-04 acima), e o
+     * override só roda sobre o resultado do dispatcher. Isso protege a trava
+     * D-91-01 (`.planning/learnings/desempenho-bonificacao.md` §0.1) —
+     * carteira sem NENHUM vínculo financeiro elegível não recebe nota
+     * oficial, e um lançamento manual não pode ser a porta dos fundos para
+     * ela receber uma. `faturamento_fonte`/`margem_fonte` ficam fixos em
+     * `'auto'` aqui só por simetria de shape com a linha normal — nunca
+     * podem valer `'manual'` nesta linha.
      *
      * @param  array<int, string>  $motivos  já montados na ordem determinística
      *                                        (sem_fonte_financeira primeiro).
@@ -406,6 +475,8 @@ class CompanyScoreService
                 'margin_diff_source'  => null,
                 'margin_source'       => null,
                 'motivos'             => $motivos,
+                'faturamento_fonte'   => 'auto',
+                'margem_fonte'        => 'auto',
             ],
         ];
     }
