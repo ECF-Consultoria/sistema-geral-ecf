@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Phase135;
 
+use App\Jobs\ResolveOnboardingPassoJob;
 use App\Models\Company;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
@@ -16,9 +17,10 @@ use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
- * Fase 135 Plano 06 (Task 1) — sonda do passo 4 (`grant_consultoria_adman`,
+ * Fase 135 Plano 06 (Tasks 1 e 3) — sonda do passo 4 (`grant_consultoria_adman`,
  * D-18), com classificação de 3 estados herdada de
- * `DiagnoseCustId::validarViaAdman()`.
+ * `DiagnoseCustId::validarViaAdman()`, e `ResolveOnboardingPassoJob` — o
+ * único lugar de onde este resolver pode rodar.
  */
 class OnboardingResolverAdmanGrantTest extends TestCase
 {
@@ -192,5 +194,55 @@ class OnboardingResolverAdmanGrantTest extends TestCase
         (new OnboardingEngineService())->aplicarResultado($passo, $resultado);
 
         $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passo->fresh()->status);
+    }
+
+    // ─── ResolveOnboardingPassoJob (Task 3) ─────────────────────────────────
+
+    /** @test */
+    public function job_para_passo_ja_concluido_nao_envia_request(): void
+    {
+        Http::preventStrayRequests();
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST_JOB_CONCLUIDO']);
+        [, $passo] = $this->criarOnboardingComPasso($company);
+        $passo->update(['status' => OnboardingPasso::STATUS_CONCLUIDO]);
+
+        ResolveOnboardingPassoJob::dispatch($passo->fresh());
+
+        Http::assertNothingSent();
+    }
+
+    /** @test */
+    public function job_para_onboarding_em_rascunho_nao_envia_request(): void
+    {
+        Http::preventStrayRequests();
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST_JOB_RASCUNHO']);
+        [$onboarding, $passo] = $this->criarOnboardingComPasso($company);
+        $this->assertSame(Onboarding::STATUS_RASCUNHO, $onboarding->fresh()->status);
+
+        ResolveOnboardingPassoJob::dispatch($passo);
+
+        Http::assertNothingSent();
+    }
+
+    /** @test */
+    public function job_com_resposta_429_deixa_o_passo_indeterminado_com_tentativas_maior_e_valor_inalterado(): void
+    {
+        Http::fake(['*/performance/*' => Http::response('rate limit', 429)]);
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST_JOB_429']);
+        [$onboarding, $passo] = $this->criarOnboardingComPasso($company);
+        $onboarding->update(['status' => Onboarding::STATUS_ANDAMENTO, 'iniciado_em' => now()]);
+
+        $this->assertSame(0, $passo->fresh()->tentativas);
+        $this->assertNull($passo->fresh()->valor);
+
+        ResolveOnboardingPassoJob::dispatch($passo->fresh());
+
+        $passoAtualizado = $passo->fresh();
+        $this->assertSame(OnboardingPasso::STATUS_INDETERMINADO, $passoAtualizado->status);
+        $this->assertGreaterThan(0, $passoAtualizado->tentativas);
+        $this->assertNull($passoAtualizado->valor);
     }
 }
