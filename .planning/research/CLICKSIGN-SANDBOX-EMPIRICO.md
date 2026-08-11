@@ -418,11 +418,57 @@ era código incompleto, é a API que não expõe o arquivo nesse estado.
 **ativar o envelope** — o que dispara e-mail para os signatários. Não existe "pré-visualizar sem
 ativar" pela API. Quem quiser preview sem enviar precisa usar a interface web da Clicksign.
 
-### 10.5. Ainda não medido
+### 10.5. Variável faltando vira BRANCO no contrato — silenciosamente
 
-- Se excluir o modelo derruba documento já gerado (**dívida D-16**) — o modelo de referência
-  `5b4196cc…` está cadastrado justamente para permitir esse teste.
-- Comportamento com variável **faltando** ou **sobrando** em `template.data`.
+Medido com modelo real, mandando 3 das 7 variáveis:
+
+```
+template.data com 3 de 7 variáveis  => 201, documento GERADO
+template.data com 8 (uma inexistente no modelo) => 201, documento GERADO
+```
+
+**Nos dois casos a API aceita sem reclamar.** E no documento gerado com variável faltando **não
+sobra nenhum `{{marcador}}` cru** — o motor substitui o que falta por **vazio**.
+
+⚠️ **Este é o modo de falha mais perigoso desta integração, e ele é silencioso.** Um erro de digitação
+no nome de uma variável — no `.docx` ou no nosso mapa — não dá erro em lugar nenhum: o contrato sai
+com o campo **em branco**, e vai para assinatura assim. Não há resposta HTTP que denuncie.
+
+É exatamente por isso que `clicksign:sondar-modelo` existe e imprime a tabela de confronto. **Regra
+para a Fase 127: toda vez que o `.docx` for recadastrado, rodar o confronto antes de gerar contrato
+de cliente.** A conferência não é opcional, é a única rede.
+
+### 10.6. Dívida D-16 RESOLVIDA — documento gerado SOBREVIVE à exclusão do modelo
+
+O item bloqueante do gate do plano 126-11. Medido com envelope **ativado** (`running`) e documento
+gerado a partir do modelo:
+
+```
+antes:  GET /envelopes/{id}/documents        => 200, 1 documento
+        DELETE /templates/{id}               => 204 (modelo excluído)
+depois: GET /envelopes/{id}/documents        => 200, 1 documento
+        status: running | link de download: PRESENTE
+        download do arquivo                  => 200, 63.852 bytes (idêntico)
+        GET /envelopes/{id}                  => 200, status=running
+```
+
+**O documento sobrevive intacto.** O aviso da documentação — excluir um modelo remove "todas as suas
+instâncias associadas" — **não** alcança documentos já gerados dentro de envelopes. Uma vez
+instanciado, o documento é independente do modelo.
+
+Isso fecha a dívida que a decisão original D-02 cobria: trocar ou apagar o modelo **não** altera
+contrato já emitido. A D-16 deixa de ter buraco.
+
+⚠️ **Limite honesto da medição:** feita com envelope em `running`, não em `closed` (já assinado).
+O caso assinado é *mais* protegido, não menos — mas não foi observado. E, independente disso, baixar
+e persistir o PDF assinado localmente (`pdf_assinado_path`, Fase 129) continua sendo a prática certa:
+não depender de terceiro para guardar prova jurídica.
+
+### 10.7. Ainda não medido
+
+- ~~Dívida D-16~~ — **RESOLVIDA na §10.6**: o documento sobrevive. O modelo de referência
+  `5b4196cc…` foi excluído nessa medição.
+- ~~Variável faltando ou sobrando~~ — **MEDIDO na §10.5**: aceito silenciosamente, campo vira branco.
 - Tabela em loop `{{#servicos}}` — caminho recusado na D-19, sem uso previsto.
 - `GET /templates` contra a conta de **produção**.
 
