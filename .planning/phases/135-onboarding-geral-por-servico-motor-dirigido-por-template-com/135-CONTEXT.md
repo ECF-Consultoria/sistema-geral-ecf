@@ -182,6 +182,31 @@ do motor.**
 **Onde `company_grants` continua útil:** como fonte de medalha / programa de parceiros
 dentro do passo 7 (Métricas da conta), junto com `fetchUserInfo()`. Não é passo próprio.
 
+**Sonda resolvida pela pesquisa (2026-08-11):** `AdmanService::fetchPerformance($custId,
+$ontem, $ontem, 3, $marketplace)` — é o padrão que `DiagnoseCustId` e `MarkCustIdStatus`
+já usam em produção para validar se a Adman reconhece um `cust_id`. Sucesso HTTP = grant
+ativo mesmo sem movimento no dia; `400/404/500` = sem grant; `429` = **indeterminado**
+(não concluir). O endpoint `/accounts/{custId}/metrics` foi descartado: o próprio código
+registra que ele dá 404 para a maioria das contas. O passo 4 **fica automático.**
+
+## D-19 — `dono` e `auto_fonte` são eixos independentes
+
+A pesquisa apontou uma inconsistência textual: o ROADMAP dizia "5 passos de
+`dono=sistema`", mas a tabela do template marca o passo 5 como `dono=cliente`. Não é
+contradição — é o texto do ROADMAP que estava impreciso, e a resolução vira regra do
+schema:
+
+- **`dono`** responde *"de quem é a bola?"* — quem precisa **agir** para o passo andar.
+- **`auto_fonte`** responde *"como o sistema sabe que aconteceu?"* — como ele **verifica**.
+
+Um passo pode ter `dono=cliente` e ainda assim se resolver sozinho: o cliente precisa
+autorizar o OAuth (a bola é dele, e o painel deve cobrá-lo), mas ninguém digita nada —
+`ml_tokens.status = active` fecha o passo. É o passo 5.
+
+Portanto: **13 passos, 5 automáticos** — 4 com `dono=sistema` (3, 4, 7, 8) e o passo 5
+com `dono=cliente`. Um passo com `auto_fonte` nunca aceita conclusão manual como
+verdade; o campo `dono` só decide de quem o painel cobra e para quem o SLA aponta.
+
 ## Fora de escopo, explicitamente
 
 - **Contrato / revisão / assinatura (Clicksign)** — é a milestone v22.0 (Fases 124-133),
