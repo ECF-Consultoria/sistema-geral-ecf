@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Observers\ContratoServicoObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,7 +16,12 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * Frente A (Módulo Serviços): registra cada contrato vigente (ou já
  * desativado, para histórico) entre empresa e serviço. valor_contratado
  * permite override do valor_padrao do catálogo (pricing por empresa).
+ *
+ * Fase 135 (D-13): `ContratoServicoObserver` cria o onboarding em rascunho
+ * do serviço quando o contrato nasce — cobre os 4 pontos de criação de uma
+ * vez, sem lógica duplicada em controller.
  */
+#[ObservedBy(ContratoServicoObserver::class)]
 class ContratoServico extends Model
 {
     use HasFactory;
