@@ -24,6 +24,9 @@ class MlbImplementacao extends Model
         'acesso_colaborador',
         'gmail_colaborador',
         'grupo_whatsapp',
+        // Link do grupo de WhatsApp (quick 260810-dv6): grupo_whatsapp diz SE o grupo
+        // existe; este campo diz ONDE ele está. Texto livre — o time cola o convite.
+        'link_whatsapp',
         'planilha_produtos',
         'listagem',
         'publicacao',

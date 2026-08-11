@@ -41,7 +41,9 @@ class CompanyScoreServiceDispatcherTest extends TestCase
 
     /** Hash de referência do gate de aditividade (119-VALIDATION.md). */
     /** Rotacionado pela Fase 119.1 (D1) — 4º ramo (D) somado a DesempenhoScoreService.php. */
-    private const HASH_DESEMPENHO_SCORE_SERVICE = 'e5e65532ba990f17c481737daae5c8555dfbe0de765f7507b1cc587abb9cc917';
+    /** Rotacionado pela quick 260810-mbv (2026-08-10) — bump da chave de cache v17 → v18. O gate já estava vermelho desde as Fases 120/122/v17, que alteraram o arquivo sem rotacionar. */
+    /** Rotacionado pela quick 260810-mt8 (2026-08-10) — nota final passa a dividir sempre por 3. */
+    private const HASH_DESEMPENHO_SCORE_SERVICE = '5b6cb40da43773c19c24c1bbf8b6dffe20672cc6b223e8cc8f27676473064f24';
 
     protected function setUp(): void
     {
@@ -193,9 +195,11 @@ class CompanyScoreServiceDispatcherTest extends TestCase
         $linhaShopee = $resultado->get($cenario['empresaShopee']->id);
         $this->assertSame('shopee', $linhaShopee->fonte_financeira);
         $this->assertNotNull($linhaShopee->faturamento_var_pct);
-        // D-02 — Shopee nunca aplica a régua de margem: placeholder fixo.
-        $this->assertSame(1.0, $linhaShopee->margem_pontos);
-        $this->assertSame('placeholder_shopee', $linhaShopee->quality['margin_source']);
+        // D-02 — Shopee nunca aplica a régua de margem. ATUALIZADO em
+        // 2026-08-10 (quick 260810-mbv): desde 2026-08-05 a loja sai do
+        // denominador da margem em vez de entrar com o placeholder 1,0.
+        $this->assertNull($linhaShopee->margem_pontos);
+        $this->assertSame('sem_margem_shopee', $linhaShopee->quality['margin_source']);
 
         $this->assertHashDesempenhoScoreServiceIntocado();
     }

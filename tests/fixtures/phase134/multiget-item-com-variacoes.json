@@ -1,0 +1,1079 @@
+{
+  "id": "MLB5512320238",
+  "site_id": "MLB",
+  "title": "Irrigador Limpeza Bucal Jato Água Potente Bivolt Elétrico",
+  "family_name": null,
+  "seller_id": 1411460869,
+  "category_id": "MLB70647",
+  "user_product_id": null,
+  "official_store_id": null,
+  "price": 65.3,
+  "base_price": 65.3,
+  "original_price": null,
+  "inventory_id": null,
+  "currency_id": "BRL",
+  "initial_quantity": 88,
+  "available_quantity": 36,
+  "sold_quantity": 52,
+  "sale_terms": [
+    {
+      "id": "WARRANTY_TYPE",
+      "name": "Tipo de garantia",
+      "value_id": "2230280",
+      "value_name": "Garantia do vendedor",
+      "value_struct": null,
+      "values": [
+        {
+          "id": "2230280",
+          "name": "Garantia do vendedor",
+          "struct": null
+        }
+      ],
+      "value_type": "list"
+    },
+    {
+      "id": "WARRANTY_TIME",
+      "name": "Tempo de garantia",
+      "value_id": null,
+      "value_name": "30 dias",
+      "value_struct": {
+        "number": 30,
+        "unit": "dias"
+      },
+      "values": [
+        {
+          "id": null,
+          "name": "30 dias",
+          "struct": {
+            "number": 30,
+            "unit": "dias"
+          }
+        }
+      ],
+      "value_type": "number_unit"
+    }
+  ],
+  "buying_mode": "buy_it_now",
+  "listing_type_id": "gold_special",
+  "start_time": "2025-07-21T21:06:00.340Z",
+  "stop_time": "2026-06-16T19:36:36.377Z",
+  "end_time": "2045-07-16T04:00:00.000Z",
+  "expiration_time": "2026-08-25T04:20:53.014Z",
+  "condition": "new",
+  "permalink": "https://produto.mercadolivre.com.br/MLB-5512320238-irrigador-limpeza-bucal-jato-agua-potente-bivolt-eletrico-_JM",
+  "thumbnail_id": "944043-MLB90062003256_082025",
+  "thumbnail": "http://http2.mlstatic.com/D_944043-MLB90062003256_082025-I.jpg",
+  "pictures": [
+    {
+      "id": "944043-MLB90062003256_082025",
+      "url": "http://http2.mlstatic.com/D_944043-MLB90062003256_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_944043-MLB90062003256_082025-O.jpg",
+      "size": "500x493",
+      "max_size": "1200x1184",
+      "quality": ""
+    },
+    {
+      "id": "631903-MLB88365594467_072025",
+      "url": "http://http2.mlstatic.com/D_631903-MLB88365594467_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_631903-MLB88365594467_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "813336-MLB88026376098_072025",
+      "url": "http://http2.mlstatic.com/D_813336-MLB88026376098_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_813336-MLB88026376098_072025-O.jpg",
+      "size": "499x500",
+      "max_size": "1198x1200",
+      "quality": ""
+    },
+    {
+      "id": "776801-MLB88026467898_072025",
+      "url": "http://http2.mlstatic.com/D_776801-MLB88026467898_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_776801-MLB88026467898_072025-O.jpg",
+      "size": "500x477",
+      "max_size": "1200x1147",
+      "quality": ""
+    },
+    {
+      "id": "886872-MLB88366207047_072025",
+      "url": "http://http2.mlstatic.com/D_886872-MLB88366207047_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_886872-MLB88366207047_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "974367-MLB88366236563_072025",
+      "url": "http://http2.mlstatic.com/D_974367-MLB88366236563_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_974367-MLB88366236563_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "926968-MLB88366365629_072025",
+      "url": "http://http2.mlstatic.com/D_926968-MLB88366365629_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_926968-MLB88366365629_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "976883-MLB88026395836_072025",
+      "url": "http://http2.mlstatic.com/D_976883-MLB88026395836_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_976883-MLB88026395836_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "605499-MLB88366306345_072025",
+      "url": "http://http2.mlstatic.com/D_605499-MLB88366306345_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_605499-MLB88366306345_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "929597-MLB90035992753_082025",
+      "url": "http://http2.mlstatic.com/D_929597-MLB90035992753_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_929597-MLB90035992753_082025-O.jpg",
+      "size": "400x500",
+      "max_size": "962x1200",
+      "quality": ""
+    },
+    {
+      "id": "998385-MLB88026516142_072025",
+      "url": "http://http2.mlstatic.com/D_998385-MLB88026516142_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_998385-MLB88026516142_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "820005-MLB88366367277_072025",
+      "url": "http://http2.mlstatic.com/D_820005-MLB88366367277_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_820005-MLB88366367277_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "634972-MLB88026546214_072025",
+      "url": "http://http2.mlstatic.com/D_634972-MLB88026546214_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_634972-MLB88026546214_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "920450-MLB88026467480_072025",
+      "url": "http://http2.mlstatic.com/D_920450-MLB88026467480_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_920450-MLB88026467480_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "911352-MLB88366386727_072025",
+      "url": "http://http2.mlstatic.com/D_911352-MLB88366386727_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_911352-MLB88366386727_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "691934-MLB88026169760_072025",
+      "url": "http://http2.mlstatic.com/D_691934-MLB88026169760_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_691934-MLB88026169760_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "817001-MLB88366277889_072025",
+      "url": "http://http2.mlstatic.com/D_817001-MLB88366277889_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_817001-MLB88366277889_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "621704-MLB88366268015_072025",
+      "url": "http://http2.mlstatic.com/D_621704-MLB88366268015_072025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_621704-MLB88366268015_072025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "697902-MLB90271381838_082025",
+      "url": "http://http2.mlstatic.com/D_697902-MLB90271381838_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_697902-MLB90271381838_082025-O.jpg",
+      "size": "489x500",
+      "max_size": "1174x1200",
+      "quality": ""
+    },
+    {
+      "id": "818900-MLB90270914284_082025",
+      "url": "http://http2.mlstatic.com/D_818900-MLB90270914284_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_818900-MLB90270914284_082025-O.jpg",
+      "size": "363x500",
+      "max_size": "872x1200",
+      "quality": ""
+    },
+    {
+      "id": "898903-MLB90270864494_082025",
+      "url": "http://http2.mlstatic.com/D_898903-MLB90270864494_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_898903-MLB90270864494_082025-O.jpg",
+      "size": "499x500",
+      "max_size": "1198x1200",
+      "quality": ""
+    },
+    {
+      "id": "605549-MLB90271310732_082025",
+      "url": "http://http2.mlstatic.com/D_605549-MLB90271310732_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_605549-MLB90271310732_082025-O.jpg",
+      "size": "500x477",
+      "max_size": "1200x1147",
+      "quality": ""
+    },
+    {
+      "id": "640767-MLB90270983812_082025",
+      "url": "http://http2.mlstatic.com/D_640767-MLB90270983812_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_640767-MLB90270983812_082025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "857182-MLB90270874408_082025",
+      "url": "http://http2.mlstatic.com/D_857182-MLB90270874408_082025-O.webp",
+      "secure_url": "https://http2.mlstatic.com/D_857182-MLB90270874408_082025-O.webp",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "627582-MLB90271735636_082025",
+      "url": "http://http2.mlstatic.com/D_627582-MLB90271735636_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_627582-MLB90271735636_082025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "728052-MLB90271320592_082025",
+      "url": "http://http2.mlstatic.com/D_728052-MLB90271320592_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_728052-MLB90271320592_082025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "794571-MLB90271310702_082025",
+      "url": "http://http2.mlstatic.com/D_794571-MLB90271310702_082025-O.webp",
+      "secure_url": "https://http2.mlstatic.com/D_794571-MLB90271310702_082025-O.webp",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "836020-MLB90656065993_082025",
+      "url": "http://http2.mlstatic.com/D_836020-MLB90656065993_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_836020-MLB90656065993_082025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "909916-MLB90271736448_082025",
+      "url": "http://http2.mlstatic.com/D_909916-MLB90271736448_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_909916-MLB90271736448_082025-O.jpg",
+      "size": "497x500",
+      "max_size": "1195x1200",
+      "quality": ""
+    },
+    {
+      "id": "960321-MLB90271736470_082025",
+      "url": "http://http2.mlstatic.com/D_960321-MLB90271736470_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_960321-MLB90271736470_082025-O.jpg",
+      "size": "363x500",
+      "max_size": "872x1200",
+      "quality": ""
+    },
+    {
+      "id": "662783-MLB90271895178_082025",
+      "url": "http://http2.mlstatic.com/D_662783-MLB90271895178_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_662783-MLB90271895178_082025-O.jpg",
+      "size": "499x500",
+      "max_size": "1198x1200",
+      "quality": ""
+    },
+    {
+      "id": "909961-MLB90656205323_082025",
+      "url": "http://http2.mlstatic.com/D_909961-MLB90656205323_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_909961-MLB90656205323_082025-O.jpg",
+      "size": "500x477",
+      "max_size": "1200x1147",
+      "quality": ""
+    },
+    {
+      "id": "939173-MLB90270974610_082025",
+      "url": "http://http2.mlstatic.com/D_939173-MLB90270974610_082025-O.webp",
+      "secure_url": "https://http2.mlstatic.com/D_939173-MLB90270974610_082025-O.webp",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "764346-MLB90656106279_082025",
+      "url": "http://http2.mlstatic.com/D_764346-MLB90656106279_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_764346-MLB90656106279_082025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "690105-MLB90271746240_082025",
+      "url": "http://http2.mlstatic.com/D_690105-MLB90271746240_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_690105-MLB90271746240_082025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "762760-MLB90271291596_082025",
+      "url": "http://http2.mlstatic.com/D_762760-MLB90271291596_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_762760-MLB90271291596_082025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "845058-MLB90271736442_082025",
+      "url": "http://http2.mlstatic.com/D_845058-MLB90271736442_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_845058-MLB90271736442_082025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    },
+    {
+      "id": "662787-MLB90270974592_082025",
+      "url": "http://http2.mlstatic.com/D_662787-MLB90270974592_082025-O.jpg",
+      "secure_url": "https://http2.mlstatic.com/D_662787-MLB90270974592_082025-O.jpg",
+      "size": "500x500",
+      "max_size": "1200x1200",
+      "quality": ""
+    }
+  ],
+  "video_id": null,
+  "descriptions": [],
+  "accepts_mercadopago": true,
+  "non_mercado_pago_payment_methods": [],
+  "shipping": {
+    "mode": "me2",
+    "methods": [],
+    "tags": [
+      "self_service_in"
+    ],
+    "dimensions": null,
+    "local_pick_up": false,
+    "free_shipping": false,
+    "logistic_type": "fulfillment",
+    "store_pick_up": false
+  },
+  "international_delivery_mode": "none",
+  "seller_address": {
+    "address_line": "Rua Jundiaí 557",
+    "zip_code": "13222030",
+    "city": {
+      "id": "QlItU1BWw6FyemVhIFBhdWxpc3Rh",
+      "name": "Várzea Paulista"
+    },
+    "state": {
+      "id": "BR-SP",
+      "name": "São Paulo"
+    },
+    "country": {
+      "id": "BR",
+      "name": "Brasil"
+    },
+    "search_location": {
+      "neighborhood": {
+        "id": "TVhYSmFyZGltIFBhdWxpc3RhVFZoWVZzT2hjb",
+        "name": "Jardim Paulista"
+      },
+      "city": {
+        "id": "TVhYVsOhcnplYSBQYXVsaXN0YVRVeENVRk5CV",
+        "name": "Várzea Paulista"
+      },
+      "state": {
+        "id": "TUxCUFNBT085N2E4",
+        "name": "São Paulo"
+      }
+    },
+    "latitude": -23.2024359,
+    "longitude": -46.8257662,
+    "id": 1315244748
+  },
+  "seller_contact": null,
+  "location": [],
+  "geolocation": {
+    "latitude": -23.2024359,
+    "longitude": -46.8257662
+  },
+  "coverage_areas": [],
+  "attributes": [
+    {
+      "id": "ACCESSORIES_INCLUDED",
+      "name": "Acessórios incluídos",
+      "value_id": "10141011",
+      "value_name": "1 bico",
+      "values": [
+        {
+          "id": "10141011",
+          "name": "1 bico",
+          "struct": null
+        }
+      ],
+      "value_type": "string"
+    },
+    {
+      "id": "AFE_CERTIFICATION_NUMBER",
+      "name": "Número de certificado da AFE",
+      "value_id": "-1",
+      "value_name": null,
+      "values": [
+        {
+          "id": "-1",
+          "name": null,
+          "struct": null
+        }
+      ],
+      "value_type": "string"
+    },
+    {
+      "id": "ANVISA_PRIOR_NOTIFICATION_COMMUNICATION_DOCUMENT_NUMBER",
+      "name": "Número do documento de Notificação/Comunicação prévia na Anvisa",
+      "value_id": "-1",
+      "value_name": null,
+      "values": [
+        {
+          "id": "-1",
+          "name": null,
+          "struct": null
+        }
+      ],
+      "value_type": "string"
+    },
+    {
+      "id": "ANVISA_PRODUCT_REGISTRATION_NUMBER",
+      "name": "Número de registro de produto na Anvisa",
+      "value_id": "-1",
+      "value_name": null,
+      "values": [
+        {
+          "id": "-1",
+          "name": null,
+          "struct": null
+        }
+      ],
+      "value_type": "number"
+    },
+    {
+      "id": "BRAND",
+      "name": "Marca",
+      "value_id": "67491281",
+      "value_name": "Boxlisboa",
+      "values": [
+        {
+          "id": "67491281",
+          "name": "Boxlisboa",
+          "struct": null
+        }
+      ],
+      "value_type": "string"
+    },
+    {
+      "id": "CHARGE_TIME",
+      "name": "Tempo de carregamento",
+      "value_id": null,
+      "value_name": "4 h",
+      "values": [
+        {
+          "id": null,
+          "name": "4 h",
+          "struct": {
+            "number": 4,
+            "unit": "h"
+          }
+        }
+      ],
+      "value_type": "number_unit"
+    },
+    {
+      "id": "CONAMA_LICENSE_NUMBER",
+      "name": "Número de licença do CONAMA",
+      "value_id": "-1",
+      "value_name": null,
+      "values": [
+        {
+          "id": "-1",
+          "name": null,
+          "struct": null
+        }
+      ],
+      "value_type": "string"
+    },
+    {
+      "id": "IS_HIGHLIGHT_BRAND",
+      "name": "É marca destacada",
+      "value_id": "242084",
+      "value_name": "Não",
+      "values": [
+        {
+          "id": "242084",
+          "name": "Não",
+          "struct": null
+        }
+      ],
+      "value_type": "boolean"
+    },
+    {
+      "id": "IS_RECHARGEABLE",
+      "name": "É recarregável",
+      "value_id": "242085",
+      "value_name": "Sim",
+      "values": [
+        {
+          "id": "242085",
+          "name": "Sim",
+          "struct": null
+        }
+      ],
+      "value_type": "boolean"
+    },
+    {
+      "id": "IS_TOM_BRAND",
+      "name": "É marca TOM",
+      "value_id": "242084",
+      "value_name": "Não",
+      "values": [
+        {
+          "id": "242084",
+          "name": "Não",
+          "struct": null
+        }
+      ],
+      "value_type": "boolean"
+    },
+    {
+      "id": "IS_WATERPROOF",
+      "name": "É à prova d'água",
+      "value_id": "242085",
+      "value_name": "Sim",
+      "values": [
+        {
+          "id": "242085",
+          "name": "Sim",
+          "struct": null
+        }
+      ],
+      "value_type": "boolean"
+    },
+    {
+      "id": "IS_WIRELESS",
+      "name": "É sem fio",
+      "value_id": "242085",
+      "value_name": "Sim",
+      "values": [
+        {
+          "id": "242085",
+          "name": "Sim",
+          "struct": null
+        }
+      ],
+      "value_type": "boolean"
+    },
+    {
+      "id": "ITEM_CONDITION",
+      "name": "Condição do item",
+      "value_id": "2230284",
+      "value_name": "Novo",
+      "values": [
+        {
+          "id": "2230284",
+          "name": "Novo",
+          "struct": null
+        }
+      ],
+      "value_type": "list"
+    },
+    {
+      "id": "MAX_PRESSURE",
+      "name": "Pressão máxima",
+      "value_id": null,
+      "value_name": "160 psi",
+      "values": [
+        {
+          "id": null,
+          "name": "160 psi",
+          "struct": {
+            "number": 160,
+            "unit": "psi"
+          }
+        }
+      ],
+      "value_type": "number_unit"
+    },
+    {
+      "id": "MODEL",
+      "name": "Modelo",
+      "value_id": null,
+      "value_name": "irrigador higiêne bocal, limpador placas bacterianas, irrigador jato ultrapotente, higienizador gengival, removedor plac",
+      "values": [
+        {
+          "id": null,
+          "name": "irrigador higiêne bocal, limpador placas bacterianas, irrigador jato ultrapotente, higienizador gengival, removedor plac",
+          "struct": null
+        }
+      ],
+      "value_type": "string"
+    },
+    {
+      "id": "ORAL_IRRIGATORS_NUMBER",
+      "name": "Quantidade de irrigadores orais",
+      "value_id": null,
+      "value_name": "1",
+      "values": [
+        {
+          "id": null,
+          "name": "1",
+          "struct": null
+        }
+      ],
+      "value_type": "number"
+    },
+    {
+      "id": "ORAL_IRRIGATORS_TIPS_NUMBER",
+      "name": "Quantidade de bicos",
+      "value_id": null,
+      "value_name": "1",
+      "values": [
+        {
+          "id": null,
+          "name": "1",
+          "struct": null
+        }
+      ],
+      "value_type": "number"
+    },
+    {
+      "id": "ORAL_IRRIGATOR_TYPES",
+      "name": "Tipos de irrigador",
+      "value_id": null,
+      "value_name": "Irrigador bucal portátil elétrico",
+      "values": [
+        {
+          "id": null,
+          "name": "Irrigador bucal portátil elétrico",
+          "struct": null
+        }
+      ],
+      "value_type": "string"
+    },
+    {
+      "id": "POWER_SUPPLY_TYPE",
+      "name": "Tipo de alimentação",
+      "value_id": "2656177",
+      "value_name": "Recarregável",
+      "values": [
+        {
+          "id": "2656177",
+          "name": "Recarregável",
+          "struct": null
+        }
+      ],
+      "value_type": "string"
+    },
+    {
+      "id": "PRESSURE_LEVELS_NUMBER",
+      "name": "Quantidade de níveis de pressão",
+      "value_id": null,
+      "value_name": "3",
+      "values": [
+        {
+          "id": null,
+          "name": "3",
+          "struct": null
+        }
+      ],
+      "value_type": "number"
+    },
+    {
+      "id": "PRODUCT_FEATURES",
+      "name": "Características do produto",
+      "value_id": null,
+      "value_name": "Sem validade,Não voável",
+      "values": [
+        {
+          "id": "8847339",
+          "name": "Sem validade",
+          "struct": null
+        },
+        {
+          "id": "10490116",
+          "name": "Não voável",
+          "struct": null
+        }
+      ],
+      "value_type": "list"
+    },
+    {
+      "id": "SHIPMENT_PACKING",
+      "name": "Embalagem do envío",
+      "value_id": "7435891",
+      "value_name": "Flyer",
+      "values": [
+        {
+          "id": "7435891",
+          "name": "Flyer",
+          "struct": null
+        }
+      ],
+      "value_type": "list"
+    },
+    {
+      "id": "TIP_FUNCTIONS",
+      "name": "Funções do bico",
+      "value_id": null,
+      "value_name": "Limpador placas bacterianas,Removedor de placa,higienizador gengival",
+      "values": [
+        {
+          "id": null,
+          "name": "Limpador placas bacterianas",
+          "struct": null
+        },
+        {
+          "id": "23676078",
+          "name": "Removedor de placa",
+          "struct": null
+        },
+        {
+          "id": null,
+          "name": "higienizador gengival",
+          "struct": null
+        }
+      ],
+      "value_type": "string"
+    },
+    {
+      "id": "USE_TIME",
+      "name": "Tempo de uso",
+      "value_id": null,
+      "value_name": "3 dias",
+      "values": [
+        {
+          "id": null,
+          "name": "3 dias",
+          "struct": {
+            "number": 3,
+            "unit": "dias"
+          }
+        }
+      ],
+      "value_type": "number_unit"
+    },
+    {
+      "id": "WATER_CAPACITY",
+      "name": "Capacidade de água",
+      "value_id": null,
+      "value_name": "220 mL",
+      "values": [
+        {
+          "id": null,
+          "name": "220 mL",
+          "struct": {
+            "number": 220,
+            "unit": "mL"
+          }
+        }
+      ],
+      "value_type": "number_unit"
+    },
+    {
+      "id": "WATER_PULSES_PER_MINUTE",
+      "name": "Pulsos de água por minuto",
+      "value_id": null,
+      "value_name": "6",
+      "values": [
+        {
+          "id": null,
+          "name": "6",
+          "struct": null
+        }
+      ],
+      "value_type": "number"
+    },
+    {
+      "id": "WITH_TIMER",
+      "name": "Com temporizador",
+      "value_id": "242084",
+      "value_name": "Não",
+      "values": [
+        {
+          "id": "242084",
+          "name": "Não",
+          "struct": null
+        }
+      ],
+      "value_type": "boolean"
+    }
+  ],
+  "warnings": [],
+  "listing_source": "",
+  "variations": [
+    {
+      "id": 189130150213,
+      "price": 65.3,
+      "attribute_combinations": [
+        {
+          "id": "COLOR",
+          "name": "Cor",
+          "value_id": "52055",
+          "value_name": "Branco",
+          "values": [
+            {
+              "id": "52055",
+              "name": "Branco",
+              "struct": null
+            }
+          ],
+          "value_type": "string"
+        },
+        {
+          "id": "VOLTAGE",
+          "name": "Voltagem",
+          "value_id": "39205163",
+          "value_name": "127/220V",
+          "values": [
+            {
+              "id": "39205163",
+              "name": "127/220V",
+              "struct": null
+            }
+          ],
+          "value_type": "string"
+        }
+      ],
+      "available_quantity": 7,
+      "sold_quantity": 18,
+      "sale_terms": [],
+      "picture_ids": [
+        "944043-MLB90062003256_082025",
+        "631903-MLB88365594467_072025",
+        "813336-MLB88026376098_072025",
+        "776801-MLB88026467898_072025",
+        "886872-MLB88366207047_072025",
+        "974367-MLB88366236563_072025",
+        "926968-MLB88366365629_072025",
+        "976883-MLB88026395836_072025",
+        "605499-MLB88366306345_072025"
+      ],
+      "seller_custom_field": null,
+      "catalog_product_id": null,
+      "inventory_id": "QVVJ33722",
+      "item_relations": [],
+      "user_product_id": "MLBU3310803507"
+    },
+    {
+      "id": 189130150215,
+      "price": 65.3,
+      "attribute_combinations": [
+        {
+          "id": "COLOR",
+          "name": "Cor",
+          "value_id": "52049",
+          "value_name": "Preto",
+          "values": [
+            {
+              "id": "52049",
+              "name": "Preto",
+              "struct": null
+            }
+          ],
+          "value_type": "string"
+        },
+        {
+          "id": "VOLTAGE",
+          "name": "Voltagem",
+          "value_id": "39205163",
+          "value_name": "127/220V",
+          "values": [
+            {
+              "id": "39205163",
+              "name": "127/220V",
+              "struct": null
+            }
+          ],
+          "value_type": "string"
+        }
+      ],
+      "available_quantity": 0,
+      "sold_quantity": 1,
+      "sale_terms": [],
+      "picture_ids": [
+        "929597-MLB90035992753_082025",
+        "998385-MLB88026516142_072025",
+        "820005-MLB88366367277_072025",
+        "634972-MLB88026546214_072025",
+        "920450-MLB88026467480_072025",
+        "911352-MLB88366386727_072025",
+        "691934-MLB88026169760_072025",
+        "817001-MLB88366277889_072025",
+        "621704-MLB88366268015_072025"
+      ],
+      "seller_custom_field": null,
+      "catalog_product_id": null,
+      "inventory_id": "ICYY34894",
+      "item_relations": [],
+      "user_product_id": "MLBU3310803513"
+    },
+    {
+      "id": 189880354335,
+      "price": 65.3,
+      "attribute_combinations": [
+        {
+          "id": "COLOR",
+          "name": "Cor",
+          "value_id": "51994",
+          "value_name": "Rosa",
+          "values": [
+            {
+              "id": "51994",
+              "name": "Rosa",
+              "struct": null
+            }
+          ],
+          "value_type": "string"
+        },
+        {
+          "id": "VOLTAGE",
+          "name": "Voltagem",
+          "value_id": "39205163",
+          "value_name": "127/220V",
+          "values": [
+            {
+              "id": "39205163",
+              "name": "127/220V",
+              "struct": null
+            }
+          ],
+          "value_type": "string"
+        }
+      ],
+      "available_quantity": 14,
+      "sold_quantity": 12,
+      "sale_terms": [],
+      "picture_ids": [
+        "697902-MLB90271381838_082025",
+        "818900-MLB90270914284_082025",
+        "898903-MLB90270864494_082025",
+        "605549-MLB90271310732_082025",
+        "640767-MLB90270983812_082025",
+        "857182-MLB90270874408_082025",
+        "627582-MLB90271735636_082025",
+        "728052-MLB90271320592_082025",
+        "794571-MLB90271310702_082025",
+        "836020-MLB90656065993_082025"
+      ],
+      "seller_custom_field": null,
+      "catalog_product_id": null,
+      "inventory_id": "ZJAB33923",
+      "item_relations": [],
+      "user_product_id": "MLBU3366250387"
+    },
+    {
+      "id": 189880354337,
+      "price": 65.3,
+      "attribute_combinations": [
+        {
+          "id": "COLOR",
+          "name": "Cor",
+          "value_id": "52014",
+          "value_name": "Verde",
+          "values": [
+            {
+              "id": "52014",
+              "name": "Verde",
+              "struct": null
+            }
+          ],
+          "value_type": "string"
+        },
+        {
+          "id": "VOLTAGE",
+          "name": "Voltagem",
+          "value_id": "39205163",
+          "value_name": "127/220V",
+          "values": [
+            {
+              "id": "39205163",
+              "name": "127/220V",
+              "struct": null
+            }
+          ],
+          "value_type": "string"
+        }
+      ],
+      "available_quantity": 15,
+      "sold_quantity": 21,
+      "sale_terms": [],
+      "picture_ids": [
+        "909916-MLB90271736448_082025",
+        "960321-MLB90271736470_082025",
+        "662783-MLB90271895178_082025",
+        "909961-MLB90656205323_082025",
+        "939173-MLB90270974610_082025",
+        "764346-MLB90656106279_082025",
+        "690105-MLB90271746240_082025",
+        "762760-MLB90271291596_082025",
+        "845058-MLB90271736442_082025",
+        "662787-MLB90270974592_082025"
+      ],
+      "seller_custom_field": null,
+      "catalog_product_id": null,
+      "inventory_id": "JNTV35241",
+      "item_relations": [],
+      "user_product_id": "MLBU3372359864"
+    }
+  ],
+  "status": "closed",
+  "sub_status": [],
+  "tags": [
+    "variations_migration_source",
+    "extended_warranty_eligible",
+    "good_quality_thumbnail",
+    "immediate_payment",
+    "cart_eligible"
+  ],
+  "warranty": "Garantia do vendedor: 30 dias",
+  "catalog_product_id": null,
+  "domain_id": "MLB-ORAL_IRRIGATORS",
+  "seller_custom_field": null,
+  "parent_item_id": null,
+  "differential_pricing": null,
+  "deal_ids": [],
+  "automatic_relist": false,
+  "date_created": "2025-07-21T21:06:00.524Z",
+  "last_updated": "2026-08-08T18:19:04.382Z",
+  "health": null,
+  "catalog_listing": false,
+  "item_relations": [],
+  "channels": [
+    "marketplace"
+  ]
+}

@@ -739,6 +739,10 @@ class MlbImplementacaoController extends Controller
             'gmail_colaborador'  => ['nullable', 'string', 'max:150'],
             // Reunião de onboarding (planilha V2) — Sim/Não/Agendada/Não compareceu (texto livre).
             'reuniao_onboarding' => ['nullable', 'string', 'max:60'],
+            // Link do grupo de WhatsApp (quick 260810-dv6). Não valida como 'url': o time
+            // cola convite (chat.whatsapp.com/...), wa.me e às vezes sem o https:// — a UI
+            // normaliza o href na hora de abrir. Guardar o que foi digitado.
+            'link_whatsapp'      => ['nullable', 'string', 'max:255'],
             // grupo_whatsapp: aceita boolean, '0'/'1' e também strings 'true'/'false'
             // validado separadamente via $request->boolean() para maior compatibilidade
         ]);

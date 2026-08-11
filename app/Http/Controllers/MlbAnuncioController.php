@@ -3,11 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\PublicarAnuncioMlJob;
+use App\Jobs\SyncMlAcervoCompanyJob;
 use App\Models\Company;
+use App\Models\MlAcervoItem;
+use App\Models\MlAcervoMetricaDiaria;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\User;
+use App\Services\Mlb\Acervo\AnuncioSaudeService;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
 use App\Services\Mlb\Publicacao\MlCompatibilidadeService;
 use App\Services\Mlb\Publicacao\MlFreteService;
@@ -87,6 +91,29 @@ class MlbAnuncioController extends Controller
             ->with('implementacao')
             ->first();
 
+        // Fase 134 Plano 09: a sub-aba Rascunhos (meus()) agora lista o acervo
+        // INTEIRO de rascunhos, não só os 50 mais recentes — o publicador passa a
+        // clicar em rascunhos antigos com frequência. Sem esta busca complementar,
+        // o efeito de `abrirRascunhoId` em AnunciarML.jsx (linha ~1276) procura o
+        // alvo dentro dos 50 recebidos aqui, não encontra, e a tela abre em branco
+        // sem nenhum erro visível. Escopada por company_id — mesma fronteira do
+        // resto da action (T-134-01).
+        $rascunhoAlvoId = $request->query('rascunho') ? (int) $request->query('rascunho') : null;
+
+        $rascunhosRecentes = MlAnuncioRascunho::where('company_id', $company->id)
+            ->latest()
+            ->limit(50)
+            ->get();
+
+        if ($rascunhoAlvoId !== null && ! $rascunhosRecentes->contains('id', $rascunhoAlvoId)) {
+            $rascunhoAlvo = MlAnuncioRascunho::where('company_id', $company->id)
+                ->where('id', $rascunhoAlvoId)
+                ->first();
+            if ($rascunhoAlvo !== null) {
+                $rascunhosRecentes->push($rascunhoAlvo);
+            }
+        }
+
         return Inertia::render('Mlb/AnunciarML', [
             'empresa' => [
                 'id'         => $company->id,   // âncora = company_id
@@ -94,10 +121,7 @@ class MlbAnuncioController extends Controller
                 'company_id' => $company->id,
                 'tem_token'  => true,
             ],
-            'rascunhos' => MlAnuncioRascunho::where('company_id', $company->id)
-                ->latest()
-                ->limit(50)
-                ->get()
+            'rascunhos' => $rascunhosRecentes
                 ->map(fn ($r) => [
                     'id'            => $r->id,
                     'status'        => $r->status,
@@ -118,7 +142,7 @@ class MlbAnuncioController extends Controller
             'produtos'  => $this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados),
             // HIST-86-2: quando o "Anunciar semelhante" do histórico manda ?rascunho=N,
             // o wizard já abre com o clone carregado. Sem o parâmetro vem null e nada muda.
-            'abrirRascunhoId' => $request->query('rascunho') ? (int) $request->query('rascunho') : null,
+            'abrirRascunhoId' => $rascunhoAlvoId,
         ]);
     }
 
@@ -287,6 +311,425 @@ class MlbAnuncioController extends Controller
             ],
             'filtros'  => ['busca' => $busca],
         ]);
+    }
+
+    /**
+     * "Meus Anúncios" (Fase 134) — acervo vivo da conta ML, lido EXCLUSIVAMENTE
+     * do snapshot em `ml_acervo_itens` (D-05). Nenhuma chamada HTTP acontece
+     * aqui: a coleta é feita por SyncMlAcervoCompanyJob/SyncMlAcervoDetalheJob
+     * (134-04/134-05), agendados diariamente (134-06) ou disparados pelo botão
+     * "Atualizar agora" (atualizarAgora(), abaixo).
+     *
+     * D-01: lista o acervo INTEIRO da conta, não só o que este módulo
+     * publicou — `Publicacao::considerado()` não entra aqui, essa query LISTA,
+     * não CONTA (regra travada em 134-CONTEXT.md, canonical_refs).
+     */
+    public function meus(Request $request, Company $company)
+    {
+        // Mesma trava de todas as outras actions do módulo — nenhuma exceção (D-02, T-134-01/02).
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+
+        $busca = trim((string) $request->query('busca', ''));
+
+        // D-03: só ativos por padrão. Valor fora da lista fechada cai no default —
+        // nunca interpolar querystring em SQL.
+        // Default 'acionaveis' = active + paused (decisão do usuário em
+        // 2026-08-10, emenda ao D-03 registrada no 134-CONTEXT.md). O D-03
+        // original dizia "só ativos por padrão", mas a justificativa dele era
+        // custo ("a primeira tela não paga por isso") — e o volume morto é
+        // encerrado/inativo, não pausado. Com só 'active' no default, o chip
+        // "Pausado" do D-09 ficava permanentemente em 0 e o topo da ordenação
+        // do D-12 (pausado primeiro) nunca tinha pausado: dois requisitos
+        // travados anulados por um default.
+        $statusFiltro = (string) $request->query('status', 'acionaveis');
+        if (! in_array($statusFiltro, ['acionaveis', 'ativos', 'pausados', 'encerrados', 'todos'], true)) {
+            $statusFiltro = 'acionaveis';
+        }
+
+        // Motivo é validado contra a whitelist fechada de MlAcervoItem::MOTIVO_*
+        // antes de qualquer uso — nunca aceito de forma livre.
+        $motivosDef     = $this->motivosTriagemDef();
+        $motivosValidos = array_column($motivosDef, 'chave');
+        $motivo         = $request->query('motivo');
+        $motivo         = in_array($motivo, $motivosValidos, true) ? $motivo : null;
+
+        // Decisão A2 do UI-SPEC: Publicados é a sub-aba padrão. A listagem de
+        // Rascunhos em si é escopo do 134-09 — aqui só o contador da sub-aba.
+        $sub = (string) $request->query('sub', 'publicados');
+        if (! in_array($sub, ['publicados', 'rascunhos'], true)) {
+            $sub = 'publicados';
+        }
+
+        // ─── Listagem — ordenação por gravidade (D-12), determinística, sem
+        // nenhum dado da camada cara: 3 níveis de desempate + tie-break estável. ───
+        $anuncios = $this->escopoAcervo($company, $busca, $statusFiltro)
+            ->when($motivo !== null, fn ($q) => $q->where('motivos', 'like', '%"' . $motivo . '"%'))
+            ->orderByDesc('severidade')
+            ->orderByRaw('nota_ecf IS NULL ASC') // não avaliado vai para o fim, não para o topo (D-12/D-18)
+            ->orderBy('nota_ecf')
+            ->orderBy('ml_item_id') // tie-break estável entre requests
+            ->paginate(50)
+            ->withQueryString();
+
+        $anuncios->through(fn (MlAcervoItem $item) => [
+            'ml_item_id'          => $item->ml_item_id,
+            'titulo'              => (string) $item->title,
+            'thumbnail'           => $item->thumbnail,
+            'permalink'           => $item->permalink,
+            'origem'              => $item->origem,
+            'rascunho_id'         => $item->rascunho_id,
+            'listing_tier'        => $item->listing_type_id,
+            'status'              => $item->status,
+            'estoque'             => $item->available_quantity,
+            'vendas'              => $item->sold_quantity,
+            'visitas'             => $item->visitas_30d,
+            'visitas_dias'        => $item->detalhe_coletado_em !== null
+                ? $item->detalhe_coletado_em->diffInDays(now())
+                : null,
+            'buybox_status'       => $item->buybox_status,
+            'buybox_nao_avaliado' => $item->naoAvaliadoBuyBox(),
+            'nota_ecf'            => $item->nota_ecf,
+            'nota_base'           => AnuncioSaudeService::BASE, // literal — "X de 86" (D-22), nunca renormalizada
+            'motivos'             => $item->motivos ?? [],
+            'severidade'          => $item->severidade,
+            // D-21 (emenda 2026-08-10, veredicto DISPONÍVEL — Variante A do
+            // UI-SPEC): duas medidas de saúde do próprio ML, em escalas
+            // PRÓPRIAS que a tela nunca converte uma na outra nem preenche
+            // uma a partir da outra. `health_ml` é a camada barata (0.00–1.00,
+            // vem de graça no multiget); `performance_score` é a camada cara
+            // rotativa (0–100, D-23). `saudeMlNaoSeAplica()` distingue "não se
+            // aplica" (catálogo/encerrado) de "ainda não avaliado" (rotação
+            // não chegou lá) — os dois são estados diferentes e a tela precisa
+            // dizer coisas diferentes.
+            'health_ml'              => $item->health_ml !== null ? round((float) $item->health_ml, 2) : null,
+            'performance_score'      => $item->performance_score,
+            'performance_level'      => $item->performance_level,
+            'performance_acoes'      => $item->performance_acoes ?? [], // title já redigido em pt-BR pelo ML — nunca reescrito
+            'saude_ml_nao_se_aplica' => $item->saudeMlNaoSeAplica(),
+        ]);
+
+        // ─── Triagem (D-09) — UMA query agregada, nunca um laço de ->count()
+        // por motivo. Reusa os MESMOS filtros de status/busca, mas SEM o
+        // filtro de motivo: os chips precisam continuar mostrando os outros
+        // motivos quando um já está filtrado. ───
+        $selects = [
+            // Total = anúncios DISTINTOS com >=1 motivo, nunca soma dos chips
+            // (severidade > 0 <=> motivos não vazio, ver AnuncioSaudeService::triagem()).
+            'SUM(CASE WHEN severidade > 0 THEN 1 ELSE 0 END) as total_com_motivo',
+            'SUM(CASE WHEN catalog_listing = 1 AND buybox_status IS NULL THEN 1 ELSE 0 END) as nao_avaliado',
+        ];
+        foreach ($motivosDef as $i => $m) {
+            // $m['chave'] vem da whitelist fechada (constantes do model), nunca da querystring.
+            $selects[] = "SUM(CASE WHEN motivos LIKE '%\"{$m['chave']}\"%' THEN 1 ELSE 0 END) as motivo_{$i}";
+        }
+
+        $linhaTriagem = $this->escopoAcervo($company, $busca, $statusFiltro)
+            ->selectRaw(implode(', ', $selects))
+            ->first();
+
+        $chips = [];
+        foreach ($motivosDef as $i => $m) {
+            $chips[] = [
+                'chave' => $m['chave'],
+                'label' => $m['label'],
+                'count' => (int) ($linhaTriagem->{"motivo_{$i}"} ?? 0),
+                'cor'   => $m['cor'],
+            ];
+        }
+
+        $triagem = [
+            'total'        => (int) ($linhaTriagem->total_com_motivo ?? 0),
+            'chips'        => $chips,
+            'nao_avaliado' => (int) ($linhaTriagem->nao_avaliado ?? 0),
+        ];
+
+        // ─── Defasagem (D-08) — nunca resposta vazia. ───
+        $temLinhas     = MlAcervoItem::where('company_id', $company->id)->exists();
+        $nuncaColetado = ! $temLinhas;
+        $coletadoEmRaw = $nuncaColetado ? null : MlAcervoItem::where('company_id', $company->id)->max('coletado_em');
+        $coletadoEm    = $coletadoEmRaw !== null ? \Illuminate\Support\Carbon::parse($coletadoEmRaw) : null;
+        $horas         = $coletadoEm !== null ? $coletadoEm->diffInHours(now()) : null;
+        $limiteHoras   = (int) config('mlb_acervo.defasagem_horas');
+        $motivoErro    = MlAcervoItem::where('company_id', $company->id)
+            ->whereNotNull('coleta_erro')
+            ->orderByDesc('updated_at')
+            ->value('coleta_erro');
+
+        $defasagem = [
+            'coletado_em'    => $coletadoEm?->toIso8601String(),
+            'horas'          => $horas,
+            'defasado'       => $horas !== null && $horas > $limiteHoras,
+            'nunca_coletado' => $nuncaColetado,
+            'motivo'         => $motivoErro,
+        ];
+
+        // Fase 134 Plano 09: sub-aba Rascunhos — a tela oficial de rascunhos, com
+        // TODOS os registros da empresa (não só os 50 mais recentes do wizard).
+        // Sem `payload`: é o campo mais pesado do registro e esta listagem só
+        // precisa mostrar; quem precisa do payload completo é o wizard, que
+        // carrega o rascunho por conta própria ao abrir (T-134-23).
+        // Publicados não paga por este dado — array vazio.
+        $rascunhosProp = $sub === 'rascunhos'
+            ? MlAnuncioRascunho::where('company_id', $company->id)
+                ->orderByDesc('updated_at')
+                ->get()
+                ->map(fn ($r) => [
+                    'id'           => $r->id,
+                    'status'       => $r->status,
+                    'titulo'       => (string) data_get($r->payload, 'title', ''),
+                    'categoria'    => $this->nomeCategoria($r->category_id),
+                    'category_id'  => $r->category_id,
+                    'listing_tier' => $r->listing_tier,
+                    'foto'         => data_get($r->payload, 'pictures.0.source'),
+                    'updated_at'   => $r->updated_at,
+                    'erro_resumo'  => $this->resumoErro($r->validation_errors),
+                    'ml_item_id'   => $r->ml_item_id,
+                ])
+            : [];
+
+        return Inertia::render('Mlb/MeusAnuncios', [
+            'empresa'   => ['id' => $company->id, 'nome' => $company->name],
+            'sub'       => $sub,
+            'subTotais' => [
+                'publicados' => MlAcervoItem::where('company_id', $company->id)->count(),
+                'rascunhos'  => MlAnuncioRascunho::where('company_id', $company->id)->count(),
+            ],
+            'anuncios'          => $anuncios,
+            'rascunhos'         => $rascunhosProp,
+            'triagem'           => $triagem,
+            'filtros'           => ['busca' => $busca, 'status' => $statusFiltro, 'motivo' => $motivo],
+            'defasagem'         => $defasagem,
+            'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
+            'rotacaoN'          => (int) config('mlb_acervo.rotacao_n'),
+        ]);
+    }
+
+    /**
+     * "Atualizar agora" (D-05) — enfileira a coleta da camada barata da
+     * empresa e devolve na hora. NUNCA coleta nada em processo: nenhuma
+     * chamada a MlAcervoService, nenhuma chamada HTTP. Molde exato:
+     * ShopeeOAuthController::sync() — enfileira 1 job para 1 empresa e volta
+     * com flash, sem bloquear o request. NÃO copiar
+     * MercadoLivreOAuthController::syncNow(), que é síncrono e violaria D-05.
+     */
+    public function atualizarAgora(Request $request, Company $company)
+    {
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+
+        if ($company->mlToken->status !== 'active') {
+            return back()->with('error', "{$company->name} não tem conexão com o Mercado Livre ativa — reconecte a conta antes de atualizar.");
+        }
+
+        // ShouldBeUnique do job já impede que cliques repetidos empilhem
+        // execuções da mesma empresa (134-04) — o cooldown do botão no
+        // cliente (134-08) é conforto, não a garantia.
+        SyncMlAcervoCompanyJob::dispatch($company);
+
+        Log::info("[MLB Anuncios] coleta manual enfileirada — empresa {$company->id} ({$company->name}) por " . auth()->user()?->name);
+
+        return back()->with('success', 'Coleta enfileirada — pode levar alguns minutos. A tela mostra os dados mais novos na próxima visita.');
+    }
+
+    /**
+     * Detalhe de um anúncio (Fase 134 Plano 10) — checklist de sinais que
+     * fecha com a nota (D-10/D-22) e série de até 90 dias (D-07b), lidos
+     * EXCLUSIVAMENTE do banco (D-05). Carregado lazy pelo modal ao abrir —
+     * não vem no payload de meus() (decisão A10 do UI-SPEC): 50 itens × até
+     * 90 pontos de série seriam milhares de registros que a maioria das
+     * aberturas de página nunca usa.
+     */
+    public function detalheAnuncio(Request $request, Company $company, string $mlItemId): JsonResponse
+    {
+        // Mesma trava de todas as outras actions do módulo (D-02, T-134-01/02).
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+
+        // T-134-01: company_id na cláusula é o que impede que um mlItemId de
+        // outra empresa seja lido trocando a URL.
+        $item = MlAcervoItem::where('company_id', $company->id)
+            ->where('ml_item_id', $mlItemId)
+            ->firstOrFail();
+
+        // ─── Checklist (D-10/D-22) — montado a partir de nota_sinais JÁ
+        // PERSISTIDO pela coleta (MlAcervoService::avaliar), nunca
+        // recalculado aqui. Pesos vêm de AnuncioSaudeService::PESOS, nunca
+        // escritos à mão — a ordem do array já é a ordem do UI-SPEC. ───
+        $sinaisPersistidos = $item->nota_sinais ?? [];
+        $labels = [
+            'titulo'            => 'Título ≥ 20 caracteres',
+            'categoria'         => 'Categoria definida',
+            'ficha_obrigatoria' => 'Ficha técnica obrigatória completa',
+            'ficha_opcional'    => 'Ficha técnica opcional ≥ 60%',
+            'foto'              => 'Ao menos 1 foto',
+            'dimensoes'         => 'Dimensões de pacote completas',
+            'preco'             => 'Preço definido',
+        ];
+        // Os dois únicos sinais que analisarAnuncio() classifica como `erro`
+        // bloqueante no wizard — a distinção crítico/neutro espelha essa
+        // mesma separação, não é arbitrária (UI-SPEC, "Checklist dos sinais").
+        $criticos = ['ficha_obrigatoria', 'foto'];
+
+        $checklist = [];
+        $somaOk    = 0;
+        foreach (AnuncioSaudeService::PESOS as $chave => $peso) {
+            $ok = (bool) ($sinaisPersistidos[$chave]['ok'] ?? false);
+            if ($ok) {
+                $somaOk += $peso;
+            }
+            $checklist[] = [
+                'chave'   => $chave,
+                'label'   => $labels[$chave],
+                'peso'    => $peso,
+                'ok'      => $ok,
+                'critico' => in_array($chave, $criticos, true),
+            ];
+        }
+
+        // Asserção defensiva (T-134-21): a soma dos sinais verdadeiros
+        // PRECISA fechar com nota_ecf. Não silenciar quando não fecha — a
+        // tela precisa poder mostrar que algo está errado em vez de exibir
+        // uma conta que não bate (o mesmo modo de falha já vivido com
+        // nps_medio ≠ pontos_componentes.nps, .planning/learnings/desempenho-bonificacao.md).
+        $divergencia = $somaOk !== (int) $item->nota_ecf;
+        if ($divergencia) {
+            Log::warning("[MLB Anuncios] checklist não fecha com a nota — empresa {$company->id}, item {$mlItemId}");
+        }
+
+        // ─── Série de até 90 dias (D-07b) — a coleta grava em
+        // ml_acervo_metricas_diarias só quando algo muda (decisão do plano
+        // 134-04), então a série chega esparsa. Um ponto por dia do
+        // intervalo é montado abaixo, com uma assimetria deliberada entre
+        // campos de ESTADO e campos de FLUXO (mesma disciplina de
+        // honestidade do selo de defasagem, D-08):
+        //   • ESTADO (vendas, notaEcf): buraco = "não mudou" — o último
+        //     valor conhecido continua válido até a próxima linha gravada.
+        //     Preenchimento para frente.
+        //   • FLUXO (visitas): buraco = a rotação do D-23 não passou por
+        //     este item naquele dia. Preencher aqui inventaria tráfego que
+        //     ninguém mediu — fica nulo, e o `connectNulls={false}` do
+        //     gráfico existe justamente para mostrar esse buraco como
+        //     buraco. ───
+        $inicio = now()->subDays(89)->startOfDay();
+        $fim    = now()->startOfDay();
+
+        $registros = MlAcervoMetricaDiaria::where('company_id', $company->id)
+            ->where('ml_item_id', $mlItemId)
+            ->whereBetween('data', [$inicio->toDateString(), $fim->toDateString()])
+            ->orderBy('data')
+            ->get()
+            ->keyBy(fn ($r) => $r->data->toDateString());
+
+        $serie        = [];
+        $ultimoVendas = null;
+        $ultimoNota   = null;
+        for ($d = $inicio->copy(); $d->lte($fim); $d->addDay()) {
+            $chave    = $d->toDateString();
+            $registro = $registros->get($chave);
+
+            if ($registro !== null) {
+                // ESTADO: só atualiza o "último valor conhecido" quando existe registro nesse dia.
+                $ultimoVendas = $registro->sold_quantity;
+                $ultimoNota   = $registro->nota_ecf;
+            }
+
+            $serie[] = [
+                'data'    => $chave,
+                'visitas' => $registro?->visitas, // FLUXO — nunca preenchido para frente
+                'vendas'  => $ultimoVendas,        // ESTADO — preenchimento para frente
+                'notaEcf' => $ultimoNota,          // ESTADO — preenchimento para frente
+            ];
+        }
+
+        return response()->json([
+            'item' => [
+                'ml_item_id'          => $item->ml_item_id,
+                'titulo'              => (string) $item->title,
+                'thumbnail'           => $item->thumbnail,
+                'permalink'           => $item->permalink,
+                'origem'              => $item->origem,
+                'rascunho_id'         => $item->rascunho_id,
+                'status'              => $item->status,
+                'listing_tier'        => $item->listing_type_id,
+                'estoque'             => $item->available_quantity,
+                'vendas'              => $item->sold_quantity,
+                'visitas'             => $item->visitas_30d,
+                'visitas_dias'        => $item->detalhe_coletado_em !== null
+                    ? $item->detalhe_coletado_em->diffInDays(now())
+                    : null,
+                'buybox_status'       => $item->buybox_status,
+                'buybox_nao_avaliado' => $item->naoAvaliadoBuyBox(),
+                'nota_ecf'            => $item->nota_ecf,
+                'nota_base'           => AnuncioSaudeService::BASE, // literal — "X de 86" (D-22), nunca renormalizada
+                'motivos'             => $item->motivos ?? [],
+                // D-21 (Variante A, veredicto DISPONÍVEL) — mesma disciplina
+                // de meus(): escalas próprias, nunca convertidas uma na
+                // outra; ausência vira "não se aplica" ou "não avaliado",
+                // nunca um número inventado.
+                'health_ml'              => $item->health_ml !== null ? round((float) $item->health_ml, 2) : null,
+                'performance_score'      => $item->performance_score,
+                'performance_level'      => $item->performance_level,
+                'performance_acoes'      => $item->performance_acoes ?? [], // title já redigido em pt-BR pelo ML — nunca reescrito
+                'saude_ml_nao_se_aplica' => $item->saudeMlNaoSeAplica(),
+            ],
+            'checklist'         => $checklist,
+            'checklistTotal'    => AnuncioSaudeService::BASE, // nunca somado no cliente
+            'divergencia'       => $divergencia,
+            'serie'             => $serie,
+            'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
+        ]);
+    }
+
+    /**
+     * Escopo base do acervo por empresa (T-134-01) — company_id é a fronteira
+     * de segurança inteira desta tela e não pode sair de nenhum caminho:
+     * busca, triagem, contagem, paginação. A busca é OBRIGATORIAMENTE
+     * agrupada dentro de where(function...): um orWhere solto sobe ao topo
+     * do WHERE e anula o escopo por empresa (mesma pegadinha travada em
+     * historico(), Fase 86).
+     */
+    private function escopoAcervo(Company $company, string $busca, string $statusFiltro)
+    {
+        // 'acionaveis' (default) cobre DOIS status — é o universo sobre o qual
+        // a triagem do D-09 conta e a ordenação do D-12 opera. Os demais
+        // filtros recortam um status só; 'todos' não filtra.
+        $statusColunas = match ($statusFiltro) {
+            'acionaveis' => ['active', 'paused'],
+            'ativos'     => ['active'],
+            'pausados'   => ['paused'],
+            'encerrados' => ['closed'],
+            default      => null, // 'todos' não filtra
+        };
+
+        return MlAcervoItem::where('company_id', $company->id)
+            ->when($busca !== '', function ($q) use ($busca) {
+                $q->where(function ($s) use ($busca) {
+                    $s->where('title', 'like', "%{$busca}%")
+                      ->orWhere('ml_item_id', 'like', "%{$busca}%");
+                });
+            })
+            ->when($statusColunas !== null, fn ($q) => $q->whereIn('status', $statusColunas));
+    }
+
+    /**
+     * Definição fechada dos 5 motivos de triagem (D-09), na mesma ordem de
+     * gravidade do D-12: pausado/sem estoque (crítica, red) antes de ficha
+     * incompleta/perdendo catálogo/foto insuficiente (atenção, amber).
+     * Fonte única para a whitelist de validação e para os chips/selects
+     * agregados — nunca duplicar esta lista.
+     *
+     * @return array<int, array{chave:string, label:string, cor:string}>
+     */
+    private function motivosTriagemDef(): array
+    {
+        return [
+            ['chave' => MlAcervoItem::MOTIVO_PAUSADO,           'label' => 'Pausado',           'cor' => 'red'],
+            ['chave' => MlAcervoItem::MOTIVO_SEM_ESTOQUE,       'label' => 'Sem estoque',        'cor' => 'red'],
+            ['chave' => MlAcervoItem::MOTIVO_FICHA_INCOMPLETA,  'label' => 'Ficha incompleta',   'cor' => 'amber'],
+            ['chave' => MlAcervoItem::MOTIVO_PERDENDO_CATALOGO, 'label' => 'Perdendo catálogo',  'cor' => 'amber'],
+            ['chave' => MlAcervoItem::MOTIVO_FOTO_INSUFICIENTE, 'label' => 'Foto insuficiente',  'cor' => 'amber'],
+        ];
     }
 
     /**

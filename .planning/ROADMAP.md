@@ -1792,6 +1792,94 @@ Plans:
 
 > 🚦 **CHECKPOINT HUMANO — bloqueia a ATIVAÇÃO, não a escrita.** A flag `administrativo_bloqueio_ativo` só pode ser ligada em produção depois de confirmar, com o usuário: (a) o webhook chegou de forma confiável durante o período de observação (Fase 128/129 rodando em produção por tempo suficiente); (b) o alerta de contrato preso já disparou pelo menos uma vez em sandbox (Fase 130); (c) a liberação manual foi testada em produção ao menos uma vez (Fase 130); (d) o cutover para produção Clicksign foi concluído e aprovado (Fase 132). Rollback de código sozinho nunca é o plano de saída — desligar a flag é.
 
+## Fase avulsa — Módulo Anunciar Mercado Livre (fora de milestone)
+
+### Phase 134: "Meus Anúncios" — saúde analítica do anúncio publicado
+
+**Goal:** Quem cuida dos anúncios de uma empresa abre uma tela e, em segundos, sabe quais anúncios estão saudáveis, quais estão perdendo venda e por quê — com dado real vindo da API do Mercado Livre, não com a análise de formulário que hoje só existe durante a criação e some no instante em que o anúncio é publicado.
+
+**Requirements**: (fase avulsa — sem REQ-IDs de milestone; requisitos derivados do `134-CONTEXT.md`)
+**Depends on:** Phase 86 (Histórico dos publicados — a aba sobrevive e continua sendo a base do "Anunciar semelhante em massa")
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Existe a rota `mlb.anuncios.meus` por empresa, e ela é a **aba inicial** do módulo — Meus Anúncios | Individual | Em massa | Histórico
+  2. A tela lista **todos os anúncios ativos da conta ML do cliente**, não só os que este módulo publicou, e cada linha diz de onde o anúncio veio (ECF · time · legado do cliente)
+  3. A tela lê **exclusivamente do banco** — nenhuma chamada síncrona ao ML no caminho do request; a coleta é comando agendado + job por empresa
+  4. O topo da tela é triagem acionável agrupada por motivo (pausado, sem estoque, ficha incompleta, …), e clicar num motivo filtra a lista
+  5. Coleta falha ou está velha → a tela mostra o último snapshot com selo de defasagem, nunca uma tela em branco
+  6. O bloco "Rascunhos recentes" saiu do aside do wizard e vive na sub-aba Rascunhos, junto com o "Publicar lote"; a "Saúde do anúncio" continua intacta no aside do wizard
+
+**Plans:** 10/10 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 134-01-PLAN.md — Sondagem D-21 (saúde do ML), config da fase e fixtures reais da API [wave 1]
+- [x] 134-02-PLAN.md — Schema: ml_acervo_itens + ml_acervo_metricas_diarias, com índices nomeados à mão [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 134-03-PLAN.md — Nota ECF em PHP (base 86) + teste de concordância com o scorer JS [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 134-04-PLAN.md — Coleta camada barata: scroll_id, multiget de 20, upsert, selo de origem e série diária [wave 3]
+- [x] 134-05-PLAN.md — Camada cara: visitas e price_to_win em rotação por fatia (D-23) [wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 134-06-PLAN.md — Comandos mlb:sync-acervo e mlb:acervo-cleanup + agendamento diário [wave 4]
+- [x] 134-07-PLAN.md — Rota mlb.anuncios.meus: listagem, triagem, ordenação, defasagem e Atualizar agora [wave 4]
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 134-08-PLAN.md — 4ª aba + tela Publicados: triagem acionável, tabela e selos de honestidade [wave 5]
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 134-09-PLAN.md — Sub-aba Rascunhos com card clicável + saída do bloco do wizard (D-16) [wave 6]
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [x] 134-10-PLAN.md — Modal de Detalhe: checklist dos sinais e série de 90 dias (Recharts) [wave 7]
+
+> **Fora de escopo (fase própria):** qualquer write na API do ML (pausar, editar, mover anúncio) — ação destrutiva na conta do cliente em produção, exige confirmação dupla, `activity_log` e undo, na mesma linha do todo `260626-acoes-ml-mover-sgi-pausar-via-api.md`. Também fora: abrir o módulo ao time de publicação (`role:admin` → `permission:mlb.anunciar`).
+
+### Phase 135: Onboarding Geral por Serviço — motor dirigido por template com passos automáticos
+
+**Goal:** Qualquer serviço do catálogo (não só Polos) passa a ter onboarding de verdade: a Coordenação escolhe o serviço, o sistema monta o checklist a partir de um template versionado, e os passos que o sistema já sabe responder — anúncios ativos/inativos, faturamento, reputação, medalha, grants — chegam **preenchidos** em vez de virarem formulário para alguém digitar o que já está no banco.
+
+**Requirements**: (fase avulsa — sem REQ-IDs de milestone; requisitos derivados do `135-CONTEXT.md`)
+**Depends on:** Phase 134 (`ml_acervo_itens` é a fonte do passo automático de anúncios ativos/inativos; `mlb:sync-acervo --company` é o gatilho sob demanda para empresa recém-onboardada)
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Existe `/onboarding` cobrindo **qualquer** serviço do catálogo, ancorado em `Company × Servico` — um onboarding por contrato, não um por empresa
+  2. O onboarding de Polos (`mlb_implementacoes`, `/mlb/implementacao`, `/implementacao/{token}`) continua **byte-a-byte intocado** e em produção; o motor novo nasce ao lado
+  3. Contrato de serviço criado por **qualquer** dos 4 caminhos (HubSpot webhook · Comercial · Company/Show · CompanyGroup) gera onboarding em `rascunho` — via Observer em `ContratoServico`, não por lógica duplicada em cada controller
+  4. Onboarding em `rascunho` não corre SLA e não expõe link; só vira `andamento` quando a Coordenação confirma o responsável (sugerido por `responsavelDoServicoOuConsolidado()`)
+  5. Passo tem **dono** (`cliente` · `interno` · `sistema`), dependência declarada, SLA próprio e condição de existência — passo dependente nasce bloqueado e destrava sozinho
+  6. Os **5 passos automáticos** do template de Gestão se resolvem sem digitação humana, por resolvers registrados em código: `adman_account_id`, grant Adman (sonda `fetchPerformance` por `cust_id` — ver D-18), `ml_tokens.status`, `ml_acervo_itens`, `MercadoLivreService::fetchUserInfo()`. São 4 passos com `dono=sistema` **+ o passo 5** (`dono=cliente`): `dono` diz quem precisa **agir**, `auto_fonte` diz como o sistema **verifica** — eixos independentes (D-19)
+  7. Resolver distingue **"ainda não coletado"** de **"realmente zero"** — empresa nova dispara `mlb:sync-acervo --company` e só então lê; nunca aceita tabela vazia como resposta
+  8. Admin monta e edita templates pela UI, escolhendo `auto_fonte` de um **catálogo fechado** de resolvers (nunca texto livre), com guarda contra ciclo em `depende_de`
+  9. Salvar template publica versão N+1 e vale só para onboardings novos; os em andamento seguem na versão em que nasceram, com ação explícita para migrá-los
+  10. Cliente recebe **um link por empresa** que agrega os passos `dono=cliente` de todos os serviços ativos; passo de mesma `chave` em serviços diferentes fecha uma vez só
+  11. O painel responde "o que está travando, há quantos dias e de quem é a bola" — não uma barra de porcentagem
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 135 to break down)
+
+> **Escopo da v1:** só o template de **Gestão (Performance)** — 13 passos, 5 automáticos. Publicação, Shopee, Assessoria/Incubadora/Implantação ganham template depois, sem tocar no motor.
+>
+> **Fora de escopo (já é a milestone v22.0, Fases 124-133):** "Contrato Solicitado → Administrativo", revisão e assinatura de contrato via Clicksign. Contrato assinado é **pré-requisito** do onboarding nascer, não passo dele.
+>
+> **Fora de escopo (fase própria):** geração automática do relatório inicial de onboarding (cenário, métricas, estrutura, pontos de atenção, oportunidades, próximos passos). Os passos 7 e 8 já produzem quase todo o dado e `RelatorioMensalPdfService` é o molde — mas montar o PDF é fase separada.
+>
+> **Assunção fechada pelo usuário em 2026-08-11 (D-18 do `135-CONTEXT.md`):** "Grant com o Sistema ECF" (item 11 do fluxo do cliente) = autorizar o app ECF por OAuth → `ml_tokens` — **confirmado**. "Grant com a Consultoria" = grant com a **Adman** (`api.adman.com.br`), a plataforma que a consultoria usa — **corrigido**: não é `company_grants`. O que `company_grants` guarda (populado por `SyncGrantsFromEcfDrive`/`SyncGrantsFromSftp`) é o programa de parceiros do ML — medalha, programa, iniciativa — dado que a ECF *recebe*, não acesso que o cliente *concede*; segue como fonte dentro do passo 7, não como passo próprio. Pendência para o `RESEARCH.md`: qual chamada do `AdmanService` serve de sonda barata de "grant ativo para este cust_id" — se nenhuma servir, o passo 4 cai para dono `interno` com checagem manual. **Nada disso muda a arquitetura do motor.**
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 

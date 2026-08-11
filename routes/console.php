@@ -119,6 +119,19 @@ Schedule::command('ml:sync')
     ->name('sync-ml-direct')
     ->withoutOverlapping();
 
+// Fase 134 ("Meus Anúncios") — D-06: fan-out diário do acervo ML (camada
+// barata + camada cara por fatia de rotação, D-23). 11:35 = depois do
+// ml:sync (11:05) e do adman:sync-margem (11:20); empilhar um terceiro
+// fan-out pesado de ML na mesma janela concentraria pressão de rate limit
+// sem necessidade, e o token já foi renovado às 08:00 pelo
+// ml:refresh-tokens. withoutOverlapping() é obrigatório: a coleta da base
+// inteira leva mais de uma hora na camada cara, e sem isso duas execuções
+// se sobreporiam num dia de fila atrasada.
+Schedule::command('mlb:sync-acervo')
+    ->dailyAt('11:35')
+    ->name('sync-ml-acervo')
+    ->withoutOverlapping();
+
 // Sync direto Shopee (D-1) — 11:15, logo após o ml:sync.
 // Só processa empresas com token Shopee ativo; grava em shopee_metrics.
 Schedule::command('shopee:sync')
@@ -156,6 +169,15 @@ Schedule::command('notifications:cleanup')
 Schedule::command('mlb:sync-vendas-logs-cleanup')
     ->dailyAt('03:20')
     ->name('cleanup-sync-vendas-logs')
+    ->withoutOverlapping();
+
+// Fase 134 ("Meus Anúncios") — D-07: retenção da série diária enxuta do
+// acervo ML (ml_acervo_metricas_diarias, ~90 dias). 03:40 = logo depois do
+// mlb:sync-vendas-logs-cleanup das 03:20, agrupando as rotinas de retenção
+// na mesma janela ociosa.
+Schedule::command('mlb:acervo-cleanup')
+    ->dailyAt('03:40')
+    ->name('cleanup-ml-acervo')
     ->withoutOverlapping();
 
 // Phase 30 Plan 30-04 — Sync de MLBs por adgroup pra tabela local (off-peak).

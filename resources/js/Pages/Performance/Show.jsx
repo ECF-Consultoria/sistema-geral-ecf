@@ -11,7 +11,8 @@ import PeriodoBanner from '@/Components/Desempenho/PeriodoBanner';
 import {
     MARGEM_CARD_TITULO, MARGEM_CARD_SUBLABEL,
     AVISO_SEM_DETALHE_TITULO, AVISO_SEM_DETALHE_EM_CURSO, avisoSemDetalheFechado,
-    resumoCarteiraLinha, fmtPp,
+    resumoCarteiraLinha, fmtPp, CONTA_NOTA_TOOLTIP,
+    composicaoPorMarketplace, MARKETPLACE_TOOLTIP,
 } from '@/lib/desempenhoLabels';
 
 /**
@@ -26,17 +27,20 @@ function formatNota(v) {
 }
 
 /**
- * Formata a conta que produziu a nota (ex: "(4,65+3,83+3,61)/3 = 4,03").
+ * Formata a conta que produziu a nota (ex: "(4,65+3,83+0,00)/3 = 2,83").
  * Consumido em FaixaBonusCard abaixo da nota final — mesmo formato usado no
- * Ranking (Performance/Index.jsx). Nulls (componentes indisponíveis) ficam
- * de fora, e o denominador acompanha quantos componentes sobraram.
+ * Ranking (Performance/Index.jsx).
+ *
+ * Divisor FIXO 3 e indicador ausente somando 0 desde 2026-08-10 (quick
+ * 260810-mt8) — espelha `computeNotaFinalPorIndicador()`. Sem nenhum ponto
+ * devolve `null`: carteira sem dado não tem conta a mostrar.
  */
 function formatContaNota(pontos, notaFinal) {
     if (!pontos) return null;
-    const pts = [pontos.nps, pontos.faturamento, pontos.margem].filter((v) => v != null);
-    if (pts.length === 0) return null;
+    const pts = [pontos.nps, pontos.faturamento, pontos.margem];
+    if (pts.every((v) => v == null)) return null;
     const notaFmt = notaFinal != null ? formatNota(notaFinal) : '?';
-    return `(${pts.map(formatNota).join('+')})/${pts.length} = ${notaFmt}`;
+    return `(${pts.map((v) => formatNota(v ?? 0)).join('+')})/3 = ${notaFmt}`;
 }
 
 /**
@@ -274,7 +278,7 @@ function FaixaBonusCard({ resultado, user, mesDetalhe = null }) {
                     {contaNota && (
                         <span
                             className="text-white/40 text-xs tabular-nums"
-                            title="Média dos pontos NPS, faturamento e margem (régua 1-5)"
+                            title={CONTA_NOTA_TOOLTIP}
                         >
                             {contaNota}
                         </span>
@@ -325,6 +329,42 @@ function FaixaBonusCard({ resultado, user, mesDetalhe = null }) {
                     )}
                 </div>
             </div>
+        </div>
+    );
+}
+
+/**
+ * Composição da carteira por marketplace (quick 260810-n5b).
+ *
+ * Item 3 da demanda do Maycon: "incluir no Desempenho a informação de qual
+ * marketplace pertence a conta". A tabela abaixo diz o marketplace loja a
+ * loja; esta faixa responde a pergunta no atacado — quantas lojas de cada
+ * marketplace formam a nota deste profissional.
+ *
+ * Conta as linhas de `empresas_score`, que a página já recebeu: nada é
+ * recalculado e nenhuma chamada nova é feita. Renderiza apenas quando há
+ * marketplace a mostrar — carteira 100% sem fonte financeira (só Polos, só
+ * Publicação) não ganha uma faixa vazia.
+ */
+function ComposicaoMarketplaces({ linhas = [] }) {
+    const composicao = composicaoPorMarketplace(linhas);
+
+    if (composicao.length === 0) return null;
+
+    return (
+        <div className="mb-3 flex items-center gap-2 flex-wrap" title={MARKETPLACE_TOOLTIP}>
+            <span className="text-white/40 text-[11px] uppercase tracking-wider font-semibold">
+                Marketplaces da carteira
+            </span>
+            {composicao.map(({ label, total }) => (
+                <span
+                    key={label}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-0.5 text-xs text-white/70"
+                >
+                    {label}
+                    <strong className="text-white font-semibold tabular-nums">{total}</strong>
+                </span>
+            ))}
         </div>
     );
 }
@@ -626,7 +666,10 @@ export default function PerformanceShow({
                             </h2>
 
                             {tem_detalhe_empresas ? (
-                                <EmpresasScoreTabela linhas={empresas_score} resumo={empresas_score_resumo} />
+                                <>
+                                    <ComposicaoMarketplaces linhas={empresas_score} />
+                                    <EmpresasScoreTabela linhas={empresas_score} resumo={empresas_score_resumo} />
+                                </>
                             ) : (
                                 <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 flex items-start gap-3">
                                     <Info size={16} className="text-white/40 shrink-0 mt-0.5" />

@@ -330,10 +330,20 @@ class JanelaNpsBonusTest extends TestCase
         $this->assertTrue($r['componentes_disponiveis']['nps_medio'],
             'componentes_disponiveis.nps_medio = true: o piso 1.0 é um componente presente.');
 
-        // nota_final = round((nps=1.0 + fatPts=5.0 + margemPts=3.0)/3, 2) = 3.00
-        // — o piso NPS 1.0 entra na média junto com os 2 financeiros.
-        $this->assertEqualsWithDelta(3.0, $r['nota_final'], 0.01,
-            'nota_final com o piso NPS 1.0 + os 2 financeiros disponíveis.');
+        // nota_final = (nps=1.0 + margem ausente=0 + fatPts=5.0)/3 = 2.00.
+        //
+        // ATUALIZADO em 2026-08-10 (quick 260810-mt8): o divisor virou fixo 3 e
+        // o indicador ausente soma zero. O valor esperado ANTES era 3.00, mas
+        // pelo motivo errado — o comentário dizia "margemPts=3.0", quando na
+        // verdade a margem sempre esteve AUSENTE neste cenário (o teste semeia
+        // `adman_metrics` local e não responde pelo endpoint da Adman, então
+        // não há `percentageMargin` de onde tirar a variação). A conta que
+        // passava era (1,0 + 5,0)/2 = 3,00, que coincidia com o número do
+        // comentário e escondia a ausência.
+        $this->assertNull($r['pontos_componentes']['margem'],
+            'Sem resposta da Adman não há margem — o payload reporta ausente, não zero.');
+        $this->assertEqualsWithDelta(2.0, $r['nota_final'], 0.01,
+            'Piso NPS 1,0 + margem ausente (0) + faturamento 5,0, sobre divisor fixo 3.');
     }
 
     // ═══ Teste 3 — fechada, janela M+1 JÁ ENCERRADA, 0 respostas → 0.0 ═════

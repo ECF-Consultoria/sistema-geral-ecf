@@ -1,5 +1,5 @@
 import { router } from '@inertiajs/react';
-import { FileText, Grid3x3, History } from 'lucide-react';
+import { Gauge, FileText, Grid3x3, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -12,11 +12,16 @@ import { cn } from '@/lib/utils';
  */
 
 // ─── Itens do segmented control: modo → rota + ícone ───
+// D-13 (Fase 134): "Meus Anúncios" é a aba INICIAL do módulo — acervo vivo da
+// conta ML do cliente, com saúde analítica do que já foi publicado. Entra na
+// PRIMEIRA posição do array; Gauge é o mesmo ícone do painel "Saúde do
+// anúncio" no wizard (AnunciarML.jsx), reforçando que a aba é sobre saúde.
 const MODOS = [
-    { chave: 'individual', label: 'Individual', rota: 'mlb.anuncios.wizard',    Icone: FileText },
-    { chave: 'massa',      label: 'Em massa',    rota: 'mlb.anuncios.massa',     Icone: Grid3x3 },
+    { chave: 'meus',       label: 'Meus Anúncios', rota: 'mlb.anuncios.meus',      Icone: Gauge },
+    { chave: 'individual', label: 'Individual',     rota: 'mlb.anuncios.wizard',    Icone: FileText },
+    { chave: 'massa',      label: 'Em massa',       rota: 'mlb.anuncios.massa',     Icone: Grid3x3 },
     // Acervo dos publicados — base do "Anunciar semelhante" (Phase 86)
-    { chave: 'historico',  label: 'Histórico',   rota: 'mlb.anuncios.historico', Icone: History },
+    { chave: 'historico',  label: 'Histórico',      rota: 'mlb.anuncios.historico', Icone: History },
 ];
 
 export default function ModoAnuncioTabs({ empresaId, modo }) {

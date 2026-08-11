@@ -1,0 +1,71 @@
+{
+  "item_id": "MLB4009839421",
+  "current_price": 289,
+  "currency_id": "BRL",
+  "price_to_win": 289,
+  "boosts": [
+    {
+      "id": "fulfillment",
+      "status": "opportunity",
+      "description": "Envios Full"
+    },
+    {
+      "id": "free_installments",
+      "status": "opportunity",
+      "description": "Pagamento sem juros"
+    },
+    {
+      "id": "free_shipping",
+      "status": "boosted",
+      "description": "Frete grátis"
+    },
+    {
+      "id": "shipping_collect",
+      "status": "boosted",
+      "description": "Envios com coleta"
+    },
+    {
+      "id": "same_day_shipping",
+      "status": "opportunity",
+      "description": "Envios no mesmo dia"
+    }
+  ],
+  "status": "winning",
+  "consistent": true,
+  "visit_share": "maximum",
+  "competitors_sharing_first_place": 0,
+  "reason": [],
+  "catalog_product_id": "MLB30478012",
+  "winner": {
+    "item_id": "MLB4009839421",
+    "price": 289,
+    "currency_id": "BRL",
+    "boosts": [
+      {
+        "id": "fulfillment",
+        "status": "opportunity",
+        "description": "Envios Full"
+      },
+      {
+        "id": "free_installments",
+        "status": "opportunity",
+        "description": "Pagamento sem juros"
+      },
+      {
+        "id": "free_shipping",
+        "status": "boosted",
+        "description": "Frete grátis"
+      },
+      {
+        "id": "shipping_collect",
+        "status": "boosted",
+        "description": "Envios com coleta"
+      },
+      {
+        "id": "same_day_shipping",
+        "status": "opportunity",
+        "description": "Envios no mesmo dia"
+      }
+    ]
+  }
+}

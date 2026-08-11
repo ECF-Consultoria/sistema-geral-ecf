@@ -409,6 +409,8 @@ class PolosController extends Controller
                     'acesso_colaborador'       => $impl?->acesso_colaborador,
                     'gmail_colaborador'        => $impl?->gmail_colaborador,
                     'grupo_whatsapp'           => $impl ? (bool) $impl->grupo_whatsapp : null,
+                    // Link do grupo de WhatsApp (coluna "Link do Whats"; quick 260810-dv6).
+                    'link_whatsapp'            => $impl?->link_whatsapp,
                     'planilha_produtos'        => $impl?->planilha_produtos,
                     'listagem'                 => $impl?->listagem,
                     'publicacao'               => $impl?->publicacao,

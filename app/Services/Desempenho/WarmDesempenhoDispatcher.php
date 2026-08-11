@@ -39,6 +39,23 @@ class WarmDesempenhoDispatcher
      */
     private const LOCK_MINUTOS = 3;
 
+    /**
+     * Quantas empresas frias a TABELA tolera antes de virar "calculando…".
+     *
+     * O gate não pode ser "qualquer uma fria": medido em produção 2026-08-07,
+     * o warm converge em ondas (25 → 9 → 1 de 25), e com 1 sozinha fria o
+     * gate esconderia a tabela inteira quando 24/25 dos dados já estão
+     * prontos e faltariam ~6s para completar. Pior: o `ERROR_SENTINEL` do
+     * `AdmanMetricDiffService` expira em 10min, então UMA empresa que erre
+     * cronicamente faria a tabela piscar entre normal e "calculando" para
+     * sempre — a tela nunca renderizaria de novo.
+     *
+     * 3 × ~6,3s/empresa (157,6s ÷ 25 medidos) ≈ 19s de pior caso síncrono:
+     * ruim, mas finito e MUITO abaixo dos 300s do `max_execution_time`, e
+     * infinitamente melhor que uma tabela que não volta.
+     */
+    private const TOLERANCIA_EMPRESAS_FRIAS = 3;
+
     public function __construct(
         private DesempenhoScoreService $scoreService,
         private CarteiraContextService $carteiraContext,
@@ -124,21 +141,22 @@ class WarmDesempenhoDispatcher
      */
     public function gateCarteira($companies, array $periodo, Carbon $mes): bool
     {
-        $temFria = $companies->contains(
+        $frias = $companies->filter(
             fn ($c) => ! $this->admanDiff->isCached($c, $periodo)
-        );
+        )->count();
 
-        if (! $temFria) {
-            return false;
+        // Aquece SEMPRE que houver fria — inclusive abaixo do limite, para a
+        // retardatária entrar no cache e a próxima visita já achar tudo pronto.
+        // Aquecer e gatear são decisões separadas de propósito.
+        if ($frias > 0) {
+            $lockKey = 'adman.diff.warm.lock.' . $mes->format('Y-m');
+            if (Cache::add($lockKey, true, now()->addMinutes(self::LOCK_MINUTOS))) {
+                // `--period` aceita `YYYY-MM` (mesmo contrato do MetricPeriodResolver).
+                Artisan::queue('adman:warm-diff', ['--period' => $mes->format('Y-m')]);
+            }
         }
 
-        $lockKey = 'adman.diff.warm.lock.' . $mes->format('Y-m');
-        if (Cache::add($lockKey, true, now()->addMinutes(self::LOCK_MINUTOS))) {
-            // `--period` aceita `YYYY-MM` (mesmo contrato do MetricPeriodResolver).
-            Artisan::queue('adman:warm-diff', ['--period' => $mes->format('Y-m')]);
-        }
-
-        return true;
+        return $frias > self::TOLERANCIA_EMPRESAS_FRIAS;
     }
 
     public function gateIndividual(User $user, Carbon $mes): bool

@@ -284,6 +284,38 @@ class Phase33OnboardingFichaTest extends TestCase
     }
 
     /**
+     * link_whatsapp (bloco acessos, quick 260810-dv6) — coluna "Link do Whats" do Painel
+     * Polos. Guarda o texto COMO FOI DIGITADO (convite, wa.me ou sem protocolo: a UI
+     * normaliza só o href), aceita limpar com null e rejeita acima de 255.
+     */
+    public function test_link_whatsapp_persiste_como_texto(): void
+    {
+        $admin = $this->criarAdmin();
+        [$_empresa, $impl] = $this->criarEmpresaComImpl();
+
+        foreach (['https://chat.whatsapp.com/ABC123xyz', 'chat.whatsapp.com/SemProtocolo'] as $valor) {
+            $this->actingAs($admin)
+                ->patch(route('mlb.implementacao.bloco.acessos', $impl), ['link_whatsapp' => $valor])
+                ->assertRedirect();
+
+            $impl->refresh();
+            $this->assertSame($valor, $impl->link_whatsapp);
+        }
+
+        // Limpar o campo (célula esvaziada no painel manda null).
+        $this->actingAs($admin)
+            ->patch(route('mlb.implementacao.bloco.acessos', $impl), ['link_whatsapp' => null])
+            ->assertRedirect();
+        $this->assertNull($impl->refresh()->link_whatsapp);
+
+        $this->actingAs($admin)
+            ->patch(route('mlb.implementacao.bloco.acessos', $impl), [
+                'link_whatsapp' => str_repeat('a', 256),
+            ])
+            ->assertSessionHasErrors(['link_whatsapp']);
+    }
+
+    /**
      * decola virou TEXTO (era boolean): aceita o catálogo ONB_DECOLA_OPCOES, incluindo o
      * terceiro estado "Mensagem Enviada".
      */

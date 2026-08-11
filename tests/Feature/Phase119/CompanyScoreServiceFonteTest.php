@@ -47,7 +47,9 @@ class CompanyScoreServiceFonteTest extends TestCase
 
     /** Hash de referência do gate de aditividade (119-VALIDATION.md). */
     /** Rotacionado pela Fase 119.1 (D1) — 4º ramo (D) somado a DesempenhoScoreService.php. */
-    private const HASH_DESEMPENHO_SCORE_SERVICE = 'e5e65532ba990f17c481737daae5c8555dfbe0de765f7507b1cc587abb9cc917';
+    /** Rotacionado pela quick 260810-mbv (2026-08-10) — bump da chave de cache v17 → v18. O gate já estava vermelho desde as Fases 120/122/v17, que alteraram o arquivo sem rotacionar. */
+    /** Rotacionado pela quick 260810-mt8 (2026-08-10) — nota final passa a dividir sempre por 3. */
+    private const HASH_DESEMPENHO_SCORE_SERVICE = '5b6cb40da43773c19c24c1bbf8b6dffe20672cc6b223e8cc8f27676473064f24';
 
     protected function setUp(): void
     {
@@ -232,16 +234,27 @@ class CompanyScoreServiceFonteTest extends TestCase
         $this->assertSame('shopee', $linha->fonte_financeira);
         $this->assertSame(4.0, $linha->faturamento_pontos, 'reguaFaturamento(+2%) = 4.0.');
         $this->assertNull($linha->margem_var_pp, 'Shopee nunca fornece diff_pp de margem (arquitetura future-ready).');
-        $this->assertSame(1.0, $linha->margem_pontos, 'D-02 — placeholder fixo, nunca a régua.');
-        $this->assertSame('placeholder_shopee', $linha->quality['margin_source']);
+        // ATUALIZADO em 2026-08-10 (quick 260810-mbv) para o contrato vigente
+        // desde 2026-08-05: o placeholder fixo de 1,0 foi REVOGADO por decisão
+        // do usuário — a Shopee não fornece CMV, então a loja fica FORA do
+        // denominador da margem em vez de entrar com a nota mínima. O teste
+        // afirmava o contrato antigo e só não acusava porque o gate de hash
+        // (desatualizado desde as Fases 120/122/v17) falhava antes.
+        // Ver `CompanyScoreService::computeEmpresasScore()`, bloco D-02.
+        $this->assertNull($linha->margem_pontos, 'D-02 (2026-08-05) — Shopee sai da margem, não entra com placeholder.');
+        $this->assertSame('sem_margem_shopee', $linha->quality['margin_source']);
         $this->assertNotContains('margem_pp_indisponivel', $linha->quality['motivos'],
-            'O placeholder Shopee NÃO é componente ausente — marcar assim contradiria a trava da Fase 109.');
-        $this->assertSame(3, $linha->componentes_presentes);
-        $this->assertSame('complete', $linha->status);
+            'A ausência de margem na Shopee NÃO é componente faltando — é dimensão que a plataforma não entrega.');
+        $this->assertContains('margem_nao_fornecida_shopee', $linha->quality['motivos']);
+        $this->assertSame(2, $linha->componentes_presentes);
+        $this->assertSame(2, $linha->componentes_esperados);
+        $this->assertSame('complete', $linha->status,
+            'Loja Shopee fecha `complete` com 2 de 2 componentes esperados — não é `partial`.');
 
-        // Caso âncora D-02 (119-CONTEXT.md): (4,2 + 4 + 1,0) / 3 = 3,07.
-        $this->assertSame(3.07, $linha->nota_empresa);
-        $this->assertSame(3.07, $linha->nota_empresa_parcial);
+        // Caso âncora recalculado pelo contrato vigente: (4,2 + 4,0) / 2 = 4,10.
+        // Sob o placeholder revogado seria (4,2 + 4 + 1,0) / 3 = 3,07.
+        $this->assertSame(4.1, $linha->nota_empresa);
+        $this->assertSame(4.1, $linha->nota_empresa_parcial);
 
         $this->assertHashDesempenhoScoreServiceIntocado();
     }
@@ -272,8 +285,12 @@ class CompanyScoreServiceFonteTest extends TestCase
         $this->assertNotNull($linha);
 
         $this->assertNotSame(5.0, $linha->margem_pontos, 'reguaMargem(diff_pp=99.0) seria 5.0 — a linha NÃO pode reportar isso.');
-        $this->assertSame(1.0, $linha->margem_pontos, 'Placeholder fixo — a régua de margem NUNCA roda para fonte Shopee.');
-        $this->assertSame('placeholder_shopee', $linha->quality['margin_source']);
+        // ATUALIZADO em 2026-08-10 (quick 260810-mbv): o placeholder 1,0 foi
+        // revogado em 2026-08-05 — a linha Shopee sai da margem. O que este
+        // teste guarda continua igual: a régua NUNCA roda sobre um diff_pp
+        // fabricado de fonte Shopee.
+        $this->assertNull($linha->margem_pontos, 'A régua de margem NUNCA roda para fonte Shopee.');
+        $this->assertSame('sem_margem_shopee', $linha->quality['margin_source']);
 
         $this->assertHashDesempenhoScoreServiceIntocado();
     }

@@ -128,6 +128,50 @@ class AdmanMetricDiffServiceTest extends TestCase
     }
 
     /**
+     * Fake que RESPONDE POR JANELA (quick 260810-mbv).
+     *
+     * O `fakeAdmanEndpoints()` acima devolve o mesmo payload para qualquer
+     * `dateFrom`, o que era suficiente enquanto o modo operacional não olhava
+     * a janela baseline. Depois da quick 260810-mbv ele deixa de provar
+     * qualquer coisa nesse modo: baseline e janela atual voltariam idênticas e
+     * `diff_pp` daria zero por coincidência do fixture, não por comportamento.
+     *
+     * Aqui a resposta de `/accounts/{cust}/metrics` varia pelo `dateFrom` da
+     * query: a janela baseline devolve `percentageMargin.value` próprio.
+     * `$baselinePct = null` simula a Adman não respondendo a janela baseline
+     * (rate-limit/erro) — o caminho fail-open.
+     */
+    private function fakeAdmanEndpointsPorJanela(string $baselineStart, ?float $baselinePct): void
+    {
+        $atual = $this->respostaAccountMetrics();
+
+        Http::fake(function ($request) use ($baselineStart, $baselinePct, $atual) {
+            $url = $request->url();
+
+            if (str_contains($url, '/performance/')) {
+                return Http::response($this->respostaPerformance(), 200);
+            }
+
+            if (str_contains($url, "dateFrom={$baselineStart}")) {
+                if ($baselinePct === null) {
+                    return Http::response(['metrics' => []], 500);
+                }
+
+                $baseline = $atual;
+                $baseline['metrics']['percentageMargin'] = [
+                    'value' => $baselinePct,
+                    'diff'  => 1.11,
+                    'prev'  => 1.0,
+                ];
+
+                return Http::response($baseline, 200);
+            }
+
+            return Http::response($atual, 200);
+        });
+    }
+
+    /**
      * Período `previous_equal_length_window` — mesma janela do research (18 dias):
      * current 2026-07-01..18, baseline 2026-06-13..30 (N dias imediatamente
      * anteriores, verificado empiricamente no research §93-97).
@@ -283,14 +327,18 @@ class AdmanMetricDiffServiceTest extends TestCase
     /**
      * CENÁRIO (b) — modo operacional (`same_interval_previous_month`) força
      * calculated_fallback para `revenue` MESMO com a Adman tendo mandado
-     * .diff. Margem (R$ e %) NÃO usa mais fallback local (hotfix 2026-07-24):
-     * fora da janela-igual o `.diff` nativo é ignorado (gate falha) e a
-     * variação de margem fica `null` (`adman_indisponivel`), nunca calculada
-     * localmente.
+     * .diff, e a margem NUNCA é calculada com dado local (hotfix 2026-07-24):
+     * a variação relativa (`diff_pct`) segue `null` mesmo com as duas janelas
+     * densas de `adman_metrics` semeadas abaixo.
+     *
+     * A quick 260810-mbv não afrouxa isso: `diff_pp` passa a existir, mas vem
+     * de dois valores NATIVOS da Adman (janela atual × janela baseline), não da
+     * soma local — por isso o fake por janela aqui, e por isso `diff_pct`
+     * continua null mesmo com 18 dias de margem local em cada lado.
      */
-    public function test_b_modo_operacional_forca_calculated_fallback_no_revenue_e_null_na_margem(): void
+    public function test_b_modo_operacional_forca_calculated_fallback_no_revenue_e_nunca_calcula_margem_local(): void
     {
-        $this->fakeAdmanEndpoints();
+        $this->fakeAdmanEndpointsPorJanela(baselineStart: '2026-06-01', baselinePct: 21.64);
         $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
 
         // Dados locais consistentes nas duas janelas (07-01..18 vs 06-01..18) —
@@ -303,8 +351,10 @@ class AdmanMetricDiffServiceTest extends TestCase
         $this->assertSame('calculated_fallback', $resultado['metrics']['revenue']['diff_source']);
         $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_value']['diff_source']);
         $this->assertNull($resultado['metrics']['contribution_margin_value']['diff_pct']);
-        $this->assertSame('adman_indisponivel', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertSame('adman_janela_baseline', $resultado['metrics']['contribution_margin_pct']['diff_source']);
         $this->assertNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
+        // Margem em p.p. dos valores nativos: 27.47 (atual) − 21.64 (baseline).
+        $this->assertSame(5.83, $resultado['metrics']['contribution_margin_pct']['diff_pp']);
         // revenue: (18000-9000)/9000*100 = 100%
         $this->assertSame(100.0, $resultado['metrics']['revenue']['diff_pct']);
     }
@@ -511,9 +561,11 @@ class AdmanMetricDiffServiceTest extends TestCase
         // 9 dias-com-linha em cada janela: (9000-4500)/4500*100 = 100%
         $this->assertSame(100.0, $resultado['metrics']['revenue']['diff_pct']);
 
-        // Margem % não usa mais fallback local — sem .diff nativo aplicável
-        // (modo operacional), fica null explícito.
-        $this->assertSame('adman_indisponivel', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        // Margem % continua sem fallback local: a variação RELATIVA segue null
+        // mesmo com dado local nos dois lados. Desde a quick 260810-mbv o modo
+        // operacional resolve a margem pela janela baseline lida da Adman
+        // (`adman_janela_baseline`) — nunca por soma de `adman_metrics`.
+        $this->assertSame('adman_janela_baseline', $resultado['metrics']['contribution_margin_pct']['diff_source']);
         $this->assertNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
     }
 
@@ -720,24 +772,52 @@ class AdmanMetricDiffServiceTest extends TestCase
     }
 
     /**
-     * CENÁRIO (q) — gate D-07/MPP-02: diff_pp só é calculado em janela-igual
-     * com value+prev_value ambos numéricos. Primeiro caso: MESMA fixture
-     * (prev=24.08 presente), mas modo operacional ⇒ diff_pp=null E
-     * prev_value=24.08 (prova que o gate é sobre comparison_mode, não sobre
-     * ausência de prev). Segundo caso: sem `.diff` nativo (percentageMargin
-     * sem chave `diff`) + janela-igual ⇒ diff_pct=null, diff_source=
-     * 'adman_indisponivel', mas diff_pp=3.39 (o gate de diff_pp depende de
-     * value+prev_value, NÃO da presença de `.diff`).
+     * CENÁRIO (q) — o `prev` NATIVO continua descartado fora da janela-igual.
+     *
+     * Era o gate D-07/MPP-02 original ("modo operacional ⇒ diff_pp=null"), que
+     * a quick 260810-mbv reabriu: o que o gate protegia era a JANELA errada, não
+     * a existência da variação. O `prev` da Adman (24.08 no fixture) é a janela
+     * imediatamente anterior; o mês em curso precisa comparar com o mesmo
+     * intervalo do mês passado, que é o que o faturamento já usa.
+     *
+     * Aqui a janela baseline (2026-06-01) responde 21.64, então a margem sai
+     * `27.47 − 21.64 = 5.83` p.p. — e `prev_value` é 21.64, NUNCA 24.08. Se
+     * algum dia o `prev` nativo voltar a vazar para este caminho, este teste cai.
      */
-    public function test_p_diff_pp_null_fora_de_janela_igual_mesmo_com_prev_presente(): void
+    public function test_p_modo_operacional_compara_com_a_janela_baseline_e_ignora_o_prev_nativo(): void
     {
-        $this->fakeAdmanEndpoints();
+        $this->fakeAdmanEndpointsPorJanela(baselineStart: '2026-06-01', baselinePct: 21.64);
         $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
 
         $resultadoOperacional = app(AdmanMetricDiffService::class)->compute($company, $this->periodoOperacional());
         $margemOperacional    = $resultadoOperacional['metrics']['contribution_margin_pct'];
-        $this->assertNull($margemOperacional['diff_pp']);
-        $this->assertSame(24.08, $margemOperacional['prev_value']);
+
+        $this->assertSame(5.83, $margemOperacional['diff_pp']);
+        $this->assertSame(21.64, $margemOperacional['prev_value']);
+        $this->assertNotSame(24.08, $margemOperacional['prev_value']);
+        $this->assertSame('adman_janela_baseline', $margemOperacional['diff_source']);
+        // diff_pct (variação RELATIVA, metadado legado) segue fora do modo
+        // operacional — quem decide a nota é diff_pp.
+        $this->assertNull($margemOperacional['diff_pct']);
+    }
+
+    /**
+     * Fail-open da leitura da janela baseline (quick 260810-mbv): a Adman não
+     * responde a janela de comparação ⇒ volta exatamente ao comportamento
+     * anterior (sem `diff_pp`, `prev` nativo preservado, `adman_indisponivel`).
+     * Nunca inventa variação, nunca lança.
+     */
+    public function test_p1_baseline_indisponivel_mantem_comportamento_anterior(): void
+    {
+        $this->fakeAdmanEndpointsPorJanela(baselineStart: '2026-06-01', baselinePct: null);
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $margem = app(AdmanMetricDiffService::class)
+            ->compute($company, $this->periodoOperacional())['metrics']['contribution_margin_pct'];
+
+        $this->assertNull($margem['diff_pp']);
+        $this->assertSame(24.08, $margem['prev_value']);
+        $this->assertSame('adman_indisponivel', $margem['diff_source']);
     }
 
     /**
@@ -807,6 +887,42 @@ class AdmanMetricDiffServiceTest extends TestCase
         $this->assertArrayHasKey('prev_value', $margem);
         $this->assertArrayHasKey('diff_pp', $margem);
         $this->assertSame(27.47, $margem['value']);
+    }
+
+    /**
+     * CENÁRIO (bump v6 → v7, quick 260810-mbv) — uma entrada `adman:diff:v6:`
+     * do MÊS CORRENTE gravada antes do deploy guarda a margem sem variação
+     * (`diff_pp` null, `prev_value` da janela imediatamente anterior). Shape
+     * idêntico, semântica outra: se fosse servida, a coluna Margem continuaria
+     * vazia com o código novo em produção. O bump tira essas entradas de
+     * circulação — o `compute()` recalcula e devolve o p.p. contra a janela
+     * baseline.
+     */
+    public function test_q2_cache_v7_nao_reaproveita_entrada_v6_do_mes_corrente(): void
+    {
+        $this->fakeAdmanEndpointsPorJanela(baselineStart: '2026-06-01', baselinePct: 21.64);
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+        $periodo = $this->periodoOperacional();
+
+        $cacheKeyV6 = "adman:diff:v6:meli:CUST1:{$periodo['current_start']}:{$periodo['current_end']}:"
+            . now()->setTimezone(config('app.timezone'))->toDateString();
+        Cache::put($cacheKeyV6, [
+            'metrics' => [
+                'contribution_margin_pct' => [
+                    'value'       => 27.47,
+                    'prev_value'  => 24.08,
+                    'diff_pct'    => null,
+                    'diff_pp'     => null,
+                    'diff_source' => 'adman_indisponivel',
+                ],
+            ],
+        ], 1440);
+
+        $margem = app(AdmanMetricDiffService::class)
+            ->compute($company, $periodo)['metrics']['contribution_margin_pct'];
+
+        $this->assertSame(5.83, $margem['diff_pp']);
+        $this->assertSame(21.64, $margem['prev_value']);
     }
 
     /**

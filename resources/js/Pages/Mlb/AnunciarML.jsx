@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen, Store, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, Calculator, Plus, Trash2, Upload, Image, Pencil, Truck, Info, Gauge, Lightbulb } from 'lucide-react';
+import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen, Store, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, Calculator, Plus, Trash2, Upload, Image, Truck, Info, Gauge, Lightbulb } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
@@ -10,19 +10,6 @@ import {
     analisarAnuncio, MODALIDADES_FRETE, DICAS_DESCRICAO, INFO_EXPOSICAO_TIER,
     PRECO_FRETE_GRATIS_OBRIGATORIO, FOTOS_RECOMENDADAS_MIN, extrairSettingsCategoria,
 } from '@/lib/mlAnuncioRegras';
-
-// ─── Badges de status do rascunho ───
-const STATUS_BADGE = {
-    rascunho:   'bg-white/5 border border-white/15 text-white/70',
-    validado:   'bg-blue-500/10 border border-blue-500/30 text-blue-400',
-    publicando: 'bg-ecf-yellow/10 border border-ecf-yellow/30 text-ecf-yellow',
-    publicado:  'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400',
-    erro:       'bg-red-500/10 border border-red-500/30 text-red-400',
-};
-const STATUS_LABEL = {
-    rascunho: 'Rascunho', validado: 'Validado', publicando: 'Publicando…',
-    publicado: 'Publicado', erro: 'Erro',
-};
 
 const CONDICOES = [
     { v: 'new', l: 'Novo' },
@@ -1124,11 +1111,6 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
     // DUP-02: modal de confirmação do fluxo Clássico+Premium em 1 clique
     const [confirmPublicarDuplo, setConfirmPublicarDuplo] = useState(false);
 
-    // ─── BULK-01: seleção múltipla para publicação em lote ───
-    const [selecionados, setSelecionados]   = useState(() => new Set()); // ids marcados
-    const [publicandoLote, setPublicandoLote] = useState(false);         // trava o botão pós-dispatch
-    const [errosLote, setErrosLote]         = useState(null);            // erros do POST do lote
-
     // Tipos de anúncio (uma vez). O ML devolve tipos legados (Ouro, Prata, Bronze,
     // Grátis, Diamante) que não usamos — só Clássico (gold_special) e Premium
     // (gold_pro) existem de fato para nós. Filtra para não confundir quem publica.
@@ -1277,18 +1259,6 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         if (alvo) abrirRascunho(alvo);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [abrirRascunhoId]);
-
-    // ─── Exclui um rascunho da lista (não remove o anúncio no ML, só a cópia local) ───
-    const excluirRascunho = async (r) => {
-        if (!window.confirm(`Excluir este rascunho${r.titulo ? ` (“${r.titulo}”)` : ''}? Isso não remove o anúncio já publicado no Mercado Livre.`)) return;
-        try {
-            await window.axios.delete(route('mlb.anuncios.rascunho.destroy', { rascunho: r.id }));
-            if (rascunhoId === r.id) limparFormulario();
-            router.reload({ only: ['rascunhos'] });
-        } catch {
-            setFlash('Não foi possível excluir o rascunho.');
-        }
-    };
 
     // ─── Marca um campo como 'publicador' quando editado (DRAFT-04) ───
     // Só age se o campo já estava mapeado como 'cliente' — não polui campos livres.
@@ -1496,51 +1466,14 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
             .finally(() => setBusy(b => b === 'grade' ? '' : b));
     }, [etapa, exigeGrade, rascunhoId, domainId]);
 
-    // ─── BULK-01: rascunhos que podem ser (re)enviados — exclui publicando/publicado ───
-    const rascunhosSelecionaveis = useMemo(
-        () => rascunhos.filter(r => r.status !== 'publicando' && r.status !== 'publicado'),
-        [rascunhos],
-    );
-
-    // ─── BULK-01: marcar/desmarcar um rascunho individual ───
-    const toggleSelecionado = (id) => {
-        setSelecionados(prev => {
-            const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
-            return next;
-        });
-    };
-
-    // ─── BULK-01: marcar/desmarcar todos os selecionáveis de uma vez ───
-    const toggleTodos = () => {
-        setSelecionados(prev =>
-            prev.size === rascunhosSelecionaveis.length
-                ? new Set()
-                : new Set(rascunhosSelecionaveis.map(r => r.id)),
-        );
-    };
-
-    // ─── BULK-01/04: dispara o lote via POST e inicia o ciclo de poll ───
-    const publicarLote = async () => {
-        setPublicandoLote(true);
-        setErrosLote(null);
-        try {
-            await window.axios.post(
-                route('mlb.anuncios.publicar-lote', { company: empresa.id }),
-                { company_id: empresa.id, rascunho_ids: [...selecionados] },
-            );
-            // Limpa seleção; o status real de cada rascunho vem no próximo poll (BULK-04)
-            setSelecionados(new Set());
-            router.reload({ only: ['rascunhos'] });
-        } catch (err) {
-            setErrosLote(err.response?.data?.erros ?? [{ mensagem: 'Erro ao enfileirar publicação.' }]);
-        } finally {
-            setPublicandoLote(false);
-        }
-    };
-
     // ─── UX-03: duplica um anúncio publicado como ponto de partida (rota criada em 81-01) ───
     // Cria novo rascunho a partir do publicado (zera ml_item_ids, status rascunho) e hidrata o wizard.
+    // Fase 134 Plano 09: o botão "Template" que chamava esta função morava dentro do
+    // bloco de rascunhos do aside removido por este plano (D-16) — não tinha lugar
+    // equivalente no card novo do UI-SPEC (seção 9) e não migrou. A função em si fica:
+    // é citada por linha em 134-PATTERNS.md (#17) e 134-10-PLAN.md como o padrão de
+    // referência de "fetch lazy com try/finally" para o Modal de Detalhe do Anúncio do
+    // plano seguinte. Sem caller neste arquivo até o 134-10 chegar.
     const usarComoTemplate = async (r) => {
         setBusy('template');
         try {
@@ -2828,152 +2761,6 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                             </div>
                         )}
 
-                        {/* Rascunhos recentes desta empresa — BULK-01/04: seleção múltipla + lote */}
-                        {rascunhos.length > 0 && (
-                            <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
-                                {/* Cabeçalho: selecionar-todos + botão de lote */}
-                                <div className="mb-2 flex items-center gap-2">
-                                    {rascunhosSelecionaveis.length > 0 && (
-                                        <input
-                                            type="checkbox"
-                                            title="Selecionar todos"
-                                            checked={selecionados.size > 0 && selecionados.size === rascunhosSelecionaveis.length}
-                                            onChange={toggleTodos}
-                                            className="accent-ecf-yellow h-3.5 w-3.5 shrink-0 cursor-pointer"
-                                        />
-                                    )}
-                                    <p className="flex-1 text-xs font-medium uppercase tracking-wide text-white/40">
-                                        Rascunhos recentes
-                                    </p>
-                                    {/* BULK-01: botão publicar lote — desabilitado após dispatch */}
-                                    <button
-                                        type="button"
-                                        disabled={publicandoLote || selecionados.size === 0}
-                                        onClick={publicarLote}
-                                        className={cn(
-                                            'inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition',
-                                            'bg-ecf-yellow text-black hover:brightness-95',
-                                            'disabled:opacity-40 disabled:cursor-not-allowed',
-                                        )}
-                                    >
-                                        {publicandoLote
-                                            ? <><Loader2 className="animate-spin" size={12} /> Enviando…</>
-                                            : <><Rocket size={12} /> Publicar lote ({selecionados.size})</>
-                                        }
-                                    </button>
-                                </div>
-
-                                {/* Erros do lote (ex.: token expirado, rascunho de outra empresa) */}
-                                {errosLote && (
-                                    <div className="mb-2 rounded-lg border border-red-500/30 bg-red-500/5 p-2">
-                                        {errosLote.map((m, i) => (
-                                            <p key={i} className="text-[11px] text-red-400">{m.mensagem}</p>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Lista de rascunhos com checkbox individual */}
-                                <ul className="space-y-2">
-                                    {rascunhos.slice(0, 8).map(r => {
-                                        const selecionavel = r.status !== 'publicando' && r.status !== 'publicado';
-                                        const abrivel = r.status !== 'publicando';
-                                        return (
-                                            <li key={r.id} className="rounded-lg border border-white/[0.06] bg-ecf-bg/40 p-2">
-                                                {/* Linha 1: checkbox + status + TÍTULO do anúncio + MLB id */}
-                                                <div className="flex items-center gap-2 text-sm">
-                                                    {selecionavel
-                                                        ? (
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={selecionados.has(r.id)}
-                                                                onChange={() => toggleSelecionado(r.id)}
-                                                                className="accent-ecf-yellow h-3.5 w-3.5 shrink-0 cursor-pointer"
-                                                            />
-                                                        )
-                                                        : <span className="h-3.5 w-3.5 shrink-0" />
-                                                    }
-                                                    <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px]', STATUS_BADGE[r.status] ?? STATUS_BADGE.rascunho)}>
-                                                        {STATUS_LABEL[r.status] ?? r.status}
-                                                    </span>
-                                                    {/* Título do anúncio (identifica o rascunho) */}
-                                                    <span className="min-w-0 flex-1 truncate font-medium text-white/80" title={r.titulo || ''}>
-                                                        {r.titulo?.trim() || '(sem título)'}
-                                                    </span>
-                                                    {r.ml_item_id && (
-                                                        <a
-                                                            href={`https://produto.mercadolivre.com.br/MLB-${String(r.ml_item_id).replace(/^MLB-?/i, '')}`}
-                                                            target="_blank" rel="noreferrer"
-                                                            className="shrink-0 text-[10px] text-emerald-400/70 hover:underline"
-                                                        >
-                                                            {r.ml_item_id}
-                                                        </a>
-                                                    )}
-                                                </div>
-
-                                                {/* Erro: resumo em 1 linha por padrão; expande para o erro completo + copiar */}
-                                                {r.status === 'erro' && r.erro_resumo && (
-                                                    <details className="mt-1 pl-6">
-                                                        <summary className="cursor-pointer text-[11px] text-red-400 marker:text-red-400/60">
-                                                            {r.erro_resumo}
-                                                        </summary>
-                                                        <div className="mt-1">
-                                                            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-red-500/20 bg-red-500/[0.05] p-2 text-[10px] leading-relaxed text-red-300/80">
-                                                                {r.erro_completo || r.erro_resumo}
-                                                            </pre>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    const txt = r.erro_completo || r.erro_resumo || '';
-                                                                    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(txt).catch(() => fallbackCopiar(txt));
-                                                                    else fallbackCopiar(txt);
-                                                                    setFlash('Erro copiado.');
-                                                                }}
-                                                                className="mt-1 flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60 hover:text-white/90"
-                                                            >
-                                                                <Copy size={10} /> Copiar erro
-                                                            </button>
-                                                        </div>
-                                                    </details>
-                                                )}
-
-                                                {/* Linha 2: ações — Abrir / Template / Excluir */}
-                                                <div className="mt-1.5 flex items-center gap-1.5 pl-6">
-                                                    {abrivel && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => abrirRascunho(r)}
-                                                            title="Abrir este rascunho para editar"
-                                                            className="flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] font-medium text-white/70 transition hover:border-white/25 hover:text-white"
-                                                        >
-                                                            <Pencil size={10} /> Abrir
-                                                        </button>
-                                                    )}
-                                                    {r.status === 'publicado' && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => usarComoTemplate(r)}
-                                                            disabled={busy === 'template'}
-                                                            title="Criar novo rascunho a partir deste anúncio publicado"
-                                                            className="flex items-center gap-1 rounded-md border border-ecf-yellow/30 bg-ecf-yellow/5 px-2 py-0.5 text-[10px] font-medium text-ecf-yellow/80 transition hover:border-ecf-yellow/50 hover:bg-ecf-yellow/15 disabled:opacity-40"
-                                                        >
-                                                            {busy === 'template' ? <Loader2 size={10} className="animate-spin" /> : <Copy size={10} />} Template
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => excluirRascunho(r)}
-                                                        title="Excluir este rascunho"
-                                                        className="ml-auto flex items-center gap-1 rounded-md border border-red-500/20 bg-red-500/[0.06] px-2 py-0.5 text-[10px] font-medium text-red-400/80 transition hover:border-red-500/40 hover:bg-red-500/15"
-                                                    >
-                                                        <Trash2 size={10} /> Excluir
-                                                    </button>
-                                                </div>
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-                            </div>
-                        )}
                     </aside>
                 </div>
             </div>

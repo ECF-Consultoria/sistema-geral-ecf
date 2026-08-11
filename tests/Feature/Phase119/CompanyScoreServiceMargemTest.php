@@ -39,7 +39,9 @@ class CompanyScoreServiceMargemTest extends TestCase
 
     /** Hash de referência do gate de aditividade (119-VALIDATION.md). */
     /** Rotacionado pela Fase 119.1 (D1) — 4º ramo (D) somado a DesempenhoScoreService.php. */
-    private const HASH_DESEMPENHO_SCORE_SERVICE = 'e5e65532ba990f17c481737daae5c8555dfbe0de765f7507b1cc587abb9cc917';
+    /** Rotacionado pela quick 260810-mbv (2026-08-10) — bump da chave de cache v17 → v18. O gate já estava vermelho desde as Fases 120/122/v17, que alteraram o arquivo sem rotacionar. */
+    /** Rotacionado pela quick 260810-mt8 (2026-08-10) — nota final passa a dividir sempre por 3. */
+    private const HASH_DESEMPENHO_SCORE_SERVICE = '5b6cb40da43773c19c24c1bbf8b6dffe20672cc6b223e8cc8f27676473064f24';
 
     protected function setUp(): void
     {
@@ -224,8 +226,21 @@ class CompanyScoreServiceMargemTest extends TestCase
         $this->assertHashDesempenhoScoreServiceIntocado();
     }
 
+    /**
+     * REESCRITO pela quick 260810-mbv (2026-08-10).
+     *
+     * O contrato anterior era "mês em curso ⇒ `margem_var_pp` null mesmo com
+     * value e prev presentes", e o efeito colateral era a coluna Margem vazia
+     * o mês inteiro na tela de Desempenho. O que o gate D-07 protegia era a
+     * JANELA errada (o `prev` da Adman é a janela imediatamente anterior, não
+     * o mesmo intervalo do mês passado), não a existência da variação.
+     *
+     * Agora o `AdmanMetricDiffService` lê a margem da janela baseline do
+     * próprio período e a linha por empresa herda o `diff_pp` — continua sem
+     * recalcular nada por fora, que é o ponto que este teste sempre guardou.
+     */
     #[Test]
-    public function test_mes_em_curso_margem_var_pp_fica_null_mesmo_com_value_e_prev_presentes(): void
+    public function test_mes_em_curso_margem_var_pp_vem_da_janela_baseline(): void
     {
         $this->assertHashDesempenhoScoreServiceIntocado();
 
@@ -233,23 +248,29 @@ class CompanyScoreServiceMargemTest extends TestCase
         $this->fixarNps($cenario['empresa']->id, 4.6);
         $this->fakeAdmanEndpoints(comPrev: true);
 
+        $periodo = $this->periodoMesEmCurso();
+
         $resultado = $this->service()->computeEmpresasScore(
             $cenario['user'],
             Carbon::parse('2026-07-01'),
-            $this->periodoMesEmCurso(),
+            $periodo,
         );
 
         $linha = $resultado->get($cenario['empresa']->id);
 
-        // value/prev do payload continuam presentes (não são gateados por
-        // comparison_mode) — só diff_pp é. O gate vive DENTRO do
-        // AdmanMetricDiffService::resolveMargemPct(); a linha por empresa
-        // apenas herda o resultado, nunca recalcula value-prev por fora.
+        // O fake devolve o MESMO payload para as duas janelas, então a margem
+        // da baseline é a própria 27.47 e o p.p. dá 0.0 — o que importa aqui é
+        // que a variação EXISTE e que `margem_pct_anterior` passou a ser a
+        // margem da janela comparada (27.47), nunca mais o `prev` nativo
+        // (24.08), que aponta para outra janela. A distinção entre as duas
+        // janelas é provada em V18\AdmanMetricDiffServiceTest, onde o fake
+        // responde por range.
         $this->assertSame(27.47, $linha->margem_pct_atual);
-        $this->assertSame(24.08, $linha->margem_pct_anterior);
-        $this->assertNull($linha->margem_var_pp);
-        $this->assertNull($linha->margem_pontos);
-        $this->assertContains('margem_pp_indisponivel', $linha->quality['motivos']);
+        $this->assertSame(27.47, $linha->margem_pct_anterior);
+        $this->assertNotSame(24.08, $linha->margem_pct_anterior);
+        $this->assertSame(0.0, $linha->margem_var_pp);
+        $this->assertSame(3.0, $linha->margem_pontos);
+        $this->assertNotContains('margem_pp_indisponivel', $linha->quality['motivos']);
 
         $this->assertHashDesempenhoScoreServiceIntocado();
     }

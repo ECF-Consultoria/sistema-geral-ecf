@@ -264,13 +264,22 @@ class DesempenhoShopeeScoreTest extends TestCase
         $this->assertNull($r['pontos_componentes']['margem'],
             'Shopee fica FORA da média de margem — não entra mais com placeholder 1,0.');
 
-        // (faturamento 5,0 + NPS piso 1,0) / 2 = 3,0 — margem não entra no
-        // denominador. Pelo método antigo era (5,0 + 1,0 + 1,0)/3 = 2,33, com o
-        // placeholder puxando a nota para baixo.
+        // 2026-08-10 (quick 260810-mt8) — a NOTA passou a dividir SEMPRE por 3,
+        // com o indicador ausente valendo zero: (5,0 + 0 + 1,0) / 3 = 2,0.
+        // Decisão do Maycon, tomada com este caso na mesa.
+        //
+        // Os três métodos, na mesma carteira, para deixar a diferença explícita:
+        //   placeholder 1,0 (até 2026-08-05):        (5,0 + 1,0 + 1,0)/3 = 2,33
+        //   média dos presentes (05/08 a 10/08):     (5,0 + 1,0)/2       = 3,00
+        //   divisor fixo com ausente = 0 (hoje):     (5,0 + 0 + 1,0)/3   = 2,00
+        //
+        // CONSEQUÊNCIA: carteira só-Shopee tem teto de (5+0+5)/3 = 3,33 e nunca
+        // alcança os 4,00 da primeira faixa de bônus. É a regra, não um efeito
+        // colateral — ver `computeNotaFinalPorIndicador()`.
         $this->assertEqualsWithDelta(5.0, $r['pontos_componentes']['faturamento'], 0.001,
             'Faturamento +10% (10000 → 11000) → 5 pts.');
-        $this->assertEqualsWithDelta(3.0, $r['nota_final'], 0.001,
-            '(faturamento 5,0 + nps 1,0) / 2 = 3,0.');
+        $this->assertEqualsWithDelta(2.0, $r['nota_final'], 0.001,
+            '(faturamento 5,0 + margem ausente 0 + nps 1,0) / 3 = 2,0.');
 
         $this->assertNull($r['componentes']['var_margem_pct'],
             'Shopee não fornece margem real — a % exposta continua null.');
@@ -383,19 +392,49 @@ class DesempenhoShopeeScoreTest extends TestCase
     //  - `Phase120\PayloadBaselineFlagOffTest::test_valores_congelados_da_agregacao_por_indicador`
     //    — a nota oficial ponta a ponta, com linhas reais do CompanyScoreService.
 
-    // ═══ cacheKey v17 (2026-08-05: bump v16→v17, nota passa a vir da
-    // agregação por indicador) ══════════════════════════════════════════════
+    // ═══ cacheKey (2026-08-05 v16→v17: nota vem da agregação por indicador;
+    // 2026-08-10 v17→v18 margem no mês corrente e v18→v19 divisor fixo) ══════
 
     #[Test]
-    public function test_cache_key_bumpado_para_v17(): void
+    public function test_cache_key_bumpado_para_v19(): void
     {
-        $user = $this->criarUserComCargo('Cache V17');
+        $user = $this->criarUserComCargo('Cache V19');
         $mes  = Carbon::parse('2026-08-01');
 
         $service = app(DesempenhoScoreService::class);
         $chave   = $service->cacheKey($user->id, $mes);
 
-        $this->assertSame('desempenho.compute.v17.' . $user->id . '.current_month', $chave);
+        $this->assertSame('desempenho.compute.v19.' . $user->id . '.current_month', $chave);
+    }
+
+    // ═══ Divisor fixo 3 (quick 260810-mt8, 2026-08-10) ══════════════════════
+
+    /**
+     * Carteira SEM NENHUM indicador continua com `nota_final` null — jamais 0.
+     *
+     * É a guarda que separa "não temos como medir" de "mediu e deu zero". Se o
+     * divisor fixo fosse aplicado sem esta condição, todo profissional sem dado
+     * apareceria com nota 0,00 no ranking, abaixo de quem foi medido de verdade,
+     * e a trava D-91-01 (`blocked` para carteira sem vínculo financeiro) perderia
+     * o sentido — ela existe justamente para NÃO dar nota a quem não tem base.
+     */
+    #[Test]
+    public function test_carteira_sem_nenhum_indicador_tem_nota_null_e_nunca_zero(): void
+    {
+        $user = $this->criarUserComCargo('Sem Indicador Nenhum mt8');
+
+        // Vínculo de POLOS: setor sem fonte financeira (nem Adman nem Shopee),
+        // logo sem faturamento e sem margem; e sem NPS coletado.
+        $empresa      = $this->criarEmpresa();
+        $servicoPolos = $this->criarServico(Servico::SETOR_POLOS);
+        $this->inserirPivot($empresa->id, $user->id, 'consultor', $servicoPolos);
+
+        $r = app(DesempenhoScoreService::class)->compute($user, Carbon::parse('2026-08-01'));
+
+        $this->assertNull($r['nota_final'], 'Sem indicador algum a nota é null — nunca 0,00.');
+        $this->assertNotSame(0.0, $r['nota_final']);
+        $this->assertSame('blocked', $r['score_status'],
+            'D-91-01: carteira sem vínculo financeiro não recebe nota oficial.');
     }
 }
 

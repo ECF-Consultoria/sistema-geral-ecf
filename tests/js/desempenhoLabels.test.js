@@ -13,6 +13,8 @@ import {
     carteiraTodaShopeeNaEntrada,
     deveColapsarNaoEntraram,
     LIMIAR_COLAPSO_NAO_ENTRARAM,
+    marketplaceLabel,
+    composicaoPorMarketplace,
 } from '../../resources/js/lib/desempenhoLabels.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -165,4 +167,77 @@ test('deveColapsarNaoEntraram na fronteira do limiar', () => {
     assert.equal(deveColapsarNaoEntraram(8), false);
     assert.equal(deveColapsarNaoEntraram(9), true);
     assert.equal(deveColapsarNaoEntraram(null), false);
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// quick 260810-n5b — marketplace da conta no Desempenho
+// ═══════════════════════════════════════════════════════════════════════
+
+// ─── marketplaceLabel — a tradução que tira o jargão da tela ───
+
+test('marketplaceLabel traduz a fonte financeira para nome de marketplace', () => {
+    assert.equal(marketplaceLabel('adman'), 'Mercado Livre');
+    assert.equal(marketplaceLabel('shopee'), 'Shopee');
+});
+
+test('marketplaceLabel devolve null quando nao ha fonte financeira', () => {
+    // Setor polos/publicacao: a empresa nao tem marketplace nesta tela, e a
+    // chamadora decide se omite. Nunca 'null' escrito na interface.
+    assert.equal(marketplaceLabel(null), null);
+    assert.equal(marketplaceLabel(undefined), null);
+    assert.equal(marketplaceLabel(''), null);
+});
+
+test('marketplaceLabel nunca devolve undefined nem slug cru para fonte nova', () => {
+    // Uma 4a plataforma que apareca no futuro cai aqui — legivel, nunca
+    // 'undefined' na tela e nunca o slug em minusculo.
+    assert.equal(marketplaceLabel('amazon'), 'Amazon');
+});
+
+// ─── composicaoPorMarketplace — contagem da faixa da tela do profissional ───
+
+test('composicaoPorMarketplace conta por marketplace, do maior para o menor', () => {
+    const linhas = [
+        { fonte_financeira: 'adman' },
+        { fonte_financeira: 'shopee' },
+        { fonte_financeira: 'adman' },
+        { fonte_financeira: 'adman' },
+    ];
+
+    assert.deepEqual(composicaoPorMarketplace(linhas), [
+        { label: 'Mercado Livre', total: 3 },
+        { label: 'Shopee', total: 1 },
+    ]);
+});
+
+test('composicaoPorMarketplace ignora empresa sem fonte financeira', () => {
+    // Loja de Polos/Publicacao nao tem marketplace — inventar um balde
+    // "sem marketplace" competindo com os reais confunde mais que informa.
+    const linhas = [
+        { fonte_financeira: 'adman' },
+        { fonte_financeira: null },
+        { fonte_financeira: null },
+    ];
+
+    assert.deepEqual(composicaoPorMarketplace(linhas), [
+        { label: 'Mercado Livre', total: 1 },
+    ]);
+});
+
+test('composicaoPorMarketplace desempata por nome para a ordem nao oscilar', () => {
+    const linhas = [
+        { fonte_financeira: 'shopee' },
+        { fonte_financeira: 'adman' },
+    ];
+
+    assert.deepEqual(composicaoPorMarketplace(linhas), [
+        { label: 'Mercado Livre', total: 1 },
+        { label: 'Shopee', total: 1 },
+    ]);
+});
+
+test('composicaoPorMarketplace devolve lista vazia sem entrada valida', () => {
+    assert.deepEqual(composicaoPorMarketplace([]), []);
+    assert.deepEqual(composicaoPorMarketplace(null), []);
+    assert.deepEqual(composicaoPorMarketplace([{ fonte_financeira: null }]), []);
 });

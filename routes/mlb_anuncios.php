@@ -28,6 +28,20 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // SEL-01: um card por empresa; escopo por responsavel_id no controller (SEL-02)
         Route::get('/', [MlbAnuncioController::class, 'index'])->name('index');
 
+        // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
+        // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do
+        // cliente). D-05: leitura 100% do banco, zero chamada síncrona ao ML
+        // no request — a coleta roda em job (agendado ou via "Atualizar
+        // agora"). Mesmo gate role:admin do grupo, sem middleware novo (D-15).
+        Route::get('/meus/{company}', [MlbAnuncioController::class, 'meus'])->name('meus');
+        Route::post('/meus/{company}/atualizar', [MlbAnuncioController::class, 'atualizarAgora'])->name('meus.atualizar');
+        // Fase 134 Plano 10: detalhe de um anúncio — checklist de sinais (D-10/D-22)
+        // e série de até 90 dias (D-07b). Restrição na PRÓPRIA ROTA (não só no
+        // controller): mlItemId malformado nunca chega ao controller (T-134-18).
+        Route::get('/meus/{company}/{mlItemId}/detalhe', [MlbAnuncioController::class, 'detalheAnuncio'])
+            ->where('mlItemId', 'MLB[0-9]+')
+            ->name('meus.detalhe');
+
         // ─── Momento 2: wizard com empresa fixada (âncora = company com ml_token) ───
         Route::get('/wizard/{company}', [MlbAnuncioController::class, 'wizard'])->name('wizard');
 
