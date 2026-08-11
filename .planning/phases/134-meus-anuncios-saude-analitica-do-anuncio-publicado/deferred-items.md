@@ -20,7 +20,21 @@ arquivo em seguida. Nenhum arquivo do módulo de grade em massa (Fase 87,
 auto-corrigir o que a task atual tocou). Fica para quem mexer no módulo de
 grade em massa (Fase 87) da próxima vez.
 
-## `MlAcervoService::gravarSerieDiaria()` (134-04) — `updateOrCreate` com igualdade direta em `data` nunca acha a linha do dia, mascarado pelo fail-open
+## ~~`MlAcervoService::gravarSerieDiaria()` (134-04) — `updateOrCreate` com igualdade direta em `data` nunca acha a linha do dia, mascarado pelo fail-open~~ ✅ CORRIGIDO
+
+> **RESOLVIDO no commit `26726751`, em 2026-08-10 — no mesmo dia em que foi
+> registrado aqui.** O orquestrador corrigiu logo após o plano 134-05 relatar o
+> achado, porque o bug congelava a evolução do D-07 em silêncio. A correção
+> reusa `$jaExisteHoje` (decidido por comparação em memória de objetos Carbon,
+> imune ao problema de formato) e ramifica em `save()`/`create()` explícitos.
+>
+> Coberto pelo teste `serie_diaria_atualiza_de_verdade_a_linha_do_mesmo_dia`
+> (8º de `ColetaAcervoTest`), que olha o **valor** e não a contagem — a
+> contagem era justamente o que passava pelo motivo errado. Provado por
+> mutação: com `updateOrCreate` de volta, o teste cai.
+>
+> Mantido aqui como registro histórico. O diagnóstico abaixo continua válido
+> e útil para quem encontrar o mesmo padrão em outro lugar do projeto.
 
 **Encontrado durante:** 134-05, Task 3 (`tests/Unit/Phase134/RotacaoDetalheTest.php`),
 ao implementar o mesmo padrão em `MlAcervoDetalheService::gravarVisitasSerieDiaria()`
