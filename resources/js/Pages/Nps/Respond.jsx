@@ -133,6 +133,11 @@ function RespondV15({ survey, template }) {
                     <BrandHeader companyName={survey.company_name} />
 
                     <form onSubmit={submit} style={{ animation: 'ecfrise .55s ease both' }}>
+                        <ResponsaveisCard
+                            estrategista={survey.estrategista_name}
+                            analista={survey.tem_analista ? survey.analista_name : null}
+                        />
+
                         <IntroCard
                             total={total}
                             answered={answered}
@@ -280,6 +285,130 @@ function BrandHeader({ companyName }) {
         </div>
     );
 }
+
+// ─── Responsáveis pela conta ─────────────────────────────────────────────
+/**
+ * Card "Quem cuida da sua conta" (2026-08-11).
+ *
+ * Motivo: as perguntas do NPS falam de "Meu Estrategista" / "Meu Analista",
+ * mas o cliente não tinha em lugar nenhum da tela QUEM são essas pessoas.
+ * Como o disparo automático mensal está desligado desde 2026-07-29 (o link é
+ * gerado à mão e enviado pelo canal que o responsável quiser), a página da
+ * pesquisa é o único artefato que sempre chega ao cliente — por isso os nomes
+ * vivem aqui, e não no texto do e-mail.
+ *
+ * Os dados já vêm prontos do NpsController::respond() desde a Phase 31
+ * (estrategista_name / analista_name / tem_analista) — nada de backend novo.
+ *
+ * Não renderiza nada quando não há responsável nomeado: é exatamente o caso do
+ * link de GRUPO (NpsGrupoController manda os três campos nulos de propósito,
+ * porque um NPS de grupo cobre várias empresas e não tem responsável único).
+ */
+function ResponsaveisCard({ estrategista, analista }) {
+    const pessoas = [
+        estrategista ? { papel: 'Estrategista', nome: estrategista, cor: ACCENT } : null,
+        analista ? { papel: 'Analista', nome: analista, cor: ACCENT_ALT } : null,
+    ].filter(Boolean);
+
+    if (pessoas.length === 0) return null;
+
+    return (
+        <div style={{
+            background: 'linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.02))',
+            border: '1px solid rgba(255,255,255,.08)',
+            borderRadius: 20,
+            padding: '20px 24px',
+            marginBottom: 16,
+        }}>
+            <div style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: 1.6,
+                color: '#77777F',
+                textTransform: 'uppercase',
+                marginBottom: 16,
+            }}>
+                Quem cuida da sua conta
+            </div>
+
+            <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 12,
+            }}>
+                {pessoas.map((p) => (
+                    <div
+                        key={p.papel}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            // flex 1 com base 210 deixa os dois lado a lado no
+                            // desktop e empilhados no celular, sem media query.
+                            flex: '1 1 210px',
+                            minWidth: 0,
+                            padding: '12px 14px',
+                            borderRadius: 14,
+                            background: 'rgba(255,255,255,.03)',
+                            border: '1px solid rgba(255,255,255,.07)',
+                        }}
+                    >
+                        <div style={{
+                            flexShrink: 0,
+                            width: 40,
+                            height: 40,
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontFamily: "'Space Grotesk', sans-serif",
+                            fontWeight: 700,
+                            fontSize: 14,
+                            color: '#fff',
+                            background: `linear-gradient(135deg, ${p.cor}, ${p.cor}66)`,
+                        }}>
+                            {iniciaisDe(p.nome)}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                            <div style={{
+                                fontSize: 10.5,
+                                fontWeight: 700,
+                                letterSpacing: 1.4,
+                                color: '#8A8A94',
+                                textTransform: 'uppercase',
+                                marginBottom: 2,
+                            }}>
+                                {p.papel}
+                            </div>
+                            <div style={{
+                                fontFamily: "'Space Grotesk', sans-serif",
+                                fontWeight: 600,
+                                fontSize: 15,
+                                color: '#F4F4F6',
+                                // Nome longo quebra em vez de estourar o card.
+                                overflowWrap: 'anywhere',
+                            }}>
+                                {p.nome}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Iniciais para o avatar: primeira letra do primeiro nome + primeira do último.
+ * Nome de uma palavra só devolve uma letra ("Bruno" → "B").
+ */
+const iniciaisDe = (nome) => {
+    const partes = String(nome || '').trim().split(/\s+/).filter(Boolean);
+    if (partes.length === 0) return '?';
+    const primeira = partes[0][0];
+    const ultima = partes.length > 1 ? partes[partes.length - 1][0] : '';
+    return (primeira + ultima).toUpperCase();
+};
 
 // ─── Card intro + progresso ──────────────────────────────────────────────
 function IntroCard({ total, answered, pct, complete }) {
