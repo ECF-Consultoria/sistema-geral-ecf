@@ -39,6 +39,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(\App\Services\Onboarding\OnboardingResolverFactory::class, function ($app) {
             return new \App\Services\Onboarding\OnboardingResolverFactory([
                 $app->make(\App\Services\Onboarding\Resolvers\AdmanAccountIdResolver::class),
+                $app->make(\App\Services\Onboarding\Resolvers\MlTokenAtivoResolver::class),
             ]);
         });
     }

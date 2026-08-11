@@ -4,12 +4,15 @@ namespace Tests\Feature\Phase135;
 
 use App\Models\Company;
 use App\Models\CompanyMarketplace;
+use App\Models\MlToken;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
 use App\Models\OnboardingTemplate;
 use App\Models\Servico;
 use App\Models\TemplatePasso;
+use App\Services\Onboarding\OnboardingResolverFactory;
 use App\Services\Onboarding\Resolvers\AdmanAccountIdResolver;
+use App\Services\Onboarding\Resolvers\MlTokenAtivoResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -106,5 +109,141 @@ class OnboardingResolversLocaisTest extends TestCase
 
         $this->assertTrue($resultado->ehNaoColetado());
         $this->assertFalse($resultado->ehIndeterminado());
+    }
+
+    /** @test */
+    public function adman_account_id_resolver_e_sincrono(): void
+    {
+        $this->assertFalse(app(AdmanAccountIdResolver::class)->assincrono());
+    }
+
+    // ─── Passo 5: MlTokenAtivoResolver (D-19) ───────────────────────────────
+
+    /** @test */
+    public function empresa_com_ml_token_active_resolve_concluido(): void
+    {
+        $company = Company::factory()->create();
+        MlToken::create([
+            'company_id'    => $company->id,
+            'ml_user_id'    => '999888777',
+            'access_token'  => 'fake-access-token',
+            'refresh_token' => 'fake-refresh-token',
+            'expires_at'    => now()->addHour(),
+            'status'        => 'active',
+            'connected_at'  => now(),
+        ]);
+
+        [$onboarding, $passo] = $this->criarOnboardingComPasso(
+            $company,
+            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            'grant_ecf'
+        );
+
+        $resultado = app(MlTokenAtivoResolver::class)->resolver($onboarding, $passo);
+
+        $this->assertTrue($resultado->ehConcluido());
+        $this->assertFalse($resultado->ehIndeterminado());
+        $this->assertSame('999888777', $resultado->valor['ml_user_id']);
+    }
+
+    /** @test */
+    public function empresa_com_ml_token_revoked_resolve_nao_coletado(): void
+    {
+        $company = Company::factory()->create();
+        MlToken::create([
+            'company_id'    => $company->id,
+            'ml_user_id'    => '111222333',
+            'access_token'  => 'fake-access-token',
+            'refresh_token' => 'fake-refresh-token',
+            'expires_at'    => now()->addHour(),
+            'status'        => 'revoked',
+            'connected_at'  => now(),
+        ]);
+        [$onboarding, $passo] = $this->criarOnboardingComPasso(
+            $company,
+            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            'grant_ecf'
+        );
+
+        $resultado = app(MlTokenAtivoResolver::class)->resolver($onboarding, $passo);
+
+        $this->assertTrue($resultado->ehNaoColetado());
+        $this->assertFalse($resultado->ehIndeterminado());
+        $this->assertSame('Autorização do cliente foi revogada', $resultado->motivo);
+    }
+
+    /** @test */
+    public function empresa_sem_ml_token_resolve_nao_coletado(): void
+    {
+        $company = Company::factory()->create();
+        [$onboarding, $passo] = $this->criarOnboardingComPasso(
+            $company,
+            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            'grant_ecf'
+        );
+
+        $resultado = app(MlTokenAtivoResolver::class)->resolver($onboarding, $passo);
+
+        $this->assertTrue($resultado->ehNaoColetado());
+        $this->assertFalse($resultado->ehIndeterminado());
+        $this->assertSame('Cliente ainda não autorizou o acesso', $resultado->motivo);
+    }
+
+    /** @test */
+    public function os_dois_motivos_de_nao_coletado_do_passo_5_sao_distintos_entre_si(): void
+    {
+        // Painel e portal mostram textos diferentes para "revogado" e
+        // "nunca autorizou" — não pode ser o mesmo motivo genérico.
+        $companyRevogada = Company::factory()->create();
+        MlToken::create([
+            'company_id'    => $companyRevogada->id,
+            'ml_user_id'    => '444555666',
+            'access_token'  => 'fake-access-token',
+            'refresh_token' => 'fake-refresh-token',
+            'expires_at'    => now()->addHour(),
+            'status'        => 'revoked',
+            'connected_at'  => now(),
+        ]);
+        [$onboardingRevogada, $passoRevogada] = $this->criarOnboardingComPasso(
+            $companyRevogada,
+            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            'grant_ecf'
+        );
+
+        $companySemToken = Company::factory()->create();
+        [$onboardingSemToken, $passoSemToken] = $this->criarOnboardingComPasso(
+            $companySemToken,
+            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            'grant_ecf'
+        );
+
+        $resolver = app(MlTokenAtivoResolver::class);
+        $resultadoRevogada = $resolver->resolver($onboardingRevogada, $passoRevogada);
+        $resultadoSemToken = $resolver->resolver($onboardingSemToken, $passoSemToken);
+
+        $this->assertNotSame($resultadoRevogada->motivo, $resultadoSemToken->motivo);
+    }
+
+    /** @test */
+    public function ml_token_ativo_resolver_e_sincrono(): void
+    {
+        $this->assertFalse(app(MlTokenAtivoResolver::class)->assincrono());
+    }
+
+    // ─── Contrato: catálogo com as 2 chaves locais registradas até aqui ─────
+
+    /** @test */
+    public function catalogo_expoe_exatamente_as_2_chaves_locais_registradas_ate_aqui(): void
+    {
+        $chaves = collect(app(OnboardingResolverFactory::class)->catalogo())
+            ->pluck('chave')
+            ->sort()
+            ->values()
+            ->all();
+
+        $this->assertSame([
+            TemplatePasso::AUTO_FONTE_ADMAN_ACCOUNT_ID,
+            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+        ], $chaves);
     }
 }
