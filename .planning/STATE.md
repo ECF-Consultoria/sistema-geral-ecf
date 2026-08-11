@@ -4,13 +4,13 @@ milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
 stopped_at: Completed 134-07-PLAN.md
-last_updated: "2026-08-10T21:45:16.772Z"
-last_activity: 2026-08-10
+last_updated: "2026-08-11T13:08:25.230Z"
+last_activity: 2026-08-11
 progress:
   total_phases: 11
   completed_phases: 0
   total_plans: 15
-  completed_plans: 7
+  completed_plans: 9
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 134 (meus-anuncios-saude-analitica-do-anuncio-publicado) — EXECUTING
-Plan: 8 of 10
+Plan: 9 of 10
 Status: Ready to execute
-Last activity: 2026-08-10
+Last activity: 2026-08-11
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
@@ -282,6 +282,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 134 P05 | 21min | 3 tasks | 3 files |
 | Phase 134 P06 | 15min | 3 tasks | 4 files |
 | Phase 134 P07 | 20min | 3 tasks | 4 files |
+| Phase 134 P09 | 31min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -746,6 +747,12 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **Texto do selo centralizado em `desempenhoLabels.js`** (`NOTA_RECALCULADA_TEXTO`/`NOTA_RECALCULADA_TITULO`), mesmo padrão de nomenclatura do selo Shopee já existente no arquivo, com paleta visual distinta (`sky`) para não ser confundido com o aviso `amber` de placeholder Shopee.
 - **Nenhuma régua, agregação ou flag de negócio tocada** — `metrics.performance_company_first_score` continua `false`, conforme os limites da fase (D-fase 123: "esta fase não calcula nada").
 
+### Decisões do Plan 134-09 (registradas)
+
+- **`usarComoTemplate()` fica em `AnunciarML.jsx` sem nenhum caller neste arquivo** — o botão "Template" que a chamava morava dentro do bloco "Rascunhos recentes" removido (D-16) e não está na seção 9 do UI-SPEC (que só define checkbox + badge + botão abrir + botão excluir). A função em si é citada **por linha** em `134-PATTERNS.md` (#17) e `134-10-PLAN.md` como o padrão de referência de "fetch lazy com try/finally" para o Modal de Detalhe do Anúncio do próximo plano — removê-la quebraria essas duas referências cruzadas sem necessidade.
+- **`excluirRascunho()` migrou por inteiro para `RascunhosPainel.jsx`**, mesmo não estando na lista explícita "o que SAI" das `<interfaces>` do plano — só tinha um caller (dentro do bloco JSX removido) e ficaria morto no wizard.
+- **`router.reload({ only })` do lote e da exclusão em `RascunhosPainel.jsx` inclui `subTotais`, não só `rascunhos`** — a sub-aba mostra um contador `(N)` que o wizard nunca teve; sem isso, publicar ou excluir um rascunho deixaria o contador da aba parado até o próximo carregamento de página inteira. Polling BULK-04 (`temPublicando`) também replicado na tela nova pelo mesmo motivo.
+
 ### Pending Todos
 
 None.
@@ -860,7 +867,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-10T21:45:16.733Z
+Last session: 2026-08-11T13:08:25.148Z
 Stopped at: Completed 134-07-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
