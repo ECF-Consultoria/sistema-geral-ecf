@@ -1773,7 +1773,7 @@ Plans:
   10. Cliente recebe **um link por empresa** que agrega os passos `dono=cliente` de todos os serviços ativos; passo de mesma `chave` em serviços diferentes fecha uma vez só
   11. O painel responde "o que está travando, há quantos dias e de quem é a bola" — não uma barra de porcentagem
 
-**Plans:** 5/13 plans executed
+**Plans:** 6/13 plans executed
 
 Plans:
 **Wave 1**
@@ -1792,7 +1792,7 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 135-05-PLAN.md — Observer de ContratoServico nos 4 call-sites + transicao rascunho→andamento [wave 4]
-- [ ] 135-06-PLAN.md — Resolvers de rede (sonda de grant Adman, metricas da conta) + Job assincrono [wave 4]
+- [x] 135-06-PLAN.md — Resolvers de rede (sonda de grant Adman, metricas da conta) + Job assincrono [wave 4]
 - [ ] 135-08-PLAN.md — CRUD de template: versao N+1 imutavel, guarda de ciclo, migracao explicita [wave 4]
 
 **Wave 5** *(blocked on Wave 4 completion)*
@@ -1824,14 +1824,14 @@ Plans:
 
 **Requirements**: TBD — a unidade de rastreabilidade desta fase sao os IDs de decisao do `136-CONTEXT.md` (D-01..D-12 + D-EXC-01), todos cobertos pelos planos abaixo.
 **Depends on:** Phase 135
-**Plans:** 1/7 plans executed
+**Plans:** 2/7 plans executed
 
 Plans:
 
 **Wave 1** *(paralelos, sem sobreposicao de arquivos)*
 
 - [x] 136-01-PLAN.md — D-10: resolvedor unico de fonte financeira nos 3 call-sites + bump de cache v19->v20 + rotacao do gate de hash da Fase 119 + baseline de falhas [wave 1]
-- [ ] 136-02-PLAN.md — Fundacao de dados: tabela `desempenho_metricas_manuais`, model com activitylog, helper de competencia consolidada e FormRequest (D-01/D-02/D-07/D-09/D-12) [wave 1]
+- [x] 136-02-PLAN.md — Fundacao de dados: tabela `desempenho_metricas_manuais`, model com activitylog, helper de competencia consolidada e FormRequest (D-01/D-02/D-07/D-09/D-12) [wave 1]
 
 **Wave 2** *(blocked on Wave 1)*
 

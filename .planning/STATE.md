@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 136-01-PLAN.md
-last_updated: "2026-08-11T19:57:40.144Z"
+stopped_at: Completed 136-02-PLAN.md
+last_updated: "2026-08-11T20:31:08.344Z"
 last_activity: 2026-08-11
 progress:
   total_phases: 13
   completed_phases: 1
   total_plans: 35
-  completed_plans: 16
+  completed_plans: 18
   percent: 8
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 136 (m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api-) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-08-11
 
@@ -290,6 +290,8 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 135 P04 | 45min | 3 tasks | 6 files |
 | Phase 135 P05 | ~40min | 3 tasks | 8 files |
 | Phase 136-m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api- P01 | 43min | 3 tasks | 15 files |
+| Phase 136 P02 | 25min | 2 tasks | 5 files |
+| Phase 135 P06 | 40min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -376,6 +378,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - Phase 58 added: Plan 58-02 COMPLETO — shells JSX ShopeeShell.jsx e AmazonShell.jsx entregues (mockup KPI cards + CTA para ecf.dashboard). Build Vite verde. Decisao: duplicacao intencional dos 2 shells (CONTEXT §3), sem extracao de componente comum. Plan 58-03 (NAV_TREE) liberado.
 - 2026-07-03 — **Phase 58 Plan 58-03 COMPLETO — PHASE 58 INTEIRA FECHADA (3/3 plans)**. NAV_TREE de `AppLayout.jsx` costurado com as rotas do Plan 58-01: item novo "ECF Consolidado" (route `ecf.dashboard`, icone `PieChart` ja importado) adicionado no TOPO do grupo Mercado Livre; item existente "Dashboard" renomeado para "Mercado Livre" (route `mercadolivre.dashboard`). Item canonical `dashboard` sai do sidebar mas rota permanece registrada em `routes/web.php` para deep links/bookmarks (CONTEXT §5) — decisao consciente, sem migracao das chamadas `route('dashboard')` existentes no codebase. `tests/Feature/Phase58/DashboardNavigationSmokeTest.php` criado com 5 tests via `AssertableInertia` validando os 4 caminhos completos route→controller→componente (ecf/mercadolivre renderizam `Dashboard/Admin`; shopee/amazon renderizam os shells com props `marketplace`/`label` corretas) + rota legacy `/dashboard` ainda navegavel. **Gate final de zero regressao**: Phase 57 20/20 verdes, Phase 58 16/16 verdes (11 do Plan 58-01 + 5 deste plan) — **36/36 total**. `php artisan route:list --path=dashboard` confirma as 5 rotas nomeadas ativas. Itens estaticos Shopee/Amazon do sidebar (badge "Em breve" → `/em-desenvolvimento`) **NAO tocados** — decisao consciente, item de sidebar dedicado para os shells reais fica para proximo touchpoint UAT. Zero deviations. Commits `48890bd` (feat NAV_TREE) + `a45c838` (test smoke E2E). **REQ DASH-01/02/03 fechados. Phase 58 pronta para UAT em prod** (4 URLs documentadas na SUMMARY: `/dashboard/ecf`, `/dashboard/mercadolivre`, `/dashboard/shopee`, `/dashboard/amazon` + `/dashboard` legacy).
 - Phase 119.1 inserted after Phase 119: NPS manual, sem duplicidade e por grupo de empresas (URGENT)
+- Phase 135 edited: Plano 06 concluido: resolvers de rede AdmanGrantResolver (passo 4, D-18) e MetricasContaResolver (passo 7) + ResolveOnboardingPassoJob, unico ponto de execucao de resolver que toca a Adman/ML. Catalogo do OnboardingResolverFactory agora com 4/5 chaves.
 
 ### Decisões herdadas do v1.0
 
@@ -890,8 +893,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-11T19:57:39.075Z
-Stopped at: Completed 136-01-PLAN.md
+Last session: 2026-08-11T20:30:04.541Z
+Stopped at: Completed 136-02-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
