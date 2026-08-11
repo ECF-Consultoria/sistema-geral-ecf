@@ -79,6 +79,61 @@ regra virou "fim do mês corrente" em 2026-07-20.
 - `resources/js/Pages/Nps/Respond.jsx` — componente `ResponsaveisCard` + helper
   `iniciaisDe` + render condicional em `RespondV15`.
 
+## Deploy — FEITO em 2026-08-11
+
+`daef7ba5` em produção (`deploy.sh` exit 0, "Nothing to migrate", build na VPS
+em 18.9s).
+
+**Foi deploy ISOLADO em worktree, e precisava ser.** A árvore local tinha 15
+commits não publicados e **13 eram das Fases 135/136 de outra sessão**, em
+andamento — incluindo **duas migrations** de tabelas de Onboarding
+(`onboardings`, `onboarding_passos`, `onboarding_links`,
+`onboarding_templates`, `template_passos`). Um `git push origin main` teria
+levado tudo e o `migrate --force` do deploy criaria essas tabelas em produção a
+partir de uma fase incompleta.
+
+Procedimento: worktree novo a partir de `origin/main` → cherry-pick só dos 2
+commits desta quick → **diff de `Respond.jsx` contra a `main` local vazio**
+(paridade byte a byte com o código que foi testado no navegador) → push →
+`deploy.sh` de dentro do worktree.
+
+Escopo real do que subiu: **1 arquivo de código**, zero migrations; o restante do
+diff é `.planning/` (inerte em produção).
+
+**A pegadinha se confirmou ao vivo:** durante o deploy a outra sessão commitou
+mais 4 vezes na `main` local (HEAD saiu de `7d2cc992` para `bcfb461b`). O
+isolamento é o que impediu esse trabalho de vazar para produção.
+
+### Checagens PRÉ-deploy (VPS)
+
+- `git status` na VPS: nenhum arquivo **rastreado** sujo — o `reset --hard` não
+  destruiria nada. (Há untracked antigos, inclusive duas migrations de
+  `contrato_assinaturas`, mas `migrate:status` não listava **nenhuma** pendente,
+  então o `migrate --force` não teve o que rodar.)
+- VPS estava 1 commit atrás do GitHub, e o commit era `.planning/` puro.
+
+### Verificação PÓS-deploy (por reconsulta, não por exit code)
+
+- HEAD da VPS = `daef7ba5`.
+- Workers `RUNNING` com uptime de 37s — prova de que a última linha do script
+  rodou (o `deploy.sh` já completou com timeout estourado no passado).
+- **Bundle assertado pelos DOIS lados**, no chunk resolvido pelo manifest
+  (`Pages/Nps/Respond.jsx` → `assets/Respond-DFlRKR7f.js`): "Quem cuida da sua
+  conta" **presente**; `ResponsaveisCard` e `iniciaisDe` com **zero** ocorrências
+  em todo o `public/build/assets/` — identificador livre que sobrevive à
+  minificação seria sinal de escopo vazado (lição de 260807).
+- Smoke: `/` 302, `/login` 200, `/nps/{token inexistente}` 404.
+- **Zero** `production.ERROR` nos 15 min seguintes ao corte.
+
+**O que NÃO foi feito de propósito:** não abri uma pesquisa NPS real de produção
+no navegador. Todo GET em `/nps/{token}` grava `first_opened_at`, incrementa
+`open_count` e cria um `NpsSurveyEvent` do tipo `opened` — abrir link de cliente
+para "conferir" sujaria dado real e a trilha de abertura da Fase 95. Criar
+survey de teste em prod é pior ainda: o `NpsImputationService` materializaria
+nota 1, que entra no desempenho/bônus. A prova visual veio do localhost rodando
+código com paridade byte a byte confirmada contra o que subiu.
+
 ## Pendente
 
-Deploy. Nada foi enviado à VPS.
+Correção do `email_corpo` em `/nps/configuracao` (o `**{nome_estrategista}**{nome_analista}`
+descrito acima) — não autorizada, é edição de conteúdo em produção.
