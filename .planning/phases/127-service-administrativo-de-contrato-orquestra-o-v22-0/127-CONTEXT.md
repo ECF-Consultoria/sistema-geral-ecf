@@ -82,6 +82,40 @@ Mantém o comportamento que a Fase 126 já implementou (D-12) e que foi medido f
 - ⚠️ O `DELETE` só foi medido em envelope `draft`. Envelope já ativado (`running`) **não** foi
   medido — mas o rollback desta fase só roda antes da ativação, que agora nem é nossa (D-02).
 
+### D-06 — A trava de unicidade passa a ser (empresa + serviço), não só empresa
+
+⚠️ **Decisão tomada em 11/08/2026 para resolver uma contradição que ninguém tinha visto.**
+
+**A contradição:** a Fase 125 criou `unique('company_id_em_andamento', 'ca_company_andamento_uniq')`
+— **uma coluna só**, ou seja, no máximo **um** contrato em andamento por empresa. Um dia depois, a
+**D-21** (Fase 126) estabeleceu **um modelo `.docx` por serviço**, o que exige **N** contratos por
+empresa. Somado à **D-01** (gerar os N pela fila, juntos), o segundo serviço bateria na constraint
+**sempre**. Achado pelo researcher desta fase, por leitura cruzada — não estava em documento nenhum.
+
+**A decisão:** nova migration acrescenta a coluna do serviço em `contrato_assinaturas` e troca o
+índice único para o par **(empresa em andamento + serviço)**. A regra passa a ser "um contrato em
+andamento **por serviço**".
+
+- Recusado: **voltar atrás e ter 1 contrato com todos os serviços** — reabre exatamente o problema
+  que motivou a D-21 (o escopo da cláusula 2.1 é específico de Gestão de ADS; um contrato de Shopee
+  sairia com escopo de Mercado Livre). **Um de cada vez em série** — "em andamento" dura até o
+  cliente assinar, ou seja dias; o contrato de Shopee esperaria a assinatura do de Mercado Livre.
+- **Por que agora e não depois:** as duas tabelas já estão em produção mas **vazias** — nenhum
+  controller ou job escreve nelas (verificado). Não há dado para migrar. Depois de existir contrato
+  de cliente, a mesma correção fica cara e arriscada.
+
+⚠️ **Armadilhas de MariaDB que esta migration precisa respeitar** (as 3 cicatrizes do projeto, já
+guardadas por teste estático desde a Fase 125): nome de índice **≤ 64 caracteres**, nunca `enum`,
+e `nullOnDelete` exige coluna `nullable()`. Mais uma específica desta migration: **criar o índice
+novo ANTES de dropar o antigo** — dropar índice usado por FK falha com 1553 no MariaDB e o SQLite
+dos testes não pega.
+
+⚠️ **Consequência para o modelo:** um `ContratoAssinatura` passa a representar **um serviço**, não
+vários. O `servicos_snapshot` (D-10 da Fase 125) continua sendo JSON, mas com o recorte de um
+serviço só. O planejamento precisa conferir se o hook que sincroniza `company_id_em_andamento`
+(documentado no próprio model como "o que ALIMENTA a trava", não conveniência sobre ela) continua
+correto com a chave composta.
+
 ### D-05 — Idempotência vem do banco, não de código defensivo
 
 `contrato_assinaturas` já tem `company_id_em_andamento` com índice único
