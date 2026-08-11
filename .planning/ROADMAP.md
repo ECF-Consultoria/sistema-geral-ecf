@@ -1716,7 +1716,7 @@ Plans:
   5. Coleta falha ou está velha → a tela mostra o último snapshot com selo de defasagem, nunca uma tela em branco
   6. O bloco "Rascunhos recentes" saiu do aside do wizard e vive na sub-aba Rascunhos, junto com o "Publicar lote"; a "Saúde do anúncio" continua intacta no aside do wizard
 
-**Plans:** 7/10 plans executed
+**Plans:** 8/10 plans executed
 
 Plans:
 **Wave 1**
@@ -1740,7 +1740,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 134-08-PLAN.md — 4ª aba + tela Publicados: triagem acionável, tabela e selos de honestidade [wave 5]
+- [x] 134-08-PLAN.md — 4ª aba + tela Publicados: triagem acionável, tabela e selos de honestidade [wave 5]
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
