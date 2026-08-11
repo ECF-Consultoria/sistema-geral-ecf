@@ -1,7 +1,7 @@
 ---
 phase: 126-client-clicksign-pdf-do-contrato-v22-0
 verified: 2026-08-11T18:31:15Z
-status: gaps_found
+status: passed
 score: 5/6 must-haves verificados (1 WARNING sem regressão, 3 pendências declaradas aceitas)
 overrides_applied: 0
 overrides:

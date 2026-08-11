@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: executing
-stopped_at: Completed 126-12-PLAN.md
-last_updated: "2026-08-11T17:57:04.370Z"
+status: ready_to_plan
+stopped_at: Phase 126 complete (12/12) — ready to discuss Phase 127
+last_updated: 2026-08-11T18:39:31.810Z
 last_activity: 2026-08-11
 progress:
   total_phases: 10
   completed_phases: 3
   total_plans: 20
-  completed_plans: 20
+  completed_plans: 217
   percent: 30
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 126 — client-clicksign-pdf-do-contrato-v22-0
+**Current focus:** Phase 127 — service administrativo de contrato — orquestração (v22.0)
 
 ## Current Position
 
-Phase: 126 (client-clicksign-pdf-do-contrato-v22-0) — 12/12 PLANOS EXECUTADOS
-Plan: 12 of 12 (126-01..04 executados, 126-05 superado e removido pelo 126-12, 126-06 descartado, 126-07/09 executados, 126-11 GATE APROVADO, 126-12 remove o caminho local de PDF — ver ROADMAP.md § Phase 126)
-Status: Fase 126 concluída — próxima fase da milestone v22.0 a definir
+Phase: 127
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-08-11
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
@@ -96,7 +96,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 
 **Velocity:**
 
-- Total plans completed: 76
+- Total plans completed: 88
 - Average duration: ~15 min/plan
 - Total execution time: ~1.5 hours
 
@@ -126,6 +126,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | 123 | 8 | - | - |
 | 124 | 5 | - | - |
 | 125 | 3 | - | - |
+| 126 | 12 | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
