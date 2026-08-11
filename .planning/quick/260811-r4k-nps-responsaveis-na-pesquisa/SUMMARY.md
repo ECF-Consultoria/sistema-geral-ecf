@@ -133,6 +133,66 @@ survey de teste em prod é pior ainda: o `NpsImputationService` materializaria
 nota 1, que entra no desempenho/bônus. A prova visual veio do localhost rodando
 código com paridade byte a byte confirmada contra o que subiu.
 
+## Incremento 2 — foto do responsável (DEPLOYADO 260811, `762ea811`)
+
+O card nasceu só com iniciais. Pedido do usuário: mostrar a **foto** de quem
+tem uma. Passou a usar `users.avatar_url`, caindo nas iniciais quando não há.
+
+Reusa o contrato do `Avatar` de `Performance/Index.jsx`, **inclusive o
+`onError`** — que é o ponto não óbvio: `avatar_url` pode apontar para arquivo já
+apagado ou foto externa (Google) que parou de responder, e sem o fallback o
+cliente veria um ícone de imagem quebrada no lugar do rosto de quem o atende. O
+estado de erro é por avatar, não global. Testado de propósito com a URL
+apontando para arquivo inexistente (403): volta às iniciais, limpo.
+
+A URL vai **crua** no payload — `Storage::url()` já devolve `/storage/avatars/…`
+no upload local e foto externa vem absoluta —, espelhando o campo `foto` do
+`PerformanceController`. Visual: com foto, o gradiente do papel vira anel em
+volta; sem foto, continua sendo o fundo das iniciais.
+
+`NpsGrupoController` ganhou as duas chaves como `null`, só para o payload de
+grupo não divergir do individual.
+
+### O guard AB-94-1 barrou a mudança — e estava certo
+
+`NpsOpenTrailTest::test_payload_inertia_survey_nao_ganha_chaves_novas` falhou:
+`has('survey', 6)` contra as 8 chaves novas. **Não é teste chato, é blindagem**:
+a página é pública (cliente não tem login) e o mesmo request grava o rastro da
+Phase 94 (`first_opened_at`, `open_ip_address`, `open_user_agent`) — o guard
+existe para nada disso vazar por um `->only()` desatento ou um
+`$survey->toArray()`.
+
+Atualizado para 8 **com o motivo escrito no docblock**, e a intenção do guard
+foi reforçada: acrescentei `->missing()` explícito para as quatro chaves do
+rastro de auditoria, que seguem proibidas no payload público por mais que ele
+cresça. A exposição nova é do MESMO nível da que já existia — o nome dessas
+pessoas é público neste payload desde a Phase 31, e a foto é a de perfil de quem
+atende aquele cliente.
+
+### Erro cometido e como ficou
+
+O `git commit` capturou `.planning/phases/135-…/135-04-SUMMARY.md`, da outra
+sessão: o arquivo já estava **staged** no índice compartilhado, e `git add` por
+caminho não impede que o índice existente entre no commit. Removido do commit
+que foi a produção (`--amend` no worktree) — **prod levou só os 4 arquivos**. Na
+`main` local ele permanece dentro de `f71f8aa9`; nada se perdeu e não afeta
+produção, e não reescrevi a `main` porque a outra sessão estava commitando nela
+naquele momento.
+
+### Verificação
+
+- Navegador real, três estados: **com foto** (renderiza), **sem foto** (iniciais)
+  e **foto quebrada/403** (volta às iniciais, sem ícone quebrado).
+- Testes de NPS: 25 passam; a única falha é a pré-existente do `expires_at`.
+- Prod: HEAD `762ea811`, workers uptime 55s, **zero** `production.ERROR`, smoke
+  302/200/404.
+- Bundle pelos dois lados no chunk do manifest (`assets/Respond-6NDj33h3.js`):
+  "Quem cuida da sua conta" e `estrategista_foto` **presentes**;
+  `AvatarResponsavel` e `usaFoto` com **zero** ocorrências em todo o build.
+- **O teste que mais importava**: as fotos precisam abrir SEM login, porque a
+  pesquisa é pública. `GET /storage/avatars/*.webp` sem cookie devolve **200
+  image/webp** em produção. São 17 usuários com foto lá, arquivos presentes.
+
 ## Pendente
 
 Correção do `email_corpo` em `/nps/configuracao` (o `**{nome_estrategista}**{nome_analista}`
