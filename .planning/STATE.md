@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 134-07-PLAN.md
-last_updated: "2026-08-11T13:08:25.230Z"
+stopped_at: Completado 134-10-PLAN.md
+last_updated: "2026-08-11T13:40:01.110Z"
 last_activity: 2026-08-11
 progress:
-  total_phases: 11
-  completed_phases: 0
+  total_phases: 12
+  completed_phases: 1
   total_plans: 15
-  completed_plans: 9
-  percent: 0
+  completed_plans: 10
+  percent: 8
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 134 (meus-anuncios-saude-analitica-do-anuncio-publicado) — EXECUTING
-Plan: 9 of 10
+Plan: 10 of 10
 Status: Ready to execute
 Last activity: 2026-08-11
 
@@ -283,6 +283,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 134 P06 | 15min | 3 tasks | 4 files |
 | Phase 134 P07 | 20min | 3 tasks | 4 files |
 | Phase 134 P09 | 31min | 3 tasks | 7 files |
+| Phase 134 P10 | 13min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -755,6 +756,13 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **`excluirRascunho()` migrou por inteiro para `RascunhosPainel.jsx`**, mesmo não estando na lista explícita "o que SAI" das `<interfaces>` do plano — só tinha um caller (dentro do bloco JSX removido) e ficaria morto no wizard.
 - **`router.reload({ only })` do lote e da exclusão em `RascunhosPainel.jsx` inclui `subTotais`, não só `rascunhos`** — a sub-aba mostra um contador `(N)` que o wizard nunca teve; sem isso, publicar ou excluir um rascunho deixaria o contador da aba parado até o próximo carregamento de página inteira. Polling BULK-04 (`temPublicando`) também replicado na tela nova pelo mesmo motivo.
 
+### Decisões do Plan 134-10 (registradas — fecha a Fase 134)
+
+- **`performance_acoes` exibidas como lista visível no modal, não só em atributo `title` de hover** — o material é a peça mais acionável da tela (ações do ML já redigidas em pt-BR); a tabela usa hover por espaço, o modal tem espaço de sobra e o D-21 pede que o breakdown seja diagnóstico, não rótulo escondido.
+- **Regex de espaçamento do gate de vocabulário (`travaVocabularioVisual`) já era segura contra `strokeWidth={2.5}`/`activeDot={{ r: 4 }}` do Recharts** (limite de palavra + hífen literal já presentes desde o plano 134-08) — rodado de verdade contra `ModalDetalheAnuncio.jsx`, zero falso positivo, nenhum ajuste de regex nem do JSX aprovado do gráfico foi necessário.
+- **Permalink aparece 2x no modal** (cabeçalho compacto com id + rodapé explícito "Abrir no Mercado Livre") — o UI-SPEC pede os dois independentemente (seções "Cabeçalho" e "Rodapé"), não é duplicação acidental.
+- **Fase 134 completa** — os 10 planos entregaram os dois níveis de leitura de "Meus Anúncios" (lista + detalhe), ambos só-leitura (D-11), lendo exclusivamente do banco (D-05).
+
 ### Pending Todos
 
 None.
@@ -869,8 +877,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-11T13:08:25.148Z
-Stopped at: Completed 134-07-PLAN.md
+Last session: 2026-08-11T13:40:00.841Z
+Stopped at: Completado 134-10-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 

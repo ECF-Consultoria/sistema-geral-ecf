@@ -1716,7 +1716,7 @@ Plans:
   5. Coleta falha ou está velha → a tela mostra o último snapshot com selo de defasagem, nunca uma tela em branco
   6. O bloco "Rascunhos recentes" saiu do aside do wizard e vive na sub-aba Rascunhos, junto com o "Publicar lote"; a "Saúde do anúncio" continua intacta no aside do wizard
 
-**Plans:** 9/10 plans executed
+**Plans:** 10/10 plans complete
 
 Plans:
 **Wave 1**
@@ -1748,7 +1748,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 134-10-PLAN.md — Modal de Detalhe: checklist dos sinais e série de 90 dias (Recharts) [wave 7]
+- [x] 134-10-PLAN.md — Modal de Detalhe: checklist dos sinais e série de 90 dias (Recharts) [wave 7]
 
 > **Fora de escopo (fase própria):** qualquer write na API do ML (pausar, editar, mover anúncio) — ação destrutiva na conta do cliente em produção, exige confirmação dupla, `activity_log` e undo, na mesma linha do todo `260626-acoes-ml-mover-sgi-pausar-via-api.md`. Também fora: abrir o módulo ao time de publicação (`role:admin` → `permission:mlb.anunciar`).
 
