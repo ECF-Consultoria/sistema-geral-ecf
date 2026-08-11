@@ -158,3 +158,38 @@ O único motivo para não fechar como `passed` é a presença de itens que exige
 
 _Verified: 2026-08-11T13:58:48Z_
 _Verifier: Claude (gsd-verifier)_
+
+---
+
+## Deploy — 2026-08-11
+
+**DEPLOYADO** (`06edda79..32e66ad0`), isolado. Verificado por reconsulta à VPS, não por saída do script.
+
+### Como saiu isolado, apesar da divergência
+
+As branches tinham divergido: `origin/main` estava 10 commits à frente (trabalho de Desempenho do outro dev, **já deployado por ele**) e a local 71 à frente. Pior, a `main` local continha 9 commits de Desempenho **duplicados** — mesmas mensagens, hashes diferentes — porque o outro dev trabalhou neste mesmo checkout e depois publicou por outro caminho.
+
+Merge com conflito **apenas em `.planning/`** (STATE.md + 3 SUMMARYs de quick, todos `add/add` do mesmo conteúdo). Resolvidos ficando com a versão do `origin`, que já trazia a marcação "DEPLOYADO 260810".
+
+O que provou o isolamento: `git diff <HEAD-da-VPS> HEAD -- app resources routes database config` devolveu **exatamente os 21 arquivos da Fase 134** e nada mais, e `git diff origin/main` nos arquivos de Desempenho voltou **vazio** — paridade byte a byte com o que já rodava em produção.
+
+### Estado verificado em produção
+
+| Checagem | Resultado |
+|---|---|
+| HEAD da VPS | `32e66ad0` |
+| Migrations | batch `112`; `ml_acervo_itens` e `ml_acervo_metricas_diarias` existem |
+| Workers | `ecf-worker_00`/`_01` RUNNING, uptime 12s — prova de que a última linha do script rodou |
+| Bundle (dois lados) | `de 86` **presente** em `MeusAnuncios-BfnJJjIE.js`; `Rascunhos recentes` com **zero** ocorrências em `AnunciarML-*.js` |
+| Smoke | `/login` 200 · `/mlb/anuncios` 302 |
+| Scheduler | `mlb:sync-acervo` 11:35 · `mlb:acervo-cleanup` 03:40 |
+| Log | zero `production.ERROR` da fase; o ruído recente é Adman 429/500 do `SyncTodasVendas`, crônico e anterior ao deploy |
+
+### Duas pegadinhas conhecidas que se confirmaram
+
+1. **`deploy.sh` estourou os 10 min do cliente e completou mesmo assim** (o `chown -R` leva ~9 min). Não foi re-disparado; o estado da VPS é que respondeu.
+2. **Workers travaram em `STOPPING`** e seguraram o `supervisorctl restart`, que é a última linha. Destravado com `supervisorctl signal KILL` nos dois — procedimento já registrado no projeto.
+
+### Pendente de observação
+
+A **primeira execução real** do `mlb:sync-acervo` roda às 11:35 do dia do deploy, contra 74 contas / ~406 mil itens. Camada barata estimada em ~20.347 chamadas (~14 min); camada cara em rotação N=7. Vale conferir duração, ocorrência de 429 e volume gravado na primeira passagem.
