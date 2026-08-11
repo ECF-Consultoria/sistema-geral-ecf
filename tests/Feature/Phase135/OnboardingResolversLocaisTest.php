@@ -230,20 +230,24 @@ class OnboardingResolversLocaisTest extends TestCase
         $this->assertFalse(app(MlTokenAtivoResolver::class)->assincrono());
     }
 
-    // ─── Contrato: catálogo com as 2 chaves locais registradas até aqui ─────
+    // ─── Contrato: catálogo com as chaves registradas até aqui ──────────────
 
+    /**
+     * O catálogo cresce a cada plano que registra um resolver novo no
+     * `AppServiceProvider` (previsto em 135-03-SUMMARY.md: "hoje expõe as 2
+     * chaves locais; crescerá para 5 no Plano 06"). Este teste prova que os
+     * 2 resolvers LOCAIS deste plano continuam registrados — nunca que o
+     * catálogo tem exatamente 2 chaves no total, que deixou de ser verdade
+     * assim que o Plano 06 começou a acrescentar resolvers de rede.
+     */
     /** @test */
-    public function catalogo_expoe_exatamente_as_2_chaves_locais_registradas_ate_aqui(): void
+    public function catalogo_contem_as_2_chaves_locais_registradas_neste_plano(): void
     {
         $chaves = collect(app(OnboardingResolverFactory::class)->catalogo())
             ->pluck('chave')
-            ->sort()
-            ->values()
             ->all();
 
-        $this->assertSame([
-            TemplatePasso::AUTO_FONTE_ADMAN_ACCOUNT_ID,
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
-        ], $chaves);
+        $this->assertContains(TemplatePasso::AUTO_FONTE_ADMAN_ACCOUNT_ID, $chaves);
+        $this->assertContains(TemplatePasso::AUTO_FONTE_ML_TOKEN, $chaves);
     }
 }

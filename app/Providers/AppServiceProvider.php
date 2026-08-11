@@ -40,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
             return new \App\Services\Onboarding\OnboardingResolverFactory([
                 $app->make(\App\Services\Onboarding\Resolvers\AdmanAccountIdResolver::class),
                 $app->make(\App\Services\Onboarding\Resolvers\MlTokenAtivoResolver::class),
+                // Fase 135 Plano 06 — sonda de rede (Job-only, Pitfall 2).
+                $app->make(\App\Services\Onboarding\Resolvers\AdmanGrantResolver::class),
             ]);
         });
     }
