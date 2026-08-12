@@ -218,6 +218,18 @@ return [
         // preenchido vira produção por engano).
         'template_id'      => env('CLICKSIGN_TEMPLATE_ID'),
 
+        // Plano 127-04 (D-03 + CLICK-08 + DADOS-06) — 30 e 3 são os valores
+        // MEDIDOS como padrão da própria Clicksign (`deadline_at` = +30
+        // dias, `remind_interval` = 3 — §"Envelope" do
+        // CLICKSIGN-SANDBOX-EMPIRICO.md), não são palpite. D-03: prazo e
+        // lembrete vão na CRIAÇÃO do envelope, não na ativação, porque a
+        // ativação acontece FORA do sistema (D-02, interface da Clicksign)
+        // e o valor se perderia se só fosse aplicado lá. CLICK-08: o
+        // lembrete é nativo da Clicksign — não criar scheduler próprio,
+        // duplicaria notificação.
+        'prazo_dias_padrao'    => (int) env('CLICKSIGN_PRAZO_DIAS', 30),
+        'lembrete_dias_padrao' => (int) env('CLICKSIGN_LEMBRETE_DIAS', 3),
+
         // Fase 126 Plan 126-02 (D-08) — os 3 signatários FIXOS da ECF que
         // entram em todo contrato (dois sócios como "contratada" + Comercial
         // como "testemunha"), lidos de `env()`. Nome e e-mail reais NUNCA

@@ -210,6 +210,34 @@ class ContratoAssinatura extends Model
             ->first();
     }
 
+    /**
+     * Plano 127-04 (D-03 / DADOS-06): prazo de assinatura efetivo deste
+     * contrato — a coluna `prazo_dias`, quando preenchida, ou o padrão de
+     * configuração (`CLICKSIGN_PRAZO_DIAS`, 30 por padrão, valor MEDIDO da
+     * própria Clicksign).
+     *
+     * `null` na coluna significa "usou o padrão vigente na época". O valor
+     * escolhido (coluna OU padrão) precisa ser lido por aqui — nunca ler
+     * `config()` direto — porque quem persistir o resultado desta chamada
+     * na criação do envelope está fixando, para a Fase 130 (alerta de
+     * contrato preso) calcular há quanto tempo é aceitável esperar mesmo
+     * que o padrão de configuração mude depois.
+     */
+    public function prazoDiasEfetivo(): int
+    {
+        return $this->prazo_dias ?? (int) config('services.clicksign.prazo_dias_padrao');
+    }
+
+    /**
+     * Plano 127-04 (D-03 / DADOS-06): intervalo de lembrete efetivo deste
+     * contrato — mesma disciplina de `prazoDiasEfetivo()`, com
+     * `lembrete_dias` / `CLICKSIGN_LEMBRETE_DIAS` (padrão 3, valor MEDIDO).
+     */
+    public function lembreteDiasEfetivo(): int
+    {
+        return $this->lembrete_dias ?? (int) config('services.clicksign.lembrete_dias_padrao');
+    }
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
