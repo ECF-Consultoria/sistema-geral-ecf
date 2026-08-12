@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: planning
-stopped_at: Phase 127 context gathered
-last_updated: "2026-08-11T20:26:43.502Z"
-last_activity: 2026-08-11
+status: executing
+stopped_at: Phase 127 plan 01 executado (D-06 aplicada)
+last_updated: "2026-08-12T12:41:16.931Z"
+last_activity: 2026-08-12
 progress:
   total_phases: 12
   completed_phases: 4
-  total_plans: 33
-  completed_plans: 30
+  total_plans: 40
+  completed_plans: 32
   percent: 33
 ---
 
@@ -26,9 +26,21 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 127
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-11
+Plan: 01 executado (127-02 a seguir)
+Status: Executando (wave 1 de 5 — plano 01/07 completo)
+Last activity: 2026-08-12
+
+**Plano 127-01 executado em 2026-08-12** (commits `7db2fd83`/`8257a617`/`d01577f5`/`7b172779`):
+aplica a D-06 — a trava de unicidade "em andamento" de `contrato_assinaturas` deixa de ser por
+EMPRESA e passa a ser por (EMPRESA + SERVIÇO), destravando a D-21 (Fase 126, 1 modelo `.docx` por
+serviço → N contratos por empresa). Migration nova (`servico_id` FK, `servico_id_em_andamento`
+espelho, `prazo_dias`/`lembrete_dias`, índice composto `ca_empresa_servico_andamento_uniq` criado
+ANTES do drop de `ca_company_andamento_uniq` — armadilha 1553 do MariaDB). Model: hook `saving`
+preenche as duas colunas derivadas juntas + guard `RuntimeException` se `servico_id` vazio; novo
+`emAndamentoDoServico()`. Os 2 testes da Fase 125 que quebravam por construção (semântica do índice
+mudou, não só o nome) foram adaptados — não é regressão. Suíte `Phase127+125+126` = **159 verdes**
+(baseline 147 intacto + 11 novos + 1 novo em Phase125). Zero regressão. Detalhe:
+`127-01-SUMMARY.md`.
 
 > ⚠️ **DUAS FRENTES EM PARALELO — este ponteiro descreve só uma delas.**
 > Merge de 2026-08-11: `origin/main` trazia **92 commits de outro desenvolvedor** ("ECF Dev"),
@@ -943,8 +955,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-11T20:26:42.887Z
-Stopped at: Phase 127 context gathered
+Last session: 2026-08-12T12:41:16.931Z
+Stopped at: Completed 127-01-PLAN.md (D-06 aplicada — trava composta empresa+serviço); próximo: 127-02
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
