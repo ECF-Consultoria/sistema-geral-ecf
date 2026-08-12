@@ -15,6 +15,7 @@ use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Metrics\MetricPeriodResolver;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -72,6 +73,15 @@ class DesempenhoMetricasManuaisController extends Controller
 {
     /** Quantos meses o seletor de competência oferece (o corrente + os 11 anteriores). */
     private const MESES_NO_SELETOR = 12;
+
+    /**
+     * Rótulo humano do canal. 'adman' é o identificador técnico da fonte que
+     * lê a API Adman — para quem usa a tela, isso é "Mercado Livre".
+     */
+    private const FONTE_LABELS = [
+        DesempenhoMetricaManual::FONTE_ADMAN  => 'Mercado Livre',
+        DesempenhoMetricaManual::FONTE_SHOPEE => 'Shopee',
+    ];
 
     public function __construct(
         private MetricPeriodResolver $periodResolver,
@@ -138,11 +148,12 @@ class DesempenhoMetricasManuaisController extends Controller
         $mes       = $request->mesReferencia();
         $mesStr    = $mes->toDateString();
         $companyId = (int) $request->input('company_id');
+        $fonte     = (string) $request->input('fonte');
         $metrica   = (string) $request->input('metrica');
         $ativo     = $request->boolean('ativo');
         $valor     = $request->input('valor');
 
-        $acao = DB::transaction(function () use ($mes, $mesStr, $companyId, $metrica, $ativo, $valor, $request) {
+        $acao = DB::transaction(function () use ($mes, $mesStr, $companyId, $fonte, $metrica, $ativo, $valor, $request) {
             // PRIMEIRA operação da transação (T-136-02/T-136-03): a mesma
             // trava da consolidação, agora com `lockForUpdate()` para
             // serializar contra um `desempenho:consolidar-mes` concorrente.
@@ -163,8 +174,13 @@ class DesempenhoMetricasManuaisController extends Controller
             // `updateOrCreate` chaveado por igualdade não casaria no SQLite e
             // criaria linha duplicada. `lockForUpdate()` mantém a leitura e a
             // escrita da célula dentro da mesma serialização da trava acima.
+            // `fonte` faz parte da identidade da célula: a mesma empresa pode
+            // ter lançamento nos dois canais, atendidos por times diferentes.
+            // Sem este filtro, lançar Shopee sobrescreveria a linha do
+            // Mercado Livre da mesma conta.
             $linha = DesempenhoMetricaManual::query()
                 ->where('company_id', $companyId)
+                ->where('fonte', $fonte)
                 ->where('metrica', $metrica)
                 ->whereDate('mes_referencia', $mesStr)
                 ->lockForUpdate()
@@ -196,6 +212,7 @@ class DesempenhoMetricasManuaisController extends Controller
             if ($linha === null) {
                 DesempenhoMetricaManual::create($atributos + [
                     'company_id'     => $companyId,
+                    'fonte'          => $fonte,
                     'mes_referencia' => $mesStr,
                     'metrica'        => $metrica,
                 ]);
@@ -258,7 +275,10 @@ class DesempenhoMetricasManuaisController extends Controller
      */
     private function montarEmpresas(Carbon $mes, string $busca): array
     {
-        $setoresElegiveis = [Servico::SETOR_PERFORMANCE, Servico::SETOR_SHOPEE];
+        // Mesma lista consumida pelo `StoreMetricaManualRequest` ao validar se
+        // a empresa atende o canal escolhido — uma constante só, para grade e
+        // validação nunca divergirem sobre o que conta como canal.
+        $setoresElegiveis = Servico::SETORES_FINANCEIROS;
 
         $vinculos = DB::table('company_users as cu')
             ->join('servicos as s', 's.id', '=', 'cu.servico_id')
@@ -306,71 +326,113 @@ class DesempenhoMetricasManuaisController extends Controller
             ->whereIn('company_id', $companyIds->all())
             ->whereDate('mes_referencia', $mes->toDateString())
             ->get()
-            ->keyBy(fn (DesempenhoMetricaManual $l) => "{$l->company_id}:{$l->metrica}");
+            ->keyBy(fn (DesempenhoMetricaManual $l) => "{$l->company_id}:{$l->fonte}:{$l->metrica}");
 
         // Resolvido na PRIMEIRA empresa que tiver lançamento — empresa sem
         // lançamento nenhum não dispara nem `resolve()` (T-136-17).
         $periodo = null;
 
+        // UMA LINHA POR (empresa, canal) — não por empresa. A mesma conta pode
+        // ser atendida por profissionais diferentes em marketplaces
+        // diferentes, cada um com sua própria nota; a grade precisa deixar
+        // lançar num canal sem tocar o outro. Empresa de canal único continua
+        // rendendo exatamente uma linha, como antes.
         $linhas = $companies
             ->sortBy(fn (Company $company) => mb_strtolower((string) $company->name))
-            ->map(function (Company $company) use ($mes, $lancamentos, $fontePorEmpresa, $fontesPorEmpresa, &$periodo) {
-                $fonte = $fontePorEmpresa->get($company->id) ?? 'adman';
+            ->flatMap(function (Company $company) use ($mes, $lancamentos, $fontesPorEmpresa, &$periodo) {
+                // Fallback para o vencedor do desempate só quando a empresa não
+                // tem nenhuma fonte elegível mapeada — caso de borda que não
+                // deveria chegar aqui, mas não vale devolver linha sem canal.
+                $fontesDaEmpresa = $fontesPorEmpresa->get($company->id, []);
 
-                $celulas = collect(DesempenhoMetricaManual::METRICAS)
-                    ->mapWithKeys(fn (string $metrica) => [
-                        $metrica => $lancamentos->get("{$company->id}:{$metrica}"),
-                    ]);
-
-                $temLancamento = $celulas->contains(
-                    fn (?DesempenhoMetricaManual $l) => $l !== null && ($l->ativo || $l->valor !== null)
-                );
-
-                $apiAquecida = false;
-                $apiValores  = [DesempenhoMetricaManual::METRICA_FATURAMENTO => null, DesempenhoMetricaManual::METRICA_MARGEM_CMV => null];
-
-                if ($temLancamento) {
-                    $periodo ??= $this->periodResolver->resolve(['period_key' => $mes->format('Y-m')]);
-
-                    // Fonte 'adman' só é consultada quando a janela já está em
-                    // cache; 'shopee' é leitura local e sempre barata.
-                    $apiAquecida = $fonte === 'shopee'
-                        || $this->admanMetricDiffService->isCached($company, $periodo);
-
-                    if ($apiAquecida) {
-                        $apiValores = $this->valoresDaApi($company, $periodo, $fonte);
-                    }
+                if ($fontesDaEmpresa === []) {
+                    return [];
                 }
 
-                $porMetrica = $celulas->map(function (?DesempenhoMetricaManual $linha, string $metrica) use ($apiValores, $apiAquecida) {
-                    $celulaTemLancamento = $linha !== null && ($linha->ativo || $linha->valor !== null);
-
-                    return [
-                        'ativo'          => (bool) ($linha?->ativo ?? false),
-                        'valor'          => $linha?->valor,
-                        'valor_anterior' => $linha?->valor_anterior,
-                        // D-02: o valor da API aparece ao lado do manual só
-                        // para célula COM lançamento — nunca para a base
-                        // inteira (T-136-17).
-                        'api_valor'      => $celulaTemLancamento ? $apiValores[$metrica] : null,
-                        'api_aquecida'   => $celulaTemLancamento && $apiAquecida,
-                    ];
-                });
-
-                return [
-                    'company_id'   => $company->id,
-                    'company_name' => $company->name,
-                    'fontes'       => $fontesPorEmpresa->get($company->id, []),
-                    // Nomeados um a um: o payload da grade NÃO carrega
-                    // `lancado_por` nem nome de usuário (T-136-08) — o autor
-                    // existe no banco e no activity_log para auditoria
-                    // (D-12), não para exibição (D-04).
-                    'faturamento'  => $porMetrica->get(DesempenhoMetricaManual::METRICA_FATURAMENTO),
-                    'margem_cmv'   => $porMetrica->get(DesempenhoMetricaManual::METRICA_MARGEM_CMV),
-                ];
+                return collect($fontesDaEmpresa)->map(fn (string $fonte) => $this->linhaDaCelula(
+                    $company, $fonte, $fontesDaEmpresa, $mes, $lancamentos, $periodo
+                ))->all();
             });
 
         return $linhas->values()->all();
+    }
+
+    /**
+     * Monta a linha da grade para UMA célula `(empresa, canal)`.
+     *
+     * `$periodo` é passado por referência de propósito: ele é resolvido na
+     * primeira célula que tiver lançamento e reaproveitado por todas as
+     * demais — empresa sem lançamento nenhum não dispara `resolve()`
+     * (T-136-17).
+     *
+     * @param  array<int, string>  $fontesDaEmpresa
+     * @param  Collection<string, DesempenhoMetricaManual>  $lancamentos
+     */
+    private function linhaDaCelula(
+        Company $company,
+        string $fonte,
+        array $fontesDaEmpresa,
+        Carbon $mes,
+        Collection $lancamentos,
+        ?array &$periodo
+    ): array {
+        $celulas = collect(DesempenhoMetricaManual::METRICAS)
+            ->mapWithKeys(fn (string $metrica) => [
+                $metrica => $lancamentos->get("{$company->id}:{$fonte}:{$metrica}"),
+            ]);
+
+        $temLancamento = $celulas->contains(
+            fn (?DesempenhoMetricaManual $l) => $l !== null && ($l->ativo || $l->valor !== null)
+        );
+
+        $apiAquecida = false;
+        $apiValores  = [DesempenhoMetricaManual::METRICA_FATURAMENTO => null, DesempenhoMetricaManual::METRICA_MARGEM_CMV => null];
+
+        if ($temLancamento) {
+            $periodo ??= $this->periodResolver->resolve(['period_key' => $mes->format('Y-m')]);
+
+            // Fonte 'adman' só é consultada quando a janela já está em
+            // cache; 'shopee' é leitura local e sempre barata.
+            $apiAquecida = $fonte === 'shopee'
+                || $this->admanMetricDiffService->isCached($company, $periodo);
+
+            if ($apiAquecida) {
+                $apiValores = $this->valoresDaApi($company, $periodo, $fonte);
+            }
+        }
+
+        $porMetrica = $celulas->map(function (?DesempenhoMetricaManual $linha, string $metrica) use ($apiValores, $apiAquecida) {
+            $celulaTemLancamento = $linha !== null && ($linha->ativo || $linha->valor !== null);
+
+            return [
+                'ativo'          => (bool) ($linha?->ativo ?? false),
+                'valor'          => $linha?->valor,
+                'valor_anterior' => $linha?->valor_anterior,
+                // D-02: o valor da API aparece ao lado do manual só
+                // para célula COM lançamento — nunca para a base
+                // inteira (T-136-17).
+                'api_valor'      => $celulaTemLancamento ? $apiValores[$metrica] : null,
+                'api_aquecida'   => $celulaTemLancamento && $apiAquecida,
+            ];
+        });
+
+        return [
+            'company_id'    => $company->id,
+            'company_name'  => $company->name,
+            // O canal DESTA linha — é o que a tela exibe e o que volta no
+            // POST. `fontes` continua listando todos os canais da empresa
+            // para a tela poder sinalizar "esta conta tem mais de um time".
+            'fonte'         => $fonte,
+            'fonte_label'   => self::FONTE_LABELS[$fonte] ?? $fonte,
+            'fontes'        => $fontesDaEmpresa,
+            'multi_canal'   => count($fontesDaEmpresa) > 1,
+            // Nomeados um a um: o payload da grade NÃO carrega
+            // `lancado_por` nem nome de usuário (T-136-08) — o autor
+            // existe no banco e no activity_log para auditoria
+            // (D-12), não para exibição (D-04).
+            'faturamento'   => $porMetrica->get(DesempenhoMetricaManual::METRICA_FATURAMENTO),
+            'margem_cmv'    => $porMetrica->get(DesempenhoMetricaManual::METRICA_MARGEM_CMV),
+        ];
     }
 
     /**

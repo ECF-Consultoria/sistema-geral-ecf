@@ -4,10 +4,12 @@ namespace App\Http\Requests;
 
 use App\Models\Company;
 use App\Models\DesempenhoMetricaManual;
+use App\Models\Servico;
 use App\Services\Desempenho\CompanyScoreSnapshotWriter;
 use Carbon\Carbon;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -48,6 +50,7 @@ class StoreMetricaManualRequest extends FormRequest
     {
         return [
             'company_id'     => ['required', 'integer', 'exists:companies,id'],
+            'fonte'          => ['required', Rule::in(DesempenhoMetricaManual::FONTES)],
             'mes_referencia' => ['required', 'regex:/^\d{4}-\d{2}$/'],
             'metrica'        => ['required', Rule::in(DesempenhoMetricaManual::METRICAS)],
             'valor'          => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],
@@ -102,6 +105,39 @@ class StoreMetricaManualRequest extends FormRequest
 
                 if (! $empresaAtiva) {
                     $v->errors()->add('company_id', 'Empresa inativa não é um alvo válido de lançamento manual.');
+                }
+            }
+
+            // A empresa precisa ATENDER o canal escolhido. Sem isto, o admin
+            // poderia lançar Shopee numa conta que só opera Mercado Livre: a
+            // linha seria gravada, nenhum profissional a computaria (a fonte
+            // sai dos vínculos da carteira) e o número ficaria invisível —
+            // parecendo lançado e silenciosamente inerte.
+            //
+            // Vale SÓ para ativação. Reverter (`ativo=false`) precisa continuar
+            // possível mesmo que a empresa tenha deixado de atender o canal —
+            // do contrário um vínculo encerrado prenderia a célula num valor
+            // manual que ninguém mais consegue desfazer.
+            $fonte = $this->input('fonte');
+            if ($ativo && $companyId !== null && in_array($fonte, DesempenhoMetricaManual::FONTES, true)) {
+                // O filtro por SETORES_FINANCEIROS é obrigatório: sem ele um
+                // vínculo de 'publicacao' cairia no ramo default de
+                // `fonteFinanceiraDoSetor()` e faria a empresa parecer atendida
+                // no Mercado Livre. Mesmo recorte do controller da grade.
+                $fontesDaEmpresa = DB::table('company_users')
+                    ->join('servicos', 'servicos.id', '=', 'company_users.servico_id')
+                    ->where('company_users.company_id', $companyId)
+                    ->whereIn('servicos.setor', Servico::SETORES_FINANCEIROS)
+                    ->pluck('servicos.setor')
+                    ->map(fn (?string $setor) => Servico::fonteFinanceiraDoSetor($setor))
+                    ->unique()
+                    ->all();
+
+                if (! in_array($fonte, $fontesDaEmpresa, true)) {
+                    $v->errors()->add(
+                        'fonte',
+                        'Esta empresa não é atendida neste marketplace — o valor lançado aqui não entraria em nenhuma nota.'
+                    );
                 }
             }
         });

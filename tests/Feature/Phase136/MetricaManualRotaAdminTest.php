@@ -104,6 +104,10 @@ class MetricaManualRotaAdminTest extends TestCase
     {
         return array_merge([
             'company_id'     => $companyId,
+            // As empresas desta suíte têm vínculo Shopee — o canal precisa
+            // bater com o que a empresa realmente atende, senão o FormRequest
+            // recusa (o valor ficaria gravado e invisível para todo mundo).
+            'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => self::MES,
             'metrica'        => DesempenhoMetricaManual::METRICA_FATURAMENTO,
             'valor'          => 1000.00,
@@ -366,6 +370,7 @@ class MetricaManualRotaAdminTest extends TestCase
         $this->actingAs($admin)
             ->postJson(route('desempenho.metricas-manuais.lancar'), [
                 'company_id'     => $empresa->id,
+                'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
                 'mes_referencia' => self::MES,
                 'metrica'        => $metrica,
                 'ativo'          => false,

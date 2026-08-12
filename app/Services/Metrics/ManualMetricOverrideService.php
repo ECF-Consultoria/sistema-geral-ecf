@@ -80,9 +80,14 @@ class ManualMetricOverrideService
      * dois lados) para o conjunto de empresas informado. Chamar UMA vez para
      * a carteira inteira — nunca dentro de um loop por empresa (evita N+1).
      *
+     * A chave inclui a `fonte` porque a mesma empresa pode ter lançamento em
+     * DOIS canais, atendidos por profissionais diferentes. Sem ela, o valor
+     * digitado para a Shopee seria aplicado também a quem computa 'adman' na
+     * mesma conta — contaminando a nota de um time com número do outro.
+     *
      * @param  array<int, int>  $companyIds
      * @return Collection<string, DesempenhoMetricaManual>  chave
-     *         "{company_id}:{metrica}:{Y-m}"
+     *         "{company_id}:{fonte}:{metrica}:{Y-m}"
      */
     public function carregarLancamentos(Carbon $mes, array $companyIds): Collection
     {
@@ -103,7 +108,7 @@ class ManualMetricOverrideService
             ->get();
 
         return $linhas->keyBy(
-            fn (DesempenhoMetricaManual $linha): string => "{$linha->company_id}:{$linha->metrica}:{$linha->mes_referencia->format('Y-m')}"
+            fn (DesempenhoMetricaManual $linha): string => "{$linha->company_id}:{$linha->fonte}:{$linha->metrica}:{$linha->mes_referencia->format('Y-m')}"
         );
     }
 
@@ -136,10 +141,13 @@ class ManualMetricOverrideService
         $mesAtual    = $mes->copy()->startOfMonth();
         $mesAnterior = $mesAtual->copy()->subMonthNoOverflow();
 
-        $chaveAtualFat = "{$company->id}:" . DesempenhoMetricaManual::METRICA_FATURAMENTO . ":{$mesAtual->format('Y-m')}";
-        $chaveAtualCmv = "{$company->id}:" . DesempenhoMetricaManual::METRICA_MARGEM_CMV . ":{$mesAtual->format('Y-m')}";
-        $chaveAntFat   = "{$company->id}:" . DesempenhoMetricaManual::METRICA_FATURAMENTO . ":{$mesAnterior->format('Y-m')}";
-        $chaveAntCmv   = "{$company->id}:" . DesempenhoMetricaManual::METRICA_MARGEM_CMV . ":{$mesAnterior->format('Y-m')}";
+        // A `$fonte` recebida é o canal que ESTE profissional está computando
+        // (sai dos vínculos da carteira dele). Casar a chave por ela é o que
+        // impede o lançamento de um canal de vazar para a nota do outro.
+        $chaveAtualFat = "{$company->id}:{$fonte}:" . DesempenhoMetricaManual::METRICA_FATURAMENTO . ":{$mesAtual->format('Y-m')}";
+        $chaveAtualCmv = "{$company->id}:{$fonte}:" . DesempenhoMetricaManual::METRICA_MARGEM_CMV . ":{$mesAtual->format('Y-m')}";
+        $chaveAntFat   = "{$company->id}:{$fonte}:" . DesempenhoMetricaManual::METRICA_FATURAMENTO . ":{$mesAnterior->format('Y-m')}";
+        $chaveAntCmv   = "{$company->id}:{$fonte}:" . DesempenhoMetricaManual::METRICA_MARGEM_CMV . ":{$mesAnterior->format('Y-m')}";
 
         $faturamentoAtualManual    = $lancamentos->get($chaveAtualFat);
         $cmvAtualManual            = $lancamentos->get($chaveAtualCmv);

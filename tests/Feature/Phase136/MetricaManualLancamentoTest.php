@@ -83,6 +83,30 @@ class MetricaManualLancamentoTest extends TestCase
         return compact('user', 'empresa');
     }
 
+    /**
+     * A MESMA empresa atendida por DOIS profissionais em canais diferentes —
+     * um no Mercado Livre, outro na Shopee. É a configuração real de 20
+     * empresas em produção, e a que motivou o canal entrar na identidade do
+     * lançamento manual.
+     *
+     * @return array{empresa: Company, userMl: User, userShopee: User}
+     */
+    private function montarCenarioDoisCanaisDoisTimes(): array
+    {
+        // COM cust_id: sem ele o desempate de D-10 jogaria o vínculo de
+        // performance para 'shopee' e os dois profissionais cairiam no mesmo
+        // canal — o cenário deixaria de testar o que se propõe.
+        $empresa = Company::factory()->create(['active' => true, 'adman_account_id' => 'CUST-DUPLO']);
+
+        $userMl     = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $userShopee = User::factory()->create(['role' => 'consultor', 'active' => true]);
+
+        $this->inserirPivot($empresa->id, $userMl->id, 'consultor', $this->criarServico(Servico::SETOR_PERFORMANCE, true));
+        $this->inserirPivot($empresa->id, $userShopee->id, 'consultor', $this->criarServico(Servico::SETOR_SHOPEE, true));
+
+        return compact('empresa', 'userMl', 'userShopee');
+    }
+
     /** Empresa com vínculo de setor SEM fonte financeira (Polos) — status sem_fonte, override nunca alcança. */
     private function montarCenarioSemFonte(): array
     {
@@ -100,10 +124,23 @@ class MetricaManualLancamentoTest extends TestCase
         ShopeeMetric::create(['company_id' => $companyId, 'reference_date' => $data, 'revenue' => $valor]);
     }
 
-    private function lancarManual(int $companyId, string $mesReferencia, string $metrica, float $valor): DesempenhoMetricaManual
-    {
+    /**
+     * `$fonte` default 'shopee' porque quase toda esta suíte roda sobre loja
+     * Shopee (leitura 100% local, sem HTTP). O cenário Adman passa a fonte
+     * explicitamente — e essa distinção importa: desde que o canal entrou na
+     * identidade da célula, um lançamento só é enxergado por quem computa
+     * AQUELE canal.
+     */
+    private function lancarManual(
+        int $companyId,
+        string $mesReferencia,
+        string $metrica,
+        float $valor,
+        string $fonte = DesempenhoMetricaManual::FONTE_SHOPEE
+    ): DesempenhoMetricaManual {
         return DesempenhoMetricaManual::create([
             'company_id'     => $companyId,
+            'fonte'          => $fonte,
             'mes_referencia' => $mesReferencia . '-01',
             'metrica'        => $metrica,
             'valor'          => $valor,
@@ -274,7 +311,16 @@ class MetricaManualLancamentoTest extends TestCase
         $this->fixarNps([$cenario['empresa']->id => 4.5]);
 
         // Sem cust_id, o dispatcher nunca toca a rede — devolve shape vazio.
-        $this->lancarManual($cenario['empresa']->id, '2026-07', DesempenhoMetricaManual::METRICA_FATURAMENTO, 90000);
+        // Fonte 'adman' EXPLÍCITA: esta empresa é Mercado Livre, e desde que o
+        // canal entrou na identidade da célula um lançamento de Shopee não
+        // seria enxergado aqui (é justamente a separação que se quer).
+        $this->lancarManual(
+            $cenario['empresa']->id,
+            '2026-07',
+            DesempenhoMetricaManual::METRICA_FATURAMENTO,
+            90000,
+            DesempenhoMetricaManual::FONTE_ADMAN
+        );
 
         $resultado = $this->service()->computeEmpresasScore($cenario['user'], Carbon::parse('2026-07-01'), $this->periodo('2026-07'));
         $linha = $resultado->get($cenario['empresa']->id);
@@ -282,6 +328,58 @@ class MetricaManualLancamentoTest extends TestCase
         $this->assertNotNull($linha);
         $this->assertSame(90000.0, $linha->faturamento_atual);
         $this->assertNull($linha->faturamento_anterior);
+    }
+
+    // ═══ Canal na identidade da célula — isolamento entre times ════════════
+
+    #[Test]
+    public function lancamento_de_um_canal_nao_vaza_para_a_nota_de_quem_cuida_do_outro(): void
+    {
+        $c = $this->montarCenarioDoisCanaisDoisTimes();
+        $this->fixarNps([$c['empresa']->id => 4.5]);
+
+        // Faturamento lançado à mão SÓ na Shopee.
+        $this->lancarManual(
+            $c['empresa']->id,
+            '2026-07',
+            DesempenhoMetricaManual::METRICA_FATURAMENTO,
+            777000,
+            DesempenhoMetricaManual::FONTE_SHOPEE
+        );
+
+        $mes     = Carbon::parse('2026-07-01');
+        $periodo = $this->periodo('2026-07');
+
+        $linhaShopee = $this->service()->computeEmpresasScore($c['userShopee'], $mes, $periodo)->get($c['empresa']->id);
+        $linhaMl     = $this->service()->computeEmpresasScore($c['userMl'], $mes, $periodo)->get($c['empresa']->id);
+
+        // Quem cuida da Shopee vê o número lançado.
+        $this->assertSame(777000.0, $linhaShopee->faturamento_atual);
+        $this->assertSame('manual', $linhaShopee->quality['faturamento_fonte']);
+
+        // Quem cuida do Mercado Livre NÃO vê — é a regressão que este teste
+        // existe para impedir. Antes do canal entrar na identidade da célula,
+        // o valor digitado para a Shopee entrava na nota deste profissional.
+        $this->assertNotSame(777000.0, $linhaMl->faturamento_atual);
+        $this->assertSame('auto', $linhaMl->quality['faturamento_fonte']);
+    }
+
+    #[Test]
+    public function os_dois_canais_da_mesma_empresa_aceitam_valores_diferentes_e_independentes(): void
+    {
+        $c = $this->montarCenarioDoisCanaisDoisTimes();
+        $this->fixarNps([$c['empresa']->id => 4.5]);
+
+        $this->lancarManual($c['empresa']->id, '2026-07', DesempenhoMetricaManual::METRICA_FATURAMENTO, 111000, DesempenhoMetricaManual::FONTE_SHOPEE);
+        $this->lancarManual($c['empresa']->id, '2026-07', DesempenhoMetricaManual::METRICA_FATURAMENTO, 222000, DesempenhoMetricaManual::FONTE_ADMAN);
+
+        $this->assertSame(2, DesempenhoMetricaManual::count(), 'Os dois canais coexistem — o unique inclui a fonte.');
+
+        $mes     = Carbon::parse('2026-07-01');
+        $periodo = $this->periodo('2026-07');
+
+        $this->assertSame(111000.0, $this->service()->computeEmpresasScore($c['userShopee'], $mes, $periodo)->get($c['empresa']->id)->faturamento_atual);
+        $this->assertSame(222000.0, $this->service()->computeEmpresasScore($c['userMl'], $mes, $periodo)->get($c['empresa']->id)->faturamento_atual);
     }
 
     // ═══ D-08 — margem derivada do CMV ═════════════════════════════════════
@@ -394,6 +492,7 @@ class MetricaManualLancamentoTest extends TestCase
         // existe no banco, mas não é isso que o reader devolve (T-136-08).
         DesempenhoMetricaManual::create([
             'company_id'     => $company->id,
+            'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => '2026-07-01',
             'metrica'        => DesempenhoMetricaManual::METRICA_MARGEM_CMV,
             'valor'          => 40000,
