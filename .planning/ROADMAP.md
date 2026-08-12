@@ -1824,7 +1824,7 @@ Plans:
 
 **Requirements**: TBD — a unidade de rastreabilidade desta fase sao os IDs de decisao do `136-CONTEXT.md` (D-01..D-12 + D-EXC-01), todos cobertos pelos planos abaixo.
 **Depends on:** Phase 135
-**Plans:** 5/7 plans executed
+**Plans:** 6/7 plans executed
 
 Plans:
 
@@ -1844,7 +1844,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3)*
 
-- [ ] 136-05-PLAN.md — Front: grade empresa x mes, selo discreto por metrica em `/performance/{user}` e item de menu (D-04) [wave 4]
+- [x] 136-05-PLAN.md — Front: grade empresa x mes, selo discreto por metrica em `/performance/{user}` e item de menu (D-04) [wave 4]
 
 **Wave 5** *(blocked on Wave 4)*
 
