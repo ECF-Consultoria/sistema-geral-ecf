@@ -30,6 +30,42 @@ Plan: 7 of 7 (01/02/03/04/05/06 concluidos; resta 136-07 — GATE HUMANO, autono
 Status: Executing Phase 136 — aguardando verificacao humana do 136-07
 Last activity: 2026-08-12 -- 136-05 executado (grade admin + selo por metrica + item de menu, D-04)
 
+## Posição paralela — Fase 135 (Onboarding Geral por Serviço) — AGUARDANDO GATE HUMANO
+
+**Este bloco é SEPARADO de propósito.** As Fases 135 e 136 rodaram concorrentemente, em sessões
+diferentes sobre o MESMO working tree. O `## Current Position` acima e os contadores do frontmatter
+pertencem ao rastreio da Fase 136 e **não foram tocados** — sobrescrevê-los corromperia a contagem
+de planos daquela sessão. Mesma disciplina que o `135-05-SUMMARY.md` já havia adotado.
+
+Phase: 135 (onboarding-geral-por-servico-motor-dirigido-por-template-com) — CÓDIGO COMPLETO
+Plan: 13 of 13 planejados — **12 executados e fechados**; resta o 135-13 Task 3 (`checkpoint:human-verify`, `gate="blocking"`)
+Status: Tasks 1 e 2 do 135-13 aprovadas e commitadas. **NADA DEPLOYADO.**
+Last activity: 2026-08-12 -- 135-13 Tasks 1-2 (gate de regressão do Polos APROVADO + mapa de evidência SC/D completo)
+
+**Estado verificado em 2026-08-12 (execução independente do orquestrador, não relato de agente):**
+- `tests/Feature/Phase135` — **162/162 verde**, 745 asserções.
+- Gate do Polos (D-02) — `git diff --name-only 735b8f7d..HEAD` não lista **nenhum** arquivo de Polos
+  nem de `implementacao`. As 10 falhas da suíte de Polos são as pré-existentes documentadas em
+  `.planning/learnings/painel-polos-status-e-meta.md` §2, sem relação com esta fase.
+- `onboarding:reavaliar-passos` agendado a cada 10 min (confirmado em `schedule:list`).
+- 4 páginas no manifest do Vite: `Painel`, `Detalhe`, `Templates/Index`, `Publico`.
+- CSRF: **uma** entrada nova, `onboarding-cliente/*` — prefixo distinto do `implementacao/*` do Polos,
+  que ficou byte-idêntico.
+
+**O que falta para fechar a fase:** as 5 verificações manuais do `135-GATE-FINAL.md` (seção
+"Verificações manuais"), que dependem de ambiente real — sonda de grant Adman com o caso do `429`,
+coleta assíncrona de acervo, render das 3 telas, conferência de escopo do Polos, e extração de
+medalha/Full contra conta ML real (esta última fecha a marca `[ASSUMIDO]` do Plano 06 e a OQ3 do
+`135-RESEARCH.md`).
+
+**Pendência conhecida, declarada e NÃO silenciosa:** o botão "Autorizar acesso" do portal do cliente
+(OAuth do `grant_sistema_ecf`) é **só UI** — não existe endpoint público de início de OAuth. Decisão
+de arquitetura adiada para fase futura, registrada no `135-11-SUMMARY.md`.
+
+⚠️ **Duas migrations de Onboarding não aplicadas em produção.** A fase inteira está apenas na `main`
+local. Um push da `main` cheia levaria a fase junto e o `migrate --force` criaria essas tabelas em
+prod antes do gate humano. Deploy só depois do gate, e com autorização explícita.
+
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
 Definida em 2026-07-27 a partir do plano canônico `plano-implementacao-desempenho-por-empresa.md`, via `/gsd:import` → `/gsd:new-milestone`. **7 fases (117-123), 38 requirements** em `.planning/REQUIREMENTS-v21.md`; fases anexadas ao fim do `ROADMAP.md`.
