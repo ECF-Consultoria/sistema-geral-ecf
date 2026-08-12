@@ -37,6 +37,7 @@ use App\Http\Controllers\NpsGrupoController;
 use App\Http\Controllers\NpsTemplateController;
 use App\Http\Controllers\NpsTemplateOptionController;
 use App\Http\Controllers\NpsTemplateQuestionController;
+use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\OnboardingTemplateController;
 use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PolosController;
@@ -817,6 +818,30 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/sistema/hubspot-line-items/{mapping}',  [HubspotLineItemMappingController::class, 'destroy'])->name('sistema.hubspot-line-items.destroy');
     });
 });
+
+// ─── Fase 135 Plano 09 — Painel operacional de Onboarding geral (D-01) ──────
+// Gate DEDICADO permission:core.onboarding — NÃO role:admin: o CRUD de
+// template é que é admin-only (D-04), mas a coordenação de onboarding
+// (confirmar responsável, concluir passo) provavelmente envolve
+// consultor/estrategista, não só admin (135-RESEARCH.md, Open Question 2;
+// decisão registrada no 135-09-PLAN.md). Admin passa pelo short-circuit em
+// User::hasPermission() (EnsurePermission) — não precisa da key explícita
+// em setor_permissoes.
+//
+// ATENÇÃO DE ROTEAMENTO: este bloco fica DEPOIS de '/onboarding/templates'
+// (Plano 08, grupo role:admin acima) — senão o segmento literal 'templates'
+// seria capturado como {onboarding} por GET /onboarding/{onboarding}.
+Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
+    ->group(function () {
+        Route::get('/onboarding', [OnboardingController::class, 'index'])
+            ->name('onboarding.painel.index');
+        Route::get('/onboarding/{onboarding}', [OnboardingController::class, 'show'])
+            ->name('onboarding.painel.show');
+        Route::post('/onboarding/{onboarding}/responsavel', [OnboardingController::class, 'confirmarResponsavel'])
+            ->name('onboarding.responsavel.confirmar');
+        Route::post('/onboarding/passos/{passo}/concluir', [OnboardingController::class, 'concluirPasso'])
+            ->name('onboarding.passos.concluir');
+    });
 
 // ─── Alertas Estratégicos (Phase 23) ────────────────────────────────────────
 // Consome /signals da API ECF Drive (Phase 22 wrapper). Caixa de entrada

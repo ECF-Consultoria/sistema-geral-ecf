@@ -43,6 +43,8 @@ class Permissions
     public const CORE_SUGADORES            = 'core.sugadores';
     /** Ver Sugadores de TODAS as empresas (não escopado por carteira). */
     public const CORE_SUGADORES_GLOBAL     = 'core.sugadores.global_view';
+    /** Painel operacional de onboarding por serviço (motor dirigido por template). */
+    public const CORE_ONBOARDING           = 'core.onboarding';
 
     public const MLB_DASHBOARD             = 'mlb.dashboard';
     public const MLB_PROJETOS              = 'mlb.projetos';
@@ -144,6 +146,7 @@ class Permissions
                 ['key' => self::CORE_GRANTS,           'label' => 'Grants',                   'description' => 'Grants do Mercado Livre'],
                 ['key' => self::CORE_SUGADORES,        'label' => 'Sugadores',                'description' => 'Detecção de adgroups/campanhas drenando investimento'],
                 ['key' => self::CORE_SUGADORES_GLOBAL, 'label' => 'Sugadores · Visão global', 'description' => 'Vê Sugadores de todas as empresas (não só carteira)'],
+                ['key' => self::CORE_ONBOARDING,       'label' => 'Onboarding',               'description' => 'Painel operacional de onboarding por serviço'],
             ],
             'Publicações (MLB)' => [
                 ['key' => self::MLB_DASHBOARD,     'label' => 'Pub · Dashboard',      'description' => 'Painel geral de Publicações'],
