@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: Executando (wave 4 de 5 — plano 06/07 completo)
-stopped_at: "Completed 127-06-PLAN.md (ContratoClicksignService::iniciarParaEmpresa — ponto unico — 210 testes verdes); proximo: 127-07"
-last_updated: "2026-08-12T13:52:00.000Z"
+status: ready_to_plan
+stopped_at: Phase 127 complete (7/7) — ready to discuss Phase 134
+last_updated: 2026-08-12T15:18:45.369Z
 last_activity: 2026-08-12
 progress:
   total_phases: 12
   completed_phases: 4
   total_plans: 40
-  completed_plans: 37
-  percent: 34
+  completed_plans: 234
+  percent: 33
 ---
 
 # Project State
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 127 — service administrativo de contrato — orquestração (v22.0)
+**Current focus:** Phase 134 — meus anuncios saude analitica do anuncio publicado
 
 ## Current Position
 
-Phase: 127
-Plan: 06 executado (127-07 a seguir)
-Status: Executando (wave 4 de 5 — plano 06/07 completo)
+Phase: 134
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-08-12
 
 **Plano 127-06 executado em 2026-08-12** (commits `36109799`/`6a9c226b`): o **ponto único** que o
@@ -187,7 +187,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 
 **Velocity:**
 
-- Total plans completed: 88
+- Total plans completed: 95
 - Average duration: ~15 min/plan
 - Total execution time: ~1.5 hours
 
@@ -218,6 +218,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | 124 | 5 | - | - |
 | 125 | 3 | - | - |
 | 126 | 12 | - | - |
+| 127 | 7 | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
