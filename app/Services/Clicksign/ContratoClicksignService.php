@@ -59,6 +59,29 @@ class ContratoClicksignService
             return ['ok' => false, 'faltando' => $faltando, 'criados' => [], 'pulados' => []];
         }
 
+        // 1b. Configuração da PRÓPRIA ECF (D-08) — achado no gate do plano
+        // 127-07 contra o sandbox real. Sem esta guarda o fluxo criava o
+        // envelope e o documento e só quebrava no 1º signatário
+        // (`email - não pode ficar em branco`): 3 chamadas queimadas da janela
+        // de 20/min mais o rollback, por um dado sabível SEM nenhuma
+        // requisição. É o que o Goal da fase proíbe literalmente.
+        //
+        // Devolvido em chave PRÓPRIA (`configuracao`), não em `faltando`:
+        // pendência de empresa é do Comercial resolver na tela da Fase 131;
+        // isto é `.env`, que só um admin resolve. Misturar mandaria o
+        // Comercial caçar um campo que não é dele.
+        $problemasDeConfiguracao = $this->dadosMinimos->faltantesDaConfiguracaoEcf();
+
+        if ($problemasDeConfiguracao !== []) {
+            return [
+                'ok'          => false,
+                'faltando'    => [],
+                'configuracao' => $problemasDeConfiguracao,
+                'criados'     => [],
+                'pulados'     => [],
+            ];
+        }
+
         // 2. Serviços ativos — a checagem acima já garante que não está vazia.
         $contratosServico = $company->contratosServico()->where('ativo', true)->with('servico')->get();
 

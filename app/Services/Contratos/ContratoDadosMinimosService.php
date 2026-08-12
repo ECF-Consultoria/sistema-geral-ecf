@@ -121,6 +121,56 @@ class ContratoDadosMinimosService
     }
 
     /**
+     * Os signatários FIXOS da ECF (D-08) estão configurados?
+     *
+     * ⚠️ **Achado no gate do plano 127-07, contra o sandbox real.** Sem isto, a
+     * checagem validava só os dados da EMPRESA e deixava passar um contrato que
+     * quebra no meio da montagem: o fluxo criava o envelope, criava o documento,
+     * e **só então** a API recusava o primeiro signatário com
+     * `email - não pode ficar em branco`. Três chamadas queimadas da janela
+     * medida de 20/min, mais o rollback — por um dado que já se sabia estar
+     * incompleto ANTES de qualquer requisição.
+     *
+     * É exatamente o que o Goal da fase proíbe. `config('services.clicksign.
+     * signatarios_ecf')` vem do `.env` e nasce com as 3 entradas presentes mas
+     * **vazias** (`.env.example` traz as chaves sem valor), então o caso não é
+     * hipotético: é o estado padrão de qualquer ambiente recém-configurado.
+     *
+     * Separado de `faltantes()` de propósito: aquilo é pendência **da empresa**,
+     * que o Comercial resolve na tela da Fase 131; isto é configuração **da
+     * ECF**, que só um admin resolve no `.env`. Misturar os dois mandaria o
+     * Comercial caçar um campo que não é dele.
+     *
+     * @return array<int, string>  rótulos do que falta; vazio = configuração ok
+     */
+    public function faltantesDaConfiguracaoEcf(): array
+    {
+        $signatarios = config('services.clicksign.signatarios_ecf', []);
+
+        if (! is_array($signatarios) || $signatarios === []) {
+            return ['Signatários fixos da ECF (CLICKSIGN_SIGNATARIO_*) não configurados'];
+        }
+
+        $problemas = [];
+
+        foreach ($signatarios as $i => $s) {
+            $papel = $s['papel'] ?? "#{$i}";
+
+            if (blank($s['nome'] ?? null)) {
+                $problemas[] = "Nome do signatário da ECF ({$papel}) não configurado";
+            }
+
+            if (blank($s['email'] ?? null)) {
+                $problemas[] = "E-mail do signatário da ECF ({$papel}) não configurado";
+            } elseif (filter_var($s['email'], FILTER_VALIDATE_EMAIL) === false) {
+                $problemas[] = "E-mail do signatário da ECF ({$papel}) tem formato inválido";
+            }
+        }
+
+        return $problemas;
+    }
+
+    /**
      * @return array{campo: string, rotulo: string, motivo: string, servico_id: ?int}
      */
     private function item(string $campo, string $rotulo, string $motivo, ?int $servicoId = null): array

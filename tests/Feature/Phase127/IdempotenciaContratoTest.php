@@ -33,6 +33,16 @@ class IdempotenciaContratoTest extends TestCase
     {
         parent::setUp();
 
+        // Signatarios fixos da ECF (D-08) configurados: sem isto a guarda de
+        // configuracao acrescentada no gate do plano 127-07 bloqueia ANTES de
+        // qualquer chamada — e o bloqueio e o comportamento correto, provado em
+        // ConfiguracaoEcfBloqueiaTest. Aqui queremos o caminho feliz.
+        config(["services.clicksign.signatarios_ecf" => [
+            ["nome" => "Socio Um", "email" => "socio1@example.com", "papel" => "contratada"],
+            ["nome" => "Socio Dois", "email" => "socio2@example.com", "papel" => "contratada"],
+            ["nome" => "Comercial", "email" => "comercial@example.com", "papel" => "testemunha"],
+        ]]);
+
         $this->service = new ContratoClicksignService(new ContratoDadosMinimosService());
 
         Http::fake();
