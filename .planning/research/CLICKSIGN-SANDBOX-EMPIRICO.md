@@ -474,6 +474,58 @@ não depender de terceiro para guardar prova jurídica.
 
 ---
 
+## 11. Quarta sessão — gate da Fase 127, 2026-08-12
+
+### 11.1. Prazo definido na CRIAÇÃO sobrevive à ativação feita pela INTERFACE — ✅ MEDIDO
+
+Fechava a última dúvida da D-03. Envelope montado por código com `deadline_at` de 10 dias e
+`remind_interval: 7`, depois **ativado por uma pessoa na interface web** (o gesto que a D-02 delega
+ao Comercial):
+
+```
+antes  (criação por código):  status=draft   deadline_at=2026-08-22T10:55:31-03:00  remind_interval=7
+depois (ativação pela UI):    status=running deadline_at=2026-08-22T10:55:31-03:00  remind_interval=7
+```
+
+**Idêntico ao segundo.** A ativação humana **não** sobrescreve pelo default de 30/3. Consequência:
+não é preciso reaplicar prazo na ativação, e quem lê `prazo_dias` do nosso banco está lendo o prazo
+real.
+
+Bônus observado na tela de envio: os valores chegam **pré-preenchidos** para quem envia, e a
+Clicksign **deriva** a quantidade de lembretes ("3 lembretes por destinatário" para 10 dias com
+intervalo 7) — só o intervalo é controlável.
+
+⚠️ **NÃO MEDIDO:** a tela avisa *"Suas configurações serão salvas automaticamente para o próximo
+uso"*. Se um operador alterar o prazo à mão uma vez, isso pode virar o padrão da tela e sobrescrever
+o que o sistema mandou no documento seguinte.
+
+### 11.2. ⚠️ RASCUNHO EXPIRA EM 7 DIAS — colide com o desenho da Fase 127
+
+A tela de Rascunhos avisa, em texto: **"Os rascunhos ficam disponíveis por 7 dias."**
+
+Isso **não aparece em nenhuma resposta de API** — só foi visto porque um humano abriu a ferramenta.
+
+Por que importa: a **D-02 da Fase 127** faz o sistema montar o envelope e **parar no rascunho**,
+deixando o envio para o Comercial. Se ele demorar mais de 7 dias, a Clicksign apaga o rascunho e o
+nosso banco fica com `status = rascunho` apontando para um `clicksign_envelope_id` que não existe
+mais. Contrato parado esperando revisão é justamente o caso comum que a D-02 cria.
+
+**Entrada obrigatória da Fase 130** (alerta de contrato preso / reconciliação):
+- alertar **antes** dos 7 dias;
+- distinguir "rascunho vivo" de "rascunho apagado pela Clicksign" — sintoma provável é
+  `GET /envelopes/{id}` → 404, o mesmo comportamento já medido no descarte (§9.2).
+
+⚠️ **NÃO MEDIDO:** se os 7 dias contam da criação ou da última atualização, e o que acontece
+exatamente na expiração (some da lista? vira `canceled`?).
+
+### 11.3. A interface chama de "documento" o que a API chama de "envelope"
+
+Não existe menu "Envelopes" na interface. Envelope em `draft` aparece em **Rascunhos**, e a lista
+mostra o **nome do arquivo** (`contrato-1.docx`), **não** o `name` do envelope — este só aparece
+depois que o documento sai do rascunho. Custa uma busca frustrada a quem for guiar alguém pela tela.
+
+---
+
 ## Dados do teste (sandbox, descartável)
 
 Identificadores e IP **anonimizados** — ver aviso abaixo. Os valores reais estão no envelope de

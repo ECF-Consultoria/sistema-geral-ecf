@@ -69,17 +69,57 @@ inclusive, antes do cutover da Fase 132.
 
 ---
 
-## GATE 1 — o prazo sobrevive à ativação pela interface? — **AGUARDANDO HUMANO**
+## GATE 1 — o prazo sobrevive à ativação pela interface? — ✅ **MEDIDO: SIM**
 
-O que já se sabe: o prazo de 10 dias e o lembrete de 7 foram **aceitos na criação** e estão gravados
-no envelope. O que **ninguém mediu** é se ativar pela interface web — que é o gesto que o Comercial
-fará por causa da D-02 — **preserva** esses valores ou os sobrescreve pelo padrão de 30/3.
+O usuário abriu o rascunho na interface do sandbox, conferiu o prazo e clicou em **Enviar** em
+12/08/2026. Reconsulta pela API imediatamente depois:
 
-Status: **NÃO MEDIDO**. Ver instruções ao usuário no fim deste arquivo.
+| Campo | Antes (criação, por código) | Depois (ativação, pela interface) | Sobreviveu? |
+|---|---|---|---|
+| `status` | `draft` | `running` | — (esperado) |
+| `deadline_at` | `2026-08-22T10:55:31.000-03:00` | `2026-08-22T10:55:31.000-03:00` | ✅ **idêntico ao segundo** |
+| `remind_interval` | `7` | `7` | ✅ |
+| `auto_close` | `true` | `true` | ✅ |
 
-**Consequência se não sobreviver:** o prazo customizado do DADOS-06 fica sem garantia depois da
-ativação humana, e a Fase 130 (alerta de contrato preso) calcularia em cima de um prazo que não é o
-real. Seria achado bloqueante para as Fases 129/131, não detalhe.
+**A D-03 está garantida ponta a ponta.** Este era o risco de a D-02 (parar no rascunho) e a D-03
+(prazo customizado) se anularem — definir prazo na criação e deixar um humano ativar **não** perde o
+valor. Não é preciso reaplicar prazo na ativação, e a Fase 130 pode confiar em `prazo_dias` do banco
+como o prazo real.
+
+### O que a tela de envio mostrou, e vale para as Fases 130/131
+
+Print conferido antes do envio: os valores definidos por código chegam **pré-preenchidos** na tela
+que o Comercial usa ("Data limite: Sáb, 22 de ago de 2026 às 10:55" / "Enviar lembretes: A cada 7
+dias"). Ele não precisa saber que existe prazo customizado — já está lá.
+
+Dois achados colaterais da mesma tela:
+
+1. **"3 lembretes por destinatário"** — a Clicksign *deriva* a quantidade de lembretes do intervalo
+   e do prazo. Não é um número controlável direto; só `remind_interval` é.
+2. ⚠️ **"Suas configurações serão salvas automaticamente para o próximo uso"** — a tela memoriza a
+   preferência de quem enviou. Se alguém alterar o prazo manualmente uma vez, isso pode virar o
+   padrão da tela no próximo documento e **sobrescrever** o que o sistema mandou. Não foi medido, e
+   é ponto de atenção para a Fase 131 (que expõe o botão de gerar).
+
+### ⚠️ Achado NOVO e sério: rascunho expira em 7 dias
+
+A tela de Rascunhos avisa: **"Os rascunhos ficam disponíveis por 7 dias."**
+
+Isso **colide com a D-02**. Pela D-02 o sistema monta o contrato e para no rascunho, e quem envia é
+o Comercial. Se ele demorar mais de 7 dias, **a Clicksign apaga o rascunho** — e o nosso banco
+continuaria com `status = rascunho` e um `clicksign_envelope_id` apontando para um envelope que não
+existe mais.
+
+Não é caso de borda: contrato parado esperando revisão é exatamente o caso comum que a D-02 cria.
+
+**Entrada obrigatória para a Fase 130** (rede de segurança / alerta de contrato preso):
+- o alerta precisa disparar **antes** dos 7 dias, não depois;
+- a reconciliação precisa distinguir "rascunho vivo" de "rascunho que a Clicksign já apagou" — o
+  sintoma provável é `GET /envelopes/{id}` devolvendo 404, como já medido no descarte (§9.2 do
+  empírico).
+
+**NÃO MEDIDO:** se os 7 dias contam da criação ou da última atualização, e qual o comportamento
+exato na expiração (some da lista? vira `canceled`?). Medir na Fase 130, que é quem depende disso.
 
 ---
 
