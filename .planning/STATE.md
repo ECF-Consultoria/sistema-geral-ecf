@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 136-06-PLAN.md
-last_updated: "2026-08-12T13:36:00.000Z"
-last_activity: 2026-08-12 -- 136-06 executado (relatorio read-only de impacto do desempate, D-11)
+stopped_at: Completed 136-05-PLAN.md
+last_updated: "2026-08-12T14:20:00.000Z"
+last_activity: 2026-08-12 -- 136-05 executado (grade admin + selo por metrica + item de menu, D-04)
 progress:
   total_phases: 13
   completed_phases: 1
   total_plans: 35
-  completed_plans: 21
+  completed_plans: 22
   percent: 9
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 136 (m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api-) — EXECUTING
-Plan: 5 of 7 (01/02/03/04/06 concluidos; proximo 136-05, a tela Desempenho/MetricasManuais.jsx)
-Status: Executing Phase 136
-Last activity: 2026-08-12 -- 136-06 executado (relatorio read-only de impacto do desempate, D-11)
+Plan: 7 of 7 (01/02/03/04/05/06 concluidos; resta 136-07 — GATE HUMANO, autonomous: false)
+Status: Executing Phase 136 — aguardando verificacao humana do 136-07
+Last activity: 2026-08-12 -- 136-05 executado (grade admin + selo por metrica + item de menu, D-04)
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
