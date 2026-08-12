@@ -36,11 +36,15 @@ class Servico extends Model
         // Fase 127-04 (D-21) — sem isto o mass assignment do modelo .docx
         // por serviço falharia EM SILÊNCIO.
         'clicksign_template_id',
+        // Fase 128-01 (D-03 / FLUXO-08) — a tela da Fase 131 vai gravar
+        // nesta coluna; sem `fillable` o mass assignment falharia em silêncio.
+        'exige_contrato',
     ];
 
     protected $casts = [
-        'valor_padrao' => 'decimal:2',
-        'ativo'        => 'boolean',
+        'valor_padrao'    => 'decimal:2',
+        'ativo'           => 'boolean',
+        'exige_contrato'  => 'boolean',
     ];
 
     // ─── Constants de tipo de cobrança ──────────────────────────────────────
@@ -102,7 +106,9 @@ class Servico extends Model
             // Fase 127-04 (D-21) — trocar o modelo .docx de um serviço é
             // mudança auditável (T-127-10): decide QUAL contrato o cliente
             // assina.
-            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor', 'clicksign_template_id'])
+            // Fase 128-01 (T-128-01) — trocar exige_contrato é mudança
+            // auditável: decide se o serviço entra no gate administrativo.
+            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor', 'clicksign_template_id', 'exige_contrato'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match ($eventName) {
@@ -137,6 +143,16 @@ class Servico extends Model
     public function scopePorSetor($query, string $setor)
     {
         return $query->where('setor', $setor);
+    }
+
+    /**
+     * Scope: apenas serviços que exigem contrato (Fase 128-01, D-03).
+     *
+     * Exemplo: Servico::query()->exigeContrato()->pluck('nome')
+     */
+    public function scopeExigeContrato($query)
+    {
+        return $query->where('exige_contrato', true);
     }
 
     /**
@@ -189,5 +205,21 @@ class Servico extends Model
         $padrao = config('services.clicksign.template_id');
 
         return filled($padrao) ? $padrao : null;
+    }
+
+    /**
+     * Fase 128-01 (D-03 / FLUXO-08) — este serviço exige contrato assinado
+     * antes de liberar o operacional?
+     *
+     * Este é o ÚNICO ponto de leitura autorizado. Nenhum `if ($servico->nome
+     * === 'Polos')` (ou qualquer outro nome) em lugar nenhum do código —
+     * quem decide é o dado (`servicos.exige_contrato`), não o nome. A
+     * migration `2026_08_13_100001_add_exige_contrato_to_servicos_table`
+     * já nasce com Polos isento e os demais serviços exigindo (default
+     * seguro), sem precisar enumerar nomes fora dela.
+     */
+    public function exigeContrato(): bool
+    {
+        return (bool) $this->exige_contrato;
     }
 }
