@@ -1824,7 +1824,7 @@ Plans:
 
 **Requirements**: TBD — a unidade de rastreabilidade desta fase sao os IDs de decisao do `136-CONTEXT.md` (D-01..D-12 + D-EXC-01), todos cobertos pelos planos abaixo.
 **Depends on:** Phase 135
-**Plans:** 4/7 plans executed
+**Plans:** 5/7 plans executed
 
 Plans:
 
@@ -1836,7 +1836,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1)*
 
 - [x] 136-03-PLAN.md — `ManualMetricOverrideService` + fiacao no motor de nota + liberacao da margem Shopee com CMV manual + rastro no snapshot (D-01..D-08, D-03, D-EXC-01) [wave 2]
-- [ ] 136-06-PLAN.md — Comando read-only `desempenho:relatorio-impacto-fonte` (D-11) [wave 2]
+- [x] 136-06-PLAN.md — Comando read-only `desempenho:relatorio-impacto-fonte` (D-11) [wave 2]
 
 **Wave 3** *(blocked on Wave 2)*
 

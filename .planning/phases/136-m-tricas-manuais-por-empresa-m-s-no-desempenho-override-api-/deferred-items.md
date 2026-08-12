@@ -71,3 +71,25 @@ regra corrigida:
   (`test_ml_e_shopee_mesma_empresa_nao_duplica_financeiro`)
 - `tests/Feature/V16/CarteirasConsolidadasContextoTest.php` — 1 método
   (`test_card_ml_e_shopee_mesma_empresa_nao_duplica_financeiro`)
+
+---
+
+## Plano 06 — limitação declarada de cobertura do relatório de impacto
+
+`desempenho:relatorio-impacto-fonte` percorre apenas vínculos com
+`company_users.servico_id` **preenchido** (recorte declarado no `<interfaces>` do
+`136-06-PLAN.md`). O ramo legado de `CarteiraContextService` — `servico_id NULL` resolvido
+como `performance` quando a empresa tem contrato performance ativo — fica de fora.
+
+Hoje isso é **inócuo**: a contagem de produção registrada no docblock do próprio
+`CarteiraContextService` (2026-07-16) mostra que, dos 268 vínculos, os 7 com `servico_id NULL`
+não pertencem a nenhuma empresa com contrato `performance` ou `shopee` ativo — nenhum deles
+consegue produzir empresa com duas fontes concorrentes, que é a única situação em que o
+desempate muda de resultado.
+
+**Quando isso vira problema:** se alguém voltar a gravar `company_users` sem `servico_id` para
+empresa que também tenha vínculo Shopee. Nesse cenário o relatório subnotifica: a empresa
+apareceria com fonte única `shopee` e nunca entraria em `fonte_divergente`. Reproduzir a
+resolução legada exigiria duplicar a segunda query de `CarteiraContextService` dentro do
+comando — o plano deliberadamente evitou essa duplicação. Não corrigido; registrado para quem
+reabrir o assunto.
