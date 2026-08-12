@@ -124,6 +124,37 @@ class GatilhoContratoPendenciaTest extends TestCase
         Http::assertNothingSent();
     }
 
+    // ─── Fix pós-verificação: zero ContratoServico ativo NÃO é isenção ───
+
+    /**
+     * `Collection::contains()` numa coleção vazia devolve `false` — a checagem
+     * original de isenção classificava "empresa sem nenhum ContratoServico
+     * ativo" como `isento`, igual a "só Polos". São casos diferentes: zero
+     * serviço tem que cair no 1º portão e virar `aguardando_comercial` com a
+     * pendência universal `sem_servico` (D-01), nunca `isento`. Achado
+     * WARNING da revisão/verificação da Fase 128 (`GatilhoContratoAdministrativoService::avaliar()`).
+     */
+    #[Test]
+    public function empresa_sem_nenhum_contrato_servico_ativo_fica_aguardando_comercial_nunca_isenta(): void
+    {
+        Http::fake();
+        Bus::fake();
+        $company = $this->companyCompleta();
+        // Nenhum ContratoServico criado para esta empresa.
+
+        $avaliacao = $this->service()->avaliar($company->fresh());
+
+        $this->assertSame('aguardando_comercial', $avaliacao['status']);
+        $this->assertContains('sem_servico', $avaliacao['pendencias']);
+
+        $resultado = $this->service()->dispararSeElegivel($company->fresh());
+
+        $this->assertSame('aguardando_comercial', $resultado['status']);
+        $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->count());
+        Http::assertNothingSent();
+        Bus::assertNothingDispatched();
+    }
+
     // ─── SC0: Gestão + Polos gera contrato só para Gestão ───
 
     #[Test]

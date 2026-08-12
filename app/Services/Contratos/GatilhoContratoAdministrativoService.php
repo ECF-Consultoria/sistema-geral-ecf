@@ -62,14 +62,25 @@ class GatilhoContratoAdministrativoService
         // 1. Isenção (D-03/SC0). Empresa cujos serviços ativos são TODOS
         // isentos (ex.: só Polos) morre aqui: não é avaliada, não é
         // pendente, não aparece em lugar nenhum.
+        //
+        // Fix pós-verificação (achado WARNING da revisão/verificação da
+        // Fase 128): `Collection::contains()` numa coleção VAZIA devolve
+        // `false`, então a checagem original classificava "zero contrato
+        // ativo" como isento — igual a "só Polos". Não é o mesmo caso: zero
+        // serviço é `sem_servico` (pendência universal da D-01), e precisa
+        // cair no 1º portão (`calcularUniversais()`) como qualquer outra
+        // empresa sem dado, não ser tratada como isenção. Só existe isenção
+        // quando HÁ contrato ativo e nenhum deles exige contrato.
         $contratosServico = $company->contratosServico()->where('ativo', true)->with('servico')->get();
 
-        $existeServicoQueExigeContrato = $contratosServico->contains(
-            fn ($cs) => optional($cs->servico)?->exigeContrato() === true
-        );
+        if ($contratosServico->isNotEmpty()) {
+            $existeServicoQueExigeContrato = $contratosServico->contains(
+                fn ($cs) => optional($cs->servico)?->exigeContrato() === true
+            );
 
-        if (!$existeServicoQueExigeContrato) {
-            return ['status' => 'isento', 'pendencias' => [], 'motivo' => 'nenhum servico exige contrato'];
+            if (!$existeServicoQueExigeContrato) {
+                return ['status' => 'isento', 'pendencias' => [], 'motivo' => 'nenhum servico exige contrato'];
+            }
         }
 
         // 2. Reentrância (D-04): "o ideal é nem chegar lá" — checagem de
