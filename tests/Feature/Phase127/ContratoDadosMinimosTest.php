@@ -212,11 +212,16 @@ class ContratoDadosMinimosTest extends TestCase
     #[Test]
     public function contrato_ativo_sem_data_contratacao_reprova_com_servico_id(): void
     {
+        // A coluna `data_contratacao` é NOT NULL no schema (migration
+        // 2026_05_26_120002) — string vazia é o jeito de representar "sem
+        // data preenchida" sem violar a constraint do banco; representa dado
+        // legado que nunca deveria ter existido, mas a checagem precisa
+        // pegar mesmo assim.
         $company = $this->companyCompleta();
         $servicoId = $this->servicoId();
-        $contrato = $this->contratoAtivo($company, [
+        $this->contratoAtivo($company, [
             'servico_id'       => $servicoId,
-            'data_contratacao' => null,
+            'data_contratacao' => '',
         ]);
 
         $item = collect($this->service->faltantes($company))->firstWhere('campo', 'data_contratacao');

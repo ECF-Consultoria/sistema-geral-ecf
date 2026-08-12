@@ -1,0 +1,135 @@
+<?php
+
+namespace App\Services\Contratos;
+
+use App\Models\Company;
+
+/**
+ * ContratoDadosMinimosService — a recusa que acontece ANTES de qualquer
+ * chamada HTTP à Clicksign (Success Criteria 1 do ROADMAP, REDE-05).
+ *
+ * Service puro, sem I/O, sem cache, sem construtor com dependência externa —
+ * chamável de qualquer contexto: o orquestrador desta Fase 127 e, a partir
+ * da Fase 131, a tela do Administrativo (que exibe `faltantes()` para o
+ * usuário preencher os campos que faltam).
+ *
+ * ⚠️ NÃO reusa `App\Services\Comercial\PendenciasComerciaisService::calcular()`
+ * (Q5 da pesquisa da Fase 127, confirmado lendo o código): aquele service é
+ * gated por `is_origem_hubspot` — retorna array vazio para qualquer empresa
+ * cadastrada à mão — e das 7 pendências que calcula, nenhuma olha
+ * `email_cliente` nem `cnpj`. Reusá-lo abriria uma brecha onde metade das
+ * empresas passaria pela checagem sem nenhum bloqueio. Aqui as 5 regras
+ * abaixo rodam SEMPRE, independente da origem da empresa.
+ *
+ * ⚠️ Os 3 campos que saem como "A DEFINIR" no documento (`endereco`,
+ * `dia_vencimento`, `data_primeira_parcela`) NÃO existem no banco e são
+ * placeholder por decisão do usuário (checkpoint do plano 126-06,
+ * documentado na <tensao_de_dados> do 127-CONTEXT.md). NÃO adicionar
+ * checagem para eles aqui — isso travaria toda geração de contrato.
+ *
+ * ⚠️ Contrato de retorno é PÚBLICO: a Fase 131 consome `faltantes()` para
+ * montar a tela de pendências. Mudar as chaves (`campo`, `rotulo`, `motivo`,
+ * `servico_id`) ou os valores possíveis de `motivo` (`ausente`|`formato`)
+ * quebra aquela tela.
+ */
+class ContratoDadosMinimosService
+{
+    /**
+     * Lista os campos que faltam para a empresa estar pronta para gerar
+     * contrato. Lista vazia = pronta.
+     *
+     * As regras rodam SEMPRE, sem gate por `is_origem_hubspot` — o dado que
+     * falta é o mesmo problema em qualquer origem de empresa.
+     *
+     * @return array<int, array{campo: string, rotulo: string, motivo: string, servico_id: ?int}>
+     */
+    public function faltantes(Company $company): array
+    {
+        $itens = [];
+
+        // 1. E-mail do cliente — presença e formato.
+        if (blank($company->email_cliente)) {
+            $itens[] = $this->item('email_cliente', 'E-mail do cliente', 'ausente');
+        } elseif (filter_var($company->email_cliente, FILTER_VALIDATE_EMAIL) === false) {
+            $itens[] = $this->item('email_cliente', 'E-mail do cliente', 'formato');
+        }
+
+        // 2. CNPJ — presença e formato (14 dígitos após remover pontuação).
+        // ⚠️ Presença e formato, NÃO dígito verificador — é literalmente o
+        // que o REDE-05 pede ("presença e formato"), e o projeto não tem
+        // helper de validação de dígito verificador de CNPJ hoje. Não é
+        // esquecimento: é escopo deliberado desta checagem.
+        if (blank($company->cnpj)) {
+            $itens[] = $this->item('cnpj', 'CNPJ', 'ausente');
+        } elseif (strlen(preg_replace('/\D/', '', (string) $company->cnpj)) !== 14) {
+            $itens[] = $this->item('cnpj', 'CNPJ', 'formato');
+        }
+
+        // 3. Nome de quem assina pela empresa.
+        if (blank($company->nome_contato)) {
+            $itens[] = $this->item('nome_contato', 'Nome de quem assina pela empresa', 'ausente');
+        }
+
+        // 4. Nenhum ContratoServico ativo — sem serviço não há o que
+        // contratar (D-06 da Fase 127: um contrato é sempre de UM serviço).
+        $contratosAtivos = $company->contratosServico->where('ativo', true);
+        if ($contratosAtivos->isEmpty()) {
+            $itens[] = $this->item('contratos_servico', 'Serviço contratado', 'ausente');
+
+            return $itens;
+        }
+
+        // 5. Para cada ContratoServico ativo: data_contratacao presente e
+        // parseável. REDE-05 pede literalmente "datas do contrato — presença
+        // e formato".
+        //
+        // ⚠️ data_vencimento vazia NÃO reprova — contrato por prazo
+        // indeterminado é caso legítimo, não pendência.
+        foreach ($contratosAtivos as $contrato) {
+            $nomeServico = optional($contrato->servico)->nome ?? "serviço #{$contrato->servico_id}";
+            $rotulo = "Data de início do contrato — {$nomeServico}";
+
+            // ⚠️ Lê o atributo CRU (`getRawOriginal`), não o acessor com cast
+            // `date:Y-m-d`. A coluna é NOT NULL no schema (migration
+            // 2026_05_26_120002), então uma string vazia é o único jeito de
+            // representar "sem data" em dado legado — e o cast `date` do
+            // Eloquent interpretaria '' como "agora" via Carbon::parse(''),
+            // mascarando exatamente o caso que esta regra existe para pegar.
+            $raw = $contrato->getRawOriginal('data_contratacao');
+
+            if (blank($raw)) {
+                $itens[] = $this->item('data_contratacao', $rotulo, 'ausente', $contrato->servico_id);
+                continue;
+            }
+
+            try {
+                \Illuminate\Support\Carbon::parse($raw);
+            } catch (\Throwable) {
+                $itens[] = $this->item('data_contratacao', $rotulo, 'formato', $contrato->servico_id);
+            }
+        }
+
+        return $itens;
+    }
+
+    /**
+     * Atalho para a tela/orquestrador: true quando não há nada faltando.
+     */
+    public function estaPronta(Company $company): bool
+    {
+        return $this->faltantes($company) === [];
+    }
+
+    /**
+     * @return array{campo: string, rotulo: string, motivo: string, servico_id: ?int}
+     */
+    private function item(string $campo, string $rotulo, string $motivo, ?int $servicoId = null): array
+    {
+        return [
+            'campo'      => $campo,
+            'rotulo'     => $rotulo,
+            'motivo'     => $motivo,
+            'servico_id' => $servicoId,
+        ];
+    }
+}
