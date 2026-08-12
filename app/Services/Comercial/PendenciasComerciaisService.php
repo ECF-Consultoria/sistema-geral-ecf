@@ -146,6 +146,59 @@ class PendenciasComerciaisService
     }
 
     /**
+     * calcularUniversais() — Fase 128 (D-01, REDE-06): as 4 pendências que
+     * fazem sentido para QUALQUER empresa, inclusive cadastro manual sem
+     * nenhum HubspotEvento. Existe como método SEPARADO de `calcular()`
+     * (em vez de uma flag) deliberadamente: mantém o comportamento da
+     * listagem do Comercial byte-a-byte igual, já provado pelos testes de
+     * Phase37/Phase114 que travam a D-01. Este método é o 1º portão do
+     * gate administrativo (plano 03) — sem ele o gate não tem o que
+     * consultar para empresa fora do fluxo HubSpot.
+     *
+     * Tabela do que vale aqui (universais) vs. só na listagem (hubspot-only):
+     * | Pendência                 | calcularUniversais() | calcular() |
+     * |----------------------------|:---------------------:|:----------:|
+     * | sem_servico                | sim                    | sim (se HubSpot) |
+     * | sem_valor                  | sim                    | sim (se HubSpot) |
+     * | sem_setor                  | sim                    | sim (se HubSpot) |
+     * | sem_contato                | sim                    | sim (se HubSpot) |
+     * | servico_nao_reconhecido    | não                    | sim (se HubSpot) |
+     * | valor_revisar              | não                    | sim (se HubSpot) |
+     * | possivel_duplicidade       | não                    | sim (se HubSpot) |
+     *
+     * ⚠️ A isenção de Polos (`Servico::exigeContrato()`, plano 128-01) NÃO
+     * entra aqui — este método não sabe nada sobre `exige_contrato`. Quem
+     * filtra serviço isento é o orquestrador do gate administrativo
+     * (plano 128-03). Misturar os dois conceitos aqui quebraria a
+     * listagem do Comercial, que precisa continuar vendo Polos.
+     *
+     * @return array<int, string>  Só as 4 pendências universais, nunca as 3 hubspot-only
+     */
+    public function calcularUniversais(Company $c): array
+    {
+        $pendencias = [];
+        $contratosAtivos = $c->contratosServico->where('ativo', true);
+
+        if (($slug = $this->pendenciaSemServico($contratosAtivos)) !== null) {
+            $pendencias[] = $slug;
+        }
+
+        if (($slug = $this->pendenciaSemValor($contratosAtivos)) !== null) {
+            $pendencias[] = $slug;
+        }
+
+        if (($slug = $this->pendenciaSemSetor($contratosAtivos)) !== null) {
+            $pendencias[] = $slug;
+        }
+
+        if (($slug = $this->pendenciaSemContato($c)) !== null) {
+            $pendencias[] = $slug;
+        }
+
+        return $pendencias;
+    }
+
+    /**
      * Helper compartilhado entre `calcular()` (listagem do Comercial, só
      * origem HubSpot) e `calcularUniversais()` (gate administrativo da
      * Fase 128, qualquer origem). Corpo copiado literalmente da checagem
