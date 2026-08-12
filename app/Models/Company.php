@@ -2,12 +2,17 @@
 
 namespace App\Models;
 
+use App\Observers\CompanyGatilhoContratoObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
+// Fase 128 (plano 05, D-04) — reavalia o gate administrativo de contrato
+// quando o Comercial corrige um campo-gatilho (ver docblock do Observer).
+#[ObservedBy(CompanyGatilhoContratoObserver::class)]
 class Company extends Model
 {
     use HasFactory, LogsActivity;
