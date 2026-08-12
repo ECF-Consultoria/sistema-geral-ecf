@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: verifying
-stopped_at: Concluiu 128-06-PLAN.md (gate humano medido)
-last_updated: "2026-08-12T19:57:51.762Z"
+status: verified
+stopped_at: Fase 128 verificada e corrigida — 2 achados (D-05 bloqueador + WR-01 warning) fechados em correção direta pós-verificação (commits 39974658/be275b9c)
+last_updated: "2026-08-12T23:30:00.000Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 12
@@ -25,10 +25,27 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 128 (gatilhos-do-fluxo-em-modo-observa-o-v22-0) — EXECUTING
+Phase: 128 (gatilhos-do-fluxo-em-modo-observa-o-v22-0) — VERIFIED (com correção pós-verificação)
 Plan: 6 of 6
-Status: Phase complete — ready for verification
+Status: Verificação inicial encontrou 1 gap bloqueador (D-05) + revisão encontrou 1 warning (WR-01);
+ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
+dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
 Last activity: 2026-08-12
+
+**Correção pós-verificação em 2026-08-12** (commits `39974658`/`be275b9c`): fecha os 2 achados
+remanescentes da verificação/revisão da Fase 128. (1) **D-05 (bloqueador)** —
+`CompanyGroupController::atribuirServico()` agora envolve o laço de criação de `ContratoServico` em
+`ContratoServico::withoutEvents()`, suprimindo o `ContratoServicoGatilhoObserver` (plano 128-05) só
+neste call site em lote; sem isso, atribuir um serviço que exige contrato a um grupo de N empresas
+disparava N `ContratoAssinatura` reais e N envelopes reais na Clicksign de um único clique. Teste
+`CompanyGroupAtribuirServicoNaoGeraContratoTest` (2/2) prova zero efeito colateral preservando o
+comportamento original (criar/pular `contratos_servico`). (2) **WR-01 (warning)** —
+`GatilhoContratoAdministrativoService::avaliar()` classificava empresa com ZERO `ContratoServico`
+ativos como `isento` em vez de `aguardando_comercial`/`sem_servico` (`Collection::contains()` numa
+coleção vazia devolve `false`); isenção por serviço agora só é avaliada quando há pelo menos um
+contrato ativo, caso só-Polos preservado. Suíte `Phase124+125+126+127+128` = **268 verdes** (899
+assertions; baseline pré-fix 265/879). `128-VERIFICATION.md` atualizado com os dois achados
+resolvidos e `status: passed`.
 
 **Plano 128-05 executado em 2026-08-12** (commits `1ff79dd1`/`5c2fa102`/`e1198ea6`): fecha a D-04.
 `CompanyGatilhoContratoObserver::updated()` reavalia o gate quando `email_cliente`/`cnpj`/
