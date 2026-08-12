@@ -15,6 +15,8 @@ use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
 use Database\Seeders\OnboardingTemplateGestaoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -228,5 +230,140 @@ class OnboardingPortalPublicoTest extends TestCase
 
         $this->expectException(\DomainException::class);
         $this->linkService()->marcarFeitoPorChave($company, 'grant_sistema_ecf', '127.0.0.1');
+    }
+
+    // ─── OnboardingPublicoController::workspace() ───────────────────────────
+
+    #[Test]
+    public function get_workspace_com_token_valido_retorna_200_sem_autenticacao(): void
+    {
+        $this->withoutVite();
+        $company = Company::factory()->create();
+        $this->onboardingDeGestaoEmAndamento($company);
+        $link = $this->linkService()->paraEmpresa($company);
+
+        $response = $this->get(route('onboarding.publico.workspace', $link->token));
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page->component('Onboarding/Publico', false));
+    }
+
+    #[Test]
+    public function get_workspace_com_token_inexistente_retorna_404(): void
+    {
+        $response = $this->get(route('onboarding.publico.workspace', 'token-inexistente-0000'));
+
+        $response->assertNotFound();
+    }
+
+    #[Test]
+    public function get_workspace_carimba_ultimo_acesso(): void
+    {
+        $this->withoutVite();
+        $company = Company::factory()->create();
+        $this->onboardingDeGestaoEmAndamento($company);
+        $link = $this->linkService()->paraEmpresa($company);
+        $this->assertNull($link->ultimo_acesso);
+
+        $this->get(route('onboarding.publico.workspace', $link->token));
+
+        $this->assertNotNull($link->fresh()->ultimo_acesso);
+    }
+
+    #[Test]
+    public function props_do_workspace_nao_expoem_dado_operacional_interno(): void
+    {
+        $this->withoutVite();
+        $company = Company::factory()->create();
+        $this->onboardingDeGestaoEmAndamento($company);
+        $link = $this->linkService()->paraEmpresa($company);
+
+        $response = $this->get(route('onboarding.publico.workspace', $link->token));
+        $response->assertOk();
+
+        $response->assertInertia(function ($page) {
+            $page->component('Onboarding/Publico', false);
+            $json = json_encode($page->toArray());
+
+            $this->assertStringNotContainsString('"responsavel"', $json);
+            $this->assertStringNotContainsString('sla_dias', $json);
+            $this->assertStringNotContainsString('dias_parado', $json);
+        });
+    }
+
+    // ─── OnboardingPublicoController::marcarFeito() ─────────────────────────
+
+    #[Test]
+    public function patch_passo_com_chave_manual_conclui_o_passo(): void
+    {
+        $company = Company::factory()->create();
+        $onboarding = $this->onboardingDeGestaoEmAndamento($company);
+        $link = $this->linkService()->paraEmpresa($company);
+
+        $response = $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'custos_app_ecf']);
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+
+        $passo = OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', 'custos_app_ecf')->firstOrFail();
+        $this->assertSame(OnboardingPasso::STATUS_CONCLUIDO, $passo->status);
+    }
+
+    #[Test]
+    public function patch_passo_com_chave_de_auto_fonte_devolve_422_e_nao_muda_o_status_d19(): void
+    {
+        $company = Company::factory()->create();
+        $onboarding = $this->onboardingDeGestaoEmAndamento($company);
+        $link = $this->linkService()->paraEmpresa($company);
+
+        $statusOriginal = OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->where('chave', 'grant_sistema_ecf')->firstOrFail()->status;
+
+        $response = $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'grant_sistema_ecf']);
+
+        $response->assertStatus(302);
+        $response->assertSessionHasErrors('chave');
+
+        $passo = OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', 'grant_sistema_ecf')->firstOrFail();
+        $this->assertSame($statusOriginal, $passo->status);
+    }
+
+    // ─── OnboardingPublicoController::anexarFicha() ─────────────────────────
+
+    #[Test]
+    public function post_ficha_com_pdf_valido_grava_o_arquivo_e_nao_conclui_o_passo_d16(): void
+    {
+        Storage::fake('local');
+        $company = Company::factory()->create();
+        $onboarding = $this->onboardingDeGestaoEmAndamento($company);
+        $link = $this->linkService()->paraEmpresa($company);
+
+        $arquivo = UploadedFile::fake()->create('ficha-cadastral.pdf', 200, 'application/pdf');
+
+        $response = $this->post(route('onboarding.publico.ficha', $link->token), ['ficha' => $arquivo]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+
+        $passo = OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', 'ficha_cliente_recebida')->firstOrFail();
+        $this->assertNotSame(OnboardingPasso::STATUS_CONCLUIDO, $passo->status);
+        $this->assertSame('ficha-cadastral.pdf', $passo->valor['nome_original']);
+        Storage::disk('local')->assertExists($passo->valor['arquivo']);
+    }
+
+    #[Test]
+    public function post_ficha_com_executavel_e_rejeitado_pela_validacao(): void
+    {
+        Storage::fake('local');
+        $company = Company::factory()->create();
+        $this->onboardingDeGestaoEmAndamento($company);
+        $link = $this->linkService()->paraEmpresa($company);
+
+        $arquivo = UploadedFile::fake()->create('malware.exe', 50, 'application/x-msdownload');
+
+        $response = $this->post(route('onboarding.publico.ficha', $link->token), ['ficha' => $arquivo]);
+
+        $response->assertStatus(302);
+        $response->assertSessionHasErrors('ficha');
     }
 }
