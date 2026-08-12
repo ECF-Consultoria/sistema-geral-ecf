@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: verified
-stopped_at: Fase 128 verificada e corrigida — 2 achados (D-05 bloqueador + WR-01 warning) fechados em correção direta pós-verificação (commits 39974658/be275b9c)
-last_updated: "2026-08-12T23:30:00.000Z"
+status: verifying
+stopped_at: Phase 129 context gathered
+last_updated: "2026-08-12T21:57:07.643Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 12
@@ -1070,8 +1070,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-12T19:57:51.633Z
-Stopped at: Concluiu 128-06-PLAN.md (gate humano medido)
+Last session: 2026-08-12T21:57:07.174Z
+Stopped at: Phase 129 context gathered
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
