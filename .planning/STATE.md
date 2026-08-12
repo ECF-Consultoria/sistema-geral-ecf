@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: executing
-stopped_at: Completed 128-05-PLAN.md
-last_updated: "2026-08-12T18:44:12.660Z"
+status: verifying
+stopped_at: Concluiu 128-06-PLAN.md (gate humano medido)
+last_updated: "2026-08-12T19:57:51.762Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 12
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 46
-  completed_plans: 42
-  percent: 42
+  completed_plans: 43
+  percent: 50
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 128 (gatilhos-do-fluxo-em-modo-observa-o-v22-0) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-12
 
 **Plano 128-05 executado em 2026-08-12** (commits `1ff79dd1`/`5c2fa102`/`e1198ea6`): fecha a D-04.
@@ -427,6 +427,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 128 P03 | 4min | 3 tasks | 3 files |
 | Phase 128 P04 | 10min | 3 tasks | 6 files |
 | Phase 128 P05 | 35min | 3 tasks | 8 files |
+| Phase 128 P06 | 40min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1052,8 +1053,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-12T18:44:12.598Z
-Stopped at: Completed 128-05-PLAN.md
+Last session: 2026-08-12T19:57:51.633Z
+Stopped at: Concluiu 128-06-PLAN.md (gate humano medido)
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 

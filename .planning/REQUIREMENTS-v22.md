@@ -130,7 +130,7 @@ Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou
 
 - [ ] **FLUXO-01**: Empresa criada pelo webhook HubSpot deixa de ser roteada automaticamente ao operacional e passa a aguardar a etapa administrativa — **exceto** serviços isentos de contrato (D9)
 - [ ] **FLUXO-02**: Empresa cadastrada à mão pelo Comercial segue exatamente o mesmo caminho, sem porta dos fundos (D2) — mesma exceção do FLUXO-01
-- [ ] **FLUXO-08**: A lista de serviços que exigem contrato é um dado configurável, não um `if` espalhado pelo código; empresa de serviço isento (Polos) vai direto para a operação e **não** aparece como pendente na tela do Administrativo (D9)
+- [x] **FLUXO-08**: A lista de serviços que exigem contrato é um dado configurável, não um `if` espalhado pelo código; empresa de serviço isento (Polos) vai direto para a operação e **não** aparece como pendente na tela do Administrativo (D9)
 - [ ] **FLUXO-09**: A ativação manual pelo time de Publicação (`MlbController::ativarEmpresaPendente()`, tela `/mlb/empresas`) respeita o mesmo bloqueio dos demais caminhos — não existe porta dos fundos para o operacional quando o bloqueio está ligado
 - [x] **FLUXO-03**: A regra de pendências comerciais vive num único lugar, consumida por Comercial, HubSpot e Administrativo
 - [x] **FLUXO-04**: O roteamento operacional vive num único lugar, sem a duplicação atual entre `ComercialController::store()` e `HubspotWebhookController::rotearImplementacao()`
