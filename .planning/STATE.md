@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 128-03-PLAN.md
-last_updated: "2026-08-12T18:02:38.202Z"
+stopped_at: Completed 128-05-PLAN.md
+last_updated: "2026-08-12T18:44:12.660Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 12
   completed_phases: 5
   total_plans: 46
-  completed_plans: 41
+  completed_plans: 42
   percent: 42
 ---
 
@@ -26,9 +26,30 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 128 (gatilhos-do-fluxo-em-modo-observa-o-v22-0) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-08-12
+
+**Plano 128-05 executado em 2026-08-12** (commits `1ff79dd1`/`5c2fa102`/`e1198ea6`): fecha a D-04.
+`CompanyGatilhoContratoObserver::updated()` reavalia o gate quando `email_cliente`/`cnpj`/
+`nome_contato` mudam (`wasChanged()` restrito a essa lista fixa — `hubspot_notas`/`hubspot_snapshot`
+ficam de fora de propósito, replay de webhook não reavalia). `ContratoServicoGatilhoObserver` cobre
+o gancho que `Company` sozinha não cobre (vincular serviço novo / corrigir valor ou data);
+`created()` roda dentro de `DB::afterCommit()` — comportamento verificado EMPIRICAMENTE (teste-sonda
+antes de decidir o design, não assumido só pela doc do Laravel) sob `RefreshDatabase`: o callback
+dispara quando a transação onde o `create()` aconteceu fecha, o que permite ao cadastro do Comercial
+(N `ContratoServico` numa UNICA `DB::transaction()`) reavaliar só depois que o lote inteiro existe.
+4 camadas de proteção contra laço, todas provadas por CONTAGEM (spy que estende a classe real e
+delega 100%, nunca mock): `wasChanged()` restrito → `DB::afterCommit()` → guard estático do
+orquestrador (128-03) → trava composta do banco (Fase 127). Fluxo HTTP real do Comercial mede
+exatamente 2 invocações do gate (Observer + chamada explícita do controller), nunca crescente.
+2 desvios (Rule 1): `GatilhoContratoPendenciaTest` (128-03) e dois testes de `Phase127`
+(`ContratoClicksignServiceTest`, `IdempotenciaContratoTest`) testam services de camada inferior
+ISOLADAMENTE e criavam `ContratoServico::create()` como fixture fora de `DB::transaction()` — o
+Observer novo passou a disparar o gate como efeito colateral do SETUP, chegando a estourar a
+constraint composta num deles. Fix: `ContratoServico::withoutEvents()` nos três helpers de fixture
+(zero mudança de comportamento de produção). Suíte `Phase124+127+128` = **115 verdes**, zero
+regressão líquida. Detalhe: `128-05-SUMMARY.md`.
 
 **Plano 127-06 executado em 2026-08-12** (commits `36109799`/`6a9c226b`): o **ponto único** que o
 ROADMAP pede. `ContratoClicksignService::iniciarParaEmpresa()` bloqueia ANTES de qualquer I/O via
@@ -405,6 +426,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 128 P02 | 12min | 2 tasks | 2 files |
 | Phase 128 P03 | 4min | 3 tasks | 3 files |
 | Phase 128 P04 | 10min | 3 tasks | 6 files |
+| Phase 128 P05 | 35min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -1030,8 +1052,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-12T18:02:25.385Z
-Stopped at: Completed 128-03-PLAN.md
+Last session: 2026-08-12T18:44:12.598Z
+Stopped at: Completed 128-05-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
