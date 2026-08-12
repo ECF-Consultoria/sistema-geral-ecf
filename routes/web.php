@@ -16,6 +16,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanyGroupController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DesempenhoMetricasManuaisController;
 use App\Http\Controllers\Dev\SugadoresMlOnboardingController;
 use App\Http\Controllers\DevController;
 use App\Http\Controllers\DevModulosController;
@@ -558,6 +559,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/desempenho/relatorio-bonificacao/pdf', [RelatorioBonificacaoController::class, 'pdf'])
         ->middleware('role:admin')
         ->name('desempenho.relatorio-bonificacao.pdf');
+
+    // Fase 136 — Lançamento manual de métricas financeiras (admin-only). Grade
+    // empresa × mês para lançar faturamento e CMV à mão quando a API não
+    // entrega o dado (loja Shopee sem CMV, empresa sem OAuth), alimentando o
+    // motor de Desempenho. Competência já consolidada continua listada, porém
+    // READ-ONLY: a trava de congelamento vale sem exceção (D-09). Autorização
+    // em camada dupla — `role:admin` por rota (aqui) + o `authorize()` do
+    // StoreMetricaManualRequest. Ver DesempenhoMetricasManuaisController.
+    Route::get('/desempenho/metricas-manuais', [DesempenhoMetricasManuaisController::class, 'index'])
+        ->middleware('role:admin')
+        ->name('desempenho.metricas-manuais.index');
+    Route::post('/desempenho/metricas-manuais/lancar', [DesempenhoMetricasManuaisController::class, 'lancar'])
+        ->middleware('role:admin')
+        ->name('desempenho.metricas-manuais.lancar');
 
     // Adman: leitura do ultimo sync (admin apenas).
     // Sync manual via POST /adman/sync REMOVIDO na Phase 16 (SC-5):
