@@ -176,3 +176,32 @@ webhook. Isso não é opcional nem substituível por `Http::fake()`.
    é o invariante da fase; teste dedicado, não inspeção visual.
 3. **Provar que Polos não entra no fluxo em momento nenhum** (Success Criteria 0).
 </gates_desta_fase>
+
+<decisao_acrescentada_no_plan_check>
+## D-05 — Atribuição de serviço a um GRUPO **não** gera contrato
+
+⚠️ **Terceira porta, achada pelo plan-checker em 2026-08-12.** O CONTEXT e a pesquisa falavam em
+"os dois pontos de entrada". São **três**: `CompanyGroupController::atribuirServico()`
+(`app/Http/Controllers/CompanyGroupController.php:~82`) cria `ContratoServico` **em laço, para todas
+as empresas do grupo**, fora de qualquer transação.
+
+**Por que isso quase virou incidente:** o Observer da D-04 fica no *model* `ContratoServico`, não nos
+controllers — então ele capturaria esse caminho automaticamente. Um grupo de 10 empresas =
+**10 contratos gerados de uma vez = 150 chamadas** contra a janela **medida** de 20/min. Estouraria o
+limite e, pior, criaria 10 contratos reais indo para assinatura de 10 clientes, a partir de um clique
+feito para outra finalidade.
+
+**A decisão:** atribuir serviço a um grupo continua fazendo **exatamente o que faz hoje**. Contrato
+nasce pelos **dois pontos de entrada de EMPRESA** (webhook HubSpot e cadastro manual), nunca por
+operação em massa. Quem quiser contrato para essas empresas usa o botão da Fase 131, uma a uma e
+conscientemente.
+
+- Recusado: **gerar espaçado na fila** — resolveria o rate limit, mas não o problema real: um clique
+  mandaria N contratos para N clientes, e a tela não avisa que isso aconteceria.
+- Recusado: **gerar e aceitar o risco** — com grupo grande, parte dos contratos falha no meio.
+
+⚠️ **Consequência para o planejamento:** o Observer da D-04 **não pode** disparar quando a criação do
+`ContratoServico` vem desse caminho. Como ele vive no model, precisa de supressão explícita nesse
+call site (flag de contexto, `withoutEvents`, ou equivalente) — e de **teste provando** que atribuir
+serviço a um grupo de N empresas gera **zero** contratos. Sem esse teste, a proteção é só intenção.
+</decisao_acrescentada_no_plan_check>

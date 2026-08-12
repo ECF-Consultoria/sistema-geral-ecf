@@ -594,7 +594,18 @@ relevante ter mudado.
 | A2 | `companies.status` não tem nenhum consumidor além dos 2 usos encontrados (`'pendente'` na criação, `'ativo'` no primeiro acesso à página) | Pergunta 5 | Médio — se houver um terceiro consumidor não encontrado pelo grep, reaproveitar a coluna para outro propósito quebraria algo; a recomendação (não persistir nada novo) elimina este risco por completo |
 | A3 | Nenhum código do fluxo de geração de contrato (`ContratoClicksignService`, `GerarContratoAssinaturaJob`, `ContratoVariaveisModeloService`) grava em `Company` | Pergunta 4 (risco de laço) | Alto se errado — reintroduziria exatamente o laço que a D-04 pede para cortar; **verificado por grep nos 3 arquivos**, não apenas por leitura — grep confirmou zero `$company->save()`/`$company->update()`/`Company::where(...)->update()` nesses arquivos |
 
-## Open Questions
+## Open Questions (AMBAS RESOLVIDAS no planejamento)
+
+> ⚠️ Escrito antes dos planos. As duas ja tem resposta:
+> **1. Campos-gatilho do Observer** — RESOLVIDA no plano **128-05**: lista FIXA em constante
+> de classe (Company: email_cliente/cnpj/nome_contato; ContratoServico: ativo/
+> valor_contratado/data_contratacao/servico_id), derivada do que faltantes() e
+> calcularUniversais() de fato consultam. hubspot_notas/hubspot_snapshot ficam FORA de
+> proposito — o webhook grava neles a cada replay e o Observer dispararia a toa.
+> **2. Onde mora o orquestrador** — RESOLVIDA no plano **128-03**: service novo unico
+> (GatilhoContratoAdministrativoService), compartilhado pelos 2 controllers e pelos 2
+> Observers, no mesmo papel do EmpresaOperacionalRouter.
+
 
 1. **Quais campos exatos disparam a reavaliação (D-04)?**
    - O que sabemos: precisa cobrir, no mínimo, os campos que `ContratoDadosMinimosService::faltantes()`
