@@ -37,6 +37,7 @@ use App\Http\Controllers\NpsGrupoController;
 use App\Http\Controllers\NpsTemplateController;
 use App\Http\Controllers\NpsTemplateOptionController;
 use App\Http\Controllers\NpsTemplateQuestionController;
+use App\Http\Controllers\OnboardingTemplateController;
 use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PolosController;
 use App\Http\Controllers\PolosPpaController;
@@ -787,6 +788,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // herdado do grupo pai. Frente B fará data migration + drop legacy.
         Route::resource('servicos', ServicoController::class)
             ->only(['index', 'store', 'update', 'destroy']);
+
+        // ─── Fase 135 Plano 08 — CRUD admin do template de Onboarding geral (D-04) ──
+        // ATENÇÃO DE ROTEAMENTO: '/onboarding/templates' precisa ficar registrada
+        // ANTES de qualquer rota '/onboarding/{parametro}' que o Plano 09 venha a
+        // criar (painel operacional em /onboarding/{onboarding}) — senão 'templates'
+        // é capturado como parâmetro. Autorização em camada dupla: este grupo
+        // role:admin + StoreOnboardingTemplateRequest::authorize() (D-04).
+        Route::get('/onboarding/templates', [OnboardingTemplateController::class, 'index'])
+            ->name('onboarding.templates.index');
+        Route::post('/onboarding/templates', [OnboardingTemplateController::class, 'store'])
+            ->name('onboarding.templates.store');
+        Route::post('/onboarding/templates/{template}/migrar', [OnboardingTemplateController::class, 'migrar'])
+            ->name('onboarding.templates.migrar');
 
         Route::post('/empresas/{company}/contratos-servico',                  [CompanyController::class, 'storeContrato'])->name('empresas.contratos.store');
         Route::put('/empresas/{company}/contratos-servico/{contrato}',        [CompanyController::class, 'updateContrato'])->name('empresas.contratos.update');

@@ -11,6 +11,7 @@ use App\Models\Servico;
 use App\Models\TemplatePasso;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
+use App\Services\Onboarding\OnboardingResolverFactory;
 use App\Services\Onboarding\OnboardingTemplateVersionService;
 use Database\Seeders\OnboardingTemplateGestaoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -235,5 +236,125 @@ class OnboardingTemplateVersionamentoTest extends TestCase
         ]);
 
         $this->assertNull($caminho);
+    }
+
+    // ─── Task 3: OnboardingTemplateController + rotas admin ────────────────
+
+    /** @test */
+    public function get_templates_como_admin_retorna_200_e_o_componente_inertia(): void
+    {
+        // withoutVite(): a página React `Onboarding/Templates/Index.jsx` só
+        // nasce no Plano 10 (frontend), fora do escopo deste plano (backend).
+        // app.blade.php resolve `@vite([..., "Pages/{$page['component']}.jsx"])`
+        // — sem isso, o teste quebraria no manifest do Vite por um arquivo que
+        // ainda não existe, mascarando o que este plano realmente precisa
+        // provar (props/props-shape do controller, não o bundle JS).
+        $this->withoutVite();
+
+        $response = $this->actingAs($this->admin())->get(route('onboarding.templates.index'));
+
+        $response->assertOk();
+        // `component($nome, false)`: o 2º argumento desliga a checagem de
+        // EXISTÊNCIA do arquivo da página (`AssertableInertia::component()`
+        // linha 107 — `inertia.testing.ensure_pages_exist` é `true` por
+        // default e `withoutVite()` não a alcança, são camadas diferentes).
+        // O nome do componente continua assertado; só a existência do .jsx
+        // fica de fora, porque ela é entregue pelo Plano 10 — voltar a `true`
+        // aqui é a checagem natural depois que a Tela 2 existir.
+        $response->assertInertia(fn ($page) => $page->component('Onboarding/Templates/Index', false));
+    }
+
+    /** @test */
+    public function get_templates_como_usuario_nao_admin_retorna_403(): void
+    {
+        $consultor = User::factory()->create(['role' => 'consultor']);
+
+        $response = $this->actingAs($consultor)->get(route('onboarding.templates.index'));
+
+        $response->assertForbidden();
+    }
+
+    /**
+     * As props incluem `catalogo_auto_fonte` com o shape completo
+     * (chave/label/ajuda/assincrono) para cada resolver registrado.
+     *
+     * NOTA: o plano descreve "5 entradas" assumindo o catálogo fechado
+     * completo (Plano 07 registra o 5º resolver, `acervo_coletado`). Este
+     * plano (08) roda na wave 4, ANTES da wave 5 do Plano 07 — no momento
+     * desta execução o catálogo tem 4 chaves registradas (confirmado em
+     * `135-06-SUMMARY.md`). Mesmo precedente já aplicado em
+     * `OnboardingResolversLocaisTest` (Plano 06): não travar a contagem
+     * exata num número que cresce entre plans — a asserção lê a contagem
+     * REAL do factory em vez de um literal hardcoded, e continua válida
+     * quando o Plano 07 acrescentar a 5ª chave.
+     */
+    /** @test */
+    public function catalogo_auto_fonte_expoe_o_shape_completo_para_cada_resolver_registrado(): void
+    {
+        $this->withoutVite();
+
+        $response = $this->actingAs($this->admin())->get(route('onboarding.templates.index'));
+
+        $catalogoEsperado = app(OnboardingResolverFactory::class)->catalogo();
+        $this->assertGreaterThanOrEqual(4, count($catalogoEsperado));
+
+        $response->assertInertia(fn ($page) => $page
+            // 2º argumento `false` — mesmo motivo do teste acima: a página
+            // React é do Plano 10; aqui só o nome do componente importa.
+            ->component('Onboarding/Templates/Index', false)
+            ->has('catalogo_auto_fonte', count($catalogoEsperado))
+            ->has('catalogo_auto_fonte.0', fn ($entrada) => $entrada
+                ->hasAll(['chave', 'label', 'ajuda', 'assincrono'])
+            )
+        );
+    }
+
+    /** @test */
+    public function post_store_cria_versao_2_mesmo_se_payload_trouxer_versao_99(): void
+    {
+        $servico = $this->servicoDeGestao();
+        $publicador = $this->admin();
+        $this->service()->publicarNovaVersao($servico, $this->passosSimples(), $publicador);
+
+        $admin = $this->admin();
+        $response = $this->actingAs($admin)->post(route('onboarding.templates.store'), [
+            'servico_id' => $servico->id,
+            'versao'     => 99, // invariante de sistema — controller deve ignorar.
+            'passos'     => $this->passosSimples(),
+        ]);
+
+        $response->assertSessionHasNoErrors();
+        $response->assertRedirect();
+
+        $versaoAtiva = OnboardingTemplate::where('servico_id', $servico->id)->where('ativo', true)->firstOrFail();
+        $this->assertSame(2, $versaoAtiva->versao);
+    }
+
+    /** @test */
+    public function post_migrar_move_os_onboardings_listados_e_retorna_flash_de_sucesso(): void
+    {
+        $servico = $this->servicoDeGestao();
+        $engine = new OnboardingEngineService();
+        $service = $this->service();
+        $publicador = $this->admin();
+
+        $v1 = $service->publicarNovaVersao($servico, $this->passosSimples(), $publicador);
+
+        $company = Company::factory()->create();
+        $contrato = ContratoServico::factory()->paraServico($servico)->create(['company_id' => $company->id]);
+        $onboarding = $engine->criarParaContrato($contrato);
+        $onboarding->update(['status' => Onboarding::STATUS_ANDAMENTO, 'iniciado_em' => now()]);
+
+        $v2 = $service->publicarNovaVersao($servico, $this->passosSimples(), $publicador);
+
+        $response = $this->actingAs($publicador)->post(
+            route('onboarding.templates.migrar', $v2),
+            ['onboarding_ids' => [$onboarding->id]]
+        );
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        $this->assertSame($v2->id, $onboarding->fresh()->template_id);
     }
 }
