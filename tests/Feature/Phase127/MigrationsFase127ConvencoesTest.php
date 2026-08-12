@@ -6,12 +6,13 @@ use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
- * Guarda estática das convenções de schema desta fase, lendo o TEXTO da
- * migration da D-06 — não roda banco, não usa `RefreshDatabase`. Cópia
- * adaptada de `tests/Feature/Phase125/MigrationsFase125ConvencoesTest.php`
- * (mesma disciplina, mesmos helpers, mesmas armadilhas de MariaDB).
+ * Guarda estática das convenções de schema desta fase, lendo o TEXTO das
+ * migrations da D-06 e do plano 127-04 (D-21) — não roda banco, não usa
+ * `RefreshDatabase`. Cópia adaptada de
+ * `tests/Feature/Phase125/MigrationsFase125ConvencoesTest.php` (mesma
+ * disciplina, mesmos helpers, mesmas armadilhas de MariaDB).
  *
- * ⚠️ Ponto crítico: a migration desta fase MENCIONA `enum`, `1553` e `1059`
+ * ⚠️ Ponto crítico: a migration da D-06 MENCIONA `enum`, `1553` e `1059`
  * dentro de comentários que documentam justamente essas armadilhas. Por
  * isso o helper `migrationSemComentarios()` remove comentários ANTES de
  * qualquer checagem de padrão — sem isso, o teste acusaria a si mesmo e a
@@ -22,6 +23,21 @@ class MigrationsFase127ConvencoesTest extends TestCase
     private function caminhoMigration(): string
     {
         return database_path('migrations/2026_08_12_100000_add_servico_e_prazo_to_contrato_assinaturas_table.php');
+    }
+
+    /**
+     * Todas as migrations desta fase — usado pelas asserções genéricas
+     * (sem `->enum(`, nome de índice ≤ 64 caracteres) que valem para
+     * qualquer arquivo novo que a fase acrescente.
+     *
+     * @return array<int, string>
+     */
+    private function caminhosMigrations(): array
+    {
+        return [
+            $this->caminhoMigration(),
+            database_path('migrations/2026_08_12_100001_add_clicksign_template_id_to_servicos_table.php'),
+        ];
     }
 
     /**
@@ -64,15 +80,26 @@ class MigrationsFase127ConvencoesTest extends TestCase
     }
 
     #[Test]
+    public function a_migration_do_modelo_por_servico_existe(): void
+    {
+        $this->assertFileExists(
+            $this->caminhosMigrations()[1],
+            'Migration esperada do plano 127-04 (D-21 — clicksign_template_id em servicos) não encontrada — arquivo renomeado ou movido?'
+        );
+    }
+
+    #[Test]
     public function nenhuma_migration_da_fase_usa_coluna_de_tipo_restrito(): void
     {
-        $codigo = $this->migrationSemComentarios($this->caminhoMigration());
+        foreach ($this->caminhosMigrations() as $caminho) {
+            $codigo = $this->migrationSemComentarios($caminho);
 
-        $this->assertStringNotContainsString(
-            '->enum(',
-            $codigo,
-            'Migration usa `->enum(`. D-04 exige STRING + constantes públicas no model: o CHECK do `enum` é enforçado pelo SQLite dos testes e quebra a suíte assim que surge um valor novo.'
-        );
+            $this->assertStringNotContainsString(
+                '->enum(',
+                $codigo,
+                "Migration `{$caminho}` usa `->enum(`. D-04 exige STRING + constantes públicas no model: o CHECK do `enum` é enforçado pelo SQLite dos testes e quebra a suíte assim que surge um valor novo."
+            );
+        }
     }
 
     #[Test]
@@ -89,13 +116,19 @@ class MigrationsFase127ConvencoesTest extends TestCase
     #[Test]
     public function todo_nome_de_indice_literal_cabe_em_64_caracteres(): void
     {
-        $codigo = $this->migrationSemComentarios($this->caminhoMigration());
+        $nomes = [];
 
-        preg_match_all("/['\"]([a-zA-Z0-9_]*ca_[a-zA-Z0-9_]+)['\"]/", $codigo, $matches);
+        foreach ($this->caminhosMigrations() as $caminho) {
+            $codigo = $this->migrationSemComentarios($caminho);
 
-        $nomes = array_unique($matches[1]);
+            preg_match_all("/['\"]([a-zA-Z0-9_]*ca_[a-zA-Z0-9_]+)['\"]/", $codigo, $matches);
 
-        $this->assertNotEmpty($nomes, 'Nenhum nome de índice literal (prefixo `ca_`) encontrado na migration — inesperado para esta fase.');
+            $nomes = array_merge($nomes, $matches[1]);
+        }
+
+        $nomes = array_unique($nomes);
+
+        $this->assertNotEmpty($nomes, 'Nenhum nome de índice literal (prefixo `ca_`) encontrado nas migrations da fase — inesperado para esta fase.');
 
         foreach ($nomes as $nome) {
             $this->assertLessThanOrEqual(
