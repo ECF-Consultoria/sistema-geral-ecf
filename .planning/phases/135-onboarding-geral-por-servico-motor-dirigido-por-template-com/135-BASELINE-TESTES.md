@@ -86,3 +86,29 @@ isso passou a criar o primeiro onboarding sozinho, antes do ponto em que o teste
 lançar a exceção de unicidade. Fix (commit `47be2771`): o contrato agora nasce via
 `DB::table('contratos_servico')->insertGetId(...)`, contornando o Observer — a constraint de
 banco sendo provada é a mesma, sem depender de nenhum efeito colateral do Eloquent.
+
+## Medição "depois da fase" (Plano 13, Task 1 — gate final)
+
+> Rodada ao fim da fase, com o HEAD em `08ee1d79` (a última suíte do Plano 12). Mesmo comando,
+> um por vez, mesma metodologia das colunas anteriores. O worktree tinha trabalho não commitado
+> de outra sessão (Fase 136 — Métricas Manuais/Desempenho) presente em disco; nenhuma dessas
+> mudanças está neste `git diff` porque a comparação usa apenas commits, e a suíte `Phase135`
+> rodou 162/162 verde mesmo com migrations não commitadas de uma feature não relacionada
+> (Metas Dev) no diretório `database/migrations/` — não interferiram no schema testado.
+
+| Suíte | Passed | Failed | Comparação vs. baseline (735b8f7d) |
+|---|---|---|---|
+| `PolosControllerTest` | 6 | 6 | idêntico — mesmas 6 falhas (`meta por estagio`, `status sim`, `status em progresso`, `status problema precedencia`, `status dist`, `filtro por mes`) |
+| `PolosFaturamentoSnapshotTest` | 0 | 4 | idêntico — mesmas 4 falhas (2 `ArgumentCountError` + 2 de asserção) |
+| `Phase112HubspotHandoffWebhookTest` | 6 | 0 | idêntico — zero falha nova |
+| `Phase113HubspotDedupTest` | 14 | 0 | idêntico — zero falha nova |
+| `Phase37ComercialListagemTest` | 17 | 0 | idêntico — zero falha nova |
+| `Phase37CompaniesPerformanceFilterTest` | 15 | 0 | idêntico — zero falha nova |
+| `Phase135` (suíte inteira da fase) | 162 | 0 | não existia na baseline (fase ainda não escrita); 0 failures agora |
+
+**Zero regressão nas 6 suítes vigiadas.** As mesmas 10 falhas pré-existentes de Polos (6+4)
+seguem idênticas, mensagem por mensagem, teste por teste — nenhuma passou a falhar por motivo
+novo, nenhuma nova falha apareceu. Os 4 arquivos de risco do Observer seguem 100% verdes
+(52/52). Diff de arquivos (`git diff --name-only 735b8f7d..08ee1d79`) não lista nenhum arquivo
+da lista de escopo intocável de Polos — ver `135-GATE-FINAL.md` para o comando completo e o
+veredito.
