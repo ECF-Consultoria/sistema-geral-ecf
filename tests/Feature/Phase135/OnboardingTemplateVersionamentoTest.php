@@ -243,25 +243,18 @@ class OnboardingTemplateVersionamentoTest extends TestCase
     /** @test */
     public function get_templates_como_admin_retorna_200_e_o_componente_inertia(): void
     {
-        // withoutVite(): a página React `Onboarding/Templates/Index.jsx` só
-        // nasce no Plano 10 (frontend), fora do escopo deste plano (backend).
-        // app.blade.php resolve `@vite([..., "Pages/{$page['component']}.jsx"])`
-        // — sem isso, o teste quebraria no manifest do Vite por um arquivo que
-        // ainda não existe, mascarando o que este plano realmente precisa
-        // provar (props/props-shape do controller, não o bundle JS).
+        // withoutVite(): app.blade.php resolve `@vite([..., "Pages/{$page['component']}.jsx"])`
+        // — sem isso o teste dependeria do manifest do Vite estar buildado no
+        // momento da execução, o que este teste de props do controller não
+        // precisa provar.
         $this->withoutVite();
 
         $response = $this->actingAs($this->admin())->get(route('onboarding.templates.index'));
 
         $response->assertOk();
-        // `component($nome, false)`: o 2º argumento desliga a checagem de
-        // EXISTÊNCIA do arquivo da página (`AssertableInertia::component()`
-        // linha 107 — `inertia.testing.ensure_pages_exist` é `true` por
-        // default e `withoutVite()` não a alcança, são camadas diferentes).
-        // O nome do componente continua assertado; só a existência do .jsx
-        // fica de fora, porque ela é entregue pelo Plano 10 — voltar a `true`
-        // aqui é a checagem natural depois que a Tela 2 existir.
-        $response->assertInertia(fn ($page) => $page->component('Onboarding/Templates/Index', false));
+        // A página React `Onboarding/Templates/Index.jsx` já existe (Plano 10)
+        // — checagem de existência do arquivo voltou a `true` (default).
+        $response->assertInertia(fn ($page) => $page->component('Onboarding/Templates/Index'));
     }
 
     /** @test */
@@ -299,9 +292,9 @@ class OnboardingTemplateVersionamentoTest extends TestCase
         $this->assertGreaterThanOrEqual(4, count($catalogoEsperado));
 
         $response->assertInertia(fn ($page) => $page
-            // 2º argumento `false` — mesmo motivo do teste acima: a página
-            // React é do Plano 10; aqui só o nome do componente importa.
-            ->component('Onboarding/Templates/Index', false)
+            // Checagem de existência do arquivo (2º argumento default `true`)
+            // — a página React já existe (Plano 10).
+            ->component('Onboarding/Templates/Index')
             ->has('catalogo_auto_fonte', count($catalogoEsperado))
             ->has('catalogo_auto_fonte.0', fn ($entrada) => $entrada
                 ->hasAll(['chave', 'label', 'ajuda', 'assincrono'])
