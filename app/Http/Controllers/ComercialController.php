@@ -12,6 +12,7 @@ use App\Models\Servico;
 use App\Models\Setor;
 use App\Notifications\EmpresaCadastradaNotification;
 use App\Services\Comercial\PendenciasComerciaisService;
+use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -596,6 +597,18 @@ class ComercialController extends Controller
                 );
             }
         }
+
+        // (6) Fase 128 (REDE-06) — gate administrativo de contrato, FORA da
+        // DB::transaction acima. Colocar a chamada logo depois do
+        // rotearCadastro() (dentro da transaction) seria o erro óbvio: uma
+        // exceção do gate ali faria rollback da Company inteira, e a empresa
+        // nem chegaria ao operacional — violaria o invariante da fase.
+        // dispararSeElegivel() já não relança (plano 03); sem try/catch
+        // redundante aqui, que esconderia regressão no próprio service.
+        // refresh() garante que o gate leia os ContratoServico recém-criados
+        // dentro da transaction, não a coleção em memória.
+        $company->refresh();
+        app(GatilhoContratoAdministrativoService::class)->dispararSeElegivel($company);
 
         return back()->with('success', 'Empresa "' . $company->name . '" cadastrada com sucesso.');
     }
