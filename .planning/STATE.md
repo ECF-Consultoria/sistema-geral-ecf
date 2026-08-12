@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 136-03-PLAN.md
-last_updated: "2026-08-12T12:51:14.820Z"
-last_activity: 2026-08-12 -- Phase 136 execution started
+stopped_at: Completed 136-04-PLAN.md
+last_updated: "2026-08-12T13:09:56.091Z"
+last_activity: 2026-08-12 -- 136-04 executado (rotas admin-only + controller da grade manual)
 progress:
   total_phases: 13
   completed_phases: 1
   total_plans: 35
-  completed_plans: 19
+  completed_plans: 20
   percent: 8
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 136 (m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api-) — EXECUTING
-Plan: 4 of 7 (01/02/03 concluidos; proximo 136-04, wave 3)
+Plan: 5 of 7 (01/02/03/04 concluidos; proximo 136-05, a tela Desempenho/MetricasManuais.jsx)
 Status: Executing Phase 136
-Last activity: 2026-08-12 -- Phase 136 execution started
+Last activity: 2026-08-12 -- 136-04 executado (rotas admin-only + controller da grade manual)
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
@@ -292,6 +292,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 136-m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api- P01 | 43min | 3 tasks | 15 files |
 | Phase 136 P02 | 25min | 2 tasks | 5 files |
 | Phase 135 P06 | 40min | 3 tasks | 7 files |
+| Phase 136 P04 | 9min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -893,8 +894,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-11T20:30:04.541Z
-Stopped at: Completed 136-02-PLAN.md
+Last session: 2026-08-12T13:09:56.059Z
+Stopped at: Completed 136-04-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 

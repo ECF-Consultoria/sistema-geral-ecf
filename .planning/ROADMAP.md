@@ -1824,7 +1824,7 @@ Plans:
 
 **Requirements**: TBD — a unidade de rastreabilidade desta fase sao os IDs de decisao do `136-CONTEXT.md` (D-01..D-12 + D-EXC-01), todos cobertos pelos planos abaixo.
 **Depends on:** Phase 135
-**Plans:** 3/7 plans executed
+**Plans:** 4/7 plans executed
 
 Plans:
 
@@ -1840,7 +1840,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 136-04-PLAN.md — Backend da grade: controller, rotas admin-only e escrita transacional com lock (D-01/D-02/D-07/D-09/D-12) [wave 3]
+- [x] 136-04-PLAN.md — Backend da grade: controller, rotas admin-only e escrita transacional com lock (D-01/D-02/D-07/D-09/D-12) [wave 3]
 
 **Wave 4** *(blocked on Wave 3)*
 
