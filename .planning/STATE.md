@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: executing
-stopped_at: Phase 127 plan 01 executado (D-06 aplicada)
-last_updated: "2026-08-12T12:41:16.931Z"
+status: Executando (wave 1 de 5 — plano 02/07 completo)
+stopped_at: "Completed 127-02-PLAN.md (D-02 aplicada — caminho que para no rascunho); próximo: 127-03"
+last_updated: "2026-08-12T12:53:24.119Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 12
@@ -26,9 +26,21 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 127
-Plan: 01 executado (127-02 a seguir)
-Status: Executando (wave 1 de 5 — plano 01/07 completo)
+Plan: 02 executado (127-03 a seguir)
+Status: Executando (wave 1 de 5 — plano 02/07 completo)
 Last activity: 2026-08-12
+
+**Plano 127-02 executado em 2026-08-12** (commits `22119d37`/`73bf5a94`): aplica a D-02 — o sistema
+PARA no rascunho. `ClicksignClient::montarEnvelope()`/`montarEnvelopePorModelo()` ganham
+`bool $ativar = true` propagado até `montarEnvelopeComum()`, que envolve a ativação (última
+instrução do `try`) num `if ($ativar)`. Com `ativar: false` o envelope é montado por inteiro —
+documento, 4 signatários, 8 requisitos — e fica em `draft`: quem envia ao cliente é o Comercial,
+pela interface da Clicksign, porque não existe pré-visualizar sem ativar (§10.4 do empírico) e
+ativar dispara e-mail ao cliente. O `try`/`catch` e o rollback compartilhado (D-04, via
+`cancelarEnvelope()`) não mudaram — zero duplicação de sequência, zero mudança no shape do retorno.
+Default `true` preserva 100% do comportamento da Fase 126 (suíte inteira verde sem alteração).
+Suíte `Phase125+126+127` = **166 verdes** (baseline 159 + 7 testes novos). Zero regressão. Detalhe:
+`127-02-SUMMARY.md`.
 
 **Plano 127-01 executado em 2026-08-12** (commits `7db2fd83`/`8257a617`/`d01577f5`/`7b172779`):
 aplica a D-06 — a trava de unicidade "em andamento" de `contrato_assinaturas` deixa de ser por
@@ -330,6 +342,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 134 P07 | 20min | 3 tasks | 4 files |
 | Phase 134 P09 | 31min | 3 tasks | 7 files |
 | Phase 134 P10 | 13min | 3 tasks | 6 files |
+| Phase 127 P02 | 25min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -955,8 +968,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-12T12:41:16.931Z
-Stopped at: Completed 127-01-PLAN.md (D-06 aplicada — trava composta empresa+serviço); próximo: 127-02
+Last session: 2026-08-12T12:53:24.088Z
+Stopped at: Completed 127-02-PLAN.md (D-02 aplicada — caminho que para no rascunho); próximo: 127-03
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
