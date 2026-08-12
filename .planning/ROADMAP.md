@@ -1773,7 +1773,7 @@ Plans:
   10. Cliente recebe **um link por empresa** que agrega os passos `dono=cliente` de todos os serviços ativos; passo de mesma `chave` em serviços diferentes fecha uma vez só
   11. O painel responde "o que está travando, há quantos dias e de quem é a bola" — não uma barra de porcentagem
 
-**Plans:** 11/13 plans executed
+**Plans:** 12/13 plans executed
 
 Plans:
 **Wave 1**
@@ -1804,7 +1804,7 @@ Plans:
 **Wave 6** *(blocked on Wave 5 completion)*
 
 - [x] 135-11-PLAN.md — Link publico por empresa + Tela 3: portal do cliente [wave 6]
-- [ ] 135-12-PLAN.md — Tela 1: painel operacional (React) + item de menu [wave 6]
+- [x] 135-12-PLAN.md — Tela 1: painel operacional (React) + item de menu [wave 6]
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
