@@ -529,6 +529,13 @@ class ComercialController extends Controller
                 // Quick 260611-eml — contato comercial + destinatário NPS mensal.
                 'email_cliente'       => $validated['email_cliente'] ?? null,
                 'telefone'            => $validated['telefone'] ?? null,
+                // Fase 128 (Rule 1 — bug corrigido durante a execução do plano 04):
+                // o campo já era validado acima mas nunca persistido, então TODA
+                // empresa cadastrada pelo Comercial ficava presa em
+                // 'aguardando_comercial' (pendência sem_contato) no gate
+                // administrativo, mesmo com o contato preenchido no formulário —
+                // quebrava o SC2 (mesmo gate, mesmo disparo do caminho HubSpot).
+                'nome_contato'        => $validated['nome_contato'] ?? null,
                 // Phase 34 Plan 02 — e-mail do colaborador do onboarding (opcional).
                 // Único campo do "close" que sobreviveu à quick task 260805-eqk;
                 // os demais nunca chegavam do HubSpot e foram removidos.
