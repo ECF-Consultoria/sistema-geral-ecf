@@ -145,7 +145,7 @@ Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou
 - [ ] **DADOS-03**: Todo evento recebido da Clicksign é gravado bruto, e um evento repetido nunca é processado duas vezes
 - [x] **DADOS-04**: Recusa de assinatura e prazo expirado são estados próprios, distintos de cancelamento e de falha técnica (D5)
 - [ ] **DADOS-05**: Quando um admin libera a empresa manualmente, o sistema registra quem liberou e por quê
-- [ ] **DADOS-06**: Cada contrato pode ter seu próprio prazo de assinatura (D3)
+- [x] **DADOS-06**: Cada contrato pode ter seu próprio prazo de assinatura (D3)
 
 ### Integração Clicksign
 
@@ -156,7 +156,7 @@ Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou
 - [ ] **CLICK-05**: A empresa só é liberada ao operacional a partir do estado agregado reconsultado do envelope, nunca do payload isolado do evento (D7)
 - [ ] **CLICK-06**: O processamento pesado do webhook acontece na fila, não na requisição HTTP
 - [ ] **CLICK-07**: Um usuário do Administrativo consegue reenviar a notificação de assinatura para quem ainda não assinou
-- [ ] **CLICK-08**: O envelope é criado já com o lembrete automático nativo da Clicksign configurado, sem scheduler próprio
+- [x] **CLICK-08**: O envelope é criado já com o lembrete automático nativo da Clicksign configurado, sem scheduler próprio
 - [ ] **CLICK-09**: Um usuário consegue corrigir o e-mail de um signatário depois do envio, sem cancelar o contrato
 - [ ] **CLICK-10**: Um usuário consegue cancelar um contrato em andamento, informando o motivo
 - [ ] **CLICK-11**: Quando o contrato é concluído, o PDF assinado é baixado e guardado no próprio sistema (D6)
@@ -250,7 +250,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | DADOS-03 | Fase 129 | Pending |
 | DADOS-04 | Fase 125 | Done |
 | DADOS-05 | Fase 130 | Pending |
-| DADOS-06 | Fase 127 | Pending |
+| DADOS-06 | Fase 127 | Done |
 | CLICK-01 | Fase 126 | Done |
 | CLICK-02 | Fase 127 | Pending |
 | CLICK-03 | Fase 129 | Pending |
@@ -258,7 +258,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | CLICK-05 | Fase 129 | Pending |
 | CLICK-06 | Fase 129 | Pending |
 | CLICK-07 | Fase 131 | Pending |
-| CLICK-08 | Fase 127 | Pending |
+| CLICK-08 | Fase 127 | Done |
 | CLICK-09 | Fase 131 | Pending |
 | CLICK-10 | Fase 131 | Pending |
 | CLICK-11 | Fase 129 | Pending |

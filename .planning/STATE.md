@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: Executando (wave 1 de 5 — plano 02/07 completo)
-stopped_at: "Completed 127-03-PLAN.md (ContratoDadosMinimosService, REDE-05 — 13/13 testes verdes); proximo: 127-04"
-last_updated: "2026-08-12T13:06:33.533Z"
+status: Executando (wave 2 de 5 — plano 04/07 completo)
+stopped_at: "Completed 127-04-PLAN.md (modelo por servico D-21 + prazo/lembrete efetivos D-03 — 187 testes verdes); proximo: 127-05"
+last_updated: "2026-08-12T13:45:00.000Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 12
   completed_phases: 4
   total_plans: 40
-  completed_plans: 33
+  completed_plans: 34
   percent: 33
 ---
 
@@ -26,9 +26,24 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 127
-Plan: 02 executado (127-03 a seguir)
-Status: Executando (wave 1 de 5 — plano 02/07 completo)
+Plan: 04 executado (127-05 a seguir)
+Status: Executando (wave 2 de 5 — plano 04/07 completo)
 Last activity: 2026-08-12
+
+**Plano 127-04 executado em 2026-08-12** (commits `56198a88`/`fa477d78`/`ff0208b9`): resolve as duas
+configurações que a montagem do envelope (127-05) vai precisar. **D-21** (herdada da Fase 126):
+coluna nova `servicos.clicksign_template_id` (nullable, sem índice/enum/nullOnDelete) +
+`Servico::clicksignTemplateId()` — resolve o modelo `.docx` da coluna do serviço, com fallback pro
+`CLICKSIGN_TEMPLATE_ID` global, e `null` quando nenhum dos dois existe (quem decide o que fazer com
+isso é o job de montagem, que precisa falhar com mensagem clara). **D-03 + CLICK-08 + DADOS-06**:
+`ContratoAssinatura::prazoDiasEfetivo()`/`lembreteDiasEfetivo()` resolvem `prazo_dias`/`lembrete_dias`
+(colunas do plano 127-01) com fallback pra `config('services.clicksign.prazo_dias_padrao'/
+'lembrete_dias_padrao')`, defaults 30/3 — os valores MEDIDOS como padrão da própria Clicksign, agora
+promovidos de hardcoded na assinatura de `ClicksignClient::ativarEnvelope()` (que NÃO mudou) pra
+configuração. `CLICKSIGN_PRAZO_DIAS`/`CLICKSIGN_LEMBRETE_DIAS` documentadas no `.env.example`;
+`CLICKSIGN_TEMPLATE_ID` continua sem valor de exemplo. Suíte `Phase125+126+127` = **187 verdes**
+(baseline 179 + 8 novos). Zero regressão. Nenhuma chamada real à Clicksign, nenhum deploy. Detalhe:
+`127-04-SUMMARY.md`.
 
 **Plano 127-02 executado em 2026-08-12** (commits `22119d37`/`73bf5a94`): aplica a D-02 — o sistema
 PARA no rascunho. `ClicksignClient::montarEnvelope()`/`montarEnvelopePorModelo()` ganham
@@ -969,8 +984,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-12T13:06:33.506Z
-Stopped at: Completed 127-03-PLAN.md (ContratoDadosMinimosService, REDE-05 — 13/13 testes verdes); proximo: 127-04
+Last session: 2026-08-12T13:45:00.000Z
+Stopped at: Completed 127-04-PLAN.md (modelo por servico D-21 + prazo/lembrete efetivos D-03 — 187 testes verdes); proximo: 127-05
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
