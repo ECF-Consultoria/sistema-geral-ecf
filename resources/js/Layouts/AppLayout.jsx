@@ -6,7 +6,8 @@ import {
     LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck,
     BarChart2, LineChart, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
-    Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart, EyeOff
+    Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart, EyeOff,
+    PencilLine
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
@@ -68,6 +69,10 @@ const NAV_TREE = [
             { label: 'Auditoria de bônus', routeName: 'desempenho.auditoria-bonus', page: 'Desempenho/Auditoria', icon: Shield, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
             // Fase 107 — Relatório de bonificação (admin-only, mesmo gate da Auditoria).
             { label: 'Relatório de bonificação', routeName: 'desempenho.relatorio-bonificacao', page: 'Desempenho/RelatorioBonificacao', icon: FileBarChart, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+            // Fase 136 — Métricas manuais (admin-only, mesmo gate dos dois acima).
+            // `excludeRoles` só ESCONDE o item; a autorização real é o role:admin
+            // da rota mais o authorize() do StoreMetricaManualRequest.
+            { label: 'Métricas manuais', routeName: 'desempenho.metricas-manuais.index', page: 'Desempenho/MetricasManuais', icon: PencilLine, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
         ],
     },
 
