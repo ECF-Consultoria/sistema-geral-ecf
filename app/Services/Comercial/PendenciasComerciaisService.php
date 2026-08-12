@@ -5,6 +5,7 @@ namespace App\Services\Comercial;
 use App\Models\Company;
 use App\Models\HubspotLineItemMapping;
 use App\Models\Servico;
+use Illuminate\Support\Collection;
 
 /**
  * PendenciasComerciaisService — fonte única das 7 pendências COMERCIAIS
@@ -47,13 +48,13 @@ class PendenciasComerciaisService
         $contratosAtivos = $c->contratosServico->where('ativo', true);
 
         // sem_servico: zero contratos ativos
-        if ($contratosAtivos->isEmpty()) {
-            $pendencias[] = 'sem_servico';
+        if (($slug = $this->pendenciaSemServico($contratosAtivos)) !== null) {
+            $pendencias[] = $slug;
         }
 
         // sem_valor: tem contrato ativo COM valor_contratado=0
-        if ($contratosAtivos->isNotEmpty() && $contratosAtivos->contains(fn($ct) => (float) $ct->valor_contratado === 0.0)) {
-            $pendencias[] = 'sem_valor';
+        if (($slug = $this->pendenciaSemValor($contratosAtivos)) !== null) {
+            $pendencias[] = $slug;
         }
 
         // servico_nao_reconhecido: payload de algum HubspotEvento tem line_items_nao_mapeados
@@ -101,14 +102,8 @@ class PendenciasComerciaisService
         // sem_setor: TODOS os contratos ativos apontam para Servico com setor='outros'
         // (catalogo ainda nao categorizado — admin precisa ajustar). Se nao ha contrato,
         // a pendencia 'sem_servico' ja cobre o caso.
-        if ($contratosAtivos->isNotEmpty()) {
-            $todosOutros = $contratosAtivos->every(function ($ct) {
-                $setor = optional($ct->servico)->setor;
-                return $setor === Servico::SETOR_OUTROS || $setor === null;
-            });
-            if ($todosOutros) {
-                $pendencias[] = 'sem_setor';
-            }
+        if (($slug = $this->pendenciaSemSetor($contratosAtivos)) !== null) {
+            $pendencias[] = $slug;
         }
 
         // Quick task 260805-eqk — a pendencia `dados_close_incompletos` foi
@@ -119,8 +114,8 @@ class PendenciasComerciaisService
         // origem HubSpot (guarda no topo do metodo ja cobre o isolamento).
 
         // sem_contato: contato principal nao foi resolvido no handoff (Fase 113).
-        if ($c->nome_contato === null || $c->nome_contato === '') {
-            $pendencias[] = 'sem_contato';
+        if (($slug = $this->pendenciaSemContato($c)) !== null) {
+            $pendencias[] = $slug;
         }
 
         // valor_revisar: algum contrato ativo tem inferencia de valor insegura
@@ -148,5 +143,75 @@ class PendenciasComerciaisService
         }
 
         return $pendencias;
+    }
+
+    /**
+     * Helper compartilhado entre `calcular()` (listagem do Comercial, só
+     * origem HubSpot) e `calcularUniversais()` (gate administrativo da
+     * Fase 128, qualquer origem). Corpo copiado literalmente da checagem
+     * que já existia dentro de `calcular()` — nenhuma condição foi
+     * reescrita.
+     *
+     * @return string|null  'sem_servico' se a empresa não tem nenhum contrato ativo
+     */
+    private function pendenciaSemServico(Collection $contratosAtivos): ?string
+    {
+        return $contratosAtivos->isEmpty() ? 'sem_servico' : null;
+    }
+
+    /**
+     * Helper compartilhado entre `calcular()` (listagem do Comercial, só
+     * origem HubSpot) e `calcularUniversais()` (gate administrativo da
+     * Fase 128, qualquer origem). Corpo copiado literalmente da checagem
+     * que já existia dentro de `calcular()` — nenhuma condição foi
+     * reescrita.
+     *
+     * @return string|null  'sem_valor' se algum contrato ativo tem valor_contratado=0
+     */
+    private function pendenciaSemValor(Collection $contratosAtivos): ?string
+    {
+        if ($contratosAtivos->isNotEmpty() && $contratosAtivos->contains(fn($ct) => (float) $ct->valor_contratado === 0.0)) {
+            return 'sem_valor';
+        }
+
+        return null;
+    }
+
+    /**
+     * Helper compartilhado entre `calcular()` (listagem do Comercial, só
+     * origem HubSpot) e `calcularUniversais()` (gate administrativo da
+     * Fase 128, qualquer origem). Corpo copiado literalmente da checagem
+     * que já existia dentro de `calcular()` — nenhuma condição foi
+     * reescrita.
+     *
+     * @return string|null  'sem_setor' se TODOS os contratos ativos apontam para
+     *                       Servico com setor='outros' (ou sem setor)
+     */
+    private function pendenciaSemSetor(Collection $contratosAtivos): ?string
+    {
+        if ($contratosAtivos->isEmpty()) {
+            return null;
+        }
+
+        $todosOutros = $contratosAtivos->every(function ($ct) {
+            $setor = optional($ct->servico)->setor;
+            return $setor === Servico::SETOR_OUTROS || $setor === null;
+        });
+
+        return $todosOutros ? 'sem_setor' : null;
+    }
+
+    /**
+     * Helper compartilhado entre `calcular()` (listagem do Comercial, só
+     * origem HubSpot) e `calcularUniversais()` (gate administrativo da
+     * Fase 128, qualquer origem). Corpo copiado literalmente da checagem
+     * que já existia dentro de `calcular()` — nenhuma condição foi
+     * reescrita.
+     *
+     * @return string|null  'sem_contato' se o contato principal não foi resolvido
+     */
+    private function pendenciaSemContato(Company $c): ?string
+    {
+        return ($c->nome_contato === null || $c->nome_contato === '') ? 'sem_contato' : null;
     }
 }
