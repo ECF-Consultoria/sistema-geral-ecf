@@ -141,3 +141,17 @@ None — nenhuma configuração externa necessária.
 ---
 *Phase: 135-onboarding-geral-por-servico-motor-dirigido-por-template-com*
 *Completed: 2026-08-12*
+
+## Self-Check: PASSED
+
+- FOUND: `resources/js/Pages/Onboarding/Templates/Index.jsx`
+- FOUND: `resources/js/Components/Onboarding/Templates/TemplatesGrid.jsx`
+- FOUND: `resources/js/Components/Onboarding/Templates/PassoEditor.jsx`
+- FOUND: `resources/js/Components/Onboarding/Templates/PublicarVersaoDialog.jsx`
+- FOUND: `resources/js/Components/Onboarding/Templates/MigrarOnboardingsDialog.jsx`
+- FOUND: `resources/js/Components/Onboarding/Templates/sentinelaSemValor.js`
+- FOUND: commit `40b662ff`
+- FOUND: commit `33b5317d`
+- FOUND: commit `6ab1ce52`
+- FOUND: commit `35ef3023`
+- FOUND: commit `32ab3a3e`
