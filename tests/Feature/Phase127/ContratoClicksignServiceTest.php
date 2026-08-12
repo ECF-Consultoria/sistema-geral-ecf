@@ -219,7 +219,7 @@ class ContratoClicksignServiceTest extends TestCase
         $this->assertSame(10, $contrato->prazo_dias);
         $this->assertSame(2, $contrato->lembrete_dias);
 
-        $company2 = $this->companyCompleta();
+        $company2 = $this->companyCompleta(['cnpj' => '98.765.432/0001-10']);
         $this->contratoServicoAtivo($company2);
 
         $this->service->iniciarParaEmpresa($company2);
@@ -263,7 +263,7 @@ class ContratoClicksignServiceTest extends TestCase
         $this->assertArrayHasKey('criados', $resultado);
         $this->assertArrayHasKey('pulados', $resultado);
 
-        $companyIncompleta = $this->companyCompleta(['email_cliente' => null]);
+        $companyIncompleta = $this->companyCompleta(['cnpj' => '98.765.432/0001-10', 'email_cliente' => null]);
         $this->contratoServicoAtivo($companyIncompleta);
 
         $resultado2 = $this->service->iniciarParaEmpresa($companyIncompleta);
