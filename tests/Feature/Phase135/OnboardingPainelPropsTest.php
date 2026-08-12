@@ -171,7 +171,7 @@ class OnboardingPainelPropsTest extends TestCase
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Onboarding/Painel', false)
+            ->component('Onboarding/Painel')
             ->has('empresas', 1)
             ->has('empresas.0.onboardings', 2)
         );
@@ -193,7 +193,7 @@ class OnboardingPainelPropsTest extends TestCase
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Onboarding/Detalhe', false)
+            ->component('Onboarding/Detalhe')
             ->where('onboarding.situacao', 'rascunho')
             ->has('passos', 13)
             ->has('passos', fn ($passos) => $passos->each(
@@ -221,7 +221,7 @@ class OnboardingPainelPropsTest extends TestCase
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Onboarding/Painel', false)
+            ->component('Onboarding/Painel')
             ->where('empresas.0.onboardings.0.passo_que_trava.chave', 'custos_app_ecf')
             ->where('empresas.0.onboardings.0.passo_que_trava.dias_parado', 6)
             ->where('empresas.0.onboardings.0.passo_que_trava.vencido', true)
@@ -248,7 +248,7 @@ class OnboardingPainelPropsTest extends TestCase
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Onboarding/Painel', false)
+            ->component('Onboarding/Painel')
             ->where('empresas.0.onboardings.0.passo_que_trava.chave', 'custos_app_ecf')
             ->where('empresas.0.onboardings.0.passo_que_trava.dias_parado', 4)
         );
@@ -273,7 +273,7 @@ class OnboardingPainelPropsTest extends TestCase
         $indexResponse = $this->actingAs($this->admin())->get(route('onboarding.painel.index'));
         $indexResponse->assertOk();
         $indexResponse->assertInertia(fn ($page) => $page
-            ->component('Onboarding/Painel', false)
+            ->component('Onboarding/Painel')
             ->where('empresas.0.onboardings.0.contadores.aguardando_coleta', 1)
             ->where('empresas.0.onboardings.0.passo_que_trava.chave', fn ($chave) => $chave !== 'anuncios_ativos_inativos')
         );
@@ -281,7 +281,7 @@ class OnboardingPainelPropsTest extends TestCase
         $showResponse = $this->actingAs($this->admin())->get(route('onboarding.painel.show', $onboarding));
         $showResponse->assertOk();
         $showResponse->assertInertia(fn ($page) => $page
-            ->component('Onboarding/Detalhe', false)
+            ->component('Onboarding/Detalhe')
             ->where('passos.7.chave', 'anuncios_ativos_inativos')
             ->where('passos.7.status', OnboardingPasso::STATUS_AGUARDANDO_COLETA)
             ->where('passos.7.coleta_demorando', true)
@@ -311,7 +311,7 @@ class OnboardingPainelPropsTest extends TestCase
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Onboarding/Painel', false)
+            ->component('Onboarding/Painel')
             ->where('empresas.0.onboardings.0.situacao', 'pronto_para_concluir')
         );
     }
@@ -328,7 +328,7 @@ class OnboardingPainelPropsTest extends TestCase
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Onboarding/Detalhe', false)
+            ->component('Onboarding/Detalhe')
             // 'grant_consultoria_adman' (índice 3, ordem 4) depende de 'planilha_custos_adman'.
             ->where('passos.3.chave', 'grant_consultoria_adman')
             ->where('passos.3.depende_de.0', 'Planilha de custos ADMAN')
@@ -363,7 +363,7 @@ class OnboardingPainelPropsTest extends TestCase
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Onboarding/Painel', false)
+            ->component('Onboarding/Painel')
             ->has('empresas', 1)
             ->where('empresas.0.empresa.id', $companyDaCarteira->id)
         );

@@ -203,7 +203,7 @@ class OnboardingPainelAcoesTest extends TestCase
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Onboarding/Painel', false)
+            ->component('Onboarding/Painel')
             ->where('empresas.0.onboardings.0.responsavel_sugerido.id', $consultor->id)
         );
 

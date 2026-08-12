@@ -228,6 +228,14 @@ const NAV_TREE = [
             // com `?tab=grupos` (o helper de menu acima usa routeParams pra alimentar
             // Ziggy; segments fora do path viram query string automaticamente).
             { label: 'Grupos', routeName: 'comercial.empresas.listagem', routeParams: { tab: 'grupos' }, page: 'Comercial/EmpresasListagem', icon: ListChecks, permission: 'comercial.cadastrar_empresa' },
+            // Fase 135 Plano 12 — painel operacional do onboarding geral por
+            // serviço. Gate DEDICADO `core.onboarding` (Plano 09) — NÃO
+            // reutiliza a permission do item "Onboarding" de Polos (grupo
+            // Mercado Livre, alguns itens acima), que continua existindo
+            // como item próprio e separado (D-02).
+            // `page` como array cobre tanto a lista (Nível 1) quanto o
+            // detalhe (Nível 2) — os dois acendem o mesmo item de menu.
+            { label: 'Onboarding', routeName: 'onboarding.painel.index', page: ['Onboarding/Painel', 'Onboarding/Detalhe'], icon: ListChecks, permission: 'core.onboarding' },
             // Phase 37 Plan 37-07 (REQ-37-09) — Serviços movido do nivel raiz.
             // Permission 'sistema.servicos' preservada para manter o gating de
             // catalogo (admin sempre; outros usuarios via setor_permissoes).
