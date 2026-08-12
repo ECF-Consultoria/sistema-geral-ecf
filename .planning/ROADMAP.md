@@ -1773,7 +1773,7 @@ Plans:
   10. Cliente recebe **um link por empresa** que agrega os passos `dono=cliente` de todos os serviços ativos; passo de mesma `chave` em serviços diferentes fecha uma vez só
   11. O painel responde "o que está travando, há quantos dias e de quem é a bola" — não uma barra de porcentagem
 
-**Plans:** 8/13 plans executed
+**Plans:** 10/13 plans executed
 
 Plans:
 **Wave 1**
@@ -1799,7 +1799,7 @@ Plans:
 
 - [x] 135-07-PLAN.md — Resolver de acervo (SC-07: vazio ≠ zero) + comando de reavaliacao agendado [wave 5]
 - [x] 135-09-PLAN.md — Painel operacional (backend): permission core.onboarding, props de "o que trava" [wave 5]
-- [ ] 135-10-PLAN.md — Tela 2: builder de template (React) [wave 5]
+- [x] 135-10-PLAN.md — Tela 2: builder de template (React) [wave 5]
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
