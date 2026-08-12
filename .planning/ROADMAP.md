@@ -1715,7 +1715,15 @@ Plans:
   3. Com pendência comercial em aberto segundo a regra do GATE, a empresa fica marcada `aguardando_comercial` e nenhuma chamada é feita à Clicksign
   4. Em nenhum momento desta fase uma empresa deixa de ser roteada ao operacional imediatamente — o desvio administrativo existe no código e roda em paralelo, mas a flag `administrativo_bloqueio_ativo` continua desligada (a mecânica da flag em si já foi construída e provada na Fase 124; aqui o foco é o desvio e a decisão A4)
 
-**Plans:** TBD
+**Plans:** 6 plans
+
+Plans:
+- [ ] 128-01-PLAN.md — Coluna `servicos.exige_contrato` (D-03/FLUXO-08), Polos isento já na migration
+- [ ] 128-02-PLAN.md — `PendenciasComerciaisService::calcularUniversais()` sem quebrar a listagem do Comercial (D-01)
+- [ ] 128-03-PLAN.md — `GatilhoContratoAdministrativoService`: os dois portões da D-02 + isenção de Polos (SC0/SC3)
+- [ ] 128-04-PLAN.md — Gate ligado nos dois pontos de entrada, fora da transação + invariante do roteamento (SC1/SC2/SC4)
+- [ ] 128-05-PLAN.md — Reavaliação automática por Observer com campos-gatilho fixos e anti-laço (D-04)
+- [ ] 128-06-PLAN.md — Gate humano: envelope real no sandbox, invariante medido, Polos fora do fluxo
 
 > ⚠️ **Esta fase é o coração do REDE-06 (modo observação).** O pior caso de bug aqui é um `ContratoAssinatura` com status errado — nunca uma empresa presa fora do operacional, porque o roteamento imediato antigo continua rodando em paralelo enquanto a flag estiver desligada.
 
