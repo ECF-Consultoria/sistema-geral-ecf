@@ -32,6 +32,14 @@ class ContratoPdfDadosTest extends TestCase
      * dia de vencimento, forma de pagamento e endereço são garantidamente
      * ausentes no banco hoje). `$atributosCompany` sobrescreve o padrão
      * quando um teste específico precisa simular contato vazio/nulo.
+     *
+     * Fase 127-01 (D-06): o DEFAULT de `comSnapshot()` da factory passou a
+     * ser um único item (um ContratoAssinatura representa um serviço só).
+     * Este helper passa a lista de 3 serviços EXPLICITAMENTE — o teste
+     * `contrato_com_tres_servicos_no_snapshot_...` continua provando o
+     * caso de snapshot com múltiplos itens (empresa com vários serviços
+     * concatenados no mesmo snapshot), só que agora como comportamento
+     * suportado, não mais como default da factory.
      */
     private function contratoComSnapshot(array $atributosCompany = []): ContratoAssinatura
     {
@@ -42,7 +50,26 @@ class ContratoPdfDadosTest extends TestCase
         ];
 
         return ContratoAssinatura::factory()
-            ->comSnapshot()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Tráfego — Mercado Livre',
+                    'valor_contratado' => 1847.32,
+                    'data_contratacao' => '2026-01-15',
+                    'data_vencimento'  => '2027-01-15',
+                ],
+                [
+                    'servico'          => 'Consultoria Shopee',
+                    'valor_contratado' => 923.9,
+                    'data_contratacao' => '2026-02-01',
+                    'data_vencimento'  => '2027-02-01',
+                ],
+                [
+                    'servico'          => 'Análise de Sugadores',
+                    'valor_contratado' => 412.55,
+                    'data_contratacao' => '2026-03-10',
+                    'data_vencimento'  => '2027-03-10',
+                ],
+            ])
             ->for(Company::factory()->state(array_merge($atributosPadrao, $atributosCompany)), 'company')
             ->create();
     }

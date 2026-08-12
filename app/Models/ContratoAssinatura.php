@@ -14,6 +14,12 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * processo de assinatura de cada empresa passa a viver: estado atual e as
  * datas de envio, assinatura e liberação.
  *
+ * ⚠️ Pós D-06 (Fase 127-01): um `ContratoAssinatura` representa UM serviço,
+ * não vários. `servico_id` é a FONTE; `servicos_snapshot` (D-10 da Fase 125)
+ * continua JSON, mas com o recorte de um único serviço. A trava de
+ * unicidade "em andamento" deixou de ser por EMPRESA e passou a ser por
+ * (EMPRESA + SERVIÇO) — ver `STATUS_EM_ANDAMENTO` e o hook `saving` abaixo.
+ *
  * Os 7 estados possíveis (D-04/D-06), STRING + constantes públicas — nunca
  * `enum` de banco:
  *  - rascunho               — contrato gerado, ainda não enviado.
@@ -60,6 +66,13 @@ class ContratoAssinatura extends Model
         // novas falharia EM SILÊNCIO.
         'pdf_path',
         'pdf_assinado_path',
+        // Fase 127-01 (D-06) — sem isto o mass assignment das quatro
+        // colunas novas falharia EM SILÊNCIO (T-127-03), exatamente o
+        // alerta deixado pela Fase 126.
+        'servico_id',
+        'servico_id_em_andamento',
+        'prazo_dias',
+        'lembrete_dias',
     ];
 
     protected $casts = [
@@ -68,6 +81,9 @@ class ContratoAssinatura extends Model
         'liberado_em'       => 'datetime',
         // D-10 — mesmo cast de ContratoServico::$casts['hubspot_snapshot'].
         'servicos_snapshot' => 'array',
+        // Fase 127-01 (DADOS-06).
+        'prazo_dias'        => 'integer',
+        'lembrete_dias'     => 'integer',
     ];
 
     public const STATUS_RASCUNHO               = 'rascunho';
@@ -90,9 +106,10 @@ class ContratoAssinatura extends Model
     ];
 
     /**
-     * Estados que ocupam o slot do índice único `ca_company_andamento_uniq`
-     * (D-01) — e SÓ estes. Um contrato nestes estados é "em andamento":
-     * a empresa não pode ter um segundo.
+     * Estados que ocupam o slot do índice único
+     * `ca_empresa_servico_andamento_uniq` (D-01, chave composta desde a
+     * D-06 da Fase 127-01) — e SÓ estes. Um contrato nestes estados é "em
+     * andamento": a empresa não pode ter um segundo do MESMO serviço.
      */
     public const STATUS_EM_ANDAMENTO = [
         self::STATUS_RASCUNHO,
@@ -100,14 +117,17 @@ class ContratoAssinatura extends Model
     ];
 
     /**
-     * Sincroniza a coluna auxiliar `company_id_em_andamento` com o `status`
-     * a cada save: espelha `company_id` enquanto o contrato está em
-     * andamento, e zera fora disso.
+     * Sincroniza AS DUAS colunas auxiliares (`company_id_em_andamento` E
+     * `servico_id_em_andamento`, desde a D-06 da Fase 127-01) com o
+     * `status` a cada save, NA MESMA passagem: espelham `company_id` e
+     * `servico_id` enquanto o contrato está em andamento, e zeram AS DUAS
+     * juntas fora disso.
      *
-     * ⚠️ LEIA ANTES DE CONFIAR NA D-01 (corrigido no code review da Fase 125):
+     * ⚠️ LEIA ANTES DE CONFIAR NA D-01 (corrigido no code review da Fase 125;
+     * estendido para chave composta na Fase 127-01):
      *
-     * `company_id_em_andamento` é coluna **derivada**, e este hook é o ÚNICO
-     * lugar que a preenche. O índice único `ca_company_andamento_uniq` não
+     * As duas colunas são **derivadas**, e este hook é o ÚNICO lugar que as
+     * preenche. O índice único `ca_empresa_servico_andamento_uniq` não
      * enxerga o `status` — ele só garante unicidade daquilo que este hook
      * escreveu. Ou seja: **o hook não é conveniência sobre a trava do banco,
      * ele é o que alimenta a trava.** Onde o hook não roda, a D-01 desliga
@@ -119,20 +139,31 @@ class ContratoAssinatura extends Model
      *   - seeders que escrevem via query builder
      *
      * A falha acontece nos dois sentidos: pode **liberar** um segundo contrato
-     * em andamento (coluna ficou NULL), ou **travar a empresa para sempre**
-     * (coluna presa a um contrato já encerrado).
+     * em andamento (colunas ficaram NULL), ou **travar a empresa para sempre**
+     * (colunas presas a um contrato já encerrado).
      *
      * Consequência prática para quem vier depois: expirar contratos vencidos
-     * (Fase 127) é um bulk update por natureza — se for feito por query
-     * builder, precisa zerar `company_id_em_andamento` na MESMA query, senão
-     * a empresa fica impedida de gerar contrato novo.
+     * (Fase 130) é um bulk update por natureza — se for feito por query
+     * builder, precisa zerar **as duas** colunas na MESMA query, senão a
+     * empresa/serviço fica impedido de gerar contrato novo.
+     *
+     * O hook também é o guard de obrigatoriedade de `servico_id`: a coluna
+     * é `nullable()` no schema só por causa de uma limitação do SQLite dos
+     * testes (ver comentário da migration da Fase 127-01) — a obrigação
+     * real é aplicada aqui, lançando `\RuntimeException` se `servico_id`
+     * estiver vazio ao salvar.
      */
     protected static function booted(): void
     {
         static::saving(function (self $contrato) {
-            $contrato->company_id_em_andamento = in_array($contrato->status, self::STATUS_EM_ANDAMENTO, true)
-                ? $contrato->company_id
-                : null;
+            if (empty($contrato->servico_id)) {
+                throw new \RuntimeException('ContratoAssinatura exige servico_id (D-06) — um contrato representa UM serviço.');
+            }
+
+            $emAndamento = in_array($contrato->status, self::STATUS_EM_ANDAMENTO, true);
+
+            $contrato->company_id_em_andamento = $emAndamento ? $contrato->company_id : null;
+            $contrato->servico_id_em_andamento = $emAndamento ? $contrato->servico_id : null;
         });
     }
 
@@ -142,10 +173,11 @@ class ContratoAssinatura extends Model
     }
 
     /**
-     * Guard de código da D-01: devolve o contrato em andamento da empresa,
-     * ou `null` se não houver nenhum. Quem for criar contrato (Fase 127)
-     * deve chamar isto ANTES, para o usuário ver "esta empresa já tem
-     * contrato em andamento" em vez de um 500 de constraint do banco.
+     * Guard de código da D-01: devolve QUALQUER contrato em andamento da
+     * empresa (de qualquer serviço), ou `null` se não houver nenhum. Uso
+     * histórico da suíte da Fase 125; quem for CRIAR contrato deve preferir
+     * `emAndamentoDoServico()` abaixo — desde a D-06 (Fase 127-01) a trava
+     * real é por (empresa + serviço), não por empresa isolada.
      *
      * Consulta por `company_id` + `status`, que é a FONTE da verdade, e não
      * por `company_id_em_andamento`, que é o espelho derivado. Assim esta
@@ -155,6 +187,25 @@ class ContratoAssinatura extends Model
     public static function emAndamentoDaEmpresa(int $companyId): ?self
     {
         return self::where('company_id', $companyId)
+            ->whereIn('status', self::STATUS_EM_ANDAMENTO)
+            ->first();
+    }
+
+    /**
+     * Guard de código da D-06 (Fase 127-01): devolve o contrato em
+     * andamento da empresa PARA O SERVIÇO pedido, ou `null` se não houver
+     * nenhum. Quem for criar contrato deve chamar isto ANTES, para o
+     * usuário ver "esta empresa já tem contrato em andamento para este
+     * serviço" em vez de um 500 de constraint do banco.
+     *
+     * Consulta por `company_id` + `servico_id` + `status`, que é a FONTE da
+     * verdade, e não pelas colunas espelho `company_id_em_andamento` /
+     * `servico_id_em_andamento` — mesma disciplina de `emAndamentoDaEmpresa()`.
+     */
+    public static function emAndamentoDoServico(int $companyId, int $servicoId): ?self
+    {
+        return self::where('company_id', $companyId)
+            ->where('servico_id', $servicoId)
             ->whereIn('status', self::STATUS_EM_ANDAMENTO)
             ->first();
     }
@@ -179,6 +230,13 @@ class ContratoAssinatura extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    // Fase 127-01 (D-06) — o serviço que este contrato representa. Pós D-06,
+    // um ContratoAssinatura representa UM serviço, nunca vários.
+    public function servico(): BelongsTo
+    {
+        return $this->belongsTo(Servico::class);
     }
 
     // Fase 125 (Plano 02) — cada pessoa que assina este contrato
