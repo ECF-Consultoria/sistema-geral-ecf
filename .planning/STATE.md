@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: Executando (wave 2 de 5 — plano 04/07 completo)
-stopped_at: "Completed 127-04-PLAN.md (modelo por servico D-21 + prazo/lembrete efetivos D-03 — 187 testes verdes); proximo: 127-05"
-last_updated: "2026-08-12T13:45:00.000Z"
+status: Executando (wave 3 de 5 — plano 05/07 completo)
+stopped_at: "Completed 127-05-PLAN.md (GerarContratoAssinaturaJob — 199 testes verdes); proximo: 127-06"
+last_updated: "2026-08-12T14:15:00.000Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 12
   completed_phases: 4
   total_plans: 40
-  completed_plans: 34
+  completed_plans: 36
   percent: 33
 ---
 
@@ -26,9 +26,28 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 127
-Plan: 04 executado (127-05 a seguir)
-Status: Executando (wave 2 de 5 — plano 04/07 completo)
+Plan: 05 executado (127-06 a seguir)
+Status: Executando (wave 3 de 5 — plano 05/07 completo)
 Last activity: 2026-08-12
+
+**Plano 127-05 executado em 2026-08-12** (commits `b18257a5`/`f5eada35`/`ca256fd0`): o trabalhador da
+fila. `GerarContratoAssinaturaJob` monta UM envelope Clicksign por contrato (documento por modelo,
+4 signatários, 8 requisitos) e **para no rascunho** (D-02, `ativar: false` — `enviado_em` nunca é
+tocado, só o webhook da Fase 129 vai saber que foi enviado). `middleware()` combina
+`RateLimited('clicksign-envelope')` (bucket novo, 1/min global, `AppServiceProvider::boot()`) com
+`WithoutOverlapping('clicksign-envelope-global')` — o segundo fecha a janela de corrida entre
+`tooManyAttempts()`/`hit()` do primeiro, que sozinho poderia deixar passar até 30 chamadas com um
+envelope custando 15 das 20/min medidas (D-01). `deadline_at`/`remind_interval` vão na CRIAÇÃO do
+envelope com `prazoDiasEfetivo()`/`lembreteDiasEfetivo()` (plano 127-04), mesma forma literal já
+usada por `ativarEnvelope()` (D-03). Guard de reentrega (contrato com `clicksign_envelope_id` já
+preenchido não monta um segundo envelope) e guard de modelo ausente (`Servico::clicksignTemplateId()`
+`null` falha ANTES de qualquer chamada HTTP). `failed()` grava `status = erro` pelo `save()` do
+model (o hook `saving` da D-06 zera as colunas de "em andamento" e libera a empresa+serviço para
+nova tentativa) com `erro_mensagem` podada de e-mail (WR-11). Caminho feliz medido em exatamente
+**14 chamadas** (15 da Fase 126 menos a ativação removida pela D-02) — dentro do orçamento. 12
+testes novos (TDD RED→GREEN na primeira tentativa, sem correção). Suíte `Phase125+126+127` =
+**199 verdes** (baseline 187 + 12 novos). Zero regressão. Nenhuma chamada real à Clicksign, nenhum
+deploy. Detalhe: `127-05-SUMMARY.md`.
 
 **Plano 127-04 executado em 2026-08-12** (commits `56198a88`/`fa477d78`/`ff0208b9`): resolve as duas
 configurações que a montagem do envelope (127-05) vai precisar. **D-21** (herdada da Fase 126):
@@ -984,8 +1003,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-12T13:45:00.000Z
-Stopped at: Completed 127-04-PLAN.md (modelo por servico D-21 + prazo/lembrete efetivos D-03 — 187 testes verdes); proximo: 127-05
+Last session: 2026-08-12T14:15:00.000Z
+Stopped at: Completed 127-05-PLAN.md (GerarContratoAssinaturaJob — 199 testes verdes); proximo: 127-06
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 

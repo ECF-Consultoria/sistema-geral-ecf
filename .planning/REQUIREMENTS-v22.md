@@ -150,7 +150,7 @@ Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou
 ### Integração Clicksign
 
 - [x] **CLICK-01**: O sistema conversa com a Clicksign sem nunca registrar o token de acesso em log algum
-- [ ] **CLICK-02**: O sistema cria o envelope na Clicksign com o documento, os signatários e os requisitos de assinatura
+- [x] **CLICK-02**: O sistema cria o envelope na Clicksign com o documento, os signatários e os requisitos de assinatura
 - [ ] **CLICK-03**: O sistema recusa webhook cuja assinatura não confere (A1 é gate bloqueante desta capacidade)
 - [ ] **CLICK-04**: Webhook repetido não duplica evento, signatário, assinatura, `MlbEmpresa` nem implementação operacional
 - [ ] **CLICK-05**: A empresa só é liberada ao operacional a partir do estado agregado reconsultado do envelope, nunca do payload isolado do evento (D7)
@@ -252,7 +252,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | DADOS-05 | Fase 130 | Pending |
 | DADOS-06 | Fase 127 | Done |
 | CLICK-01 | Fase 126 | Done |
-| CLICK-02 | Fase 127 | Pending |
+| CLICK-02 | Fase 127 | Done |
 | CLICK-03 | Fase 129 | Pending |
 | CLICK-04 | Fase 129 | Pending |
 | CLICK-05 | Fase 129 | Pending |
