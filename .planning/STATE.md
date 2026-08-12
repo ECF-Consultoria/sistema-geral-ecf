@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: Executando (wave 1 de 5 — plano 02/07 completo)
-stopped_at: "Completed 127-02-PLAN.md (D-02 aplicada — caminho que para no rascunho); próximo: 127-03"
-last_updated: "2026-08-12T12:53:24.119Z"
+stopped_at: "Completed 127-03-PLAN.md (ContratoDadosMinimosService, REDE-05 — 13/13 testes verdes); proximo: 127-04"
+last_updated: "2026-08-12T13:06:33.533Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 12
   completed_phases: 4
   total_plans: 40
-  completed_plans: 32
+  completed_plans: 33
   percent: 33
 ---
 
@@ -343,6 +343,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 134 P09 | 31min | 3 tasks | 7 files |
 | Phase 134 P10 | 13min | 3 tasks | 6 files |
 | Phase 127 P02 | 25min | 2 tasks | 2 files |
+| Phase 127 P03 | 8min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -968,8 +969,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-12T12:53:24.088Z
-Stopped at: Completed 127-02-PLAN.md (D-02 aplicada — caminho que para no rascunho); próximo: 127-03
+Last session: 2026-08-12T13:06:33.506Z
+Stopped at: Completed 127-03-PLAN.md (ContratoDadosMinimosService, REDE-05 — 13/13 testes verdes); proximo: 127-04
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
