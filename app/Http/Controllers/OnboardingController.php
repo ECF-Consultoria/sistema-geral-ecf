@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Company;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
 use App\Models\TemplatePasso;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
+use App\Services\Onboarding\OnboardingLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -47,8 +49,10 @@ class OnboardingController extends Controller
         'concluido'            => 'Concluído',
     ];
 
-    public function __construct(private OnboardingEngineService $engine)
-    {
+    public function __construct(
+        private OnboardingEngineService $engine,
+        private OnboardingLinkService $linkService,
+    ) {
     }
 
     /**
@@ -211,6 +215,32 @@ class OnboardingController extends Controller
             ->log("Passo \"{$passo->templatePasso->titulo}\" concluído manualmente");
 
         return back()->with('success', 'Passo concluído.');
+    }
+
+    /**
+     * POST /onboarding/empresas/{company}/link — gera (ou devolve, se já
+     * existir) o token único do portal público da empresa (D-06, Plano 11).
+     * Ação INTERNA, atrás do mesmo gate `permission:core.onboarding` do
+     * resto do painel — o cliente nunca chega a esta rota, ela só existe
+     * para a Coordenação obter/copiar o link a entregar. `paraEmpresa()` é
+     * idempotente (`firstOrCreate` em `OnboardingLinkService`): chamar duas
+     * vezes nunca cria um segundo token.
+     */
+    public function gerarLink(Request $request, Company $company)
+    {
+        $user = $request->user();
+
+        if (! $user->isAdmin()) {
+            $temAcesso = $user->companies()->where('companies.id', $company->id)->exists();
+            abort_unless($temAcesso, 403, 'Você não tem acesso a esta empresa.');
+        }
+
+        $link = $this->linkService->paraEmpresa($company);
+
+        return back()->with(
+            'success',
+            'Link do portal do cliente: ' . route('onboarding.publico.workspace', $link->token)
+        );
     }
 
     // ─── Escopo de leitura/escrita (T-135-09-02) ─────────────────────────────

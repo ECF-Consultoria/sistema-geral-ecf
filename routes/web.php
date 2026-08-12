@@ -38,6 +38,7 @@ use App\Http\Controllers\NpsTemplateController;
 use App\Http\Controllers\NpsTemplateOptionController;
 use App\Http\Controllers\NpsTemplateQuestionController;
 use App\Http\Controllers\OnboardingController;
+use App\Http\Controllers\OnboardingPublicoController;
 use App\Http\Controllers\OnboardingTemplateController;
 use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PolosController;
@@ -96,6 +97,24 @@ Route::patch('/implementacao/{token}', [MlbImplementacaoController::class, 'salv
 // Visão do publicador (sem autenticação) — leitura + check-in por SKU
 Route::get('/implementacao/{token}/publicador', [MlbImplementacaoController::class, 'publicador'])->name('implementacao.publicador');
 Route::patch('/implementacao/{token}/publicador/checkin', [MlbImplementacaoController::class, 'checkinPublicador'])->name('implementacao.publicador.checkin');
+
+// ─── Fase 135 Plano 11 — Portal público do cliente por EMPRESA (D-06) ───────
+// Prefixo NOVO e distinto de 'implementacao/*' (Polos, D-02) — NUNCA reusar
+// aquele prefixo. O token vive na EMPRESA (não no onboarding): uma empresa
+// pode ter mais de um serviço com onboarding ativo ao mesmo tempo (Gestão
+// hoje; outros depois, D-08) e o cliente recebe um único link. Sem
+// middleware 'auth' — acesso é por posse do token (mesmo risco já aceito no
+// precedente do Polos: Str::random(48), unique() no banco, sem expiração).
+// CSRF isento via bootstrap/app.php (entrada 'onboarding-cliente/*',
+// distinta da entrada 'implementacao/*' já existente).
+Route::get('/onboarding-cliente/{token}', [OnboardingPublicoController::class, 'workspace'])
+    ->name('onboarding.publico.workspace');
+Route::patch('/onboarding-cliente/{token}/passo', [OnboardingPublicoController::class, 'marcarFeito'])
+    ->middleware('throttle:20,1')
+    ->name('onboarding.publico.passo');
+Route::post('/onboarding-cliente/{token}/ficha', [OnboardingPublicoController::class, 'anexarFicha'])
+    ->middleware('throttle:20,1')
+    ->name('onboarding.publico.ficha');
 
 // ML OAuth — callback público (o cliente autoriza fora do painel)
 Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])
@@ -841,6 +860,14 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
             ->name('onboarding.responsavel.confirmar');
         Route::post('/onboarding/passos/{passo}/concluir', [OnboardingController::class, 'concluirPasso'])
             ->name('onboarding.passos.concluir');
+
+        // ─── Fase 135 Plano 11 — geração do link único por empresa (D-06) ──
+        // Ação interna: a Coordenação gera/copia o token do portal público
+        // do cliente. Mesmo gate deste bloco (permission:core.onboarding) —
+        // o cliente nunca chega a esta rota, só ao prefixo público
+        // 'onboarding-cliente/*' registrado fora do grupo 'auth' acima.
+        Route::post('/onboarding/empresas/{company}/link', [OnboardingController::class, 'gerarLink'])
+            ->name('onboarding.link.gerar');
     });
 
 // ─── Alertas Estratégicos (Phase 23) ────────────────────────────────────────
