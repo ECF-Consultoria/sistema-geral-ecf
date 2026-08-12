@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 136-02-PLAN.md
-last_updated: "2026-08-11T20:31:08.344Z"
-last_activity: 2026-08-11
+stopped_at: Completed 136-03-PLAN.md
+last_updated: "2026-08-12T12:51:14.820Z"
+last_activity: 2026-08-12 -- Phase 136 execution started
 progress:
   total_phases: 13
   completed_phases: 1
   total_plans: 35
-  completed_plans: 18
+  completed_plans: 19
   percent: 8
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 136 (m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api-) — EXECUTING
-Plan: 3 of 7
-Status: Ready to execute
-Last activity: 2026-08-11
+Plan: 4 of 7 (01/02/03 concluidos; proximo 136-04, wave 3)
+Status: Executing Phase 136
+Last activity: 2026-08-12 -- Phase 136 execution started
 
 ## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
 
