@@ -123,20 +123,104 @@ exato na expiração (some da lista? vira `canceled`?). Medir na Fase 130, que �
 
 ---
 
-## GATE 2 — consultar a conta de PRODUÇÃO — **NÃO AUTORIZADO ATÉ AGORA**
+## GATE 2 — a conta de PRODUÇÃO enxerga o modelo? — ✅ **MEDIDO: SIM**
 
-A conta de produção **nunca foi consultada**, nem uma vez, em nenhuma sessão desta milestone. Exige
-autorização explícita do usuário. `clicksign:sondar-modelo --listar --producao --confirmar` existe
-para isso e pede confirmação interativa antes de sair do sandbox.
+Autorizado pelo usuário em 12/08/2026. **Primeira vez que a conta de produção foi consultada em toda
+a milestone.** Somente leitura: `GET /templates`, nenhum envelope criado, nada enviado a ninguém.
 
-Status: **NÃO MEDIDO**.
+⚠️ **Como o token de produção foi manuseado:** chave dedicada `CLICKSIGN_PROD_TOKEN` no `.env`
+(gitignored), lida por script pontual que monta a URL de produção explicitamente.
+`CLICKSIGN_ENV`/`CLICKSIGN_BASE_URL` do projeto **continuaram apontando para o sandbox** — nenhum
+teste, comando ou job passou a tocar a conta real. O token nunca foi impresso nem colado no chat.
+
+### O susto que não era
+
+A primeira chamada devolveu **403**, e por um momento pareceu ser o gate de PLANO que a pesquisa
+previu ("A conta não possui acesso a essa funcionalidade" → exigiria trocar de plano, decisão
+comercial). **Não era.** O detalhe era o outro 403, o da §1 do empírico:
+
+```
+403 => E-mail do usuário da API não configurado.
+       Verifique as informações na aba API em configurações
+```
+
+Três conclusões de uma vez: o plano de produção **tem** acesso à API, a aba API **existe** na conta,
+e o token é **válido** (passou da autenticação, parou na camada seguinte). Faltava uma configuração
+de uma linha, a mesma já feita no sandbox.
+
+⚠️ **Lição: a Clicksign usa 403 para dois casos muito diferentes** — um é configuração trivial, o
+outro é decisão comercial. Distinguir pelo `detail`, nunca pelo código. O script do gate foi
+corrigido para não confundir os dois.
+
+Depois de o usuário preencher o e-mail do usuário da API em produção:
+
+```
+GET /templates => 200
+  modelos na conta: 1
+    - modelo-contrato-gestao-ads-mercado-livre   <== o nosso
+  modelo 68c524fd-… presente? SIM
+```
 
 ---
 
-## GATE 3 — confronto de variáveis do modelo de PRODUÇÃO — **BLOQUEADO PELO GATE 2**
+## GATE 3 — confronto de variáveis do modelo de PRODUÇÃO — ✅ **MEDIDO: BATE**
 
-O modelo cadastrado na conta de produção pelo usuário (`dbf44e04-…`) é a versão **sem os nomes no
-rodapé** — o `.docx` foi atualizado depois (Emerson Faccioli / Thiago Messina / Jéssica de Oliveira)
-e precisa ser recadastrado lá antes de qualquer confronto valer.
+O usuário recadastrou o modelo em produção com o `.docx` atualizado (rodapé com os nomes dos 4
+signatários da D-20). Chave nova: `68c524fd-f8de-45ff-a619-23cc0862e434` — a antiga (`dbf44e04-…`,
+sem os nomes) foi substituída.
 
-Status: **NÃO MEDIDO**.
+Confronto entre o que o `.docx` espera e o que `ContratoVariaveisModeloService::nomes()` emite —
+extração **local**, zero requisições:
+
+| Categoria | Qtd | Quais |
+|---|---|---|
+| ✅ OK | 7 | `cnpj`, `data_assinatura`, `data_primeira_parcela`, `dia_vencimento`, `endereco`, `razao_social`, `valor_mensal` |
+| ⚠️ **SOBRANDO no `.docx`** | **0** | — |
+| Não usadas pelo modelo | 3 | `servico_contratado`, `vigencia_fim`, `vigencia_inicio` |
+
+**Zero `sobrando` é o que importa.** Essa é a única categoria perigosa: variável que o modelo pede e
+o código não emite vira **campo em branco no contrato, sem erro nenhum** (§10.5 do empírico). As 3
+"não usadas" são o caso inverso e inofensivo — medido que variável sobrando no payload é aceita.
+
+As 3 não usadas são consequência esperada da **D-21**: com um modelo por serviço,
+`servico_contratado` deixou de existir no documento; `vigencia_inicio`/`vigencia_fim` não entraram
+porque a cláusula 11ª usa "12 meses a partir da assinatura" e colocar datas ali mudaria o sentido
+jurídico.
+
+---
+
+## Placar final dos gates
+
+| Gate | Status | Resultado |
+|---|---|---|
+| Task 1 — envelope real no sandbox | ✅ MEDIDO | prazo/lembrete/draft/4 signatários/8 requisitos, todos conforme |
+| GATE 1 — prazo sobrevive à ativação humana | ✅ MEDIDO | **SIM**, idêntico ao segundo |
+| GATE 2 — produção enxerga o modelo | ✅ MEDIDO | **SIM**, `200` após configurar o e-mail da API |
+| GATE 3 — variáveis do modelo de produção | ✅ MEDIDO | **7 ok, 0 sobrando** |
+
+**Nenhum gate ficou como NÃO MEDIDO.**
+
+## O que o gate produziu além de vereditos
+
+1. **Correção de código** (`50415659`) — a checagem de bloqueio não olhava a configuração da própria
+   ECF; signatários vazios queimavam 3 chamadas antes de falhar. 5º bug da milestone achado por
+   medição real, nenhum deles pegável por `Http::fake()`.
+2. **Achado que muda a Fase 130** — rascunho expira em **7 dias**, e a D-02 faz o sistema parar
+   exatamente aí. Ver §11.2 do empírico.
+3. **Risco de milestone descartado** — o plano de produção tem acesso à API. Era o maior risco em
+   aberto e ninguém tinha verificado.
+
+## O que segue NÃO MEDIDO (declarado, não escondido)
+
+- Se os 7 dias do rascunho contam da criação ou da última atualização, e o que acontece na
+  expiração. → **Fase 130**.
+- Se a tela de envio, que memoriza preferência de prazo do operador, pode sobrescrever o prazo que o
+  sistema mandou num documento seguinte. → **Fase 131**.
+- `DELETE` de envelope já ativado (`running`) — o rollback desta fase só roda antes da ativação.
+
+## Higiene de credencial
+
+`CLICKSIGN_PROD_TOKEN` foi adicionado ao `.env` **só para este gate**. Ele não é lido por nenhum
+código de produção — apenas pelo script pontual do gate. **Remover do `.env` quando não for mais
+necessário**; o cutover de verdade é a **Fase 132**, e lá a decisão é trocar `CLICKSIGN_ENV`/
+`CLICKSIGN_BASE_URL`/`CLICKSIGN_ACCESS_TOKEN` no servidor, não manter uma chave paralela.

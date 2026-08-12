@@ -518,7 +518,26 @@ mais. Contrato parado esperando revisão é justamente o caso comum que a D-02 c
 ⚠️ **NÃO MEDIDO:** se os 7 dias contam da criação ou da última atualização, e o que acontece
 exatamente na expiração (some da lista? vira `canceled`?).
 
-### 11.3. A interface chama de "documento" o que a API chama de "envelope"
+### 11.3. PRODUÇÃO consultada pela primeira vez — o plano TEM acesso à API
+
+Gate 2 da Fase 127, 12/08/2026. Até aqui, toda a milestone rodou só contra o sandbox; a conta de
+produção **nunca** tinha sido consultada.
+
+⚠️ **Os DOIS 403 da Clicksign não podem ser confundidos** — mesmo código, consequências opostas:
+
+| `detail` | Significa | Como resolver |
+|---|---|---|
+| `A conta não possui acesso a essa funcionalidade` | plano sem API (comercialmente "Automação") | **decisão comercial** — trocar de plano |
+| `E-mail do usuário da API não configurado…` | conta OK, falta 1 campo | **Configurações → aba API**, 1 minuto |
+
+A produção devolveu o **segundo**. Ou seja: plano com acesso à API ✅, aba API existente ✅, token
+válido ✅. Depois de preencher o e-mail do usuário da API, `GET /templates` → **200**, com o modelo
+da ECF listado.
+
+**Distinguir sempre pelo `detail`, nunca pelo status** — os dois casos são 403, e confundi-los faz
+alguém pedir troca de plano quando falta preencher um campo.
+
+### 11.4. A interface chama de "documento" o que a API chama de "envelope"
 
 Não existe menu "Envelopes" na interface. Envelope em `draft` aparece em **Rascunhos**, e a lista
 mostra o **nome do arquivo** (`contrato-1.docx`), **não** o `name` do envelope — este só aparece
