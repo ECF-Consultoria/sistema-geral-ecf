@@ -146,6 +146,7 @@ class MetricaManualTravaConsolidacaoTest extends TestCase
 
         $validator = ValidatorFacade::make([
             'company_id'     => $company->id,
+            'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => '2026-08',
             'metrica'        => 'qualquer_coisa',
             'valor'          => 100,
@@ -163,6 +164,7 @@ class MetricaManualTravaConsolidacaoTest extends TestCase
 
         $validator = ValidatorFacade::make([
             'company_id'     => $company->id,
+            'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => '2026-08',
             'metrica'        => DesempenhoMetricaManual::METRICA_FATURAMENTO,
             'valor'          => -1,
@@ -180,6 +182,7 @@ class MetricaManualTravaConsolidacaoTest extends TestCase
 
         $validator = ValidatorFacade::make([
             'company_id'     => $company->id,
+            'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => '2026-08',
             'metrica'        => DesempenhoMetricaManual::METRICA_FATURAMENTO,
             'valor'          => 100000000,
@@ -197,6 +200,7 @@ class MetricaManualTravaConsolidacaoTest extends TestCase
 
         $validator = ValidatorFacade::make([
             'company_id'     => $company->id,
+            'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => '2026-08',
             'metrica'        => DesempenhoMetricaManual::METRICA_MARGEM_CMV,
             'valor'          => 1234.56,
@@ -215,6 +219,7 @@ class MetricaManualTravaConsolidacaoTest extends TestCase
 
         $request = StoreMetricaManualRequest::create('/desempenho/metricas-manuais', 'POST', [
             'company_id'     => $company->id,
+            'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => '2026-08',
             'metrica'        => DesempenhoMetricaManual::METRICA_FATURAMENTO,
             'ativo'          => true,
@@ -234,6 +239,7 @@ class MetricaManualTravaConsolidacaoTest extends TestCase
 
         $request = StoreMetricaManualRequest::create('/desempenho/metricas-manuais', 'POST', [
             'company_id'     => $company->id,
+            'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => '2026-08',
             'metrica'        => DesempenhoMetricaManual::METRICA_FATURAMENTO,
             'ativo'          => false,
@@ -257,6 +263,7 @@ class MetricaManualTravaConsolidacaoTest extends TestCase
 
         $request = StoreMetricaManualRequest::create('/desempenho/metricas-manuais', 'POST', [
             'company_id'     => $company->id,
+            'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => '2026-08',
             'metrica'        => DesempenhoMetricaManual::METRICA_FATURAMENTO,
             'valor'          => 1000,
@@ -277,6 +284,7 @@ class MetricaManualTravaConsolidacaoTest extends TestCase
 
         $request = StoreMetricaManualRequest::create('/desempenho/metricas-manuais', 'POST', [
             'company_id'     => $company->id,
+            'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => '2026-08',
             'metrica'        => DesempenhoMetricaManual::METRICA_FATURAMENTO,
             'valor'          => 1000,

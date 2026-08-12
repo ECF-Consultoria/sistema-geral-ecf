@@ -10,10 +10,17 @@ use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
 /**
- * Lançamento manual de métrica financeira por (empresa, mês, métrica) — Fase
- * 136 Plano 02 (D-01/D-02/D-07/D-09/D-12).
+ * Lançamento manual de métrica financeira por (empresa, canal, mês, métrica) —
+ * Fase 136 Plano 02 (D-01/D-02/D-07/D-09/D-12).
  *
- * Uma linha representa UMA célula `(company_id, mes_referencia, metrica)`.
+ * O CANAL (`fonte`) entra na identidade porque a mesma empresa pode ser
+ * atendida por profissionais DIFERENTES em marketplaces diferentes — um
+ * estrategista no Mercado Livre, outro na Shopee, cada um com sua própria nota.
+ * O motor já separa isso (a fonte sai dos vínculos da carteira de cada
+ * usuário); sem `fonte` aqui, um CMV digitado para a Shopee entraria também na
+ * nota de quem cuida do Mercado Livre da mesma conta.
+ *
+ * Uma linha representa UMA célula `(company_id, fonte, mes_referencia, metrica)`.
  * Faturamento e margem (CMV) alternam `auto`/`manual` de forma INDEPENDENTE
  * (D-07) — por isso a granularidade é por métrica, nunca um toggle único por
  * empresa/mês.
@@ -49,8 +56,23 @@ class DesempenhoMetricaManual extends Model
         self::METRICA_MARGEM_CMV,
     ];
 
+    /**
+     * Canais lançáveis. Os MESMOS identificadores que o
+     * `FinancialSourceResolver` devolve — 'adman' é Mercado Livre, 'shopee' é
+     * Shopee. Não inventar rótulo novo aqui: o override casa o lançamento com
+     * a fonte que o motor está computando comparando estas strings.
+     */
+    public const FONTE_ADMAN  = 'adman';
+    public const FONTE_SHOPEE = 'shopee';
+
+    public const FONTES = [
+        self::FONTE_ADMAN,
+        self::FONTE_SHOPEE,
+    ];
+
     protected $fillable = [
         'company_id',
+        'fonte',
         'mes_referencia',
         'metrica',
         'valor',
@@ -71,7 +93,7 @@ class DesempenhoMetricaManual extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['company_id', 'mes_referencia', 'metrica', 'valor', 'valor_anterior', 'ativo', 'lancado_por'])
+            ->logOnly(['company_id', 'fonte', 'mes_referencia', 'metrica', 'valor', 'valor_anterior', 'ativo', 'lancado_por'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn (string $event) => match ($event) {
@@ -99,7 +121,7 @@ class DesempenhoMetricaManual extends Model
      * @param  array<int, int>|null  $companyIds
      * @return Collection<int, self>
      */
-    public static function ativasDaCompetencia(Carbon $mes, ?array $companyIds = null): Collection
+    public static function ativasDaCompetencia(Carbon $mes, ?array $companyIds = null, ?string $fonte = null): Collection
     {
         $query = static::query()
             ->where('ativo', true)
@@ -107,6 +129,10 @@ class DesempenhoMetricaManual extends Model
 
         if ($companyIds !== null) {
             $query->whereIn('company_id', $companyIds);
+        }
+
+        if ($fonte !== null) {
+            $query->where('fonte', $fonte);
         }
 
         return $query->get();

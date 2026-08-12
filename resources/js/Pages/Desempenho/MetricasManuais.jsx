@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
     SlidersHorizontal, Lock, Search, TriangleAlert, Check, X,
@@ -77,7 +77,10 @@ function paraTextoEditavel(valor) {
 
 const numeroOuNulo = (v) => (v == null || v === '' ? null : Number(v));
 
-const chaveCelula = (companyId, metrica) => `${companyId}:${metrica}`;
+// O canal entra na chave: a mesma empresa pode aparecer em duas linhas (uma
+// por marketplace), e sem a fonte as duas compartilhariam estado de edição,
+// de erro e de "enviando" — mexer numa mexeria visualmente na outra.
+const chaveCelula = (companyId, fonte, metrica) => `${companyId}:${fonte}:${metrica}`;
 
 // ─── Célula de uma métrica de uma empresa ───────────────────────────────────
 // Ciclo de edição idêntico ao do `CustIdCell` do Painel Polos (exibição →
@@ -272,6 +275,12 @@ export default function MetricasManuais({
     const [errosPorCelula, setErrosPorCelula] = useState({});
     const [avisoGlobal, setAvisoGlobal] = useState(null);
 
+    // Contas distintas por trás das linhas — ver a nota no cabeçalho.
+    const totalEmpresasDistintas = useMemo(
+        () => new Set(empresas.map((e) => e.company_id)).size,
+        [empresas],
+    );
+
     // Busca com debounce simples — o input devolve a prop `busca` para o texto
     // não se perder na volta do servidor.
     useEffect(() => {
@@ -300,7 +309,7 @@ export default function MetricasManuais({
     };
 
     const enviarCelula = (empresa, metrica, { ativo, valor }) => {
-        const chave = chaveCelula(empresa.company_id, metrica);
+        const chave = chaveCelula(empresa.company_id, empresa.fonte, metrica);
         setEnviandoChave(chave);
         setErrosPorCelula((atual) => ({ ...atual, [chave]: null }));
 
@@ -308,6 +317,9 @@ export default function MetricasManuais({
             route('desempenho.metricas-manuais.lancar'),
             {
                 company_id:     empresa.company_id,
+                // O canal DESTA linha. É o que separa o lançamento do time do
+                // Mercado Livre do lançamento do time da Shopee na mesma conta.
+                fonte:          empresa.fonte,
                 mes_referencia: mes,
                 metrica,
                 valor:          ativo ? valor : null,
@@ -407,7 +419,13 @@ export default function MetricasManuais({
                         />
                     </div>
                     <span className="text-xs text-white/40">
-                        {empresas.length} empresa{empresas.length === 1 ? '' : 's'} em {mes_label}
+                        {/* `empresas` são LINHAS (empresa × canal). Contar o
+                            array direto diria "46 empresas" onde há 26 — conta
+                            atendida nos dois marketplaces rende duas linhas. */}
+                        {totalEmpresasDistintas} empresa{totalEmpresasDistintas === 1 ? '' : 's'} em {mes_label}
+                        {empresas.length !== totalEmpresasDistintas && (
+                            <span className="text-white/25"> · {empresas.length} linhas por marketplace</span>
+                        )}
                     </span>
                 </div>
 
@@ -443,7 +461,7 @@ export default function MetricasManuais({
                                 <tbody>
                                     {empresas.map((empresa) => (
                                         <tr
-                                            key={empresa.company_id}
+                                            key={`${empresa.company_id}:${empresa.fonte}`}
                                             className="border-b border-white/[0.05] hover:bg-white/[0.02]"
                                         >
                                             <td className="px-3 py-3 align-top">
@@ -453,18 +471,29 @@ export default function MetricasManuais({
                                                         <div className="max-w-[240px] truncate text-white/80">
                                                             {empresa.company_name}
                                                         </div>
-                                                        <div className="text-[10px] tracking-wide text-white/30">
-                                                            {(empresa.fontes ?? [])
-                                                                .map((f) => marketplaceLabel(f))
-                                                                .filter(Boolean)
-                                                                .join(' · ') || 'sem fonte financeira'}
+                                                        {/* O canal DESTA linha, não a lista de canais da
+                                                            empresa: cada linha lança num marketplace só. Em
+                                                            conta atendida nos dois, o selo avisa que existe
+                                                            outra linha — e que ela é de outro time. */}
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-[10px] font-medium tracking-wide text-ecf-yellow/70">
+                                                                {empresa.fonte_label ?? marketplaceLabel(empresa.fonte) ?? 'sem fonte financeira'}
+                                                            </span>
+                                                            {empresa.multi_canal && (
+                                                                <span
+                                                                    title="Esta conta é atendida nos dois marketplaces, por profissionais diferentes. O valor lançado aqui vale só para este canal."
+                                                                    className="rounded border border-white/10 px-1 py-px text-[9px] text-white/35"
+                                                                >
+                                                                    2 canais
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
                                             </td>
 
                                             {metricas.map((metrica) => {
-                                                const chave = chaveCelula(empresa.company_id, metrica);
+                                                const chave = chaveCelula(empresa.company_id, empresa.fonte, metrica);
                                                 return (
                                                     <CelulaMetrica
                                                         key={chave}
