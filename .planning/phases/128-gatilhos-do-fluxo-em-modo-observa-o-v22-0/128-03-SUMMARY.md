@@ -102,3 +102,12 @@ None - nenhuma configuração de serviço externo necessária.
 ---
 *Phase: 128-gatilhos-do-fluxo-em-modo-observa-o-v22-0*
 *Completed: 2026-08-12*
+
+## Self-Check: PASSED
+
+- FOUND: app/Services/Contratos/GatilhoContratoAdministrativoService.php
+- FOUND: tests/Feature/Phase128/GatilhoContratoPendenciaTest.php
+- FOUND: .planning/phases/128-gatilhos-do-fluxo-em-modo-observa-o-v22-0/128-03-SUMMARY.md
+- FOUND commit: 579a8cef (Task 1)
+- FOUND commit: 6fe4345e (Task 2)
+- FOUND commit: 4e6d6b28 (Task 3)
