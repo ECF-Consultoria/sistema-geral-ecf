@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
@@ -151,20 +152,65 @@ class OnboardingController extends Controller
 
     /**
      * POST /onboarding/{onboarding}/responsavel — confirma o responsável e
-     * transiciona rascunho→andamento (D-05/SC-04).
+     * transiciona rascunho→andamento (D-05/SC-04). O engine já registra
+     * `activity('onboarding')` nessa transição — o controller não duplica o
+     * log.
      */
     public function confirmarResponsavel(Request $request, Onboarding $onboarding)
     {
-        return back();
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'responsavel_id' => ['required', 'integer', 'exists:users,id'],
+        ]);
+
+        $responsavel = User::findOrFail($data['responsavel_id']);
+
+        try {
+            $this->engine->confirmarResponsavel($onboarding, $responsavel);
+        } catch (\DomainException $e) {
+            throw ValidationException::withMessages([
+                'responsavel_id' => $e->getMessage(),
+            ]);
+        }
+
+        return back()->with('success', 'Responsável confirmado — onboarding em andamento.');
     }
 
     /**
      * POST /onboarding/passos/{passo}/concluir — conclui manualmente um
-     * passo (nunca um passo com `auto_fonte`, D-19).
+     * passo (nunca um passo com `auto_fonte`, D-19). Diferente da confirmação
+     * de responsável, `concluirManualmente()` não registra activity própria
+     * — o controller registra aqui (sem duplicar: o engine só loga a
+     * transição de status do ONBOARDING, não a conclusão de um passo).
+     *
+     * Nenhuma chamada de rede: concluir um passo pode destravar um passo
+     * automático (via `reavaliar()`, chamado dentro do engine), mas quem de
+     * fato resolve o resolver automático é o comando do Plano 07 ou o Job —
+     * este controller só toca banco local.
      */
     public function concluirPasso(Request $request, OnboardingPasso $passo)
     {
-        return back();
+        $onboarding = $passo->onboarding;
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        try {
+            $this->engine->concluirManualmente($passo, $request->user());
+        } catch (\DomainException $e) {
+            throw ValidationException::withMessages([
+                // Mensagem fixa (D-19) — não repassa $e->getMessage(): o
+                // texto da exceção de domínio é para log/depuração, este é
+                // para o usuário final entender por que o botão não fez nada.
+                'passo' => 'Este passo é verificado automaticamente pelo sistema e não pode ser concluído manualmente.',
+            ]);
+        }
+
+        activity('onboarding')
+            ->performedOn($onboarding)
+            ->withProperties(['passo_id' => $passo->id, 'chave' => $passo->chave, 'feito_por' => $request->user()->id])
+            ->log("Passo \"{$passo->templatePasso->titulo}\" concluído manualmente");
+
+        return back()->with('success', 'Passo concluído.');
     }
 
     // ─── Escopo de leitura/escrita (T-135-09-02) ─────────────────────────────

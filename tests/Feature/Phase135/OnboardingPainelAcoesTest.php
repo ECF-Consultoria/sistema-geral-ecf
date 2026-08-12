@@ -2,7 +2,14 @@
 
 namespace Tests\Feature\Phase135;
 
+use App\Models\Company;
+use App\Models\ContratoServico;
+use App\Models\Onboarding;
+use App\Models\OnboardingPasso;
+use App\Models\Servico;
 use App\Models\User;
+use App\Services\Onboarding\OnboardingEngineService;
+use Database\Seeders\OnboardingTemplateGestaoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
@@ -17,6 +24,37 @@ use Tests\TestCase;
 class OnboardingPainelAcoesTest extends TestCase
 {
     use RefreshDatabase;
+
+    private function servicoDeGestao(): Servico
+    {
+        return Servico::query()
+            ->where('ativo', true)
+            ->where('setor', Servico::SETOR_PERFORMANCE)
+            ->where('nome', 'like', '%Gestão%')
+            ->firstOrFail();
+    }
+
+    private function engine(): OnboardingEngineService
+    {
+        return app(OnboardingEngineService::class);
+    }
+
+    /** Onboarding recém-criado em `rascunho`, 13 passos montados (todos `bloqueado`). */
+    private function onboardingEmRascunho(?Company $company = null): Onboarding
+    {
+        (new OnboardingTemplateGestaoSeeder())->run();
+        $servico = $this->servicoDeGestao();
+
+        $company ??= Company::factory()->create();
+        $contrato = ContratoServico::factory()->paraServico($servico)->create(['company_id' => $company->id]);
+
+        return $this->engine()->criarParaContrato($contrato);
+    }
+
+    private function passo(Onboarding $onboarding, string $chave): OnboardingPasso
+    {
+        return OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', $chave)->firstOrFail();
+    }
 
     /**
      * Cria um setor com `core.onboarding` concedido em `setor_permissoes` e
@@ -94,5 +132,144 @@ class OnboardingPainelAcoesTest extends TestCase
         $response = $this->actingAs($this->admin())->get(route('onboarding.painel.index'));
 
         $response->assertOk();
+    }
+
+    // ─── Task 3: confirmar responsável ──────────────────────────────────────
+
+    #[Test]
+    public function confirmar_responsavel_move_para_andamento_e_carimba_disponivel_em_nos_passos_sem_dependencia(): void
+    {
+        $onboarding = $this->onboardingEmRascunho();
+        $responsavel = User::factory()->create();
+
+        $response = $this->actingAs($this->admin())->post(
+            route('onboarding.responsavel.confirmar', $onboarding),
+            ['responsavel_id' => $responsavel->id]
+        );
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+
+        $onboarding->refresh();
+        $this->assertSame(Onboarding::STATUS_ANDAMENTO, $onboarding->status);
+        $this->assertSame($responsavel->id, $onboarding->responsavel_id);
+        $this->assertNotNull($onboarding->iniciado_em);
+
+        // Os 5 passos sem depende_de (135-04-PLAN.md) destravam na hora.
+        foreach (['ficha_cliente_recebida', 'acesso_colaborador_ml', 'planilha_custos_adman', 'confirmacao_pagamento', 'custos_app_ecf'] as $chave) {
+            $passo = $this->passo($onboarding, $chave);
+            $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passo->status, "passo {$chave} deveria estar aberto");
+            $this->assertNotNull($passo->disponivel_em, "passo {$chave} deveria ter disponivel_em carimbado");
+        }
+
+        // Passo com dependência (ex.: grant_consultoria_adman) continua bloqueado.
+        $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $this->passo($onboarding, 'grant_consultoria_adman')->status);
+    }
+
+    #[Test]
+    public function confirmar_responsavel_num_onboarding_ja_em_andamento_devolve_erro_de_validacao_nao_500(): void
+    {
+        $onboarding = $this->onboardingEmRascunho();
+        $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
+        $this->assertSame(Onboarding::STATUS_ANDAMENTO, $onboarding->fresh()->status);
+
+        $response = $this->actingAs($this->admin())->post(
+            route('onboarding.responsavel.confirmar', $onboarding),
+            ['responsavel_id' => User::factory()->create()->id]
+        );
+
+        $response->assertStatus(302);
+        $response->assertSessionHasErrors('responsavel_id');
+    }
+
+    #[Test]
+    public function onboarding_em_rascunho_traz_responsavel_sugerido_quando_ha_vinculo_consultor(): void
+    {
+        $this->withoutVite();
+        $company = Company::factory()->create();
+        $onboarding = $this->onboardingEmRascunho($company);
+
+        $consultor = User::factory()->create();
+        DB::table('company_users')->insert([
+            'company_id' => $company->id,
+            'user_id'    => $consultor->id,
+            'role'       => 'consultor',
+            'servico_id' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->admin())->get(route('onboarding.painel.index'));
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('Onboarding/Painel', false)
+            ->where('empresas.0.onboardings.0.responsavel_sugerido.id', $consultor->id)
+        );
+
+        // Sugerir não é confirmar (D-05) — o onboarding continua em rascunho.
+        $this->assertSame(Onboarding::STATUS_RASCUNHO, $onboarding->fresh()->status);
+    }
+
+    // ─── Task 3: concluir passo manual ──────────────────────────────────────
+
+    #[Test]
+    public function concluir_passo_manual_aberto_conclui_e_grava_feito_por_e_feito_em(): void
+    {
+        $onboarding = $this->onboardingEmRascunho();
+        $admin = $this->admin();
+        $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
+
+        // 'custos_app_ecf': dono=cliente, sem auto_fonte — passo manual, já aberto.
+        $passo = $this->passo($onboarding, 'custos_app_ecf');
+
+        $response = $this->actingAs($admin)->post(route('onboarding.passos.concluir', $passo));
+
+        $response->assertRedirect();
+        $response->assertSessionHasNoErrors();
+
+        $passo->refresh();
+        $this->assertSame(OnboardingPasso::STATUS_CONCLUIDO, $passo->status);
+        $this->assertSame($admin->id, $passo->feito_por);
+        $this->assertNotNull($passo->feito_em);
+    }
+
+    #[Test]
+    public function concluir_passo_com_auto_fonte_devolve_erro_e_nao_muda_o_status_d19(): void
+    {
+        $onboarding = $this->onboardingEmRascunho();
+        $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
+
+        // 'planilha_custos_adman': auto_fonte=adman_account_id_preenchido (D-19).
+        $passo = $this->passo($onboarding, 'planilha_custos_adman');
+        $statusOriginal = $passo->status;
+
+        $response = $this->actingAs($this->admin())->post(route('onboarding.passos.concluir', $passo));
+
+        $response->assertStatus(302);
+        $response->assertInvalid(['passo' => 'verificado automaticamente pelo sistema']);
+
+        $this->assertSame($statusOriginal, $passo->fresh()->status);
+    }
+
+    // ─── Task 3: escopo de carteira nas ações ───────────────────────────────
+
+    #[Test]
+    public function usuario_fora_da_carteira_recebe_403_em_confirmar_responsavel_e_concluir_passo(): void
+    {
+        $onboarding = $this->onboardingEmRascunho();
+        $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
+        $passo = $this->passo($onboarding, 'custos_app_ecf');
+
+        $foraDaCarteira = $this->userComPermissaoPainel();
+
+        $respostaResponsavel = $this->actingAs($foraDaCarteira)->post(
+            route('onboarding.responsavel.confirmar', $onboarding),
+            ['responsavel_id' => $foraDaCarteira->id]
+        );
+        $respostaResponsavel->assertForbidden();
+
+        $respostaConcluir = $this->actingAs($foraDaCarteira)->post(route('onboarding.passos.concluir', $passo));
+        $respostaConcluir->assertForbidden();
     }
 }
