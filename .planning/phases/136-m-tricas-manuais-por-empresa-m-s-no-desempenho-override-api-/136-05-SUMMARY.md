@@ -161,3 +161,13 @@ None — nenhuma configuração de serviço externo necessária. **Nenhum deploy
 ---
 *Phase: 136-m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api-*
 *Completed: 2026-08-12*
+
+## Self-Check: PASSED
+
+- `resources/js/Pages/Desempenho/MetricasManuais.jsx` — FOUND
+- `resources/js/lib/desempenhoLabels.js` — FOUND
+- `resources/js/Components/Desempenho/EmpresasScoreTabela.jsx` — FOUND
+- `resources/js/Layouts/AppLayout.jsx` — FOUND
+- `.planning/phases/136-.../136-05-SUMMARY.md` — FOUND
+- Commits `d03ff9b8`, `98008968` e `ec93f928` — FOUND em `git log --oneline --all`
+- Árvore final contém apenas os arquivos da Fase 135 como pendências alheias — nenhum deles tocado
