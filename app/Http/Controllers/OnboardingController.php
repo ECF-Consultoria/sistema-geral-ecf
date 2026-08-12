@@ -101,6 +101,11 @@ class OnboardingController extends Controller
 
         return Inertia::render('Onboarding/Painel', [
             'empresas' => $empresas,
+            // Plano 12 (frontend): lista de usuários para o Select de fallback do CTA
+            // "Confirmar responsável" quando `sugerirResponsavel()` não encontrou
+            // ninguém (sem vínculo na carteira, D-17) — sem isso o operador fica sem
+            // como confirmar um onboarding em rascunho órfão de sugestão.
+            'usuarios' => User::query()->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -318,6 +323,10 @@ class OnboardingController extends Controller
             && $diasParado > $slaDias;
 
         $item = [
+            // Plano 12 (frontend): `id` é necessário pro botão "Marcar como
+            // concluído" montar `route('onboarding.passos.concluir', passo.id)`
+            // — sem isso o passo detalhado não tem como ser referenciado na ação.
+            'id'             => $passo->id,
             'chave'          => $passo->chave,
             'titulo'         => $templatePasso->titulo,
             'dono'           => $templatePasso->dono,
