@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Observers\ContratoServicoGatilhoObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Activitylog\LogOptions;
@@ -14,6 +16,10 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * desativado, para histórico) entre empresa e serviço. valor_contratado
  * permite override do valor_padrao do catálogo (pricing por empresa).
  */
+// Fase 128 (plano 05, D-04) — reavalia o gate administrativo de contrato
+// quando um serviço novo é vinculado ou um campo-gatilho muda (ver
+// docblock do Observer).
+#[ObservedBy(ContratoServicoGatilhoObserver::class)]
 class ContratoServico extends Model
 {
     use LogsActivity;

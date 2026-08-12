@@ -70,16 +70,28 @@ class GatilhoContratoPendenciaTest extends TestCase
         ], $overrides));
     }
 
+    /**
+     * `withoutEvents`: esta suíte (128-03) testa `GatilhoContratoAdministrativoService`
+     * DIRETAMENTE e de forma determinística, com a chamada explícita a
+     * `dispararSeElegivel()`/`avaliar()` sendo o único disparo esperado em cada
+     * cenário. A partir do plano 05, `ContratoServico::create()` passou a ter um
+     * Observer próprio (`ContratoServicoGatilhoObserver::created()`) que também
+     * chama o gate — o que descasaria a ordem que estes testes assumem (alguns
+     * cenários criam 2 `ContratoServico` em sequência sem passar por
+     * `DB::transaction()`, diferente do fluxo real dos controllers). A prova do
+     * disparo automático via Observer é da suíte dedicada
+     * `ReavaliacaoAutomaticaTest` (128-05) — aqui o setup permanece silencioso.
+     */
     private function contratoServicoAtivo(Company $company, Servico $servico, array $overrides = []): ContratoServico
     {
-        return ContratoServico::create(array_merge([
+        return ContratoServico::withoutEvents(fn () => ContratoServico::create(array_merge([
             'company_id'       => $company->id,
             'servico_id'       => $servico->id,
             'valor_contratado' => 150.5,
             'data_contratacao' => '2026-01-10',
             'data_vencimento'  => '2027-01-10',
             'ativo'            => true,
-        ], $overrides));
+        ], $overrides)));
     }
 
     private function fakeSignatariosEcf(): void
