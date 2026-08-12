@@ -234,3 +234,23 @@ ser dada como certa.
    é a versão SEM os nomes no rodapé; precisa ser recadastrado e reconferido.
 
 </gates_desta_fase>
+
+<extensao_registrada_no_planejamento>
+## Bloqueantes que o planejamento acrescentou aos 3 da `<tensao_de_dados>`
+
+Registrado aqui para uma auditoria futura não ler como bloqueio inventado sem lastro.
+
+A `<tensao_de_dados>` acima enumera **3 bloqueantes** (e-mail, CNPJ, nome do contato), espelhando o
+Success Criteria 1 do ROADMAP. O plano **127-03** acrescentou **mais dois**, e o verificador de
+planos confirmou que ambos têm lastro no texto canônico:
+
+| Bloqueante extra | Lastro |
+|---|---|
+| Nenhum `ContratoServico` ativo | Sem serviço não há o que contratar — a D-06 amarra o contrato a UM serviço |
+| `data_contratacao` ausente ou inválida | **REDE-05 diz literalmente** "CNPJ, e-mail e nome de quem assina, **datas do contrato** — presença e formato" |
+
+**`data_vencimento` vazia NÃO bloqueia** — prazo indeterminado é caso legítimo de contrato.
+**`data_contratacao` vazia bloqueia** porque a vigência sairia em branco no documento, e branco
+silencioso é exatamente o modo de falha medido na §10.5 do empírico: a Clicksign não reclama, o
+contrato vai para assinatura com o campo vazio.
+</extensao_registrada_no_planejamento>

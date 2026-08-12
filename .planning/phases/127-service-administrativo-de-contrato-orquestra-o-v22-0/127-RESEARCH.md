@@ -618,7 +618,14 @@ introduzir isso no job novo.
 | A3 | Recomendação de coluna `servico_id` + índice composto (Opção A) é a melhor resolução da tensão de arquitetura | Tensão de arquitetura | É uma recomendação de menor mudança, não uma medição — o planner (ou um checkpoint humano) deve confirmar antes de codificar, porque afeta o schema já em produção da Fase 125 |
 | A4 | "CNPJ válido" (REDE-05) significa formato (14 dígitos), não dígito verificador | Q5 | Se o requisito realmente quer validação de dígito verificador (algoritmo do CNPJ), a checagem proposta deixaria passar CNPJ com formato certo mas matematicamente inválido. `REDE-05` no `REQUIREMENTS-v22.md` diz literalmente "presença e formato", o que apoia a leitura mais simples, mas vale confirmar em checkpoint se o Administrativo precisa de mais rigor |
 
-## Open Questions
+## Open Questions (AMBAS RESOLVIDAS — ver abaixo)
+
+> ⚠️ Esta secao foi escrita ANTES da D-06. As duas perguntas ja tem resposta:
+> **1. Tensao de arquitetura (servico_id + indice composto)** — RESOLVIDA pelo usuario em 11/08/2026,
+> registrada como **D-06** em `127-CONTEXT.md`. Nao e mais pergunta aberta; e decisao travada.
+> **2. Persistir `prazo_dias`/`lembrete_dias`** — RESOLVIDA por discricao do planner: SIM, viram
+> colunas. Motivo: a Fase 130 precisa do prazo real para calcular "ha quanto tempo e aceitavel
+> esperar", e sem coluna teria que reconsultar a Clicksign, gastando a janela de 20/min.
 
 1. **A tensão de arquitetura (`## Tensão de arquitetura`) precisa de decisão explícita antes do
    plano.**
