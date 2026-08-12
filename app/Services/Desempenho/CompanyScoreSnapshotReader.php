@@ -131,11 +131,17 @@ class CompanyScoreSnapshotReader
         if (! is_array($quality)) {
             // O front nunca pode receber `quality: null` e tentar
             // `quality.motivos` — normaliza para o shape vazio esperado.
+            // Fase 136 (D-03): `faturamento_fonte`/`margem_fonte` entram aqui
+            // em `'auto'` para que uma linha gravada ANTES desta fase (sem
+            // essas chaves no JSON persistido) nunca chegue ao front como
+            // `undefined` — o default é sempre 'auto', nunca ausente.
             $quality = [
                 'revenue_diff_source' => null,
                 'margin_diff_source'  => null,
                 'margin_source'       => null,
                 'motivos'             => [],
+                'faturamento_fonte'   => 'auto',
+                'margem_fonte'        => 'auto',
             ];
         }
 

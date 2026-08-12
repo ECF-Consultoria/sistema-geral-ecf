@@ -43,7 +43,8 @@ class CompanyScoreServiceReconciliacaoTest extends TestCase
     /** Rotacionado pela Fase 119.1 (D1) — 4º ramo (D) somado a DesempenhoScoreService.php. */
     /** Rotacionado pela quick 260810-mbv (2026-08-10) — bump da chave de cache v17 → v18. O gate já estava vermelho desde as Fases 120/122/v17, que alteraram o arquivo sem rotacionar. */
     /** Rotacionado pela quick 260810-mt8 (2026-08-10) — nota final passa a dividir sempre por 3. */
-    private const HASH_DESEMPENHO_SCORE_SERVICE = '5b6cb40da43773c19c24c1bbf8b6dffe20672cc6b223e8cc8f27676473064f24';
+    /** Rotacionado pela Fase 136 (D-10, 2026-08-11) — desempate de fonte financeira passa a checar cust_id e a chave de cache foi para v20. */
+    private const HASH_DESEMPENHO_SCORE_SERVICE = 'a78b7d2823aa899ef30600d32b608b96c8ae84887588e17df8b058781a6b8794';
 
     protected function setUp(): void
     {

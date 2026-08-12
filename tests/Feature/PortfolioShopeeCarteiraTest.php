@@ -235,10 +235,16 @@ class PortfolioShopeeCarteiraTest extends TestCase
     {
         $admin   = $this->criarAdmin();
         $cenario = $this->criarCenarioMlComResponsaveis();
+        // Fase 136 (D-10) — 'adman' só vence com `cust_id` de fato; sem isso
+        // o fixture (Company::factory() sem adman_account_id) resolveria
+        // 'shopee'. Setado aqui pra preservar o cenário que este teste
+        // pretende cobrir: empresa que REALMENTE tem conta Adman.
+        $cenario['company']->update(['adman_account_id' => 'CUST-136-PORTFOLIO-IND']);
         $this->inserirLinhaShopee($cenario['company']->id, $cenario['analista']->id, 'consultor');
 
         // AdmanMetric real (performance) + ShopeeMetric real (shopee) na
-        // MESMA empresa — desempate travado: 'adman' vence, NUNCA soma.
+        // MESMA empresa — desempate: 'adman' vence quando a empresa tem
+        // `cust_id` (Fase 136/D-10), NUNCA soma.
         AdmanMetric::create([
             'company_id'          => $cenario['company']->id,
             'reference_date'      => now()->startOfMonth()->addDays(2)->toDateString(),
@@ -364,6 +370,11 @@ class PortfolioShopeeCarteiraTest extends TestCase
     {
         $admin   = $this->criarAdmin();
         $cenario = $this->criarCenarioMlComResponsaveis();
+        // Fase 136 (D-10) — 'adman' só vence com `cust_id` de fato; sem isso
+        // o fixture (Company::factory() sem adman_account_id) resolveria
+        // 'shopee'. Setado aqui pra preservar o cenário que este teste
+        // pretende cobrir: empresa que REALMENTE tem conta Adman.
+        $cenario['company']->update(['adman_account_id' => 'CUST-136-PORTFOLIO-CONS']);
         $this->vincularCargo($cenario['analista'], 'analista');
         $this->inserirLinhaShopee($cenario['company']->id, $cenario['analista']->id, 'consultor');
 
