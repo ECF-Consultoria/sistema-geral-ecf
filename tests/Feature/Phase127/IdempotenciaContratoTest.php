@@ -69,18 +69,30 @@ class IdempotenciaContratoTest extends TestCase
         ], $overrides));
     }
 
+    /**
+     * `withoutEvents`: esta suíte testa `ContratoClicksignService` DIRETO
+     * (`$this->service`, instanciado à mão, fora do container), sem passar
+     * pelo gate. A partir da Fase 128 (plano 05),
+     * `ContratoServico::create()` ganhou um Observer próprio que TAMBÉM
+     * chama `GatilhoContratoAdministrativoService::dispararSeElegivel()` —
+     * criaria `ContratoAssinatura` como efeito colateral do SETUP, antes da
+     * chamada explícita que cada teste está medindo (e quebraria a própria
+     * garantia desta suíte de idempotência, com uma constraint violation).
+     * A prova do disparo automático via Observer é da suíte dedicada
+     * `ReavaliacaoAutomaticaTest` (128-05).
+     */
     private function contratoServicoAtivo(Company $company, ?Servico $servico = null, array $overrides = []): ContratoServico
     {
         $servico = $servico ?? $this->servicoDeTeste();
 
-        return ContratoServico::create(array_merge([
+        return ContratoServico::withoutEvents(fn () => ContratoServico::create(array_merge([
             'company_id'       => $company->id,
             'servico_id'       => $servico->id,
             'valor_contratado' => 150.5,
             'data_contratacao' => '2026-01-10',
             'data_vencimento'  => '2027-01-10',
             'ativo'            => true,
-        ], $overrides));
+        ], $overrides)));
     }
 
     // ─── Teste 9 ───
