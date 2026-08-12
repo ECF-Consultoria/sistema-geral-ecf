@@ -52,6 +52,7 @@ class OnboardingPublicoController extends Controller
         $company = $link->company;
 
         return Inertia::render('Onboarding/Publico', [
+            'token'   => $token,
             'empresa' => ['nome' => $company->name],
             'passos'  => $this->linkService->passosDoCliente($company),
             'ficha'   => $this->fichaPayload($company),
