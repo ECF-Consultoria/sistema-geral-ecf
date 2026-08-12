@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: ready_to_plan
-stopped_at: Phase 127 complete (7/7) — ready to discuss Phase 134
-last_updated: 2026-08-12T15:18:45.369Z
+status: executing
+stopped_at: "Completed 128-01-PLAN.md (exige_contrato no catalogo de servicos); proximo: 128-02"
+last_updated: "2026-08-12T17:13:02.678Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 12
-  completed_phases: 4
-  total_plans: 40
-  completed_plans: 234
-  percent: 33
+  completed_phases: 5
+  total_plans: 46
+  completed_plans: 38
+  percent: 42
 ---
 
 # Project State
@@ -21,19 +21,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 134 — meus anuncios saude analitica do anuncio publicado
+**Current focus:** Phase 128 — gatilhos-do-fluxo-em-modo-observa-o-v22-0
 
 ## Current Position
 
-Phase: 134
-Plan: Not started
-Status: Ready to plan
+Phase: 128 (gatilhos-do-fluxo-em-modo-observa-o-v22-0) — EXECUTING
+Plan: 2 of 6
+Status: Ready to execute
 Last activity: 2026-08-12
 
 **Plano 127-06 executado em 2026-08-12** (commits `36109799`/`6a9c226b`): o **ponto único** que o
 ROADMAP pede. `ContratoClicksignService::iniciarParaEmpresa()` bloqueia ANTES de qualquer I/O via
 `ContratoDadosMinimosService` (127-03) — Success Criteria 1, provado por `Http::assertNothingSent()`
+
 + `Queue::assertNothingPushed()`. Empresa com N `ContratoServico` ativos gera N `ContratoAssinatura`
+
 (um por serviço, D-06) e despacha N `GerarContratoAssinaturaJob` (127-05), delay escalonado
 (`$i * 5`s, camada adicional ao bucket global). **Esta é a fase que passa a gravar o
 `servicos_snapshot`** congelado (D-06 + D-10) — array de UM item por contrato, mesma forma que
@@ -399,6 +401,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 127 P02 | 25min | 2 tasks | 2 files |
 | Phase 127 P03 | 8min | 2 tasks | 3 files |
 | Phase 127 P06 | 25min | 2 tasks | 3 files |
+| Phase 128 P01 | 25min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1024,8 +1027,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-12T14:15:00.000Z
-Stopped at: Completed 127-05-PLAN.md (GerarContratoAssinaturaJob — 199 testes verdes); proximo: 127-06
+Last session: 2026-08-12T17:13:02.629Z
+Stopped at: Completed 128-01-PLAN.md (exige_contrato no catalogo de servicos); proximo: 128-02
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
