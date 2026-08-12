@@ -1797,7 +1797,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 135-07-PLAN.md — Resolver de acervo (SC-07: vazio ≠ zero) + comando de reavaliacao agendado [wave 5]
+- [x] 135-07-PLAN.md — Resolver de acervo (SC-07: vazio ≠ zero) + comando de reavaliacao agendado [wave 5]
 - [ ] 135-09-PLAN.md — Painel operacional (backend): permission core.onboarding, props de "o que trava" [wave 5]
 - [ ] 135-10-PLAN.md — Tela 2: builder de template (React) [wave 5]
 
