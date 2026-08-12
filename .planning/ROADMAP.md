@@ -1689,7 +1689,7 @@ Plans:
   4. Decisão A2 tomada e aplicada: quando a montagem falha no meio (documento criado, signatário falhou), o comportamento — cancelar o envelope parcial na Clicksign ou marcar `erro` com o id para retomada — é determinístico e coberto por teste
   5. `iniciarParaEmpresa()` chamado duas vezes para a mesma empresa não cria dois envelopes — idempotente por si só, independente de qualquer guard de webhook
 
-**Plans:** 5/7 plans executed
+**Plans:** 6/7 plans executed
 
 Plans:
 - [x] 127-01-PLAN.md — D-06: trava de unicidade vira (empresa + serviço); migration, model e factory
@@ -1697,7 +1697,7 @@ Plans:
 - [x] 127-03-PLAN.md — REDE-05: checagem dedicada de dados mínimos, sem I/O
 - [x] 127-04-PLAN.md — Modelo `.docx` por serviço + prazo/lembrete configuráveis (D-03/CLICK-08/DADOS-06)
 - [x] 127-05-PLAN.md — `GerarContratoAssinaturaJob` + bucket de rate limit `clicksign-envelope` (D-01)
-- [ ] 127-06-PLAN.md — `ContratoClicksignService::iniciarParaEmpresa()`: bloqueio, congelamento, idempotência
+- [x] 127-06-PLAN.md — `ContratoClicksignService::iniciarParaEmpresa()`: bloqueio, congelamento, idempotência
 - [ ] 127-07-PLAN.md — Gate humano: 3 medições da fase (inclui autorização para tocar produção)
 
 ### Phase 128: Gatilhos do fluxo em modo observação (v22.0)

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: Executando (wave 3 de 5 — plano 05/07 completo)
-stopped_at: "Completed 127-05-PLAN.md (GerarContratoAssinaturaJob — 199 testes verdes); proximo: 127-06"
-last_updated: "2026-08-12T14:15:00.000Z"
+status: Executando (wave 4 de 5 — plano 06/07 completo)
+stopped_at: "Completed 127-06-PLAN.md (ContratoClicksignService::iniciarParaEmpresa — ponto unico — 210 testes verdes); proximo: 127-07"
+last_updated: "2026-08-12T13:52:00.000Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 12
   completed_phases: 4
   total_plans: 40
-  completed_plans: 36
-  percent: 33
+  completed_plans: 37
+  percent: 34
 ---
 
 # Project State
@@ -26,9 +26,28 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 127
-Plan: 05 executado (127-06 a seguir)
-Status: Executando (wave 3 de 5 — plano 05/07 completo)
+Plan: 06 executado (127-07 a seguir)
+Status: Executando (wave 4 de 5 — plano 06/07 completo)
 Last activity: 2026-08-12
+
+**Plano 127-06 executado em 2026-08-12** (commits `36109799`/`6a9c226b`): o **ponto único** que o
+ROADMAP pede. `ContratoClicksignService::iniciarParaEmpresa()` bloqueia ANTES de qualquer I/O via
+`ContratoDadosMinimosService` (127-03) — Success Criteria 1, provado por `Http::assertNothingSent()`
++ `Queue::assertNothingPushed()`. Empresa com N `ContratoServico` ativos gera N `ContratoAssinatura`
+(um por serviço, D-06) e despacha N `GerarContratoAssinaturaJob` (127-05), delay escalonado
+(`$i * 5`s, camada adicional ao bucket global). **Esta é a fase que passa a gravar o
+`servicos_snapshot`** congelado (D-06 + D-10) — array de UM item por contrato, mesma forma que
+`ContratoPdfService::montarDados()` já espera; prova executável de que mudar `valor_contratado` na
+origem DEPOIS não afeta o snapshot já gravado (o precedente do `hs_mrr = 0` do HubSpot que já zerou
+3 contratos deste projeto). Idempotência real (Success Criteria 5): guard de leitura
+(`emAndamentoDoServico()`) é só UX; a garantia é a constraint composta capturada por
+`catch (QueryException)` com `(string) $e->getCode() === '23000'` (SQLSTATE, não `errorInfo[1]` do
+MySQL) — precedente copiado literalmente de `NpsController.php:1835`. `enviado_em` nunca é tocado
+(D-02) — gate de `grep` confirma zero ocorrências fora de comentário; ativação e webhook continuam
+sendo a Fase 129. 11 testes novos (TDD RED→GREEN, 1 desvio auto-corrigido: CNPJ duplicado entre duas
+empresas no mesmo teste, bug do próprio teste). Suíte `Phase125+126+127` = **210 verdes** (baseline
+199 + 11 novos). Zero regressão. Nenhuma chamada real à Clicksign, nenhum deploy. Detalhe:
+`127-06-SUMMARY.md`.
 
 **Plano 127-05 executado em 2026-08-12** (commits `b18257a5`/`f5eada35`/`ca256fd0`): o trabalhador da
 fila. `GerarContratoAssinaturaJob` monta UM envelope Clicksign por contrato (documento por modelo,
@@ -378,6 +397,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 134 P10 | 13min | 3 tasks | 6 files |
 | Phase 127 P02 | 25min | 2 tasks | 2 files |
 | Phase 127 P03 | 8min | 2 tasks | 3 files |
+| Phase 127 P06 | 25min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
