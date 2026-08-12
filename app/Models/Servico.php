@@ -33,6 +33,9 @@ class Servico extends Model
         'tipo_cobranca',
         'ativo',
         'setor',
+        // Fase 127-04 (D-21) — sem isto o mass assignment do modelo .docx
+        // por serviço falharia EM SILÊNCIO.
+        'clicksign_template_id',
     ];
 
     protected $casts = [
@@ -96,7 +99,10 @@ class Servico extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor'])
+            // Fase 127-04 (D-21) — trocar o modelo .docx de um serviço é
+            // mudança auditável (T-127-10): decide QUAL contrato o cliente
+            // assina.
+            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor', 'clicksign_template_id'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match ($eventName) {
@@ -155,5 +161,33 @@ class Servico extends Model
     public function isShopee(): bool
     {
         return $this->setor === self::SETOR_SHOPEE;
+    }
+
+    /**
+     * Fase 127-04 (D-21) — qual modelo `.docx` da Clicksign usar para
+     * contratos deste serviço. Se o serviço tiver `clicksign_template_id`
+     * preenchido, usa o dele; senão cai no padrão global
+     * `CLICKSIGN_TEMPLATE_ID` (`config('services.clicksign.template_id')`).
+     * Devolve `null` se nenhum dos dois estiver configurado — quem decide o
+     * que fazer com isso é o job de montagem do envelope (plano 127-05),
+     * que precisa falhar com mensagem clara, nunca gerar contrato errado.
+     *
+     * ⚠️ Sandbox e produção têm UUIDs DIFERENTES; o valor de produção NUNCA
+     * entra no repositório (nem no `.env.example`). Toda vez que o `.docx`
+     * for recadastrado na Clicksign, rodar `clicksign:sondar-modelo` ANTES
+     * de gerar contrato de cliente — variável faltando vira campo em branco
+     * silencioso (§10.5 do CLICKSIGN-SANDBOX-EMPIRICO.md), não existe
+     * resposta HTTP que denuncie isso; o confronto do comando é a única
+     * rede de segurança.
+     */
+    public function clicksignTemplateId(): ?string
+    {
+        if (filled($this->clicksign_template_id)) {
+            return $this->clicksign_template_id;
+        }
+
+        $padrao = config('services.clicksign.template_id');
+
+        return filled($padrao) ? $padrao : null;
     }
 }
