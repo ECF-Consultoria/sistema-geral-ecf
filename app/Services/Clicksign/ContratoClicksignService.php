@@ -94,6 +94,21 @@ class ContratoClicksignService
             // constraint composta (empresa+serviço) capturada abaixo pelo
             // catch, porque uma checagem de código corre risco de corrida
             // entre dois workers concorrentes.
+            // Isenção por serviço (D-03/SC0, Fase 128-01) — checada AQUI, não só
+            // no orquestrador (`GatilhoContratoAdministrativoService`, plano
+            // 128-03), porque a Fase 131 vai expor um botão que chama este
+            // método direto, sem passar pelo orquestrador. Sem esta guarda,
+            // uma empresa com Gestão + Polos geraria um `ContratoAssinatura`
+            // também para Polos — violação direta do SC0.
+            //
+            // `servico === null` (dado órfão) NÃO pula — default seguro do
+            // plano 128-01 vale aqui também: nunca isentar por ausência de dado.
+            if (optional($contratoServico->servico)?->exigeContrato() === false) {
+                $pulados[] = ['servico_id' => $contratoServico->servico_id, 'motivo' => 'servico_isento'];
+
+                continue;
+            }
+
             if (ContratoAssinatura::emAndamentoDoServico($company->id, $contratoServico->servico_id)) {
                 $pulados[] = ['servico_id' => $contratoServico->servico_id, 'motivo' => 'ja_em_andamento'];
 
