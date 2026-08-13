@@ -4,7 +4,7 @@ milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
 stopped_at: 129-07-PLAN.md Task 2 concluida, Task 1 (checkpoint humano) aberta
-last_updated: "2026-08-13T15:21:38.000Z"
+last_updated: "2026-08-13T19:00:00.000Z"
 last_activity: 2026-08-13
 progress:
   total_phases: 12
@@ -1008,6 +1008,42 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **O que falta para fechar o plano 129-07**: a rodada real de assinatura/recusa contra o sandbox
   (Task 1) — ver checkpoint devolvido pelo executor. Enquanto isso não acontece, o plano permanece
   `7 of 7 — EXECUTING`, não `Concluído`.
+
+### Correção pós-revisão de código da Fase 129 (CR-01/WR-02/IN-01, 2026-08-13, registradas)
+
+`129-REVIEW.md` (revisão de código profunda pós-129-07) encontrou 1 achado CRITICAL e 2 menores.
+Corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, commits `fix(129):`:
+
+- **CR-01 (crítico) — `MlbEmpresa` duplicada em corrida real entre workers de fila.**
+  `EmpresaOperacionalRouter::aplicarRoteamento()` fazia check-then-act
+  (`MlbEmpresa::exists()` + `criarFicha()`) sem lock nem transação. Dois workers processando
+  envelopes DIFERENTES da MESMA empresa quase ao mesmo tempo (ex.: Polos + Assessoria) podiam os
+  dois ler `exists()===false` antes de qualquer um commitar e os dois criar ficha — violando D-02.
+  `WithoutOverlapping` do job só serializa por `envelope_id`, de propósito (D-06); a corrida só
+  aparece com fila real (`sync` local é serial, por isso não apareceu na suíte). **Fix escolhido
+  pelo usuário: `Cache::lock()` por `company_id`, SEM migration** (índice único recusado — produção
+  pode já ter fichas duplicadas de fases anteriores e a migration quebraria o deploy sem forma de
+  verificar localmente; registrado como possível segunda camada futura). Funciona com
+  `CACHE_STORE=database` (padrão do projeto) porque a tabela `cache_locks` já existe (`DatabaseLock`,
+  mutex real). Lock extraído em `lockDaEmpresa()` (protected, reusável) — mesmo ponto que a Fase 130
+  (SC4) vai precisar para a corrida liberação-manual-vs-webhook. Commit `f50e123c`. Teste dedicado
+  `tests/Feature/Phase129/LiberarEmpresaCorridaConcorrenteTest.php` prova a corrida entrelaçando duas
+  chamadas via decorator na fábrica de lock (PHPUnit é single-thread, sem paralelismo real de SO) —
+  resultado: 2 `ContratoLiberacao`, 1 `MlbEmpresa` só. Validado manualmente que o teste falha se a
+  trava for removida.
+- **WR-02 — ordenação de eventos por string, não timestamp.** `ContratoSignatariosSyncService`
+  comparava `attributes.created` como string; troca para `Carbon::parse(...)->getTimestampMs()`.
+  Commit `0838b8f1`.
+- **IN-01 — canal de log divergente em `failed()`.** `ProcessarEventoClicksignJob`/
+  `BaixarPdfContratoAssinadoJob` logavam no canal padrão em vez de `ecf-webhooks` (único canal que a
+  Fase 130/REDE-03 varre). Uniformizado. Commit `4d0a596f`.
+- **WR-01 (link do PDF nunca medido) e IN-02 (gate humano ponta a ponta) NÃO são corrigíveis por
+  código** — dependem do checkpoint humano do plano 129-07 (Task 1), que segue aberto. Não tocados.
+- **Suíte cumulativa** `Phase124|Phase125|Phase126|Phase127|Phase128|Phase129` → 348 passed / 1134
+  assertions, exit 0 (346/1128 + 2 testes novos / +6 assertions da correção). Sem regressão.
+- **`129-VERIFICATION.md` permanece `status: human_needed`** — a correção fecha uma lacuna de código
+  encontrada DEPOIS da verificação original, não o gate humano do plano 129-07, que continua sendo a
+  causa raiz do status e segue pendente de ação humana no sandbox real.
 
 ### Pending Todos
 
