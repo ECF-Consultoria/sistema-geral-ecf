@@ -649,15 +649,20 @@ tabela porque o CONTEXT trava que ela NUNCA deve ser assumida — só medida (ga
 
 ## Open Questions
 
-1. **Confirmação empírica de A1/A2/A3 acima** — só resolve com o gate A1 (webhook real via
+> **Estado após o planejamento (2026-08-13):** nenhum destes três itens ficou como lacuna de
+> plano — os três são endereçados pelo desenho da fase. Ver a resolução anotada em cada item.
+
+1. **(ENDEREÇADO — gate A1, plano 129-02)** **Confirmação empírica de A1/A2/A3 acima** — só resolve com o gate A1 (webhook real via
    túnel, D-07/D-08) e com os gates #6/#7/#11 do ROADMAP (deixar um envelope vencer / recusar
    assinatura / observar reentrega real). Nenhum destes é fazível só com pesquisa documental.
-2. **`/webhooks` é por conta ou por envelope?** Não confirmado nesta sessão (a doc de
+2. **(ENDEREÇADO — observação oportunista no gate A1, plano 129-02)** **`/webhooks` é por conta
+   ou por envelope?** Não confirmado nesta sessão (a doc de
    `reference/webhooks` não especificou o escopo). Recomendação: perguntar ao suporte
    (`ajuda@clicksign.com`) ou inferir pelo painel humano da Clicksign durante o gate A1 (o
    usuário já vai estar na tela cadastrando a URL do túnel — é a oportunidade barata de
    observar isso).
-3. **`document.status` pode ter um valor terminal específico para "cancelado por expiração
+3. **(CONTORNADO POR DESENHO — plano 129-05 Task 2 decide por `$evento->name`, não pelo status)**
+   **`document.status` pode ter um valor terminal específico para "cancelado por expiração
    sem nenhuma assinatura"** (a doc diz "cancelado" — é o mesmo `canceled` de cancelamento
    manual, ou existe uma distinção)? Não confirmado. Se for o mesmo `canceled`, a D-04/D-06 da
    Fase 125 (que já trata `expirado` como estado PRÓPRIO no NOSSO banco, distinto de
