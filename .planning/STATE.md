@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 130-03-PLAN.md
-last_updated: "2026-08-13T20:01:55.207Z"
+stopped_at: Completed 130-06-PLAN.md
+last_updated: "2026-08-13T20:12:15.810Z"
 last_activity: 2026-08-13
 progress:
   total_phases: 12
   completed_phases: 7
   total_plans: 60
-  completed_plans: 55
+  completed_plans: 56
   percent: 58
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 130 (Rede de segurança — reconciliação, alerta e liberação manual (v22.0)) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
   (`checkpoint:human-verify`, rodada real de assinatura contra o sandbox) segue aberta.
   Ver "Decisões do Plan 129-07" abaixo e o checkpoint devolvido ao usuário.
@@ -458,6 +458,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 130 P03 | 35min | 3 tasks | 6 files |
 | Phase 130 P04 | 20min | 3 tasks | 6 files |
 | Phase 130-05 P05 | 25min | 2 tasks | 4 files |
+| Phase 130 P06 | 20min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1186,8 +1187,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-13T19:59:00.126Z
-Stopped at: Completed 130-03-PLAN.md
+Last session: 2026-08-13T20:12:15.783Z
+Stopped at: Completed 130-06-PLAN.md
   assinatura/recusa contra o sandbox) devolvida ao usuário como checkpoint aberto
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)

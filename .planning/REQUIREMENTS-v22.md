@@ -186,9 +186,9 @@ a rota de produção em `129-GATE.md` (plano 129-07): assinatura válida → 200
 ### Rede de segurança (D4)
 
 - [x] **REDE-01**: Um admin consegue desligar o bloqueio do operacional sem precisar de deploy, voltando ao roteamento imediato
-- [ ] **REDE-02**: O sistema avisa quando uma empresa está parada aguardando assinatura além do prazo aceitável
+- [x] **REDE-02**: O sistema avisa quando uma empresa está parada aguardando assinatura além do prazo aceitável
 - [ ] **REDE-03**: Um admin consegue liberar uma empresa ao operacional manualmente quando a Clicksign falha, e essa liberação fica registrada com autor e motivo
-- [ ] **REDE-04**: Uma varredura periódica reconcilia com a Clicksign os contratos cujo webhook nunca chegou (D3)
+- [x] **REDE-04**: Uma varredura periódica reconcilia com a Clicksign os contratos cujo webhook nunca chegou (D3)
 - [ ] **REDE-05**: O sistema valida os dados mínimos (CNPJ, e-mail e nome de quem assina, datas do contrato — presença e formato) ANTES de gerar o PDF e criar o envelope, e mostra o que falta **na tela do Administrativo**, onde é preenchido (D8 — não volta como cobrança para o Comercial). ⚠️ Metade cumprida na Fase 127 (validação sem I/O integrada ao orquestrador, plano 127-06); a exibição na tela do Administrativo é da Fase 131 — só marcar [x] quando as duas metades existirem.
 - [ ] **REDE-06**: O bloqueio do operacional pode rodar em produção em modo observação (construído mas inerte) antes de ser ligado de verdade
 
@@ -282,9 +282,9 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | PDF-02 | Fase 126 | Done |
 | PDF-03 | Fase 126 | Done |
 | REDE-01 | Fase 124 | Done |
-| REDE-02 | Fase 130 | Pending |
+| REDE-02 | Fase 130 | Done |
 | REDE-03 | Fase 130 | Pending |
-| REDE-04 | Fase 130 | Pending |
+| REDE-04 | Fase 130 | Done |
 | REDE-05 | Fase 127 | Pending |
 | REDE-06 | Fase 128 | Pending |
 | UI-01 | Fase 131 | Pending |

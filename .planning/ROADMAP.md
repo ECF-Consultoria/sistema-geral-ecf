@@ -1766,7 +1766,7 @@ Plans:
   3. Um admin libera uma empresa ao operacional preenchendo motivo (campo obrigatório); a liberação registra quem liberou e por quê, e usa o mesmo `EmpresaOperacionalRouter::liberarEmpresa()` do fluxo automático — testada ponta a ponta pelo menos uma vez
   4. Liberar manualmente uma empresa que o webhook também está tentando liberar ao mesmo tempo (corrida) não cria `MlbEmpresa` duplicada
 
-**Plans:** 5/7 plans executed
+**Plans:** 6/7 plans executed
 
 Plans:
 **Wave 1**
@@ -1785,7 +1785,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 130-06-PLAN.md — Auto-monitoramento da varredura + agendamento dos 3 comandos (wave 4)
+- [x] 130-06-PLAN.md — Auto-monitoramento da varredura + agendamento dos 3 comandos (wave 4)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
