@@ -104,6 +104,18 @@ Route::get('/admin/contratos/{contratoAssinatura}/pdf-assinado', [\App\Http\Cont
     ->middleware(['auth', 'role:admin'])
     ->name('contratos.pdf-assinado');
 
+// ─── Liberação manual da rede de segurança (Fase 130 Plano 04, REDE-03/DADOS-05) ──
+// `role:admin` é a trava CORRETA hoje — a permissão dedicada `admin.contratos`
+// (UI-05) nasce na Fase 131, que reescreve esta tela. Rota e controller ficam
+// ISOLADOS de propósito (sem entrada no menu do AppLayout) para a troca ser
+// barata; o backend é definitivo.
+Route::get('/admin/contratos/liberacao-manual', [\App\Http\Controllers\ContratoLiberacaoManualController::class, 'index'])
+    ->middleware(['auth', 'verified', 'role:admin'])
+    ->name('contratos.liberacao-manual.index');
+Route::post('/admin/contratos/liberacao-manual', [\App\Http\Controllers\ContratoLiberacaoManualController::class, 'store'])
+    ->middleware(['auth', 'verified', 'role:admin'])
+    ->name('contratos.liberacao-manual.store');
+
 // PPA Workspace público (sem autenticação) — cliente acessa pelo token
 Route::get('/ppa/workspace/{token}', [PpaController::class, 'workspace'])->name('ppa.workspace');
 Route::patch('/ppa/workspace/{token}/tasks/{task}', [PpaTaskController::class, 'clientUpdate'])->name('ppa.workspace.task.update');
