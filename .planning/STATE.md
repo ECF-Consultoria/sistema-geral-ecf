@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 129-04-PLAN.md
-last_updated: "2026-08-13T14:19:54.876Z"
+stopped_at: Concluido 129-05-PLAN.md
+last_updated: "2026-08-13T14:42:36.439Z"
 last_activity: 2026-08-13
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 53
-  completed_plans: 47
+  completed_plans: 48
   percent: 50
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 129 (webhook-clicksign-v22-0) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
 dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
@@ -449,6 +449,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 129 P02 | 25min | 2 tasks | 9 files |
 | Phase 129-webhook-clicksign-v22-0 P03 | ~1h40min | 3 tasks | 10 files |
 | Phase 129 P04 | 1h30min | 3 tasks | 6 files |
+| Phase 129 P05 | 70min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -1082,8 +1083,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-13T14:19:54.680Z
-Stopped at: Completed 129-04-PLAN.md
+Last session: 2026-08-13T14:42:36.304Z
+Stopped at: Concluido 129-05-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
