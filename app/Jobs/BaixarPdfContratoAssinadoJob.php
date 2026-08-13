@@ -187,7 +187,10 @@ class BaixarPdfContratoAssinadoJob implements ShouldQueue
     {
         $contrato = $this->contratoAssinatura->fresh() ?? $this->contratoAssinatura;
 
-        Log::error('[BaixarPdfContratoAssinadoJob] Falha definitiva ao baixar PDF assinado', [
+        // IN-01 (revisão da Fase 129): canal `ecf-webhooks`, igual ao resto
+        // do subsistema — antes ia para o canal padrão e não aparecia em
+        // `ecf-webhooks.log`, a única fonte de triagem que a Fase 130 varre.
+        Log::channel('ecf-webhooks')->error('[BaixarPdfContratoAssinadoJob] Falha definitiva ao baixar PDF assinado', [
             'contrato_id' => $contrato->id,
             'company_id'  => $contrato->company_id,
         ]);
