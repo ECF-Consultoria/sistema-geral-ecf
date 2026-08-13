@@ -70,6 +70,10 @@ class ContratoAssinatura extends Model
         // PDF pendente" para o alerta da Fase 130. Mesmo alerta de sempre:
         // sem isto o mass assignment falha EM SILÊNCIO.
         'pdf_assinado_erro',
+        // Fase 130, D-04 — quando este contrato foi alertado pela última
+        // vez (não é o lembrete Clicksign do signatário — ver casts abaixo).
+        // Sem isto o mass assignment falha EM SILÊNCIO.
+        'ultimo_alerta_em',
         // Fase 127-01 (D-06) — sem isto o mass assignment das quatro
         // colunas novas falharia EM SILÊNCIO (T-127-03), exatamente o
         // alerta deixado pela Fase 126.
@@ -83,6 +87,9 @@ class ContratoAssinatura extends Model
         'enviado_em'        => 'datetime',
         'assinado_em'       => 'datetime',
         'liberado_em'       => 'datetime',
+        // Fase 130, D-04 — carimbo do último alerta interno (não confundir
+        // com lembreteDiasEfetivo(), que é o lembrete Clicksign do cliente).
+        'ultimo_alerta_em'  => 'datetime',
         // D-10 — mesmo cast de ContratoServico::$casts['hubspot_snapshot'].
         'servicos_snapshot' => 'array',
         // Fase 127-01 (DADOS-06).
