@@ -1766,12 +1766,12 @@ Plans:
   3. Um admin libera uma empresa ao operacional preenchendo motivo (campo obrigatório); a liberação registra quem liberou e por quê, e usa o mesmo `EmpresaOperacionalRouter::liberarEmpresa()` do fluxo automático — testada ponta a ponta pelo menos uma vez
   4. Liberar manualmente uma empresa que o webhook também está tentando liberar ao mesmo tempo (corrida) não cria `MlbEmpresa` duplicada
 
-**Plans:** 7 plans
+**Plans:** 1/7 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 130-01-PLAN.md — Fundação de dados: 3ª via de liberação, lista fechada de motivos e carimbo de último alerta (wave 1)
+- [x] 130-01-PLAN.md — Fundação de dados: 3ª via de liberação, lista fechada de motivos e carimbo de último alerta (wave 1)
 - [ ] 130-02-PLAN.md — Audiência da rede de segurança + recorte único de "empresa parada há tempo demais" (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*

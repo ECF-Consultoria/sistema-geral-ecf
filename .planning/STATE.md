@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Phase 130 context gathered
-last_updated: "2026-08-13T18:41:16.372Z"
-last_activity: 2026-08-13 -- Phase 130 planning complete
+stopped_at: Completado 130-01-PLAN.md
+last_updated: "2026-08-13T18:52:55.799Z"
+last_activity: 2026-08-13
 progress:
   total_phases: 12
   completed_phases: 7
   total_plans: 60
-  completed_plans: 50
+  completed_plans: 51
   percent: 58
 ---
 
@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 129 — webhook-clicksign-v22-0
+**Current focus:** Phase 130 — Rede de segurança — reconciliação, alerta e liberação manual (v22.0)
 
 ## Current Position
 
-Phase: 129 (webhook-clicksign-v22-0) — EXECUTING
-Plan: 7 of 7
+Phase: 130 (Rede de segurança — reconciliação, alerta e liberação manual (v22.0)) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
   (`checkpoint:human-verify`, rodada real de assinatura contra o sandbox) segue aberta.
   Ver "Decisões do Plan 129-07" abaixo e o checkpoint devolvido ao usuário.
 ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
 dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
-Last activity: 2026-08-13 -- Phase 130 planning complete
+Last activity: 2026-08-13
 
 **Correção pós-verificação em 2026-08-12** (commits `39974658`/`be275b9c`): fecha os 2 achados
 remanescentes da verificação/revisão da Fase 128. (1) **D-05 (bloqueador)** —
@@ -453,6 +453,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 129 P04 | 1h30min | 3 tasks | 6 files |
 | Phase 129 P05 | 70min | 2 tasks | 5 files |
 | Phase 129 P06 | 1h20min | 2 tasks | 10 files |
+| Phase 130 P01 | 25min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -1181,8 +1182,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-13T17:53:02.801Z
-Stopped at: Phase 130 context gathered
+Last session: 2026-08-13T18:52:55.776Z
+Stopped at: Completado 130-01-PLAN.md
   assinatura/recusa contra o sandbox) devolvida ao usuário como checkpoint aberto
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
