@@ -3,11 +3,13 @@
 namespace Tests\Feature\Phase130;
 
 use App\Models\ContratoAssinatura;
+use App\Models\Setor;
 use App\Models\User;
 use App\Notifications\Categoria;
 use App\Notifications\ContratoPresoNotification;
 use App\Services\Contratos\ContratosPresosService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 /**
@@ -112,5 +114,133 @@ class AlertaContratoPresoTest extends TestCase
             $this->assertArrayHasKey($causa, $labels, "Falta rótulo para a causa '{$causa}'.");
             $this->assertNotSame('', trim($labels[$causa]));
         }
+    }
+
+    // ─── Task 2: comportamento do comando clicksign:alertar-presos ─────
+
+    private function admin(bool $ativo = true): User
+    {
+        return User::factory()->create(['role' => 'admin', 'active' => $ativo]);
+    }
+
+    private function comercial(bool $ativo = true): User
+    {
+        $setor = Setor::firstOrCreate(
+            ['slug' => 'comercial'],
+            ['nome' => 'Comercial', 'active' => true, 'is_system' => false],
+        );
+
+        $user = User::factory()->create(['role' => 'consultor', 'active' => $ativo]);
+        $setor->membros()->attach($user->id, ['is_principal' => true, 'assigned_at' => now()]);
+
+        return $user;
+    }
+
+    private function usuarioDeOutroSetor(): User
+    {
+        $setor = Setor::firstOrCreate(
+            ['slug' => 'desenvolvimento'],
+            ['nome' => 'Desenvolvimento', 'active' => true, 'is_system' => false],
+        );
+
+        $user = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $setor->membros()->attach($user->id, ['is_principal' => true, 'assigned_at' => now()]);
+
+        return $user;
+    }
+
+    /**
+     * Contrato preso o suficiente para disparar o alerta. Para os estados
+     * cuja data base é `updated_at` (recusado/expirado/cancelado/erro), o
+     * `updated_at` precisa ser envelhecido à mão via `forceFill()` — não é
+     * `$fillable` de propósito (T-125-01), mesma técnica já usada no plano
+     * 130-04.
+     */
+    private function contratoPresoAntigo(string $status = ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS): ContratoAssinatura
+    {
+        $contrato = ContratoAssinatura::factory()->create([
+            'status'     => $status,
+            'enviado_em' => now()->subDays(10),
+        ]);
+
+        $contrato->forceFill(['updated_at' => now()->subDays(10)])->save();
+
+        return $contrato;
+    }
+
+    public function test_contrato_preso_notifica_admin_e_comercial_mas_nao_inativo_nem_outro_setor(): void
+    {
+        Notification::fake();
+
+        $admin            = $this->admin();
+        $comercialAtivo   = $this->comercial();
+        $comercialInativo = $this->comercial(false);
+        $outroSetor       = $this->usuarioDeOutroSetor();
+
+        $this->contratoPresoAntigo();
+
+        $this->artisan('clicksign:alertar-presos')->assertExitCode(0);
+
+        Notification::assertSentTo($admin, ContratoPresoNotification::class);
+        Notification::assertSentTo($comercialAtivo, ContratoPresoNotification::class);
+        Notification::assertNotSentTo($comercialInativo, ContratoPresoNotification::class);
+        Notification::assertNotSentTo($outroSetor, ContratoPresoNotification::class);
+    }
+
+    public function test_contrato_dentro_do_prazo_nao_gera_alerta(): void
+    {
+        Notification::fake();
+        $this->admin();
+
+        ContratoAssinatura::factory()->emAndamento()->create([
+            'enviado_em' => now()->subDay(),
+        ]);
+
+        $this->artisan('clicksign:alertar-presos')->assertExitCode(0);
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_contrato_liberado_mesmo_velho_nao_gera_alerta(): void
+    {
+        Notification::fake();
+        $this->admin();
+
+        ContratoAssinatura::factory()->assinado()->create([
+            'assinado_em' => now()->subDays(30),
+            'liberado_em' => now()->subDays(20),
+        ]);
+
+        $this->artisan('clicksign:alertar-presos')->assertExitCode(0);
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_contratos_recusado_expirado_e_erro_velhos_geram_alerta(): void
+    {
+        // D-05: o alerta cobre TUDO que não terminou bem, não só o que a
+        // reconciliação corrige.
+        Notification::fake();
+        $admin = $this->admin();
+
+        $this->contratoPresoAntigo(ContratoAssinatura::STATUS_RECUSADO);
+        $this->contratoPresoAntigo(ContratoAssinatura::STATUS_EXPIRADO);
+        $this->contratoPresoAntigo(ContratoAssinatura::STATUS_ERRO);
+
+        $this->artisan('clicksign:alertar-presos')->assertExitCode(0);
+
+        Notification::assertSentToTimes($admin, ContratoPresoNotification::class, 3);
+    }
+
+    public function test_audiencia_vazia_nao_envia_e_nao_grava_ultimo_alerta_em(): void
+    {
+        Notification::fake();
+
+        $contrato = $this->contratoPresoAntigo();
+
+        $this->artisan('clicksign:alertar-presos')->assertExitCode(0);
+
+        Notification::assertNothingSent();
+        $this->assertNull(ContratoAssinatura::find($contrato->id)->ultimo_alerta_em);
     }
 }
