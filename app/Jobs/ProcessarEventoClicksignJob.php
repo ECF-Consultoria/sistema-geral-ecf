@@ -4,8 +4,12 @@ namespace App\Jobs;
 
 use App\Models\ContratoAssinatura;
 use App\Models\ContratoAssinaturaEvento;
+use App\Models\ContratoAssinaturaSignatario;
+use App\Models\ContratoLiberacao;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\ContratoSignatariosSyncService;
+use App\Services\Contratos\GateLiberacaoOperacionalService;
+use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -82,8 +86,27 @@ class ProcessarEventoClicksignJob implements ShouldQueue
         ];
     }
 
-    public function handle(ClicksignClient $client, ContratoSignatariosSyncService $sync): void
-    {
+    /**
+     * Plano 129-05 (CLICK-05, SC3/gate #11) — imunidade à ORDEM de entrega.
+     *
+     * Nenhuma linha deste método pergunta "qual evento chegou": a decisão de
+     * `assinado` sai inteiramente de `GateLiberacaoOperacionalService::avaliar()`
+     * sobre o envelope RECONSULTADO (nunca do payload). O `name` do evento
+     * serve só para (a) auditoria/log e (b) o ÚNICO ramo que precisa dele —
+     * distinguir prazo vencido (`deadline`) de cancelamento manual (`cancel`),
+     * porque o `status` do envelope reconsultado não distingue os dois
+     * (vocabulário só `draft`/`running`/`closed`, `canceled` não existe como
+     * status — §9.2 do empírico). Se um `document_closed` chegar antes de um
+     * `sign`, o gate simplesmente vê o envelope ainda `running` (ou o
+     * contratante ainda `pendente`) e não libera; quando o `sign` chegar,
+     * libera. Nenhuma ordem é assumida — porque nenhuma é documentada.
+     */
+    public function handle(
+        ClicksignClient $client,
+        ContratoSignatariosSyncService $sync,
+        GateLiberacaoOperacionalService $gate,
+        EmpresaOperacionalRouter $router
+    ): void {
         // 1. Guard de reentrega (D-11/gate #11): a fila pode reentregar o
         // mesmo job (worker derrubado) — at-least-once é o pior caso
         // assumido pelo desenho.
@@ -147,10 +170,87 @@ class ProcessarEventoClicksignJob implements ShouldQueue
             }
         }
 
-        // ⚠️ Ponto de extensão (plano 129-05): decisão de `assinado` /
-        // `recusado` / `expirado` a partir do estado agregado do envelope
-        // reconsultado entra aqui, depois que o gate de liberação do plano
-        // 129-04 existir. Nada nesta task decide esses três estados.
+        // 6. Plano 129-05 Task 2 (D5/D-04) — recusa é estado de PARADA
+        // HUMANA, avaliada ANTES do gate de liberação. Nunca vira
+        // `cancelado`/`erro` (D5): "o cliente recusou" e "a API caiu" pedem
+        // ações completamente diferentes do Administrativo. Nenhuma chamada
+        // a `ContratoServico`/`MlbEmpresa` aqui (D-04) — a decisão de tirar
+        // o serviço da empresa é humana.
+        $emAndamento = in_array($contrato->status, [
+            ContratoAssinatura::STATUS_RASCUNHO,
+            ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS,
+        ], true);
+
+        $houveRecusa = $contrato->signatarios()
+            ->where('situacao', ContratoAssinaturaSignatario::SITUACAO_RECUSOU)
+            ->exists();
+
+        if ($emAndamento && $houveRecusa) {
+            $contrato->status = ContratoAssinatura::STATUS_RECUSADO;
+            $contrato->save();
+        }
+
+        // 7. Plano 129-05 Task 1 (CLICK-05, D7) — decide por RECONSULTA,
+        // nunca pelo payload nem pelo `name` do evento (ver docblock do
+        // `handle()`). `$gate->avaliar()` já embute a checagem de recusa —
+        // repetição inofensiva com o passo 6 acima, nunca conflitante.
+        $veredito = $gate->avaliar($contrato, $envelope);
+
+        if ($veredito['liberar'] === true) {
+            // Data REAL da assinatura (não a hora em que o webhook chegou):
+            // a diferença importa para o alerta de contrato preso da Fase
+            // 130 e para qualquer auditoria futura. `max()` sobre o
+            // signatário CONTRATANTE, recarregado do banco depois do sync;
+            // `now()` só como último recurso.
+            $assinadoEm = $contrato->signatarios()
+                ->where('papel', ContratoAssinaturaSignatario::PAPEL_CONTRATANTE)
+                ->max('assinado_em');
+
+            $contrato->status      = ContratoAssinatura::STATUS_ASSINADO;
+            $contrato->assinado_em = $assinadoEm ?? now();
+            $contrato->save();
+
+            // via=webhook, sem liberadoPorUserId/motivo (D-05): o caminho
+            // automático não tem pessoa nem justificativa humana por trás —
+            // é exatamente isso que a coluna `via` distingue. Idempotente
+            // por construção (guard dentro de liberarEmpresa()) — chamar de
+            // novo num segundo evento do mesmo envelope é inofensivo; NÃO
+            // replicar guard próprio aqui (duplicar guard em dois lugares
+            // cria dois lugares para errar).
+            $router->liberarEmpresa($contrato->company, $contrato->servico, ContratoLiberacao::VIA_WEBHOOK, contrato: $contrato);
+        } else {
+            Log::channel('ecf-webhooks')->info('[ProcessarEventoClicksignJob] Ainda nao libera', [
+                'contrato_id'            => $contrato->id,
+                'company_id'             => $contrato->company_id,
+                'motivo'                 => $veredito['motivo'],
+                'contratantes_pendentes' => $veredito['contratantes_pendentes'],
+            ]);
+
+            // Plano 129-05 Task 2 (D5) — ÚNICO lugar da fase em que o `name`
+            // do evento decide algo: o `status` do envelope reconsultado NÃO
+            // distingue prazo vencido de cancelamento manual (os dois podem
+            // terminar em `closed`/404, e `canceled` não existe como status
+            // — §9.2 do empírico). "Estados só avançam": guard explícito
+            // impede que um evento tardio reverta um contrato que já saiu de
+            // rascunho/aguardando — sem ele, o gate #11 (entrega fora de
+            // ordem) reverteria um contrato válido.
+            //
+            // ⚠️ Um `deadline` que fecha o envelope com o contratante JÁ
+            // ASSINADO não cai aqui — o ramo acima (`liberar === true`) já
+            // capturou esse caso como `assinado`, não `expirado`.
+            $emAndamentoAgora = in_array($contrato->status, [
+                ContratoAssinatura::STATUS_RASCUNHO,
+                ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS,
+            ], true);
+
+            if ($emAndamentoAgora && $evento->name === 'deadline') {
+                $contrato->status = ContratoAssinatura::STATUS_EXPIRADO;
+                $contrato->save();
+            } elseif ($emAndamentoAgora && $evento->name === 'cancel') {
+                $contrato->status = ContratoAssinatura::STATUS_CANCELADO;
+                $contrato->save();
+            }
+        }
 
         $contrato->save();
 
