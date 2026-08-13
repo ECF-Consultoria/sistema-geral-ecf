@@ -1749,7 +1749,7 @@ Plans:
 - [x] 129-04-PLAN.md — Liberação operacional: `contrato_liberacoes` (D-05), gate da CLICK-05 (fechamento parcial NAO libera) e `EmpresaOperacionalRouter::liberarEmpresa()` — ponto único compartilhado com a Fase 130
 - [x] 129-05-PLAN.md — Liberação por webhook, imunidade à ordem de entrega (gate #11 como pior caso) e estados próprios de recusa/expiração sem mexer no cadastro (D5/D-04)
 - [x] 129-06-PLAN.md — PDF assinado (CLICK-11): download por streaming com link fresco (D-12), disco privado + rota autenticada (D-13), falha não bloqueia a liberação (D-14)
-- [ ] 129-07-PLAN.md — Gate humano final: circuito ponta a ponta contra o sandbox real e registro do que continua não medido
+- [ ] 129-07-PLAN.md — Gate humano final: circuito ponta a ponta contra o sandbox real e registro do que continua não medido — **PARCIAL 2026-08-13:** Task 2 (auto) concluída — receiver de produção provado ponta a ponta pela internet (200/401/reentrega, corpo sintético), decisão A3 fechada, `129-GATE.md`/`CLICKSIGN-SANDBOX-EMPIRICO.md`/`REQUIREMENTS-v22.md` atualizados, suíte 346/1128 verde. **Task 1 (checkpoint humano) aberta** — rodada real de assinatura/recusa contra o sandbox pendente; ver `129-07-SUMMARY.md`
 
 ### Phase 130: Rede de segurança — reconciliação, alerta e liberação manual (v22.0)
 

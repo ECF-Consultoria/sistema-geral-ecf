@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Concluido 129-06-PLAN.md
-last_updated: "2026-08-13T15:05:09.499Z"
+stopped_at: 129-07-PLAN.md Task 2 concluida, Task 1 (checkpoint humano) aberta
+last_updated: "2026-08-13T15:21:38.000Z"
 last_activity: 2026-08-13
 progress:
   total_phases: 12
@@ -27,7 +27,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 129 (webhook-clicksign-v22-0) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: PAUSADO NO CHECKPOINT HUMANO — Task 2 (automatizável) concluída; Task 1
+  (`checkpoint:human-verify`, rodada real de assinatura contra o sandbox) segue aberta.
+  Ver "Decisões do Plan 129-07" abaixo e o checkpoint devolvido ao usuário.
 ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
 dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
 Last activity: 2026-08-13
@@ -969,12 +971,57 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **Túnel cloudflared e `php artisan serve` deixados de pé deliberadamente** ao fim desta sessão de continuação — o usuário sinalizou intenção de medir os gates #6/#7 em seguida; derrubar agora custaria remontar. Registrado como pendência consciente no `129-GATE.md`, não como esquecimento.
 - Registro completo em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md` e `.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` §12.
 
+### Decisões do Plan 129-07 (registradas — PARCIAL, checkpoint aberto)
+
+- **Task 2 (auto) executada; Task 1 (`checkpoint:human-verify`) segue aberta.** O plano 129-07 tem
+  duas tasks: a Task 1 exige o usuário assinar/recusar de verdade contra o sandbox; a Task 2 (auto)
+  registra o resultado. Como a Task 1 ainda não aconteceu, a Task 2 foi executada com o material que
+  já existia — a **pré-verificação do receiver de produção** feita pelo próprio executor nesta
+  sessão (corpo sintético, sem envelope real) — e não com o resultado da rodada real, que continua
+  pendente.
+- **Receiver de produção provado ponta a ponta pela internet, com corpo sintético**: `POST
+  /api/webhooks/clicksign` (não a sonda, já removida) respondeu 200 para assinatura válida
+  (`event.name` sintético, envelope não casa com contrato → grava `status='ignorado'`), 401 para
+  assinatura inválida (grava bruto, DADOS-03), e 401 sem linha nova na reentrega do mesmo corpo
+  (dedup, CLICK-04). Prova CLICK-03/CLICK-04/DADOS-03 com tráfego HTTP real, mas **não** com um
+  envelope de verdade — isso é a Task 1.
+- **Decisão A3 (resposta HTTP do webhook em erro interno) resolvida** — já estava implementada no
+  plano 129-03 (`ClicksignWebhookController`, matriz de status no docblock); só faltava marcar
+  resolvida no `REQUIREMENTS-v22.md`, feito agora com referência à prova ao vivo desta sessão.
+- **Anonimização corrigida no `129-GATE.md` (Rule 1 — bug de sessão anterior)**: o payload colado
+  pelo plano 129-02 trazia e-mail e nome reais de colaborador no bloco `data.user` do evento (o
+  dono da conta, não um signatário) — a afirmação do próprio documento de que "nenhum dado real de
+  pessoa física passou por aqui" estava incorreta para esse campo. Substituído por placeholder
+  (`usuario.api@example.com`), sem impacto em nenhum outro conteúdo do gate.
+- **Gates #6 (`deadline`) e #7 (`refusal`) continuam NÃO MEDIDOS** — não fazem parte do que é
+  automatizável; dependem da Task 1. Gate #11 marcado como **permanentemente não medido** (sem
+  documentação, sem forma segura de provocar reentrega real da Clicksign) — a observação prática
+  disponível é a reentrega manual contra o receiver, já registrada.
+- **CLICK-03/04/05/06/11 e DADOS-03 já estavam marcados `[x]` desde os planos 129-03/04/06** — não
+  dependem da assinatura real ponta a ponta (validam a camada de webhook, agora com prova de tráfego
+  real desta sessão); não alterados por este plano além da checagem do estado.
+- **Suíte cumulativa** `Phase124|Phase125|Phase126|Phase127|Phase128|Phase129` → 346 passed / 1128
+  assertions, exit 0 — idêntica ao baseline herdado do plano 129-06, sem regressão.
+- **Túnel cloudflared e `php artisan serve` continuam DE PÉ** — não foram tocados nesta sessão
+  (hard rule desta execução). Só devem ser encerrados depois que o usuário confirmar a rodada real
+  da Task 1 ou desistir dela explicitamente.
+- **O que falta para fechar o plano 129-07**: a rodada real de assinatura/recusa contra o sandbox
+  (Task 1) — ver checkpoint devolvido pelo executor. Enquanto isso não acontece, o plano permanece
+  `7 of 7 — EXECUTING`, não `Concluído`.
+
 ### Pending Todos
 
 None.
 
 ### Blockers/Concerns
 
+- **Fase 129, plano 07 (gate humano final) — checkpoint aberto, aguardando ação do usuário.**
+  Antes de qualquer medição real: o webhook cadastrado no painel do sandbox aponta para
+  `/api/webhooks/clicksign-sonda`, que foi removida no plano 129-02 — precisa trocar para
+  `/api/webhooks/clicksign` (sem `-sonda`). Depois disso: assinar um contrato de teste de verdade
+  (gate #7 fica pendente sem uma recusa real também), e — se der — deixar um envelope de prazo
+  curtíssimo vencer (gate #6). Túnel cloudflared e `artisan serve` locais seguem de pé para viabilizar
+  isso. Roteiro completo em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md`.
 - **Rate limit 429 da Adman**: problema crônico, não relacionado à Phase 15. Endpoint `/sugadores/{id}/mlbs` retorna 502 quando MCP da Adman bate 429. Logs mostram 429 sequencial em vários `SyncAdmanCompanyJob` em produção. Mensagem formal enviada ao grupo da Adman em 2026-05-27 pedindo aumento de limite.
 - Fase 94: verificacao manual pos-deploy pendente — confirmar topologia de proxy do VPS (open_ip_address = IP publico real do cliente, nao 127.0.0.1/proxy). Se nao bater, configurar trustProxies em bootstrap/app.php antes de confiar na Regra 1 do NpsSuspicionService (Fases 95/96).
 - D-21 (Fase 134) RESOLVIDO em 2026-08-10, veredicto DISPONIVEL: GET /item/{id}/performance responde (score 98, level, buckets com acoes ja redigidas em pt-BR pelo ML) e o campo health do multiget vem preenchido de graca para anuncio ativo fora de catalogo (11 de 20 medidos). A fase saiu na Variante A do UI-SPEC, com as duas medidas de saude lado a lado. Sondagem feita por leitura contra producao, sem nenhum write.
@@ -1084,8 +1131,9 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-13T15:05:09.435Z
-Stopped at: Concluido 129-06-PLAN.md
+Last session: 2026-08-13T15:05:09.435Z (129-06) — sessão atual em andamento (129-07)
+Stopped at: 129-07-PLAN.md — Task 2 (auto) concluída; Task 1 (checkpoint humano, rodada real de
+  assinatura/recusa contra o sandbox) devolvida ao usuário como checkpoint aberto
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
