@@ -166,7 +166,7 @@ Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou
 - [x] **CLICK-08**: O envelope é criado já com o lembrete automático nativo da Clicksign configurado, sem scheduler próprio
 - [ ] **CLICK-09**: Um usuário consegue corrigir o e-mail de um signatário depois do envio, sem cancelar o contrato
 - [ ] **CLICK-10**: Um usuário consegue cancelar um contrato em andamento, informando o motivo
-- [ ] **CLICK-11**: Quando o contrato é concluído, o PDF assinado é baixado e guardado no próprio sistema (D6)
+- [x] **CLICK-11**: Quando o contrato é concluído, o PDF assinado é baixado e guardado no próprio sistema (D6)
 
 ### Contrato em PDF
 
@@ -268,7 +268,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | CLICK-08 | Fase 127 | Done |
 | CLICK-09 | Fase 131 | Pending |
 | CLICK-10 | Fase 131 | Pending |
-| CLICK-11 | Fase 129 | Pending |
+| CLICK-11 | Fase 129 (plano 06) | Done |
 | PDF-01 | Fase 126 | Done |
 | PDF-02 | Fase 126 | Done |
 | PDF-03 | Fase 126 | Done |
