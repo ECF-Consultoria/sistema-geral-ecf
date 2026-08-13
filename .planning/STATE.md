@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 129-01-PLAN.md
-last_updated: "2026-08-13T12:24:28.123Z"
+stopped_at: Completed 129-02-PLAN.md
+last_updated: "2026-08-13T13:45:15.875Z"
 last_activity: 2026-08-13
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 53
-  completed_plans: 44
+  completed_plans: 45
   percent: 50
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 129 (webhook-clicksign-v22-0) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
 dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
@@ -446,6 +446,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 128 P05 | 35min | 3 tasks | 8 files |
 | Phase 128 P06 | 40min | 2 tasks | 3 files |
 | Phase 129 P01 | 14min | 3 tasks | 9 files |
+| Phase 129 P02 | 25min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -956,6 +957,14 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **Permalink aparece 2x no modal** (cabeçalho compacto com id + rodapé explícito "Abrir no Mercado Livre") — o UI-SPEC pede os dois independentemente (seções "Cabeçalho" e "Rodapé"), não é duplicação acidental.
 - **Fase 134 completa** — os 10 planos entregaram os dois níveis de leitura de "Meus Anúncios" (lista + detalhe), ambos só-leitura (D-11), lendo exclusivamente do banco (D-05).
 
+### Decisões do Plan 129-02 (registradas)
+
+- **Gate A1 fechado por medição real, não por leitura de documentação (D-08)**: `ClicksignHmacVarredura::FORMULA_CONFIRMADA = hmac_body_chave_secret` (`hash_hmac('sha256', $rawBody, $secret)`, hex, header `sha256=<hex>`), confirmada em **5 de 5** eventos reais distintos do sandbox Clicksign, recebidos via túnel cloudflared. As outras 3 candidatas falharam nos 5. O `STACK.md` estava errado; o `PITFALLS.md` estava certo.
+- **CLICK-03 NÃO marcada como concluída** apesar de listada no frontmatter do plano — a A1 (algoritmo) está resolvida, mas a *recusa real* de webhook com assinatura inválida (401) só existe quando o receiver de produção do plano 129-03 ligar sobre esta fórmula.
+- **Gates #6 (`deadline`) e #7 (`refusal`) permanecem NÃO MEDIDOS** — a janela de sessão foi usada inteira para o gate bloqueante A1; nenhuma suposição preencheu essas lacunas. Achado colateral medido ao vivo: `deadline_partial_signature_action: "closed"` confirmado na resposta de `GET /envelopes/{id}` — o envelope PODE fechar com assinatura parcial (insumo direto para o gate CLICK-05 do plano 129-04).
+- **Túnel cloudflared e `php artisan serve` deixados de pé deliberadamente** ao fim desta sessão de continuação — o usuário sinalizou intenção de medir os gates #6/#7 em seguida; derrubar agora custaria remontar. Registrado como pendência consciente no `129-GATE.md`, não como esquecimento.
+- Registro completo em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md` e `.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` §12.
+
 ### Pending Todos
 
 None.
@@ -1071,8 +1080,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-13T12:24:27.857Z
-Stopped at: Completed 129-01-PLAN.md
+Last session: 2026-08-13T13:45:15.727Z
+Stopped at: Completed 129-02-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
