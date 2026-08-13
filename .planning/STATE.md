@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: verifying
-stopped_at: Phase 129 planejada (7 planos, plan-check aprovado)
-last_updated: "2026-08-13T11:54:45.290Z"
-last_activity: 2026-08-12
+status: executing
+stopped_at: Completed 129-01-PLAN.md
+last_updated: "2026-08-13T12:24:28.123Z"
+last_activity: 2026-08-13
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 53
-  completed_plans: 43
+  completed_plans: 44
   percent: 50
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 128 — gatilhos-do-fluxo-em-modo-observa-o-v22-0
+**Current focus:** Phase 129 — webhook-clicksign-v22-0
 
 ## Current Position
 
-Phase: 128 (gatilhos-do-fluxo-em-modo-observa-o-v22-0) — VERIFIED (com correção pós-verificação)
-Plan: 6 of 6
-Status: Verificação inicial encontrou 1 gap bloqueador (D-05) + revisão encontrou 1 warning (WR-01);
+Phase: 129 (webhook-clicksign-v22-0) — EXECUTING
+Plan: 2 of 7
+Status: Ready to execute
 ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
 dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
-Last activity: 2026-08-12
+Last activity: 2026-08-13
 
 **Correção pós-verificação em 2026-08-12** (commits `39974658`/`be275b9c`): fecha os 2 achados
 remanescentes da verificação/revisão da Fase 128. (1) **D-05 (bloqueador)** —
@@ -445,6 +445,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 128 P04 | 10min | 3 tasks | 6 files |
 | Phase 128 P05 | 35min | 3 tasks | 8 files |
 | Phase 128 P06 | 40min | 2 tasks | 3 files |
+| Phase 129 P01 | 14min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -1070,8 +1071,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-13T11:54:45.044Z
-Stopped at: Phase 129 planejada (7 planos, plan-check aprovado)
+Last session: 2026-08-13T12:24:27.857Z
+Stopped at: Completed 129-01-PLAN.md
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 

@@ -142,7 +142,7 @@ Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou
 
 - [x] **DADOS-01**: O sistema registra o processo de assinatura de cada empresa, com o estado atual e as datas de envio, assinatura e liberação
 - [x] **DADOS-02**: O sistema registra cada signatário do contrato com seu papel, contato e situação individual de assinatura
-- [ ] **DADOS-03**: Todo evento recebido da Clicksign é gravado bruto, e um evento repetido nunca é processado duas vezes
+- [x] **DADOS-03**: Todo evento recebido da Clicksign é gravado bruto, e um evento repetido nunca é processado duas vezes
 - [x] **DADOS-04**: Recusa de assinatura e prazo expirado são estados próprios, distintos de cancelamento e de falha técnica (D5)
 - [ ] **DADOS-05**: Quando um admin libera a empresa manualmente, o sistema registra quem liberou e por quê
 - [x] **DADOS-06**: Cada contrato pode ter seu próprio prazo de assinatura (D3)
@@ -247,7 +247,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | FLUXO-09 | Fase 133 | Pending |
 | DADOS-01 | Fase 125 | Done |
 | DADOS-02 | Fase 125 | Done |
-| DADOS-03 | Fase 129 | Pending |
+| DADOS-03 | Fase 129 (plano 01) | Done |
 | DADOS-04 | Fase 125 | Done |
 | DADOS-05 | Fase 130 | Pending |
 | DADOS-06 | Fase 127 | Done |
