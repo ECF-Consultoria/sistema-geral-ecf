@@ -197,10 +197,10 @@ de produção, isso precisa ser testado de verdade antes da Fase 133.**
 |---|---|---|---|
 | #1 | ~~Algoritmo do `Content-Hmac`~~ ✅ **FECHADO 2026-08-13** | Fase 129 | `hmac_body_chave_secret` confirmado em 5/5 eventos reais — ver §12.1 |
 | #5 | Limite de tamanho de arquivo | Fase 126 | **PARCIAL — ver §9.** 10 MB aceitos; acima disso a trava do nosso client barrou antes de chegar na API |
-| #6 | Expiração emite evento distinguível | Schema + 129 | Deixar um envelope vencer — **ainda NÃO MEDIDO**, ver §12.8 |
-| #7 | Recusa emite evento distinguível | Schema + 129 | Recusar uma assinatura — **ainda NÃO MEDIDO**, ver §12.8 |
+| #6 | Expiração emite evento distinguível | Schema + 129 | Deixar um envelope vencer — **ainda NÃO MEDIDO**, ver §12.8/§13.3 |
+| #7 | Recusa emite evento distinguível | Schema + 129 | Recusar uma assinatura — **ainda NÃO MEDIDO**, ver §12.8/§13.3 |
 | #8 | Endpoint de correção de e-mail | CLICK-09 | — |
-| #11 | Retry e ordem dos webhooks | CLICK-04/05 | Só com webhook ativo |
+| #11 | Retry e ordem dos webhooks | CLICK-04/05 | **PERMANENTEMENTE NÃO MEDIDO** — sem documentação e sem forma segura de provocar reentrega real da Clicksign; tratado como pior caso (at-least-once, sem garantia de ordem) no código. A única observação prática disponível é a reentrega manual do mesmo corpo contra o receiver, registrada em §13.1 |
 
 **Nenhum deles bloqueia a Fase 125.**
 
@@ -614,6 +614,54 @@ o retorno deste método lê `null` em silêncio.
 - **Gate #7 (`refusal`, recusa de assinatura)** — idem.
 - **Pergunta A4 (webhook por conta ou por envelope)** — não observado; o cadastro do webhook não
   foi refeito nesta sessão.
+
+---
+
+## 13. Sexta sessão — pré-verificação do receiver de produção, gate final da Fase 129 (129-07), 2026-08-13
+
+**Método:** diferente das sessões 1–5, esta NÃO conversou com a API da Clicksign. O executor do
+plano 129-07 mandou requisições HTTP reais — pelo mesmo túnel cloudflared já de pé desde o gate A1 —
+direto contra a rota de **produção** `POST /api/webhooks/clicksign` (não a sonda, já removida),
+com corpo **sintético** forjado por ele mesmo (`verificacao_e2e_claude` /
+`e2e_assinatura_invalida_claude` — nomes de evento que a Clicksign nunca emite). O objetivo foi
+provar a fiação do receiver (validação de assinatura, gravação bruta, dedup) antes de envolver o
+usuário na rodada real de assinatura. Registro completo, com tabela de evidência por id de evento,
+em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md` (seção "Rodada ponta a ponta —
+pré-verificação do executor").
+
+### 13.1. O receiver de produção recusa, aceita e deduplica de verdade, pela internet
+
+| Cenário | HTTP | Evidência |
+|---|---|---|
+| Assinatura válida (fórmula do gate A1), envelope que não casa com contrato nenhum | **200** | evento gravado com `status='ignorado'` — não é erro, é o caso "corrida com o commit do envelope" da D-10 |
+| Assinatura inválida, corpo novo | **401** | evento gravado com `payload.raw` preservado (DADOS-03 vale mesmo recusando) |
+| Mesmo corpo de assinatura inválida reenviado | **401**, nenhuma linha nova | dedup por `payload_hash` funcionando mesmo no caminho de recusa |
+
+Isto fecha, com tráfego real de internet (não teste automatizado, não `Http::fake()`), a prova de
+CLICK-03, CLICK-04 e DADOS-03 que as sessões anteriores só tinham provado por suíte de teste.
+
+### 13.2. `ip_address` sempre `127.0.0.1` neste ambiente de túnel — não é falha de captura
+
+Confirmado nesta sessão e retroativo às sessões do gate A1: o cloudflared entrega a requisição ao
+`artisan serve` local via loopback, então `$request->ip()` sempre lê o processo do túnel na própria
+máquina, nunca o IP público de quem originou a chamada do lado da Clicksign. Consequência prática:
+**este ambiente de desenvolvimento nunca vai medir o `X-Forwarded-For` real que a Clicksign envia**
+— só um proxy reverso de produção (Fase 132) prova isso.
+
+### 13.3. O que continua não medido mesmo depois desta pré-verificação
+
+A pré-verificação provou a camada de recepção do webhook. Continuam sem medição real:
+- **Gate #6** (`deadline`) e **Gate #7** (`refusal`) — nenhuma expiração nem recusa real foi
+  exercitada; ver §12.8, situação inalterada.
+- **Gate #11** (retry/ordem de entrega da Clicksign) — permanentemente não medido por documentação
+  nem por sessão nenhuma; tratado como pior caso (at-least-once, sem garantia de ordem).
+- **O circuito de negócio inteiro** — assinatura real de uma pessoa, liberação da empresa, PDF
+  assinado de verdade baixado para `storage/app`. Nada disto foi exercitado nesta sessão; é o objeto
+  do checkpoint humano do plano 129-07.
+- **Pergunta A4** (cadastro do webhook por conta ou por envelope) — segue não observado.
+- ⚠️ **O webhook cadastrado hoje no painel do sandbox aponta para a rota `-sonda`, que não existe
+  mais.** Qualquer medição real futura exige o usuário reapontar a URL para
+  `/api/webhooks/clicksign` (sem `-sonda`) antes de assinar qualquer coisa.
 
 ---
 

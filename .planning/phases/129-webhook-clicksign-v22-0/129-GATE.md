@@ -203,7 +203,7 @@ utilidade documental):**
   "event": {
     "name": "add_signer",
     "data": {
-      "user": { "email": "adm@ecfconsultoria.com.br", "name": "Leticia Moura" },
+      "user": { "email": "usuario.api@example.com", "name": "Usuario API ECF (anonimizado)" },
       "account": { "key": "71db7df8-5355-47d1-b4c6-9f331320f0a4" },
       "signers": [
         {
@@ -237,9 +237,17 @@ utilidade documental):**
 }
 ```
 
-E-mails e nomes já são dados de teste do sandbox (`@example.com`, "Fulano de Tal Silva", "Socio Um
-ECF Teste Sandbox") — nenhum dado real de pessoa física passou por aqui. `key`s são UUIDs internos
-da Clicksign, não segredos.
+E-mails e nomes do bloco `signers` já são dados de teste do sandbox (`@example.com`, "Fulano de Tal
+Silva", "Socio Um ECF Teste Sandbox"). `key`s são UUIDs internos da Clicksign, não segredos.
+
+**[Rule 1 — correção nesta rodada, plano 129-07]** O bloco `data.user` do evento (o dono da conta
+que fez a última alteração no envelope, não um signatário) trazia um e-mail e nome reais de
+colaborador — a afirmação acima ("nenhum dado real de pessoa física passou por aqui"), escrita no
+plano 129-02, estava **errada** para esse campo específico. Anonimizado nesta edição
+(`usuario.api@example.com` / "Usuario API ECF (anonimizado)"), seguindo a mesma regra do rodapé do
+`CLICKSIGN-SANDBOX-EMPIRICO.md` (achado WR-07). Nenhuma ação além da edição do documento — não é
+segredo (o token de API nunca esteve neste bloco), só e-mail/nome de colaborador que não deveriam
+ter sido colados sem anonimizar.
 
 **Comparação com as duas formas que a doc oficial mostra** (`129-RESEARCH.md` §"Nota de
 confiabilidade"): bateu com a **primeira forma**, `{"event":{"name","data","occurred_at"},
@@ -321,6 +329,123 @@ painel de webhooks da Clicksign for aberto.
 
 ---
 
+## Rodada ponta a ponta — pré-verificação do executor (plano 129-07)
+
+**Medido em:** 2026-08-13, 12:06–12:08 BRT — mesmo túnel cloudflared e mesmo `artisan serve`
+locais desta sessão contínua (nunca derrubados desde o gate A1).
+
+**O que isto É:** o executor do plano 129-07, ANTES de envolver o usuário na rodada real de
+assinatura (Task 1 do plano, `checkpoint:human-verify`), provou contra a rota de **produção**
+`POST /api/webhooks/clicksign` — atravessando a internet pelo túnel, não em teste automatizado —
+que a fiação de validação/gravação/dedup funciona com dados reais de rede. Nenhum `Http::fake()`
+envolvido.
+
+**O que isto NÃO É:** isto não substitui a Task 1. Nenhum envelope real da Clicksign, nenhuma
+assinatura humana de verdade, nenhuma liberação de empresa de verdade e nenhum PDF assinado real
+foram produzidos aqui — os dois eventos abaixo são requisições **sintéticas**, com corpo forjado
+pelo executor (`verificacao_e2e_claude` / `e2e_assinatura_invalida_claude`, nomes de evento que a
+Clicksign nunca emite), usadas só para provar o comportamento do receiver sob as três condições que
+o critério de reprovação do plano lista. A rodada real com o sandbox — assinar de verdade, recusar
+de verdade, ver o PDF baixado — continua pendente e é o objeto do checkpoint devolvido ao final
+deste documento.
+
+### B) Receiver de produção provado ponta a ponta pela internet
+
+Três requisições HTTP reais, do exterior do processo Laravel, contra `POST
+/api/webhooks/clicksign` pelo endereço do túnel — não chamada de teste, não `TestCase`:
+
+| Cenário | Corpo (sintético, anonimizado — sem PII) | HTTP | Evidência no banco |
+|---|---|---|---|
+| Assinatura **VÁLIDA** (`Content-Hmac` calculado com `hmac_body_chave_secret`, a fórmula medida no gate A1) | `{"event":{"name":"verificacao_e2e_claude","occurred_at":"2026-08-13T12:06:59-03:00"}}` | **200** | evento **id 8** — `signature_valid=1`, `status='ignorado'`, `erro_msg='envelope nao pertence a nenhum contrato deste sistema'` (esperado: o `document.key` do corpo sintético não casa com nenhum `ContratoAssinatura` real — comportamento do passo 3 da matriz de status da D-10, "não é erro") |
+| Assinatura **INVÁLIDA**, corpo novo | `{"event":{"name":"e2e_assinatura_invalida_claude"}}` | **401** | evento **id 10** — `signature_valid=0`, `status='erro'`, `erro_msg='assinatura invalida ou ausente'`, `payload.raw` preservado com o corpo bruto, `ip='127.0.0.1'` |
+| Corpo **REPETIDO** (mesma assinatura inválida testada de novo) | reenvio de uma tentativa com assinatura inválida | **401** | **nenhuma linha nova persistida** — dedup por `payload_hash` recusando a segunda gravação (23000 silenciosamente capturado em `gravarEvento()`) |
+
+**Log correspondente** (`storage/logs/ecf-webhooks-2026-08-13.log`, sem secret nem payload):
+```
+[2026-08-13 12:07:17] local.WARNING: [ProcessarEventoClicksignJob] Envelope sem contrato correspondente {"evento_id":8,"clicksign_envelope_id":null}
+[2026-08-13 12:07:19] local.WARNING: [Clicksign Webhook] Requisicao recusada {"motivo":"assinatura invalida ou ausente","ip":"127.0.0.1","body_size":85}
+[2026-08-13 12:07:37] local.WARNING: [Clicksign Webhook] Requisicao recusada {"motivo":"assinatura invalida ou ausente","ip":"127.0.0.1","body_size":51}
+```
+
+Isto prova ao vivo, contra a rota real de produção (não a sonda, que já não existe):
+- **CLICK-03** — assinatura inválida recusa com 401, sem exceção não tratada;
+- **CLICK-04** — o mesmo corpo (mesmo `payload_hash`) reenviado não grava uma segunda linha;
+- **DADOS-03** — o evento é gravado bruto mesmo quando a assinatura é recusada (evento id 10 tem
+  `payload.raw` preenchido);
+- a matriz de status code da D-10 (`ClicksignWebhookController`, docblock) bate com o observado:
+  200 para "envelope não casa com contrato nenhum", 401 para assinatura inválida.
+
+⚠️ **`ip_address='127.0.0.1'` em todos os eventos desta sessão, incluindo os do gate A1 — não é
+bug.** O cloudflared entrega a requisição ao `artisan serve` local via loopback; `$request->ip()`
+sempre lê o IP de quem conecta na porta 8000, que é o processo do túnel na própria máquina, nunca o
+IP público de origem. Não há vazamento de PII de rede aqui porque nunca houve IP público capturado
+— mas também significa que **este ambiente nunca vai provar quais valores reais de
+`X-Forwarded-For` a Clicksign manda**; isso só é observável atrás de um proxy reverso real (VPS,
+Fase 132).
+
+⚠️ **Lacuna no id sequencial (evento id 9 ausente).** `SHOW TABLE STATUS` confirma
+`Auto_increment=11` para 10 tentativas de `INSERT`, mas só 8 linhas existem (ids 2–8, 10; o id 1
+já estava consumido antes desta fase). Nenhuma entrada de erro correspondente apareceu no log entre
+os ids 8 e 10 — consistente com o comportamento conhecido do InnoDB de não reciclar o valor de
+`AUTO_INCREMENT` mesmo quando um `INSERT` não persiste (ex.: uma tentativa intermediária de reenvio
+capturada pela unicidade de `payload_hash` antes de qualquer log ser emitido). Não afeta nenhum dos
+três resultados provados acima — só registrado aqui por disciplina de não esconder o que não foi
+plenamente explicado.
+
+**Nenhuma chamada real à API da Clicksign aconteceu nesta pré-verificação** (o `document.key`
+sintético nunca bateu com um `ContratoAssinatura`, então `ProcessarEventoClicksignJob` parou no
+"envelope sem contrato correspondente" sem reconsultar nada). Por isso o orçamento de requisições
+por evento processado (2 para o processamento + 1 para o download, contra a janela de 20/min
+medida) **continua sem medição nesta rodada** — só a Task 1 real, com um envelope de verdade, mede
+isso. Fica como item aberto explícito para a Fase 132.
+
+### C) Achados de API — já registrados no gate A1, sem novidade nesta pré-verificação
+
+Os quatro achados de API desta sessão (`deadline_partial_signature_action: "closed"`, rascunho
+inerte, rajada de eventos retroativos na ativação, `consultarEnvelope()` desembrulhado) foram todos
+medidos durante a rodada do gate A1 (seção "Outros achados desta rodada" acima) e já estão
+espelhados em `CLICKSIGN-SANDBOX-EMPIRICO.md` §12. Nenhuma medição nova de API foi feita nesta
+pré-verificação — ela testou só o receiver, contra corpo sintético, sem tocar a Clicksign.
+
+### D) Eventos na tabela `contrato_assinatura_eventos` — estado consolidado
+
+| id | origem | `name` | `signature_valid` | `status` | Nota |
+|---|---|---|---|---|---|
+| 2–6 | webhook real (gate A1) | `add_signer` ×4, `update_deadline` | 0 (sonda não valida por desenho) | `recebido` | ver seção do gate A1 acima |
+| 7 | ping manual do orquestrador | — | 0 | `recebido` | descartado da contagem do gate A1 |
+| 8 | pré-verificação 129-07 (sintético) | `verificacao_e2e_claude` | **1** | `ignorado` | prova o caminho "assinatura válida, envelope não casa com contrato" |
+| 9 | — | — | — | — | ausente — ver nota da lacuna acima |
+| 10 | pré-verificação 129-07 (sintético) | `e2e_assinatura_invalida_claude` | 0 | `erro` | prova recusa 401 + gravação bruta |
+
+## O que continua NÃO MEDIDO após esta rodada (honesto, sem eufemismo)
+
+Esta pré-verificação fechou a prova de que o **receiver** funciona ponta a ponta pela internet. O
+que continua sem medição real é exatamente o que só um envelope de verdade, assinado por uma
+pessoa, pode provar — nada disto foi inventado nem assumido:
+
+1. **Gate #7 (`refusal`)** — nenhuma recusa real foi exercitada. O nome do evento (`refusal`) vem
+   da documentação (confiança MÉDIA); ninguém viu esse evento disparar de um sandbox real.
+2. **Gate #6 (`deadline`)** — nenhuma expiração real. O prazo mínimo do sandbox é medido em DIAS
+   (`deadline_at`), não é mensurável dentro de uma sessão de algumas horas.
+3. **Gate #11 (retry/ordem de entrega da própria Clicksign)** — sem documentação (3 páginas oficiais
+   já checadas) e sem medição possível sem provocar falha proposital no receiver e esperar a
+   Clicksign reenviar. Tratado como pior caso no código (at-least-once, sem garantia de ordem).
+   **Permanentemente não medido** — nenhuma fase futura promete medir isto.
+4. **Assinatura real completa → liberação → download do PDF.** O circuito de negócio inteiro (uma
+   pessoa assinando de verdade no sandbox, o webhook real chegando, `ProcessarEventoClicksignJob`
+   reconsultando, `EmpresaOperacionalRouter::liberarEmpresa()` rodando, `BaixarPdfContratoAssinadoJob`
+   baixando o PDF de verdade) **não foi exercitado nesta sessão.** O que esta pré-verificação provou
+   foi só a camada de recepção/validação/dedup do webhook — não o restante da cadeia.
+5. **Pergunta A4 (`/webhooks` é registrado por conta ou por envelope?)** — não observado; o cadastro
+   do webhook não foi refeito nesta sessão.
+6. ⚠️ **O webhook cadastrado pelo usuário no painel da Clicksign aponta para
+   `/api/webhooks/clicksign-sonda`, rota que foi REMOVIDA no plano 129-02.** Antes de qualquer
+   medição real (item 4 acima), o usuário precisa reabrir o painel de Webhooks do sandbox e trocar
+   a URL para `<endereço do túnel>/api/webhooks/clicksign` — **sem** `-sonda`. Sem esse ajuste, a
+   Clicksign vai continuar batendo numa rota que devolve 404, e nenhum evento real chega.
+
+---
+
 ## Checklist de fechamento
 
 - [x] Gate A1 fechado — `hmac_body_chave_secret` bateu em 5/5 eventos reais, as outras 3 falharam nos 5
@@ -328,9 +453,16 @@ painel de webhooks da Clicksign for aberto.
 - [x] Gate #6 (`deadline`) registrado — explicitamente "NÃO MEDIDO" (achado colateral medido: `deadline_partial_signature_action: "closed"`)
 - [x] Gate #7 (`refusal`) registrado — explicitamente "NÃO MEDIDO"
 - [x] Pergunta conta-vs-envelope respondida — "não observado" nesta rodada
-- [ ] Túnel e `php artisan serve` encerrados — **deliberadamente DEIXADOS DE PÉ** ao final desta
-      sessão de continuação: o usuário sinalizou intenção de medir os gates #6/#7 em seguida, e
-      derrubar o túnel agora custaria remontá-lo. Fica registrado aqui como pendência consciente,
-      não como esquecimento — quem fechar a próxima sessão de medição (ou encerrar sem medir mais
-      nada) deve lembrar de fechar o túnel e o `php artisan serve` (T-129-09).
+- [x] Receiver de produção (`/api/webhooks/clicksign`) provado ponta a ponta pela internet, com
+      assinatura válida (200), assinatura inválida (401) e reentrega (401, sem duplicar) — plano
+      129-07, pré-verificação do executor
+- [ ] **Rodada real de assinatura, recusa e prazo vencido contra o sandbox — PENDENTE.** Depende do
+      usuário: (a) atualizar a URL do webhook no painel (item 6 acima), (b) assinar de verdade um
+      contrato de teste, (c) recusar um segundo contrato de teste. Ver checkpoint devolvido pelo
+      executor ao final da execução do plano 129-07.
+- [ ] Túnel e `php artisan serve` encerrados — **continuam DE PÉ**, porque a rodada real do plano
+      129-07 (item acima) ainda depende deles. Fechar só depois que o usuário confirmar a rodada
+      real ou desistir dela nesta sessão (T-129-09).
 - [x] Nenhum token/secret/header de autorização foi colado neste documento (T-129-10/T-129-11)
+- [x] Nenhum e-mail, nome real ou IP público foi colado neste documento — os dois eventos novos
+      (id 8, id 10) usam corpo sintético forjado pelo executor, sem dado de pessoa nenhuma

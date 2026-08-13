@@ -127,7 +127,16 @@ produção do plano 129-03 ligar sobre esta fórmula.
 
 Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou — complexidade herdada pela 127); deixar e ignorar (cada falha deixaria envelope órfão em `draft`).
 
-**A3 — Resposta HTTP do webhook em erro interno.** O webhook do HubSpot responde 200 sempre. Para a Clicksign, responder 5xx permitiria retry do provedor — e a idempotência por `payload_hash` torna isso seguro. Decidir na fase do webhook.
+~~**A3 — Resposta HTTP do webhook em erro interno.**~~ **RESOLVIDA na Fase 129 (plano 129-03,
+2026-08-13).** Divergência DELIBERADA do padrão `HubspotWebhookController` (que sempre responde
+200): a Clicksign recebe **401** quando a assinatura não confere (recusa deliberada — reenviar não
+conserta secret errado), **200** quando o corpo é inválido ou o envelope não casa com contrato
+nenhum ou o evento é duplicado (não é erro, reenviar não ajudaria ou já foi processado), e **503**
+só nas duas falhas verdadeiramente transitórias (banco indisponível ao gravar, falha ao enfileirar)
+— nesses dois casos a idempotência por `payload_hash` torna o retry da Clicksign seguro. Matriz
+completa documentada no docblock de `ClicksignWebhookController::receive()`. Provado ao vivo contra
+a rota de produção em `129-GATE.md` (plano 129-07): assinatura válida → 200; assinatura inválida →
+401; reentrega do mesmo corpo → 401 sem duplicar.
 
 **A4 — Quais das 7 pendências comerciais valem para empresa cadastrada à mão** (ver D2).
 
@@ -231,12 +240,12 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | 3 | URL base de produção | Cutover | ✅ `https://app.clicksign.com/api/v3` |
 | 4 | `content_base64` exige prefixo data URI ou string pura | Client | ✅ **exige Data URI completo**; base64 puro → 400 (a doc mostra o contrário) |
 | 5 | Limite de tamanho de arquivo no upload | Client | ⏳ aberto — testado só com PDF de 1,5 KB |
-| 6 | Expiração de prazo emite evento distinguível | Schema + Webhook | ⏳ aberto — não bloqueia a Fase 125 (a D5 já trava o estado por decisão) |
-| 7 | Recusa de signatário emite evento distinguível | Schema + Webhook | ⏳ aberto — idem |
+| 6 | Expiração de prazo emite evento distinguível | Schema + Webhook | ⏳ aberto — sessão de 2026-08-13 (129-07) não conseguiu exercitar (prazo mínimo do sandbox é em dias); não bloqueia a Fase 125 (a D5 já trava o estado por decisão). Achado colateral MEDIDO: `deadline_partial_signature_action: "closed"` — o envelope PODE fechar com assinatura parcial |
+| 7 | Recusa de signatário emite evento distinguível | Schema + Webhook | ⏳ aberto — sessão de 2026-08-13 (129-07) não conseguiu exercitar recusa real; `name` do evento (`refusal`) segue vindo só da documentação (confiança MÉDIA) |
 | 8 | Endpoint de correção de e-mail de signatário na v3 | CLICK-09 | ⏳ aberto |
 | 9 | Formato do certificado de autenticação do signatário | DADOS-02 | ✅ **`documents/{id}/events` → evento `sign` → `data.signer`** (`auths[]`, `address` = IP, timestamp no `created`). O recurso `/signers/{id}` **não** carrega evidência nenhuma |
 | 10 | Granularidade da consulta de envelope (suficiente para reconciliação) | REDE-04 | ✅ suficiente — `status` + `meta.record_count` + eventos paginados; rate limit **20** no sandbox |
-| 11 | Política de retry e garantia de ordem dos webhooks | CLICK-04/05 |
+| 11 | Política de retry e garantia de ordem dos webhooks | CLICK-04/05 | ⚠️ **tratado como pior caso — at-least-once, sem garantia de ordem.** Permanentemente não medido pela documentação (3 páginas oficiais checadas, nenhuma promete ordem ou política de retry); observação prática de reentrega (mesmo corpo reenviado ao receiver real não duplica) registrada em `129-GATE.md` (plano 129-07, 2026-08-13) |
 
 ## Traceability
 
@@ -291,7 +300,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 |---------|------|
 | A1 — Algoritmo do `Content-Hmac` (BLOQUEANTE) | ✅ Resolvida na Fase **129** (plano 129-02, 2026-08-13) |
 | A2 — Rollback de envelope montado pela metade | ✅ Resolvida na Fase **126** (D-12) |
-| A3 — Resposta HTTP do webhook em erro interno | Fase 129 |
+| A3 — Resposta HTTP do webhook em erro interno | ✅ Resolvida na Fase **129** (plano 129-03, provada ao vivo no plano 129-07, 2026-08-13) |
 | A4 — Quais das 7 pendências comerciais valem para empresa manual | Fase 128 |
 
 **Gate empírico de sandbox → fase que trava:**
