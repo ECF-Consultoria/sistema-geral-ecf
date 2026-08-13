@@ -1766,7 +1766,7 @@ Plans:
   3. Um admin libera uma empresa ao operacional preenchendo motivo (campo obrigatório); a liberação registra quem liberou e por quê, e usa o mesmo `EmpresaOperacionalRouter::liberarEmpresa()` do fluxo automático — testada ponta a ponta pelo menos uma vez
   4. Liberar manualmente uma empresa que o webhook também está tentando liberar ao mesmo tempo (corrida) não cria `MlbEmpresa` duplicada
 
-**Plans:** 2/7 plans executed
+**Plans:** 3/7 plans executed
 
 Plans:
 **Wave 1**
@@ -1776,7 +1776,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 130-03-PLAN.md — Reconciliação: comando diário + job que reconsulta a Clicksign e corrige sozinho (wave 2)
+- [x] 130-03-PLAN.md — Reconciliação: comando diário + job que reconsulta a Clicksign e corrige sozinho (wave 2)
 - [ ] 130-04-PLAN.md — Liberação manual só-admin com motivo obrigatório + prova do SC4 (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
