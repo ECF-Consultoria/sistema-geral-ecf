@@ -10,7 +10,9 @@ use App\Models\ContratoLiberacao;
 use App\Models\MlbEmpresa;
 use App\Models\Servico;
 use App\Services\MlbImplementacaoFactory;
+use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -131,6 +133,17 @@ class EmpresaOperacionalRouter
      * Comportamento IDÊNTICO ao que estava inline em `rotear()` — nenhuma
      * mudança observável de `rotearServico()`/`rotearCadastro()`.
      *
+     * **CR-01 (revisão de código da Fase 129):** quando `$guardPorEmpresa`
+     * é verdadeiro, o guard check-then-act (`exists()` + `criarFicha()`)
+     * agora roda dentro de `lockDaEmpresa()` (`Cache::lock()`). Sem a trava,
+     * dois workers de fila processando envelopes DIFERENTES da MESMA
+     * empresa quase ao mesmo tempo (ex.: Polos + Assessoria assinados em
+     * sequência rápida) podiam os dois ler `exists()===false` antes de
+     * qualquer um commitar e os dois criar `MlbEmpresa` — violando a D-02.
+     * O caminho sem guard (Comercial/`rotearCadastro()`) continua SEM lock
+     * de propósito: é uma única submissão, um único processo, sem chamador
+     * concorrente a serializar (D-08 do CONTEXT da Fase 124).
+     *
      * @return bool `true` se criou ao menos uma `MlbEmpresa`.
      */
     private function aplicarRoteamento(Company $company, iterable $nomesServicos, array $handoff, bool $guardPorEmpresa): bool
@@ -147,18 +160,54 @@ class EmpresaOperacionalRouter
             $tipos = $tipos->unique();
         }
 
-        $criouFicha = false;
+        $criarFichas = function () use ($company, $tipos, $handoff, $guardPorEmpresa): bool {
+            $criouFicha = false;
 
-        foreach ($tipos->values() as $tipo) {
-            if ($guardPorEmpresa && MlbEmpresa::where('company_id', $company->id)->exists()) {
-                return $criouFicha;
+            foreach ($tipos->values() as $tipo) {
+                if ($guardPorEmpresa && MlbEmpresa::where('company_id', $company->id)->exists()) {
+                    return $criouFicha;
+                }
+
+                $this->criarFicha($company, $tipo, $handoff);
+                $criouFicha = true;
             }
 
-            $this->criarFicha($company, $tipo, $handoff);
-            $criouFicha = true;
+            return $criouFicha;
+        };
+
+        if (!$guardPorEmpresa) {
+            return $criarFichas();
         }
 
-        return $criouFicha;
+        // Trava atômica por empresa (CR-01). `block(5, ...)` espera até 5s
+        // pela trava e lança `LockTimeoutException` se não conseguir — o
+        // job (tries=3, backoff em 129-03) reprocessa naturalmente; 5s é
+        // folgado porque a seção crítica é só um SELECT + um INSERT.
+        return $this->lockDaEmpresa($company->id)->block(5, $criarFichas);
+    }
+
+    /**
+     * Fábrica da trava por empresa usada pelo guard de "ficha única" (D-02,
+     * CR-01). Extraído em método próprio (protected, não inline) por dois
+     * motivos: (1) permite o teste da corrida interceptar o momento exato
+     * em que um chamador está prestes a disputar a trava, sem precisar de
+     * paralelismo real de SO; (2) é o MESMO ponto que a Fase 130 (SC4) vai
+     * precisar para a corrida entre liberação manual e webhook — como o
+     * lock vive dentro de `aplicarRoteamento()`, `liberarEmpresa()` já o
+     * herda automaticamente, sem duplicar a trava por chamador.
+     *
+     * `Cache::lock()` funciona com `CACHE_STORE=database` (padrão do
+     * projeto, ver CLAUDE.md): a migration `0001_01_01_000001_create_
+     * cache_table` cria a tabela `cache_locks`, e `DatabaseLock` a usa para
+     * adquirir/liberar por INSERT/UPDATE condicional — é mutex real, não
+     * uma leitura+escrita comum sobre a tabela `cache`. A chave é por
+     * `company_id`: envelopes de EMPRESAS DIFERENTES continuam correndo em
+     * paralelo, preservando o desenho da D-06 e o `WithoutOverlapping` por
+     * envelope de `ProcessarEventoClicksignJob::middleware()`.
+     */
+    protected function lockDaEmpresa(int $companyId): Lock
+    {
+        return Cache::lock('operacional-guarda-empresa-' . $companyId, 10);
     }
 
     /**
