@@ -9,6 +9,8 @@ use App\Models\ContratoAssinaturaEvento;
 use App\Models\Servico;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\ContratoSignatariosSyncService;
+use App\Services\Contratos\GateLiberacaoOperacionalService;
+use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
@@ -104,7 +106,7 @@ class ProcessarEventoClicksignJobTest extends TestCase
         $evento   = $this->eventoDeTeste($contrato);
         $this->fakeEnvelope('running');
 
-        (new ProcessarEventoClicksignJob($evento))->handle($this->client(), $this->sync());
+        (new ProcessarEventoClicksignJob($evento))->handle($this->client(), $this->sync(), new GateLiberacaoOperacionalService(), app(EmpresaOperacionalRouter::class));
 
         $contrato->refresh();
         $evento->refresh();
@@ -123,7 +125,7 @@ class ProcessarEventoClicksignJobTest extends TestCase
         ]);
         Http::fake();
 
-        (new ProcessarEventoClicksignJob($evento))->handle($this->client(), $this->sync());
+        (new ProcessarEventoClicksignJob($evento))->handle($this->client(), $this->sync(), new GateLiberacaoOperacionalService(), app(EmpresaOperacionalRouter::class));
 
         $evento->refresh();
 
@@ -139,9 +141,9 @@ class ProcessarEventoClicksignJobTest extends TestCase
         $evento   = $this->eventoDeTeste($contrato);
         $this->fakeEnvelope('running');
 
-        (new ProcessarEventoClicksignJob($evento))->handle($this->client(), $this->sync());
+        (new ProcessarEventoClicksignJob($evento))->handle($this->client(), $this->sync(), new GateLiberacaoOperacionalService(), app(EmpresaOperacionalRouter::class));
         // Segunda execução — simula reentrega da fila (worker derrubado).
-        (new ProcessarEventoClicksignJob($evento))->handle($this->client(), $this->sync());
+        (new ProcessarEventoClicksignJob($evento))->handle($this->client(), $this->sync(), new GateLiberacaoOperacionalService(), app(EmpresaOperacionalRouter::class));
 
         // consultarEnvelope() + listarEventosDoDocumento() = 2 chamadas, UMA
         // única vez — a segunda execução não bate na Clicksign de novo.
@@ -159,7 +161,7 @@ class ProcessarEventoClicksignJobTest extends TestCase
         ]);
         $this->fakeEnvelope('running');
 
-        (new ProcessarEventoClicksignJob($evento))->handle($this->client(), $this->sync());
+        (new ProcessarEventoClicksignJob($evento))->handle($this->client(), $this->sync(), new GateLiberacaoOperacionalService(), app(EmpresaOperacionalRouter::class));
 
         $contrato->refresh();
 
