@@ -248,6 +248,11 @@ class EmpresaOperacionalRouter
      * recusado ou expirado NÃO mexe no cadastro. Nada aqui desativa
      * `ContratoServico`, nada apaga `MlbEmpresa`. A decisão de tirar um
      * serviço da empresa é humana.
+     *
+     * @param  ?string  $motivoSlug  Fase 130 (D-12) — categoria de lista
+     *   fechada (`ContratoLiberacao::MOTIVOS_MANUAIS`) da liberação manual.
+     *   Só é preenchido na via `manual`; `webhook`/`reconciliacao` não têm
+     *   motivo humano.
      */
     public function liberarEmpresa(
         Company $company,
@@ -256,6 +261,7 @@ class EmpresaOperacionalRouter
         ?ContratoAssinatura $contrato = null,
         ?int $liberadoPorUserId = null,
         ?string $motivo = null,
+        ?string $motivoSlug = null,
         array $handoff = []
     ): ContratoLiberacao {
         // 1. Guard de leitura (idempotência do EFEITO, CLICK-04): dois
@@ -281,6 +287,7 @@ class EmpresaOperacionalRouter
                 'via'                   => $via,
                 'liberado_por_user_id'  => $liberadoPorUserId,
                 'motivo'                => $motivo,
+                'motivo_slug'           => $motivoSlug,
                 'gerou_ficha'           => false,
                 'liberado_em'           => now(),
             ]);
