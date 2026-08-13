@@ -326,6 +326,27 @@ class ClicksignClient
     }
 
     /**
+     * GET /envelopes/{envelopeId}/documents/{documentId} — consulta o
+     * documento dentro do envelope. Fase 129 plano 06 (CLICK-11, D-12).
+     *
+     * ⚠️ Documento em `draft` **não tem** bloco de arquivo nenhum — §10.4 do
+     * `CLICKSIGN-SANDBOX-EMPIRICO.md` (MEDIDO): a Clicksign só materializa o
+     * PDF depois da ativação do envelope. Não é código incompleto, é a API.
+     *
+     * ⚠️ O link de download que este endpoint devolve (`files.original` /
+     * `files.signed` / `files.ziped`) é uma URL S3 pré-assinada com
+     * `X-Amz-Expires=300` — **vale 5 minutos** (§7 do empírico, MEDIDO).
+     * Quem chama este método tem que baixar o arquivo IMEDIATAMENTE — nunca
+     * guardar o link, nunca reusar numa tentativa posterior (D-12).
+     *
+     * @return array<string, mixed>
+     */
+    public function consultarDocumento(string $envelopeId, string $documentId): array
+    {
+        return $this->enviar('get', "/envelopes/{$envelopeId}/documents/{$documentId}", [], 'consultar documento');
+    }
+
+    /**
      * GET /templates — lista os modelos cadastrados na conta (paginação
      * JSON:API, `page[number]`/`page[size]`, default 20 — §1 do empírico).
      * Devolve a LISTA já desembrulhada (`data`), não o envelope JSON:API

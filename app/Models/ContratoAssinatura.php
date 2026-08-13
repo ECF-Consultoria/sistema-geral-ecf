@@ -66,6 +66,10 @@ class ContratoAssinatura extends Model
         // novas falharia EM SILÊNCIO.
         'pdf_path',
         'pdf_assinado_path',
+        // Fase 129 plano 06 (CLICK-11, D-14) — sinal legível de "assinado,
+        // PDF pendente" para o alerta da Fase 130. Mesmo alerta de sempre:
+        // sem isto o mass assignment falha EM SILÊNCIO.
+        'pdf_assinado_erro',
         // Fase 127-01 (D-06) — sem isto o mass assignment das quatro
         // colunas novas falharia EM SILÊNCIO (T-127-03), exatamente o
         // alerta deixado pela Fase 126.
