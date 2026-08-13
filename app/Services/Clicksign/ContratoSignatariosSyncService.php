@@ -67,7 +67,11 @@ class ContratoSignatariosSyncService
             })
             // D-06/D-07 — a ordem que vale é a do `created` da Clicksign,
             // nunca a ordem de chegada do webhook (gate #11 não medido).
-            ->sortBy(fn (array $evento) => (string) ($evento['attributes']['created'] ?? ''))
+            // WR-02 (revisão da Fase 129): comparação por TIMESTAMP
+            // parseado, não por string — comparação de string só ordena
+            // certo se todo `created` vier no MESMO formato/offset/precisão,
+            // o que nunca foi medido contra a API real.
+            ->sortBy(fn (array $evento) => \Illuminate\Support\Carbon::parse($evento['attributes']['created'] ?? '1970-01-01')->getTimestampMs())
             ->values();
 
         foreach ($eventos as $evento) {
