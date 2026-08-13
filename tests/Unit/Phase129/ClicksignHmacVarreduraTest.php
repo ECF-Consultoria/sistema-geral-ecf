@@ -72,13 +72,26 @@ class ClicksignHmacVarreduraTest extends TestCase
     }
 
     #[Test]
-    public function confere_lanca_enquanto_formula_confirmada_for_nula(): void
+    public function formula_confirmada_e_a_medida_no_gate_a1(): void
     {
-        $this->assertNull(ClicksignHmacVarredura::FORMULA_CONFIRMADA);
+        // Gate A1 fechado em 2026-08-13 — 5/5 eventos reais do sandbox.
+        // Ver .planning/phases/129-webhook-clicksign-v22-0/129-GATE.md.
+        $this->assertSame('hmac_body_chave_secret', ClicksignHmacVarredura::FORMULA_CONFIRMADA);
+    }
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Gate A1 não fechado: a fórmula do Content-Hmac ainda não foi medida contra webhook real.');
+    #[Test]
+    public function confere_aceita_header_calculado_com_a_formula_confirmada(): void
+    {
+        $header = ClicksignHmacVarredura::calcular(self::BODY, self::SECRET, ClicksignHmacVarredura::FORMULA_CONFIRMADA);
 
-        ClicksignHmacVarredura::confere(self::BODY, self::SECRET, 'sha256=qualquercoisa');
+        $this->assertTrue(ClicksignHmacVarredura::confere(self::BODY, self::SECRET, $header));
+    }
+
+    #[Test]
+    public function confere_recusa_header_que_nao_bate(): void
+    {
+        $headerErrado = 'sha256=' . str_repeat('0', 64);
+
+        $this->assertFalse(ClicksignHmacVarredura::confere(self::BODY, self::SECRET, $headerErrado));
     }
 }

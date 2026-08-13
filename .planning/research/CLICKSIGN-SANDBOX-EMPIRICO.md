@@ -195,10 +195,10 @@ de produção, isso precisa ser testado de verdade antes da Fase 133.**
 
 | Gate | Item | Trava | Como fechar |
 |---|---|---|---|
-| #1 | Algoritmo do `Content-Hmac` | Fase 129 | Doc diz `SHA256(body + secret)` — confirmado em 2 leituras, **não** testado contra webhook real. Segundo candidato: `hash_hmac('sha256', $body, $secret)` |
+| #1 | ~~Algoritmo do `Content-Hmac`~~ ✅ **FECHADO 2026-08-13** | Fase 129 | `hmac_body_chave_secret` confirmado em 5/5 eventos reais — ver §12.1 |
 | #5 | Limite de tamanho de arquivo | Fase 126 | **PARCIAL — ver §9.** 10 MB aceitos; acima disso a trava do nosso client barrou antes de chegar na API |
-| #6 | Expiração emite evento distinguível | Schema + 129 | Deixar um envelope vencer |
-| #7 | Recusa emite evento distinguível | Schema + 129 | Recusar uma assinatura |
+| #6 | Expiração emite evento distinguível | Schema + 129 | Deixar um envelope vencer — **ainda NÃO MEDIDO**, ver §12.8 |
+| #7 | Recusa emite evento distinguível | Schema + 129 | Recusar uma assinatura — **ainda NÃO MEDIDO**, ver §12.8 |
 | #8 | Endpoint de correção de e-mail | CLICK-09 | — |
 | #11 | Retry e ordem dos webhooks | CLICK-04/05 | Só com webhook ativo |
 
@@ -542,6 +542,78 @@ alguém pedir troca de plano quando falta preencher um campo.
 Não existe menu "Envelopes" na interface. Envelope em `draft` aparece em **Rascunhos**, e a lista
 mostra o **nome do arquivo** (`contrato-1.docx`), **não** o `name` do envelope — este só aparece
 depois que o documento sai do rascunho. Custa uma busca frustrada a quem for guiar alguém pela tela.
+
+---
+
+## 12. Quinta sessão — gate A1 da Fase 129, 2026-08-13
+
+### 12.1. Algoritmo do `Content-Hmac` — gate #1 FECHADO, doc do STACK estava errada
+
+A A1 do `REQUIREMENTS-v22.md` (bloqueante, sem plano B) foi resolvida por medição real contra o
+sandbox, via túnel cloudflared apontando para o servidor local. **5 de 5** eventos reais distintos
+(`add_signer` x4 + `update_deadline`, todos da ativação de um envelope remanescente da Fase 128)
+confirmaram a mesma fórmula; as outras 3 candidatas falharam nos 5.
+
+**Fórmula vencedora:** `hmac_body_chave_secret` — `hash_hmac('sha256', $rawBody, $secret)`, digest
+hex, header `sha256=<hex>`.
+
+O `PITFALLS.md` estava certo (`hex(hmac_sha256(secret, body))`, equivalente); o `STACK.md` estava
+**errado** (`hash('sha256', body . secret)`). Registro completo, incluindo o corpo bruto anonimizado
+de um evento, em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md`.
+
+### 12.2. A forma real do corpo do webhook bate com a primeira forma da doc, não a JSON:API
+
+A doc oficial mostra duas formas incompatíveis para o corpo do webhook (ver §"Nota de
+confiabilidade" do `129-RESEARCH.md`). Nos 5 eventos reais, a forma recebida foi sempre:
+
+```
+{"event":{"name","data","occurred_at"},"document":{...}}
+```
+
+A forma JSON:API (`{"data":{"attributes":{...}}}`) **nunca** apareceu. O receiver de produção
+(plano 129-03) deve extrair `name` de `event.name` e o id do envelope de `document.key` — não de
+`data.attributes`/`data.id`.
+
+### 12.3. Rascunho é inerte — não dispara webhook, não é assinável
+
+Os 3 envelopes remanescentes da Fase 128 estavam em `draft` e não geraram webhook nenhum. Só depois
+de `ativarEnvelope()` (status → `running`) os webhooks passaram a chegar.
+
+### 12.4. `deadline_partial_signature_action: "closed"` CONFIRMADO ao vivo
+
+Apareceu na resposta real de `GET /envelopes/{id}` do envelope ativado nesta sessão — o envelope
+**PODE fechar com assinatura parcial**, dependendo de como esse campo foi configurado na criação.
+Reforça o gate de liberação do plano 129-04 (CLICK-05): decidir sempre por reconsulta ao estado
+agregado do envelope, nunca pelo payload isolado do evento.
+
+### 12.5. A v3 não expõe link de assinatura nos atributos do signatário
+
+`GET /envelopes/{id}/signers` devolve `name, birthday, email, phone_number,
+location_required_enabled, has_documentation, documentation, refusable, group,
+communicate_events, signature_host, created, modified`. Nenhum `request_signature_key` / `sign_url`
+— o link de assinatura só sai por e-mail. Relevante para a Fase 131 (tela do Administrativo): não
+dá para exibir o link de assinatura na tela lendo este endpoint.
+
+### 12.6. A ativação dispara uma rajada de eventos retroativos
+
+4 `add_signer` + 1 `update_deadline` chegaram em 3 segundos, descrevendo tudo que já tinha
+acontecido durante o rascunho. O webhook entrega **histórico**, não um fluxo estritamente
+incremental — reforça decidir sempre por reconsulta ao estado agregado, nunca pela ordem/conteúdo
+do evento isolado (mesma disciplina do achado 12.4).
+
+### 12.7. `consultarEnvelope()` devolve o recurso DESEMBRULHADO
+
+Chaves `id`, `type`, `links`, `attributes`, `relationships` direto no topo — **não** dentro de
+`data`. Confirma para `consultarEnvelope()` o mesmo padrão já observado em §9.5 para outros
+endpoints (o client desembrulha o `data`). Qualquer código que fizer `['data']['attributes']` sobre
+o retorno deste método lê `null` em silêncio.
+
+### 12.8. O que continua não medido desta sessão
+
+- **Gate #6 (`deadline`, prazo vencido)** — não exercitado, janela usada para o gate A1 bloqueante.
+- **Gate #7 (`refusal`, recusa de assinatura)** — idem.
+- **Pergunta A4 (webhook por conta ou por envelope)** — não observado; o cadastro do webhook não
+  foi refeito nesta sessão.
 
 ---
 

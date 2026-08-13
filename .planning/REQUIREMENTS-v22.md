@@ -109,12 +109,19 @@ Descoberta pela pesquisa da Fase 124 (2026-08-07): quando uma empresa contrata d
 ~~**A5 — Quais serviços, além de Polos, não passam pelo contrato?**~~ **RESPONDIDA em 2026-08-07:** *"Apenas polos é isento de contrato"*. A lista completa está na tabela da D9. Nenhuma decisão pendente aqui.
 
 
-**A1 — Algoritmo de validação do webhook (BLOQUEANTE, fase do webhook).**
-As duas pesquisas chegaram a fórmulas **contraditórias** a partir da mesma documentação oficial, ambas com confiança MÉDIA:
-- `hash('sha256', $rawBody . $secret)` — concatenação simples (STACK.md)
-- `hex(hmac_sha256($secret, $rawBody))` — HMAC clássico (PITFALLS.md)
+~~**A1 — Algoritmo de validação do webhook (BLOQUEANTE, fase do webhook).**~~ **RESOLVIDA em
+2026-08-13 (plano 129-02), por medição empírica contra webhook real do sandbox** — não por leitura
+de documentação. As duas pesquisas tinham chegado a fórmulas contraditórias, ambas com confiança
+MÉDIA:
+- `hash('sha256', $rawBody . $secret)` — concatenação simples (STACK.md) — **ERRADA**, falhou nos 5 eventos reais medidos
+- `hex(hmac_sha256($secret, $rawBody))` — HMAC clássico (PITFALLS.md) — **CONFIRMADA**, bateu em 5 de 5 eventos reais distintos (`add_signer` x4 + `update_deadline`)
 
-São algoritmos diferentes que produzem hashes diferentes. Implementar o errado faz **100% dos webhooks reais falharem em silêncio** — e webhook rejeitado significa contrato assinado que nunca libera a empresa. **Resolver empiricamente**: disparar webhook real do sandbox, calcular as duas fórmulas, logar os dois valores (nunca o secret) e ver qual bate. Só então escrever o teste automatizado, com fixture calculado fora do código de produção.
+Fórmula em código: `hash_hmac('sha256', $rawBody, $secret)`, hex, header `sha256=<hex>` —
+`ClicksignHmacVarredura::FORMULA_CONFIRMADA = 'hmac_body_chave_secret'`. Registro completo da
+sessão de medição em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md` e
+`.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` §12. **Não** marcar CLICK-03 como concluída
+aqui: a recusa real de webhook com assinatura inválida (401) só existe quando o receiver de
+produção do plano 129-03 ligar sobre esta fórmula.
 
 **A2 — Rollback de envelope montado pela metade.** ✅ **RESOLVIDA no discuss-phase da Fase 126 (2026-08-10), não na 127.** Decisão do usuário: **o client cancela o que criou** — guarda o id do envelope e, ao falhar no meio, cancela na Clicksign antes de propagar o erro. A conta não acumula lixo e tentar de novo começa limpo; envelope em `draft` não dispara e-mail, então cancelar é invisível para o cliente. Custa 1 chamada extra no caminho de erro. Ver `126-CONTEXT.md` D-12.
 
@@ -219,7 +226,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 
 | # | A validar | Trava | Situação |
 |---|---|---|---|
-| 1 | Algoritmo do `Content-Hmac` (A1) — **bloqueante** | Webhook | ⏳ aberto — doc diz `SHA256(body + secret)`, não testado contra webhook real |
+| 1 | Algoritmo do `Content-Hmac` (A1) — **bloqueante** | Webhook | ✅ **FECHADO 2026-08-13** — `hmac_body_chave_secret` confirmado em 5/5 eventos reais (plano 129-02) |
 | 2 | Formato do header `Authorization` (com ou sem `Bearer`) | Client | ✅ **token PURO**; com `Bearer` → 401. Não usar `Http::withToken()` |
 | 3 | URL base de produção | Cutover | ✅ `https://app.clicksign.com/api/v3` |
 | 4 | `content_base64` exige prefixo data URI ou string pura | Client | ✅ **exige Data URI completo**; base64 puro → 400 (a doc mostra o contrário) |
@@ -282,7 +289,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 
 | Decisão | Fase |
 |---------|------|
-| A1 — Algoritmo do `Content-Hmac` (BLOQUEANTE) | Fase 129 |
+| A1 — Algoritmo do `Content-Hmac` (BLOQUEANTE) | ✅ Resolvida na Fase **129** (plano 129-02, 2026-08-13) |
 | A2 — Rollback de envelope montado pela metade | ✅ Resolvida na Fase **126** (D-12) |
 | A3 — Resposta HTTP do webhook em erro interno | Fase 129 |
 | A4 — Quais das 7 pendências comerciais valem para empresa manual | Fase 128 |
@@ -291,7 +298,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 
 | # | Item | Fase |
 |---|------|------|
-| 1 | Algoritmo do `Content-Hmac` (A1, bloqueante) | Fase 129 |
+| 1 | ~~Algoritmo do `Content-Hmac` (A1, bloqueante)~~ ✅ Fechado 2026-08-13 | Fase 129 |
 | 2 | Formato do header `Authorization` | Fase 126 |
 | 3 | URL base de produção | Fase 132 |
 | 4 | Formato de `content_base64` | Fase 126 |

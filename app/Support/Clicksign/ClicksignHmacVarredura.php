@@ -18,12 +18,20 @@ namespace App\Support\Clicksign;
  * configuração manual do usuário e cota do sandbox — esta classe varre as
  * 4 candidatas de uma vez em vez de apostar numa só (D-08).
  *
- * ⚠️ `FORMULA_CONFIRMADA` nasce `null` de propósito. Ela só muda no plano
- * 129-02, DEPOIS da medição contra webhook real — trocar essa constante por
- * leitura de documentação é exatamente o que a D-08 proíbe. Enquanto for
- * `null`, `confere()` lança `\RuntimeException`: é o fusível que impede
- * alguém de ligar o receiver de produção com fórmula chutada antes do gate
- * A1 fechar.
+ * ✅ GATE A1 FECHADO em 2026-08-13, por medição real (não por leitura de
+ * documentação — a D-08 proíbe isso). `FORMULA_CONFIRMADA` = `hmac_body_
+ * chave_secret`, ou seja `hash_hmac('sha256', $rawBody, $secret)`, hex, com
+ * o prefixo `sha256=`. Confirmada em **5 de 5** eventos reais distintos
+ * (`add_signer` x4 + `update_deadline`) recebidos via túnel cloudflared
+ * pela rota-sonda do plano 129-01, contra o sandbox da Clicksign — as
+ * outras 3 candidatas falharam nos 5 eventos. Registro completo da sessão
+ * em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md`.
+ *
+ * ⚠️ O segredo usado nesta medição é do **sandbox**. O cutover de produção
+ * (Fase 132) deve reconfirmar com `clicksign:verificar-assinatura` contra
+ * um evento real de produção antes de confiar cegamente na mesma fórmula —
+ * é improvável que mude, mas nada aqui foi medido contra a conta de
+ * produção.
  */
 class ClicksignHmacVarredura
 {
@@ -40,10 +48,10 @@ class ClicksignHmacVarredura
     ];
 
     /**
-     * Fica `null` neste plano — só o plano 129-02 (depois da medição real
-     * contra webhook do sandbox) troca por uma das 4 chaves de `CANDIDATAS`.
+     * Medida contra webhook real do sandbox em 2026-08-13 (gate A1 fechado).
+     * Ver docblock da classe para o registro completo.
      */
-    public const FORMULA_CONFIRMADA = null;
+    public const FORMULA_CONFIRMADA = 'hmac_body_chave_secret';
 
     /** O header `Content-Hmac` vem como `sha256=<hex>` (convergente em todas as fontes). */
     public const PREFIXO = 'sha256=';

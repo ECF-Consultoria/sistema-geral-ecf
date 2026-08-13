@@ -82,16 +82,11 @@ Route::post('/api/webhooks/hubspot', [\App\Http\Controllers\Api\HubspotWebhookCo
     ->middleware('throttle:60,1')
     ->name('webhooks.hubspot');
 
-// ─── Sonda TEMPORÁRIA do gate A1 — Fase 129 (D-07/D-08) ──────────────────────
-// Existe só para medir, contra um webhook real vindo do túnel local, qual das
-// 4 fórmulas candidatas de HMAC a Clicksign usa. É REMOVIDA pelo plano 129-02
-// assim que o gate A1 fechar — a partir daí a verificação vira o comando
-// `clicksign:verificar-assinatura` (D-09), sem superfície pública nova.
-// CSRF isento por bootstrap/app.php (api/webhooks/*) + withoutMiddleware (defensivo).
-Route::post('/api/webhooks/clicksign-sonda', [\App\Http\Controllers\Api\ClicksignSondaHmacController::class, 'receive'])
-    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
-    ->middleware('throttle:60,1')
-    ->name('webhooks.clicksign.sonda');
+// A rota-sonda temporária do gate A1 (Fase 129, D-07/D-08) existiu aqui até
+// o plano 129-02 — removida depois que o gate fechou (5/5 eventos reais,
+// fórmula hmac_body_chave_secret). A verificação de assinatura agora vive
+// no comando `clicksign:verificar-assinatura` (D-09), sem superfície
+// pública. O receiver de produção nasce no plano 129-03.
 
 // PPA Workspace público (sem autenticação) — cliente acessa pelo token
 Route::get('/ppa/workspace/{token}', [PpaController::class, 'workspace'])->name('ppa.workspace');

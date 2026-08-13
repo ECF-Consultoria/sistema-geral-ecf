@@ -1,10 +1,12 @@
 # Fase 129 — Gate A1 (plano 129-02)
 
 **Preparado em:** 2026-08-13 (roteiro + verificação de ambiente).
-**Medido em:** _(preencher quando o usuário concluir a sessão de medição)_
-**Status geral:** ⏳ **AGUARDANDO MEDIÇÃO** — nada abaixo, além da seção "Ambiente confirmado", foi
-observado contra um webhook real ainda. Este documento nasce como roteiro executável e é
-completado por um agente de continuação depois que o usuário voltar com o resultado.
+**Medido em:** 2026-08-13, 10:27 BRT — túnel cloudflared, servidor local, webhooks reais do
+sandbox Clicksign.
+**Status geral:** ✅ **GATE A1 FECHADO.** A fórmula `hmac_body_chave_secret` bateu em **5 de 5**
+eventos reais distintos (ids 2 a 6 em `contrato_assinatura_eventos`); as outras 3 candidatas
+falharam nos 5. Gates #6 (`deadline`) e #7 (`refusal`) seguem **NÃO MEDIDOS** — nenhuma recusa
+nem expiração foi exercitada nesta rodada.
 
 > Molde: `.planning/phases/128-gatilhos-do-fluxo-em-modo-observa-o-v22-0/128-GATE.md`.
 > Regra de anonimização: nenhum token/secret/header de autorização entra neste documento
@@ -157,52 +159,156 @@ janela de medição.
 
 ## Resultado — Gate A1 (fórmula do `Content-Hmac`)
 
-**PENDENTE DE MEDIÇÃO.**
+✅ **MEDIDO — fórmula única, confirmada em 5 de 5 eventos reais.**
 
-| Candidata | Bate? |
+`FORMULA_CONFIRMADA = hmac_body_chave_secret` — ou seja `hash_hmac('sha256', $rawBody, $secret)`,
+digest em hex, header no formato `sha256=<hex>` (`ClicksignHmacVarredura::calcular()`).
+
+| Candidata | Bate? (5/5 eventos) |
 |---|---|
-| `soma_body_secret` | _(preencher)_ |
-| `soma_secret_body` | _(preencher)_ |
-| `hmac_body_chave_secret` | _(preencher)_ |
-| `hmac_secret_chave_body` | _(preencher)_ |
+| `soma_body_secret` — `hash('sha256', body . secret)` | ❌ falhou nos 5 |
+| `soma_secret_body` — `hash('sha256', secret . body)` | ❌ falhou nos 5 |
+| `hmac_body_chave_secret` — `hash_hmac('sha256', body, secret)` | ✅ **bateu nos 5** |
+| `hmac_secret_chave_body` — `hash_hmac('sha256', secret, body)` | ❌ falhou nos 5 |
 
-**Fórmula vencedora:** _(preencher, ou "NENHUMA BATEU — fase parada")_
+**Fórmula vencedora:** `hmac_body_chave_secret`.
 
-**Corpo bruto anonimizado de pelo menos um evento (gate A1):**
+Isso resolve a A1 do `REQUIREMENTS-v22.md` a favor do `129-RESEARCH.md`/`PITFALLS.md`
+(`hex(hmac_sha256(secret, body))`, equivalente a `hash_hmac('sha256', body, secret)`) — o
+`STACK.md` estava **errado** (`hash('sha256', body . secret)`, que é a candidata
+`soma_body_secret`, uma das que falhou).
 
+**Eventos medidos** (todos gravados com `signature_valid = 0` porque a sonda mede sem validar,
+por desenho — D-08):
+
+| id | evento | quando (BRT) |
+|---|---|---|
+| 2 | `add_signer` | 2026-08-13 10:27:04 |
+| 3 | `add_signer` | 2026-08-13 10:27:05 |
+| 4 | `add_signer` | 2026-08-13 10:27:05 |
+| 5 | `add_signer` | 2026-08-13 10:27:06 |
+| 6 | `update_deadline` | 2026-08-13 10:27:06 |
+
+(o id 7 foi um ping de conectividade manual, não veio da Clicksign — descartado da contagem.)
+
+Todos os 5 vieram da **ativação** do envelope `aea3c36b-6f4f-40a3-a1dc-5be2422cb93f` — um rascunho
+remanescente da Fase 128, ativado nesta sessão especificamente para gerar tráfego real de webhook.
+
+**Corpo bruto anonimizado do evento id 2 (`add_signer`), trimado das seções repetidas/URLs de
+download assinadas (que carregam token AWS temporário, não segredo da Clicksign, mas sem
+utilidade documental):**
+
+```json
+{
+  "event": {
+    "name": "add_signer",
+    "data": {
+      "user": { "email": "adm@ecfconsultoria.com.br", "name": "Leticia Moura" },
+      "account": { "key": "71db7df8-5355-47d1-b4c6-9f331320f0a4" },
+      "signers": [
+        {
+          "sign_as": "party",
+          "list_key": "43263525-ce66-4873-9338-f573515d2b75",
+          "key": "3c8ab77d-b85b-434a-bf80-ce9e6e75408f",
+          "email": "empresa.gate12806.r2@example.com",
+          "name": "Fulano de Tal Silva",
+          "auths": ["email"],
+          "communicate_by": "email",
+          "url": "https://sandbox.clicksign.com/notarial/widget/signatures/3c8ab77d-.../redirect"
+        }
+      ]
+    },
+    "occurred_at": "2026-08-13T10:27:02.931-03:00"
+  },
+  "document": {
+    "key": "664544e7-fa4c-4b42-a60e-ba09b8dbb76e",
+    "account_key": "71db7df8-5355-47d1-b4c6-9f331320f0a4",
+    "path": "/Contrato — Gestão — Empresa Ficticia Gate 128-06 Rodada 2/contrato-6.docx",
+    "filename": "contrato-6.docx",
+    "status": "running",
+    "auto_close": true,
+    "deadline_at": "2026-09-12T10:27:01.000-03:00",
+    "remind_interval": 3,
+    "block_after_refusal": true,
+    "template": { "key": "9e5d4517-...", "data": { "razao_social": "Empresa Ficticia Gate 128-06 Rodada 2", "...": "..." } },
+    "signers": ["... 4 signatários, mesma forma resumida do array acima ..."],
+    "events": ["... histórico retroativo do envelope inteiro, ver achado 4 abaixo ..."]
+  }
+}
 ```
-(preencher — payload JSON com e-mail/nome/IP/chaves trocados por identificadores de teste)
-```
+
+E-mails e nomes já são dados de teste do sandbox (`@example.com`, "Fulano de Tal Silva", "Socio Um
+ECF Teste Sandbox") — nenhum dado real de pessoa física passou por aqui. `key`s são UUIDs internos
+da Clicksign, não segredos.
 
 **Comparação com as duas formas que a doc oficial mostra** (`129-RESEARCH.md` §"Nota de
-confiabilidade"): _(preencher — bateu com a forma `{"event":{"name","data","occurred_at"},
-"document":{...}}`, com a forma JSON:API, ou com nenhuma das duas?)_
+confiabilidade"): bateu com a **primeira forma**, `{"event":{"name","data","occurred_at"},
+"document":{...}}` — a forma JSON:API (`{"data":{"attributes":...}}`) **nunca** apareceu em nenhum
+dos 5 eventos reais. O código de produção (plano 129-03) deve extrair `name` de
+`event.name`/`document.key`, não de `data.attributes`/`data.id`.
+
+---
+
+## Outros achados desta rodada
+
+1. **Rascunho não dispara webhook nem é assinável.** Os 3 envelopes remanescentes da Fase 128
+   estavam em `draft`; nenhum gerou webhook algum. Só depois de `ativarEnvelope()` (status virou
+   `running`) os webhooks começaram a chegar — `draft` é inerte, tanto para assinatura quanto para
+   notificação.
+
+2. **A v3 NÃO expõe link de assinatura nos atributos do signatário.** `GET /envelopes/{id}/signers`
+   devolve apenas: `name, birthday, email, phone_number, location_required_enabled,
+   has_documentation, documentation, refusable, group, communicate_events, signature_host,
+   created, modified`. Nenhum `request_signature_key` / `sign_url`. O link de assinatura só sai por
+   e-mail — relevante para a Fase 131 (tela do Administrativo), que não pode prometer mostrar o
+   link na tela.
+
+3. **A ativação dispara uma rajada de eventos retroativos**, não só o "agora": 4 `add_signer` +
+   1 `update_deadline` chegaram em 3 segundos, descrevendo tudo que já tinha acontecido durante o
+   rascunho (cada signatário adicionado, o prazo definido). Ou seja, o webhook entrega **histórico**,
+   não um fluxo estritamente incremental — reforça a decisão de sempre decidir por reconsulta ao
+   estado agregado do envelope, nunca pela ordem/conteúdo do evento isolado (D-06/D-07, CLICK-05).
+
+4. **`consultarEnvelope()` devolve o recurso DESEMBRULHADO** — chaves `id`, `type`, `links`,
+   `attributes`, `relationships` direto no topo da resposta, **não** dentro de `data`. Qualquer
+   código que fizer `['data']['attributes']` sobre o retorno deste método lê `null` em silêncio, sem
+   erro. Já era um padrão observado em §9.5 do `CLICKSIGN-SANDBOX-EMPIRICO.md` (o client
+   desembrulha o `data`) — esta rodada confirma que vale também para `consultarEnvelope()`.
 
 ---
 
 ## Resultado — Gate #6 (`deadline`, prazo vencido)
 
-**PENDENTE DE MEDIÇÃO** — ou **NÃO MEDIDO** se não der para esperar o prazo vencer dentro da
-sessão (aceitável; o plano 129-05 cobre por fixture sintética).
+**NÃO MEDIDO nesta rodada.** Nenhuma recusa nem expiração foi exercitada — a janela da sessão foi
+usada inteira para o gate A1 (bloqueante, sem plano B) e para confirmar o achado abaixo. O plano
+129-05 cobre este caso por fixture sintética; ninguém deve inventar o comportamento do evento
+`deadline` a partir de suposição.
 
-_(preencher: `name` recebido, payload anonimizado, `status`/`deadline_partial_signature_action`
-do envelope reconsultado)_
+**Achado relacionado, este SIM medido ao vivo:** `deadline_partial_signature_action: "closed"`
+apareceu confirmado na resposta de `GET /envelopes/{id}` (`consultarEnvelope()`) do envelope
+ativado nesta sessão. Era a hipótese mais importante da pesquisa sobre este gate — agora é fato
+medido: **o envelope PODE fechar com assinatura parcial**, dependendo de como o `deadline_partial_
+signature_action` foi configurado na criação. Isso reforça o gate de liberação do plano 129-04
+(CLICK-05 — decidir por reconsulta ao estado agregado do envelope, nunca pelo payload isolado do
+evento).
 
 ---
 
 ## Resultado — Gate #7 (`refusal`, recusa de assinatura)
 
-**PENDENTE DE MEDIÇÃO.**
-
-_(preencher: `name` recebido, payload anonimizado incluindo `refusal.reasons`/`refusal.comment`,
-`status` do envelope após a recusa — `closed` ou `running`)_
+**NÃO MEDIDO nesta rodada** — mesma razão do gate #6 (janela de sessão usada para o gate
+bloqueante A1). O `name` do evento de recusa, o `status` do envelope após recusar
+(`closed`/`running`) e a forma de `refusal.reasons`/`refusal.comment` continuam desconhecidos.
+Registrar honestamente como pendência para a rodada de medição do gate final (129-07) — nenhuma
+suposição foi usada para preencher esta lacuna.
 
 ---
 
 ## Resposta à pergunta oportunista — `/webhooks` é por conta ou por envelope? (A4)
 
-**PENDENTE DE OBSERVAÇÃO** — anotar durante o passo 2. Ou "não observado" se a tela não deixar
-claro.
+**NÃO OBSERVADO nesta rodada.** O cadastro do webhook não foi refeito nesta sessão — o receiver já
+estava apontado para o túnel de uma configuração anterior. Fica pendente para a próxima vez que o
+painel de webhooks da Clicksign for aberto.
 
 ---
 
@@ -215,12 +321,16 @@ claro.
 
 ---
 
-## Checklist de fechamento (preencher depois da medição)
+## Checklist de fechamento
 
-- [ ] Gate A1 fechado (exatamente uma candidata bateu) OU fase formalmente parada (nenhuma bateu)
-- [ ] Corpo bruto de pelo menos um evento real anonimizado e colado acima
-- [ ] Gate #6 (`deadline`) registrado — medido ou explicitamente "NÃO MEDIDO"
-- [ ] Gate #7 (`refusal`) registrado — medido ou explicitamente "NÃO MEDIDO"
-- [ ] Pergunta conta-vs-envelope respondida ou "não observado"
-- [ ] Túnel e `php artisan serve` encerrados
-- [ ] Nenhum token/secret/header de autorização foi colado neste documento (T-129-10/T-129-11)
+- [x] Gate A1 fechado — `hmac_body_chave_secret` bateu em 5/5 eventos reais, as outras 3 falharam nos 5
+- [x] Corpo bruto de pelo menos um evento real anonimizado e colado acima (evento id 2)
+- [x] Gate #6 (`deadline`) registrado — explicitamente "NÃO MEDIDO" (achado colateral medido: `deadline_partial_signature_action: "closed"`)
+- [x] Gate #7 (`refusal`) registrado — explicitamente "NÃO MEDIDO"
+- [x] Pergunta conta-vs-envelope respondida — "não observado" nesta rodada
+- [ ] Túnel e `php artisan serve` encerrados — **deliberadamente DEIXADOS DE PÉ** ao final desta
+      sessão de continuação: o usuário sinalizou intenção de medir os gates #6/#7 em seguida, e
+      derrubar o túnel agora custaria remontá-lo. Fica registrado aqui como pendência consciente,
+      não como esquecimento — quem fechar a próxima sessão de medição (ou encerrar sem medir mais
+      nada) deve lembrar de fechar o túnel e o `php artisan serve` (T-129-09).
+- [x] Nenhum token/secret/header de autorização foi colado neste documento (T-129-10/T-129-11)
