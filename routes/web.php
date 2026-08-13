@@ -95,6 +95,15 @@ Route::post('/api/webhooks/clicksign', [\App\Http\Controllers\Api\ClicksignWebho
     ->middleware('throttle:60,1')
     ->name('webhooks.clicksign');
 
+// ─── Download do PDF assinado (Fase 129 Plano 129-06, CLICK-11, D-13) ────────
+// O arquivo é evidência jurídica: vive em disco PRIVADO (storage/app) e só
+// sai do servidor por esta rota, com login de admin. `role:admin` é o
+// controle CORRETO até a permissão dedicada `admin.contratos` (UI-05) existir
+// na Fase 131 — não é um atalho provisório, é a trava certa hoje.
+Route::get('/admin/contratos/{contratoAssinatura}/pdf-assinado', [\App\Http\Controllers\ContratoPdfAssinadoController::class, 'download'])
+    ->middleware(['auth', 'role:admin'])
+    ->name('contratos.pdf-assinado');
+
 // PPA Workspace público (sem autenticação) — cliente acessa pelo token
 Route::get('/ppa/workspace/{token}', [PpaController::class, 'workspace'])->name('ppa.workspace');
 Route::patch('/ppa/workspace/{token}/tasks/{task}', [PpaTaskController::class, 'clientUpdate'])->name('ppa.workspace.task.update');

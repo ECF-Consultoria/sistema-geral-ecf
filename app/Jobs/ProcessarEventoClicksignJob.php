@@ -218,6 +218,26 @@ class ProcessarEventoClicksignJob implements ShouldQueue
             // replicar guard próprio aqui (duplicar guard em dois lugares
             // cria dois lugares para errar).
             $router->liberarEmpresa($contrato->company, $contrato->servico, ContratoLiberacao::VIA_WEBHOOK, contrato: $contrato);
+
+            // Plano 129-06 (CLICK-11, D-14) — dispara o download do PDF
+            // assinado FORA do caminho crítico, depois da liberação já ter
+            // acontecido. `try/catch` só loga em `warning`: a liberação já
+            // foi gravada e não pode ser desfeita por uma falha ao
+            // ENFILEIRAR um download — "amarrar a liberação ao download
+            // transformaria uma falha de rede em empresa presa" (D-14). O
+            // download é job SEPARADO exatamente por isso: tem o próprio
+            // ciclo de tries/backoff/failed(), e a morte dele não contamina
+            // este job.
+            if ($contrato->status === ContratoAssinatura::STATUS_ASSINADO && blank($contrato->pdf_assinado_path)) {
+                try {
+                    BaixarPdfContratoAssinadoJob::dispatch($contrato);
+                } catch (\Throwable $e) {
+                    Log::channel('ecf-webhooks')->warning('[ProcessarEventoClicksignJob] Falha ao enfileirar download do PDF assinado (liberacao ja aconteceu, nao afetada)', [
+                        'contrato_id' => $contrato->id,
+                        'company_id'  => $contrato->company_id,
+                    ]);
+                }
+            }
         } else {
             Log::channel('ecf-webhooks')->info('[ProcessarEventoClicksignJob] Ainda nao libera', [
                 'contrato_id'            => $contrato->id,
