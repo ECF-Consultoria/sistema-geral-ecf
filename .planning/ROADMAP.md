@@ -1740,13 +1740,13 @@ Plans:
   4. O processamento pesado (buscar envelope, atualizar signatários, decidir liberação) roda em job de fila — a resposta HTTP ao provedor é rápida; retry/ordem de entrega (gate empírico #11) tratados como pior caso, sem garantia assumida
   5. Quando o envelope conclui, o PDF assinado é baixado da Clicksign e guardado no storage do próprio sistema — deixa de depender de `clicksign_download_url` para sempre
 
-**Plans:** 3/7 plans executed
+**Plans:** 4/7 plans executed
 
 Plans:
 - [x] 129-01-PLAN.md — Instrumentação do gate A1: `contrato_assinatura_eventos` (DADOS-03), varredura das 4 candidatas de HMAC, comando `clicksign:verificar-assinatura` (D-09) e rota-sonda temporária (D-07/D-08)
 - [x] 129-02-PLAN.md — **GATE A1 (bloqueante, humano):** medição contra webhook real via túnel, fórmula fixada, fixture calculada FORA do código de produção, rota-sonda removida
 - [x] 129-03-PLAN.md — Receiver de produção: rota `/api/webhooks/clicksign`, 401 com gravação bruta, dedup por `payload_hash`, matriz de resposta da D-10 e processamento na fila (CLICK-03/04/06)
-- [ ] 129-04-PLAN.md — Liberação operacional: `contrato_liberacoes` (D-05), gate da CLICK-05 (fechamento parcial NAO libera) e `EmpresaOperacionalRouter::liberarEmpresa()` — ponto único compartilhado com a Fase 130
+- [x] 129-04-PLAN.md — Liberação operacional: `contrato_liberacoes` (D-05), gate da CLICK-05 (fechamento parcial NAO libera) e `EmpresaOperacionalRouter::liberarEmpresa()` — ponto único compartilhado com a Fase 130
 - [ ] 129-05-PLAN.md — Liberação por webhook, imunidade à ordem de entrega (gate #11 como pior caso) e estados próprios de recusa/expiração sem mexer no cadastro (D5/D-04)
 - [ ] 129-06-PLAN.md — PDF assinado (CLICK-11): download por streaming com link fresco (D-12), disco privado + rota autenticada (D-13), falha não bloqueia a liberação (D-14)
 - [ ] 129-07-PLAN.md — Gate humano final: circuito ponta a ponta contra o sandbox real e registro do que continua não medido

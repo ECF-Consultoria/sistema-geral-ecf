@@ -160,7 +160,7 @@ Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou
 - [x] **CLICK-02**: O sistema cria o envelope na Clicksign com o documento, os signatários e os requisitos de assinatura
 - [x] **CLICK-03**: O sistema recusa webhook cuja assinatura não confere (A1 é gate bloqueante desta capacidade)
 - [x] **CLICK-04**: Webhook repetido não duplica evento, signatário, assinatura, `MlbEmpresa` nem implementação operacional
-- [ ] **CLICK-05**: A empresa só é liberada ao operacional a partir do estado agregado reconsultado do envelope, nunca do payload isolado do evento (D7)
+- [x] **CLICK-05**: A empresa só é liberada ao operacional a partir do estado agregado reconsultado do envelope, nunca do payload isolado do evento (D7)
 - [x] **CLICK-06**: O processamento pesado do webhook acontece na fila, não na requisição HTTP
 - [ ] **CLICK-07**: Um usuário do Administrativo consegue reenviar a notificação de assinatura para quem ainda não assinou
 - [x] **CLICK-08**: O envelope é criado já com o lembrete automático nativo da Clicksign configurado, sem scheduler próprio
@@ -262,7 +262,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | CLICK-02 | Fase 127 | Done |
 | CLICK-03 | Fase 129 (plano 03) | Done |
 | CLICK-04 | Fase 129 (plano 03) | Done |
-| CLICK-05 | Fase 129 | Pending |
+| CLICK-05 | Fase 129 (plano 04) | Done |
 | CLICK-06 | Fase 129 (plano 03) | Done |
 | CLICK-07 | Fase 131 | Pending |
 | CLICK-08 | Fase 127 | Done |
