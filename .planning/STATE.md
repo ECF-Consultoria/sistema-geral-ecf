@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: PAUSADO NO CHECKPOINT HUMANO — Task 2 (automatizável) concluída; Task 1
+status: executing
 stopped_at: Phase 130 context gathered
-last_updated: "2026-08-13T17:53:02.845Z"
-last_activity: 2026-08-13
+last_updated: "2026-08-13T18:41:16.372Z"
+last_activity: 2026-08-13 -- Phase 130 planning complete
 progress:
   total_phases: 12
   completed_phases: 7
-  total_plans: 53
+  total_plans: 60
   completed_plans: 50
   percent: 58
 ---
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 129 (webhook-clicksign-v22-0) — EXECUTING
 Plan: 7 of 7
-Status: PAUSADO NO CHECKPOINT HUMANO — Task 2 (automatizável) concluída; Task 1
+Status: Ready to execute
   (`checkpoint:human-verify`, rodada real de assinatura contra o sandbox) segue aberta.
   Ver "Decisões do Plan 129-07" abaixo e o checkpoint devolvido ao usuário.
 ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
 dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
-Last activity: 2026-08-13
+Last activity: 2026-08-13 -- Phase 130 planning complete
 
 **Correção pós-verificação em 2026-08-12** (commits `39974658`/`be275b9c`): fecha os 2 achados
 remanescentes da verificação/revisão da Fase 128. (1) **D-05 (bloqueador)** —

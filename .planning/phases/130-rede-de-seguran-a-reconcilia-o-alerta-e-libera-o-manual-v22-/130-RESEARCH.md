@@ -797,7 +797,12 @@ interna ao próprio projeto (Fases 124→129→130 compondo o mesmo subsistema).
 | A7 | Query do alerta reusa o mesmo recorte para a tela de liberação manual (D-10) | Pattern 2 | Baixo — é composição, não decisão de schema; plano pode decidir extrair um Service compartilhado |
 | A8 | Interpretar "ATIVOS" da D-02 como aplicável também a admins (não só comerciais) | Pergunta 5 | Baixo — divergência mínima do texto literal, sinalizada explicitamente; se o usuário quiser admins inativos incluídos, é trocar 1 `where()` |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> **RESOLVED em 2026-08-13, no planejamento da fase.** As duas perguntas abaixo foram decididas
+> pela recomendação registrada em cada uma e já estão implementadas nos planos:
+> a limitação do cenário B está documentada por escrito no plano 130-06, e o carimbo da D-09
+> reusa `Categoria::MANUAL` (plano 130-05). Nenhuma decisão segue pendente.
 
 1. **Cenário B da pergunta 2 (cron do SO inteiramente morto) fica de fato fora de escopo?**
    - O que sabemos: nenhuma verificação agendada pelo próprio Laravel consegue detectar isso —

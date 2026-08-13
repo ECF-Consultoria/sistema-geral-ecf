@@ -1692,6 +1692,7 @@ Plans:
 **Plans:** 7/7 plans complete
 
 Plans:
+
 - [x] 127-01-PLAN.md — D-06: trava de unicidade vira (empresa + serviço); migration, model e factory
 - [x] 127-02-PLAN.md — D-02: `ClicksignClient` ganha caminho que para no rascunho (`$ativar`)
 - [x] 127-03-PLAN.md — REDE-05: checagem dedicada de dados mínimos, sem I/O
@@ -1718,6 +1719,7 @@ Plans:
 **Plans:** 6/6 plans complete
 
 Plans:
+
 - [x] 128-01-PLAN.md — Coluna `servicos.exige_contrato` (D-03/FLUXO-08), Polos isento já na migration
 - [x] 128-02-PLAN.md — `PendenciasComerciaisService::calcularUniversais()` sem quebrar a listagem do Comercial (D-01)
 - [x] 128-03-PLAN.md — `GatilhoContratoAdministrativoService`: os dois portões da D-02 + isenção de Polos (SC0/SC3)
@@ -1743,6 +1745,7 @@ Plans:
 **Plans:** 6/7 plans executed
 
 Plans:
+
 - [x] 129-01-PLAN.md — Instrumentação do gate A1: `contrato_assinatura_eventos` (DADOS-03), varredura das 4 candidatas de HMAC, comando `clicksign:verificar-assinatura` (D-09) e rota-sonda temporária (D-07/D-08)
 - [x] 129-02-PLAN.md — **GATE A1 (bloqueante, humano):** medição contra webhook real via túnel, fórmula fixada, fixture calculada FORA do código de produção, rota-sonda removida
 - [x] 129-03-PLAN.md — Receiver de produção: rota `/api/webhooks/clicksign`, 401 com gravação bruta, dedup por `payload_hash`, matriz de resposta da D-10 e processamento na fila (CLICK-03/04/06)
@@ -1766,12 +1769,26 @@ Plans:
 **Plans:** 7 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 130-01-PLAN.md — Fundação de dados: 3ª via de liberação, lista fechada de motivos e carimbo de último alerta (wave 1)
 - [ ] 130-02-PLAN.md — Audiência da rede de segurança + recorte único de "empresa parada há tempo demais" (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 130-03-PLAN.md — Reconciliação: comando diário + job que reconsulta a Clicksign e corrige sozinho (wave 2)
 - [ ] 130-04-PLAN.md — Liberação manual só-admin com motivo obrigatório + prova do SC4 (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 130-05-PLAN.md — Alerta de contrato preso no sino, com causa, próximo passo e cooldown (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 130-06-PLAN.md — Auto-monitoramento da varredura + agendamento dos 3 comandos (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 130-07-PLAN.md — Gates humanos em sandbox: SC1, SC2, SC3 e gate empírico #10 (wave 5)
 
 ### Phase 131: Tela administrativa — completar cadastro + contratos + badge Comercial + permissões (v22.0)
@@ -1905,6 +1922,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (run /gsd-plan-phase 135 to break down)
 
 > **Escopo da v1:** só o template de **Gestão (Performance)** — 13 passos, 5 automáticos. Publicação, Shopee, Assessoria/Incubadora/Implantação ganham template depois, sem tocar no motor.
