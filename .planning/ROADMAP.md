@@ -1766,7 +1766,14 @@ Plans:
   3. Um admin libera uma empresa ao operacional preenchendo motivo (campo obrigatório); a liberação registra quem liberou e por quê, e usa o mesmo `EmpresaOperacionalRouter::liberarEmpresa()` do fluxo automático — testada ponta a ponta pelo menos uma vez
   4. Liberar manualmente uma empresa que o webhook também está tentando liberar ao mesmo tempo (corrida) não cria `MlbEmpresa` duplicada
 
-**Plans:** 6/7 plans executed
+⚠️ **Success Criteria 1-3 (SC1/SC2/SC3) NÃO estão confirmados ainda** — todos os 7 planos foram
+executados, mas os 3 gates humanos em sandbox do plano 130-07 não puderam ser aprovados na
+sessão de 2026-08-13 (nenhuma ferramenta do executor abre navegador/assina na Clicksign). SC2
+teve a metade técnica provada por reconsulta ao banco; SC1 e SC3 continuam pendentes de ação
+real do usuário. Ver `130-GATE.md` para o roteiro de retomada. SC4 já está provado (herdado do
+CR-01 da Fase 129, reconfirmado no plano 130-04).
+
+**Plans:** 7/7 plans complete
 
 Plans:
 **Wave 1**
@@ -1789,7 +1796,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 130-07-PLAN.md — Gates humanos em sandbox: SC1, SC2, SC3 e gate empírico #10 (wave 5)
+- [x] 130-07-PLAN.md — Gates humanos em sandbox: SC1, SC2, SC3 e gate empírico #10 (wave 5)
 
 ### Phase 131: Tela administrativa — completar cadastro + contratos + badge Comercial + permissões (v22.0)
 

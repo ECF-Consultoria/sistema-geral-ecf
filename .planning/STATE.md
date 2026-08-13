@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: executing
-stopped_at: Completed 130-06-PLAN.md
-last_updated: "2026-08-13T20:12:15.810Z"
+status: Plano 130-07 executado, mas NENHUM dos 3 Success Criteria (SC1/SC2/SC3) pode ser
+stopped_at: Plano 130-07 executado - SC1/SC3 pendentes, SC2 parcial (ver 130-GATE.md)
+last_updated: "2026-08-13T20:34:07.663Z"
 last_activity: 2026-08-13
 progress:
   total_phases: 12
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 60
-  completed_plans: 56
-  percent: 58
+  completed_plans: 57
+  percent: 67
 ---
 
 # Project State
@@ -27,12 +27,29 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 130 (Rede de segurança — reconciliação, alerta e liberação manual (v22.0)) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Plano 130-07 executado, mas NENHUM dos 3 Success Criteria (SC1/SC2/SC3) pode ser
+  considerado fechado — ver `130-GATE.md`. SC2 tem a metade técnica provada por reconsulta ao
+  banco; SC1 e SC3 continuam pendentes de ação humana real em navegador.
   (`checkpoint:human-verify`, rodada real de assinatura contra o sandbox) segue aberta.
   Ver "Decisões do Plan 129-07" abaixo e o checkpoint devolvido ao usuário.
 ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
 dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
 Last activity: 2026-08-13
+
+**Plano 130-07 executado em 2026-08-13** (commits `ba7cfdb6`/`e232c70a`): os 3 gates humanos em
+sandbox (SC1/SC2/SC3 do ROADMAP + gate empírico #10) NÃO puderam ser aprovados nesta sessão —
+nenhuma ferramenta deste executor abre navegador ou assina documento na Clicksign. O que foi
+feito: ambiente local recuperado (MariaDB e Apache estavam fora do ar, 2 migrations pendentes
+aplicadas, banco `ecf_admin` local estava vazio — sem admin utilizável, sem empresas), fixtures
+de teste `@example.com` criadas (admin, não-admin, empresa "Gate 130-07", contrato `recusado`).
+SC2 (alerta): metade técnica provada por reconsulta real ao banco — `clicksign:alertar-presos`
+gravou 1 notificação (`ContratoPresoNotification`), cooldown D-04 confirmado (2ª execução não
+duplicou); falta só a leitura humana da mensagem no sino. SC1 (reconciliação): bloqueado porque
+`CLICKSIGN_SIG1/2/3` (signatários fixos da ECF) não estão no `.env` local — identidade real, não
+inventada pelo executor; roteiro completo preservado. SC3 (liberação manual): exige navegação
+visual real (faixa vermelha D-11, 403 do não-admin); roteiro e fixtures prontos. Requirements
+`REDE-03`/`DADOS-05` permanecem `Pending` (não marcados sem a verificação humana que é o próprio
+objetivo do plano). Detalhe completo: `130-GATE.md` e `130-07-SUMMARY.md`.
 
 **Correção pós-verificação em 2026-08-12** (commits `39974658`/`be275b9c`): fecha os 2 achados
 remanescentes da verificação/revisão da Fase 128. (1) **D-05 (bloqueador)** —
@@ -459,6 +476,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 130 P04 | 20min | 3 tasks | 6 files |
 | Phase 130-05 P05 | 25min | 2 tasks | 4 files |
 | Phase 130 P06 | 20min | 2 tasks | 4 files |
+| Phase 130 P07 | 90min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1187,8 +1205,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-13T20:12:15.783Z
-Stopped at: Completed 130-06-PLAN.md
+Last session: 2026-08-13T20:34:07.598Z
+Stopped at: Plano 130-07 executado - SC1/SC3 pendentes, SC2 parcial (ver 130-GATE.md)
   assinatura/recusa contra o sandbox) devolvida ao usuário como checkpoint aberto
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
