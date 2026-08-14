@@ -46,19 +46,19 @@ created: 2026-08-13
 
 | Req ID | Behavior | Test Type | Automated Command | Plano dono | Status |
 |--------|----------|-----------|-------------------|------------|--------|
-| REDE-04 | Reconciliação corrige divergência (envelope já `closed`, webhook nunca chegou) | Feature | `--filter=ReconciliacaoDivergenciaTest` | 130-03 T1 | ⬜ pending |
-| REDE-04 | Reconciliação redispara PDF pendente sem duplicar | Feature | `--filter=ReconciliacaoPdfPendenteTest` | 130-03 T2 | ⬜ pending |
-| REDE-04 | Reconciliação NÃO reconsulta fora do escopo (`recusado`, `rascunho`) | Feature | `--filter=ReconciliacaoEscopoTest` | 130-03 T2 | ⬜ pending |
-| REDE-04 | Reconciliação despacha 1 job por contrato com `RateLimited('clicksign-webhook')` — não faz laço HTTP síncrono | Feature | `--filter=ReconciliacaoRateLimitTest` | 130-03 T3 | ⬜ pending |
-| REDE-02 | Alerta dispara nos estados de "preso" com gatilho "o que vier primeiro" (D-03) | Feature | `--filter=AlertaContratoPresoTest` | 130-05 T1+T2 | ⬜ pending |
-| REDE-02 | Alerta respeita cooldown (D-04) — não repete antes do intervalo | Feature | `--filter=AlertaCooldownTest` | 130-05 T2 | ⬜ pending |
-| REDE-02 | Audiência = `role:admin` ∪ comercial ATIVO (D-02); **não** usa `lideresEPermissionados()` | Feature | `--filter=AudienciaRedeSegurancaTest` | 130-02 T1 | ⬜ pending |
-| REDE-03 / DADOS-05 | Liberação manual grava autor + motivo e usa `EmpresaOperacionalRouter::liberarEmpresa()` | Feature | `--filter=LiberacaoManualTest` | 130-04 T1 | ⬜ pending |
-| REDE-03 | Liberação manual funciona em `recusado` (D-11) e a tela exibe o estado real antes de confirmar | Feature | `--filter=LiberacaoManualEstadoRealTest` | 130-04 T2 | ⬜ pending |
-| SC4 (ROADMAP) | Corrida manual × webhook **não** duplica `MlbEmpresa` — prova o lock existente, não reimplementa | Feature | `--filter=LiberacaoManualCorridaTest` (adapta `tests/Feature/Phase129/LiberarEmpresaCorridaConcorrenteTest.php`) | 130-04 T3 | ⬜ pending |
-| D-09 | Varredura grava carimbo; comando de verificação acusa ausência (cron parado) | Feature | `--filter=AutoMonitoramentoCarimboTest` | 130-06 T1 | ⬜ pending |
+| REDE-04 | Reconciliação corrige divergência (envelope já `closed`, webhook nunca chegou) | Feature | `--filter=ReconciliacaoDivergenciaTest` | 130-03 T1 | ✅ green |
+| REDE-04 | Reconciliação redispara PDF pendente sem duplicar | Feature | `--filter=ReconciliacaoPdfPendenteTest` | 130-03 T2 | ✅ green |
+| REDE-04 | Reconciliação NÃO reconsulta fora do escopo (`recusado`, `rascunho`) | Feature | `--filter=ReconciliacaoEscopoTest` | 130-03 T2 | ✅ green |
+| REDE-04 | Reconciliação despacha 1 job por contrato com `RateLimited('clicksign-webhook')` — não faz laço HTTP síncrono | Feature | `--filter=ReconciliacaoRateLimitTest` | 130-03 T3 | ✅ green |
+| REDE-02 | Alerta dispara nos estados de "preso" com gatilho "o que vier primeiro" (D-03) | Feature | `--filter=AlertaContratoPresoTest` | 130-05 T1+T2 | ✅ green |
+| REDE-02 | Alerta respeita cooldown (D-04) — não repete antes do intervalo | Feature | `--filter=AlertaCooldownTest` | 130-05 T2 | ✅ green |
+| REDE-02 | Audiência = `role:admin` ∪ comercial ATIVO (D-02); **não** usa `lideresEPermissionados()` | Feature | `--filter=AudienciaRedeSegurancaTest` | 130-02 T1 | ✅ green |
+| REDE-03 / DADOS-05 | Liberação manual grava autor + motivo e usa `EmpresaOperacionalRouter::liberarEmpresa()` | Feature | `--filter=LiberacaoManualTest` | 130-04 T1 | ✅ green |
+| REDE-03 | Liberação manual funciona em `recusado` (D-11) e a tela exibe o estado real antes de confirmar | Feature | `--filter=LiberacaoManualEstadoRealTest` | 130-04 T2 | ✅ green |
+| SC4 (ROADMAP) | Corrida manual × webhook **não** duplica `MlbEmpresa` — prova o lock existente, não reimplementa | Feature | `--filter=LiberacaoManualCorridaTest` (adapta `tests/Feature/Phase129/LiberarEmpresaCorridaConcorrenteTest.php`) | 130-04 T3 | ✅ green |
+| D-09 | Varredura grava carimbo; comando de verificação acusa ausência (cron parado) | Feature | `--filter=AutoMonitoramentoCarimboTest` | 130-06 T1 | ✅ green |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*Status: ✅ green · ✅ green · ❌ red · ⚠️ flaky*
 
 ---
 
@@ -68,20 +68,20 @@ Nenhum arquivo de teste da fase existe hoje. Nao ha uma "wave 0" separada: a cri
 arquivo faz parte da task que entrega o comportamento correspondente, e cada task tem comando
 `<automated>` proprio. Dono de cada arquivo:
 
-- [ ] `tests/Feature/Phase130/FundacaoContratoLiberacaoTest.php` -- 130-01 T1 (extra: schema/constantes)
-- [ ] `tests/Feature/Phase130/FundacaoContratoAssinaturaTest.php` -- 130-01 T2 (extra: `ultimo_alerta_em`)
-- [ ] `tests/Feature/Phase130/AudienciaRedeSegurancaTest.php` -- 130-02 T1
-- [ ] `tests/Feature/Phase130/ContratosPresosServiceTest.php` -- 130-02 T2 (extra: gatilho D-03)
-- [ ] `tests/Feature/Phase130/ReconciliacaoDivergenciaTest.php` -- 130-03 T1
-- [ ] `tests/Feature/Phase130/ReconciliacaoEscopoTest.php` -- 130-03 T2
-- [ ] `tests/Feature/Phase130/ReconciliacaoPdfPendenteTest.php` -- 130-03 T2
-- [ ] `tests/Feature/Phase130/ReconciliacaoRateLimitTest.php` -- 130-03 T3
-- [ ] `tests/Feature/Phase130/LiberacaoManualTest.php` -- 130-04 T1
-- [ ] `tests/Feature/Phase130/LiberacaoManualEstadoRealTest.php` -- 130-04 T2
-- [ ] `tests/Feature/Phase130/LiberacaoManualCorridaTest.php` -- 130-04 T3
-- [ ] `tests/Feature/Phase130/AlertaContratoPresoTest.php` -- 130-05 T1 (payload) + T2 (comando)
-- [ ] `tests/Feature/Phase130/AlertaCooldownTest.php` -- 130-05 T2
-- [ ] `tests/Feature/Phase130/AutoMonitoramentoCarimboTest.php` -- 130-06 T1
+- [x] `tests/Feature/Phase130/FundacaoContratoLiberacaoTest.php` -- 130-01 T1 (extra: schema/constantes)
+- [x] `tests/Feature/Phase130/FundacaoContratoAssinaturaTest.php` -- 130-01 T2 (extra: `ultimo_alerta_em`)
+- [x] `tests/Feature/Phase130/AudienciaRedeSegurancaTest.php` -- 130-02 T1
+- [x] `tests/Feature/Phase130/ContratosPresosServiceTest.php` -- 130-02 T2 (extra: gatilho D-03)
+- [x] `tests/Feature/Phase130/ReconciliacaoDivergenciaTest.php` -- 130-03 T1
+- [x] `tests/Feature/Phase130/ReconciliacaoEscopoTest.php` -- 130-03 T2
+- [x] `tests/Feature/Phase130/ReconciliacaoPdfPendenteTest.php` -- 130-03 T2
+- [x] `tests/Feature/Phase130/ReconciliacaoRateLimitTest.php` -- 130-03 T3
+- [x] `tests/Feature/Phase130/LiberacaoManualTest.php` -- 130-04 T1
+- [x] `tests/Feature/Phase130/LiberacaoManualEstadoRealTest.php` -- 130-04 T2
+- [x] `tests/Feature/Phase130/LiberacaoManualCorridaTest.php` -- 130-04 T3
+- [x] `tests/Feature/Phase130/AlertaContratoPresoTest.php` -- 130-05 T1 (payload) + T2 (comando)
+- [x] `tests/Feature/Phase130/AlertaCooldownTest.php` -- 130-05 T2
+- [x] `tests/Feature/Phase130/AutoMonitoramentoCarimboTest.php` -- 130-06 T1
 
 **Framework:** nenhum install — PHPUnit já configurado. Fakes do Laravel disponíveis
 (`Http::fake()`, `Notification::fake()`, `Queue::fake()`, `Bus::fake()`).
@@ -122,3 +122,46 @@ do SO é responsabilidade de infraestrutura, fora do escopo desta fase.
 - [x] `nyquist_compliant: true` no frontmatter
 
 **Approval:** planos 130-01 a 130-07 emitidos em 2026-08-13
+
+---
+
+## Validation Audit 2026-08-14
+
+| Métrica | Contagem |
+|---------|----------|
+| Lacunas encontradas | 0 |
+| Resolvidas | 0 (nenhuma a resolver) |
+| Escaladas para manual | 0 |
+
+**Estado A** (VALIDATION.md já existia). Auditoria por cruzamento entre o mapa prometido e o
+disco, seguida de execução real da suíte — não por leitura de artefato.
+
+| Verificação | Resultado |
+|---|---|
+| Arquivos de teste prometidos que existem | **14 de 14** |
+| Arquivos no disco sem par no mapa | **0** (nenhum órfão) |
+| `C:\xampp\php\php.exe artisan test --filter=Phase130` | **82 passed, 317 assertions, 26,74s** |
+| `--filter=Phase129` (regressão) | **80/80** |
+
+**Nenhum auditor foi necessário** — não havia lacuna para preencher. O `gsd-nyquist-auditor` existe
+para gerar teste faltante; aqui todo requisito já tinha cobertura verde.
+
+### Crescimento de 79 → 82 testes durante a verificação
+
+Os 3 testes a mais não estavam previstos em nenhum plano. Vieram da quick task `260814-cro`, que
+corrigiu um bug encontrado **durante** o gate humano: o alerta zerava o próprio relógio
+(`dataBase()` usava `updated_at`, bumpado pela gravação do cooldown) e teria avisado uma vez só.
+
+**A lacuna era de teste, não de código.** O `AlertaCooldownTest` provava que o alerta **não repete
+cedo demais**, e nada provava que ele **ainda repete depois** — as duas metades da D-04 pareciam
+uma só asserção. É o tipo de lacuna que passa por qualquer contagem de cobertura: o arquivo
+existia, estava verde, e mesmo assim o comportamento exigido não estava protegido.
+
+### Itens que permanecem manuais por natureza
+
+Os 4 da seção "Manual-Only Verifications" seguem manuais — não é lacuna de automação. Destes,
+**SC2 e SC3 foram aprovados** pelo usuário em 2026-08-14 (ver `130-GATE.md` e `130-UAT.md`), e
+**SC1 + gate empírico #10 seguem BLOQUEADOS** por limitação da sandbox da Clicksign (o painel não
+conclui assinatura, a sandbox não envia e-mail, e a v3 não expõe link de assinatura). O caminho
+da reconciliação tem 18 testes automatizados verdes — a lacuna é de evidência empírica de
+comportamento, não de corretude conhecida.
