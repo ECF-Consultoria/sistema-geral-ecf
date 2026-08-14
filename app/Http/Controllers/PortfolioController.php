@@ -2461,7 +2461,17 @@ class PortfolioController extends Controller
                     ->merge($scoresSemLink->all());
 
                 return [
+                    // `month` é o mês de COLETA (`month_reference` / `competencia_nps`,
+                    // ambos gravados com o mês do DISPARO) — contrato preservado,
+                    // é a chave que a suíte e qualquer consumidor já usam.
                     'month'       => $month,
+                    // 2026-08-14 — mês AVALIADO, que é o que o widget exibe: o
+                    // NPS coletado em agosto avalia julho. Mesma régua M/M+1 do
+                    // bônus (`NpsJanelaResolver::mesDeColeta()`), lida ao
+                    // contrário. Campo ADITIVO: nenhuma nota muda de bucket,
+                    // muda só o nome do bucket na tela.
+                    'competencia' => \Carbon\Carbon::parse($month . '-01')
+                        ->subMonthNoOverflow()->format('Y-m'),
                     'avg'         => $scores->isNotEmpty() ? round((float) $scores->avg(), 2) : null,
                     'count'       => $scores->count(),
                     'ultima_nota' => $scores->isNotEmpty() ? round((float) $scores->last(), 2) : null,

@@ -562,7 +562,17 @@ function NpsTooltip({ active, payload, label }) {
             borderRadius: 9, padding: '9px 11px',
             boxShadow: '0 14px 34px -14px rgba(0,0,0,0.85)',
         }}>
-            <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 600, marginBottom: 7 }}>{label}</div>
+            {/* 2026-08-14 — o eixo mostra o mês da COLETA; aqui vai junto o mês
+                a que aquela coleta se refere (o anterior), para o ponto do
+                gráfico não ser lido como se fosse do próprio mês. */}
+            <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 600, marginBottom: 7 }}>
+                {label}
+                {payload[0]?.payload?.competencia_label && (
+                    <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>
+                        {' '}· ref. {payload[0].payload.competencia_label}
+                    </span>
+                )}
+            </div>
             {rows.map(p => (
                 <div key={p.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, lineHeight: '19px' }}>
                     <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color || p.stroke, flexShrink: 0 }} />
@@ -1472,6 +1482,11 @@ export default function NpsIndex({
     faltantes = [],
     serie_12m = [],
     mes_filtro = '',
+    // 2026-08-14 — `mes_filtro` continua sendo o mês de COLETA (é a chave do
+    // `?mes=`). Estes dois vêm prontos do backend só para a UI dizer qual mês
+    // está sendo AVALIADO: o NPS coletado em agosto avalia julho.
+    competencia_filtro = '',
+    coleta_filtro = '',
     filtros = {},
     principal_template_id = null,
     regra_nao_respondido = false,
@@ -1605,8 +1620,16 @@ export default function NpsIndex({
     }, [flash?.nps_link_existente]);
 
     // ─── Filtros server-side ─────────────────────────────────────────────
+    // 2026-08-14 — cada opção diz o mês da COLETA e a que mês ele se refere
+    // ("ago/26 · ref. jul/26"). O `value` continua sendo o mês de coleta, que
+    // é o que o `?mes=` sempre significou: `?mes=2026-07` traz o NPS coletado
+    // em julho, referente a junho. Sem o "ref." na própria opção, essa
+    // pergunta se repete toda vez que alguém troca o mês.
     const mesOpcoes = useMemo(
-        () => serie_12m.map(s => ({ value: s.mes_iso, label: s.mes })),
+        () => serie_12m.map(s => ({
+            value: s.mes_iso,
+            label: s.competencia_label ? `${s.mes} · ref. ${s.competencia_label}` : s.mes,
+        })),
         [serie_12m]
     );
 
@@ -1767,7 +1790,9 @@ export default function NpsIndex({
                                     NPS Dashboard
                                 </h1>
                                 <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12.5, marginTop: 2 }}>
-                                    Acompanhe a satisfação dos seus clientes
+                                    {competencia_filtro
+                                        ? <>Coletado em <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{coleta_filtro}</strong> · referente a <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{competencia_filtro}</strong></>
+                                        : 'Acompanhe a satisfação dos seus clientes'}
                                 </p>
                             </div>
                             <GlassSelect
@@ -1776,7 +1801,7 @@ export default function NpsIndex({
                                 value={mes_filtro}
                                 onValueChange={handleMesChange}
                                 placeholder="Mês..."
-                                width={168}
+                                width={214}
                                 options={mesOpcoes.map(m => (
                                     <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                                 ))}
