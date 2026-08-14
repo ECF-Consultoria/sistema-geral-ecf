@@ -1,9 +1,8 @@
-import { useRef, useState } from 'react';
-import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, CheckCircle2, Lock, RefreshCw, UploadCloud, Zap } from 'lucide-react';
+import { useState } from 'react';
+import { router } from '@inertiajs/react';
+import { AlertTriangle, CheckCircle2, Lock, RefreshCw, Zap } from 'lucide-react';
 import { Checkbox } from '@/Components/ui/checkbox';
 import { cn, formatDate } from '@/lib/utils';
-import FichaContaForm from '@/Components/Onboarding/FichaContaForm';
 
 // ─── Portal público do cliente por EMPRESA (Fase 135 Plano 11, D-06) ────────
 // A lista agrupa por `chave` (D-10), NUNCA por onboarding_passo/onboarding —
@@ -96,12 +95,10 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
                     {concluido && <p className="text-emerald-300/70 text-[11px] mt-2">Concluído.</p>}
 
                     {/*
-                      * A ação vem decidida do backend (`passo.acao`), não de
-                      * "tem auto_fonte ⇒ é OAuth". Essa suposição valia quando
-                      * o único passo automático do cliente era o grant do ML;
-                      * com a ficha da conta (também automática) ela mostraria
-                      * "Autorizar acesso" num passo que se resolve preenchendo
-                      * formulário logo acima nesta mesma página.
+                      * A ação vem decidida do backend (`passo.acao`), nunca de
+                      * "tem auto_fonte ⇒ é OAuth". Passo automático novo cai em
+                      * 'nenhuma' até alguém decidir o que ele oferece — assumir
+                      * já produziu botão errado uma vez.
                       */}
                     {!concluido && !bloqueado && (
                         <div className="mt-2">
@@ -118,12 +115,6 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
                                         Autorizar acesso
                                     </button>
                                 )
-                            )}
-
-                            {passo.acao === 'ficha' && (
-                                <span className="text-white/45 text-[12px]">
-                                    Responda o formulário “Sobre a sua conta”, no topo desta página.
-                                </span>
                             )}
 
                             {passo.acao === 'marcar' && (
@@ -148,72 +139,9 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
     );
 }
 
-// ─── Bloco fixo — ficha do cliente (D-16): anexo, sem checkbox de conclusão ─
-// Quem confirma o recebimento é usuário interno na Tela 1 (dono=interno) —
-// capacidade de anexar aqui ≠ autoridade de confirmar.
-
-function FichaUpload({ token, ficha }) {
-    const inputRef = useRef(null);
-    const [enviando, setEnviando] = useState(false);
-    const { errors } = usePage().props;
-
-    function onPick(e) {
-        const file = e.target.files?.[0];
-        e.target.value = '';
-        if (!file) return;
-
-        setEnviando(true);
-        router.post(route('onboarding.publico.ficha', token), { ficha: file }, {
-            forceFormData: true,
-            preserveScroll: true,
-            onFinish: () => setEnviando(false),
-        });
-    }
-
-    return (
-        <div className="rounded-2xl border border-white/[0.08] bg-ecf-card p-4">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="min-w-0">
-                    <p className="text-white font-semibold text-[14px]">Envie sua ficha cadastral aqui</p>
-                    <p className="text-white/40 text-[12px] mt-0.5">
-                        {ficha ? (
-                            <>
-                                Recebemos <span className="text-white/70">{ficha.nome_original}</span>
-                                {ficha.enviado_em ? <> em {formatDate(ficha.enviado_em)}</> : ''}. Você pode enviar uma
-                                versão mais nova a qualquer momento.
-                            </>
-                        ) : (
-                            'PDF, Word, Excel ou imagem — até 10 MB.'
-                        )}
-                    </p>
-                    {errors?.ficha && <p className="text-red-400 text-[11px] mt-1">{errors.ficha}</p>}
-                </div>
-
-                <div className="shrink-0">
-                    <input
-                        ref={inputRef}
-                        type="file"
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                        className="hidden"
-                        onChange={onPick}
-                    />
-                    <button
-                        onClick={() => inputRef.current?.click()}
-                        disabled={enviando}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 disabled:opacity-50 text-[12px] font-semibold transition-all"
-                    >
-                        <UploadCloud size={14} />
-                        {enviando ? 'Enviando…' : ficha ? 'Enviar outra' : 'Enviar arquivo'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 // ─── Página ───────────────────────────────────────────────────────────────
 
-export default function Publico({ token, empresa, passos = [], ficha = null, ficha_conta = null }) {
+export default function Publico({ token, empresa, passos = [] }) {
     const [conectandoChave, setConectandoChave] = useState(null);
 
     // Estado "Link inválido": na prática, `OnboardingPublicoController::workspace()`
@@ -239,14 +167,6 @@ export default function Publico({ token, empresa, passos = [], ficha = null, fic
     const tudoConcluido = !nadaPendente && passos.every((p) => p.status === 'concluido');
     const faltam = passos.filter((p) => p.status !== 'concluido').length;
 
-    // Bloco da ficha só aparece quando há algo em andamento (ou já houve
-    // envio) — se a empresa ainda não tem onboarding fora do rascunho, não
-    // existe onboarding_passo de chave ficha_cliente_recebida pra gravar o
-    // anexo, e prometer um upload que o backend recusaria seria pior do que
-    // não mostrar nada ainda (mesmo espírito de SC-04: rascunho não expõe
-    // operação em curso).
-    const mostrarFicha = passos.length > 0 || !!ficha;
-
     return (
         <div className="min-h-screen bg-ecf-bg">
             {/* Header sticky — legenda + nome da empresa; indicação de "quantos
@@ -269,20 +189,6 @@ export default function Publico({ token, empresa, passos = [], ficha = null, fic
             </div>
 
             <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-                {mostrarFicha && <FichaUpload token={token} ficha={ficha} />}
-
-                {mostrarFicha && (
-                    <FichaContaForm
-                        submitUrl={route('onboarding.publico.ficha-conta', token)}
-                        respostas={ficha_conta?.respostas ?? {}}
-                        respondidas={ficha_conta?.respondidas ?? 0}
-                        totalPerguntas={ficha_conta?.total_perguntas ?? 7}
-                        preenchidaEm={ficha_conta?.preenchida_em ?? null}
-                        titulo="Sobre a sua conta"
-                        descricao="Sete perguntas rápidas para entendermos onde a conta está hoje. Responda o que souber — “Não sei” é uma resposta válida e melhor que chutar."
-                    />
-                )}
-
                 {nadaPendente && (
                     <div className="text-center py-16 space-y-3">
                         <h2 className="text-white font-display font-bold text-xl">

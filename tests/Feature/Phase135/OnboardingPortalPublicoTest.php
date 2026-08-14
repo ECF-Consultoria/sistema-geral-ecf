@@ -184,7 +184,7 @@ class OnboardingPortalPublicoTest extends TestCase
         $grupos = $this->linkService()->passosDoCliente($company);
         $chaves = collect($grupos)->pluck('chave')->sort()->values()->all();
 
-        $this->assertSame(['acesso_colaborador_ml', 'custos_app_ecf', 'ficha_conta_preenchida', 'grant_sistema_ecf'], $chaves);
+        $this->assertSame(['acesso_colaborador_ml', 'custos_app_ecf', 'grant_sistema_ecf'], $chaves);
     }
 
     // ─── marcarFeitoPorChave(): conclusão em massa + D-19 ───────────────────
@@ -309,44 +309,5 @@ class OnboardingPortalPublicoTest extends TestCase
 
         $passo = OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', 'grant_sistema_ecf')->firstOrFail();
         $this->assertSame($statusOriginal, $passo->status);
-    }
-
-    // ─── OnboardingPublicoController::anexarFicha() ─────────────────────────
-
-    #[Test]
-    public function post_ficha_com_pdf_valido_grava_o_arquivo_e_nao_conclui_o_passo_d16(): void
-    {
-        Storage::fake('local');
-        $company = Company::factory()->create();
-        $onboarding = $this->onboardingDeGestaoEmAndamento($company);
-        $link = $this->linkService()->paraEmpresa($company);
-
-        $arquivo = UploadedFile::fake()->create('ficha-cadastral.pdf', 200, 'application/pdf');
-
-        $response = $this->post(route('onboarding.publico.ficha', $link->token), ['ficha' => $arquivo]);
-
-        $response->assertRedirect();
-        $response->assertSessionHasNoErrors();
-
-        $passo = OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', 'ficha_cliente_recebida')->firstOrFail();
-        $this->assertNotSame(OnboardingPasso::STATUS_CONCLUIDO, $passo->status);
-        $this->assertSame('ficha-cadastral.pdf', $passo->valor['nome_original']);
-        Storage::disk('local')->assertExists($passo->valor['arquivo']);
-    }
-
-    #[Test]
-    public function post_ficha_com_executavel_e_rejeitado_pela_validacao(): void
-    {
-        Storage::fake('local');
-        $company = Company::factory()->create();
-        $this->onboardingDeGestaoEmAndamento($company);
-        $link = $this->linkService()->paraEmpresa($company);
-
-        $arquivo = UploadedFile::fake()->create('malware.exe', 50, 'application/x-msdownload');
-
-        $response = $this->post(route('onboarding.publico.ficha', $link->token), ['ficha' => $arquivo]);
-
-        $response->assertStatus(302);
-        $response->assertSessionHasErrors('ficha');
     }
 }

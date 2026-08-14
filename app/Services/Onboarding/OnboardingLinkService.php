@@ -96,8 +96,6 @@ class OnboardingLinkService
     // ─── O que o cliente faz em cada passo (catálogo fechado) ───────────────
     /** Botão que leva ao OAuth do Mercado Livre. */
     public const ACAO_OAUTH_ML = 'oauth_ml';
-    /** O formulário da ficha da conta, na mesma página. */
-    public const ACAO_FICHA = 'ficha';
     /** Passo manual — o cliente declara que fez. */
     public const ACAO_MARCAR = 'marcar';
     /** Nada a fazer: o sistema resolve sozinho, o cliente só acompanha. */
@@ -106,19 +104,15 @@ class OnboardingLinkService
     /**
      * Traduz `auto_fonte` na ação que o CLIENTE consegue tomar.
      *
-     * Antes desta função a tela assumia "tem auto_fonte ⇒ botão Autorizar
-     * acesso", o que só valia enquanto o único passo automático do cliente era
-     * o OAuth. Com a ficha da conta (também automática, também `dono=cliente`)
-     * essa suposição passou a mostrar "Autorizar acesso" num passo que se
-     * resolve preenchendo formulário. Mapeamento explícito e fechado — passo
-     * automático novo cai em `nenhuma` até alguém decidir sua ação.
+     * Mapeamento explícito e fechado: passo automático novo cai em `nenhuma`
+     * até alguém decidir qual ação ele oferece. Assumir "tem auto_fonte ⇒ é
+     * OAuth" já produziu botão errado uma vez.
      */
     private static function acaoDoCliente(?string $autoFonte): string
     {
         return match ($autoFonte) {
             null                                     => self::ACAO_MARCAR,
             OnboardingPasso::AUTO_FONTE_ML_TOKEN     => self::ACAO_OAUTH_ML,
-            OnboardingPasso::AUTO_FONTE_FICHA_CONTA  => self::ACAO_FICHA,
             default                                  => self::ACAO_NENHUMA,
         };
     }

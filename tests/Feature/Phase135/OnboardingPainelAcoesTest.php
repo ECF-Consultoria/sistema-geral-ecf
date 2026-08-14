@@ -154,7 +154,7 @@ class OnboardingPainelAcoesTest extends TestCase
         $this->assertNotNull($onboarding->iniciado_em);
 
         // Os 5 passos sem depende_de (135-04-PLAN.md) destravam na hora.
-        foreach (['ficha_cliente_recebida', 'acesso_colaborador_ml', 'planilha_custos_adman', 'confirmacao_pagamento', 'custos_app_ecf'] as $chave) {
+        foreach (['grupo_criado', 'grant_sistema_ecf', 'planilha_custos_adman', 'confirmacao_pagamento', 'custos_app_ecf'] as $chave) {
             $passo = $this->passo($onboarding, $chave);
             $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passo->status, "passo {$chave} deveria estar aberto");
             $this->assertNotNull($passo->disponivel_em, "passo {$chave} deveria ter disponivel_em carimbado");

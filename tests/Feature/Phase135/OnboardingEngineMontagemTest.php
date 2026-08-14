@@ -118,7 +118,8 @@ class OnboardingEngineMontagemTest extends TestCase
         $this->assertSame('Grant com o Sistema ECF (OAuth)', $passo->titulo);
         $this->assertSame(OnboardingPasso::DONO_CLIENTE, $passo->dono);
         $this->assertSame(OnboardingPasso::AUTO_FONTE_ML_TOKEN, $passo->auto_fonte);
-        $this->assertSame(['acesso_colaborador_ml'], $passo->depende_de);
+        // O grant virou a PRIMEIRA ação do cliente — não depende de nada.
+        $this->assertNull($passo->depende_de);
     }
 
     /** @test */

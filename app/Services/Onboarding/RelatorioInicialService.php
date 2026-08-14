@@ -3,7 +3,6 @@
 namespace App\Services\Onboarding;
 
 use App\Models\Onboarding;
-use App\Models\OnboardingFicha;
 use App\Models\OnboardingPasso;
 use App\Models\OnboardingRelatorio;
 use App\Models\User;
@@ -12,19 +11,18 @@ use App\Models\User;
  * RelatorioInicialService — monta o retrato FACTUAL do relatório inicial
  * (PDF §3) a partir do que o sistema já sabe, sem tocar em rede.
  *
- * Todo dado aqui já foi coletado pelos passos automáticos ou declarado pelo
- * cliente na ficha: `metricas_da_conta`, `anuncios_ativos_inativos`, os grants
- * e a `OnboardingFicha`. O serviço só reúne e rotula — não busca nada.
+ * Todo dado aqui já foi coletado pelos passos automáticos: `metricas_da_conta`,
+ * `anuncios_ativos_inativos` e os grants. O serviço só reúne e rotula — não
+ * busca nada.
+ *
+ * O cliente NÃO declara nada: as informações da conta são puxadas depois que
+ * ele autoriza o grant com o Sistema ECF. O que a API não devolver aparece em
+ * `nao_obtidos`, visível no relatório — campo em branco nunca vira zero.
  *
  * As três seções de julgamento (pontos de atenção, oportunidades, próximos
  * passos) NÃO são geradas: elas ficam em branco esperando o analista. Gerar
  * texto para elas produziria recheio genérico com cara de análise, que é pior
  * que campo vazio.
- *
- * O DECLARADO E O APURADO ANDAM LADO A LADO no relatório, nunca fundidos. É a
- * divergência entre os dois que interessa na reunião: cliente que declarou
- * reputação verde e cuja conta não tem, faturamento estimado muito acima do
- * apurado. Fundir os dois campos apagaria justamente a informação.
  */
 class RelatorioInicialService
 {
@@ -53,8 +51,6 @@ class RelatorioInicialService
     private function montarDados(Onboarding $onboarding): array
     {
         $company = $onboarding->company;
-        $ficha = OnboardingFicha::where('company_id', $company->id)->first();
-
         $metricas = $this->valorDoPasso($onboarding, 'metricas_da_conta');
         $acervo = $this->valorDoPasso($onboarding, 'anuncios_ativos_inativos');
 
@@ -63,30 +59,24 @@ class RelatorioInicialService
             'cenario' => [
                 'empresa'     => $company->name,
                 'servico'     => $onboarding->servico?->nome,
-                'marketplace' => $ficha?->marketplace ?? $company->marketplace,
+                'marketplace' => $company->marketplace,
                 'nickname_ml' => $metricas['nickname'] ?? null,
             ],
 
-            // ─── Métricas: declarado × apurado, lado a lado ──────────────────
+            // ─── Métricas apuradas pelo grant ────────────────────────────────
+            // Tudo aqui vem do `metricas_da_conta`, que só resolve DEPOIS que o
+            // cliente autoriza o Sistema ECF. Antes do grant não há o que
+            // buscar, e o relatório sai com estes campos em branco.
             'metricas' => [
-                'faturamento_3_meses' => [
-                    'declarado' => $ficha?->faturamento_3_meses !== null ? (float) $ficha->faturamento_3_meses : null,
-                    'apurado'   => $metricas['faturamento_3_meses'] ?? null,
-                ],
-                'full_ativo' => [
-                    'declarado' => $ficha?->full_ativo,
-                    'apurado'   => $metricas['full'] ?? null,
-                ],
-                'reputacao' => [
-                    'declarado_verde' => $ficha?->reputacao_verde,
-                    'apurado_level'   => $metricas['reputacao']['level_id'] ?? null,
-                    'apurado_status'  => $metricas['reputacao']['power_seller_status'] ?? null,
-                ],
-                'medalha' => [
-                    'declarada' => $ficha?->medalha_atual,
-                ],
-                'full_pontuacao_declarada' => $ficha?->full_pontuacao,
-                // O que a API não devolveu vem marcado, nunca como zero.
+                'faturamento_3_meses' => $metricas['faturamento_3_meses'] ?? null,
+                'full_ativo'          => $metricas['full'] ?? null,
+                'reputacao_level'     => $metricas['reputacao']['level_id'] ?? null,
+                'reputacao_status'    => $metricas['reputacao']['power_seller_status'] ?? null,
+                'programa_parceiro'   => $metricas['programa'] ?? null,
+                'iniciativa'          => $metricas['iniciativa'] ?? null,
+                // O que a API não devolveu vem marcado, nunca como zero. Hoje
+                // caem aqui a pontuação do Full e os objetivos da próxima
+                // medalha — nenhuma chamada atual os expõe.
                 'nao_obtidos' => $metricas['nao_obtidos'] ?? [],
             ],
 
@@ -95,12 +85,6 @@ class RelatorioInicialService
                 'anuncios_ativos'   => $acervo['ativos'] ?? null,
                 'anuncios_inativos' => $acervo['inativos'] ?? null,
                 'acessos'           => $this->situacaoDosAcessos($onboarding),
-            ],
-
-            'ficha' => [
-                'origem'        => $ficha?->origem,
-                'respondidas'   => $ficha?->respondidas() ?? 0,
-                'preenchida_em' => $ficha?->preenchida_em?->toISOString(),
             ],
         ];
     }

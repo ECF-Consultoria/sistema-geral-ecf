@@ -411,12 +411,6 @@ class Company extends Model
         return $this->hasMany(Onboarding::class);
     }
 
-    /** Ficha da conta declarada pelo cliente — uma por empresa. */
-    public function onboardingFicha()
-    {
-        return $this->hasOne(OnboardingFicha::class);
-    }
-
     public function mlToken()
     {
         return $this->hasOne(MlToken::class);

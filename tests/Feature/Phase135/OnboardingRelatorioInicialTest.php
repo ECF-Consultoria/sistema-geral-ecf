@@ -5,13 +5,11 @@ namespace Tests\Feature\Phase135;
 use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\Onboarding;
-use App\Models\OnboardingFicha;
 use App\Models\OnboardingPasso;
 use App\Models\OnboardingRelatorio;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
-use App\Services\Onboarding\OnboardingFichaService;
 use App\Services\Onboarding\OnboardingResolverResultado;
 use App\Services\Onboarding\RelatorioInicialService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -123,34 +121,26 @@ class OnboardingRelatorioInicialTest extends TestCase
         $this->assertSame('LOJA_TESTE', $dados['cenario']['nickname_ml']);
         $this->assertSame(340, $dados['estrutura']['anuncios_ativos']);
         $this->assertSame(12, $dados['estrutura']['anuncios_inativos']);
-        $this->assertSame('5_green', $dados['metricas']['reputacao']['apurado_level']);
+        $this->assertSame('5_green', $dados['metricas']['reputacao_level']);
 
         // O que a API não devolveu vem marcado, nunca como zero.
         $this->assertContains('medalha', $dados['metricas']['nao_obtidos']);
     }
 
     #[Test]
-    public function declarado_e_apurado_ficam_lado_a_lado_e_a_divergencia_sobrevive(): void
+    public function metricas_vem_do_grant_e_o_que_a_api_nao_deu_fica_marcado(): void
     {
         $onboarding = $this->onboardingEmAndamento();
         $this->comMapeamentoConcluido($onboarding);
 
-        // O cliente declarou faturamento MUITO acima do apurado e disse não ter Full.
-        app(OnboardingFichaService::class)->registrar(
-            company: $onboarding->company,
-            dados: ['faturamento_3_meses' => 500000, 'full_ativo' => false, 'reputacao_verde' => true],
-            origem: OnboardingFicha::ORIGEM_CLIENTE,
-        );
-
         $dados = app(RelatorioInicialService::class)->gerar($onboarding)->dados;
 
-        // assertEquals, não assertSame: `dados` é JSON, e valor redondo volta do
-        // banco como int (500000), não float (500000.0). O que importa aqui é o
-        // número, e o snapshot não deve depender do tipo que o JSON escolheu.
-        $this->assertEquals(500000, $dados['metricas']['faturamento_3_meses']['declarado']);
-        $this->assertEquals(120000, $dados['metricas']['faturamento_3_meses']['apurado']);
-        $this->assertFalse($dados['metricas']['full_ativo']['declarado']);
-        $this->assertTrue($dados['metricas']['full_ativo']['apurado']);
+        // Tudo vem do grant — o cliente não declara nada.
+        $this->assertEquals(120000, $dados['metricas']['faturamento_3_meses']);
+        $this->assertTrue($dados['metricas']['full_ativo']);
+
+        // O que a API não devolveu fica visível, nunca vira zero.
+        $this->assertContains('medalha', $dados['metricas']['nao_obtidos']);
     }
 
     #[Test]
@@ -162,7 +152,7 @@ class OnboardingRelatorioInicialTest extends TestCase
         $dados = app(RelatorioInicialService::class)->gerar($onboarding)->dados;
 
         $this->assertNull($dados['estrutura']['anuncios_ativos']);
-        $this->assertNull($dados['metricas']['faturamento_3_meses']['apurado']);
+        $this->assertNull($dados['metricas']['faturamento_3_meses']);
         $this->assertSame('Empresa do Relatório', $dados['cenario']['empresa']);
     }
 

@@ -127,7 +127,6 @@ class OnboardingConectarMlTest extends TestCase
         $porChave = collect(app(OnboardingLinkService::class)->passosDoCliente($company))->keyBy('chave');
 
         $this->assertSame(OnboardingLinkService::ACAO_OAUTH_ML, $porChave['grant_sistema_ecf']['acao']);
-        $this->assertSame(OnboardingLinkService::ACAO_FICHA, $porChave['ficha_conta_preenchida']['acao']);
         $this->assertSame(OnboardingLinkService::ACAO_MARCAR, $porChave['acesso_colaborador_ml']['acao']);
         $this->assertSame(OnboardingLinkService::ACAO_MARCAR, $porChave['custos_app_ecf']['acao']);
     }

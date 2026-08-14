@@ -4,7 +4,6 @@ import { ArrowLeft } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/Components/ui/avatar';
 import SituacaoChip from '@/Components/Onboarding/Painel/SituacaoChip';
 import DetalheOnboarding from '@/Components/Onboarding/Painel/DetalheOnboarding';
-import FichaContaForm from '@/Components/Onboarding/FichaContaForm';
 import RelatorioInicial from '@/Components/Onboarding/RelatorioInicial';
 
 const initials = (name) =>
@@ -22,7 +21,7 @@ const initials = (name) =>
  * página só monta o cabeçalho (empresa, serviço, situação, responsável) e o
  * link de volta ao painel.
  */
-export default function Detalhe({ onboarding, passos, ficha_conta = null, relatorio = null }) {
+export default function Detalhe({ onboarding, passos, relatorio = null }) {
     return (
         <AppLayout title="Detalhe do onboarding">
             <Head title={`Onboarding — ${onboarding.empresa.nome}`} />
@@ -58,27 +57,6 @@ export default function Detalhe({ onboarding, passos, ficha_conta = null, relato
                         </div>
                     )}
                 </div>
-
-                {/*
-                  * A MESMA ficha do portal do cliente, aqui para a equipe
-                  * preencher em call. O que muda é só a rota — e, no banco, a
-                  * procedência gravada ("equipe" + quem preencheu).
-                  */}
-                {ficha_conta && (
-                    <FichaContaForm
-                        submitUrl={route('onboarding.ficha-conta.salvar', onboarding.empresa.id)}
-                        respostas={ficha_conta.respostas ?? {}}
-                        respondidas={ficha_conta.respondidas ?? 0}
-                        totalPerguntas={ficha_conta.total_perguntas ?? 7}
-                        preenchidaEm={ficha_conta.preenchida_em ?? null}
-                        titulo="Ficha da conta"
-                        descricao={
-                            ficha_conta.origem === 'cliente'
-                                ? 'Preenchida pelo cliente. Editar aqui passa a ficha para a equipe.'
-                                : 'Preencha durante a call com o cliente. Fica registrado que foi a equipe quem respondeu.'
-                        }
-                    />
-                )}
 
                 {relatorio && <RelatorioInicial onboardingId={onboarding.id} relatorio={relatorio} />}
 

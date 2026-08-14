@@ -112,7 +112,6 @@ class OnboardingPasso extends Model
     public const AUTO_FONTE_ML_TOKEN = 'ml_token_ativo';
     public const AUTO_FONTE_ACERVO = 'acervo_coletado';
     public const AUTO_FONTE_METRICAS = 'metricas_conta';
-    public const AUTO_FONTE_FICHA_CONTA = 'ficha_conta_preenchida';
     public const AUTO_FONTE_RELATORIO_INICIAL = 'relatorio_inicial_escrito';
 
     public const AUTO_FONTES = [
@@ -121,7 +120,6 @@ class OnboardingPasso extends Model
         self::AUTO_FONTE_ML_TOKEN,
         self::AUTO_FONTE_ACERVO,
         self::AUTO_FONTE_METRICAS,
-        self::AUTO_FONTE_FICHA_CONTA,
         self::AUTO_FONTE_RELATORIO_INICIAL,
     ];
 

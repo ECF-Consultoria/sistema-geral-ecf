@@ -20,18 +20,14 @@ const fmtMoeda = (v) =>
 
 const fmtBool = (v) => (v == null ? 'não informado' : v ? 'Sim' : 'Não');
 
-function Linha({ label, declarado, apurado, formatar = (x) => (x ?? '—') }) {
-    const ambosPresentes = declarado != null && apurado != null;
-    const diverge = ambosPresentes && String(declarado) !== String(apurado);
+function Linha({ label, valor, formatar = (x) => (x ?? '—') }) {
+    const ausente = valor == null;
 
     return (
-        <div className="grid grid-cols-[1fr_auto_auto] gap-3 items-center py-1.5 border-b border-white/[0.05] last:border-0">
+        <div className="flex items-center justify-between gap-3 py-1.5 border-b border-white/[0.05] last:border-0">
             <span className="text-white/60 text-[12px]">{label}</span>
-            <span className={cn('text-[12px] tabular-nums', diverge ? 'text-amber-300' : 'text-white/80')}>
-                {formatar(declarado)}
-            </span>
-            <span className={cn('text-[12px] tabular-nums text-right min-w-[90px]', diverge ? 'text-amber-300' : 'text-white/80')}>
-                {formatar(apurado)}
+            <span className={cn('text-[12px] tabular-nums text-right', ausente ? 'text-white/30' : 'text-white/85')}>
+                {formatar(valor)}
             </span>
         </div>
     );
@@ -128,30 +124,16 @@ export default function RelatorioInicial({ onboardingId, relatorio }) {
                     </div>
 
                     <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3.5">
-                        <div className="grid grid-cols-[1fr_auto_auto] gap-3 pb-1.5 mb-1 border-b border-white/[0.08]">
-                            <span className="text-white/40 text-[10px] uppercase tracking-wide">Métrica</span>
-                            <span className="text-white/40 text-[10px] uppercase tracking-wide">Declarado</span>
-                            <span className="text-white/40 text-[10px] uppercase tracking-wide text-right min-w-[90px]">Apurado</span>
-                        </div>
+                        <p className="text-white/70 text-[12px] font-semibold mb-1.5">
+                            Métricas da conta
+                            <span className="text-white/35 font-normal"> · puxadas pelo grant</span>
+                        </p>
 
-                        <Linha
-                            label="Faturamento 3 meses"
-                            declarado={dados.metricas?.faturamento_3_meses?.declarado}
-                            apurado={dados.metricas?.faturamento_3_meses?.apurado}
-                            formatar={fmtMoeda}
-                        />
-                        <Linha
-                            label="Full ativo"
-                            declarado={dados.metricas?.full_ativo?.declarado}
-                            apurado={dados.metricas?.full_ativo?.apurado}
-                            formatar={fmtBool}
-                        />
-                        <Linha
-                            label="Reputação verde"
-                            declarado={dados.metricas?.reputacao?.declarado_verde}
-                            apurado={dados.metricas?.reputacao?.apurado_level}
-                            formatar={(v) => (typeof v === 'boolean' ? fmtBool(v) : (v ?? '—'))}
-                        />
+                        <Linha label="Faturamento 3 meses" valor={dados.metricas?.faturamento_3_meses} formatar={fmtMoeda} />
+                        <Linha label="Full ativo" valor={dados.metricas?.full_ativo} formatar={fmtBool} />
+                        <Linha label="Reputação" valor={dados.metricas?.reputacao_level} />
+                        <Linha label="Status de vendedor" valor={dados.metricas?.reputacao_status} />
+                        <Linha label="Programa de parceiro" valor={dados.metricas?.programa_parceiro} />
 
                         {dados.metricas?.nao_obtidos?.length > 0 && (
                             <p className="mt-2.5 flex items-start gap-1.5 text-amber-400/80 text-[11px]">

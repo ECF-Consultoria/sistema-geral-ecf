@@ -145,8 +145,8 @@ class OnboardingEngineDependenciasTest extends TestCase
         (new OnboardingEngineService())->reavaliar($onboarding);
 
         $semDependencia = [
-            'ficha_cliente_recebida',
-            'acesso_colaborador_ml',
+            'grupo_criado',
+            'grant_sistema_ecf',
             'planilha_custos_adman',
             'confirmacao_pagamento',
             'custos_app_ecf',
@@ -158,8 +158,9 @@ class OnboardingEngineDependenciasTest extends TestCase
         }
 
         $comDependencia = [
+            'mensagem_boas_vindas',
+            'acesso_colaborador_ml',
             'grant_consultoria_adman',
-            'grant_sistema_ecf',
             'metricas_da_conta',
             'anuncios_ativos_inativos',
             'excluir_anuncios_inativos',
@@ -173,19 +174,27 @@ class OnboardingEngineDependenciasTest extends TestCase
         }
     }
 
-    /** @test */
-    public function concluir_acesso_colaborador_ml_destrava_grant_sistema_ecf_com_disponivel_em(): void
+    /**
+     * A corrente foi INVERTIDA: o grant com o Sistema ECF é a primeira ação do
+     * cliente, e o acesso de colaborador vem depois. Antes era o contrário.
+     *
+     * @test
+     */
+    public function concluir_grant_sistema_ecf_destrava_acesso_colaborador_ml_com_disponivel_em(): void
     {
         $onboarding = $this->criarOnboardingDeGestaoEmAndamento();
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $usuario = User::factory()->create();
-        $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
+        // O grant tem auto_fonte — quem o fecha é o resolver, não a mão.
+        $engine->aplicarResultado(
+            $this->passo($onboarding, 'grant_sistema_ecf'),
+            OnboardingResolverResultado::concluido(['ml_token' => 'active']),
+        );
 
-        $passoGrant = $this->passo($onboarding, 'grant_sistema_ecf');
-        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passoGrant->status);
-        $this->assertNotNull($passoGrant->disponivel_em);
+        $passoAcesso = $this->passo($onboarding, 'acesso_colaborador_ml');
+        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passoAcesso->status);
+        $this->assertNotNull($passoAcesso->disponivel_em);
     }
 
     // ─── Regra 4: disponivel_em gravado uma única vez ────────────────────
@@ -197,7 +206,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $passo = $this->passo($onboarding, 'ficha_cliente_recebida');
+        $passo = $this->passo($onboarding, 'grupo_criado');
         $carimboOriginal = $passo->disponivel_em;
         $this->assertNotNull($carimboOriginal);
 
@@ -442,7 +451,7 @@ class OnboardingEngineDependenciasTest extends TestCase
 
         $usuario = User::factory()->create();
 
-        $engine->concluirManualmente($this->passo($onboarding, 'ficha_cliente_recebida'), $usuario);
+        $engine->concluirManualmente($this->passo($onboarding, 'grupo_criado'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'grupo_criado'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'mensagem_boas_vindas'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
@@ -456,9 +465,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine->aplicarResultado($this->passo($onboarding, 'metricas_da_conta'), OnboardingResolverResultado::concluido(['faturamento' => 1000]));
         $engine->aplicarResultado($this->passo($onboarding, 'anuncios_ativos_inativos'), OnboardingResolverResultado::concluido(['inativos' => 0]));
 
-        // A ficha da conta e o relatório inicial têm auto_fonte — não fecham na
-        // mão, nem aqui.
-        $engine->aplicarResultado($this->passo($onboarding, 'ficha_conta_preenchida'), OnboardingResolverResultado::concluido(['respondidas' => 7]));
+        // O relatório inicial tem auto_fonte — não fecha na mão, nem aqui.
         $engine->aplicarResultado($this->passo($onboarding, 'relatorio_inicial'), OnboardingResolverResultado::concluido(['secoes_escritas' => 3]));
 
         // excluir_anuncios_inativos deve ter virado nao_aplicavel automaticamente (cascata acima).

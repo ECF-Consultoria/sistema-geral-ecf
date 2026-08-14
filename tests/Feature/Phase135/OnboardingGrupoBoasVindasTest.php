@@ -19,10 +19,10 @@ use Tests\TestCase;
  * Criação do Grupo e Boas-vindas (PDF §7) — o documento pede os dois como
  * parte do "acompanhamento inicial da entrada da empresa".
  *
- * São dois passos internos simples, sem tabela nem resolver. O que estes
- * testes protegem é o acoplamento que decidimos NÃO criar: a ficha do cliente
- * não depende da mensagem de boas-vindas. Um checkbox interno esquecido não
- * pode deixar o cliente com a ficha bloqueada sem ninguém entender por quê.
+ * São dois passos internos simples, sem tabela nem resolver. Não têm auto_fonte
+ * porque o sistema não consegue verificar sozinho que um grupo foi criado nem
+ * que uma mensagem foi enviada — fingir automação ali seria pior que o
+ * checkbox honesto.
  */
 class OnboardingGrupoBoasVindasTest extends TestCase
 {
@@ -87,25 +87,6 @@ class OnboardingGrupoBoasVindasTest extends TestCase
         );
 
         $this->assertSame(OnboardingPasso::STATUS_ABERTO, $this->passo($onboarding, 'mensagem_boas_vindas')->status);
-    }
-
-    /**
-     * O acoplamento que NÃO existe, e é de propósito. A mensagem de boas-vindas
-     * é o que leva o link ao cliente — seria tentador travar a ficha nela. Mas
-     * se alguém esquecer de marcar a mensagem como enviada, o cliente que já
-     * recebeu o link ficaria olhando um passo bloqueado sem explicação.
-     *
-     * @test
-     */
-    public function ficha_do_cliente_nao_fica_bloqueada_pela_mensagem_de_boas_vindas(): void
-    {
-        $onboarding = $this->onboardingEmAndamento();
-
-        // Ninguém tocou em grupo nem em boas-vindas.
-        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $this->passo($onboarding, 'ficha_conta_preenchida')->status);
-
-        $grupos = collect(app(OnboardingLinkService::class)->passosDoCliente($onboarding->company))->keyBy('chave');
-        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $grupos['ficha_conta_preenchida']['status']);
     }
 
     #[Test]

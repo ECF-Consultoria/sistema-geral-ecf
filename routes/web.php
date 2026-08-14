@@ -114,14 +114,6 @@ Route::get('/onboarding-cliente/{token}', [OnboardingPublicoController::class, '
 Route::patch('/onboarding-cliente/{token}/passo', [OnboardingPublicoController::class, 'marcarFeito'])
     ->middleware('throttle:20,1')
     ->name('onboarding.publico.passo');
-Route::post('/onboarding-cliente/{token}/ficha', [OnboardingPublicoController::class, 'anexarFicha'])
-    ->middleware('throttle:20,1')
-    ->name('onboarding.publico.ficha');
-// As 7 informações da conta declaradas pelo cliente. Mesmo throttle das
-// demais rotas públicas: a página é aberta por posse do token, sem login.
-Route::post('/onboarding-cliente/{token}/ficha-conta', [OnboardingPublicoController::class, 'salvarFichaConta'])
-    ->middleware('throttle:20,1')
-    ->name('onboarding.publico.ficha-conta');
 // Porta pública para o OAuth do Mercado Livre. O callback continua sendo o
 // mesmo de sempre (`ml.oauth.callback`, logo abaixo) — o que muda é que ele
 // devolve o cliente ao portal quando o fluxo começou aqui.
@@ -899,10 +891,6 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
         // 'onboarding-cliente/*' registrado fora do grupo 'auth' acima.
         Route::post('/onboarding/empresas/{company}/link', [OnboardingController::class, 'gerarLink'])
             ->name('onboarding.link.gerar');
-        // A equipe preenche a ficha PELO cliente (call). Mesma ação da rota
-        // pública, com procedência diferente gravada no banco.
-        Route::post('/onboarding/empresas/{company}/ficha-conta', [OnboardingController::class, 'salvarFichaConta'])
-            ->name('onboarding.ficha-conta.salvar');
         // Relatório inicial (PDF §3): gerar monta o retrato factual; salvar
         // grava as três seções que só uma pessoa escreve.
         Route::post('/onboarding/{onboarding}/relatorio', [OnboardingController::class, 'gerarRelatorio'])

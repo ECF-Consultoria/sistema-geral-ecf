@@ -39,16 +39,15 @@ class OnboardingSchemaTest extends TestCase
     // ─── Catálogos fechados ───────────────────────────────────────────────
 
     /** @test */
-    public function auto_fontes_tem_exatamente_7_valores_do_catalogo_fechado(): void
+    public function auto_fontes_tem_exatamente_6_valores_do_catalogo_fechado(): void
     {
-        $this->assertCount(7, OnboardingPasso::AUTO_FONTES);
+        $this->assertCount(6, OnboardingPasso::AUTO_FONTES);
         $this->assertSame([
             'adman_account_id_preenchido',
             'adman_grant_ativo',
             'ml_token_ativo',
             'acervo_coletado',
             'metricas_conta',
-            'ficha_conta_preenchida',
             'relatorio_inicial_escrito',
         ], OnboardingPasso::AUTO_FONTES);
     }
