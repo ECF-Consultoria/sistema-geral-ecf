@@ -569,12 +569,22 @@ class PerformanceController extends Controller
         // Bugfix 2026-07-09: usar $mesCursor em vez de $data pra NÃO sobrescrever
         // o $data original (retorno do scoreService->compute lá em cima) — isso
         // quebrava a tela do estrategista/analista com 500 (Carbon usado como array).
+        //
+        // 2026-08-14 — a coluna continua sendo o mês da COLETA (`chave` indexa
+        // `$notasPorEmpresaMes`, montado a partir de `completed_at`, e `label`
+        // é o mês que a pessoa reconhece). O que faltava era dizer A QUE mês
+        // aquela coleta se refere: a nota coletada em agosto avalia julho,
+        // mesma régua M/M+1 do bônus (`NpsJanelaResolver::mesDeColeta()`, lida
+        // ao contrário). `ref` alimenta a segunda linha do cabeçalho da coluna.
         $mesesHeatmap = collect();
         for ($i = 5; $i >= 0; $i--) {
             $mesCursor = now()->copy()->subMonths($i);
             $mesesHeatmap->push([
                 'chave' => $mesCursor->format('Y-m'),
                 'label' => mb_strtolower($mesCursor->translatedFormat('M/y')),
+                'ref'   => mb_strtolower(
+                    $mesCursor->copy()->subMonthNoOverflow()->translatedFormat('M/y')
+                ),
             ]);
         }
 

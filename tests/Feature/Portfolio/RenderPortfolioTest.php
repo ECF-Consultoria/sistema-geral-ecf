@@ -374,9 +374,12 @@ class RenderPortfolioTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Portfolio/Show')
                 ->has('nps_history')
-                // Deve ter pelo menos 1 entrada com todos os campos obrigatorios
+                // Deve ter pelo menos 1 entrada com todos os campos obrigatorios.
+                // 2026-08-14 — `competencia` (mês AVALIADO = `month` − 1) entrou
+                // no shape: o widget passou a exibir a competência em vez do mês
+                // de coleta. `month` segue sendo o mês de COLETA.
                 ->has('nps_history.0', fn (Assert $row) => $row
-                    ->hasAll(['month', 'avg', 'count', 'ultima_nota'])
+                    ->hasAll(['month', 'competencia', 'avg', 'count', 'ultima_nota'])
                 )
             );
     }

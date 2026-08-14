@@ -241,6 +241,9 @@ function NpsHeatmapWidget({ nps }) {
             <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                     <MessageSquare size={16} className="text-orange-400" />
+                    {/* 2026-08-14 — colunas = mês da COLETA, com o mês avaliado
+                        logo abaixo ("ref."): o NPS coletado em agosto avalia
+                        julho, mesma régua do bônus. */}
                     <h3 className="text-white text-sm font-bold">NPS · Últimos 6 meses</h3>
                 </div>
                 {media !== null && (
@@ -265,11 +268,21 @@ function NpsHeatmapWidget({ nps }) {
                         <div className="grid grid-cols-[minmax(140px,180px)_repeat(6,minmax(56px,1fr))] gap-1.5">
                             <div />
                             {meses.map((m) => (
+                                // 2026-08-14 — a coluna é o mês da COLETA; a
+                                // segunda linha diz a que mês aquela nota se
+                                // refere (o anterior). Sem isso a coluna "ago"
+                                // era lida como a nota de agosto.
                                 <div
                                     key={m.chave}
-                                    className="text-center text-white/50 text-[10px] uppercase tracking-wider font-semibold py-1"
+                                    className="text-center py-1"
+                                    title={m.ref ? `Coletado em ${m.label} · referente a ${m.ref}` : m.label}
                                 >
-                                    {m.label}
+                                    <div className="text-white/50 text-[10px] uppercase tracking-wider font-semibold">
+                                        {m.label}
+                                    </div>
+                                    {m.ref && (
+                                        <div className="text-white/25 text-[9px] leading-tight">ref. {m.ref}</div>
+                                    )}
                                 </div>
                             ))}
                         </div>

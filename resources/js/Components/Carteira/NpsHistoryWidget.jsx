@@ -7,8 +7,11 @@ import { cn } from '@/lib/utils';
  * NpsHistoryWidget — histórico mensal de avaliações NPS do profissional.
  *
  * Props:
- *   npsHistory {Array<{month: string, avg: number|null, count: number, ultima_nota: number|null}>}
- *     — série de até 12 meses (ex: [{month:"2026-05", avg:4.2, count:3, ultima_nota:5}, ...])
+ *   npsHistory {Array<{month: string, competencia: string|null, avg: number|null, count: number, ultima_nota: number|null}>}
+ *     — série de até 12 meses (ex: [{month:"2026-05", competencia:"2026-04", avg:4.2, count:3, ultima_nota:5}, ...])
+ *     `month` é o mês de COLETA (o rótulo do ponto); `competencia` é o mês
+ *     AVALIADO (coleta − 1), exibido como "ref." — NPS coletado em agosto
+ *     avalia julho.
  *   cargoSlug {"analista"|"estrategista"|null}
  *     — usado apenas para ajuste de label no título (score_analista / score_estrategista)
  *
@@ -19,17 +22,28 @@ import { cn } from '@/lib/utils';
  *   - Com dados → mini LineChart (80px altura) sem eixos + stats row (última nota / média / avaliações)
  */
 
+// Rótulo pt-BR curto ('jul/26') a partir de uma chave 'YYYY-MM'.
+const rotuloMes = (iso) => (iso
+    ? new Date(iso + '-01').toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
+    : null);
+
 // Tooltip customizado: fundo escuro ecf-card, texto mês + avg + count.
+//
+// 2026-08-14 — o mês do ponto é o da COLETA (é o que casa com a lista do /nps);
+// a segunda linha diz a que mês aquela nota se refere. O NPS coletado em agosto
+// avalia julho — mesma régua M/M+1 do bônus.
 function TooltipNps({ active, payload, label }) {
     if (!active || !payload?.length) return null;
     const d = payload[0]?.payload;
     if (!d) return null;
-    const mesLabel = d.month
-        ? new Date(d.month + '-01').toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
-        : label;
+    const mesLabel = rotuloMes(d.month) ?? label;
+    const refLabel = rotuloMes(d.competencia);
     return (
         <div className="bg-[#0f1116] border border-white/10 rounded-md px-2.5 py-1.5 text-[11px] shadow-lg">
             <div className="text-white/60 mb-0.5">{mesLabel}</div>
+            {refLabel && (
+                <div className="text-white/35 text-[10px] mb-0.5">ref. {refLabel}</div>
+            )}
             <div className="text-white font-semibold">
                 {d.avg !== null ? `${d.avg.toFixed(1)} pts` : '—'}
             </div>
@@ -65,6 +79,9 @@ export default function NpsHistoryWidget({ npsHistory = [], cargoSlug }) {
     const chartData = temDados
         ? npsHistory.map(d => ({
               month: d.month,
+              // Mês avaliado (backend, 2026-08-14). Fallback pro mês de coleta
+              // mantém o widget legível se o payload vier de versão anterior.
+              competencia: d.competencia ?? null,
               avg: d.avg,
               count: d.count ?? 0,
           }))
@@ -91,6 +108,7 @@ export default function NpsHistoryWidget({ npsHistory = [], cargoSlug }) {
                 <div className="flex items-center gap-2 text-white/90 text-sm font-semibold mb-3">
                     <Star size={14} className="text-ecf-yellow" />
                     Histórico NPS
+                    <span className="text-white/35 text-[10px] font-normal">· cada mês avalia o anterior</span>
                 </div>
 
                 {/* Empty state */}

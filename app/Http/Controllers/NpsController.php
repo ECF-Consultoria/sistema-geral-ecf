@@ -141,6 +141,23 @@ class NpsController extends Controller
                     $q->where('user_id', $personId)
                       ->when($role !== null, fn ($qq) => $qq->where('role', $role));
                 })
+                // Bugfix 2026-08-14 — quem GEROU o link sempre enxerga o link
+                // que gerou. Sem este ramo, a autorização de escrita era mais
+                // ampla que a de leitura: `generate()` (linha ~1243) aceita
+                // QUALQUER papel no pivot `company_users`, enquanto a leitura
+                // abaixo exige ser responsável PELO SERVIÇO que o modelo cobre.
+                // Resultado relatado em produção: a pessoa gerava o link, via a
+                // mensagem de sucesso, e o link nunca mais aparecia na lista
+                // dela — nem em "Pendentes", nem em "Todos".
+                //
+                // Só vale quando `$role` é NULL, que é o escopo do não-admin
+                // (`$filtroPorPessoa($baseQuery, $user->id, null)`). Nos filtros
+                // de estrategista/analista o papel É informado, e ali "gerou"
+                // não pode virar "é o estrategista": incluir `generated_by`
+                // naquele caso faria o filtro "Estrategista = Fulano" devolver
+                // survey que Fulano apenas disparou para a carteira de outra
+                // pessoa.
+                ->when($role === null, fn ($q) => $q->orWhere('nps_surveys.generated_by', $personId))
                 ->orWhere(function ($sub) use ($personId, $role) {
                     // Bugfix 2026-07-22 (Prensar/Nathalia) — antes era
                     // whereDoesntHave('response'), que só cobria surveys SEM
@@ -169,6 +186,33 @@ class NpsController extends Controller
                                             ->from('nps_template_service_scopes as scp')
                                             ->whereColumn('scp.template_id', 'nps_surveys.template_id')
                                             ->whereColumn('scp.servico_id', 'cu.servico_id');
+                                     })
+                                     // Bugfix 2026-08-14 — modelo SEM nenhum
+                                     // serviço coberto (pivot vazio, ex.: "NPS
+                                     // Padrão", e surveys legados com
+                                     // `template_id` NULL) não delimita
+                                     // serviço nenhum: o vínculo na empresa
+                                     // basta, em qualquer serviço.
+                                     //
+                                     // Sem isto, o `orWhereExists` acima NUNCA
+                                     // casava para esses modelos — quem tem
+                                     // vínculo com `servico_id` preenchido só
+                                     // enxergava survey de modelo escopado, e o
+                                     // modelo padrão (o mais usado) ficava
+                                     // invisível para toda a equipe. É a mesma
+                                     // regra que `generate()` já pratica na
+                                     // escrita ("modelo SEM serviços cobertos →
+                                     // aceito para qualquer empresa"), que até
+                                     // aqui não tinha contraparte na leitura.
+                                     //
+                                     // NÃO afeta modelo escopado: o NPS Shopee
+                                     // continua restrito ao responsável do
+                                     // Shopee — que é exatamente o vazamento
+                                     // fechado pelo bugfix de 2026-07-22.
+                                     ->orWhereNotExists(function ($sc) {
+                                         $sc->selectRaw('1')
+                                            ->from('nps_template_service_scopes as scp')
+                                            ->whereColumn('scp.template_id', 'nps_surveys.template_id');
                                      });
                                });
                         });
@@ -858,9 +902,20 @@ class NpsController extends Controller
                 );
             }
 
+            // 2026-08-14 — o mês exibido continua sendo o de COLETA (`mes`), que
+            // é o que a pessoa reconhece e o que o `?mes=` seleciona. O que
+            // faltava era dizer A QUE mês aquela coleta se refere: o NPS
+            // coletado em agosto avalia julho (régua M/M+1 do bônus,
+            // `NpsJanelaResolver::mesDeColeta()` lida ao contrário). Por isso os
+            // dois campos novos — a UI monta "ago/26 · ref. jul/26" em vez de
+            // trocar o nome do bucket, que só transferiria a confusão de lado.
+            $competencia = $m->copy()->subMonthNoOverflow();
+
             $serieMeses[] = [
-                'mes'          => $m->locale('pt_BR')->isoFormat('MMM/YY'), // ex: 'jun./26'
-                'mes_iso'      => $m->format('Y-m'),
+                'mes'                => $m->locale('pt_BR')->isoFormat('MMM/YY'), // ex: 'ago./26' (COLETA)
+                'mes_iso'            => $m->format('Y-m'),                        // chave do filtro (coleta)
+                'competencia'        => $competencia->format('Y-m'),              // mês AVALIADO
+                'competencia_label'  => $competencia->locale('pt_BR')->isoFormat('MMM/YY'),
                 'estrategista' => $agregarMedia($responsesM, 'estrategista', $notasImputadasM['estrategista'])['media'],
                 'analista'     => $agregarMedia($responsesM, 'analista', $notasImputadasM['analista'])['media'],
                 'empresa'      => $agregarMedia($responsesM, 'empresa', $notasImputadasM['empresa'])['media'],
@@ -927,6 +982,13 @@ class NpsController extends Controller
             'faltantes'      => $faltantes,
             'serie_12m'      => $serieMeses,
             'mes_filtro'     => $mesFiltro,
+            // 2026-08-14 — `mes_filtro` é o mês de COLETA (contrato do `?mes=`,
+            // inalterado): `?mes=2026-08` traz o NPS COLETADO em agosto, que
+            // avalia julho. Estes dois existem para a UI conseguir escrever
+            // isso na tela — "ago/26 · ref. jul/26" — em vez de deixar a pessoa
+            // adivinhar de que mês é a nota que está vendo.
+            'competencia_filtro' => $mesInicio->copy()->subMonthNoOverflow()->locale('pt_BR')->isoFormat('MMM/YY'),
+            'coleta_filtro'      => $mesInicio->copy()->locale('pt_BR')->isoFormat('MMM/YY'),
             // Fase 116 — sinaliza para a UI (Plan 05) que a regra "não
             // respondido conta como nota 1" está ativa nesta tela. Cada card
             // já expõe `nao_respondidos` (ver $agregarMedia acima).
@@ -1977,7 +2039,7 @@ class NpsController extends Controller
             ['chave' => '{nome_estrategista}', 'descricao' => 'Nome do estrategista da empresa.'],
             ['chave' => '{nome_analista}',     'descricao' => 'Nome do analista (omitido quando mentoria pura).'],
             ['chave' => '{nome_empresa}',      'descricao' => 'Nome da empresa que está respondendo.'],
-            ['chave' => '{mes_referencia}',    'descricao' => 'Mês de referência em formato pt-BR — ex: "junho/2026".'],
+            ['chave' => '{mes_referencia}',    'descricao' => 'Mês AVALIADO pela pesquisa, em pt-BR — é o mês ANTERIOR ao do disparo (a pesquisa que sai em agosto pergunta sobre "julho/2026").'],
             ['chave' => '{bloco_analista}',    'descricao' => 'Bloco condicional " e o analista é **Igor**" no corpo do email (usar apenas em email_corpo); vira string vazia em mentoria pura.'],
         ];
 
