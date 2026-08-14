@@ -11,6 +11,8 @@ import {
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { cn, formatPercent as fmtPctUtil, formatCurrency } from '@/lib/utils';
 import { CONTA_NOTA_TOOLTIP } from '@/lib/desempenhoLabels';
+// Spec 2026-08-14 (item 1) — régua ÚNICA de referência mensal do sistema.
+import { rotuloMesReferencia } from '@/lib/referenciaMensal';
 import HeroKpi from '@/Pages/Polos/components/HeroKpi';
 import RadialGauge from '@/Pages/Polos/components/RadialGauge';
 
@@ -393,9 +395,16 @@ export default function PerformanceIndex({
                                 title="Selecionar mês do ranking"
                                 className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer capitalize"
                             >
+                                {/* Spec 2026-08-14 (item 1) — régua única: a opção
+                                    anuncia o mês de ACOMPANHAMENTO e anota a
+                                    competência como "Ref.". O `value` continua
+                                    sendo a competência (é o que `?mes=` sempre
+                                    significou); `m.label` do backend é ignorado
+                                    de propósito, para não existirem duas réguas
+                                    de rótulo. */}
                                 {meses_disponiveis.map((m) => (
                                     <option key={m.value} value={m.value}>
-                                        {m.label}{m.em_curso ? ' (em curso)' : ''}
+                                        {rotuloMesReferencia(m.value)}{m.em_curso ? ' (em curso)' : ''}
                                     </option>
                                 ))}
                             </select>

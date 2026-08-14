@@ -11,6 +11,8 @@ import {
     Percent, Clock,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
+// Spec 2026-08-14 (item 1) — régua ÚNICA de referência mensal do sistema.
+import { rotuloMesReferencia } from '@/lib/referenciaMensal';
 import { SourceBadge } from '@/Components/ui/source-badge';
 import SparklineCrescimento from '@/Components/Carteira/SparklineCrescimento';
 import NpsHistoryWidget from '@/Components/Carteira/NpsHistoryWidget';
@@ -605,9 +607,13 @@ export default function PortfolioShow({
                                 <SelectValue placeholder="Período" />
                             </SelectTrigger>
                             <SelectContent>
+                                {/* Spec 2026-08-14 (item 1) — régua única: a
+                                    opção anuncia o mês de acompanhamento e
+                                    anota a competência. O `value` continua
+                                    sendo a competência. */}
                                 {(available_periods || []).map(p => (
                                     <SelectItem key={p} value={p}>
-                                        {new Date(p + '-01').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                                        <span className="capitalize">{rotuloMesReferencia(p)}</span>
                                     </SelectItem>
                                 ))}
                             </SelectContent>

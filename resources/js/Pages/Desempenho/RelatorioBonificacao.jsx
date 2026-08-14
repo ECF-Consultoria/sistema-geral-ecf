@@ -5,6 +5,8 @@ import { FileBarChart, Download, Trophy, Sparkles, ChevronRight, ChevronDown } f
 import { cn } from '@/lib/utils';
 import EmpresasScoreTabela from '@/Components/Desempenho/EmpresasScoreTabela';
 import { AVISO_SEM_DETALHE_TITULO, avisoSemDetalheFechado } from '@/lib/desempenhoLabels';
+// Spec 2026-08-14 (item 1) — régua ÚNICA de referência mensal do sistema.
+import { rotuloMesReferencia, rotuloAcompanhamento } from '@/lib/referenciaMensal';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Fase 107 — Relatório de bonificação (MVP · admin-only).
@@ -101,8 +103,12 @@ export default function RelatorioBonificacao() {
                                 onChange={(e) => trocar({ mes: e.target.value })}
                                 className="rounded-lg border border-white/[0.08] bg-ecf-card px-3 py-2 text-sm text-white/90 focus:border-ecf-yellow/40 focus:outline-none"
                             >
+                                {/* Spec 2026-08-14 (item 1) — régua única do
+                                    sistema. O `value` segue sendo a
+                                    competência; `c.label` do backend é ignorado
+                                    para não existirem duas réguas de rótulo. */}
                                 {competencias_disponiveis.map((c) => (
-                                    <option key={c.value} value={c.value}>{c.label}</option>
+                                    <option key={c.value} value={c.value}>{rotuloMesReferencia(c.value)}</option>
                                 ))}
                             </select>
                         </div>
@@ -129,7 +135,10 @@ export default function RelatorioBonificacao() {
 
                 {/* Resumo */}
                 <div className="mb-4 flex items-center gap-2 text-sm text-white/50">
-                    <span>Competência <strong className="text-white/80">{competencia_label}</strong></span>
+                    {/* Aqui o rótulo é o completo: esta tela decide pagamento,
+                        então o mês de acompanhamento e a competência aparecem
+                        juntos, sem depender do `competencia_label` do backend. */}
+                    <span><strong className="text-white/80 capitalize">{rotuloMesReferencia(competencia)}</strong></span>
                     <span className="text-white/20">·</span>
                     <span>
                         <strong className="text-white/80">{total_contemplados}</strong> profissiona{total_contemplados === 1 ? 'l' : 'is'} contemplado{total_contemplados === 1 ? '' : 's'}
@@ -206,7 +215,7 @@ export default function RelatorioBonificacao() {
                                                         ) : (
                                                             <div className="rounded-xl border border-white/[0.1] bg-white/[0.03] px-4 py-3">
                                                                 <div className="text-white/80 text-sm font-semibold">{AVISO_SEM_DETALHE_TITULO}</div>
-                                                                <div className="text-white/50 text-xs mt-1 leading-relaxed">{avisoSemDetalheFechado(competencia_label)}</div>
+                                                                <div className="text-white/50 text-xs mt-1 leading-relaxed">{avisoSemDetalheFechado(rotuloAcompanhamento(competencia))}</div>
                                                             </div>
                                                         )}
                                                     </td>
