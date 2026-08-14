@@ -469,13 +469,30 @@ class ClicksignClient
      * defensiva. `GET` neste endpoint devolve 404 porque ele é POST-only;
      * não confundir com "não existe".
      *
+     * ✅ **MEDIDO no sandbox em 14/08/2026** (quick 260814-d9s,
+     * `CLICKSIGN-SANDBOX-EMPIRICO.md` §14): a API v3 é JSON:API e exige o
+     * membro `data` no corpo — um `POST` sem corpo (o bug original) devolve
+     * `400` com "data deve ser informado(a)". O corpo mínimo aceito é
+     * `data.type = "notifications"` com `data.attributes` presente. `{}`
+     * vazio é suficiente — nenhum atributo é obrigatório. `attributes` tem
+     * que serializar como OBJETO (`{}`), nunca como array PHP vazio (que
+     * `json_encode()` transformaria em `[]` — mesma armadilha do §9.6 do
+     * empírico em `anexarDocumentoPorModelo()`, redescoberta nesta sessão: a
+     * primeira tentativa com array vazio devolveu `400 "attributes deve ser
+     * um hash"`). Por isso `new \stdClass()` abaixo, não `[]`.
+     *
      * @return array<string, mixed>
      */
     public function reenviarNotificacao(string $envelopeId, string $signerId): array
     {
         $url = rtrim((string) $this->baseUrl, '/') . "/envelopes/{$envelopeId}/signers/{$signerId}/notifications";
 
-        $res = $this->baseRequest()->post($url);
+        $res = $this->baseRequest()->post($url, [
+            'data' => [
+                'type'       => 'notifications',
+                'attributes' => new \stdClass(),
+            ],
+        ]);
 
         if ($res->successful()) {
             Log::channel('ecf-webhooks')->info('[Clicksign] reenviar notificação', [
