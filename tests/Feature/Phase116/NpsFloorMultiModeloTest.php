@@ -205,6 +205,11 @@ class NpsFloorMultiModeloTest extends TestCase
         $this->criarSurveyNaoRespondido($cenario['empresa'], $cenario['templateB'], ['month_reference' => '2026-07-01']);
         $this->imputationService()->materializarLote(Carbon::parse('2026-07-01'));
 
+        // 2026-08-14 — a nota 1 do não respondido só entra na média DEPOIS que
+        // a coleta do mês encerra (régua do bônus, `NpsJanelaResolver`). O
+        // cenário é montado dentro de julho; a tela é lida com julho fechado.
+        Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:01'));
+
         $props = $this->propsDoIndex($admin, ['mes' => '2026-07']);
 
         $this->assertEquals(3.0, $props['cards']['analista']['media']);

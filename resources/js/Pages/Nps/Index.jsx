@@ -442,7 +442,7 @@ function SearchableGlassSelect({ icon: Icon, active, value, onValueChange, place
 // Ícone + label + "NPS MÉDIO"; pill de delta (↗/↘ +0.00) com "vs. mês anterior";
 // nota grande branca /5; barra de progresso colorida pela dimensão (0..5, SEM
 // meta); rodapé "X respondidas · Y pendentes" com ícones. Sem ranking.
-function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta, naoRespondidos = 0 }) {
+function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta, naoRespondidos = 0, janelaFechada = true }) {
     const val = formatNota(valor);
     const temNota = total > 0 && valor != null && Number(valor) > 0;
     const pct = temNota ? Math.max(3, Math.min(100, (Number(valor) / 5) * 100)) : 0;
@@ -532,10 +532,20 @@ function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta, n
                 </span>
                 {/* Fase 116 · só aparece quando existe pelo menos 1 nota vinda de
                     não respondido — nunca mostra "0 sem resposta". */}
+                {/* 2026-08-14 · com a coleta AINDA ABERTA o não respondido não
+                    entra na média (mesma régua do bônus) — o contador vira
+                    aviso de prazo, não penalidade já aplicada. */}
                 {naoRespondidos > 0 && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: COL_ATENCAO, fontSize: 12 }}>
+                    <span
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: COL_ATENCAO, fontSize: 12 }}
+                        title={janelaFechada
+                            ? 'A coleta do mês encerrou: quem não respondeu entra na média com nota 1.'
+                            : 'A coleta ainda está aberta: quem não respondeu fica FORA da média até o fim do mês.'}
+                    >
                         <AlertCircle size={13} style={{ color: COL_ATENCAO }} />
-                        {naoRespondidos} sem resposta (conta{naoRespondidos === 1 ? '' : 'm'} 1)
+                        {naoRespondidos} sem resposta {janelaFechada
+                            ? `(conta${naoRespondidos === 1 ? '' : 'm'} 1)`
+                            : '(ainda no prazo)'}
                     </span>
                 )}
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.55)', fontSize: 12 }}>
@@ -1487,6 +1497,9 @@ export default function NpsIndex({
     // está sendo AVALIADO: o NPS coletado em agosto avalia julho.
     competencia_filtro = '',
     coleta_filtro = '',
+    // 2026-08-14 — true quando a coleta do mês exibido já encerrou. Só então
+    // quem não respondeu entra na média com nota 1 (mesma régua do bônus).
+    janela_fechada = true,
     filtros = {},
     principal_template_id = null,
     regra_nao_respondido = false,
@@ -1920,6 +1933,7 @@ export default function NpsIndex({
                                             pendentes={pendentesTotal}
                                             delta={deltaEst}
                                             naoRespondidos={cards.estrategista?.nao_respondidos ?? 0}
+                                            janelaFechada={janela_fechada}
                                         />
                                     )}
                                     {soAnalista && (
@@ -1932,6 +1946,7 @@ export default function NpsIndex({
                                             pendentes={pendentesTotal}
                                             delta={deltaAna}
                                             naoRespondidos={cards.analista?.nao_respondidos ?? 0}
+                                            janelaFechada={janela_fechada}
                                         />
                                     )}
                                     {ambosPessoa && (
@@ -1944,6 +1959,7 @@ export default function NpsIndex({
                                             pendentes={pendentesTotal}
                                             delta={deltaMedia}
                                             naoRespondidos={(cards.estrategista?.nao_respondidos ?? 0) + (cards.analista?.nao_respondidos ?? 0)}
+                                            janelaFechada={janela_fechada}
                                         />
                                     )}
                                 </div>
@@ -1959,6 +1975,7 @@ export default function NpsIndex({
                                     pendentes={pendentesTotal}
                                     delta={deltaEst}
                                     naoRespondidos={cards.estrategista?.nao_respondidos ?? 0}
+                                    janelaFechada={janela_fechada}
                                 />
                                 <StatCard
                                     kicker="ANALISTA"
@@ -1969,6 +1986,7 @@ export default function NpsIndex({
                                     pendentes={pendentesTotal}
                                     delta={deltaAna}
                                     naoRespondidos={cards.analista?.nao_respondidos ?? 0}
+                                    janelaFechada={janela_fechada}
                                 />
                                 <StatCard
                                     kicker="EMPRESA"
@@ -1979,6 +1997,7 @@ export default function NpsIndex({
                                     pendentes={pendentesTotal}
                                     delta={deltaEmp}
                                     naoRespondidos={cards.empresa?.nao_respondidos ?? 0}
+                                    janelaFechada={janela_fechada}
                                 />
                             </div>
                         )}
