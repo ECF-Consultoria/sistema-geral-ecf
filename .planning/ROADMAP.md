@@ -1756,7 +1756,9 @@ Plans:
 
 ### Phase 130: Rede de segurança — reconciliação, alerta e liberação manual (v22.0)
 
-**Goal:** Se a Clicksign falhar silenciosamente, alguém sabe em minutos, não em dias — e sempre existe um jeito de destravar uma empresa presa, com registro de quem e por quê.
+**Goal:** Se a Clicksign falhar silenciosamente, a falha para de ser invisível: o sistema se corrige sozinho quando consegue, e quando não consegue avisa a equipe no sino em vez de deixar a empresa parada sem ninguém saber — e sempre existe um jeito de destravar uma empresa presa, com registro de quem e por quê.
+
+> **Nota de redação (2026-08-14):** o texto original prometia *"alguém sabe em minutos, não em dias"*. A D-01 do `130-CONTEXT.md` travou o canal como sino in-app — o aviso chega **quando alguém abre o sistema**, não em minutos. A implementação está correta e a decisão foi consciente (e-mail e WhatsApp foram recusados por quebrarem o canal único do projeto); era o goal que prometia um canal que a fase nunca teve. Reescrito após a verificação goal-backward concordar com essa leitura. Se "em minutos" virar requisito de verdade, é fase própria — o `DigisacClient` já existe e hoje só serve ao NPS.
 **Requirements**: REDE-02, REDE-03, REDE-04, DADOS-05
 **Depends on:** Fases 124, 126, 129
 **Success Criteria** (o que deve ser VERDADE):

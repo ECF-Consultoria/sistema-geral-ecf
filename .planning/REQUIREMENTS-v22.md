@@ -160,7 +160,7 @@ a rota de produção em `129-GATE.md` (plano 129-07): assinatura válida → 200
 - [x] **DADOS-02**: O sistema registra cada signatário do contrato com seu papel, contato e situação individual de assinatura
 - [x] **DADOS-03**: Todo evento recebido da Clicksign é gravado bruto, e um evento repetido nunca é processado duas vezes
 - [x] **DADOS-04**: Recusa de assinatura e prazo expirado são estados próprios, distintos de cancelamento e de falha técnica (D5)
-- [ ] **DADOS-05**: Quando um admin libera a empresa manualmente, o sistema registra quem liberou e por quê
+- [x] **DADOS-05**: Quando um admin libera a empresa manualmente, o sistema registra quem liberou e por quê
 - [x] **DADOS-06**: Cada contrato pode ter seu próprio prazo de assinatura (D3)
 
 ### Integração Clicksign
@@ -187,7 +187,7 @@ a rota de produção em `129-GATE.md` (plano 129-07): assinatura válida → 200
 
 - [x] **REDE-01**: Um admin consegue desligar o bloqueio do operacional sem precisar de deploy, voltando ao roteamento imediato
 - [x] **REDE-02**: O sistema avisa quando uma empresa está parada aguardando assinatura além do prazo aceitável
-- [ ] **REDE-03**: Um admin consegue liberar uma empresa ao operacional manualmente quando a Clicksign falha, e essa liberação fica registrada com autor e motivo
+- [x] **REDE-03**: Um admin consegue liberar uma empresa ao operacional manualmente quando a Clicksign falha, e essa liberação fica registrada com autor e motivo
 - [x] **REDE-04**: Uma varredura periódica reconcilia com a Clicksign os contratos cujo webhook nunca chegou (D3)
 - [ ] **REDE-05**: O sistema valida os dados mínimos (CNPJ, e-mail e nome de quem assina, datas do contrato — presença e formato) ANTES de gerar o PDF e criar o envelope, e mostra o que falta **na tela do Administrativo**, onde é preenchido (D8 — não volta como cobrança para o Comercial). ⚠️ Metade cumprida na Fase 127 (validação sem I/O integrada ao orquestrador, plano 127-06); a exibição na tela do Administrativo é da Fase 131 — só marcar [x] quando as duas metades existirem.
 - [ ] **REDE-06**: O bloqueio do operacional pode rodar em produção em modo observação (construído mas inerte) antes de ser ligado de verdade
@@ -244,7 +244,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | 7 | Recusa de signatário emite evento distinguível | Schema + Webhook | ⏳ aberto — sessão de 2026-08-13 (129-07) não conseguiu exercitar recusa real; `name` do evento (`refusal`) segue vindo só da documentação (confiança MÉDIA) |
 | 8 | Endpoint de correção de e-mail de signatário na v3 | CLICK-09 | ⏳ aberto |
 | 9 | Formato do certificado de autenticação do signatário | DADOS-02 | ✅ **`documents/{id}/events` → evento `sign` → `data.signer`** (`auths[]`, `address` = IP, timestamp no `created`). O recurso `/signers/{id}` **não** carrega evidência nenhuma |
-| 10 | Granularidade da consulta de envelope (suficiente para reconciliação) | REDE-04 | ✅ suficiente — `status` + `meta.record_count` + eventos paginados; rate limit **20** no sandbox |
+| 10 | Granularidade da consulta de envelope (suficiente para reconciliação) | REDE-04 | ✅ suficiente **pela forma da API** — `status` + `meta.record_count` + eventos paginados. ⏳ **A confirmação end-to-end segue PENDENTE**: a Fase 130 não conseguiu rodar uma reconciliação contra um envelope realmente assinado (a sandbox não conclui assinatura pelo painel nem envia e-mail — ver `130-GATE.md`). ⚠️ O rate limit **20/min é o da Clicksign**; o bucket `clicksign-webhook` do próprio app é **3/min GLOBAL** (`AppServiceProvider.php`), e é ele que dita o desenho da varredura (1 job por contrato, nunca laço HTTP no comando) |
 | 11 | Política de retry e garantia de ordem dos webhooks | CLICK-04/05 | ⚠️ **tratado como pior caso — at-least-once, sem garantia de ordem.** Permanentemente não medido pela documentação (3 páginas oficiais checadas, nenhuma promete ordem ou política de retry); observação prática de reentrega (mesmo corpo reenviado ao receiver real não duplica) registrada em `129-GATE.md` (plano 129-07, 2026-08-13) |
 
 ## Traceability
@@ -265,7 +265,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | DADOS-02 | Fase 125 | Done |
 | DADOS-03 | Fase 129 (plano 01) | Done |
 | DADOS-04 | Fase 125 | Done |
-| DADOS-05 | Fase 130 | Pending |
+| DADOS-05 | Fase 130 | Done |
 | DADOS-06 | Fase 127 | Done |
 | CLICK-01 | Fase 126 | Done |
 | CLICK-02 | Fase 127 | Done |
@@ -283,7 +283,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | PDF-03 | Fase 126 | Done |
 | REDE-01 | Fase 124 | Done |
 | REDE-02 | Fase 130 | Done |
-| REDE-03 | Fase 130 | Pending |
+| REDE-03 | Fase 130 | Done |
 | REDE-04 | Fase 130 | Done |
 | REDE-05 | Fase 127 | Pending |
 | REDE-06 | Fase 128 | Pending |
