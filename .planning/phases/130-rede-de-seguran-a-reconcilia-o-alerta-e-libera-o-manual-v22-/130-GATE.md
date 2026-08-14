@@ -121,12 +121,79 @@ Depois de preencher: `C:\xampp\php\php.exe artisan config:clear`.
 
 ### Resultado
 
-**NÃO EXECUTADO nesta sessão.** Nenhum envelope real foi criado nem assinado — depende do
-usuário preencher `CLICKSIGN_SIG1/2/3` e executar o roteiro acima no navegador. Preservado aqui
-para retomada.
+**STATUS: ⛔ BLOQUEADO pela sandbox da Clicksign** (rodada de 2026-08-13/14, decisão do usuário
+de parar aqui e fechar os demais gates).
+
+O pré-requisito que faltava foi resolvido: `CLICKSIGN_SIG1/2/3` preenchidos, e
+`ContratoDadosMinimosService::faltantesDaConfiguracaoEcf()` reconsultado devolve **0 pendências**.
+O envelope foi criado e ativado de verdade. O que não foi possível foi **assinar**.
+
+#### Até onde chegou (medido, não suposto)
+
+| Etapa | Resultado |
+|---|---|
+| Contrato local | `ContratoAssinatura` id **11**, empresa 16, serviço 6 (Gestão) |
+| Envelope na sandbox | `f010d235-ff75-400a-84b7-01cb89c3ef59` — criado e **ativado** (`draft` → `running`) |
+| Documento | `36fac7dc-e6c7-4a51-84b7-ce168cf583a3`, `contrato-11.docx`, gerado do template `9e5d4517-…` |
+| Signatários | 4 adicionados com `201` — Fulano de Tal Teste (parte), Thiago Messina + Emerson Faccioli (contratada), Jessica Oliveira (testemunha) |
+| Assinatura | **0/4.** 3 eventos `signature_started`, **nenhum** `sign` |
+| Baseline | `ContratoLiberacao::where('company_id',16)->count() = 0` (o sistema segue cego, como o teste exige) |
+
+#### Achados desta rodada (valem para as próximas fases)
+
+1. **A ativação pela interface web NÃO funciona para envelope gerado por modelo.** O documento
+   fica preso em *"Enviando documento…"* na tela de rascunho e o botão **Enviar** nunca sai do
+   cinza. `ativarEnvelope()` pela API resolveu na hora (`draft` → `running`). A produção usa a
+   API, então o fluxo real não é afetado — mas **nenhum gate futuro deve depender de ativar pela
+   tela**.
+
+2. **A sandbox não envia e-mail.** Nenhum evento de notificação foi gerado na ativação, e nada
+   chegou na caixa. Combinado com o achado 2 do `129-GATE.md` (*a v3 não expõe link de assinatura
+   nos atributos do signatário — o link só sai por e-mail*), isso deixa **o painel como único
+   caminho de assinatura na sandbox**.
+
+3. **A tela de assinatura do painel não conclui.** Tanto em lote (4 de uma vez) quanto um a um,
+   a tela fica em *"Estamos processando o(s) documento(s)"* indefinidamente. Cada tentativa grava
+   `signature_started` e nenhuma grava `sign`.
+
+4. **Hipótese principal, NÃO confirmada:** os 4 signatários foram apontados para o mesmo e-mail
+   (`adm@ecfconsultoria.com.br`, a pedido do usuário, para não incomodar os sócios). A Clicksign
+   marcou os 4 como "(Você)" no painel, e a tela pode não resolver qual dos quatro está
+   assinando. **Não foi possível confirmar** — a comparação com a Fase 129 não é limpa, porque
+   os envelopes que ela assinou vinham da Fase 128, criados sob outra configuração de
+   signatários. A alternativa (endereços distintos via `adm+sig1@`) foi levantada e **recusada
+   nesta rodada** por risco de os documentos sumirem da "Minha área de assinatura" ao deixarem de
+   bater com a conta logada — trocaria um travamento por um beco sem saída.
+
+5. **BUG ENCONTRADO EM CÓDIGO DE FASE ANTERIOR (fora do escopo da 130):**
+   `ClicksignClient::reenviarNotificacao()` faz `->post($url)` **sem corpo** e a API v3 responde
+   `data deve ser informado(a)`. O reenvio de notificação está quebrado **também em produção**;
+   nunca foi exercitado. Merece um `/gsd:quick` próprio — não foi corrigido aqui para não
+   misturar com o gate.
+
+6. **A ativação confirma de novo o achado 3 do `129-GATE.md`:** os 4 `add_signer` +
+   `update_deadline` só apareceram como eventos no instante da ativação, descrevendo
+   retroativamente o que acontecera durante o rascunho.
+
+#### O que isso significa para a fase
+
+O que **não** foi provado é o comportamento end-to-end contra um envelope realmente assinado. O
+código da reconciliação em si tem **18 testes automatizados verdes** (`ReconciliacaoDivergenciaTest`,
+`ReconciliacaoEscopoTest`, `ReconciliacaoPdfPendenteTest`, `ReconciliacaoRateLimitTest`) — a lacuna
+é de evidência empírica, não de corretude conhecida. O envelope segue válido até **12/09/2026**:
+se a assinatura destravar antes disso, basta retomar do passo 5 do roteiro acima.
 
 **Veredito do gate empírico #10: PENDENTE** — não pode ser julgado sem uma rodada real de
 reconciliação para confrontar com `CLICKSIGN-SANDBOX-EMPIRICO.md` §8.
+
+#### Estado do ambiente deixado para trás
+
+- `.env`: `CLICKSIGN_SIG1/2/3_*` preenchidos, com os **e-mails apontados para `adm@`** e os
+  endereços reais preservados em comentário ao lado de cada linha. **Restaurar antes de uso real.**
+- Empresa 16: `nome_contato` corrigido para `Fulano de Tal Teste` (a Clicksign recusa nome com
+  dígitos/parênteses — erro `400` no ponteiro `/data/attributes/name`) e `email_cliente` apontado
+  para `adm@` (era `@example.com`, endereço inexistente que impediria assinar como cliente).
+- Envelope `f010d235-…` fica **ativo e sem assinaturas** na sandbox até 12/09/2026.
 
 ---
 
