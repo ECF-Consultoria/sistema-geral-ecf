@@ -81,6 +81,11 @@ class ContratoAssinatura extends Model
         'servico_id_em_andamento',
         'prazo_dias',
         'lembrete_dias',
+        // Fase 131 Plano 01 (D-13, CLICK-10) — sem isto o mass assignment
+        // das três colunas do cancelamento solicitado falharia EM SILÊNCIO.
+        'cancelamento_motivo',
+        'cancelamento_solicitado_por_user_id',
+        'cancelamento_solicitado_em',
     ];
 
     protected $casts = [
@@ -95,6 +100,10 @@ class ContratoAssinatura extends Model
         // Fase 127-01 (DADOS-06).
         'prazo_dias'        => 'integer',
         'lembrete_dias'     => 'integer',
+        // Fase 131 Plano 01 (D-13) — carimbo de quando o cancelamento foi
+        // solicitado (não é `cancelado`: o webhook `cancel` que fecha o
+        // estado real, ver STATUS_CANCELADO).
+        'cancelamento_solicitado_em' => 'datetime',
     ];
 
     public const STATUS_RASCUNHO               = 'rascunho';
