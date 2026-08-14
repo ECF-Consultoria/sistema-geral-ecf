@@ -89,6 +89,53 @@ class AlertaCooldownTest extends TestCase
         $this->assertTrue($segundoCarimbo->gt($carimboRecuado));
     }
 
+    /**
+     * Regressão do bug do relógio (260814-cro): a gravação de
+     * `ultimo_alerta_em` via `$contrato->update()` bumpava `updated_at`, e
+     * `dataBase()` de um estado default lia justamente `updated_at` —
+     * zerando o contador de dias parado no instante em que o contrato era
+     * alertado. Resultado: o contrato deixava de estar preso e a D-04
+     * (repetição do alerta) nunca disparava de novo. Este teste prova a
+     * ponta a ponta: preso continua preso, `updated_at` não é tocado pela
+     * gravação do carimbo, e o alerta repete passado o intervalo.
+     */
+    public function test_contrato_preso_continua_preso_depois_de_alertar_e_repete_apos_o_intervalo(): void
+    {
+        $admin    = $this->admin();
+        $contrato = ContratoAssinatura::factory()->emAndamento()->create([
+            'enviado_em' => now()->subDays(10),
+        ]);
+
+        $updatedAtAntes = ContratoAssinatura::find($contrato->id)->updated_at;
+
+        Notification::fake();
+        $this->artisan('clicksign:alertar-presos')->assertExitCode(0);
+        Notification::assertSentTo($admin, ContratoPresoNotification::class);
+
+        $fresco = ContratoAssinatura::find($contrato->id);
+        $presos = new \App\Services\Contratos\ContratosPresosService();
+
+        // O coração do teste: depois de alertado, o contrato CONTINUA preso.
+        $this->assertTrue($presos->estaPreso($fresco));
+        $this->assertGreaterThanOrEqual(10, $presos->diasParado($fresco));
+
+        // A gravação do carimbo não pode sujar updated_at (defesa em
+        // profundidade — mesmo já corrigida a dataBase() na Task 1).
+        $this->assertTrue(
+            $fresco->updated_at->equalTo($updatedAtAntes),
+            'A gravação de ultimo_alerta_em não pode bumpar updated_at.'
+        );
+
+        // Recua o carimbo além do intervalo default (3 dias) — D-04: o
+        // alerta tem que repetir.
+        ContratoAssinatura::find($contrato->id)->update(['ultimo_alerta_em' => now()->subDays(4)]);
+
+        Notification::fake();
+        $this->artisan('clicksign:alertar-presos')->assertExitCode(0);
+
+        Notification::assertSentTo($admin, ContratoPresoNotification::class);
+    }
+
     public function test_intervalo_configuravel_via_configuracao_muda_o_comportamento(): void
     {
         $admin    = $this->admin();

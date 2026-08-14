@@ -87,6 +87,20 @@ class ClicksignAlertarPresos extends Command
 
                 // SOMENTE após o envio — senão o cooldown "consome" o alerta
                 // sem ninguém ter recebido.
+                //
+                // ⚠️ `timestamps = false` (não `updateQuietly()`): mesmo com
+                // `dataBase()` já corrigida (260814-cro) para não ler mais
+                // `updated_at`, gravar o carimbo do cooldown não tem motivo
+                // nenhum para sujar `updated_at` — é defesa em profundidade
+                // para que uma futura mudança de critério não ressuscite o
+                // bug do relógio. `updateQuietly()` desligaria o hook
+                // `saving` do model em silêncio (ver docblock de
+                // `ContratoAssinatura::booted()`), o que pode deixar
+                // `company_id_em_andamento`/`servico_id_em_andamento`
+                // dessincronizados e travar a empresa para gerar contrato
+                // novo — por isso `timestamps = false`, que preserva os
+                // eventos do model.
+                $contrato->timestamps = false;
                 $contrato->update(['ultimo_alerta_em' => now()]);
                 $enviados++;
             } catch (\Throwable $e) {
