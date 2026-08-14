@@ -4,6 +4,7 @@ namespace Tests\Feature\Phase131;
 
 use App\Models\Company;
 use App\Models\ContratoAssinatura;
+use App\Models\ContratoAssinaturaSignatario;
 use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Models\User;
@@ -17,12 +18,13 @@ use Tests\TestCase;
  * Fase 131 Plano 04 (ADM-01/ADM-02/UI-02, D-01/D-03/D-11) —
  * ContratoAdminController::show()/atualizarCadastro()/gerarContrato().
  *
- * Nasce na Task 1 com os casos 1, 2, 8 e 11 (o núcleo que aquela task
- * entrega — incluindo o BLOCKER da correção: `gerarContrato()` não pode
- * anunciar sucesso quando `faltantesDaConfiguracaoEcf()` bloqueia por dentro
- * de `iniciarParaEmpresa()`) e é COMPLETADO na Task 3, no MESMO arquivo —
- * regra do "teste nasce na mesma task do código que ele prova" (armadilha do
- * `--filter` sem match que sai 0 e varre a suíte).
+ * Nasceu na Task 1 com os casos 1, 2, 8 e 11 (o núcleo daquela task —
+ * incluindo o BLOCKER da correção: `gerarContrato()` não pode anunciar
+ * sucesso quando `faltantesDaConfiguracaoEcf()` bloqueia por dentro de
+ * `iniciarParaEmpresa()`) e é COMPLETADO nesta Task 3 com os casos 3, 4, 5,
+ * 6, 7, 9 e 10, no MESMO arquivo — regra do "teste nasce na mesma task do
+ * código que ele prova" (armadilha do `--filter` sem match que sai 0 e varre
+ * a suíte).
  *
  * Mesma disciplina do resto da fase: conferência por RECONSULTA ao banco,
  * nunca por stdout nem pela mensagem de sucesso da tela.
@@ -156,6 +158,138 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertNull($props['motivo_bloqueio']);
     }
 
+    // ─── Caso 3 — empresa completa mas COM contrato em andamento: bloqueia com motivo_bloqueio='ja_em_andamento' ───
+
+    public function test_show_de_empresa_completa_com_contrato_em_andamento_bloqueia_com_motivo_ja_em_andamento(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Com Contrato Em Andamento']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+
+        ContratoAssinatura::factory()->emAndamento()->create([
+            'company_id' => $empresa->id,
+            'servico_id' => $servico->id,
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $this->assertSame([], $props['faltantes'], 'a empresa está completa — o bloqueio é por contrato em andamento, não por dado faltando.');
+        $this->assertFalse($props['pode_gerar_contrato']);
+        $this->assertSame('ja_em_andamento', $props['motivo_bloqueio']);
+    }
+
+    // ─── Caso 4 — D-11: email_colaborador vazio fica pendente, mas NÃO bloqueia o botão ───
+
+    public function test_email_colaborador_vazio_fica_pendente_mas_nao_bloqueia_o_botao(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Sem Email Colaborador', 'email_colaborador' => null]);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $this->assertTrue($props['email_colaborador_pendente']);
+        // O ausente de email_colaborador NÃO impede gerar o contrato (D-11).
+        $this->assertTrue($props['pode_gerar_contrato']);
+
+        // Este é o teste que fica vermelho se alguém acrescentar
+        // email_colaborador a ContratoDadosMinimosService::faltantes() —
+        // violaria a D-11 diretamente.
+        $campos = collect($props['faltantes'])->pluck('campo')->all();
+        $this->assertNotContains('email_colaborador', $campos);
+    }
+
+    // ─── Caso 5 — PATCH grava CNPJ/e-mails/nome_contato/datas — RECONSULTA ao banco ───
+
+    public function test_atualizar_cadastro_grava_todos_os_campos_conferido_por_reconsulta_ao_banco(): void
+    {
+        $admin           = $this->admin();
+        $empresa         = $this->empresaIncompleta(['name' => 'Empresa Para Atualizar Cadastro']);
+        $servico         = $this->servicoComContrato();
+        $contratoServico = $this->vincularServico($empresa, $servico);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            'cnpj'              => '22.333.444/0001-55',
+            'email_cliente'     => 'novo-cliente@example.com',
+            'nome_contato'      => 'Fulano Atualizado',
+            'email_colaborador' => 'colaborador@example.com',
+            'contratos_servico' => [
+                [
+                    'id'               => $contratoServico->id,
+                    'data_contratacao' => '2026-01-10',
+                    'data_vencimento'  => '2027-01-10',
+                ],
+            ],
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        // Reconsulta ao banco — nunca confia na mensagem de sucesso.
+        $empresaFresca = $empresa->fresh();
+        $this->assertSame('22.333.444/0001-55', $empresaFresca->cnpj);
+        $this->assertSame('novo-cliente@example.com', $empresaFresca->email_cliente);
+        $this->assertSame('Fulano Atualizado', $empresaFresca->nome_contato);
+        $this->assertSame('colaborador@example.com', $empresaFresca->email_colaborador);
+
+        $contratoServicoFresco = $contratoServico->fresh();
+        $this->assertSame('2026-01-10', $contratoServicoFresco->data_contratacao->format('Y-m-d'));
+        $this->assertSame('2027-01-10', $contratoServicoFresco->data_vencimento->format('Y-m-d'));
+    }
+
+    // ─── Caso 6 — IDOR: contratos_servico[0][id] de OUTRA empresa devolve 422 e não grava nada ───
+
+    public function test_atualizar_cadastro_com_contrato_servico_de_outra_empresa_devolve_422_e_nao_grava_nada(): void
+    {
+        $admin = $this->admin();
+
+        $empresaAlvo = $this->empresaIncompleta(['name' => 'Empresa Alvo IDOR']);
+        $servico     = $this->servicoComContrato();
+
+        $empresaOutra                   = $this->empresaIncompleta(['name' => 'Empresa Outra IDOR']);
+        $contratoServicoDeOutraEmpresa  = $this->vincularServico($empresaOutra, $servico);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresaAlvo), [
+            'cnpj'              => '11.111.111/0001-11',
+            'contratos_servico' => [
+                ['id' => $contratoServicoDeOutraEmpresa->id, 'data_contratacao' => '2026-02-01'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+
+        // Reconsulta ao banco — nem a empresa alvo nem o contrato de outra
+        // empresa foram alterados (T-131-04-01).
+        $this->assertNull($empresaAlvo->fresh()->cnpj);
+        $this->assertNotSame(
+            '2026-02-01',
+            optional($contratoServicoDeOutraEmpresa->fresh()->data_contratacao)->format('Y-m-d'),
+        );
+    }
+
+    // ─── Caso 7 — email_colaborador com formato inválido falha validação e não grava ───
+
+    public function test_atualizar_cadastro_com_email_colaborador_invalido_falha_validacao_e_nao_grava(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaIncompleta(['name' => 'Empresa Email Colaborador Inválido']);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            'email_colaborador' => 'nao-e-um-email',
+        ]);
+
+        $response->assertSessionHasErrors('email_colaborador');
+        $this->assertNull($empresa->fresh()->email_colaborador);
+    }
+
     // ─── Caso 8 — POST gerar para empresa incompleta: 422 e ZERO ContratoAssinatura ───
 
     public function test_gerar_contrato_para_empresa_incompleta_devolve_422_e_nao_cria_nada(): void
@@ -205,5 +339,71 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertSame(0, ContratoAssinatura::where('company_id', $empresa->id)->count());
 
         Http::assertNothingSent();
+    }
+
+    // ─── Caso 9 — POST gerar para empresa completa cria contrato em rascunho ───
+
+    public function test_gerar_contrato_para_empresa_completa_cria_contrato_em_rascunho(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Pronta Para Gerar']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+
+        // Caminho feliz — os 3 signatários fixos da ECF configurados.
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfOk()]);
+
+        $response = $this->actingAs($admin)->post(route('admin.contratos.gerar', $empresa));
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+        $response->assertSessionMissing('error');
+
+        // Reconsulta ao banco — nunca confia na mensagem de sucesso da tela.
+        $contrato = ContratoAssinatura::where('company_id', $empresa->id)->first();
+        $this->assertNotNull($contrato);
+        $this->assertSame(ContratoAssinatura::STATUS_RASCUNHO, $contrato->status);
+    }
+
+    // ─── Caso 10 — prop de signatários NUNCA traz email/cpf/clicksign_signer_key ───
+
+    public function test_prop_de_signatarios_nunca_traz_email_cpf_ou_clicksign_signer_key(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Com Signatário']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+
+        $contrato = ContratoAssinatura::factory()->emAndamento()->create([
+            'company_id' => $empresa->id,
+            'servico_id' => $servico->id,
+        ]);
+
+        ContratoAssinaturaSignatario::create([
+            'contrato_assinatura_id' => $contrato->id,
+            'papel'                  => ContratoAssinaturaSignatario::PAPEL_CONTRATANTE,
+            'nome'                   => 'Fulano Signatário',
+            'email'                  => 'fulano@example.com',
+            'cpf'                    => '123.456.789-00',
+            'situacao'               => ContratoAssinaturaSignatario::SITUACAO_PENDENTE,
+            'clicksign_signer_key'   => 'signer-key-teste',
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $contratoProp = collect($props['contratos'])->firstWhere('id', $contrato->id);
+        $this->assertNotNull($contratoProp);
+        $this->assertCount(1, $contratoProp['signatarios']);
+
+        $signatarioProp = $contratoProp['signatarios'][0];
+        $this->assertArrayHasKey('nome', $signatarioProp);
+        $this->assertArrayHasKey('papel', $signatarioProp);
+        $this->assertArrayHasKey('situacao', $signatarioProp);
+        $this->assertArrayNotHasKey('email', $signatarioProp);
+        $this->assertArrayNotHasKey('cpf', $signatarioProp);
+        $this->assertArrayNotHasKey('clicksign_signer_key', $signatarioProp);
     }
 }
