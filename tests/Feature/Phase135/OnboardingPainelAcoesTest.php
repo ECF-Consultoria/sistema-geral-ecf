@@ -38,7 +38,7 @@ class OnboardingPainelAcoesTest extends TestCase
         return app(OnboardingEngineService::class);
     }
 
-    /** Onboarding recém-criado em `rascunho`, 13 passos montados (todos `bloqueado`). */
+    /** Onboarding recém-criado em `rascunho`, 14 passos montados (todos `bloqueado`). */
     private function onboardingEmRascunho(?Company $company = null): Onboarding
     {
         $servico = $this->servicoDeGestao();

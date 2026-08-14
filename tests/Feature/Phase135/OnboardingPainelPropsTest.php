@@ -47,7 +47,7 @@ class OnboardingPainelPropsTest extends TestCase
         return app(OnboardingEngineService::class);
     }
 
-    /** Onboarding em `andamento`, 13 passos montados e `reavaliar()` já rodado (via `confirmarResponsavel`). */
+    /** Onboarding em `andamento`, 14 passos montados e `reavaliar()` já rodado (via `confirmarResponsavel`). */
     private function onboardingEmAndamento(?Company $company = null): Onboarding
     {
         $servico = $this->servicoDeGestao();
@@ -195,7 +195,7 @@ class OnboardingPainelPropsTest extends TestCase
         $response->assertInertia(fn ($page) => $page
             ->component('Onboarding/Detalhe')
             ->where('onboarding.situacao', 'rascunho')
-            ->has('passos', 13)
+            ->has('passos', 14)
             ->has('passos', fn ($passos) => $passos->each(
                 fn ($passo) => $passo->where('dias_parado', null)->etc()
             ))
@@ -280,12 +280,18 @@ class OnboardingPainelPropsTest extends TestCase
 
         $showResponse = $this->actingAs($this->admin())->get(route('onboarding.painel.show', $onboarding));
         $showResponse->assertOk();
+        // Localiza o passo pela CHAVE, não pela posição: acrescentar um passo à
+        // definição não pode quebrar um teste que fala de outro passo.
+        $passos = $showResponse->viewData('page')['props']['passos'];
+        $indice = collect($passos)->search(fn ($p) => $p['chave'] === 'anuncios_ativos_inativos');
+        $this->assertNotFalse($indice, 'Passo anuncios_ativos_inativos não veio no payload.');
+
         $showResponse->assertInertia(fn ($page) => $page
             ->component('Onboarding/Detalhe')
-            ->where('passos.7.chave', 'anuncios_ativos_inativos')
-            ->where('passos.7.status', OnboardingPasso::STATUS_AGUARDANDO_COLETA)
-            ->where('passos.7.coleta_demorando', true)
-            ->missing('passos.7.valor')
+            ->where("passos.{$indice}.chave", 'anuncios_ativos_inativos')
+            ->where("passos.{$indice}.status", OnboardingPasso::STATUS_AGUARDANDO_COLETA)
+            ->where("passos.{$indice}.coleta_demorando", true)
+            ->missing("passos.{$indice}.valor")
         );
     }
 
@@ -327,14 +333,17 @@ class OnboardingPainelPropsTest extends TestCase
         $response = $this->actingAs($this->admin())->get(route('onboarding.painel.show', $onboarding));
 
         $response->assertOk();
-        $response->assertInertia(fn ($page) => $page
-            ->component('Onboarding/Detalhe')
-            // 'grant_consultoria_adman' (índice 3, ordem 4) depende de 'planilha_custos_adman'.
-            ->where('passos.3.chave', 'grant_consultoria_adman')
-            ->where('passos.3.depende_de.0', 'Planilha de custos ADMAN')
-            // 'excluir_anuncios_inativos' (índice 8, ordem 9) tem condicao D-12.
-            ->where('passos.8.chave', 'excluir_anuncios_inativos')
-            ->where('passos.8.condicao', 'Só se aplica quando há anúncios inativos')
+
+        // Por CHAVE, nunca por índice — a definição pode ganhar passos no meio.
+        $passos = collect($response->viewData('page')['props']['passos'])->keyBy('chave');
+
+        $this->assertSame(
+            ['Planilha de custos ADMAN'],
+            $passos['grant_consultoria_adman']['depende_de'],
+        );
+        $this->assertSame(
+            'Só se aplica quando há anúncios inativos',
+            $passos['excluir_anuncios_inativos']['condicao'],
         );
     }
 

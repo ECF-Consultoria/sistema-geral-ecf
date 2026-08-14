@@ -52,7 +52,7 @@ class OnboardingPortalPublicoTest extends TestCase
         return User::factory()->create(['role' => 'admin']);
     }
 
-    /** Onboarding de Gestão em `andamento` para $company (13 passos, seeder idempotente). */
+    /** Onboarding de Gestão em `andamento` para $company (14 passos, seeder idempotente). */
     private function onboardingDeGestaoEmAndamento(Company $company): Onboarding
     {
         $contrato = ContratoServico::factory()
@@ -184,7 +184,7 @@ class OnboardingPortalPublicoTest extends TestCase
         $grupos = $this->linkService()->passosDoCliente($company);
         $chaves = collect($grupos)->pluck('chave')->sort()->values()->all();
 
-        $this->assertSame(['acesso_colaborador_ml', 'custos_app_ecf', 'grant_sistema_ecf'], $chaves);
+        $this->assertSame(['acesso_colaborador_ml', 'custos_app_ecf', 'ficha_conta_preenchida', 'grant_sistema_ecf'], $chaves);
     }
 
     // ─── marcarFeitoPorChave(): conclusão em massa + D-19 ───────────────────

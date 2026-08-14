@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/Components/ui/avatar';
 import SituacaoChip from '@/Components/Onboarding/Painel/SituacaoChip';
 import DetalheOnboarding from '@/Components/Onboarding/Painel/DetalheOnboarding';
+import FichaContaForm from '@/Components/Onboarding/FichaContaForm';
 
 const initials = (name) =>
     (name || '?').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
@@ -20,7 +21,7 @@ const initials = (name) =>
  * página só monta o cabeçalho (empresa, serviço, situação, responsável) e o
  * link de volta ao painel.
  */
-export default function Detalhe({ onboarding, passos }) {
+export default function Detalhe({ onboarding, passos, ficha_conta = null }) {
     return (
         <AppLayout title="Detalhe do onboarding">
             <Head title={`Onboarding — ${onboarding.empresa.nome}`} />
@@ -39,7 +40,7 @@ export default function Detalhe({ onboarding, passos }) {
                             <h2 className="text-white font-display font-bold text-xl">{onboarding.empresa.nome}</h2>
                             <p className="text-white/40 text-[13px] mt-0.5">
                                 {onboarding.servico.nome}
-                                {onboarding.template_versao ? ` · versão ${onboarding.template_versao}` : ''}
+                                {onboarding.definicao_versao ? ` · versão ${onboarding.definicao_versao}` : ''}
                             </p>
                         </div>
                         <SituacaoChip situacao={onboarding.situacao} label={onboarding.situacao_label} />
@@ -56,6 +57,27 @@ export default function Detalhe({ onboarding, passos }) {
                         </div>
                     )}
                 </div>
+
+                {/*
+                  * A MESMA ficha do portal do cliente, aqui para a equipe
+                  * preencher em call. O que muda é só a rota — e, no banco, a
+                  * procedência gravada ("equipe" + quem preencheu).
+                  */}
+                {ficha_conta && (
+                    <FichaContaForm
+                        submitUrl={route('onboarding.ficha-conta.salvar', onboarding.empresa.id)}
+                        respostas={ficha_conta.respostas ?? {}}
+                        respondidas={ficha_conta.respondidas ?? 0}
+                        totalPerguntas={ficha_conta.total_perguntas ?? 7}
+                        preenchidaEm={ficha_conta.preenchida_em ?? null}
+                        titulo="Ficha da conta"
+                        descricao={
+                            ficha_conta.origem === 'cliente'
+                                ? 'Preenchida pelo cliente. Editar aqui passa a ficha para a equipe.'
+                                : 'Preencha durante a call com o cliente. Fica registrado que foi a equipe quem respondeu.'
+                        }
+                    />
+                )}
 
                 <DetalheOnboarding passos={passos} />
             </div>

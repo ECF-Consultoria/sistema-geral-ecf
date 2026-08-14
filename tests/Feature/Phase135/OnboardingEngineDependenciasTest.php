@@ -32,7 +32,7 @@ class OnboardingEngineDependenciasTest extends TestCase
             ->firstOrFail();
     }
 
-    /** Onboarding de Gestão em `andamento` (13 passos ainda bloqueado). */
+    /** Onboarding de Gestão em `andamento` (14 passos ainda bloqueado). */
     private function criarOnboardingDeGestaoEmAndamento(): Onboarding
     {
 
@@ -129,7 +129,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         (new OnboardingEngineService())->reavaliar($onboarding);
 
         $passos = OnboardingPasso::where('onboarding_id', $onboarding->id)->get();
-        $this->assertCount(13, $passos);
+        $this->assertCount(14, $passos);
         foreach ($passos as $passo) {
             $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $passo->status);
             $this->assertNull($passo->disponivel_em);
@@ -453,6 +453,9 @@ class OnboardingEngineDependenciasTest extends TestCase
 
         $engine->aplicarResultado($this->passo($onboarding, 'metricas_da_conta'), OnboardingResolverResultado::concluido(['faturamento' => 1000]));
         $engine->aplicarResultado($this->passo($onboarding, 'anuncios_ativos_inativos'), OnboardingResolverResultado::concluido(['inativos' => 0]));
+
+        // A ficha da conta tem auto_fonte — não fecha na mão, nem aqui.
+        $engine->aplicarResultado($this->passo($onboarding, 'ficha_conta_preenchida'), OnboardingResolverResultado::concluido(['respondidas' => 7]));
 
         // excluir_anuncios_inativos deve ter virado nao_aplicavel automaticamente (cascata acima).
         $this->assertSame(OnboardingPasso::STATUS_NAO_APLICAVEL, $this->passo($onboarding, 'excluir_anuncios_inativos')->status);

@@ -405,6 +405,18 @@ class Company extends Model
         return $this->hasMany(ContratoServico::class);
     }
 
+    /** Onboardings da empresa — um por serviço contratado (D-01). */
+    public function onboardings()
+    {
+        return $this->hasMany(Onboarding::class);
+    }
+
+    /** Ficha da conta declarada pelo cliente — uma por empresa. */
+    public function onboardingFicha()
+    {
+        return $this->hasOne(OnboardingFicha::class);
+    }
+
     public function mlToken()
     {
         return $this->hasOne(MlToken::class);

@@ -19,7 +19,7 @@ use Tests\TestCase;
  * Fase 135 Plano 05 (Task 3) — prova os 4 call-sites REAIS de `ContratoServico`
  * (SC-03): cada rota/controller que cria contrato dispara o
  * `ContratoServicoObserver` (nunca chamado diretamente aqui) e o onboarding
- * nasce em rascunho, com 13 passos, apontando pra versão ativa do template.
+ * nasce em rascunho, com 14 passos, apontando pra versão ativa do template.
  *
  * Cobre também o negativo de D-08: serviço sem template publicado não gera
  * onboarding nenhum — é o que mantém a v1 restrita a Gestão e protege as
@@ -65,7 +65,7 @@ class OnboardingObserverCallSitesTest extends TestCase
     }
 
     /**
-     * Asserção comum aos 4 cenários: onboarding em rascunho, 13 passos
+     * Asserção comum aos 4 cenários: onboarding em rascunho, 14 passos
      * montados, versão da definição carimbada — SEM nenhum teste chamar o
      * Observer diretamente (a criação vem sempre da rota real).
      */
@@ -77,7 +77,7 @@ class OnboardingObserverCallSitesTest extends TestCase
 
         $this->assertSame(Onboarding::STATUS_RASCUNHO, $onboarding->status);
         $this->assertSame(DefinicaoOnboarding::VERSAO, $onboarding->definicao_versao);
-        $this->assertSame(13, OnboardingPasso::where('onboarding_id', $onboarding->id)->count());
+        $this->assertSame(14, OnboardingPasso::where('onboarding_id', $onboarding->id)->count());
 
         return $onboarding;
     }

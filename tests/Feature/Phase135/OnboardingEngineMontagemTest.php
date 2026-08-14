@@ -41,7 +41,7 @@ class OnboardingEngineMontagemTest extends TestCase
     }
 
     /** @test */
-    public function contrato_de_gestao_gera_onboarding_em_rascunho_com_13_passos_bloqueados(): void
+    public function contrato_de_gestao_gera_onboarding_em_rascunho_com_14_passos_bloqueados(): void
     {
         $contrato = $this->contratoDeGestao();
 
@@ -49,7 +49,7 @@ class OnboardingEngineMontagemTest extends TestCase
 
         $this->assertNotNull($onboarding);
         $this->assertSame(Onboarding::STATUS_RASCUNHO, $onboarding->status);
-        $this->assertSame(13, OnboardingPasso::where('onboarding_id', $onboarding->id)->count());
+        $this->assertSame(14, OnboardingPasso::where('onboarding_id', $onboarding->id)->count());
 
         foreach (OnboardingPasso::where('onboarding_id', $onboarding->id)->get() as $passo) {
             $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $passo->status);
@@ -90,7 +90,7 @@ class OnboardingEngineMontagemTest extends TestCase
         $this->assertNotNull($primeiro);
         $this->assertSame($primeiro->id, $segundo->id);
         $this->assertSame(1, Onboarding::count());
-        $this->assertSame(13, OnboardingPasso::count());
+        $this->assertSame(14, OnboardingPasso::count());
     }
 
     /**

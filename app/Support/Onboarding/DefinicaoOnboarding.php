@@ -30,8 +30,12 @@ class DefinicaoOnboarding
     /**
      * Versão da definição. SUBIR sempre que qualquer passo desta classe mudar
      * (acréscimo, remoção, mudança de dono/dependência/SLA).
+     *
+     * v2 — entra o passo `ficha_conta_preenchida` (ordem 2): as 7 informações
+     * de "Métricas e situação da conta" DECLARADAS pelo cliente, antes de
+     * existir qualquer grant. Os demais passos desceram uma posição.
      */
-    public const VERSAO = 1;
+    public const VERSAO = 2;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -60,14 +64,14 @@ class DefinicaoOnboarding
     }
 
     /**
-     * Os 13 passos do onboarding de Gestão (Performance), 5 automáticos.
+     * Os 14 passos do onboarding de Gestão (Performance), 6 automáticos.
      *
      * `dono` e `auto_fonte` são eixos INDEPENDENTES:
      *  - `dono` responde "de quem é a bola?" — quem precisa AGIR.
      *  - `auto_fonte` responde "como o sistema sabe que aconteceu?".
-     * O passo 5 é o caso que prova a independência: a bola é do cliente (ele
-     * precisa autorizar o OAuth), mas ninguém digita nada — o token ativo
-     * fecha o passo sozinho.
+     * Os passos 2 e 6 provam a independência: a bola é do cliente (preencher a
+     * ficha, autorizar o OAuth), mas ninguém digita "feito" — a existência da
+     * ficha e o token ativo fecham os passos sozinhos.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -89,6 +93,21 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 2,
+                'chave'      => 'ficha_conta_preenchida',
+                'titulo'     => 'Ficha da conta',
+                // A bola é do cliente, mas quem fecha é o sistema ao ver a
+                // ficha no banco — nem ele nem a equipe marca isso na mão
+                // (D-19). A equipe pode PREENCHER por ele numa call; o que não
+                // pode é dar o passo por feito sem ficha nenhuma.
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
+                'setor_id'   => null,
+                'depende_de' => null,
+                'sla_dias'   => 3,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_FICHA_CONTA,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 3,
                 'chave'      => 'acesso_colaborador_ml',
                 'titulo'     => 'Acesso colaborador Mercado Livre',
                 'dono'       => OnboardingPasso::DONO_CLIENTE,
@@ -99,7 +118,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 3,
+                'ordem'      => 4,
                 'chave'      => 'planilha_custos_adman',
                 'titulo'     => 'Planilha de custos ADMAN',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -110,7 +129,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 4,
+                'ordem'      => 5,
                 'chave'      => 'grant_consultoria_adman',
                 'titulo'     => 'Grant com a Consultoria (Adman)',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -121,7 +140,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 5,
+                'ordem'      => 6,
                 'chave'      => 'grant_sistema_ecf',
                 'titulo'     => 'Grant com o Sistema ECF (OAuth)',
                 // A bola é do cliente (precisa autorizar o OAuth), mas ninguém
@@ -134,7 +153,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 6,
+                'ordem'      => 7,
                 'chave'      => 'confirmacao_pagamento',
                 'titulo'     => 'Confirmação de pagamento',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -145,7 +164,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 7,
+                'ordem'      => 8,
                 'chave'      => 'metricas_da_conta',
                 'titulo'     => 'Métricas da conta',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -156,7 +175,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 8,
+                'ordem'      => 9,
                 'chave'      => 'anuncios_ativos_inativos',
                 'titulo'     => 'Anúncios ativos / inativos',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -167,7 +186,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 9,
+                'ordem'      => 10,
                 'chave'      => 'excluir_anuncios_inativos',
                 'titulo'     => 'Excluir anúncios inativos',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -179,7 +198,7 @@ class DefinicaoOnboarding
                 'condicao'   => ['tipo' => OnboardingPasso::CONDICAO_ANUNCIOS_INATIVOS],
             ],
             [
-                'ordem'      => 10,
+                'ordem'      => 11,
                 'chave'      => 'custos_app_ecf',
                 'titulo'     => 'Custos no App ECF',
                 'dono'       => OnboardingPasso::DONO_CLIENTE,
@@ -190,7 +209,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 11,
+                'ordem'      => 12,
                 'chave'      => 'grant_de_ads',
                 'titulo'     => 'Grant de Ads',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -201,7 +220,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 12,
+                'ordem'      => 13,
                 'chave'      => 'agendar_reuniao_onboarding',
                 'titulo'     => 'Agendar reunião de onboarding',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -212,7 +231,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 13,
+                'ordem'      => 14,
                 'chave'      => 'reuniao_realizada',
                 'titulo'     => 'Reunião de onboarding realizada',
                 // Depende do agendamento E do pagamento — pagamento trava a

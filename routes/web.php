@@ -116,6 +116,11 @@ Route::patch('/onboarding-cliente/{token}/passo', [OnboardingPublicoController::
 Route::post('/onboarding-cliente/{token}/ficha', [OnboardingPublicoController::class, 'anexarFicha'])
     ->middleware('throttle:20,1')
     ->name('onboarding.publico.ficha');
+// As 7 informações da conta declaradas pelo cliente. Mesmo throttle das
+// demais rotas públicas: a página é aberta por posse do token, sem login.
+Route::post('/onboarding-cliente/{token}/ficha-conta', [OnboardingPublicoController::class, 'salvarFichaConta'])
+    ->middleware('throttle:20,1')
+    ->name('onboarding.publico.ficha-conta');
 
 // ML OAuth — callback público (o cliente autoriza fora do painel)
 Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])
@@ -880,6 +885,10 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
         // 'onboarding-cliente/*' registrado fora do grupo 'auth' acima.
         Route::post('/onboarding/empresas/{company}/link', [OnboardingController::class, 'gerarLink'])
             ->name('onboarding.link.gerar');
+        // A equipe preenche a ficha PELO cliente (call). Mesma ação da rota
+        // pública, com procedência diferente gravada no banco.
+        Route::post('/onboarding/empresas/{company}/ficha-conta', [OnboardingController::class, 'salvarFichaConta'])
+            ->name('onboarding.ficha-conta.salvar');
     });
 
 // ─── Alertas Estratégicos (Phase 23) ────────────────────────────────────────

@@ -3,6 +3,7 @@ import { router, usePage } from '@inertiajs/react';
 import { AlertTriangle, CheckCircle2, Lock, RefreshCw, UploadCloud, Zap } from 'lucide-react';
 import { Checkbox } from '@/Components/ui/checkbox';
 import { cn, formatDate } from '@/lib/utils';
+import FichaContaForm from '@/Components/Onboarding/FichaContaForm';
 
 // ─── Portal público do cliente por EMPRESA (Fase 135 Plano 11, D-06) ────────
 // A lista agrupa por `chave` (D-10), NUNCA por onboarding_passo/onboarding —
@@ -193,7 +194,7 @@ function FichaUpload({ token, ficha }) {
 
 // ─── Página ───────────────────────────────────────────────────────────────
 
-export default function Publico({ token, empresa, passos = [], ficha = null }) {
+export default function Publico({ token, empresa, passos = [], ficha = null, ficha_conta = null }) {
     const [conectandoChave, setConectandoChave] = useState(null);
 
     // Estado "Link inválido": na prática, `OnboardingPublicoController::workspace()`
@@ -250,6 +251,18 @@ export default function Publico({ token, empresa, passos = [], ficha = null }) {
 
             <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
                 {mostrarFicha && <FichaUpload token={token} ficha={ficha} />}
+
+                {mostrarFicha && (
+                    <FichaContaForm
+                        submitUrl={route('onboarding.publico.ficha-conta', token)}
+                        respostas={ficha_conta?.respostas ?? {}}
+                        respondidas={ficha_conta?.respondidas ?? 0}
+                        totalPerguntas={ficha_conta?.total_perguntas ?? 7}
+                        preenchidaEm={ficha_conta?.preenchida_em ?? null}
+                        titulo="Sobre a sua conta"
+                        descricao="Sete perguntas rápidas para entendermos onde a conta está hoje. Responda o que souber — “Não sei” é uma resposta válida e melhor que chutar."
+                    />
+                )}
 
                 {nadaPendente && (
                     <div className="text-center py-16 space-y-3">

@@ -47,6 +47,9 @@ class AppServiceProvider extends ServiceProvider
                 // setar a chave reservada coleta_em_andamento (D-11). Fecha
                 // o catálogo com as 5 chaves de OnboardingPasso::AUTO_FONTES.
                 $app->make(\App\Services\Onboarding\Resolvers\AcervoColetadoResolver::class),
+                // Ficha da conta declarada pelo cliente (pré-grant). É o que
+                // impede o passo da ficha de ser fechado no braço, sem ficha.
+                $app->make(\App\Services\Onboarding\Resolvers\FichaContaResolver::class),
             ]);
         });
     }

@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreOnboardingFichaRequest;
 use App\Models\Company;
+use App\Models\OnboardingFicha;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
+use App\Services\Onboarding\OnboardingFichaService;
 use App\Services\Onboarding\OnboardingLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -56,7 +59,64 @@ class OnboardingPublicoController extends Controller
             'empresa' => ['nome' => $company->name],
             'passos'  => $this->linkService->passosDoCliente($company),
             'ficha'   => $this->fichaPayload($company),
+            // As 7 informações da conta, para o cliente responder ou revisar.
+            // Vai o que já foi respondido, para o formulário abrir preenchido
+            // em vez de zerado a cada visita.
+            'ficha_conta' => $this->fichaContaPayload($company),
         ]);
+    }
+
+    /**
+     * POST /onboarding-cliente/{token}/ficha-conta — o cliente declara as 7
+     * informações de "Métricas e situação da conta".
+     *
+     * É a MESMA ação do painel interno, só que pela porta pública: a
+     * procedência (`ORIGEM_CLIENTE`) é o que separa as duas no banco.
+     */
+    public function salvarFichaConta(
+        StoreOnboardingFichaRequest $request,
+        string $token,
+        OnboardingFichaService $fichaService,
+    ) {
+        $link = OnboardingLink::where('token', $token)->with('company')->firstOrFail();
+
+        $fichaService->registrar(
+            company: $link->company,
+            dados: $request->validated(),
+            origem: OnboardingFicha::ORIGEM_CLIENTE,
+            usuario: null,
+            ip: $request->ip(),
+        );
+
+        activity('onboarding')
+            ->performedOn($link)
+            ->withProperties(['ip' => $request->ip()])
+            ->log('Ficha da conta preenchida pelo cliente via portal público');
+
+        return back()->with('success', 'Ficha recebida — obrigado!');
+    }
+
+    /**
+     * Payload da ficha da conta para o formulário público. Devolve as 7
+     * respostas cruas (o cliente pode revisar o que declarou) e NUNCA a
+     * procedência ou o IP — isso é operação interna.
+     *
+     * @return array<string, mixed>
+     */
+    private function fichaContaPayload(Company $company): array
+    {
+        $ficha = OnboardingFicha::where('company_id', $company->id)->first();
+
+        $respostas = collect(OnboardingFicha::CAMPOS_RESPOSTA)
+            ->mapWithKeys(fn (string $campo) => [$campo => $ficha?->{$campo}])
+            ->all();
+
+        return [
+            'respostas'       => $respostas,
+            'preenchida_em'   => $ficha?->preenchida_em?->toISOString(),
+            'total_perguntas' => count(OnboardingFicha::CAMPOS_RESPOSTA),
+            'respondidas'     => $ficha?->respondidas() ?? 0,
+        ];
     }
 
     /**

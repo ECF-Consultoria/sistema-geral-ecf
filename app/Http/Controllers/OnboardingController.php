@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreOnboardingFichaRequest;
 use App\Models\Company;
 use App\Models\Onboarding;
+use App\Models\OnboardingFicha;
 use App\Models\OnboardingPasso;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
+use App\Services\Onboarding\OnboardingFichaService;
 use App\Services\Onboarding\OnboardingLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -153,7 +156,34 @@ class OnboardingController extends Controller
                 'definicao_versao' => $onboarding->definicao_versao,
             ],
             'passos' => $passosOrdenados,
+            // A ficha da conta é por EMPRESA, não por onboarding — a mesma
+            // ficha aparece no detalhe de todos os serviços daquela empresa.
+            // Aqui, diferente do portal público, a PROCEDÊNCIA vai junto: a
+            // equipe precisa saber se foi o cliente que declarou ou se alguém
+            // do time preencheu por ele.
+            'ficha_conta' => $this->fichaContaPayload($onboarding->company),
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fichaContaPayload(Company $company): array
+    {
+        $ficha = OnboardingFicha::with('preenchidaPor:id,name')
+            ->where('company_id', $company->id)
+            ->first();
+
+        return [
+            'respostas' => collect(OnboardingFicha::CAMPOS_RESPOSTA)
+                ->mapWithKeys(fn (string $campo) => [$campo => $ficha?->{$campo}])
+                ->all(),
+            'origem'          => $ficha?->origem,
+            'preenchida_por'  => $ficha?->preenchidaPor?->name,
+            'preenchida_em'   => $ficha?->preenchida_em?->toISOString(),
+            'respondidas'     => $ficha?->respondidas() ?? 0,
+            'total_perguntas' => count(OnboardingFicha::CAMPOS_RESPOSTA),
+        ];
     }
 
     /**
@@ -243,6 +273,39 @@ class OnboardingController extends Controller
             'success',
             'Link do portal do cliente: ' . route('onboarding.publico.workspace', $link->token)
         );
+    }
+
+    /**
+     * POST /onboarding/empresas/{company}/ficha-conta — a equipe preenche a
+     * ficha da conta PELO cliente, tipicamente durante uma call.
+     *
+     * Mesma ação da porta pública, mesmo FormRequest, mesmo serviço — só muda a
+     * procedência gravada (`ORIGEM_EQUIPE` + quem preencheu). É essa distinção
+     * que mantém honesta a comparação futura entre o declarado e o que a API
+     * apurar: "o cliente digitou" e "o analista digitou ouvindo o cliente" não
+     * têm o mesmo peso.
+     */
+    public function salvarFichaConta(
+        StoreOnboardingFichaRequest $request,
+        Company $company,
+        OnboardingFichaService $fichaService,
+    ) {
+        $user = $request->user();
+
+        if (! $user->isAdmin()) {
+            $temAcesso = $user->companies()->where('companies.id', $company->id)->exists();
+            abort_unless($temAcesso, 403, 'Você não tem acesso a esta empresa.');
+        }
+
+        $fichaService->registrar(
+            company: $company,
+            dados: $request->validated(),
+            origem: OnboardingFicha::ORIGEM_EQUIPE,
+            usuario: $user,
+            ip: $request->ip(),
+        );
+
+        return back()->with('success', 'Ficha da conta registrada.');
     }
 
     // ─── Escopo de leitura/escrita (T-135-09-02) ─────────────────────────────
