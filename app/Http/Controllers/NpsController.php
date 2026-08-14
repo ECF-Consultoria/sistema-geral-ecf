@@ -808,7 +808,25 @@ class NpsController extends Controller
             );
         }
 
-        $agregarMedia = function ($responses, string $dimensao, ?\Illuminate\Support\Collection $notasImputadas = null) use ($notaDe) {
+        // 2026-08-14 — `$contaNaoRespondido` alinha esta tela à régua que o
+        // BÔNUS já pratica: enquanto a janela de coleta do mês ainda está
+        // ABERTA, quem não respondeu é EXCLUÍDO da conta, nunca "nota 1"
+        // (`NpsPorEmpresaService` D-04, ramo `janela_aberta`). Só quando o mês
+        // de coleta encerra é que a ausência de resposta vira nota 1.
+        //
+        // Sem isso a tela penalizava no dia 1 do mês uma resposta que o cliente
+        // ainda tem até o dia 31 para dar — e, pior, penalizava em UM card só:
+        // a dimensão `empresa` materializa linha por survey sem depender de
+        // serviço/responsável, enquanto `estrategista`/`analista` só
+        // materializam para `serviços cobertos pelo modelo ∩ contratos ativos`
+        // (`NpsImputationService:162`). Com os 3 modelos ativos de produção sem
+        // nenhum serviço coberto, medimos em 2026-08: empresa 28 notas 1,
+        // estrategista 0, analista 0 — os mesmos clientes, as mesmas notas 5,
+        // e a empresa exibindo 1,71 contra 5,00 dos outros dois.
+        //
+        // O contador `nao_respondidos` continua sendo devolvido em qualquer
+        // caso: some da MÉDIA, não da tela.
+        $agregarMedia = function ($responses, string $dimensao, ?\Illuminate\Support\Collection $notasImputadas = null, bool $contaNaoRespondido = true) use ($notaDe) {
             // Fase 116 — `collect()` explícito: $responses é uma Eloquent
             // Collection e o `->map()` dela preserva o tipo Eloquent mesmo
             // depois de virar uma lista de floats/null. O `merge()` da
@@ -822,7 +840,7 @@ class NpsController extends Controller
             // 1-5). `nao_respondidos` é a contagem exposta ao payload para a
             // UI (Plan 05) explicar a regra sem jargão.
             $totalImputadas = $notasImputadas ? $notasImputadas->count() : 0;
-            if ($totalImputadas > 0) {
+            if ($totalImputadas > 0 && $contaNaoRespondido) {
                 $notas = $notas->merge(array_fill(0, $totalImputadas, 1.0));
             }
 
@@ -833,10 +851,15 @@ class NpsController extends Controller
             ];
         };
 
+        // A janela de coleta do mês EXIBIDO já encerrou? Mesma régua de leitura
+        // do bônus (`NpsJanelaResolver`, régua `gte` por DATA). É o que decide
+        // se "não respondeu" já pode virar nota 1 nesta tela.
+        $janelaFechada = $this->npsJanelaResolver->fechada($mesInicio);
+
         $cards = [
-            'estrategista' => $agregarMedia($responsesMes, 'estrategista', $notasImputadasMes['estrategista']),
-            'analista'     => $agregarMedia($responsesMes, 'analista', $notasImputadasMes['analista']),
-            'empresa'      => $agregarMedia($responsesMes, 'empresa', $notasImputadasMes['empresa']),
+            'estrategista' => $agregarMedia($responsesMes, 'estrategista', $notasImputadasMes['estrategista'], $janelaFechada),
+            'analista'     => $agregarMedia($responsesMes, 'analista', $notasImputadasMes['analista'], $janelaFechada),
+            'empresa'      => $agregarMedia($responsesMes, 'empresa', $notasImputadasMes['empresa'], $janelaFechada),
         ];
 
         // ─── Série 12 meses para o LineChart ─────────────────────────────────
@@ -916,9 +939,12 @@ class NpsController extends Controller
                 'mes_iso'            => $m->format('Y-m'),                        // chave do filtro (coleta)
                 'competencia'        => $competencia->format('Y-m'),              // mês AVALIADO
                 'competencia_label'  => $competencia->locale('pt_BR')->isoFormat('MMM/YY'),
-                'estrategista' => $agregarMedia($responsesM, 'estrategista', $notasImputadasM['estrategista'])['media'],
-                'analista'     => $agregarMedia($responsesM, 'analista', $notasImputadasM['analista'])['media'],
-                'empresa'      => $agregarMedia($responsesM, 'empresa', $notasImputadasM['empresa'])['media'],
+                // Mesma régua dos cards, mês a mês: o mês ainda em coleta não
+                // conta nota 1 (senão o último ponto da série despencaria todo
+                // dia 1 e se recuperaria ao longo do mês, sem nada ter mudado).
+                'estrategista' => $agregarMedia($responsesM, 'estrategista', $notasImputadasM['estrategista'], $this->npsJanelaResolver->fechada($m))['media'],
+                'analista'     => $agregarMedia($responsesM, 'analista', $notasImputadasM['analista'], $this->npsJanelaResolver->fechada($m))['media'],
+                'empresa'      => $agregarMedia($responsesM, 'empresa', $notasImputadasM['empresa'], $this->npsJanelaResolver->fechada($m))['media'],
             ];
         }
 
@@ -993,6 +1019,12 @@ class NpsController extends Controller
             // respondido conta como nota 1" está ativa nesta tela. Cada card
             // já expõe `nao_respondidos` (ver $agregarMedia acima).
             'regra_nao_respondido' => true,
+            // 2026-08-14 — a regra acima só VALE quando a coleta do mês
+            // encerrou. Com a janela aberta o não respondido fica de fora da
+            // média (nos três cards, igualmente) e o contador vira só aviso:
+            // é o que a UI usa para escrever "contam 1" ou "ainda podem
+            // responder".
+            'janela_fechada'       => $janelaFechada,
             'filtros'        => [
                 'empresa_id'      => $empresaId,
                 'estrategista_id' => $estrategistaId,

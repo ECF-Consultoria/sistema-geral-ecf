@@ -246,6 +246,14 @@ class NpsFloorAreaNpsTest extends TestCase
         $this->criarSurveyNaoRespondido($empresa, $templateEmpresa, ['month_reference' => '2026-07-01']);
         $this->imputationService()->materializarLote(Carbon::parse('2026-07-01'));
 
+        // 2026-08-14 — a nota 1 do não respondido só entra na média DEPOIS que
+        // a coleta do mês encerra (mesma régua do bônus, `NpsJanelaResolver`).
+        // O cenário é montado dentro de julho; a tela é lida com julho fechado.
+        // Sem isto o teste passaria a medir a janela aberta, onde nenhum card
+        // conta o não respondido — o que já é coberto por
+        // `NpsCardsMesmaReguaTest`.
+        Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:01'));
+
         $props = $this->propsDoIndex($admin, ['mes' => '2026-07']);
 
         $this->assertEquals(3.0, $props['cards']['empresa']['media']);
@@ -279,6 +287,9 @@ class NpsFloorAreaNpsTest extends TestCase
 
         $this->criarSurveyNaoRespondido($empresa, $template, ['month_reference' => '2026-07-01']);
         $this->imputationService()->materializarLote(Carbon::parse('2026-07-01'));
+
+        // Leitura com a coleta de julho encerrada — ver nota da régua acima.
+        Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:01'));
 
         $props = $this->propsDoIndex($admin, ['template_id' => $template->id, 'mes' => '2026-07']);
 
@@ -317,6 +328,9 @@ class NpsFloorAreaNpsTest extends TestCase
         // no mês E SEM ESTRATEGISTA atribuído — NÃO é elegível (NPSMAN-07).
         $empresaSemSurvey = Company::factory()->create(['active' => true, 'name' => 'Empresa Sem Survey 116-03']);
         $this->criarContrato($empresaSemSurvey->id, $servicoPerf, true);
+
+        // Leitura com a coleta de julho encerrada — ver nota da régua acima.
+        Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:01'));
 
         $props = $this->propsDoIndex($admin, ['template_id' => $template->id, 'mes' => '2026-07']);
 
@@ -438,6 +452,9 @@ class NpsFloorAreaNpsTest extends TestCase
             'auto_generated'  => false,
         ]);
         $this->imputationService()->materializarLote(Carbon::parse('2026-07-01'));
+
+        // Leitura com a coleta de julho encerrada — ver nota da régua acima.
+        Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:01'));
 
         $props = $this->propsDoIndex($admin, ['template_id' => $template->id, 'mes' => '2026-07']);
 
