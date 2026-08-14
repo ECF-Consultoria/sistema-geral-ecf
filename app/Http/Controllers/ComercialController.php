@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\CompanyGroup;
+use App\Models\ContratoAssinatura;
 use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
 use App\Models\HubspotLineItemMapping;
@@ -12,6 +13,7 @@ use App\Models\Servico;
 use App\Models\Setor;
 use App\Notifications\EmpresaCadastradaNotification;
 use App\Services\Comercial\PendenciasComerciaisService;
+use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Http\Request;
@@ -177,7 +179,15 @@ class ComercialController extends Controller
      * ao alterar 1. Backend honra o whitelist nos enums (setor/ordem/pendencia)
      * com `in_array` antes de aplicar.
      */
-    public function listagem(Request $request, PendenciasComerciaisService $pendencias)
+    /**
+     * Estado só-de-exibição do badge de contrato (D-08, Fase 131 Plano 02) —
+     * empresa que ainda não tem nenhum `ContratoAssinatura` criado. Espelha
+     * literalmente `SEM_CONTRATO` de `resources/js/lib/contratoStatus.js`
+     * (o projeto não tem enum compartilhado PHP↔JS, sincronia é manual).
+     */
+    private const CONTRATO_BADGE_SEM_CONTRATO = 'aguardando_administrativo';
+
+    public function listagem(Request $request, PendenciasComerciaisService $pendencias, ContratosPresosService $presos)
     {
         abort_unless(
             auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
@@ -282,8 +292,23 @@ class ComercialController extends Controller
             ],
         );
 
+        // (7.5) Badge de contrato (D-08, Fase 131 Plano 02) — query ÚNICA para
+        // os contratos da PÁGINA ATUAL, indexada por company_id. O mais
+        // recente por empresa (orderByDesc('id') + first() por grupo).
+        // ⚠️ NUNCA usar o método do serviço de contratos presos que filtra
+        // por "preso" (estaPreso()) aqui: ele esconderia do badge todo
+        // contrato saudável (assinado, aguardando_assinaturas dentro do
+        // limiar) — o badge precisa mostrar TODOS os estados.
+        $idsDaPagina = $paginator->getCollection()->pluck('id');
+        $contratosPorEmpresa = ContratoAssinatura::whereIn('company_id', $idsDaPagina)
+            ->whereHas('servico', fn ($q) => $q->where('exige_contrato', true))
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('company_id')
+            ->map(fn ($grupo) => $grupo->first());
+
         // (8) Map para payload Inertia (apenas as empresas da pagina atual)
-        $companiesPaginadas = $paginator->getCollection()->map(function (Company $c) {
+        $companiesPaginadas = $paginator->getCollection()->map(function (Company $c) use ($contratosPorEmpresa, $presos) {
             $contratosAtivos = $c->contratosServico->where('ativo', true);
             $setorDominante  = $contratosAtivos->map(fn($ct) => optional($ct->servico)->setor)->filter()->first();
 
@@ -342,12 +367,38 @@ class ComercialController extends Controller
                 $detalhes['possivel_duplicidade'] = [$nomeExibicao];
             }
 
+            // Badge de contrato (D-08) — três casos, nunca o model inteiro:
+            // nenhum dado de signatário (nome/e-mail/CPF) atravessa pra prop.
+            $contratoDaEmpresa = $contratosPorEmpresa->get($c->id);
+            if ($contratoDaEmpresa) {
+                // Caso 1: contrato encontrado — dataBase()/diasParado() são
+                // puros (sem I/O), o contrato já está em memória.
+                $contratoBadge = [
+                    'status' => $contratoDaEmpresa->status,
+                    'dias'   => $presos->diasParado($contratoDaEmpresa),
+                ];
+            } elseif ($contratosAtivos->contains(fn ($ct) => $ct->servico?->exigeContrato() === true)) {
+                // Caso 2: sem ContratoAssinatura ainda, mas há serviço ativo
+                // que exige contrato — base é companies.created_at (D-08 do
+                // UI-SPEC: não existe carimbo próprio, simplificação aceita).
+                $contratoBadge = [
+                    'status' => self::CONTRATO_BADGE_SEM_CONTRATO,
+                    'dias'   => (int) $c->created_at->diffInDays(now()),
+                ];
+            } else {
+                // Caso 3 (D9, Polos): nenhum serviço ativo exige contrato —
+                // NUNCA "aguardando_administrativo" aqui, viraria fila
+                // fantasma que nunca esvazia. A UI renderiza travessão.
+                $contratoBadge = null;
+            }
+
             return [
                 'id'                    => $c->id,
                 'name'                  => $c->name,
                 'cnpj'                  => $c->cnpj,
                 'status'                => $c->status,
                 'is_origem_hubspot'     => $c->is_origem_hubspot,
+                'contrato_badge'        => $contratoBadge,
                 'pendencias_comerciais' => $c->pendencias_comerciais,
                 'pendencias_detalhes'   => $detalhes,
                 'setor_dominante'       => $setorDominante,
