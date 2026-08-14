@@ -94,7 +94,7 @@ projeto tem essa variação em código legado, mas esta fase se restringe a 2 pe
 - Item de menu ativo (já é padrão do `AppLayout`, não recriar)
 
 **Destructive (vermelho) reservado para:**
-- Botão "Cancelar contrato" e seu modal de confirmação
+- Botão "Registrar cancelamento" e seu modal (o sistema não cancela — ver seção CLICK-10)
 - Badge dos estados `recusado` (D-04) e mensagens de erro de validação de formulário
 - Faixa de destaque antes de confirmar liberação manual em causa problemática (D-11 — herdada da
   Fase 130, ver `Ações do contrato` abaixo)
@@ -258,7 +258,7 @@ caminho**. O botão "Ajustar" abre direto:
 
 - Título: **"Não dá para só corrigir o e-mail"**
 - Corpo: **"Depois que o contrato é enviado, não é possível trocar o e-mail de quem assina. Se foi só um erro de digitação, cancele este contrato e gere um novo com o e-mail certo."**
-- CTA primário: **"Cancelar contrato"** (leva ao fluxo do CLICK-10 abaixo)
+- CTA primário: **"Registrar cancelamento"** (leva ao fluxo do CLICK-10 abaixo)
 - CTA secundário: **"Voltar"**
 
 ### Cancelar contrato (CLICK-10) — registra aqui, cancela no painel (D-13)
