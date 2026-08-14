@@ -104,6 +104,89 @@ ou WhatsApp (recusado na D-01 da Fase 130).
   ⚠️ O **backend** da liberação manual é definitivo e **não deve ser reescrito** — só a superfície
   é descartável. Ver `<code_context>`.
 
+### O e-mail do colaborador — corrigido em 2026-08-14, DEPOIS da pesquisa
+
+> Esta seção foi acrescentada após a pesquisa da fase. Ela **corrige** tanto a leitura inicial
+> quanto o `131-RESEARCH.md`, que concluiu (errado) que seria preciso uma coluna nova em
+> `companies`. O researcher procurou por `gmail_colaborador` e não achou — o campo existe com
+> outro nome.
+
+**O que o campo é, na explicação do usuário:** um e-mail que a **ECF cria**, o cliente cadastra
+como colaborador na conta de vendedor dele no Mercado Livre, e é assim que a ECF ganha acesso
+para operar. É dado de uso interno da ECF, pertence à ficha da empresa, e nasce na etapa
+administrativa.
+
+**O campo JÁ EXISTE — não há migration nesta fase.** Três lugares carregam conceitos parecidos e
+o plano NÃO pode criar um quarto:
+
+| Onde | O que é | Papel nesta fase |
+|---|---|---|
+| **`companies.email_colaborador`** | **O campo certo.** Já existe, já é editável em `CompanyController`, e o `HubspotWebhookController` (~linha 957) já o trata como pendência (`sem_email_colaborador`) | **É este que a ADM-01 preenche na tela nova** |
+| `mlb_implementacoes.gmail_colaborador` | Onboarding do **Polos** — outro fluxo, e Polos é isento de contrato (D9 da milestone) | **É este que a ADM-03 remove** do `NovaEmpresa.jsx` (linha ~331, dentro do bloco condicional de polo) |
+| `mlb_empresas.gmail` | Módulo MLB | Não tocar |
+
+⚠️ [`NovaEmpresa.jsx:51`](../../../resources/js/Pages/Comercial/NovaEmpresa.jsx) já documenta que
+*"o email_colaborador não é dado captado pelo Comercial"*. O campo foi removido do wizard do
+Comercial na quick task **`260805-eqk`**, com comentário no código: *"segue editável só no form
+admin de `/companies`"*.
+
+- **D-12: A ADM-03 JÁ ESTÁ CUMPRIDA — não há trabalho para ela nesta fase.** O requisito pedia que
+  o campo saísse do formulário do Comercial na mesma entrega em que o Administrativo ganhasse onde
+  preenchê-lo. A primeira metade aconteceu antes (quick `260805-eqk`); esta fase entrega a segunda
+  (o campo na tela nova, ADM-01). **O risco que a ADM-03 existia para evitar — uma janela em que
+  ninguém consegue cadastrar o dado — não se materializa**, porque `email_colaborador` continuou
+  editável em `/companies` esse tempo todo.
+  ⚠️ **O `gmail_colaborador` do Polos FICA onde está.** Ele segue no formulário do Comercial, dentro
+  do bloco condicional de polo, e esta fase **não o toca** — é outro campo, de outro fluxo, para um
+  serviço isento de contrato. Removê-lo seria mexer em algo que ninguém pediu.
+  O plano deve marcar ADM-03 como atendida com esta justificativa, **não** implementar remoção
+  nenhuma.
+
+- **D-11: A falta do `email_colaborador` NÃO impede gerar o contrato.** Ela aparece como pendência
+  destacada na tela, mas o botão "Gerar contrato" segue liberado se o resto estiver completo.
+  Motivo: o contrato e o acesso à conta do Mercado Livre são coisas diferentes — travar um pelo
+  outro criaria um bloqueio que o negócio não pede.
+  ⚠️ **Consequência direta para o plano: `email_colaborador` NÃO entra em
+  `ContratoDadosMinimosService::faltantes()`**, que é especificamente "o que falta para gerar
+  contrato". Se entrar lá, desabilita o botão e viola esta decisão.
+  Recusados: bloquear (garantiria que ninguém emite contrato de empresa que não dá para operar,
+  mas mistura dois assuntos) e seção separada com bloqueio parcial (ensinaria a diferença, mas
+  ainda travaria o botão).
+
+### As ações do contrato, depois das medições de 2026-08-14
+
+> Esta seção foi acrescentada DEPOIS da pesquisa e das sondagens contra a sandbox. Ela **reduz o
+> escopo** do que a tela pode oferecer — e o motivo é a API da Clicksign, não o projeto.
+
+**Duas das três ações prometidas não existem na API v3. Medido, não deduzido:**
+
+| Ação | Requisito | Veredito medido |
+|---|---|---|
+| Reenviar notificação | CLICK-07 | ✅ **Funciona.** Corrigida em 2026-08-14 (quick `260814-d9s`) — antes fazia POST sem corpo. ⚠️ 429 é resposta ESPERADA, em texto puro |
+| Corrigir e-mail do signatário | CLICK-09 | ⛔ **Não existe.** `PATCH` e `PUT` em `/envelopes/{id}/signers/{signerId}` → **404** (HTML genérico de rota inexistente, não o 404 JSON:API) |
+| Cancelar contrato em andamento | CLICK-10 | ⛔ **Não existe caminho.** `DELETE` → **403 forbidden** em `running` (funciona só em `draft`); `POST /cancel` → **404**; `PATCH status:"canceled"` → **400** com a mensagem da própria API: **"status deve estar em: draft, running"** |
+
+**Mas o cancelamento acontece:** a Fase 129 capturou webhook com evento `cancel` e o
+`ContratoAssinatura` tem o estado `cancelado`. A conclusão é que **cancelar é operação de painel**,
+igual assinar — o sistema não cancela, ele **fica sabendo** que alguém cancelou.
+
+- **D-13: A tela registra o motivo aqui e instrui a cancelar lá.** O Administrativo informa o
+  motivo, a tela grava **autor + motivo + data** e marca o contrato como *cancelamento solicitado*,
+  e então instrui a concluir no painel da Clicksign. Quando o webhook de `cancel` chegar, o estado
+  fecha sozinho.
+  Motivo: o valor real do CLICK-10 é *"informando o motivo"* — a prestação de contas de quem mandou
+  cancelar e por quê. Isso o projeto consegue entregar mesmo sem a API permitir o ato.
+  Recusados: só explicar e mandar para o painel (perde o registro de motivo e autor, que é
+  justamente o que o requisito pede) e tirar CLICK-10 da fase (deixaria o cancelamento sem
+  rastro nenhum no sistema).
+  ⚠️ **Consequência para o plano:** provavelmente exige uma coluna nova para o motivo/autor do
+  cancelamento solicitado (não existe hoje) e um estado intermediário na tela. O planejamento
+  decide a forma, respeitando as armadilhas de migration do projeto.
+
+- **D-14: O RAMO B do UI-SPEC é o que vale para CLICK-09.** Como não existe "corrigir e-mail", a
+  D-07 simplifica: corrigir o e-mail e trocar a pessoa **colapsam no mesmo caminho** — cancelar e
+  reemitir. A bifurcação de duas opções do RAMO A não é construída.
+
 ### Claude's Discretion
 
 Ficam a critério do planejamento e do UI-SPEC: a redação exata dos 7 rótulos da D-04, o layout da

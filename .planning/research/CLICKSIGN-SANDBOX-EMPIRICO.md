@@ -764,3 +764,56 @@ teste da conta sandbox, se alguém precisar reconferir.
 
 Credenciais do sandbox estão no `.env` local (gitignored). O `.env.example` traz as chaves vazias
 com o aviso do `Bearer`.
+
+---
+
+## 15. Operações que a v3 NÃO permite (medido 2026-08-14, pesquisa da Fase 131)
+
+Três medições contra a sandbox, com envelope real em `running`
+(`f010d235-…`, 4 signatários, criado e ativado pela rodada de gates da Fase 130).
+Sandbox confirmado antes de cada chamada (`env=sandbox` **e** `base_url` contendo
+`sandbox.clicksign.com`). Nenhum token, secret ou header colado aqui.
+
+### 15.1 Corrigir e-mail de signatário — NÃO EXISTE (gate #8, fechado)
+
+```
+PATCH /envelopes/{id}/signers/{signerId}   -> 404
+PUT   /envelopes/{id}/signers/{signerId}   -> 404
+```
+
+⚠️ **O 404 aqui NÃO é o 404 JSON:API da Clicksign** (`{"errors":[...]}`) — é a **página HTML
+genérica** de rota inexistente do site. Esse é o mesmo sinal já visto quando a combinação
+verbo+rota simplesmente não está na tabela de rotas da API. Distinguir os dois 404 importa:
+o JSON:API significa "recurso não encontrado", o HTML significa "essa rota não existe".
+
+**Consequência de produto:** não há como corrigir o e-mail de um signatário depois do envio.
+Corrigir e-mail e trocar a pessoa que assina colapsam no mesmo caminho: cancelar e reemitir.
+
+### 15.2 Cancelar envelope em `running` — NÃO EXISTE CAMINHO
+
+```
+DELETE /envelopes/{id}                      -> 403 forbidden   (funciona em draft, proibido em running)
+POST   /envelopes/{id}/cancel               -> 404             (HTML genérico — rota não existe)
+PATCH  /envelopes/{id}  status:"canceled"   -> 400
+        └─ corpo: "status deve estar em: draft, running"
+```
+
+A mensagem do 400 é a evidência mais forte: **os únicos status que a API aceita DEFINIR são
+`draft` e `running`.** Não existe transição para `canceled` por API.
+
+⚠️ **Mas o cancelamento acontece** — a Fase 129 capturou webhook com evento `cancel`
+(`129-GATE.md`) e `ContratoAssinatura` tem o estado `cancelado`. A leitura que sobra:
+**cancelar é operação de PAINEL, igual assinar.** O sistema não cancela; ele fica sabendo.
+
+Isso ecoa o achado 2 do `129-GATE.md` (a v3 não expõe link de assinatura) e o bloqueio de
+assinatura do `130-GATE.md`: **a v3 é uma API de CRIAÇÃO e CONSULTA, não de operação do ciclo
+de vida.** Qualquer fase futura que prometer "o usuário faz X pela nossa tela" deve medir antes,
+não assumir que existe endpoint.
+
+### 15.3 O que FUNCIONA nesta família
+
+| Operação | Estado | Referência |
+|---|---|---|
+| Reenviar notificação | ✅ funciona | §14 — corpo JSON:API medido; 429 anti-spam é resposta ESPERADA, em texto puro |
+| Cancelar envelope em `draft` | ✅ funciona | `DELETE /envelopes/{id}` |
+| Ativar envelope | ✅ funciona | `ativarEnvelope()` — ⚠️ pela API; a tela do sandbox NÃO ativa envelope gerado por modelo (`130-GATE.md`) |
