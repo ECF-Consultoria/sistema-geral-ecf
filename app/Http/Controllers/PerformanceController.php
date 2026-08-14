@@ -334,15 +334,20 @@ class PerformanceController extends Controller
             $ranking = $ranking->filter(fn ($r) => $r['cargo_slug'] === $cargo)->values();
         }
 
-        // Meses disponíveis pro filtro — últimos 6 meses (mês corrente +
-        // 5 anteriores), permitindo consulta histórica pra auditar bônus.
+        // Meses disponíveis pro filtro — últimas 6 competências FECHADAS,
+        // permitindo consulta histórica pra auditar bônus.
+        //
+        // Spec 2026-08-14 (item 1) — o mês corrente saiu da lista pelo mesmo
+        // motivo do `/performance/{id}`: com o rótulo "acompanhamento · Ref.
+        // competência", a competência julho vira "agosto/2026" e colidiria com
+        // o próprio agosto em curso, que traz números parciais.
         $mesesDisponiveis = [];
-        for ($i = 0; $i < 6; $i++) {
+        for ($i = 1; $i <= 6; $i++) {
             $m = $mesCorrente->copy()->subMonths($i);
             $mesesDisponiveis[] = [
                 'value' => $m->format('Y-m'),
                 'label' => mb_strtolower($m->translatedFormat('F/Y')),
-                'em_curso' => $m->equalTo($mesCorrente),
+                'em_curso' => false,
             ];
         }
 
@@ -1256,9 +1261,24 @@ class PerformanceController extends Controller
             // Mesmo padrão já usado em indexPolos() (linha ~994).
             $mesReferencia = Carbon::createFromFormat('Y-m-d', $mesQuery . '-01')->startOfMonth();
             $periodo       = $this->periodResolver->resolve(['period_key' => $mesReferencia->format('Y-m')]);
-        } else {
+        } elseif ($modo === 'em_curso') {
+            // Porta preservada: quem quiser os números PARCIAIS do mês corrente
+            // ainda chega por `?modo=em_curso`. Ela saiu do seletor (abaixo),
+            // não do sistema.
             $mesReferencia = $mesCorrente->copy();
             $periodo       = $this->periodResolver->resolve(['period_key' => 'current_month']);
+        } else {
+            // Spec 2026-08-14 (item 1) — a tela abre na última competência
+            // FECHADA, não no mês corrente.
+            //
+            // Motivo: com o rótulo "mês de acompanhamento · Ref. competência", a
+            // competência julho se chama "agosto/2026 · Ref. julho/2026" — e o
+            // mês corrente também é agosto. As duas entradas apareciam como
+            // "agosto de 2026" no mesmo seletor, uma delas com números parciais
+            // e NPS no piso 1,0. Estando em agosto, o que se acompanha é julho:
+            // é essa a entrada que faz sentido abrir.
+            $periodo       = $this->periodResolver->resolve(['period_key' => 'last_closed_month']);
+            $mesReferencia = Carbon::parse($periodo['bonus_competence_month'] . '-01')->startOfMonth();
         }
 
         $ehMesEmCurso = $mesReferencia->equalTo($mesCorrente);
@@ -1395,14 +1415,23 @@ class PerformanceController extends Controller
         // (fechado ou em curso) — a limitação era só da lista oferecida.
         // Marcar `em_curso` deixa o mês corrente auto-explicativo, que é o que
         // o segmento "Em curso" fazia.
+        // Spec 2026-08-14 (item 1) — a lista começa na competência FECHADA mais
+        // recente ($i = 1), nunca no mês corrente.
+        //
+        // Com o rótulo "mês de acompanhamento · Ref. competência", a competência
+        // julho vira "agosto/2026 · Ref. julho/2026" — e o mês corrente também é
+        // agosto. As duas entravam no mesmo seletor como "agosto de 2026", uma
+        // com números parciais e NPS no piso 1,0. A colisão é estrutural
+        // enquanto as duas convivirem na lista; some tirando a parcial dali.
+        // Ela continua acessível por `?modo=em_curso` (ver resolverPeriodo()).
         $mesCorrenteShow   = Carbon::now()->startOfMonth();
         $mesesDisponiveis  = [];
-        for ($i = 0; $i < 6; $i++) {
+        for ($i = 1; $i <= 6; $i++) {
             $m = $mesCorrenteShow->copy()->subMonthsNoOverflow($i);
             $mesesDisponiveis[] = [
                 'value'    => $m->format('Y-m'),
                 'label'    => mb_strtolower($m->translatedFormat('F/Y')),
-                'em_curso' => $m->equalTo($mesCorrenteShow),
+                'em_curso' => false,
             ];
         }
 
