@@ -4,13 +4,13 @@ milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
 stopped_at: Phase 131 UI-SPEC approved
-last_updated: "2026-08-14T15:36:54.714Z"
-last_activity: 2026-08-14 -- Phase 131 planning complete
+last_updated: "2026-08-14T16:40:09.123Z"
+last_activity: 2026-08-14
 progress:
   total_phases: 12
   completed_phases: 8
   total_plans: 66
-  completed_plans: 57
+  completed_plans: 58
   percent: 67
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 130 — Rede de segurança — reconciliação, alerta e liberação manual (v22.0)
+**Current focus:** Phase 131 — Tela administrativa — completar cadastro + contratos + badge Comercial + permissões (v22.0)
 
 ## Current Position
 
-Phase: 130 (Rede de segurança — reconciliação, alerta e liberação manual (v22.0)) — EXECUTING
-Plan: 7 of 7
+Phase: 131 (Tela administrativa — completar cadastro + contratos + badge Comercial + permissões (v22.0)) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
   considerado fechado — ver `130-GATE.md`. SC2 tem a metade técnica provada por reconsulta ao
   banco; SC1 e SC3 continuam pendentes de ação humana real em navegador.
@@ -34,7 +34,7 @@ Status: Ready to execute
   Ver "Decisões do Plan 129-07" abaixo e o checkpoint devolvido ao usuário.
 ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
 dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
-Last activity: 2026-08-14 -- Phase 131 planning complete
+Last activity: 2026-08-14
 
 **Plano 130-07 executado em 2026-08-13** (commits `ba7cfdb6`/`e232c70a`): os 3 gates humanos em
 sandbox (SC1/SC2/SC3 do ROADMAP + gate empírico #10) NÃO puderam ser aprovados nesta sessão —
@@ -477,6 +477,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 130-05 P05 | 25min | 2 tasks | 4 files |
 | Phase 130 P06 | 20min | 2 tasks | 4 files |
 | Phase 130 P07 | 90min | 3 tasks | 1 files |
+| Phase 131 P01 | 40min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -1207,7 +1208,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-14T14:01:27.352Z
+Last session: 2026-08-14T16:40:09.087Z
 Stopped at: Phase 131 UI-SPEC approved
   assinatura/recusa contra o sandbox) devolvida ao usuário como checkpoint aberto
 
