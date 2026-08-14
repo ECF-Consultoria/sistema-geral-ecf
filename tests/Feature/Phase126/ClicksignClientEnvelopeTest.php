@@ -210,6 +210,61 @@ class ClicksignClientEnvelopeTest extends TestCase
         $this->assertSame('sign', $eventos[0]['attributes']['name']);
     }
 
+    /**
+     * O teste que faltava (quick 260814-d9s): o único teste anterior deste
+     * método fazia `Http::fake()` de 429 e nunca afirmava nada sobre o CORPO
+     * enviado — um `POST` vazio (o bug original) passava despercebido e
+     * quebrava contra a API real com "data deve ser informado(a)". Corpo
+     * medido em `CLICKSIGN-SANDBOX-EMPIRICO.md` §14: `data.type =
+     * "notifications"` com `data.attributes` presente.
+     */
+    #[Test]
+    public function reenviar_notificacao_envia_corpo_jsonapi_com_data_type_notifications(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes/*/signers/*/notifications' => Http::response(ClicksignSandboxFixtures::notificacaoEnviada(), 201),
+        ]);
+
+        $this->client()->reenviarNotificacao(self::ENVELOPE_ID, self::SIGNER_ID);
+
+        Http::assertSent(function ($request) {
+            $data = $request['data'] ?? null;
+
+            return $data !== null
+                && ($data['type'] ?? null) === 'notifications'
+                && array_key_exists('attributes', $data);
+        });
+    }
+
+    #[Test]
+    public function reenviar_notificacao_2xx_devolve_o_bloco_data_desembrulhado(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes/*/signers/*/notifications' => Http::response(ClicksignSandboxFixtures::notificacaoEnviada(), 201),
+        ]);
+
+        $data = $this->client()->reenviarNotificacao(self::ENVELOPE_ID, self::SIGNER_ID);
+
+        $this->assertSame('notifications', $data['type']);
+        $this->assertTrue($data['attributes']['summary'][0]['notified']);
+    }
+
+    /**
+     * O endpoint pode responder 2xx sem bloco `data` (ex.: `204`) — o método
+     * não deve quebrar, e sim devolver array vazio.
+     */
+    #[Test]
+    public function reenviar_notificacao_2xx_sem_bloco_data_devolve_array_vazio(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes/*/signers/*/notifications' => Http::response('', 204),
+        ]);
+
+        $data = $this->client()->reenviarNotificacao(self::ENVELOPE_ID, self::SIGNER_ID);
+
+        $this->assertSame([], $data);
+    }
+
     #[Test]
     public function reenviar_notificacao_429_nao_retenta_e_expoe_status_429(): void
     {
