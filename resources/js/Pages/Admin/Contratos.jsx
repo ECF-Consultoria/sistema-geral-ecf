@@ -1,15 +1,216 @@
 import AppLayout from '@/Layouts/AppLayout';
+import { Card, CardContent } from '@/Components/ui/card';
+import { Input } from '@/Components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
+import { Link, router } from '@inertiajs/react';
+import { useState, useRef, useEffect } from 'react';
+import { FileSignature, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+    CONTRATO_STATUS_LABELS,
+    classeContrato,
+    rotuloContrato,
+    formatarHaDias,
+    SEM_CONTRATO,
+    SEM_CONTRATO_LABEL,
+} from '@/lib/contratoStatus';
 
-// Fase 131 Plano 03 (Task 1) — placeholder MÍNIMO. Existe aqui só para o
-// Inertia conseguir resolver o componente e o manifest do Vite ter a
-// entrada (sem isso o teste de gate da Task 1 nem chega a 200 — a
-// resolução da view acontece antes do componente renderizar). A tela real
-// (grid de resumo, tabela, busca, paginação) é construída na Task 2 deste
-// mesmo plano, no mesmo arquivo.
-export default function Contratos() {
+/**
+ * Admin/Contratos.jsx — Fase 131 Plano 03 (UI-01, D-01, D-04, D-09).
+ *
+ * A lista de contratos do Administrativo: onde ele enxerga o estado real de
+ * cada contrato sem abrir o banco — filtro por situação, busca por empresa
+ * e resumo com a contagem de cada uma das 7 situações (D-04).
+ *
+ * Ponto focal (131-UI-SPEC.md): o grid de resumo por situação, no topo —
+ * responde "onde as coisas estão paradas" antes de o Administrativo ler
+ * uma única linha, e também FUNCIONA como filtro (clique liga/desliga).
+ *
+ * ⚠️ A linha desta tela ainda NÃO leva a lugar nenhum: a rota do detalhe da
+ * empresa (plano 131-04) ainda não existe. Um link para ela agora faria o
+ * Ziggy lançar e derrubaria a tela inteira — a coluna "Ações" fica
+ * preparada e vazia até lá.
+ */
+export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contrato_count = 0 }) {
+    const [qInput, setQInput] = useState(filters.q || '');
+    const debounceRef = useRef(null);
+
+    const applyFilter = (key, value) => {
+        router.get(route('admin.contratos.index'), {
+            ...filters,
+            [key]: value || undefined,
+        }, { preserveState: true, preserveScroll: true });
+    };
+
+    const onSearchChange = (e) => {
+        const v = e.target.value;
+        setQInput(v);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => applyFilter('q', v), 400);
+    };
+
+    // Sincroniza qInput quando filters.q mudar (ex: voltar via back button)
+    useEffect(() => {
+        setQInput(filters.q || '');
+    }, [filters.q]);
+
+    const linhasData = linhas?.data ?? [];
+    const semContratoAtivo = filters.situacao === SEM_CONTRATO;
+
     return (
         <AppLayout title="Adm · Contratos">
-            <main className="p-6" />
+            <main className="p-6">
+                <div className="space-y-4">
+                    <h1 className="text-xl font-semibold font-display text-white flex items-center gap-2">
+                        <FileSignature size={20} className="text-ecf-yellow" />
+                        Contratos
+                    </h1>
+
+                    {/* Ponto focal — grid de resumo por situação, 7 estados (D-04),
+                        também funciona como filtro. NÃO copiar o número de colunas
+                        do grid de pendências do Comercial (lá são 8 pendências,
+                        aqui são 7 estados — a contagem de colunas é diferente de
+                        propósito). */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
+                        {Object.entries(CONTRATO_STATUS_LABELS).map(([status, label]) => {
+                            const active = filters.situacao === status;
+                            const count = resumo?.[status] ?? 0;
+                            return (
+                                <button
+                                    key={status}
+                                    type="button"
+                                    onClick={() => applyFilter('situacao', active ? null : status)}
+                                    className={cn(
+                                        'rounded-xl border px-3 py-3 text-left transition-colors',
+                                        active
+                                            ? 'border-ecf-yellow bg-ecf-yellow/[0.06]'
+                                            : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04]'
+                                    )}
+                                >
+                                    <div className="text-2xl font-bold tabular-nums text-white">{count}</div>
+                                    <div className="text-[12px] text-white/60 mt-0.5">{label}</div>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Linha do estado só-de-exibição (sem contrato ainda) — NÃO é
+                        um oitavo card do grid acima (D-04 trava o resumo em 7). */}
+                    <button
+                        type="button"
+                        onClick={() => applyFilter('situacao', semContratoAtivo ? null : SEM_CONTRATO)}
+                        className={cn(
+                            'block text-left text-[13px] transition-colors',
+                            semContratoAtivo ? 'text-white font-semibold' : 'text-white/50 hover:text-white/80'
+                        )}
+                    >
+                        {sem_contrato_count} empresa{sem_contrato_count === 1 ? '' : 's'} aguardando o Administrativo
+                    </button>
+
+                    {/* Busca por empresa */}
+                    <div className="relative max-w-md">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+                        <Input
+                            value={qInput}
+                            onChange={onSearchChange}
+                            placeholder="Buscar por empresa..."
+                            className="pl-9 focus:border-ecf-yellow/40"
+                        />
+                    </div>
+
+                    {/* Tabela compacta */}
+                    <Card>
+                        <CardContent className="p-0">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Empresa</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Serviço</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Situação</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Parado há</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Ações</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {linhasData.length === 0 && (
+                                        <TableRow>
+                                            <TableCell colSpan={5} className="text-center py-10">
+                                                {filters.q ? (
+                                                    <p className="text-[13px] text-white/40">
+                                                        Nenhuma empresa encontrada para "{filters.q}". Revise o termo buscado ou limpe o filtro de situação.
+                                                    </p>
+                                                ) : (
+                                                    <>
+                                                        <p className="text-[13px] text-white/60 font-semibold">Nenhum contrato encontrado</p>
+                                                        <p className="text-[12px] text-white/30 mt-1">
+                                                            Ainda não há contratos administrativos registrados. Eles aparecem aqui assim que uma empresa completa o cadastro e o contrato é gerado.
+                                                        </p>
+                                                    </>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                    {linhasData.map((linha, idx) => (
+                                        <TableRow key={`${linha.company_id}-${linha.servico_id}-${idx}`}>
+                                            <TableCell className="text-[13px] font-medium text-white/85">{linha.company_nome}</TableCell>
+                                            <TableCell className="text-[13px] text-white/60">{linha.servico_nome}</TableCell>
+                                            <TableCell>
+                                                <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContrato(linha.status))}>
+                                                    {linha.status === SEM_CONTRATO ? SEM_CONTRATO_LABEL : rotuloContrato(linha.status)}
+                                                </span>
+                                            </TableCell>
+                                            <TableCell className="text-[13px] text-white/50">{formatarHaDias(linha.dias_parado)}</TableCell>
+                                            {/* Ações: preparada e vazia — o link para o detalhe entra
+                                                junto com o plano 131-04, quando a rota existir. */}
+                                            <TableCell className="text-[13px] text-white/20">—</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+
+                    <Paginator paginator={linhas} />
+                </div>
+            </main>
         </AppLayout>
+    );
+}
+
+// ─── Paginação Inertia (forward/back simples) — molde de Comercial/EmpresasListagem.jsx ─
+function Paginator({ paginator }) {
+    if (!paginator || paginator.last_page <= 1) return null;
+    const prev = paginator.prev_page_url;
+    const next = paginator.next_page_url;
+    return (
+        <div className="flex items-center justify-between border-t border-white/[0.06] px-4 py-2 bg-white/[0.02]">
+            <span className="text-white/40 text-[12px]">
+                Página {paginator.current_page} de {paginator.last_page} — {paginator.total} contratos
+            </span>
+            <div className="flex items-center gap-1">
+                <Link
+                    href={prev || '#'}
+                    preserveScroll
+                    preserveState
+                    className={cn(
+                        'inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-[12px] text-white/70 hover:bg-white/[0.05]',
+                        !prev && 'opacity-30 pointer-events-none',
+                    )}
+                >
+                    <ChevronLeft size={13} /> Anterior
+                </Link>
+                <Link
+                    href={next || '#'}
+                    preserveScroll
+                    preserveState
+                    className={cn(
+                        'inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-[12px] text-white/70 hover:bg-white/[0.05]',
+                        !next && 'opacity-30 pointer-events-none',
+                    )}
+                >
+                    Próxima <ChevronRight size={13} />
+                </Link>
+            </div>
+        </div>
     );
 }
