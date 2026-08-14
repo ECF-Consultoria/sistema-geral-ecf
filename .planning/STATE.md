@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: Plano 130-07 executado, mas NENHUM dos 3 Success Criteria (SC1/SC2/SC3) pode ser
-stopped_at: Plano 130-07 executado - SC1/SC3 pendentes, SC2 parcial (ver 130-GATE.md)
-last_updated: "2026-08-13T20:34:07.663Z"
-last_activity: 2026-08-13
+stopped_at: Phase 131 context gathered
+last_updated: "2026-08-14T13:47:45.200Z"
+last_activity: "2026-08-14 - Quick task 260814-d9s: corrigido o reenvio de notificacao da Clicksign (POST sem corpo, quebrado tambem em producao); corpo medido e confirmado por 2xx"
 progress:
   total_phases: 12
   completed_phases: 8
@@ -1207,8 +1207,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-13T20:34:07.598Z
-Stopped at: Plano 130-07 executado - SC1/SC3 pendentes, SC2 parcial (ver 130-GATE.md)
+Last session: 2026-08-14T13:47:45.149Z
+Stopped at: Phase 131 context gathered
   assinatura/recusa contra o sandbox) devolvida ao usuário como checkpoint aberto
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
