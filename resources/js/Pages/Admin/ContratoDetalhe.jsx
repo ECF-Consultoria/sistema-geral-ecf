@@ -8,19 +8,35 @@ import { Textarea } from '@/Components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
-import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { classeContrato, rotuloContrato, formatarHaDias } from '@/lib/contratoStatus';
 
+// D-11 (herdada da Fase 130, absorvida no plano 131-06) — causas de
+// ContratosPresosService que merecem a faixa de destaque vermelha ANTES de
+// confirmar a liberação manual. Espelhado à mão em JS, mesma convenção do
+// resto do projeto (não há enum compartilhado entre PHP e JS).
+const CAUSAS_DE_DESTAQUE = ['recusado_pelo_cliente', 'prazo_expirado', 'cancelado', 'erro_tecnico'];
+
+const CAUSA_DESTAQUE_TEXTO = {
+    recusado_pelo_cliente: 'Este contrato foi RECUSADO pelo cliente. Você ainda pode liberar a empresa, mas a liberação fica registrada com o seu nome e o motivo.',
+    prazo_expirado:        'O PRAZO deste contrato EXPIROU sem todas as assinaturas. Você ainda pode liberar a empresa, mas a liberação fica registrada com o seu nome e o motivo.',
+    cancelado:              'Este contrato foi CANCELADO. Você ainda pode liberar a empresa, mas a liberação fica registrada com o seu nome e o motivo.',
+    erro_tecnico:            'Houve um ERRO TÉCNICO na integração com a Clicksign — ninguém recusou nada. Você ainda pode liberar a empresa, mas a liberação fica registrada com o seu nome e o motivo.',
+};
+
 /**
  * Admin/ContratoDetalhe.jsx — Fase 131 Planos 04 (D-01/D-03/D-11, ADM-01/02,
- * UI-02) e 05 (CLICK-07/CLICK-09/CLICK-10, D-05/D-13/D-14, UI-04/UI-06).
+ * UI-02), 05 (CLICK-07/CLICK-09/CLICK-10, D-05/D-13/D-14, UI-04/UI-06) e 06
+ * (D-10 — absorve a liberação manual da Fase 130).
  *
  * A tela de detalhe da empresa (D-01): página cheia (não painel lateral, não
  * edição inline) onde o Administrativo completa o que o Comercial deixou
  * pela metade (ADM-01/ADM-02), dispara a geração do contrato (UI-02) e — o
- * que este plano acrescenta — age sobre um contrato já enviado exatamente
- * como a API da Clicksign permite, nem mais, nem menos.
+ * que os planos seguintes acrescentam — age sobre um contrato já enviado
+ * exatamente como a API da Clicksign permite, nem mais, nem menos, e libera
+ * manualmente uma empresa quando a rede de segurança da Fase 130 não
+ * resolveu sozinha.
  *
  * ⛔ O que esta tela NÃO oferece, e por quê (medido em 2026-08-14,
  * `CLICKSIGN-SANDBOX-EMPIRICO.md` §15): não existe correção de e-mail de
@@ -39,6 +55,7 @@ export default function ContratoDetalhe({
     pode_gerar_contrato = false,
     motivo_bloqueio = null,
     painel_clicksign_url = null,
+    motivos_manuais = {},
     contratos = [],
 }) {
     const { flash } = usePage().props;
@@ -148,6 +165,45 @@ export default function ContratoDetalhe({
         setTentativasErro((atual) => ({ ...atual, [contratoId]: (atual[contratoId] ?? 0) + 1 }));
         gerarContrato();
     }
+
+    // ─── D-10 — Liberar manualmente (absorve a Fase 130, preserva D-11) ──
+    // Reusa literalmente o texto já validado em
+    // Admin/ContratosLiberacaoManual.jsx (tela removida por este plano).
+    const liberarForm = useForm({
+        company_id:              company.id,
+        servico_id:              '',
+        contrato_assinatura_id:  '',
+        motivo_slug:             '',
+        motivo_detalhe:          '',
+    });
+    const [liberarContratoId, setLiberarContratoId] = useState(null);
+
+    function abrirLiberacao(contrato) {
+        liberarForm.clearErrors();
+        liberarForm.setData({
+            company_id:             company.id,
+            servico_id:             contrato.servico_id,
+            contrato_assinatura_id: contrato.id,
+            motivo_slug:            '',
+            motivo_detalhe:         '',
+        });
+        setAjustarContratoId(null);
+        setLiberarContratoId(contrato.id);
+    }
+
+    function confirmarLiberacao(e) {
+        e.preventDefault();
+        liberarForm.post(route('admin.contratos.liberacao-manual'), {
+            preserveScroll: true,
+            onSuccess: () => setLiberarContratoId(null),
+        });
+    }
+
+    const contratoParaLiberar        = contratos.find((c) => c.id === liberarContratoId) ?? null;
+    const mostrarDestaqueLiberacao   = contratoParaLiberar && CAUSAS_DE_DESTAQUE.includes(contratoParaLiberar.causa);
+    const podeConfirmarLiberacao     = Boolean(liberarForm.data.motivo_slug)
+        && liberarForm.data.motivo_detalhe.trim().length >= 5
+        && !liberarForm.processing;
 
     return (
         <AppLayout title={`Adm · Contrato — ${company.name}`}>
@@ -441,7 +497,19 @@ export default function ContratoDetalhe({
                                                                     {gerarForm.processing ? 'Gerando…' : 'Tentar novamente'}
                                                                 </button>
                                                             )}
-                                                            {signatariosPendentes.length === 0 && !podeCancelar && c.status !== 'erro' && (
+                                                            {/* D-10 — sempre disponível quando ainda não há liberação
+                                                                registrada, qualquer que seja o status do contrato. */}
+                                                            {!c.ja_liberado && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => abrirLiberacao(c)}
+                                                                    className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-ecf-yellow/70 hover:text-ecf-yellow hover:bg-ecf-yellow/[0.08] text-[12px] transition-colors"
+                                                                >
+                                                                    <Unlock size={11} />
+                                                                    Liberar manualmente
+                                                                </button>
+                                                            )}
+                                                            {signatariosPendentes.length === 0 && !podeCancelar && c.status !== 'erro' && c.ja_liberado && (
                                                                 <span className="text-[13px] text-white/20">—</span>
                                                             )}
                                                         </div>
@@ -574,6 +642,67 @@ export default function ContratoDetalhe({
                                 {cancelarForm.processing
                                     ? 'Registrando…'
                                     : (painel_clicksign_url ? 'Registrar e ir para a Clicksign' : 'Registrar cancelamento')}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* D-10 — Liberar manualmente (absorve a Fase 130, preserva D-11). */}
+            <Dialog open={liberarContratoId !== null} onOpenChange={(v) => { if (!v) setLiberarContratoId(null); }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Liberar manualmente</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={confirmarLiberacao} className="space-y-3">
+                        {/* D-11 — faixa de destaque obrigatória antes do botão de confirmar. */}
+                        {mostrarDestaqueLiberacao && (
+                            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg border border-red-500/30 bg-red-500/[0.06] text-red-300 text-[13px] font-semibold">
+                                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                                <span>{CAUSA_DESTAQUE_TEXTO[contratoParaLiberar.causa]}</span>
+                            </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                            <Label>Motivo</Label>
+                            <select
+                                value={liberarForm.data.motivo_slug}
+                                onChange={(e) => liberarForm.setData('motivo_slug', e.target.value)}
+                                className="w-full h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 transition-colors"
+                            >
+                                <option value="">Selecione um motivo...</option>
+                                {Object.entries(motivos_manuais || {}).map(([slug, rotulo]) => (
+                                    <option key={slug} value={slug}>{rotulo}</option>
+                                ))}
+                            </select>
+                            {liberarForm.errors.motivo_slug && (
+                                <p className="text-red-400 text-[11px]">{liberarForm.errors.motivo_slug}</p>
+                            )}
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label>Detalhe (obrigatório)</Label>
+                            <Textarea
+                                rows={3}
+                                placeholder="Explique o que aconteceu, mesmo que seja um resumo curto."
+                                value={liberarForm.data.motivo_detalhe}
+                                onChange={(e) => liberarForm.setData('motivo_detalhe', e.target.value)}
+                            />
+                            {liberarForm.errors.motivo_detalhe && (
+                                <p className="text-red-400 text-[11px]">{liberarForm.errors.motivo_detalhe}</p>
+                            )}
+                        </div>
+
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setLiberarContratoId(null)}>
+                                Voltar
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={!podeConfirmarLiberacao}
+                                className="bg-ecf-yellow text-black hover:bg-ecf-yellow/90"
+                            >
+                                {liberarForm.processing ? 'Liberando…' : 'Confirmar liberação'}
                             </Button>
                         </DialogFooter>
                     </form>
