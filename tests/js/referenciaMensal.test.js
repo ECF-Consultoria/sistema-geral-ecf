@@ -9,11 +9,16 @@ import { test } from 'node:test';
 
 import {
     mesAcompanhamento,
+    mesExibicao,
+    competenciaEmCurso,
     rotuloAcompanhamento,
     rotuloReferencia,
     rotuloMesReferencia,
     rotuloMesReferenciaCurto,
 } from '../../resources/js/lib/referenciaMensal.js';
+
+// "Hoje" fixo: 14 de agosto de 2026 — a competência corrente é agosto.
+const HOJE = new Date(2026, 7, 14);
 
 test('competência de julho é acompanhada em agosto', () => {
     const d = mesAcompanhamento('2026-07');
@@ -22,17 +27,32 @@ test('competência de julho é acompanhada em agosto', () => {
 });
 
 test('o exemplo da spec sai literal', () => {
-    assert.equal(rotuloAcompanhamento('2026-07'), 'agosto de 2026');
+    assert.equal(rotuloAcompanhamento('2026-07', HOJE), 'agosto de 2026');
     assert.equal(rotuloReferencia('2026-07'), 'julho de 2026');
-    assert.equal(rotuloMesReferencia('2026-07'), 'agosto de 2026 · Ref. julho de 2026');
+    assert.equal(rotuloMesReferencia('2026-07', { hoje: HOJE }), 'agosto de 2026 · Ref. julho de 2026');
+});
+
+// Regressão relatada em 2026-08-14: estando em agosto, o seletor oferecia
+// "setembro de 2026 · Ref. agosto de 2026" — um mês que ainda não começou. A
+// competência EM CURSO é acompanhada por ela mesma, e não ganha "Ref.".
+test('competência em curso não desloca e não ganha Ref.', () => {
+    assert.equal(competenciaEmCurso('2026-08', HOJE), true);
+    assert.equal(rotuloMesReferencia('2026-08', { hoje: HOJE }), 'agosto de 2026');
+    assert.equal(rotuloAcompanhamento('2026-08', HOJE), 'agosto de 2026');
+    assert.equal(mesExibicao('2026-08', HOJE).getMonth(), 7); // agosto, não setembro
+});
+
+test('competência fechada segue deslocando', () => {
+    assert.equal(competenciaEmCurso('2026-07', HOJE), false);
+    assert.equal(mesExibicao('2026-07', HOJE).getMonth(), 7); // acompanhada em agosto
 });
 
 test('aceita a competência com dia (YYYY-MM-DD), como vem do backend', () => {
-    assert.equal(rotuloMesReferencia('2026-07-01'), 'agosto de 2026 · Ref. julho de 2026');
+    assert.equal(rotuloMesReferencia('2026-07-01', { hoje: HOJE }), 'agosto de 2026 · Ref. julho de 2026');
 });
 
 test('dezembro vira janeiro do ano seguinte', () => {
-    assert.equal(rotuloMesReferencia('2026-12'), 'janeiro de 2027 · Ref. dezembro de 2026');
+    assert.equal(rotuloMesReferencia('2026-12', { hoje: HOJE }), 'janeiro de 2027 · Ref. dezembro de 2026');
 });
 
 test('mês de 31 dias não transborda (soma sempre a partir do dia 1º)', () => {

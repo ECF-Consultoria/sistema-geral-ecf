@@ -53,9 +53,37 @@ export function mesAcompanhamento(competenciaIso) {
     return new Date(d.getFullYear(), d.getMonth() + 1, 1);
 }
 
+/**
+ * A competência ainda está EM CURSO (é o mês corrente)?
+ *
+ * Corrigido em 2026-08-14, no mesmo dia: a primeira versão deslocava TODA
+ * competência em +1 e o seletor passou a oferecer "setembro de 2026 · Ref.
+ * agosto de 2026" — um mês que nem começou. O deslocamento existe porque o
+ * resultado de um mês fechado só é acompanhado no mês seguinte; enquanto a
+ * competência corre, quem a acompanha é ela mesma.
+ *
+ * @param {string} competenciaIso
+ * @param {Date}   [hoje] injetável para teste; por padrão, agora.
+ */
+export function competenciaEmCurso(competenciaIso, hoje = new Date()) {
+    const d = primeiroDia(competenciaIso);
+    if (!d) return false;
+    return d.getFullYear() === hoje.getFullYear() && d.getMonth() === hoje.getMonth();
+}
+
+/**
+ * Mês que a tela deve ANUNCIAR: o de acompanhamento quando a competência já
+ * fechou, e a própria competência enquanto ela corre.
+ */
+export function mesExibicao(competenciaIso, hoje = new Date()) {
+    return competenciaEmCurso(competenciaIso, hoje)
+        ? primeiroDia(competenciaIso)
+        : mesAcompanhamento(competenciaIso);
+}
+
 /** 'Agosto/2026' — o mês que a tela deve anunciar como título. */
-export function rotuloAcompanhamento(competenciaIso) {
-    return extenso(mesAcompanhamento(competenciaIso));
+export function rotuloAcompanhamento(competenciaIso, hoje = new Date()) {
+    return extenso(mesExibicao(competenciaIso, hoje));
 }
 
 /** 'Julho/2026' — a competência dos dados. */
@@ -69,11 +97,19 @@ export function rotuloReferencia(competenciaIso) {
  * @param {{curto?: boolean, separador?: string}} [opts]
  */
 export function rotuloMesReferencia(competenciaIso, opts = {}) {
-    const { curto: usarCurto = false, separador = ' · ' } = opts;
+    const { curto: usarCurto = false, separador = ' · ', hoje = new Date() } = opts;
     const comp = primeiroDia(competenciaIso);
     if (!comp) return '—';
 
     const fmt = usarCurto ? curto : extenso;
+
+    // Competência EM CURSO não ganha "Ref.": ela é o próprio mês que está
+    // sendo acompanhado, e anunciar o mês seguinte ofereceria um mês que ainda
+    // não começou ("setembro · Ref. agosto", estando em agosto).
+    if (competenciaEmCurso(competenciaIso, hoje)) {
+        return fmt(comp);
+    }
+
     return `${fmt(mesAcompanhamento(competenciaIso))}${separador}Ref. ${fmt(comp)}`;
 }
 
