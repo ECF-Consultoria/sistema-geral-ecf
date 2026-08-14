@@ -210,6 +210,23 @@ return [
         'api_user_email'   => env('CLICKSIGN_API_USER_EMAIL'),
         'max_upload_bytes' => env('CLICKSIGN_MAX_UPLOAD_BYTES', 20971520),
 
+        // Fase 131 Plano 131-01 (UI-05 do UI-SPEC, CLICK-10/D-13) — URL do
+        // PAINEL da Clicksign (onde a pessoa CONCLUI o cancelamento à mão,
+        // porque a API v3 não cancela envelope em andamento — medido em
+        // CLICKSIGN-SANDBOX-EMPIRICO.md §15.2). NÃO é a `base_url` da API.
+        // O CTA de confirmação do cancelamento (plano 131-05) promete
+        // "Registrar e ir para a Clicksign" — um rótulo que promete levar a
+        // um lugar precisa de fato levar, mesma régua que recusou "Cancelar
+        // contrato" para um botão que não cancela. Derivada do MESMO
+        // CLICKSIGN_ENV que decide a `base_url` acima; default aponta para o
+        // sandbox (nunca produção) — apontar errado por omissão não pode
+        // levar ninguém a mexer num contrato real por engano.
+        'painel_url' => env('CLICKSIGN_PAINEL_URL') ?: (
+            env('CLICKSIGN_ENV', 'sandbox') === 'producao'
+                ? 'https://app.clicksign.com'
+                : 'https://sandbox.clicksign.com'
+        ),
+
         // Fase 126 Plan 126-10 — UUID do modelo (.docx) de contrato cadastrado
         // na conta Clicksign, lido pelo comando `clicksign:sondar-modelo` e,
         // depois, pela Fase 127. Sandbox e produção têm UUIDs DIFERENTES —
