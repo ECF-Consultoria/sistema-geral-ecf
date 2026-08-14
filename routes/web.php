@@ -895,6 +895,12 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
         // pública, com procedência diferente gravada no banco.
         Route::post('/onboarding/empresas/{company}/ficha-conta', [OnboardingController::class, 'salvarFichaConta'])
             ->name('onboarding.ficha-conta.salvar');
+        // Relatório inicial (PDF §3): gerar monta o retrato factual; salvar
+        // grava as três seções que só uma pessoa escreve.
+        Route::post('/onboarding/{onboarding}/relatorio', [OnboardingController::class, 'gerarRelatorio'])
+            ->name('onboarding.relatorio.gerar');
+        Route::put('/onboarding/{onboarding}/relatorio', [OnboardingController::class, 'salvarRelatorio'])
+            ->name('onboarding.relatorio.salvar');
     });
 
 // ─── Alertas Estratégicos (Phase 23) ────────────────────────────────────────

@@ -195,7 +195,7 @@ class OnboardingPainelPropsTest extends TestCase
         $response->assertInertia(fn ($page) => $page
             ->component('Onboarding/Detalhe')
             ->where('onboarding.situacao', 'rascunho')
-            ->has('passos', 14)
+            ->has('passos', $this->totalDePassosDaDefinicao())
             ->has('passos', fn ($passos) => $passos->each(
                 fn ($passo) => $passo->where('dias_parado', null)->etc()
             ))
@@ -393,5 +393,14 @@ class OnboardingPainelPropsTest extends TestCase
         $showResponse = $this->actingAs($this->admin())->get(route('onboarding.painel.show', $onboarding));
         $showResponse->assertOk();
         $this->assertSemChaveDePorcentagem($showResponse->viewData('page')['props']);
+    }
+
+    /**
+     * Quantos passos a definição de Gestão tem AGORA. Lido da própria fonte —
+     * um passo novo não pode quebrar testes que não falam sobre contagem.
+     */
+    private function totalDePassosDaDefinicao(): int
+    {
+        return count(\App\Support\Onboarding\DefinicaoOnboarding::paraServico($this->servicoDeGestao()));
     }
 }

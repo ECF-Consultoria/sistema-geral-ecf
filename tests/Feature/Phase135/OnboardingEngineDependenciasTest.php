@@ -129,7 +129,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         (new OnboardingEngineService())->reavaliar($onboarding);
 
         $passos = OnboardingPasso::where('onboarding_id', $onboarding->id)->get();
-        $this->assertCount(14, $passos);
+        $this->assertCount($this->totalDePassosDaDefinicao(), $passos);
         foreach ($passos as $passo) {
             $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $passo->status);
             $this->assertNull($passo->disponivel_em);
@@ -454,8 +454,10 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine->aplicarResultado($this->passo($onboarding, 'metricas_da_conta'), OnboardingResolverResultado::concluido(['faturamento' => 1000]));
         $engine->aplicarResultado($this->passo($onboarding, 'anuncios_ativos_inativos'), OnboardingResolverResultado::concluido(['inativos' => 0]));
 
-        // A ficha da conta tem auto_fonte — não fecha na mão, nem aqui.
+        // A ficha da conta e o relatório inicial têm auto_fonte — não fecham na
+        // mão, nem aqui.
         $engine->aplicarResultado($this->passo($onboarding, 'ficha_conta_preenchida'), OnboardingResolverResultado::concluido(['respondidas' => 7]));
+        $engine->aplicarResultado($this->passo($onboarding, 'relatorio_inicial'), OnboardingResolverResultado::concluido(['secoes_escritas' => 3]));
 
         // excluir_anuncios_inativos deve ter virado nao_aplicavel automaticamente (cascata acima).
         $this->assertSame(OnboardingPasso::STATUS_NAO_APLICAVEL, $this->passo($onboarding, 'excluir_anuncios_inativos')->status);
@@ -496,5 +498,14 @@ class OnboardingEngineDependenciasTest extends TestCase
         $onboarding->refresh();
         $this->assertSame(Onboarding::STATUS_ANDAMENTO, $onboarding->status);
         $this->assertNull($onboarding->concluido_em);
+    }
+
+    /**
+     * Quantos passos a definição de Gestão tem AGORA. Lido da própria fonte —
+     * um passo novo não pode quebrar testes que não falam sobre contagem.
+     */
+    private function totalDePassosDaDefinicao(): int
+    {
+        return count(\App\Support\Onboarding\DefinicaoOnboarding::paraServico($this->servicoDeGestao()));
     }
 }

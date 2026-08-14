@@ -7,10 +7,13 @@ use App\Models\Company;
 use App\Models\Onboarding;
 use App\Models\OnboardingFicha;
 use App\Models\OnboardingPasso;
+use App\Models\OnboardingRelatorio;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingFichaService;
 use App\Services\Onboarding\OnboardingLinkService;
+use App\Services\Onboarding\OnboardingResolverFactory;
+use App\Services\Onboarding\RelatorioInicialService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -162,7 +165,27 @@ class OnboardingController extends Controller
             // equipe precisa saber se foi o cliente que declarou ou se alguém
             // do time preencheu por ele.
             'ficha_conta' => $this->fichaContaPayload($onboarding->company),
+            'relatorio'   => $this->relatorioPayload($onboarding),
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function relatorioPayload(Onboarding $onboarding): array
+    {
+        $relatorio = OnboardingRelatorio::where('onboarding_id', $onboarding->id)->first();
+
+        return [
+            'existe'           => (bool) $relatorio,
+            'dados'            => $relatorio?->dados,
+            'pontos_atencao'   => $relatorio?->pontos_atencao,
+            'oportunidades'    => $relatorio?->oportunidades,
+            'proximos_passos'  => $relatorio?->proximos_passos,
+            'gerado_em'        => $relatorio?->gerado_em?->toISOString(),
+            'completo'         => (bool) $relatorio?->completo(),
+            'secoes_pendentes' => $relatorio?->secoesPendentes() ?? OnboardingRelatorio::SECOES_ANALISTA,
+        ];
     }
 
     /**
@@ -273,6 +296,72 @@ class OnboardingController extends Controller
             'success',
             'Link do portal do cliente: ' . route('onboarding.publico.workspace', $link->token)
         );
+    }
+
+    /**
+     * POST /onboarding/{onboarding}/relatorio — gera (ou regera) o retrato
+     * factual do relatório inicial.
+     *
+     * Regerar preserva o texto do analista: o que ele escreveu não some porque
+     * o acervo foi recontado.
+     */
+    public function gerarRelatorio(Request $request, Onboarding $onboarding, RelatorioInicialService $service)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $service->gerar($onboarding, $request->user());
+        $this->reavaliarPassoDoRelatorio($onboarding);
+
+        return back()->with('success', 'Relatório inicial gerado. Escreva as três seções de análise para concluir o passo.');
+    }
+
+    /**
+     * PUT /onboarding/{onboarding}/relatorio — salva as três seções que só uma
+     * pessoa escreve. O passo do relatório só fecha quando as três têm
+     * conteúdo — quem decide isso é o resolver, não este controller.
+     */
+    public function salvarRelatorio(Request $request, Onboarding $onboarding, RelatorioInicialService $service)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'pontos_atencao'  => ['nullable', 'string', 'max:5000'],
+            'oportunidades'   => ['nullable', 'string', 'max:5000'],
+            'proximos_passos' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $relatorio = OnboardingRelatorio::where('onboarding_id', $onboarding->id)->first();
+
+        if (! $relatorio) {
+            // Salvar antes de gerar não deve dar erro pro usuário — gera e segue.
+            $relatorio = $service->gerar($onboarding, $request->user());
+        }
+
+        $relatorio->fill($data);
+        $relatorio->atualizado_por = $request->user()->id;
+        $relatorio->save();
+
+        $this->reavaliarPassoDoRelatorio($onboarding);
+
+        return back()->with('success', 'Relatório atualizado.');
+    }
+
+    /**
+     * O passo do relatório tem `auto_fonte` — quem o fecha é o resolver, nunca
+     * uma escrita direta de status. Resolver local, sem rede: roda inline.
+     */
+    private function reavaliarPassoDoRelatorio(Onboarding $onboarding): void
+    {
+        $passo = OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->where('auto_fonte', OnboardingPasso::AUTO_FONTE_RELATORIO_INICIAL)
+            ->first();
+
+        if (! $passo) {
+            return;
+        }
+
+        $resolver = app(OnboardingResolverFactory::class)->for(OnboardingPasso::AUTO_FONTE_RELATORIO_INICIAL);
+        $this->engine->aplicarResultado($passo, $resolver->resolver($onboarding, $passo));
     }
 
     /**

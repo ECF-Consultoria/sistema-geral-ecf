@@ -113,6 +113,7 @@ class OnboardingPasso extends Model
     public const AUTO_FONTE_ACERVO = 'acervo_coletado';
     public const AUTO_FONTE_METRICAS = 'metricas_conta';
     public const AUTO_FONTE_FICHA_CONTA = 'ficha_conta_preenchida';
+    public const AUTO_FONTE_RELATORIO_INICIAL = 'relatorio_inicial_escrito';
 
     public const AUTO_FONTES = [
         self::AUTO_FONTE_ADMAN_ACCOUNT_ID,
@@ -121,6 +122,7 @@ class OnboardingPasso extends Model
         self::AUTO_FONTE_ACERVO,
         self::AUTO_FONTE_METRICAS,
         self::AUTO_FONTE_FICHA_CONTA,
+        self::AUTO_FONTE_RELATORIO_INICIAL,
     ];
 
     // ─── Catálogo fechado de `condicao` (D-12 — passo condicional) ──────────

@@ -100,13 +100,16 @@ class OnboardingFichaContaTest extends TestCase
     }
 
     #[Test]
-    public function onboarding_de_gestao_passa_a_ter_14_passos(): void
+    public function onboarding_de_gestao_tem_todos_os_passos_da_definicao(): void
     {
         $company = $this->empresaComOnboardingEmAndamento();
 
         $total = OnboardingPasso::whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id))->count();
 
-        $this->assertSame(14, $total);
+        // Lido da própria definição — acrescentar um passo não pode quebrar um
+        // teste que não fala sobre contagem.
+        $esperado = count(\App\Support\Onboarding\DefinicaoOnboarding::paraServico($this->servicoDeGestao()));
+        $this->assertSame($esperado, $total);
     }
 
     // ─── Porta 1: o cliente preenche pelo link público ───────────────────────

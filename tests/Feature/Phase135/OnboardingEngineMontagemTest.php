@@ -49,7 +49,7 @@ class OnboardingEngineMontagemTest extends TestCase
 
         $this->assertNotNull($onboarding);
         $this->assertSame(Onboarding::STATUS_RASCUNHO, $onboarding->status);
-        $this->assertSame(14, OnboardingPasso::where('onboarding_id', $onboarding->id)->count());
+        $this->assertSame($this->totalDePassosDaDefinicao(), OnboardingPasso::where('onboarding_id', $onboarding->id)->count());
 
         foreach (OnboardingPasso::where('onboarding_id', $onboarding->id)->get() as $passo) {
             $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $passo->status);
@@ -90,7 +90,7 @@ class OnboardingEngineMontagemTest extends TestCase
         $this->assertNotNull($primeiro);
         $this->assertSame($primeiro->id, $segundo->id);
         $this->assertSame(1, Onboarding::count());
-        $this->assertSame(14, OnboardingPasso::count());
+        $this->assertSame($this->totalDePassosDaDefinicao(), OnboardingPasso::count());
     }
 
     /**
@@ -130,5 +130,14 @@ class OnboardingEngineMontagemTest extends TestCase
             0,
             preg_match('/Http::|Artisan::call|fetchPerformance|fetchUserInfo/', $conteudo)
         );
+    }
+
+    /**
+     * Quantos passos a definição de Gestão tem AGORA. Lido da própria fonte —
+     * um passo novo não pode quebrar testes que não falam sobre contagem.
+     */
+    private function totalDePassosDaDefinicao(): int
+    {
+        return count(\App\Support\Onboarding\DefinicaoOnboarding::paraServico($this->servicoDeGestao()));
     }
 }

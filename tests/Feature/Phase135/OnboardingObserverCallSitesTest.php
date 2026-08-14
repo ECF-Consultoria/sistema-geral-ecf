@@ -77,7 +77,7 @@ class OnboardingObserverCallSitesTest extends TestCase
 
         $this->assertSame(Onboarding::STATUS_RASCUNHO, $onboarding->status);
         $this->assertSame(DefinicaoOnboarding::VERSAO, $onboarding->definicao_versao);
-        $this->assertSame(14, OnboardingPasso::where('onboarding_id', $onboarding->id)->count());
+        $this->assertSame($this->totalDePassosDaDefinicao(), OnboardingPasso::where('onboarding_id', $onboarding->id)->count());
 
         return $onboarding;
     }
@@ -285,5 +285,14 @@ class OnboardingObserverCallSitesTest extends TestCase
 
         $this->assertSame(1, ContratoServico::where('servico_id', $servicoSemTemplate->id)->count());
         $this->assertSame(0, Onboarding::where('servico_id', $servicoSemTemplate->id)->count());
+    }
+
+    /**
+     * Quantos passos a definição de Gestão tem AGORA. Lido da própria fonte —
+     * um passo novo não pode quebrar testes que não falam sobre contagem.
+     */
+    private function totalDePassosDaDefinicao(): int
+    {
+        return count(\App\Support\Onboarding\DefinicaoOnboarding::paraServico($this->servicoDeGestao()));
     }
 }

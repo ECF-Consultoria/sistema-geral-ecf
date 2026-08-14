@@ -34,8 +34,12 @@ class DefinicaoOnboarding
      * v2 — entra o passo `ficha_conta_preenchida` (ordem 2): as 7 informações
      * de "Métricas e situação da conta" DECLARADAS pelo cliente, antes de
      * existir qualquer grant. Os demais passos desceram uma posição.
+     *
+     * v3 — entra `relatorio_inicial` (ordem 14, PDF §3), e `reuniao_realizada`
+     * passa a depender dele: a reunião não acontece sem o documento que ela
+     * existe para apresentar.
      */
-    public const VERSAO = 2;
+    public const VERSAO = 3;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -64,7 +68,7 @@ class DefinicaoOnboarding
     }
 
     /**
-     * Os 14 passos do onboarding de Gestão (Performance), 6 automáticos.
+     * Os 15 passos do onboarding de Gestão (Performance), 7 automáticos.
      *
      * `dono` e `auto_fonte` são eixos INDEPENDENTES:
      *  - `dono` responde "de quem é a bola?" — quem precisa AGIR.
@@ -232,13 +236,28 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 14,
-                'chave'      => 'reuniao_realizada',
-                'titulo'     => 'Reunião de onboarding realizada',
-                // Depende do agendamento E do pagamento — pagamento trava a
-                // CONCLUSÃO, nunca o mapeamento.
+                'chave'      => 'relatorio_inicial',
+                'titulo'     => 'Relatório inicial da empresa',
+                // O PDF §3 pede o relatório ANTES da reunião — é o que se
+                // apresenta nela. Tem auto_fonte para não existir um "marcar
+                // como feito" que fecharia a etapa sem relatório nenhum.
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
-                'depende_de' => ['agendar_reuniao_onboarding', 'confirmacao_pagamento'],
+                'depende_de' => ['metricas_da_conta', 'anuncios_ativos_inativos'],
+                'sla_dias'   => 3,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_RELATORIO_INICIAL,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 15,
+                'chave'      => 'reuniao_realizada',
+                'titulo'     => 'Reunião de onboarding realizada',
+                // Depende do agendamento, do pagamento E do relatório —
+                // pagamento trava a CONCLUSÃO (nunca o mapeamento), e a reunião
+                // não acontece sem o documento que ela existe para apresentar.
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['agendar_reuniao_onboarding', 'confirmacao_pagamento', 'relatorio_inicial'],
                 'sla_dias'   => 10,
                 'auto_fonte' => null,
                 'condicao'   => null,
