@@ -181,6 +181,11 @@ devolveu **429 `Too many requests`** em texto puro (não JSON:API) enquanto a AP
 19 de 20 requisições disponíveis. É um limite anti-spam separado. A tela do CLICK-07 (Fase 131)
 precisa tratar 429 como resposta esperada — "aguarde antes de reenviar" —, não como erro.
 
+> ⚠️ **Este endpoint também exige corpo JSON:API com o membro `data` — um `POST` vazio devolve
+> `400 "data deve ser informado(a)"`, não 429.** O `ClicksignClient::reenviarNotificacao()` mandava
+> `POST` sem corpo até o quick 260814-d9s (bug real também em produção, nunca antes exercitado
+> contra a API de verdade). Corpo medido e forma exata: ver §14.
+
 **`GET` no endpoint de notificação devolve 404.** Ele é POST-only; 404 aqui não significa
 "não existe".
 
@@ -662,6 +667,84 @@ A pré-verificação provou a camada de recepção do webhook. Continuam sem med
 - ⚠️ **O webhook cadastrado hoje no painel do sandbox aponta para a rota `-sonda`, que não existe
   mais.** Qualquer medição real futura exige o usuário reapontar a URL para
   `/api/webhooks/clicksign` (sem `-sonda`) antes de assinar qualquer coisa.
+
+---
+
+## 14. Sétima sessão — corpo do POST de notificação (quick 260814-d9s), 2026-08-14
+
+**Método:** `ClicksignClient::reenviarNotificacao()` fazia `POST /envelopes/{id}/signers/{id}/
+notifications` **sem corpo**, e a API v3 devolvia `data deve ser informado(a)` (JSON:API exige o
+membro `data`) — bug real, nunca antes exercitado contra o sandbox de verdade (o único teste
+anterior cobria só o 429 e não afirmava nada sobre o corpo). Um script de sondagem temporário
+(fora do repositório, apagado ao final) mediu o corpo aceito contra o envelope ATIVO
+`f010d235-ff75-400a-84b7-01cb89c3ef59` (status `running`, remanescente do gate da Fase 130).
+Orçamento de 4 requisições — usadas **3** (1 GET + 2 POST), nenhuma contra produção, nenhum 429
+observado nesta rodada.
+
+### 14.1. `POST /envelopes/{id}/signers/{id}/notifications` **exige o membro `data`**
+
+Confirma a lacuna que gerou o bug: sem corpo, a API responde `400`. Este comportamento não foi
+re-testado nesta sessão (é o próprio ponto de partida, já documentado indiretamente pelo bug em
+produção), mas é consistente com o padrão JSON:API de todos os outros endpoints já medidos neste
+arquivo (envelopes, documents, signers, requirements).
+
+### 14.2. Corpo mínimo aceito — **MEDIDO, confirmado por 2xx**
+
+**Requisição 1/3 (GET, para obter um `signerId` real desta rodada):**
+```
+GET /envelopes/f010d235-ff75-400a-84b7-01cb89c3ef59/signers
+=> 200, 4 signatários (meta.record_count: 4)
+   primeiro usado: id 74d07cdc-b95c-49d1-91db-1b7a0aa73b5e
+```
+
+**Requisição 2/3 (POST, tentativa 1 — falhou por bug do PRÓPRIO script de sondagem, não da API):**
+```
+POST /envelopes/{id}/signers/{signerId}/notifications
+{"data":{"type":"notifications","attributes":{}}}   <- intenção
+```
+Corpo real enviado na rede: `{"data":{"type":"notifications","attributes":[]}}` — o script
+decodificou o JSON com `json_decode(..., true)`, e `json_encode([])` de um array PHP vazio produz
+`"[]"`, não `"{}"`. **A MESMA armadilha já documentada em §9.6** (`anexarDocumentoPorModelo()`:
+`template.data` como array PHP vazio vira `[]` e a API recusa como "não é hash").
+```
+=> 400 {"errors":[{"code":"bad_request","status":400,
+        "source":{"pointer":"/data/attributes"},
+        "detail":"attributes deve ser um hash"}]}
+```
+O ponteiro aponta exatamente para `/data/attributes` — confirma que o problema é a FORMA do valor
+(array vs. objeto), não conteúdo faltando.
+
+**Requisição 3/3 (POST, tentativa 2 — corrigida, `new \stdClass()` forçando objeto real):**
+```
+POST /envelopes/{id}/signers/{signerId}/notifications
+{"data":{"type":"notifications","attributes":{}}}   <- "attributes" serializado como OBJETO
+=> 201
+{"data":{"id":"9887200e-9b13-4a13-931d-cd90e19962cb","type":"notifications",
+         "attributes":{"message":null,
+                        "summary":[{"signer_id":"74d07cdc-b95c-49d1-91db-1b7a0aa73b5e","notified":true}],
+                        "created":"2026-08-14T09:41:50.877-03:00"}}}
+```
+
+**✅ MEDIDO, confirmado por 2xx:** o corpo mínimo aceito é `data.type = "notifications"` com
+`data.attributes` presente como objeto — `{}` vazio é suficiente, nenhum atributo é obrigatório.
+A resposta devolve um recurso `notifications` com `id`, `attributes.message` (`null` quando
+nenhuma mensagem customizada é enviada), `attributes.summary` (lista de `{signer_id, notified}`,
+um item por signatário notificado) e `attributes.created`. `attributes.message` sugere que uma
+mensagem customizada é aceita como atributo — **NÃO MEDIDO** nesta sessão (fora do escopo do
+quick 260814-d9s, que corrigia só o bug do corpo ausente).
+
+### 14.3. Rate limit anti-spam desta rodada — nenhum 429 observado
+
+Só 2 `POST` foram feitos nesta sessão (a tentativa 1 nem chegou a ser aceita pelo parser — 400 de
+validação, não 429). Não refina nem contradiz o achado da §7 (429 medido em sessão anterior); só
+confirma que 2 tentativas espaçadas de ~20s não acionam o limite.
+
+### 14.4. Nenhum token, header `Authorization` ou e-mail real registrado
+
+O `signerId` usado (`74d07cdc-b95c-49d1-91db-1b7a0aa73b5e`) e o `id` do recurso de notificação
+criado são identificadores opacos, não PII. Nomes/e-mails de signatário devolvidos pelo `GET
+/signers` desta rodada foram descartados do registro (anonimizados no scratchpad da sessão) —
+não aparecem aqui.
 
 ---
 
