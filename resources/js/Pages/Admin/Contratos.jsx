@@ -26,10 +26,9 @@ import {
  * responde "onde as coisas estão paradas" antes de o Administrativo ler
  * uma única linha, e também FUNCIONA como filtro (clique liga/desliga).
  *
- * ⚠️ A linha desta tela ainda NÃO leva a lugar nenhum: a rota do detalhe da
- * empresa (plano 131-04) ainda não existe. Um link para ela agora faria o
- * Ziggy lançar e derrubaria a tela inteira — a coluna "Ações" fica
- * preparada e vazia até lá.
+ * Plano 131-04 — a linha agora abre o detalhe da empresa
+ * (`admin.contratos.show`), que é onde o Administrativo completa o
+ * cadastro e dispara a geração do contrato.
  */
 export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contrato_count = 0 }) {
     const [qInput, setQInput] = useState(filters.q || '');
@@ -151,7 +150,11 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                         </TableRow>
                                     )}
                                     {linhasData.map((linha, idx) => (
-                                        <TableRow key={`${linha.company_id}-${linha.servico_id}-${idx}`}>
+                                        <TableRow
+                                            key={`${linha.company_id}-${linha.servico_id}-${idx}`}
+                                            onClick={() => router.visit(route('admin.contratos.show', linha.company_id))}
+                                            className="cursor-pointer hover:bg-white/[0.03]"
+                                        >
                                             <TableCell className="text-[13px] font-medium text-white/85">{linha.company_nome}</TableCell>
                                             <TableCell className="text-[13px] text-white/60">{linha.servico_nome}</TableCell>
                                             <TableCell>
@@ -160,9 +163,15 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                                 </span>
                                             </TableCell>
                                             <TableCell className="text-[13px] text-white/50">{formatarHaDias(linha.dias_parado)}</TableCell>
-                                            {/* Ações: preparada e vazia — o link para o detalhe entra
-                                                junto com o plano 131-04, quando a rota existir. */}
-                                            <TableCell className="text-[13px] text-white/20">—</TableCell>
+                                            <TableCell>
+                                                <Link
+                                                    href={route('admin.contratos.show', linha.company_id)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="text-[12px] text-white/50 hover:text-white/80 hover:underline"
+                                                >
+                                                    Abrir
+                                                </Link>
+                                            </TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
