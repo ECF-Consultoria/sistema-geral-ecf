@@ -58,15 +58,16 @@ created: 2026-08-13
 | SC4 (ROADMAP) | Corrida manual × webhook **não** duplica `MlbEmpresa` — prova o lock existente, não reimplementa | Feature | `--filter=LiberacaoManualCorridaTest` (adapta `tests/Feature/Phase129/LiberarEmpresaCorridaConcorrenteTest.php`) | 130-04 T3 | ✅ green |
 | D-09 | Varredura grava carimbo; comando de verificação acusa ausência (cron parado) | Feature | `--filter=AutoMonitoramentoCarimboTest` | 130-06 T1 | ✅ green |
 
-*Status: ✅ green · ✅ green · ❌ red · ⚠️ flaky*
+*Legenda: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
 ---
 
 ## Wave 0 Requirements
 
-Nenhum arquivo de teste da fase existe hoje. Nao ha uma "wave 0" separada: a criacao de cada
-arquivo faz parte da task que entrega o comportamento correspondente, e cada task tem comando
-`<automated>` proprio. Dono de cada arquivo:
+**Todos os 14 arquivos abaixo existem e estão verdes** (auditoria de 2026-08-14). O texto original
+desta seção — escrito antes da execução — dizia que nenhum existia; fica registrado aqui que a
+"wave 0" nunca foi separada: a criação de cada arquivo faz parte da task que entrega o
+comportamento correspondente, e cada task tem comando `<automated>` próprio. Dono de cada arquivo:
 
 - [x] `tests/Feature/Phase130/FundacaoContratoLiberacaoTest.php` -- 130-01 T1 (extra: schema/constantes)
 - [x] `tests/Feature/Phase130/FundacaoContratoAssinaturaTest.php` -- 130-01 T2 (extra: `ultimo_alerta_em`)
