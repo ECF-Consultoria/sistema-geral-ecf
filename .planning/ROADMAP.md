@@ -1817,7 +1817,20 @@ Plans:
   4. Um usuário reenvia a notificação de assinatura para quem ainda não assinou, corrige o e-mail de um signatário sem cancelar o contrato (gate empírico #8 resolvido para o endpoint certo), e cancela um contrato em andamento informando o motivo — a tela deixa claro que corrigir e-mail é diferente de trocar a pessoa (a segunda exige cancelar e reemitir)
   5. Só quem tem a permissão `admin.contratos` vê o módulo no menu e acessa as rotas; nenhum texto da tela usa jargão de Clicksign ou de assinatura eletrônica sem explicação
 
-**Plans:** TBD
+**Plans:** 6 planos em 5 waves
+
+⚠️ Escopo corrigido pelas medições de 2026-08-14 (registradas no `131-CONTEXT.md` D-12/D-13/D-14 e nos gates #8 e #8b do `REQUIREMENTS-v22.md`):
+- **ADM-03 já está cumprida** — o campo saiu do formulário do Comercial na quick `260805-eqk`; o `gmail_colaborador` do Polos fica onde está. Nenhum trabalho de remoção nesta fase.
+- **CLICK-09** — não existe endpoint de correção de e-mail na v3 (404 medido). Vale o RAMO B: a tela explica que corrigir e-mail e trocar a pessoa colapsam em cancelar e reemitir.
+- **CLICK-10** — cancelar envelope em andamento não é possível pela API (403/404/400 medidos). A tela registra autor+motivo+data e instrui a concluir no painel; `cancelarEnvelope()` não é chamado.
+
+Plans:
+- [ ] 131-01-PLAN.md — Fundação: permission `admin.contratos`, colunas do cancelamento solicitado e módulo único dos 7 estados (wave 1)
+- [ ] 131-02-PLAN.md — Badge de contrato na listagem do Comercial, sem N+1 (wave 2)
+- [ ] 131-03-PLAN.md — Lista administrativa de contratos: filtro, busca e resumo de 7 contagens (wave 2)
+- [ ] 131-04-PLAN.md — Detalhe da empresa: completar cadastro e gerar contrato (wave 3)
+- [ ] 131-05-PLAN.md — Ações do contrato: reenviar aviso, RAMO B do ajuste e registro de cancelamento (wave 4)
+- [ ] 131-06-PLAN.md — Absorção da liberação manual e remoção da tela da Fase 130 (wave 5)
 
 ### Phase 132: Cutover sandbox → produção (checkpoint humano) (v22.0)
 
