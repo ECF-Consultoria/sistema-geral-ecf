@@ -1025,6 +1025,15 @@ class NpsController extends Controller
             // adivinhar de que mês é a nota que está vendo.
             'competencia_filtro' => $mesInicio->copy()->subMonthNoOverflow()->locale('pt_BR')->isoFormat('MMM/YY'),
             'coleta_filtro'      => $mesInicio->copy()->locale('pt_BR')->isoFormat('MMM/YY'),
+            // Spec 2026-08-14 (item 2) — estado do ciclo do mês exibido, para a
+            // UI mostrar o selo "Fechado" e o botão de encerrar. `manual`
+            // distingue "alguém encerrou" de "a data passou": só o primeiro
+            // pode ser revertido pela tela.
+            'ciclo' => [
+                'fechado'        => $janelaFechada,
+                'fechado_manual' => $this->npsJanelaResolver->fechadaManualmente($mesInicio),
+                'mes'            => $mesInicio->format('Y-m'),
+            ],
             // Fase 116 — sinaliza para a UI (Plan 05) que a regra "não
             // respondido conta como nota 1" está ativa nesta tela. Cada card
             // já expõe `nao_respondidos` (ver $agregarMedia acima).
@@ -1409,6 +1418,16 @@ class NpsController extends Controller
         // com `month_reference = NULL` (D-12, comentário abaixo) — comparar
         // a coluna crua não pegaria nenhum link manual, e é exatamente essa
         // brecha que o usuário reportou.
+        // Spec 2026-08-14 (item 2) — ciclo encerrado não gera link novo. Vem
+        // ANTES do guard de duplicidade: num ciclo fechado a resposta certa é
+        // "encerrado", não "já existe um link" (que sugeriria reenviar um link
+        // que também não aceita mais resposta).
+        if ($this->npsJanelaResolver->fechada(now()->startOfMonth())) {
+            return back()->with('error',
+                'O ciclo de NPS deste mês foi encerrado — não é possível gerar novos links. '
+                .'Reabra o ciclo para voltar a coletar.');
+        }
+
         $jaExiste = $this->elegibilidadeService->surveyExistenteNaCompetencia(
             (int) $data['company_id'],
             (int) $template->id,
@@ -1696,12 +1715,40 @@ class NpsController extends Controller
      *   - .planning/research/v15-nps-templates-schema.md §2 (dedup 23000)
      *   - REQ NPS-B-03 (guard 23000) + REQ NPS-B-05 (validacao dinamica)
      */
+    /**
+     * O ciclo a que este survey pertence já foi encerrado? (spec 2026-08-14,
+     * item 2)
+     *
+     * O mês do survey sai de `competenciaDoSurvey()` — que, apesar do nome,
+     * devolve o mês de COLETA (`month_reference`, com fallback `created_at`
+     * para os manuais). É essa mesma grandeza que `nps_ciclos.mes_coleta`
+     * guarda, então as duas casam direto, sem deslocar.
+     *
+     * Quem decide "fechado" é SEMPRE o `NpsJanelaResolver` — nunca consultar
+     * `nps_ciclos` aqui, senão a régua ganha uma segunda versão.
+     */
+    private function cicloFechado(NpsSurvey $survey): bool
+    {
+        return $this->npsJanelaResolver->fechada(
+            $this->elegibilidadeService->competenciaDoSurvey($survey)
+        );
+    }
+
     public function submitResponse(Request $request, string $token)
     {
         $survey = NpsSurvey::where('token', $token)->where('status', 'pending')->firstOrFail();
 
         if ($survey->isExpired()) {
             return response()->json(['error' => 'Pesquisa expirada.'], 422);
+        }
+
+        // Spec 2026-08-14 (item 2) — ciclo encerrado à mão não aceita mais
+        // resposta, mesmo com o link dentro da validade. Guard NO SERVIDOR: o
+        // link já está na mão do cliente e a tela pública não é caminho
+        // confiável para impedir nada. Vem depois do `isExpired()` porque
+        // "expirada" é a mensagem mais específica quando os dois valem.
+        if ($this->cicloFechado($survey)) {
+            return response()->json(['error' => 'Esta pesquisa foi encerrada e não aceita mais respostas.'], 422);
         }
 
         // Phase 96 AB-96-1 — endurecimento da Regra 4 da Fase 94 (que hoje só
