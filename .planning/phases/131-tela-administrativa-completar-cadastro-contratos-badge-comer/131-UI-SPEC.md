@@ -63,6 +63,13 @@ Projeto usa tamanhos arbitrários (`text-[Npx]`) e vários pesos; esta fase **fi
 | Heading (seção/card) | 15px | 600 semibold | 1.3 |
 | Page title (H1) | 20px (`text-xl`) | 600 semibold | 1.2 |
 
+> **Por que 12px e 13px ficam a só 1px de distância** (FLAG do checker, resolvida): a separação
+> entre Meta/Badge e Body **não é feita por tamanho** — é feita por cor e por forma. Badge de
+> estado sempre carrega cor semântica própria (o mapa de 7 cores) e fundo, e meta sempre vem em
+> tom apagado (`text-white/40`). Afastar para 11px prejudicaria a legibilidade do badge, que é o
+> elemento que o Administrativo lê primeiro para triar a lista. A escala real que o olho percebe
+> é 12/13 → 15 → 20, e os dois primeiros nunca competem pelo mesmo papel na mesma linha.
+
 Uso de peso: **400 regular** para corpo de texto, células de tabela, descrições, placeholders.
 **600 semibold** para títulos, rótulos de botão, badges de estado, cabeçalhos de tabela
 (`uppercase tracking-wide`). Não usar `font-medium` (500) em componentes novos desta fase — o
@@ -120,14 +127,33 @@ D-01 trava **duas telas separadas** (não painel lateral, não edição inline n
 Nomes de rota/arquivo são proposta — o planejamento pode ajustar, mas a divisão em duas telas é
 contrato travado (D-01), não sugestão.
 
+### Ponto focal de cada tela (FLAG do checker, resolvida)
+
+Sem âncora declarada, o executor distribui peso visual por conta própria e as duas telas ficam
+sem hierarquia. Fica travado:
+
+| Tela | Ponto focal | Por quê |
+|---|---|---|
+| **Lista de contratos** | O **grid de resumo por situação** no topo, com a contagem em tamanho maior que o rótulo | É o que responde "onde as coisas estão paradas" antes de o Administrativo ler uma única linha. Também é o filtro (clique), então concentrar atenção nele é funcional, não decorativo. |
+| **Detalhe da empresa — COM pendência** | O bloco **"Falta preencher para gerar" + botão desabilitado**, adjacentes | A D-03 exige que o caminho para destravar seja explícito; se a lista de pendências não for a primeira coisa lida, o botão cinza vira mistério em vez de instrução. |
+| **Detalhe da empresa — SEM pendência** | O botão **"Gerar contrato"** ativo, em `ecf-yellow` | É a única ação primária da tela nesse estado; o amarelo de marca aparece aqui e não compete com nada. |
+
+Regra derivada: **em nenhuma das duas telas o `ecf-yellow` aparece em mais de um elemento ao mesmo
+tempo.** Dois amarelos na mesma tela destroem o ponto focal — e a lista de 5 usos fechados da
+seção Color já pressupõe isso.
+
 **Densidade e ordenação (Claude's Discretion do CONTEXT.md — resolvidas aqui, sem pergunta ao
 usuário porque o CONTEXT já delega explicitamente):**
 
-- **Densidade:** tabela compacta (linhas `text-[13px]`, badges `text-[10-11px]`), mesmo padrão de
+- **Densidade:** tabela compacta (linhas `text-[13px]`, badges `text-[10-11px]`), padrão análogo ao de
   `Comercial/EmpresasListagem.jsx` — Gestão sozinha já são 149 empresas, a lista precisa ser
   escaneável, não uma lista de cards larga.
-- **Resumo por situação:** 7 cards/chips clicáveis no topo da lista, mesmo padrão do grid de
-  pendências de `EmpresasListagem.jsx` (`grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2`).
+- **Resumo por situação:** 7 cards/chips clicáveis no topo da lista, **análogo** ao grid de
+  pendências de `EmpresasListagem.jsx`, **adaptado a 7 colunas**
+  (`grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2`).
+  ⚠️ Não é o "mesmo" grid: `EmpresasListagem.jsx` usa `xl:grid-cols-8`. A divergência é correta —
+  lá são 8 tipos de pendência, aqui são os 7 estados da D-04. Copiar o número de colunas de lá
+  deixaria uma coluna vazia.
   Cada card mostra contagem + rótulo (D-04) e **funciona como filtro de situação ao mesmo tempo**
   (clique ativa/desativa o filtro) — evita duplicar resumo e filtro como dois controles distintos.
 - **Ordenação padrão:** "mais tempo parado primeiro" — `desc` por dias parados (mesma base de
@@ -308,8 +334,8 @@ resposta esperada, nunca como falha do sistema:
 |---|---|
 | Lista sem nenhum contrato (heading) | **"Nenhum contrato encontrado"** |
 | Lista sem nenhum contrato (corpo) | "Ainda não há contratos administrativos registrados. Eles aparecem aqui assim que uma empresa completa o cadastro e o contrato é gerado." |
-| Busca sem resultado | "Nenhuma empresa encontrada para \"{busca}\"." |
-| Carregando lista/detalhe | Skeleton de linhas (reusar padrão de loading já usado em outras telas `Admin/*`, sem texto — spinner só se a tela não tiver skeleton disponível) |
+| Busca sem resultado | "Nenhuma empresa encontrada para \"{busca}\". Revise o termo buscado ou limpe o filtro de situação." |
+| Carregando lista/detalhe | Spinner sem texto. ⚠️ **Correção factual (checker, 2026-08-14):** NENHUMA tela em `resources/js/Pages/Admin/*.jsx` usa skeleton hoje — o padrão existe em `Dev/`, `Mlb/`, `Performance/` e `Polos/`. O executor parte de spinner, não de skeleton reaproveitado. Se quiser skeleton, é trabalho novo: portar o padrão de uma dessas pastas. |
 | Erro ao carregar (500/rede) | Título: **"Não deu para carregar"** · corpo: **"Tente atualizar a página. Se continuar, avise o time técnico."** · CTA: **"Tentar de novo"** |
 | Botão em ação (busy) | Texto muda para gerúndio: "Gerando…" / "Cancelando…" / "Liberando…" / "Reenviando…" / "Salvando…" — botão `disabled`, sem novo texto de erro até a resposta voltar |
 | Destructive confirmation | **Cancelar contrato**: "Cancelar este contrato? O cliente não vai mais poder assinar." · **Liberar manualmente com causa problemática**: ver faixa de destaque acima |
