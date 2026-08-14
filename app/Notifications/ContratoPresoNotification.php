@@ -62,7 +62,13 @@ class ContratoPresoNotification extends BaseNotification
             mensagem:    "{$rotulo} Serviço: {$contrato->servico->nome}.",
             categoria:   Categoria::MANUAL,
             autorUserId: null, // Sistema — sem autor humano
-            url:         route('contratos.liberacao-manual.index'),
+            // Plano 131-06 (D-10) — a rota da liberação manual da Fase 130
+            // foi REMOVIDA. Repontado para o detalhe da EMPRESA do contrato
+            // parado (melhora o destino: cai direto no lugar certo, não numa
+            // lista genérica). Audiência não muda: a rota antiga era
+            // `role:admin`, a nova exige `admin.contratos`, concedida a todo
+            // `role:admin` pela D-09 no dia do deploy.
+            url:         route('admin.contratos.show', $contrato->company_id),
             meta:        [
                 'contrato_assinatura_id' => $contrato->id,
                 'company_id'             => $contrato->company_id,

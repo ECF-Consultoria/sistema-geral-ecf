@@ -105,17 +105,11 @@ Route::get('/admin/contratos/{contratoAssinatura}/pdf-assinado', [\App\Http\Cont
     ->middleware(['auth', 'role:admin'])
     ->name('contratos.pdf-assinado');
 
-// ─── Liberação manual da rede de segurança (Fase 130 Plano 04, REDE-03/DADOS-05) ──
-// `role:admin` é a trava CORRETA hoje — a permissão dedicada `admin.contratos`
-// (UI-05) nasce na Fase 131, que reescreve esta tela. Rota e controller ficam
-// ISOLADOS de propósito (sem entrada no menu do AppLayout) para a troca ser
-// barata; o backend é definitivo.
-Route::get('/admin/contratos/liberacao-manual', [\App\Http\Controllers\ContratoLiberacaoManualController::class, 'index'])
-    ->middleware(['auth', 'verified', 'role:admin'])
-    ->name('contratos.liberacao-manual.index');
-Route::post('/admin/contratos/liberacao-manual', [\App\Http\Controllers\ContratoLiberacaoManualController::class, 'store'])
-    ->middleware(['auth', 'verified', 'role:admin'])
-    ->name('contratos.liberacao-manual.store');
+// ─── Liberação manual da rede de segurança (Fase 130 Plano 04) — ABSORVIDA ──
+// D-10 (Fase 131 Plano 06): a rota `contratos.liberacao-manual.*` e a tela
+// `Admin/ContratosLiberacaoManual` foram REMOVIDAS. A ação virou
+// `admin.contratos.liberacao-manual` dentro do grupo `permission:admin.contratos`
+// abaixo — o Administrativo passa a ter uma tela só.
 
 // PPA Workspace público (sem autenticação) — cliente acessa pelo token
 Route::get('/ppa/workspace/{token}', [PpaController::class, 'workspace'])->name('ppa.workspace');
@@ -1064,8 +1058,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
 // estas rotas entrarem no grupo `role:admin`, um usuário que receba
 // `admin.contratos` via setor continua batendo 403 — a UI-05 vira letra
 // morta (ContratoAdminPermissaoTest fica vermelho se isso acontecer).
-// D-10: esta tela vai ABSORVER a liberação manual da Fase 130 (plano
-// 131-06) — por enquanto só a listagem (`index`) existe.
+// D-10: esta tela ABSORVEU a liberação manual da Fase 130 (plano 131-06) —
+// `liberacao-manual` abaixo é a ação nova; a rota antiga foi removida (ver
+// bloco acima).
 Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('administrativo/contratos')->name('admin.contratos.')->group(function () {
     Route::get('/', [ContratoAdminController::class, 'index'])->name('index');
     // Plano 131-04 (D-01/ADM-01/ADM-02/UI-02) — detalhe da empresa: onde o
@@ -1079,6 +1074,9 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
         ->name('reenviar');
     Route::post('/{contratoAssinatura}/cancelamento', [ContratoAdminController::class, 'registrarCancelamento'])
         ->name('cancelamento');
+    // Plano 131-06 (D-10) — absorve ContratoLiberacaoManualController::store()
+    // (Fase 130). Ação disparada de dentro do detalhe da empresa.
+    Route::post('/liberacao-manual', [ContratoAdminController::class, 'liberarManual'])->name('liberacao-manual');
 });
 
 // ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────

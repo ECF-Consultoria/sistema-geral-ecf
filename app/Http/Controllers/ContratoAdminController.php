@@ -6,15 +6,19 @@ use App\Exceptions\ClicksignException;
 use App\Models\Company;
 use App\Models\ContratoAssinatura;
 use App\Models\ContratoAssinaturaSignatario;
+use App\Models\ContratoLiberacao;
 use App\Models\ContratoServico;
+use App\Models\Servico;
 use App\Models\User;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Contratos\ContratoDadosMinimosService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
+use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 /**
@@ -30,11 +34,11 @@ use Inertia\Inertia;
  * edição inline na linha): esta lista (`index()`) e o detalhe da empresa
  * (`admin.contratos.show`, plano 131-04), alcançado clicando na linha.
  *
- * D-10 — este controller vai ABSORVER a liberação manual da Fase 130
- * (`ContratoLiberacaoManualController`) como uma ação dentro da tela de
- * detalhe, no plano 131-06. Até lá, a rota antiga
- * (`contratos.liberacao-manual.*`) continua no ar — removê-la agora
- * deixaria a liberação manual sem nenhuma superfície.
+ * D-10 — este controller ABSORVEU a liberação manual da Fase 130
+ * (`ContratoLiberacaoManualController::store()`, agora `liberarManual()`
+ * abaixo) como ação dentro da tela de detalhe (plano 131-06). A rota antiga
+ * (`contratos.liberacao-manual.*`) foi REMOVIDA (404, não redirect) — o
+ * controller e a tela antigos não existem mais.
  */
 class ContratoAdminController extends Controller
 {
@@ -276,6 +280,11 @@ class ContratoAdminController extends Controller
             // JSX. Pode vir vazia se `CLICKSIGN_PAINEL_URL`/`CLICKSIGN_ENV`
             // não estiverem configuradas; a tela degrada o rótulo nesse caso.
             'painel_clicksign_url'     => config('services.clicksign.painel_url'),
+            // Plano 131-06 (D-10) — o mesmo array de rótulos que a tela
+            // antiga já consumia (`MOTIVOS_MANUAIS_LABELS`), agora prop
+            // desta tela para alimentar o select do modal "Liberar
+            // manualmente".
+            'motivos_manuais' => ContratoLiberacao::MOTIVOS_MANUAIS_LABELS,
             'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos) {
                 return [
                     'id'                                => $c->id,
@@ -287,6 +296,9 @@ class ContratoAdminController extends Controller
                     'enviado_em'                         => $c->enviado_em?->toIso8601String(),
                     'assinado_em'                        => $c->assinado_em?->toIso8601String(),
                     'liberado_em'                        => $c->liberado_em?->toIso8601String(),
+                    // D-10 — a UI usa este booleano para decidir se ainda
+                    // oferece "Liberar manualmente" nesta linha.
+                    'ja_liberado'                        => $c->liberado_em !== null,
                     'cancelamento_solicitado_em'         => $c->cancelamento_solicitado_em?->toIso8601String(),
                     'cancelamento_motivo'                => $c->cancelamento_motivo,
                     'cancelamento_solicitado_por_nome'   => $c->cancelamento_solicitado_por_user_id
@@ -502,5 +514,64 @@ class ContratoAdminController extends Controller
         $contratoAssinatura->save();
 
         return back()->with('success', 'Cancelamento registrado. Agora conclua no painel da Clicksign.');
+    }
+
+    /**
+     * D-10 — absorve `ContratoLiberacaoManualController::store()` (Fase 130
+     * Plano 04, REDE-03/DADOS-05, D-10/D-11/D-12) como ação da tela de
+     * detalhe. O corpo é copiado VERBATIM, incluindo os comentários que
+     * nomeiam as ameaças (T-130-04-03) — nenhuma mitigação foi afrouxada.
+     *
+     * D-11 — este método NÃO chama `GateLiberacaoOperacionalService::avaliar()`.
+     * A liberação manual existe PORQUE o gate automático (e a reconciliação)
+     * não liberaram; passar pelo mesmo gate aqui tornaria a ação inútil no
+     * exato cenário em que ela precisa funcionar (Clicksign fora do ar,
+     * contrato recusado pelo cliente, envelope apagado). O admin libera em
+     * QUALQUER estado — a tela mostra o estado real em destaque antes de
+     * confirmar, e a prestação de contas é o motivo obrigatório + o autor
+     * registrado.
+     */
+    public function liberarManual(Request $request, EmpresaOperacionalRouter $router): RedirectResponse
+    {
+        $data = $request->validate([
+            'company_id'             => ['required', 'integer', 'exists:companies,id'],
+            'servico_id'             => ['required', 'integer', 'exists:servicos,id'],
+            'contrato_assinatura_id' => ['nullable', 'integer', 'exists:contrato_assinaturas,id'],
+            // D-12 — slug é lista fechada, nunca string livre.
+            'motivo_slug'            => ['required', Rule::in(ContratoLiberacao::MOTIVOS_MANUAIS)],
+            // D-12 — o detalhe é obrigatório MESMO com o slug preenchido.
+            'motivo_detalhe'         => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+
+        $company = Company::findOrFail($data['company_id']);
+        $servico = Servico::findOrFail($data['servico_id']);
+
+        $contrato = null;
+        if (! empty($data['contrato_assinatura_id'])) {
+            $contrato = ContratoAssinatura::findOrFail($data['contrato_assinatura_id']);
+
+            // T-130-04-03 (IDOR) — o contrato informado tem que pertencer à
+            // MESMA empresa/serviço do POST, senão a liberação de uma
+            // empresa ficaria amarrada à evidência de outra.
+            if ($contrato->company_id !== $company->id || $contrato->servico_id !== $servico->id) {
+                abort(422, 'O contrato informado não pertence a esta empresa/serviço.');
+            }
+        }
+
+        // D-11 — NÃO chamar GateLiberacaoOperacionalService::avaliar() aqui.
+        // A liberação manual existe porque o gate automático (webhook +
+        // reconciliação) NÃO liberou; passar pelo mesmo gate tornaria esta
+        // ação inútil no exato cenário em que ela é necessária.
+        $router->liberarEmpresa(
+            $company,
+            $servico,
+            ContratoLiberacao::VIA_MANUAL,
+            contrato: $contrato,
+            liberadoPorUserId: $request->user()->id,
+            motivo: $data['motivo_detalhe'],
+            motivoSlug: $data['motivo_slug'],
+        );
+
+        return back()->with('success', 'Empresa liberada para o operacional.');
     }
 }

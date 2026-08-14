@@ -54,7 +54,9 @@ class AlertaContratoPresoTest extends TestCase
             array_keys($dados)
         );
         $this->assertSame(Categoria::MANUAL->value, $dados['categoria']);
-        $this->assertSame(route('contratos.liberacao-manual.index'), $dados['url']);
+        // Plano 131-06 (D-10) — a rota antiga foi removida; o alerta agora
+        // aponta direto para a empresa do contrato parado.
+        $this->assertSame(route('admin.contratos.show', $contrato->company_id), $dados['url']);
     }
 
     public function test_meta_contem_ids_status_causa_dias_e_nunca_pii(): void
