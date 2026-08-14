@@ -122,7 +122,7 @@ class OnboardingTransicaoStatusTest extends TestCase
     }
 
     /** @test */
-    public function confirmar_responsavel_leva_a_andamento_grava_iniciado_em_e_destrava_os_6_passos_sem_dependencia(): void
+    public function confirmar_responsavel_leva_a_andamento_grava_iniciado_em_e_destrava_todos_os_passos_sem_dependencia(): void
     {
         $servico = $this->servicoDeGestao();
         $company = Company::factory()->create();
@@ -137,10 +137,14 @@ class OnboardingTransicaoStatusTest extends TestCase
         $this->assertSame(Onboarding::STATUS_ANDAMENTO, $confirmado->status);
         $this->assertNotNull($confirmado->iniciado_em);
         $this->assertSame($consultor->id, $confirmado->responsavel_id);
-        // 6 desde que a ficha da conta entrou na definição: ela não depende de
-        // nada, então destrava junto com os outros 5.
+        // Contado da própria definição: acrescentar passo sem dependência
+        // não pode quebrar este teste, que fala sobre DESTRAVAR, não sobre
+        // quantos passos existem.
+        $semDependencia = collect(\App\Support\Onboarding\DefinicaoOnboarding::paraServico($servico))
+            ->filter(fn ($p) => empty($p['depende_de']))
+            ->count();
         $this->assertSame(
-            6,
+            $semDependencia,
             OnboardingPasso::where('onboarding_id', $confirmado->id)->whereNotNull('disponivel_em')->count()
         );
     }

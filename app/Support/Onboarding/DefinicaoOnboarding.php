@@ -38,8 +38,12 @@ class DefinicaoOnboarding
      * v3 — entra `relatorio_inicial` (ordem 14, PDF §3), e `reuniao_realizada`
      * passa a depender dele: a reunião não acontece sem o documento que ela
      * existe para apresentar.
+     *
+     * v4 — entram `grupo_criado` e `mensagem_boas_vindas` (ordens 2 e 3, PDF
+     * §7), que o documento pede como parte do "acompanhamento inicial da
+     * entrada da empresa".
      */
-    public const VERSAO = 3;
+    public const VERSAO = 4;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -68,14 +72,15 @@ class DefinicaoOnboarding
     }
 
     /**
-     * Os 15 passos do onboarding de Gestão (Performance), 7 automáticos.
+     * Os 17 passos do onboarding de Gestão (Performance), 7 automáticos.
      *
      * `dono` e `auto_fonte` são eixos INDEPENDENTES:
      *  - `dono` responde "de quem é a bola?" — quem precisa AGIR.
      *  - `auto_fonte` responde "como o sistema sabe que aconteceu?".
-     * Os passos 2 e 6 provam a independência: a bola é do cliente (preencher a
-     * ficha, autorizar o OAuth), mas ninguém digita "feito" — a existência da
-     * ficha e o token ativo fecham os passos sozinhos.
+     * `ficha_conta_preenchida` e `grant_sistema_ecf` provam a independência: a
+     * bola é do cliente (preencher a ficha, autorizar o OAuth), mas ninguém
+     * digita "feito" — a existência da ficha e o token ativo fecham os passos
+     * sozinhos.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -97,6 +102,33 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 2,
+                'chave'      => 'grupo_criado',
+                'titulo'     => 'Grupo de WhatsApp criado',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => null,
+                'sla_dias'   => 2,
+                'auto_fonte' => null,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 3,
+                'chave'      => 'mensagem_boas_vindas',
+                'titulo'     => 'Mensagem de boas-vindas enviada',
+                // Depende do grupo existir — é nele que a mensagem é enviada.
+                // NÃO travamos a ficha do cliente nisto de propósito: se alguém
+                // esquecer de marcar este passo, o cliente que já recebeu o link
+                // ficaria com a ficha bloqueada sem ninguém entender por quê.
+                // Um checkbox interno esquecido não pode parar o cliente.
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['grupo_criado'],
+                'sla_dias'   => 2,
+                'auto_fonte' => null,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 4,
                 'chave'      => 'ficha_conta_preenchida',
                 'titulo'     => 'Ficha da conta',
                 // A bola é do cliente, mas quem fecha é o sistema ao ver a
@@ -111,7 +143,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 3,
+                'ordem'      => 5,
                 'chave'      => 'acesso_colaborador_ml',
                 'titulo'     => 'Acesso colaborador Mercado Livre',
                 'dono'       => OnboardingPasso::DONO_CLIENTE,
@@ -122,7 +154,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 4,
+                'ordem'      => 6,
                 'chave'      => 'planilha_custos_adman',
                 'titulo'     => 'Planilha de custos ADMAN',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -133,7 +165,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 5,
+                'ordem'      => 7,
                 'chave'      => 'grant_consultoria_adman',
                 'titulo'     => 'Grant com a Consultoria (Adman)',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -144,7 +176,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 6,
+                'ordem'      => 8,
                 'chave'      => 'grant_sistema_ecf',
                 'titulo'     => 'Grant com o Sistema ECF (OAuth)',
                 // A bola é do cliente (precisa autorizar o OAuth), mas ninguém
@@ -157,7 +189,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 7,
+                'ordem'      => 9,
                 'chave'      => 'confirmacao_pagamento',
                 'titulo'     => 'Confirmação de pagamento',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -168,7 +200,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 8,
+                'ordem'      => 10,
                 'chave'      => 'metricas_da_conta',
                 'titulo'     => 'Métricas da conta',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -179,7 +211,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 9,
+                'ordem'      => 11,
                 'chave'      => 'anuncios_ativos_inativos',
                 'titulo'     => 'Anúncios ativos / inativos',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -190,7 +222,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 10,
+                'ordem'      => 12,
                 'chave'      => 'excluir_anuncios_inativos',
                 'titulo'     => 'Excluir anúncios inativos',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -202,7 +234,7 @@ class DefinicaoOnboarding
                 'condicao'   => ['tipo' => OnboardingPasso::CONDICAO_ANUNCIOS_INATIVOS],
             ],
             [
-                'ordem'      => 11,
+                'ordem'      => 13,
                 'chave'      => 'custos_app_ecf',
                 'titulo'     => 'Custos no App ECF',
                 'dono'       => OnboardingPasso::DONO_CLIENTE,
@@ -213,7 +245,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 12,
+                'ordem'      => 14,
                 'chave'      => 'grant_de_ads',
                 'titulo'     => 'Grant de Ads',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -224,7 +256,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 13,
+                'ordem'      => 15,
                 'chave'      => 'agendar_reuniao_onboarding',
                 'titulo'     => 'Agendar reunião de onboarding',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -235,7 +267,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 14,
+                'ordem'      => 16,
                 'chave'      => 'relatorio_inicial',
                 'titulo'     => 'Relatório inicial da empresa',
                 // O PDF §3 pede o relatório ANTES da reunião — é o que se
@@ -249,7 +281,7 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 15,
+                'ordem'      => 17,
                 'chave'      => 'reuniao_realizada',
                 'titulo'     => 'Reunião de onboarding realizada',
                 // Depende do agendamento, do pagamento E do relatório —

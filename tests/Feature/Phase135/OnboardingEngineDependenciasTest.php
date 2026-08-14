@@ -443,6 +443,8 @@ class OnboardingEngineDependenciasTest extends TestCase
         $usuario = User::factory()->create();
 
         $engine->concluirManualmente($this->passo($onboarding, 'ficha_cliente_recebida'), $usuario);
+        $engine->concluirManualmente($this->passo($onboarding, 'grupo_criado'), $usuario);
+        $engine->concluirManualmente($this->passo($onboarding, 'mensagem_boas_vindas'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'confirmacao_pagamento'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'custos_app_ecf'), $usuario);

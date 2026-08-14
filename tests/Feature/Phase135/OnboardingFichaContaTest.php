@@ -88,12 +88,19 @@ class OnboardingFichaContaTest extends TestCase
     // ─── O passo nasce no lugar certo da definição ───────────────────────────
 
     #[Test]
-    public function passo_da_ficha_nasce_como_segundo_passo_dono_cliente_e_verificado_pelo_sistema(): void
+    public function passo_da_ficha_nasce_no_comeco_dono_cliente_e_verificado_pelo_sistema(): void
     {
         $company = $this->empresaComOnboardingEmAndamento();
         $passo = $this->passoDaFicha($company);
 
-        $this->assertSame(2, $passo->ordem);
+        // Posição exata não é o ponto — passos entram no meio da definição. O
+        // que importa é que a ficha vem CEDO (antes dos acessos, quando o
+        // sistema ainda não consegue buscar nada sozinho).
+        $this->assertLessThan(
+            OnboardingPasso::whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id))
+                ->where('chave', 'grant_sistema_ecf')->value('ordem'),
+            $passo->ordem,
+        );
         $this->assertSame(OnboardingPasso::DONO_CLIENTE, $passo->dono);
         $this->assertSame(OnboardingPasso::AUTO_FONTE_FICHA_CONTA, $passo->auto_fonte);
         $this->assertNull($passo->depende_de, 'A ficha não depende de nada — é o começo do fluxo.');

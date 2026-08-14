@@ -91,11 +91,14 @@ class OnboardingRelatorioInicialTest extends TestCase
     // ─── O passo entra na definição no lugar certo ───────────────────────────
 
     #[Test]
-    public function onboarding_de_gestao_passa_a_ter_15_passos_com_o_relatorio_antes_da_reuniao(): void
+    public function onboarding_de_gestao_tem_o_relatorio_antes_da_reuniao(): void
     {
         $onboarding = $this->onboardingEmAndamento();
 
-        $this->assertSame(15, $onboarding->passos()->count());
+        $this->assertSame(
+            count(\App\Support\Onboarding\DefinicaoOnboarding::paraServico($this->servicoDeGestao())),
+            $onboarding->passos()->count(),
+        );
 
         $relatorio = $this->passo($onboarding, 'relatorio_inicial');
         $this->assertSame(OnboardingPasso::AUTO_FONTE_RELATORIO_INICIAL, $relatorio->auto_fonte);
