@@ -14,6 +14,8 @@ import {
     resumoCarteiraLinha, fmtPp, CONTA_NOTA_TOOLTIP,
     composicaoPorMarketplace, MARKETPLACE_TOOLTIP,
 } from '@/lib/desempenhoLabels';
+// Spec 2026-08-14 (item 1) — régua ÚNICA de referência mensal do sistema.
+import { rotuloMesReferencia, rotuloAcompanhamento } from '@/lib/referenciaMensal';
 
 /**
  * Nota em escala 0-5 com 2 casas SEMPRE — "4,03", nunca "4" nem "4,1".
@@ -504,7 +506,16 @@ export default function PerformanceShow({
                                     {user?.cargo_label ?? 'Analista'}
                                 </span>
                                 <span className="text-white/30 mx-2">·</span>
-                                <span className="text-white/70">{mesExtenso(mes_selecionado ?? resultado?.mes_referencia)}</span>
+                                {/* Spec 2026-08-14 (item 1) — regra única do
+                                    sistema: anuncia o mês de ACOMPANHAMENTO e
+                                    anota a competência como "Ref.". A entrada é
+                                    sempre a competência (`mes_selecionado` /
+                                    `mes_referencia`), que é o que o backend usa
+                                    em `?mes=` e nos snapshots — nada disso muda
+                                    de valor, só o rótulo. */}
+                                <span className="text-white/70 capitalize">
+                                    {rotuloMesReferencia(mes_selecionado ?? resultado?.mes_referencia)}
+                                </span>
                             </p>
                         </div>
                     </div>
@@ -528,7 +539,15 @@ export default function PerformanceShow({
                                     cache ainda pode chegar assim logo após o deploy). */}
                                 {meses_disponiveis.map((m) => {
                                     const value = typeof m === 'string' ? m : m.value;
-                                    const label = typeof m === 'string' ? mesExtenso(m) : m.label;
+                                    // Spec 2026-08-14 — a opção diz o mês de
+                                    // acompanhamento e a competência. O `value`
+                                    // continua sendo a COMPETÊNCIA: é o que o
+                                    // `?mes=` do /performance sempre significou,
+                                    // e trocá-lo moveria o dado de lugar.
+                                    // `m.label` do backend é ignorado de
+                                    // propósito — a régua de rótulo agora é uma
+                                    // só, e mora em `lib/referenciaMensal`.
+                                    const label = rotuloMesReferencia(value);
                                     const emCurso = typeof m === 'string' ? false : m.em_curso;
 
                                     return (
@@ -548,7 +567,7 @@ export default function PerformanceShow({
                 {!semCarteira && (
                     <PeriodoBanner
                         modo={modoAtivo}
-                        mesLabel={mesExtenso(String(mes_selecionado ?? '').slice(0, 7))}
+                        mesLabel={rotuloMesReferencia(String(mes_selecionado ?? '').slice(0, 7))}
                         resumo={
                             modoAtivo === 'bonus_atual'
                                 ? `competência ${mesExtenso(bonus?.competence_month)}${bonus?.payment_month ? `, pago em ${mesExtenso(bonus.payment_month)}` : ''}`
@@ -581,7 +600,7 @@ export default function PerformanceShow({
                     <div className="rounded-2xl border border-white/[0.08] bg-ecf-card p-10 flex flex-col items-center text-center gap-3">
                         <Loader2 size={36} className="text-ecf-yellow animate-spin" />
                         <h3 className="text-white text-xl font-display font-bold">
-                            Calculando a nota de {mesExtenso(String(mes_selecionado ?? '').slice(0, 7))}…
+                            Calculando a nota de {rotuloAcompanhamento(String(mes_selecionado ?? '').slice(0, 7))}…
                         </h3>
                         <p className="text-white/60 text-sm max-w-lg">
                             Esta competência ainda não estava calculada. O cálculo percorre empresa
@@ -602,7 +621,7 @@ export default function PerformanceShow({
                     <div className="rounded-2xl border border-ecf-yellow/30 bg-ecf-yellow/[0.05] p-10 flex flex-col items-center text-center gap-3">
                         <UserX size={40} className="text-ecf-yellow" />
                         <h3 className="text-white text-2xl font-display font-bold">
-                            Sem carteira em {mesExtenso(resultado?.mes_referencia ?? mes_selecionado)}
+                            Sem carteira em {rotuloAcompanhamento(resultado?.mes_referencia ?? mes_selecionado)}
                         </h3>
                         <p className="text-white/70 text-sm max-w-md">
                             {resultado?.motivo ?? 'Este profissional não possui empresas atribuídas no mês selecionado.'}
@@ -678,7 +697,7 @@ export default function PerformanceShow({
                                         <p className="text-white/50 text-xs mt-1 leading-relaxed">
                                             {modoAtivo === 'em_curso'
                                                 ? AVISO_SEM_DETALHE_EM_CURSO
-                                                : avisoSemDetalheFechado(mesExtenso(String(mes_selecionado ?? '').slice(0, 7)))}
+                                                : avisoSemDetalheFechado(rotuloAcompanhamento(String(mes_selecionado ?? '').slice(0, 7)))}
                                         </p>
                                     </div>
                                 </div>

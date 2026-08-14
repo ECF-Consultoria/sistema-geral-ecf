@@ -998,8 +998,18 @@ class NpsController extends Controller
         $props = [
             'surveys'                => $surveys,
             'companies'              => $companies,
-            'estrategistas'          => $estrategistas,
-            'analistas'              => $analistas,
+            // 2026-08-14 — as listas de pessoas só existem no payload para quem
+            // PODE filtrar por pessoa (admin/líder). Antes iam sempre, e um
+            // analista comum — que nem vê o seletor — recebia no HTML a lista
+            // completa de estrategistas e analistas da empresa. Os DADOS já
+            // estavam protegidos (o escopo por pessoa é aplicado no servidor,
+            // ver `$filtroPorPessoa`); o que vazava era a nominata. A chave
+            // simplesmente não é criada — nunca lista vazia, mesma blindagem
+            // de `pode_ver_confianca` (Fase 95 · AB-95-4).
+            ...($podeFiltrarPorPessoa ? [
+                'estrategistas' => $estrategistas,
+                'analistas'     => $analistas,
+            ] : []),
             'templates'              => $templates,
             'grupos'                 => $grupos,
             'pode_filtrar_por_pessoa' => $podeFiltrarPorPessoa,

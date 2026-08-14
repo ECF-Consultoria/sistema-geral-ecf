@@ -7,6 +7,8 @@ import {
     Briefcase, DollarSign, Calendar, Users, Trophy, Sparkles, ChevronRight, Info, Loader2,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
+// Spec 2026-08-14 (item 1) — régua ÚNICA de referência mensal do sistema.
+import { rotuloMesReferencia } from '@/lib/referenciaMensal';
 import { FonteBadge, StatusBadge, VarBadge } from '@/Pages/Portfolio/components/CarteiraBadges';
 import PeriodoBanner from '@/Components/Desempenho/PeriodoBanner';
 import {
@@ -468,7 +470,13 @@ export default function AdminCarteira({
                     rótulo em vez de dentro de um parágrafo. */}
                 <PeriodoBanner
                     modo={modoBonusAtual && bonus ? 'bonus_atual' : (periodo?.em_curso ? 'em_curso' : 'mes_fechado')}
-                    mesLabel={periodo?.mes_label}
+                    // Spec 2026-08-14 (item 1) — em competência fechada o rótulo
+                    // vem da régua única (mês de acompanhamento + "Ref."). No mês
+                    // em curso ainda não há competência fechada a referenciar,
+                    // então segue o rótulo do período.
+                    mesLabel={modoBonusAtual && bonus?.competence_month
+                        ? rotuloMesReferencia(bonus.competence_month)
+                        : periodo?.mes_label}
                     resumo={
                         modoBonusAtual && bonus
                             ? `competência ${formatCompetencia(bonus.competence_month)} · pago em ${formatMesSolo(bonus.payment_month)}`
