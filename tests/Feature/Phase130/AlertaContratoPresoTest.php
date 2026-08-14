@@ -150,22 +150,16 @@ class AlertaContratoPresoTest extends TestCase
     }
 
     /**
-     * Contrato preso o suficiente para disparar o alerta. Para os estados
-     * cuja data base é `updated_at` (recusado/expirado/cancelado/erro), o
-     * `updated_at` precisa ser envelhecido à mão via `forceFill()` — não é
-     * `$fillable` de propósito (T-125-01), mesma técnica já usada no plano
-     * 130-04.
+     * Contrato preso o suficiente para disparar o alerta. `enviado_em` é a
+     * data base para todos os estados usados aqui (correção 260814-cro:
+     * `dataBase()` nunca usa `updated_at` — `enviado_em ?? created_at`).
      */
     private function contratoPresoAntigo(string $status = ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS): ContratoAssinatura
     {
-        $contrato = ContratoAssinatura::factory()->create([
+        return ContratoAssinatura::factory()->create([
             'status'     => $status,
             'enviado_em' => now()->subDays(10),
         ]);
-
-        $contrato->forceFill(['updated_at' => now()->subDays(10)])->save();
-
-        return $contrato;
     }
 
     public function test_contrato_preso_notifica_admin_e_comercial_mas_nao_inativo_nem_outro_setor(): void

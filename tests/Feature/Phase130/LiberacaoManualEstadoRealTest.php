@@ -42,16 +42,16 @@ class LiberacaoManualEstadoRealTest extends TestCase
         $company = Company::factory()->create(['name' => 'Empresa Recusada']);
         $servico = $this->servico();
 
+        // dataBase() de um estado "default" (recusado/expirado/cancelado/erro)
+        // é `enviado_em ?? created_at` (correção 260814-cro — NUNCA
+        // `updated_at`, que zeraria o contador a cada escrita no contrato).
+        // Caso realista: o contrato foi enviado e o cliente recusou.
         $contrato = ContratoAssinatura::factory()->create([
             'company_id' => $company->id,
             'servico_id' => $servico->id,
             'status'     => ContratoAssinatura::STATUS_RECUSADO,
+            'enviado_em' => now()->subDays(10),
         ]);
-        // dataBase() de um estado "default" (recusado/expirado/cancelado/erro)
-        // é `updated_at` — envelhece via forceFill()+save() para que o
-        // contrato passe no gatilho de limiar e apareça em listar(). Não é
-        // fillable de propósito (T-125-01); forceFill() bypassa isso.
-        $contrato->forceFill(['updated_at' => now()->subDays(10)])->save();
 
         $response = $this->actingAs($admin)->get(route('contratos.liberacao-manual.index'));
 
@@ -70,12 +70,15 @@ class LiberacaoManualEstadoRealTest extends TestCase
         $company = Company::factory()->create(['name' => 'Empresa Erro Tecnico']);
         $servico = $this->servico();
 
+        // Caso realista: a integração falhou antes do envio — sem
+        // `enviado_em`, a data base cai no fallback `created_at` (o outro
+        // ramo da nova dataBase(), cobrindo os dois caminhos).
         $contrato = ContratoAssinatura::factory()->create([
             'company_id' => $company->id,
             'servico_id' => $servico->id,
             'status'     => ContratoAssinatura::STATUS_ERRO,
         ]);
-        $contrato->forceFill(['updated_at' => now()->subDays(10)])->save();
+        $contrato->forceFill(['created_at' => now()->subDays(10)])->save();
 
         $response = $this->actingAs($admin)->get(route('contratos.liberacao-manual.index'));
 

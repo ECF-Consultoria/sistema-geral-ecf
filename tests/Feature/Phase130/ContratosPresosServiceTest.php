@@ -142,4 +142,52 @@ class ContratosPresosServiceTest extends TestCase
 
         $this->assertSame(1, $this->service()->limiarDias($contrato));
     }
+
+    /**
+     * Regressão do bug do relógio (260814-cro): dataBase() de um estado
+     * "default" (recusado/expirado/cancelado/erro) usava `updated_at`, e o
+     * próprio alerta (que grava `ultimo_alerta_em` via `update()`) bumpava
+     * esse `updated_at` — zerando o contador de dias parado no instante em
+     * que o contrato era alertado. Qualquer escrita no contrato (não só o
+     * alerta) tem o mesmo efeito.
+     */
+    public function test_bump_de_updated_at_nao_zera_o_relogio_de_contrato_recusado(): void
+    {
+        $contrato = ContratoAssinatura::factory()->create([
+            'status'     => ContratoAssinatura::STATUS_RECUSADO,
+            'enviado_em' => now()->subDays(10),
+        ]);
+
+        $service = $this->service();
+
+        $this->assertTrue($service->estaPreso($contrato->fresh()));
+
+        // Qualquer escrita no contrato — aqui simulando a gravação do
+        // cooldown do alerta — bumpa `updated_at` via Eloquent.
+        $contrato->update(['ultimo_alerta_em' => now()]);
+
+        $fresco = ContratoAssinatura::find($contrato->id);
+
+        $this->assertTrue($service->estaPreso($fresco), 'O contrato tem que continuar preso depois da escrita.');
+        $this->assertGreaterThanOrEqual(10, $service->diasParado($fresco));
+    }
+
+    /**
+     * Estado sem `enviado_em` (ex.: erro antes do envio) conta desde
+     * `created_at` — nunca desde `updated_at`.
+     */
+    public function test_estado_sem_enviado_em_conta_desde_created_at(): void
+    {
+        $contrato = ContratoAssinatura::factory()->create([
+            'status'     => ContratoAssinatura::STATUS_ERRO,
+            'enviado_em' => null,
+        ]);
+        $contrato->forceFill(['created_at' => now()->subDays(10)])->save();
+
+        $service = $this->service();
+        $fresco  = ContratoAssinatura::find($contrato->id);
+
+        $this->assertGreaterThanOrEqual(10, $service->diasParado($fresco));
+        $this->assertTrue($service->estaPreso($fresco));
+    }
 }

@@ -69,14 +69,25 @@ class ContratosPresosService
     /**
      * Data base a partir da qual se conta "há quanto tempo está parado",
      * por estado.
+     *
+     * ⚠️ NÃO usar `updated_at` neste match — bug corrigido em 260814-cro.
+     * `updated_at` é instável por natureza: qualquer escrita no contrato
+     * (gravação do cooldown do alerta da D-04, retry de download de PDF,
+     * sync de signatário) bumpa `updated_at` e zeraria o contador de dias
+     * parado — inclusive o próprio alerta zerando seu relógio ao gravar
+     * `ultimo_alerta_em`, o que destruía a D-04 (o alerta nunca repetia).
+     * A pergunta da D-05 é "há quanto tempo esta empresa está parada",
+     * contada desde que o processo COMEÇOU — não desde a última mexida no
+     * registro. Por isso os estados sem coluna própria (`recusado`,
+     * `expirado`, `cancelado`, `erro`) usam `enviado_em ?? created_at`.
      */
     public function dataBase(ContratoAssinatura $c): CarbonInterface
     {
         return match ($c->status) {
             ContratoAssinatura::STATUS_RASCUNHO               => $c->created_at,
             ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS => $c->enviado_em ?? $c->created_at,
-            ContratoAssinatura::STATUS_ASSINADO                => $c->assinado_em ?? $c->updated_at,
-            default                                             => $c->updated_at,
+            ContratoAssinatura::STATUS_ASSINADO                => $c->assinado_em ?? $c->enviado_em ?? $c->created_at,
+            default                                             => $c->enviado_em ?? $c->created_at,
         };
     }
 
