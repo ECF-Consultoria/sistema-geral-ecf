@@ -194,14 +194,14 @@ a rota de produção em `129-GATE.md` (plano 129-07): assinatura válida → 200
 
 ### Completar o cadastro no Administrativo (D8)
 
-- [ ] **ADM-01**: Um usuário do Administrativo consegue completar, na própria tela, os dados que a empresa não trouxe do Comercial — CNPJ, Gmail do colaborador, datas de início e término do contrato, entre outros
-- [ ] **ADM-02**: A tela mostra claramente o que ainda falta para a empresa poder gerar contrato, e o botão de gerar só fica disponível quando está completo
+- [x] **ADM-01**: Um usuário do Administrativo consegue completar, na própria tela, os dados que a empresa não trouxe do Comercial — CNPJ, Gmail do colaborador, datas de início e término do contrato, entre outros
+- [x] **ADM-02**: A tela mostra claramente o que ainda falta para a empresa poder gerar contrato, e o botão de gerar só fica disponível quando está completo
 - [ ] **ADM-03**: O campo Gmail do colaborador sai do formulário do Comercial na MESMA entrega em que o Administrativo passa a ter onde preenchê-lo (nunca antes — senão fica uma janela sem ninguém cadastrando o dado)
 
 ### Telas e acesso
 
 - [x] **UI-01**: Um usuário do Administrativo vê a lista de contratos com filtro por situação, busca por empresa e um resumo por situação
-- [ ] **UI-02**: Um usuário gera o contrato de uma empresa por um botão, disponível apenas quando ela está sem pendência e sem contrato em andamento (D1)
+- [x] **UI-02**: Um usuário gera o contrato de uma empresa por um botão, disponível apenas quando ela está sem pendência e sem contrato em andamento (D1)
 - [x] **UI-03**: A listagem do Comercial mostra em que pé está o contrato de cada empresa
 - [ ] **UI-04**: A tela deixa claro a diferença entre corrigir o e-mail de um signatário e trocar a pessoa que vai assinar (a segunda exige cancelar e reemitir)
 - [x] **UI-05**: O acesso ao módulo é controlado por permissão própria (`admin.contratos`) e aparece no menu para quem tem
@@ -289,7 +289,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | REDE-05 | Fase 127 | Pending |
 | REDE-06 | Fase 128 | Pending |
 | UI-01 | Fase 131 | Done |
-| UI-02 | Fase 131 | Pending |
+| UI-02 | Fase 131 (plano 04) | Done |
 | UI-03 | Fase 131 | Done |
 | UI-04 | Fase 131 | Pending |
 | UI-05 | Fase 131 | Done |
