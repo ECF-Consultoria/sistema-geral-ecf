@@ -35,14 +35,16 @@ class ContratoAdminReenviarTest extends TestCase
      */
     private function contratoComSignatarioPendente(): array
     {
+        // `clicksign_envelope_id` é UNIQUE — cada chamada precisa de um
+        // valor próprio, senão duas empresas na mesma asserção colidem.
         $contrato = ContratoAssinatura::factory()->emAndamento()->create([
-            'clicksign_envelope_id' => '00000000-0000-4000-8000-000000000001',
+            'clicksign_envelope_id' => (string) \Illuminate\Support\Str::uuid(),
         ]);
 
         $signatario = ContratoAssinaturaSignatario::factory()->create([
             'contrato_assinatura_id' => $contrato->id,
             'situacao'               => ContratoAssinaturaSignatario::SITUACAO_PENDENTE,
-            'clicksign_signer_key'   => '00000000-0000-4000-8000-000000000003',
+            'clicksign_signer_key'   => (string) \Illuminate\Support\Str::uuid(),
         ]);
 
         return [$contrato, $signatario];
@@ -106,5 +108,63 @@ class ContratoAdminReenviarTest extends TestCase
         $response->assertSessionMissing('error');
 
         Http::assertSentCount(1);
+    }
+
+    // ─── Task 3 — guards ─────────────────────────────────────────────────
+
+    /**
+     * T-131-05-01 (IDOR) — o signatário informado precisa pertencer ao
+     * contrato informado, checado ANTES de qualquer I/O.
+     */
+    public function test_reenviar_para_signatario_de_outro_contrato_devolve_422_sem_requisicao(): void
+    {
+        [$contrato] = $this->contratoComSignatarioPendente();
+        [, $signatarioDeOutroContrato] = $this->contratoComSignatarioPendente();
+
+        Http::fake();
+
+        $response = $this->actingAs($this->admin())->post(
+            route('admin.contratos.reenviar', [$contrato, $signatarioDeOutroContrato]),
+        );
+
+        $response->assertStatus(422);
+        Http::assertNothingSent();
+    }
+
+    /**
+     * T-131-05-02 — o reenvio só faz sentido com o contrato aguardando
+     * assinaturas; o UI-SPEC não oferece a ação em nenhum outro estado.
+     */
+    public function test_reenviar_com_contrato_fora_de_aguardando_assinaturas_devolve_422_sem_requisicao(): void
+    {
+        [$contrato, $signatario] = $this->contratoComSignatarioPendente();
+        $contrato->update(['status' => ContratoAssinatura::STATUS_ASSINADO]);
+
+        Http::fake();
+
+        $response = $this->actingAs($this->admin())->post(
+            route('admin.contratos.reenviar', [$contrato, $signatario]),
+        );
+
+        $response->assertStatus(422);
+        Http::assertNothingSent();
+    }
+
+    /**
+     * Pessoa que já respondeu (assinou/recusou) não recebe mais aviso.
+     */
+    public function test_reenviar_para_signatario_que_ja_assinou_devolve_422_sem_requisicao(): void
+    {
+        [$contrato, $signatario] = $this->contratoComSignatarioPendente();
+        $signatario->update(['situacao' => ContratoAssinaturaSignatario::SITUACAO_ASSINOU]);
+
+        Http::fake();
+
+        $response = $this->actingAs($this->admin())->post(
+            route('admin.contratos.reenviar', [$contrato, $signatario]),
+        );
+
+        $response->assertStatus(422);
+        Http::assertNothingSent();
     }
 }

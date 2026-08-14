@@ -60,4 +60,102 @@ class ContratoAdminCancelarTest extends TestCase
 
         Http::assertNothingSent();
     }
+
+    // ─── Task 3 — guards ─────────────────────────────────────────────────
+
+    /**
+     * Prova isolada, dedicada só à ausência de chamada — mesmo com
+     * `Http::fake()` sem NENHUMA rota registrada (qualquer request real
+     * quebraria o teste), registrar cancelamento não dispara nada.
+     */
+    public function test_registrar_cancelamento_nunca_dispara_nenhuma_requisicao_http(): void
+    {
+        $contrato = ContratoAssinatura::factory()->emAndamento()->create();
+
+        Http::fake();
+
+        $this->actingAs($this->admin())->post(
+            route('admin.contratos.cancelamento', $contrato),
+            ['motivo' => 'Motivo válido, com mais de dez caracteres.'],
+        );
+
+        Http::assertNothingSent();
+    }
+
+    /**
+     * Motivo com menos de 10 caracteres falha a validação e NADA é gravado
+     * — conferido por reconsulta ao banco, não pela mensagem de erro.
+     */
+    public function test_registrar_cancelamento_com_motivo_curto_falha_validacao_e_nao_grava_nada(): void
+    {
+        $contrato = ContratoAssinatura::factory()->emAndamento()->create();
+
+        Http::fake();
+
+        $response = $this->actingAs($this->admin())->post(
+            route('admin.contratos.cancelamento', $contrato),
+            ['motivo' => 'curto'],
+        );
+
+        $response->assertSessionHasErrors('motivo');
+
+        $contratoFresco = $contrato->fresh();
+        $this->assertNull($contratoFresco->cancelamento_motivo);
+        $this->assertNull($contratoFresco->cancelamento_solicitado_por_user_id);
+        $this->assertNull($contratoFresco->cancelamento_solicitado_em);
+
+        Http::assertNothingSent();
+    }
+
+    /**
+     * Segundo registro no mesmo contrato devolve 422 — o histórico do
+     * primeiro pedido não pode ser sobrescrito (T-131-05-06).
+     */
+    public function test_registrar_cancelamento_pela_segunda_vez_devolve_422(): void
+    {
+        $admin    = $this->admin();
+        $contrato = ContratoAssinatura::factory()->emAndamento()->create([
+            'cancelamento_motivo'                 => 'Motivo do primeiro pedido de cancelamento.',
+            'cancelamento_solicitado_por_user_id'  => $admin->id,
+            'cancelamento_solicitado_em'           => now()->subDay(),
+        ]);
+
+        Http::fake();
+
+        $response = $this->actingAs($admin)->post(
+            route('admin.contratos.cancelamento', $contrato),
+            ['motivo' => 'Um segundo motivo, diferente do primeiro pedido.'],
+        );
+
+        $response->assertStatus(422);
+
+        // Reconsulta — o motivo original não foi sobrescrito.
+        $this->assertSame('Motivo do primeiro pedido de cancelamento.', $contrato->fresh()->cancelamento_motivo);
+
+        Http::assertNothingSent();
+    }
+
+    /**
+     * Contrato em estado terminal (`assinado`) não aceita registro de
+     * cancelamento — só faz sentido para contrato vivo.
+     */
+    public function test_registrar_cancelamento_em_contrato_assinado_devolve_422_e_nao_grava_nada(): void
+    {
+        $contrato = ContratoAssinatura::factory()->assinado()->create();
+
+        Http::fake();
+
+        $response = $this->actingAs($this->admin())->post(
+            route('admin.contratos.cancelamento', $contrato),
+            ['motivo' => 'Tentando cancelar um contrato já assinado.'],
+        );
+
+        $response->assertStatus(422);
+
+        $contratoFresco = $contrato->fresh();
+        $this->assertNull($contratoFresco->cancelamento_motivo);
+        $this->assertNull($contratoFresco->cancelamento_solicitado_em);
+
+        Http::assertNothingSent();
+    }
 }
