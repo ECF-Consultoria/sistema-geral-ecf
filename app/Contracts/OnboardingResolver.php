@@ -21,7 +21,7 @@ interface OnboardingResolver
 {
     /**
      * Chave estável que bate 1:1 com `template_passos.auto_fonte` e com uma
-     * constante de `TemplatePasso::AUTO_FONTES`. Não traduzir.
+     * constante de `OnboardingPasso::AUTO_FONTES`. Não traduzir.
      */
     public function chave(): string;
 

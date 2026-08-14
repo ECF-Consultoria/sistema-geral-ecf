@@ -6,13 +6,10 @@ use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\OnboardingTemplate;
 use App\Models\Servico;
-use App\Models\TemplatePasso;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingResolverResultado;
-use Database\Seeders\OnboardingTemplateGestaoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -38,7 +35,6 @@ class OnboardingEngineDependenciasTest extends TestCase
     /** Onboarding de Gestão em `andamento` (13 passos ainda bloqueado). */
     private function criarOnboardingDeGestaoEmAndamento(): Onboarding
     {
-        (new OnboardingTemplateGestaoSeeder())->run();
 
         $company = Company::factory()->create();
         $contrato = ContratoServico::factory()
@@ -76,48 +72,45 @@ class OnboardingEngineDependenciasTest extends TestCase
             'setor'         => Servico::SETOR_OUTROS,
         ]);
 
-        $template = OnboardingTemplate::create([
-            'servico_id'   => $servico->id,
-            'versao'       => 1,
-            'ativo'        => true,
-            'publicado_em' => now(),
-        ]);
-
-        TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 1,
-            'chave'       => 'anuncios_ativos_inativos',
-            'titulo'      => 'Âncora (mesma chave que o motor procura na condição)',
-            'dono'        => TemplatePasso::DONO_SISTEMA,
-        ]);
-        TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 2,
-            'chave'       => 'passo_condicional',
-            'titulo'      => 'Condicional',
-            'dono'        => TemplatePasso::DONO_INTERNO,
-            'depende_de'  => ['anuncios_ativos_inativos'],
-            'condicao'    => ['tipo' => TemplatePasso::CONDICAO_ANUNCIOS_INATIVOS],
-        ]);
-        TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 3,
-            'chave'       => 'passo_dependente',
-            'titulo'      => 'Dependente do condicional',
-            'dono'        => TemplatePasso::DONO_INTERNO,
-            'depende_de'  => ['passo_condicional'],
-        ]);
-
         $company = Company::factory()->create();
         $onboarding = Onboarding::create([
             'company_id'  => $company->id,
             'servico_id'  => $servico->id,
-            'template_id' => $template->id,
             'status'      => Onboarding::STATUS_ANDAMENTO,
             'iniciado_em' => now(),
         ]);
 
-        (new OnboardingEngineService())->montarPassos($onboarding);
+        // Cadeia montada à mão: `montarPassos()` só sabe montar a definição em
+        // código do serviço, e este serviço é sintético de propósito. Como o
+        // passo agora CARREGA a definição, criar as linhas direto é suficiente
+        // — não existe mais tabela de template para popular antes.
+        OnboardingPasso::create([
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 1,
+            'chave'         => 'anuncios_ativos_inativos',
+            'titulo'        => 'Âncora (mesma chave que o motor procura na condição)',
+            'dono'          => OnboardingPasso::DONO_SISTEMA,
+            'status'        => OnboardingPasso::STATUS_BLOQUEADO,
+        ]);
+        OnboardingPasso::create([
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 2,
+            'chave'         => 'passo_condicional',
+            'titulo'        => 'Condicional',
+            'dono'          => OnboardingPasso::DONO_INTERNO,
+            'depende_de'    => ['anuncios_ativos_inativos'],
+            'condicao'      => ['tipo' => OnboardingPasso::CONDICAO_ANUNCIOS_INATIVOS],
+            'status'        => OnboardingPasso::STATUS_BLOQUEADO,
+        ]);
+        OnboardingPasso::create([
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 3,
+            'chave'         => 'passo_dependente',
+            'titulo'        => 'Dependente do condicional',
+            'dono'          => OnboardingPasso::DONO_INTERNO,
+            'depende_de'    => ['passo_condicional'],
+            'status'        => OnboardingPasso::STATUS_BLOQUEADO,
+        ]);
 
         return [$onboarding, 'anuncios_ativos_inativos', 'passo_condicional', 'passo_dependente'];
     }
@@ -127,7 +120,6 @@ class OnboardingEngineDependenciasTest extends TestCase
     /** @test */
     public function reavaliar_em_rascunho_nao_destrava_nada_e_disponivel_em_fica_nulo(): void
     {
-        (new OnboardingTemplateGestaoSeeder())->run();
         $company = Company::factory()->create();
         $contrato = ContratoServico::factory()
             ->paraServico($this->servicoDeGestao())
@@ -431,7 +423,9 @@ class OnboardingEngineDependenciasTest extends TestCase
     {
         [$onboarding] = $this->criarOnboardingSinteticoComCadeiaCondicional();
         $passo = $this->passo($onboarding, 'passo_condicional');
-        $passo->templatePasso()->update(['condicao' => ['tipo' => 'condicao_inexistente']]);
+        // A condição mora no próprio passo agora — não há mais linha de
+        // template para atualizar por trás dele.
+        $passo->update(['condicao' => ['tipo' => 'condicao_inexistente']]);
 
         $this->expectException(\RuntimeException::class);
         (new OnboardingEngineService())->avaliarCondicao($passo->fresh());

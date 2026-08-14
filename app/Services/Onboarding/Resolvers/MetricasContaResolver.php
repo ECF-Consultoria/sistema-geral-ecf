@@ -5,7 +5,6 @@ namespace App\Services\Onboarding\Resolvers;
 use App\Contracts\OnboardingResolver;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\TemplatePasso;
 use App\Services\AdmanService;
 use App\Services\MercadoLivreService;
 use App\Services\Onboarding\OnboardingResolverResultado;
@@ -49,7 +48,7 @@ class MetricasContaResolver implements OnboardingResolver
 
     public function chave(): string
     {
-        return TemplatePasso::AUTO_FONTE_METRICAS;
+        return OnboardingPasso::AUTO_FONTE_METRICAS;
     }
 
     public function label(): string

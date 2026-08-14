@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
-use Database\Seeders\OnboardingTemplateGestaoSeeder;
 
 class DatabaseSeeder extends Seeder
 {
@@ -26,7 +25,7 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // Fase 135 Plano 04 — template de Gestão v1 (idempotente, D-08).
-        $this->call(OnboardingTemplateGestaoSeeder::class);
+        // O onboarding não tem seeder: a definição dos passos mora em código,
+        // em App\Support\Onboarding\DefinicaoOnboarding.
     }
 }

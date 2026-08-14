@@ -8,10 +8,9 @@ use App\Models\ContratoServico;
 use App\Models\HubspotLineItemMapping;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\OnboardingTemplate;
 use App\Models\Servico;
 use App\Models\User;
-use Database\Seeders\OnboardingTemplateGestaoSeeder;
+use App\Support\Onboarding\DefinicaoOnboarding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -37,7 +36,6 @@ class OnboardingObserverCallSitesTest extends TestCase
     {
         parent::setUp();
 
-        (new OnboardingTemplateGestaoSeeder())->run();
     }
 
     // ─── Helpers compartilhados ─────────────────────────────────────────────
@@ -68,21 +66,17 @@ class OnboardingObserverCallSitesTest extends TestCase
 
     /**
      * Asserção comum aos 4 cenários: onboarding em rascunho, 13 passos
-     * montados, template_id apontando pra versão ativa — SEM nenhum teste
-     * chamar o Observer diretamente (a criação vem sempre da rota real).
+     * montados, versão da definição carimbada — SEM nenhum teste chamar o
+     * Observer diretamente (a criação vem sempre da rota real).
      */
     private function assertOnboardingDeGestaoEmRascunho(Company $company, Servico $servico): Onboarding
     {
-        $templateAtivo = OnboardingTemplate::where('servico_id', $servico->id)
-            ->where('ativo', true)
-            ->firstOrFail();
-
         $onboarding = Onboarding::where('company_id', $company->id)
             ->where('servico_id', $servico->id)
             ->firstOrFail();
 
         $this->assertSame(Onboarding::STATUS_RASCUNHO, $onboarding->status);
-        $this->assertSame($templateAtivo->id, $onboarding->template_id);
+        $this->assertSame(DefinicaoOnboarding::VERSAO, $onboarding->definicao_versao);
         $this->assertSame(13, OnboardingPasso::where('onboarding_id', $onboarding->id)->count());
 
         return $onboarding;

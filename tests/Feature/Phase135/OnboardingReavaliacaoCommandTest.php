@@ -8,9 +8,7 @@ use App\Models\Company;
 use App\Models\MlToken;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\OnboardingTemplate;
 use App\Models\Servico;
-use App\Models\TemplatePasso;
 use App\Services\Onboarding\OnboardingResolverFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -45,36 +43,22 @@ class OnboardingReavaliacaoCommandTest extends TestCase
             'setor'         => Servico::SETOR_PERFORMANCE,
         ]);
 
-        $template = OnboardingTemplate::create([
-            'servico_id'   => $servico->id,
-            'versao'       => 1,
-            'ativo'        => true,
-            'publicado_em' => now(),
-        ]);
-
-        $templatePasso = TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 1,
-            'chave'       => $chave,
-            'titulo'      => $chave,
-            'dono'        => TemplatePasso::DONO_SISTEMA,
-            'auto_fonte'  => $autoFonte,
-        ]);
-
         $onboarding = Onboarding::create([
             'company_id'  => $company->id,
             'servico_id'  => $servico->id,
-            'template_id' => $template->id,
             'status'      => $statusOnboarding,
             'iniciado_em' => $statusOnboarding === Onboarding::STATUS_ANDAMENTO ? now() : null,
         ]);
 
         $passo = OnboardingPasso::create([
-            'onboarding_id'     => $onboarding->id,
-            'template_passo_id' => $templatePasso->id,
-            'chave'             => $chave,
-            'status'            => $statusPasso,
-            'disponivel_em'     => now(),
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 1,
+            'chave'         => $chave,
+            'titulo'        => $chave,
+            'dono'          => OnboardingPasso::DONO_SISTEMA,
+            'auto_fonte'    => $autoFonte,
+            'status'        => $statusPasso,
+            'disponivel_em' => now(),
         ]);
 
         return [$onboarding, $passo];
@@ -139,7 +123,7 @@ class OnboardingReavaliacaoCommandTest extends TestCase
         [$onboarding, $passo] = $this->criarOnboardingComPasso(
             $company,
             'grant_sistema_ecf',
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
             statusOnboarding: Onboarding::STATUS_RASCUNHO,
         );
 
@@ -160,7 +144,7 @@ class OnboardingReavaliacaoCommandTest extends TestCase
         [, $passo] = $this->criarOnboardingComPasso(
             $company,
             'grant_sistema_ecf',
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
         );
 
         $this->artisan('onboarding:reavaliar-passos')->assertExitCode(0);
@@ -178,7 +162,7 @@ class OnboardingReavaliacaoCommandTest extends TestCase
         [, $passo] = $this->criarOnboardingComPasso(
             $company,
             'grant_consultoria_adman',
-            TemplatePasso::AUTO_FONTE_ADMAN_GRANT,
+            OnboardingPasso::AUTO_FONTE_ADMAN_GRANT,
         );
 
         $this->artisan('onboarding:reavaliar-passos')->assertExitCode(0);
@@ -199,17 +183,17 @@ class OnboardingReavaliacaoCommandTest extends TestCase
         [, $passoComFalha] = $this->criarOnboardingComPasso(
             $companyComFalha,
             'grant_sistema_ecf',
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
         );
 
         $companyOk = Company::factory()->create(['adman_account_id' => 'CUST_OK_RESILIENCIA']);
         [, $passoOk] = $this->criarOnboardingComPasso(
             $companyOk,
             'grant_consultoria_adman',
-            TemplatePasso::AUTO_FONTE_ADMAN_GRANT,
+            OnboardingPasso::AUTO_FONTE_ADMAN_GRANT,
         );
 
-        $this->bindFactoryComFalhaSimulada(TemplatePasso::AUTO_FONTE_ML_TOKEN);
+        $this->bindFactoryComFalhaSimulada(OnboardingPasso::AUTO_FONTE_ML_TOKEN);
 
         $this->artisan('onboarding:reavaliar-passos')
             ->expectsOutputToContain('falhas=1')
@@ -233,7 +217,7 @@ class OnboardingReavaliacaoCommandTest extends TestCase
             [, $passo] = $this->criarOnboardingComPasso(
                 $company,
                 'grant_sistema_ecf',
-                TemplatePasso::AUTO_FONTE_ML_TOKEN,
+                OnboardingPasso::AUTO_FONTE_ML_TOKEN,
             );
             $passos[] = $passo;
         }
@@ -254,7 +238,7 @@ class OnboardingReavaliacaoCommandTest extends TestCase
         [$onboardingA, $passoA] = $this->criarOnboardingComPasso(
             $companyA,
             'grant_sistema_ecf',
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
         );
 
         $companyB = Company::factory()->create();
@@ -262,7 +246,7 @@ class OnboardingReavaliacaoCommandTest extends TestCase
         [, $passoB] = $this->criarOnboardingComPasso(
             $companyB,
             'grant_sistema_ecf',
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
         );
 
         $this->artisan('onboarding:reavaliar-passos', ['--onboarding' => $onboardingA->id])
@@ -282,7 +266,7 @@ class OnboardingReavaliacaoCommandTest extends TestCase
         [, $passo] = $this->criarOnboardingComPasso(
             $company,
             'grant_sistema_ecf',
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
         );
 
         $this->artisan('onboarding:reavaliar-passos')->assertExitCode(0);

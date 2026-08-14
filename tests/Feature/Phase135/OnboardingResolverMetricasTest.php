@@ -7,9 +7,7 @@ use App\Models\CompanyGrant;
 use App\Models\MlToken;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\OnboardingTemplate;
 use App\Models\Servico;
-use App\Models\TemplatePasso;
 use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\Resolvers\MetricasContaResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -40,32 +38,18 @@ class OnboardingResolverMetricasTest extends TestCase
             'setor'         => Servico::SETOR_PERFORMANCE,
         ]);
 
-        $template = OnboardingTemplate::create([
-            'servico_id'   => $servico->id,
-            'versao'       => 1,
-            'ativo'        => true,
-            'publicado_em' => now(),
-        ]);
-
-        $templatePasso = TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 1,
-            'chave'       => 'metricas_da_conta',
-            'titulo'      => 'Métricas da conta',
-            'dono'        => TemplatePasso::DONO_SISTEMA,
-            'auto_fonte'  => TemplatePasso::AUTO_FONTE_METRICAS,
-        ]);
-
         $onboarding = Onboarding::create([
             'company_id'  => $company->id,
             'servico_id'  => $servico->id,
-            'template_id' => $template->id,
         ]);
 
         $passo = OnboardingPasso::create([
-            'onboarding_id'     => $onboarding->id,
-            'template_passo_id' => $templatePasso->id,
-            'chave'             => 'metricas_da_conta',
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 1,
+            'chave'         => 'metricas_da_conta',
+            'titulo'        => 'Métricas da conta',
+            'dono'          => OnboardingPasso::DONO_SISTEMA,
+            'auto_fonte'    => OnboardingPasso::AUTO_FONTE_METRICAS,
         ]);
 
         return [$onboarding, $passo];

@@ -64,13 +64,13 @@ class OnboardingReavaliarPassos extends Command
                     $query->where('id', $onboardingId);
                 }
             })
-            ->whereHas('templatePasso', fn ($query) => $query->whereNotNull('auto_fonte'))
+            ->whereNotNull('auto_fonte')
             ->whereIn('status', [
                 OnboardingPasso::STATUS_AGUARDANDO_COLETA,
                 OnboardingPasso::STATUS_INDETERMINADO,
                 OnboardingPasso::STATUS_ABERTO,
             ])
-            ->with(['onboarding', 'templatePasso'])
+            ->with('onboarding')
             ->oldest('updated_at')
             ->limit($limite)
             ->get();
@@ -86,16 +86,15 @@ class OnboardingReavaliarPassos extends Command
 
         foreach ($passos as $passo) {
             try {
-                $templatePasso = $passo->templatePasso;
                 $onboarding = $passo->onboarding;
 
-                if ($templatePasso === null || $onboarding === null) {
+                if ($onboarding === null || $passo->auto_fonte === null) {
                     // Defesa contra despacho errado — mesma disciplina do
-                    // ResolveOnboardingPassoJob (Plano 06).
+                    // ResolveOnboardingPassoJob.
                     continue;
                 }
 
-                $resolver = $factory->for($templatePasso->auto_fonte);
+                $resolver = $factory->for($passo->auto_fonte);
 
                 if ($resolver->assincrono()) {
                     // Nunca chama Adman/Mercado Livre inline — só despacha.

@@ -45,7 +45,7 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(\App\Services\Onboarding\Resolvers\MetricasContaResolver::class),
                 // Fase 135 Plano 07 — passo 8, único resolver autorizado a
                 // setar a chave reservada coleta_em_andamento (D-11). Fecha
-                // o catálogo com as 5 chaves de TemplatePasso::AUTO_FONTES.
+                // o catálogo com as 5 chaves de OnboardingPasso::AUTO_FONTES.
                 $app->make(\App\Services\Onboarding\Resolvers\AcervoColetadoResolver::class),
             ]);
         });

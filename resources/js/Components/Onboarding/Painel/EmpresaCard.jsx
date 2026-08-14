@@ -6,7 +6,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { ChevronRight } from 'lucide-react';
 import SituacaoChip from './SituacaoChip';
 import DonoBadge from './DonoBadge';
-import { SEM_VALOR } from '@/Components/Onboarding/Templates/sentinelaSemValor';
+import { SEM_VALOR } from '@/Components/Onboarding/sentinelaSemValor';
 
 const initials = (name) =>
     (name || '?').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();

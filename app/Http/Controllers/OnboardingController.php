@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\TemplatePasso;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
@@ -22,7 +21,7 @@ use Inertia\Inertia;
  * concluir manualmente um passo (nunca um passo com `auto_fonte`, D-19).
  *
  * Gate: `permission:core.onboarding` na rota (`routes/web.php`), distinto do
- * `role:admin` do CRUD de template (D-04) — admin passa por short-circuit em
+ * admin passa por short-circuit em
  * `User::hasPermission()`.
  *
  * Nenhuma chamada de rede aqui: todo o cálculo é sobre dados já persistidos
@@ -30,7 +29,7 @@ use Inertia\Inertia;
  */
 class OnboardingController extends Controller
 {
-    /** Chave (denormalizada, D-10) do único passo administrativo do template de Gestão (D-15). */
+    /** Chave do único passo administrativo do onboarding de Gestão (D-15). */
     private const CHAVE_PASSO_ADMINISTRATIVO = 'confirmacao_pagamento';
 
     /**
@@ -73,8 +72,7 @@ class OnboardingController extends Controller
             'company:id,name',
             'servico:id,nome',
             'responsavel:id,name',
-            'template:id,versao',
-            'passos.templatePasso.setor:id,nome',
+            'passos.setor:id,nome',
         ]);
 
         if (! $user->isAdmin()) {
@@ -110,7 +108,7 @@ class OnboardingController extends Controller
     }
 
     /**
-     * GET /onboarding/{onboarding} — detalhe com os passos do template:
+     * GET /onboarding/{onboarding} — detalhe com os passos do onboarding:
      * título, dono, setor, estado, dias parado (contados de `disponivel_em`,
      * D-11), SLA, dependências resolvidas para títulos legíveis, condição
      * traduzida pra pt-BR (nunca a expressão crua) e o selo de automação.
@@ -125,19 +123,18 @@ class OnboardingController extends Controller
             'company:id,name',
             'servico:id,nome',
             'responsavel:id,name',
-            'template:id,versao',
-            'passos.templatePasso.setor:id,nome',
+            'passos.setor:id,nome',
         ]);
 
         $passos = $onboarding->passos;
         $titulosPorChave = $passos->mapWithKeys(
-            fn (OnboardingPasso $p) => [$p->chave => $p->templatePasso->titulo]
+            fn (OnboardingPasso $p) => [$p->chave => $p->titulo]
         );
 
         $situacao = $this->situacaoDe($onboarding, $passos);
 
         $passosOrdenados = $passos
-            ->sortBy(fn (OnboardingPasso $p) => $p->templatePasso->ordem)
+            ->sortBy(fn (OnboardingPasso $p) => $p->ordem)
             ->values()
             ->map(fn (OnboardingPasso $p) => $this->detalhePasso($p, $titulosPorChave));
 
@@ -153,7 +150,7 @@ class OnboardingController extends Controller
                     'id'   => $onboarding->responsavel->id,
                     'name' => $onboarding->responsavel->name,
                 ] : null,
-                'template_versao' => $onboarding->template?->versao,
+                'definicao_versao' => $onboarding->definicao_versao,
             ],
             'passos' => $passosOrdenados,
         ]);
@@ -217,7 +214,7 @@ class OnboardingController extends Controller
         activity('onboarding')
             ->performedOn($onboarding)
             ->withProperties(['passo_id' => $passo->id, 'chave' => $passo->chave, 'feito_por' => $request->user()->id])
-            ->log("Passo \"{$passo->templatePasso->titulo}\" concluído manualmente");
+            ->log("Passo \"{$passo->titulo}\" concluído manualmente");
 
         return back()->with('success', 'Passo concluído.');
     }
@@ -292,7 +289,7 @@ class OnboardingController extends Controller
             ] : null,
             'passo_que_trava' => $trava ? $this->passoTravaPayload($trava) : null,
             'contadores'      => $this->contadores($passos),
-            'template_versao' => $onboarding->template?->versao,
+            'definicao_versao' => $onboarding->definicao_versao,
         ];
 
         // D-17: a sugestão só faz sentido enquanto o onboarding ainda não
@@ -314,9 +311,9 @@ class OnboardingController extends Controller
      */
     private function detalhePasso(OnboardingPasso $passo, Collection $titulosPorChave): array
     {
-        $templatePasso = $passo->templatePasso;
+        $passo = $passo;
         $diasParado = $this->diasParado($passo);
-        $slaDias = $templatePasso->sla_dias;
+        $slaDias = $passo->sla_dias;
         $vencido = $passo->status === OnboardingPasso::STATUS_ABERTO
             && $diasParado !== null
             && $slaDias !== null
@@ -328,19 +325,18 @@ class OnboardingController extends Controller
             // — sem isso o passo detalhado não tem como ser referenciado na ação.
             'id'             => $passo->id,
             'chave'          => $passo->chave,
-            'titulo'         => $templatePasso->titulo,
-            'dono'           => $templatePasso->dono,
-            'setor'          => $templatePasso->setor?->nome,
+            'titulo'         => $passo->titulo,
+            'dono'           => $passo->dono,
+            'setor'          => $passo->setor?->nome,
             'status'         => $passo->status,
             'dias_parado'    => $diasParado,
             'sla_dias'       => $slaDias,
             'vencido'        => $vencido,
-            'obrigatorio'    => (bool) $templatePasso->obrigatorio,
-            'depende_de'     => collect($templatePasso->depende_de ?? [])
+            'depende_de'     => collect($passo->depende_de ?? [])
                 ->map(fn (string $chave) => $titulosPorChave->get($chave, $chave))
                 ->values(),
-            'condicao'       => $this->condicaoLegivel($templatePasso->condicao),
-            'tem_auto_fonte' => $templatePasso->auto_fonte !== null,
+            'condicao'       => $this->condicaoLegivel($passo->condicao),
+            'tem_auto_fonte' => $passo->auto_fonte !== null,
         ];
 
         if ($passo->status === OnboardingPasso::STATUS_AGUARDANDO_COLETA) {
@@ -394,13 +390,13 @@ class OnboardingController extends Controller
 
         if ($trava) {
             $diasParado = $this->diasParado($trava);
-            $slaDias = $trava->templatePasso->sla_dias;
+            $slaDias = $trava->sla_dias;
 
             if ($diasParado !== null && $slaDias !== null && $diasParado > $slaDias) {
                 return 'vencido';
             }
 
-            return 'aguardando_'.$trava->templatePasso->dono;
+            return 'aguardando_'.$trava->dono;
         }
 
         if ($passos->contains(fn (OnboardingPasso $p) => in_array(
@@ -414,7 +410,7 @@ class OnboardingController extends Controller
         // Sem passo aberto, sem coleta pendente e ainda não concluído — não
         // deveria acontecer com dados consistentes (só se restar bloqueado
         // preso por dependência cíclica, guarda já existente no
-        // StoreOnboardingTemplateRequest do Plano 08). 'coletando' é o
+        // catálogo fechado de OnboardingPasso). 'coletando' é o
         // estado neutro mais seguro pra nunca devolver um valor fora do
         // catálogo de 6 pro frontend.
         return 'coletando';
@@ -478,7 +474,7 @@ class OnboardingController extends Controller
                 return $candidato;
             }
 
-            if ($diasCandidato === $diasAtual && $candidato->templatePasso->ordem < $atual->templatePasso->ordem) {
+            if ($diasCandidato === $diasAtual && $candidato->ordem < $atual->ordem) {
                 return $candidato;
             }
 
@@ -489,13 +485,13 @@ class OnboardingController extends Controller
     private function passoTravaPayload(OnboardingPasso $passo): array
     {
         $diasParado = $this->diasParado($passo);
-        $slaDias = $passo->templatePasso->sla_dias;
+        $slaDias = $passo->sla_dias;
 
         return [
             'chave'       => $passo->chave,
-            'titulo'      => $passo->templatePasso->titulo,
-            'dono'        => $passo->templatePasso->dono,
-            'setor'       => $passo->templatePasso->setor?->nome,
+            'titulo'      => $passo->titulo,
+            'dono'        => $passo->dono,
+            'setor'       => $passo->setor?->nome,
             'dias_parado' => $diasParado,
             'sla_dias'    => $slaDias,
             'vencido'     => $diasParado !== null && $slaDias !== null && $diasParado > $slaDias,
@@ -531,7 +527,7 @@ class OnboardingController extends Controller
     }
 
     /**
-     * Traduz `template_passos.condicao` (catálogo fechado, D-09/D-12) pra
+     * Traduz `onboarding_passos.condicao` (catálogo fechado, D-09/D-12) pra
      * texto legível pt-BR — nunca a expressão crua no payload.
      */
     private function condicaoLegivel(?array $condicao): ?string
@@ -541,7 +537,7 @@ class OnboardingController extends Controller
         }
 
         return match ($condicao['tipo'] ?? null) {
-            TemplatePasso::CONDICAO_ANUNCIOS_INATIVOS => 'Só se aplica quando há anúncios inativos',
+            OnboardingPasso::CONDICAO_ANUNCIOS_INATIVOS => 'Só se aplica quando há anúncios inativos',
             default => 'Condição não reconhecida',
         };
     }

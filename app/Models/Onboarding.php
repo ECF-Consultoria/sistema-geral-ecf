@@ -10,9 +10,11 @@ use Spatie\Activitylog\Traits\LogsActivity;
 
 /**
  * Onboarding — instância ancorada em Company × Servico, um por contrato
- * (D-01/SC-01). `template_id` é a versão CONGELADA de OnboardingTemplate em
- * que este onboarding nasceu — publicar uma versão nova não move este
- * ponteiro (D-07/SC-09).
+ * (D-01/SC-01). `definicao_versao` registra a versão de
+ * {@see \App\Support\Onboarding\DefinicaoOnboarding} sob a qual este
+ * onboarding nasceu; o congelamento em si mora nas colunas de
+ * `onboarding_passos`, que carregam a definição copiada — mudar a receita em
+ * código não mexe em quem já está rodando.
  *
  * D-05: nasce em `rascunho` (Observer do Plano 04); SLA só corre e o link do
  * cliente só é exposto depois que a Coordenação confirma `responsavel_id` e o
@@ -28,7 +30,7 @@ class Onboarding extends Model
         'company_id',
         'servico_id',
         'contrato_servico_id',
-        'template_id',
+        'definicao_versao',
         'status',
         'responsavel_id',
         'iniciado_em',
@@ -87,11 +89,6 @@ class Onboarding extends Model
     public function servico(): BelongsTo
     {
         return $this->belongsTo(Servico::class);
-    }
-
-    public function template(): BelongsTo
-    {
-        return $this->belongsTo(OnboardingTemplate::class, 'template_id');
     }
 
     public function contratoServico(): BelongsTo

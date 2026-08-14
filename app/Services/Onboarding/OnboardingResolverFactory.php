@@ -3,7 +3,7 @@
 namespace App\Services\Onboarding;
 
 use App\Contracts\OnboardingResolver;
-use App\Models\TemplatePasso;
+use App\Models\OnboardingPasso;
 
 /**
  * Registry por chave do catálogo fechado de resolvers automáticos do
@@ -36,14 +36,14 @@ class OnboardingResolverFactory
         }
 
         // Falha alta na construção: nenhum resolver registrado pode apontar
-        // para uma chave fora de TemplatePasso::AUTO_FONTES — trava que
+        // para uma chave fora de OnboardingPasso::AUTO_FONTES — trava que
         // impede um resolver órfão de existir sem que o template consiga
         // apontar para ele (D-09).
         foreach (array_keys($this->porChave) as $chave) {
-            if (! in_array($chave, TemplatePasso::AUTO_FONTES, true)) {
+            if (! in_array($chave, OnboardingPasso::AUTO_FONTES, true)) {
                 throw new \RuntimeException(
                     "Resolver registrado com chave '{$chave}' fora do catálogo fechado "
-                    . 'TemplatePasso::AUTO_FONTES — catálogo fechado (D-09).'
+                    . 'OnboardingPasso::AUTO_FONTES — catálogo fechado (D-09).'
                 );
             }
         }

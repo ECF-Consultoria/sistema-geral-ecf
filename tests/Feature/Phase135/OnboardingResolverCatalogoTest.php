@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Phase135;
 
-use App\Models\TemplatePasso;
+use App\Models\OnboardingPasso;
 use App\Services\Onboarding\OnboardingResolverFactory;
 use App\Services\Onboarding\OnboardingResolverResultado;
 use ReflectionClass;
@@ -43,12 +43,12 @@ class OnboardingResolverCatalogoTest extends TestCase
     }
 
     /** @test */
-    public function toda_chave_do_catalogo_esta_em_template_passo_auto_fontes(): void
+    public function toda_chave_do_catalogo_esta_em_onboarding_passo_auto_fontes(): void
     {
         $factory = app(OnboardingResolverFactory::class);
 
         foreach ($factory->catalogo() as $entrada) {
-            $this->assertContains($entrada['chave'], TemplatePasso::AUTO_FONTES);
+            $this->assertContains($entrada['chave'], OnboardingPasso::AUTO_FONTES);
         }
     }
 

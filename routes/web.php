@@ -30,6 +30,8 @@ use App\Http\Controllers\ShopeeOAuthController;
 use App\Http\Controllers\GrantController;
 use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MeetingController;
+use App\Http\Controllers\MetasDevController;
+use App\Http\Controllers\MetasDevGestorController;
 use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsController;
 use App\Http\Controllers\NpsEnvioAutomaticoController;
@@ -39,7 +41,6 @@ use App\Http\Controllers\NpsTemplateOptionController;
 use App\Http\Controllers\NpsTemplateQuestionController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\OnboardingPublicoController;
-use App\Http\Controllers\OnboardingTemplateController;
 use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PolosController;
 use App\Http\Controllers\PolosPpaController;
@@ -728,6 +729,29 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{company}/toggle-shadow',               [SugadoresMlOnboardingController::class, 'toggleShadow'])->name('toggle_shadow');
         });
 
+        // ─── Metas do Dev — proposta de régua de bonificação do time de dev ───
+        // Módulo em `homologacao` no ModuleRegistry (fora de produção enquanto
+        // for proposta). O grupo já é role:admin, mas a custódia REAL é mais
+        // fina e mora nos FormRequests: tudo que entra no cálculo da nota exige
+        // `is_gestor_dev`, flag que o dev avaliado NÃO tem — ele é admin.
+        // Ver .planning/seeds/metas-dev-proposta.md ("Matriz de custódia").
+        Route::prefix('dev/metas')->name('dev.metas.')->group(function () {
+            // Painel único: o dev lê, o gestor classifica inline.
+            Route::get('/', [MetasDevController::class, 'index'])->name('index');
+
+            // Lado do DEV: registra e propõe prazo. Só isso.
+            Route::post('/entregas',                   [MetasDevController::class, 'store'])->name('entregas.store');
+            Route::patch('/entregas/{entrega}',        [MetasDevController::class, 'update'])->name('entregas.update');
+            Route::post('/entregas/{entrega}/enviar',  [MetasDevController::class, 'enviar'])->name('entregas.enviar');
+
+            // Lado do GESTOR: tudo que vira número na régua.
+            Route::post('/entregas/{entrega}/baseline', [MetasDevGestorController::class, 'congelarBaseline'])->name('entregas.baseline');
+            Route::post('/entregas/{entrega}/aprovar',  [MetasDevGestorController::class, 'aprovar'])->name('entregas.aprovar');
+            Route::put('/entregas/{entrega}/avaliacao', [MetasDevGestorController::class, 'avaliar'])->name('entregas.avaliar');
+            Route::patch('/entregas/{entrega}/hotfix',  [MetasDevGestorController::class, 'classificarHotfix'])->name('entregas.hotfix');
+            Route::put('/cotas',                        [MetasDevGestorController::class, 'definirCota'])->name('cotas.definir');
+        });
+
         // PUT /goals/{goal} movida pra fora do grupo (META-04) — estrategista pode
         // editar. DELETE segue restrita ao admin.
         Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
@@ -809,18 +833,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::resource('servicos', ServicoController::class)
             ->only(['index', 'store', 'update', 'destroy']);
 
-        // ─── Fase 135 Plano 08 — CRUD admin do template de Onboarding geral (D-04) ──
-        // ATENÇÃO DE ROTEAMENTO: '/onboarding/templates' precisa ficar registrada
-        // ANTES de qualquer rota '/onboarding/{parametro}' que o Plano 09 venha a
-        // criar (painel operacional em /onboarding/{onboarding}) — senão 'templates'
-        // é capturado como parâmetro. Autorização em camada dupla: este grupo
-        // role:admin + StoreOnboardingTemplateRequest::authorize() (D-04).
-        Route::get('/onboarding/templates', [OnboardingTemplateController::class, 'index'])
-            ->name('onboarding.templates.index');
-        Route::post('/onboarding/templates', [OnboardingTemplateController::class, 'store'])
-            ->name('onboarding.templates.store');
-        Route::post('/onboarding/templates/{template}/migrar', [OnboardingTemplateController::class, 'migrar'])
-            ->name('onboarding.templates.migrar');
 
         Route::post('/empresas/{company}/contratos-servico',                  [CompanyController::class, 'storeContrato'])->name('empresas.contratos.store');
         Route::put('/empresas/{company}/contratos-servico/{contrato}',        [CompanyController::class, 'updateContrato'])->name('empresas.contratos.update');
@@ -847,9 +859,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 // User::hasPermission() (EnsurePermission) — não precisa da key explícita
 // em setor_permissoes.
 //
-// ATENÇÃO DE ROTEAMENTO: este bloco fica DEPOIS de '/onboarding/templates'
-// (Plano 08, grupo role:admin acima) — senão o segmento literal 'templates'
-// seria capturado como {onboarding} por GET /onboarding/{onboarding}.
+// ATENÇÃO DE ROTEAMENTO: 'GET /onboarding/{onboarding}' captura QUALQUER
+// segmento. Rota nova com caminho literal sob '/onboarding/...' precisa ser
+// registrada ANTES deste grupo, senão o literal vira o parâmetro.
 Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
     ->group(function () {
         Route::get('/onboarding', [OnboardingController::class, 'index'])

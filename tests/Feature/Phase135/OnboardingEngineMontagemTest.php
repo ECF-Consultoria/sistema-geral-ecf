@@ -6,10 +6,9 @@ use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\OnboardingTemplate;
 use App\Models\Servico;
 use App\Services\Onboarding\OnboardingEngineService;
-use Database\Seeders\OnboardingTemplateGestaoSeeder;
+use App\Support\Onboarding\DefinicaoOnboarding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -44,7 +43,6 @@ class OnboardingEngineMontagemTest extends TestCase
     /** @test */
     public function contrato_de_gestao_gera_onboarding_em_rascunho_com_13_passos_bloqueados(): void
     {
-        (new OnboardingTemplateGestaoSeeder())->run();
         $contrato = $this->contratoDeGestao();
 
         $onboarding = (new OnboardingEngineService())->criarParaContrato($contrato);
@@ -83,7 +81,6 @@ class OnboardingEngineMontagemTest extends TestCase
     /** @test */
     public function chamar_duas_vezes_para_o_mesmo_contrato_devolve_o_mesmo_onboarding_sem_duplicar(): void
     {
-        (new OnboardingTemplateGestaoSeeder())->run();
         $contrato = $this->contratoDeGestao();
 
         $service = new OnboardingEngineService();
@@ -96,20 +93,32 @@ class OnboardingEngineMontagemTest extends TestCase
         $this->assertSame(13, OnboardingPasso::count());
     }
 
-    /** @test */
-    public function template_id_aponta_para_a_versao_ativa_no_momento_da_criacao(): void
+    /**
+     * O congelamento mudou de forma: em vez de um ponteiro para a versão ativa
+     * de uma tabela, o onboarding carimba a versão da definição em código e
+     * COPIA a definição para dentro de cada passo. É a cópia que garante que
+     * mudar a receita não mexe em quem já nasceu.
+     *
+     * @test
+     */
+    public function onboarding_carimba_a_versao_da_definicao_e_copia_a_definicao_para_os_passos(): void
     {
-        (new OnboardingTemplateGestaoSeeder())->run();
-        $servico = $this->servicoDeGestao();
-        $templateAtivo = OnboardingTemplate::where('servico_id', $servico->id)
-            ->where('ativo', true)
-            ->firstOrFail();
-
         $contrato = $this->contratoDeGestao();
 
         $onboarding = (new OnboardingEngineService())->criarParaContrato($contrato);
 
-        $this->assertSame($templateAtivo->id, $onboarding->template_id);
+        $this->assertSame(DefinicaoOnboarding::VERSAO, $onboarding->definicao_versao);
+
+        $passo = OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->where('chave', 'grant_sistema_ecf')
+            ->firstOrFail();
+
+        // A definição veio junto — o passo não depende de nenhuma outra tabela
+        // para saber o que é.
+        $this->assertSame('Grant com o Sistema ECF (OAuth)', $passo->titulo);
+        $this->assertSame(OnboardingPasso::DONO_CLIENTE, $passo->dono);
+        $this->assertSame(OnboardingPasso::AUTO_FONTE_ML_TOKEN, $passo->auto_fonte);
+        $this->assertSame(['acesso_colaborador_ml'], $passo->depende_de);
     }
 
     /** @test */

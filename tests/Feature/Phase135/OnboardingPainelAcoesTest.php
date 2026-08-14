@@ -9,7 +9,6 @@ use App\Models\OnboardingPasso;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
-use Database\Seeders\OnboardingTemplateGestaoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
@@ -42,7 +41,6 @@ class OnboardingPainelAcoesTest extends TestCase
     /** Onboarding recém-criado em `rascunho`, 13 passos montados (todos `bloqueado`). */
     private function onboardingEmRascunho(?Company $company = null): Onboarding
     {
-        (new OnboardingTemplateGestaoSeeder())->run();
         $servico = $this->servicoDeGestao();
 
         $company ??= Company::factory()->create();

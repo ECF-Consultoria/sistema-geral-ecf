@@ -5,7 +5,6 @@ namespace App\Services\Onboarding\Resolvers;
 use App\Contracts\OnboardingResolver;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\TemplatePasso;
 use App\Services\Onboarding\OnboardingResolverResultado;
 
 /**
@@ -26,7 +25,7 @@ class AdmanAccountIdResolver implements OnboardingResolver
 {
     public function chave(): string
     {
-        return TemplatePasso::AUTO_FONTE_ADMAN_ACCOUNT_ID;
+        return OnboardingPasso::AUTO_FONTE_ADMAN_ACCOUNT_ID;
     }
 
     public function label(): string

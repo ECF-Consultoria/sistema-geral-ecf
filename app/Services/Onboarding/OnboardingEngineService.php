@@ -5,9 +5,8 @@ namespace App\Services\Onboarding;
 use App\Models\ContratoServico;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\OnboardingTemplate;
-use App\Models\TemplatePasso;
 use App\Models\User;
+use App\Support\Onboarding\DefinicaoOnboarding;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -59,14 +58,14 @@ class OnboardingEngineService
             return $existentePorParEmpresaServico;
         }
 
-        $template = OnboardingTemplate::ativo()
-            ->where('servico_id', $contrato->servico_id)
-            ->first();
+        $definicao = $contrato->servico
+            ? DefinicaoOnboarding::paraServico($contrato->servico)
+            : null;
 
-        if (! $template) {
+        if ($definicao === null) {
             Log::info(
-                "[Onboarding] serviço sem template publicado — contrato {$contrato->id} "
-                . "(servico_id {$contrato->servico_id}) não gera onboarding nesta v1 (D-08)."
+                "[Onboarding] serviço sem definição de onboarding — contrato {$contrato->id} "
+                . "(servico_id {$contrato->servico_id}) não gera onboarding."
             );
 
             return null;
@@ -76,7 +75,7 @@ class OnboardingEngineService
             'company_id'          => $contrato->company_id,
             'servico_id'          => $contrato->servico_id,
             'contrato_servico_id' => $contrato->id,
-            'template_id'         => $template->id,
+            'definicao_versao'    => DefinicaoOnboarding::VERSAO,
             'status'              => Onboarding::STATUS_RASCUNHO,
         ]);
 
@@ -158,14 +157,17 @@ class OnboardingEngineService
      */
     public function podeIniciar(Onboarding $onboarding): bool
     {
-        if (! $onboarding->template_id) {
+        $definicao = $onboarding->servico
+            ? DefinicaoOnboarding::paraServico($onboarding->servico)
+            : null;
+
+        if ($definicao === null) {
             return false;
         }
 
         $totalPassosMontados = OnboardingPasso::where('onboarding_id', $onboarding->id)->count();
-        $totalPassosDoTemplate = TemplatePasso::where('template_id', $onboarding->template_id)->count();
 
-        if ($totalPassosMontados === 0 || $totalPassosMontados !== $totalPassosDoTemplate) {
+        if ($totalPassosMontados === 0 || $totalPassosMontados !== count($definicao)) {
             return false;
         }
 
@@ -173,9 +175,11 @@ class OnboardingEngineService
     }
 
     /**
-     * Cria 1 OnboardingPasso por TemplatePasso da versão congelada do
-     * onboarding (`onboarding->template_id`), ordenado por `ordem`,
-     * copiando `chave` (denormalizada, D-10) e `template_passo_id`.
+     * Cria 1 OnboardingPasso por entrada da {@see DefinicaoOnboarding} do
+     * serviço, ordenado por `ordem`, COPIANDO a definição inteira (título,
+     * dono, setor, dependências, SLA, fonte automática e condição) para dentro
+     * da linha — é a cópia, e não uma referência, que congela o onboarding
+     * contra mudanças futuras da receita.
      *
      * Todos nascem `status = bloqueado` e `disponivel_em = null` —
      * inclusive os passos sem `depende_de` — porque o onboarding nasce em
@@ -188,32 +192,46 @@ class OnboardingEngineService
      */
     public function montarPassos(Onboarding $onboarding): void
     {
-        $templatePassos = TemplatePasso::where('template_id', $onboarding->template_id)
-            ->orderBy('ordem')
-            ->get();
+        $definicao = $onboarding->servico
+            ? DefinicaoOnboarding::paraServico($onboarding->servico)
+            : null;
 
-        if ($templatePassos->isEmpty()) {
+        if (empty($definicao)) {
             return;
         }
 
         $agora = now();
 
-        $linhas = $templatePassos->map(fn (TemplatePasso $templatePasso) => [
-            'onboarding_id'     => $onboarding->id,
-            'template_passo_id' => $templatePasso->id,
-            'chave'             => $templatePasso->chave,
-            'status'            => OnboardingPasso::STATUS_BLOQUEADO,
-            'disponivel_em'     => null,
-            'created_at'        => $agora,
-            'updated_at'        => $agora,
-        ])->all();
+        // A definição é COPIADA para dentro do passo, não referenciada. É isso
+        // que congela o onboarding: mudar a receita em código não mexe em quem
+        // já nasceu.
+        $linhas = collect($definicao)
+            ->sortBy('ordem')
+            ->map(fn (array $passo) => [
+                'onboarding_id' => $onboarding->id,
+                'ordem'         => $passo['ordem'],
+                'chave'         => $passo['chave'],
+                'titulo'        => $passo['titulo'],
+                'dono'          => $passo['dono'],
+                'setor_id'      => $passo['setor_id'] ?? null,
+                'depende_de'    => isset($passo['depende_de']) ? json_encode($passo['depende_de']) : null,
+                'sla_dias'      => $passo['sla_dias'] ?? null,
+                'auto_fonte'    => $passo['auto_fonte'] ?? null,
+                'condicao'      => isset($passo['condicao']) ? json_encode($passo['condicao']) : null,
+                'status'        => OnboardingPasso::STATUS_BLOQUEADO,
+                'disponivel_em' => null,
+                'created_at'    => $agora,
+                'updated_at'    => $agora,
+            ])
+            ->values()
+            ->all();
 
         OnboardingPasso::insert($linhas);
     }
 
     /**
-     * Chave denormalizada do passo "Anúncios ativos / inativos" — alvo fixo
-     * da condição {@see TemplatePasso::CONDICAO_ANUNCIOS_INATIVOS}.
+     * Chave do passo "Anúncios ativos / inativos" — alvo fixo da condição
+     * {@see OnboardingPasso::CONDICAO_ANUNCIOS_INATIVOS}.
      */
     private const CHAVE_PASSO_ANUNCIOS_ATIVOS_INATIVOS = 'anuncios_ativos_inativos';
 
@@ -236,7 +254,6 @@ class OnboardingEngineService
         }
 
         $passos = OnboardingPasso::where('onboarding_id', $onboarding->id)
-            ->with('templatePasso')
             ->get()
             ->keyBy('chave');
 
@@ -254,8 +271,7 @@ class OnboardingEngineService
                     continue;
                 }
 
-                $templatePasso = $passo->templatePasso;
-                $dependeDe = $templatePasso->depende_de ?? [];
+                $dependeDe = $passo->depende_de ?? [];
 
                 $todasAsDependenciasResolvidas = collect($dependeDe)->every(
                     fn (string $chave) => $this->dependenciaResolvida($passos->get($chave))
@@ -268,7 +284,7 @@ class OnboardingEngineService
                 $novoStatus = OnboardingPasso::STATUS_ABERTO;
                 $novoAutoEm = null;
 
-                if ($templatePasso->condicao) {
+                if ($passo->condicao) {
                     $avaliacao = $this->avaliarCondicao($passo);
 
                     if ($avaliacao === null) {
@@ -364,12 +380,12 @@ class OnboardingEngineService
     /**
      * `null` quando o passo não tem `condicao` (equivale a "sempre aplica")
      * ou quando ainda não dá para decidir (regra 5). Condição fora do
-     * catálogo fechado ({@see TemplatePasso::CONDICOES}) lança
+     * catálogo fechado ({@see OnboardingPasso::CONDICOES}) lança
      * `\RuntimeException` — nunca interpreta expressão livre (D-09/D-12).
      */
     public function avaliarCondicao(OnboardingPasso $passo): ?bool
     {
-        $condicao = $passo->templatePasso->condicao ?? null;
+        $condicao = $passo->condicao ?? null;
 
         if (! $condicao) {
             return null;
@@ -378,9 +394,9 @@ class OnboardingEngineService
         $tipo = $condicao['tipo'] ?? null;
 
         return match ($tipo) {
-            TemplatePasso::CONDICAO_ANUNCIOS_INATIVOS => $this->avaliarCondicaoAnunciosInativos($passo),
+            OnboardingPasso::CONDICAO_ANUNCIOS_INATIVOS => $this->avaliarCondicaoAnunciosInativos($passo),
             default => throw new \RuntimeException(
-                "Condição \"{$tipo}\" fora do catálogo fechado (TemplatePasso::CONDICOES) — D-09/D-12."
+                "Condição \"{$tipo}\" fora do catálogo fechado (OnboardingPasso::CONDICOES) — D-09/D-12."
             ),
         };
     }
@@ -405,16 +421,14 @@ class OnboardingEngineService
 
     /**
      * Conclusão manual de um passo pelo dono humano. Lança `\DomainException`
-     * quando o `TemplatePasso` tem `auto_fonte` preenchido (D-19) — nem
-     * cliente nem interno fecha na mão um passo que só o resolver fecha.
+     * quando o passo tem `auto_fonte` preenchido (D-19) — nem cliente nem
+     * interno fecha na mão um passo que só o resolver fecha.
      */
     public function concluirManualmente(OnboardingPasso $passo, User $usuario): void
     {
-        $templatePasso = $passo->templatePasso;
-
-        if ($templatePasso->auto_fonte !== null) {
+        if ($passo->auto_fonte !== null) {
             throw new \DomainException(
-                "O passo \"{$templatePasso->titulo}\" tem verificação automática — conclusão manual não é permitida (D-19)."
+                "O passo \"{$passo->titulo}\" tem verificação automática — conclusão manual não é permitida (D-19)."
             );
         }
 
@@ -427,9 +441,15 @@ class OnboardingEngineService
     }
 
     /**
-     * Fecha o onboarding (`status=concluido`, `concluido_em`) quando todo
-     * passo `obrigatorio` está em `concluido` ou `nao_aplicavel` (regra 8).
-     * Registrado via activity log, mesma disciplina do `MlbEmpresaObserver`.
+     * Fecha o onboarding (`status=concluido`, `concluido_em`) quando TODO passo
+     * está em `concluido` ou `nao_aplicavel` (regra 8). Registrado via activity
+     * log, mesma disciplina do `MlbEmpresaObserver`.
+     *
+     * O eixo `obrigatorio` do template antigo foi removido junto com as tabelas
+     * de definição: nenhum passo real jamais nasceu opcional, e "opcional" já é
+     * expresso melhor por `condicao` (que produz `nao_aplicavel` e sai do
+     * denominador). Passo que não deve travar a conclusão ganha condição, não
+     * uma flag.
      */
     private function avaliarConclusaoDoOnboarding(Onboarding $onboarding): void
     {
@@ -437,16 +457,13 @@ class OnboardingEngineService
             return;
         }
 
-        $passos = OnboardingPasso::where('onboarding_id', $onboarding->id)
-            ->with('templatePasso')
-            ->get();
+        $passos = OnboardingPasso::where('onboarding_id', $onboarding->id)->get();
 
         if ($passos->isEmpty()) {
             return;
         }
 
         $temObrigatorioPendente = $passos
-            ->filter(fn (OnboardingPasso $p) => (bool) ($p->templatePasso->obrigatorio ?? true))
             ->contains(fn (OnboardingPasso $p) => ! in_array(
                 $p->status,
                 [OnboardingPasso::STATUS_CONCLUIDO, OnboardingPasso::STATUS_NAO_APLICAVEL],

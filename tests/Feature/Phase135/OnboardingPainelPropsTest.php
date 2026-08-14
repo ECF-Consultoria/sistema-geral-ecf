@@ -6,12 +6,9 @@ use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\OnboardingTemplate;
 use App\Models\Servico;
-use App\Models\TemplatePasso;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
-use Database\Seeders\OnboardingTemplateGestaoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
@@ -25,7 +22,7 @@ use Tests\TestCase;
  *
  * A tela React chega no Plano 12 — aqui a verificação é de props via
  * `assertInertia`, nunca de render no navegador (mesmo padrão do
- * `OnboardingTemplateVersionamentoTest`, Plano 08).
+ * do versionamento, removido junto com as tabelas de template).
  */
 class OnboardingPainelPropsTest extends TestCase
 {
@@ -53,7 +50,6 @@ class OnboardingPainelPropsTest extends TestCase
     /** Onboarding em `andamento`, 13 passos montados e `reavaliar()` já rodado (via `confirmarResponsavel`). */
     private function onboardingEmAndamento(?Company $company = null): Onboarding
     {
-        (new OnboardingTemplateGestaoSeeder())->run();
         $servico = $this->servicoDeGestao();
         $engine = $this->engine();
 
@@ -141,20 +137,15 @@ class OnboardingPainelPropsTest extends TestCase
     public function lista_agrupa_por_empresa_uma_empresa_com_2_onboardings_aparece_1_vez(): void
     {
         $this->withoutVite();
-        (new OnboardingTemplateGestaoSeeder())->run();
         $servicoGestao = $this->servicoDeGestao();
 
-        // 2º serviço com template próprio — só pra empresa acumular 2 onboardings (D-01).
+        // 2º serviço só pra empresa acumular 2 onboardings (D-01). Ele não tem
+        // definição em código — só Gestão tem —, então o 2º onboarding é criado
+        // à mão. O que este teste prova é o AGRUPAMENTO do painel, não a
+        // criação, e criar direto mantém o foco onde importa.
         $servico2 = Servico::create([
             'nome' => 'Serviço Auxiliar 135-09', 'valor_padrao' => 0,
             'tipo_cobranca' => Servico::TIPO_MENSAL, 'ativo' => true, 'setor' => Servico::SETOR_PERFORMANCE,
-        ]);
-        $template2 = OnboardingTemplate::create([
-            'servico_id' => $servico2->id, 'versao' => 1, 'ativo' => true, 'publicado_em' => now(),
-        ]);
-        TemplatePasso::create([
-            'template_id' => $template2->id, 'ordem' => 1, 'chave' => 'passo_unico',
-            'titulo' => 'Passo único', 'dono' => TemplatePasso::DONO_INTERNO, 'sla_dias' => 5,
         ]);
 
         $company = Company::factory()->create();
@@ -163,9 +154,19 @@ class OnboardingPainelPropsTest extends TestCase
         $engine->criarParaContrato(
             ContratoServico::factory()->paraServico($servicoGestao)->create(['company_id' => $company->id])
         );
-        $engine->criarParaContrato(
-            ContratoServico::factory()->paraServico($servico2)->create(['company_id' => $company->id])
-        );
+
+        $onboarding2 = Onboarding::create([
+            'company_id' => $company->id,
+            'servico_id' => $servico2->id,
+        ]);
+        OnboardingPasso::create([
+            'onboarding_id' => $onboarding2->id,
+            'ordem'         => 1,
+            'chave'         => 'passo_unico_auxiliar',
+            'titulo'        => 'Passo único',
+            'dono'          => OnboardingPasso::DONO_INTERNO,
+            'sla_dias'      => 5,
+        ]);
 
         $response = $this->actingAs($this->admin())->get(route('onboarding.painel.index'));
 
@@ -183,7 +184,6 @@ class OnboardingPainelPropsTest extends TestCase
     public function onboarding_em_rascunho_tem_situacao_rascunho_e_todos_os_passos_sem_dias_parado(): void
     {
         $this->withoutVite();
-        (new OnboardingTemplateGestaoSeeder())->run();
         $servico = $this->servicoDeGestao();
         $company = Company::factory()->create();
         $contrato = ContratoServico::factory()->paraServico($servico)->create(['company_id' => $company->id]);

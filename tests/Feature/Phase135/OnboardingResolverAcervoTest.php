@@ -8,9 +8,7 @@ use App\Models\MlAcervoItem;
 use App\Models\MlToken;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\OnboardingTemplate;
 use App\Models\Servico;
-use App\Models\TemplatePasso;
 use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingResolverFactory;
 use App\Services\Onboarding\Resolvers\AcervoColetadoResolver;
@@ -43,32 +41,18 @@ class OnboardingResolverAcervoTest extends TestCase
             'setor'         => Servico::SETOR_PERFORMANCE,
         ]);
 
-        $template = OnboardingTemplate::create([
-            'servico_id'   => $servico->id,
-            'versao'       => 1,
-            'ativo'        => true,
-            'publicado_em' => now(),
-        ]);
-
-        $templatePasso = TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 1,
-            'chave'       => 'acervo_coletado_meus_anuncios',
-            'titulo'      => 'Acervo de anúncios coletado (Meus Anúncios)',
-            'dono'        => TemplatePasso::DONO_SISTEMA,
-            'auto_fonte'  => TemplatePasso::AUTO_FONTE_ACERVO,
-        ]);
-
         $onboarding = Onboarding::create([
             'company_id'  => $company->id,
             'servico_id'  => $servico->id,
-            'template_id' => $template->id,
         ]);
 
         $passo = OnboardingPasso::create([
-            'onboarding_id'     => $onboarding->id,
-            'template_passo_id' => $templatePasso->id,
-            'chave'             => 'acervo_coletado_meus_anuncios',
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 1,
+            'chave'         => 'acervo_coletado_meus_anuncios',
+            'titulo'        => 'Acervo de anúncios coletado (Meus Anúncios)',
+            'dono'          => OnboardingPasso::DONO_SISTEMA,
+            'auto_fonte'    => OnboardingPasso::AUTO_FONTE_ACERVO,
         ]);
 
         return [$onboarding, $passo];
@@ -256,7 +240,7 @@ class OnboardingResolverAcervoTest extends TestCase
         $chaves = array_column($catalogo, 'chave');
 
         sort($chaves);
-        $esperado = TemplatePasso::AUTO_FONTES;
+        $esperado = OnboardingPasso::AUTO_FONTES;
         sort($esperado);
 
         $this->assertSame($esperado, $chaves);

@@ -7,9 +7,7 @@ use App\Models\ContratoServico;
 use App\Models\Onboarding;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
-use App\Models\OnboardingTemplate;
 use App\Models\Servico;
-use App\Models\TemplatePasso;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -43,23 +41,23 @@ class OnboardingSchemaTest extends TestCase
     /** @test */
     public function auto_fontes_tem_exatamente_5_valores_do_catalogo_fechado(): void
     {
-        $this->assertCount(5, TemplatePasso::AUTO_FONTES);
+        $this->assertCount(5, OnboardingPasso::AUTO_FONTES);
         $this->assertSame([
             'adman_account_id_preenchido',
             'adman_grant_ativo',
             'ml_token_ativo',
             'acervo_coletado',
             'metricas_conta',
-        ], TemplatePasso::AUTO_FONTES);
+        ], OnboardingPasso::AUTO_FONTES);
     }
 
     /** @test */
     public function donos_tem_exatamente_3_valores_d14_nenhum_quarto_dono(): void
     {
-        $this->assertCount(3, TemplatePasso::DONOS);
-        $this->assertContains('cliente', TemplatePasso::DONOS);
-        $this->assertContains('interno', TemplatePasso::DONOS);
-        $this->assertContains('sistema', TemplatePasso::DONOS);
+        $this->assertCount(3, OnboardingPasso::DONOS);
+        $this->assertContains('cliente', OnboardingPasso::DONOS);
+        $this->assertContains('interno', OnboardingPasso::DONOS);
+        $this->assertContains('sistema', OnboardingPasso::DONOS);
     }
 
     /** @test */
@@ -74,19 +72,23 @@ class OnboardingSchemaTest extends TestCase
     // ─── Casts ────────────────────────────────────────────────────────────
 
     /** @test */
-    public function template_passo_depende_de_volta_do_banco_como_array(): void
+    public function passo_depende_de_volta_do_banco_como_array(): void
     {
         $servico = $this->criarServico();
-        $template = OnboardingTemplate::create(['servico_id' => $servico->id, 'versao' => 1, 'ativo' => true]);
+        $company = Company::factory()->create();
+        $onboarding = Onboarding::create([
+            'company_id' => $company->id,
+            'servico_id' => $servico->id,
+        ]);
 
-        $passo = TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 1,
-            'chave'       => 'grant_ecf',
-            'titulo'      => 'Grant com o Sistema ECF',
-            'dono'        => TemplatePasso::DONO_CLIENTE,
-            'depende_de'  => ['acesso_colaborador_ml'],
-            'auto_fonte'  => TemplatePasso::AUTO_FONTE_ML_TOKEN,
+        $passo = OnboardingPasso::create([
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 1,
+            'chave'         => 'grant_ecf',
+            'titulo'        => 'Grant com o Sistema ECF',
+            'dono'          => OnboardingPasso::DONO_CLIENTE,
+            'depende_de'    => ['acesso_colaborador_ml'],
+            'auto_fonte'    => OnboardingPasso::AUTO_FONTE_ML_TOKEN,
         ]);
 
         $passo->refresh();
@@ -99,26 +101,19 @@ class OnboardingSchemaTest extends TestCase
     public function onboarding_passo_disponivel_em_volta_do_banco_como_carbon(): void
     {
         $servico = $this->criarServico();
-        $template = OnboardingTemplate::create(['servico_id' => $servico->id, 'versao' => 1, 'ativo' => true]);
-        $templatePasso = TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 1,
-            'chave'       => 'acesso_colaborador_ml',
-            'titulo'      => 'Acesso Colaborador ML',
-            'dono'        => TemplatePasso::DONO_CLIENTE,
-        ]);
         $company = Company::factory()->create();
         $onboarding = Onboarding::create([
             'company_id'  => $company->id,
             'servico_id'  => $servico->id,
-            'template_id' => $template->id,
         ]);
 
         $passo = OnboardingPasso::create([
-            'onboarding_id'      => $onboarding->id,
-            'template_passo_id'  => $templatePasso->id,
-            'chave'              => $templatePasso->chave,
-            'disponivel_em'      => now(),
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 1,
+            'chave'         => 'acesso_colaborador_ml',
+            'titulo'        => 'Acesso Colaborador ML',
+            'dono'          => OnboardingPasso::DONO_CLIENTE,
+            'disponivel_em' => now(),
         ]);
 
         $passo->refresh();
@@ -129,59 +124,15 @@ class OnboardingSchemaTest extends TestCase
     // ─── Constraints de unicidade impostas pelo banco ────────────────────
 
     /** @test */
-    public function duas_versoes_ativas_do_mesmo_servico_lancam_query_exception(): void
-    {
-        $servico = $this->criarServico();
-        OnboardingTemplate::create(['servico_id' => $servico->id, 'versao' => 1, 'ativo' => true]);
-
-        $this->expectException(QueryException::class);
-        OnboardingTemplate::create(['servico_id' => $servico->id, 'versao' => 2, 'ativo' => true]);
-    }
-
-    /** @test */
-    public function versao_ativa_e_inativa_do_mesmo_servico_convivem_sem_erro(): void
-    {
-        $servico = $this->criarServico();
-        OnboardingTemplate::create(['servico_id' => $servico->id, 'versao' => 1, 'ativo' => true]);
-        $v2 = OnboardingTemplate::create(['servico_id' => $servico->id, 'versao' => 2, 'ativo' => false]);
-
-        $this->assertDatabaseHas('onboarding_templates', ['id' => $v2->id, 'ativo' => false]);
-    }
-
-    /** @test */
-    public function chave_duplicada_no_mesmo_template_lanca_query_exception(): void
-    {
-        $servico = $this->criarServico();
-        $template = OnboardingTemplate::create(['servico_id' => $servico->id, 'versao' => 1, 'ativo' => true]);
-        TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 1,
-            'chave'       => 'ficha_cliente',
-            'titulo'      => 'Ficha do cliente recebida',
-            'dono'        => TemplatePasso::DONO_INTERNO,
-        ]);
-
-        $this->expectException(QueryException::class);
-        TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 2,
-            'chave'       => 'ficha_cliente',
-            'titulo'      => 'Duplicata',
-            'dono'        => TemplatePasso::DONO_INTERNO,
-        ]);
-    }
-
-    /** @test */
     public function dois_onboardings_do_mesmo_contrato_lancam_query_exception_sc01(): void
     {
         $servico = $this->criarServico();
-        $template = OnboardingTemplate::create(['servico_id' => $servico->id, 'versao' => 1, 'ativo' => true]);
         $company = Company::factory()->create();
 
-        // Fase 135 Plano 05 — inserção via DB::table (não Eloquent) de propósito:
-        // este teste prova a constraint de UNICIDADE do BANCO, não o comportamento
-        // do ContratoServicoObserver (que, com o template acima já ativo, criaria
-        // sozinho o primeiro onboarding e quebraria a sequência esperada abaixo).
+        // Inserção via DB::table (não Eloquent) de propósito: este teste prova a
+        // constraint de UNICIDADE do BANCO, não o comportamento do
+        // ContratoServicoObserver — que criaria sozinho o primeiro onboarding e
+        // quebraria a sequência esperada abaixo.
         $contratoId = DB::table('contratos_servico')->insertGetId([
             'company_id'       => $company->id,
             'servico_id'       => $servico->id,
@@ -197,7 +148,6 @@ class OnboardingSchemaTest extends TestCase
             'company_id'           => $company->id,
             'servico_id'           => $servico->id,
             'contrato_servico_id'  => $contrato->id,
-            'template_id'          => $template->id,
         ]);
 
         $this->expectException(QueryException::class);
@@ -205,7 +155,6 @@ class OnboardingSchemaTest extends TestCase
             'company_id'           => $company->id,
             'servico_id'           => $servico->id,
             'contrato_servico_id'  => $contrato->id,
-            'template_id'          => $template->id,
         ]);
     }
 
@@ -219,36 +168,38 @@ class OnboardingSchemaTest extends TestCase
         OnboardingLink::create(['company_id' => $company->id, 'token' => str_repeat('b', 48)]);
     }
 
-    /** @test */
-    public function dois_onboarding_passos_do_mesmo_par_lancam_query_exception(): void
+    /**
+     * A trava de duplicidade agora é (onboarding_id, chave). Ela SUBSTITUI o
+     * antigo (onboarding_id, template_passo_id): sem tabela de template, a
+     * `chave` é o identificador estável do passo — e é por ela que dependência
+     * e link público já se referenciavam.
+     *
+     * @test
+     */
+    public function dois_passos_com_a_mesma_chave_no_mesmo_onboarding_lancam_query_exception(): void
     {
         $servico = $this->criarServico();
-        $template = OnboardingTemplate::create(['servico_id' => $servico->id, 'versao' => 1, 'ativo' => true]);
-        $templatePasso = TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 1,
-            'chave'       => 'reuniao_onboarding',
-            'titulo'      => 'Agendar reunião de onboarding',
-            'dono'        => TemplatePasso::DONO_INTERNO,
-        ]);
         $company = Company::factory()->create();
         $onboarding = Onboarding::create([
             'company_id'  => $company->id,
             'servico_id'  => $servico->id,
-            'template_id' => $template->id,
         ]);
 
         OnboardingPasso::create([
-            'onboarding_id'     => $onboarding->id,
-            'template_passo_id' => $templatePasso->id,
-            'chave'             => $templatePasso->chave,
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 1,
+            'chave'         => 'reuniao_onboarding',
+            'titulo'        => 'Agendar reunião de onboarding',
+            'dono'          => OnboardingPasso::DONO_INTERNO,
         ]);
 
         $this->expectException(QueryException::class);
         OnboardingPasso::create([
-            'onboarding_id'     => $onboarding->id,
-            'template_passo_id' => $templatePasso->id,
-            'chave'             => $templatePasso->chave,
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 2,
+            'chave'         => 'reuniao_onboarding',
+            'titulo'        => 'Duplicata',
+            'dono'          => OnboardingPasso::DONO_INTERNO,
         ]);
     }
 
@@ -258,11 +209,10 @@ class OnboardingSchemaTest extends TestCase
     public function models_novos_nao_referenciam_mlb_implementacao(): void
     {
         $arquivos = [
-            app_path('Models/OnboardingTemplate.php'),
             app_path('Models/Onboarding.php'),
             app_path('Models/OnboardingPasso.php'),
             app_path('Models/OnboardingLink.php'),
-            app_path('Models/TemplatePasso.php'),
+            app_path('Support/Onboarding/DefinicaoOnboarding.php'),
         ];
 
         foreach ($arquivos as $arquivo) {

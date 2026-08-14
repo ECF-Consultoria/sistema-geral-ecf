@@ -1,111 +1,86 @@
 <?php
 
-namespace Database\Seeders;
+namespace App\Support\Onboarding;
 
-use App\Models\OnboardingTemplate;
+use App\Models\OnboardingPasso;
 use App\Models\Servico;
 use App\Models\Setor;
-use App\Models\TemplatePasso;
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Log;
 
 /**
- * Fase 135 Plano 04 — publica a VERSÃO 1 do template de onboarding do
- * serviço de Gestão (Performance): 13 passos, 5 automáticos (D-08/D-19).
+ * DefinicaoOnboarding — a "receita" do onboarding de cada serviço, em código.
  *
- * Escopo travado: só o serviço de Gestão nesta v1 (D-08) — nenhum outro
- * serviço do catálogo ganha template aqui.
+ * Substitui as tabelas `onboarding_templates`/`template_passos` e a tela de
+ * builder que existiam antes. O motivo da troca: existia UM template real
+ * (Gestão), o processo muda talvez duas vezes por ano, e para isso havia tela
+ * de admin, versionamento por linhas, guarda de ciclo e diálogo de migração —
+ * maquinaria demais para o uso real.
  *
- * Idempotente: se já existe um OnboardingTemplate para o servico_id
- * resolvido, o seeder não cria nada — registra um log e retorna. Rodar
- * duas vezes nunca produz uma versão 2 nem duplica passo; publicar a
- * próxima versão é ação explícita do CRUD administrativo (Plano 08),
- * nunca deste seeder.
+ * O QUE NÃO SE PERDEU NA TROCA: o onboarding em andamento continua NÃO mudando
+ * debaixo do cliente. Antes isso vinha de as linhas de template nunca sofrerem
+ * UPDATE; agora vem de `montarPassos()` COPIAR esta definição para colunas do
+ * próprio `onboarding_passos`. Cada onboarding carrega a definição com que
+ * nasceu — deployar uma mudança aqui não mexe em quem já está rodando.
  *
- * `dono`, `auto_fonte` e `condicao` vêm sempre das constantes de
- * TemplatePasso — nunca como string literal solta no seeder. É o que
- * garante que uma renomeação futura do catálogo quebre no autoload em vez
- * de silenciosamente apontar para nada (D-09/D-14).
+ * `VERSAO` sobe a cada mudança nesta definição. Ela é carimbada em
+ * `onboardings.definicao_versao` no nascimento e serve para responder "sob qual
+ * receita esta empresa entrou?" sem depender do histórico do git.
  */
-class OnboardingTemplateGestaoSeeder extends Seeder
+class DefinicaoOnboarding
 {
-    public function run(): void
-    {
-        $servico = $this->resolverServicoDeGestao();
-
-        if (! $servico) {
-            Log::error(
-                '[Onboarding] Nenhum serviço ativo do setor Performance com nome contendo "Gestão" '
-                . 'foi encontrado — seeder do template de Gestão abortado. Cadastre o serviço no '
-                . 'catálogo antes de rodar este seeder novamente.'
-            );
-
-            return;
-        }
-
-        if (OnboardingTemplate::where('servico_id', $servico->id)->exists()) {
-            Log::info(
-                "[Onboarding] Template do serviço {$servico->id} ({$servico->nome}) já está publicado "
-                . '— seeder idempotente não recria nada.'
-            );
-
-            return;
-        }
-
-        $setorFinanceiro = Setor::where('slug', 'financeiro')->first();
-
-        if (! $setorFinanceiro) {
-            Log::warning(
-                '[Onboarding] Setor "financeiro" não encontrado — o passo "Confirmação de pagamento" '
-                . 'nasce sem setor_id (o painel apenas não mostra o sufixo "· financeiro").'
-            );
-        }
-
-        $template = OnboardingTemplate::create([
-            'servico_id'   => $servico->id,
-            'versao'       => 1,
-            'ativo'        => true,
-            'publicado_em' => now(),
-        ]);
-
-        foreach ($this->passos($setorFinanceiro?->id) as $passo) {
-            TemplatePasso::create(array_merge(['template_id' => $template->id], $passo));
-        }
-
-        Log::info(
-            "[Onboarding] Template de Gestão v1 publicado — serviço {$servico->id} ({$servico->nome}), "
-            . '13 passos, 5 com auto_fonte.'
-        );
-    }
-
     /**
-     * Resolve o serviço-alvo por consulta — nunca por id fixo. Primeiro
-     * serviço ativo do setor Performance cujo nome contenha "Gestão".
+     * Versão da definição. SUBIR sempre que qualquer passo desta classe mudar
+     * (acréscimo, remoção, mudança de dono/dependência/SLA).
      */
-    private function resolverServicoDeGestao(): ?Servico
+    public const VERSAO = 1;
+
+    /**
+     * Devolve os passos do serviço, ou `null` quando o serviço não tem
+     * onboarding definido — o chamador trata `null` como "não gera onboarding",
+     * nunca como lista vazia.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    public static function paraServico(Servico $servico): ?array
     {
-        return Servico::query()
-            ->where('ativo', true)
-            ->where('setor', Servico::SETOR_PERFORMANCE)
-            ->where('nome', 'like', '%Gestão%')
-            ->first();
+        if (! self::eGestao($servico)) {
+            return null;
+        }
+
+        return self::gestao();
     }
 
     /**
-     * As 13 linhas exatas do template de Gestão v1 — copiadas literalmente
-     * da tabela travada em 135-04-PLAN.md (bloco <interfaces>). Não é
-     * decisão do executor.
+     * Resolve o serviço-alvo por consulta, NUNCA por id fixo — o catálogo de
+     * serviços tem ids diferentes entre localhost e produção.
+     */
+    private static function eGestao(Servico $servico): bool
+    {
+        return $servico->setor === Servico::SETOR_PERFORMANCE
+            && str_contains(mb_strtolower($servico->nome), 'gestão');
+    }
+
+    /**
+     * Os 13 passos do onboarding de Gestão (Performance), 5 automáticos.
+     *
+     * `dono` e `auto_fonte` são eixos INDEPENDENTES:
+     *  - `dono` responde "de quem é a bola?" — quem precisa AGIR.
+     *  - `auto_fonte` responde "como o sistema sabe que aconteceu?".
+     * O passo 5 é o caso que prova a independência: a bola é do cliente (ele
+     * precisa autorizar o OAuth), mas ninguém digita nada — o token ativo
+     * fecha o passo sozinho.
      *
      * @return array<int, array<string, mixed>>
      */
-    private function passos(?int $setorFinanceiroId): array
+    private static function gestao(): array
     {
+        $setorFinanceiroId = Setor::where('slug', 'financeiro')->value('id');
+
         return [
             [
                 'ordem'      => 1,
                 'chave'      => 'ficha_cliente_recebida',
                 'titulo'     => 'Ficha do cliente recebida',
-                'dono'       => TemplatePasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
                 'depende_de' => null,
                 'sla_dias'   => 3,
@@ -116,7 +91,7 @@ class OnboardingTemplateGestaoSeeder extends Seeder
                 'ordem'      => 2,
                 'chave'      => 'acesso_colaborador_ml',
                 'titulo'     => 'Acesso colaborador Mercado Livre',
-                'dono'       => TemplatePasso::DONO_CLIENTE,
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
                 'depende_de' => null,
                 'sla_dias'   => 3,
@@ -127,42 +102,42 @@ class OnboardingTemplateGestaoSeeder extends Seeder
                 'ordem'      => 3,
                 'chave'      => 'planilha_custos_adman',
                 'titulo'     => 'Planilha de custos ADMAN',
-                'dono'       => TemplatePasso::DONO_SISTEMA,
+                'dono'       => OnboardingPasso::DONO_SISTEMA,
                 'setor_id'   => null,
                 'depende_de' => null,
                 'sla_dias'   => 5,
-                'auto_fonte' => TemplatePasso::AUTO_FONTE_ADMAN_ACCOUNT_ID,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_ADMAN_ACCOUNT_ID,
                 'condicao'   => null,
             ],
             [
                 'ordem'      => 4,
                 'chave'      => 'grant_consultoria_adman',
                 'titulo'     => 'Grant com a Consultoria (Adman)',
-                'dono'       => TemplatePasso::DONO_SISTEMA,
+                'dono'       => OnboardingPasso::DONO_SISTEMA,
                 'setor_id'   => null,
                 'depende_de' => ['planilha_custos_adman'],
                 'sla_dias'   => 5,
-                'auto_fonte' => TemplatePasso::AUTO_FONTE_ADMAN_GRANT,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_ADMAN_GRANT,
                 'condicao'   => null,
             ],
             [
                 'ordem'      => 5,
                 'chave'      => 'grant_sistema_ecf',
                 'titulo'     => 'Grant com o Sistema ECF (OAuth)',
-                // D-19 em ação: a bola é do cliente (precisa autorizar o OAuth),
-                // mas ninguém digita nada — o auto_fonte abaixo fecha sozinho.
-                'dono'       => TemplatePasso::DONO_CLIENTE,
+                // A bola é do cliente (precisa autorizar o OAuth), mas ninguém
+                // digita nada — o auto_fonte abaixo fecha sozinho.
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
                 'depende_de' => ['acesso_colaborador_ml'],
                 'sla_dias'   => 5,
-                'auto_fonte' => TemplatePasso::AUTO_FONTE_ML_TOKEN,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_ML_TOKEN,
                 'condicao'   => null,
             ],
             [
                 'ordem'      => 6,
                 'chave'      => 'confirmacao_pagamento',
                 'titulo'     => 'Confirmação de pagamento',
-                'dono'       => TemplatePasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => $setorFinanceiroId,
                 'depende_de' => null,
                 'sla_dias'   => 5,
@@ -173,41 +148,41 @@ class OnboardingTemplateGestaoSeeder extends Seeder
                 'ordem'      => 7,
                 'chave'      => 'metricas_da_conta',
                 'titulo'     => 'Métricas da conta',
-                'dono'       => TemplatePasso::DONO_SISTEMA,
+                'dono'       => OnboardingPasso::DONO_SISTEMA,
                 'setor_id'   => null,
                 'depende_de' => ['planilha_custos_adman', 'grant_sistema_ecf'],
                 'sla_dias'   => 1,
-                'auto_fonte' => TemplatePasso::AUTO_FONTE_METRICAS,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_METRICAS,
                 'condicao'   => null,
             ],
             [
                 'ordem'      => 8,
                 'chave'      => 'anuncios_ativos_inativos',
                 'titulo'     => 'Anúncios ativos / inativos',
-                'dono'       => TemplatePasso::DONO_SISTEMA,
+                'dono'       => OnboardingPasso::DONO_SISTEMA,
                 'setor_id'   => null,
                 'depende_de' => ['grant_sistema_ecf'],
                 'sla_dias'   => 1,
-                'auto_fonte' => TemplatePasso::AUTO_FONTE_ACERVO,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_ACERVO,
                 'condicao'   => null,
             ],
             [
                 'ordem'      => 9,
                 'chave'      => 'excluir_anuncios_inativos',
                 'titulo'     => 'Excluir anúncios inativos',
-                'dono'       => TemplatePasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
                 'depende_de' => ['anuncios_ativos_inativos'],
                 'sla_dias'   => 5,
                 'auto_fonte' => null,
-                // D-12: só nasce se o passo 8 apurar inativos > 0.
-                'condicao'   => ['tipo' => TemplatePasso::CONDICAO_ANUNCIOS_INATIVOS],
+                // Só nasce se o passo 8 apurar inativos > 0.
+                'condicao'   => ['tipo' => OnboardingPasso::CONDICAO_ANUNCIOS_INATIVOS],
             ],
             [
                 'ordem'      => 10,
                 'chave'      => 'custos_app_ecf',
                 'titulo'     => 'Custos no App ECF',
-                'dono'       => TemplatePasso::DONO_CLIENTE,
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
                 'depende_de' => null,
                 'sla_dias'   => 5,
@@ -218,7 +193,7 @@ class OnboardingTemplateGestaoSeeder extends Seeder
                 'ordem'      => 11,
                 'chave'      => 'grant_de_ads',
                 'titulo'     => 'Grant de Ads',
-                'dono'       => TemplatePasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
                 'depende_de' => ['grant_sistema_ecf'],
                 'sla_dias'   => 5,
@@ -229,7 +204,7 @@ class OnboardingTemplateGestaoSeeder extends Seeder
                 'ordem'      => 12,
                 'chave'      => 'agendar_reuniao_onboarding',
                 'titulo'     => 'Agendar reunião de onboarding',
-                'dono'       => TemplatePasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
                 'depende_de' => ['metricas_da_conta', 'anuncios_ativos_inativos'],
                 'sla_dias'   => 3,
@@ -240,9 +215,9 @@ class OnboardingTemplateGestaoSeeder extends Seeder
                 'ordem'      => 13,
                 'chave'      => 'reuniao_realizada',
                 'titulo'     => 'Reunião de onboarding realizada',
-                // D-15 traduzida literalmente: depende do agendamento E do
-                // pagamento — pagamento trava a CONCLUSÃO, nunca o mapeamento.
-                'dono'       => TemplatePasso::DONO_INTERNO,
+                // Depende do agendamento E do pagamento — pagamento trava a
+                // CONCLUSÃO, nunca o mapeamento.
+                'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
                 'depende_de' => ['agendar_reuniao_onboarding', 'confirmacao_pagamento'],
                 'sla_dias'   => 10,

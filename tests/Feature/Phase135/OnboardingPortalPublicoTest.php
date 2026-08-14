@@ -7,13 +7,10 @@ use App\Models\ContratoServico;
 use App\Models\Onboarding;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
-use App\Models\OnboardingTemplate;
 use App\Models\Servico;
-use App\Models\TemplatePasso;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
-use Database\Seeders\OnboardingTemplateGestaoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -58,7 +55,6 @@ class OnboardingPortalPublicoTest extends TestCase
     /** Onboarding de Gestão em `andamento` para $company (13 passos, seeder idempotente). */
     private function onboardingDeGestaoEmAndamento(Company $company): Onboarding
     {
-        (new OnboardingTemplateGestaoSeeder())->run();
         $contrato = ContratoServico::factory()
             ->paraServico($this->servicoDeGestao())
             ->create(['company_id' => $company->id]);
@@ -72,7 +68,6 @@ class OnboardingPortalPublicoTest extends TestCase
     /** Onboarding de Gestão que NUNCA sai de `rascunho` (SC-04). */
     private function onboardingDeGestaoEmRascunho(Company $company): Onboarding
     {
-        (new OnboardingTemplateGestaoSeeder())->run();
         $contrato = ContratoServico::factory()
             ->paraServico($this->servicoDeGestao())
             ->create(['company_id' => $company->id]);
@@ -101,35 +96,23 @@ class OnboardingPortalPublicoTest extends TestCase
             'setor'         => Servico::SETOR_OUTROS,
         ]);
 
-        $template = OnboardingTemplate::create([
-            'servico_id'   => $servico->id,
-            'versao'       => 1,
-            'ativo'        => true,
-            'publicado_em' => now(),
-        ]);
-
-        TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 1,
-            'chave'       => $chave,
-            'titulo'      => 'Passo sintético ' . $chave,
-            'dono'        => TemplatePasso::DONO_CLIENTE,
-            'auto_fonte'  => $autoFonte,
-        ]);
-
         $onboarding = Onboarding::create([
             'company_id'  => $company->id,
             'servico_id'  => $servico->id,
-            'template_id' => $template->id,
             'status'      => Onboarding::STATUS_ANDAMENTO,
             'iniciado_em' => now(),
         ]);
 
-        $this->engine()->montarPassos($onboarding);
-
-        OnboardingPasso::where('onboarding_id', $onboarding->id)
-            ->where('chave', $chave)
-            ->update(['status' => $statusPasso, 'disponivel_em' => now()]);
+        OnboardingPasso::create([
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 1,
+            'chave'         => $chave,
+            'titulo'        => 'Passo sintético ' . $chave,
+            'dono'          => OnboardingPasso::DONO_CLIENTE,
+            'auto_fonte'    => $autoFonte,
+            'status'        => $statusPasso,
+            'disponivel_em' => now(),
+        ]);
 
         return $onboarding->fresh();
     }

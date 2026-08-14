@@ -9,7 +9,6 @@ use App\Models\OnboardingPasso;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
-use Database\Seeders\OnboardingTemplateGestaoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -59,7 +58,6 @@ class OnboardingTransicaoStatusTest extends TestCase
     {
         parent::setUp();
 
-        (new OnboardingTemplateGestaoSeeder())->run();
     }
 
     /** @test */

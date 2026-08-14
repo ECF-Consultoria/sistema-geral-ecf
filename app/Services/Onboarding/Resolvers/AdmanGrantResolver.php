@@ -5,7 +5,6 @@ namespace App\Services\Onboarding\Resolvers;
 use App\Contracts\OnboardingResolver;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\TemplatePasso;
 use App\Services\AdmanService;
 use App\Services\Onboarding\OnboardingResolverResultado;
 
@@ -42,7 +41,7 @@ class AdmanGrantResolver implements OnboardingResolver
 
     public function chave(): string
     {
-        return TemplatePasso::AUTO_FONTE_ADMAN_GRANT;
+        return OnboardingPasso::AUTO_FONTE_ADMAN_GRANT;
     }
 
     public function label(): string

@@ -5,7 +5,6 @@ namespace App\Services\Onboarding;
 use App\Models\Company;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
-use App\Models\TemplatePasso;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -66,21 +65,21 @@ class OnboardingLinkService
     {
         $passos = OnboardingPasso::query()
             ->whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id)->emAndamento())
-            ->whereHas('templatePasso', fn ($q) => $q->where('dono', TemplatePasso::DONO_CLIENTE))
-            ->with(['templatePasso', 'onboarding.servico'])
+            ->where('dono', OnboardingPasso::DONO_CLIENTE)
+            ->with('onboarding.servico')
             ->get();
 
         return $passos
             ->groupBy('chave')
             ->map(function (Collection $grupo) {
-                $templatePasso = $grupo->first()->templatePasso;
+                $primeiro = $grupo->first();
 
                 return [
-                    'chave'                => $templatePasso->chave,
-                    'titulo'               => $templatePasso->titulo,
-                    'instrucao'            => $templatePasso->descricao,
+                    'chave'                => $primeiro->chave,
+                    'titulo'               => $primeiro->titulo,
+                    'instrucao'            => null,
                     'status'               => $this->statusAgregado($grupo),
-                    'tem_auto_fonte'       => $templatePasso->auto_fonte !== null,
+                    'tem_auto_fonte'       => $primeiro->auto_fonte !== null,
                     'servicos'             => $grupo
                         ->map(fn (OnboardingPasso $p) => $p->onboarding->servico->nome)
                         ->unique()
@@ -131,7 +130,7 @@ class OnboardingLinkService
      * isso recebe `$ip`, não `User`; diferente de
      * {@see OnboardingEngineService::concluirManualmente()}, que é a ação
      * do painel interno). Recusa (`\DomainException`, D-19) se o
-     * `TemplatePasso` da chave tiver `auto_fonte` — nem o cliente fecha na
+     * `OnboardingPasso` da chave tiver `auto_fonte` — nem o cliente fecha na
      * mão um passo que só o resolver automático confirma.
      *
      * Chama {@see OnboardingEngineService::reavaliar()} uma vez por
@@ -143,18 +142,18 @@ class OnboardingLinkService
         $passos = OnboardingPasso::query()
             ->where('chave', $chave)
             ->whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id)->emAndamento())
-            ->with(['templatePasso', 'onboarding'])
+            ->with('onboarding')
             ->get();
 
         if ($passos->isEmpty()) {
             return 0;
         }
 
-        $templatePasso = $passos->first()->templatePasso;
+        $primeiro = $passos->first();
 
-        if ($templatePasso->auto_fonte !== null) {
+        if ($primeiro->auto_fonte !== null) {
             throw new \DomainException(
-                "O passo \"{$templatePasso->titulo}\" é verificado automaticamente pelo sistema — "
+                "O passo \"{$primeiro->titulo}\" é verificado automaticamente pelo sistema — "
                 . 'não pode ser marcado como feito pelo cliente (D-19).'
             );
         }

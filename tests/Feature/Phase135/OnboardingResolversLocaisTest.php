@@ -7,9 +7,7 @@ use App\Models\CompanyMarketplace;
 use App\Models\MlToken;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\OnboardingTemplate;
 use App\Models\Servico;
-use App\Models\TemplatePasso;
 use App\Services\Onboarding\OnboardingResolverFactory;
 use App\Services\Onboarding\Resolvers\AdmanAccountIdResolver;
 use App\Services\Onboarding\Resolvers\MlTokenAtivoResolver;
@@ -39,31 +37,20 @@ class OnboardingResolversLocaisTest extends TestCase
             'setor'         => Servico::SETOR_PERFORMANCE,
         ]);
 
-        $template = OnboardingTemplate::create([
-            'servico_id' => $servico->id,
-            'versao'     => 1,
-            'ativo'      => true,
-        ]);
-
-        $templatePasso = TemplatePasso::create([
-            'template_id' => $template->id,
-            'ordem'       => 1,
-            'chave'       => $chave,
-            'titulo'      => $chave,
-            'dono'        => TemplatePasso::DONO_SISTEMA,
-            'auto_fonte'  => $autoFonte,
-        ]);
-
         $onboarding = Onboarding::create([
             'company_id'  => $company->id,
             'servico_id'  => $servico->id,
-            'template_id' => $template->id,
         ]);
 
+        // O passo carrega a própria definição — não existe mais a indireção
+        // template → template_passo → passo.
         $passo = OnboardingPasso::create([
-            'onboarding_id'     => $onboarding->id,
-            'template_passo_id' => $templatePasso->id,
-            'chave'             => $chave,
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 1,
+            'chave'         => $chave,
+            'titulo'        => $chave,
+            'dono'          => OnboardingPasso::DONO_SISTEMA,
+            'auto_fonte'    => $autoFonte,
         ]);
 
         return [$onboarding, $passo];
@@ -83,7 +70,7 @@ class OnboardingResolversLocaisTest extends TestCase
 
         [$onboarding, $passo] = $this->criarOnboardingComPasso(
             $company->fresh(),
-            TemplatePasso::AUTO_FONTE_ADMAN_ACCOUNT_ID,
+            OnboardingPasso::AUTO_FONTE_ADMAN_ACCOUNT_ID,
             'planilha_adman'
         );
 
@@ -101,7 +88,7 @@ class OnboardingResolversLocaisTest extends TestCase
 
         [$onboarding, $passo] = $this->criarOnboardingComPasso(
             $company,
-            TemplatePasso::AUTO_FONTE_ADMAN_ACCOUNT_ID,
+            OnboardingPasso::AUTO_FONTE_ADMAN_ACCOUNT_ID,
             'planilha_adman'
         );
 
@@ -135,7 +122,7 @@ class OnboardingResolversLocaisTest extends TestCase
 
         [$onboarding, $passo] = $this->criarOnboardingComPasso(
             $company,
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
             'grant_ecf'
         );
 
@@ -161,7 +148,7 @@ class OnboardingResolversLocaisTest extends TestCase
         ]);
         [$onboarding, $passo] = $this->criarOnboardingComPasso(
             $company,
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
             'grant_ecf'
         );
 
@@ -178,7 +165,7 @@ class OnboardingResolversLocaisTest extends TestCase
         $company = Company::factory()->create();
         [$onboarding, $passo] = $this->criarOnboardingComPasso(
             $company,
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
             'grant_ecf'
         );
 
@@ -206,14 +193,14 @@ class OnboardingResolversLocaisTest extends TestCase
         ]);
         [$onboardingRevogada, $passoRevogada] = $this->criarOnboardingComPasso(
             $companyRevogada,
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
             'grant_ecf'
         );
 
         $companySemToken = Company::factory()->create();
         [$onboardingSemToken, $passoSemToken] = $this->criarOnboardingComPasso(
             $companySemToken,
-            TemplatePasso::AUTO_FONTE_ML_TOKEN,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
             'grant_ecf'
         );
 
@@ -247,7 +234,7 @@ class OnboardingResolversLocaisTest extends TestCase
             ->pluck('chave')
             ->all();
 
-        $this->assertContains(TemplatePasso::AUTO_FONTE_ADMAN_ACCOUNT_ID, $chaves);
-        $this->assertContains(TemplatePasso::AUTO_FONTE_ML_TOKEN, $chaves);
+        $this->assertContains(OnboardingPasso::AUTO_FONTE_ADMAN_ACCOUNT_ID, $chaves);
+        $this->assertContains(OnboardingPasso::AUTO_FONTE_ML_TOKEN, $chaves);
     }
 }

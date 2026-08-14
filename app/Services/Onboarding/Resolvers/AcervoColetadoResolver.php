@@ -7,7 +7,6 @@ use App\Jobs\SyncMlAcervoCompanyJob;
 use App\Models\MlAcervoItem;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
-use App\Models\TemplatePasso;
 use App\Services\Onboarding\OnboardingResolverResultado;
 use Illuminate\Support\Facades\Log;
 
@@ -59,7 +58,7 @@ class AcervoColetadoResolver implements OnboardingResolver
 
     public function chave(): string
     {
-        return TemplatePasso::AUTO_FONTE_ACERVO;
+        return OnboardingPasso::AUTO_FONTE_ACERVO;
     }
 
     public function label(): string

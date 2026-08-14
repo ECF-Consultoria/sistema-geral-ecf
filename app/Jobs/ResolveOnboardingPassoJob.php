@@ -71,11 +71,9 @@ class ResolveOnboardingPassoJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        $templatePasso = $passo->templatePasso;
-
         // Defesa contra despacho errado — passo sem auto_fonte não tem
         // resolver a chamar.
-        if ($templatePasso === null || $templatePasso->auto_fonte === null) {
+        if ($passo->auto_fonte === null) {
             return;
         }
 
@@ -86,12 +84,12 @@ class ResolveOnboardingPassoJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        $resultado = $factory->for($templatePasso->auto_fonte)->resolver($onboarding, $passo);
+        $resultado = $factory->for($passo->auto_fonte)->resolver($onboarding, $passo);
 
         $engine->aplicarResultado($passo, $resultado);
 
         Log::info(
-            "[Onboarding] passo {$passo->id} ({$passo->chave}) resolvido via {$templatePasso->auto_fonte} "
+            "[Onboarding] passo {$passo->id} ({$passo->chave}) resolvido via {$passo->auto_fonte} "
             . "— estado {$resultado->estado}."
         );
     }
