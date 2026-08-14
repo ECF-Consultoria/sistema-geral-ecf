@@ -1,9 +1,9 @@
 ---
 phase: 130
 slug: rede-de-seguran-a-reconcilia-o-alerta-e-libera-o-manual-v22
-status: planned
+status: validated
 nyquist_compliant: true
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-08-13
 ---
 
