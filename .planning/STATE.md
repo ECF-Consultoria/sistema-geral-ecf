@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: Plano 130-07 executado, mas NENHUM dos 3 Success Criteria (SC1/SC2/SC3) pode ser
+status: executing
 stopped_at: Phase 131 UI-SPEC approved
-last_updated: "2026-08-14T14:01:27.383Z"
-last_activity: "2026-08-14 - Quick task 260814-d9s: corrigido o reenvio de notificacao da Clicksign (POST sem corpo, quebrado tambem em producao); corpo medido e confirmado por 2xx"
+last_updated: "2026-08-14T15:36:54.714Z"
+last_activity: 2026-08-14 -- Phase 131 planning complete
 progress:
   total_phases: 12
   completed_phases: 8
-  total_plans: 60
+  total_plans: 66
   completed_plans: 57
   percent: 67
 ---
@@ -27,14 +27,14 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 130 (Rede de segurança — reconciliação, alerta e liberação manual (v22.0)) — EXECUTING
 Plan: 7 of 7
-Status: Plano 130-07 executado, mas NENHUM dos 3 Success Criteria (SC1/SC2/SC3) pode ser
+Status: Ready to execute
   considerado fechado — ver `130-GATE.md`. SC2 tem a metade técnica provada por reconsulta ao
   banco; SC1 e SC3 continuam pendentes de ação humana real em navegador.
   (`checkpoint:human-verify`, rodada real de assinatura contra o sandbox) segue aberta.
   Ver "Decisões do Plan 129-07" abaixo e o checkpoint devolvido ao usuário.
 ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
 dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
-Last activity: 2026-08-14 - Quick task 260814-d9s: corrigido o reenvio de notificacao da Clicksign (POST sem corpo, quebrado tambem em producao); corpo medido e confirmado por 2xx
+Last activity: 2026-08-14 -- Phase 131 planning complete
 
 **Plano 130-07 executado em 2026-08-13** (commits `ba7cfdb6`/`e232c70a`): os 3 gates humanos em
 sandbox (SC1/SC2/SC3 do ROADMAP + gate empírico #10) NÃO puderam ser aprovados nesta sessão —

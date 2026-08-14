@@ -25,7 +25,7 @@
 | `app/Http/Controllers/ComercialController.php::listagem()` (editar, badge em lote) | controller (query) | CRUD + agregação em lote | O próprio método, linhas 180-310 (eager load + cálculo em PHP, sem N+1) | exato — é o análogo E o arquivo a editar |
 | `resources/js/Pages/Comercial/ContratosLiberacaoManual` — **REMOVIDO** | — | — | — | N/A (deleção, D-10) |
 | `routes/web.php` (rotas antigas `contratos.liberacao-manual.*`) — **REMOVIDAS** | route | — | `routes/web.php:112-117` (a rota que está saindo) | N/A (deleção, D-10) |
-| `tests/Feature/Phase131/*.php` (10 arquivos, ver lista) | test | Feature/Inertia | `tests/Feature/Phase130/LiberacaoManualTest.php` + `tests/Feature/Phase126/ClicksignClientEnvelopeTest.php` | exato |
+| `tests/Feature/Phase131/*.php` (**11 arquivos** — a lista autoritativa está em `131-VALIDATION.md` §"Wave 0 Requirements") | test | Feature/Inertia | `tests/Feature/Phase130/LiberacaoManualTest.php` + `tests/Feature/Phase126/ClicksignClientEnvelopeTest.php` | exato |
 
 ---
 

@@ -31,7 +31,16 @@ ou WhatsApp (recusado na D-01 da Fase 130).
   formulário dentro da listagem) e reusar `Admin/Empresas.jsx` (menos código novo, mas obriga o
   Administrativo a alternar entre duas telas para fechar um caso).
 
-- **D-02: O campo "Gmail do colaborador" SOME POR COMPLETO do Comercial** — sai do formulário
+- **D-02: ⛔ SUPERADA PELA D-12 — NÃO IMPLEMENTAR.** Esta decisão foi tomada quando ainda se
+  acreditava que "Gmail do colaborador" era um campo só, ainda no formulário do Comercial.
+  A investigação de 2026-08-14 mostrou que são **dois campos diferentes**: o que o usuário descreveu
+  (`companies.email_colaborador`) **já saiu** do Comercial na quick `260805-eqk`, e o que restou no
+  formulário é o `gmail_colaborador` do **Polos**, que a D-12 mandou **manter**.
+  ⚠️ Implementar a D-02 como escrita abaixo removeria o campo errado, quebrando o onboarding de
+  Polos sem que ninguém tivesse pedido. Nenhum plano da fase a cita — isso é intencional, não
+  lacuna de cobertura. Texto original preservado abaixo só como histórico:
+
+  ~~O campo "Gmail do colaborador" SOME POR COMPLETO do Comercial~~ — sai do formulário
   (`Comercial/NovaEmpresa.jsx`) e da listagem, não vira somente-leitura. O dono do dado passa a ser
   o Administrativo, sem ambiguidade. ⚠️ **ADM-03 exige que isso aconteça na MESMA entrega** em que
   o Administrativo ganha onde preencher — nunca antes, senão abre uma janela em que ninguém
