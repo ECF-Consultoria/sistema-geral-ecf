@@ -3,6 +3,11 @@ import axios from 'axios';
 import { Check, BookOpen, Save, AlertCircle, X, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SpreadsheetGrid } from '@/Components/SpreadsheetGrid';
+import {
+    PRECIF_LINHA_VAZIA,
+    mesclarPrecificacaoComPlanilha,
+    criarTesteDaPlanilha,
+} from '@/lib/precificacaoProdutos';
 
 // ─── CustomSelect — dropdown cross-browser sem seta dupla ────────────────────
 
@@ -697,13 +702,15 @@ function CampoValor({ label, dica, valor, onChange, prefixo = 'R$', invalido = f
  */
 // Simulador recebe modoImposto, impostoEfetivo, mcEfetivo e llEfetivo para calcular por produto
 // (modo individual) ou com os valores globais do tier (modo massa — comportamento original).
-function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving, tabelaFreteUrl, modoImposto, impostoEfetivo, mcEfetivo, llEfetivo }) {
+function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving, tabelaFreteUrl, modoImposto, impostoEfetivo, mcEfetivo, llEfetivo, vemDaPlanilha }) {
     // Parâmetros avançados já vêm EXPOSTOS por padrão (sem exigir clique) para
     // aumentar a chance de o cliente conferir/preencher. O toggle segue disponível
     // para recolher quem quiser.
     const [avancado, setAvancado] = useState(true);
 
     const row        = produtos[selIdx] ?? { custo: '', frete_classico: '', frete_premium: '' };
+    // Produto que veio da Planilha de Produtos: SKU e nome são só reflexo dela.
+    const daPlanilha = produtos.length > 0 && vemDaPlanilha?.(row);
     const t          = tier === 'classico' ? cc : cp;
     const freteCampo = tier === 'classico' ? 'frete_classico' : 'frete_premium';
     const custoN     = parseFloat(row.custo || 0) || 0;
@@ -789,15 +796,29 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                             <label className="text-white/70 text-[13px] font-medium block mb-1">SKU <span className="text-white/30 font-normal">(código)</span></label>
-                            <input value={row.sku ?? ''} onChange={e => onEditProduto('sku', e.target.value)} placeholder="ex: CAD-001"
-                                className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20" />
+                            {daPlanilha ? (
+                                <div className="w-full h-10 px-3 rounded-xl bg-white/[0.02] border border-white/[0.06] text-white/50 text-sm flex items-center truncate">{row.sku || '—'}</div>
+                            ) : (
+                                <input value={row.sku ?? ''} onChange={e => onEditProduto('sku', e.target.value)} placeholder="ex: CAD-001"
+                                    className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20" />
+                            )}
                         </div>
                         <div>
                             <label className="text-white/70 text-[13px] font-medium block mb-1">Descrição</label>
-                            <input value={row.descricao ?? ''} onChange={e => onEditProduto('descricao', e.target.value)} placeholder="ex: Cadeira Gamer Preta"
-                                className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20" />
+                            {daPlanilha ? (
+                                <div className="w-full h-10 px-3 rounded-xl bg-white/[0.02] border border-white/[0.06] text-white/50 text-sm flex items-center truncate">{row.descricao || '—'}</div>
+                            ) : (
+                                <input value={row.descricao ?? ''} onChange={e => onEditProduto('descricao', e.target.value)} placeholder="ex: Cadeira Gamer Preta"
+                                    className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20" />
+                            )}
                         </div>
                     </div>
+                    {/* Produto cadastrado na Planilha de Produtos: identificação é de lá, não daqui. */}
+                    {daPlanilha && (
+                        <p className="text-white/30 text-[11px] -mt-2">
+                            SKU e nome vêm da <span className="text-white/50">Planilha de Produtos</span> — para alterar, edite lá.
+                        </p>
+                    )}
 
                     <p className="text-white/40 text-[11px] uppercase tracking-wider pt-1">Quanto você gasta</p>
                     <CampoValor label="Custo do produto" dica="Quanto você paga no produto (sem frete)."
@@ -1070,34 +1091,17 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
             ? ((parseFloat(row.ll_individual) || 0) / 100)
             : llNum;
 
-    const emptyRow = { sku: '', descricao: '', custo: '', frete_classico: '', frete_premium: '', imposto_individual: '', mc_individual: '', ll_individual: '' };
+    const emptyRow = PRECIF_LINHA_VAZIA;
 
-    function mergeComPlanilha() {
-        const planilha = (planilhaProdutos ?? []).filter(p => p.sku?.trim());
-        const salvos   = dados.produtos ?? [];
-        if (planilha.length === 0) {
-            return salvos.length > 0 ? salvos.map(p => ({ ...emptyRow, ...p })) : [];
-        }
-        // Precificação já salva, indexada por SKU (para mesclar nos produtos da planilha).
-        const existente = {};
-        salvos.forEach(p => { if (p.sku) existente[p.sku] = p; });
-        // 1) Produtos vindos da Planilha de Produtos (mesclando a precificação salva por SKU).
-        const daPlanilha = planilha.map(p => ({
-            ...emptyRow,
-            sku:       p.sku ?? '',
-            descricao: p.produto ?? '',
-            ...(existente[p.sku] ?? {}),
-        }));
-        // 2) Produtos salvos que NÃO estão na planilha — tipicamente adicionados manualmente no
-        //    Simulador (SKU em branco). Sem isso, o produto avulso sumia ao reabrir o modal.
-        const skusPlanilha = new Set(planilha.map(p => p.sku));
-        const avulsos = salvos
-            .filter(p => !p.sku?.trim() || !skusPlanilha.has(p.sku))
-            .map(p => ({ ...emptyRow, ...p }));
-        return [...daPlanilha, ...avulsos];
-    }
+    // Pareamento planilha × precificação salva vive em lib/precificacaoProdutos.js — é
+    // lógica pura, com os cenários travados em tests/js/precificacaoProdutos.test.js.
+    // O ponto crítico está documentado lá: SKU repetido ("Não tenho" em todo produto)
+    // colapsava a lista inteira num produto só.
+    const vemDaPlanilha = useMemo(() => criarTesteDaPlanilha(planilhaProdutos), [planilhaProdutos]);
 
-    const [rows, setRows] = useState(() => mergeComPlanilha());
+    const [rows, setRows] = useState(
+        () => mesclarPrecificacaoComPlanilha(planilhaProdutos, dados.produtos)
+    );
     const debRef     = useRef(null);
     const pendingRef  = useRef(null);
     const onSaveRef   = useRef(onSave);
@@ -1324,12 +1328,17 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
                         impostoEfetivo={impostoEfetivo}
                         mcEfetivo={mcEfetivo}
                         llEfetivo={llEfetivo}
+                        vemDaPlanilha={vemDaPlanilha}
                     />
                 ) : (
                     <>
                         <SpreadsheetGrid columns={cols} rows={rows} onChange={handleChange} minRows={10} headerGroups={headerGroups} exportFilename="precificacao" />
                         <p className="mt-2 text-white/20 text-[11px]">
                             Dica: arraste o quadrado azul no canto da célula para preencher · Ctrl+C/V para copiar e colar
+                        </p>
+                        {/* SKU e Descrição de quem veio da planilha são re-derivados a cada abertura. */}
+                        <p className="mt-1 text-white/20 text-[11px]">
+                            SKU e Descrição dos produtos cadastrados vêm da Planilha de Produtos — renomear aqui não altera lá.
                         </p>
                     </>
                 )}
