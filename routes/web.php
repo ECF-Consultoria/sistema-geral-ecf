@@ -1068,6 +1068,11 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
 // 131-06) — por enquanto só a listagem (`index`) existe.
 Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('administrativo/contratos')->name('admin.contratos.')->group(function () {
     Route::get('/', [ContratoAdminController::class, 'index'])->name('index');
+    // Plano 131-04 (D-01/ADM-01/ADM-02/UI-02) — detalhe da empresa: onde o
+    // Administrativo completa o cadastro e dispara a geração do contrato.
+    Route::get('/empresa/{company}',            [ContratoAdminController::class, 'show'])            ->name('show');
+    Route::patch('/empresa/{company}/cadastro', [ContratoAdminController::class, 'atualizarCadastro'])->name('cadastro');
+    Route::post('/empresa/{company}/gerar',     [ContratoAdminController::class, 'gerarContrato'])    ->name('gerar');
 });
 
 // ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────

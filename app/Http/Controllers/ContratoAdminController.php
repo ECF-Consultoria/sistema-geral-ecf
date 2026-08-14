@@ -4,7 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\ContratoAssinatura;
+use App\Models\ContratoAssinaturaSignatario;
+use App\Models\ContratoServico;
+use App\Models\User;
+use App\Services\Contratos\ContratoDadosMinimosService;
 use App\Services\Contratos\ContratosPresosService;
+use App\Services\Contratos\GatilhoContratoAdministrativoService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Inertia\Inertia;
@@ -181,5 +187,221 @@ class ContratoAdminController extends Controller
             'resumo'             => $resumo,
             'sem_contrato_count' => $semContratoCount,
         ]);
+    }
+
+    /**
+     * Detalhe da empresa (D-01, plano 131-04): onde o Administrativo completa
+     * o que o Comercial deixou pela metade (ADM-01/ADM-02) e vê explicitamente
+     * o que falta para gerar o contrato (D-03).
+     *
+     * A tela NÃO recalcula elegibilidade — `pode_gerar_contrato` e `faltantes`
+     * vêm prontos do backend, únicas fontes: `ContratoDadosMinimosService` e
+     * `GatilhoContratoAdministrativoService`.
+     */
+    public function show(
+        Company $company,
+        ContratoDadosMinimosService $dados,
+        GatilhoContratoAdministrativoService $gatilho,
+        ContratosPresosService $presos,
+    ): \Inertia\Response {
+        $company->loadMissing('contratosServico.servico');
+
+        $faltantes = $dados->faltantes($company);
+        $avaliacao = $gatilho->avaliar($company);
+        $podeGerarContrato = $dados->estaPronta($company) && $avaliacao['status'] === 'elegivel';
+
+        // Escolhe qual bloco a tela mostra quando o botão está desabilitado
+        // (D-03). Dados mínimos vem primeiro: se a empresa está incompleta, é
+        // essa a razão que o Administrativo precisa ver, mesmo que a empresa
+        // também esteja, por exemplo, em 'aguardando_comercial' por outro
+        // motivo (sem_valor/sem_setor, que faltantes() não cobre).
+        $motivoBloqueio = null;
+        if (! $podeGerarContrato) {
+            $motivoBloqueio = match (true) {
+                $faltantes !== []                                => 'dados_minimos',
+                $avaliacao['status'] === 'ja_em_andamento'        => 'ja_em_andamento',
+                $avaliacao['status'] === 'aguardando_comercial'   => 'aguardando_comercial',
+                $avaliacao['status'] === 'isento'                 => 'isento',
+                default                                           => null,
+            };
+        }
+
+        $contratosServicoAtivos = $company->contratosServico->where('ativo', true)->values();
+
+        // Contratos de assinatura da empresa (todos os estados), com os
+        // signatários — array ACHATADO, nunca o model inteiro nem dado de
+        // signatário além de id/nome/papel/situacao (T-131-04-04).
+        $contratos = ContratoAssinatura::where('company_id', $company->id)
+            ->with('signatarios')
+            ->orderByDesc('id')
+            ->get();
+
+        return Inertia::render('Admin/ContratoDetalhe', [
+            'company' => [
+                'id'                => $company->id,
+                'name'              => $company->name,
+                'cnpj'              => $company->cnpj,
+                'email_cliente'     => $company->email_cliente,
+                'nome_contato'      => $company->nome_contato,
+                'email_colaborador' => $company->email_colaborador,
+            ],
+            'contratos_servico' => $contratosServicoAtivos->map(fn (ContratoServico $cs) => [
+                'id'                => $cs->id,
+                'servico_id'        => $cs->servico_id,
+                'servico_nome'      => $cs->servico?->nome,
+                'exige_contrato'    => (bool) $cs->servico?->exigeContrato(),
+                'valor_contratado'  => (float) $cs->valor_contratado,
+                'data_contratacao'  => optional($cs->data_contratacao)->format('Y-m-d'),
+                'data_vencimento'   => optional($cs->data_vencimento)->format('Y-m-d'),
+            ])->values(),
+            // Retorno CRU de faltantes() — a tela exibe `rotulo`, não recalcula
+            // nada no client (contrato de retorno é PÚBLICO, ver docblock do
+            // service).
+            'faltantes' => $faltantes,
+            // D-11 — FORA de `faltantes()` de propósito: pendência destacada
+            // que NÃO bloqueia o botão. Contrato e acesso à conta do Mercado
+            // Livre são coisas diferentes.
+            'email_colaborador_pendente' => blank($company->email_colaborador),
+            // Prop PRÓPRIA — é .env da ECF, não dado da empresa (nunca
+            // misturar com `faltantes`, ver docblock de
+            // faltantesDaConfiguracaoEcf()).
+            'configuracao_ecf_faltante' => $dados->faltantesDaConfiguracaoEcf(),
+            'pode_gerar_contrato'       => $podeGerarContrato,
+            'motivo_bloqueio'           => $motivoBloqueio,
+            'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos) {
+                return [
+                    'id'                                => $c->id,
+                    'servico_id'                        => $c->servico_id,
+                    'servico_nome'                       => $c->servico?->nome,
+                    'status'                             => $c->status,
+                    'dias_parado'                        => $presos->diasParado($c),
+                    'causa'                              => $presos->causa($c),
+                    'enviado_em'                         => $c->enviado_em?->toIso8601String(),
+                    'assinado_em'                        => $c->assinado_em?->toIso8601String(),
+                    'liberado_em'                        => $c->liberado_em?->toIso8601String(),
+                    'cancelamento_solicitado_em'         => $c->cancelamento_solicitado_em?->toIso8601String(),
+                    'cancelamento_motivo'                => $c->cancelamento_motivo,
+                    'cancelamento_solicitado_por_nome'   => $c->cancelamento_solicitado_por_user_id
+                        ? User::find($c->cancelamento_solicitado_por_user_id)?->name
+                        : null,
+                    // Array achatado — NUNCA email/cpf/clicksign_signer_key/
+                    // auths/evidencia_signer (T-131-04-04). Consumido também
+                    // pelos planos 131-05/06.
+                    'signatarios' => $c->signatarios->map(fn (ContratoAssinaturaSignatario $s) => [
+                        'id'       => $s->id,
+                        'nome'     => $s->nome,
+                        'papel'    => $s->papel,
+                        'situacao' => $s->situacao,
+                    ])->values(),
+                ];
+            })->values(),
+        ]);
+    }
+
+    /**
+     * ADM-01 — o Administrativo completa aqui o que o Comercial deixou pela
+     * metade: CNPJ, e-mail do cliente, nome de quem assina, e-mail do
+     * colaborador e as datas de início/término de cada serviço.
+     *
+     * D8 travada da milestone: nada aqui volta para o Comercial — a cobrança
+     * do dado termina nesta tela.
+     */
+    public function atualizarCadastro(Request $request, Company $company): RedirectResponse
+    {
+        $data = $request->validate([
+            'cnpj'                                 => ['nullable', 'string', 'max:20'],
+            'email_cliente'                        => ['nullable', 'email'],
+            'nome_contato'                          => ['nullable', 'string', 'max:255'],
+            'email_colaborador'                     => ['nullable', 'email'],
+            'contratos_servico'                     => ['array'],
+            'contratos_servico.*.id'                => ['required', 'integer', 'exists:contratos_servico,id'],
+            'contratos_servico.*.data_contratacao'  => ['nullable', 'date'],
+            'contratos_servico.*.data_vencimento'   => ['nullable', 'date'],
+        ]);
+
+        $itensServico = $data['contratos_servico'] ?? [];
+
+        // T-131-04-01 (IDOR) — molde literal do
+        // ContratoLiberacaoManualController::store(): valida o PERTENCIMENTO
+        // de cada item ANTES de gravar qualquer coisa. Se validasse e
+        // gravasse item a item, um primeiro item válido já teria gravado
+        // antes de um segundo item de outra empresa abortar — quebraria a
+        // garantia de "não grava nada" em caso de IDOR.
+        $paresParaAtualizar = [];
+        foreach ($itensServico as $item) {
+            $contratoServico = ContratoServico::findOrFail($item['id']);
+
+            if ($contratoServico->company_id !== $company->id) {
+                abort(422, 'O serviço informado não pertence a esta empresa.');
+            }
+
+            $paresParaAtualizar[] = [$contratoServico, $item];
+        }
+
+        // Mass assignment sobre os $fillable já existentes de Company — nunca
+        // $guarded = [].
+        $company->fill(collect($data)->only(['cnpj', 'email_cliente', 'nome_contato', 'email_colaborador'])->all());
+        $company->save();
+
+        foreach ($paresParaAtualizar as [$contratoServico, $item]) {
+            $contratoServico->update([
+                'data_contratacao' => $item['data_contratacao'] ?? null,
+                'data_vencimento'  => $item['data_vencimento'] ?? null,
+            ]);
+        }
+
+        return back()->with('success', 'Cadastro atualizado.');
+    }
+
+    /**
+     * UI-02 — dispara a geração do contrato quando está tudo pronto.
+     *
+     * Revalida no SERVIDOR, sem confiar no botão do client (o `disabled` do
+     * client não é controle, T-131-04-03). Delega o disparo inteiro a
+     * `GatilhoContratoAdministrativoService::dispararSeElegivel()` — nunca
+     * reimplementa o gate nem chama a Clicksign direto.
+     *
+     * ⚠️ `status === 'disparado'` NÃO prova que nasceu contrato — ver o
+     * docblock de `GatilhoContratoAdministrativoService::dispararSeElegivel()`
+     * e de `ContratoClicksignService::iniciarParaEmpresa()`. A ÚNICA prova de
+     * sucesso é `resultado.ok === true`; a mera presença da chave `resultado`
+     * NUNCA é tratada como sucesso.
+     */
+    public function gerarContrato(
+        Company $company,
+        ContratoDadosMinimosService $dados,
+        GatilhoContratoAdministrativoService $gatilho,
+    ): RedirectResponse {
+        $avaliacao = $gatilho->avaliar($company);
+
+        if (! $dados->estaPronta($company) || $avaliacao['status'] !== 'elegivel') {
+            abort(422, 'Ainda falta completar algum dado, ou já existe um contrato em andamento para esta empresa.');
+        }
+
+        $retorno = $gatilho->dispararSeElegivel($company);
+
+        if ($retorno['status'] === 'disparado' && data_get($retorno, 'resultado.ok') === true) {
+            return back()->with('success', 'Contrato gerado. Acompanhe a situação nesta tela.');
+        }
+
+        $configuracaoFaltante = data_get($retorno, 'resultado.configuracao', []);
+        if ($retorno['status'] === 'disparado' && $configuracaoFaltante !== []) {
+            // A falha é NOSSA (configuração da ECF), não do cliente — UI-06:
+            // sem jargão, e a orientação é o próximo passo concreto.
+            return back()->with('error', 'Não deu para gerar o contrato: falta uma configuração interna da ECF — quem assina pela ECF ainda não está cadastrado. Avise o time técnico; não é nada que o cliente precise fazer.');
+        }
+
+        if ($retorno['status'] === 'disparado') {
+            return back()->with('error', 'Não deu para gerar o contrato agora. Confira se falta algum dado acima e tente de novo.');
+        }
+
+        if ($retorno['status'] === 'erro') {
+            // Mensagem genérica — nunca ecoar a resposta crua da Clicksign
+            // nem a mensagem da exceção na tela (T-131-04-05); o detalhe vai
+            // pro log dentro do próprio Gatilho.
+            return back()->with('error', 'Não deu para gerar este contrato agora. Tente de novo em alguns minutos.');
+        }
+
+        return back()->with('error', 'Não é possível gerar o contrato agora: verifique se ainda há alguma pendência.');
     }
 }
