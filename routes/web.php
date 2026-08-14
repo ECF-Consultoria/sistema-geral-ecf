@@ -6,6 +6,7 @@ use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\EcfWebhookController;
 use App\Http\Controllers\ComercialController;
 use App\Http\Controllers\ConcentracaoController;
+use App\Http\Controllers\ContratoAdminController;
 use App\Http\Controllers\EmpresaAnaliseEcfController;
 use App\Http\Controllers\Admin\CargoController;
 use App\Http\Controllers\Admin\SetorController;
@@ -1055,6 +1056,18 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     Route::post  ('/setores/{setor}/metas',                    [SetorGoalController::class, 'store'])  ->name('setores.metas.store');
     Route::put   ('/setores-metas/{meta}',                     [SetorGoalController::class, 'update']) ->name('setores.metas.update');
     Route::delete('/setores-metas/{meta}',                     [SetorGoalController::class, 'destroy'])->name('setores.metas.destroy');
+});
+
+// ─── Contratos administrativos (Fase 131, UI-01/UI-05, D-09/D-10) ────────────
+// FORA do grupo `role:admin` acima DE PROPÓSITO: `admin.contratos` é
+// permissão PRÓPRIA, refinável na tela de setores sem deploy (D-09). Se
+// estas rotas entrarem no grupo `role:admin`, um usuário que receba
+// `admin.contratos` via setor continua batendo 403 — a UI-05 vira letra
+// morta (ContratoAdminPermissaoTest fica vermelho se isso acontecer).
+// D-10: esta tela vai ABSORVER a liberação manual da Fase 130 (plano
+// 131-06) — por enquanto só a listagem (`index`) existe.
+Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('administrativo/contratos')->name('admin.contratos.')->group(function () {
+    Route::get('/', [ContratoAdminController::class, 'index'])->name('index');
 });
 
 // ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────
