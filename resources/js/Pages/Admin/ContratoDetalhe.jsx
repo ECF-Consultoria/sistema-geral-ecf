@@ -1,37 +1,34 @@
+import { Fragment, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
+import { Textarea } from '@/Components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
-import { Link, useForm, usePage } from '@inertiajs/react';
-import { ArrowLeft, Building2, AlertTriangle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
+import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, ChevronDown, ChevronRight } from 'lucide-react';
+import { cn, formatDate } from '@/lib/utils';
 import { classeContrato, rotuloContrato, formatarHaDias } from '@/lib/contratoStatus';
 
 /**
- * Admin/ContratoDetalhe.jsx — Fase 131 Plano 04 (D-01/D-03/D-11, ADM-01/02,
- * UI-02).
+ * Admin/ContratoDetalhe.jsx — Fase 131 Planos 04 (D-01/D-03/D-11, ADM-01/02,
+ * UI-02) e 05 (CLICK-07/CLICK-09/CLICK-10, D-05/D-13/D-14, UI-04/UI-06).
  *
  * A tela de detalhe da empresa (D-01): página cheia (não painel lateral, não
  * edição inline) onde o Administrativo completa o que o Comercial deixou
- * pela metade (ADM-01/ADM-02) e dispara a geração do contrato quando está
- * tudo pronto (UI-02).
+ * pela metade (ADM-01/ADM-02), dispara a geração do contrato (UI-02) e — o
+ * que este plano acrescenta — age sobre um contrato já enviado exatamente
+ * como a API da Clicksign permite, nem mais, nem menos.
  *
- * D-03 — quando há pendência, o botão "Gerar contrato" fica VISÍVEL e
- * DESABILITADO, com a lista do que falta ao lado — nunca escondido.
- *
- * D-11 — a falta do e-mail do colaborador aparece como pendência destacada,
- * mas NÃO desabilita o botão: contrato e acesso à conta do Mercado Livre são
- * coisas diferentes. `email_colaborador` fica fora de `faltantes`.
- *
- * A tela NÃO recalcula elegibilidade — `pode_gerar_contrato`, `faltantes` e
- * `motivo_bloqueio` vêm prontos do backend, únicas fontes.
- *
- * ⚠️ A coluna "Ações" da lista de contratos fica preparada e vazia: reenviar
- * aviso/ajustar quem assina/registrar cancelamento entram no plano 131-05,
- * liberar manualmente no 131-06. Não criar botão sem rota — `route()` do
- * Ziggy lança e derruba a tela inteira.
+ * ⛔ O que esta tela NÃO oferece, e por quê (medido em 2026-08-14,
+ * `CLICKSIGN-SANDBOX-EMPIRICO.md` §15): não existe correção de e-mail de
+ * quem assina (PATCH/PUT devolvem 404) e não existe cancelamento do que já
+ * foi enviado pela API (DELETE→403, POST/cancel→404, PATCH status→400).
+ * "Ajustar" abre direto a explicação (RAMO B, D-14) e
+ * "Registrar cancelamento" REGISTRA autor+motivo+data e instrui a concluir
+ * no painel — nunca promete cancelar de fato (D-13).
  */
 export default function ContratoDetalhe({
     company,
@@ -41,6 +38,7 @@ export default function ContratoDetalhe({
     configuracao_ecf_faltante = [],
     pode_gerar_contrato = false,
     motivo_bloqueio = null,
+    painel_clicksign_url = null,
     contratos = [],
 }) {
     const { flash } = usePage().props;
@@ -82,6 +80,75 @@ export default function ContratoDetalhe({
         isento:               'Nenhum serviço desta empresa passa por contrato.',
     };
 
+    // ─── CLICK-07 — Reenviar aviso ──────────────────────────────────────
+    // "Por alguns segundos" após o clique — evita repetir o 429 em sequência
+    // (UI-SPEC). Sem contagem regressiva exata exigida.
+    const [signatarioReenviando, setSignatarioReenviando] = useState(null);
+    const [signatariosRecemReenviados, setSignatariosRecemReenviados] = useState(() => new Set());
+
+    function reenviarAviso(contratoId, signatarioId) {
+        setSignatarioReenviando(signatarioId);
+        router.post(route('admin.contratos.reenviar', [contratoId, signatarioId]), {}, {
+            preserveScroll: true,
+            onFinish: () => {
+                setSignatarioReenviando(null);
+                setSignatariosRecemReenviados((atual) => new Set(atual).add(signatarioId));
+                setTimeout(() => {
+                    setSignatariosRecemReenviados((atual) => {
+                        const proximo = new Set(atual);
+                        proximo.delete(signatarioId);
+                        return proximo;
+                    });
+                }, 8000);
+            },
+        });
+    }
+
+    // ─── CLICK-09/UI-04 — Ajustar quem assina (RAMO B, D-14) ────────────
+    // Não existe bifurcação: o botão "Ajustar" abre direto a explicação de
+    // que não dá para só corrigir o e-mail — o CTA primário leva ao MESMO
+    // fluxo de registrar cancelamento (D-06/D-07/D-14).
+    const [ajustarContratoId, setAjustarContratoId] = useState(null);
+
+    // ─── CLICK-10/D-13 — Registrar cancelamento (registra aqui, cancela no painel) ─
+    const cancelarForm = useForm({ motivo: '' });
+    const [cancelarContratoId, setCancelarContratoId] = useState(null);
+
+    function abrirCancelamento(contratoId) {
+        cancelarForm.reset();
+        cancelarForm.clearErrors();
+        setAjustarContratoId(null);
+        setCancelarContratoId(contratoId);
+    }
+
+    function confirmarCancelamento(e) {
+        e.preventDefault();
+        cancelarForm.post(route('admin.contratos.cancelamento', cancelarContratoId), {
+            preserveScroll: true,
+            onSuccess: () => {
+                setCancelarContratoId(null);
+                // O rótulo promete registrar E ir para a Clicksign — só abre
+                // a aba DEPOIS que a resposta volta, e só se a URL do painel
+                // veio configurada. Rótulo sem destino é exatamente o que
+                // esta fase recusou.
+                if (painel_clicksign_url) {
+                    window.open(painel_clicksign_url, '_blank', 'noopener');
+                }
+            },
+        });
+    }
+
+    // ─── D-05 — Estado `erro`: assume a falha e oferece a saída ─────────
+    // Sem carimbo persistido de "quantas vezes já tentou" — a distinção
+    // 1ª/2ª falha é por sessão de navegação (reseta ao recarregar a página).
+    const [tentativasErro, setTentativasErro] = useState({});
+    const [detalhesTecnicosAbertos, setDetalhesTecnicosAbertos] = useState({});
+
+    function tentarNovamente(contratoId) {
+        setTentativasErro((atual) => ({ ...atual, [contratoId]: (atual[contratoId] ?? 0) + 1 }));
+        gerarContrato();
+    }
+
     return (
         <AppLayout title={`Adm · Contrato — ${company.name}`}>
             <main className="p-6">
@@ -108,6 +175,14 @@ export default function ContratoDetalhe({
                     {flash?.error && (
                         <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-[13px] text-red-300">
                             {flash.error}
+                        </div>
+                    )}
+                    {/* CLICK-07 — 429 é resposta ESPERADA da Clicksign, nunca erro:
+                        canal neutro/âmbar, nunca vermelho. */}
+                    {flash?.aviso && (
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-300">
+                            <p className="font-semibold">Aguarde um pouco antes de reenviar</p>
+                            <p className="mt-0.5 text-amber-300/80">{flash.aviso}</p>
                         </div>
                     )}
 
@@ -294,25 +369,216 @@ export default function ContratoDetalhe({
                                             </TableCell>
                                         </TableRow>
                                     )}
-                                    {contratos.map((c) => (
-                                        <TableRow key={c.id}>
-                                            <TableCell className="text-[13px] text-white/85">{c.servico_nome}</TableCell>
-                                            <TableCell>
-                                                <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContrato(c.status))}>
-                                                    {rotuloContrato(c.status)}
-                                                </span>
-                                            </TableCell>
-                                            <TableCell className="text-[13px] text-white/50">{formatarHaDias(c.dias_parado)}</TableCell>
-                                            {/* Ações: preparada e vazia — ver docblock do topo. */}
-                                            <TableCell className="text-[13px] text-white/20">—</TableCell>
-                                        </TableRow>
-                                    ))}
+                                    {contratos.map((c) => {
+                                        const podeAgir = c.status === 'aguardando_assinaturas';
+                                        const podeCancelar = (c.status === 'rascunho' || c.status === 'aguardando_assinaturas')
+                                            && !c.cancelamento_solicitado_em;
+                                        const signatariosPendentes = podeAgir
+                                            ? (c.signatarios || []).filter((s) => s.situacao === 'pendente')
+                                            : [];
+                                        const tentativas = tentativasErro[c.id] ?? 0;
+
+                                        return (
+                                            <Fragment key={c.id}>
+                                                <TableRow>
+                                                    <TableCell className="text-[13px] text-white/85 align-top">{c.servico_nome}</TableCell>
+                                                    <TableCell className="align-top">
+                                                        <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContrato(c.status))}>
+                                                            {rotuloContrato(c.status)}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell className="text-[13px] text-white/50 align-top">{formatarHaDias(c.dias_parado)}</TableCell>
+                                                    <TableCell className="align-top">
+                                                        <div className="space-y-2 min-w-[220px]">
+                                                            {signatariosPendentes.map((s) => {
+                                                                const reenviando = signatarioReenviando === s.id;
+                                                                const recemReenviado = signatariosRecemReenviados.has(s.id);
+                                                                return (
+                                                                    <div key={s.id} className="flex items-center justify-between gap-2 text-[12px]">
+                                                                        <span className="text-white/60 truncate">{s.nome}</span>
+                                                                        <div className="flex items-center gap-1 shrink-0">
+                                                                            <button
+                                                                                type="button"
+                                                                                title="Reenviar aviso"
+                                                                                disabled={reenviando || recemReenviado}
+                                                                                onClick={() => reenviarAviso(c.id, s.id)}
+                                                                                className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-white/50 hover:text-white/80 hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                                                            >
+                                                                                <Send size={11} />
+                                                                                {reenviando ? 'Reenviando…' : 'Reenviar aviso'}
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                title="Ajustar"
+                                                                                onClick={() => setAjustarContratoId(c.id)}
+                                                                                className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-white/50 hover:text-white/80 hover:bg-white/[0.06] transition-colors"
+                                                                            >
+                                                                                <UserCog size={11} />
+                                                                                Ajustar
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            {podeCancelar && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => abrirCancelamento(c.id)}
+                                                                    className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-red-400/70 hover:text-red-300 hover:bg-red-500/[0.08] text-[12px] transition-colors"
+                                                                >
+                                                                    <Ban size={11} />
+                                                                    Registrar cancelamento
+                                                                </button>
+                                                            )}
+                                                            {c.status === 'erro' && (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={gerarForm.processing}
+                                                                    onClick={() => tentarNovamente(c.id)}
+                                                                    className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-ecf-yellow/80 hover:text-ecf-yellow hover:bg-ecf-yellow/[0.06] text-[12px] disabled:opacity-40 transition-colors"
+                                                                >
+                                                                    <RefreshCcw size={11} />
+                                                                    {gerarForm.processing ? 'Gerando…' : 'Tentar novamente'}
+                                                                </button>
+                                                            )}
+                                                            {signatariosPendentes.length === 0 && !podeCancelar && c.status !== 'erro' && (
+                                                                <span className="text-[13px] text-white/20">—</span>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+
+                                                {/* Aviso persistente de cancelamento solicitado (D-13) — âmbar,
+                                                    "aguardando algo externo", nunca vermelho de erro. Some
+                                                    sozinho quando a confirmação da Clicksign fechar o estado. */}
+                                                {c.cancelamento_solicitado_em && (
+                                                    <TableRow key={`${c.id}-cancelamento-solicitado`}>
+                                                        <TableCell colSpan={4} className="py-2 border-t-0">
+                                                            <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[12px] text-amber-300/90">
+                                                                Cancelamento pedido por {c.cancelamento_solicitado_por_nome || 'alguém do time'} em{' '}
+                                                                {formatDate(c.cancelamento_solicitado_em)} — ainda não concluído no painel da Clicksign.
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+
+                                                {/* D-05 — Estado `erro`: assume a falha e oferece a saída. */}
+                                                {c.status === 'erro' && (
+                                                    <TableRow key={`${c.id}-erro`}>
+                                                        <TableCell colSpan={4} className="py-2 border-t-0">
+                                                            <div className="rounded-lg border border-rose-500/20 bg-rose-500/[0.05] px-3 py-2.5 text-[12px] space-y-1.5">
+                                                                {tentativas === 0 ? (
+                                                                    <>
+                                                                        <p className="text-rose-300 font-semibold">Não deu para enviar este contrato</p>
+                                                                        <p className="text-white/50">
+                                                                            O problema foi aqui do nosso lado, não com o cliente. Tente novamente — na
+                                                                            maioria das vezes resolve.
+                                                                        </p>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <p className="text-rose-300 font-semibold">Continua sem enviar</p>
+                                                                        <p className="text-white/50">
+                                                                            Tentamos de novo e não deu certo. Avise o time técnico para verificar — pode
+                                                                            levar um tempinho para resolver.
+                                                                        </p>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setDetalhesTecnicosAbertos((atual) => ({ ...atual, [c.id]: !atual[c.id] }))}
+                                                                            className="inline-flex items-center gap-1 text-white/40 hover:text-white/70"
+                                                                        >
+                                                                            {detalhesTecnicosAbertos[c.id] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                                                            Ver detalhes técnicos
+                                                                        </button>
+                                                                        {detalhesTecnicosAbertos[c.id] && (
+                                                                            <p className="text-white/35 font-mono text-[11px] break-words">
+                                                                                {flash?.error || 'Sem detalhes adicionais registrados nesta sessão.'}
+                                                                            </p>
+                                                                        )}
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+                                            </Fragment>
+                                        );
+                                    })}
                                 </TableBody>
                             </Table>
                         </CardContent>
                     </Card>
                 </div>
             </main>
+
+            {/* RAMO B (D-06/D-07/D-14) — não existe bifurcação: corrigir o
+                e-mail e trocar a pessoa colapsam no mesmo caminho. */}
+            <Dialog open={ajustarContratoId !== null} onOpenChange={(v) => { if (!v) setAjustarContratoId(null); }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Não dá para só corrigir o e-mail</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-[13px] text-white/60">
+                        Depois que o contrato é enviado, não é possível trocar o e-mail de quem assina. Se
+                        foi só um erro de digitação, cancele este contrato e gere um novo com o e-mail
+                        certo.
+                    </p>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setAjustarContratoId(null)}>
+                            Voltar
+                        </Button>
+                        <Button
+                            type="button"
+                            className="bg-red-600 text-white hover:bg-red-600/90"
+                            onClick={() => abrirCancelamento(ajustarContratoId)}
+                        >
+                            Registrar cancelamento
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* CLICK-10/D-13 — registra aqui, cancela no painel. */}
+            <Dialog open={cancelarContratoId !== null} onOpenChange={(v) => { if (!v) setCancelarContratoId(null); }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Registrar cancelamento deste contrato</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={confirmarCancelamento} className="space-y-3">
+                        <p className="text-[13px] text-white/60">
+                            O cancelamento em si precisa ser feito no painel da Clicksign — o sistema não
+                            consegue cancelar sozinho. Aqui você registra quem pediu e por quê, para ficar
+                            no histórico.
+                        </p>
+                        <div className="space-y-1.5">
+                            <Label>Motivo do cancelamento</Label>
+                            <Textarea
+                                rows={4}
+                                placeholder="Explique por que este contrato está sendo cancelado."
+                                value={cancelarForm.data.motivo}
+                                onChange={(e) => cancelarForm.setData('motivo', e.target.value)}
+                            />
+                            {cancelarForm.errors.motivo && (
+                                <p className="text-red-400 text-[11px]">{cancelarForm.errors.motivo}</p>
+                            )}
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setCancelarContratoId(null)}>
+                                Voltar
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={cancelarForm.processing}
+                                className="bg-red-600 text-white hover:bg-red-600/90"
+                            >
+                                {cancelarForm.processing
+                                    ? 'Registrando…'
+                                    : (painel_clicksign_url ? 'Registrar e ir para a Clicksign' : 'Registrar cancelamento')}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }
