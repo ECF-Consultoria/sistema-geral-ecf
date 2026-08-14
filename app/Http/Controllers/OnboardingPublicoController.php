@@ -8,6 +8,7 @@ use App\Models\OnboardingFicha;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
 use App\Services\Onboarding\OnboardingFichaService;
+use App\Services\MercadoLivreService;
 use App\Services\Onboarding\OnboardingLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -64,6 +65,35 @@ class OnboardingPublicoController extends Controller
             // em vez de zerado a cada visita.
             'ficha_conta' => $this->fichaContaPayload($company),
         ]);
+    }
+
+    /**
+     * GET /onboarding-cliente/{token}/conectar/ml — leva o cliente ao OAuth do
+     * Mercado Livre a partir do portal, sem login.
+     *
+     * O padrão já existia para a Shopee (`/shopee/conectar/{company}`, rota
+     * assinada) e o callback do ML já é público — o que faltava era a porta de
+     * entrada. Aqui ela é ainda mais simples: o token do onboarding JÁ
+     * identifica a empresa, então não precisa de link assinado nem de
+     * parâmetro de empresa na URL.
+     *
+     * A URL de retorno é montada com `route()` a partir do token já validado —
+     * nunca lida do request, senão o callback viraria open redirect.
+     */
+    public function conectarMercadoLivre(string $token, MercadoLivreService $ml)
+    {
+        $link = OnboardingLink::where('token', $token)->with('company')->firstOrFail();
+
+        $url = $ml->buildAuthUrl(
+            company: $link->company,
+            retornoUrl: route('onboarding.publico.workspace', $token),
+        );
+
+        activity('onboarding')
+            ->performedOn($link)
+            ->log('Cliente iniciou a autorização do Mercado Livre pelo portal');
+
+        return redirect()->away($url);
     }
 
     /**

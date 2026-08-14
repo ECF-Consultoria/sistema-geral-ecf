@@ -121,6 +121,12 @@ Route::post('/onboarding-cliente/{token}/ficha', [OnboardingPublicoController::c
 Route::post('/onboarding-cliente/{token}/ficha-conta', [OnboardingPublicoController::class, 'salvarFichaConta'])
     ->middleware('throttle:20,1')
     ->name('onboarding.publico.ficha-conta');
+// Porta pública para o OAuth do Mercado Livre. O callback continua sendo o
+// mesmo de sempre (`ml.oauth.callback`, logo abaixo) — o que muda é que ele
+// devolve o cliente ao portal quando o fluxo começou aqui.
+Route::get('/onboarding-cliente/{token}/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
+    ->middleware('throttle:20,1')
+    ->name('onboarding.publico.conectar-ml');
 
 // ML OAuth — callback público (o cliente autoriza fora do painel)
 Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])

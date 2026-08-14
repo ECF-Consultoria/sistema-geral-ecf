@@ -48,15 +48,12 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
         });
     }
 
-    // O endpoint público de iniciar o OAuth do Mercado Livre a partir do
-    // portal (sem sessão autenticada) é decisão de fase futura — fora do
-    // escopo de arquivos desta 135-11. O clique aqui só mostra o estado
-    // transitório "Conectando…"; o passo continua fechando sozinho quando
-    // ml_tokens.status virar active (auto_fonte, D-19), na próxima carga
-    // da página.
+    // Sai do portal para o OAuth do Mercado Livre. Navegação de página inteira
+    // (não Inertia): o destino é o domínio do ML, e o cliente volta pelo
+    // callback já com o passo fechado pelo resolver.
     function autorizarAcesso() {
         setConectandoChave(passo.chave);
-        setTimeout(() => setConectandoChave(null), 2500);
+        window.location.href = route('onboarding.publico.conectar-ml', token);
     }
 
     return (
@@ -98,9 +95,17 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
 
                     {concluido && <p className="text-emerald-300/70 text-[11px] mt-2">Concluído.</p>}
 
+                    {/*
+                      * A ação vem decidida do backend (`passo.acao`), não de
+                      * "tem auto_fonte ⇒ é OAuth". Essa suposição valia quando
+                      * o único passo automático do cliente era o grant do ML;
+                      * com a ficha da conta (também automática) ela mostraria
+                      * "Autorizar acesso" num passo que se resolve preenchendo
+                      * formulário logo acima nesta mesma página.
+                      */}
                     {!concluido && !bloqueado && (
                         <div className="mt-2">
-                            {passo.tem_auto_fonte ? (
+                            {passo.acao === 'oauth_ml' && (
                                 conectando ? (
                                     <span className="inline-flex items-center gap-1.5 text-white/50 text-[12px]">
                                         <RefreshCw size={12} className="animate-spin" /> Conectando…
@@ -113,12 +118,26 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
                                         Autorizar acesso
                                     </button>
                                 )
-                            ) : (
+                            )}
+
+                            {passo.acao === 'ficha' && (
+                                <span className="text-white/45 text-[12px]">
+                                    Responda o formulário “Sobre a sua conta”, no topo desta página.
+                                </span>
+                            )}
+
+                            {passo.acao === 'marcar' && (
                                 <span
                                     onClick={marcarComoFeito}
                                     className="text-white/70 hover:text-white text-[12px] font-medium cursor-pointer select-none"
                                 >
                                     {marcando ? 'Marcando…' : 'Marcar como feito'}
+                                </span>
+                            )}
+
+                            {passo.acao === 'nenhuma' && (
+                                <span className="text-white/40 text-[12px]">
+                                    Nosso sistema verifica isso sozinho — você não precisa fazer nada.
                                 </span>
                             )}
                         </div>

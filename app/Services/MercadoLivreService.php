@@ -36,7 +36,17 @@ class MercadoLivreService
      * Gera URL de autorização OAuth para a empresa informada.
      * Armazena state no cache para vinculação no callback.
      */
-    public function buildAuthUrl(Company $company): string
+    /**
+     * @param  string|null  $retornoUrl  Para onde mandar o cliente DEPOIS de autorizar.
+     *   Só é usado quando o fluxo começou numa página que sabe continuar sozinha —
+     *   hoje, o portal público do Onboarding. Sem ele, o callback segue mostrando a
+     *   página de resultado de sempre (comportamento inalterado para o /ml-oauth).
+     *
+     *   SEGURANÇA: este valor NUNCA pode vir do request. Quem chama monta a URL com
+     *   `route(...)` a partir de um token já validado no banco — aceitar da query
+     *   string transformaria o callback num open redirect.
+     */
+    public function buildAuthUrl(Company $company, ?string $retornoUrl = null): string
     {
         $state = Str::uuid()->toString();
 
@@ -47,6 +57,7 @@ class MercadoLivreService
         Cache::put("ml_oauth_state_{$state}", [
             'company_id'    => $company->id,
             'code_verifier' => $codeVerifier,
+            'retorno_url'   => $retornoUrl,
         ], self::STATE_TTL);
 
         $url = self::AUTH_URL . '?' . http_build_query([
