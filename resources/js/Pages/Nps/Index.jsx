@@ -9,7 +9,7 @@ import {
     Briefcase, Users as UsersIcon, Building2, Eye,
     Link2, Search, ChevronDown, ArrowUp, ArrowDown,
     ArrowUpRight, ArrowDownRight, Clock, User,
-    Calendar, Star, Trash2, ShieldCheck, X, AlertCircle, Info,
+    Calendar, Star, Trash2, ShieldCheck, X, AlertCircle, Info, Lock,
 } from 'lucide-react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis,
@@ -330,6 +330,85 @@ function GlassSelect({ icon: Icon, active, value, onValueChange, placeholder, op
                 </SelectContent>
             </Select>
         </div>
+    );
+}
+
+// ═══ CicloAcao — encerrar / reabrir o ciclo do mês (spec 2026-08-14, item 2) ══
+//
+// O ciclo deixou de ser uma conta de datas e virou estado: um admin encerra
+// quando quiser, e o encerramento vale mesmo antes da data automática. Fechado,
+// o mês para de gerar link e para de aceitar resposta — inclusive de link já
+// emitido e ainda dentro da validade.
+//
+// A confirmação mostra o mês E a referência, porque é o que a pessoa precisa
+// conferir antes de encerrar: "Agosto/2026 — Ref. Julho/2026". Reabrir só
+// aparece quando o fechamento foi MANUAL: mês vencido pela data não tem como
+// ser reaberto pela tela, e oferecer o botão prometeria algo que não acontece.
+function CicloAcao({ ciclo, competencia, coleta }) {
+    const [enviando, setEnviando] = useState(false);
+    if (!ciclo) return null;
+
+    const rotulo = `${coleta || ciclo.mes} — Ref. ${competencia || '—'}`;
+
+    const confirmarEEnviar = (rota, pergunta) => {
+        if (enviando) return;
+        if (!window.confirm(pergunta)) return;
+        setEnviando(true);
+        router.post(rota, { mes: ciclo.mes }, {
+            preserveScroll: true,
+            onFinish: () => setEnviando(false),
+        });
+    };
+
+    if (ciclo.fechado) {
+        return (
+            <span className="inline-flex items-center gap-2">
+                <span
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6, height: 36,
+                        padding: '0 12px', borderRadius: 10, fontSize: 12.5, fontWeight: 600,
+                        color: '#f4436b', background: 'rgba(244,67,107,0.10)',
+                        border: '1px solid rgba(244,67,107,0.28)',
+                    }}
+                    title={ciclo.fechado_manual
+                        ? 'Ciclo encerrado manualmente: não aceita novos links nem novas respostas.'
+                        : 'A coleta deste mês já terminou pela data de encerramento.'}
+                >
+                    <Lock size={13} /> Ciclo fechado
+                </span>
+                {ciclo.fechado_manual && (
+                    <button
+                        type="button"
+                        disabled={enviando}
+                        onClick={() => confirmarEEnviar(
+                            route('nps.ciclo.reabrir'),
+                            `Reabrir o ciclo ${rotulo}?\n\nO mês volta a aceitar novos links e novas respostas.`,
+                        )}
+                        className="h-9 px-3 rounded-[10px] border border-white/[0.10] bg-white/[0.03] text-[12.5px] text-white/70 hover:bg-white/[0.06] disabled:opacity-50"
+                    >
+                        Reabrir
+                    </button>
+                )}
+            </span>
+        );
+    }
+
+    return (
+        <button
+            type="button"
+            disabled={enviando}
+            onClick={() => confirmarEEnviar(
+                route('nps.ciclo.fechar'),
+                `Encerrar o NPS ${rotulo}?\n\n`
+                + '• Nenhum link novo poderá ser gerado deste ciclo\n'
+                + '• Links já enviados param de aceitar resposta\n'
+                + '• Quem não respondeu passa a contar nota 1',
+            )}
+            title={`Encerrar o ciclo ${rotulo}`}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border border-white/[0.10] bg-white/[0.03] text-[12.5px] text-white/75 hover:bg-white/[0.06] hover:border-white/[0.18] disabled:opacity-50"
+        >
+            <Lock size={13} /> Fechar NPS
+        </button>
     );
 }
 
@@ -1497,6 +1576,9 @@ export default function NpsIndex({
     // está sendo AVALIADO: o NPS coletado em agosto avalia julho.
     competencia_filtro = '',
     coleta_filtro = '',
+    // Spec 2026-08-14 (item 2) — { fechado, fechado_manual, mes } do ciclo
+    // exibido. `null` blinda payload antigo em cache logo após o deploy.
+    ciclo = null,
     // 2026-08-14 — true quando a coleta do mês exibido já encerrou. Só então
     // quem não respondeu entra na média com nota 1 (mesma régua do bônus).
     janela_fechada = true,
@@ -1870,6 +1952,10 @@ export default function NpsIndex({
                                     ]}
                                 />
                             )}
+                            {/* Spec 2026-08-14 (item 2) — fechamento manual do
+                                ciclo. Admin-only na tela E na rota; o guard que
+                                vale é o do servidor. */}
+                            {isAdmin && <CicloAcao ciclo={ciclo} competencia={competencia_filtro} coleta={coleta_filtro} />}
                             {pode_filtrar_por_pessoa && (
                                 <>
                                     <GlassSelect

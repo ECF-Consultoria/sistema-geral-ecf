@@ -33,6 +33,7 @@ use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\MetasDevController;
 use App\Http\Controllers\MetasDevGestorController;
 use App\Http\Controllers\NotificacaoController;
+use App\Http\Controllers\NpsCicloController;
 use App\Http\Controllers\NpsController;
 use App\Http\Controllers\NpsEnvioAutomaticoController;
 use App\Http\Controllers\NpsGrupoController;
@@ -189,6 +190,13 @@ Route::get('/nps/configuracao/templates/{template}/empresas-elegiveis', [NpsTemp
 // O nome `nps.configuracao.index` é herdado pela rota nova para preservar
 // compatibilidade com links de menu/breadcrumbs no AppLayout.
 Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
+    // Spec 2026-08-14 (item 2) — fechamento MANUAL do ciclo de NPS. Admin-only:
+    // encerrar um ciclo bloqueia novos links e novas respostas do mês inteiro.
+    // Precisa vir ANTES da rota pública `/nps/{token}` para não ser engolida
+    // pelo parâmetro dinâmico — mesmo cuidado de `nps.generate`.
+    Route::post('/nps/ciclo/fechar',  [NpsCicloController::class, 'fechar'])->name('nps.ciclo.fechar');
+    Route::post('/nps/ciclo/reabrir', [NpsCicloController::class, 'reabrir'])->name('nps.ciclo.reabrir');
+
     // Rotas legadas (Phase 33) — movidas para subpath `/textos-legado`.
     // A UI é a mesma (agora servida via ConfiguracaoLegado.jsx) e continua
     // permitindo edição dos 11 textos + perguntas extras enquanto v15.0 roda.
