@@ -246,7 +246,17 @@ este executor.
 ### Resultado
 
 **Metade técnica: ✅ provada por reconsulta ao banco** (envio, gravação, cooldown).
-**Julgamento humano da linguagem: ⏳ PENDENTE.**
+**Julgamento humano da linguagem: ✅ APROVADO pelo usuário em 2026-08-14** — notificação lida na
+tela, texto confirmado como correto sem pedido de alteração.
+
+**SC2: ✅ APROVADO.**
+
+⚠️ **Ressalva material descoberta DEPOIS deste gate:** o alerta de fato disparou e o texto está
+certo, mas ele **só teria disparado uma vez**. A gravação do cooldown zerava o próprio relógio
+(`dataBase()` usava `updated_at`, que o `ultimo_alerta_em` bumpava) — ver quick task `260814-cro`.
+A repetição exigida pela D-04 **não estava funcionando quando este gate foi aprovado**; passou a
+funcionar após a correção, agora coberta por teste. O disparo único observado aqui era, sem que
+ninguém soubesse, o único que aconteceria.
 
 ---
 
@@ -302,18 +312,67 @@ tem ferramenta para fazer. Nenhum resultado foi inventado nem simulado por HTTP 
 
 ### Resultado
 
-**NÃO EXECUTADO nesta sessão** — depende do usuário no navegador. Preservado para retomada.
+**STATUS: ✅ APROVADO no essencial (2026-08-14), com 3 sub-passos de tela não reportados.**
+
+O critério literal do ROADMAP — *"um admin libera uma empresa ao operacional preenchendo motivo
+(campo obrigatório); a liberação registra quem liberou e por quê, e usa o mesmo
+`EmpresaOperacionalRouter::liberarEmpresa()`"* — está **provado por reconsulta ao banco**:
+
+| Campo | Valor medido |
+|---|---|
+| linhas em `contrato_liberacoes` (empresa 16) | **1** |
+| `via` | `manual` |
+| `liberado_por_user_id` | **3** (= `gate130-admin@example.com`) |
+| `motivo_slug` | `decisao_comercial` |
+| `motivo` (detalhe obrigatório) | `"apenas fazendo teste"` |
+| `created_at` | 2026-08-14 09:25:39 |
+| `MlbEmpresa` (empresa 16) | **0 — CORRETO, não é falha** |
+
+**Por que `MlbEmpresa = 0` é o comportamento certo:** `EmpresaOperacionalRouter::criarFicha()` só
+cria ficha para os tipos `polos`, `assessoria` e `incubadora`. O serviço 6 ("Gestão") é do setor
+`performance`, que não é nenhum dos três — nada deveria ser criado. Registrado aqui porque à
+primeira leitura parece uma liberação que não liberou nada.
+
+#### Bloqueio encontrado durante este gate (corrigido antes de concluir)
+
+Na primeira tentativa a tela apareceu **VAZIA** ("nenhuma empresa no momento"), com um contrato de
+7 dias parado no banco. Não era fixture: era o bug do relógio do alerta (quick task
+`260814-cro`) — o alerta de 13/08 tinha bumpado `updated_at` e zerado `diasParado()`. Depois da
+correção, `listar()` voltou de 0 para 1 item e o gate pôde ser executado.
+
+#### Sub-passos de tela NÃO reportados pelo usuário (não são falhas — são não-observados)
+
+Estes dependem de observação visual e **não foram confirmados**; não devem ser tratados como
+aprovados:
+
+- [ ] Faixa vermelha de estado real aparecendo ANTES de confirmar (D-11)
+- [ ] Recusa da confirmação sem `motivo_detalhe` preenchido (validação `min:5`)
+- [ ] `403` para `gate130-naoadmin@example.com` na mesma URL
+
+Os três têm cobertura automatizada (`LiberacaoManualEstadoRealTest`, `LiberacaoManualTest`), então
+a lacuna é de observação humana, não de corretude conhecida.
 
 ---
 
 ## Resumo para o usuário
 
+**Atualizado em 2026-08-14, ao fim da rodada de gates.**
+
 | SC | Status | O que falta |
 |---|---|---|
-| SC1 (reconciliação) | ⏳ PENDENTE | Preencher `CLICKSIGN_SIG1/2/3` no `.env`, depois criar/ativar/assinar um envelope real na Clicksign sandbox e rodar `clicksign:reconciliar` |
+| SC1 (reconciliação) | ⛔ BLOQUEADO | Assinatura impossível na sandbox: o painel não conclui (3 `signature_started`, 0 `sign`) e a sandbox não envia e-mail — e a v3 não expõe link de assinatura. `.env` já preenchido, envelope `f010d235-…` criado e ativado, válido até 12/09/2026 |
 | Gate empírico #10 | ⏳ PENDENTE | Depende do SC1 acontecer de verdade |
-| SC2 (alerta) | 🟡 PARCIAL | Só falta abrir o navegador, ler o sino e confirmar a linguagem — todo o resto já está provado por reconsulta ao banco |
-| SC3 (liberação manual) | ⏳ PENDENTE | Todo o roteiro no navegador, com as fixtures já prontas |
+| SC2 (alerta) | ✅ APROVADO | Nada — disparo provado por reconsulta ao banco, linguagem confirmada pelo usuário. Com a ressalva de que a repetição da D-04 só passou a funcionar após a quick task `260814-cro` |
+| SC3 (liberação manual) | ✅ APROVADO (essencial) | O critério do ROADMAP está provado por reconsulta ao banco. 3 sub-passos de tela (faixa vermelha, validação sem motivo, 403 do não-admin) não foram observados pelo usuário — têm cobertura automatizada |
+
+**Resultado líquido: 2 de 3 Success Criteria humanos aprovados.** O SC1 depende da sandbox da
+Clicksign, não do código deste projeto.
+
+**Achado mais valioso desta rodada não estava em nenhum roteiro:** o gate do SC3 encontrou um bug
+real na própria Fase 130 — o alerta zerava o próprio relógio e nunca repetiria (quick task
+`260814-cro`, 3 testes novos). Só apareceu porque alguém abriu a tela um dia depois do alerta ter
+disparado. Nenhum teste automatizado o pegaria: o cooldown provava que o alerta não repete cedo
+demais, e ninguém provava que ele ainda repete depois.
 
 **MariaDB e Apache locais foram deixados DE PÉ** ao final desta sessão (ambos precisam estar de
 pé para os 3 roteiros acima) — nenhum processo foi encerrado.
