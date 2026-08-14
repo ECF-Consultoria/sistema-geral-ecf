@@ -212,7 +212,7 @@ A tela **não recalcula elegibilidade no cliente**. O backend informa via prop s
 | Gerar contrato | **"Gerar contrato"** | Sempre visível; **desabilitado** quando `pode_gerar_contrato === false`, com a lista de pendências (D-03) ao lado |
 | Reenviar convite | **"Reenviar aviso"** | Por pessoa não assinada, só em `aguardando_assinaturas` (CLICK-07) |
 | Ajustar quem assina | **"Ajustar"** | Por pessoa não assinada, só em `aguardando_assinaturas` (abre o fluxo D-06/D-07 abaixo) |
-| Cancelar contrato | **"Cancelar contrato"** | Em `rascunho` e `aguardando_assinaturas` (CLICK-10) |
+| Registrar cancelamento | **"Registrar cancelamento"** | Em `rascunho` e `aguardando_assinaturas` (CLICK-10). ⚠️ Rotulado como **registrar**, não "cancelar" — o sistema não cancela (medido 2026-08-14, §15.2 do empírico). Prometer "Cancelar contrato" num botão que não cancela é exatamente o tipo de mentira que a UI-06 existe para impedir |
 | Liberar manualmente | **"Liberar manualmente"** | Sempre disponível quando não há liberação ainda — ação absorvida da Fase 130 (D-10) |
 | Tentar novamente | **"Tentar novamente"** | Só em `erro` (D-05) |
 
@@ -243,52 +243,59 @@ Gatilho: botão **"Ajustar"** na linha da pessoa não assinada, só em `aguardan
 Nunca usar as palavras "envelope", "webhook", "signatário" ou "Clicksign" em texto visível ao
 usuário — usar "pessoa que assina"/"quem assina" (mesma linguagem de D-07).
 
-**RAMO A — se o gate #8 confirmar que a API permite corrigir e-mail sem cancelar:**
+> ## ⛔ ATUALIZADO EM 2026-08-14 — O GATE #8 FOI MEDIDO
+>
+> Este bloco foi reescrito **depois** da pesquisa da fase. O RAMO A foi **REMOVIDO**: ele descrevia
+> uma tela que a API não permite construir. Medição registrada em
+> `CLICKSIGN-SANDBOX-EMPIRICO.md` §15.1 — `PATCH` e `PUT` em
+> `/envelopes/{id}/signers/{signerId}` devolvem **404** (HTML genérico de rota inexistente, não o
+> 404 JSON:API). **Não existe endpoint de correção de e-mail na v3.**
 
-Painel título: **"O que você precisa fazer?"** · subtítulo: **"Escolha a opção que descreve seu caso."**
+**RAMO B — é o que vale (D-06 / D-14). O RAMO A não é construído.**
 
-Duas opções lado a lado:
-
-| | Opção A | Opção B |
-|---|---|---|
-| Título | **"Errei o e-mail da mesma pessoa"** | **"Outra pessoa vai assinar"** |
-| Descrição | "A pessoa é a mesma, só o e-mail que está errado." | "Quem estava indicado não é mais quem vai assinar este contrato." |
-| Custo (mostrado inline) | "Sem custo extra — corrigimos e reenviamos o convite na hora." | "Cancela este contrato e cria um novo — o cliente recebe um convite novo." |
-| CTA | **"Corrigir e-mail"** | **"Cancelar e gerar novo"** |
-
-Fluxo da Opção A ao clicar CTA: abre campo **"Novo e-mail"** (validação de formato) → botão final
-**"Salvar e reenviar"** → sucesso: toast **"E-mail corrigido. Convite reenviado para {novo e-mail}."**
-
-Fluxo da Opção B ao clicar CTA: abre o mesmo modal de cancelamento do CLICK-10 (ver abaixo), com o
-campo de motivo pré-preenchido (editável) com **"Troca da pessoa que assina o contrato."**
-
-**RAMO B — se o gate #8 confirmar que a API NÃO permite corrigir e-mail sem cancelar (D-06):**
-
-Não existe escolha entre duas opções — a Opção A **não é oferecida**. O botão "Ajustar" abre
-direto:
+Não existe escolha entre duas opções — corrigir o e-mail e trocar a pessoa **colapsam no mesmo
+caminho**. O botão "Ajustar" abre direto:
 
 - Título: **"Não dá para só corrigir o e-mail"**
-- Corpo: **"Depois que o contrato é enviado, não é possível trocar o e-mail de quem assina sem cancelar. Se foi só um erro de digitação, cancele este contrato e gere um novo com o e-mail certo."**
-- CTA primário: **"Cancelar contrato"** (leva ao fluxo de cancelamento do CLICK-10)
+- Corpo: **"Depois que o contrato é enviado, não é possível trocar o e-mail de quem assina. Se foi só um erro de digitação, cancele este contrato e gere um novo com o e-mail certo."**
+- CTA primário: **"Cancelar contrato"** (leva ao fluxo do CLICK-10 abaixo)
 - CTA secundário: **"Voltar"**
 
-> **O planejamento decide o ramo A ou B medindo o gate #8 contra o sandbox antes de implementar** —
-> esta tela cobre os dois desenhos para não bloquear o UI-SPEC na pesquisa.
+### Cancelar contrato (CLICK-10) — registra aqui, cancela no painel (D-13)
 
-### Cancelar contrato (CLICK-10)
+> ## ⚠️ ATUALIZADO EM 2026-08-14 — CANCELAR NÃO É POSSÍVEL PELA API
+>
+> Medição em `CLICKSIGN-SANDBOX-EMPIRICO.md` §15.2: `DELETE` → **403** em `running` (funciona só em
+> `draft`); `POST /cancel` → **404**; `PATCH status:"canceled"` → **400** com a mensagem literal da
+> API: *"status deve estar em: draft, running"*. **Cancelar é operação de PAINEL**, igual assinar —
+> o sistema não cancela, ele fica sabendo pelo webhook `cancel`.
+>
+> O modal abaixo **não executa o cancelamento**. Ele registra a intenção (autor + motivo + data) e
+> instrui a concluir no painel. É o que preserva o valor real do CLICK-10 — *"informando o motivo"*.
 
-Modal de confirmação:
-- Título: **"Cancelar este contrato?"**
-- Corpo: **"O cliente não vai mais poder assinar este contrato. Se for necessário, você pode gerar um novo depois."**
+Modal:
+- Título: **"Registrar cancelamento deste contrato"**
+- Corpo: **"O cancelamento em si precisa ser feito no painel da Clicksign — o sistema não consegue cancelar sozinho. Aqui você registra quem pediu e por quê, para ficar no histórico."**
 - Campo: **"Motivo do cancelamento"** — textarea obrigatória, mínimo 10 caracteres, placeholder:
   **"Explique por que este contrato está sendo cancelado."**
-- CTA confirmar (destructive/vermelho): **"Cancelar contrato"**
-- CTA voltar: **"Manter contrato"**
-- Sucesso: toast **"Contrato cancelado."**
+- CTA confirmar (destructive/vermelho): **"Registrar e ir para a Clicksign"**
+- CTA voltar: **"Voltar"**
+- Sucesso: toast **"Cancelamento registrado. Agora conclua no painel da Clicksign."**
+
+**Estado intermediário novo — "Cancelamento solicitado":**
+Depois de registrar, a linha do contrato mostra um aviso persistente até o webhook confirmar:
+- Texto: **"Cancelamento pedido por {nome} em {data} — ainda não concluído no painel da Clicksign."**
+- Estilo: âmbar (mesmo tratamento de "aguardando algo externo", **não** vermelho de erro)
+- Quando o webhook `cancel` chegar, o estado vira "Cancelado" (D-04) e o aviso some.
 
 Motivo é texto livre (não há lista fechada de categorias de cancelamento no backend hoje — ao
 contrário da liberação manual, que já tem `MOTIVOS_MANUAIS`). Se o planejamento decidir criar uma
 lista fechada depois, é aditivo, não bloqueia esta fase.
+
+⚠️ **Para o planejamento:** este fluxo provavelmente exige coluna(s) nova(s) para
+motivo/autor/data do cancelamento solicitado — não existem hoje. Respeitar as armadilhas de
+migration do projeto (índice nomeado à mão < 64 chars, `string()` nunca `enum()`, FK
+`nullOnDelete()` exige `nullable()`).
 
 ### Liberar manualmente (D-10 — absorve a Fase 130, preserva D-11)
 
@@ -338,7 +345,7 @@ resposta esperada, nunca como falha do sistema:
 | Carregando lista/detalhe | Spinner sem texto. ⚠️ **Correção factual (checker, 2026-08-14):** NENHUMA tela em `resources/js/Pages/Admin/*.jsx` usa skeleton hoje — o padrão existe em `Dev/`, `Mlb/`, `Performance/` e `Polos/`. O executor parte de spinner, não de skeleton reaproveitado. Se quiser skeleton, é trabalho novo: portar o padrão de uma dessas pastas. |
 | Erro ao carregar (500/rede) | Título: **"Não deu para carregar"** · corpo: **"Tente atualizar a página. Se continuar, avise o time técnico."** · CTA: **"Tentar de novo"** |
 | Botão em ação (busy) | Texto muda para gerúndio: "Gerando…" / "Cancelando…" / "Liberando…" / "Reenviando…" / "Salvando…" — botão `disabled`, sem novo texto de erro até a resposta voltar |
-| Destructive confirmation | **Cancelar contrato**: "Cancelar este contrato? O cliente não vai mais poder assinar." · **Liberar manualmente com causa problemática**: ver faixa de destaque acima |
+| Destructive confirmation | **Registrar cancelamento**: ver o modal da seção CLICK-10 — o texto NÃO promete cancelar, porque o sistema não cancela · **Liberar manualmente com causa problemática**: ver faixa de destaque acima |
 
 ---
 
