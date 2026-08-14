@@ -1817,7 +1817,7 @@ Plans:
   4. Um usuário reenvia a notificação de assinatura para quem ainda não assinou, corrige o e-mail de um signatário sem cancelar o contrato (gate empírico #8 resolvido para o endpoint certo), e cancela um contrato em andamento informando o motivo — a tela deixa claro que corrigir e-mail é diferente de trocar a pessoa (a segunda exige cancelar e reemitir)
   5. Só quem tem a permissão `admin.contratos` vê o módulo no menu e acessa as rotas; nenhum texto da tela usa jargão de Clicksign ou de assinatura eletrônica sem explicação
 
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 
 ⚠️ Escopo corrigido pelas medições de 2026-08-14 (registradas no `131-CONTEXT.md` D-12/D-13/D-14 e nos gates #8 e #8b do `REQUIREMENTS-v22.md`):
 
@@ -1833,7 +1833,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 131-02-PLAN.md — Badge de contrato na listagem do Comercial, sem N+1 (wave 2)
-- [ ] 131-03-PLAN.md — Lista administrativa de contratos: filtro, busca e resumo de 7 contagens (wave 2)
+- [x] 131-03-PLAN.md — Lista administrativa de contratos: filtro, busca e resumo de 7 contagens (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

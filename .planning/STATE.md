@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Completed 131-02-PLAN.md
-last_updated: "2026-08-14T17:05:39.446Z"
+stopped_at: Completed 131-03-PLAN.md
+last_updated: "2026-08-14T17:30:59.759Z"
 last_activity: 2026-08-14
 progress:
   total_phases: 12
   completed_phases: 8
   total_plans: 66
-  completed_plans: 59
+  completed_plans: 60
   percent: 67
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 131 (Tela administrativa — completar cadastro + contratos + badge Comercial + permissões (v22.0)) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
   considerado fechado — ver `130-GATE.md`. SC2 tem a metade técnica provada por reconsulta ao
   banco; SC1 e SC3 continuam pendentes de ação humana real em navegador.
@@ -479,6 +479,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 130 P07 | 90min | 3 tasks | 1 files |
 | Phase 131 P01 | 40min | 3 tasks | 8 files |
 | Phase 131 P02 | 55min | 3 tasks | 4 files |
+| Phase 131 P03 | 70min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -1209,8 +1210,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-14T17:05:39.412Z
-Stopped at: Completed 131-02-PLAN.md
+Last session: 2026-08-14T17:30:59.720Z
+Stopped at: Completed 131-03-PLAN.md
   assinatura/recusa contra o sandbox) devolvida ao usuário como checkpoint aberto
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)

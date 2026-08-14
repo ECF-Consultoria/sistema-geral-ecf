@@ -200,11 +200,11 @@ a rota de produção em `129-GATE.md` (plano 129-07): assinatura válida → 200
 
 ### Telas e acesso
 
-- [ ] **UI-01**: Um usuário do Administrativo vê a lista de contratos com filtro por situação, busca por empresa e um resumo por situação
+- [x] **UI-01**: Um usuário do Administrativo vê a lista de contratos com filtro por situação, busca por empresa e um resumo por situação
 - [ ] **UI-02**: Um usuário gera o contrato de uma empresa por um botão, disponível apenas quando ela está sem pendência e sem contrato em andamento (D1)
 - [x] **UI-03**: A listagem do Comercial mostra em que pé está o contrato de cada empresa
 - [ ] **UI-04**: A tela deixa claro a diferença entre corrigir o e-mail de um signatário e trocar a pessoa que vai assinar (a segunda exige cancelar e reemitir)
-- [ ] **UI-05**: O acesso ao módulo é controlado por permissão própria (`admin.contratos`) e aparece no menu para quem tem
+- [x] **UI-05**: O acesso ao módulo é controlado por permissão própria (`admin.contratos`) e aparece no menu para quem tem
 - [x] **UI-06**: Nenhum termo da tela exige conhecimento de Clicksign ou de jargão de assinatura eletrônica para ser entendido
 
 ## Future Requirements (fora desta milestone)
@@ -288,11 +288,11 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | REDE-04 | Fase 130 | Done |
 | REDE-05 | Fase 127 | Pending |
 | REDE-06 | Fase 128 | Pending |
-| UI-01 | Fase 131 | Pending |
+| UI-01 | Fase 131 | Done |
 | UI-02 | Fase 131 | Pending |
 | UI-03 | Fase 131 | Done |
 | UI-04 | Fase 131 | Pending |
-| UI-05 | Fase 131 | Pending |
+| UI-05 | Fase 131 | Done |
 | UI-06 | Fase 131 | Done |
 
 **Decisões em aberto → fase de resolução:**
