@@ -12,7 +12,15 @@ use Tests\TestCase;
 
 /**
  * Fase 130 Plano 04 (REDE-03, DADOS-05, D-10/D-11/D-12) —
- * ContratoLiberacaoManualController.
+ * `ContratoLiberacaoManualController` original.
+ *
+ * ⚠️ Reapontado pelo plano 131-06 (D-10): a ação foi ABSORVIDA por
+ * `ContratoAdminController::liberarManual()` e a rota antiga foi removida
+ * (ver `LiberacaoManualRotaAntigaRemovidaTest`). O GET que antes ia para a
+ * listagem própria da Fase 130 agora vai para o detalhe da empresa
+ * (`admin.contratos.show`); o POST vai para `admin.contratos.liberacao-manual`.
+ * O comportamento provado aqui — validação, IDOR, idempotência — é o
+ * mesmo, só a superfície mudou.
  *
  * Mesma disciplina de asserção do resto da fase: toda gravação é conferida
  * por RECONSULTA ao banco, nunca por leitura de stdout.
@@ -53,11 +61,13 @@ class LiberacaoManualTest extends TestCase
 
     public function test_visitante_anonimo_e_redirecionado_no_get_e_no_post(): void
     {
-        $getResponse = $this->get(route('contratos.liberacao-manual.index'));
+        $company = Company::factory()->create();
+
+        $getResponse = $this->get(route('admin.contratos.show', $company));
         $getResponse->assertRedirect();
         $this->assertNotSame(200, $getResponse->getStatusCode());
 
-        $postResponse = $this->post(route('contratos.liberacao-manual.store'), []);
+        $postResponse = $this->post(route('admin.contratos.liberacao-manual'), []);
         $postResponse->assertRedirect();
         $this->assertNotSame(200, $postResponse->getStatusCode());
     }
@@ -65,11 +75,12 @@ class LiberacaoManualTest extends TestCase
     public function test_usuario_sem_role_admin_recebe_403_no_get_e_no_post(): void
     {
         $usuario = $this->naoAdmin();
+        $company = Company::factory()->create();
 
-        $getResponse = $this->actingAs($usuario)->get(route('contratos.liberacao-manual.index'));
+        $getResponse = $this->actingAs($usuario)->get(route('admin.contratos.show', $company));
         $getResponse->assertForbidden();
 
-        $postResponse = $this->actingAs($usuario)->post(route('contratos.liberacao-manual.store'), []);
+        $postResponse = $this->actingAs($usuario)->post(route('admin.contratos.liberacao-manual'), []);
         $postResponse->assertForbidden();
     }
 
@@ -79,14 +90,14 @@ class LiberacaoManualTest extends TestCase
         $company  = Company::factory()->create(['name' => 'Empresa Presa Teste']);
         $contrato = $this->contratoPreso($company);
 
-        $response = $this->actingAs($admin)->get(route('contratos.liberacao-manual.index'));
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $company));
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Admin/ContratosLiberacaoManual')
+            ->component('Admin/ContratoDetalhe')
+            ->where('company.id', $company->id)
             ->has('contratos', 1)
             ->where('contratos.0.id', $contrato->id)
-            ->where('contratos.0.company_id', $company->id)
         );
     }
 
@@ -96,7 +107,7 @@ class LiberacaoManualTest extends TestCase
         $company  = Company::factory()->create();
         $servico  = $this->servico();
 
-        $response = $this->actingAs($admin)->post(route('contratos.liberacao-manual.store'), [
+        $response = $this->actingAs($admin)->post(route('admin.contratos.liberacao-manual'), [
             'company_id'  => $company->id,
             'servico_id'  => $servico->id,
             'motivo_slug' => ContratoLiberacao::MOTIVO_OUTRO,
@@ -113,7 +124,7 @@ class LiberacaoManualTest extends TestCase
         $company = Company::factory()->create();
         $servico = $this->servico();
 
-        $response = $this->actingAs($admin)->post(route('contratos.liberacao-manual.store'), [
+        $response = $this->actingAs($admin)->post(route('admin.contratos.liberacao-manual'), [
             'company_id'     => $company->id,
             'servico_id'     => $servico->id,
             'motivo_slug'    => 'motivo_inventado_fora_da_lista',
@@ -130,7 +141,7 @@ class LiberacaoManualTest extends TestCase
         $company = Company::factory()->create();
         $servico = $this->servico();
 
-        $response = $this->actingAs($admin)->post(route('contratos.liberacao-manual.store'), [
+        $response = $this->actingAs($admin)->post(route('admin.contratos.liberacao-manual'), [
             'company_id'     => $company->id,
             'servico_id'     => $servico->id,
             'motivo_slug'    => ContratoLiberacao::MOTIVO_WEBHOOK_NAO_CHEGOU,
@@ -162,8 +173,8 @@ class LiberacaoManualTest extends TestCase
             'motivo_detalhe' => 'Decisão comercial registrada por e-mail com o cliente.',
         ];
 
-        $this->actingAs($admin)->post(route('contratos.liberacao-manual.store'), $payload)->assertRedirect();
-        $this->actingAs($admin)->post(route('contratos.liberacao-manual.store'), $payload)->assertRedirect();
+        $this->actingAs($admin)->post(route('admin.contratos.liberacao-manual'), $payload)->assertRedirect();
+        $this->actingAs($admin)->post(route('admin.contratos.liberacao-manual'), $payload)->assertRedirect();
 
         $this->assertSame(
             1,
@@ -186,7 +197,7 @@ class LiberacaoManualTest extends TestCase
             'servico_id' => $servicoOutro->id,
         ]);
 
-        $response = $this->actingAs($admin)->post(route('contratos.liberacao-manual.store'), [
+        $response = $this->actingAs($admin)->post(route('admin.contratos.liberacao-manual'), [
             'company_id'             => $companyAlvo->id,
             'servico_id'             => $servicoAlvo->id,
             'contrato_assinatura_id' => $contratoDeOutraEmpresa->id,

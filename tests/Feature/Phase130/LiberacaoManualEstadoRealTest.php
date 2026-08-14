@@ -16,6 +16,14 @@ use Tests\TestCase;
  * mostrar o estado real do contrato (recusado/erro/etc.) em destaque ANTES
  * de confirmar, e que a liberação manual sucede mesmo nesses estados —
  * exatamente o cenário para o qual ela foi criada.
+ *
+ * ⚠️ Reapontado pelo plano 131-06 (D-10): o GET que antes ia para a
+ * listagem própria da Fase 130 agora vai para o detalhe da empresa
+ * (`admin.contratos.show`), componente `Admin/ContratoDetalhe`. O POST vai
+ * para `admin.contratos.liberacao-manual`. A prop `contratos` continua com
+ * o mesmo NOME, mas cada item agora pertence a UMA empresa (a da URL) em
+ * vez de listar várias — o campo `causa` que a D-11 depende continua vindo
+ * de `ContratosPresosService::causa()`.
  */
 class LiberacaoManualEstadoRealTest extends TestCase
 {
@@ -53,11 +61,11 @@ class LiberacaoManualEstadoRealTest extends TestCase
             'enviado_em' => now()->subDays(10),
         ]);
 
-        $response = $this->actingAs($admin)->get(route('contratos.liberacao-manual.index'));
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $company));
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Admin/ContratosLiberacaoManual')
+            ->component('Admin/ContratoDetalhe')
             ->where('contratos.0.id', $contrato->id)
             ->where('contratos.0.status', ContratoAssinatura::STATUS_RECUSADO)
             ->where('contratos.0.causa', ContratosPresosService::CAUSA_RECUSADO)
@@ -80,28 +88,31 @@ class LiberacaoManualEstadoRealTest extends TestCase
         ]);
         $contrato->forceFill(['created_at' => now()->subDays(10)])->save();
 
-        $response = $this->actingAs($admin)->get(route('contratos.liberacao-manual.index'));
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $company));
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
-            ->component('Admin/ContratosLiberacaoManual')
+            ->component('Admin/ContratoDetalhe')
             ->where('contratos.0.id', $contrato->id)
             ->where('contratos.0.status', ContratoAssinatura::STATUS_ERRO)
             ->where('contratos.0.causa', ContratosPresosService::CAUSA_ERRO)
         );
     }
 
-    public function test_prop_motivos_traz_as_quatro_chaves_com_rotulos_nao_vazios(): void
+    public function test_prop_motivos_manuais_traz_as_quatro_chaves_com_rotulos_nao_vazios(): void
     {
-        $admin = $this->admin();
+        $admin   = $this->admin();
+        $company = Company::factory()->create();
 
-        $response = $this->actingAs($admin)->get(route('contratos.liberacao-manual.index'));
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $company));
 
         $response->assertOk();
         $response->assertInertia(function ($page) {
-            $page->component('Admin/ContratosLiberacaoManual');
+            $page->component('Admin/ContratoDetalhe');
 
-            $motivos = $page->toArray()['props']['motivos'];
+            // Plano 131-06 (D-10) — prop renomeada de `motivos` para
+            // `motivos_manuais` na tela de detalhe (mesmo array de rótulos).
+            $motivos = $page->toArray()['props']['motivos_manuais'];
 
             foreach (ContratoLiberacao::MOTIVOS_MANUAIS as $slug) {
                 $this->assertArrayHasKey($slug, $motivos);
@@ -122,7 +133,7 @@ class LiberacaoManualEstadoRealTest extends TestCase
             'status'     => ContratoAssinatura::STATUS_RECUSADO,
         ]);
 
-        $response = $this->actingAs($admin)->post(route('contratos.liberacao-manual.store'), [
+        $response = $this->actingAs($admin)->post(route('admin.contratos.liberacao-manual'), [
             'company_id'             => $company->id,
             'servico_id'             => $servico->id,
             'contrato_assinatura_id' => $contrato->id,
@@ -152,18 +163,32 @@ class LiberacaoManualEstadoRealTest extends TestCase
             'enviado_em' => now()->subDays(10),
         ]);
 
-        $response = $this->actingAs($admin)->get(route('contratos.liberacao-manual.index'));
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $company));
 
         $response->assertOk();
         $response->assertInertia(function ($page) {
             $primeiroContrato = $page->toArray()['props']['contratos'][0];
 
+            // Plano 131-06 (D-10) — a prop `contratos` do DETALHE (por
+            // empresa) legitimamente carrega mais campos que a antiga
+            // listagem (liberado_em/cancelamento_*/ja_liberado/signatarios,
+            // ver ContratoAdminController::show()). A garantia de PII
+            // (T-130-04-05/T-131-04-04) continua sendo a lista EXATA de
+            // chaves — email/cpf/clicksign_signer_key NUNCA entram aqui.
             $chavesEsperadas = [
-                'id', 'company_id', 'company_nome', 'servico_id', 'servico_nome',
-                'status', 'causa', 'dias_parado', 'enviado_em', 'assinado_em',
+                'id', 'servico_id', 'servico_nome', 'status', 'dias_parado',
+                'causa', 'enviado_em', 'assinado_em', 'liberado_em',
+                'cancelamento_solicitado_em', 'cancelamento_motivo',
+                'cancelamento_solicitado_por_nome', 'ja_liberado', 'signatarios',
             ];
 
             $this->assertEqualsCanonicalizing($chavesEsperadas, array_keys($primeiroContrato));
+
+            // Sub-array de signatários — achatado, sem nenhum dado de PII.
+            $chavesSignatarioEsperadas = ['id', 'nome', 'papel', 'situacao'];
+            foreach ($primeiroContrato['signatarios'] as $signatario) {
+                $this->assertEqualsCanonicalizing($chavesSignatarioEsperadas, array_keys($signatario));
+            }
         });
     }
 }
