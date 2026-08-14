@@ -1994,6 +1994,36 @@ class NpsController extends Controller
             throw $e;
         }
 
+        // Spec 2026-08-14 (item 3) — a resposta reflete no /performance NA HORA.
+        //
+        // Até aqui o cache do bônus só era invalidado ao INVALIDAR/REVALIDAR uma
+        // resposta (`invalidar()`/`revalidar()`), nunca quando o cliente
+        // respondia. Como `computeCached()` guarda 7 DIAS para mês fechado, a
+        // nota nova só aparecia quando o TTL vencia ou o snapshot mensal era
+        // gravado — que é exatamente o "só aparece depois que o NPS fecha" do
+        // relato. O cálculo em si já era ao vivo (`computeNpsWindow` devolve a
+        // média assim que existe resposta, mesmo com a janela aberta); o que
+        // faltava era derrubar o cache.
+        //
+        // FORA da transação de propósito: esvaziar cache não é rollbackável, e
+        // fazê-lo antes do commit abriria janela para recomputar com o estado
+        // antigo. Falha aqui NUNCA pode derrubar a resposta do cliente — ela já
+        // está gravada, e o pior caso é a nota demorar o TTL para aparecer.
+        // `$response` nasce DENTRO do closure da transação e não sai dele —
+        // relê do banco, já commitado (e com o snapshot da Fase 79 gravado, que
+        // é de onde saem os responsáveis).
+        try {
+            $survey->refresh()->load('response');
+            if ($survey->response) {
+                $this->bustarCacheDoBonus($survey->response, $survey);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[NPS] falha ao invalidar o cache do desempenho após a resposta', [
+                'survey_id' => $survey->id,
+                'erro'      => $e->getMessage(),
+            ]);
+        }
+
         return Inertia::render('Nps/ThankYou');
     }
 
@@ -2472,6 +2502,26 @@ class NpsController extends Controller
         $userIds = \App\Models\NpsScoreAssignment::where('nps_response_id', $response->id)
             ->pluck('user_id')
             ->unique();
+
+        // Spec 2026-08-14 (item 3) — FALLBACK pelos responsáveis da empresa.
+        //
+        // A atribuição congelada é a fonte preferencial (é quem a nota de fato
+        // alimenta), mas ela pode não existir: `NpsSnapshotService::registrar()`
+        // só cria assignment na interseção "serviços cobertos pelo modelo ∩
+        // contratos ativos da empresa", e os 3 modelos ativos de produção estão
+        // sem nenhum serviço coberto — medido em 2026-08: 5 respostas, 0
+        // assignments. Sem este fallback o busting não derrubaria chave nenhuma
+        // e a nota continuaria stale por até 7 dias, que é justamente o
+        // "só aparece depois que o NPS fecha" que esta spec veio corrigir.
+        //
+        // Bustar a mais é barato (o pior caso é um recompute a mais); bustar a
+        // menos deixa número errado na tela de quem decide bônus.
+        if ($userIds->isEmpty() && $survey->company_id) {
+            $userIds = \Illuminate\Support\Facades\DB::table('company_users')
+                ->where('company_id', $survey->company_id)
+                ->pluck('user_id')
+                ->unique();
+        }
 
         $scoreService = app(\App\Services\DesempenhoScoreService::class);
 
