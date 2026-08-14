@@ -1073,6 +1073,12 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     Route::get('/empresa/{company}',            [ContratoAdminController::class, 'show'])            ->name('show');
     Route::patch('/empresa/{company}/cadastro', [ContratoAdminController::class, 'atualizarCadastro'])->name('cadastro');
     Route::post('/empresa/{company}/gerar',     [ContratoAdminController::class, 'gerarContrato'])    ->name('gerar');
+    // Plano 131-05 (CLICK-07/CLICK-10, D-13) — reenviar aviso e registrar
+    // cancelamento (registra aqui, cancela no painel da Clicksign).
+    Route::post('/{contratoAssinatura}/signatarios/{signatario}/reenviar', [ContratoAdminController::class, 'reenviar'])
+        ->name('reenviar');
+    Route::post('/{contratoAssinatura}/cancelamento', [ContratoAdminController::class, 'registrarCancelamento'])
+        ->name('cancelamento');
 });
 
 // ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────

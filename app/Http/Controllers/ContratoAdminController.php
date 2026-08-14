@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ClicksignException;
 use App\Models\Company;
 use App\Models\ContratoAssinatura;
 use App\Models\ContratoAssinaturaSignatario;
 use App\Models\ContratoServico;
 use App\Models\User;
+use App\Services\Clicksign\ClicksignClient;
 use App\Services\Contratos\ContratoDadosMinimosService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
@@ -268,6 +270,12 @@ class ContratoAdminController extends Controller
             'configuracao_ecf_faltante' => $dados->faltantesDaConfiguracaoEcf(),
             'pode_gerar_contrato'       => $podeGerarContrato,
             'motivo_bloqueio'           => $motivoBloqueio,
+            // Plano 131-05 (CLICK-10/D-13) — URL do PAINEL da Clicksign (não a
+            // API), derivada de CLICKSIGN_ENV (plano 131-01). É o destino real
+            // do CTA "Registrar e ir para a Clicksign" — nunca hardcodar no
+            // JSX. Pode vir vazia se `CLICKSIGN_PAINEL_URL`/`CLICKSIGN_ENV`
+            // não estiverem configuradas; a tela degrada o rótulo nesse caso.
+            'painel_clicksign_url'     => config('services.clicksign.painel_url'),
             'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos) {
                 return [
                     'id'                                => $c->id,
@@ -403,5 +411,96 @@ class ContratoAdminController extends Controller
         }
 
         return back()->with('error', 'Não é possível gerar o contrato agora: verifique se ainda há alguma pendência.');
+    }
+
+    /**
+     * CLICK-07 — reenvia o aviso de assinatura para quem ainda não assinou.
+     *
+     * ⚠️ O 429 deste endpoint é resposta ESPERADA da Clicksign (rate limit
+     * anti-spam próprio, medido em `CLICKSIGN-SANDBOX-EMPIRICO.md` §14) —
+     * nunca tratado como erro. Uma tentativa por clique: sem retry próprio
+     * (o `ClicksignClient::reenviarNotificacao()` já não retenta).
+     */
+    public function reenviar(
+        ContratoAssinatura $contratoAssinatura,
+        ContratoAssinaturaSignatario $signatario,
+        ClicksignClient $client,
+    ): RedirectResponse {
+        // T-131-05-01 (IDOR) — o signatário informado precisa pertencer ao
+        // contrato informado, checado ANTES de qualquer I/O.
+        if ($signatario->contrato_assinatura_id !== $contratoAssinatura->id) {
+            abort(422, 'O signatário informado não pertence a este contrato.');
+        }
+
+        // T-131-05-02 — o reenvio só faz sentido com o contrato aguardando
+        // assinaturas e a pessoa ainda pendente (UI-SPEC só oferece a ação
+        // nesse estado).
+        if ($contratoAssinatura->status !== ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS) {
+            abort(422, 'Este contrato não está aguardando assinaturas.');
+        }
+
+        if ($signatario->situacao !== ContratoAssinaturaSignatario::SITUACAO_PENDENTE) {
+            abort(422, 'Esta pessoa já respondeu — não há aviso para reenviar.');
+        }
+
+        if (blank($contratoAssinatura->clicksign_envelope_id) || blank($signatario->clicksign_signer_key)) {
+            abort(422, 'Este contrato ainda não foi enviado.');
+        }
+
+        try {
+            $client->reenviarNotificacao($contratoAssinatura->clicksign_envelope_id, $signatario->clicksign_signer_key);
+        } catch (ClicksignException $e) {
+            if ($e->httpStatus === 429) {
+                // Resposta ESPERADA — canal `aviso` (âmbar/neutro), nunca
+                // `error`. UI-SPEC: "Aguarde um pouco antes de reenviar".
+                return back()->with('aviso', 'Você reenviou recentemente. Espere alguns minutos e tente de novo — isso evita marcar o convite como spam.');
+            }
+
+            // Nunca ecoar a mensagem crua da API na tela — o detalhe já foi
+            // logado dentro do próprio ClicksignClient.
+            return back()->with('error', 'Não deu para reenviar o aviso agora. Tente de novo em alguns minutos.');
+        }
+
+        return back()->with('success', 'Aviso reenviado.');
+    }
+
+    /**
+     * CLICK-10/D-13 — registra a INTENÇÃO de cancelamento (autor + motivo +
+     * data). Não cancela nada de verdade: medido que a API v3 não permite
+     * cancelar envelope em `running` (`CLICKSIGN-SANDBOX-EMPIRICO.md` §15.2).
+     * O cancelamento real é feito no painel da Clicksign; quando o webhook
+     * `cancel` chegar (Fase 129), o estado fecha sozinho.
+     *
+     * ⛔ NÃO chama o método de cancelamento do `ClicksignClient` (medido:
+     * 403 em envelope `running`) nem qualquer outro método do client —
+     * nenhuma requisição HTTP sai desta action.
+     */
+    public function registrarCancelamento(Request $request, ContratoAssinatura $contratoAssinatura): RedirectResponse
+    {
+        $data = $request->validate([
+            'motivo' => ['required', 'string', 'min:10', 'max:1000'],
+        ]);
+
+        // Só faz sentido registrar cancelamento de contrato vivo.
+        if (! in_array($contratoAssinatura->status, ContratoAssinatura::STATUS_EM_ANDAMENTO, true)) {
+            abort(422, 'Este contrato não está em andamento.');
+        }
+
+        if (filled($contratoAssinatura->cancelamento_solicitado_em)) {
+            abort(422, 'Este contrato já tem um cancelamento registrado.');
+        }
+
+        // fill()+save() no model — nunca updateQuietly()/query builder, o
+        // hook `saving` é quem alimenta a trava composta
+        // ca_empresa_servico_andamento_uniq. NÃO alterar `status`: quem
+        // fecha o estado é o webhook `cancel` (Fase 129).
+        $contratoAssinatura->fill([
+            'cancelamento_motivo'                => $data['motivo'],
+            'cancelamento_solicitado_por_user_id' => $request->user()->id,
+            'cancelamento_solicitado_em'          => now(),
+        ]);
+        $contratoAssinatura->save();
+
+        return back()->with('success', 'Cancelamento registrado. Agora conclua no painel da Clicksign.');
     }
 }
