@@ -171,10 +171,10 @@ a rota de produção em `129-GATE.md` (plano 129-07): assinatura válida → 200
 - [x] **CLICK-04**: Webhook repetido não duplica evento, signatário, assinatura, `MlbEmpresa` nem implementação operacional
 - [x] **CLICK-05**: A empresa só é liberada ao operacional a partir do estado agregado reconsultado do envelope, nunca do payload isolado do evento (D7)
 - [x] **CLICK-06**: O processamento pesado do webhook acontece na fila, não na requisição HTTP
-- [ ] **CLICK-07**: Um usuário do Administrativo consegue reenviar a notificação de assinatura para quem ainda não assinou
+- [x] **CLICK-07**: Um usuário do Administrativo consegue reenviar a notificação de assinatura para quem ainda não assinou
 - [x] **CLICK-08**: O envelope é criado já com o lembrete automático nativo da Clicksign configurado, sem scheduler próprio
-- [ ] **CLICK-09**: Um usuário consegue corrigir o e-mail de um signatário depois do envio, sem cancelar o contrato
-- [ ] **CLICK-10**: Um usuário consegue cancelar um contrato em andamento, informando o motivo
+- [~] **CLICK-09**: ~~Um usuário consegue corrigir o e-mail de um signatário depois do envio, sem cancelar o contrato~~ → ⛔ **IMPOSSÍVEL PELA API — não entregue como escrito.** Medido em 2026-08-14 (§15.1 do empírico): `PATCH` e `PUT` em `/envelopes/{id}/signers/{signerId}` devolvem **404**. A Fase 131 entregou o que dava: a tela **explica** que não é possível e conduz ao caminho de cancelar e reemitir (RAMO B, D-14). **Não marcar como cumprido** — o usuário continua sem conseguir corrigir um e-mail digitado errado sem refazer o contrato.
+- [~] **CLICK-10**: ~~Um usuário consegue cancelar um contrato em andamento, informando o motivo~~ → ⚠️ **PARCIAL — a metade do "informando o motivo" foi entregue; a do "cancelar", não.** Medido em 2026-08-14 (§15.2): `DELETE` dá **403** em `running`, `POST /cancel` dá **404**, `PATCH status:"canceled"` dá **400** (*"status deve estar em: draft, running"*). Cancelar é operação de **painel**, igual assinar. A Fase 131 registra autor + motivo + data e instrui a concluir na Clicksign (D-13) — a prestação de contas existe, o ato não.
 - [x] **CLICK-11**: Quando o contrato é concluído, o PDF assinado é baixado e guardado no próprio sistema (D6)
 
 ### Contrato em PDF
@@ -196,14 +196,14 @@ a rota de produção em `129-GATE.md` (plano 129-07): assinatura válida → 200
 
 - [x] **ADM-01**: Um usuário do Administrativo consegue completar, na própria tela, os dados que a empresa não trouxe do Comercial — CNPJ, Gmail do colaborador, datas de início e término do contrato, entre outros
 - [x] **ADM-02**: A tela mostra claramente o que ainda falta para a empresa poder gerar contrato, e o botão de gerar só fica disponível quando está completo
-- [ ] **ADM-03**: O campo Gmail do colaborador sai do formulário do Comercial na MESMA entrega em que o Administrativo passa a ter onde preenchê-lo (nunca antes — senão fica uma janela sem ninguém cadastrando o dado)
+- [x] **ADM-03**: O campo Gmail do colaborador sai do formulário do Comercial na MESMA entrega em que o Administrativo passa a ter onde preenchê-lo (nunca antes — senão fica uma janela sem ninguém cadastrando o dado)
 
 ### Telas e acesso
 
 - [x] **UI-01**: Um usuário do Administrativo vê a lista de contratos com filtro por situação, busca por empresa e um resumo por situação
 - [x] **UI-02**: Um usuário gera o contrato de uma empresa por um botão, disponível apenas quando ela está sem pendência e sem contrato em andamento (D1)
 - [x] **UI-03**: A listagem do Comercial mostra em que pé está o contrato de cada empresa
-- [ ] **UI-04**: A tela deixa claro a diferença entre corrigir o e-mail de um signatário e trocar a pessoa que vai assinar (a segunda exige cancelar e reemitir)
+- [x] **UI-04**: A tela deixa claro a diferença entre corrigir o e-mail de um signatário e trocar a pessoa que vai assinar (a segunda exige cancelar e reemitir)
 - [x] **UI-05**: O acesso ao módulo é controlado por permissão própria (`admin.contratos`) e aparece no menu para quem tem
 - [x] **UI-06**: Nenhum termo da tela exige conhecimento de Clicksign ou de jargão de assinatura eletrônica para ser entendido
 
@@ -274,10 +274,10 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | CLICK-04 | Fase 129 (plano 03) | Done |
 | CLICK-05 | Fase 129 (plano 04) | Done |
 | CLICK-06 | Fase 129 (plano 03) | Done |
-| CLICK-07 | Fase 131 | Pending |
+| CLICK-07 | Fase 131 | Done |
 | CLICK-08 | Fase 127 | Done |
-| CLICK-09 | Fase 131 | Pending |
-| CLICK-10 | Fase 131 | Pending |
+| CLICK-09 | Fase 131 | NAO ENTREGUE (API v3 nao permite - ver secao 15.1 do empirico) |
+| CLICK-10 | Fase 131 | PARCIAL (registra motivo+autor; cancelar e operacao de painel) |
 | CLICK-11 | Fase 129 (plano 06) | Done |
 | PDF-01 | Fase 126 | Done |
 | PDF-02 | Fase 126 | Done |
@@ -291,7 +291,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | UI-01 | Fase 131 | Done |
 | UI-02 | Fase 131 (plano 04) | Done |
 | UI-03 | Fase 131 | Done |
-| UI-04 | Fase 131 | Pending |
+| UI-04 | Fase 131 | Done |
 | UI-05 | Fase 131 | Done |
 | UI-06 | Fase 131 | Done |
 
