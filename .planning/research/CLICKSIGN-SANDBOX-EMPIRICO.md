@@ -817,3 +817,44 @@ não assumir que existe endpoint.
 | Reenviar notificação | ✅ funciona | §14 — corpo JSON:API medido; 429 anti-spam é resposta ESPERADA, em texto puro |
 | Cancelar envelope em `draft` | ✅ funciona | `DELETE /envelopes/{id}` |
 | Ativar envelope | ✅ funciona | `ativarEnvelope()` — ⚠️ pela API; a tela do sandbox NÃO ativa envelope gerado por modelo (`130-GATE.md`) |
+
+---
+
+## 16. Os rate limits que realmente mandam são os NOSSOS, não os da Clicksign
+
+⚠️ Esta seção documenta configuração **do próprio app** (`app/Providers/AppServiceProvider.php`),
+não medição do fornecedor. Está aqui porque é o que de fato restringe qualquer operação contra a
+Clicksign — e porque **duas fases seguidas foram surpreendidas por isso**, cada uma por um bucket
+diferente.
+
+| Bucket | Limite | Quem usa | Fase que tropeçou |
+|---|---|---|---|
+| `clicksign-envelope` | **1/min GLOBAL** | `GerarContratoAssinaturaJob` | 131 |
+| `clicksign-webhook` | **3/min GLOBAL** | `ProcessarEventoClicksignJob`, reconciliação | 130 |
+
+Compare com a janela **medida** do lado da Clicksign: **20/min** (§8). Os nossos são de 6 a 20 vezes
+mais apertados, de propósito — a montagem de um envelope consome ~15 chamadas, então 1/min protege
+o orçamento inteiro.
+
+### Consequência de desenho (Fase 130)
+
+Um comando que varre N contratos **não pode** fazer laço HTTP síncrono: estoura o bucket de 3/min
+com poucos contratos. O padrão correto é o comando fazer SELECT + `dispatch()` de um job por
+contrato, deixando o `RateLimited` espaçar. Foi assim que `clicksign:reconciliar` foi construído.
+
+### Consequência de produto, AINDA EM ABERTO (Fase 131)
+
+**1 envelope por minuto significa que gerar contrato para duas empresas seguidas deixa a segunda
+esperando até um minuto** — e a tela não conta isso a ninguém. O usuário vê "Contrato gerado" e a
+situação fica em "Não enviado" nesse intervalo. Registrado como lacuna no `131-UAT.md`, não corrigido.
+
+### Armadilha de ambiente que isso expõe
+
+Job barrado pelo `RateLimited` é **liberado de volta para a fila** (`release`). Em produção
+(`QUEUE_CONNECTION=database`) ele volta e roda depois — comportamento correto. Mas **na fila `sync`
+do ambiente local, job liberado simplesmente SOME**: sem log, sem `failed_jobs`, sem retry.
+
+Medido em 2026-08-14: um `ContratoAssinatura` ficou preso em `rascunho` sem envelope, com
+`updated_at` idêntico ao `created_at`, e **a tela não acusou erro nenhum** — pareceu sucesso.
+Quem testar geração de contrato localmente precisa saber disso, ou vai diagnosticar um bug de
+produção que não existe.
