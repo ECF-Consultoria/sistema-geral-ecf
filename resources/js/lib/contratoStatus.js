@@ -73,6 +73,45 @@ export function classeContrato(status) {
     return CONTRATO_STATUS_CLS[status] ?? CONTRATO_STATUS_CLS.outros;
 }
 
+// Quick 260816-d72 (UI-06/D-05) — estado SÓ DE EXIBIÇÃO, mesmo espírito de
+// `SEM_CONTRATO` acima: deriva de `ContratoAssinatura::estaPreparando()` no
+// BACKEND (regra de status + envelope + janela de tempo), o front recebe o
+// booleano pronto e NUNCA recalcula tempo. NÃO é valor do enum
+// `ContratoAssinatura::STATUS_*` e NUNCA deve entrar em
+// `CONTRATO_STATUS_LABELS`/`CONTRATO_STATUS_CLS` — o resumo de 7 contagens
+// (D-04) continua contando "preparando" dentro de `rascunho`.
+export const PREPARANDO_LABEL = 'Preparando';
+
+// Âmbar (espera), nunca vermelho (erro) e nunca `ecf-yellow` (ação
+// primária, já ocupado pelo botão "Gerar contrato" e pelo ícone do
+// cabeçalho — regra do UI-SPEC de um único ecf-yellow por tela). Mesma
+// classe já usada por `aguardando_assinaturas` acima.
+export const PREPARANDO_CLS = 'bg-amber-500/10 text-amber-300 border-amber-500/20';
+
+// `title` do badge na lista — coluna estreita, densidade travada pelo
+// UI-SPEC, não cabe a frase inteira.
+export const PREPARANDO_TITULO = 'O contrato acabou de ser pedido e pode levar até um minuto para ficar pronto.';
+
+// Faixa explicativa do detalhe — mesmo molde da faixa de "cancelamento
+// solicitado" já existente em `Admin/ContratoDetalhe.jsx`.
+export const PREPARANDO_AVISO = 'Preparando o contrato — pode levar até um minuto. Atualize a página em instantes para ver a situação.';
+
+/**
+ * Rótulo com o sub-estado de espera: devolve "Preparando" quando
+ * `preparando` for verdadeiro, senão delega para `rotuloContrato()`.
+ */
+export function rotuloContratoComPreparo(status, preparando) {
+    return preparando ? PREPARANDO_LABEL : rotuloContrato(status);
+}
+
+/**
+ * Classe com o sub-estado de espera: devolve a classe âmbar quando
+ * `preparando` for verdadeiro, senão delega para `classeContrato()`.
+ */
+export function classeContratoComPreparo(status, preparando) {
+    return preparando ? PREPARANDO_CLS : classeContrato(status);
+}
+
 /**
  * Pluralização pt-BR do "há N dias" (D-08 do 131-CONTEXT.md, badge do
  * Comercial), redação travada pelo 131-UI-SPEC.md:

@@ -10,9 +10,12 @@ import {
     CONTRATO_STATUS_LABELS,
     classeContrato,
     rotuloContrato,
+    classeContratoComPreparo,
+    rotuloContratoComPreparo,
     formatarHaDias,
     SEM_CONTRATO,
     SEM_CONTRATO_LABEL,
+    PREPARANDO_TITULO,
 } from '@/lib/contratoStatus';
 
 /**
@@ -158,8 +161,14 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                             <TableCell className="text-[13px] font-medium text-white/85">{linha.company_nome}</TableCell>
                                             <TableCell className="text-[13px] text-white/60">{linha.servico_nome}</TableCell>
                                             <TableCell>
-                                                <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContrato(linha.status))}>
-                                                    {linha.status === SEM_CONTRATO ? SEM_CONTRATO_LABEL : rotuloContrato(linha.status)}
+                                                <span
+                                                    className={cn(
+                                                        'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border',
+                                                        linha.status === SEM_CONTRATO ? classeContrato(linha.status) : classeContratoComPreparo(linha.status, linha.preparando),
+                                                    )}
+                                                    title={linha.preparando ? PREPARANDO_TITULO : undefined}
+                                                >
+                                                    {linha.status === SEM_CONTRATO ? SEM_CONTRATO_LABEL : rotuloContratoComPreparo(linha.status, linha.preparando)}
                                                 </span>
                                             </TableCell>
                                             <TableCell className="text-[13px] text-white/50">{formatarHaDias(linha.dias_parado)}</TableCell>

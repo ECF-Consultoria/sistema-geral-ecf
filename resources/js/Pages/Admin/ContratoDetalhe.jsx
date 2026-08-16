@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
-import { classeContrato, rotuloContrato, formatarHaDias } from '@/lib/contratoStatus';
+import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO } from '@/lib/contratoStatus';
 
 // D-11 (herdada da Fase 130, absorvida no plano 131-06) — causas de
 // ContratosPresosService que merecem a faixa de destaque vermelha ANTES de
@@ -439,8 +439,8 @@ export default function ContratoDetalhe({
                                                 <TableRow>
                                                     <TableCell className="text-[13px] text-white/85 align-top">{c.servico_nome}</TableCell>
                                                     <TableCell className="align-top">
-                                                        <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContrato(c.status))}>
-                                                            {rotuloContrato(c.status)}
+                                                        <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContratoComPreparo(c.status, c.preparando))}>
+                                                            {rotuloContratoComPreparo(c.status, c.preparando)}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="text-[13px] text-white/50 align-top">{formatarHaDias(c.dias_parado)}</TableCell>
@@ -515,6 +515,22 @@ export default function ContratoDetalhe({
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>
+
+                                                {/* Quick 260816-d72 (UI-06/D-05) — aviso de ESPERA, não erro: mesma
+                                                    família do aviso de 429 do reenvio (CLICKSIGN-SANDBOX-EMPIRICO.md
+                                                    §14/§16). Contrato acabou de ser pedido e pode estar na fila do
+                                                    bucket de 1 envelope/min; some sozinho quando `c.preparando`
+                                                    voltar a `false` (janela de 5min em
+                                                    ContratoAssinatura::estaPreparando()) ou quando o job terminar. */}
+                                                {c.preparando && (
+                                                    <TableRow key={`${c.id}-preparando`}>
+                                                        <TableCell colSpan={4} className="py-2 border-t-0">
+                                                            <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[12px] text-amber-300/90">
+                                                                {PREPARANDO_AVISO}
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
 
                                                 {/* Aviso persistente de cancelamento solicitado (D-13) — âmbar,
                                                     "aguardando algo externo", nunca vermelho de erro. Some
