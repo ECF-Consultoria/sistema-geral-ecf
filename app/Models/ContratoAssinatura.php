@@ -193,6 +193,56 @@ class ContratoAssinatura extends Model
     }
 
     /**
+     * Quick 260816-d72 (UI-06/D-05): janela, em minutos, em que um contrato
+     * recém-pedido conta como "preparando" em vez de "não enviado" — ver
+     * `estaPreparando()` abaixo.
+     *
+     * O bucket `clicksign-envelope` (`AppServiceProvider::boot()`,
+     * plano 127-05) é `Limit::perMinute(1)->by('global')`: montar UM
+     * envelope consome ~15 das 20 chamadas/min medidas na
+     * `CLICKSIGN-SANDBOX-EMPIRICO.md` §16. Gerar contrato para duas
+     * empresas em sequência deixa a segunda esperando até um minuto — e o
+     * dispatch tem `->delay($i * 5)` por serviço (127-06) mais a primeira
+     * faixa de `backoff()` do job (127-05), então 1 minuto não cobre nem
+     * uma empresa com 2 serviços. 5 minutos cobre essa fila com folga e
+     * ainda é honesto com a copy "pode levar até um minuto".
+     *
+     * ⚠️ Quem afrouxar ou apertar o bucket de 1/min precisa revisitar esta
+     * constante — ela existe só por causa dele.
+     */
+    public const JANELA_PREPARANDO_MINUTOS = 5;
+
+    /**
+     * Quick 260816-d72 (UI-06/D-05): `true` quando este contrato foi pedido
+     * há pouco e ainda pode estar na fila do bucket de 1 envelope/min —
+     * distingue "acabou de ser pedido" de "rascunho parado há dias", que
+     * antes apareciam idênticos como "Não enviado" na tela do Administrativo.
+     *
+     * Condição de TRÊS partes, todas obrigatórias:
+     *   1. `status === STATUS_RASCUNHO` — só rascunho pode estar "preparando".
+     *   2. `clicksign_envelope_id` vazio — o job para no rascunho DE PROPÓSITO
+     *      depois de montar o envelope com sucesso (D-02 da Fase 127-05).
+     *      Sem esta parte, todo contrato montado no último minuto mentiria
+     *      como "ainda preparando" quando já terminou.
+     *   3. `created_at` dentro de `JANELA_PREPARANDO_MINUTOS` — passada a
+     *      janela, a linha volta sozinha para "Não enviado": espera que virou
+     *      rascunho parado deve voltar a incomodar.
+     *
+     * A regra mora AQUI, não no controller nem no front — três telas
+     * (`resources/js/lib/contratoStatus.js`) compartilham o mapa de rótulos
+     * porque cada uma já teve sua própria cópia divergente da regra;
+     * repetir cálculo de tempo em JSX reabriria esse mesmo buraco. O front
+     * só recebe este booleano pronto.
+     */
+    public function estaPreparando(): bool
+    {
+        return $this->status === self::STATUS_RASCUNHO
+            && blank($this->clicksign_envelope_id)
+            && $this->created_at !== null
+            && $this->created_at->gt(now()->subMinutes(self::JANELA_PREPARANDO_MINUTOS));
+    }
+
+    /**
      * Guard de código da D-01: devolve QUALQUER contrato em andamento da
      * empresa (de qualquer serviço), ou `null` se não houver nenhum. Uso
      * histórico da suíte da Fase 125; quem for CRIAR contrato deve preferir

@@ -112,6 +112,9 @@ class ContratoAdminController extends Controller
                         'assinado_em'                  => $contrato->assinado_em?->toIso8601String(),
                         'liberado_em'                  => $contrato->liberado_em?->toIso8601String(),
                         'cancelamento_solicitado_em'   => $contrato->cancelamento_solicitado_em?->toIso8601String(),
+                        // Quick 260816-d72 (UI-06/D-05) — sub-estado de exibição
+                        // de 'rascunho', não entra no resumo de 7 chaves (D-04).
+                        'preparando'                   => $contrato->estaPreparando(),
                     ]);
                 } else {
                     // Par sem contrato ainda — estado só-de-exibição, base
@@ -130,6 +133,10 @@ class ContratoAdminController extends Controller
                         'assinado_em'                  => null,
                         'liberado_em'                  => null,
                         'cancelamento_solicitado_em'   => null,
+                        // Quick 260816-d72 — par sem contrato nunca está
+                        // "preparando"; chave sempre presente (nunca undefined
+                        // no front).
+                        'preparando'                   => false,
                     ]);
                 }
             }
@@ -304,6 +311,8 @@ class ContratoAdminController extends Controller
                     'cancelamento_solicitado_por_nome'   => $c->cancelamento_solicitado_por_user_id
                         ? User::find($c->cancelamento_solicitado_por_user_id)?->name
                         : null,
+                    // Quick 260816-d72 (UI-06/D-05).
+                    'preparando'                         => $c->estaPreparando(),
                     // Array achatado — NUNCA email/cpf/clicksign_signer_key/
                     // auths/evidencia_signer (T-131-04-04). Consumido também
                     // pelos planos 131-05/06.
@@ -401,7 +410,12 @@ class ContratoAdminController extends Controller
         $retorno = $gatilho->dispararSeElegivel($company);
 
         if ($retorno['status'] === 'disparado' && data_get($retorno, 'resultado.ok') === true) {
-            return back()->with('success', 'Contrato gerado. Acompanhe a situação nesta tela.');
+            // Quick 260816-d72 (D-05/UI-06): a redação antiga ("Contrato
+            // gerado") afirmava um fato que ainda não tinha acontecido — o
+            // job só monta o envelope depois, sujeito ao bucket de 1/min
+            // (ver ContratoAssinatura::estaPreparando()). Continua no canal
+            // 'success': o PEDIDO foi de fato aceito, só a promessa muda.
+            return back()->with('success', 'Contrato solicitado. Pode levar até um minuto para ficar pronto — atualize a página em instantes.');
         }
 
         $configuracaoFaltante = data_get($retorno, 'resultado.configuracao', []);
