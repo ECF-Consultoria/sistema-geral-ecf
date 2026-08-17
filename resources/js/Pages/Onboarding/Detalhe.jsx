@@ -5,6 +5,8 @@ import { Avatar, AvatarFallback } from '@/Components/ui/avatar';
 import SituacaoChip from '@/Components/Onboarding/Painel/SituacaoChip';
 import DetalheOnboarding from '@/Components/Onboarding/Painel/DetalheOnboarding';
 import RelatorioInicial from '@/Components/Onboarding/RelatorioInicial';
+import ReuniaoBloco from '@/Components/Onboarding/Painel/ReuniaoBloco';
+import LinkDoCliente from '@/Components/Onboarding/Painel/LinkDoCliente';
 
 const initials = (name) =>
     (name || '?').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
@@ -21,7 +23,7 @@ const initials = (name) =>
  * página só monta o cabeçalho (empresa, serviço, situação, responsável) e o
  * link de volta ao painel.
  */
-export default function Detalhe({ onboarding, passos, relatorio = null }) {
+export default function Detalhe({ onboarding, passos, relatorio = null, reuniao = null, link = null }) {
     return (
         <AppLayout title="Detalhe do onboarding">
             <Head title={`Onboarding — ${onboarding.empresa.nome}`} />
@@ -57,6 +59,12 @@ export default function Detalhe({ onboarding, passos, relatorio = null }) {
                         </div>
                     )}
                 </div>
+
+                {/* Link antes dos passos: a primeira pergunta de quem abre esta
+                    tela é "o cliente já viu o que pedimos?" */}
+                <LinkDoCliente companyId={onboarding.empresa.id} link={link} />
+
+                {reuniao && <ReuniaoBloco onboardingId={onboarding.id} reuniao={reuniao} />}
 
                 {relatorio && <RelatorioInicial onboardingId={onboarding.id} relatorio={relatorio} />}
 

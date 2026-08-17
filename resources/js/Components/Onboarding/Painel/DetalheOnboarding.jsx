@@ -6,6 +6,22 @@ import DonoBadge from './DonoBadge';
 
 const DONO_LABEL = { cliente: 'cliente', interno: 'interno', sistema: 'sistema' };
 
+// Blocos na ordem em que o processo acontece. `outros` recolhe passo nascido
+// antes da etapa existir — sumir da tela seria pior do que aparecer sem bloco.
+const ETAPAS_ORDEM = ['acessos', 'mapeamento', 'agendamento', 'administrativo', 'outros'];
+
+const ETAPA_LABELS = {
+    acessos:        'Configuração de acessos',
+    mapeamento:     'Mapeamento da conta',
+    agendamento:    'Agendamento e relatório',
+    administrativo: 'Administrativo',
+    outros:         'Outros',
+};
+
+// Contagem por bloco é orientação de leitura ("3/4 dos acessos fecharam"),
+// não a resposta principal da tela — SC-11 proíbe porcentagem como resposta,
+// e é isso que continua valendo no cabeçalho e no painel.
+
 /**
  * Coletando — terceiro estado (o mais fácil de acertar torto, D-11). Recebe
  * SÓ o que precisa (`coleta_iniciada_em`/`coleta_demorando`) — `passo.valor`
@@ -162,10 +178,33 @@ function LinhaPasso({ passo }) {
  * `AppLayout` nem de rota própria.
  */
 export default function DetalheOnboarding({ passos }) {
+    // Agrupado por etapa, na ordem fixa em que o processo acontece. Uma lista
+    // corrida de 15 passos não responde "em que pé está" — o operador precisa
+    // ver que os acessos fecharam antes de cobrar o mapeamento.
+    const blocos = ETAPAS_ORDEM
+        .map((etapa) => ({
+            etapa,
+            itens: passos.filter((p) => (p.etapa ?? 'outros') === etapa),
+        }))
+        .filter(({ itens }) => itens.length > 0);
+
     return (
-        <div className="space-y-3">
-            {passos.map((passo) => (
-                <LinhaPasso key={passo.id} passo={passo} />
+        <div className="space-y-6">
+            {blocos.map(({ etapa, itens }) => (
+                <section key={etapa} className="space-y-3">
+                    <div className="flex items-baseline gap-2">
+                        <h3 className="text-white/70 font-semibold text-[12px] uppercase tracking-wider">
+                            {ETAPA_LABELS[etapa]}
+                        </h3>
+                        <span className="text-white/25 text-[11px]">
+                            {itens.filter((p) => p.status === 'concluido' || p.status === 'nao_aplicavel').length}/{itens.length}
+                        </span>
+                    </div>
+
+                    {itens.map((passo) => (
+                        <LinhaPasso key={passo.id} passo={passo} />
+                    ))}
+                </section>
             ))}
         </div>
     );

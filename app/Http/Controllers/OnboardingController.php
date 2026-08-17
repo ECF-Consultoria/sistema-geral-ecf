@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\Onboarding;
+use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
 use App\Models\OnboardingRelatorio;
 use App\Models\User;
@@ -126,6 +127,7 @@ class OnboardingController extends Controller
             'company:id,name',
             'servico:id,nome',
             'responsavel:id,name',
+            'reuniaoAgendadaPor:id,name',
             'passos.setor:id,nome',
         ]);
 
@@ -157,7 +159,36 @@ class OnboardingController extends Controller
             ],
             'passos' => $passosOrdenados,
             'relatorio'   => $this->relatorioPayload($onboarding),
+            'reuniao'     => [
+                'status'        => $onboarding->reuniao_status,
+                'solicitada_em' => $onboarding->reuniao_solicitada_em?->toISOString(),
+                'agendada_para' => $onboarding->reuniao_agendada_para?->toISOString(),
+                'agendada_por'  => $onboarding->reuniaoAgendadaPor?->name,
+                'realizada'     => $passos
+                    ->firstWhere('chave', 'reuniao_realizada')?->status === OnboardingPasso::STATUS_CONCLUIDO,
+            ],
+            'link'        => $this->linkPayload($onboarding),
         ]);
+    }
+
+    /**
+     * Link do portal do cliente — e, principalmente, QUANDO ele foi aberto
+     * pela última vez. É a diferença entre "o cliente não fez" e "o cliente
+     * nem viu", que muda completamente a cobrança. `ultimo_acesso` já era
+     * gravado a cada visita e não era exibido em lugar nenhum.
+     *
+     * Não cria o link: quem cria é o botão "Gerar link" (`gerarLink()`).
+     * Abrir a tela de detalhe não deve ter efeito colateral de criar token.
+     */
+    private function linkPayload(Onboarding $onboarding): array
+    {
+        $link = OnboardingLink::where('company_id', $onboarding->company_id)->first();
+
+        return [
+            'existe'        => (bool) $link,
+            'url'           => $link ? route('onboarding.publico.workspace', $link->token) : null,
+            'ultimo_acesso' => $link?->ultimo_acesso?->toISOString(),
+        ];
     }
 
     /**
@@ -446,6 +477,7 @@ class OnboardingController extends Controller
             // — sem isso o passo detalhado não tem como ser referenciado na ação.
             'id'             => $passo->id,
             'chave'          => $passo->chave,
+            'etapa'          => $passo->etapa,
             'titulo'         => $passo->titulo,
             'dono'           => $passo->dono,
             'setor'          => $passo->setor?->nome,

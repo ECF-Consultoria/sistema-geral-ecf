@@ -124,6 +124,12 @@ class Onboarding extends Model
         return $this->belongsTo(User::class, 'responsavel_id');
     }
 
+    /** Quem, do nosso lado, marcou a data da reunião — nunca exposto ao cliente. */
+    public function reuniaoAgendadaPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reuniao_agendada_por');
+    }
+
     public function passos(): HasMany
     {
         return $this->hasMany(OnboardingPasso::class);
