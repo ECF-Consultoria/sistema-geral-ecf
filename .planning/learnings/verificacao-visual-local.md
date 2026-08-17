@@ -88,3 +88,56 @@ estado anterior no fim (e confira por reconsulta, não por stdout do script).
 
 Cuidado extra em tela com autosave: a própria conferência **grava**. O que você
 digitou no probe fica persistido — o valor semeado não é o valor final.
+
+## 6. Deploy isolado com o `main` local divergido
+
+Em 2026-08-17 o `main` local estava **~130 commits à frente e ~180 atrás** de
+`origin/main` ao mesmo tempo (histórias paralelas com as mesmas mensagens: a Fase
+135 só existia no local). `deploy.sh` exige árvore limpa **e** `HEAD ==
+origin/main`, então não há como deployar dali — e a árvore ainda tinha trabalho
+vivo de outra sessão.
+
+Receita que funcionou, na ordem:
+
+1. **Provar que a base é igual antes de transplantar.** É este passo que separa
+   deploy isolado de arrastar trabalho alheio:
+   ```bash
+   git diff origin/main HEAD -- <cada arquivo seu>   # tem de sair VAZIO
+   ```
+   Vazio significa que o seu diff de working-tree assenta em `origin/main` sem
+   carregar commit de ninguém.
+2. `git diff HEAD -- <seus arquivos> > /c/tmp/x.patch`
+3. `git worktree add /c/tmp/wt -b deploy/<assunto> origin/main`
+4. `git apply --check` (recusa cedo se não assentar) → `git apply` → copiar os
+   arquivos novos. **`plink.exe`/`pscp.exe` são untracked**: a worktree nasce sem
+   eles e o `deploy.sh` os procura ao lado do script — copiar à mão.
+5. Rodar os testes **na worktree**. Ela não tem `node_modules`, então qualquer
+   teste que importe pacote npm (`lib/utils.js` → `clsx`) falha por ambiente, não
+   por regressão. Meça o baseline do arquivo suspeito com `git stash -u` antes de
+   culpar a sua mudança.
+6. Auditar as deleções do commit **antes do push** — `git show HEAD --unified=0 |
+   grep '^-'` — e confirmar `HEAD~1 == origin/main` (fast-forward puro).
+7. `git push origin deploy/<assunto>:main` e rodar `deploy.sh` **de dentro da
+   worktree**, onde `HEAD == origin/main` e nada está sujo.
+
+### Duas armadilhas do próprio deploy
+
+- **Workers presos em `STOPPING`** seguram o `supervisorctl restart` e o deploy
+  fica pendurado indefinidamente. Destrave: `supervisorctl signal KILL ecf-worker:*`
+  — eles voltam a `RUNNING` e o script segue.
+- **`pgrep -f 'reset --hard origin/main'` casa com o próprio comando** e reporta
+  "deploy rodando" para sempre. Use classe de caractere: `pgrep -fa '[r]eset --hard origin'`.
+
+### Mudança só de frontend não precisa do deploy.sh inteiro
+
+Commit e push primeiro (arquivo solto na VPS morre no `reset --hard` seguinte —
+regressão silenciosa semanas depois). Depois, na VPS:
+
+```bash
+cd /var/www/ecf_admin && git fetch origin main --quiet && git reset --hard origin/main --quiet
+npx vite build && php artisan config:cache && php artisan view:cache
+chown -R www-data:www-data /var/www/ecf_admin
+```
+
+Sem `composer install`, sem `migrate`, sem restart de worker — ~20s de build em
+vez de 10+ minutos. Confirme pelo hash novo em `public/build/manifest.json`.
