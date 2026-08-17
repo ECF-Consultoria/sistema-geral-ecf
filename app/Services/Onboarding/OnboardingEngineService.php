@@ -7,6 +7,7 @@ use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
 use App\Models\User;
 use App\Support\Onboarding\DefinicaoOnboarding;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -145,6 +146,81 @@ class OnboardingEngineService
             ->performedOn($onboarding)
             ->withProperties(['responsavel_id' => $responsavel->id])
             ->log("Responsável confirmado — onboarding {$onboarding->id} em andamento");
+
+        return $onboarding;
+    }
+
+    // ─── Reunião de onboarding ───────────────────────────────────────────────
+
+    /**
+     * O CLIENTE pede a reunião pelo portal — sem data, que é o ponto: ele não
+     * escolhe agenda nossa, só sinaliza que quer.
+     *
+     * Idempotente e não-regressivo: pedir duas vezes não move nada, e pedir
+     * depois de já haver data marcada NÃO rebaixa o status para `solicitada`
+     * (senão um clique acidental do cliente apagaria da tela dele a data que
+     * já estava combinada).
+     *
+     * Só vale para onboarding em `andamento` — rascunho não tem portal
+     * (D-05/SC-04).
+     */
+    public function solicitarReuniao(Onboarding $onboarding, ?string $ip = null): bool
+    {
+        if ($onboarding->status !== Onboarding::STATUS_ANDAMENTO) {
+            return false;
+        }
+
+        if ($onboarding->reuniao_status === Onboarding::REUNIAO_AGENDADA) {
+            return false;
+        }
+
+        if ($onboarding->reuniao_status === Onboarding::REUNIAO_SOLICITADA) {
+            return false;
+        }
+
+        $onboarding->reuniao_status = Onboarding::REUNIAO_SOLICITADA;
+        $onboarding->reuniao_solicitada_em = now();
+        $onboarding->save();
+
+        activity('onboarding')
+            ->performedOn($onboarding)
+            ->withProperties(['ip' => $ip])
+            ->log('Cliente solicitou a reunião de onboarding pelo portal');
+
+        return true;
+    }
+
+    /**
+     * O RESPONSÁVEL marca data e hora. A partir daqui o cliente enxerga a data
+     * no portal — é a volta da informação que ele pediu.
+     *
+     * Remarcar é só chamar de novo com outra data; o estado continua
+     * `agendada` e o activity guarda as duas datas para reconstruir o
+     * histórico sem precisar de tabela de remarcação.
+     */
+    public function agendarReuniao(Onboarding $onboarding, CarbonInterface $quando, User $por): Onboarding
+    {
+        if ($onboarding->status !== Onboarding::STATUS_ANDAMENTO) {
+            throw new \DomainException('Só é possível agendar reunião de onboarding em andamento.');
+        }
+
+        $anterior = $onboarding->reuniao_agendada_para;
+
+        $onboarding->reuniao_status = Onboarding::REUNIAO_AGENDADA;
+        $onboarding->reuniao_agendada_para = $quando;
+        $onboarding->reuniao_agendada_por = $por->id;
+        $onboarding->save();
+
+        activity('onboarding')
+            ->performedOn($onboarding)
+            ->withProperties([
+                'agendada_para'   => $quando->toDateTimeString(),
+                'anterior'        => $anterior?->toDateTimeString(),
+                'agendada_por'    => $por->id,
+            ])
+            ->log($anterior
+                ? "Reunião de onboarding remarcada para {$quando->format('d/m/Y H:i')}"
+                : "Reunião de onboarding agendada para {$quando->format('d/m/Y H:i')}");
 
         return $onboarding;
     }

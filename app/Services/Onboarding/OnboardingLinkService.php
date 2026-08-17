@@ -3,6 +3,7 @@
 namespace App\Services\Onboarding;
 
 use App\Models\Company;
+use App\Models\Onboarding;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
 use App\Support\Onboarding\DefinicaoOnboarding;
@@ -112,6 +113,54 @@ class OnboardingLinkService
                     'onboarding_passo_ids' => $grupo->pluck('id')->values()->all(),
                 ];
             })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Reuniões de onboarding da empresa, uma por onboarding em andamento.
+     *
+     * Não é um passo: o passo `agendar_reuniao_onboarding` é `dono=interno` e
+     * por isso nunca apareceria em {@see self::passosDoCliente()}. O cliente
+     * precisa de um lugar para PEDIR a reunião e para VER a data marcada, e é
+     * isso que este bloco entrega.
+     *
+     * Array (não objeto único) porque o link é por EMPRESA e agrega serviços
+     * (D-06) — com um serviço a tela renderiza um bloco só, mas o payload já
+     * nasce preparado para dois.
+     *
+     * Nada de operação interna sai daqui (T-135-11-02): vai a data, nunca
+     * quem marcou.
+     *
+     * @return array<int, array{
+     *   onboarding_id: int,
+     *   servico: string,
+     *   status: ?string,
+     *   agendada_para: ?string,
+     *   solicitada_em: ?string,
+     *   realizada: bool,
+     * }>
+     */
+    public function reunioesDaEmpresa(Company $company): array
+    {
+        return Onboarding::query()
+            ->where('company_id', $company->id)
+            ->emAndamento()
+            ->with('servico:id,nome')
+            ->get()
+            ->map(fn (Onboarding $onboarding) => [
+                'onboarding_id' => $onboarding->id,
+                'servico'       => $onboarding->servico?->nome ?? '',
+                'status'        => $onboarding->reuniao_status,
+                'agendada_para' => $onboarding->reuniao_agendada_para?->toIso8601String(),
+                'solicitada_em' => $onboarding->reuniao_solicitada_em?->toIso8601String(),
+                // "Aconteceu?" continua sendo respondido pelo PASSO, nunca por
+                // um terceiro estado da coluna.
+                'realizada'     => $onboarding->passos()
+                    ->where('chave', 'reuniao_realizada')
+                    ->where('status', OnboardingPasso::STATUS_CONCLUIDO)
+                    ->exists(),
+            ])
             ->values()
             ->all();
     }

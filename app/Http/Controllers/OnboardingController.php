@@ -207,6 +207,38 @@ class OnboardingController extends Controller
     }
 
     /**
+     * POST /onboarding/{onboarding}/reuniao — o responsável marca data e hora.
+     * É a volta da informação que o cliente pediu: a partir daqui a data
+     * aparece no portal dele.
+     *
+     * Remarcar é chamar de novo com outra data — o `activity` guarda a data
+     * anterior e a nova, o que reconstrói o histórico sem tabela de
+     * remarcação.
+     */
+    public function agendarReuniao(Request $request, Onboarding $onboarding)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'reuniao_agendada_para' => ['required', 'date'],
+        ]);
+
+        try {
+            $this->engine->agendarReuniao(
+                $onboarding,
+                \Illuminate\Support\Carbon::parse($data['reuniao_agendada_para']),
+                $request->user()
+            );
+        } catch (\DomainException $e) {
+            throw ValidationException::withMessages([
+                'reuniao_agendada_para' => $e->getMessage(),
+            ]);
+        }
+
+        return back()->with('success', 'Reunião agendada — o cliente já vê a data no portal.');
+    }
+
+    /**
      * POST /onboarding/passos/{passo}/concluir — conclui manualmente um
      * passo (nunca um passo com `auto_fonte`, D-19). Diferente da confirmação
      * de responsável, `concluirManualmente()` não registra activity própria

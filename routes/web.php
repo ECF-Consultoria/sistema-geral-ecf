@@ -120,6 +120,10 @@ Route::patch('/onboarding-cliente/{token}/passo', [OnboardingPublicoController::
 Route::get('/onboarding-cliente/{token}/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
     ->middleware('throttle:20,1')
     ->name('onboarding.publico.conectar-ml');
+// O cliente PEDE a reunião (sem data — quem marca é o responsável).
+Route::post('/onboarding-cliente/{token}/reuniao', [OnboardingPublicoController::class, 'solicitarReuniao'])
+    ->middleware('throttle:20,1')
+    ->name('onboarding.publico.reuniao');
 
 // ML OAuth — callback público (o cliente autoriza fora do painel)
 Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])
@@ -883,6 +887,9 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
             ->name('onboarding.responsavel.confirmar');
         Route::post('/onboarding/passos/{passo}/concluir', [OnboardingController::class, 'concluirPasso'])
             ->name('onboarding.passos.concluir');
+        // Data e hora da reunião — a volta da informação que o cliente pediu.
+        Route::post('/onboarding/{onboarding}/reuniao', [OnboardingController::class, 'agendarReuniao'])
+            ->name('onboarding.reuniao.agendar');
 
         // ─── Fase 135 Plano 11 — geração do link único por empresa (D-06) ──
         // Ação interna: a Coordenação gera/copia o token do portal público

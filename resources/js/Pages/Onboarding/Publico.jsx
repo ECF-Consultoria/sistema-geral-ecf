@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, CheckCircle2, Lock, RefreshCw, Zap } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, Lock, RefreshCw, Zap } from 'lucide-react';
 import { Checkbox } from '@/Components/ui/checkbox';
 import { cn, formatDate } from '@/lib/utils';
 
@@ -172,9 +172,97 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
     );
 }
 
+// ─── Reunião de onboarding ────────────────────────────────────────────────
+// Não é um passo: `agendar_reuniao_onboarding` é `dono=interno` e nunca
+// apareceria na lista do cliente. Este bloco existe para ele PEDIR a reunião
+// e para VER a data quando o responsável marcar.
+
+function formatarQuando(iso) {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return d.toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+    });
+}
+
+function ReuniaoCard({ reuniao, token, varios }) {
+    const [enviando, setEnviando] = useState(false);
+
+    function solicitar() {
+        if (enviando) return;
+        setEnviando(true);
+        router.post(route('onboarding.publico.reuniao', token), { onboarding_id: reuniao.onboarding_id }, {
+            preserveScroll: true,
+            onFinish: () => setEnviando(false),
+        });
+    }
+
+    if (reuniao.realizada) {
+        return (
+            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
+                <div className="flex items-start gap-3">
+                    <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-emerald-300" />
+                    <div>
+                        <h3 className="text-[14px] font-semibold text-emerald-200">
+                            Reunião realizada{varios ? ` · ${reuniao.servico}` : ''}
+                        </h3>
+                        <p className="text-emerald-300/70 text-[11px] mt-1">Obrigado pelo seu tempo.</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    const quando = formatarQuando(reuniao.agendada_para);
+
+    return (
+        <div className="rounded-2xl border border-white/[0.10] bg-white/[0.03] p-4">
+            <div className="flex items-start gap-3">
+                <CalendarDays size={16} className="shrink-0 mt-0.5 text-white/40" />
+                <div className="min-w-0 flex-1">
+                    <h3 className="text-[14px] font-semibold text-white">
+                        Reunião de onboarding{varios ? ` · ${reuniao.servico}` : ''}
+                    </h3>
+
+                    {reuniao.status === 'agendada' && quando && (
+                        <>
+                            <p className="text-ecf-yellow text-[13px] font-semibold mt-1.5">{quando}</p>
+                            <p className="text-white/40 text-[12px] mt-1">
+                                Está na agenda. Se precisar remarcar, fale com a gente pelo grupo.
+                            </p>
+                        </>
+                    )}
+
+                    {reuniao.status === 'solicitada' && (
+                        <p className="text-white/50 text-[12px] mt-1.5">
+                            Recebemos seu pedido. Em breve confirmamos a data e ela aparece aqui.
+                        </p>
+                    )}
+
+                    {!reuniao.status && (
+                        <>
+                            <p className="text-white/50 text-[12px] mt-1.5">
+                                É a conversa em que apresentamos o diagnóstico da sua conta e os próximos passos.
+                            </p>
+                            <button
+                                onClick={solicitar}
+                                disabled={enviando}
+                                className="mt-2 px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 text-[12px] font-semibold transition-all disabled:opacity-60"
+                            >
+                                {enviando ? 'Enviando…' : 'Solicitar reunião'}
+                            </button>
+                        </>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ─── Página ───────────────────────────────────────────────────────────────
 
-export default function Publico({ token, empresa, passos = [] }) {
+export default function Publico({ token, empresa, passos = [], reunioes = [] }) {
     const [conectandoChave, setConectandoChave] = useState(null);
 
     // Estado "Link inválido": na prática, `OnboardingPublicoController::workspace()`
@@ -196,8 +284,11 @@ export default function Publico({ token, empresa, passos = [] }) {
         );
     }
 
-    const nadaPendente = passos.length === 0;
-    const tudoConcluido = !nadaPendente && passos.every((p) => p.status === 'concluido');
+    // "Nada pendente" agora considera a reunião: um cliente que já cumpriu
+    // todos os passos mas ainda precisa marcar a conversa NÃO está sem nada a
+    // fazer.
+    const nadaPendente = passos.length === 0 && reunioes.length === 0;
+    const passosTodosConcluidos = passos.length > 0 && passos.every((p) => p.status === 'concluido');
     const faltam = passos.filter((p) => p.status !== 'concluido').length;
 
     // Blocos na ordem fixa de ETAPAS_ORDEM, preservando dentro de cada um a
@@ -223,7 +314,7 @@ export default function Publico({ token, empresa, passos = [] }) {
                         </p>
                         <h1 className="text-white font-display font-bold text-lg mt-0.5 truncate">{empresa.nome}</h1>
                     </div>
-                    {!nadaPendente && !tudoConcluido && (
+                    {faltam > 0 && (
                         <p className="text-white/40 text-[11px] shrink-0">
                             {faltam} pendente{faltam === 1 ? '' : 's'}
                         </p>
@@ -243,8 +334,8 @@ export default function Publico({ token, empresa, passos = [] }) {
                     </div>
                 )}
 
-                {!nadaPendente && tudoConcluido && (
-                    <div className="text-center py-16 space-y-3">
+                {passosTodosConcluidos && (
+                    <div className="text-center py-10 space-y-3">
                         <CheckCircle2 className="h-14 w-14 text-emerald-400 mx-auto" />
                         <h2 className="text-white font-display font-bold text-xl">Tudo certo por aqui!</h2>
                         <p className="text-white/50 text-[13px] max-w-sm mx-auto">
@@ -253,7 +344,7 @@ export default function Publico({ token, empresa, passos = [] }) {
                     </div>
                 )}
 
-                {!nadaPendente && !tudoConcluido && (
+                {!nadaPendente && !passosTodosConcluidos && (
                     <div className="space-y-8">
                         {blocos.map(({ etapa, itens }) => (
                             <section key={etapa} className="space-y-3">
@@ -278,6 +369,25 @@ export default function Publico({ token, empresa, passos = [] }) {
                             </section>
                         ))}
                     </div>
+                )}
+
+                {/* Reunião fica FORA do bloco de passos: ela permanece na tela
+                    mesmo depois de tudo concluído — é justamente aí que ela
+                    passa a ser a única coisa que importa. */}
+                {reunioes.length > 0 && (
+                    <section className="space-y-3 pt-2">
+                        <h2 className="text-white font-display font-bold text-[15px]">
+                            {ETAPA_LABELS.agendamento.titulo}
+                        </h2>
+                        {reunioes.map((reuniao) => (
+                            <ReuniaoCard
+                                key={reuniao.onboarding_id}
+                                reuniao={reuniao}
+                                token={token}
+                                varios={reunioes.length > 1}
+                            />
+                        ))}
+                    </section>
                 )}
             </div>
         </div>

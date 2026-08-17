@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\Onboarding;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
 use App\Services\MercadoLivreService;
+use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -47,10 +49,43 @@ class OnboardingPublicoController extends Controller
         $company = $link->company;
 
         return Inertia::render('Onboarding/Publico', [
-            'token'   => $token,
-            'empresa' => ['nome' => $company->name],
-            'passos'  => $this->linkService->passosDoCliente($company),
+            'token'    => $token,
+            'empresa'  => ['nome' => $company->name],
+            'passos'   => $this->linkService->passosDoCliente($company),
+            'reunioes' => $this->linkService->reunioesDaEmpresa($company),
         ]);
+    }
+
+    /**
+     * POST /onboarding-cliente/{token}/reuniao — o cliente PEDE a reunião.
+     * Sem data: ele não escolhe agenda nossa, só sinaliza que quer. Quem marca
+     * data e hora é o responsável, pelo painel interno.
+     *
+     * `onboarding_id` é validado contra a empresa do token — sem isso um
+     * token válido conseguiria solicitar reunião no onboarding de outra
+     * empresa só trocando o id no corpo do request.
+     */
+    public function solicitarReuniao(Request $request, string $token, OnboardingEngineService $engine)
+    {
+        $link = OnboardingLink::where('token', $token)->firstOrFail();
+
+        $data = $request->validate([
+            'onboarding_id' => ['required', 'integer'],
+        ]);
+
+        $onboarding = Onboarding::where('id', $data['onboarding_id'])
+            ->where('company_id', $link->company_id)
+            ->first();
+
+        if (! $onboarding) {
+            throw ValidationException::withMessages([
+                'onboarding_id' => 'Não encontramos este onboarding.',
+            ]);
+        }
+
+        $engine->solicitarReuniao($onboarding, $request->ip());
+
+        return back()->with('success', 'Pedido de reunião enviado. Nossa equipe entra em contato com a data.');
     }
 
     /**

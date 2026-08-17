@@ -35,11 +35,17 @@ class Onboarding extends Model
         'responsavel_id',
         'iniciado_em',
         'concluido_em',
+        'reuniao_status',
+        'reuniao_solicitada_em',
+        'reuniao_agendada_para',
+        'reuniao_agendada_por',
     ];
 
     protected $casts = [
-        'iniciado_em'  => 'datetime',
-        'concluido_em' => 'datetime',
+        'iniciado_em'           => 'datetime',
+        'concluido_em'          => 'datetime',
+        'reuniao_solicitada_em' => 'datetime',
+        'reuniao_agendada_para' => 'datetime',
     ];
 
     // ─── Catálogo fechado de `status` ────────────────────────────────────────
@@ -51,6 +57,23 @@ class Onboarding extends Model
         self::STATUS_RASCUNHO,
         self::STATUS_ANDAMENTO,
         self::STATUS_CONCLUIDO,
+    ];
+
+    // ─── Catálogo fechado de `reuniao_status` ────────────────────────────────
+    /** O cliente pediu a reunião pelo portal; ninguém marcou data ainda. */
+    public const REUNIAO_SOLICITADA = 'solicitada';
+    /** O responsável marcou data e hora — o cliente já enxerga. */
+    public const REUNIAO_AGENDADA = 'agendada';
+
+    /**
+     * Dois estados, não três. **Não existe `realizada` aqui de propósito**: o
+     * passo `reuniao_realizada` já responde "aconteceu?", com `feito_em` e
+     * `feito_por`. Um terceiro estado nesta coluna criaria duas versões da
+     * mesma verdade.
+     */
+    public const REUNIAO_STATUSES = [
+        self::REUNIAO_SOLICITADA,
+        self::REUNIAO_AGENDADA,
     ];
 
     /**

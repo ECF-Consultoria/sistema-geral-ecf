@@ -66,11 +66,17 @@ código → `null`, e o portal simplesmente não renderiza a linha (comportament
 ### 2.3 Agendamento — 4 colunas em `onboardings`, sem tabela nova
 
 ```
-reuniao_status         varchar(20)  NULL   -- solicitada | agendada | realizada
+reuniao_status         varchar(20)  NULL   -- solicitada | agendada
 reuniao_solicitada_em  timestamp    NULL   -- quando o CLIENTE pediu
 reuniao_agendada_para  datetime     NULL   -- data e hora combinadas
 reuniao_agendada_por   bigint       NULL   -- FK users, nullOnDelete (exige nullable — learnings §6)
 ```
+
+**Correção aplicada na implementação (2026-08-17):** este desenho previa três
+estados, com `realizada` no fim. Ao implementar ficou claro que o terceiro
+**duplicaria o passo** `reuniao_realizada`, que já responde "aconteceu?" com
+`feito_em` e `feito_por` — exatamente a duplicação de verdade que o §2.4 abaixo
+proíbe para o apurado. Ficaram **dois** estados; "realizada" é lido do passo.
 
 **Por que em `onboardings` e não em tabela própria:** é UMA reunião de onboarding por onboarding,
 com ciclo de vida curto (pedir → marcar → realizar). Tabela própria só se pagaria com histórico
