@@ -81,6 +81,42 @@ o resto é checklist, painel da Clicksign e julgamento.
   Recusados: tolerar e seguir (aceitaria produção com liberação não confirmada) e abortar a qualquer
   diferença (custaria a janela por detalhe cosmético).
 
+### A janela aberta entre a troca e a aprovação (acrescentada em 2026-08-17, após a verificação)
+
+> Esta decisão foi acrescentada **depois** dos planos serem escritos. O plan-checker encontrou um
+> buraco estrutural que nenhum dos quatro planos fechava.
+
+**O problema:** assim que as credenciais viram produção (wave 2), o sistema fica **vivo** contra a
+Clicksign real. Mas a aprovação final (SC5) só acontece na wave 4 — e entre as duas há checkpoints
+humanos e possibilidade de abortar, então a janela pode durar **horas ou dias**.
+
+Nesse intervalo, qualquer pessoa com `admin.contratos` fazendo o **trabalho normal do dia**, numa
+empresa real que já esteja com cadastro completo, geraria um **contrato de verdade** para um
+**cliente de verdade** — e a API **não cancela** contrato em andamento (§15.2 do empírico). É
+exatamente o risco que a **D1 da milestone** (LOCKED) existe para impedir: *"contrato errado enviado
+ao cliente não tem desfazer bonito"*.
+
+⚠️ **Agravante:** a **D-09 da Fase 131** concedeu `admin.contratos` a **todo `role:admin`**, pelo
+curto-circuito de `User::hasPermission()`. Não é uma pessoa — é toda a equipe de admin.
+
+⚠️ **O kill switch da Fase 128 NÃO serve.** `EmpresaOperacionalRouter::bloqueioAtivo()`
+(`administrativo_bloqueio_ativo`) bloqueia `liberarEmpresa()` — a **liberação** da empresa para o
+operacional — e não a **geração** do contrato. Verificado no código.
+
+- **D-07: Um interruptor PRÓPRIO, checado em `gerarContrato()`.** Chave de configuração nova;
+  enquanto ligada, ninguém gera contrato e a tela explica o motivo em linguagem simples. Ligada
+  **antes** de trocar as credenciais, desligada **na aprovação final (SC5)**.
+  Motivo: é a única opção que garante **estruturalmente**, não por combinado. As alternativas
+  dependiam de todo mundo lembrar (um esquecimento = contrato real enviado) ou de fazer a virada de
+  madrugada (encurta a janela mas tira a opção de abortar e retomar, e força dar a aprovação final
+  fora de hora).
+  **Ganho além desta fase:** serve para qualquer manutenção futura que precise congelar a emissão.
+  Recusados: avisar a equipe e conferir depois; fazer fora do horário.
+
+  ⚠️ **Isto vira a primeira task de código da fase, junto com a D-01** — as duas precisam estar
+  publicadas antes de qualquer troca de credencial. E o desligamento do interruptor é o **último**
+  passo, parte do SC5.
+
 ### Claude's Discretion
 
 Ficam a critério do planejamento: a ordem exata dos passos do checklist, o nome da empresa fictícia,
