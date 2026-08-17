@@ -145,3 +145,8 @@ None - nenhuma configuração de serviço externo neste plano. Nenhum deploy foi
 ---
 *Phase: 132-cutover-sandbox-produ-o-checkpoint-humano-v22-0*
 *Completed: 2026-08-17*
+
+## Self-Check: PASSED
+
+Todos os 6 arquivos declarados (criados/roteiro/SUMMARY) confirmados no disco; todos os 4
+commits (`d15d6049`, `ebd74d65`, `41a82153`, `3f1d8cd7`) confirmados em `git log --all`.
