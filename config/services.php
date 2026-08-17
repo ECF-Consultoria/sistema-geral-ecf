@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\Clicksign\ClicksignAmbiente;
+
 return [
 
     /*
@@ -210,6 +212,28 @@ return [
         'api_user_email'   => env('CLICKSIGN_API_USER_EMAIL'),
         'max_upload_bytes' => env('CLICKSIGN_MAX_UPLOAD_BYTES', 20971520),
 
+        // Fase 131 Plano 131-01 (UI-05 do UI-SPEC, CLICK-10/D-13) — URL do
+        // PAINEL da Clicksign (onde a pessoa CONCLUI o cancelamento à mão,
+        // porque a API v3 não cancela envelope em andamento — medido em
+        // CLICKSIGN-SANDBOX-EMPIRICO.md §15.2). NÃO é a `base_url` da API.
+        // O CTA de confirmação do cancelamento (plano 131-05) promete
+        // "Registrar e ir para a Clicksign" — um rótulo que promete levar a
+        // um lugar precisa de fato levar, mesma régua que recusou "Cancelar
+        // contrato" para um botão que não cancela. Derivada do MESMO
+        // CLICKSIGN_ENV que decide a `base_url` acima; default aponta para o
+        // sandbox (nunca produção) — apontar errado por omissão não pode
+        // levar ninguém a mexer num contrato real por engano.
+        //
+        // Fase 132 Plano 01 (D-01) — a resolução passou a ser feita por
+        // `ClicksignAmbiente::painelUrl()`, que aceita as quatro grafias
+        // `producao`, `produção`, `production` e `prod` (a armadilha real
+        // encontrada: o código comparava a grafia SÓ em português, mas o
+        // ROADMAP manda escrever a grafia em inglês — quem seguisse o
+        // roadmap à risca caía sempre no painel de TESTE mesmo já em
+        // produção). Grafia desconhecida continua caindo no painel de teste
+        // de propósito — default seguro, nunca produção por acidente.
+        'painel_url' => ClicksignAmbiente::painelUrl(env('CLICKSIGN_PAINEL_URL'), env('CLICKSIGN_ENV', 'sandbox')),
+
         // Fase 126 Plan 126-10 — UUID do modelo (.docx) de contrato cadastrado
         // na conta Clicksign, lido pelo comando `clicksign:sondar-modelo` e,
         // depois, pela Fase 127. Sandbox e produção têm UUIDs DIFERENTES —
@@ -217,6 +241,18 @@ return [
         // aqui nem no `.env.example` (mesmo não sendo segredo, um exemplo
         // preenchido vira produção por engano).
         'template_id'      => env('CLICKSIGN_TEMPLATE_ID'),
+
+        // Plano 127-04 (D-03 + CLICK-08 + DADOS-06) — 30 e 3 são os valores
+        // MEDIDOS como padrão da própria Clicksign (`deadline_at` = +30
+        // dias, `remind_interval` = 3 — §"Envelope" do
+        // CLICKSIGN-SANDBOX-EMPIRICO.md), não são palpite. D-03: prazo e
+        // lembrete vão na CRIAÇÃO do envelope, não na ativação, porque a
+        // ativação acontece FORA do sistema (D-02, interface da Clicksign)
+        // e o valor se perderia se só fosse aplicado lá. CLICK-08: o
+        // lembrete é nativo da Clicksign — não criar scheduler próprio,
+        // duplicaria notificação.
+        'prazo_dias_padrao'    => (int) env('CLICKSIGN_PRAZO_DIAS', 30),
+        'lembrete_dias_padrao' => (int) env('CLICKSIGN_LEMBRETE_DIAS', 3),
 
         // Fase 126 Plan 126-02 (D-08) — os 3 signatários FIXOS da ECF que
         // entram em todo contrato (dois sócios como "contratada" + Comercial

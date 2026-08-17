@@ -119,7 +119,7 @@ class ContratoPdfService
      * de serviço que a view vai listar — nome, valor formatado e vigência
      * individual de cada serviço.
      *
-     * @param  array<int, array{servico: string, valor_contratado: float|string, data_contratacao: string, data_vencimento: string}>  $snapshot
+     * @param  array<int, array{servico: string, valor_contratado: float|string, data_contratacao: string, data_vencimento: ?string}>  $snapshot
      * @return array<int, array{servico: string, valor: float, valor_formatado: string, inicio: string, fim: string}>
      */
     private function montarServicos(array $snapshot): array
@@ -141,7 +141,7 @@ class ContratoPdfService
      * Vigência do contrato inteiro (D-05): a menor `data_contratacao` e a
      * maior `data_vencimento` entre os serviços do snapshot.
      *
-     * @param  array<int, array{data_contratacao: string, data_vencimento: string}>  $snapshot
+     * @param  array<int, array{data_contratacao: string, data_vencimento: ?string}>  $snapshot
      * @return array{inicio: string, fim: string}
      */
     private function montarVigencia(array $snapshot): array
@@ -150,11 +150,23 @@ class ContratoPdfService
         $fins    = array_map(fn (array $item) => $item['data_vencimento'], $snapshot);
 
         sort($inicios);
-        sort($fins);
+
+        // Achado do gate do plano 128-06 (medição real, não Http::fake()):
+        // `data_vencimento` nulo é caso LEGÍTIMO ("prazo indeterminado" —
+        // ContratoDadosMinimosService::faltantes(), item 5) e
+        // ContratoClicksignService grava exatamente `null` no snapshot
+        // congelado quando o ContratoServico não tem vencimento. Um único
+        // serviço em aberto torna a vigência do CONJUNTO indeterminada — não
+        // dá para apurar "a maior data" quando uma delas não existe.
+        $fimIndeterminado = in_array(null, $fins, true);
+
+        if (!$fimIndeterminado) {
+            sort($fins);
+        }
 
         return [
             'inicio' => $this->formatarData($inicios[0]),
-            'fim'    => $this->formatarData($fins[count($fins) - 1]),
+            'fim'    => $fimIndeterminado ? $this->formatarData(null) : $this->formatarData($fins[count($fins) - 1]),
         ];
     }
 
@@ -196,9 +208,21 @@ class ContratoPdfService
 
     /**
      * Formata data (string `Y-m-d` ou compatível) no padrão pt-BR: `d/m/Y`.
+     *
+     * Achado do gate do plano 128-06 (medição real contra o sandbox
+     * Clicksign, não `Http::fake()`): esta função assumia `string`
+     * obrigatório e quebrava com `TypeError` quando `data_vencimento` do
+     * snapshot vinha `null` — o caso legítimo de "prazo indeterminado"
+     * (`ContratoDadosMinimosService::faltantes()`, item 5, NÃO reprova esse
+     * campo vazio). `null`/`''` viram o texto visível "Indeterminado", nunca
+     * um `TypeError` nem um branco silencioso no documento.
      */
-    private function formatarData(string $data): string
+    private function formatarData(?string $data): string
     {
+        if ($data === null || $data === '') {
+            return 'Indeterminado';
+        }
+
         return Carbon::parse($data)->format('d/m/Y');
     }
 }

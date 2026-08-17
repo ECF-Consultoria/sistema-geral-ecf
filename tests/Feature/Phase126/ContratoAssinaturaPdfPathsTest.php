@@ -58,7 +58,26 @@ class ContratoAssinaturaPdfPathsTest extends TestCase
     #[Test]
     public function comsnapshot_devolve_array_com_pelo_menos_dois_servicos_no_formato_esperado(): void
     {
-        $contrato = ContratoAssinatura::factory()->comSnapshot()->create();
+        // Fase 127-01 (D-06): o DEFAULT de `comSnapshot()` passou a ser um
+        // único item (um ContratoAssinatura representa um serviço só). Este
+        // teste não valida mais o default — passa a lista explicitamente,
+        // preservando a régua de "pelo menos 2 serviços no formato
+        // esperado" como comportamento SUPORTADO (empresa com serviços
+        // concatenados no mesmo snapshot, caso D-19 anterior à D-21).
+        $contrato = ContratoAssinatura::factory()->comSnapshot([
+            [
+                'servico'          => 'Gestão de Tráfego — Mercado Livre',
+                'valor_contratado' => 1847.32,
+                'data_contratacao' => '2026-01-15',
+                'data_vencimento'  => '2027-01-15',
+            ],
+            [
+                'servico'          => 'Consultoria Shopee',
+                'valor_contratado' => 923.9,
+                'data_contratacao' => '2026-02-01',
+                'data_vencimento'  => '2027-02-01',
+            ],
+        ])->create();
 
         $contrato->refresh();
 

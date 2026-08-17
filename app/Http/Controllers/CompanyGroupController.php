@@ -57,6 +57,20 @@ class CompanyGroupController extends Controller
     /**
      * Atribui um serviço (cria contrato ativo) a TODAS as empresas do grupo.
      * Pula empresas que já têm aquele serviço ativo (evita duplicar).
+     *
+     * Fase 128 (D-05, decisão acrescentada no plan-check): esta operação em
+     * lote NUNCA pode disparar o gate administrativo de contrato. O
+     * `ContratoServicoGatilhoObserver` (#[ObservedBy] no model
+     * `ContratoServico`) capturaria automaticamente cada `create()` deste
+     * laço e chamaria `GatilhoContratoAdministrativoService::dispararSeElegivel()`
+     * uma vez por empresa — um clique de atribuição em grupo geraria N
+     * contratos reais indo para assinatura de N clientes de uma vez, a
+     * partir de uma ação que hoje só deveria criar N linhas de
+     * `contratos_servico`. `withoutEvents()` suprime o Observer só dentro
+     * deste laço, sem afetar o comportamento normal do model em nenhum
+     * outro call site. Contrato para essas empresas continua nascendo só
+     * pelos dois pontos de entrada de EMPRESA (webhook HubSpot e cadastro
+     * manual) ou pelo botão individual da Fase 131.
      */
     public function atribuirServico(Request $request, CompanyGroup $group)
     {
@@ -70,27 +84,29 @@ class CompanyGroupController extends Controller
 
         $criados = 0;
         $pulados = 0;
-        foreach ($group->companies()->get() as $company) {
-            $jaTem = ContratoServico::where('company_id', $company->id)
-                ->where('servico_id', $data['servico_id'])
-                ->where('ativo', true)
-                ->exists();
-            if ($jaTem) {
-                $pulados++;
-                continue;
-            }
+        ContratoServico::withoutEvents(function () use ($group, $data, &$criados, &$pulados) {
+            foreach ($group->companies()->get() as $company) {
+                $jaTem = ContratoServico::where('company_id', $company->id)
+                    ->where('servico_id', $data['servico_id'])
+                    ->where('ativo', true)
+                    ->exists();
+                if ($jaTem) {
+                    $pulados++;
+                    continue;
+                }
 
-            ContratoServico::create([
-                'company_id'       => $company->id,
-                'servico_id'       => $data['servico_id'],
-                'valor_contratado' => $data['valor_contratado'],
-                'data_contratacao' => $data['data_contratacao'],
-                'data_vencimento'  => $data['data_vencimento'] ?? null,
-                'observacoes'      => $data['observacoes'] ?? null,
-                'ativo'            => true,
-            ]);
-            $criados++;
-        }
+                ContratoServico::create([
+                    'company_id'       => $company->id,
+                    'servico_id'       => $data['servico_id'],
+                    'valor_contratado' => $data['valor_contratado'],
+                    'data_contratacao' => $data['data_contratacao'],
+                    'data_vencimento'  => $data['data_vencimento'] ?? null,
+                    'observacoes'      => $data['observacoes'] ?? null,
+                    'ativo'            => true,
+                ]);
+                $criados++;
+            }
+        });
 
         $msg = "Serviço atribuído a {$criados} empresa(s) do grupo \"{$group->name}\".";
         if ($pulados > 0) {

@@ -109,18 +109,34 @@ Descoberta pela pesquisa da Fase 124 (2026-08-07): quando uma empresa contrata d
 ~~**A5 — Quais serviços, além de Polos, não passam pelo contrato?**~~ **RESPONDIDA em 2026-08-07:** *"Apenas polos é isento de contrato"*. A lista completa está na tabela da D9. Nenhuma decisão pendente aqui.
 
 
-**A1 — Algoritmo de validação do webhook (BLOQUEANTE, fase do webhook).**
-As duas pesquisas chegaram a fórmulas **contraditórias** a partir da mesma documentação oficial, ambas com confiança MÉDIA:
-- `hash('sha256', $rawBody . $secret)` — concatenação simples (STACK.md)
-- `hex(hmac_sha256($secret, $rawBody))` — HMAC clássico (PITFALLS.md)
+~~**A1 — Algoritmo de validação do webhook (BLOQUEANTE, fase do webhook).**~~ **RESOLVIDA em
+2026-08-13 (plano 129-02), por medição empírica contra webhook real do sandbox** — não por leitura
+de documentação. As duas pesquisas tinham chegado a fórmulas contraditórias, ambas com confiança
+MÉDIA:
+- `hash('sha256', $rawBody . $secret)` — concatenação simples (STACK.md) — **ERRADA**, falhou nos 5 eventos reais medidos
+- `hex(hmac_sha256($secret, $rawBody))` — HMAC clássico (PITFALLS.md) — **CONFIRMADA**, bateu em 5 de 5 eventos reais distintos (`add_signer` x4 + `update_deadline`)
 
-São algoritmos diferentes que produzem hashes diferentes. Implementar o errado faz **100% dos webhooks reais falharem em silêncio** — e webhook rejeitado significa contrato assinado que nunca libera a empresa. **Resolver empiricamente**: disparar webhook real do sandbox, calcular as duas fórmulas, logar os dois valores (nunca o secret) e ver qual bate. Só então escrever o teste automatizado, com fixture calculado fora do código de produção.
+Fórmula em código: `hash_hmac('sha256', $rawBody, $secret)`, hex, header `sha256=<hex>` —
+`ClicksignHmacVarredura::FORMULA_CONFIRMADA = 'hmac_body_chave_secret'`. Registro completo da
+sessão de medição em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md` e
+`.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` §12. **Não** marcar CLICK-03 como concluída
+aqui: a recusa real de webhook com assinatura inválida (401) só existe quando o receiver de
+produção do plano 129-03 ligar sobre esta fórmula.
 
 **A2 — Rollback de envelope montado pela metade.** ✅ **RESOLVIDA no discuss-phase da Fase 126 (2026-08-10), não na 127.** Decisão do usuário: **o client cancela o que criou** — guarda o id do envelope e, ao falhar no meio, cancela na Clicksign antes de propagar o erro. A conta não acumula lixo e tentar de novo começa limpo; envelope em `draft` não dispara e-mail, então cancelar é invisível para o cliente. Custa 1 chamada extra no caminho de erro. Ver `126-CONTEXT.md` D-12.
 
 Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou — complexidade herdada pela 127); deixar e ignorar (cada falha deixaria envelope órfão em `draft`).
 
-**A3 — Resposta HTTP do webhook em erro interno.** O webhook do HubSpot responde 200 sempre. Para a Clicksign, responder 5xx permitiria retry do provedor — e a idempotência por `payload_hash` torna isso seguro. Decidir na fase do webhook.
+~~**A3 — Resposta HTTP do webhook em erro interno.**~~ **RESOLVIDA na Fase 129 (plano 129-03,
+2026-08-13).** Divergência DELIBERADA do padrão `HubspotWebhookController` (que sempre responde
+200): a Clicksign recebe **401** quando a assinatura não confere (recusa deliberada — reenviar não
+conserta secret errado), **200** quando o corpo é inválido ou o envelope não casa com contrato
+nenhum ou o evento é duplicado (não é erro, reenviar não ajudaria ou já foi processado), e **503**
+só nas duas falhas verdadeiramente transitórias (banco indisponível ao gravar, falha ao enfileirar)
+— nesses dois casos a idempotência por `payload_hash` torna o retry da Clicksign seguro. Matriz
+completa documentada no docblock de `ClicksignWebhookController::receive()`. Provado ao vivo contra
+a rota de produção em `129-GATE.md` (plano 129-07): assinatura válida → 200; assinatura inválida →
+401; reentrega do mesmo corpo → 401 sem duplicar.
 
 **A4 — Quais das 7 pendências comerciais valem para empresa cadastrada à mão** (ver D2).
 
@@ -130,7 +146,7 @@ Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou
 
 - [ ] **FLUXO-01**: Empresa criada pelo webhook HubSpot deixa de ser roteada automaticamente ao operacional e passa a aguardar a etapa administrativa — **exceto** serviços isentos de contrato (D9)
 - [ ] **FLUXO-02**: Empresa cadastrada à mão pelo Comercial segue exatamente o mesmo caminho, sem porta dos fundos (D2) — mesma exceção do FLUXO-01
-- [ ] **FLUXO-08**: A lista de serviços que exigem contrato é um dado configurável, não um `if` espalhado pelo código; empresa de serviço isento (Polos) vai direto para a operação e **não** aparece como pendente na tela do Administrativo (D9)
+- [x] **FLUXO-08**: A lista de serviços que exigem contrato é um dado configurável, não um `if` espalhado pelo código; empresa de serviço isento (Polos) vai direto para a operação e **não** aparece como pendente na tela do Administrativo (D9)
 - [ ] **FLUXO-09**: A ativação manual pelo time de Publicação (`MlbController::ativarEmpresaPendente()`, tela `/mlb/empresas`) respeita o mesmo bloqueio dos demais caminhos — não existe porta dos fundos para o operacional quando o bloqueio está ligado
 - [x] **FLUXO-03**: A regra de pendências comerciais vive num único lugar, consumida por Comercial, HubSpot e Administrativo
 - [x] **FLUXO-04**: O roteamento operacional vive num único lugar, sem a duplicação atual entre `ComercialController::store()` e `HubspotWebhookController::rotearImplementacao()`
@@ -142,24 +158,24 @@ Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou
 
 - [x] **DADOS-01**: O sistema registra o processo de assinatura de cada empresa, com o estado atual e as datas de envio, assinatura e liberação
 - [x] **DADOS-02**: O sistema registra cada signatário do contrato com seu papel, contato e situação individual de assinatura
-- [ ] **DADOS-03**: Todo evento recebido da Clicksign é gravado bruto, e um evento repetido nunca é processado duas vezes
+- [x] **DADOS-03**: Todo evento recebido da Clicksign é gravado bruto, e um evento repetido nunca é processado duas vezes
 - [x] **DADOS-04**: Recusa de assinatura e prazo expirado são estados próprios, distintos de cancelamento e de falha técnica (D5)
-- [ ] **DADOS-05**: Quando um admin libera a empresa manualmente, o sistema registra quem liberou e por quê
-- [ ] **DADOS-06**: Cada contrato pode ter seu próprio prazo de assinatura (D3)
+- [x] **DADOS-05**: Quando um admin libera a empresa manualmente, o sistema registra quem liberou e por quê
+- [x] **DADOS-06**: Cada contrato pode ter seu próprio prazo de assinatura (D3)
 
 ### Integração Clicksign
 
 - [x] **CLICK-01**: O sistema conversa com a Clicksign sem nunca registrar o token de acesso em log algum
-- [ ] **CLICK-02**: O sistema cria o envelope na Clicksign com o documento, os signatários e os requisitos de assinatura
-- [ ] **CLICK-03**: O sistema recusa webhook cuja assinatura não confere (A1 é gate bloqueante desta capacidade)
-- [ ] **CLICK-04**: Webhook repetido não duplica evento, signatário, assinatura, `MlbEmpresa` nem implementação operacional
-- [ ] **CLICK-05**: A empresa só é liberada ao operacional a partir do estado agregado reconsultado do envelope, nunca do payload isolado do evento (D7)
-- [ ] **CLICK-06**: O processamento pesado do webhook acontece na fila, não na requisição HTTP
-- [ ] **CLICK-07**: Um usuário do Administrativo consegue reenviar a notificação de assinatura para quem ainda não assinou
-- [ ] **CLICK-08**: O envelope é criado já com o lembrete automático nativo da Clicksign configurado, sem scheduler próprio
-- [ ] **CLICK-09**: Um usuário consegue corrigir o e-mail de um signatário depois do envio, sem cancelar o contrato
-- [ ] **CLICK-10**: Um usuário consegue cancelar um contrato em andamento, informando o motivo
-- [ ] **CLICK-11**: Quando o contrato é concluído, o PDF assinado é baixado e guardado no próprio sistema (D6)
+- [x] **CLICK-02**: O sistema cria o envelope na Clicksign com o documento, os signatários e os requisitos de assinatura
+- [x] **CLICK-03**: O sistema recusa webhook cuja assinatura não confere (A1 é gate bloqueante desta capacidade)
+- [x] **CLICK-04**: Webhook repetido não duplica evento, signatário, assinatura, `MlbEmpresa` nem implementação operacional
+- [x] **CLICK-05**: A empresa só é liberada ao operacional a partir do estado agregado reconsultado do envelope, nunca do payload isolado do evento (D7)
+- [x] **CLICK-06**: O processamento pesado do webhook acontece na fila, não na requisição HTTP
+- [x] **CLICK-07**: Um usuário do Administrativo consegue reenviar a notificação de assinatura para quem ainda não assinou
+- [x] **CLICK-08**: O envelope é criado já com o lembrete automático nativo da Clicksign configurado, sem scheduler próprio
+- [~] **CLICK-09**: ~~Um usuário consegue corrigir o e-mail de um signatário depois do envio, sem cancelar o contrato~~ → ⛔ **IMPOSSÍVEL PELA API — não entregue como escrito.** Medido em 2026-08-14 (§15.1 do empírico): `PATCH` e `PUT` em `/envelopes/{id}/signers/{signerId}` devolvem **404**. A Fase 131 entregou o que dava: a tela **explica** que não é possível e conduz ao caminho de cancelar e reemitir (RAMO B, D-14). **Não marcar como cumprido** — o usuário continua sem conseguir corrigir um e-mail digitado errado sem refazer o contrato.
+- [~] **CLICK-10**: ~~Um usuário consegue cancelar um contrato em andamento, informando o motivo~~ → ⚠️ **PARCIAL — a metade do "informando o motivo" foi entregue; a do "cancelar", não.** Medido em 2026-08-14 (§15.2): `DELETE` dá **403** em `running`, `POST /cancel` dá **404**, `PATCH status:"canceled"` dá **400** (*"status deve estar em: draft, running"*). Cancelar é operação de **painel**, igual assinar. A Fase 131 registra autor + motivo + data e instrui a concluir na Clicksign (D-13) — a prestação de contas existe, o ato não.
+- [x] **CLICK-11**: Quando o contrato é concluído, o PDF assinado é baixado e guardado no próprio sistema (D6)
 
 ### Contrato em PDF
 
@@ -170,26 +186,26 @@ Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou
 ### Rede de segurança (D4)
 
 - [x] **REDE-01**: Um admin consegue desligar o bloqueio do operacional sem precisar de deploy, voltando ao roteamento imediato
-- [ ] **REDE-02**: O sistema avisa quando uma empresa está parada aguardando assinatura além do prazo aceitável
-- [ ] **REDE-03**: Um admin consegue liberar uma empresa ao operacional manualmente quando a Clicksign falha, e essa liberação fica registrada com autor e motivo
-- [ ] **REDE-04**: Uma varredura periódica reconcilia com a Clicksign os contratos cujo webhook nunca chegou (D3)
-- [ ] **REDE-05**: O sistema valida os dados mínimos (CNPJ, e-mail e nome de quem assina, datas do contrato — presença e formato) ANTES de gerar o PDF e criar o envelope, e mostra o que falta **na tela do Administrativo**, onde é preenchido (D8 — não volta como cobrança para o Comercial)
+- [x] **REDE-02**: O sistema avisa quando uma empresa está parada aguardando assinatura além do prazo aceitável
+- [x] **REDE-03**: Um admin consegue liberar uma empresa ao operacional manualmente quando a Clicksign falha, e essa liberação fica registrada com autor e motivo
+- [x] **REDE-04**: Uma varredura periódica reconcilia com a Clicksign os contratos cujo webhook nunca chegou (D3)
+- [ ] **REDE-05**: O sistema valida os dados mínimos (CNPJ, e-mail e nome de quem assina, datas do contrato — presença e formato) ANTES de gerar o PDF e criar o envelope, e mostra o que falta **na tela do Administrativo**, onde é preenchido (D8 — não volta como cobrança para o Comercial). ⚠️ Metade cumprida na Fase 127 (validação sem I/O integrada ao orquestrador, plano 127-06); a exibição na tela do Administrativo é da Fase 131 — só marcar [x] quando as duas metades existirem.
 - [ ] **REDE-06**: O bloqueio do operacional pode rodar em produção em modo observação (construído mas inerte) antes de ser ligado de verdade
 
 ### Completar o cadastro no Administrativo (D8)
 
-- [ ] **ADM-01**: Um usuário do Administrativo consegue completar, na própria tela, os dados que a empresa não trouxe do Comercial — CNPJ, Gmail do colaborador, datas de início e término do contrato, entre outros
-- [ ] **ADM-02**: A tela mostra claramente o que ainda falta para a empresa poder gerar contrato, e o botão de gerar só fica disponível quando está completo
-- [ ] **ADM-03**: O campo Gmail do colaborador sai do formulário do Comercial na MESMA entrega em que o Administrativo passa a ter onde preenchê-lo (nunca antes — senão fica uma janela sem ninguém cadastrando o dado)
+- [x] **ADM-01**: Um usuário do Administrativo consegue completar, na própria tela, os dados que a empresa não trouxe do Comercial — CNPJ, Gmail do colaborador, datas de início e término do contrato, entre outros
+- [x] **ADM-02**: A tela mostra claramente o que ainda falta para a empresa poder gerar contrato, e o botão de gerar só fica disponível quando está completo
+- [x] **ADM-03**: O campo Gmail do colaborador sai do formulário do Comercial na MESMA entrega em que o Administrativo passa a ter onde preenchê-lo (nunca antes — senão fica uma janela sem ninguém cadastrando o dado)
 
 ### Telas e acesso
 
-- [ ] **UI-01**: Um usuário do Administrativo vê a lista de contratos com filtro por situação, busca por empresa e um resumo por situação
-- [ ] **UI-02**: Um usuário gera o contrato de uma empresa por um botão, disponível apenas quando ela está sem pendência e sem contrato em andamento (D1)
-- [ ] **UI-03**: A listagem do Comercial mostra em que pé está o contrato de cada empresa
-- [ ] **UI-04**: A tela deixa claro a diferença entre corrigir o e-mail de um signatário e trocar a pessoa que vai assinar (a segunda exige cancelar e reemitir)
-- [ ] **UI-05**: O acesso ao módulo é controlado por permissão própria (`admin.contratos`) e aparece no menu para quem tem
-- [ ] **UI-06**: Nenhum termo da tela exige conhecimento de Clicksign ou de jargão de assinatura eletrônica para ser entendido
+- [x] **UI-01**: Um usuário do Administrativo vê a lista de contratos com filtro por situação, busca por empresa e um resumo por situação
+- [x] **UI-02**: Um usuário gera o contrato de uma empresa por um botão, disponível apenas quando ela está sem pendência e sem contrato em andamento (D1)
+- [x] **UI-03**: A listagem do Comercial mostra em que pé está o contrato de cada empresa
+- [x] **UI-04**: A tela deixa claro a diferença entre corrigir o e-mail de um signatário e trocar a pessoa que vai assinar (a segunda exige cancelar e reemitir)
+- [x] **UI-05**: O acesso ao módulo é controlado por permissão própria (`admin.contratos`) e aparece no menu para quem tem
+- [x] **UI-06**: Nenhum termo da tela exige conhecimento de Clicksign ou de jargão de assinatura eletrônica para ser entendido
 
 ## Future Requirements (fora desta milestone)
 
@@ -219,17 +235,18 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 
 | # | A validar | Trava | Situação |
 |---|---|---|---|
-| 1 | Algoritmo do `Content-Hmac` (A1) — **bloqueante** | Webhook | ⏳ aberto — doc diz `SHA256(body + secret)`, não testado contra webhook real |
+| 1 | Algoritmo do `Content-Hmac` (A1) — **bloqueante** | Webhook | ✅ **FECHADO 2026-08-13** — `hmac_body_chave_secret` confirmado em 5/5 eventos reais (plano 129-02) |
 | 2 | Formato do header `Authorization` (com ou sem `Bearer`) | Client | ✅ **token PURO**; com `Bearer` → 401. Não usar `Http::withToken()` |
 | 3 | URL base de produção | Cutover | ✅ `https://app.clicksign.com/api/v3` |
 | 4 | `content_base64` exige prefixo data URI ou string pura | Client | ✅ **exige Data URI completo**; base64 puro → 400 (a doc mostra o contrário) |
 | 5 | Limite de tamanho de arquivo no upload | Client | ⏳ aberto — testado só com PDF de 1,5 KB |
-| 6 | Expiração de prazo emite evento distinguível | Schema + Webhook | ⏳ aberto — não bloqueia a Fase 125 (a D5 já trava o estado por decisão) |
-| 7 | Recusa de signatário emite evento distinguível | Schema + Webhook | ⏳ aberto — idem |
-| 8 | Endpoint de correção de e-mail de signatário na v3 | CLICK-09 | ⏳ aberto |
+| 6 | Expiração de prazo emite evento distinguível | Schema + Webhook | ⏳ aberto — sessão de 2026-08-13 (129-07) não conseguiu exercitar (prazo mínimo do sandbox é em dias); não bloqueia a Fase 125 (a D5 já trava o estado por decisão). Achado colateral MEDIDO: `deadline_partial_signature_action: "closed"` — o envelope PODE fechar com assinatura parcial |
+| 7 | Recusa de signatário emite evento distinguível | Schema + Webhook | ⏳ aberto — sessão de 2026-08-13 (129-07) não conseguiu exercitar recusa real; `name` do evento (`refusal`) segue vindo só da documentação (confiança MÉDIA) |
+| 8 | Endpoint de correção de e-mail de signatário na v3 | CLICK-09 | ⛔ **FECHADO — NÃO EXISTE** (medido 2026-08-14, pesquisa da Fase 131). `PATCH` e `PUT` em `/envelopes/{id}/signers/{signerId}` devolvem **404**, e não o 404 JSON:API da Clicksign — é a página HTML genérica de rota inexistente, o mesmo sinal de "esse verbo+rota não está na tabela de rotas". Consequência: CLICK-09 e "trocar quem assina" colapsam no mesmo caminho (cancelar e reemitir); vale o RAMO B do `131-UI-SPEC.md` |
+| 8b | Cancelar envelope em andamento (`running`) pela API | CLICK-10 | ⛔ **NÃO EXISTE CAMINHO** (medido 2026-08-14). `DELETE /envelopes/{id}` → **403 forbidden** (funciona só em `draft`); `POST /envelopes/{id}/cancel` → **404**; `PATCH` com `status:"canceled"` → **400** com a mensagem literal da API: **"status deve estar em: draft, running"**. Ou seja, os únicos status que a API aceita DEFINIR são `draft` e `running`. ⚠️ Mas o cancelamento acontece (a Fase 129 capturou webhook `cancel` e existe o estado `cancelado`) — **cancelar é operação de PAINEL**, igual assinar. A D-13 da Fase 131 resolve registrando motivo+autor no sistema e instruindo a concluir no painel |
 | 9 | Formato do certificado de autenticação do signatário | DADOS-02 | ✅ **`documents/{id}/events` → evento `sign` → `data.signer`** (`auths[]`, `address` = IP, timestamp no `created`). O recurso `/signers/{id}` **não** carrega evidência nenhuma |
-| 10 | Granularidade da consulta de envelope (suficiente para reconciliação) | REDE-04 | ✅ suficiente — `status` + `meta.record_count` + eventos paginados; rate limit **20** no sandbox |
-| 11 | Política de retry e garantia de ordem dos webhooks | CLICK-04/05 |
+| 10 | Granularidade da consulta de envelope (suficiente para reconciliação) | REDE-04 | ✅ suficiente **pela forma da API** — `status` + `meta.record_count` + eventos paginados. ⏳ **A confirmação end-to-end segue PENDENTE**: a Fase 130 não conseguiu rodar uma reconciliação contra um envelope realmente assinado (a sandbox não conclui assinatura pelo painel nem envia e-mail — ver `130-GATE.md`). ⚠️ O rate limit **20/min é o da Clicksign**; o bucket `clicksign-webhook` do próprio app é **3/min GLOBAL** (`AppServiceProvider.php`), e é ele que dita o desenho da varredura (1 job por contrato, nunca laço HTTP no comando) |
+| 11 | Política de retry e garantia de ordem dos webhooks | CLICK-04/05 | ⚠️ **tratado como pior caso — at-least-once, sem garantia de ordem.** Permanentemente não medido pela documentação (3 páginas oficiais checadas, nenhuma promete ordem ou política de retry); observação prática de reentrega (mesmo corpo reenviado ao receiver real não duplica) registrada em `129-GATE.md` (plano 129-07, 2026-08-13) |
 
 ## Traceability
 
@@ -247,51 +264,51 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | FLUXO-09 | Fase 133 | Pending |
 | DADOS-01 | Fase 125 | Done |
 | DADOS-02 | Fase 125 | Done |
-| DADOS-03 | Fase 129 | Pending |
+| DADOS-03 | Fase 129 (plano 01) | Done |
 | DADOS-04 | Fase 125 | Done |
-| DADOS-05 | Fase 130 | Pending |
-| DADOS-06 | Fase 127 | Pending |
+| DADOS-05 | Fase 130 | Done |
+| DADOS-06 | Fase 127 | Done |
 | CLICK-01 | Fase 126 | Done |
-| CLICK-02 | Fase 127 | Pending |
-| CLICK-03 | Fase 129 | Pending |
-| CLICK-04 | Fase 129 | Pending |
-| CLICK-05 | Fase 129 | Pending |
-| CLICK-06 | Fase 129 | Pending |
-| CLICK-07 | Fase 131 | Pending |
-| CLICK-08 | Fase 127 | Pending |
-| CLICK-09 | Fase 131 | Pending |
-| CLICK-10 | Fase 131 | Pending |
-| CLICK-11 | Fase 129 | Pending |
+| CLICK-02 | Fase 127 | Done |
+| CLICK-03 | Fase 129 (plano 03) | Done |
+| CLICK-04 | Fase 129 (plano 03) | Done |
+| CLICK-05 | Fase 129 (plano 04) | Done |
+| CLICK-06 | Fase 129 (plano 03) | Done |
+| CLICK-07 | Fase 131 | Done |
+| CLICK-08 | Fase 127 | Done |
+| CLICK-09 | Fase 131 | NAO ENTREGUE (API v3 nao permite - ver secao 15.1 do empirico) |
+| CLICK-10 | Fase 131 | PARCIAL (registra motivo+autor; cancelar e operacao de painel) |
+| CLICK-11 | Fase 129 (plano 06) | Done |
 | PDF-01 | Fase 126 | Done |
 | PDF-02 | Fase 126 | Done |
 | PDF-03 | Fase 126 | Done |
 | REDE-01 | Fase 124 | Done |
-| REDE-02 | Fase 130 | Pending |
-| REDE-03 | Fase 130 | Pending |
-| REDE-04 | Fase 130 | Pending |
+| REDE-02 | Fase 130 | Done |
+| REDE-03 | Fase 130 | Done |
+| REDE-04 | Fase 130 | Done |
 | REDE-05 | Fase 127 | Pending |
 | REDE-06 | Fase 128 | Pending |
-| UI-01 | Fase 131 | Pending |
-| UI-02 | Fase 131 | Pending |
-| UI-03 | Fase 131 | Pending |
-| UI-04 | Fase 131 | Pending |
-| UI-05 | Fase 131 | Pending |
-| UI-06 | Fase 131 | Pending |
+| UI-01 | Fase 131 | Done |
+| UI-02 | Fase 131 (plano 04) | Done |
+| UI-03 | Fase 131 | Done |
+| UI-04 | Fase 131 | Done |
+| UI-05 | Fase 131 | Done |
+| UI-06 | Fase 131 | Done |
 
 **Decisões em aberto → fase de resolução:**
 
 | Decisão | Fase |
 |---------|------|
-| A1 — Algoritmo do `Content-Hmac` (BLOQUEANTE) | Fase 129 |
+| A1 — Algoritmo do `Content-Hmac` (BLOQUEANTE) | ✅ Resolvida na Fase **129** (plano 129-02, 2026-08-13) |
 | A2 — Rollback de envelope montado pela metade | ✅ Resolvida na Fase **126** (D-12) |
-| A3 — Resposta HTTP do webhook em erro interno | Fase 129 |
+| A3 — Resposta HTTP do webhook em erro interno | ✅ Resolvida na Fase **129** (plano 129-03, provada ao vivo no plano 129-07, 2026-08-13) |
 | A4 — Quais das 7 pendências comerciais valem para empresa manual | Fase 128 |
 
 **Gate empírico de sandbox → fase que trava:**
 
 | # | Item | Fase |
 |---|------|------|
-| 1 | Algoritmo do `Content-Hmac` (A1, bloqueante) | Fase 129 |
+| 1 | ~~Algoritmo do `Content-Hmac` (A1, bloqueante)~~ ✅ Fechado 2026-08-13 | Fase 129 |
 | 2 | Formato do header `Authorization` | Fase 126 |
 | 3 | URL base de produção | Fase 132 |
 | 4 | Formato de `content_base64` | Fase 126 |

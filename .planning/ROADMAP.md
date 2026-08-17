@@ -1689,7 +1689,17 @@ Plans:
   4. Decisão A2 tomada e aplicada: quando a montagem falha no meio (documento criado, signatário falhou), o comportamento — cancelar o envelope parcial na Clicksign ou marcar `erro` com o id para retomada — é determinístico e coberto por teste
   5. `iniciarParaEmpresa()` chamado duas vezes para a mesma empresa não cria dois envelopes — idempotente por si só, independente de qualquer guard de webhook
 
-**Plans:** TBD
+**Plans:** 7/7 plans complete
+
+Plans:
+
+- [x] 127-01-PLAN.md — D-06: trava de unicidade vira (empresa + serviço); migration, model e factory
+- [x] 127-02-PLAN.md — D-02: `ClicksignClient` ganha caminho que para no rascunho (`$ativar`)
+- [x] 127-03-PLAN.md — REDE-05: checagem dedicada de dados mínimos, sem I/O
+- [x] 127-04-PLAN.md — Modelo `.docx` por serviço + prazo/lembrete configuráveis (D-03/CLICK-08/DADOS-06)
+- [x] 127-05-PLAN.md — `GerarContratoAssinaturaJob` + bucket de rate limit `clicksign-envelope` (D-01)
+- [x] 127-06-PLAN.md — `ContratoClicksignService::iniciarParaEmpresa()`: bloqueio, congelamento, idempotência
+- [x] 127-07-PLAN.md — Gate humano: 3 medições da fase (inclui autorização para tocar produção)
 
 ### Phase 128: Gatilhos do fluxo em modo observação (v22.0)
 
@@ -1706,7 +1716,16 @@ Plans:
   3. Com pendência comercial em aberto segundo a regra do GATE, a empresa fica marcada `aguardando_comercial` e nenhuma chamada é feita à Clicksign
   4. Em nenhum momento desta fase uma empresa deixa de ser roteada ao operacional imediatamente — o desvio administrativo existe no código e roda em paralelo, mas a flag `administrativo_bloqueio_ativo` continua desligada (a mecânica da flag em si já foi construída e provada na Fase 124; aqui o foco é o desvio e a decisão A4)
 
-**Plans:** TBD
+**Plans:** 6/6 plans complete
+
+Plans:
+
+- [x] 128-01-PLAN.md — Coluna `servicos.exige_contrato` (D-03/FLUXO-08), Polos isento já na migration
+- [x] 128-02-PLAN.md — `PendenciasComerciaisService::calcularUniversais()` sem quebrar a listagem do Comercial (D-01)
+- [x] 128-03-PLAN.md — `GatilhoContratoAdministrativoService`: os dois portões da D-02 + isenção de Polos (SC0/SC3)
+- [x] 128-04-PLAN.md — Gate ligado nos dois pontos de entrada, fora da transação + invariante do roteamento (SC1/SC2/SC4)
+- [x] 128-05-PLAN.md — Reavaliação automática por Observer com campos-gatilho fixos e anti-laço (D-04)
+- [x] 128-06-PLAN.md — Gate humano: envelope real no sandbox, invariante medido, Polos fora do fluxo
 
 > ⚠️ **Esta fase é o coração do REDE-06 (modo observação).** O pior caso de bug aqui é um `ContratoAssinatura` com status errado — nunca uma empresa presa fora do operacional, porque o roteamento imediato antigo continua rodando em paralelo enquanto a flag estiver desligada.
 
@@ -1723,11 +1742,23 @@ Plans:
   4. O processamento pesado (buscar envelope, atualizar signatários, decidir liberação) roda em job de fila — a resposta HTTP ao provedor é rápida; retry/ordem de entrega (gate empírico #11) tratados como pior caso, sem garantia assumida
   5. Quando o envelope conclui, o PDF assinado é baixado da Clicksign e guardado no storage do próprio sistema — deixa de depender de `clicksign_download_url` para sempre
 
-**Plans:** TBD
+**Plans:** 6/7 plans executed
+
+Plans:
+
+- [x] 129-01-PLAN.md — Instrumentação do gate A1: `contrato_assinatura_eventos` (DADOS-03), varredura das 4 candidatas de HMAC, comando `clicksign:verificar-assinatura` (D-09) e rota-sonda temporária (D-07/D-08)
+- [x] 129-02-PLAN.md — **GATE A1 (bloqueante, humano):** medição contra webhook real via túnel, fórmula fixada, fixture calculada FORA do código de produção, rota-sonda removida
+- [x] 129-03-PLAN.md — Receiver de produção: rota `/api/webhooks/clicksign`, 401 com gravação bruta, dedup por `payload_hash`, matriz de resposta da D-10 e processamento na fila (CLICK-03/04/06)
+- [x] 129-04-PLAN.md — Liberação operacional: `contrato_liberacoes` (D-05), gate da CLICK-05 (fechamento parcial NAO libera) e `EmpresaOperacionalRouter::liberarEmpresa()` — ponto único compartilhado com a Fase 130
+- [x] 129-05-PLAN.md — Liberação por webhook, imunidade à ordem de entrega (gate #11 como pior caso) e estados próprios de recusa/expiração sem mexer no cadastro (D5/D-04)
+- [x] 129-06-PLAN.md — PDF assinado (CLICK-11): download por streaming com link fresco (D-12), disco privado + rota autenticada (D-13), falha não bloqueia a liberação (D-14)
+- [ ] 129-07-PLAN.md — Gate humano final: circuito ponta a ponta contra o sandbox real e registro do que continua não medido — **PARCIAL 2026-08-13:** Task 2 (auto) concluída — receiver de produção provado ponta a ponta pela internet (200/401/reentrega, corpo sintético), decisão A3 fechada, `129-GATE.md`/`CLICKSIGN-SANDBOX-EMPIRICO.md`/`REQUIREMENTS-v22.md` atualizados, suíte 346/1128 verde. **Task 1 (checkpoint humano) aberta** — rodada real de assinatura/recusa contra o sandbox pendente; ver `129-07-SUMMARY.md`
 
 ### Phase 130: Rede de segurança — reconciliação, alerta e liberação manual (v22.0)
 
-**Goal:** Se a Clicksign falhar silenciosamente, alguém sabe em minutos, não em dias — e sempre existe um jeito de destravar uma empresa presa, com registro de quem e por quê.
+**Goal:** Se a Clicksign falhar silenciosamente, a falha para de ser invisível: o sistema se corrige sozinho quando consegue, e quando não consegue avisa a equipe no sino em vez de deixar a empresa parada sem ninguém saber — e sempre existe um jeito de destravar uma empresa presa, com registro de quem e por quê.
+
+> **Nota de redação (2026-08-14):** o texto original prometia *"alguém sabe em minutos, não em dias"*. A D-01 do `130-CONTEXT.md` travou o canal como sino in-app — o aviso chega **quando alguém abre o sistema**, não em minutos. A implementação está correta e a decisão foi consciente (e-mail e WhatsApp foram recusados por quebrarem o canal único do projeto); era o goal que prometia um canal que a fase nunca teve. Reescrito após a verificação goal-backward concordar com essa leitura. Se "em minutos" virar requisito de verdade, é fase própria — o `DigisacClient` já existe e hoje só serve ao NPS.
 **Requirements**: REDE-02, REDE-03, REDE-04, DADOS-05
 **Depends on:** Fases 124, 126, 129
 **Success Criteria** (o que deve ser VERDADE):
@@ -1737,7 +1768,37 @@ Plans:
   3. Um admin libera uma empresa ao operacional preenchendo motivo (campo obrigatório); a liberação registra quem liberou e por quê, e usa o mesmo `EmpresaOperacionalRouter::liberarEmpresa()` do fluxo automático — testada ponta a ponta pelo menos uma vez
   4. Liberar manualmente uma empresa que o webhook também está tentando liberar ao mesmo tempo (corrida) não cria `MlbEmpresa` duplicada
 
-**Plans:** TBD
+⚠️ **Success Criteria 1-3 (SC1/SC2/SC3) NÃO estão confirmados ainda** — todos os 7 planos foram
+executados, mas os 3 gates humanos em sandbox do plano 130-07 não puderam ser aprovados na
+sessão de 2026-08-13 (nenhuma ferramenta do executor abre navegador/assina na Clicksign). SC2
+teve a metade técnica provada por reconsulta ao banco; SC1 e SC3 continuam pendentes de ação
+real do usuário. Ver `130-GATE.md` para o roteiro de retomada. SC4 já está provado (herdado do
+CR-01 da Fase 129, reconfirmado no plano 130-04).
+
+**Plans:** 7/7 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 130-01-PLAN.md — Fundação de dados: 3ª via de liberação, lista fechada de motivos e carimbo de último alerta (wave 1)
+- [x] 130-02-PLAN.md — Audiência da rede de segurança + recorte único de "empresa parada há tempo demais" (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 130-03-PLAN.md — Reconciliação: comando diário + job que reconsulta a Clicksign e corrige sozinho (wave 2)
+- [x] 130-04-PLAN.md — Liberação manual só-admin com motivo obrigatório + prova do SC4 (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 130-05-PLAN.md — Alerta de contrato preso no sino, com causa, próximo passo e cooldown (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 130-06-PLAN.md — Auto-monitoramento da varredura + agendamento dos 3 comandos (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 130-07-PLAN.md — Gates humanos em sandbox: SC1, SC2, SC3 e gate empírico #10 (wave 5)
 
 ### Phase 131: Tela administrativa — completar cadastro + contratos + badge Comercial + permissões (v22.0)
 
@@ -1748,15 +1809,43 @@ Plans:
 **Success Criteria** (o que deve ser VERDADE):
 
   0. Um usuário do Administrativo completa, na própria tela, os dados que a empresa não trouxe do Comercial (CNPJ, Gmail do colaborador, datas de início e término do contrato); a tela mostra o que ainda falta para poder gerar contrato (D8 — a cobrança NÃO volta para o Comercial)
-  0b. O campo Gmail do colaborador sai do formulário do Comercial NESTA MESMA fase — nunca antes, para não existir janela em que ninguém consegue cadastrar o dado (ADM-03)
+  0b. ~~O campo Gmail do colaborador sai do formulário do Comercial NESTA MESMA fase — nunca antes, para não existir janela em que ninguém consegue cadastrar o dado (ADM-03)~~ → **REESCRITO em 2026-08-15, após a verificação.** O critério partia de uma premissa errada: presumia um campo só. São **dois**. O que o requisito descreve (`companies.email_colaborador`, o e-mail que a ECF cria para ter acesso à conta do cliente no Mercado Livre) **já havia saído** do Comercial na quick `260805-eqk`, e seguiu editável em `/companies` esse tempo todo — **a janela sem ninguém cadastrando o dado nunca existiu**. O que restou no formulário do Comercial é o `gmail_colaborador` do **Polos**, outro campo, de um serviço isento de contrato (D9), que esta fase decidiu **manter** (D-12). Redação correta: *"o Administrativo passa a ter onde preencher o `email_colaborador` na própria tela; nenhum campo é removido do Comercial nesta fase."*
 
   1. Um usuário do Administrativo filtra a lista de contratos por situação, busca por empresa, e vê um resumo com a contagem de cada situação
-  2. O botão "Gerar contrato" só aparece quando a empresa está com o cadastro completo, sem pendência comercial e sem contrato em andamento; clicar dispara o mesmo fluxo manual da Fase 127
+  2. ~~O botão "Gerar contrato" só **aparece** quando a empresa está com o cadastro completo~~ → **REESCRITO em 2026-08-15, após a verificação.** O usuário escolheu o oposto no discuss desta fase (D-03, `131-DISCUSSION-LOG.md` P3): o botão fica **visível e desabilitado**, com a lista do que falta ao lado — esconder faria o Administrativo não descobrir que a ação existe, e o botão cinza com a lista ensina o caminho para destravar. **O propósito do critério é preservado com mais rigor que o texto:** além de o botão não clicar, há revalidação no servidor que devolve 422, provada por teste — esconder o botão sozinho não impediria um POST direto. Redação correta: *"o botão fica desabilitado com o que falta ao lado enquanto houver pendência, e o servidor recusa a geração mesmo se a tela for contornada; clicar dispara o mesmo fluxo manual da Fase 127."*
   3. A listagem do Comercial mostra em que pé está o contrato de cada empresa, sem precisar abrir outra tela
   4. Um usuário reenvia a notificação de assinatura para quem ainda não assinou, corrige o e-mail de um signatário sem cancelar o contrato (gate empírico #8 resolvido para o endpoint certo), e cancela um contrato em andamento informando o motivo — a tela deixa claro que corrigir e-mail é diferente de trocar a pessoa (a segunda exige cancelar e reemitir)
   5. Só quem tem a permissão `admin.contratos` vê o módulo no menu e acessa as rotas; nenhum texto da tela usa jargão de Clicksign ou de assinatura eletrônica sem explicação
 
-**Plans:** TBD
+**Plans:** 6/6 plans complete
+
+⚠️ Escopo corrigido pelas medições de 2026-08-14 (registradas no `131-CONTEXT.md` D-12/D-13/D-14 e nos gates #8 e #8b do `REQUIREMENTS-v22.md`):
+
+- **ADM-03 já está cumprida** — o campo saiu do formulário do Comercial na quick `260805-eqk`; o `gmail_colaborador` do Polos fica onde está. Nenhum trabalho de remoção nesta fase.
+- **CLICK-09** — não existe endpoint de correção de e-mail na v3 (404 medido). Vale o RAMO B: a tela explica que corrigir e-mail e trocar a pessoa colapsam em cancelar e reemitir.
+- **CLICK-10** — cancelar envelope em andamento não é possível pela API (403/404/400 medidos). A tela registra autor+motivo+data e instrui a concluir no painel; `cancelarEnvelope()` não é chamado.
+
+Plans:
+**Wave 1**
+
+- [x] 131-01-PLAN.md — Fundação: permission `admin.contratos`, colunas do cancelamento solicitado e módulo único dos 7 estados (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 131-02-PLAN.md — Badge de contrato na listagem do Comercial, sem N+1 (wave 2)
+- [x] 131-03-PLAN.md — Lista administrativa de contratos: filtro, busca e resumo de 7 contagens (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 131-04-PLAN.md — Detalhe da empresa: completar cadastro e gerar contrato (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 131-05-PLAN.md — Ações do contrato: reenviar aviso, RAMO B do ajuste e registro de cancelamento (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 131-06-PLAN.md — Absorção da liberação manual e remoção da tela da Fase 130 (wave 5)
 
 ### Phase 132: Cutover sandbox → produção (checkpoint humano) (v22.0)
 
@@ -1771,7 +1860,24 @@ Plans:
   4. Gate empírico #3 (URL base de produção) confirmado contra o ambiente real
   5. **CHECKPOINT HUMANO:** usuário aprova explicitamente que o cutover está correto antes de qualquer contrato real de cliente ser gerado em produção
 
-**Plans:** TBD
+**Plans:** 1/4 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 132-01-PLAN.md — Corrige a grafia de `CLICKSIGN_ENV` (D-01), documenta o estacionamento das credenciais no `.env.example` e escreve o roteiro `132-GATE.md` com o procedimento de voltar atrás (wave 1, autônomo)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 132-02-PLAN.md — Publica a correção, troca as variáveis de produção e confirma a URL base contra a API real (SC1 + SC4 / gate empírico #3) (wave 2, checkpoint humano)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 132-03-PLAN.md — Cadastra o aviso automático na conta de produção e emite o primeiro envelope contra empresa fictícia, provando que o webhook chega (SC2 + SC3) (wave 3, checkpoint humano)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 132-04-PLAN.md — Prova a rede de segurança com o mesmo envelope (D-04, SC1 da Fase 130 + gate #10) e colhe a aprovação explícita da virada (SC5) (wave 4, checkpoint humano)
 
 ### Phase 133: Liga o bloqueio — ativação real (v22.0)
 
@@ -1903,6 +2009,8 @@ Plans:
 **Wave 7** *(blocked on Wave 6 completion)*
 
 - [~] 135-13-PLAN.md — Gate de regressao do Polos, mapa de evidencia SC/D e verificacoes manuais [wave 7] — Tasks 1-2 OK (gate do Polos APROVADO); Task 3 AGUARDANDO GATE HUMANO
+
+- [ ] TBD (run /gsd-plan-phase 135 to break down)
 
 > **Escopo da v1:** só o template de **Gestão (Performance)** — 13 passos, 5 automáticos. Publicação, Shopee, Assessoria/Incubadora/Implantação ganham template depois, sem tocar no motor.
 >

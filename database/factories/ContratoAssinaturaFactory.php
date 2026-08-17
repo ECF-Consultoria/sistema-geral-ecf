@@ -4,12 +4,15 @@ namespace Database\Factories;
 
 use App\Models\Company;
 use App\Models\ContratoAssinatura;
+use App\Models\Servico;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
  * @extends Factory<ContratoAssinatura>
  *
  * Fase 125 — factory de contratos de assinatura.
+ * Fase 127-01 (D-06) — `servico_id` passou a ser obrigatório (o hook
+ * `saving` do model lança `\RuntimeException` sem ele).
  */
 class ContratoAssinaturaFactory extends Factory
 {
@@ -19,11 +22,39 @@ class ContratoAssinaturaFactory extends Factory
     {
         return [
             'company_id'         => Company::factory(),
+            'servico_id'         => fn () => $this->servicoDeTeste(),
             'status'             => ContratoAssinatura::STATUS_RASCUNHO,
-            // Quem cuida de company_id_em_andamento é o hook `saving` do
-            // model — não setar aqui.
+            // Quem cuida de company_id_em_andamento e
+            // servico_id_em_andamento é o hook `saving` do model — não
+            // setar aqui.
             'servicos_snapshot'  => null,
         ];
+    }
+
+    /**
+     * Devolve o id de um serviço qualquer do catálogo já semeado por
+     * migration (`Servico` NÃO tem `HasFactory`). Se por algum motivo o
+     * catálogo estiver vazio, cria um registro mínimo copiando o `setor`
+     * de um serviço existente — nunca inventar um valor novo: a coluna
+     * `setor` é enum legado e o CHECK do SQLite derruba a suíte.
+     */
+    private function servicoDeTeste(): int
+    {
+        $id = Servico::query()->value('id');
+
+        if ($id !== null) {
+            return $id;
+        }
+
+        $setorExistente = Servico::query()->value('setor') ?? Servico::SETOR_OUTROS;
+
+        return Servico::create([
+            'nome'          => 'Serviço de teste (factory)',
+            'valor_padrao'  => 0,
+            'tipo_cobranca' => Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => $setorExistente,
+        ])->id;
     }
 
     /**
@@ -56,12 +87,17 @@ class ContratoAssinaturaFactory extends Factory
     }
 
     /**
-     * State: preenche `servicos_snapshot` com a forma que a Fase 127 vai
-     * congelar (D-04/D-10) — 2 a 3 serviços, cada um com nome legível,
-     * `valor_contratado` decimal COM CENTAVOS (não redondo, de propósito:
-     * valor redondo demais mascara bug de arredondamento no PDF) e as datas
-     * de vigência no formato `Y-m-d`, mesma forma de
-     * `ContratoServico::$casts`.
+     * State: preenche `servicos_snapshot` com a forma que a Fase 126
+     * congela (D-04/D-10), cada item com nome legível, `valor_contratado`
+     * decimal COM CENTAVOS (não redondo, de propósito: valor redondo
+     * demais mascara bug de arredondamento no PDF) e as datas de vigência
+     * no formato `Y-m-d`, mesma forma de `ContratoServico::$casts`.
+     *
+     * Fase 127-01 (D-06): o DEFAULT passou de 3 serviços para UM único
+     * item — pós D-06, um `ContratoAssinatura` representa um serviço só,
+     * então o snapshot "natural" também é de um item. Testes que precisam
+     * de múltiplos itens (ex.: concatenação de nomes) devem passar
+     * `$servicos` explicitamente, em vez de depender deste default.
      *
      * Fase 126 (D-04). "Empresa real" na régua do Success Criteria 3 (ver
      * 126-VALIDATION.md §"A régua do Success Criteria 3") significa FORMA e
@@ -80,18 +116,6 @@ class ContratoAssinaturaFactory extends Factory
                 'valor_contratado' => 1847.32,
                 'data_contratacao' => '2026-01-15',
                 'data_vencimento'  => '2027-01-15',
-            ],
-            [
-                'servico'          => 'Consultoria Shopee',
-                'valor_contratado' => 923.9,
-                'data_contratacao' => '2026-02-01',
-                'data_vencimento'  => '2027-02-01',
-            ],
-            [
-                'servico'          => 'Análise de Sugadores',
-                'valor_contratado' => 412.55,
-                'data_contratacao' => '2026-03-10',
-                'data_vencimento'  => '2027-03-10',
             ],
         ];
 

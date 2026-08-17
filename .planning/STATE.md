@@ -66,13 +66,150 @@ de arquitetura adiada para fase futura, registrada no `135-11-SUMMARY.md`.
 local. Um push da `main` cheia levaria a fase junto e o `migrate --force` criaria essas tabelas em
 prod antes do gate humano. Deploy só depois do gate, e com autorização explícita.
 **Current focus:** Phase 127 — service administrativo de contrato — orquestração (v22.0)
+**Current focus:** Phase 132 — cutover-sandbox-produ-o-checkpoint-humano-v22-0
 
 ## Current Position
 
-Phase: 127
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-11
+Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+  considerado fechado — ver `130-GATE.md`. SC2 tem a metade técnica provada por reconsulta ao
+  banco; SC1 e SC3 continuam pendentes de ação humana real em navegador.
+  (`checkpoint:human-verify`, rodada real de assinatura contra o sandbox) segue aberta.
+  Ver "Decisões do Plan 129-07" abaixo e o checkpoint devolvido ao usuário.
+ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
+dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
+Last activity: 2026-08-17
+
+**Plano 130-07 executado em 2026-08-13** (commits `ba7cfdb6`/`e232c70a`): os 3 gates humanos em
+sandbox (SC1/SC2/SC3 do ROADMAP + gate empírico #10) NÃO puderam ser aprovados nesta sessão —
+nenhuma ferramenta deste executor abre navegador ou assina documento na Clicksign. O que foi
+feito: ambiente local recuperado (MariaDB e Apache estavam fora do ar, 2 migrations pendentes
+aplicadas, banco `ecf_admin` local estava vazio — sem admin utilizável, sem empresas), fixtures
+de teste `@example.com` criadas (admin, não-admin, empresa "Gate 130-07", contrato `recusado`).
+SC2 (alerta): metade técnica provada por reconsulta real ao banco — `clicksign:alertar-presos`
+gravou 1 notificação (`ContratoPresoNotification`), cooldown D-04 confirmado (2ª execução não
+duplicou); falta só a leitura humana da mensagem no sino. SC1 (reconciliação): bloqueado porque
+`CLICKSIGN_SIG1/2/3` (signatários fixos da ECF) não estão no `.env` local — identidade real, não
+inventada pelo executor; roteiro completo preservado. SC3 (liberação manual): exige navegação
+visual real (faixa vermelha D-11, 403 do não-admin); roteiro e fixtures prontos. Requirements
+`REDE-03`/`DADOS-05` permanecem `Pending` (não marcados sem a verificação humana que é o próprio
+objetivo do plano). Detalhe completo: `130-GATE.md` e `130-07-SUMMARY.md`.
+
+**Correção pós-verificação em 2026-08-12** (commits `39974658`/`be275b9c`): fecha os 2 achados
+remanescentes da verificação/revisão da Fase 128. (1) **D-05 (bloqueador)** —
+`CompanyGroupController::atribuirServico()` agora envolve o laço de criação de `ContratoServico` em
+`ContratoServico::withoutEvents()`, suprimindo o `ContratoServicoGatilhoObserver` (plano 128-05) só
+neste call site em lote; sem isso, atribuir um serviço que exige contrato a um grupo de N empresas
+disparava N `ContratoAssinatura` reais e N envelopes reais na Clicksign de um único clique. Teste
+`CompanyGroupAtribuirServicoNaoGeraContratoTest` (2/2) prova zero efeito colateral preservando o
+comportamento original (criar/pular `contratos_servico`). (2) **WR-01 (warning)** —
+`GatilhoContratoAdministrativoService::avaliar()` classificava empresa com ZERO `ContratoServico`
+ativos como `isento` em vez de `aguardando_comercial`/`sem_servico` (`Collection::contains()` numa
+coleção vazia devolve `false`); isenção por serviço agora só é avaliada quando há pelo menos um
+contrato ativo, caso só-Polos preservado. Suíte `Phase124+125+126+127+128` = **268 verdes** (899
+assertions; baseline pré-fix 265/879). `128-VERIFICATION.md` atualizado com os dois achados
+resolvidos e `status: passed`.
+
+**Plano 128-05 executado em 2026-08-12** (commits `1ff79dd1`/`5c2fa102`/`e1198ea6`): fecha a D-04.
+`CompanyGatilhoContratoObserver::updated()` reavalia o gate quando `email_cliente`/`cnpj`/
+`nome_contato` mudam (`wasChanged()` restrito a essa lista fixa — `hubspot_notas`/`hubspot_snapshot`
+ficam de fora de propósito, replay de webhook não reavalia). `ContratoServicoGatilhoObserver` cobre
+o gancho que `Company` sozinha não cobre (vincular serviço novo / corrigir valor ou data);
+`created()` roda dentro de `DB::afterCommit()` — comportamento verificado EMPIRICAMENTE (teste-sonda
+antes de decidir o design, não assumido só pela doc do Laravel) sob `RefreshDatabase`: o callback
+dispara quando a transação onde o `create()` aconteceu fecha, o que permite ao cadastro do Comercial
+(N `ContratoServico` numa UNICA `DB::transaction()`) reavaliar só depois que o lote inteiro existe.
+4 camadas de proteção contra laço, todas provadas por CONTAGEM (spy que estende a classe real e
+delega 100%, nunca mock): `wasChanged()` restrito → `DB::afterCommit()` → guard estático do
+orquestrador (128-03) → trava composta do banco (Fase 127). Fluxo HTTP real do Comercial mede
+exatamente 2 invocações do gate (Observer + chamada explícita do controller), nunca crescente.
+2 desvios (Rule 1): `GatilhoContratoPendenciaTest` (128-03) e dois testes de `Phase127`
+(`ContratoClicksignServiceTest`, `IdempotenciaContratoTest`) testam services de camada inferior
+ISOLADAMENTE e criavam `ContratoServico::create()` como fixture fora de `DB::transaction()` — o
+Observer novo passou a disparar o gate como efeito colateral do SETUP, chegando a estourar a
+constraint composta num deles. Fix: `ContratoServico::withoutEvents()` nos três helpers de fixture
+(zero mudança de comportamento de produção). Suíte `Phase124+127+128` = **115 verdes**, zero
+regressão líquida. Detalhe: `128-05-SUMMARY.md`.
+
+**Plano 127-06 executado em 2026-08-12** (commits `36109799`/`6a9c226b`): o **ponto único** que o
+ROADMAP pede. `ContratoClicksignService::iniciarParaEmpresa()` bloqueia ANTES de qualquer I/O via
+`ContratoDadosMinimosService` (127-03) — Success Criteria 1, provado por `Http::assertNothingSent()`
+
++ `Queue::assertNothingPushed()`. Empresa com N `ContratoServico` ativos gera N `ContratoAssinatura`
+
+(um por serviço, D-06) e despacha N `GerarContratoAssinaturaJob` (127-05), delay escalonado
+(`$i * 5`s, camada adicional ao bucket global). **Esta é a fase que passa a gravar o
+`servicos_snapshot`** congelado (D-06 + D-10) — array de UM item por contrato, mesma forma que
+`ContratoPdfService::montarDados()` já espera; prova executável de que mudar `valor_contratado` na
+origem DEPOIS não afeta o snapshot já gravado (o precedente do `hs_mrr = 0` do HubSpot que já zerou
+3 contratos deste projeto). Idempotência real (Success Criteria 5): guard de leitura
+(`emAndamentoDoServico()`) é só UX; a garantia é a constraint composta capturada por
+`catch (QueryException)` com `(string) $e->getCode() === '23000'` (SQLSTATE, não `errorInfo[1]` do
+MySQL) — precedente copiado literalmente de `NpsController.php:1835`. `enviado_em` nunca é tocado
+(D-02) — gate de `grep` confirma zero ocorrências fora de comentário; ativação e webhook continuam
+sendo a Fase 129. 11 testes novos (TDD RED→GREEN, 1 desvio auto-corrigido: CNPJ duplicado entre duas
+empresas no mesmo teste, bug do próprio teste). Suíte `Phase125+126+127` = **210 verdes** (baseline
+199 + 11 novos). Zero regressão. Nenhuma chamada real à Clicksign, nenhum deploy. Detalhe:
+`127-06-SUMMARY.md`.
+
+**Plano 127-05 executado em 2026-08-12** (commits `b18257a5`/`f5eada35`/`ca256fd0`): o trabalhador da
+fila. `GerarContratoAssinaturaJob` monta UM envelope Clicksign por contrato (documento por modelo,
+4 signatários, 8 requisitos) e **para no rascunho** (D-02, `ativar: false` — `enviado_em` nunca é
+tocado, só o webhook da Fase 129 vai saber que foi enviado). `middleware()` combina
+`RateLimited('clicksign-envelope')` (bucket novo, 1/min global, `AppServiceProvider::boot()`) com
+`WithoutOverlapping('clicksign-envelope-global')` — o segundo fecha a janela de corrida entre
+`tooManyAttempts()`/`hit()` do primeiro, que sozinho poderia deixar passar até 30 chamadas com um
+envelope custando 15 das 20/min medidas (D-01). `deadline_at`/`remind_interval` vão na CRIAÇÃO do
+envelope com `prazoDiasEfetivo()`/`lembreteDiasEfetivo()` (plano 127-04), mesma forma literal já
+usada por `ativarEnvelope()` (D-03). Guard de reentrega (contrato com `clicksign_envelope_id` já
+preenchido não monta um segundo envelope) e guard de modelo ausente (`Servico::clicksignTemplateId()`
+`null` falha ANTES de qualquer chamada HTTP). `failed()` grava `status = erro` pelo `save()` do
+model (o hook `saving` da D-06 zera as colunas de "em andamento" e libera a empresa+serviço para
+nova tentativa) com `erro_mensagem` podada de e-mail (WR-11). Caminho feliz medido em exatamente
+**14 chamadas** (15 da Fase 126 menos a ativação removida pela D-02) — dentro do orçamento. 12
+testes novos (TDD RED→GREEN na primeira tentativa, sem correção). Suíte `Phase125+126+127` =
+**199 verdes** (baseline 187 + 12 novos). Zero regressão. Nenhuma chamada real à Clicksign, nenhum
+deploy. Detalhe: `127-05-SUMMARY.md`.
+
+**Plano 127-04 executado em 2026-08-12** (commits `56198a88`/`fa477d78`/`ff0208b9`): resolve as duas
+configurações que a montagem do envelope (127-05) vai precisar. **D-21** (herdada da Fase 126):
+coluna nova `servicos.clicksign_template_id` (nullable, sem índice/enum/nullOnDelete) +
+`Servico::clicksignTemplateId()` — resolve o modelo `.docx` da coluna do serviço, com fallback pro
+`CLICKSIGN_TEMPLATE_ID` global, e `null` quando nenhum dos dois existe (quem decide o que fazer com
+isso é o job de montagem, que precisa falhar com mensagem clara). **D-03 + CLICK-08 + DADOS-06**:
+`ContratoAssinatura::prazoDiasEfetivo()`/`lembreteDiasEfetivo()` resolvem `prazo_dias`/`lembrete_dias`
+(colunas do plano 127-01) com fallback pra `config('services.clicksign.prazo_dias_padrao'/
+'lembrete_dias_padrao')`, defaults 30/3 — os valores MEDIDOS como padrão da própria Clicksign, agora
+promovidos de hardcoded na assinatura de `ClicksignClient::ativarEnvelope()` (que NÃO mudou) pra
+configuração. `CLICKSIGN_PRAZO_DIAS`/`CLICKSIGN_LEMBRETE_DIAS` documentadas no `.env.example`;
+`CLICKSIGN_TEMPLATE_ID` continua sem valor de exemplo. Suíte `Phase125+126+127` = **187 verdes**
+(baseline 179 + 8 novos). Zero regressão. Nenhuma chamada real à Clicksign, nenhum deploy. Detalhe:
+`127-04-SUMMARY.md`.
+
+**Plano 127-02 executado em 2026-08-12** (commits `22119d37`/`73bf5a94`): aplica a D-02 — o sistema
+PARA no rascunho. `ClicksignClient::montarEnvelope()`/`montarEnvelopePorModelo()` ganham
+`bool $ativar = true` propagado até `montarEnvelopeComum()`, que envolve a ativação (última
+instrução do `try`) num `if ($ativar)`. Com `ativar: false` o envelope é montado por inteiro —
+documento, 4 signatários, 8 requisitos — e fica em `draft`: quem envia ao cliente é o Comercial,
+pela interface da Clicksign, porque não existe pré-visualizar sem ativar (§10.4 do empírico) e
+ativar dispara e-mail ao cliente. O `try`/`catch` e o rollback compartilhado (D-04, via
+`cancelarEnvelope()`) não mudaram — zero duplicação de sequência, zero mudança no shape do retorno.
+Default `true` preserva 100% do comportamento da Fase 126 (suíte inteira verde sem alteração).
+Suíte `Phase125+126+127` = **166 verdes** (baseline 159 + 7 testes novos). Zero regressão. Detalhe:
+`127-02-SUMMARY.md`.
+
+**Plano 127-01 executado em 2026-08-12** (commits `7db2fd83`/`8257a617`/`d01577f5`/`7b172779`):
+aplica a D-06 — a trava de unicidade "em andamento" de `contrato_assinaturas` deixa de ser por
+EMPRESA e passa a ser por (EMPRESA + SERVIÇO), destravando a D-21 (Fase 126, 1 modelo `.docx` por
+serviço → N contratos por empresa). Migration nova (`servico_id` FK, `servico_id_em_andamento`
+espelho, `prazo_dias`/`lembrete_dias`, índice composto `ca_empresa_servico_andamento_uniq` criado
+ANTES do drop de `ca_company_andamento_uniq` — armadilha 1553 do MariaDB). Model: hook `saving`
+preenche as duas colunas derivadas juntas + guard `RuntimeException` se `servico_id` vazio; novo
+`emAndamentoDoServico()`. Os 2 testes da Fase 125 que quebravam por construção (semântica do índice
+mudou, não só o nome) foram adaptados — não é regressão. Suíte `Phase127+125+126` = **159 verdes**
+(baseline 147 intacto + 11 novos + 1 novo em Phase125). Zero regressão. Detalhe:
+`127-01-SUMMARY.md`.
 
 > ⚠️ **DUAS FRENTES EM PARALELO — este ponteiro descreve só uma delas.**
 > Merge de 2026-08-11: `origin/main` trazia **92 commits de outro desenvolvedor** ("ECF Dev"),
@@ -154,7 +291,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 
 **Velocity:**
 
-- Total plans completed: 88
+- Total plans completed: 95
 - Average duration: ~15 min/plan
 - Total execution time: ~1.5 hours
 
@@ -185,6 +322,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | 124 | 5 | - | - |
 | 125 | 3 | - | - |
 | 126 | 12 | - | - |
+| 127 | 7 | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
@@ -372,6 +510,35 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 135 P06 | 40min | 3 tasks | 7 files |
 | Phase 136 P04 | 9min | 2 tasks | 3 files |
 | Phase 136 P06 | 13min | 2 tasks | 2 files |
+| Phase 127 P02 | 25min | 2 tasks | 2 files |
+| Phase 127 P03 | 8min | 2 tasks | 3 files |
+| Phase 127 P06 | 25min | 2 tasks | 3 files |
+| Phase 128 P01 | 25min | 2 tasks | 3 files |
+| Phase 128 P02 | 12min | 2 tasks | 2 files |
+| Phase 128 P03 | 4min | 3 tasks | 3 files |
+| Phase 128 P04 | 10min | 3 tasks | 6 files |
+| Phase 128 P05 | 35min | 3 tasks | 8 files |
+| Phase 128 P06 | 40min | 2 tasks | 3 files |
+| Phase 129 P01 | 14min | 3 tasks | 9 files |
+| Phase 129 P02 | 25min | 2 tasks | 9 files |
+| Phase 129-webhook-clicksign-v22-0 P03 | ~1h40min | 3 tasks | 10 files |
+| Phase 129 P04 | 1h30min | 3 tasks | 6 files |
+| Phase 129 P05 | 70min | 2 tasks | 5 files |
+| Phase 129 P06 | 1h20min | 2 tasks | 10 files |
+| Phase 130 P01 | 25min | 2 tasks | 7 files |
+| Phase 130 P02 | 20min | 2 tasks | 4 files |
+| Phase 130 P03 | 35min | 3 tasks | 6 files |
+| Phase 130 P04 | 20min | 3 tasks | 6 files |
+| Phase 130-05 P05 | 25min | 2 tasks | 4 files |
+| Phase 130 P06 | 20min | 2 tasks | 4 files |
+| Phase 130 P07 | 90min | 3 tasks | 1 files |
+| Phase 131 P01 | 40min | 3 tasks | 8 files |
+| Phase 131 P02 | 55min | 3 tasks | 4 files |
+| Phase 131 P03 | 70min | 3 tasks | 7 files |
+| Phase 131 P04 | 50min | 3 tasks | 5 files |
+| Phase 131 P05 | 90min | 3 tasks | 7 files |
+| Phase 131 P06 | 80min | 3 tasks | 10 files |
+| Phase 132 P01 | 7min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -875,6 +1042,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **Dompdf continua instalado** (`RelatorioMensalPdfService` depende dele) — nenhuma mudança em `composer.json`.
 - Suíte `tests/Feature/Phase126/` + `tests/Feature/Phase125/`: **158 → 145** (queda de 13 esperada, não regressão — o código que esses testes provavam foi removido de propósito).
 - Fase 126 concluída — 12/12 planos executados.
+
 ### Decisões do Plan 134-09 (registradas)
 
 - **`usarComoTemplate()` fica em `AnunciarML.jsx` sem nenhum caller neste arquivo** — o botão "Template" que a chamava morava dentro do bloco "Rascunhos recentes" removido (D-16) e não está na seção 9 do UI-SPEC (que só define checkbox + badge + botão abrir + botão excluir). A função em si é citada **por linha** em `134-PATTERNS.md` (#17) e `134-10-PLAN.md` como o padrão de referência de "fetch lazy com try/finally" para o Modal de Detalhe do Anúncio do próximo plano — removê-la quebraria essas duas referências cruzadas sem necessidade.
@@ -888,11 +1056,114 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - **Permalink aparece 2x no modal** (cabeçalho compacto com id + rodapé explícito "Abrir no Mercado Livre") — o UI-SPEC pede os dois independentemente (seções "Cabeçalho" e "Rodapé"), não é duplicação acidental.
 - **Fase 134 completa** — os 10 planos entregaram os dois níveis de leitura de "Meus Anúncios" (lista + detalhe), ambos só-leitura (D-11), lendo exclusivamente do banco (D-05).
 
+### Decisões do Plan 129-02 (registradas)
+
+- **Gate A1 fechado por medição real, não por leitura de documentação (D-08)**: `ClicksignHmacVarredura::FORMULA_CONFIRMADA = hmac_body_chave_secret` (`hash_hmac('sha256', $rawBody, $secret)`, hex, header `sha256=<hex>`), confirmada em **5 de 5** eventos reais distintos do sandbox Clicksign, recebidos via túnel cloudflared. As outras 3 candidatas falharam nos 5. O `STACK.md` estava errado; o `PITFALLS.md` estava certo.
+- **CLICK-03 NÃO marcada como concluída** apesar de listada no frontmatter do plano — a A1 (algoritmo) está resolvida, mas a *recusa real* de webhook com assinatura inválida (401) só existe quando o receiver de produção do plano 129-03 ligar sobre esta fórmula.
+- **Gates #6 (`deadline`) e #7 (`refusal`) permanecem NÃO MEDIDOS** — a janela de sessão foi usada inteira para o gate bloqueante A1; nenhuma suposição preencheu essas lacunas. Achado colateral medido ao vivo: `deadline_partial_signature_action: "closed"` confirmado na resposta de `GET /envelopes/{id}` — o envelope PODE fechar com assinatura parcial (insumo direto para o gate CLICK-05 do plano 129-04).
+- **Túnel cloudflared e `php artisan serve` deixados de pé deliberadamente** ao fim desta sessão de continuação — o usuário sinalizou intenção de medir os gates #6/#7 em seguida; derrubar agora custaria remontar. Registrado como pendência consciente no `129-GATE.md`, não como esquecimento.
+- Registro completo em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md` e `.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` §12.
+
+### Decisões do Plan 129-07 (registradas — PARCIAL, checkpoint aberto)
+
+- **Task 2 (auto) executada; Task 1 (`checkpoint:human-verify`) segue aberta.** O plano 129-07 tem
+  duas tasks: a Task 1 exige o usuário assinar/recusar de verdade contra o sandbox; a Task 2 (auto)
+  registra o resultado. Como a Task 1 ainda não aconteceu, a Task 2 foi executada com o material que
+  já existia — a **pré-verificação do receiver de produção** feita pelo próprio executor nesta
+  sessão (corpo sintético, sem envelope real) — e não com o resultado da rodada real, que continua
+  pendente.
+
+- **Receiver de produção provado ponta a ponta pela internet, com corpo sintético**: `POST
+  /api/webhooks/clicksign` (não a sonda, já removida) respondeu 200 para assinatura válida
+  (`event.name` sintético, envelope não casa com contrato → grava `status='ignorado'`), 401 para
+  assinatura inválida (grava bruto, DADOS-03), e 401 sem linha nova na reentrega do mesmo corpo
+  (dedup, CLICK-04). Prova CLICK-03/CLICK-04/DADOS-03 com tráfego HTTP real, mas **não** com um
+  envelope de verdade — isso é a Task 1.
+
+- **Decisão A3 (resposta HTTP do webhook em erro interno) resolvida** — já estava implementada no
+  plano 129-03 (`ClicksignWebhookController`, matriz de status no docblock); só faltava marcar
+  resolvida no `REQUIREMENTS-v22.md`, feito agora com referência à prova ao vivo desta sessão.
+
+- **Anonimização corrigida no `129-GATE.md` (Rule 1 — bug de sessão anterior)**: o payload colado
+  pelo plano 129-02 trazia e-mail e nome reais de colaborador no bloco `data.user` do evento (o
+  dono da conta, não um signatário) — a afirmação do próprio documento de que "nenhum dado real de
+  pessoa física passou por aqui" estava incorreta para esse campo. Substituído por placeholder
+  (`usuario.api@example.com`), sem impacto em nenhum outro conteúdo do gate.
+
+- **Gates #6 (`deadline`) e #7 (`refusal`) continuam NÃO MEDIDOS** — não fazem parte do que é
+  automatizável; dependem da Task 1. Gate #11 marcado como **permanentemente não medido** (sem
+  documentação, sem forma segura de provocar reentrega real da Clicksign) — a observação prática
+  disponível é a reentrega manual contra o receiver, já registrada.
+
+- **CLICK-03/04/05/06/11 e DADOS-03 já estavam marcados `[x]` desde os planos 129-03/04/06** — não
+  dependem da assinatura real ponta a ponta (validam a camada de webhook, agora com prova de tráfego
+  real desta sessão); não alterados por este plano além da checagem do estado.
+
+- **Suíte cumulativa** `Phase124|Phase125|Phase126|Phase127|Phase128|Phase129` → 346 passed / 1128
+  assertions, exit 0 — idêntica ao baseline herdado do plano 129-06, sem regressão.
+
+- **Túnel cloudflared e `php artisan serve` continuam DE PÉ** — não foram tocados nesta sessão
+  (hard rule desta execução). Só devem ser encerrados depois que o usuário confirmar a rodada real
+  da Task 1 ou desistir dela explicitamente.
+
+- **O que falta para fechar o plano 129-07**: a rodada real de assinatura/recusa contra o sandbox
+  (Task 1) — ver checkpoint devolvido pelo executor. Enquanto isso não acontece, o plano permanece
+  `7 of 7 — EXECUTING`, não `Concluído`.
+
+### Correção pós-revisão de código da Fase 129 (CR-01/WR-02/IN-01, 2026-08-13, registradas)
+
+`129-REVIEW.md` (revisão de código profunda pós-129-07) encontrou 1 achado CRITICAL e 2 menores.
+Corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, commits `fix(129):`:
+
+- **CR-01 (crítico) — `MlbEmpresa` duplicada em corrida real entre workers de fila.**
+  `EmpresaOperacionalRouter::aplicarRoteamento()` fazia check-then-act
+  (`MlbEmpresa::exists()` + `criarFicha()`) sem lock nem transação. Dois workers processando
+  envelopes DIFERENTES da MESMA empresa quase ao mesmo tempo (ex.: Polos + Assessoria) podiam os
+  dois ler `exists()===false` antes de qualquer um commitar e os dois criar ficha — violando D-02.
+  `WithoutOverlapping` do job só serializa por `envelope_id`, de propósito (D-06); a corrida só
+  aparece com fila real (`sync` local é serial, por isso não apareceu na suíte). **Fix escolhido
+  pelo usuário: `Cache::lock()` por `company_id`, SEM migration** (índice único recusado — produção
+  pode já ter fichas duplicadas de fases anteriores e a migration quebraria o deploy sem forma de
+  verificar localmente; registrado como possível segunda camada futura). Funciona com
+  `CACHE_STORE=database` (padrão do projeto) porque a tabela `cache_locks` já existe (`DatabaseLock`,
+  mutex real). Lock extraído em `lockDaEmpresa()` (protected, reusável) — mesmo ponto que a Fase 130
+  (SC4) vai precisar para a corrida liberação-manual-vs-webhook. Commit `f50e123c`. Teste dedicado
+  `tests/Feature/Phase129/LiberarEmpresaCorridaConcorrenteTest.php` prova a corrida entrelaçando duas
+  chamadas via decorator na fábrica de lock (PHPUnit é single-thread, sem paralelismo real de SO) —
+  resultado: 2 `ContratoLiberacao`, 1 `MlbEmpresa` só. Validado manualmente que o teste falha se a
+  trava for removida.
+
+- **WR-02 — ordenação de eventos por string, não timestamp.** `ContratoSignatariosSyncService`
+  comparava `attributes.created` como string; troca para `Carbon::parse(...)->getTimestampMs()`.
+  Commit `0838b8f1`.
+
+- **IN-01 — canal de log divergente em `failed()`.** `ProcessarEventoClicksignJob`/
+  `BaixarPdfContratoAssinadoJob` logavam no canal padrão em vez de `ecf-webhooks` (único canal que a
+  Fase 130/REDE-03 varre). Uniformizado. Commit `4d0a596f`.
+
+- **WR-01 (link do PDF nunca medido) e IN-02 (gate humano ponta a ponta) NÃO são corrigíveis por
+  código** — dependem do checkpoint humano do plano 129-07 (Task 1), que segue aberto. Não tocados.
+
+- **Suíte cumulativa** `Phase124|Phase125|Phase126|Phase127|Phase128|Phase129` → 348 passed / 1134
+  assertions, exit 0 (346/1128 + 2 testes novos / +6 assertions da correção). Sem regressão.
+
+- **`129-VERIFICATION.md` permanece `status: human_needed`** — a correção fecha uma lacuna de código
+  encontrada DEPOIS da verificação original, não o gate humano do plano 129-07, que continua sendo a
+  causa raiz do status e segue pendente de ação humana no sandbox real.
+
 ### Pending Todos
 
 None.
 
 ### Blockers/Concerns
+
+- **Fase 129, plano 07 (gate humano final) — checkpoint aberto, aguardando ação do usuário.**
+  Antes de qualquer medição real: o webhook cadastrado no painel do sandbox aponta para
+  `/api/webhooks/clicksign-sonda`, que foi removida no plano 129-02 — precisa trocar para
+  `/api/webhooks/clicksign` (sem `-sonda`). Depois disso: assinar um contrato de teste de verdade
+  (gate #7 fica pendente sem uma recusa real também), e — se der — deixar um envelope de prazo
+  curtíssimo vencer (gate #6). Túnel cloudflared e `artisan serve` locais seguem de pé para viabilizar
+  isso. Roteiro completo em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md`.
 
 - **Rate limit 429 da Adman**: problema crônico, não relacionado à Phase 15. Endpoint `/sugadores/{id}/mlbs` retorna 502 quando MCP da Adman bate 429. Logs mostram 429 sequencial em vários `SyncAdmanCompanyJob` em produção. Mensagem formal enviada ao grupo da Adman em 2026-05-27 pedindo aumento de limite.
 - Fase 94: verificacao manual pos-deploy pendente — confirmar topologia de proxy do VPS (open_ip_address = IP publico real do cliente, nao 127.0.0.1/proxy). Se nao bater, configurar trustProxies em bootstrap/app.php antes de confiar na Regra 1 do NpsSuspicionService (Fases 95/96).
@@ -903,6 +1174,10 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260811-r4k | **O cliente passa a saber quem é o Estrategista e o Analista da pesquisa NPS.** Card "Quem cuida da sua conta" no topo do formulário público (`Nps/Respond.jsx`, fluxo v15), com avatar de iniciais, papel e nome. **Só frontend, nenhuma linha de backend**: `estrategista_name`/`analista_name`/`tem_analista` já viajavam no payload Inertia desde a Phase 31 e o redesenho v15 (2026-07-08) simplesmente parou de exibi-los — só aproveitou `company_name`. **A medição decidiu ONDE colocar**, e a resposta óbvia (texto do e-mail) estava errada: o disparo automático mensal está **desligado desde 2026-07-29** (Fase 119.1 D2 — `routes/console.php` não agenda mais `nps:disparar-mensal`), o canal Digisac está **OFF em produção** (`nps_envio_digisac_ativo='0'`) e o **último `NpsMonthlyMail` registrado é de 2026-07-16**. Na prática não existe mais um "texto de envio" padronizado — o link nasce à mão em `/nps` e o responsável manda pelo canal que quiser. A página da pesquisa é o único artefato que **sempre** chega ao cliente. Degradação: mentoria pura (`tem_analista=false`) mostra só o Estrategista; **link de GRUPO não renderiza o card**, porque `NpsGrupoController` manda os três campos nulos de propósito (NPS de grupo cobre várias empresas e não tem responsável único) — degradação natural, sem tratamento especial; survey legado segue em `RespondLegado`, que já interpola os nomes nas perguntas. **BUG PRÉ-EXISTENTE ENCONTRADO E NÃO CORRIGIDO** (é conteúdo, não código): `configuracoes.nps_textos.email_corpo` em prod está com `**{nome_estrategista}**{nome_analista}` — alguém trocou `{bloco_analista}` (que rende `" e o analista é **Nome**"`) pelo placeholder do nome cru, então o e-mail sai `Seu estrategista é **João Silva**Maria Souza.` com asteriscos literais (`renderHtml` faz `e()`+`nl2br`, não interpreta markdown) e os nomes grudados; resolve-se editando o texto em `/nps/configuracao`, e volta a doer se o disparo automático for religado. **Verificado em navegador real, não por grep no bundle**: survey de teste no banco local servido pelo Apache do XAMPP, aberto em Chrome headless via puppeteer com asserção no DOM (`QUEM CUIDA DA SUA CONTA`) + screenshot em 900px e 390px nos três cenários (com analista / mentoria pura / mobile); dados de teste removidos do banco ao final. `NpsRespondRenderTest` passa; a falha em `Phase31NpsSubmitTest > generate cria survey com auto generated false` é **pré-existente e sem relação** (o teste espera `expires_at` +7 dias, mas a regra virou "fim do mês corrente" em 2026-07-20). `npm run build` verde. **DEPLOYADO 260811** (`daef7ba5`, `deploy.sh` exit 0, "Nothing to migrate") por deploy **isolado em worktree, e o isolamento era obrigatório**: a árvore local tinha 15 commits não publicados e **13 eram das Fases 135/136 de outra sessão**, em andamento e **com duas migrations** de tabelas de Onboarding — um push da `main` levaria tudo e o `migrate --force` criaria essas tabelas em prod a partir de fase incompleta. Worktree a partir de `origin/main` + cherry-pick dos 2 commits, com o **diff de `Respond.jsx` contra a `main` local vazio** (paridade byte a byte com o código testado no navegador); subiu **1 arquivo de código**, zero migrations, resto `.planning/`. **A pegadinha se confirmou ao vivo:** durante o deploy a outra sessão commitou mais 4 vezes na `main` local (HEAD `7d2cc992`→`bcfb461b`). Pré-checagem da VPS: nenhum arquivo **rastreado** sujo e `migrate:status` sem **nenhuma** pendente (há untracked antigos de `contrato_assinaturas`, já aplicados). Verificado por reconsulta: HEAD `daef7ba5`, workers RUNNING uptime 37s, smoke 302/200/404, **zero** `production.ERROR` em 15 min, e **bundle assertado pelos DOIS lados** no chunk resolvido pelo manifest (`assets/Respond-DFlRKR7f.js`): "Quem cuida da sua conta" presente, `ResponsaveisCard`/`iniciaisDe` com **zero** ocorrências em todo o build. **NÃO abri pesquisa real de prod no navegador de propósito** — todo GET em `/nps/{token}` grava `first_opened_at`, incrementa `open_count` e cria evento `opened`, e criar survey de teste é pior (o `NpsImputationService` materializa nota 1, que entra no bônus). **INCREMENTO 2 — FOTO do responsável, DEPLOYADO 260811 (`762ea811`)**: o card nasceu só com iniciais e passou a usar `users.avatar_url`, caindo nas iniciais quando não há foto. Reusa o contrato do `Avatar` de `Performance/Index.jsx` **inclusive o `onError`** — o ponto não óbvio, porque `avatar_url` pode apontar para arquivo já apagado ou foto externa (Google) que parou de responder, e sem fallback o cliente veria ícone de imagem quebrada no lugar do rosto de quem o atende; testado de propósito com URL inexistente (403) → volta às iniciais. URL vai **crua** (`Storage::url()` já dá `/storage/avatars/…`), espelhando o `foto` do `PerformanceController`; `NpsGrupoController` ganhou as chaves como `null` só para não divergir. **O guard AB-94-1 barrou a mudança e estava certo**: `has('survey', 6)` existe porque a página é PÚBLICA e o mesmo request grava o rastro da Phase 94 (`first_opened_at`/`open_ip_address`/`open_user_agent`) — atualizado para 8 com o motivo no docblock e a intenção REFORÇADA com `->missing()` explícito nas 4 chaves do rastro, que seguem proibidas por mais que o payload cresça; a exposição nova é do mesmo nível do nome, público ali desde a Phase 31. **ERRO COMETIDO**: o `git commit` capturou `135-04-SUMMARY.md` da outra sessão (já estava **staged** no índice compartilhado — `git add` por caminho não impede que o índice existente entre no commit); removido do que foi a prod via `--amend` no worktree (**prod levou só os 4 arquivos**), mas permanece em `f71f8aa9` na `main` local — não reescrevi porque a outra sessão estava commitando naquele instante. Verificado em prod: HEAD `762ea811`, workers uptime 55s, zero `production.ERROR`, smoke 302/200/404, bundle pelos dois lados no chunk do manifest (`assets/Respond-6NDj33h3.js`: "Quem cuida da sua conta" e `estrategista_foto` presentes; `AvatarResponsavel`/`usaFoto` com **zero** ocorrências) e — **o que mais importava** — `GET /storage/avatars/*.webp` **sem cookie** devolve **200 image/webp**, porque a pesquisa é pública e a foto precisa abrir sem login (17 usuários com foto em prod, arquivos presentes). | 2026-08-11 | 51c71d23, f71f8aa9 (prod: 204e89be, 762ea811) | [260811-r4k-nps-responsaveis-na-pesquisa](.planning/quick/260811-r4k-nps-responsaveis-na-pesquisa/) |
+| 260816-d72 | **A tela passou a avisar a espera ao gerar contrato.** Reportado pelo usuario DEPOIS de aprovar o UAT da Fase 131: *"a maioria das vezes em que cliquei em gerar contrato deu erro, na segunda tentativa funciona"*. Investigado por log + reconsulta: o bucket `clicksign-envelope` e `Limit::perMinute(1)->by('global')` — **1 envelope por minuto para a conta inteira**, protecao deliberada (montar um envelope consome ~15 das 20 chamadas/min da Clicksign). Gerar para duas empresas seguidas deixava a segunda em "Nao enviado" enquanto a tela ja dizia "Contrato gerado". **Entregue:** `ContratoAssinatura::estaPreparando()` no MODEL (nao no controller nem no front — tres telas importam `contratoStatus.js` e duplicar logica entre elas ja gerou divergencia antes), badge e faixa ambar na lista e no detalhe, e a mensagem de sucesso do POST reescrita. **A condicao tem TRES partes:** `rascunho` E `clicksign_envelope_id` vazio E dentro da janela — sem a checagem de envelope a flag mentiria para todo contrato montado com sucesso no ultimo minuto (o job para em rascunho de proposito, D-02 da Fase 127). **Janela de 5 min**, nao 1: cobre o `->delay()` por servico e a 1a faixa de `backoff()`. **Ambar, nunca vermelho e nunca `ecf-yellow`** — e espera, nao erro. **Escopo travado por aceitacao negativa:** o job, o `AppServiceProvider`, as migrations e a listagem do Comercial confirmados fora do diff. O limite de 1/min FICA como esta. **Checkpoint visual: a 1a aprovacao foi INVALIDA e isso foi detectado antes de virar registro** — o contrato de teste era de 16/08 e `estaPreparando()` ja era false ha mais de um dia, entao a faixa nao estava na tela para ser vista; carimbo resetado e verificacao refeita. Na 2a rodada o usuario viu o badge e confirmou que ele **sumiu sozinho apos o decurso natural dos 5 minutos**, e pediu tirar o travessao da frase (aplicado). Gates: `--filter=Phase131` **72 passed (254 assertions)**, eram 65; texto novo confirmado no bundle e a redacao antiga com zero ocorrencias em `public/build/assets`. **Sem deploy.** | 2026-08-17 | e5d22c89, c5c58936, 2a1483cc | [260816-d72-tela-avisa-a-espera-do-rate-limit-ao-ger](.planning/quick/260816-d72-tela-avisa-a-espera-do-rate-limit-ao-ger/) |
+| 260817-d6h | **O e-mail do colaborador saiu da tela de contrato.** Observacao do usuario olhando a tela durante o checkpoint da 260816-d72: *"essa informacao e de responsabilidade do setor administrativo preencher, porem nao e pertinente ao contrato"*. Esta certo — e o e-mail que a ECF cria para ter acesso a conta do cliente no Mercado Livre; **quem preenche** e **onde aparece** sao perguntas diferentes, e a ADM-01 as juntou. **Removida SUPERFICIE, nao dado:** a coluna `companies.email_colaborador` continua existindo, continua editavel em `CompanyController` (comentario literal na linha 153: *"email_colaborador permanece editavel aqui"*) e continua sinalizada em `Companies/Index.jsx` como pendencia (badge ambar "Sem email colaborador", alimentado por `HubspotWebhookController`). Verificado ANTES de planejar que remover nao perde capacidade nenhuma. Em `Comercial/NovaEmpresa.jsx` o campo nem existe — so um comentario, confirmando a D-12 da Fase 131. **Armadilha evitada:** no `atualizarCadastro()`, tirar so a regra de validacao deixaria mass-assignment silencioso; tirar so a chave do `->only()` deixaria validacao de campo que a tela nao manda mais — as duas sairam juntas. **Desvio tratado pelo executor:** a remocao quebrou mais 2 testes que dependiam da validacao; em vez de afrouxar, reescreveu — o Caso 7 agora prova que formato invalido e ignorado silenciosamente, que e a consequencia correta de o campo nao pertencer mais ao endpoint. **Efeito colateral bom:** a D-11 da Fase 131 (garantir que o campo nao bloqueasse a geracao) fica obsoleta por construcao. Gates: `--filter=Phase131` **72 passed (254 assertions)**; `grep` = 0 no JSX e no controller de contrato, 7 e 12 preservados em `/companies`; coluna confirmada existindo; `git diff --name-only` lista so os 3 arquivos esperados. **Sem deploy.** | 2026-08-17 | d0564870 | [260817-d6h-tira-o-email-do-colaborador-da-tela-de-c](.planning/quick/260817-d6h-tira-o-email-do-colaborador-da-tela-de-c/) |
+| 260814-d9s | **O reenvio de notificação da Clicksign parou de nascer morto.** `ClicksignClient::reenviarNotificacao()` fazia `$this->baseRequest()->post($url)` **sem segundo argumento** — corpo vazio — e a API v3 (JSON:API) respondia `data deve ser informado(a)`. **Estava quebrado em PRODUÇÃO, não só em sandbox**, e nunca havia sido exercitado de verdade. Encontrado por acaso durante o gate humano da Fase 130, ao tentar forçar o reenvio de um convite que não chegava. **Por que passou pelos testes:** o único teste que cobria o método (`reenviar_notificacao_429_...`) usava `Http::fake()` respondendo 429 e **nunca afirmava nada sobre o corpo enviado** — um POST vazio passa nesse teste e falha na API real. Causa raiz de teste, não de código. **Corpo descoberto por MEDIÇÃO, não por dedução** (chutar o `type` só produziria outro erro): sondagem ao vivo contra o envelope de teste `f010d235-ff75-400a-84b7-01cb89c3ef59` no sandbox, com orçamento duro de 4 requisições (usou 3: 1 `GET /signers` + 2 POST, ~20s entre elas), guardas DUPLAS de ambiente (`services.clicksign.env === 'sandbox'` **E** `base_url` contendo `sandbox.clicksign.com`) e parada obrigatória no primeiro 429. **✅ CONFIRMADO POR 2xx** (não ficou no 429): o corpo mínimo aceito é `{"data":{"type":"notifications","attributes":{}}}`, e a resposta devolve um recurso `notifications` com `id` e `attributes.message`. **Armadilha de serialização registrada:** `attributes` precisa ir como OBJETO JSON (`{}`), não como array PHP vazio (que o `json_encode` serializa como `[]`) — mesma pegadinha já documentada em `anexarDocumentoPorModelo()`. **O teste novo assevera o CORPO** (`Http::assertSent()` inspecionando `data.type` e a presença de `attributes`), não só o status — e foi provado manualmente que ele REPROVA quando se remove o corpo do `post()`, ciclo RED→GREEN. Sem essa prova o teste novo seria tão inócuo quanto o antigo. Preservado o que já estava certo: o método segue fora do `enviar()` comum (sem retry no 429 anti-spam, que é resposta ESPERADA e não erro), mantém a mensagem pt-BR de "aguarde", a decodificação defensiva de resposta em texto puro, e o log restrito a `contexto`/`status` (WR-11 da Fase 125). Achado registrado como **§14 do `CLICKSIGN-SANDBOX-EMPIRICO.md`**, que é a fonte de verdade empírica do projeto e tem precedência sobre documentação. Gates: `--filter=Phase126` **122 passed, 0 failed**; `git diff` do client restrito a `reenviarNotificacao()` e seu docblock; nenhum token/header/e-mail real em nenhum arquivo; nenhuma chamada contra produção. **Sem deploy.** **NÃO resolvido (é outro assunto, já documentado pela Fase 126):** o e-mail de solicitação não chega na caixa do signatário no sandbox mesmo com a plataforma registrando o envio — precisa ser testado de verdade antes da Fase 133 se o e-mail for o canal de produção. | 2026-08-14 | 15602476, 60eeafbf, 5520e11c | [260814-d9s-corrigir-reenviarnotificacao-do-clicksig](.planning/quick/260814-d9s-corrigir-reenviarnotificacao-do-clicksig/) |
+| 260814-cro | **O alerta de contrato preso parou de zerar o próprio relógio.** Bug da Fase 130, encontrado ao vivo durante o gate humano (SC3): a tela de liberação manual apareceu VAZIA e o contrato de 7 dias sumira da lista. Causa medida por reconsulta ao banco — `ContratosPresosService::dataBase()` devolvia `updated_at` no `default` do match (estados `recusado`/`erro`/`expirado`/`cancelado`), e o cooldown da D-04 grava `ultimo_alerta_em` no contrato, o que **bumpa `updated_at`** pelo Eloquent. Evidência: contrato id 9, `created_at=2026-08-07 17:27:31`, `updated_at=2026-08-13 17:27:45` **idêntico ao segundo** ao `ultimo_alerta_em`; `diasParado()` devolvia **0** para um contrato de 7 dias. Efeito: `estaPreso()` virava `false` logo após alertar → **o alerta avisava uma vez e nunca mais**, e o contrato sumia da tela de liberação manual. Isso destruía a **D-04** ("o alerta REPETE em intervalo até resolver"), que existe precisamente porque avisar uma vez só faz o aviso morrer se ninguém viu — o silêncio que a REDE-02 existe para impedir. **Agravante que definiu a correção:** `updated_at` é instável por natureza — QUALQUER escrita no contrato (retry de PDF, sync de signatários) zerava o contador, então consertar só a gravação do alerta não resolveria. Correção: `dataBase()` passa a usar data estável por estado (`enviado_em ?? created_at` no default; `assinado_em ?? enviado_em ?? created_at` no assinado — o fallback também era instável), **sem migration** — a tabela não tem `recusado_em`/`expirado_em`/`cancelado_em`, e contar desde que o processo começou é semanticamente mais correto para a D-05 ("empresa sem liberação há tempo demais") do que contar desde a última mexida no registro. Defesa em profundidade: `timestamps = false` antes do update do carimbo — **não** `updateQuietly()`, porque o docblock de `ContratoAssinatura::booted()` registra que `updateQuietly` desliga o hook `saving` em silêncio e pode dessincronizar `company_id_em_andamento`, travando a empresa para gerar contrato novo. **Duas fixtures existentes codificavam o bug** e entraram no escopo (`LiberacaoManualEstadoRealTest` envelhecia `updated_at` via `forceFill()` sem definir `enviado_em`) — corrigidas, nenhuma asserção afrouxada. **O teste que faltava e deixou o bug passar:** o cooldown provava que o alerta não repete cedo demais, mas ninguém provava que ele **ainda repete depois** — as duas metades da D-04 pareciam uma só. Gates: `--filter=Phase130` 79 → **82 passed** (317 assertions), `--filter=Phase129` **80/80** sem regressão, `grep updated_at` no serviço só retorna comentário. Confirmado por reconsulta ao banco no contrato real: `listar()` voltou de 0 para 1 item (contrato 9, 6 dias, limiar 5). **Sem deploy.** | 2026-08-14 | 098f6e34, 3aa7d504 | [260814-cro-corrigir-relogio-do-alerta-de-contrato-p](.planning/quick/260814-cro-corrigir-relogio-do-alerta-de-contrato-p/) |
 | 260811-r4k | **O cliente passa a saber quem é o Estrategista e o Analista da pesquisa NPS.** Card "Quem cuida da sua conta" no topo do formulário público (`Nps/Respond.jsx`, fluxo v15), com avatar de iniciais, papel e nome. **Só frontend, nenhuma linha de backend**: `estrategista_name`/`analista_name`/`tem_analista` já viajavam no payload Inertia desde a Phase 31 e o redesenho v15 (2026-07-08) simplesmente parou de exibi-los — só aproveitou `company_name`. **A medição decidiu ONDE colocar**, e a resposta óbvia (texto do e-mail) estava errada: o disparo automático mensal está **desligado desde 2026-07-29** (Fase 119.1 D2 — `routes/console.php` não agenda mais `nps:disparar-mensal`), o canal Digisac está **OFF em produção** (`nps_envio_digisac_ativo='0'`) e o **último `NpsMonthlyMail` registrado é de 2026-07-16**. Na prática não existe mais um "texto de envio" padronizado — o link nasce à mão em `/nps` e o responsável manda pelo canal que quiser. A página da pesquisa é o único artefato que **sempre** chega ao cliente. Degradação: mentoria pura (`tem_analista=false`) mostra só o Estrategista; **link de GRUPO não renderiza o card**, porque `NpsGrupoController` manda os três campos nulos de propósito (NPS de grupo cobre várias empresas e não tem responsável único) — degradação natural, sem tratamento especial; survey legado segue em `RespondLegado`, que já interpola os nomes nas perguntas. **BUG PRÉ-EXISTENTE ENCONTRADO E NÃO CORRIGIDO** (é conteúdo, não código): `configuracoes.nps_textos.email_corpo` em prod está com `**{nome_estrategista}**{nome_analista}` — alguém trocou `{bloco_analista}` (que rende `" e o analista é **Nome**"`) pelo placeholder do nome cru, então o e-mail sai `Seu estrategista é **João Silva**Maria Souza.` com asteriscos literais (`renderHtml` faz `e()`+`nl2br`, não interpreta markdown) e os nomes grudados; resolve-se editando o texto em `/nps/configuracao`, e volta a doer se o disparo automático for religado. **Verificado em navegador real, não por grep no bundle**: survey de teste no banco local servido pelo Apache do XAMPP, aberto em Chrome headless via puppeteer com asserção no DOM (`QUEM CUIDA DA SUA CONTA`) + screenshot em 900px e 390px nos três cenários (com analista / mentoria pura / mobile); dados de teste removidos do banco ao final. `NpsRespondRenderTest` passa; a falha em `Phase31NpsSubmitTest > generate cria survey com auto generated false` é **pré-existente e sem relação** (o teste espera `expires_at` +7 dias, mas a regra virou "fim do mês corrente" em 2026-07-20). `npm run build` verde. **Sem deploy.** | 2026-08-11 | 51c71d23 | [260811-r4k-nps-responsaveis-na-pesquisa](.planning/quick/260811-r4k-nps-responsaveis-na-pesquisa/) |
 | 260810-n5b | **O Desempenho passa a dizer de qual marketplace é a conta.** Item 3 da seção Desempenho do PDF do Maycon; ele escolheu dois lugares: tabela por empresa e página do profissional. **O achado que definiu a implementação foi medir antes de escrever**: `companies.marketplace` — o campo de nome óbvio — NÃO serve. É o marketplace da conta ADMAN, usado para montar a URL da API (`/{marketplace}/accounts/...`), com default `'meli'`; no banco estão **171 de 171** empresas em `meli` e a pivot `company_marketplaces` (Fase 57) tem **ZERO linhas**. Usá-lo diria "Mercado Livre" para toda loja Shopee — exatamente o erro que a demanda quer corrigir. A fonte correta já estava na tela escrita como jargão: `fonte_financeira`, derivada do SERVIÇO contratado em `CarteiraContextService::flagsFinanceirasPorSetor()` (setor `performance` → `adman` → Mercado Livre; setor `shopee` → Shopee; polos/publicação → sem fonte) — e é também a informação certa aqui, porque é o marketplace de cuja métrica saiu a pontuação daquela loja. Entregue: `EmpresasScoreTabela` (usada por Performance/Show **e** pelo Relatório de Bonificação) deixa de imprimir `ADMAN`/`SHOPEE` sob o nome da loja e mostra `Mercado Livre`/`Shopee` com tooltip; a página do profissional ganha a faixa "Marketplaces da carteira" (ex.: "Mercado Livre 18 · Shopee 4") contada sobre `empresas_score` que a tela já recebe — nada recalculado, nenhuma chamada nova. **NUANCE registrada no tooltip**: empresa com os DOIS vínculos elegíveis resolve `adman` pela regra de desempate do `CompanyScoreService` e aparece como Mercado Livre — é o marketplace que produziu os números da linha, não omissão. Carteira 100% sem fonte financeira não ganha faixa vazia e empresa sem fonte fica fora da contagem (um balde "sem marketplace" competindo com os reais confundiria; a tabela já mostra essas linhas com o motivo "Sem fonte financeira vinculada"). **100% FRONT, sem migration e sem bump de cache**: `fonte_financeira` existe tanto no cálculo ao vivo quanto na COLUNA do snapshot congelado, então a tradução vale igual em mês corrente e em competência fechada — um campo novo exigiria migration em `desempenho_company_score_snapshots` (o writer grava colunas fixas, não JSON) e não existiria nas competências já congeladas. Gates: 7 testes novos em `desempenhoLabels.test.js` (tradução, fonte desconhecida que nunca vira `undefined` nem slug cru, fonte nula, contagem ordenada, desempate por nome, lista vazia) — arquivo 26/26; suíte JS **155/156** (a falha é a do `estrutura-grade-glide`, obsoleta desde 17/07); gates estruturais de Show e RelatorioBonificacao 14/14; `npm run build` verde com **asserção pelos dois lados** — "Marketplaces da carteira" presente em `Show-DYp4KSrv.js`, "Mercado Livre" no chunk `desempenhoLabels-*`, os quatro identificadores novos com **zero** ocorrências literais em `public/build/assets/` (sobreviver à minificação seria sinal de escopo vazado, lição de 260807) e o padrão antigo da célula ausente. **Sem deploy.** Não foi populada a pivot `company_marketplaces` nem corrigido `companies.marketplace` — é outro trabalho (`companies:backfill-marketplaces` existe) e nenhuma tela depende disso agora.  **DEPLOYADO 260810** no mesmo lote isolado (`b9c3ca90..2c60d5cc`); em prod, "Marketplaces da carteira" presente em `Show-Crw4PMys.js` e os identificadores novos com zero ocorrências literais no build. | 2026-08-10 | 95e58467 | [260810-n5b-marketplace-no-desempenho](.planning/quick/260810-n5b-marketplace-no-desempenho/) |
 | 260810-mt8 | **A nota do Desempenho passa a dividir SEMPRE por 3, com indicador ausente valendo zero.** Item 2 da seção Desempenho do PDF do Maycon ("Pontuação Final = Soma das 3 pontuações ÷ 3"). `computeNotaFinalPorIndicador()` promediava só os indicadores PRESENTES — dividia por 2 quando faltava um; agora o divisor é a constante `DIVISOR_NOTA_FINAL = 3` e o ausente soma 0. **O zero entra no nível do INDICADOR, nunca por loja**: o denominador independente dentro de cada indicador continua intocado (loja sem margem segue apenas fora da média de margem e contando no faturamento e no NPS) — zerar por loja seria outra regra, muito mais severa, e 75 das 286 lojas de 2026-06 estavam sem margem. Carteira sem NENHUM indicador continua com nota `null`, jamais 0: ausência total de dado não é desempenho zero, e a trava D-91-01 (`blocked`) depende disso — coberto por teste novo. **CONSEQUÊNCIA que precisa estar na mesa antes de qualquer consolidação: carteira só-Shopee passa a ter TETO de (5+0+5)/3 = 3,33 e NUNCA alcança os 4,00 da primeira faixa de bônus** — a plataforma não fornece CMV, então a margem dessa carteira é estruturalmente ausente. Foi perguntado ao Maycon com esse caso concreto na mesa e ele escolheu a opção mais severa das três (a alternativa era o ausente entrar com 1,0, piso da régua). Efeito no teste âncora só-Shopee, nos três métodos: placeholder 1,0 (até 05/08) dava **2,33**; média dos presentes (05/08→10/08) dava **3,00**; divisor fixo dá **2,00**. **`pontos_componentes` continua expondo `null` no ausente** — o payload nunca fabrica o zero, senão "a carteira não tem o indicador" viraria indistinguível de "tirou zero"; quem soma como zero é a nota e a conta exibida. Front: as **três `formatContaNota` homônimas e divergentes** (`lib/desempenhoLabels`, `Performance/Index` — que devolve a sentinela `'/ 5,00'` e não `null` —, `Performance/Show`) passam a mostrar as três parcelas sobre `/3` com o ausente como `0,00`, e um `CONTA_NOTA_TOOLTIP` compartilhado explica o zero nos três pontos onde a conta aparece; sem a frase, o zero na tela se lê como nota ruim em vez de dado inexistente. Bump `desempenho.compute.v18` → `v19` e gate de hash da Phase119 rotacionado de novo. Gates: suítes Phase119+120+121+123+V18+DesempenhoShopeeScore **208 passed / 9 failed**, as 9 **pré-existentes** e verificadas revertendo o código das duas quicks de hoje (falham idênticas — 6 cobram o `calculated_fallback` local da margem e 3 o `componentes.var_margem_pct`, ambos revogados em 2026-07-24); `npm run test:js` **148/149** (a falha é a do `estrutura-grade-glide`, obsoleta desde 17/07); `npm run build` verde com **asserção pelos dois lados** — `/3` fixo com `?? 0` presente nos bundles resolvidos pelo manifest (`Index-Dsca37D5`, `Show-aYfmOlNY`, chunk `desempenhoLabels-CIm5B4Na`), identificador `CONTA_NOTA_TOOLTIP` **não** sobrevivendo literal (literal seria sinal de escopo vazado, lição de 260807) e o padrão antigo `/${pts.length}` **ausente** de todo o `public/build/assets/`. **NENHUMA competência reconsolidada e sem deploy** — quando `desempenho:consolidar-mes` for rodado, competências fechadas passam a refletir a regra nova, inclusive as já pagas.  **DEPLOYADO 260810** no mesmo lote isolado (`b9c3ca90..2c60d5cc`). Bundle de prod conferido pelos dois lados via manifest: divisor fixo presente em `Index-r6AlAvqb.js`, `Show-Crw4PMys.js` e no chunk de labels; denominador dinâmico antigo com **zero** ocorrências no build inteiro. **Nenhuma competência fechada mudou** — só muda ao rodar `desempenho:consolidar-mes`, que reescreve inclusive as já pagas. | 2026-08-10 | 3b320dce, 0068bf2e | [260810-mt8-nota-final-sempre-dividida-por-3](.planning/quick/260810-mt8-nota-final-sempre-dividida-por-3/) |
@@ -1008,6 +1283,9 @@ Last session: 2026-08-12T14:05:00.000Z
 Stopped at: Completed 136-05-PLAN.md (front da grade + selo por métrica + item de menu). Resta 136-07 (wave 5: gate de regressão + FIXMARG-03 por exit code + checkpoint humano bloqueante).
 Last session: 2026-08-10T21:59:33.127Z
 Stopped at: Completed 126-09-PLAN.md
+Last session: 2026-08-17T14:46:47.243Z
+Stopped at: Completed 132-01-PLAN.md
+  assinatura/recusa contra o sandbox) devolvida ao usuário como checkpoint aberto
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 

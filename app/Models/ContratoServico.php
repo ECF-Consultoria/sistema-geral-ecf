@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Observers\ContratoServicoGatilhoObserver;
 use App\Observers\ContratoServicoObserver;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -21,7 +22,15 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * do serviço quando o contrato nasce — cobre os 4 pontos de criação de uma
  * vez, sem lógica duplicada em controller.
  */
-#[ObservedBy(ContratoServicoObserver::class)]
+// DOIS observers, de fases diferentes, no mesmo model — cada um com sua
+// responsabilidade, nenhum sabendo do outro:
+//  - Fase 135 (D-13): cria o onboarding em rascunho quando o contrato nasce.
+//  - Fase 128 (plano 05, D-04): reavalia o gate administrativo de contrato
+//    quando um serviço novo é vinculado ou um campo-gatilho muda.
+// Forma de array em vez de dois atributos repetidos: `ObservedBy` é
+// `IS_REPEATABLE`, mas o construtor aceita `array|string` e essa forma não
+// depende de como o framework itera atributos repetidos.
+#[ObservedBy([ContratoServicoObserver::class, ContratoServicoGatilhoObserver::class])]
 class ContratoServico extends Model
 {
     use HasFactory;

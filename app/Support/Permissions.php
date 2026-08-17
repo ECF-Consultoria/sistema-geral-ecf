@@ -71,6 +71,8 @@ class Permissions
     public const ADMIN_RELATORIO           = 'admin.relatorio';
     public const ADMIN_FINANCEIRO          = 'admin.financeiro';
     public const ADMIN_INVENTARIO          = 'admin.inventario';
+    /** Fase 131 (UI-05/D-09) — tela de contratos do Administrativo: completar cadastro, gerar contrato e acompanhar a assinatura. */
+    public const ADMIN_CONTRATOS           = 'admin.contratos';
 
     public const SISTEMA_ACTIVITY_LOG      = 'sistema.activity_log';
     public const SISTEMA_DESENVOLVIMENTO   = 'sistema.desenvolvimento';
@@ -172,6 +174,7 @@ class Permissions
                 ['key' => self::ADMIN_RELATORIO,   'label' => 'Adm · Relatório',   'description' => 'Relatórios administrativos'],
                 ['key' => self::ADMIN_FINANCEIRO,  'label' => 'Adm · Fechamento',  'description' => 'Fechamento financeiro mensal'],
                 ['key' => self::ADMIN_INVENTARIO,  'label' => 'Adm · Inventário',  'description' => 'Inventário de ativos'],
+                ['key' => self::ADMIN_CONTRATOS,   'label' => 'Adm · Contratos',   'description' => 'Tela de contratos: completar cadastro, gerar contrato e acompanhar assinatura'],
             ],
             'Sistema' => [
                 ['key' => self::SISTEMA_ACTIVITY_LOG,    'label' => 'Activity Log',      'description' => 'Log de ações dos usuários'],

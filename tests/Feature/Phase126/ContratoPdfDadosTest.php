@@ -32,6 +32,14 @@ class ContratoPdfDadosTest extends TestCase
      * dia de vencimento, forma de pagamento e endereço são garantidamente
      * ausentes no banco hoje). `$atributosCompany` sobrescreve o padrão
      * quando um teste específico precisa simular contato vazio/nulo.
+     *
+     * Fase 127-01 (D-06): o DEFAULT de `comSnapshot()` da factory passou a
+     * ser um único item (um ContratoAssinatura representa um serviço só).
+     * Este helper passa a lista de 3 serviços EXPLICITAMENTE — o teste
+     * `contrato_com_tres_servicos_no_snapshot_...` continua provando o
+     * caso de snapshot com múltiplos itens (empresa com vários serviços
+     * concatenados no mesmo snapshot), só que agora como comportamento
+     * suportado, não mais como default da factory.
      */
     private function contratoComSnapshot(array $atributosCompany = []): ContratoAssinatura
     {
@@ -42,7 +50,26 @@ class ContratoPdfDadosTest extends TestCase
         ];
 
         return ContratoAssinatura::factory()
-            ->comSnapshot()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Tráfego — Mercado Livre',
+                    'valor_contratado' => 1847.32,
+                    'data_contratacao' => '2026-01-15',
+                    'data_vencimento'  => '2027-01-15',
+                ],
+                [
+                    'servico'          => 'Consultoria Shopee',
+                    'valor_contratado' => 923.9,
+                    'data_contratacao' => '2026-02-01',
+                    'data_vencimento'  => '2027-02-01',
+                ],
+                [
+                    'servico'          => 'Análise de Sugadores',
+                    'valor_contratado' => 412.55,
+                    'data_contratacao' => '2026-03-10',
+                    'data_vencimento'  => '2027-03-10',
+                ],
+            ])
             ->for(Company::factory()->state(array_merge($atributosPadrao, $atributosCompany)), 'company')
             ->create();
     }
@@ -146,6 +173,73 @@ class ContratoPdfDadosTest extends TestCase
 
         $this->assertSame('15/01/2026', $dados['vigencia']['inicio']);
         $this->assertSame('01/06/2028', $dados['vigencia']['fim']);
+    }
+
+    /**
+     * Achado do gate do plano 128-06 (medição real contra o sandbox
+     * Clicksign): `data_vencimento` nulo é o caso legítimo de "prazo
+     * indeterminado" (`ContratoDadosMinimosService::faltantes()`, item 5 —
+     * NÃO reprova esse campo vazio), e `ContratoClicksignService` grava
+     * exatamente `null` no snapshot congelado quando o `ContratoServico` não
+     * tem vencimento. Antes do fix, `montarDados()` lançava `TypeError` ao
+     * montar o envelope — quebrando `GerarContratoAssinaturaJob` para todo
+     * contrato de prazo indeterminado, o caso mais comum de assinatura
+     * recorrente. Regressão: nunca mais `TypeError`, e o texto visível é
+     * "Indeterminado" — nunca um branco silencioso num documento com
+     * validade jurídica (mesma exigência de `A DEFINIR`).
+     */
+    #[Test]
+    public function data_vencimento_nula_no_snapshot_vira_indeterminado_sem_quebrar(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Serviço com prazo indeterminado',
+                    'valor_contratado' => 100.0,
+                    'data_contratacao' => '2026-03-10',
+                    'data_vencimento'  => null,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame('Indeterminado', $dados['servicos'][0]['fim']);
+        $this->assertSame('Indeterminado', $dados['vigencia']['fim']);
+        $this->assertSame('10/03/2026', $dados['vigencia']['inicio']);
+    }
+
+    /**
+     * Um serviço SEM vencimento (indeterminado) misturado com outro que TEM
+     * vencimento fixo: o conjunto vira indeterminado — não dá para apurar
+     * "a maior data" quando uma delas não existe (ver docblock de
+     * `montarVigencia()`).
+     */
+    #[Test]
+    public function um_servico_com_vencimento_indeterminado_torna_a_vigencia_do_conjunto_indeterminada(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Serviço com prazo fixo',
+                    'valor_contratado' => 100.0,
+                    'data_contratacao' => '2026-01-15',
+                    'data_vencimento'  => '2027-01-15',
+                ],
+                [
+                    'servico'          => 'Serviço com prazo indeterminado',
+                    'valor_contratado' => 200.0,
+                    'data_contratacao' => '2026-03-10',
+                    'data_vencimento'  => null,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame('Indeterminado', $dados['vigencia']['fim']);
     }
 
     #[Test]

@@ -14,6 +14,9 @@ import {
 } from 'lucide-react';
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 import GruposManager from '@/Components/GruposManager';
+// Fase 131 Plano 02 (D-08) — módulo compartilhado com Admin/Contratos.jsx e
+// Admin/ContratoDetalhe.jsx; os rótulos/cores dos 7 estados vivem só aqui.
+import { rotuloContrato, classeContrato, formatarHaDias, SEM_CONTRATO, SEM_CONTRATO_LABEL } from '@/lib/contratoStatus';
 
 /**
  * Phase 37 Plan 37-05 — Listagem unificada do Comercial.
@@ -102,6 +105,37 @@ function SetorBadge({ setor }) {
     return (
         <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', SETOR_CLS[setor] ?? SETOR_CLS.outros)}>
             {SETOR_LABELS[setor] ?? setor}
+        </span>
+    );
+}
+
+/**
+ * Badge de contrato (D-08, Fase 131 Plano 02) — situação + "há N dias" na
+ * própria listagem do Comercial. NUNCA é link (o Comercial não terá
+ * `admin.contratos`; um clique daria 403) — sem `<Link>`, sem `<a>`, sem
+ * `onClick` de navegação.
+ */
+function ContratoBadge({ badge }) {
+    // D9 — serviço isento (Polos) não passa por contrato: travessão, nunca
+    // "Aguardando Administrativo" (viraria fila fantasma que nunca esvazia).
+    if (!badge) {
+        return <span className="text-white/30" title="Este serviço não passa por contrato">—</span>;
+    }
+
+    // Empresa ainda sem nenhum ContratoAssinatura criado — rótulo próprio,
+    // fora do mapa dos 7 estados (classeContrato cai no fallback neutro
+    // porque SEM_CONTRATO não é chave do mapa).
+    if (badge.status === SEM_CONTRATO) {
+        return (
+            <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContrato(badge.status))}>
+                {SEM_CONTRATO_LABEL} {formatarHaDias(badge.dias)}
+            </span>
+        );
+    }
+
+    return (
+        <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContrato(badge.status))}>
+            {rotuloContrato(badge.status)} {formatarHaDias(badge.dias)}
         </span>
     );
 }
@@ -683,6 +717,7 @@ export default function EmpresasListagem({
                                             <TableHead>Serviços</TableHead>
                                             <TableHead>Setor</TableHead>
                                             <TableHead>Pendências</TableHead>
+                                            <TableHead>Contrato</TableHead>
                                             <TableHead>Cadastrado em</TableHead>
                                             <TableHead className="text-right">Ações</TableHead>
                                         </TableRow>
@@ -690,7 +725,7 @@ export default function EmpresasListagem({
                                     <TableBody>
                                         {companies.data?.length === 0 && (
                                             <TableRow>
-                                                <TableCell colSpan={7} className="text-center text-white/40 py-8">
+                                                <TableCell colSpan={8} className="text-center text-white/40 py-8">
                                                     Nenhuma empresa encontrada com os filtros aplicados.
                                                 </TableCell>
                                             </TableRow>
@@ -714,6 +749,9 @@ export default function EmpresasListagem({
                                                 </TableCell>
                                                 <TableCell>
                                                     <PendenciaBadges pendencias={c.pendencias_comerciais} detalhes={c.pendencias_detalhes} />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <ContratoBadge badge={c.contrato_badge} />
                                                 </TableCell>
                                                 <TableCell>
                                                     {/* Quando o lead entrou no sistema (data + hora). A lista ja e

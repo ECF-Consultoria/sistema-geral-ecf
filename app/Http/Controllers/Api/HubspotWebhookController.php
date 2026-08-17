@@ -9,6 +9,7 @@ use App\Models\HubspotEvento;
 use App\Models\HubspotLineItemMapping;
 use App\Models\Servico;
 use App\Notifications\EmpresaHubspotPendenteNotification;
+use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\Hubspot\HubspotCompanyMatcher;
 use App\Services\Hubspot\HubspotContactSelector;
 use App\Services\Hubspot\HubspotDealHandoffService;
@@ -259,6 +260,19 @@ class HubspotWebhookController extends Controller
             // o estado consistente. Idempotencia natural: 2o webhook do mesmo deal
             // cai como ignorado na guarda acima (linha ~148), nao reentra aqui.
             $this->notificarComercialSePendente($company, $evento);
+
+            // ── Fase 128 (REDE-06) — gate administrativo de contrato ───────────
+            // FORA da transaction acima, de proposito: uma excecao aqui (ex.:
+            // QueryException da trava composta em corrida) nao pode desfazer a
+            // Company/ContratoServico ja commitados — a empresa TEM que chegar
+            // ao operacional independente do desfecho do gate. dispararSeElegivel()
+            // ja engole \Throwable internamente (plano 03), entao nenhum try/catch
+            // redundante aqui — isso esconderia regressao no proprio service.
+            // refresh() garante que contratosServico lido pelo gate reflete os
+            // registros criados dentro da transaction (a colecao em memoria de
+            // $company pode nao contar com eles).
+            $company->refresh();
+            app(GatilhoContratoAdministrativoService::class)->dispararSeElegivel($company);
         } catch (\Throwable $e) {
             $evento->update([
                 'status'        => 'erro',

@@ -326,6 +326,27 @@ class ClicksignClient
     }
 
     /**
+     * GET /envelopes/{envelopeId}/documents/{documentId} — consulta o
+     * documento dentro do envelope. Fase 129 plano 06 (CLICK-11, D-12).
+     *
+     * ⚠️ Documento em `draft` **não tem** bloco de arquivo nenhum — §10.4 do
+     * `CLICKSIGN-SANDBOX-EMPIRICO.md` (MEDIDO): a Clicksign só materializa o
+     * PDF depois da ativação do envelope. Não é código incompleto, é a API.
+     *
+     * ⚠️ O link de download que este endpoint devolve (`files.original` /
+     * `files.signed` / `files.ziped`) é uma URL S3 pré-assinada com
+     * `X-Amz-Expires=300` — **vale 5 minutos** (§7 do empírico, MEDIDO).
+     * Quem chama este método tem que baixar o arquivo IMEDIATAMENTE — nunca
+     * guardar o link, nunca reusar numa tentativa posterior (D-12).
+     *
+     * @return array<string, mixed>
+     */
+    public function consultarDocumento(string $envelopeId, string $documentId): array
+    {
+        return $this->enviar('get', "/envelopes/{$envelopeId}/documents/{$documentId}", [], 'consultar documento');
+    }
+
+    /**
      * GET /templates — lista os modelos cadastrados na conta (paginação
      * JSON:API, `page[number]`/`page[size]`, default 20 — §1 do empírico).
      * Devolve a LISTA já desembrulhada (`data`), não o envelope JSON:API
@@ -448,13 +469,30 @@ class ClicksignClient
      * defensiva. `GET` neste endpoint devolve 404 porque ele é POST-only;
      * não confundir com "não existe".
      *
+     * ✅ **MEDIDO no sandbox em 14/08/2026** (quick 260814-d9s,
+     * `CLICKSIGN-SANDBOX-EMPIRICO.md` §14): a API v3 é JSON:API e exige o
+     * membro `data` no corpo — um `POST` sem corpo (o bug original) devolve
+     * `400` com "data deve ser informado(a)". O corpo mínimo aceito é
+     * `data.type = "notifications"` com `data.attributes` presente. `{}`
+     * vazio é suficiente — nenhum atributo é obrigatório. `attributes` tem
+     * que serializar como OBJETO (`{}`), nunca como array PHP vazio (que
+     * `json_encode()` transformaria em `[]` — mesma armadilha do §9.6 do
+     * empírico em `anexarDocumentoPorModelo()`, redescoberta nesta sessão: a
+     * primeira tentativa com array vazio devolveu `400 "attributes deve ser
+     * um hash"`). Por isso `new \stdClass()` abaixo, não `[]`.
+     *
      * @return array<string, mixed>
      */
     public function reenviarNotificacao(string $envelopeId, string $signerId): array
     {
         $url = rtrim((string) $this->baseUrl, '/') . "/envelopes/{$envelopeId}/signers/{$signerId}/notifications";
 
-        $res = $this->baseRequest()->post($url);
+        $res = $this->baseRequest()->post($url, [
+            'data' => [
+                'type'       => 'notifications',
+                'attributes' => new \stdClass(),
+            ],
+        ]);
 
         if ($res->successful()) {
             Log::channel('ecf-webhooks')->info('[Clicksign] reenviar notificação', [
@@ -539,17 +577,27 @@ class ClicksignClient
      * `montarEnvelopeComum()` — só a forma de anexar o documento muda entre
      * os dois (Fase 126 Plan 126-07, D-16).
      *
+     * `$ativar = false` (Fase 127 Plan 127-02, D-02) é o caminho que PARA no
+     * rascunho: monta o envelope inteiro e não ativa — quem envia ao cliente
+     * é o Comercial, pela interface da Clicksign, porque não existe
+     * pré-visualizar sem ativar (§10.4 do empírico) e ativar dispara e-mail
+     * ao cliente. Com `$ativar = false`, os parâmetros `$prazoDias`/
+     * `$lembreteDias` de `ativarEnvelope()` NÃO rodam — prazo e lembrete
+     * precisam ir na CRIAÇÃO do envelope (D-03), dentro de `$dadosEnvelope`,
+     * responsabilidade de quem chama.
+     *
      * @param  array<string, mixed>  $dadosEnvelope  atributos de `criarEnvelope()`
      * @param  array{nome: string, email: string, papel: string}  $signatarioCliente  papel esperado: `contratante`
      * @return array{envelope_id: string, document_id: string, signatarios: array<int, array<string, mixed>>}
      */
-    public function montarEnvelope(array $dadosEnvelope, string $nomeArquivo, string $pdfBinario, array $signatarioCliente): array
+    public function montarEnvelope(array $dadosEnvelope, string $nomeArquivo, string $pdfBinario, array $signatarioCliente, bool $ativar = true): array
     {
         return $this->montarEnvelopeComum(
             $dadosEnvelope,
             $signatarioCliente,
             'anexar documento',
-            fn (string $envelopeId) => $this->anexarDocumento($envelopeId, $nomeArquivo, $pdfBinario)
+            fn (string $envelopeId) => $this->anexarDocumento($envelopeId, $nomeArquivo, $pdfBinario),
+            $ativar
         );
     }
 
@@ -560,18 +608,28 @@ class ClicksignClient
      * `montarEnvelope()` (4 signatários, 8 requisitos, ativação, 15
      * chamadas, rollback D-12) por baixo de `montarEnvelopeComum()`.
      *
+     * `$ativar = false` (Fase 127 Plan 127-02, D-02) é o caminho que PARA no
+     * rascunho: monta o envelope inteiro e não ativa — quem envia ao cliente
+     * é o Comercial, pela interface da Clicksign, porque não existe
+     * pré-visualizar sem ativar (§10.4 do empírico) e ativar dispara e-mail
+     * ao cliente. Com `$ativar = false`, os parâmetros `$prazoDias`/
+     * `$lembreteDias` de `ativarEnvelope()` NÃO rodam — prazo e lembrete
+     * precisam ir na CRIAÇÃO do envelope (D-03), dentro de `$dadosEnvelope`,
+     * responsabilidade de quem chama.
+     *
      * @param  array<string, mixed>  $dadosEnvelope  atributos de `criarEnvelope()`
      * @param  array<string, mixed>  $variaveis  valores de `{{chave}}` do `.docx`
      * @param  array{nome: string, email: string, papel: string}  $signatarioCliente  papel esperado: `contratante`
      * @return array{envelope_id: string, document_id: string, signatarios: array<int, array<string, mixed>>}
      */
-    public function montarEnvelopePorModelo(array $dadosEnvelope, string $nomeArquivo, string $templateId, array $variaveis, array $signatarioCliente): array
+    public function montarEnvelopePorModelo(array $dadosEnvelope, string $nomeArquivo, string $templateId, array $variaveis, array $signatarioCliente, bool $ativar = true): array
     {
         return $this->montarEnvelopeComum(
             $dadosEnvelope,
             $signatarioCliente,
             'anexar documento por modelo',
-            fn (string $envelopeId) => $this->anexarDocumentoPorModelo($envelopeId, $nomeArquivo, $templateId, $variaveis)
+            fn (string $envelopeId) => $this->anexarDocumentoPorModelo($envelopeId, $nomeArquivo, $templateId, $variaveis),
+            $ativar
         );
     }
 
@@ -588,12 +646,18 @@ class ClicksignClient
      * não que o cancelamento deu certo. Se a criação do PRÓPRIO envelope
      * falhar, nada é cancelado — não há o que cancelar.
      *
+     * `$ativar` (Fase 127 Plan 127-02, D-02) controla só a ÚLTIMA etapa de
+     * dentro do `try` — quando `false`, a ativação simplesmente não roda e o
+     * `try`/`catch` continua cobrindo a MESMA sequência, com o MESMO
+     * rollback (D-04). Não duplica a sequência nem cria um segundo caminho
+     * de rollback.
+     *
      * @param  array<string, mixed>  $dadosEnvelope  atributos de `criarEnvelope()`
      * @param  array{nome: string, email: string, papel: string}  $signatarioCliente  papel esperado: `contratante`
      * @param  \Closure(string): array<string, mixed>  $anexarDocumento  recebe o `$envelopeId`, devolve o bloco `data` do documento criado
      * @return array{envelope_id: string, document_id: string, signatarios: array<int, array<string, mixed>>}
      */
-    private function montarEnvelopeComum(array $dadosEnvelope, array $signatarioCliente, string $passoAnexar, \Closure $anexarDocumento): array
+    private function montarEnvelopeComum(array $dadosEnvelope, array $signatarioCliente, string $passoAnexar, \Closure $anexarDocumento, bool $ativar = true): array
     {
         $envelope   = $this->criarEnvelope($dadosEnvelope);
         $envelopeId = $envelope['id'];
@@ -632,8 +696,10 @@ class ClicksignClient
                 ];
             }
 
-            $passoAtual = 'ativar envelope';
-            $this->ativarEnvelope($envelopeId);
+            if ($ativar) {
+                $passoAtual = 'ativar envelope';
+                $this->ativarEnvelope($envelopeId);
+            }
 
             return [
                 'envelope_id' => $envelopeId,

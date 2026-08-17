@@ -49,7 +49,12 @@ class ContratoAssinaturaSchemaTest extends TestCase
         $indices = Schema::getIndexes('contrato_assinaturas');
         $nomes   = array_map(fn (array $idx) => $idx['name'], $indices);
 
-        $this->assertContains('ca_company_andamento_uniq', $nomes);
+        // Fase 127-01 (D-06): `ca_company_andamento_uniq` (1 coluna) foi
+        // substituído por `ca_empresa_servico_andamento_uniq` (chave
+        // composta empresa+serviço) — a Task 2 da Fase 127-01 dropa
+        // exatamente o índice antigo. As outras duas asserções e o laço de
+        // 64 caracteres (armadilha 1059) seguem intactos.
+        $this->assertContains('ca_empresa_servico_andamento_uniq', $nomes);
         $this->assertContains('ca_clicksign_envelope_uniq', $nomes);
         $this->assertContains('ca_company_status_idx', $nomes);
 
@@ -58,15 +63,27 @@ class ContratoAssinaturaSchemaTest extends TestCase
         }
     }
 
+    /**
+     * Fase 127-01 (D-06, 12/08/2026): renomeado de
+     * `indice_unico_barra_segundo_contrato_em_andamento`. A trava deixou de
+     * ser por EMPRESA e passou a ser por (EMPRESA + SERVIÇO) — este teste
+     * não é afrouxamento: prova que a trava composta barra dois contratos
+     * do MESMO serviço, exercitando a coluna nova (`servico_id_em_andamento`)
+     * também via `DB::table()->insert()` cru, de propósito — o valor deste
+     * teste é provar que a trava é do BANCO, não do hook do model.
+     */
     #[Test]
-    public function indice_unico_barra_segundo_contrato_em_andamento(): void
+    public function indice_unico_barra_segundo_contrato_do_mesmo_servico(): void
     {
         $company = Company::factory()->create();
+        $servico = \App\Models\Servico::query()->value('id');
 
         DB::table('contrato_assinaturas')->insert([
             'company_id'               => $company->id,
+            'servico_id'               => $servico,
             'status'                   => 'aguardando_assinaturas',
             'company_id_em_andamento'  => $company->id,
+            'servico_id_em_andamento'  => $servico,
             'created_at'               => now(),
             'updated_at'               => now(),
         ]);
@@ -75,11 +92,67 @@ class ContratoAssinaturaSchemaTest extends TestCase
 
         DB::table('contrato_assinaturas')->insert([
             'company_id'               => $company->id,
+            'servico_id'               => $servico,
             'status'                   => 'rascunho',
             'company_id_em_andamento'  => $company->id,
+            'servico_id_em_andamento'  => $servico,
             'created_at'               => now(),
             'updated_at'               => now(),
         ]);
+    }
+
+    /**
+     * Fase 127-01 (D-06, 12/08/2026): prova executável de que a D-06
+     * permite N contratos por empresa (um por serviço) — o objetivo
+     * inteiro desta migration. Mesmo `company_id_em_andamento`, mas
+     * `servico_id_em_andamento` DIFERENTE nos dois inserts: nenhuma
+     * exceção, os dois passam.
+     */
+    #[Test]
+    public function dois_contratos_da_mesma_empresa_em_servicos_diferentes_convivem_em_andamento(): void
+    {
+        $company = Company::factory()->create();
+        $servicos = \App\Models\Servico::query()->orderBy('id')->take(2)->pluck('id')->all();
+
+        if (count($servicos) < 2) {
+            $setorExistente = \App\Models\Servico::query()->value('setor') ?? \App\Models\Servico::SETOR_OUTROS;
+
+            while (count($servicos) < 2) {
+                $servicos[] = \App\Models\Servico::create([
+                    'nome'          => 'Serviço de teste '.uniqid(),
+                    'valor_padrao'  => 0,
+                    'tipo_cobranca' => \App\Models\Servico::TIPO_MENSAL,
+                    'ativo'         => true,
+                    'setor'         => $setorExistente,
+                ])->id;
+            }
+        }
+
+        [$servicoA, $servicoB] = $servicos;
+
+        DB::table('contrato_assinaturas')->insert([
+            'company_id'               => $company->id,
+            'servico_id'               => $servicoA,
+            'status'                   => 'rascunho',
+            'company_id_em_andamento'  => $company->id,
+            'servico_id_em_andamento'  => $servicoA,
+            'created_at'               => now(),
+            'updated_at'               => now(),
+        ]);
+
+        DB::table('contrato_assinaturas')->insert([
+            'company_id'               => $company->id,
+            'servico_id'               => $servicoB,
+            'status'                   => 'rascunho',
+            'company_id_em_andamento'  => $company->id,
+            'servico_id_em_andamento'  => $servicoB,
+            'created_at'               => now(),
+            'updated_at'               => now(),
+        ]);
+
+        $this->assertSame(2, DB::table('contrato_assinaturas')
+            ->where('company_id', $company->id)
+            ->count());
     }
 
     #[Test]

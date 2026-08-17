@@ -54,6 +54,10 @@ class HandleInertiaRequests extends Middleware
                 'error'         => $request->session()->get('error'),
                 'nps_link'      => $request->session()->get('nps_link'),
                 'workspace_url' => $request->session()->get('workspace_url'),
+                // Fase 131 Plano 131-05 (CLICK-07) — canal neutro/âmbar para
+                // resposta ESPERADA que não é sucesso nem erro (o 429 do
+                // reenvio de aviso da Clicksign).
+                'aviso'         => $request->session()->get('aviso'),
             ],
             'asset_url'  => rtrim(asset(''), '/'),
             'csrf_token' => csrf_token(),

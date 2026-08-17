@@ -181,6 +181,11 @@ devolveu **429 `Too many requests`** em texto puro (não JSON:API) enquanto a AP
 19 de 20 requisições disponíveis. É um limite anti-spam separado. A tela do CLICK-07 (Fase 131)
 precisa tratar 429 como resposta esperada — "aguarde antes de reenviar" —, não como erro.
 
+> ⚠️ **Este endpoint também exige corpo JSON:API com o membro `data` — um `POST` vazio devolve
+> `400 "data deve ser informado(a)"`, não 429.** O `ClicksignClient::reenviarNotificacao()` mandava
+> `POST` sem corpo até o quick 260814-d9s (bug real também em produção, nunca antes exercitado
+> contra a API de verdade). Corpo medido e forma exata: ver §14.
+
 **`GET` no endpoint de notificação devolve 404.** Ele é POST-only; 404 aqui não significa
 "não existe".
 
@@ -195,12 +200,12 @@ de produção, isso precisa ser testado de verdade antes da Fase 133.**
 
 | Gate | Item | Trava | Como fechar |
 |---|---|---|---|
-| #1 | Algoritmo do `Content-Hmac` | Fase 129 | Doc diz `SHA256(body + secret)` — confirmado em 2 leituras, **não** testado contra webhook real. Segundo candidato: `hash_hmac('sha256', $body, $secret)` |
+| #1 | ~~Algoritmo do `Content-Hmac`~~ ✅ **FECHADO 2026-08-13** | Fase 129 | `hmac_body_chave_secret` confirmado em 5/5 eventos reais — ver §12.1 |
 | #5 | Limite de tamanho de arquivo | Fase 126 | **PARCIAL — ver §9.** 10 MB aceitos; acima disso a trava do nosso client barrou antes de chegar na API |
-| #6 | Expiração emite evento distinguível | Schema + 129 | Deixar um envelope vencer |
-| #7 | Recusa emite evento distinguível | Schema + 129 | Recusar uma assinatura |
+| #6 | Expiração emite evento distinguível | Schema + 129 | Deixar um envelope vencer — **ainda NÃO MEDIDO**, ver §12.8/§13.3 |
+| #7 | Recusa emite evento distinguível | Schema + 129 | Recusar uma assinatura — **ainda NÃO MEDIDO**, ver §12.8/§13.3 |
 | #8 | Endpoint de correção de e-mail | CLICK-09 | — |
-| #11 | Retry e ordem dos webhooks | CLICK-04/05 | Só com webhook ativo |
+| #11 | Retry e ordem dos webhooks | CLICK-04/05 | **PERMANENTEMENTE NÃO MEDIDO** — sem documentação e sem forma segura de provocar reentrega real da Clicksign; tratado como pior caso (at-least-once, sem garantia de ordem) no código. A única observação prática disponível é a reentrega manual do mesmo corpo contra o receiver, registrada em §13.1 |
 
 **Nenhum deles bloqueia a Fase 125.**
 
@@ -474,6 +479,275 @@ não depender de terceiro para guardar prova jurídica.
 
 ---
 
+## 11. Quarta sessão — gate da Fase 127, 2026-08-12
+
+### 11.1. Prazo definido na CRIAÇÃO sobrevive à ativação feita pela INTERFACE — ✅ MEDIDO
+
+Fechava a última dúvida da D-03. Envelope montado por código com `deadline_at` de 10 dias e
+`remind_interval: 7`, depois **ativado por uma pessoa na interface web** (o gesto que a D-02 delega
+ao Comercial):
+
+```
+antes  (criação por código):  status=draft   deadline_at=2026-08-22T10:55:31-03:00  remind_interval=7
+depois (ativação pela UI):    status=running deadline_at=2026-08-22T10:55:31-03:00  remind_interval=7
+```
+
+**Idêntico ao segundo.** A ativação humana **não** sobrescreve pelo default de 30/3. Consequência:
+não é preciso reaplicar prazo na ativação, e quem lê `prazo_dias` do nosso banco está lendo o prazo
+real.
+
+Bônus observado na tela de envio: os valores chegam **pré-preenchidos** para quem envia, e a
+Clicksign **deriva** a quantidade de lembretes ("3 lembretes por destinatário" para 10 dias com
+intervalo 7) — só o intervalo é controlável.
+
+⚠️ **NÃO MEDIDO:** a tela avisa *"Suas configurações serão salvas automaticamente para o próximo
+uso"*. Se um operador alterar o prazo à mão uma vez, isso pode virar o padrão da tela e sobrescrever
+o que o sistema mandou no documento seguinte.
+
+### 11.2. ⚠️ RASCUNHO EXPIRA EM 7 DIAS — colide com o desenho da Fase 127
+
+A tela de Rascunhos avisa, em texto: **"Os rascunhos ficam disponíveis por 7 dias."**
+
+Isso **não aparece em nenhuma resposta de API** — só foi visto porque um humano abriu a ferramenta.
+
+Por que importa: a **D-02 da Fase 127** faz o sistema montar o envelope e **parar no rascunho**,
+deixando o envio para o Comercial. Se ele demorar mais de 7 dias, a Clicksign apaga o rascunho e o
+nosso banco fica com `status = rascunho` apontando para um `clicksign_envelope_id` que não existe
+mais. Contrato parado esperando revisão é justamente o caso comum que a D-02 cria.
+
+**Entrada obrigatória da Fase 130** (alerta de contrato preso / reconciliação):
+- alertar **antes** dos 7 dias;
+- distinguir "rascunho vivo" de "rascunho apagado pela Clicksign" — sintoma provável é
+  `GET /envelopes/{id}` → 404, o mesmo comportamento já medido no descarte (§9.2).
+
+⚠️ **NÃO MEDIDO:** se os 7 dias contam da criação ou da última atualização, e o que acontece
+exatamente na expiração (some da lista? vira `canceled`?).
+
+### 11.3. PRODUÇÃO consultada pela primeira vez — o plano TEM acesso à API
+
+Gate 2 da Fase 127, 12/08/2026. Até aqui, toda a milestone rodou só contra o sandbox; a conta de
+produção **nunca** tinha sido consultada.
+
+⚠️ **Os DOIS 403 da Clicksign não podem ser confundidos** — mesmo código, consequências opostas:
+
+| `detail` | Significa | Como resolver |
+|---|---|---|
+| `A conta não possui acesso a essa funcionalidade` | plano sem API (comercialmente "Automação") | **decisão comercial** — trocar de plano |
+| `E-mail do usuário da API não configurado…` | conta OK, falta 1 campo | **Configurações → aba API**, 1 minuto |
+
+A produção devolveu o **segundo**. Ou seja: plano com acesso à API ✅, aba API existente ✅, token
+válido ✅. Depois de preencher o e-mail do usuário da API, `GET /templates` → **200**, com o modelo
+da ECF listado.
+
+**Distinguir sempre pelo `detail`, nunca pelo status** — os dois casos são 403, e confundi-los faz
+alguém pedir troca de plano quando falta preencher um campo.
+
+### 11.4. A interface chama de "documento" o que a API chama de "envelope"
+
+Não existe menu "Envelopes" na interface. Envelope em `draft` aparece em **Rascunhos**, e a lista
+mostra o **nome do arquivo** (`contrato-1.docx`), **não** o `name` do envelope — este só aparece
+depois que o documento sai do rascunho. Custa uma busca frustrada a quem for guiar alguém pela tela.
+
+---
+
+## 12. Quinta sessão — gate A1 da Fase 129, 2026-08-13
+
+### 12.1. Algoritmo do `Content-Hmac` — gate #1 FECHADO, doc do STACK estava errada
+
+A A1 do `REQUIREMENTS-v22.md` (bloqueante, sem plano B) foi resolvida por medição real contra o
+sandbox, via túnel cloudflared apontando para o servidor local. **5 de 5** eventos reais distintos
+(`add_signer` x4 + `update_deadline`, todos da ativação de um envelope remanescente da Fase 128)
+confirmaram a mesma fórmula; as outras 3 candidatas falharam nos 5.
+
+**Fórmula vencedora:** `hmac_body_chave_secret` — `hash_hmac('sha256', $rawBody, $secret)`, digest
+hex, header `sha256=<hex>`.
+
+O `PITFALLS.md` estava certo (`hex(hmac_sha256(secret, body))`, equivalente); o `STACK.md` estava
+**errado** (`hash('sha256', body . secret)`). Registro completo, incluindo o corpo bruto anonimizado
+de um evento, em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md`.
+
+### 12.2. A forma real do corpo do webhook bate com a primeira forma da doc, não a JSON:API
+
+A doc oficial mostra duas formas incompatíveis para o corpo do webhook (ver §"Nota de
+confiabilidade" do `129-RESEARCH.md`). Nos 5 eventos reais, a forma recebida foi sempre:
+
+```
+{"event":{"name","data","occurred_at"},"document":{...}}
+```
+
+A forma JSON:API (`{"data":{"attributes":{...}}}`) **nunca** apareceu. O receiver de produção
+(plano 129-03) deve extrair `name` de `event.name` e o id do envelope de `document.key` — não de
+`data.attributes`/`data.id`.
+
+### 12.3. Rascunho é inerte — não dispara webhook, não é assinável
+
+Os 3 envelopes remanescentes da Fase 128 estavam em `draft` e não geraram webhook nenhum. Só depois
+de `ativarEnvelope()` (status → `running`) os webhooks passaram a chegar.
+
+### 12.4. `deadline_partial_signature_action: "closed"` CONFIRMADO ao vivo
+
+Apareceu na resposta real de `GET /envelopes/{id}` do envelope ativado nesta sessão — o envelope
+**PODE fechar com assinatura parcial**, dependendo de como esse campo foi configurado na criação.
+Reforça o gate de liberação do plano 129-04 (CLICK-05): decidir sempre por reconsulta ao estado
+agregado do envelope, nunca pelo payload isolado do evento.
+
+### 12.5. A v3 não expõe link de assinatura nos atributos do signatário
+
+`GET /envelopes/{id}/signers` devolve `name, birthday, email, phone_number,
+location_required_enabled, has_documentation, documentation, refusable, group,
+communicate_events, signature_host, created, modified`. Nenhum `request_signature_key` / `sign_url`
+— o link de assinatura só sai por e-mail. Relevante para a Fase 131 (tela do Administrativo): não
+dá para exibir o link de assinatura na tela lendo este endpoint.
+
+### 12.6. A ativação dispara uma rajada de eventos retroativos
+
+4 `add_signer` + 1 `update_deadline` chegaram em 3 segundos, descrevendo tudo que já tinha
+acontecido durante o rascunho. O webhook entrega **histórico**, não um fluxo estritamente
+incremental — reforça decidir sempre por reconsulta ao estado agregado, nunca pela ordem/conteúdo
+do evento isolado (mesma disciplina do achado 12.4).
+
+### 12.7. `consultarEnvelope()` devolve o recurso DESEMBRULHADO
+
+Chaves `id`, `type`, `links`, `attributes`, `relationships` direto no topo — **não** dentro de
+`data`. Confirma para `consultarEnvelope()` o mesmo padrão já observado em §9.5 para outros
+endpoints (o client desembrulha o `data`). Qualquer código que fizer `['data']['attributes']` sobre
+o retorno deste método lê `null` em silêncio.
+
+### 12.8. O que continua não medido desta sessão
+
+- **Gate #6 (`deadline`, prazo vencido)** — não exercitado, janela usada para o gate A1 bloqueante.
+- **Gate #7 (`refusal`, recusa de assinatura)** — idem.
+- **Pergunta A4 (webhook por conta ou por envelope)** — não observado; o cadastro do webhook não
+  foi refeito nesta sessão.
+
+---
+
+## 13. Sexta sessão — pré-verificação do receiver de produção, gate final da Fase 129 (129-07), 2026-08-13
+
+**Método:** diferente das sessões 1–5, esta NÃO conversou com a API da Clicksign. O executor do
+plano 129-07 mandou requisições HTTP reais — pelo mesmo túnel cloudflared já de pé desde o gate A1 —
+direto contra a rota de **produção** `POST /api/webhooks/clicksign` (não a sonda, já removida),
+com corpo **sintético** forjado por ele mesmo (`verificacao_e2e_claude` /
+`e2e_assinatura_invalida_claude` — nomes de evento que a Clicksign nunca emite). O objetivo foi
+provar a fiação do receiver (validação de assinatura, gravação bruta, dedup) antes de envolver o
+usuário na rodada real de assinatura. Registro completo, com tabela de evidência por id de evento,
+em `.planning/phases/129-webhook-clicksign-v22-0/129-GATE.md` (seção "Rodada ponta a ponta —
+pré-verificação do executor").
+
+### 13.1. O receiver de produção recusa, aceita e deduplica de verdade, pela internet
+
+| Cenário | HTTP | Evidência |
+|---|---|---|
+| Assinatura válida (fórmula do gate A1), envelope que não casa com contrato nenhum | **200** | evento gravado com `status='ignorado'` — não é erro, é o caso "corrida com o commit do envelope" da D-10 |
+| Assinatura inválida, corpo novo | **401** | evento gravado com `payload.raw` preservado (DADOS-03 vale mesmo recusando) |
+| Mesmo corpo de assinatura inválida reenviado | **401**, nenhuma linha nova | dedup por `payload_hash` funcionando mesmo no caminho de recusa |
+
+Isto fecha, com tráfego real de internet (não teste automatizado, não `Http::fake()`), a prova de
+CLICK-03, CLICK-04 e DADOS-03 que as sessões anteriores só tinham provado por suíte de teste.
+
+### 13.2. `ip_address` sempre `127.0.0.1` neste ambiente de túnel — não é falha de captura
+
+Confirmado nesta sessão e retroativo às sessões do gate A1: o cloudflared entrega a requisição ao
+`artisan serve` local via loopback, então `$request->ip()` sempre lê o processo do túnel na própria
+máquina, nunca o IP público de quem originou a chamada do lado da Clicksign. Consequência prática:
+**este ambiente de desenvolvimento nunca vai medir o `X-Forwarded-For` real que a Clicksign envia**
+— só um proxy reverso de produção (Fase 132) prova isso.
+
+### 13.3. O que continua não medido mesmo depois desta pré-verificação
+
+A pré-verificação provou a camada de recepção do webhook. Continuam sem medição real:
+- **Gate #6** (`deadline`) e **Gate #7** (`refusal`) — nenhuma expiração nem recusa real foi
+  exercitada; ver §12.8, situação inalterada.
+- **Gate #11** (retry/ordem de entrega da Clicksign) — permanentemente não medido por documentação
+  nem por sessão nenhuma; tratado como pior caso (at-least-once, sem garantia de ordem).
+- **O circuito de negócio inteiro** — assinatura real de uma pessoa, liberação da empresa, PDF
+  assinado de verdade baixado para `storage/app`. Nada disto foi exercitado nesta sessão; é o objeto
+  do checkpoint humano do plano 129-07.
+- **Pergunta A4** (cadastro do webhook por conta ou por envelope) — segue não observado.
+- ⚠️ **O webhook cadastrado hoje no painel do sandbox aponta para a rota `-sonda`, que não existe
+  mais.** Qualquer medição real futura exige o usuário reapontar a URL para
+  `/api/webhooks/clicksign` (sem `-sonda`) antes de assinar qualquer coisa.
+
+---
+
+## 14. Sétima sessão — corpo do POST de notificação (quick 260814-d9s), 2026-08-14
+
+**Método:** `ClicksignClient::reenviarNotificacao()` fazia `POST /envelopes/{id}/signers/{id}/
+notifications` **sem corpo**, e a API v3 devolvia `data deve ser informado(a)` (JSON:API exige o
+membro `data`) — bug real, nunca antes exercitado contra o sandbox de verdade (o único teste
+anterior cobria só o 429 e não afirmava nada sobre o corpo). Um script de sondagem temporário
+(fora do repositório, apagado ao final) mediu o corpo aceito contra o envelope ATIVO
+`f010d235-ff75-400a-84b7-01cb89c3ef59` (status `running`, remanescente do gate da Fase 130).
+Orçamento de 4 requisições — usadas **3** (1 GET + 2 POST), nenhuma contra produção, nenhum 429
+observado nesta rodada.
+
+### 14.1. `POST /envelopes/{id}/signers/{id}/notifications` **exige o membro `data`**
+
+Confirma a lacuna que gerou o bug: sem corpo, a API responde `400`. Este comportamento não foi
+re-testado nesta sessão (é o próprio ponto de partida, já documentado indiretamente pelo bug em
+produção), mas é consistente com o padrão JSON:API de todos os outros endpoints já medidos neste
+arquivo (envelopes, documents, signers, requirements).
+
+### 14.2. Corpo mínimo aceito — **MEDIDO, confirmado por 2xx**
+
+**Requisição 1/3 (GET, para obter um `signerId` real desta rodada):**
+```
+GET /envelopes/f010d235-ff75-400a-84b7-01cb89c3ef59/signers
+=> 200, 4 signatários (meta.record_count: 4)
+   primeiro usado: id 74d07cdc-b95c-49d1-91db-1b7a0aa73b5e
+```
+
+**Requisição 2/3 (POST, tentativa 1 — falhou por bug do PRÓPRIO script de sondagem, não da API):**
+```
+POST /envelopes/{id}/signers/{signerId}/notifications
+{"data":{"type":"notifications","attributes":{}}}   <- intenção
+```
+Corpo real enviado na rede: `{"data":{"type":"notifications","attributes":[]}}` — o script
+decodificou o JSON com `json_decode(..., true)`, e `json_encode([])` de um array PHP vazio produz
+`"[]"`, não `"{}"`. **A MESMA armadilha já documentada em §9.6** (`anexarDocumentoPorModelo()`:
+`template.data` como array PHP vazio vira `[]` e a API recusa como "não é hash").
+```
+=> 400 {"errors":[{"code":"bad_request","status":400,
+        "source":{"pointer":"/data/attributes"},
+        "detail":"attributes deve ser um hash"}]}
+```
+O ponteiro aponta exatamente para `/data/attributes` — confirma que o problema é a FORMA do valor
+(array vs. objeto), não conteúdo faltando.
+
+**Requisição 3/3 (POST, tentativa 2 — corrigida, `new \stdClass()` forçando objeto real):**
+```
+POST /envelopes/{id}/signers/{signerId}/notifications
+{"data":{"type":"notifications","attributes":{}}}   <- "attributes" serializado como OBJETO
+=> 201
+{"data":{"id":"9887200e-9b13-4a13-931d-cd90e19962cb","type":"notifications",
+         "attributes":{"message":null,
+                        "summary":[{"signer_id":"74d07cdc-b95c-49d1-91db-1b7a0aa73b5e","notified":true}],
+                        "created":"2026-08-14T09:41:50.877-03:00"}}}
+```
+
+**✅ MEDIDO, confirmado por 2xx:** o corpo mínimo aceito é `data.type = "notifications"` com
+`data.attributes` presente como objeto — `{}` vazio é suficiente, nenhum atributo é obrigatório.
+A resposta devolve um recurso `notifications` com `id`, `attributes.message` (`null` quando
+nenhuma mensagem customizada é enviada), `attributes.summary` (lista de `{signer_id, notified}`,
+um item por signatário notificado) e `attributes.created`. `attributes.message` sugere que uma
+mensagem customizada é aceita como atributo — **NÃO MEDIDO** nesta sessão (fora do escopo do
+quick 260814-d9s, que corrigia só o bug do corpo ausente).
+
+### 14.3. Rate limit anti-spam desta rodada — nenhum 429 observado
+
+Só 2 `POST` foram feitos nesta sessão (a tentativa 1 nem chegou a ser aceita pelo parser — 400 de
+validação, não 429). Não refina nem contradiz o achado da §7 (429 medido em sessão anterior); só
+confirma que 2 tentativas espaçadas de ~20s não acionam o limite.
+
+### 14.4. Nenhum token, header `Authorization` ou e-mail real registrado
+
+O `signerId` usado (`74d07cdc-b95c-49d1-91db-1b7a0aa73b5e`) e o `id` do recurso de notificação
+criado são identificadores opacos, não PII. Nomes/e-mails de signatário devolvidos pelo `GET
+/signers` desta rodada foram descartados do registro (anonimizados no scratchpad da sessão) —
+não aparecem aqui.
+
+---
+
 ## Dados do teste (sandbox, descartável)
 
 Identificadores e IP **anonimizados** — ver aviso abaixo. Os valores reais estão no envelope de
@@ -490,3 +764,97 @@ teste da conta sandbox, se alguém precisar reconferir.
 
 Credenciais do sandbox estão no `.env` local (gitignored). O `.env.example` traz as chaves vazias
 com o aviso do `Bearer`.
+
+---
+
+## 15. Operações que a v3 NÃO permite (medido 2026-08-14, pesquisa da Fase 131)
+
+Três medições contra a sandbox, com envelope real em `running`
+(`f010d235-…`, 4 signatários, criado e ativado pela rodada de gates da Fase 130).
+Sandbox confirmado antes de cada chamada (`env=sandbox` **e** `base_url` contendo
+`sandbox.clicksign.com`). Nenhum token, secret ou header colado aqui.
+
+### 15.1 Corrigir e-mail de signatário — NÃO EXISTE (gate #8, fechado)
+
+```
+PATCH /envelopes/{id}/signers/{signerId}   -> 404
+PUT   /envelopes/{id}/signers/{signerId}   -> 404
+```
+
+⚠️ **O 404 aqui NÃO é o 404 JSON:API da Clicksign** (`{"errors":[...]}`) — é a **página HTML
+genérica** de rota inexistente do site. Esse é o mesmo sinal já visto quando a combinação
+verbo+rota simplesmente não está na tabela de rotas da API. Distinguir os dois 404 importa:
+o JSON:API significa "recurso não encontrado", o HTML significa "essa rota não existe".
+
+**Consequência de produto:** não há como corrigir o e-mail de um signatário depois do envio.
+Corrigir e-mail e trocar a pessoa que assina colapsam no mesmo caminho: cancelar e reemitir.
+
+### 15.2 Cancelar envelope em `running` — NÃO EXISTE CAMINHO
+
+```
+DELETE /envelopes/{id}                      -> 403 forbidden   (funciona em draft, proibido em running)
+POST   /envelopes/{id}/cancel               -> 404             (HTML genérico — rota não existe)
+PATCH  /envelopes/{id}  status:"canceled"   -> 400
+        └─ corpo: "status deve estar em: draft, running"
+```
+
+A mensagem do 400 é a evidência mais forte: **os únicos status que a API aceita DEFINIR são
+`draft` e `running`.** Não existe transição para `canceled` por API.
+
+⚠️ **Mas o cancelamento acontece** — a Fase 129 capturou webhook com evento `cancel`
+(`129-GATE.md`) e `ContratoAssinatura` tem o estado `cancelado`. A leitura que sobra:
+**cancelar é operação de PAINEL, igual assinar.** O sistema não cancela; ele fica sabendo.
+
+Isso ecoa o achado 2 do `129-GATE.md` (a v3 não expõe link de assinatura) e o bloqueio de
+assinatura do `130-GATE.md`: **a v3 é uma API de CRIAÇÃO e CONSULTA, não de operação do ciclo
+de vida.** Qualquer fase futura que prometer "o usuário faz X pela nossa tela" deve medir antes,
+não assumir que existe endpoint.
+
+### 15.3 O que FUNCIONA nesta família
+
+| Operação | Estado | Referência |
+|---|---|---|
+| Reenviar notificação | ✅ funciona | §14 — corpo JSON:API medido; 429 anti-spam é resposta ESPERADA, em texto puro |
+| Cancelar envelope em `draft` | ✅ funciona | `DELETE /envelopes/{id}` |
+| Ativar envelope | ✅ funciona | `ativarEnvelope()` — ⚠️ pela API; a tela do sandbox NÃO ativa envelope gerado por modelo (`130-GATE.md`) |
+
+---
+
+## 16. Os rate limits que realmente mandam são os NOSSOS, não os da Clicksign
+
+⚠️ Esta seção documenta configuração **do próprio app** (`app/Providers/AppServiceProvider.php`),
+não medição do fornecedor. Está aqui porque é o que de fato restringe qualquer operação contra a
+Clicksign — e porque **duas fases seguidas foram surpreendidas por isso**, cada uma por um bucket
+diferente.
+
+| Bucket | Limite | Quem usa | Fase que tropeçou |
+|---|---|---|---|
+| `clicksign-envelope` | **1/min GLOBAL** | `GerarContratoAssinaturaJob` | 131 |
+| `clicksign-webhook` | **3/min GLOBAL** | `ProcessarEventoClicksignJob`, reconciliação | 130 |
+
+Compare com a janela **medida** do lado da Clicksign: **20/min** (§8). Os nossos são de 6 a 20 vezes
+mais apertados, de propósito — a montagem de um envelope consome ~15 chamadas, então 1/min protege
+o orçamento inteiro.
+
+### Consequência de desenho (Fase 130)
+
+Um comando que varre N contratos **não pode** fazer laço HTTP síncrono: estoura o bucket de 3/min
+com poucos contratos. O padrão correto é o comando fazer SELECT + `dispatch()` de um job por
+contrato, deixando o `RateLimited` espaçar. Foi assim que `clicksign:reconciliar` foi construído.
+
+### Consequência de produto, AINDA EM ABERTO (Fase 131)
+
+**1 envelope por minuto significa que gerar contrato para duas empresas seguidas deixa a segunda
+esperando até um minuto** — e a tela não conta isso a ninguém. O usuário vê "Contrato gerado" e a
+situação fica em "Não enviado" nesse intervalo. Registrado como lacuna no `131-UAT.md`, não corrigido.
+
+### Armadilha de ambiente que isso expõe
+
+Job barrado pelo `RateLimited` é **liberado de volta para a fila** (`release`). Em produção
+(`QUEUE_CONNECTION=database`) ele volta e roda depois — comportamento correto. Mas **na fila `sync`
+do ambiente local, job liberado simplesmente SOME**: sem log, sem `failed_jobs`, sem retry.
+
+Medido em 2026-08-14: um `ContratoAssinatura` ficou preso em `rascunho` sem envelope, com
+`updated_at` idêntico ao `created_at`, e **a tela não acusou erro nenhum** — pareceu sucesso.
+Quem testar geração de contrato localmente precisa saber disso, ou vai diagnosticar um bug de
+produção que não existe.

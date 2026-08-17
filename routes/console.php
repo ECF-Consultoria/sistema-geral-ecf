@@ -375,3 +375,53 @@ Schedule::command('hubspot:reenriquecer-handoff')
     ->name('hubspot-reenriquecer-handoff')
     ->onOneServer()
     ->withoutOverlapping();
+
+// ═══ Fase 130 — Rede de segurança Clicksign (REDE-02, REDE-04, D-06/D-09) ═══
+//
+// Três comandos, três horários distintos, todos cedo — ANTES da cascata D-1
+// (adman:sync às 11:00). A varredura de reconciliação enfileira jobs que
+// disputam o bucket GLOBAL de 3 chamadas/min da Clicksign
+// (`RateLimited('clicksign-webhook')`, ver AppServiceProvider::boot()); rodar
+// antes do pico de sync do Adman evita competir por essa janela de fila com
+// qualquer outra rotina.
+//
+// `withoutOverlapping()` é obrigatório nos três: a varredura pode enfileirar
+// dezenas de jobs, e nenhuma das três rotinas pode se sobrepor à execução
+// anterior de si mesma.
+//
+// **Limitação estrutural da D-09, repetida aqui por escrito (não escondida):**
+// este trio detecta "um destes comandos parou de rodar" (bug, exceção,
+// remoção acidental do agendamento). NENHUM dos três detecta o `schedule:run`
+// do sistema operacional parar de disparar por inteiro, porque todos os três
+// DEPENDEM dele para rodar — inclusive `clicksign:verificar-varredura`, que
+// existe justamente para vigiar os outros dois. Monitorar o cron do SO é
+// responsabilidade de infraestrutura, fora do escopo desta fase.
+//
+// Lembrete (Out of Scope de REQUIREMENTS-v22.md): esta reconciliação é REDE
+// DE SEGURANÇA, nunca o mecanismo principal — o webhook (Fase 129) é. Não
+// aumentar a frequência destes agendamentos para transformar a rede de
+// segurança em polling primário.
+
+// 07:00 — a varredura em si (D-07 aguardando_assinaturas / D-08 PDF
+// pendente). Primeiro do trio, com folga antes do pico de sync das 11:00.
+Schedule::command('clicksign:reconciliar')
+    ->dailyAt('07:00')
+    ->name('clicksign-reconciliar')
+    ->withoutOverlapping();
+
+// 07:30 — alerta de contrato preso (D-02/D-03/D-04). 30min depois da
+// varredura, tempo suficiente para os jobs enfileirados às 07:00 já terem
+// sido processados pelo bucket de 3/min antes deste comando ler o estado
+// local mais atualizado possível.
+Schedule::command('clicksign:alertar-presos')
+    ->dailyAt('07:30')
+    ->name('clicksign-alertar-presos')
+    ->withoutOverlapping();
+
+// 08:00 — checagem de ausência (D-09). Roda em horário DIFERENTE e DEPOIS da
+// varredura, com 1h de folga: ela existe para ler o carimbo que a varredura
+// das 07:00 acabou de gravar em Configuracao (`clicksign_reconciliacao_status`).
+Schedule::command('clicksign:verificar-varredura')
+    ->dailyAt('08:00')
+    ->name('clicksign-verificar-varredura')
+    ->withoutOverlapping();

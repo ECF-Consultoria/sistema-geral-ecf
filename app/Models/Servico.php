@@ -33,11 +33,18 @@ class Servico extends Model
         'tipo_cobranca',
         'ativo',
         'setor',
+        // Fase 127-04 (D-21) — sem isto o mass assignment do modelo .docx
+        // por serviço falharia EM SILÊNCIO.
+        'clicksign_template_id',
+        // Fase 128-01 (D-03 / FLUXO-08) — a tela da Fase 131 vai gravar
+        // nesta coluna; sem `fillable` o mass assignment falharia em silêncio.
+        'exige_contrato',
     ];
 
     protected $casts = [
-        'valor_padrao' => 'decimal:2',
-        'ativo'        => 'boolean',
+        'valor_padrao'    => 'decimal:2',
+        'ativo'           => 'boolean',
+        'exige_contrato'  => 'boolean',
     ];
 
     // ─── Constants de tipo de cobrança ──────────────────────────────────────
@@ -129,7 +136,12 @@ class Servico extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor'])
+            // Fase 127-04 (D-21) — trocar o modelo .docx de um serviço é
+            // mudança auditável (T-127-10): decide QUAL contrato o cliente
+            // assina.
+            // Fase 128-01 (T-128-01) — trocar exige_contrato é mudança
+            // auditável: decide se o serviço entra no gate administrativo.
+            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor', 'clicksign_template_id', 'exige_contrato'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match ($eventName) {
@@ -167,6 +179,16 @@ class Servico extends Model
     }
 
     /**
+     * Scope: apenas serviços que exigem contrato (Fase 128-01, D-03).
+     *
+     * Exemplo: Servico::query()->exigeContrato()->pluck('nome')
+     */
+    public function scopeExigeContrato($query)
+    {
+        return $query->where('exige_contrato', true);
+    }
+
+    /**
      * Helper: este serviço pertence ao setor Performance? (Phase 37)
      */
     public function isPerformance(): bool
@@ -188,5 +210,49 @@ class Servico extends Model
     public function isShopee(): bool
     {
         return $this->setor === self::SETOR_SHOPEE;
+    }
+
+    /**
+     * Fase 127-04 (D-21) — qual modelo `.docx` da Clicksign usar para
+     * contratos deste serviço. Se o serviço tiver `clicksign_template_id`
+     * preenchido, usa o dele; senão cai no padrão global
+     * `CLICKSIGN_TEMPLATE_ID` (`config('services.clicksign.template_id')`).
+     * Devolve `null` se nenhum dos dois estiver configurado — quem decide o
+     * que fazer com isso é o job de montagem do envelope (plano 127-05),
+     * que precisa falhar com mensagem clara, nunca gerar contrato errado.
+     *
+     * ⚠️ Sandbox e produção têm UUIDs DIFERENTES; o valor de produção NUNCA
+     * entra no repositório (nem no `.env.example`). Toda vez que o `.docx`
+     * for recadastrado na Clicksign, rodar `clicksign:sondar-modelo` ANTES
+     * de gerar contrato de cliente — variável faltando vira campo em branco
+     * silencioso (§10.5 do CLICKSIGN-SANDBOX-EMPIRICO.md), não existe
+     * resposta HTTP que denuncie isso; o confronto do comando é a única
+     * rede de segurança.
+     */
+    public function clicksignTemplateId(): ?string
+    {
+        if (filled($this->clicksign_template_id)) {
+            return $this->clicksign_template_id;
+        }
+
+        $padrao = config('services.clicksign.template_id');
+
+        return filled($padrao) ? $padrao : null;
+    }
+
+    /**
+     * Fase 128-01 (D-03 / FLUXO-08) — este serviço exige contrato assinado
+     * antes de liberar o operacional?
+     *
+     * Este é o ÚNICO ponto de leitura autorizado. Nenhum `if ($servico->nome
+     * === 'Polos')` (ou qualquer outro nome) em lugar nenhum do código —
+     * quem decide é o dado (`servicos.exige_contrato`), não o nome. A
+     * migration `2026_08_13_100001_add_exige_contrato_to_servicos_table`
+     * já nasce com Polos isento e os demais serviços exigindo (default
+     * seguro), sem precisar enumerar nomes fora dela.
+     */
+    public function exigeContrato(): bool
+    {
+        return (bool) $this->exige_contrato;
     }
 }

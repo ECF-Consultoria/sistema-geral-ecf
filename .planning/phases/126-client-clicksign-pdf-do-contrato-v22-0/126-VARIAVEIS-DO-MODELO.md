@@ -1,5 +1,27 @@
 # Modelo `.docx` da Clicksign — variáveis propostas
 
+> # ⚠️ ESTE DOCUMENTO ESTÁ PARCIALMENTE SUPERADO — leia antes de usar
+>
+> Ele foi escrito quando a decisão era **D-19** (um contrato por empresa, com os serviços
+> concatenados numa variável). Em **11/08/2026 a D-21 substituiu a D-19**: passou a ser **um modelo
+> `.docx` por serviço**, porque o escopo da cláusula 2.1 é específico de Gestão de ADS (ROAS, ACOS,
+> Product Ads, Trello) e um contrato de Shopee sairia com escopo de Mercado Livre.
+>
+> **O que mudou de fato:**
+> - **`{{servico_contratado}}` NÃO existe mais no modelo.** O serviço é literal no `.docx`. Toda
+>   menção a ele neste documento (§1, §3 passo 4, §4.1) descreve o desenho antigo.
+> - **O modelo real tem 7 variáveis**, não 8: `razao_social`, `cnpj`, `endereco`, `valor_mensal`,
+>   `data_primeira_parcela`, `dia_vencimento`, `data_assinatura`.
+> - **As cláusulas 1 e 2 NÃO foram generalizadas** — voltaram ao texto original citando Mercado
+>   Livre, porque o modelo é exclusivo desse serviço.
+> - `ContratoVariaveisModeloService::nomes()` continua emitindo 10 nomes; os 3 não usados pelo
+>   modelo (`servico_contratado`, `vigencia_inicio`, `vigencia_fim`) são inofensivos — medido na
+>   §10.5 do empírico que variável sobrando é aceita.
+>
+> **Fonte de verdade atual:** a D-21 em `126-CONTEXT.md` e o `126-11-SUMMARY.md`. O que continua
+> válido aqui: a regra das chaves duplas, o que fica literal (§4.2), e o registro histórico de por
+> que cada decisão foi tomada.
+
 **Origem:** contrato real assinado enviado pelo usuário em 2026-08-10
 (`Contrato Gestão de ADS _ ECF - <cliente> LTDA.pdf`, 15 cláusulas), lido por `pdftotext`.
 **Para quê:** você monta o `.docx` no Word seguindo esta lista; o código preenche as variáveis.

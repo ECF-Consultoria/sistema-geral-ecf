@@ -87,6 +87,44 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(60)->by($sellerId);
         });
 
+        // Fase 127 Plano 127-05 (D-01) — Rate limiter GLOBAL para a montagem
+        // de envelope de contrato na Clicksign. Um envelope consome 15 das
+        // 20 chamadas/min MEDIDAS na janela do sandbox (§1 do empírico,
+        // 127-CONTEXT.md §restricao_medida) — 1/min deixa 5 de folga para o
+        // resto da atividade na conta (clicksign:sondar-modelo, consultas
+        // manuais). `by('global')` porque o rate limit é da CONTA inteira,
+        // não por empresa: duas empresas gerando contrato ao mesmo tempo
+        // estouram tanto quanto dois serviços da mesma empresa — um
+        // `->delay()` calculado por empresa não cobriria esse caso.
+        // GerarContratoAssinaturaJob::middleware() usa este bucket junto
+        // com WithoutOverlapping (a corrida entre tooManyAttempts()/hit()
+        // do RateLimited sozinho, rara, ainda assim somaria até 30 chamadas
+        // com um envelope custando 15 de 20).
+        // ⚠️ A janela de PRODUÇÃO nunca foi medida (gate 2 do plano 127-07)
+        // — este número (1/min) é o ponto a revisar quando for.
+        RateLimiter::for('clicksign-envelope', function () {
+            return Limit::perMinute(1)->by('global');
+        });
+
+        // Fase 129 Plano 129-03 (CLICK-06, D-06) — Rate limiter GLOBAL para
+        // o processamento de eventos de webhook Clicksign na fila
+        // (ProcessarEventoClicksignJob). Aritmética explícita: a janela
+        // MEDIDA no sandbox é de 20 chamadas/min para a conta INTEIRA
+        // (§1 do empírico); cada evento de webhook processado custa 2
+        // chamadas (consultarEnvelope() + listarEventosDoDocumento()). A
+        // 3/min deste bucket = 6 chamadas/min, deixando folga para uma
+        // montagem de envelope (15 chamadas, bucket `clicksign-envelope` a
+        // 1/min) acontecer no MESMO minuto sem estourar (6 + 15 = 21 só se
+        // os dois picos coincidirem no mesmo minuto — ainda assim é a
+        // combinação mais provável de estourar; se acontecer, o job
+        // reagenda via RateLimited, não falha).
+        // ⚠️ A janela de PRODUÇÃO nunca foi medida (mesmo alerta do bucket
+        // `clicksign-envelope` acima) — este número (3/min) é o ponto a
+        // revisar na Fase 132.
+        RateLimiter::for('clicksign-webhook', function () {
+            return Limit::perMinute(3)->by('global');
+        });
+
         Event::listen(Login::class, function (Login $event) {
             activity('auth')
                 ->causedBy($event->user)

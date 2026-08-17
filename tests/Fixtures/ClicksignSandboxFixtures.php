@@ -279,6 +279,33 @@ class ClicksignSandboxFixtures
     }
 
     /**
+     * POST /envelopes/{id}/signers/{id}/notifications — resposta de sucesso.
+     * ✅ MEDIDO no sandbox em 14/08/2026 (quick 260814-d9s,
+     * CLICKSIGN-SANDBOX-EMPIRICO.md §14): `attributes.message` vem `null`
+     * quando nenhuma mensagem customizada é enviada, e `attributes.summary`
+     * é uma lista com um item por signatário notificado (`signer_id` +
+     * `notified: true`).
+     *
+     * @return array<string, mixed>
+     */
+    public static function notificacaoEnviada(): array
+    {
+        return [
+            'data' => [
+                'id'   => '00000000-0000-4000-8000-000000000009',
+                'type' => 'notifications',
+                'attributes' => [
+                    'message' => null,
+                    'summary' => [
+                        ['signer_id' => '00000000-0000-4000-8000-000000000003', 'notified' => true],
+                    ],
+                    'created' => '2026-08-14T09:41:50.877-03:00',
+                ],
+            ],
+        ];
+    }
+
+    /**
      * POST /envelopes/{id}/signers/{id}/notifications — erro 429.
      * CLICKSIGN-SANDBOX-EMPIRICO.md §7 (medido): a resposta é **texto puro**
      * ("Too many requests"), não JSON:API — por isso o corpo aqui vem
