@@ -11,6 +11,7 @@ use App\Models\Publicacao;
 use App\Services\MercadoLivreService;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Camada BARATA da coleta do acervo Mercado Livre (D-01/D-19/D-20).
@@ -226,7 +227,21 @@ class MlAcervoService
             // propaga. O D-08 exige que a tela saiba POR QUE a coleta está
             // velha, não só que está; quem decide o resto (retry, log) é o
             // job (SyncMlAcervoCompanyJob::failed()).
-            MlAcervoItem::where('company_id', $company->id)->update(['coleta_erro' => $e->getMessage()]);
+            // `coleta_erro` é varchar(255). Gravar a mensagem crua estourava a
+            // coluna em MariaDB (SQLSTATE 22001) e o PRÓPRIO TRATAMENTO DE
+            // ERRO derrubava o job — perdendo, junto, a causa original. Medido
+            // em produção em 2026-08-17, travando a coleta de acervo do
+            // onboarding. O SQLite dos testes não reclama de tamanho, então
+            // isto só aparece em produção (learnings §6).
+            //
+            // A mensagem inteira vai para o log; a coluna fica com o começo,
+            // que é o que a tela precisa mostrar.
+            Log::error(
+                "[MlAcervo] falha na coleta da empresa {$company->id} ({$company->name}): {$e->getMessage()}"
+            );
+
+            MlAcervoItem::where('company_id', $company->id)
+                ->update(['coleta_erro' => Str::limit($e->getMessage(), 250)]);
 
             throw $e;
         }

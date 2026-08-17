@@ -99,12 +99,17 @@ class OnboardingMapeamentoService
     /**
      * A visão do mapeamento montada a partir da ÚNICA fonte do apurado.
      *
-     * `estado` responde a pergunta que a tela precisa fazer, e distingue os
-     * três casos que D-11 existe para separar:
-     *  - `bloqueado`   — o grant ainda não saiu; não há o que buscar
-     *  - `buscando`    — coleta em voo, a tela mostra "buscando seus dados"
-     *  - `indisponivel`— sonda indeterminada (429/timeout); NÃO é "zero"
-     *  - `pronto`      — apurado disponível
+     * `estado` cobre os SEIS status de passo explicitamente — sem caso-padrão.
+     * Duas versões anteriores desta função tinham um `default`, e ele mentiu
+     * das duas maneiras possíveis em produção: primeiro dizendo "buscando"
+     * quando nada rodava, depois "não dá para buscar" quando estava tudo
+     * pronto. Estado que a tela não souber nomear é bug, não fallback.
+     *
+     *  - `pronto`      — algum passo concluído: há apurado para mostrar
+     *  - `buscando`    — `aguardando_coleta`: coleta em voo de verdade
+     *  - `indisponivel`— `indeterminado` (429/timeout); NÃO é "zero"
+     *  - `pendente`    — `aberto`: pronto para buscar, ninguém buscou ainda
+     *  - `bloqueado`   — só `bloqueado`/`nao_aplicavel`: dependência não caiu
      *
      * @return array<string, mixed>
      */
@@ -166,6 +171,12 @@ class OnboardingMapeamentoService
             return 'bloqueado';
         }
 
+        // Concluído vence tudo: se há apurado, a tela mostra o apurado —
+        // mesmo que o outro passo ainda esteja rodando.
+        if ($statuses->contains(OnboardingPasso::STATUS_CONCLUIDO)) {
+            return 'pronto';
+        }
+
         if ($statuses->contains(OnboardingPasso::STATUS_AGUARDANDO_COLETA)) {
             return 'buscando';
         }
@@ -174,16 +185,14 @@ class OnboardingMapeamentoService
             return 'indisponivel';
         }
 
-        if ($statuses->contains(OnboardingPasso::STATUS_CONCLUIDO)) {
-            return 'pronto';
+        // `aberto` = a dependência caiu e o passo está PRONTO para buscar, só
+        // ninguém buscou ainda. Não é bloqueio e não é coleta em curso — é o
+        // estado em que o botão "Sincronizar" resolve.
+        if ($statuses->contains(OnboardingPasso::STATUS_ABERTO)) {
+            return 'pendente';
         }
 
-        // Sobra `aberto`/`bloqueado`: nada apurado e NADA EM VOO. O caso-padrão
-        // daqui já foi `buscando`, e isso mentia na cara do cliente — a tela
-        // dizia "Buscando os dados da conta…" enquanto o passo esperava um
-        // pré-requisito humano (cadastro na Adman, por exemplo) que ninguém
-        // ia resolver sozinho. Quem não sabe se está buscando não deve dizer
-        // que está.
+        // Sobra `bloqueado`/`nao_aplicavel`: dependência real ainda não caiu.
         return 'bloqueado';
     }
 

@@ -30,6 +30,12 @@ const ESTADO = {
         // algo que ele já fez.
         texto: 'Falta concluir uma das etapas de acesso. Assim que estiver tudo certo, buscamos estes dados automaticamente.',
     },
+    pendente: {
+        Icone: Search,
+        cor: 'text-white/60',
+        titulo: 'Pronto para buscar',
+        texto: 'Ainda não buscamos estes dados. Clique em Sincronizar — leva alguns minutos.',
+    },
     buscando: {
         Icone: RefreshCw,
         cor: 'text-sky-300',

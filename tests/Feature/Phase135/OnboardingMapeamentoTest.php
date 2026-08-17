@@ -192,10 +192,39 @@ class OnboardingMapeamentoTest extends TestCase
             ->update(['status' => OnboardingPasso::STATUS_BLOQUEADO]);
 
         $this->assertSame(
-            'bloqueado',
+            'pendente',
             $this->service()->visao($onboarding->fresh())['estado'],
             'Sem coleta em voo, a tela não pode afirmar que está buscando'
         );
+    }
+
+    /**
+     * O outro lado do mesmo erro: com os passos ABERTOS (dependência já caiu,
+     * prontos para buscar), a tela dizia "Ainda não dá para buscar" e o
+     * usuário não tinha o que fazer. `aberto` é justamente o estado em que
+     * Sincronizar resolve.
+     */
+    #[Test]
+    public function passos_abertos_sao_pendentes_e_nao_bloqueados(): void
+    {
+        $onboarding = $this->onboardingEmAndamento();
+
+        $onboarding->passos()->whereIn('chave', OnboardingMapeamentoService::CHAVES_APURADAS)
+            ->update(['status' => OnboardingPasso::STATUS_ABERTO]);
+
+        $this->assertSame('pendente', $this->service()->visao($onboarding->fresh())['estado']);
+    }
+
+    /** Só bloqueado de verdade quando nenhum passo abriu. */
+    #[Test]
+    public function bloqueado_exige_que_nenhum_passo_tenha_aberto(): void
+    {
+        $onboarding = $this->onboardingEmAndamento();
+
+        $onboarding->passos()->whereIn('chave', OnboardingMapeamentoService::CHAVES_APURADAS)
+            ->update(['status' => OnboardingPasso::STATUS_BLOQUEADO]);
+
+        $this->assertSame('bloqueado', $this->service()->visao($onboarding->fresh())['estado']);
     }
 
     // ─── Sincronizar ────────────────────────────────────────────────────────
