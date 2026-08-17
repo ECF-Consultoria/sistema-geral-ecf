@@ -157,8 +157,15 @@ class MetricasContaResolver implements OnboardingResolver
         $itensAcervo = MlAcervoItem::where('company_id', $company->id);
 
         if ($itensAcervo->clone()->exists()) {
+            // Consulta JSON de verdade (`->`), nunca LIKE sobre o texto.
+            // A primeira versão usava LIKE '%"logistic_type":"fulfillment"%'
+            // e NUNCA casava: `shipping` é coluna JSON do MySQL, que normaliza
+            // o documento com espaço depois dos dois-pontos
+            // (`{"mode": "me2", ... "logistic_type": "fulfillment"}`). Conta
+            // com 16 anúncios em Full aparecia como "sem Full" — e sem erro
+            // nenhum, que é o pior tipo de falha.
             $comFull = $itensAcervo->clone()
-                ->where('shipping', 'like', '%"logistic_type":"fulfillment"%')
+                ->where('shipping->logistic_type', 'fulfillment')
                 ->count();
 
             $valor['full'] = $comFull > 0;
@@ -168,7 +175,13 @@ class MetricasContaResolver implements OnboardingResolver
             $naoObtidos[] = 'full';
         }
 
-        $custId = $company->adman_account_id;
+        // Acessor `cust_id`, NÃO a coluna crua `adman_account_id`. O acessor é
+        // o caminho canônico do projeto (docblock de `Company::getCustIdAttribute`)
+        // e cai para `ml_store_id` quando a empresa só tem o ID do Mercado
+        // Livre — que é o caso das contas conectadas por OAuth sem cadastro
+        // Adman próprio. Lendo a coluna crua, o faturamento ficava "não
+        // obtido" para empresa que tinha cust_id perfeitamente utilizável.
+        $custId = $company->cust_id;
         if ($custId) {
             $marketplace = $company->marketplace ?? 'meli';
             $faturamento = $this->adman->fetchGrossBilling(
