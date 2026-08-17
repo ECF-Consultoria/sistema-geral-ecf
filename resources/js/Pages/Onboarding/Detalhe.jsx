@@ -7,6 +7,7 @@ import DetalheOnboarding from '@/Components/Onboarding/Painel/DetalheOnboarding'
 import RelatorioInicial from '@/Components/Onboarding/RelatorioInicial';
 import ReuniaoBloco from '@/Components/Onboarding/Painel/ReuniaoBloco';
 import LinkDoCliente from '@/Components/Onboarding/Painel/LinkDoCliente';
+import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
 
 const initials = (name) =>
     (name || '?').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
@@ -23,7 +24,14 @@ const initials = (name) =>
  * página só monta o cabeçalho (empresa, serviço, situação, responsável) e o
  * link de volta ao painel.
  */
-export default function Detalhe({ onboarding, passos, relatorio = null, reuniao = null, link = null }) {
+export default function Detalhe({
+    onboarding,
+    passos,
+    relatorio = null,
+    reuniao = null,
+    link = null,
+    mapeamento = null,
+}) {
     return (
         <AppLayout title="Detalhe do onboarding">
             <Head title={`Onboarding — ${onboarding.empresa.nome}`} />
@@ -63,6 +71,15 @@ export default function Detalhe({ onboarding, passos, relatorio = null, reuniao 
                 {/* Link antes dos passos: a primeira pergunta de quem abre esta
                     tela é "o cliente já viu o que pedimos?" */}
                 <LinkDoCliente companyId={onboarding.empresa.id} link={link} />
+
+                {mapeamento && (
+                    <MapeamentoInicial
+                        mapeamento={mapeamento}
+                        contexto="interno"
+                        rotaSincronizar={route('onboarding.mapeamento.sincronizar', onboarding.id)}
+                        rotaConfirmar={route('onboarding.mapeamento.confirmar', onboarding.id)}
+                    />
+                )}
 
                 {reuniao && <ReuniaoBloco onboardingId={onboarding.id} reuniao={reuniao} />}
 

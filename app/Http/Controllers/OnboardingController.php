@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\Onboarding;
 use App\Models\OnboardingLink;
+use App\Models\OnboardingMapeamento;
 use App\Models\OnboardingPasso;
 use App\Models\OnboardingRelatorio;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
+use App\Services\Onboarding\OnboardingMapeamentoService;
 use App\Services\Onboarding\OnboardingResolverFactory;
 use App\Services\Onboarding\RelatorioInicialService;
 use Illuminate\Http\Request;
@@ -168,7 +170,51 @@ class OnboardingController extends Controller
                     ->firstWhere('chave', 'reuniao_realizada')?->status === OnboardingPasso::STATUS_CONCLUIDO,
             ],
             'link'        => $this->linkPayload($onboarding),
+            'mapeamento'  => app(OnboardingMapeamentoService::class)->visao($onboarding),
         ]);
+    }
+
+    /**
+     * POST /onboarding/{onboarding}/mapeamento/sincronizar — "Sincronizar
+     * agora", em vez de esperar a passada do cron a cada 10 minutos.
+     */
+    public function sincronizarMapeamento(Request $request, Onboarding $onboarding, OnboardingMapeamentoService $service)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $despachados = $service->sincronizar($onboarding);
+
+        return back()->with(
+            'success',
+            $despachados > 0
+                ? "Buscando dados da conta ({$despachados} passo(s) em fila)."
+                : 'Nada a sincronizar agora — os passos já concluíram ou foram consultados nos últimos minutos.'
+        );
+    }
+
+    /**
+     * POST /onboarding/{onboarding}/mapeamento/confirmar — a equipe confere o
+     * apurado junto com o cliente numa call. Mesma ficha do portal, outro
+     * canal — e é o canal que registra a diferença de confiabilidade.
+     */
+    public function confirmarMapeamento(Request $request, Onboarding $onboarding, OnboardingMapeamentoService $service)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'full_pontuacao' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'observacoes'    => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $service->confirmar(
+            onboarding: $onboarding,
+            canal: OnboardingMapeamento::CANAL_INTERNO_CALL,
+            por: $request->user(),
+            fullPontuacao: $data['full_pontuacao'] ?? null,
+            observacoes: $data['observacoes'] ?? null,
+        );
+
+        return back()->with('success', 'Mapeamento confirmado.');
     }
 
     /**

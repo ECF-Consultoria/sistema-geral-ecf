@@ -124,6 +124,16 @@ Route::get('/onboarding-cliente/{token}/conectar/ml', [OnboardingPublicoControll
 Route::post('/onboarding-cliente/{token}/reuniao', [OnboardingPublicoController::class, 'solicitarReuniao'])
     ->middleware('throttle:20,1')
     ->name('onboarding.publico.reuniao');
+// Mapeamento inicial: o cliente pede a busca dos dados e confere o apurado.
+// Throttle mais apertado no sincronizar — cada clique vira sonda contra a
+// Adman, que tem ADMAN_RATE_LIMIT_RPM = 10 (o cooldown do service é a segunda
+// rede).
+Route::post('/onboarding-cliente/{token}/mapeamento/sincronizar', [OnboardingPublicoController::class, 'sincronizarMapeamento'])
+    ->middleware('throttle:6,1')
+    ->name('onboarding.publico.mapeamento.sincronizar');
+Route::post('/onboarding-cliente/{token}/mapeamento/confirmar', [OnboardingPublicoController::class, 'confirmarMapeamento'])
+    ->middleware('throttle:20,1')
+    ->name('onboarding.publico.mapeamento.confirmar');
 
 // ML OAuth — callback público (o cliente autoriza fora do painel)
 Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])
@@ -890,6 +900,12 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
         // Data e hora da reunião — a volta da informação que o cliente pediu.
         Route::post('/onboarding/{onboarding}/reuniao', [OnboardingController::class, 'agendarReuniao'])
             ->name('onboarding.reuniao.agendar');
+        // Mapeamento inicial pelo lado de quem opera: "Sincronizar agora" (em
+        // vez de esperar o cron de 10 min) e conferência assistida em call.
+        Route::post('/onboarding/{onboarding}/mapeamento/sincronizar', [OnboardingController::class, 'sincronizarMapeamento'])
+            ->name('onboarding.mapeamento.sincronizar');
+        Route::post('/onboarding/{onboarding}/mapeamento/confirmar', [OnboardingController::class, 'confirmarMapeamento'])
+            ->name('onboarding.mapeamento.confirmar');
 
         // ─── Fase 135 Plano 11 — geração do link único por empresa (D-06) ──
         // Ação interna: a Coordenação gera/copia o token do portal público

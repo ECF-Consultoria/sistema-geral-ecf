@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { router } from '@inertiajs/react';
 import { AlertTriangle, CalendarDays, CheckCircle2, Lock, RefreshCw, Zap } from 'lucide-react';
 import { Checkbox } from '@/Components/ui/checkbox';
+import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
 import { cn, formatDate } from '@/lib/utils';
 
 // ─── Portal público do cliente por EMPRESA (Fase 135 Plano 11, D-06) ────────
@@ -262,7 +263,7 @@ function ReuniaoCard({ reuniao, token, varios }) {
 
 // ─── Página ───────────────────────────────────────────────────────────────
 
-export default function Publico({ token, empresa, passos = [], reunioes = [] }) {
+export default function Publico({ token, empresa, passos = [], reunioes = [], mapeamentos = [] }) {
     const [conectandoChave, setConectandoChave] = useState(null);
 
     // Estado "Link inválido": na prática, `OnboardingPublicoController::workspace()`
@@ -370,6 +371,25 @@ export default function Publico({ token, empresa, passos = [], reunioes = [] }) 
                         ))}
                     </div>
                 )}
+
+                {/* Mapeamento: só aparece depois que há o que mostrar. Antes do
+                    grant `fetchUserInfo()` nem sai da porta, e um bloco de
+                    campos em branco pareceria erro nosso. */}
+                {mapeamentos.filter((m) => m.estado !== 'bloqueado').map((m) => (
+                    <section key={m.onboarding_id} className="space-y-3 pt-2">
+                        <h2 className="text-white font-display font-bold text-[15px]">
+                            {ETAPA_LABELS.mapeamento.titulo}
+                            {mapeamentos.length > 1 ? ` · ${m.servico}` : ''}
+                        </h2>
+                        <MapeamentoInicial
+                            mapeamento={m}
+                            contexto="cliente"
+                            payloadExtra={{ onboarding_id: m.onboarding_id }}
+                            rotaSincronizar={route('onboarding.publico.mapeamento.sincronizar', token)}
+                            rotaConfirmar={route('onboarding.publico.mapeamento.confirmar', token)}
+                        />
+                    </section>
+                ))}
 
                 {/* Reunião fica FORA do bloco de passos: ela permanece na tela
                     mesmo depois de tudo concluído — é justamente aí que ela

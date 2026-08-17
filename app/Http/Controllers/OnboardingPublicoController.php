@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\Onboarding;
 use App\Models\OnboardingLink;
+use App\Models\OnboardingMapeamento;
 use App\Models\OnboardingPasso;
 use App\Services\MercadoLivreService;
 use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
+use App\Services\Onboarding\OnboardingMapeamentoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -39,7 +41,7 @@ class OnboardingPublicoController extends Controller
      * é o que produz o 404 de token inexistente/adivinhado (T-135-11-01).
      * Carimba `ultimo_acesso` a cada visita.
      */
-    public function workspace(Request $request, string $token)
+    public function workspace(Request $request, string $token, OnboardingMapeamentoService $mapeamentos)
     {
         $link = OnboardingLink::where('token', $token)->with('company')->firstOrFail();
 
@@ -53,6 +55,16 @@ class OnboardingPublicoController extends Controller
             'empresa'  => ['nome' => $company->name],
             'passos'   => $this->linkService->passosDoCliente($company),
             'reunioes' => $this->linkService->reunioesDaEmpresa($company),
+            'mapeamentos' => Onboarding::where('company_id', $company->id)
+                ->emAndamento()
+                ->with('servico:id,nome')
+                ->get()
+                ->map(fn (Onboarding $o) => array_merge(
+                    $mapeamentos->visao($o),
+                    ['onboarding_id' => $o->id, 'servico' => $o->servico?->nome ?? ''],
+                ))
+                ->values()
+                ->all(),
         ]);
     }
 
@@ -73,7 +85,77 @@ class OnboardingPublicoController extends Controller
             'onboarding_id' => ['required', 'integer'],
         ]);
 
-        $onboarding = Onboarding::where('id', $data['onboarding_id'])
+        $onboarding = $this->onboardingDoToken($link, $data['onboarding_id']);
+
+        $engine->solicitarReuniao($onboarding, $request->ip());
+
+        return back()->with('success', 'Pedido de reunião enviado. Nossa equipe entra em contato com a data.');
+    }
+
+    /**
+     * POST /onboarding-cliente/{token}/mapeamento/sincronizar — o cliente pede
+     * ao sistema que busque os dados da conta dele.
+     *
+     * Despacha e volta: os resolvers de rede levam de 2 a 30 minutos e a tela
+     * passa a mostrar "buscando". Um botão que esperasse a resposta derrubaria
+     * a página com 504.
+     */
+    public function sincronizarMapeamento(Request $request, string $token, OnboardingMapeamentoService $service)
+    {
+        $link = OnboardingLink::where('token', $token)->firstOrFail();
+
+        $data = $request->validate(['onboarding_id' => ['required', 'integer']]);
+        $onboarding = $this->onboardingDoToken($link, $data['onboarding_id']);
+
+        $despachados = $service->sincronizar($onboarding);
+
+        return back()->with(
+            'success',
+            $despachados > 0
+                ? 'Estamos buscando os dados da sua conta. Isso pode levar alguns minutos.'
+                : 'Seus dados já estão atualizados.'
+        );
+    }
+
+    /**
+     * POST /onboarding-cliente/{token}/mapeamento/confirmar — o cliente confere
+     * o apurado e completa o que o sistema não conseguiu buscar.
+     *
+     * `confirmado_por` fica `null` de propósito: não há usuário autenticado no
+     * portal, e inventar um mentiria sobre a origem do dado. Quem responde
+     * "quem confirmou?" é o `confirmado_canal`.
+     */
+    public function confirmarMapeamento(Request $request, string $token, OnboardingMapeamentoService $service)
+    {
+        $link = OnboardingLink::where('token', $token)->firstOrFail();
+
+        $data = $request->validate([
+            'onboarding_id'  => ['required', 'integer'],
+            'full_pontuacao' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'observacoes'    => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $onboarding = $this->onboardingDoToken($link, $data['onboarding_id']);
+
+        $service->confirmar(
+            onboarding: $onboarding,
+            canal: OnboardingMapeamento::CANAL_CLIENTE_PORTAL,
+            por: null,
+            fullPontuacao: $data['full_pontuacao'] ?? null,
+            observacoes: $data['observacoes'] ?? null,
+        );
+
+        return back()->with('success', 'Obrigado! Confirmação registrada.');
+    }
+
+    /**
+     * Resolve o onboarding pedido no corpo do request DENTRO da empresa do
+     * token. Sem este recorte, um token válido viraria chave para o onboarding
+     * de qualquer outra empresa — bastaria trocar o id.
+     */
+    private function onboardingDoToken(OnboardingLink $link, int $onboardingId): Onboarding
+    {
+        $onboarding = Onboarding::where('id', $onboardingId)
             ->where('company_id', $link->company_id)
             ->first();
 
@@ -83,9 +165,7 @@ class OnboardingPublicoController extends Controller
             ]);
         }
 
-        $engine->solicitarReuniao($onboarding, $request->ip());
-
-        return back()->with('success', 'Pedido de reunião enviado. Nossa equipe entra em contato com a data.');
+        return $onboarding;
     }
 
     /**
