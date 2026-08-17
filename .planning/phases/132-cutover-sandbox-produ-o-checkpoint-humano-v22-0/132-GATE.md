@@ -154,9 +154,66 @@ o console), data/hora e quem executou.
 `CLICKSIGN_ENV=production` (ou uma das outras três grafias válidas), `CLICKSIGN_BASE_URL`,
 `CLICKSIGN_ACCESS_TOKEN` e `CLICKSIGN_WEBHOOK_SECRET` de produção.
 
-- Feito em: ______
-- Confirmado por: ______
-- Reconsulta (`config('services.clicksign.*')` no ambiente de produção): ______
+- Feito em: **2026-08-17, ~17:42 (BRT)**
+- Confirmado por: **dev.01 (sessão Claude Code), com autorização explícita do usuário**
+- Reconsulta (`config('services.clicksign.*')` no ambiente de produção):
+
+| Chave | Resultado da reconsulta | Veredito |
+|---|---|---|
+| `env` | `production` | de produção ✅ |
+| `base_url` | `https://app.clicksign.com/api/v3` | de produção ✅ |
+| `painel_url` | `https://app.clicksign.com` | de produção ✅ |
+| `access_token` | 36 caracteres | preenchido ✅ (valor nunca impresso) |
+| `webhook_secret` | 32 caracteres | preenchido ✅ (valor nunca impresso) |
+| `template_id` | 0 caracteres | **pendente de propósito** — sai da Task 3 |
+| `ClicksignAmbiente::ehProducao(env)` | `sim` | ✅ |
+
+**Conferência de coerência (passo 10 — a que pega o erro mais caro):** o ambiente diz
+`production` **e** a URL base contém `app.clicksign.com`. Coerente — não há estado
+meio-virado.
+
+⭐ **A linha `painel_url` é a prova de que a correção da D-01 está valendo em produção.**
+O `.env` recebeu `production` (inglês, a grafia que o ROADMAP manda). O código anterior ao
+plano 132-01 comparava `=== 'producao'` (português) e teria resolvido o painel para o
+**sandbox** — o botão "Registrar e ir para a Clicksign" mandaria a equipe do Administrativo
+para o painel de teste enquanto o sistema já operava em produção, sem avisar ninguém. Com o
+normalizador, resolveu para o painel real. A armadilha era real e foi fechada antes de
+morder.
+
+**Conferências extras feitas antes de escrever (todas no `.env` local, sem imprimir valor):**
+os 3 e-mails de signatário são distintos entre si (3 de 3), o e-mail do usuário da API
+difere dos três (4 de 4), token ≠ secret, e o token de produção ≠ o token de sandbox.
+
+**Efeito colateral bom, medido depois:** `faltantesDaConfiguracaoEcf()` devolve **0**
+pendências e `signatarios_ecf` traz **3** entradas. O bloco vermelho "Configuração interna
+da ECF pendente", que a conferência humana da Task 1 encontrou na tela, desapareceu.
+
+**Sobre as duas comparações `!= sandbox` que o plano pedia:** não se aplicam. Elas
+pressupunham o estacionamento `CLICKSIGN_SANDBOX_*` no `.env` de produção, e produção não
+tinha credencial nenhuma (ver o achado na seção 2). A comparação equivalente foi feita na
+origem, no `.env` local: o token gravado é o de produção, não o de sandbox.
+
+**Sobre as variáveis mortas `CLICKSIGN_PROD_*`:** `grep -c "^CLICKSIGN_PROD_" .env` devolve
+**0** — elas nunca existiram no servidor. Continuam existindo no `.env` **local** da máquina
+de desenvolvimento, onde estavam estacionadas, e é de lá que os valores saíram.
+
+#### ⚠️ Incidente durante a execução — `.env` inválido por alguns minutos
+
+O bloco foi montado por um script que **removeu as aspas** dos valores, e três deles têm
+espaço (os nomes dos signatários). Com `CLICKSIGN_SIG1_NOME=Nome Sobrenome` sem aspas, o
+parser do dotenv falhou: `Failed to parse dotenv file. Encountered unexpected whitespace`.
+Como o `config:clear` já havia rodado e o `config:cache` foi o comando que falhou, produção
+ficou **sem cache de configuração e com um `.env` inválido** entre o `config:clear` e a
+correção.
+
+- **Correção:** `sed` reaplicando aspas nas três linhas `CLICKSIGN_SIG[123]_NOME`, depois
+  `config:cache` (sucesso) e `supervisorctl restart ecf-worker:*`.
+- **Impacto medido:** site responde `http=200` em 0,079 s; `grep -c "Failed to parse dotenv"`
+  no `storage/logs/laravel.log` devolve **0**. A janela passou sem atingir requisição real.
+- **Lição para a próxima virada:** valor de `.env` com espaço **precisa de aspas**, e a ordem
+  `config:clear` → editar → `config:cache` deixa produção descoberta no meio. O certo é
+  validar o arquivo (`php artisan config:cache` num ambiente de teste, ou um parse a seco)
+  **antes** de limpar o cache do que está funcionando.
 
 ### SC2 — Aviso automático (webhook) cadastrado na conta de PRODUÇÃO
 
@@ -214,10 +271,19 @@ Comandos exatos, para ninguém digitar o nome da chave à mão:
 ⚠️ **Conferir é obrigatório depois de ligar e depois de desligar** — a única prova é a
 reconsulta, nunca a ausência de mensagem de erro.
 
-- Ligado em: ______ (data, hora, quem) — reconsulta devolveu: ______
+- Ligado em: **2026-08-17, ~17:25 (BRT), por dev.01 (sessão Claude Code)** — reconsulta
+  devolveu: **`ligado`** ✅
+  ⚠️ Ligado **antes** de qualquer credencial entrar no `.env`, como a D-07 exige. Reconferido
+  depois da troca e depois do `config:cache` + restart dos workers: continua **`ligado`** —
+  confirmando que a chave é leitura de banco a cada chamada e não é afetada por cache de
+  configuração nem por reinício de worker.
 - Destravado para o contrato de teste — início: ______ fim: ______
 - Travado de novo em: ______ — reconsulta devolveu: ______
 - Desligado no fim em: ______ (data, hora, quem) — reconsulta devolveu: ______
+
+**Backup do `.env` anterior à virada (passo 2 da Task 2):**
+`/root/env-antes-da-virada-clicksign-20260817`, permissão `600`, dono `root`, 104 linhas —
+fora de `public/` e fora do repositório, conforme T-132-10.
 
 ---
 
