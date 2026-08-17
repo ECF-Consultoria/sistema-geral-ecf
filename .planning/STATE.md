@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: Phase 132 context gathered
-last_updated: "2026-08-17T14:23:16.668Z"
-last_activity: 2026-08-17 -- Phase 132 planning complete
+stopped_at: Completed 132-01-PLAN.md
+last_updated: "2026-08-17T14:46:47.291Z"
+last_activity: 2026-08-17
 progress:
   total_phases: 12
   completed_phases: 9
   total_plans: 70
-  completed_plans: 63
+  completed_plans: 64
   percent: 75
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 131 — Tela administrativa — completar cadastro + contratos + badge Comercial + permissões (v22.0)
+**Current focus:** Phase 132 — cutover-sandbox-produ-o-checkpoint-humano-v22-0
 
 ## Current Position
 
-Phase: 131 (Tela administrativa — completar cadastro + contratos + badge Comercial + permissões (v22.0)) — EXECUTING
-Plan: 6 of 6
+Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
   considerado fechado — ver `130-GATE.md`. SC2 tem a metade técnica provada por reconsulta ao
   banco; SC1 e SC3 continuam pendentes de ação humana real em navegador.
@@ -34,7 +34,7 @@ Status: Ready to execute
   Ver "Decisões do Plan 129-07" abaixo e o checkpoint devolvido ao usuário.
 ambos corrigidos em correção direta (não é plano GSD novo), autorizada pelo usuário, com teste
 dedicado para cada achado. `128-VERIFICATION.md` reajustado de `gaps_found` para `passed`.
-Last activity: 2026-08-17 -- Phase 132 planning complete
+Last activity: 2026-08-17
 
 **Plano 130-07 executado em 2026-08-13** (commits `ba7cfdb6`/`e232c70a`): os 3 gates humanos em
 sandbox (SC1/SC2/SC3 do ROADMAP + gate empírico #10) NÃO puderam ser aprovados nesta sessão —
@@ -483,6 +483,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 131 P04 | 50min | 3 tasks | 5 files |
 | Phase 131 P05 | 90min | 3 tasks | 7 files |
 | Phase 131 P06 | 80min | 3 tasks | 10 files |
+| Phase 132 P01 | 7min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -1215,8 +1216,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-17T13:26:18.406Z
-Stopped at: Phase 132 context gathered
+Last session: 2026-08-17T14:46:47.243Z
+Stopped at: Completed 132-01-PLAN.md
   assinatura/recusa contra o sandbox) devolvida ao usuário como checkpoint aberto
 
 Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)

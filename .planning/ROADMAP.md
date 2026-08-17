@@ -1860,12 +1860,12 @@ Plans:
   4. Gate empírico #3 (URL base de produção) confirmado contra o ambiente real
   5. **CHECKPOINT HUMANO:** usuário aprova explicitamente que o cutover está correto antes de qualquer contrato real de cliente ser gerado em produção
 
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 132-01-PLAN.md — Corrige a grafia de `CLICKSIGN_ENV` (D-01), documenta o estacionamento das credenciais no `.env.example` e escreve o roteiro `132-GATE.md` com o procedimento de voltar atrás (wave 1, autônomo)
+- [x] 132-01-PLAN.md — Corrige a grafia de `CLICKSIGN_ENV` (D-01), documenta o estacionamento das credenciais no `.env.example` e escreve o roteiro `132-GATE.md` com o procedimento de voltar atrás (wave 1, autônomo)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
