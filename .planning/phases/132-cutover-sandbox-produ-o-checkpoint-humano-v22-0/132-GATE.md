@@ -228,7 +228,82 @@ do nosso lado a empresa nunca é liberada.
   sem barra final, `https`): ______
 - Escopos/eventos: ______ (informado: todos)
 - Ativo (não cadastrado-e-desativado): ______
-- Confirmado por: ______
+- Segredo confere com o `.env` de produção (`confere` / `não confere`): ______
+- Confirmado por: ______ Data/hora: ______
+
+---
+
+#### Roteiro de conferência do SC2 — escrito em 2026-08-17
+
+**Por que este roteiro existe:** o SC2 é o único item da fase que não tem conferência
+automatizada — não há como consultar por código o painel de um terceiro. Mas dá para provar
+a parte que mais engana (o segredo) **sem criar envelope nenhum e sem disparar e-mail para
+ninguém**, e é isso que este roteiro faz. Fazer o cadastro "no olho" e só descobrir o erro
+no primeiro contrato real custaria um envelope que a API não cancela.
+
+**Linha de base medida antes de começar (2026-08-17, ~18:30 BRT):**
+
+| Medida | Valor |
+|---|---|
+| Eventos em `contrato_assinatura_eventos` | **0** — base limpa, qualquer linha nova veio do teste |
+| Impressão digital do `CLICKSIGN_WEBHOOK_SECRET` de produção | `sha256` começa com **`95174e7fbb`** |
+| Comprimento do segredo | 32 caracteres |
+
+A impressão digital é um `sha256` — não dá para voltar dela ao segredo. Serve para provar
+depois que o segredo **não mudou** entre o cadastro e o primeiro contrato real: basta
+recalcular e comparar com `95174e7fbb`.
+
+##### Passo 1 — abrir o painel certo
+
+Entrar em `https://app.clicksign.com` e **conferir na barra de endereço** que não é
+`sandbox.clicksign.com`. Parece bobagem; é a confusão mais comum quando as duas contas
+ficam abertas em abas vizinhas.
+
+##### Passo 2 — conferir os três campos do webhook
+
+| Campo | Valor esperado | Armadilha |
+|---|---|---|
+| URL | `https://admin.ecfconsultoria.com.br/api/webhooks/clicksign` | sem barra no fim; `https`, nunca `http` |
+| Eventos | todos os de assinatura e de fechamento do documento | faltar um evento = empresa nunca liberada naquele caso |
+| Estado | **ativo** | cadastrado-e-desativado parece certo na lista e não entrega nada |
+
+##### Passo 3 — o segredo
+
+Se o painel **não mostra** o segredo depois de salvo (o mais comum), não tente adivinhar:
+**salve de novo**, colando o valor de `CLICKSIGN_WEBHOOK_SECRET` do `.env` de produção. É
+mais barato regravar do que descobrir divergência com um contrato real na rua.
+
+##### Passo 4 — a prova empírica, sem gastar envelope
+
+O receiver grava o evento **mesmo quando a assinatura não confere** (responde 401 e salva
+com `signature_valid = 0` — é evidência deliberada de segredo trocado, ver DADOS-03/D-10).
+Isso permite testar o segredo sem criar contrato:
+
+1. No painel da Clicksign, disparar um **evento de teste** para o webhook (a maioria dos
+   painéis tem esse botão na tela de configuração).
+2. Reconsultar o banco:
+   ```
+   php artisan tinker --execute="\$e = App\Models\ContratoAssinaturaEvento::latest('id')->first(); echo \$e ? ('id=' . \$e->id . ' signature_valid=' . var_export(\$e->signature_valid, true)) : 'nenhum evento chegou';"
+   ```
+
+| O que aparecer | O que significa | O que fazer |
+|---|---|---|
+| `signature_valid=true` | **SC2 fechado de verdade.** URL certa, alcançável e segredo batendo. | Seguir para a Task 2 |
+| `signature_valid=false` | A Clicksign alcançou o servidor, mas o **segredo diverge**. É exatamente a falha silenciosa que o SC2 existe para pegar. | Regravar o segredo no painel (passo 3) e repetir |
+| `nenhum evento chegou` | A Clicksign não alcançou a URL — endereço errado, webhook inativo, ou o painel não tem botão de teste. | Conferir URL e estado; se não houver botão de teste, o SC2 fica como "conferido visualmente" e a prova real vem na Task 3 |
+
+⚠️ **Se o painel não tiver disparo de teste**, isso não bloqueia a fase: registrar aqui que
+a conferência foi visual, e tratar a Task 3 como o momento da prova — com atenção redobrada
+ao `signature_valid` do primeiro evento real.
+
+##### Passo 5 — registrar acima
+
+Preencher os campos do SC2 com data/hora, autor e o resultado do passo 4. **Nunca o valor do
+segredo** — registrar `confere` / `não confere`, ou a impressão digital `sha256`.
+
+⚠️ **O interruptor de emissão continua LIGADO durante todo este roteiro.** Cadastrar ou
+testar webhook não gera contrato. Quem destrava a emissão é a Task 3, e só por alguns
+minutos.
 
 ### SC3 — Primeiro envelope de produção, empresa de teste controlada
 
