@@ -44,6 +44,7 @@ class OnboardingPasso extends Model
     protected $fillable = [
         'onboarding_id',
         'ordem',
+        'etapa',
         'chave',
         'titulo',
         'dono',
@@ -121,6 +122,30 @@ class OnboardingPasso extends Model
         self::AUTO_FONTE_ACERVO,
         self::AUTO_FONTE_METRICAS,
         self::AUTO_FONTE_RELATORIO_INICIAL,
+    ];
+
+    // ─── Catálogo fechado de `etapa` (bloco em que o passo aparece) ─────────
+    /**
+     * A `etapa` é ESTRUTURAL, como `dono` e `sla_dias`: decide em que bloco o
+     * passo aparece e em que ordem o cliente encontra as coisas. Por isso é
+     * COPIADA da definição no nascimento — deployar uma receita nova não
+     * reorganiza a tela debaixo de quem já está no meio do onboarding.
+     *
+     * Diferente da INSTRUÇÃO, que é texto e vive só em
+     * {@see \App\Support\Onboarding\DefinicaoOnboarding::instrucaoDe()}:
+     * corrigir uma frase confusa precisa alcançar quem já está travado por
+     * não tê-la entendido.
+     */
+    public const ETAPA_ACESSOS = 'acessos';
+    public const ETAPA_MAPEAMENTO = 'mapeamento';
+    public const ETAPA_AGENDAMENTO = 'agendamento';
+    public const ETAPA_ADMINISTRATIVO = 'administrativo';
+
+    public const ETAPAS = [
+        self::ETAPA_ACESSOS,
+        self::ETAPA_MAPEAMENTO,
+        self::ETAPA_AGENDAMENTO,
+        self::ETAPA_ADMINISTRATIVO,
     ];
 
     // ─── Catálogo fechado de `condicao` (D-12 — passo condicional) ──────────

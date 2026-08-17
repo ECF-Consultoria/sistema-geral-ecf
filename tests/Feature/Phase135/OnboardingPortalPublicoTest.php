@@ -184,7 +184,16 @@ class OnboardingPortalPublicoTest extends TestCase
         $grupos = $this->linkService()->passosDoCliente($company);
         $chaves = collect($grupos)->pluck('chave')->sort()->values()->all();
 
-        $this->assertSame(['acesso_colaborador_ml', 'custos_app_ecf', 'grant_sistema_ecf'], $chaves);
+        // v6 — os 4 acessos passaram a ser `dono=cliente`, então os dois da
+        // Adman entram nesta lista. Antes o cliente não via (nem era cobrado
+        // por) dois dos quatro acessos que só ele pode conceder.
+        $this->assertSame([
+            'acesso_colaborador_ml',
+            'custos_app_ecf',
+            'grant_consultoria_adman',
+            'grant_sistema_ecf',
+            'planilha_custos_adman',
+        ], $chaves);
     }
 
     // ─── marcarFeitoPorChave(): conclusão em massa + D-19 ───────────────────

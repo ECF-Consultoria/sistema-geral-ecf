@@ -210,6 +210,7 @@ class OnboardingEngineService
             ->map(fn (array $passo) => [
                 'onboarding_id' => $onboarding->id,
                 'ordem'         => $passo['ordem'],
+                'etapa'         => $passo['etapa'] ?? null,
                 'chave'         => $passo['chave'],
                 'titulo'        => $passo['titulo'],
                 'dono'          => $passo['dono'],

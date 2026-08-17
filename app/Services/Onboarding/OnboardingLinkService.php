@@ -5,6 +5,7 @@ namespace App\Services\Onboarding;
 use App\Models\Company;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
+use App\Support\Onboarding\DefinicaoOnboarding;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -53,8 +54,10 @@ class OnboardingLinkService
      *
      * @return array<int, array{
      *   chave: string,
+     *   etapa: ?string,
      *   titulo: string,
      *   instrucao: ?string,
+     *   depende_de_titulo: ?string,
      *   status: string,
      *   tem_auto_fonte: bool,
      *   servicos: array<int, string>,
@@ -67,17 +70,37 @@ class OnboardingLinkService
             ->whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id)->emAndamento())
             ->where('dono', OnboardingPasso::DONO_CLIENTE)
             ->with('onboarding.servico')
+            // Sem isto a ordem dos cards fica por conta do banco: o cliente
+            // podia receber "marque os custos" antes de "autorize o acesso",
+            // que é a etapa que destrava todo o resto.
+            ->orderBy('ordem')
             ->get();
+
+        // Títulos das chaves que o CLIENTE enxerga — usados só para explicar um
+        // cadeado ("liberamos assim que X estiver concluído"). Dependência de
+        // passo interno NÃO entra: o portal não revela operação nossa
+        // (T-135-11-02), e nesse caso o card cai na frase genérica.
+        $titulosVisiveis = $passos->mapWithKeys(
+            fn (OnboardingPasso $p) => [$p->chave => $p->titulo]
+        );
 
         return $passos
             ->groupBy('chave')
-            ->map(function (Collection $grupo) {
+            ->map(function (Collection $grupo) use ($titulosVisiveis) {
                 $primeiro = $grupo->first();
 
                 return [
                     'chave'                => $primeiro->chave,
+                    'etapa'                => $primeiro->etapa,
                     'titulo'               => $primeiro->titulo,
-                    'instrucao'            => null,
+                    // Vem do CÓDIGO por chave, nunca da linha do passo: texto
+                    // corrigido precisa alcançar quem já está travado por não
+                    // ter entendido a versão anterior.
+                    'instrucao'            => DefinicaoOnboarding::instrucaoDe($primeiro->chave),
+                    'depende_de_titulo'    => collect($primeiro->depende_de ?? [])
+                        ->map(fn (string $chave) => $titulosVisiveis->get($chave))
+                        ->filter()
+                        ->first(),
                     'status'               => $this->statusAgregado($grupo),
                     'tem_auto_fonte'       => $primeiro->auto_fonte !== null,
                     'acao'                 => self::acaoDoCliente($primeiro->auto_fonte),
@@ -98,6 +121,14 @@ class OnboardingLinkService
     public const ACAO_OAUTH_ML = 'oauth_ml';
     /** Passo manual — o cliente declara que fez. */
     public const ACAO_MARCAR = 'marcar';
+    /**
+     * O cliente precisa AGIR fora do nosso sistema (conceder acesso dentro da
+     * Adman, por exemplo), e nós detectamos sozinhos quando acontecer. A tela
+     * mostra o passo-a-passo e "assim que você concluir, detectamos
+     * automaticamente" — sem checkbox: o passo tem `auto_fonte`, e D-19 proíbe
+     * que alguém feche na mão o que só o resolver confirma.
+     */
+    public const ACAO_INSTRUCAO = 'instrucao';
     /** Nada a fazer: o sistema resolve sozinho, o cliente só acompanha. */
     public const ACAO_NENHUMA = 'nenhuma';
 
@@ -107,13 +138,20 @@ class OnboardingLinkService
      * Mapeamento explícito e fechado: passo automático novo cai em `nenhuma`
      * até alguém decidir qual ação ele oferece. Assumir "tem auto_fonte ⇒ é
      * OAuth" já produziu botão errado uma vez.
+     *
+     * Os dois passos da Adman entraram em `instrucao` na v6 junto com a
+     * mudança de `dono` para `cliente`: sem essa ação eles cairiam em
+     * `nenhuma`, que renderiza "você não precisa fazer nada" — o oposto exato
+     * de pedir ao cliente que conceda o acesso.
      */
     private static function acaoDoCliente(?string $autoFonte): string
     {
         return match ($autoFonte) {
-            null                                     => self::ACAO_MARCAR,
-            OnboardingPasso::AUTO_FONTE_ML_TOKEN     => self::ACAO_OAUTH_ML,
-            default                                  => self::ACAO_NENHUMA,
+            null                                          => self::ACAO_MARCAR,
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN          => self::ACAO_OAUTH_ML,
+            OnboardingPasso::AUTO_FONTE_ADMAN_ACCOUNT_ID  => self::ACAO_INSTRUCAO,
+            OnboardingPasso::AUTO_FONTE_ADMAN_GRANT       => self::ACAO_INSTRUCAO,
+            default                                       => self::ACAO_NENHUMA,
         };
     }
 

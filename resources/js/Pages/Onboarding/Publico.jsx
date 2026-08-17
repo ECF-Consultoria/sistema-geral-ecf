@@ -21,6 +21,20 @@ import { cn, formatDate } from '@/lib/utils';
 // falsa impressão de que o clique dele fecha o passo; quem fecha é o
 // resolver automático.
 
+// Blocos do portal, na ordem em que o cliente os encontra. `administrativo`
+// não entra: nenhum passo dele é `dono=cliente`. Passo sem etapa (nascido
+// antes da v6) cai em `outros` e ainda assim aparece — some da tela é pior do
+// que aparecer sem título de bloco.
+const ETAPAS_ORDEM = ['acessos', 'mapeamento', 'agendamento', 'administrativo', 'outros'];
+
+const ETAPA_LABELS = {
+    acessos:        { titulo: 'Configuração de acessos', ajuda: 'Comece por aqui — é o que nos permite buscar seus dados automaticamente.' },
+    mapeamento:     { titulo: 'Mapeamento da conta',      ajuda: 'O que precisamos entender sobre a sua operação hoje.' },
+    agendamento:    { titulo: 'Reunião de onboarding',    ajuda: null },
+    administrativo: { titulo: 'Administrativo',           ajuda: null },
+    outros:         { titulo: 'Outros',                   ajuda: null },
+};
+
 const ESTADO_CARD = {
     concluido:         { classe: 'border-emerald-500/20 bg-emerald-500/[0.06]', Icone: CheckCircle2, corIcone: 'text-emerald-300' },
     aberto:             { classe: 'border-white/[0.10] bg-white/[0.03]', Icone: null, corIcone: '' },
@@ -86,10 +100,16 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
                         )}
                     </div>
 
-                    {passo.instrucao && <p className="text-white/50 text-[12px] mt-1">{passo.instrucao}</p>}
+                    {passo.instrucao && (
+                        <p className="text-white/60 text-[12px] mt-1.5 leading-relaxed">{passo.instrucao}</p>
+                    )}
 
                     {bloqueado && (
-                        <p className="text-white/30 text-[11px] mt-2">Aguardando outra etapa ser concluída.</p>
+                        <p className="text-white/30 text-[11px] mt-2">
+                            {passo.depende_de_titulo
+                                ? `Liberamos assim que "${passo.depende_de_titulo}" estiver concluído.`
+                                : 'Aguardando outra etapa ser concluída.'}
+                        </p>
                     )}
 
                     {concluido && <p className="text-emerald-300/70 text-[11px] mt-2">Concluído.</p>}
@@ -123,6 +143,19 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
                                     className="text-white/70 hover:text-white text-[12px] font-medium cursor-pointer select-none"
                                 >
                                     {marcando ? 'Marcando…' : 'Marcar como feito'}
+                                </span>
+                            )}
+
+                            {/*
+                              * `instrucao`: a bola é do cliente, mas a ação
+                              * acontece FORA do nosso sistema e quem confirma é
+                              * o resolver. Sem checkbox e sem botão — D-19
+                              * proíbe fechar na mão um passo com `auto_fonte`.
+                              */}
+                            {passo.acao === 'instrucao' && (
+                                <span className="inline-flex items-center gap-1.5 text-white/40 text-[12px]">
+                                    <Zap size={12} className="text-ecf-yellow shrink-0" />
+                                    Assim que você concluir, detectamos automaticamente.
                                 </span>
                             )}
 
@@ -166,6 +199,16 @@ export default function Publico({ token, empresa, passos = [] }) {
     const nadaPendente = passos.length === 0;
     const tudoConcluido = !nadaPendente && passos.every((p) => p.status === 'concluido');
     const faltam = passos.filter((p) => p.status !== 'concluido').length;
+
+    // Blocos na ordem fixa de ETAPAS_ORDEM, preservando dentro de cada um a
+    // ordem que o backend já mandou (`ordem` do passo). Bloco vazio não vira
+    // cabeçalho órfão.
+    const blocos = ETAPAS_ORDEM
+        .map((etapa) => ({
+            etapa,
+            itens: passos.filter((p) => (p.etapa ?? 'outros') === etapa),
+        }))
+        .filter(({ itens }) => itens.length > 0);
 
     return (
         <div className="min-h-screen bg-ecf-bg">
@@ -211,15 +254,28 @@ export default function Publico({ token, empresa, passos = [] }) {
                 )}
 
                 {!nadaPendente && !tudoConcluido && (
-                    <div className="space-y-3">
-                        {passos.map((passo) => (
-                            <PassoCard
-                                key={passo.chave}
-                                passo={passo}
-                                token={token}
-                                conectandoChave={conectandoChave}
-                                setConectandoChave={setConectandoChave}
-                            />
+                    <div className="space-y-8">
+                        {blocos.map(({ etapa, itens }) => (
+                            <section key={etapa} className="space-y-3">
+                                <div>
+                                    <h2 className="text-white font-display font-bold text-[15px]">
+                                        {ETAPA_LABELS[etapa].titulo}
+                                    </h2>
+                                    {ETAPA_LABELS[etapa].ajuda && (
+                                        <p className="text-white/40 text-[12px] mt-0.5">{ETAPA_LABELS[etapa].ajuda}</p>
+                                    )}
+                                </div>
+
+                                {itens.map((passo) => (
+                                    <PassoCard
+                                        key={passo.chave}
+                                        passo={passo}
+                                        token={token}
+                                        conectandoChave={conectandoChave}
+                                        setConectandoChave={setConectandoChave}
+                                    />
+                                ))}
+                            </section>
                         ))}
                     </div>
                 )}

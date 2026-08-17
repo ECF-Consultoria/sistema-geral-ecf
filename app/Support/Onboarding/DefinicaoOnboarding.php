@@ -49,8 +49,19 @@ class DefinicaoOnboarding
      * (upload de documento, que nunca foi pedido) e `ficha_conta_preenchida`
      * (formulário manual). `grant_sistema_ecf` virou a PRIMEIRA ação do cliente
      * e `acesso_colaborador_ml` passou a depender dele — antes era o contrário.
+     *
+     * v6 — os QUATRO itens de "Configuração de acessos" passam a ser do
+     * cliente: `planilha_custos_adman` e `grant_consultoria_adman` saem de
+     * `dono=sistema` e viram `dono=cliente`. O `auto_fonte` dos dois NÃO muda —
+     * o sistema continua detectando sozinho quando acontecem. É D-19 em ação:
+     * `dono` responde "de quem é a bola", `auto_fonte` responde "como o sistema
+     * sabe". Antes disso o cliente não via nem era cobrado por dois dos quatro
+     * acessos que só ele pode conceder.
+     *
+     * Entra também a `etapa` de cada passo — o bloco em que ele aparece, tanto
+     * no painel interno quanto no portal do cliente.
      */
-    public const VERSAO = 5;
+    public const VERSAO = 6;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -67,6 +78,50 @@ class DefinicaoOnboarding
 
         return self::gestao();
     }
+
+    /**
+     * Instrução que o CLIENTE lê no portal, por `chave` de passo.
+     *
+     * Mora em código e NÃO é copiada para `onboarding_passos` — ao contrário de
+     * `etapa`/`dono`/`sla_dias`, que são estrutura e por isso congelam no
+     * nascimento. Instrução é TEXTO: corrigir uma frase confusa precisa
+     * alcançar justamente quem já está travado por não tê-la entendido.
+     * Congelá-la faria o cliente que mais precisa da correção nunca recebê-la.
+     *
+     * Chave sem instrução devolve `null` e o portal não renderiza a linha —
+     * mesmo comportamento de antes de este mapa existir.
+     */
+    public static function instrucaoDe(string $chave): ?string
+    {
+        return self::INSTRUCOES[$chave] ?? null;
+    }
+
+    /**
+     * Só os passos `dono=cliente` precisam de instrução — os demais o cliente
+     * nem vê. Texto em 2ª pessoa, direto, sem jargão interno ("grant", "OAuth",
+     * "cust_id" não significam nada para quem está do outro lado).
+     */
+    private const INSTRUCOES = [
+        'grant_sistema_ecf' => 'Clique em "Autorizar acesso" e entre com a conta do Mercado Livre da sua empresa. '
+            . 'Você será levado para uma página do próprio Mercado Livre — nós não vemos sua senha. '
+            . 'É esta autorização que permite buscarmos seus dados automaticamente; sem ela, as próximas etapas ficam paradas.',
+
+        'acesso_colaborador_ml' => 'No Mercado Livre, acesse "Meu perfil" → "Usuários e permissões" → "Convidar usuário" '
+            . 'e envie o convite para o e-mail que combinamos com você. Isso dá à nossa equipe acesso operacional '
+            . 'à conta, sem compartilhar sua senha. Quando terminar, marque este item como feito.',
+
+        'planilha_custos_adman' => 'Dentro da Adman, vincule a planilha de custos da sua conta. '
+            . 'É ela que permite calcular sua margem real por anúncio. '
+            . 'Assim que o vínculo existir, detectamos automaticamente — você não precisa avisar.',
+
+        'grant_consultoria_adman' => 'Dentro da Adman, conceda acesso à ECF Consultoria. '
+            . 'Sem esse acesso não conseguimos ler seus custos e seu faturamento pela Adman. '
+            . 'Assim que você concluir, detectamos automaticamente — você não precisa avisar.',
+
+        'custos_app_ecf' => 'Preencha os custos dos seus produtos no App ECF. '
+            . 'São eles que transformam faturamento em margem — sem os custos, conseguimos mostrar quanto você '
+            . 'vendeu, mas não quanto sobrou. Quando terminar, marque este item como feito.',
+    ];
 
     /**
      * Resolve o serviço-alvo por consulta, NUNCA por id fixo — o catálogo de
@@ -97,6 +152,7 @@ class DefinicaoOnboarding
         return [
             [
                 'ordem'      => 1,
+                'etapa'      => OnboardingPasso::ETAPA_ADMINISTRATIVO,
                 'chave'      => 'grupo_criado',
                 'titulo'     => 'Grupo de WhatsApp criado',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -108,6 +164,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 2,
+                'etapa'      => OnboardingPasso::ETAPA_ADMINISTRATIVO,
                 'chave'      => 'mensagem_boas_vindas',
                 'titulo'     => 'Mensagem de boas-vindas enviada',
                 // Depende do grupo existir — é nele que a mensagem é enviada.
@@ -122,6 +179,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 3,
+                'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
                 'chave'      => 'grant_sistema_ecf',
                 'titulo'     => 'Grant com o Sistema ECF (OAuth)',
                 // PRIMEIRA ação do cliente, e a que destrava o resto: é por ela
@@ -140,6 +198,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 4,
+                'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
                 'chave'      => 'acesso_colaborador_ml',
                 'titulo'     => 'Acesso colaborador Mercado Livre',
                 // Vem DEPOIS do grant: primeiro o cliente autoriza e o sistema
@@ -153,9 +212,13 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 5,
+                'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
                 'chave'      => 'planilha_custos_adman',
                 'titulo'     => 'Planilha de custos ADMAN',
-                'dono'       => OnboardingPasso::DONO_SISTEMA,
+                // v6 — passa a ser do CLIENTE: é ele quem concede/vincula a
+                // conta na Adman. O `auto_fonte` não muda: o sistema segue
+                // detectando sozinho quando o vínculo existe (D-19).
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
                 'depende_de' => null,
                 'sla_dias'   => 5,
@@ -164,9 +227,12 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 6,
+                'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
                 'chave'      => 'grant_consultoria_adman',
                 'titulo'     => 'Grant com a Consultoria (Adman)',
-                'dono'       => OnboardingPasso::DONO_SISTEMA,
+                // v6 — idem: só o cliente concede o grant à Consultoria dentro
+                // da Adman. A sonda continua sendo quem confirma.
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
                 'depende_de' => ['planilha_custos_adman'],
                 'sla_dias'   => 5,
@@ -175,6 +241,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 7,
+                'etapa'      => OnboardingPasso::ETAPA_ADMINISTRATIVO,
                 'chave'      => 'confirmacao_pagamento',
                 'titulo'     => 'Confirmação de pagamento',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -186,6 +253,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 8,
+                'etapa'      => OnboardingPasso::ETAPA_MAPEAMENTO,
                 'chave'      => 'metricas_da_conta',
                 'titulo'     => 'Métricas da conta',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -197,6 +265,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 9,
+                'etapa'      => OnboardingPasso::ETAPA_MAPEAMENTO,
                 'chave'      => 'anuncios_ativos_inativos',
                 'titulo'     => 'Anúncios ativos / inativos',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -208,6 +277,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 10,
+                'etapa'      => OnboardingPasso::ETAPA_MAPEAMENTO,
                 'chave'      => 'excluir_anuncios_inativos',
                 'titulo'     => 'Excluir anúncios inativos',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -220,6 +290,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 11,
+                'etapa'      => OnboardingPasso::ETAPA_MAPEAMENTO,
                 'chave'      => 'custos_app_ecf',
                 'titulo'     => 'Custos no App ECF',
                 'dono'       => OnboardingPasso::DONO_CLIENTE,
@@ -231,6 +302,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 12,
+                'etapa'      => OnboardingPasso::ETAPA_MAPEAMENTO,
                 'chave'      => 'grant_de_ads',
                 'titulo'     => 'Grant de Ads',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -242,6 +314,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 13,
+                'etapa'      => OnboardingPasso::ETAPA_AGENDAMENTO,
                 'chave'      => 'agendar_reuniao_onboarding',
                 'titulo'     => 'Agendar reunião de onboarding',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -253,6 +326,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 14,
+                'etapa'      => OnboardingPasso::ETAPA_AGENDAMENTO,
                 'chave'      => 'relatorio_inicial',
                 'titulo'     => 'Relatório inicial da empresa',
                 // O PDF §3 pede o relatório ANTES da reunião — é o que se
@@ -267,6 +341,7 @@ class DefinicaoOnboarding
             ],
             [
                 'ordem'      => 15,
+                'etapa'      => OnboardingPasso::ETAPA_AGENDAMENTO,
                 'chave'      => 'reuniao_realizada',
                 'titulo'     => 'Reunião de onboarding realizada',
                 // Depende do agendamento, do pagamento E do relatório —
