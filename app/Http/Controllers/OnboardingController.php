@@ -126,7 +126,12 @@ class OnboardingController extends Controller
         $this->autorizarEscopo($request->user(), $onboarding);
 
         $onboarding->load([
-            'company:id,name',
+            // `marketplace` é OBRIGATÓRIO na projeção: a visão do mapeamento
+            // lê `company->marketplace`, e sem ele o campo chegava vazio na
+            // tela mesmo com a empresa tendo o valor gravado ("meli").
+            // Projeção que esconde coluna usada mais adiante é silenciosa —
+            // não dá erro, só mostra "—".
+            'company:id,name,marketplace',
             'servico:id,nome',
             'responsavel:id,name',
             'reuniaoAgendadaPor:id,name',

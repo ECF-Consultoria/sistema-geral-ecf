@@ -122,11 +122,60 @@ class OnboardingResolverMetricasTest extends TestCase
         $this->assertTrue($resultado->ehConcluido());
         $this->assertSame('LOJA_TESTE', $resultado->valor['nickname']);
         $this->assertSame('5_green', $resultado->valor['reputacao']['level_id']);
-        $this->assertSame([], $resultado->valor['nao_obtidos']);
+        // `full` entra em `nao_obtidos` porque este cenário não tem acervo
+        // coletado — e é dali que o Full vem agora. Sem acervo não se afirma
+        // "não tem Full"; afirma-se "não sabemos" (D-11).
+        $this->assertSame(['full'], $resultado->valor['nao_obtidos']);
+        $this->assertNull($resultado->valor['full']);
 
         // As métricas deixam de ser descartadas.
         $this->assertSame(0.003, $resultado->valor['reputacao']['metrics']['claims']['rate']);
         $this->assertSame(340, $resultado->valor['reputacao']['transactions']['completed']);
+    }
+
+    /**
+     * Full vem do ACERVO (`shipping.logistic_type`), não de `tags`.
+     *
+     * A versão anterior derivava de `tags` conter 'full' — marca `[ASSUMIDO]`
+     * que a conta real derrubou em 2026-08-17: `tags` traz
+     * ["business","eshop","messages_as_seller","normal"], que descreve o tipo
+     * de conta e não logística. Conta COM Full aparecia como "—".
+     */
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function full_vem_do_acervo_e_nao_das_tags(): void
+    {
+        Http::fake([
+            '*/users/*'       => Http::response([
+                'id'                => 777888999,
+                'nickname'          => 'LOJA_FULL',
+                'seller_reputation' => ['level_id' => '5_green'],
+                // Sem 'full' nas tags — exatamente como a conta real.
+                'tags' => ['business', 'eshop', 'normal'],
+            ], 200),
+            '*/performance/*' => Http::response(['summarizedData' => []], 200),
+        ]);
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST_FULL']);
+        $this->comMlTokenAtivo($company);
+
+        // Sem factory para MlAcervoItem no projeto — cria direto, com o shape
+        // real de `shipping` observado em produção.
+        foreach (['fulfillment', 'fulfillment', 'drop_off'] as $i => $tipo) {
+            \App\Models\MlAcervoItem::create([
+                'company_id' => $company->id,
+                'ml_item_id' => 'MLB'.(900000 + $i),
+                'title'      => 'Item '.$i,
+                'status'     => 'active',
+                'shipping'   => ['mode' => 'me2', 'logistic_type' => $tipo],
+            ]);
+        }
+
+        [$onboarding, $passo] = $this->criarOnboardingComPasso($company);
+        $valor = app(MetricasContaResolver::class)->resolver($onboarding, $passo)->valor;
+
+        $this->assertTrue($valor['full'], 'Há anúncio em fulfillment — a conta usa Full');
+        $this->assertSame(2, $valor['full_anuncios']);
+        $this->assertNotContains('full', $valor['nao_obtidos']);
     }
 
     /**

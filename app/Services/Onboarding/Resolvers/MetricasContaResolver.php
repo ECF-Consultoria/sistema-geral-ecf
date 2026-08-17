@@ -3,6 +3,7 @@
 namespace App\Services\Onboarding\Resolvers;
 
 use App\Contracts\OnboardingResolver;
+use App\Models\MlAcervoItem;
 use App\Models\Onboarding;
 use App\Models\OnboardingPasso;
 use App\Services\AdmanService;
@@ -121,9 +122,12 @@ class MetricasContaResolver implements OnboardingResolver
             if ($levelId === null) {
                 $naoObtidos[] = 'seller_reputation.level_id';
             }
-            if ($powerSellerStatus === null) {
-                $naoObtidos[] = 'seller_reputation.power_seller_status';
-            }
+
+            // `power_seller_status` AUSENTE não é dado faltando: é assim que o
+            // Mercado Livre representa "não é MercadoLíder" (o campo só existe
+            // para quem tem medalha — confirmado contra conta real em
+            // 2026-08-17). Marcá-lo como não obtido fazia a tela dizer as duas
+            // coisas ao mesmo tempo: "Ainda não é MercadoLíder" e "não obtido".
             if (($reputacao['metrics'] ?? null) === null) {
                 $naoObtidos[] = 'seller_reputation.metrics';
             }
@@ -136,11 +140,31 @@ class MetricasContaResolver implements OnboardingResolver
         $valor['medalha_conta']   = ReguaMercadoLider::diagnosticar($reputacao);
         $valor['proxima_medalha'] = $valor['medalha_conta']['proxima_medalha'];
 
-        // Indicador de Full derivado de `tags` — se o payload não trouxer o
-        // sinal, grava null (nunca false, que mentiria sobre o dado).
-        $tags = $userInfo['tags'] ?? null;
-        $valor['full'] = is_array($tags) && in_array('full', $tags, true) ? true : null;
-        if (! is_array($tags)) {
+        // ─── Full: vem do ACERVO, não de `tags` ─────────────────────────────
+        // A versão anterior derivava Full de `tags` conter 'full'. Marca
+        // `[ASSUMIDO]`, e estava ERRADA — medido contra conta real em
+        // 2026-08-17: `tags` traz ["business","eshop","messages_as_seller",
+        // "normal"], que descreve o TIPO DE CONTA, não logística. Não existe
+        // tag de Full, então a ausência não provava nada e a tela mostrava
+        // "—" para quem usa Full.
+        //
+        // A fonte real é por ANÚNCIO: `shipping.logistic_type = fulfillment`,
+        // que a coleta de acervo já grava. Conta com ao menos um item assim
+        // usa Full.
+        //
+        // Sem acervo coletado NÃO se afirma nada: `null` + `nao_obtidos`,
+        // nunca `false` (D-11 — "não coletado" ≠ "não tem").
+        $itensAcervo = MlAcervoItem::where('company_id', $company->id);
+
+        if ($itensAcervo->clone()->exists()) {
+            $comFull = $itensAcervo->clone()
+                ->where('shipping', 'like', '%"logistic_type":"fulfillment"%')
+                ->count();
+
+            $valor['full'] = $comFull > 0;
+            $valor['full_anuncios'] = $comFull;
+        } else {
+            $valor['full'] = null;
             $naoObtidos[] = 'full';
         }
 
