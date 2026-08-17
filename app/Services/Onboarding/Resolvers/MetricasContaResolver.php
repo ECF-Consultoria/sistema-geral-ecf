@@ -27,15 +27,17 @@ use App\Support\Onboarding\ReguaMercadoLider;
  * campo não obtido entra em `valor['nao_obtidos']` e o passo conclui com o
  * resto.
  *
- * As 3 fontes:
- *  - `MercadoLivreService::fetchUserInfo()` — nickname + reputação + sinal
- *    de Full (a partir de `tags`). Se o cliente ainda não autorizou o
- *    acesso, o service lança exceção antes de qualquer chamada de rede —
- *    tratado aqui como `nao_coletado` (pendência humana real, o template já
- *    expressa isso com `depende_de: grant_sistema_ecf`).
- *  - `AdmanService::fetchGrossBilling()` — faturamento dos últimos 3 meses
- *    para o `cust_id` da empresa; devolve `null` (sem lançar) em qualquer
- *    falha, então cai naturalmente em `nao_obtidos`.
+ * As 4 fontes — todas do Mercado Livre, exceto a última:
+ *  - `MercadoLivreService::fetchUserInfo()` — nickname e reputação. Se o
+ *    cliente ainda não autorizou o acesso, o service lança exceção antes de
+ *    qualquer chamada de rede — tratado aqui como `nao_coletado` (pendência
+ *    humana real, e o template já expressa isso com
+ *    `depende_de: grant_sistema_ecf`).
+ *  - `MercadoLivreService::fetchOrdersSummary()` — faturamento dos últimos 3
+ *    meses, somando `total_amount` dos pedidos pagos.
+ *  - `ml_acervo_itens.shipping->logistic_type` — se a conta usa Full. NÃO sai
+ *    de `tags` do usuário: medido contra conta real, `tags` descreve tipo de
+ *    conta e não existe tag de Full.
  *  - `Company::activeGrant` — medalha/programa do parceiro ML, dado que a
  *    ECF recebe (não um acesso que o cliente concede) — entra dentro deste
  *    passo, nunca como passo próprio (D-18).
@@ -175,27 +177,37 @@ class MetricasContaResolver implements OnboardingResolver
             $naoObtidos[] = 'full';
         }
 
-        // Acessor `cust_id`, NÃO a coluna crua `adman_account_id`. O acessor é
-        // o caminho canônico do projeto (docblock de `Company::getCustIdAttribute`)
-        // e cai para `ml_store_id` quando a empresa só tem o ID do Mercado
-        // Livre — que é o caso das contas conectadas por OAuth sem cadastro
-        // Adman próprio. Lendo a coluna crua, o faturamento ficava "não
-        // obtido" para empresa que tinha cust_id perfeitamente utilizável.
-        $custId = $company->cust_id;
-        if ($custId) {
-            $marketplace = $company->marketplace ?? 'meli';
-            $faturamento = $this->adman->fetchGrossBilling(
-                $custId,
-                now()->subMonths(3)->toDateString(),
-                now()->toDateString(),
-                marketplace: $marketplace,
-            );
+        // ─── Faturamento: MERCADO LIVRE, não Adman ──────────────────────────
+        // A ficha é da conta do Mercado Livre, e o faturamento tem de vir da
+        // mesma fonte. A versão anterior perguntava à Adman pelo `cust_id`, e
+        // conta conectada só por OAuth (sem cadastro Adman próprio) devolvia
+        // `null` — a tela mostrava "não obtido" para vendedor que fatura
+        // normalmente. Medido em produção em 2026-08-17.
+        //
+        // `fetchOrdersSummary()` soma `total_amount` dos pedidos PAGOS do
+        // período, paginando sozinho.
+        $de  = now()->subMonths(3)->toDateString();
+        $ate = now()->toDateString();
 
-            $valor['faturamento_3_meses'] = $faturamento;
-            if ($faturamento === null) {
+        try {
+            $resumo = $this->ml->fetchOrdersSummary($company, $de, $ate);
+
+            $valor['faturamento_3_meses'] = $resumo['revenue'] ?? null;
+            $valor['faturamento_pedidos'] = $resumo['orders_count'] ?? null;
+            $valor['faturamento_periodo'] = ['de' => $de, 'ate' => $ate];
+
+            // `fetchOrdersSummary()` para em 1000 pedidos por segurança. Ao
+            // bater o teto o número vira PISO, não total — deixar isso
+            // implícito subestimaria o faturamento de quem vende muito, em
+            // silêncio.
+            $valor['faturamento_parcial'] = ($resumo['orders_count'] ?? 0) >= 1000;
+
+            if ($valor['faturamento_3_meses'] === null) {
                 $naoObtidos[] = 'faturamento_3_meses';
             }
-        } else {
+        } catch (\Throwable $e) {
+            // Falha só do faturamento não derruba o passo — o resto da ficha
+            // continua válido (mesmo "log then continue" do resto da classe).
             $valor['faturamento_3_meses'] = null;
             $naoObtidos[] = 'faturamento_3_meses';
         }

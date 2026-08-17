@@ -106,6 +106,14 @@ class OnboardingResolverMetricasTest extends TestCase
                 ],
                 'tags' => ['full', 'normal'],
             ], 200),
+            // Faturamento vem do ML (pedidos pagos), não mais da Adman.
+            '*/orders/search*' => Http::response([
+                'paging'  => ['total' => 2],
+                'results' => [
+                    ['total_amount' => 30000.0, 'order_items' => [['quantity' => 1]]],
+                    ['total_amount' => 15000.0, 'order_items' => [['quantity' => 2]]],
+                ],
+            ], 200),
             '*/performance/*' => Http::response([
                 'summarizedData' => ['grossBilling' => ['value' => 45000.0]],
             ], 200),
