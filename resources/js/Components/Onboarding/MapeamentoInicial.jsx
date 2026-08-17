@@ -171,7 +171,17 @@ export default function MapeamentoInicial({
                         <Campo rotulo="Marketplace" valor={conta.marketplace} />
                         <Campo
                             rotulo="Faturamento (3 meses)"
-                            valor={fmtBRL(conta.faturamento_3_meses)}
+                            /*
+                             * "R$ 0" sozinho é lido como erro. Se consultamos e
+                             * o período não teve venda, a tela diz isso com
+                             * todas as letras — é diferente de "—", que
+                             * significa "não conseguimos consultar".
+                             */
+                            valor={
+                                conta.faturamento_3_meses === 0
+                                    ? 'R$ 0 — nenhum pedido pago no período'
+                                    : fmtBRL(conta.faturamento_3_meses)
+                            }
                             aviso={naoObtidos.includes('faturamento_3_meses')}
                         />
                         <Campo
