@@ -59,34 +59,45 @@ class OnboardingGrupoBoasVindasTest extends TestCase
     }
 
     #[Test]
-    public function os_dois_passos_do_pdf_7_nascem_como_internos_e_manuais(): void
+    public function a_mensagem_de_boas_vindas_nasce_interna_e_manual(): void
     {
         $onboarding = $this->onboardingEmAndamento();
 
-        foreach (['grupo_criado', 'mensagem_boas_vindas'] as $chave) {
-            $passo = $this->passo($onboarding, $chave);
-            $this->assertSame(OnboardingPasso::DONO_INTERNO, $passo->dono, "chave={$chave}");
-            $this->assertNull($passo->auto_fonte, "chave={$chave} — não há como o sistema verificar isso sozinho.");
-        }
+        $passo = $this->passo($onboarding, 'mensagem_boas_vindas');
+        $this->assertSame(OnboardingPasso::DONO_INTERNO, $passo->dono);
+        $this->assertNull($passo->auto_fonte, 'Não há como o sistema verificar isso sozinho.');
+    }
+
+    /** v7 — o negócio removeu o passo do grupo de WhatsApp do onboarding. */
+    #[Test]
+    public function o_passo_do_grupo_de_whatsapp_nao_existe_mais(): void
+    {
+        $onboarding = $this->onboardingEmAndamento();
+
+        $this->assertNull(
+            $onboarding->passos()->where('chave', 'grupo_criado')->first(),
+            'grupo_criado saiu da definição na v7'
+        );
+
+        $this->assertNotContains(
+            'grupo_criado',
+            collect(DefinicaoOnboarding::paraServico($this->servicoDeGestao()))->pluck('chave')->all()
+        );
     }
 
     #[Test]
-    public function a_mensagem_depende_do_grupo_existir(): void
+    public function a_mensagem_nao_depende_mais_de_nada(): void
     {
         $onboarding = $this->onboardingEmAndamento();
 
-        $this->assertSame(['grupo_criado'], $this->passo($onboarding, 'mensagem_boas_vindas')->depende_de);
+        $this->assertNull($this->passo($onboarding, 'mensagem_boas_vindas')->depende_de);
 
-        // Grupo aberto, mensagem bloqueada até ele fechar.
-        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $this->passo($onboarding, 'grupo_criado')->status);
-        $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $this->passo($onboarding, 'mensagem_boas_vindas')->status);
-
-        app(OnboardingEngineService::class)->concluirManualmente(
-            $this->passo($onboarding, 'grupo_criado'),
-            User::factory()->create(),
+        // Sem dependência, nasce aberta com os demais — não fica esperando
+        // ninguém fechar um passo que já não existe.
+        $this->assertSame(
+            OnboardingPasso::STATUS_ABERTO,
+            $this->passo($onboarding, 'mensagem_boas_vindas')->status
         );
-
-        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $this->passo($onboarding, 'mensagem_boas_vindas')->status);
     }
 
     #[Test]

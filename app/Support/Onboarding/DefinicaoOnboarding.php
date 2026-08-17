@@ -60,8 +60,16 @@ class DefinicaoOnboarding
      *
      * Entra também a `etapa` de cada passo — o bloco em que ele aparece, tanto
      * no painel interno quanto no portal do cliente.
+     *
+     * v7 — sai `grupo_criado` ("Grupo de WhatsApp criado"). O negócio disse
+     * que esse passo não deve existir no onboarding. `mensagem_boas_vindas`
+     * dependia dele e passou a não depender de nada.
+     *
+     * A `ordem` dos demais NÃO foi renumerada: ela só serve para ordenar, e
+     * mexer em 13 números para fechar um buraco de um introduz risco sem
+     * ganho nenhum — a lista continua saindo na mesma sequência.
      */
-    public const VERSAO = 6;
+    public const VERSAO = 7;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -151,28 +159,15 @@ class DefinicaoOnboarding
 
         return [
             [
-                'ordem'      => 1,
-                'etapa'      => OnboardingPasso::ETAPA_ADMINISTRATIVO,
-                'chave'      => 'grupo_criado',
-                'titulo'     => 'Grupo de WhatsApp criado',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => null,
-                'sla_dias'   => 2,
-                'auto_fonte' => null,
-                'condicao'   => null,
-            ],
-            [
                 'ordem'      => 2,
                 'etapa'      => OnboardingPasso::ETAPA_ADMINISTRATIVO,
                 'chave'      => 'mensagem_boas_vindas',
                 'titulo'     => 'Mensagem de boas-vindas enviada',
-                // Depende do grupo existir — é nele que a mensagem é enviada.
-                // NÃO travamos nada do cliente nisto: um checkbox interno
-                // esquecido não pode parar quem já recebeu o link.
+                // v7 — dependia de `grupo_criado`, que saiu. Sem dependência,
+                // nasce aberto junto com os demais.
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
-                'depende_de' => ['grupo_criado'],
+                'depende_de' => null,
                 'sla_dias'   => 2,
                 'auto_fonte' => null,
                 'condicao'   => null,

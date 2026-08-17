@@ -145,7 +145,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         (new OnboardingEngineService())->reavaliar($onboarding);
 
         $semDependencia = [
-            'grupo_criado',
+            'mensagem_boas_vindas',
             'grant_sistema_ecf',
             'planilha_custos_adman',
             'confirmacao_pagamento',
@@ -157,8 +157,9 @@ class OnboardingEngineDependenciasTest extends TestCase
             $this->assertNotNull($passo->disponivel_em, "chave={$chave}");
         }
 
+        // v7 — `mensagem_boas_vindas` saiu daqui: dependia de `grupo_criado`,
+        // que foi removido da definição, e passou a nascer aberta.
         $comDependencia = [
-            'mensagem_boas_vindas',
             'acesso_colaborador_ml',
             'grant_consultoria_adman',
             'metricas_da_conta',
@@ -206,7 +207,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $passo = $this->passo($onboarding, 'grupo_criado');
+        $passo = $this->passo($onboarding, 'mensagem_boas_vindas');
         $carimboOriginal = $passo->disponivel_em;
         $this->assertNotNull($carimboOriginal);
 
@@ -451,8 +452,6 @@ class OnboardingEngineDependenciasTest extends TestCase
 
         $usuario = User::factory()->create();
 
-        $engine->concluirManualmente($this->passo($onboarding, 'grupo_criado'), $usuario);
-        $engine->concluirManualmente($this->passo($onboarding, 'grupo_criado'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'mensagem_boas_vindas'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'confirmacao_pagamento'), $usuario);
