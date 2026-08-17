@@ -256,7 +256,6 @@ class ContratoAdminController extends Controller
                 'cnpj'              => $company->cnpj,
                 'email_cliente'     => $company->email_cliente,
                 'nome_contato'      => $company->nome_contato,
-                'email_colaborador' => $company->email_colaborador,
             ],
             'contratos_servico' => $contratosServicoAtivos->map(fn (ContratoServico $cs) => [
                 'id'                => $cs->id,
@@ -271,10 +270,6 @@ class ContratoAdminController extends Controller
             // nada no client (contrato de retorno é PÚBLICO, ver docblock do
             // service).
             'faltantes' => $faltantes,
-            // D-11 — FORA de `faltantes()` de propósito: pendência destacada
-            // que NÃO bloqueia o botão. Contrato e acesso à conta do Mercado
-            // Livre são coisas diferentes.
-            'email_colaborador_pendente' => blank($company->email_colaborador),
             // Prop PRÓPRIA — é .env da ECF, não dado da empresa (nunca
             // misturar com `faltantes`, ver docblock de
             // faltantesDaConfiguracaoEcf()).
@@ -329,8 +324,10 @@ class ContratoAdminController extends Controller
 
     /**
      * ADM-01 — o Administrativo completa aqui o que o Comercial deixou pela
-     * metade: CNPJ, e-mail do cliente, nome de quem assina, e-mail do
-     * colaborador e as datas de início/término de cada serviço.
+     * metade: CNPJ, e-mail do cliente, nome de quem assina e as datas de
+     * início/término de cada serviço. E-mail do colaborador (acesso à conta
+     * do Mercado Livre) fica fora desta tela — Quick 260817-d6h — e é
+     * completado em `/companies` (`CompanyController`).
      *
      * D8 travada da milestone: nada aqui volta para o Comercial — a cobrança
      * do dado termina nesta tela.
@@ -341,7 +338,6 @@ class ContratoAdminController extends Controller
             'cnpj'                                 => ['nullable', 'string', 'max:20'],
             'email_cliente'                        => ['nullable', 'email'],
             'nome_contato'                          => ['nullable', 'string', 'max:255'],
-            'email_colaborador'                     => ['nullable', 'email'],
             'contratos_servico'                     => ['array'],
             'contratos_servico.*.id'                => ['required', 'integer', 'exists:contratos_servico,id'],
             'contratos_servico.*.data_contratacao'  => ['nullable', 'date'],
@@ -369,7 +365,7 @@ class ContratoAdminController extends Controller
 
         // Mass assignment sobre os $fillable já existentes de Company — nunca
         // $guarded = [].
-        $company->fill(collect($data)->only(['cnpj', 'email_cliente', 'nome_contato', 'email_colaborador'])->all());
+        $company->fill(collect($data)->only(['cnpj', 'email_cliente', 'nome_contato'])->all());
         $company->save();
 
         foreach ($paresParaAtualizar as [$contratoServico, $item]) {

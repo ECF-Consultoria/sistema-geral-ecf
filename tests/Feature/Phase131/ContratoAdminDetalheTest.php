@@ -182,9 +182,9 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertSame('ja_em_andamento', $props['motivo_bloqueio']);
     }
 
-    // ─── Caso 4 — D-11: email_colaborador vazio fica pendente, mas NÃO bloqueia o botão ───
+    // ─── Caso 4 — Quick 260817-d6h: email_colaborador saiu da tela de contrato ───
 
-    public function test_email_colaborador_vazio_fica_pendente_mas_nao_bloqueia_o_botao(): void
+    public function test_email_colaborador_nao_aparece_mais_na_tela_de_contrato(): void
     {
         $admin   = $this->admin();
         $empresa = $this->empresaCompleta(['name' => 'Empresa Sem Email Colaborador', 'email_colaborador' => null]);
@@ -196,15 +196,25 @@ class ContratoAdminDetalheTest extends TestCase
         $response->assertOk();
         $props = $response->viewData('page')['props'];
 
-        $this->assertTrue($props['email_colaborador_pendente']);
-        // O ausente de email_colaborador NÃO impede gerar o contrato (D-11).
-        $this->assertTrue($props['pode_gerar_contrato']);
+        // O campo saiu da prop `company` e a prop de pendência foi removida
+        // — segue vivo só em /companies (CompanyController).
+        $this->assertArrayNotHasKey('email_colaborador', $props['company']);
+        $this->assertArrayNotHasKey('email_colaborador_pendente', $props);
 
         // Este é o teste que fica vermelho se alguém acrescentar
         // email_colaborador a ContratoDadosMinimosService::faltantes() —
-        // violaria a D-11 diretamente.
+        // violaria a D-11 diretamente (o campo continua fora do fluxo de
+        // contrato, só que agora nem aparece mais na tela).
         $campos = collect($props['faltantes'])->pluck('campo')->all();
         $this->assertNotContains('email_colaborador', $campos);
+
+        // PATCH com email_colaborador no payload não grava mais nada — o
+        // controller nem valida nem faz mass-assignment do campo.
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            'email_colaborador' => 'colaborador@example.com',
+        ]);
+        $response->assertRedirect();
+        $this->assertNull($empresa->fresh()->email_colaborador);
     }
 
     // ─── Caso 5 — PATCH grava CNPJ/e-mails/nome_contato/datas — RECONSULTA ao banco ───
@@ -220,7 +230,6 @@ class ContratoAdminDetalheTest extends TestCase
             'cnpj'              => '22.333.444/0001-55',
             'email_cliente'     => 'novo-cliente@example.com',
             'nome_contato'      => 'Fulano Atualizado',
-            'email_colaborador' => 'colaborador@example.com',
             'contratos_servico' => [
                 [
                     'id'               => $contratoServico->id,
@@ -238,7 +247,6 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertSame('22.333.444/0001-55', $empresaFresca->cnpj);
         $this->assertSame('novo-cliente@example.com', $empresaFresca->email_cliente);
         $this->assertSame('Fulano Atualizado', $empresaFresca->nome_contato);
-        $this->assertSame('colaborador@example.com', $empresaFresca->email_colaborador);
 
         $contratoServicoFresco = $contratoServico->fresh();
         $this->assertSame('2026-01-10', $contratoServicoFresco->data_contratacao->format('Y-m-d'));
@@ -275,9 +283,9 @@ class ContratoAdminDetalheTest extends TestCase
         );
     }
 
-    // ─── Caso 7 — email_colaborador com formato inválido falha validação e não grava ───
+    // ─── Caso 7 — Quick 260817-d6h: email_colaborador com formato inválido é ignorado, sem erro de validação ───
 
-    public function test_atualizar_cadastro_com_email_colaborador_invalido_falha_validacao_e_nao_grava(): void
+    public function test_atualizar_cadastro_com_email_colaborador_invalido_e_ignorado_sem_erro_de_validacao(): void
     {
         $admin   = $this->admin();
         $empresa = $this->empresaIncompleta(['name' => 'Empresa Email Colaborador Inválido']);
@@ -286,7 +294,10 @@ class ContratoAdminDetalheTest extends TestCase
             'email_colaborador' => 'nao-e-um-email',
         ]);
 
-        $response->assertSessionHasErrors('email_colaborador');
+        // O campo saiu da regra de validação desta tela — não gera erro de
+        // sessão nem bloqueia o PATCH, simplesmente é ignorado.
+        $response->assertRedirect();
+        $response->assertSessionDoesntHaveErrors('email_colaborador');
         $this->assertNull($empresa->fresh()->email_colaborador);
     }
 

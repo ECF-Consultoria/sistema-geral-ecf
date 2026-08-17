@@ -50,7 +50,6 @@ export default function ContratoDetalhe({
     company,
     contratos_servico = [],
     faltantes = [],
-    email_colaborador_pendente = false,
     configuracao_ecf_faltante = [],
     pode_gerar_contrato = false,
     motivo_bloqueio = null,
@@ -64,7 +63,6 @@ export default function ContratoDetalhe({
         cnpj:               company.cnpj ?? '',
         email_cliente:      company.email_cliente ?? '',
         nome_contato:       company.nome_contato ?? '',
-        email_colaborador:  company.email_colaborador ?? '',
         contratos_servico:  contratos_servico.map((cs) => ({
             id:                cs.id,
             data_contratacao:  cs.data_contratacao ?? '',
@@ -319,25 +317,6 @@ export default function ContratoDetalhe({
                                     />
                                     {cadastroForm.errors.nome_contato && (
                                         <p className="text-red-400 text-[11px]">{cadastroForm.errors.nome_contato}</p>
-                                    )}
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <Label>E-mail do colaborador</Label>
-                                    <Input
-                                        type="email"
-                                        value={cadastroForm.data.email_colaborador}
-                                        onChange={(e) => cadastroForm.setData('email_colaborador', e.target.value)}
-                                        className="focus:border-ecf-yellow/40"
-                                    />
-                                    {cadastroForm.errors.email_colaborador && (
-                                        <p className="text-red-400 text-[11px]">{cadastroForm.errors.email_colaborador}</p>
-                                    )}
-                                    {/* D-11 — pendência destacada que NÃO impede gerar o contrato. */}
-                                    {email_colaborador_pendente && (
-                                        <p className="text-[12px] text-amber-300/80">
-                                            Falta o e-mail do colaborador. Ele não impede gerar o contrato, mas sem ele a ECF não consegue acessar a conta do cliente.
-                                        </p>
                                     )}
                                 </div>
 
