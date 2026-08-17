@@ -37,6 +37,13 @@ class ResolveOnboardingPassoJob implements ShouldQueue, ShouldBeUnique
 
     public function __construct(public readonly OnboardingPasso $passo)
     {
+        // Fila `high`, não `default`. Medido em produção em 2026-08-17: a
+        // `default` acumula os syncs de Adman/Shopee (122 jobs pendentes, de
+        // 20s a 1min cada) e um passo de onboarding despachado ali só rodaria
+        // horas depois — inclusive quando alguém acabou de clicar
+        // "Sincronizar" e está olhando a tela. Mesmo precedente do warm de
+        // desempenho (`WarmDesempenhoDispatcher`) e da análise de sugadores.
+        $this->onQueue('high');
     }
 
     /** Chave de unicidade por passo — evita duas sondas do mesmo passo em voo. */
