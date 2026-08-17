@@ -228,6 +228,73 @@ export function aplicarNaFamilia(rows, idxs, campo, valor) {
     return (rows ?? []).map((r, i) => alvo.has(i) ? { ...r, [campo]: valor } : r);
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// Percentuais efetivos — a régua do preço, uma só para os dois lados.
+//
+// O Simulador do cliente (/implementacao/{token}) e a visão do Publicador
+// (/implementacao/{token}/publicador) tinham cada um a SUA cópia desta conta, e
+// as cópias divergiram: a do Publicador só lia os alvos GLOBAIS e ignorava o
+// override por produto, então o preço que o publicador anunciava era mais barato
+// do que o cliente havia configurado (com MC 10% + LL 25% zerados, R$ 4.381,86 no
+// lugar de R$ 7.706,48 — 43% a menos). Régua única aqui, com teste.
+//
+// ATENÇÃO às DUAS unidades que convivem no mesmo objeto `precificacao`:
+//   • os alvos GLOBAIS (`margem_contribuicao`, `lucro_liquido`, `acrescimo` e
+//     `<tier>.imposto`) são DECIMAIS — 0.19 = 19%;
+//   • os overrides POR PRODUTO (`*_individual`) são o que o cliente digitou no
+//     campo de porcentagem, em ponto percentual — "10" = 10%.
+// Trocar as duas é o erro que passa silencioso: 10 no lugar de 0,10 estoura o
+// divisor e devolve preço negativo.
+// ═══════════════════════════════════════════════════════════════════════
+
+/** Campo de override preenchido? Zero é override legítimo; vazio/ausente não é. */
+const temOverride = (v) => v !== '' && v !== null && v !== undefined;
+
+/** "10" → 0.10 (ponto percentual do campo → decimal da conta). */
+const pontoPctParaDecimal = (v) => (parseFloat(v) || 0) / 100;
+
+/**
+ * Imposto que vale para o produto.
+ *
+ * No modo 'individual' quem manda é o campo do produto, e campo em branco ali
+ * significa ZERO — não "herda o tier": foi o cliente que escolheu tratar imposto
+ * produto a produto. No modo 'massa' (padrão, e o que valia antes da chave
+ * `modo_imposto` existir) vale o imposto do tier.
+ */
+export function impostoEfetivo(row, tierImpostoDecimal, modoImposto) {
+    return modoImposto === 'individual'
+        ? pontoPctParaDecimal(row?.imposto_individual)
+        : (tierImpostoDecimal ?? 0);
+}
+
+/** Margem de contribuição: sempre por produto, herdando o global quando em branco. */
+export function mcEfetivo(row, globalDecimal) {
+    return temOverride(row?.mc_individual)
+        ? pontoPctParaDecimal(row.mc_individual)
+        : (globalDecimal ?? 0);
+}
+
+/** Lucro líquido: mesma regra da margem de contribuição. */
+export function llEfetivo(row, globalDecimal) {
+    return temOverride(row?.ll_individual)
+        ? pontoPctParaDecimal(row.ll_individual)
+        : (globalDecimal ?? 0);
+}
+
+/**
+ * Preço = (Custo + Frete) / (1 − Comissão − Imposto − MC − LL).
+ * Modelo da planilha ARB: MC e Lucro Líquido são alvos, e por isso entram no
+ * divisor. Sem custo, ou com o divisor zerado/negativo (a soma dos percentuais
+ * chegou a 100%), não existe preço — devolve null em vez de número sem sentido.
+ */
+export function calcPrecoFinal(custo, frete, comissao, imposto, mc, ll) {
+    const c = parseFloat(custo);
+    if (!Number.isFinite(c)) return null;
+    const divisor = 1 - (comissao || 0) - (imposto || 0) - (mc || 0) - (ll || 0);
+    if (divisor <= 0) return null;
+    return (c + (parseFloat(frete) || 0)) / divisor;
+}
+
 /** Copia os números de `origemIdx` para as outras linhas da família. Devolve array novo. */
 export function replicarPrecificacao(rows, idxs, origemIdx, campos = CAMPOS_PRECIFICACAO) {
     const lista  = rows ?? [];
