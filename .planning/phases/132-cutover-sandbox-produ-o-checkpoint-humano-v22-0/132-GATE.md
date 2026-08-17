@@ -26,12 +26,51 @@ ECF (`thiago@`, `emerson@`, `comercial@`, restaurados para os endereços reais e
 
 Conferir cada item ANTES de tocar em qualquer credencial:
 
-- [ ] As DUAS correções do plano 132-01 estão publicadas em produção:
+- [x] As DUAS correções do plano 132-01 estão publicadas em produção:
   - a correção da grafia de `CLICKSIGN_ENV` (D-01) — as quatro grafias `producao`,
     `produção`, `production` e `prod` levam ao painel de produção; qualquer outra
     continua levando ao painel de teste;
   - o interruptor de emissão de contratos (D-07) — existe, está deployado, e a tela
     explica o motivo do bloqueio sem jargão quando ligado.
+
+  **Resultado da publicação — 2026-08-17, executado por dev.01 (sessão Claude Code):**
+
+  ⚠️ **O deploy foi MUITO maior do que o plano supunha, e isso precisa ficar registrado.**
+  Ao conferir o servidor antes de publicar, descobriu-se que a `main` local e a `origin/main`
+  estavam **divergidas desde 2026-08-11**: 220 commits só locais (fases 127 a 132 — o módulo
+  Clicksign inteiro) e 14 commits só no GitHub (Precificação por família, Desempenho, NPS,
+  fase 136, de outra máquina). O servidor estava em `origin/main`, ou seja: **as fases 129,
+  130 e 131 nunca tinham ido para produção.** Confirmado por inspeção direta no servidor —
+  `ContratoAdminController.php`, `ClicksignReconciliar.php` e `Admin/ContratoDetalhe.jsx`
+  não existiam lá.
+
+  Consequência: não havia como publicar só o 132-01 (ele altera dois arquivos que não
+  existiam no servidor). O usuário autorizou explicitamente o deploy completo, estreando as
+  fases 129, 130 e 131 em produção junto com o 132-01.
+
+  | Item | Resultado |
+  |---|---|
+  | Merge `origin/main` → `main` | 1 conflito, em `AppLayout.jsx` — cada lado acrescentou um item de menu (Contratos / Métricas manuais). Resolvido mantendo os dois. |
+  | Suítes após o merge | 157 testes verdes, 603 assertions (Phase131 + Phase132 + Phase136) |
+  | Tabela de rotas | íntegra, com `admin.contratos.index`, `webhooks.clicksign` e `desempenho.metricas-manuais.index` presentes |
+  | Commit publicado | `99f83c75` (merge) — inclui `d15d6049`..`ecfc7251` do plano 132-01 |
+  | Data/hora do deploy | 2026-08-17, ~12h (BRT) |
+  | Migrations aplicadas | **9**, todas `DONE` (de `2026_08_12_100000` a `2026_08_16_100000`) |
+  | `ecf-worker:*` após restart | `ecf-worker_00` e `ecf-worker_01` em `RUNNING` |
+
+  **Reconsulta no próprio servidor (não pelo `.env`), logo após o deploy:**
+
+  | Conferência | Devolveu | Esperado nesta etapa |
+  |---|---|---|
+  | `ClicksignAmbiente::ehProducao('production')` | `sim` | `sim` — a classe existe e responde em produção ✅ |
+  | `config('services.clicksign.env')` | `sandbox` | `sandbox` — a chave ainda NÃO virou ✅ |
+  | `config('services.clicksign.painel_url')` | `https://sandbox.clicksign.com` | painel de TESTE — estado inicial registrado ✅ |
+  | `CongelamentoEmissaoService::ativo()` | `desligado` | `desligado` — nasce desligado, nada mudou ✅ |
+
+  - [ ] **Pendente de conferência humana:** abrir `/administrativo/contratos/empresa/{id}` de
+        qualquer empresa e confirmar com os próprios olhos que a tela está normal — nenhum
+        aviso novo, já que o interruptor está desligado. É a prova de que o bundle novo subiu
+        sem efeito colateral.
 - [ ] As 4 pessoas que vão assinar (ou receber convite de assinatura) já foram avisadas.
       ⚠️ Desde 2026-08-17 os e-mails dos três signatários fixos da ECF são **reais**
       (`thiago@`, `emerson@`, `comercial@`) — qualquer envelope emitido a partir de agora
