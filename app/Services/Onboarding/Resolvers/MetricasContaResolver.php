@@ -8,6 +8,7 @@ use App\Models\OnboardingPasso;
 use App\Services\AdmanService;
 use App\Services\MercadoLivreService;
 use App\Services\Onboarding\OnboardingResolverResultado;
+use App\Support\Onboarding\ReguaMercadoLider;
 
 /**
  * Resolver do passo 7 do template de Gestão — "Métricas da conta".
@@ -106,7 +107,16 @@ class MetricasContaResolver implements OnboardingResolver
         } else {
             $levelId = $reputacao['level_id'] ?? null;
             $powerSellerStatus = $reputacao['power_seller_status'] ?? null;
-            $valor['reputacao'] = ['level_id' => $levelId, 'power_seller_status' => $powerSellerStatus];
+            $valor['reputacao'] = [
+                'level_id'            => $levelId,
+                'power_seller_status' => $powerSellerStatus,
+                // Guardadas cruas: são elas que sustentam o diagnóstico de
+                // "o que falta para a próxima medalha" e o que a pessoa
+                // apresenta na reunião. Antes a API entregava e nós
+                // descartávamos.
+                'metrics'             => $reputacao['metrics'] ?? null,
+                'transactions'        => $reputacao['transactions'] ?? null,
+            ];
 
             if ($levelId === null) {
                 $naoObtidos[] = 'seller_reputation.level_id';
@@ -114,7 +124,17 @@ class MetricasContaResolver implements OnboardingResolver
             if ($powerSellerStatus === null) {
                 $naoObtidos[] = 'seller_reputation.power_seller_status';
             }
+            if (($reputacao['metrics'] ?? null) === null) {
+                $naoObtidos[] = 'seller_reputation.metrics';
+            }
         }
+
+        // ─── As DUAS medalhas, separadas ────────────────────────────────────
+        // `medalha_conta` é a MercadoLíder da conta do CLIENTE; `medalha_parceiro`
+        // (mais abaixo) é a do programa de parceiros, que é da ECF. Antes as
+        // duas dividiam o mesmo slot e se confundiam na leitura.
+        $valor['medalha_conta']   = ReguaMercadoLider::diagnosticar($reputacao);
+        $valor['proxima_medalha'] = $valor['medalha_conta']['proxima_medalha'];
 
         // Indicador de Full derivado de `tags` — se o payload não trouxer o
         // sinal, grava null (nunca false, que mentiria sobre o dado).
@@ -143,21 +163,30 @@ class MetricasContaResolver implements OnboardingResolver
             $naoObtidos[] = 'faturamento_3_meses';
         }
 
+        // Medalha do PROGRAMA DE PARCEIROS — dado que a ECF recebe pelo ECF
+        // Drive, não algo da conta do cliente. Nome próprio para não ser
+        // confundida com a MercadoLíder acima.
         $grant = $company->activeGrant;
-        if ($grant) {
-            $valor['medalha_fecha_in']  = optional($grant->medalha_fecha_in)->toDateString();
-            $valor['medalha_fecha_out'] = optional($grant->medalha_fecha_out)->toDateString();
-            $valor['programa']          = $grant->programa;
-            $valor['iniciativa']        = $grant->iniciativa;
-            $valor['parceiro']          = $grant->parceiro;
-        } else {
-            $valor['medalha_fecha_in']  = null;
-            $valor['medalha_fecha_out'] = null;
-            $valor['programa']          = null;
-            $valor['iniciativa']        = null;
-            $valor['parceiro']          = null;
+        $valor['medalha_parceiro'] = $grant ? [
+            'programa'   => $grant->programa,
+            'iniciativa' => $grant->iniciativa,
+            'parceiro'   => $grant->parceiro,
+            'fecha_in'   => optional($grant->medalha_fecha_in)->toDateString(),
+            'fecha_out'  => optional($grant->medalha_fecha_out)->toDateString(),
+        ] : null;
+
+        if (! $grant) {
             $naoObtidos[] = 'grant_parceiro_ml';
         }
+
+        // Chaves planas do shape antigo, mantidas para não quebrar leitura de
+        // `valor` gravado antes desta mudança (RelatorioInicialService e as
+        // telas já publicadas leem por elas).
+        $valor['medalha_fecha_in']  = $valor['medalha_parceiro']['fecha_in'] ?? null;
+        $valor['medalha_fecha_out'] = $valor['medalha_parceiro']['fecha_out'] ?? null;
+        $valor['programa']          = $valor['medalha_parceiro']['programa'] ?? null;
+        $valor['iniciativa']        = $valor['medalha_parceiro']['iniciativa'] ?? null;
+        $valor['parceiro']          = $valor['medalha_parceiro']['parceiro'] ?? null;
 
         $valor['nao_obtidos'] = $naoObtidos;
 

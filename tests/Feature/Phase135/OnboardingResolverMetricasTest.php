@@ -90,9 +90,19 @@ class OnboardingResolverMetricasTest extends TestCase
             '*/users/*'       => Http::response([
                 'id'                => 777888999,
                 'nickname'          => 'LOJA_TESTE',
+                // `metrics`/`transactions` fazem parte do payload real de
+                // `/users/{id}` — antes o fake os omitia e nós os
+                // descartávamos, então ninguém notava a falta.
                 'seller_reputation' => [
                     'level_id'            => '5_green',
                     'power_seller_status' => 'platinum',
+                    'metrics' => [
+                        'claims'                => ['period' => '60 days', 'rate' => 0.003, 'value' => 1],
+                        'cancellations'         => ['period' => '60 days', 'rate' => 0.001, 'value' => 1],
+                        'delayed_handling_time' => ['period' => '60 days', 'rate' => 0.015, 'value' => 5],
+                        'sales'                 => ['period' => '60 days', 'completed' => 340],
+                    ],
+                    'transactions' => ['completed' => 340, 'canceled' => 2, 'total' => 342],
                 ],
                 'tags' => ['full', 'normal'],
             ], 200),
@@ -113,6 +123,64 @@ class OnboardingResolverMetricasTest extends TestCase
         $this->assertSame('LOJA_TESTE', $resultado->valor['nickname']);
         $this->assertSame('5_green', $resultado->valor['reputacao']['level_id']);
         $this->assertSame([], $resultado->valor['nao_obtidos']);
+
+        // As métricas deixam de ser descartadas.
+        $this->assertSame(0.003, $resultado->valor['reputacao']['metrics']['claims']['rate']);
+        $this->assertSame(340, $resultado->valor['reputacao']['transactions']['completed']);
+    }
+
+    /**
+     * As duas medalhas em campos separados: a MercadoLíder é da conta do
+     * CLIENTE, a do programa de parceiros é da ECF. Antes dividiam o mesmo
+     * slot.
+     */
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function as_duas_medalhas_chegam_em_campos_distintos(): void
+    {
+        Http::fake([
+            '*/users/*'       => Http::response([
+                'id'                => 777888999,
+                'nickname'          => 'LOJA_TESTE',
+                'seller_reputation' => [
+                    'level_id'            => '5_green',
+                    'power_seller_status' => 'gold',
+                    'metrics' => [
+                        'claims'                => ['rate' => 0.02],
+                        'cancellations'         => ['rate' => 0.001],
+                        'delayed_handling_time' => ['rate' => 0.01],
+                        'sales'                 => ['period' => '60 days', 'completed' => 500],
+                    ],
+                ],
+                'tags' => ['full'],
+            ], 200),
+            '*/performance/*' => Http::response(['summarizedData' => []], 200),
+        ]);
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST_MEDALHAS']);
+        $this->comMlTokenAtivo($company);
+        $this->comGrantAtivo($company);
+
+        [$onboarding, $passo] = $this->criarOnboardingComPasso($company);
+
+        $valor = app(MetricasContaResolver::class)->resolver($onboarding, $passo)->valor;
+
+        // Medalha da CONTA (MercadoLíder), com o que falta para a próxima.
+        $this->assertSame('gold', $valor['medalha_conta']['medalha_atual']);
+        $this->assertSame('platinum', $valor['medalha_conta']['proxima_medalha']);
+        $this->assertSame('platinum', $valor['proxima_medalha']);
+        $this->assertContains(
+            'Reclamações em 2% — o limite é 1%',
+            $valor['medalha_conta']['bloqueios']
+        );
+
+        // Medalha do PROGRAMA DE PARCEIROS — outra coisa, outro campo.
+        $this->assertSame('ECF Consultoria', $valor['medalha_parceiro']['parceiro']);
+        $this->assertSame('Full', $valor['medalha_parceiro']['programa']);
+
+        // Chaves planas antigas seguem preenchidas — `valor` gravado antes
+        // desta mudança continua legível pelas telas já publicadas.
+        $this->assertSame('ECF Consultoria', $valor['parceiro']);
+        $this->assertSame('Full', $valor['programa']);
     }
 
     /** @test */
