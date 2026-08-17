@@ -67,10 +67,42 @@ Conferir cada item ANTES de tocar em qualquer credencial:
   | `config('services.clicksign.painel_url')` | `https://sandbox.clicksign.com` | painel de TESTE — estado inicial registrado ✅ |
   | `CongelamentoEmissaoService::ativo()` | `desligado` | `desligado` — nasce desligado, nada mudou ✅ |
 
-  - [ ] **Pendente de conferência humana:** abrir `/administrativo/contratos/empresa/{id}` de
-        qualquer empresa e confirmar com os próprios olhos que a tela está normal — nenhum
-        aviso novo, já que o interruptor está desligado. É a prova de que o bundle novo subiu
+  - [x] **Conferência humana feita** (usuário, 2026-08-17): a tela está normal, sem aviso de
+        emissão pausada — o interruptor está desligado, como esperado. O bundle novo subiu
         sem efeito colateral.
+
+  ### ⚠️ Achado da conferência humana: produção não tem NENHUMA chave `CLICKSIGN_*`
+
+  A tela mostrou o bloco vermelho **"Configuração interna da ECF pendente"**, listando os
+  três signatários fixos da ECF como não configurados. Investigado: **o aviso está correto**
+  — é a guarda `ContratoDadosMinimosService::faltantesDaConfiguracaoEcf()` (Fase 127-07),
+  deliberadamente separada das pendências da empresa, porque pendência de empresa é do
+  Comercial e configuração da ECF é do admin.
+
+  A causa, porém, é maior que os signatários. Medido no servidor:
+
+  ```
+  grep -c CLICKSIGN .env   →  0
+  ```
+
+  **O `.env` de produção não tem nenhuma das 16 chaves que o bloco `clicksign` de
+  `config/services.php` lê.** A integração nunca foi configurada lá, o que é coerente com o
+  fato de as fases 127–131 nunca terem sido publicadas antes de hoje.
+
+  Consequências registradas:
+
+  1. **A Task 2 não é "trocar 5 variáveis"** — é cadastrar o bloco Clicksign do zero:
+     as 5 do checklist (`CLICKSIGN_ENV`, `CLICKSIGN_BASE_URL`, `CLICKSIGN_ACCESS_TOKEN`,
+     `CLICKSIGN_WEBHOOK_SECRET`, `CLICKSIGN_TEMPLATE_ID`), mais `CLICKSIGN_API_USER_EMAIL`,
+     mais os 6 dos signatários (`CLICKSIGN_SIG1/2/3_NOME` e `_EMAIL`), mais os opcionais de
+     prazo/lembrete/upload/painel, que têm default no config.
+  2. **As credenciais de produção NÃO estão estacionadas no servidor.** O plano supunha
+     `CLICKSIGN_PROD_TOKEN` e `CLICKSIGN_PROD_WEBHOOK_SECRET` já presentes no `.env` de
+     produção — não estão. Precisam vir de outra fonte, com quem as tem em mãos.
+  3. **O procedimento de voltar atrás muda** — corrigido na seção 5, passo 2.
+  4. **A janela perigosa da D-07 é hoje menor do que se supunha**: sem nenhuma credencial,
+     produção não consegue emitir contrato nenhum. O interruptor continua obrigatório: a
+     janela abre no instante em que a primeira chave entrar no `.env`.
 - [ ] As 4 pessoas que vão assinar (ou receber convite de assinatura) já foram avisadas.
       ⚠️ Desde 2026-08-17 os e-mails dos três signatários fixos da ECF são **reais**
       (`thiago@`, `emerson@`, `comercial@`) — qualquer envelope emitido a partir de agora
@@ -195,10 +227,23 @@ reconsulta, nunca a ausência de mensagem de erro.
    emissão de contrato: enquanto a causa do problema não estiver entendida, ninguém gera
    nada. Se por algum motivo ele estiver desligado neste momento, **ligar antes de
    qualquer outra coisa** (comando na seção 4) e conferir por reconsulta.
-2. Restaurar no `.env` de produção as 4 linhas de teste (`CLICKSIGN_ENV`,
-   `CLICKSIGN_BASE_URL`, `CLICKSIGN_ACCESS_TOKEN`, `CLICKSIGN_WEBHOOK_SECRET`) a partir do
-   estacionamento `CLICKSIGN_SANDBOX_*` do `.env.example`, mais o `CLICKSIGN_TEMPLATE_ID`
-   de teste.
+2. ⚠️ **CORRIGIDO em 2026-08-17 — este passo estava escrito sobre uma premissa falsa.**
+   O plano supunha que o `.env` de produção tinha credenciais de TESTE para restaurar.
+   **Não tinha.** Medido no servidor logo após o deploy: `grep -c CLICKSIGN .env` devolveu
+   **0** — o `.env` de produção não continha nenhuma das 16 chaves `CLICKSIGN_*`, porque as
+   fases 127 a 131 nunca haviam sido publicadas lá. O `sandbox` que a reconsulta devolveu
+   para `config('services.clicksign.env')` era o **default do `config/services.php`**, não
+   uma configuração de sandbox existente.
+
+   Portanto, voltar atrás **não é restaurar credenciais de teste** — é **remover as chaves
+   `CLICKSIGN_*` que a Task 2 acrescentou**, devolvendo o sistema ao estado em que ele
+   estava antes da virada: Clicksign não configurada. Esse estado é seguro por construção —
+   sem token, o sistema não consegue emitir contrato nenhum, e a tela do Administrativo
+   mostra o aviso "Configuração interna da ECF pendente" em vez de gerar qualquer coisa.
+
+   Se, mesmo assim, se quiser deixar produção apontada para o sandbox (por exemplo para
+   continuar testando), aí sim usar os valores do estacionamento `CLICKSIGN_SANDBOX_*` —
+   mas isso é uma escolha, não o caminho de reversão.
 3. Rodar `php artisan config:clear && php artisan config:cache`. ⚠️ **Enquanto a
    configuração está em cache, editar o `.env` não muda absolutamente nada** — este passo
    não é opcional nem cosmético.
