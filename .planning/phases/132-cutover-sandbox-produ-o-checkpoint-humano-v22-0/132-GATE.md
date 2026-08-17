@@ -372,8 +372,58 @@ minutos.
 
 ### SC3 — Primeiro envelope de produção, empresa de teste controlada
 
-- Empresa fictícia criada (D-03) — id: ______ nome: ______
-- Contrato/envelope criado — id local: ______
+- Empresa fictícia criada (D-03) — id: **424** nome: **`TESTE CUTOVER 132 - NAO E CLIENTE`**
+  (CNPJ fictício `99.999.999/0001-99`; contato `Contato de Teste`, sem dígitos e sem
+  parênteses — a Clicksign recusa com 400 no ponteiro do nome quando há; `email_cliente`
+  `dev.01@`, distinto dos três signatários da ECF, escolhido pelo usuário)
+- Vínculo de serviço: **id 321**, serviço **Gestão (id 6)**, setor `performance`
+- Contrato/envelope criado — id local: **1** · envelope `5d2458b6…` · `status: rascunho`
+- Envelope na Clicksign (reconsulta à API): `status: **draft**`, nome
+  `Contrato — Gestão — TESTE CUTOVER 132 - NAO E CLIENTE`, prazo `2026-09-16`
+- Signatários gravados no banco até aqui: **0**
+- **Nada foi enviado a ninguém.** Rascunho é inerte (§12.3 do empírico): não dispara webhook,
+  não é assinável, não manda e-mail.
+- Pendências antes da geração, por reconsulta: `faltantes()` **vazio** e
+  `faltantesDaConfiguracaoEcf()` **vazio** ✅
+- Data/hora: **2026-08-17, 17:49:20 (horário da app, America/Sao_Paulo)**
+
+#### 🔴 ACHADO — a janela do interruptor NÃO precisou ser aberta, e isso revelou um furo
+
+**O que aconteceu.** O plano previa: destravar a emissão por minutos → clicar em "Gerar
+contrato" na tela → travar de novo. **Nada disso foi necessário.** Ao criar a empresa e
+vincular o serviço de Gestão, o contrato e o envelope nasceram **sozinhos, no mesmo segundo**
+(17:49:20 para os três registros), **com o interruptor ligado**.
+
+**A causa.** O interruptor (D-07) é checado **só** em `ContratoAdminController::gerarContrato()`
+— o endpoint da tela. Existe um segundo caminho de geração, da Fase 128, que não passa por
+lá: os observers `ContratoServicoGatilhoObserver` e `CompanyGatilhoContratoObserver` chamam
+`GatilhoContratoAdministrativoService::dispararSeElegivel()`, e esse serviço **não menciona**
+`CongelamentoEmissaoService` (`grep -c` devolve 0).
+
+**A afirmação do plano 132-01 estava errada.** Ele registrava, no `<interfaces>`:
+*"`gerarContrato()` — **único** ponto de geração do sistema; conferido: não há outro
+chamador"*. Não é. E o ⛔ *"não tocar em `GatilhoContratoAdministrativoService`"* reforçou o
+ponto cego.
+
+**Gravidade real, medida e não suposta: limitada.** O gatilho automático gera com
+`ativar: false`, então para no rascunho — inerte. Nenhum documento foi para caixa de entrada
+nenhuma. O que fica é **rascunho acumulando na conta de produção** para qualquer empresa real
+cujo cadastro seja completado durante o congelamento; não é vazamento para cliente, é sujeira
+na conta real, a um passo humano de ser ativada.
+
+⚠️ **A T-132-06 do threat model precisa ser corrigida.** Ela afirma que o interruptor fecha a
+janela *"estruturalmente"*. Enquanto o gatilho automático não estiver coberto, a afirmação é
+mais forte do que o código entrega.
+
+Correção registrada em
+`.planning/todos/pending/260817-interruptor-emissao-nao-cobre-gatilho-automatico.md` — é
+mudança de código, então vira plano de gap, não edição improvisada no meio da virada
+(disciplina do próprio plano 132-02).
+
+**Efeito prático nesta fase, e é bom:** o objetivo da Task 2 foi atingido — empresa fictícia
+marcada, envelope de produção em rascunho, nada enviado — **sem nunca abrir a janela em que
+qualquer administrador poderia gerar contrato**. O caminho acidental foi mais seguro que o
+planejado.
 - Webhook chegou e foi processado corretamente — confirmado por reconsulta em
   `contrato_assinatura_eventos`: ______
 - `signature_valid` do primeiro evento real (prova melhor que ler o painel — responde de
@@ -453,8 +503,13 @@ reconsulta, nunca a ausência de mensagem de erro.
   depois da troca e depois do `config:cache` + restart dos workers: continua **`ligado`** —
   confirmando que a chave é leitura de banco a cada chamada e não é afetada por cache de
   configuração nem por reinício de worker.
-- Destravado para o contrato de teste — início: ______ fim: ______
-- Travado de novo em: ______ — reconsulta devolveu: ______
+- Destravado para o contrato de teste — início: **NUNCA DESTRAVADO** fim: **—**
+  ✅ A janela não precisou ser aberta: o envelope foi criado pelo gatilho automático da Fase
+  128, que não passa pelo interruptor (ver o achado na seção SC3). O interruptor permaneceu
+  **ligado sem interrupção** desde ~17:25. Do ponto de vista do risco que a D-07 existe para
+  conter, é o melhor desfecho possível — em nenhum momento a tela ficou liberada para
+  qualquer administrador gerar contrato.
+- Travado de novo em: **não se aplica** — nunca foi destravado
 - Desligado no fim em: ______ (data, hora, quem) — reconsulta devolveu: ______
 
 **Backup do `.env` anterior à virada (passo 2 da Task 2):**
