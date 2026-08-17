@@ -873,20 +873,26 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
     }, [familias, busca, soPend]);
 
     // ── Modo de edição da família ───────────────────────────────────────────
-    // Família uniforme (o caso comum: 8 cores do mesmo custo) abre em MASSA — o
-    // cliente digita uma vez e vale para as 8. Família que já tem números
-    // diferentes abre em INDIVIDUAL, senão o primeiro dígito apagaria o que
-    // alguém diferenciou à mão.
+    // O padrão é SEMPRE massa: preencher as 8 de uma vez é o motivo de a família
+    // existir, e abrir em individual obrigava um clique extra no caso comum.
+    //
+    // O risco de abrir em massa numa família que já tem números diferentes não
+    // desaparece — o primeiro dígito iguala as 8 e não há desfazer. Ele deixa de
+    // ser silencioso: `familiaDivergente` avisa dentro do bloco, antes de digitar.
     const idxsFamilia   = familiaDoSel?.idxs ?? [];
     const familiaVarias = idxsFamilia.length > 1;
     const [modoEdicao, setModoEdicao] = useState('familia');
     const chaveFamilia = familiaDoSel?.chave ?? '';
     useEffect(() => {
         if (!familiaVarias) return;
-        setModoEdicao(familiaUniforme(produtos, idxsFamilia) ? 'familia' : 'individual');
-        // Reavalia ao TROCAR de família — dentro da mesma, a escolha do cliente manda.
+        setModoEdicao('familia');
+        // Reavalia ao TROCAR de família — dentro da mesma, a escolha do cliente
+        // manda, senão trocar de variação para ajustar uma só voltaria para massa
+        // e o dígito seguinte pegaria as 8.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [chaveFamilia, familiaVarias]);
+
+    const familiaDivergente = familiaVarias && !familiaUniforme(produtos, idxsFamilia);
 
     // Trocar de produto abre a família dele — quem clica numa variação precisa ver onde
     // está. `aberta` segue sendo a única fonte da verdade, para o toggle poder fechar.
@@ -1039,6 +1045,17 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                                     ? <>Digite uma vez e vale para as {idxsFamilia.length} variações de <span className="text-white/60">{familiaDoSel.nome || 'produto'}</span>.</>
                                     : <>Só <span className="text-white/60">{rotuloVariacao(row, selIdx)}</span> muda. As outras {idxsFamilia.length - 1} ficam como estão.</>}
                             </p>
+                            {/* Massa numa família que já divergiu: o aviso troca a perda silenciosa
+                                por uma escolha informada — não bloqueia, mas o custo fica à vista. */}
+                            {emMassa && familiaDivergente && (
+                                <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-500/[0.08] border border-amber-500/20 px-2.5 py-1.5 text-amber-300 text-[11px]">
+                                    <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                                    <span>
+                                        Estas {idxsFamilia.length} variações têm números <span className="font-semibold">diferentes</span> hoje.
+                                        O que você digitar aqui iguala todas — use <span className="font-semibold">Só esta</span> se quiser preservar a diferença.
+                                    </span>
+                                </p>
+                            )}
                             {/* Escape do individual: preencheu uma e quer igualar o resto. */}
                             {!emMassa && (
                                 <button type="button" onClick={() => onReplicarFamilia(idxsFamilia, selIdx)}

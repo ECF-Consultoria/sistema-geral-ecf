@@ -89,10 +89,20 @@ test('editFamilia recusa campo fora da precificacao em vez de escrever na famili
     assert.match(fonte, /function editFamilia\([^)]*\)\s*\{\s*if\s*\(!CAMPOS_PRECIFICACAO\.includes\(campo\)\)\s*return editProduto\(campo, valor\)/);
 });
 
-// ─── 5. O default do modo de edição protege quem já diferenciou à mão ───
+// ─── 5. O default é SEMPRE massa, e a divergência é avisada em vez de bloquear ───
 
-test('o modo abre em massa so quando a familia esta uniforme', () => {
-    assert.match(fonte, /setModoEdicao\(familiaUniforme\(produtos, idxsFamilia\) \? 'familia' : 'individual'\)/);
+test('o modo abre SEMPRE em massa — sem condicional de uniformidade', () => {
+    // Pedido explícito: selecionar a variação já vem como "Todas as N".
+    assert.match(fonte, /setModoEdicao\('familia'\)/);
+    assert.doesNotMatch(fonte, /setModoEdicao\(familiaUniforme\([^)]*\)\s*\?/, 'o condicional de uniformidade saiu do default');
+});
+
+test('familia que ja divergiu AVISA antes de o digito igualar as N', () => {
+    // Sem isto, o default em massa vira perda silenciosa: `familiaUniforme` deixaria
+    // de ter qualquer efeito na tela e a divergência sumiria sem ninguém ver.
+    assert.match(fonte, /const familiaDivergente = familiaVarias && !familiaUniforme\(produtos, idxsFamilia\)/);
+    assert.match(fonte, /\{emMassa && familiaDivergente && \(/);
+    assert.match(fonte, /iguala todas/, 'o aviso diz a consequência, não só que há diferença');
 });
 
 test('o modo e reavaliado ao trocar de familia, nao a cada render', () => {
