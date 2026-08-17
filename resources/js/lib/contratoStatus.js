@@ -94,7 +94,7 @@ export const PREPARANDO_TITULO = 'O contrato acabou de ser pedido e pode levar a
 
 // Faixa explicativa do detalhe — mesmo molde da faixa de "cancelamento
 // solicitado" já existente em `Admin/ContratoDetalhe.jsx`.
-export const PREPARANDO_AVISO = 'Preparando o contrato — pode levar até um minuto. Atualize a página em instantes para ver a situação.';
+export const PREPARANDO_AVISO = 'Preparando o contrato, pode levar até um minuto. Atualize a página em instantes para ver a situação.';
 
 /**
  * Rótulo com o sub-estado de espera: devolve "Preparando" quando
