@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\Clicksign\ClicksignAmbiente;
+
 return [
 
     /*
@@ -221,11 +223,16 @@ return [
         // CLICKSIGN_ENV que decide a `base_url` acima; default aponta para o
         // sandbox (nunca produção) — apontar errado por omissão não pode
         // levar ninguém a mexer num contrato real por engano.
-        'painel_url' => env('CLICKSIGN_PAINEL_URL') ?: (
-            env('CLICKSIGN_ENV', 'sandbox') === 'producao'
-                ? 'https://app.clicksign.com'
-                : 'https://sandbox.clicksign.com'
-        ),
+        //
+        // Fase 132 Plano 01 (D-01) — a resolução passou a ser feita por
+        // `ClicksignAmbiente::painelUrl()`, que aceita as quatro grafias
+        // `producao`, `produção`, `production` e `prod` (a armadilha real
+        // encontrada: o código comparava a grafia SÓ em português, mas o
+        // ROADMAP manda escrever a grafia em inglês — quem seguisse o
+        // roadmap à risca caía sempre no painel de TESTE mesmo já em
+        // produção). Grafia desconhecida continua caindo no painel de teste
+        // de propósito — default seguro, nunca produção por acidente.
+        'painel_url' => ClicksignAmbiente::painelUrl(env('CLICKSIGN_PAINEL_URL'), env('CLICKSIGN_ENV', 'sandbox')),
 
         // Fase 126 Plan 126-10 — UUID do modelo (.docx) de contrato cadastrado
         // na conta Clicksign, lido pelo comando `clicksign:sondar-modelo` e,
