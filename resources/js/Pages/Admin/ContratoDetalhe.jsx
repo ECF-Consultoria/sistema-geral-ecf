@@ -93,6 +93,10 @@ export default function ContratoDetalhe({
         ja_em_andamento:      'Já existe um contrato em andamento para um dos serviços desta empresa.',
         aguardando_comercial: 'Ainda há uma pendência comercial nesta empresa antes de gerar o contrato.',
         isento:               'Nenhum serviço desta empresa passa por contrato.',
+        // Fase 132 Plano 01 (D-07) — este caso não usa MOTIVO_BLOQUEIO_TEXTO
+        // no bloco de tela (tem bloco próprio, ver abaixo), mas a chave fica
+        // aqui documentada por completude.
+        emissao_congelada:    'A emissão de contratos está pausada no momento.',
     };
 
     // ─── CLICK-07 — Reenviar aviso ──────────────────────────────────────
@@ -244,7 +248,28 @@ export default function ContratoDetalhe({
                         bloco de "falta completar" + botão desabilitado, adjacentes
                         (D-03). Quando não há, o botão ativo sozinho — nunca os dois
                         ao mesmo tempo. */}
-                    {!pode_gerar_contrato ? (
+                    {!pode_gerar_contrato && motivo_bloqueio === 'emissao_congelada' ? (
+                        // Fase 132 Plano 01 (D-07) — bloco PRÓPRIO: com a
+                        // emissão congelada, ninguém gera contrato para
+                        // empresa nenhuma. O bloco "Falta completar antes de
+                        // gerar o contrato" seria falso aqui — não falta nada
+                        // no cadastro desta empresa.
+                        <Card>
+                            <CardContent className="p-4 space-y-3">
+                                <h2 className="text-white/85 text-[15px] font-semibold">A emissão de contratos está pausada</h2>
+                                <p className="text-[13px] text-white/60">
+                                    É temporário e proposital — vale para todas as empresas, não é problema desta
+                                    empresa nem do que foi preenchido. Nada do que já foi preenchido se perde.
+                                </p>
+                                <p className="text-[13px] text-white/50">
+                                    Fale com o time técnico e tente de novo quando for avisado.
+                                </p>
+                                <Button disabled className="opacity-40 cursor-not-allowed">
+                                    Gerar contrato
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    ) : !pode_gerar_contrato ? (
                         <Card>
                             <CardContent className="p-4 space-y-3">
                                 <h2 className="text-white/85 text-[15px] font-semibold">Falta completar antes de gerar o contrato</h2>

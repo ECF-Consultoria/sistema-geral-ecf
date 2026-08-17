@@ -11,6 +11,7 @@ use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Clicksign\ClicksignClient;
+use App\Services\Clicksign\CongelamentoEmissaoService;
 use App\Services\Contratos\ContratoDadosMinimosService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
@@ -18,6 +19,7 @@ use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
@@ -216,6 +218,7 @@ class ContratoAdminController extends Controller
         ContratoDadosMinimosService $dados,
         GatilhoContratoAdministrativoService $gatilho,
         ContratosPresosService $presos,
+        CongelamentoEmissaoService $congelamento,
     ): \Inertia\Response {
         $company->loadMissing('contratosServico.servico');
 
@@ -237,6 +240,16 @@ class ContratoAdminController extends Controller
                 $avaliacao['status'] === 'isento'                 => 'isento',
                 default                                           => null,
             };
+        }
+
+        // Fase 132 Plano 01 (D-07) — com a emissão congelada, ninguém gera
+        // contrato para empresa NENHUMA. Precedência sobre o `match` acima:
+        // ele só decide quando a emissão não está congelada. Mostrar "falta
+        // completar tal dado" mandaria a pessoa consertar algo que não
+        // destravaria nada.
+        if ($congelamento->ativo()) {
+            $podeGerarContrato = false;
+            $motivoBloqueio = 'emissao_congelada';
         }
 
         $contratosServicoAtivos = $company->contratosServico->where('ativo', true)->values();
@@ -396,7 +409,24 @@ class ContratoAdminController extends Controller
         Company $company,
         ContratoDadosMinimosService $dados,
         GatilhoContratoAdministrativoService $gatilho,
+        CongelamentoEmissaoService $congelamento,
     ): RedirectResponse {
+        // Fase 132 Plano 01 (D-07) — PRIMEIRA coisa do método, antes de
+        // qualquer avaliação ou I/O. Fecha a janela entre a troca de
+        // credenciais (plano 132-02) e a aprovação final (plano 132-04):
+        // enquanto congelada, nenhum contrato nasce para empresa nenhuma,
+        // nem para quem já está com o cadastro completo e elegível. O
+        // `disabled` do botão no client não é controle (T-131-04-03) — esta
+        // checagem no servidor é.
+        if ($congelamento->ativo()) {
+            Log::warning('[Administrativo] Tentativa de gerar contrato com a emissão congelada', [
+                'company_id' => $company->id,
+                'user_id'    => auth()->id(),
+            ]);
+
+            return back()->with('error', 'A emissão de contratos está pausada no momento. É temporário e proposital — vale para todas as empresas, não é problema desta empresa nem do que foi preenchido. Fale com o time técnico e tente de novo quando for avisado. Nada do que já foi preenchido se perde.');
+        }
+
         $avaliacao = $gatilho->avaliar($company);
 
         if (! $dados->estaPronta($company) || $avaliacao['status'] !== 'elegivel') {
