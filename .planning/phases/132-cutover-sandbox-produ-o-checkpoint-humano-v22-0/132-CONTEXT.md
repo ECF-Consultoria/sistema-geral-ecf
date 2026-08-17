@@ -117,6 +117,34 @@ operacional — e não a **geração** do contrato. Verificado no código.
   publicadas antes de qualquer troca de credencial. E o desligamento do interruptor é o **último**
   passo, parte do SC5.
 
+### O webhook de produção provavelmente JÁ está cadastrado (informado em 2026-08-17)
+
+O usuário informou, depois dos planos escritos: *"já cadastramos um webhook na conta de produção do
+Clicksign"*, *"o webhook tem todos os escopos"* e *"se não me engano webhook foi colocado no env"*.
+
+**O que isso muda:** o passo do SC2 vira **conferência**, não cadastro. Se estiver tudo certo, o
+executor apenas confirma na tela e segue — não deve fazer o usuário cadastrar de novo.
+
+**O que isso NÃO muda:** o SC2 continua exigindo *"confirmado, não assumido"*, e o próprio usuário
+disse **"se não me engano"**. O que precisa ser conferido olhando a tela:
+
+| Item | Estado informado | Ainda a confirmar |
+|---|---|---|
+| Escopos/eventos | **todos** | — (resolvido) |
+| Segredo | está no `.env` como `CLICKSIGN_PROD_WEBHOOK_SECRET` | que é o MESMO valor que a Clicksign usa para assinar |
+| URL exata | não informada | `https://admin.ecfconsultoria.com.br/api/webhooks/clicksign`, sem barra final, `https` |
+| Ativo | não informado | que não está cadastrado-e-desativado |
+
+⚠️ **O segredo é o item que engana.** Se o valor no painel não for o mesmo do `.env`, a Clicksign
+entrega o evento, o sistema valida, **recusa com 401** e grava o evento bruto (comportamento travado
+na Fase 129). Do lado da Clicksign parece entrega com resposta de erro; do nosso lado **o contrato
+assinado nunca libera a empresa**. E a única coisa que salvaria seria a reconciliação — que é
+exatamente a peça ainda não provada (D-04).
+
+**Boa notícia para a execução:** isso é verificável empiricamente sem depender do painel. No SC3, o
+primeiro webhook real ou valida ou não valida — `signature_valid` em `contrato_assinatura_eventos`
+responde de uma vez. **É prova melhor que ler o painel**, e já está no plano.
+
 ### Claude's Discretion
 
 Ficam a critério do planejamento: a ordem exata dos passos do checklist, o nome da empresa fictícia,
