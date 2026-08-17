@@ -1,0 +1,207 @@
+# Fase 132 — Roteiro da virada para a Clicksign de produção
+
+**Preparado em:** 2026-08-17, plano 132-01 (Task 3).
+**Quem lê este documento:** qualquer pessoa que execute a virada — não precisa ser quem
+planejou. Todo termo técnico é explicado na primeira vez que aparece. Preferir "virar a
+chave para a Clicksign de verdade" a "cutover".
+
+**Como usar:** os planos 132-02, 132-03 e 132-04 preenchem os campos de resultado abaixo,
+na ordem em que os passos acontecem. Nada aqui é preenchido de antemão — os campos nascem
+em branco de propósito.
+
+---
+
+## 1. O que está acontecendo aqui, em uma frase
+
+Hoje o sistema conversa com a Clicksign de **TESTE** (a sandbox): nada do que ele faz lá
+vale de verdade. Depois desta virada, ele passa a conversar com a Clicksign **de verdade**
+(a de produção): os contratos gerados passam a valer juridicamente e os e-mails de convite
+para assinar chegam em caixas de entrada reais — inclusive as dos três signatários fixos da
+ECF (`thiago@`, `emerson@`, `comercial@`, restaurados para os endereços reais em
+2026-08-17).
+
+---
+
+## 2. Antes de começar — o que precisa estar de pé
+
+Conferir cada item ANTES de tocar em qualquer credencial:
+
+- [ ] As DUAS correções do plano 132-01 estão publicadas em produção:
+  - a correção da grafia de `CLICKSIGN_ENV` (D-01) — as quatro grafias `producao`,
+    `produção`, `production` e `prod` levam ao painel de produção; qualquer outra
+    continua levando ao painel de teste;
+  - o interruptor de emissão de contratos (D-07) — existe, está deployado, e a tela
+    explica o motivo do bloqueio sem jargão quando ligado.
+- [ ] As 4 pessoas que vão assinar (ou receber convite de assinatura) já foram avisadas.
+      ⚠️ Desde 2026-08-17 os e-mails dos três signatários fixos da ECF são **reais**
+      (`thiago@`, `emerson@`, `comercial@`) — qualquer envelope emitido a partir de agora
+      manda e-mail de verdade para essas três pessoas, mesmo o de teste da D-03.
+- [ ] As credenciais de produção da Clicksign estão em mãos (token de acesso, segredo do
+      aviso automático/webhook, UUID do modelo de contrato) — nunca escritas neste arquivo.
+- [ ] A janela de horário escolhida **não é perto das 07:00**. O comando
+      `clicksign:reconciliar` roda sozinho todo dia por volta desse horário e pode corrigir
+      o estado de um contrato antes de alguém conseguir medir o "antes" — rodar a virada
+      perto desse horário embaralha a medição do gate empírico #10.
+
+---
+
+## 3. Ordem dos passos, e por que essa ordem
+
+**Pular a ordem quebra a medição.** Em especial: sem o aviso automático (webhook) cadastrado
+ANTES do envelope de teste, não dá para saber se ele teria chegado — a Clicksign não reenvia
+retroativamente um evento de um envelope criado antes do cadastro.
+
+1. Publicar as duas correções do plano 132-01 (grafia + interruptor de emissão).
+2. **Ligar o interruptor de emissão** — ver comando exato na seção 4.
+3. Conferir as variáveis de ambiente de produção (SC1 do ROADMAP, gate empírico #3).
+4. Cadastrar (ou conferir, se já estiver cadastrado) o aviso automático (webhook) no painel
+   de produção (SC2).
+5. Destravar a emissão por alguns minutos, só para gerar o contrato de teste da empresa
+   fictícia (D-03), e travar de novo logo em seguida.
+6. Provar a rede de segurança da Fase 130 com o mesmo envelope (D-04, gate empírico #10).
+7. Colher a aprovação explícita do usuário (SC5).
+8. **Desligar o interruptor de emissão** — só depois da aprovação, nunca antes.
+
+### O interruptor de emissão, em duas frases
+
+Enquanto ele está ligado, **ninguém gera contrato** pela tela do Administrativo — nem para
+cliente nenhum, nem por engano. Ele existe porque entre a troca das credenciais (passo 3) e
+a aprovação final (passo 7) podem passar horas ou dias, e nesse intervalo o sistema já
+estaria emitindo documento com valor jurídico de verdade; **todo mundo com acesso de
+administrador consegue gerar contrato**, então avisar a equipe e confiar na memória de cada
+um não resolve.
+
+---
+
+## 4. Campos de resultado
+
+Preencher cada campo com: o que foi feito, o que o **BANCO** devolveu (nunca a tela, nunca
+o console), data/hora e quem executou.
+
+### SC1 — Checklist de cutover conferido manualmente
+
+`CLICKSIGN_ENV=production` (ou uma das outras três grafias válidas), `CLICKSIGN_BASE_URL`,
+`CLICKSIGN_ACCESS_TOKEN` e `CLICKSIGN_WEBHOOK_SECRET` de produção.
+
+- Feito em: ______
+- Confirmado por: ______
+- Reconsulta (`config('services.clicksign.*')` no ambiente de produção): ______
+
+### SC2 — Aviso automático (webhook) cadastrado na conta de PRODUÇÃO
+
+⚠️ O usuário informou em 2026-08-17 que **provavelmente já está cadastrado** (todos os
+escopos). Isso muda este passo de "cadastrar" para "conferir" — se estiver tudo certo, só
+confirmar e seguir, sem recadastrar. O segredo é o item que mais engana: se o valor no
+painel não for o mesmo do `.env` de produção, a Clicksign entrega o evento, o sistema
+recusa com 401 e grava o evento bruto — do lado da Clicksign parece entrega bem-sucedida;
+do nosso lado a empresa nunca é liberada.
+
+- URL cadastrada (esperada: `https://admin.ecfconsultoria.com.br/api/webhooks/clicksign`,
+  sem barra final, `https`): ______
+- Escopos/eventos: ______ (informado: todos)
+- Ativo (não cadastrado-e-desativado): ______
+- Confirmado por: ______
+
+### SC3 — Primeiro envelope de produção, empresa de teste controlada
+
+- Empresa fictícia criada (D-03) — id: ______ nome: ______
+- Contrato/envelope criado — id local: ______
+- Webhook chegou e foi processado corretamente — confirmado por reconsulta em
+  `contrato_assinatura_eventos`: ______
+- `signature_valid` do primeiro evento real (prova melhor que ler o painel — responde de
+  uma vez se o segredo do SC2 é o certo): ______
+
+### SC4 — Gate empírico #3 (URL base de produção) confirmado contra o ambiente real
+
+- URL base testada: ______
+- Resultado (bateu com o documentado em `CLICKSIGN-SANDBOX-EMPIRICO.md`?): ______
+- Confirmado por: ______
+
+### Gate empírico #10 (rede de segurança / SC1 da Fase 130) — retomado pela D-04
+
+- Aviso automático impedido de propósito, depois `clicksign:reconciliar` rodado: ______
+- `ContratoLiberacao` criado com `via='reconciliacao'`: ______
+- Veredito (`suficiente` / `insuficiente`, comparado com §8 do empírico): ______
+
+### SC5 — Aprovação explícita da virada
+
+- **CHECKPOINT HUMANO.** Usuário aprova, por escrito, que a virada está correta ANTES de
+  qualquer contrato real de cliente ser gerado em produção: ______
+- Data/hora: ______
+
+### Interruptor de emissão — as quatro linhas
+
+Comandos exatos, para ninguém digitar o nome da chave à mão:
+
+- **ligar:**
+  `php artisan tinker --execute="app(App\Services\Clicksign\CongelamentoEmissaoService::class)->ligar();"`
+- **desligar:**
+  `php artisan tinker --execute="app(App\Services\Clicksign\CongelamentoEmissaoService::class)->desligar();"`
+- **conferir:**
+  `php artisan tinker --execute="echo app(App\Services\Clicksign\CongelamentoEmissaoService::class)->ativo() ? 'ligado' : 'desligado';"`
+
+⚠️ **Conferir é obrigatório depois de ligar e depois de desligar** — a única prova é a
+reconsulta, nunca a ausência de mensagem de erro.
+
+- Ligado em: ______ (data, hora, quem) — reconsulta devolveu: ______
+- Destravado para o contrato de teste — início: ______ fim: ______
+- Travado de novo em: ______ — reconsulta devolveu: ______
+- Desligado no fim em: ______ (data, hora, quem) — reconsulta devolveu: ______
+
+---
+
+## 5. Como voltar atrás (D-02) — procedimento numerado
+
+1. ⚠️ **O interruptor de emissão FICA LIGADO.** Voltar atrás não é hora de liberar a
+   emissão de contrato: enquanto a causa do problema não estiver entendida, ninguém gera
+   nada. Se por algum motivo ele estiver desligado neste momento, **ligar antes de
+   qualquer outra coisa** (comando na seção 4) e conferir por reconsulta.
+2. Restaurar no `.env` de produção as 4 linhas de teste (`CLICKSIGN_ENV`,
+   `CLICKSIGN_BASE_URL`, `CLICKSIGN_ACCESS_TOKEN`, `CLICKSIGN_WEBHOOK_SECRET`) a partir do
+   estacionamento `CLICKSIGN_SANDBOX_*` do `.env.example`, mais o `CLICKSIGN_TEMPLATE_ID`
+   de teste.
+3. Rodar `php artisan config:clear && php artisan config:cache`. ⚠️ **Enquanto a
+   configuração está em cache, editar o `.env` não muda absolutamente nada** — este passo
+   não é opcional nem cosmético.
+4. Reiniciar os workers da fila (`supervisorctl restart ecf-worker:*`). ⚠️ **O worker
+   guarda a configuração antiga na memória** — sem reiniciar, ele continua falando com a
+   Clicksign de produção mesmo com o `.env` já revertido.
+5. ⚠️ **Restaurar o `.env` NÃO impede um contrato já enfileirado de sair.** A janela é
+   curta (segundos até cerca de um minuto, por causa do limite de 1 envelope por minuto do
+   próprio app), mas existe. **Abrir o painel da Clicksign de produção e conferir com os
+   próprios olhos** se algum envelope saiu depois da reversão — nunca assumir que parou na
+   hora.
+6. Se saiu algo: **a API não cancela envelope em andamento** (medido —
+   `CLICKSIGN-SANDBOX-EMPIRICO.md` §15.2). Cancelar é operação de **painel da Clicksign**.
+   Registrar o cancelamento pela tela do Administrativo (`/administrativo/contratos`, ação
+   de registrar cancelamento — Fase 131, D-13), que grava quem pediu e por quê, e
+   **concluir o cancelamento no painel da Clicksign**.
+
+---
+
+## 6. Quando PARAR (D-06)
+
+Um único critério manda parar e voltar atrás: **depois de ativar o contrato de teste,
+nenhum evento aparecer na tabela `contrato_assinatura_eventos`.**
+
+Por quê: sem o aviso automático confirmado, nenhuma empresa é liberada sozinha, e a Fase
+133 estaria ligando o bloqueio do roteamento em cima de um mecanismo nunca provado
+funcionando. É o único item que sozinho invalida a virada.
+
+Uma diferença cosmética (um campo com nome estranho, um horário em fuso diferente) **não**
+manda parar — anota-se e segue.
+
+---
+
+## 7. Lixo que fica para limpar depois
+
+- A empresa fictícia e o contrato criados no plano 132-03 (D-03, custo aceito) ficam na
+  base de produção. Registrar aqui os ids assim que existirem, para que a limpeza futura
+  saiba o que apagar:
+  - Empresa fictícia — id: ______
+  - Contrato — id: ______
+- **O interruptor de emissão não pode ficar ligado e esquecido.** Se a fase terminar em
+  qualquer estado que não seja "aprovado" (SC5), quem parar precisa dizer por escrito,
+  neste arquivo, qual é o estado do interruptor no momento em que parou e por quê:
+  - Estado do interruptor ao parar: ______
+  - Motivo: ______
