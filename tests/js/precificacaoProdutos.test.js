@@ -2,9 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     PRECIF_LINHA_VAZIA,
+    CAMPOS_PRECIFICACAO,
     produtosPreenchidos,
     mesclarPrecificacaoComPlanilha,
     criarTesteDaPlanilha,
+    agruparFamilias,
+    rotuloVariacao,
+    contarVariacoes,
+    familiaUniforme,
+    aplicarNaFamilia,
+    replicarPrecificacao,
 } from '../../resources/js/lib/precificacaoProdutos.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -203,4 +210,192 @@ test('o merge nao muta a planilha nem as linhas salvas', () => {
 test('merge aceita entradas nulas sem quebrar', () => {
     assert.deepEqual(mesclarPrecificacaoComPlanilha(null, null), []);
     assert.deepEqual(mesclarPrecificacaoComPlanilha(undefined, undefined), []);
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Famílias — o caso real: 6 produtos em 8 cores viram 48 linhas planas.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Reproduz a planilha que motivou o agrupamento: nome repetido, cor só no sufixo do SKU.
+const CORES = ['BGLH', 'CZLH', 'BG', 'BE', 'CZ', 'AZ', 'PT', 'MR'];
+const banquetas = ['Banqueta Alta', 'Banqueta Média', 'Banqueta Baixa']
+    .flatMap((nome, n) => CORES.map(c => ({ sku: `BLYCE${c}${71 - n * 6}`, produto: nome })));
+
+test('o vinculo de variacao da planilha chega na precificacao', () => {
+    const planilha = [{ sku: 'A', produto: 'Banqueta', variacao_grupo: 'g1', variacao_tipo: 'Cor', variacao_valor: 'Azul' }];
+    const [row] = mesclarPrecificacaoComPlanilha(planilha, []);
+    assert.equal(row.variacao_grupo, 'g1');
+    assert.equal(row.variacao_tipo, 'Cor');
+    assert.equal(row.variacao_valor, 'Azul');
+});
+
+test('a planilha manda no vinculo de variacao, nao a precificacao salva', () => {
+    const planilha = [{ sku: 'A', produto: 'Banqueta', variacao_grupo: 'novo' }];
+    const salvos   = [linha({ sku: 'A', descricao: 'Banqueta', custo: '40', variacao_grupo: 'antigo' })];
+    const [row] = mesclarPrecificacaoComPlanilha(planilha, salvos);
+    assert.equal(row.variacao_grupo, 'novo', 'grupo e reflexo da planilha, como SKU e nome');
+    assert.equal(row.custo, '40', 'e os numeros salvos continuam vindo da precificacao');
+});
+
+test('24 linhas de nome repetido colapsam em 3 familias', () => {
+    const rows = mesclarPrecificacaoComPlanilha(banquetas, []);
+    const familias = agruparFamilias(rows);
+
+    assert.equal(rows.length, 24);
+    assert.equal(familias.length, 3, 'sem grupo preenchido, o nome agrupa');
+    assert.deepEqual(familias.map(f => f.nome), ['Banqueta Alta', 'Banqueta Média', 'Banqueta Baixa']);
+    assert.deepEqual(familias.map(f => f.idxs.length), [8, 8, 8]);
+});
+
+test('familia respeita a ordem da planilha', () => {
+    const familias = agruparFamilias([
+        { descricao: 'Mesa' }, { descricao: 'Puff' }, { descricao: 'Mesa' },
+    ]);
+    assert.deepEqual(familias.map(f => f.nome), ['Mesa', 'Puff']);
+    assert.deepEqual(familias[0].idxs, [0, 2], 'a linha distante entra na familia ja aberta');
+});
+
+test('grupo preenchido tem prioridade sobre o nome', () => {
+    // Mesmo nome, grupos diferentes: são dois anúncios, não um.
+    const familias = agruparFamilias([
+        { descricao: 'Banqueta', variacao_grupo: 'g1' },
+        { descricao: 'Banqueta', variacao_grupo: 'g2' },
+        { descricao: 'Banqueta', variacao_grupo: 'g1' },
+    ]);
+    assert.equal(familias.length, 2);
+    assert.deepEqual(familias[0].idxs, [0, 2]);
+});
+
+test('grupo "azul" nao se mistura com nome "azul"', () => {
+    const familias = agruparFamilias([
+        { descricao: 'Cadeira', variacao_grupo: 'azul' },
+        { descricao: 'azul' },
+    ]);
+    assert.equal(familias.length, 2, 'os espacos de chave sao separados por prefixo');
+});
+
+test('avulsos em branco nunca se fundem num so', () => {
+    const familias = agruparFamilias([
+        { ...PRECIF_LINHA_VAZIA }, { ...PRECIF_LINHA_VAZIA }, { ...PRECIF_LINHA_VAZIA },
+    ]);
+    assert.equal(familias.length, 3, 'linha anonima e familia de si mesma');
+});
+
+test('agrupar aceita entrada nula e nao muta o que recebeu', () => {
+    assert.deepEqual(agruparFamilias(null), []);
+    assert.deepEqual(agruparFamilias(undefined), []);
+    const rows = [{ descricao: 'Mesa' }];
+    const copia = JSON.parse(JSON.stringify(rows));
+    agruparFamilias(rows);
+    assert.deepEqual(rows, copia);
+});
+
+test('rotulo da variacao prefere o valor, cai no SKU, e por fim na posicao', () => {
+    assert.equal(rotuloVariacao({ variacao_valor: 'Azul', sku: 'A-1' }, 0), 'Azul');
+    assert.equal(rotuloVariacao({ variacao_valor: '  ', sku: 'A-1' }, 0), 'A-1');
+    assert.equal(rotuloVariacao({ ...PRECIF_LINHA_VAZIA }, 4), '#5');
+    assert.equal(rotuloVariacao(undefined, 0), '#1');
+});
+
+test('a contagem de variacoes nao produz "variaçãos" nem "cors"', () => {
+    // Foi o que a tela mostrou na primeira rodada: concatenar 's' no eixo.
+    assert.equal(contarVariacoes(8), '8 variações');
+    assert.equal(contarVariacoes(1), '1 variação');
+    assert.equal(contarVariacoes(8, 'Cor'), '8 variações de cor');
+    assert.equal(contarVariacoes(1, 'Tamanho'), '1 variação de tamanho');
+    assert.equal(contarVariacoes(8, '   '), '8 variações', 'eixo em branco nao vira qualificador');
+    assert.equal(contarVariacoes(8, undefined), '8 variações');
+    // Nenhum eixo digitado pelo cliente pode gerar plural errado, porque não há flexão.
+    ['Cor', 'Voltagem', 'Pé', 'kit'].forEach(e => {
+        assert.doesNotMatch(contarVariacoes(8, e), /(ãos|ors|ens\b.*s\b)/);
+    });
+});
+
+// ─── Uniformidade: é ela que escolhe o modo de edição que abre ───
+
+test('familia toda em branco conta como uniforme', () => {
+    const rows = mesclarPrecificacaoComPlanilha(banquetas, []);
+    assert.equal(familiaUniforme(rows, [0, 1, 2, 3, 4, 5, 6, 7]), true);
+});
+
+test('uniforme compara por numero, nao por texto', () => {
+    const rows = [{ custo: '10' }, { custo: '10.00' }, { custo: 10 }];
+    assert.equal(familiaUniforme(rows, [0, 1, 2], ['custo']), true);
+});
+
+test('vazio so e igual a vazio — nao a zero', () => {
+    assert.equal(familiaUniforme([{ custo: '' }, { custo: '0' }], [0, 1], ['custo']), false);
+    assert.equal(familiaUniforme([{ custo: '' }, { custo: '  ' }], [0, 1], ['custo']), true);
+});
+
+test('um custo diferente ja quebra a uniformidade', () => {
+    const rows = [{ custo: '10', frete_classico: '5' }, { custo: '11', frete_classico: '5' }];
+    assert.equal(familiaUniforme(rows, [0, 1]), false);
+});
+
+test('divergencia em qualquer campo da precificacao quebra a uniformidade', () => {
+    CAMPOS_PRECIFICACAO.forEach(campo => {
+        const rows = [{ ...PRECIF_LINHA_VAZIA }, { ...PRECIF_LINHA_VAZIA, [campo]: '7' }];
+        assert.equal(familiaUniforme(rows, [0, 1]), false, `${campo} deveria contar`);
+    });
+});
+
+test('SKU e descricao diferentes NAO quebram a uniformidade', () => {
+    // São a identidade da variação — se contassem, nenhuma família seria uniforme.
+    const rows = [
+        { sku: 'A', descricao: 'Banqueta', custo: '10' },
+        { sku: 'B', descricao: 'Banqueta', custo: '10' },
+    ];
+    assert.equal(familiaUniforme(rows, [0, 1]), true);
+});
+
+test('familia de uma variacao e sempre uniforme', () => {
+    assert.equal(familiaUniforme([{ custo: '10' }], [0]), true);
+    assert.equal(familiaUniforme([], []), true);
+});
+
+// ─── Aplicar na família / replicar ───
+
+test('aplicar na familia escreve nas 8 e nao encosta nas outras', () => {
+    const rows = mesclarPrecificacaoComPlanilha(banquetas, []);
+    const familias = agruparFamilias(rows);
+    const novo = aplicarNaFamilia(rows, familias[0].idxs, 'custo', '210');
+
+    familias[0].idxs.forEach(i => assert.equal(novo[i].custo, '210'));
+    familias[1].idxs.forEach(i => assert.equal(novo[i].custo, '', 'outra familia fica intacta'));
+    assert.equal(rows[0].custo, '', 'nao muta a entrada');
+});
+
+test('aplicar na familia preserva a identidade de cada variacao', () => {
+    const rows = mesclarPrecificacaoComPlanilha(banquetas, []);
+    const novo = aplicarNaFamilia(rows, [0, 1], 'custo', '210');
+    assert.equal(novo[0].sku, 'BLYCEBGLH71');
+    assert.equal(novo[1].sku, 'BLYCECZLH71', 'o SKU nao e arrastado pela edicao em massa');
+});
+
+test('replicar copia os numeros da origem e deixa SKU e nome de fora', () => {
+    const rows = [
+        { sku: 'A', descricao: 'Banqueta', custo: '210', frete_classico: '32', mc_individual: '8' },
+        { sku: 'B', descricao: 'Banqueta', custo: '',    frete_classico: '',   mc_individual: '' },
+    ];
+    const novo = replicarPrecificacao(rows, [0, 1], 0);
+
+    assert.equal(novo[1].custo, '210');
+    assert.equal(novo[1].frete_classico, '32');
+    assert.equal(novo[1].mc_individual, '8');
+    assert.equal(novo[1].sku, 'B', 'identidade preservada');
+    assert.equal(novo[0], rows[0], 'a origem nem e recriada');
+});
+
+test('replicar apaga o que estava preenchido quando a origem esta vazia', () => {
+    // É o comportamento pedido: replicar iguala a família à origem, inclusive esvaziando.
+    const rows = [{ custo: '' }, { custo: '999' }];
+    const novo = replicarPrecificacao(rows, [0, 1], 0);
+    assert.equal(novo[1].custo, '');
+});
+
+test('replicar com origem inexistente devolve tudo como estava', () => {
+    const rows = [{ custo: '10' }];
+    assert.equal(replicarPrecificacao(rows, [0], 5), rows);
+    assert.deepEqual(replicarPrecificacao(null, [0], 0), []);
 });
