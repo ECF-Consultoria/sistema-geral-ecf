@@ -241,9 +241,45 @@ do nosso lado a empresa nunca é liberada.
 
 ### SC4 — Gate empírico #3 (URL base de produção) confirmado contra o ambiente real
 
-- URL base testada: ______
-- Resultado (bateu com o documentado em `CLICKSIGN-SANDBOX-EMPIRICO.md`?): ______
-- Confirmado por: ______
+- URL base testada: **`https://app.clicksign.com/api/v3`**
+- Resultado: **bate com o documentado** em `CLICKSIGN-SANDBOX-EMPIRICO.md` §1.
+- Veredito do gate empírico #3: **CONFIRMADO** — a URL foi provada por chamada real e
+  somente-leitura (`clicksign:sondar-modelo --listar --producao`, um `GET /templates`)
+  contra a conta de produção, não contra a documentação. A consulta respondeu e listou o
+  modelo de contrato da ECF: **`modelo-contrato-gestao-ads-mercado-livre`**.
+- Nenhum dos dois 403 apareceu — nem `A conta não possui acesso a essa funcionalidade`
+  (que seria decisão comercial e mandaria parar), nem `E-mail do usuário da API não
+  configurado`. A conta de produção já estava com o campo preenchido desde 12/08/2026.
+- Executado por: **usuário, em sessão interativa no VPS** (o comando exige confirmação
+  digitada fora de sandbox e aborta sozinho sem terminal — comportamento seguro por
+  desenho, e o motivo de este passo não poder rodar por automação).
+- Confirmado por: **dev.01 (sessão Claude Code)**, que gravou o UUID e conferiu por
+  reconsulta. Data: **2026-08-17, ~18:20 (BRT)**.
+
+**`CLICKSIGN_TEMPLATE_ID` configurado e valendo** (o UUID de produção é diferente do de
+teste — é o esquecimento que o SC1 do ROADMAP não previa):
+
+| Conferência | Resultado |
+|---|---|
+| `config('services.clicksign.template_id')` | **36 caracteres** ✅ (valor não registrado aqui) |
+| Chaves `CLICKSIGN_*` ativas no `.env` | 12 (11 da Task 2 + o modelo) |
+| `env` / `base_url` após o novo cache | `production` / `https://app.clicksign.com/api/v3` ✅ |
+| Interruptor de emissão | **ainda `ligado`** ✅ — nada nesta task o desligou |
+| Pendências de configuração da ECF | **0** ✅ |
+| Site | `http=200` ✅ |
+
+**Lição aplicada do incidente da Task 2:** desta vez rodou-se `config:cache` **direto**, sem
+`config:clear` antes. O `config:cache` já limpa antes de gravar, então não existe janela em
+que produção fique sem cache — e a validação do `.env` (chave presente, 36 caracteres,
+nenhum valor com espaço sem aspas) foi feita **antes** de tocar no cache.
+
+**Armadilha nova encontrada, e já registrada pelo outro dev hoje de manhã:** o
+`supervisorctl restart ecf-worker:*` **travou** — um worker ficou preso em `STOPPING` e
+segurou o comando por mais de 2 minutos. Destravado com
+`supervisorctl signal KILL ecf-worker:*` seguido de `supervisorctl start ecf-worker:*`.
+Estado final conferido: os dois workers em `RUNNING`. ⚠️ Quem executar a Task 4 ou o
+procedimento de voltar atrás precisa **conferir o status depois do restart** — o comando
+retornar não prova que o worker subiu, e é o worker quem cria o envelope na Clicksign.
 
 ### Gate empírico #10 (rede de segurança / SC1 da Fase 130) — retomado pela D-04
 
