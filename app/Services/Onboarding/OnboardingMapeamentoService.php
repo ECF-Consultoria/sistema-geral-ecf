@@ -53,7 +53,14 @@ class OnboardingMapeamentoService
      */
     public function sincronizar(Onboarding $onboarding): int
     {
-        $passos = $onboarding->passos()
+        // Reavalia ANTES de olhar os status: um passo pode estar `bloqueado`
+        // só porque a reavaliação periódica (a cada 10 min) ainda não passou
+        // desde que a dependência dele fechou. Sem isto, "Sincronizar" não
+        // fazia nada justamente no momento em que o usuário mais espera que
+        // faça. É trabalho de banco local, sem rede.
+        app(OnboardingEngineService::class)->reavaliar($onboarding);
+
+        $passos = $onboarding->fresh()->passos()
             ->whereIn('chave', self::CHAVES_APURADAS)
             ->whereNotNull('auto_fonte')
             ->whereNotIn('status', [

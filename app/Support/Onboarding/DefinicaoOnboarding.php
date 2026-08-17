@@ -68,8 +68,13 @@ class DefinicaoOnboarding
      * A `ordem` dos demais NÃO foi renumerada: ela só serve para ordenar, e
      * mexer em 13 números para fechar um buraco de um introduz risco sem
      * ganho nenhum — a lista continua saindo na mesma sequência.
+     *
+     * v8 — `metricas_da_conta` deixa de depender de `planilha_custos_adman`.
+     * A ficha da conta é do Mercado Livre; a Adman só fornece faturamento, e
+     * o resolver já conclui sem ela. A dependência travava a ficha inteira
+     * esperando um cadastro na Adman que não tem relação com ela.
      */
-    public const VERSAO = 7;
+    public const VERSAO = 8;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -253,7 +258,13 @@ class DefinicaoOnboarding
                 'titulo'     => 'Métricas da conta',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
                 'setor_id'   => null,
-                'depende_de' => ['planilha_custos_adman', 'grant_sistema_ecf'],
+                // v8 — depende SÓ do grant do Mercado Livre. A Adman não tem
+                // a ver com montar a ficha da conta: ela entra apenas no
+                // faturamento, e `MetricasContaResolver` já conclui sem ela
+                // (sem `cust_id`, `faturamento_3_meses` cai em `nao_obtidos`
+                // e o resto é apurado normalmente). Amarrar a ficha ao
+                // cadastro na Adman travava tudo por um dado acessório.
+                'depende_de' => ['grant_sistema_ecf'],
                 'sla_dias'   => 1,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_METRICAS,
                 'condicao'   => null,

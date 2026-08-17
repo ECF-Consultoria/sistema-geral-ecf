@@ -129,9 +129,15 @@ export default function MapeamentoInicial({
                     </p>
                 </div>
 
+                {/*
+                  * Sincronizar fica SEMPRE disponível. Desabilitar no estado
+                  * bloqueado tirava do usuário a única ação que ele tinha —
+                  * e o bloqueio pode ter acabado de sair sem a tela saber,
+                  * já que a reavaliação automática só passa a cada 10 min.
+                  */}
                 <button
                     onClick={sincronizar}
-                    disabled={ocupado || mapeamento.estado === 'bloqueado'}
+                    disabled={ocupado}
                     className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.10] text-[12px] text-white/80 transition-all disabled:opacity-40"
                 >
                     <Search size={13} />
