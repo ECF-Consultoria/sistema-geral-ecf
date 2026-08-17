@@ -176,6 +176,29 @@ export const AVISO_CARTEIRA_SO_SHOPEE = 'Carteira só de Shopee — a Shopee nã
 
 export const MARGEM_SEM_DADO_TEXTO = 'sem dado de margem';
 
+// ─── Selo de valor lançado à mão (D-04 · Fase 136) ────────────────────────
+//
+// Este selo é DISCRETO de propósito, e por isso não segue o formato do selo
+// Shopee acima: aquele é um badge de texto porque avisa uma limitação de
+// plataforma que muda a leitura da nota; este apenas identifica a origem de um
+// número que continua valendo integralmente.
+//
+// Escondendo a origem de um número que decide bônus, a descoberta posterior
+// destrói a confiança na ferramenta. Expondo nominalmente quem digitou, vira
+// atrito interno. Por isso o marcador existe e o nome NÃO — o autor fica no
+// banco e no activity_log para auditoria (D-12), nunca na tela.
+//
+// A granularidade é por MÉTRICA, não por linha: desde D-07 os dois eixos
+// alternam auto/manual separadamente, e um selo único na linha diria "manual"
+// para uma empresa cujo faturamento foi medido pela API e só o CMV foi
+// digitado — enganando exatamente o público que a D-04 quer tratar com
+// honestidade. O sinal por eixo é `quality.faturamento_fonte` /
+// `quality.margem_fonte`, gravado desde o Plano 03.
+
+export const SELO_MANUAL_TEXTO = 'valor lançado manualmente';
+
+export const SELO_MANUAL_TITULO = 'Valor lançado manualmente: este número veio de lançamento do administrador para a competência, não da API do marketplace. Acontece quando a fonte não entrega o dado do mês — a Shopee, por exemplo, não fornece CMV.';
+
 export const AVISO_SEM_DETALHE_TITULO = 'Detalhe por empresa indisponível';
 
 export const AVISO_SEM_DETALHE_EM_CURSO = 'A lista por empresa aparece só depois que o mês é fechado. Este é o mês em curso — os números ainda mudam até o fechamento.';

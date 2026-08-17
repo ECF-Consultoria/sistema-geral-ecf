@@ -141,6 +141,10 @@ class CarteiraFinanceiroElegibilidadeTest extends TestCase
         $admin = $this->criarAdmin();
 
         $cenario = $this->criarCenarioMlComResponsaveis();
+        // Fase 136 (D-10) — 'adman' só vence com `cust_id` de fato; sem isso
+        // o fixture (Company::factory() sem adman_account_id) resolveria
+        // 'shopee'. Setado aqui pra preservar o cenário original do teste.
+        $cenario['company']->update(['adman_account_id' => 'CUST-136-V16-CFE']);
         $this->inserirLinhaShopee($cenario['company']->id, $cenario['analista']->id, 'consultor');
         $this->seedAdmanMetric($cenario['company']->id, 1000.0);
 

@@ -16,6 +16,7 @@ use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\Metrics\AdmanMetricDiffService;
+use App\Services\Metrics\FinancialSourceResolver;
 use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
@@ -48,6 +49,8 @@ class PortfolioController extends Controller
         // Gate quente/frio do score (Fase 106, extraído em 2026-08-07): esta
         // tela NUNCA computa desempenho frio de forma síncrona — 110s medidos.
         private WarmDesempenhoDispatcher $warmDispatcher,
+        // Fase 136 (D-10) — fonte ÚNICA do desempate de fonte financeira.
+        private FinancialSourceResolver $financialSourceResolver,
     ) {}
 
     /**
@@ -106,24 +109,36 @@ class PortfolioController extends Controller
     /**
      * Fase 109 (SHOP-CAR-01/02) — resolve a fonte financeira VENCEDORA de
      * cada empresa a partir dos vínculos ELEGÍVEIS do profissional (não do
-     * vínculo bruto). REGRA DE DESEMPATE TRAVADA (decisão do usuário
-     * 2026-07-23, texto idêntico ao Plano 03/Desempenho): quando a MESMA
-     * empresa tem vínculo performance elegível E vínculo shopee elegível do
-     * mesmo profissional, a fonte é SEMPRE 'adman' (performance vence) —
-     * nunca soma as duas, nunca deixa a Shopee vencer.
+     * vínculo bruto). REGRA DE DESEMPATE — atualizada pela Fase 136 (D-10,
+     * 2026-08-11), substituindo o texto travado em 2026-07-23: quando a
+     * MESMA empresa tem vínculo performance elegível E vínculo shopee
+     * elegível do mesmo profissional, a fonte vencedora é 'adman' **só
+     * quando a empresa tem `cust_id`** (conta Adman de fato) — nunca soma as
+     * duas. Sem `cust_id`, 'shopee' vence. Antes desta fase 'adman' vencia
+     * incondicionalmente, e a mesma empresa aparecia com marketplace
+     * divergente entre esta tela e o Desempenho (ver
+     * `.planning/learnings/desempenho-bonificacao.md` §0.04). A regra vive
+     * em `FinancialSourceResolver` — fonte ÚNICA, também usada por
+     * `CompanyScoreService::computeEmpresasScore()` e
+     * `DesempenhoScoreService::computeUniverso()`.
+     *
+     * Única query nova de toda a correção de D-10: os outros 2 call-sites já
+     * carregavam `Company` para outro propósito; este método não carregava
+     * nenhum antes.
      *
      * @param  Collection  $vinculos  Vínculos já resolvidos por CarteiraContextService::forUser().
      * @return Collection<int, string>  company_id => 'adman'|'shopee'
      */
     private function fontesFinanceirasPorEmpresa(Collection $vinculos): Collection
     {
-        return $vinculos
-            ->where('financial_metrics_eligible', true)
-            ->groupBy('company_id')
-            ->map(function (Collection $vs) {
-                $fontes = $vs->pluck('financial_source');
-                return $fontes->contains('adman') ? 'adman' : $fontes->first();
-            });
+        $vinculosElegiveis = $vinculos->where('financial_metrics_eligible', true);
+        $companyIds        = $vinculosElegiveis->pluck('company_id')->unique();
+
+        $companies = Company::whereIn('id', $companyIds)
+            ->get(['id', 'adman_account_id', 'ml_store_id'])
+            ->keyBy('id');
+
+        return $this->financialSourceResolver->resolverPorEmpresa($vinculosElegiveis, $companies);
     }
 
     /**
@@ -2446,7 +2461,17 @@ class PortfolioController extends Controller
                     ->merge($scoresSemLink->all());
 
                 return [
+                    // `month` é o mês de COLETA (`month_reference` / `competencia_nps`,
+                    // ambos gravados com o mês do DISPARO) — contrato preservado,
+                    // é a chave que a suíte e qualquer consumidor já usam.
                     'month'       => $month,
+                    // 2026-08-14 — mês AVALIADO, que é o que o widget exibe: o
+                    // NPS coletado em agosto avalia julho. Mesma régua M/M+1 do
+                    // bônus (`NpsJanelaResolver::mesDeColeta()`), lida ao
+                    // contrário. Campo ADITIVO: nenhuma nota muda de bucket,
+                    // muda só o nome do bucket na tela.
+                    'competencia' => \Carbon\Carbon::parse($month . '-01')
+                        ->subMonthNoOverflow()->format('Y-m'),
                     'avg'         => $scores->isNotEmpty() ? round((float) $scores->avg(), 2) : null,
                     'count'       => $scores->count(),
                     'ultima_nota' => $scores->isNotEmpty() ? round((float) $scores->last(), 2) : null,

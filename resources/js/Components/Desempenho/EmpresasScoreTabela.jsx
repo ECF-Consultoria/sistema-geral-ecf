@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronRight, ChevronDown, PencilLine } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
     tituloEntraram, tituloNaoEntraram,
     SECAO_ENTRARAM_SUBTITULO, SECAO_NAO_ENTRARAM_SUBTITULO, NOTA_TOPO_RESSALVA,
     AVISO_CARTEIRA_SO_SHOPEE, SELO_SHOPEE_TEXTO, SELO_SHOPEE_TITULO, MARGEM_SEM_DADO_TEXTO,
+    SELO_MANUAL_TEXTO, SELO_MANUAL_TITULO,
     fmtPctAbs, fmtPp, fmtVarPct, fmtNotaEmpresa, fmtMargemAntesDepois, motivoLabel,
     dividirPorEntrada, carteiraTodaShopeeNaEntrada, deveColapsarNaoEntraram, ehPlaceholderShopee,
     marketplaceLabel, MARKETPLACE_TOOLTIP,
@@ -80,10 +81,39 @@ function CelulaNps({ linha }) {
     );
 }
 
+/**
+ * Marcador de valor lançado à mão (D-04 · Fase 136) — ícone pequeno com
+ * tooltip, ao lado do número. Deliberadamente NÃO é o badge de texto do
+ * padrão Shopee: aquele avisa uma limitação de plataforma que muda a leitura
+ * da nota, este só identifica a origem de um número que continua valendo.
+ *
+ * Renderizado por MÉTRICA (faturamento e margem separados), porque os dois
+ * eixos alternam auto/manual de forma independente desde a D-07. Nunca cita
+ * quem lançou — o autor fica no banco para auditoria, não na tela (T-136-08).
+ */
+function SeloManual() {
+    return (
+        <span
+            title={SELO_MANUAL_TITULO}
+            aria-label={SELO_MANUAL_TEXTO}
+            className="inline-flex shrink-0 items-center text-amber-300/70"
+        >
+            <PencilLine size={11} aria-hidden="true" />
+        </span>
+    );
+}
+
 function CelulaFaturamento({ linha }) {
+    // O sinal vem de `quality`, que já viaja no payload das duas telas que
+    // consomem esta tabela — nenhuma prop nova foi necessária.
+    const faturamentoManual = linha?.quality?.faturamento_fonte === 'manual';
+
     return (
         <td className="px-3 py-3 tabular-nums">
-            <div className={corFaturamento(linha.faturamento_var_pct)}>{fmtVarPct(linha.faturamento_var_pct)}</div>
+            <div className={cn('flex items-center gap-1', corFaturamento(linha.faturamento_var_pct))}>
+                <span>{fmtVarPct(linha.faturamento_var_pct)}</span>
+                {faturamentoManual && <SeloManual />}
+            </div>
             <div className="text-[10px] text-white/30">{fmtNotaEmpresa(linha.faturamento_pontos)} pontos</div>
         </td>
     );
@@ -97,6 +127,7 @@ function CelulaFaturamento({ linha }) {
 function CelulaMargem({ linha, ocultarSeloIndividual }) {
     const placeholderShopee = ehPlaceholderShopee(linha);
     const mostraSeloIndividual = placeholderShopee && !ocultarSeloIndividual;
+    const margemManual = linha?.quality?.margem_fonte === 'manual';
 
     let conteudo;
     let tituloCelula;
@@ -126,7 +157,10 @@ function CelulaMargem({ linha, ocultarSeloIndividual }) {
 
     return (
         <td className="px-3 py-3 tabular-nums" title={tituloCelula}>
-            {conteudo}
+            <div className="flex items-center gap-1">
+                {conteudo}
+                {margemManual && <SeloManual />}
+            </div>
             <div className="text-[10px] text-white/30 mt-0.5">{fmtNotaEmpresa(linha.margem_pontos)} pontos</div>
         </td>
     );

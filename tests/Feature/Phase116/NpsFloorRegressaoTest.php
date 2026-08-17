@@ -405,6 +405,12 @@ class NpsFloorRegressaoTest extends TestCase
         $cenario = $this->montarCenarioBase();
         $admin   = $this->admin();
 
+        // 2026-08-14 — a nota 1 do não respondido só entra na média DEPOIS que
+        // a coleta do mês encerra (régua do bônus, `NpsJanelaResolver`). O
+        // cenário base é montado dentro de julho; a tela é lida com julho
+        // fechado, que é quando a régua da Fase 116 passa a valer.
+        Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:01'));
+
         $props = $this->propsDoIndex($admin, ['mes' => '2026-07']);
 
         // (5 real + 1 imputada) / 2 = 3.0 nas 3 dimensões (D7 inclui empresa).

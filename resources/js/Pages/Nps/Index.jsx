@@ -9,7 +9,7 @@ import {
     Briefcase, Users as UsersIcon, Building2, Eye,
     Link2, Search, ChevronDown, ArrowUp, ArrowDown,
     ArrowUpRight, ArrowDownRight, Clock, User,
-    Calendar, Star, Trash2, ShieldCheck, X, AlertCircle, Info,
+    Calendar, Star, Trash2, ShieldCheck, X, AlertCircle, Info, Lock,
 } from 'lucide-react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis,
@@ -333,6 +333,85 @@ function GlassSelect({ icon: Icon, active, value, onValueChange, placeholder, op
     );
 }
 
+// ═══ CicloAcao — encerrar / reabrir o ciclo do mês (spec 2026-08-14, item 2) ══
+//
+// O ciclo deixou de ser uma conta de datas e virou estado: um admin encerra
+// quando quiser, e o encerramento vale mesmo antes da data automática. Fechado,
+// o mês para de gerar link e para de aceitar resposta — inclusive de link já
+// emitido e ainda dentro da validade.
+//
+// A confirmação mostra o mês E a referência, porque é o que a pessoa precisa
+// conferir antes de encerrar: "Agosto/2026 — Ref. Julho/2026". Reabrir só
+// aparece quando o fechamento foi MANUAL: mês vencido pela data não tem como
+// ser reaberto pela tela, e oferecer o botão prometeria algo que não acontece.
+function CicloAcao({ ciclo, competencia, coleta }) {
+    const [enviando, setEnviando] = useState(false);
+    if (!ciclo) return null;
+
+    const rotulo = `${coleta || ciclo.mes} — Ref. ${competencia || '—'}`;
+
+    const confirmarEEnviar = (rota, pergunta) => {
+        if (enviando) return;
+        if (!window.confirm(pergunta)) return;
+        setEnviando(true);
+        router.post(rota, { mes: ciclo.mes }, {
+            preserveScroll: true,
+            onFinish: () => setEnviando(false),
+        });
+    };
+
+    if (ciclo.fechado) {
+        return (
+            <span className="inline-flex items-center gap-2">
+                <span
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6, height: 36,
+                        padding: '0 12px', borderRadius: 10, fontSize: 12.5, fontWeight: 600,
+                        color: '#f4436b', background: 'rgba(244,67,107,0.10)',
+                        border: '1px solid rgba(244,67,107,0.28)',
+                    }}
+                    title={ciclo.fechado_manual
+                        ? 'Ciclo encerrado manualmente: não aceita novos links nem novas respostas.'
+                        : 'A coleta deste mês já terminou pela data de encerramento.'}
+                >
+                    <Lock size={13} /> Ciclo fechado
+                </span>
+                {ciclo.fechado_manual && (
+                    <button
+                        type="button"
+                        disabled={enviando}
+                        onClick={() => confirmarEEnviar(
+                            route('nps.ciclo.reabrir'),
+                            `Reabrir o ciclo ${rotulo}?\n\nO mês volta a aceitar novos links e novas respostas.`,
+                        )}
+                        className="h-9 px-3 rounded-[10px] border border-white/[0.10] bg-white/[0.03] text-[12.5px] text-white/70 hover:bg-white/[0.06] disabled:opacity-50"
+                    >
+                        Reabrir
+                    </button>
+                )}
+            </span>
+        );
+    }
+
+    return (
+        <button
+            type="button"
+            disabled={enviando}
+            onClick={() => confirmarEEnviar(
+                route('nps.ciclo.fechar'),
+                `Encerrar o NPS ${rotulo}?\n\n`
+                + '• Nenhum link novo poderá ser gerado deste ciclo\n'
+                + '• Links já enviados param de aceitar resposta\n'
+                + '• Quem não respondeu passa a contar nota 1',
+            )}
+            title={`Encerrar o ciclo ${rotulo}`}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border border-white/[0.10] bg-white/[0.03] text-[12.5px] text-white/75 hover:bg-white/[0.06] hover:border-white/[0.18] disabled:opacity-50"
+        >
+            <Lock size={13} /> Fechar NPS
+        </button>
+    );
+}
+
 // ═══ SearchableGlassSelect — select com CAMPO DE BUSCA (2026-07-20) ═══════
 // O Radix Select puro (GlassSelect acima) não tem busca — com 150+ empresas
 // vira uma lista rolável impossível de filtrar ("não dá pra pesquisar"). Este
@@ -442,7 +521,7 @@ function SearchableGlassSelect({ icon: Icon, active, value, onValueChange, place
 // Ícone + label + "NPS MÉDIO"; pill de delta (↗/↘ +0.00) com "vs. mês anterior";
 // nota grande branca /5; barra de progresso colorida pela dimensão (0..5, SEM
 // meta); rodapé "X respondidas · Y pendentes" com ícones. Sem ranking.
-function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta, naoRespondidos = 0 }) {
+function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta, naoRespondidos = 0, janelaFechada = true }) {
     const val = formatNota(valor);
     const temNota = total > 0 && valor != null && Number(valor) > 0;
     const pct = temNota ? Math.max(3, Math.min(100, (Number(valor) / 5) * 100)) : 0;
@@ -532,10 +611,20 @@ function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta, n
                 </span>
                 {/* Fase 116 · só aparece quando existe pelo menos 1 nota vinda de
                     não respondido — nunca mostra "0 sem resposta". */}
+                {/* 2026-08-14 · com a coleta AINDA ABERTA o não respondido não
+                    entra na média (mesma régua do bônus) — o contador vira
+                    aviso de prazo, não penalidade já aplicada. */}
                 {naoRespondidos > 0 && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: COL_ATENCAO, fontSize: 12 }}>
+                    <span
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: COL_ATENCAO, fontSize: 12 }}
+                        title={janelaFechada
+                            ? 'A coleta do mês encerrou: quem não respondeu entra na média com nota 1.'
+                            : 'A coleta ainda está aberta: quem não respondeu fica FORA da média até o fim do mês.'}
+                    >
                         <AlertCircle size={13} style={{ color: COL_ATENCAO }} />
-                        {naoRespondidos} sem resposta (conta{naoRespondidos === 1 ? '' : 'm'} 1)
+                        {naoRespondidos} sem resposta {janelaFechada
+                            ? `(conta${naoRespondidos === 1 ? '' : 'm'} 1)`
+                            : '(ainda no prazo)'}
                     </span>
                 )}
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.55)', fontSize: 12 }}>
@@ -562,7 +651,17 @@ function NpsTooltip({ active, payload, label }) {
             borderRadius: 9, padding: '9px 11px',
             boxShadow: '0 14px 34px -14px rgba(0,0,0,0.85)',
         }}>
-            <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 600, marginBottom: 7 }}>{label}</div>
+            {/* 2026-08-14 — o eixo mostra o mês da COLETA; aqui vai junto o mês
+                a que aquela coleta se refere (o anterior), para o ponto do
+                gráfico não ser lido como se fosse do próprio mês. */}
+            <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 600, marginBottom: 7 }}>
+                {label}
+                {payload[0]?.payload?.competencia_label && (
+                    <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>
+                        {' '}· ref. {payload[0].payload.competencia_label}
+                    </span>
+                )}
+            </div>
             {rows.map(p => (
                 <div key={p.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, lineHeight: '19px' }}>
                     <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color || p.stroke, flexShrink: 0 }} />
@@ -1472,6 +1571,17 @@ export default function NpsIndex({
     faltantes = [],
     serie_12m = [],
     mes_filtro = '',
+    // 2026-08-14 — `mes_filtro` continua sendo o mês de COLETA (é a chave do
+    // `?mes=`). Estes dois vêm prontos do backend só para a UI dizer qual mês
+    // está sendo AVALIADO: o NPS coletado em agosto avalia julho.
+    competencia_filtro = '',
+    coleta_filtro = '',
+    // Spec 2026-08-14 (item 2) — { fechado, fechado_manual, mes } do ciclo
+    // exibido. `null` blinda payload antigo em cache logo após o deploy.
+    ciclo = null,
+    // 2026-08-14 — true quando a coleta do mês exibido já encerrou. Só então
+    // quem não respondeu entra na média com nota 1 (mesma régua do bônus).
+    janela_fechada = true,
     filtros = {},
     principal_template_id = null,
     regra_nao_respondido = false,
@@ -1605,8 +1715,16 @@ export default function NpsIndex({
     }, [flash?.nps_link_existente]);
 
     // ─── Filtros server-side ─────────────────────────────────────────────
+    // 2026-08-14 — cada opção diz o mês da COLETA e a que mês ele se refere
+    // ("ago/26 · ref. jul/26"). O `value` continua sendo o mês de coleta, que
+    // é o que o `?mes=` sempre significou: `?mes=2026-07` traz o NPS coletado
+    // em julho, referente a junho. Sem o "ref." na própria opção, essa
+    // pergunta se repete toda vez que alguém troca o mês.
     const mesOpcoes = useMemo(
-        () => serie_12m.map(s => ({ value: s.mes_iso, label: s.mes })),
+        () => serie_12m.map(s => ({
+            value: s.mes_iso,
+            label: s.competencia_label ? `${s.mes} · ref. ${s.competencia_label}` : s.mes,
+        })),
         [serie_12m]
     );
 
@@ -1767,7 +1885,9 @@ export default function NpsIndex({
                                     NPS Dashboard
                                 </h1>
                                 <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12.5, marginTop: 2 }}>
-                                    Acompanhe a satisfação dos seus clientes
+                                    {competencia_filtro
+                                        ? <>Coletado em <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{coleta_filtro}</strong> · referente a <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{competencia_filtro}</strong></>
+                                        : 'Acompanhe a satisfação dos seus clientes'}
                                 </p>
                             </div>
                             <GlassSelect
@@ -1776,7 +1896,7 @@ export default function NpsIndex({
                                 value={mes_filtro}
                                 onValueChange={handleMesChange}
                                 placeholder="Mês..."
-                                width={168}
+                                width={214}
                                 options={mesOpcoes.map(m => (
                                     <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                                 ))}
@@ -1832,6 +1952,10 @@ export default function NpsIndex({
                                     ]}
                                 />
                             )}
+                            {/* Spec 2026-08-14 (item 2) — fechamento manual do
+                                ciclo. Admin-only na tela E na rota; o guard que
+                                vale é o do servidor. */}
+                            {isAdmin && <CicloAcao ciclo={ciclo} competencia={competencia_filtro} coleta={coleta_filtro} />}
                             {pode_filtrar_por_pessoa && (
                                 <>
                                     <GlassSelect
@@ -1895,6 +2019,7 @@ export default function NpsIndex({
                                             pendentes={pendentesTotal}
                                             delta={deltaEst}
                                             naoRespondidos={cards.estrategista?.nao_respondidos ?? 0}
+                                            janelaFechada={janela_fechada}
                                         />
                                     )}
                                     {soAnalista && (
@@ -1907,6 +2032,7 @@ export default function NpsIndex({
                                             pendentes={pendentesTotal}
                                             delta={deltaAna}
                                             naoRespondidos={cards.analista?.nao_respondidos ?? 0}
+                                            janelaFechada={janela_fechada}
                                         />
                                     )}
                                     {ambosPessoa && (
@@ -1919,6 +2045,7 @@ export default function NpsIndex({
                                             pendentes={pendentesTotal}
                                             delta={deltaMedia}
                                             naoRespondidos={(cards.estrategista?.nao_respondidos ?? 0) + (cards.analista?.nao_respondidos ?? 0)}
+                                            janelaFechada={janela_fechada}
                                         />
                                     )}
                                 </div>
@@ -1934,6 +2061,7 @@ export default function NpsIndex({
                                     pendentes={pendentesTotal}
                                     delta={deltaEst}
                                     naoRespondidos={cards.estrategista?.nao_respondidos ?? 0}
+                                    janelaFechada={janela_fechada}
                                 />
                                 <StatCard
                                     kicker="ANALISTA"
@@ -1944,6 +2072,7 @@ export default function NpsIndex({
                                     pendentes={pendentesTotal}
                                     delta={deltaAna}
                                     naoRespondidos={cards.analista?.nao_respondidos ?? 0}
+                                    janelaFechada={janela_fechada}
                                 />
                                 <StatCard
                                     kicker="EMPRESA"
@@ -1954,6 +2083,7 @@ export default function NpsIndex({
                                     pendentes={pendentesTotal}
                                     delta={deltaEmp}
                                     naoRespondidos={cards.empresa?.nao_respondidos ?? 0}
+                                    janelaFechada={janela_fechada}
                                 />
                             </div>
                         )}

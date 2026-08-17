@@ -110,10 +110,25 @@ class WarmDesempenhoDispatcher
             return false;
         }
 
+        // Fila `high`, NUNCA a default. A default é onde vivem os syncs em
+        // lote (acervo ML, vendas, grants): jobs de 2 a 5 minutos que chegam
+        // às centenas. Em 2026-08-12 a default tinha 111 jobs de
+        // `SyncMlAcervo*` e a tela de Desempenho ficava em "Calculando…"
+        // indefinidamente — o warm entrava no fim de uma fila de horas.
+        //
+        // Este job é INTERATIVO: existe porque um humano está olhando a tela
+        // esperando. Não pode competir com trabalho de fundo. A `high` tem
+        // worker dedicado (`ecf-worker-high`) e ainda é priorizada pelos dois
+        // `ecf-worker`, que consomem `high,default` nessa ordem.
+        // `?->` de propósito: este caminho roda durante a RENDERIZAÇÃO da
+        // página. Se `queue()` devolvesse null (mock, decorator, versão
+        // futura), um fatal aqui derrubaria a tela inteira — com o nullsafe o
+        // pior caso é o job voltar à fila default, que é o comportamento
+        // anterior, não uma página quebrada.
         Artisan::queue('desempenho:warm-cache', [
             '--mes'  => $mes->format('Y-m'),
             '--user' => $ids,
-        ]);
+        ])?->onQueue('high');
 
         return true;
     }
@@ -152,7 +167,10 @@ class WarmDesempenhoDispatcher
             $lockKey = 'adman.diff.warm.lock.' . $mes->format('Y-m');
             if (Cache::add($lockKey, true, now()->addMinutes(self::LOCK_MINUTOS))) {
                 // `--period` aceita `YYYY-MM` (mesmo contrato do MetricPeriodResolver).
-                Artisan::queue('adman:warm-diff', ['--period' => $mes->format('Y-m')]);
+                // Fila `high` pelo mesmo motivo do warm da nota: é a tabela da
+                // carteira de alguém que está esperando na tela.
+                Artisan::queue('adman:warm-diff', ['--period' => $mes->format('Y-m')])
+                    ?->onQueue('high');
             }
         }
 

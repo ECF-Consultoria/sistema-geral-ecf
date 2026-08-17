@@ -394,6 +394,8 @@ export default function EnvioAutomatico({
                                 <code>{'{nome_estrategista}'}</code>{' '}
                                 <code>{'{nome_analista}'}</code>. Templates NPS que definem sua
                                 própria mensagem sobrescrevem este texto.
+                                {' '}<code>{'{mes_referencia}'}</code> é o mês AVALIADO — o
+                                anterior ao do disparo (envio em agosto pergunta sobre julho).
                             </p>
                         </div>
 

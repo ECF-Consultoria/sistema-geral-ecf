@@ -157,4 +157,37 @@ class CompanyScoreSnapshotWriter
             return ['upserted' => $upserted, 'pruned' => $pruned, 'congelado' => false];
         });
     }
+
+    /**
+     * Fase 136 (D-09) — ÚNICO sinal de "competência consolidada" usado pelo
+     * lançamento manual de métricas. Responde à pergunta "existe pelo menos
+     * uma linha `origem=consolidar_mes` para este `mes_referencia`?", **sem**
+     * filtrar por `user_id` — diferença de escopo deliberada em relação à
+     * trava de congelamento de `sync()` (linhas 63-69 acima), que é POR
+     * USUÁRIO. Ali a pergunta é "este profissional já teve a competência
+     * congelada?"; aqui é "a competência inteira já foi congelada, por
+     * QUALQUER usuário?" — basta uma linha de qualquer profissional.
+     *
+     * Nenhuma flag paralela deve ser criada para "competência fechada" — este
+     * é o único sinal que a Fase 136 reconhece (D-09), reaproveitando o
+     * mesmo conceito de `origem` que `sync()` já usa para o congelamento.
+     *
+     * @param  bool  $comLock  aplica `lockForUpdate()` — usar dentro de uma
+     *         transação quando a checagem precisa serializar contra uma
+     *         escrita concorrente de `desempenho:consolidar-mes`.
+     */
+    public static function competenciaConsolidada(Carbon $mes, bool $comLock = false): bool
+    {
+        $mesStr = $mes->copy()->startOfMonth()->toDateString();
+
+        $query = DesempenhoCompanyScoreSnapshot::query()
+            ->whereDate('mes_referencia', $mesStr)
+            ->where('origem', self::ORIGEM_CONSOLIDAR_MES);
+
+        if ($comLock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->exists();
+    }
 }

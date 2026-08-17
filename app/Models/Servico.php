@@ -100,6 +100,39 @@ class Servico extends Model
         ];
     }
 
+    /**
+     * Canal financeiro ao qual um SETOR de serviço corresponde.
+     *
+     * Setor 'shopee' lê `shopee_metrics`; todo o resto lê a API Adman (Mercado
+     * Livre). Existe como método único porque a mesma tradução é feita no
+     * `CompanyScoreService`, no `DesempenhoMetricasManuaisController` e na
+     * validação do lançamento manual — e regra de fonte financeira espalhada
+     * por vários call-sites foi exatamente o defeito que D-10 teve de corrigir
+     * (ver `App\Services\Metrics\FinancialSourceResolver`).
+     *
+     * Não confundir com o DESEMPATE entre fontes concorrentes: isso continua
+     * sendo responsabilidade exclusiva do `FinancialSourceResolver`. Aqui é só
+     * a tradução setor -> canal, sem decidir vencedor.
+     */
+    public static function fonteFinanceiraDoSetor(?string $setor): string
+    {
+        return $setor === self::SETOR_SHOPEE ? 'shopee' : 'adman';
+    }
+
+    /**
+     * Setores que RENDEM métrica financeira. Só estes viram canal.
+     *
+     * Vínculo de 'publicacao' ou 'polos' não é fonte financeira nenhuma —
+     * `fonteFinanceiraDoSetor()` sozinha devolveria 'adman' para eles (é o
+     * ramo default), então quem for derivar canais de uma empresa precisa
+     * filtrar por esta lista ANTES. Ignorar isso faz uma empresa que só tem
+     * publicação parecer atendida no Mercado Livre.
+     */
+    public const SETORES_FINANCEIROS = [
+        self::SETOR_PERFORMANCE,
+        self::SETOR_SHOPEE,
+    ];
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()

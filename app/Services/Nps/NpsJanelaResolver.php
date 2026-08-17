@@ -2,7 +2,9 @@
 
 namespace App\Services\Nps;
 
+use App\Models\NpsCiclo;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Régua de LEITURA da janela M+1 do bônus — Fase 118 (118-CONTEXT.md, C-01).
@@ -50,6 +52,14 @@ use Carbon\Carbon;
 final class NpsJanelaResolver
 {
     /**
+     * Meses de coleta fechados MANUALMENTE, chaveados por 'YYYY-MM-01'.
+     * `null` = ainda não consultado neste request (ver `fechadaManualmente()`).
+     *
+     * @var Collection<string, int>|null
+     */
+    private ?Collection $mesesFechados = null;
+
+    /**
      * Desloca a competência FINANCEIRA M para o mês de COLETA do NPS (M+1).
      * `addMonthNoOverflow` evita o edge do dia 31 (espelha
      * `computeNpsWindow():760` — `$mes->copy()->addMonthNoOverflow()`).
@@ -61,12 +71,61 @@ final class NpsJanelaResolver
 
     /**
      * A janela de coleta do mês de NPS (`$mesNps`, já deslocado por
-     * `mesDeColeta()`) já fechou? Cópia caractere a caractere da expressão de
-     * `DesempenhoScoreService::computeNpsWindow():769` — comparação por DATA
-     * (`startOfDay()`), nunca por timestamp cru (Blocker 1).
+     * `mesDeColeta()`) já fechou?
+     *
+     * Duas formas de fechar, nesta ordem:
+     *
+     *  1. FECHAMENTO MANUAL (spec 2026-08-14, item 2) — alguém autorizado
+     *     encerrou o ciclo pela tela. PREVALECE mesmo que a data automática
+     *     ainda não tenha chegado, que é exatamente o que a spec pede.
+     *  2. Data — cópia caractere a caractere da expressão de
+     *     `DesempenhoScoreService::computeNpsWindow():769`: comparação por DATA
+     *     (`startOfDay()`), nunca por timestamp cru (Blocker 1, ver docblock da
+     *     classe).
+     *
+     * O manual só ADIANTA o fechamento; nunca reabre um mês que a data já
+     * fechou (é um OR). Reabrir por engano faria survey antigo voltar a aceitar
+     * resposta e reabriria competência de bônus já paga.
      */
     public function fechada(Carbon $mesNps): bool
     {
+        if ($this->fechadaManualmente($mesNps)) {
+            return true;
+        }
+
         return now()->startOfDay()->gte($mesNps->copy()->endOfMonth()->startOfDay());
+    }
+
+    /**
+     * O ciclo foi encerrado À MÃO? Consulta `nps_ciclos` — a fonte única do
+     * estado (spec 2026-08-14, item 2).
+     *
+     * Memoizado POR REQUEST: `fechada()` é chamado num laço de 12 meses na
+     * série do `/nps` e por empresa no bônus; sem isto seriam dezenas de
+     * queries idênticas. O cache é de instância — o resolver é resolvido pelo
+     * container e vive o request, então um fechamento feito NESTE request é
+     * visto por quem pedir depois (o cache é preenchido de uma vez, com todos
+     * os meses fechados, e `esquecerCache()` existe para os testes e para o
+     * próprio ato de fechar).
+     */
+    public function fechadaManualmente(Carbon $mesNps): bool
+    {
+        if ($this->mesesFechados === null) {
+            $this->mesesFechados = NpsCiclo::query()
+                ->pluck('mes_coleta')
+                ->map(fn ($data) => Carbon::parse($data)->startOfMonth()->toDateString())
+                ->flip();
+        }
+
+        return $this->mesesFechados->has($mesNps->copy()->startOfMonth()->toDateString());
+    }
+
+    /**
+     * Descarta a memoização — chamar depois de fechar um ciclo dentro do mesmo
+     * request (e nos testes, que fecham e releem em sequência).
+     */
+    public function esquecerCache(): void
+    {
+        $this->mesesFechados = null;
     }
 }

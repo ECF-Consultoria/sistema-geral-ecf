@@ -17,6 +17,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanyGroupController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DesempenhoMetricasManuaisController;
 use App\Http\Controllers\Dev\SugadoresMlOnboardingController;
 use App\Http\Controllers\DevController;
 use App\Http\Controllers\DevModulosController;
@@ -31,6 +32,7 @@ use App\Http\Controllers\GrantController;
 use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificacaoController;
+use App\Http\Controllers\NpsCicloController;
 use App\Http\Controllers\NpsController;
 use App\Http\Controllers\NpsEnvioAutomaticoController;
 use App\Http\Controllers\NpsGrupoController;
@@ -184,6 +186,13 @@ Route::get('/nps/configuracao/templates/{template}/empresas-elegiveis', [NpsTemp
 // O nome `nps.configuracao.index` é herdado pela rota nova para preservar
 // compatibilidade com links de menu/breadcrumbs no AppLayout.
 Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
+    // Spec 2026-08-14 (item 2) — fechamento MANUAL do ciclo de NPS. Admin-only:
+    // encerrar um ciclo bloqueia novos links e novas respostas do mês inteiro.
+    // Precisa vir ANTES da rota pública `/nps/{token}` para não ser engolida
+    // pelo parâmetro dinâmico — mesmo cuidado de `nps.generate`.
+    Route::post('/nps/ciclo/fechar',  [NpsCicloController::class, 'fechar'])->name('nps.ciclo.fechar');
+    Route::post('/nps/ciclo/reabrir', [NpsCicloController::class, 'reabrir'])->name('nps.ciclo.reabrir');
+
     // Rotas legadas (Phase 33) — movidas para subpath `/textos-legado`.
     // A UI é a mesma (agora servida via ConfiguracaoLegado.jsx) e continua
     // permitindo edição dos 11 textos + perguntas extras enquanto v15.0 roda.
@@ -587,6 +596,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/desempenho/relatorio-bonificacao/pdf', [RelatorioBonificacaoController::class, 'pdf'])
         ->middleware('role:admin')
         ->name('desempenho.relatorio-bonificacao.pdf');
+
+    // Fase 136 — Lançamento manual de métricas financeiras (admin-only). Grade
+    // empresa × mês para lançar faturamento e CMV à mão quando a API não
+    // entrega o dado (loja Shopee sem CMV, empresa sem OAuth), alimentando o
+    // motor de Desempenho. Competência já consolidada continua listada, porém
+    // READ-ONLY: a trava de congelamento vale sem exceção (D-09). Autorização
+    // em camada dupla — `role:admin` por rota (aqui) + o `authorize()` do
+    // StoreMetricaManualRequest. Ver DesempenhoMetricasManuaisController.
+    Route::get('/desempenho/metricas-manuais', [DesempenhoMetricasManuaisController::class, 'index'])
+        ->middleware('role:admin')
+        ->name('desempenho.metricas-manuais.index');
+    Route::post('/desempenho/metricas-manuais/lancar', [DesempenhoMetricasManuaisController::class, 'lancar'])
+        ->middleware('role:admin')
+        ->name('desempenho.metricas-manuais.lancar');
 
     // Adman: leitura do ultimo sync (admin apenas).
     // Sync manual via POST /adman/sync REMOVIDO na Phase 16 (SC-5):

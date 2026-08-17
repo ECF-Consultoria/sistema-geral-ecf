@@ -141,6 +141,23 @@ class NpsController extends Controller
                     $q->where('user_id', $personId)
                       ->when($role !== null, fn ($qq) => $qq->where('role', $role));
                 })
+                // Bugfix 2026-08-14 — quem GEROU o link sempre enxerga o link
+                // que gerou. Sem este ramo, a autorização de escrita era mais
+                // ampla que a de leitura: `generate()` (linha ~1243) aceita
+                // QUALQUER papel no pivot `company_users`, enquanto a leitura
+                // abaixo exige ser responsável PELO SERVIÇO que o modelo cobre.
+                // Resultado relatado em produção: a pessoa gerava o link, via a
+                // mensagem de sucesso, e o link nunca mais aparecia na lista
+                // dela — nem em "Pendentes", nem em "Todos".
+                //
+                // Só vale quando `$role` é NULL, que é o escopo do não-admin
+                // (`$filtroPorPessoa($baseQuery, $user->id, null)`). Nos filtros
+                // de estrategista/analista o papel É informado, e ali "gerou"
+                // não pode virar "é o estrategista": incluir `generated_by`
+                // naquele caso faria o filtro "Estrategista = Fulano" devolver
+                // survey que Fulano apenas disparou para a carteira de outra
+                // pessoa.
+                ->when($role === null, fn ($q) => $q->orWhere('nps_surveys.generated_by', $personId))
                 ->orWhere(function ($sub) use ($personId, $role) {
                     // Bugfix 2026-07-22 (Prensar/Nathalia) — antes era
                     // whereDoesntHave('response'), que só cobria surveys SEM
@@ -169,6 +186,33 @@ class NpsController extends Controller
                                             ->from('nps_template_service_scopes as scp')
                                             ->whereColumn('scp.template_id', 'nps_surveys.template_id')
                                             ->whereColumn('scp.servico_id', 'cu.servico_id');
+                                     })
+                                     // Bugfix 2026-08-14 — modelo SEM nenhum
+                                     // serviço coberto (pivot vazio, ex.: "NPS
+                                     // Padrão", e surveys legados com
+                                     // `template_id` NULL) não delimita
+                                     // serviço nenhum: o vínculo na empresa
+                                     // basta, em qualquer serviço.
+                                     //
+                                     // Sem isto, o `orWhereExists` acima NUNCA
+                                     // casava para esses modelos — quem tem
+                                     // vínculo com `servico_id` preenchido só
+                                     // enxergava survey de modelo escopado, e o
+                                     // modelo padrão (o mais usado) ficava
+                                     // invisível para toda a equipe. É a mesma
+                                     // regra que `generate()` já pratica na
+                                     // escrita ("modelo SEM serviços cobertos →
+                                     // aceito para qualquer empresa"), que até
+                                     // aqui não tinha contraparte na leitura.
+                                     //
+                                     // NÃO afeta modelo escopado: o NPS Shopee
+                                     // continua restrito ao responsável do
+                                     // Shopee — que é exatamente o vazamento
+                                     // fechado pelo bugfix de 2026-07-22.
+                                     ->orWhereNotExists(function ($sc) {
+                                         $sc->selectRaw('1')
+                                            ->from('nps_template_service_scopes as scp')
+                                            ->whereColumn('scp.template_id', 'nps_surveys.template_id');
                                      });
                                });
                         });
@@ -764,7 +808,25 @@ class NpsController extends Controller
             );
         }
 
-        $agregarMedia = function ($responses, string $dimensao, ?\Illuminate\Support\Collection $notasImputadas = null) use ($notaDe) {
+        // 2026-08-14 — `$contaNaoRespondido` alinha esta tela à régua que o
+        // BÔNUS já pratica: enquanto a janela de coleta do mês ainda está
+        // ABERTA, quem não respondeu é EXCLUÍDO da conta, nunca "nota 1"
+        // (`NpsPorEmpresaService` D-04, ramo `janela_aberta`). Só quando o mês
+        // de coleta encerra é que a ausência de resposta vira nota 1.
+        //
+        // Sem isso a tela penalizava no dia 1 do mês uma resposta que o cliente
+        // ainda tem até o dia 31 para dar — e, pior, penalizava em UM card só:
+        // a dimensão `empresa` materializa linha por survey sem depender de
+        // serviço/responsável, enquanto `estrategista`/`analista` só
+        // materializam para `serviços cobertos pelo modelo ∩ contratos ativos`
+        // (`NpsImputationService:162`). Com os 3 modelos ativos de produção sem
+        // nenhum serviço coberto, medimos em 2026-08: empresa 28 notas 1,
+        // estrategista 0, analista 0 — os mesmos clientes, as mesmas notas 5,
+        // e a empresa exibindo 1,71 contra 5,00 dos outros dois.
+        //
+        // O contador `nao_respondidos` continua sendo devolvido em qualquer
+        // caso: some da MÉDIA, não da tela.
+        $agregarMedia = function ($responses, string $dimensao, ?\Illuminate\Support\Collection $notasImputadas = null, bool $contaNaoRespondido = true) use ($notaDe) {
             // Fase 116 — `collect()` explícito: $responses é uma Eloquent
             // Collection e o `->map()` dela preserva o tipo Eloquent mesmo
             // depois de virar uma lista de floats/null. O `merge()` da
@@ -778,7 +840,7 @@ class NpsController extends Controller
             // 1-5). `nao_respondidos` é a contagem exposta ao payload para a
             // UI (Plan 05) explicar a regra sem jargão.
             $totalImputadas = $notasImputadas ? $notasImputadas->count() : 0;
-            if ($totalImputadas > 0) {
+            if ($totalImputadas > 0 && $contaNaoRespondido) {
                 $notas = $notas->merge(array_fill(0, $totalImputadas, 1.0));
             }
 
@@ -789,10 +851,15 @@ class NpsController extends Controller
             ];
         };
 
+        // A janela de coleta do mês EXIBIDO já encerrou? Mesma régua de leitura
+        // do bônus (`NpsJanelaResolver`, régua `gte` por DATA). É o que decide
+        // se "não respondeu" já pode virar nota 1 nesta tela.
+        $janelaFechada = $this->npsJanelaResolver->fechada($mesInicio);
+
         $cards = [
-            'estrategista' => $agregarMedia($responsesMes, 'estrategista', $notasImputadasMes['estrategista']),
-            'analista'     => $agregarMedia($responsesMes, 'analista', $notasImputadasMes['analista']),
-            'empresa'      => $agregarMedia($responsesMes, 'empresa', $notasImputadasMes['empresa']),
+            'estrategista' => $agregarMedia($responsesMes, 'estrategista', $notasImputadasMes['estrategista'], $janelaFechada),
+            'analista'     => $agregarMedia($responsesMes, 'analista', $notasImputadasMes['analista'], $janelaFechada),
+            'empresa'      => $agregarMedia($responsesMes, 'empresa', $notasImputadasMes['empresa'], $janelaFechada),
         ];
 
         // ─── Série 12 meses para o LineChart ─────────────────────────────────
@@ -858,12 +925,26 @@ class NpsController extends Controller
                 );
             }
 
+            // 2026-08-14 — o mês exibido continua sendo o de COLETA (`mes`), que
+            // é o que a pessoa reconhece e o que o `?mes=` seleciona. O que
+            // faltava era dizer A QUE mês aquela coleta se refere: o NPS
+            // coletado em agosto avalia julho (régua M/M+1 do bônus,
+            // `NpsJanelaResolver::mesDeColeta()` lida ao contrário). Por isso os
+            // dois campos novos — a UI monta "ago/26 · ref. jul/26" em vez de
+            // trocar o nome do bucket, que só transferiria a confusão de lado.
+            $competencia = $m->copy()->subMonthNoOverflow();
+
             $serieMeses[] = [
-                'mes'          => $m->locale('pt_BR')->isoFormat('MMM/YY'), // ex: 'jun./26'
-                'mes_iso'      => $m->format('Y-m'),
-                'estrategista' => $agregarMedia($responsesM, 'estrategista', $notasImputadasM['estrategista'])['media'],
-                'analista'     => $agregarMedia($responsesM, 'analista', $notasImputadasM['analista'])['media'],
-                'empresa'      => $agregarMedia($responsesM, 'empresa', $notasImputadasM['empresa'])['media'],
+                'mes'                => $m->locale('pt_BR')->isoFormat('MMM/YY'), // ex: 'ago./26' (COLETA)
+                'mes_iso'            => $m->format('Y-m'),                        // chave do filtro (coleta)
+                'competencia'        => $competencia->format('Y-m'),              // mês AVALIADO
+                'competencia_label'  => $competencia->locale('pt_BR')->isoFormat('MMM/YY'),
+                // Mesma régua dos cards, mês a mês: o mês ainda em coleta não
+                // conta nota 1 (senão o último ponto da série despencaria todo
+                // dia 1 e se recuperaria ao longo do mês, sem nada ter mudado).
+                'estrategista' => $agregarMedia($responsesM, 'estrategista', $notasImputadasM['estrategista'], $this->npsJanelaResolver->fechada($m))['media'],
+                'analista'     => $agregarMedia($responsesM, 'analista', $notasImputadasM['analista'], $this->npsJanelaResolver->fechada($m))['media'],
+                'empresa'      => $agregarMedia($responsesM, 'empresa', $notasImputadasM['empresa'], $this->npsJanelaResolver->fechada($m))['media'],
             ];
         }
 
@@ -917,8 +998,18 @@ class NpsController extends Controller
         $props = [
             'surveys'                => $surveys,
             'companies'              => $companies,
-            'estrategistas'          => $estrategistas,
-            'analistas'              => $analistas,
+            // 2026-08-14 — as listas de pessoas só existem no payload para quem
+            // PODE filtrar por pessoa (admin/líder). Antes iam sempre, e um
+            // analista comum — que nem vê o seletor — recebia no HTML a lista
+            // completa de estrategistas e analistas da empresa. Os DADOS já
+            // estavam protegidos (o escopo por pessoa é aplicado no servidor,
+            // ver `$filtroPorPessoa`); o que vazava era a nominata. A chave
+            // simplesmente não é criada — nunca lista vazia, mesma blindagem
+            // de `pode_ver_confianca` (Fase 95 · AB-95-4).
+            ...($podeFiltrarPorPessoa ? [
+                'estrategistas' => $estrategistas,
+                'analistas'     => $analistas,
+            ] : []),
             'templates'              => $templates,
             'grupos'                 => $grupos,
             'pode_filtrar_por_pessoa' => $podeFiltrarPorPessoa,
@@ -927,10 +1018,32 @@ class NpsController extends Controller
             'faltantes'      => $faltantes,
             'serie_12m'      => $serieMeses,
             'mes_filtro'     => $mesFiltro,
+            // 2026-08-14 — `mes_filtro` é o mês de COLETA (contrato do `?mes=`,
+            // inalterado): `?mes=2026-08` traz o NPS COLETADO em agosto, que
+            // avalia julho. Estes dois existem para a UI conseguir escrever
+            // isso na tela — "ago/26 · ref. jul/26" — em vez de deixar a pessoa
+            // adivinhar de que mês é a nota que está vendo.
+            'competencia_filtro' => $mesInicio->copy()->subMonthNoOverflow()->locale('pt_BR')->isoFormat('MMM/YY'),
+            'coleta_filtro'      => $mesInicio->copy()->locale('pt_BR')->isoFormat('MMM/YY'),
+            // Spec 2026-08-14 (item 2) — estado do ciclo do mês exibido, para a
+            // UI mostrar o selo "Fechado" e o botão de encerrar. `manual`
+            // distingue "alguém encerrou" de "a data passou": só o primeiro
+            // pode ser revertido pela tela.
+            'ciclo' => [
+                'fechado'        => $janelaFechada,
+                'fechado_manual' => $this->npsJanelaResolver->fechadaManualmente($mesInicio),
+                'mes'            => $mesInicio->format('Y-m'),
+            ],
             // Fase 116 — sinaliza para a UI (Plan 05) que a regra "não
             // respondido conta como nota 1" está ativa nesta tela. Cada card
             // já expõe `nao_respondidos` (ver $agregarMedia acima).
             'regra_nao_respondido' => true,
+            // 2026-08-14 — a regra acima só VALE quando a coleta do mês
+            // encerrou. Com a janela aberta o não respondido fica de fora da
+            // média (nos três cards, igualmente) e o contador vira só aviso:
+            // é o que a UI usa para escrever "contam 1" ou "ainda podem
+            // responder".
+            'janela_fechada'       => $janelaFechada,
             'filtros'        => [
                 'empresa_id'      => $empresaId,
                 'estrategista_id' => $estrategistaId,
@@ -1305,6 +1418,16 @@ class NpsController extends Controller
         // com `month_reference = NULL` (D-12, comentário abaixo) — comparar
         // a coluna crua não pegaria nenhum link manual, e é exatamente essa
         // brecha que o usuário reportou.
+        // Spec 2026-08-14 (item 2) — ciclo encerrado não gera link novo. Vem
+        // ANTES do guard de duplicidade: num ciclo fechado a resposta certa é
+        // "encerrado", não "já existe um link" (que sugeriria reenviar um link
+        // que também não aceita mais resposta).
+        if ($this->npsJanelaResolver->fechada(now()->startOfMonth())) {
+            return back()->with('error',
+                'O ciclo de NPS deste mês foi encerrado — não é possível gerar novos links. '
+                .'Reabra o ciclo para voltar a coletar.');
+        }
+
         $jaExiste = $this->elegibilidadeService->surveyExistenteNaCompetencia(
             (int) $data['company_id'],
             (int) $template->id,
@@ -1592,12 +1715,40 @@ class NpsController extends Controller
      *   - .planning/research/v15-nps-templates-schema.md §2 (dedup 23000)
      *   - REQ NPS-B-03 (guard 23000) + REQ NPS-B-05 (validacao dinamica)
      */
+    /**
+     * O ciclo a que este survey pertence já foi encerrado? (spec 2026-08-14,
+     * item 2)
+     *
+     * O mês do survey sai de `competenciaDoSurvey()` — que, apesar do nome,
+     * devolve o mês de COLETA (`month_reference`, com fallback `created_at`
+     * para os manuais). É essa mesma grandeza que `nps_ciclos.mes_coleta`
+     * guarda, então as duas casam direto, sem deslocar.
+     *
+     * Quem decide "fechado" é SEMPRE o `NpsJanelaResolver` — nunca consultar
+     * `nps_ciclos` aqui, senão a régua ganha uma segunda versão.
+     */
+    private function cicloFechado(NpsSurvey $survey): bool
+    {
+        return $this->npsJanelaResolver->fechada(
+            $this->elegibilidadeService->competenciaDoSurvey($survey)
+        );
+    }
+
     public function submitResponse(Request $request, string $token)
     {
         $survey = NpsSurvey::where('token', $token)->where('status', 'pending')->firstOrFail();
 
         if ($survey->isExpired()) {
             return response()->json(['error' => 'Pesquisa expirada.'], 422);
+        }
+
+        // Spec 2026-08-14 (item 2) — ciclo encerrado à mão não aceita mais
+        // resposta, mesmo com o link dentro da validade. Guard NO SERVIDOR: o
+        // link já está na mão do cliente e a tela pública não é caminho
+        // confiável para impedir nada. Vem depois do `isExpired()` porque
+        // "expirada" é a mensagem mais específica quando os dois valem.
+        if ($this->cicloFechado($survey)) {
+            return response()->json(['error' => 'Esta pesquisa foi encerrada e não aceita mais respostas.'], 422);
         }
 
         // Phase 96 AB-96-1 — endurecimento da Regra 4 da Fase 94 (que hoje só
@@ -1843,6 +1994,36 @@ class NpsController extends Controller
             throw $e;
         }
 
+        // Spec 2026-08-14 (item 3) — a resposta reflete no /performance NA HORA.
+        //
+        // Até aqui o cache do bônus só era invalidado ao INVALIDAR/REVALIDAR uma
+        // resposta (`invalidar()`/`revalidar()`), nunca quando o cliente
+        // respondia. Como `computeCached()` guarda 7 DIAS para mês fechado, a
+        // nota nova só aparecia quando o TTL vencia ou o snapshot mensal era
+        // gravado — que é exatamente o "só aparece depois que o NPS fecha" do
+        // relato. O cálculo em si já era ao vivo (`computeNpsWindow` devolve a
+        // média assim que existe resposta, mesmo com a janela aberta); o que
+        // faltava era derrubar o cache.
+        //
+        // FORA da transação de propósito: esvaziar cache não é rollbackável, e
+        // fazê-lo antes do commit abriria janela para recomputar com o estado
+        // antigo. Falha aqui NUNCA pode derrubar a resposta do cliente — ela já
+        // está gravada, e o pior caso é a nota demorar o TTL para aparecer.
+        // `$response` nasce DENTRO do closure da transação e não sai dele —
+        // relê do banco, já commitado (e com o snapshot da Fase 79 gravado, que
+        // é de onde saem os responsáveis).
+        try {
+            $survey->refresh()->load('response');
+            if ($survey->response) {
+                $this->bustarCacheDoBonus($survey->response, $survey);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[NPS] falha ao invalidar o cache do desempenho após a resposta', [
+                'survey_id' => $survey->id,
+                'erro'      => $e->getMessage(),
+            ]);
+        }
+
         return Inertia::render('Nps/ThankYou');
     }
 
@@ -1977,7 +2158,7 @@ class NpsController extends Controller
             ['chave' => '{nome_estrategista}', 'descricao' => 'Nome do estrategista da empresa.'],
             ['chave' => '{nome_analista}',     'descricao' => 'Nome do analista (omitido quando mentoria pura).'],
             ['chave' => '{nome_empresa}',      'descricao' => 'Nome da empresa que está respondendo.'],
-            ['chave' => '{mes_referencia}',    'descricao' => 'Mês de referência em formato pt-BR — ex: "junho/2026".'],
+            ['chave' => '{mes_referencia}',    'descricao' => 'Mês AVALIADO pela pesquisa, em pt-BR — é o mês ANTERIOR ao do disparo (a pesquisa que sai em agosto pergunta sobre "julho/2026").'],
             ['chave' => '{bloco_analista}',    'descricao' => 'Bloco condicional " e o analista é **Igor**" no corpo do email (usar apenas em email_corpo); vira string vazia em mentoria pura.'],
         ];
 
@@ -2321,6 +2502,26 @@ class NpsController extends Controller
         $userIds = \App\Models\NpsScoreAssignment::where('nps_response_id', $response->id)
             ->pluck('user_id')
             ->unique();
+
+        // Spec 2026-08-14 (item 3) — FALLBACK pelos responsáveis da empresa.
+        //
+        // A atribuição congelada é a fonte preferencial (é quem a nota de fato
+        // alimenta), mas ela pode não existir: `NpsSnapshotService::registrar()`
+        // só cria assignment na interseção "serviços cobertos pelo modelo ∩
+        // contratos ativos da empresa", e os 3 modelos ativos de produção estão
+        // sem nenhum serviço coberto — medido em 2026-08: 5 respostas, 0
+        // assignments. Sem este fallback o busting não derrubaria chave nenhuma
+        // e a nota continuaria stale por até 7 dias, que é justamente o
+        // "só aparece depois que o NPS fecha" que esta spec veio corrigir.
+        //
+        // Bustar a mais é barato (o pior caso é um recompute a mais); bustar a
+        // menos deixa número errado na tela de quem decide bônus.
+        if ($userIds->isEmpty() && $survey->company_id) {
+            $userIds = \Illuminate\Support\Facades\DB::table('company_users')
+                ->where('company_id', $survey->company_id)
+                ->pluck('user_id')
+                ->unique();
+        }
 
         $scoreService = app(\App\Services\DesempenhoScoreService::class);
 

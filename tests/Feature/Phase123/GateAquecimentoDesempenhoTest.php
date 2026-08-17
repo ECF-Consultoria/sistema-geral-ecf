@@ -136,7 +136,17 @@ class GateAquecimentoDesempenhoTest extends Phase123TestCase
     {
         // O front polla de 6 em 6 segundos enquanto aquece. Sem o lock, cada
         // poll enfileiraria um job novo do mesmo mês (Fase 106, T-106-03).
-        Artisan::shouldReceive('queue')->once()->with('desempenho:warm-cache', Mockery::any());
+        // O mock devolve um duplê que registra a fila: o warm PRECISA ir para
+        // a `high`. Na `default` ele fica atrás dos syncs em lote (em
+        // 2026-08-12 eram 111 jobs de acervo ML, de 2 a 5 min cada) e a tela
+        // fica em "Calculando…" por horas.
+        $filaEscolhida = null;
+        $pending = Mockery::mock();
+        $pending->shouldReceive('onQueue')->once()->andReturnUsing(function ($fila) use (&$filaEscolhida) {
+            $filaEscolhida = $fila;
+        });
+
+        Artisan::shouldReceive('queue')->once()->with('desempenho:warm-cache', Mockery::any())->andReturn($pending);
 
         $alvo = $this->criarUserElegivel('Lock');
         $mes  = \Carbon\Carbon::parse('2026-07-01');
@@ -150,6 +160,8 @@ class GateAquecimentoDesempenhoTest extends Phase123TestCase
         $this->assertTrue($dispatcher->agendarWarm([$alvo->id], $mes), '1o request deve disparar');
         $this->assertFalse($dispatcher->agendarWarm([$alvo->id], $mes), '2o request nao pode disparar');
         $this->assertFalse($dispatcher->agendarWarm([$alvo->id], $mes), '3o request nao pode disparar');
+
+        $this->assertSame('high', $filaEscolhida, 'O warm interativo nao pode cair na fila dos syncs em lote.');
     }
 
     /**

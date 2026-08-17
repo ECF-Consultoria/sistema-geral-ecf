@@ -107,7 +107,17 @@ class NpsDispararMensal extends Command
         // Se a chave 'nps_textos' não existir em configuracoes, o helper devolve
         // os defaults D-03.
         $textos = NpsTextRenderer::getTextos();
-        $mesReferencia = $this->mesLabelPt($hoje);
+        // 2026-08-14 — `{mes_referencia}` é o mês AVALIADO pelo cliente, que é o
+        // ANTERIOR ao do disparo: a pesquisa que sai em agosto pergunta sobre o
+        // serviço de julho. Até aqui usava `$hoje`, e o assunto default
+        // ("Pesquisa mensal de satisfação ECF — {mes_referencia}") chegava ao
+        // cliente dizendo "agosto/2026" enquanto perguntava sobre julho.
+        // É a MESMA régua M/M+1 que o bônus já pratica na outra ponta
+        // (`NpsJanelaResolver::mesDeColeta()`: competência M → coleta em M+1),
+        // lida de trás pra frente — coleta em M+1 → competência M.
+        // `subMonthNoOverflow()` evita o edge do dia 31 (31/03 − 1 mês nunca
+        // pode virar 03/03).
+        $mesReferencia = $this->mesLabelPt($hoje->copy()->subMonthNoOverflow());
 
         $enviados = 0;
         $criados = 0;
@@ -470,6 +480,10 @@ class NpsDispararMensal extends Command
      * Phase 32 — minúsculo para combinar com a frase "...satisfação ECF — junho/2026"
      * do email_assunto default. Caso o admin reescreva o assunto, o mes_referencia
      * é só uma string, ele pode integrar como quiser.
+     *
+     * 2026-08-14 — quem chama passa o mês AVALIADO (mês do disparo − 1), não
+     * `$hoje`. Este helper só formata: a régua de competência mora no
+     * `handle()`.
      */
     private function mesLabelPt(Carbon $data): string
     {
