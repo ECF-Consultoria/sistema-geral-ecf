@@ -224,12 +224,77 @@ painel não for o mesmo do `.env` de produção, a Clicksign entrega o evento, o
 recusa com 401 e grava o evento bruto — do lado da Clicksign parece entrega bem-sucedida;
 do nosso lado a empresa nunca é liberada.
 
-- URL cadastrada (esperada: `https://admin.ecfconsultoria.com.br/api/webhooks/clicksign`,
-  sem barra final, `https`): ______
-- Escopos/eventos: ______ (informado: todos)
-- Ativo (não cadastrado-e-desativado): ______
-- Segredo confere com o `.env` de produção (`confere` / `não confere`): ______
-- Confirmado por: ______ Data/hora: ______
+- URL cadastrada: **`https://admin.ecfconsultoria.com.br/api/webhooks/clicksign`** ✅
+  (**corrigida em 2026-08-17** — ver o achado abaixo)
+- Escopos/eventos: **32 eventos**, incluindo `sign`, `close`, `auto_close`, `cancel`,
+  `refusal`, `deadline`, `document_closed` ✅
+- Ativo: **`status: active`** ✅
+- Segredo confere com o `.env` de produção: **CONFERE** ✅ — comparado por `hash_equals`,
+  sem imprimir nenhum dos dois valores; `sha256` de ambos começa com `95174e7fbb`
+- Confirmado por: **dev.01 (sessão Claude Code)**, por consulta à API de produção.
+  Data/hora: **2026-08-17, ~18:45 (BRT)**
+- Webhook id: `193b2977-cb16-4778-90ef-ea8904cd0486` · criado em `2026-08-12T11:43:10-03:00`
+
+---
+
+#### 🔴 ACHADO CRÍTICO — a URL do webhook apontava para lugar nenhum
+
+**O que estava errado.** O webhook cadastrado em 12/08 apontava para
+`https://admin.ecfconsultoria.com.br/administrativo/clicksign`. Esse caminho **não casa com
+nenhuma rota da aplicação** — conferido no `route:list` e provado com requisição real:
+
+| URL | POST devolve |
+|---|---|
+| `…/administrativo/clicksign` (a que estava cadastrada) | **404** — não existe nada ali |
+| `…/api/webhooks/clicksign` (o receiver de verdade) | **401** — vivo, recusando corretamente uma requisição sem assinatura (D-10) |
+
+**Por que isto era grave.** Todo evento da Clicksign cairia no vazio. O contrato seria
+assinado, a Clicksign entregaria o aviso, e o sistema nunca saberia — nenhuma empresa seria
+liberada. É **exatamente o critério de parar da D-06** ("nenhum evento aparecer em
+`contrato_assinatura_eventos`"), só que descoberto **antes** de gastar um envelope, em vez de
+depois de já ter mandado documento com valor jurídico para as três caixas de entrada reais
+dos signatários — sabendo que a API **não cancela** envelope em andamento.
+
+**Como foi descoberto — e por que o plano dizia que era impossível.** O plano 132-03
+registrava, no `<verify>` da Task 1: *"MISSING — não existe conferência automatizada do
+painel de um terceiro"*. Existe: a API v3 responde **200** em `GET /webhooks` e devolve
+`endpoint`, `status`, `events`, `created` **e o `secret`**. Isso permitiu conferir os quatro
+itens do SC2 sem nenhum acesso ao painel — inclusive a comparação do segredo, que o plano
+tratava como só verificável pelo `signature_valid` do primeiro evento real.
+
+⭐ **Registrar para as próximas fases:** `GET {base_url}/webhooks` é conferência de SC2
+barata, somente-leitura e conclusiva. A "Pergunta A4" do empírico (cadastro de webhook por
+conta ou por envelope) fica respondida: **por conta**, e listável pela API.
+
+**Circunstância que forçou o caminho.** O usuário informou em 2026-08-17 que cadastrou o
+webhook por **outra conta, à qual não tem mais acesso** — não podia ver a configuração nem
+disparar evento de teste pelo painel.
+
+**Correção aplicada — escrita autorizada explicitamente pelo usuário.** `PATCH
+/webhooks/{id}` trocando **somente** o campo `endpoint`, por script que registrou o estado
+"antes" para permitir reversão. `status: 200`.
+
+Conferido por **reconsulta** (`GET /webhooks` de novo, nunca a resposta do PATCH):
+
+| Campo | Depois | Verificação |
+|---|---|---|
+| `endpoint` | `…/api/webhooks/clicksign` | correto ✅ |
+| `status` | `active` | preservado ✅ |
+| `events` | **32** | nenhum evento perdido no PATCH ✅ |
+| `secret` | `hash_equals` com o `.env` | CONFERE ✅ |
+
+O script foi apagado do servidor e da máquina local depois de rodar.
+
+**Nota sobre a tabela de eventos.** A sonda que provou o 404/401 gravou uma linha real:
+`id=1, signature_valid=false, contrato_assinatura_id=nulo`. É a minha própria requisição sem
+assinatura, e é evidência de que o receiver grava tentativa inválida como a DADOS-03 manda.
+A linha de base para o SC3 deixa de ser "tabela vazia" e passa a ser **"1 evento, inválido,
+sem contrato"** — qualquer linha nova além dessa veio do contrato de teste.
+
+**O que ainda NÃO está provado.** Que a Clicksign consegue **entregar** nesta URL. A
+correção resolve o endereço; a prova de entrega ponta a ponta é o `signature_valid = 1` do
+primeiro evento real, na Task 3. O que mudou é que agora existe chance real de funcionar —
+antes era falha garantida.
 
 ---
 
