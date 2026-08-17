@@ -176,6 +176,28 @@ class OnboardingMapeamentoTest extends TestCase
         $this->assertSame('bloqueado', $this->service()->visao($onboarding)['estado']);
     }
 
+    /**
+     * O caso que mentia em produção: um passo `aberto` esperando pré-requisito
+     * humano e outro `bloqueado`. Nada em voo — e a tela dizia "Buscando os
+     * dados da conta…" para um cliente que ficaria esperando para sempre.
+     */
+    #[Test]
+    public function passo_aberto_sem_coleta_em_voo_nao_diz_que_esta_buscando(): void
+    {
+        $onboarding = $this->onboardingEmAndamento();
+
+        $onboarding->passos()->where('chave', 'anuncios_ativos_inativos')
+            ->update(['status' => OnboardingPasso::STATUS_ABERTO]);
+        $onboarding->passos()->where('chave', 'metricas_da_conta')
+            ->update(['status' => OnboardingPasso::STATUS_BLOQUEADO]);
+
+        $this->assertSame(
+            'bloqueado',
+            $this->service()->visao($onboarding->fresh())['estado'],
+            'Sem coleta em voo, a tela não pode afirmar que está buscando'
+        );
+    }
+
     // ─── Sincronizar ────────────────────────────────────────────────────────
 
     #[Test]

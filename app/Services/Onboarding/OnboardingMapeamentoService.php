@@ -167,15 +167,17 @@ class OnboardingMapeamentoService
             return 'indisponivel';
         }
 
-        if ($statuses->every(fn (string $s) => $s === OnboardingPasso::STATUS_BLOQUEADO)) {
-            return 'bloqueado';
-        }
-
         if ($statuses->contains(OnboardingPasso::STATUS_CONCLUIDO)) {
             return 'pronto';
         }
 
-        return 'buscando';
+        // Sobra `aberto`/`bloqueado`: nada apurado e NADA EM VOO. O caso-padrão
+        // daqui já foi `buscando`, e isso mentia na cara do cliente — a tela
+        // dizia "Buscando os dados da conta…" enquanto o passo esperava um
+        // pré-requisito humano (cadastro na Adman, por exemplo) que ninguém
+        // ia resolver sozinho. Quem não sabe se está buscando não deve dizer
+        // que está.
+        return 'bloqueado';
     }
 
     /**

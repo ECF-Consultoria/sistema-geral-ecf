@@ -24,7 +24,11 @@ const ESTADO = {
         Icone: Lock,
         cor: 'text-white/30',
         titulo: 'Ainda não dá para buscar',
-        texto: 'Assim que o acesso ao Mercado Livre estiver autorizado, buscamos estes dados automaticamente.',
+        // NÃO cita o Mercado Livre: este estado também acontece com o acesso
+        // ao ML já autorizado e outro pré-requisito faltando (cadastro na
+        // Adman, por exemplo). Citar o item errado manda o cliente refazer
+        // algo que ele já fez.
+        texto: 'Falta concluir uma das etapas de acesso. Assim que estiver tudo certo, buscamos estes dados automaticamente.',
     },
     buscando: {
         Icone: RefreshCw,
