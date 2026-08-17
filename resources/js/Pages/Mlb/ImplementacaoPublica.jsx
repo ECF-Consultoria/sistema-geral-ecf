@@ -1,12 +1,19 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import axios from 'axios';
-import { Check, BookOpen, Save, AlertCircle, X, ExternalLink } from 'lucide-react';
+import { Check, BookOpen, Save, AlertCircle, X, ExternalLink, Search, ChevronRight, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SpreadsheetGrid } from '@/Components/SpreadsheetGrid';
 import {
     PRECIF_LINHA_VAZIA,
+    CAMPOS_PRECIFICACAO,
     mesclarPrecificacaoComPlanilha,
     criarTesteDaPlanilha,
+    agruparFamilias,
+    rotuloVariacao,
+    contarVariacoes,
+    familiaUniforme,
+    aplicarNaFamilia,
+    replicarPrecificacao,
 } from '@/lib/precificacaoProdutos';
 
 // ─── CustomSelect — dropdown cross-browser sem seta dupla ────────────────────
@@ -499,7 +506,7 @@ function TabelaProdutos({ produtos, onSave }) {
                                     onSel={() => setSelIdx(c.idx)} onDel={() => delProduto(c.idx)} />
                             ) : (
                                 <ChipProduto key={`g${ci}`} nome={rows[c.idxs[0]].produto || `Produto ${c.idxs[0] + 1}`}
-                                    sub={`${c.idxs.length} ${(rows[c.idxs[0]].variacao_tipo || 'variação').toLowerCase()}${c.idxs.length > 1 ? 's' : ''}`}
+                                    sub={contarVariacoes(c.idxs.length, rows[c.idxs[0]].variacao_tipo)}
                                     faltam={c.idxs.reduce((t, i) => t + faltamCampos(rows[i]).length, 0)}
                                     ativo={c.idxs.includes(selIdx)}
                                     onSel={() => setSelIdx(c.idxs[0])} onDel={() => delGrupo(c.chave)} />
@@ -695,6 +702,85 @@ function CampoValor({ label, dica, valor, onChange, prefixo = 'R$', invalido = f
 }
 
 /**
+ * CardFamilia — um card por FAMÍLIA de produto no catálogo do Simulador.
+ *
+ * O cliente de 6 produtos em 8 cores tem 48 linhas na planilha. Listadas planas,
+ * elas repetiam o mesmo nome 8 vezes, mostravam o mesmo preço 8 vezes e
+ * empurravam o formulário para fora da tela. Aqui a família ocupa um card só,
+ * que abre nas variações quando o cliente precisa de uma em particular.
+ */
+function CardFamilia({ familia, ativo, aberta, onToggle, onSelVar, onDel, selIdx }) {
+    const { itens, precoMin, precoMax, pendentes } = familia;
+    const varias = itens.length > 1;
+    const nome   = familia.nome || itens[0]?.p?.sku || `Produto ${itens[0]?.i + 1}`;
+
+    // Faixa em vez de valor único quando as variações divergem: é o sinal de que
+    // uma delas está com custo/frete diferente do resto — antes isso passava batido.
+    const faixa = precoMin === null ? 'sem preço'
+        : (precoMax - precoMin > 0.005 ? `${fmt(precoMin)} – ${fmt(precoMax)}` : fmt(precoMin));
+
+    return (
+        <div className={cn('rounded-xl border transition',
+            ativo ? 'border-ecf-yellow/50 bg-ecf-yellow/[0.08]' : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05]')}>
+            <div className="group flex items-start gap-1.5 pl-2.5 pr-1.5 py-2 cursor-pointer"
+                onClick={() => (varias ? onToggle() : onSelVar(itens[0].i))}>
+                {varias && (
+                    <ChevronRight size={13} className={cn('mt-0.5 shrink-0 text-white/35 transition-transform', aberta && 'rotate-90')} />
+                )}
+                <div className="min-w-0 flex-1">
+                    <p className="text-white/90 text-[13px] font-medium truncate">{nome}</p>
+                    <p className="text-white/40 text-[11px] truncate">
+                        {faixa}
+                        {varias && <span className="text-white/30"> · {contarVariacoes(itens.length, familia.eixo)}</span>}
+                        {!varias && itens[0].p.sku ? <span className="text-white/30"> · {itens[0].p.sku}</span> : null}
+                    </p>
+                </div>
+                {pendentes > 0 && (
+                    <span title={`${pendentes} sem custo ou sem frete`}
+                        className="mt-0.5 shrink-0 inline-flex items-center gap-1 rounded-md bg-red-500/15 px-1.5 py-0.5 text-red-300 text-[10px] font-semibold">
+                        <AlertCircle size={10} />{varias ? pendentes : ''}
+                    </span>
+                )}
+                {!varias && (
+                    <button type="button" title="Excluir produto"
+                        onClick={e => { e.stopPropagation(); onDel(itens[0].i); }}
+                        className="mt-0.5 shrink-0 text-white/25 hover:text-red-400 opacity-0 group-hover:opacity-100 transition">
+                        <X size={13} />
+                    </button>
+                )}
+            </div>
+
+            {/* Aberta: só o que difere de uma variação para a outra. */}
+            {varias && aberta && (
+                <div className="flex flex-wrap gap-1 border-t border-white/[0.06] px-2 py-2">
+                    {itens.map(it => (
+                        // Wrapper: o × é IRMÃO do chip, não filho — botão dentro de botão é HTML inválido.
+                        <div key={it.i}
+                            className={cn('group/var inline-flex items-center rounded-md transition max-w-full',
+                                it.i === selIdx ? 'bg-ecf-yellow text-black' : 'bg-white/[0.05] text-white/60 hover:bg-white/[0.1]')}>
+                            <button type="button" onClick={() => onSelVar(it.i)}
+                                title={it.p.sku ? `${it.p.sku} · ${it.preco ? fmt(it.preco) : 'sem preço'}` : undefined}
+                                className="inline-flex items-center gap-1 pl-1.5 py-1 text-[11px] font-medium min-w-0">
+                                <span className="truncate">{it.rotulo}</span>
+                                {(it.semFrete || it.semCusto) && (
+                                    <AlertCircle size={10} className={cn('shrink-0', it.i === selIdx ? 'text-red-700' : 'text-red-400')} />
+                                )}
+                            </button>
+                            <button type="button" title="Excluir esta variação"
+                                onClick={() => onDel(it.i)}
+                                className={cn('pl-1 pr-1.5 py-1 opacity-0 group-hover/var:opacity-100 transition',
+                                    it.i === selIdx ? 'text-black/40 hover:text-red-700' : 'text-white/25 hover:text-red-400')}>
+                                <X size={11} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
  * SimuladorPreco — modo guiado (1 produto por vez) da precificação.
  * Reaproveita a mesma lógica (calcPreco) e persistência (onEditProduto/cfg),
  * mas apresenta de forma humana: entrada simples + resultado em destaque +
@@ -702,11 +788,19 @@ function CampoValor({ label, dica, valor, onChange, prefixo = 'R$', invalido = f
  */
 // Simulador recebe modoImposto, impostoEfetivo, mcEfetivo e llEfetivo para calcular por produto
 // (modo individual) ou com os valores globais do tier (modo massa — comportamento original).
-function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving, tabelaFreteUrl, modoImposto, impostoEfetivo, mcEfetivo, llEfetivo, vemDaPlanilha }) {
+function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, onEditFamilia, onReplicarFamilia, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving, tabelaFreteUrl, modoImposto, impostoEfetivo, mcEfetivo, llEfetivo, vemDaPlanilha }) {
     // Parâmetros avançados já vêm EXPOSTOS por padrão (sem exigir clique) para
     // aumentar a chance de o cliente conferir/preencher. O toggle segue disponível
     // para recolher quem quiser.
     const [avancado, setAvancado] = useState(true);
+
+    // Catálogo: busca, filtro de pendência e a família aberta.
+    // Acordeão (uma por vez) e não multi-aberta: o formulário abaixo mostra UM produto,
+    // então duas famílias abertas não servem a nada e cortavam a fileira de chips da
+    // segunda contra o teto do container.
+    const [busca, setBusca]     = useState('');
+    const [soPend, setSoPend]   = useState(false);
+    const [aberta, setAberta]   = useState('');
 
     const row        = produtos[selIdx] ?? { custo: '', frete_classico: '', frete_premium: '' };
     // Produto que veio da Planilha de Produtos: SKU e nome são só reflexo dela.
@@ -740,12 +834,92 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
     const cfgTier = cfg[tier];
     const corTier = tier === 'classico' ? 'text-blue-300' : 'text-violet-300';
 
+    // ── Famílias do catálogo ────────────────────────────────────────────────
+    // O agrupamento é lógica pura (lib/precificacaoProdutos.js); aqui entram só
+    // os números que dependem do tier aberto — preço, faixa e pendências.
+    const familias = useMemo(() => agruparFamilias(produtos).map(f => {
+        const itens = f.idxs.map(i => {
+            const p = produtos[i];
+            const fr = parseFloat(p[freteCampo] || 0) || 0;
+            return {
+                i, p,
+                preco:    calcPreco(p.custo, fr, t.comissao, impostoEfetivo(p, t.imposto), mcEfetivo(p), llEfetivo(p)),
+                semFrete: fr <= 0,
+                semCusto: !(parseFloat(p.custo || 0) > 0),
+                rotulo:   rotuloVariacao(p, i),
+            };
+        });
+        const precos = itens.map(x => x.preco).filter(x => x !== null && !isNaN(x));
+        return {
+            ...f, itens,
+            precoMin:  precos.length ? Math.min(...precos) : null,
+            precoMax:  precos.length ? Math.max(...precos) : null,
+            pendentes: itens.filter(x => x.semFrete || x.semCusto).length,
+        };
+    }), [produtos, freteCampo, t.comissao, t.imposto, impostoEfetivo, mcEfetivo, llEfetivo]);
+
+    const familiaDoSel = familias.find(f => f.idxs.includes(selIdx)) ?? null;
+    const totalPend    = familias.reduce((s, f) => s + f.pendentes, 0);
+
+    const familiasVisiveis = useMemo(() => {
+        const q = busca.trim().toLowerCase();
+        return familias.filter(f => {
+            if (soPend && f.pendentes === 0) return false;
+            if (!q) return true;
+            // Busca pelo nome da família ou por qualquer SKU/variação dentro dela.
+            return f.nome.toLowerCase().includes(q)
+                || f.itens.some(it => `${it.p.sku ?? ''} ${it.rotulo}`.toLowerCase().includes(q));
+        });
+    }, [familias, busca, soPend]);
+
+    // ── Modo de edição da família ───────────────────────────────────────────
+    // O padrão é SEMPRE massa: preencher as 8 de uma vez é o motivo de a família
+    // existir, e abrir em individual obrigava um clique extra no caso comum.
+    //
+    // O risco de abrir em massa numa família que já tem números diferentes não
+    // desaparece — o primeiro dígito iguala as 8 e não há desfazer. Ele deixa de
+    // ser silencioso: `familiaDivergente` avisa dentro do bloco, antes de digitar.
+    const idxsFamilia   = familiaDoSel?.idxs ?? [];
+    const familiaVarias = idxsFamilia.length > 1;
+    const [modoEdicao, setModoEdicao] = useState('familia');
+    const chaveFamilia = familiaDoSel?.chave ?? '';
+    useEffect(() => {
+        if (!familiaVarias) return;
+        setModoEdicao('familia');
+        // Reavalia ao TROCAR de família — dentro da mesma, a escolha do cliente
+        // manda, senão trocar de variação para ajustar uma só voltaria para massa
+        // e o dígito seguinte pegaria as 8.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chaveFamilia, familiaVarias]);
+
+    const familiaDivergente = familiaVarias && !familiaUniforme(produtos, idxsFamilia);
+
+    // Trocar de produto abre a família dele — quem clica numa variação precisa ver onde
+    // está. `aberta` segue sendo a única fonte da verdade, para o toggle poder fechar.
+    useEffect(() => {
+        if (chaveFamilia && familiaVarias) setAberta(chaveFamilia);
+    }, [chaveFamilia, familiaVarias]);
+
+    const emMassa = familiaVarias && modoEdicao === 'familia';
+
+    /** Roteia a edição: números vão para a família toda em modo massa; o resto é sempre individual. */
+    const editar = (campo, valor) => {
+        if (emMassa && CAMPOS_PRECIFICACAO.includes(campo)) onEditFamilia(idxsFamilia, campo, valor);
+        else onEditProduto(campo, valor);
+    };
+
     return (
         <div className="mx-auto max-w-5xl space-y-5">
             {/* Catálogo de produtos (chips) + adicionar + tier + status de salvo */}
             <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                    <p className="text-white/40 text-[11px] uppercase tracking-wider">Meus produtos ({produtos.length})</p>
+                    {/* Contagem por família: "48 produtos" escondia que são 6 produtos em 8 cores. */}
+                    <p className="text-white/40 text-[11px] uppercase tracking-wider">
+                        Meus produtos ({produtos.length})
+                        {familias.length !== produtos.length && (
+                            <span className="text-white/25"> · {familias.length} {familias.length === 1 ? 'família' : 'famílias'}</span>
+                        )}
+                    </p>
                     <div className="flex items-center gap-3">
                         <span className="text-[11px] text-white/35 inline-flex items-center gap-1.5">
                             <span className={cn('h-1.5 w-1.5 rounded-full', saving ? 'bg-ecf-yellow animate-pulse' : 'bg-green-400')} />
@@ -762,30 +936,55 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                         </div>
                     </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    {produtos.map((p, i) => {
-                        const f  = parseFloat(p[freteCampo] || 0) || 0;
-                        // Chips do catálogo: usa imposto/MC/LL efetivos do produto (individual) ou globais (massa)
-                        const pr = calcPreco(p.custo, f, t.comissao, impostoEfetivo(p, t.imposto), mcEfetivo(p), llEfetivo(p));
-                        const ativo = i === selIdx;
-                        return (
-                            <div key={i} onClick={() => setSelIdx(i)}
-                                className={cn('group relative rounded-xl border pl-3 pr-7 py-2 transition cursor-pointer',
-                                    ativo ? 'border-ecf-yellow/50 bg-ecf-yellow/[0.08]' : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05]')}>
-                                <p className="text-white/90 text-[13px] font-medium truncate max-w-[170px]">{p.descricao || p.sku || `Produto ${i + 1}`}</p>
-                                <p className="text-white/40 text-[11px]">{pr ? fmt(pr) : 'sem preço'}{p.sku ? ` · ${p.sku}` : ''}</p>
-                                <button type="button" title="Excluir produto"
-                                    onClick={e => { e.stopPropagation(); onDeleteProduto(i); }}
-                                    className="absolute top-1.5 right-1.5 text-white/25 hover:text-red-400 opacity-0 group-hover:opacity-100 transition">
-                                    <X size={13} />
+                {/* Busca + filtro de pendência: com 48 SKUs, rolar e caçar deixa de ser opção. */}
+                {produtos.length > 6 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center rounded-xl bg-white/[0.04] border border-white/[0.1] focus-within:border-ecf-yellow/40 transition-colors">
+                            <Search size={13} className="ml-2.5 text-white/30 shrink-0" />
+                            <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar produto ou SKU…"
+                                className="w-56 h-8 px-2 bg-transparent border-0 text-white text-[12px] focus:outline-none focus:ring-0 placeholder:text-white/25" />
+                            {busca && (
+                                <button type="button" onClick={() => setBusca('')} className="pr-2 text-white/30 hover:text-white/70 transition">
+                                    <X size={12} />
                                 </button>
-                            </div>
-                        );
-                    })}
-                    <button type="button" onClick={onAddProduto}
-                        className="rounded-xl border border-dashed border-white/[0.15] px-4 py-2 text-white/50 hover:text-white hover:border-white/30 text-[13px] font-medium transition self-stretch">
-                        + Adicionar produto
-                    </button>
+                            )}
+                        </div>
+                        {totalPend > 0 && (
+                            <button type="button" onClick={() => setSoPend(v => !v)}
+                                className={cn('inline-flex items-center gap-1.5 rounded-xl border px-3 h-8 text-[12px] font-medium transition',
+                                    soPend
+                                        ? 'border-red-500/50 bg-red-500/[0.12] text-red-300'
+                                        : 'border-white/[0.1] bg-white/[0.04] text-white/50 hover:text-white/80')}>
+                                <AlertCircle size={12} />
+                                {totalPend} sem custo ou frete
+                            </button>
+                        )}
+                    </div>
+                )}
+
+                {/* Grade de famílias. Altura travada: o catálogo não empurra mais o preço
+                    para fora da tela, por muitos produtos que o cliente tenha. */}
+                <div className="max-h-[320px] overflow-y-auto pr-1 -mr-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 items-start">
+                        {familiasVisiveis.map(f => (
+                            <CardFamilia key={f.chave} familia={f} selIdx={selIdx}
+                                ativo={f.idxs.includes(selIdx)}
+                                aberta={aberta === f.chave}
+                                onToggle={() => {
+                                    // Abrir a família também a seleciona: o formulário nunca fica órfão do clique.
+                                    if (!f.idxs.includes(selIdx)) setSelIdx(f.idxs[0]);
+                                    setAberta(prev => prev === f.chave ? '' : f.chave);
+                                }}
+                                onSelVar={setSelIdx} onDel={onDeleteProduto} />
+                        ))}
+                        {familiasVisiveis.length === 0 && (
+                            <p className="text-white/35 text-[12px] py-2">Nenhum produto encontrado com esse filtro.</p>
+                        )}
+                        <button type="button" onClick={onAddProduto}
+                            className="rounded-xl border border-dashed border-white/[0.15] px-4 py-2 text-white/50 hover:text-white hover:border-white/30 text-[13px] font-medium transition">
+                            + Adicionar produto
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -820,9 +1019,57 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                         </p>
                     )}
 
+                    {/* ── Alvo da edição: a família toda ou só esta variação ──
+                        Vale para custo, frete e os parâmetros avançados. SKU e descrição
+                        ficam sempre individuais — são a identidade da variação. */}
+                    {familiaVarias && (
+                        <div className={cn('rounded-xl border p-3',
+                            emMassa ? 'border-ecf-yellow/25 bg-ecf-yellow/[0.05]' : 'border-white/[0.08] bg-white/[0.02]')}>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-white/40 text-[11px] uppercase tracking-wider">Estes números valem para</span>
+                                <div className="inline-flex rounded-lg bg-white/[0.04] border border-white/[0.08] p-0.5">
+                                    {[
+                                        { k: 'familia',    l: `Todas as ${idxsFamilia.length}` },
+                                        { k: 'individual', l: 'Só esta' },
+                                    ].map(({ k, l }) => (
+                                        <button key={k} type="button" onClick={() => setModoEdicao(k)}
+                                            className={cn('px-3 py-1 rounded-md text-[12px] font-semibold transition',
+                                                modoEdicao === k ? 'bg-ecf-yellow text-black' : 'text-white/50 hover:text-white/80')}>
+                                            {l}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <p className="text-white/35 text-[11px] mt-1.5">
+                                {emMassa
+                                    ? <>Digite uma vez e vale para as {idxsFamilia.length} variações de <span className="text-white/60">{familiaDoSel.nome || 'produto'}</span>.</>
+                                    : <>Só <span className="text-white/60">{rotuloVariacao(row, selIdx)}</span> muda. As outras {idxsFamilia.length - 1} ficam como estão.</>}
+                            </p>
+                            {/* Massa numa família que já divergiu: o aviso troca a perda silenciosa
+                                por uma escolha informada — não bloqueia, mas o custo fica à vista. */}
+                            {emMassa && familiaDivergente && (
+                                <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-500/[0.08] border border-amber-500/20 px-2.5 py-1.5 text-amber-300 text-[11px]">
+                                    <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                                    <span>
+                                        Estas {idxsFamilia.length} variações têm números <span className="font-semibold">diferentes</span> hoje.
+                                        O que você digitar aqui iguala todas — use <span className="font-semibold">Só esta</span> se quiser preservar a diferença.
+                                    </span>
+                                </p>
+                            )}
+                            {/* Escape do individual: preencheu uma e quer igualar o resto. */}
+                            {!emMassa && (
+                                <button type="button" onClick={() => onReplicarFamilia(idxsFamilia, selIdx)}
+                                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.12] bg-white/[0.04] px-2.5 py-1 text-white/60 hover:text-white hover:border-white/25 text-[11px] font-medium transition">
+                                    <Copy size={11} />
+                                    Copiar estes números para as {idxsFamilia.length - 1} outras
+                                </button>
+                            )}
+                        </div>
+                    )}
+
                     <p className="text-white/40 text-[11px] uppercase tracking-wider pt-1">Quanto você gasta</p>
                     <CampoValor label="Custo do produto" dica="Quanto você paga no produto (sem frete)."
-                        valor={row.custo ?? ''} onChange={v => onEditProduto('custo', v)} />
+                        valor={row.custo ?? ''} onChange={v => editar('custo', v)} />
                     {/* Wrapper do campo Frete: link "Tabela de Frete" ao lado do label + campo piscando vermelho enquanto o frete não for preenchido */}
                     <div>
                         {tabelaFreteUrl && (
@@ -846,7 +1093,7 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                             label={tabelaFreteUrl ? '' : `Frete (${tier === 'classico' ? 'Clássico' : 'Premium'})`}
                             dica="Quanto custa enviar este produto."
                             valor={row[freteCampo] ?? ''}
-                            onChange={v => onEditProduto(freteCampo, v)}
+                            onChange={v => editar(freteCampo, v)}
                             invalido={freteN <= 0}
                         />
                         {/* Aviso textual de reforço — aparece junto com o campo piscando enquanto o frete não for preenchido */}
@@ -888,7 +1135,7 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                                         <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Imposto deste produto %</label>
                                         <input type="number" step="0.01" min="0"
                                             value={row.imposto_individual ?? ''}
-                                            onChange={e => onEditProduto('imposto_individual', e.target.value)}
+                                            onChange={e => editar('imposto_individual', e.target.value)}
                                             className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
                                     </div>
                                 )}
@@ -901,7 +1148,7 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                                     <input type="number" step="0.01" min="0"
                                         value={row.mc_individual ?? ''}
                                         placeholder={String(cfg.margem_contribuicao ?? '')}
-                                        onChange={e => onEditProduto('mc_individual', e.target.value)}
+                                        onChange={e => editar('mc_individual', e.target.value)}
                                         className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
                                 </div>
                                 {/* Lucro Líquido: SEMPRE por produto (vazio = herda o padrão global, configurável no painel do Lote) */}
@@ -910,7 +1157,7 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                                     <input type="number" step="0.01" min="0"
                                         value={row.ll_individual ?? ''}
                                         placeholder={String(cfg.lucro_liquido ?? '')}
-                                        onChange={e => onEditProduto('ll_individual', e.target.value)}
+                                        onChange={e => editar('ll_individual', e.target.value)}
                                         className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
                                 </div>
                                 {/* Acréscimo: sempre global nos dois modos */}
@@ -1134,6 +1381,20 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
         handleChange(novo);
     }
 
+    // Escreve o MESMO valor em todas as variações da família (8 cores do mesmo custo).
+    // Só os campos numéricos passam por aqui — SKU e descrição são identidade da
+    // variação e continuam individuais, senão a edição em massa apagaria os códigos.
+    function editFamilia(idxs, campo, valor) {
+        if (!CAMPOS_PRECIFICACAO.includes(campo)) return editProduto(campo, valor);
+        handleChange(aplicarNaFamilia(rows.length > 0 ? rows : [{ ...emptyRow }], idxs, campo, valor));
+    }
+
+    // Iguala a família ao produto aberto — o "replicar" de quem preencheu individual
+    // e só depois percebeu que as outras variações são iguais.
+    function replicarFamilia(idxs, origemIdx) {
+        handleChange(replicarPrecificacao(rows, idxs, origemIdx));
+    }
+
     // Adiciona um novo produto e o seleciona. O novo produto "chega" com a MESMA precificação
     // (imposto/MC/LL) do produto atualmente selecionado, como ponto de partida — assim você não
     // re-digita os alvos. Custo, frete, SKU e descrição ficam em branco (dados físicos do novo
@@ -1321,6 +1582,7 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
                         tier={tier} setTier={setTier}
                         cc={cc} cp={cp} acrNum={acrNum} mcNum={mcNum} llNum={llNum}
                         onEditProduto={editProduto} onAddProduto={addProduto} onDeleteProduto={delProduto}
+                        onEditFamilia={editFamilia} onReplicarFamilia={replicarFamilia}
                         cfg={cfg} updateCfg={updateCfg} updateMC={updateMC} updateLL={updateLL} updateAcrescimo={updateAcrescimo}
                         saving={saving}
                         tabelaFreteUrl={tabelaFreteUrl}

@@ -1,0 +1,68 @@
+.................[41;37mF[0m...................................             53 / 53 (100%)
+[4mComercial Controller Helper (Tests\Unit\ComercialControllerHelper)[0m
+[32m ✔ [0mPolos dispara implementacao polos
+[32m ✔ [0mPolos sp dispara implementacao polos
+[32m ✔ [0mAssessoria dispara implementacao assessoria
+[32m ✔ [0mIncubadora dispara implementacao incubadora
+[32m ✔ [0mPublicidade retorna null
+[32m ✔ [0mGestao retorna null
+[32m ✔ [0mTreinamento arbitrario retorna null
+[32m ✔ [0mPolos lowercase retorna null por case sensitive
+[32m ✔ [0mPublicacao retorna null
+[4mPhase124Regressao Comercial (Tests\Feature\Phase124RegressaoComercial)[0m
+[32m ✔ [0mComercial polos grava gmail colaborador em links admin
+[32m ✔ [0mComercial polos sem gmail colaborador mantem o padrao
+[32m ✔ [0mComercial incubadora cria mlb empresa sem implementacao
+[32m ✔ [0mComercial dois tipos no mesmo request cria duas mlb empresa hoje
+[32m ✔ [0mRoteamento do comercial com interruptor desligado permanece igual
+[4mPhase124Regressao Hubspot (Tests\Feature\Phase124RegressaoHubspot)[0m
+[32m ✔ [0mHubspot incubadora cria mlb empresa sem implementacao
+[32m ✔ [0mHubspot polos nao preenche gmail colaborador
+[32m ✔ [0mHubspot empresa que ja tem ficha nao ganha segunda
+[32m ✔ [0mReprocess event em empresa com ficha nao duplica nem recria
+[4mPhase14Comercial (Tests\Feature\Phase14Comercial)[0m
+[32m ✔ [0mCadastra empresa polos cria mlb implementacao
+[32m ✔ [0mCadastra empresa assessoria cria mlb sem implementacao
+[32m ✔ [0mCadastra empresa publicidade nao cria mlb
+[32m ✔ [0mCadastra empresa com multiplos servicos cria contratos e mlb apropriado
+[32m ✔ [0mCadastro sem servicos falha validation
+[32m ✔ [0mCadastro com servico inativo falha validation
+[32m ✔ [0mCadastro aciona notificacao para lideres do setor
+[31m ✘ [0mUpdate ignora campos legacy
+   [31m┐[0m
+   [31m├[0m [41;37mservice_type legacy deve manter o valor anterior[0m
+   [31m├[0m [41;37mnull does not match expected type "array".      [0m
+   [31m│[0m
+   [31m│[0m C:[2m\[22mxampp[2m\[22mhtdocs[2m\[22mecf_admin[2m\[22mecf_admin[2m\[22mtests[2m\[22mFeature[2m\[22mPhase14ComercialTest.php[2m:[22m[34m322[0m
+   [31m┴[0m
+[4mPhase35Hubspot V2 (Tests\Feature\Phase35HubspotV2)[0m
+[32m ✔ [0mPolos cria mlb empresa e implementacao
+[32m ✔ [0mAssessoria cria mlb empresa
+[32m ✔ [0mPublicidade nao cria mlb empresa
+[32m ✔ [0mContato email fallback quando company email vazio
+[32m ✔ [0mContato telefone fallback quando company phone vazio
+[32m ✔ [0mSem contato associado fluxo completa sem erro
+[32m ✔ [0mNome contato vai para coluna estruturada e nao para notes
+[32m ✔ [0mNotes digitado por humano sobrevive ao webhook
+[32m ✔ [0mServico nao encontrado vai para payload do evento
+[32m ✔ [0mReplay que resolve pendencia limpa a chave do payload
+[4mPhase37Comercial Listagem (Tests\Feature\Phase37ComercialListagem)[0m
+[32m ✔ [0mAcesso 403 sem permissao
+[32m ✔ [0mAdmin acessa sem setor permissao
+[32m ✔ [0mLista todas empresas active sem filtros
+[32m ✔ [0mFiltro servico aplicado
+[32m ✔ [0mFiltro setor performance
+[32m ✔ [0mOrdem recentes vs antigas
+[32m ✔ [0mBusca q match name ou cnpj
+[32m ✔ [0mFiltros empilhaveis query string preservada
+[32m ✔ [0mEmpresa origem hubspot gera pendencia sem servico
+[32m ✔ [0mEmpresa legacy NAO gera pendencias REQ 37 10
+[32m ✔ [0mPendencia servico nao reconhecido
+[32m ✔ [0mPendencia sem setor
+[32m ✔ [0mPendencia dados close incompletos nao existe mais
+[32m ✔ [0mPendencia sem valor
+[32m ✔ [0mPendencia counts corresponde a lista completa
+[32m ✔ [0mFiltro pendencia aplicado
+[32m ✔ [0mServico counts exporta setor
+[37;41mFAILURES![0m
+[37;41mTests: 53[0m[37;41m, Assertions: 197[0m[37;41m, Failures: 1[0m[37;41m.[0m

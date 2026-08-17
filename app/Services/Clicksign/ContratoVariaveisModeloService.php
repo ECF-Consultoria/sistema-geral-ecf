@@ -1,0 +1,158 @@
+<?php
+
+namespace App\Services\Clicksign;
+
+use App\Models\ContratoAssinatura;
+use App\Services\ContratoPdfService;
+use Carbon\Carbon;
+
+/**
+ * ContratoVariaveisModeloService — Fase 126, Plano 126-09 (PDF-01).
+ *
+ * A ponte entre o que `ContratoPdfService::montarDados()` sabe sobre um
+ * contrato (array ANINHADO) e o que `ClicksignClient::anexarDocumentoPorModelo()`
+ * exige em `template.data` (hash PLANO, `{{chave}}` do `.docx`). Decisões
+ * D-16/D-18/D-19 (`126-CONTEXT.md`), lista fechada em
+ * `126-VARIAVEIS-DO-MODELO.md` §4 ("Lista final").
+ *
+ * **O mapa é explícito, uma chave por linha — não um achatamento genérico.**
+ * Achatar automaticamente amarraria o nome de cada `{{variável}}` do `.docx`
+ * à estrutura interna de `montarDados()`: quem renomear uma chave lá faria a
+ * variável sumir do contrato assinado SEM erro nenhum da API — é o modo de
+ * falha silencioso desta integração (T-126-38), mitigado só pelo comando de
+ * sondagem do plano 126-10, que confronta `nomes()` com os `{{nomes}}` reais
+ * do `.docx`. Mudar um nome aqui sem mudar o `.docx` tem o mesmo efeito.
+ *
+ * D-19 (opção B — servicos concatenados numa variável só, um envelope por
+ * empresa): `servico_contratado` concatena TODOS os serviços do snapshot.
+ * Não é um serviço por índice, não é tabela em loop (opção D, recusada e
+ * NÃO MEDIDA — ver `126-VARIAVEIS-DO-MODELO.md` §4.3).
+ *
+ * Puro por decisão (T-126-40): não consulta `ContratoServico`, `Http`,
+ * `Storage`, `Log` nem `Cache` — mesma entrada, mesma saída, sempre. Os
+ * valores continuam vindo do `servicos_snapshot` congelado via
+ * `ContratoPdfService::montarDados()` (D-04), nunca da tabela ao vivo.
+ */
+class ContratoVariaveisModeloService
+{
+    public function __construct(private ContratoPdfService $dados)
+    {
+    }
+
+    /**
+     * Traduz o contrato no hash plano que vai direto em `template.data` de
+     * `anexarDocumentoPorModelo()`.
+     *
+     * @param  array{dia_vencimento?: string, forma_pagamento?: string, endereco?: string}  $complementos
+     * @return array{variaveis: array<string, string>, campos_pendentes: array<int, string>}
+     */
+    public function montar(ContratoAssinatura $contrato, array $complementos = []): array
+    {
+        $dados = $this->dados->montarDados($contrato, $complementos);
+
+        $variaveis = [];
+
+        foreach (self::mapa() as $nome => $extrator) {
+            $variaveis[$nome] = (string) $extrator($dados, $this);
+        }
+
+        return [
+            'variaveis'        => $variaveis,
+            // Repassada fielmente — a ponte não esconde nem inventa pendência,
+            // só traduz o que montarDados() já apurou (D-05 herdado).
+            'campos_pendentes' => $dados['campos_pendentes'],
+        ];
+    }
+
+    /**
+     * Os nomes das variáveis que `montar()` emite — sem precisar montar um
+     * contrato de verdade. Derivado do mesmo `mapa()` que `montar()` usa:
+     * não existe uma segunda lista de nomes mantida à mão neste arquivo.
+     *
+     * Consumido pelo comando de sondagem do plano 126-10, que confronta esta
+     * lista com os `{{nomes}}` reais do `.docx` cadastrado na Clicksign.
+     *
+     * @return array<int, string>
+     */
+    public static function nomes(): array
+    {
+        return array_keys(self::mapa());
+    }
+
+    /**
+     * O mapa único: nome da variável → closure que extrai o valor do array
+     * de `montarDados()`. Fonte única para `montar()` (que executa as
+     * closures) e `nomes()` (que só lê as chaves, sem precisar de um array
+     * `$dados` de verdade).
+     *
+     * A ordem aqui segue `126-VARIAVEIS-DO-MODELO.md` §4.1.
+     *
+     * @return array<string, \Closure(array, self): mixed>
+     */
+    private static function mapa(): array
+    {
+        return [
+            'razao_social'          => fn (array $d) => $d['empresa']['razao_social'],
+            'cnpj'                  => fn (array $d) => $d['empresa']['cnpj'],
+            'endereco'              => fn (array $d) => $d['empresa']['endereco'],
+            'servico_contratado'    => fn (array $d, self $self) => $self->concatenarServicos($d['servicos']),
+            'valor_mensal'          => fn (array $d) => $d['totais']['valor_mensal_formatado'],
+            'vigencia_inicio'       => fn (array $d) => $d['vigencia']['inicio'],
+            'vigencia_fim'          => fn (array $d) => $d['vigencia']['fim'],
+            // Não existe em montarDados() hoje — território da Fase 131
+            // (ADM-01). Sempre A DEFINIR até lá (126-VARIAVEIS-DO-MODELO.md §4.1).
+            'data_primeira_parcela' => fn () => ContratoPdfService::PLACEHOLDER,
+            'dia_vencimento'        => fn (array $d) => $d['pagamento']['dia_vencimento'],
+            'data_assinatura'       => fn (array $d, self $self) => $self->dataPorExtenso($d['gerado_em']),
+        ];
+    }
+
+    /**
+     * D-19 (opção B): concatena os nomes de todos os serviços do snapshot
+     * numa string única. Um serviço só devolve o próprio nome; dois ou mais
+     * são unidos por vírgula, com " e " antes do último — não é tabela em
+     * loop, não é índice fixo.
+     *
+     * @param  array<int, array{servico: string}>  $servicos
+     */
+    private function concatenarServicos(array $servicos): string
+    {
+        $nomes = array_map(fn (array $servico) => $servico['servico'], $servicos);
+
+        if (count($nomes) <= 1) {
+            return $nomes[0] ?? ContratoPdfService::PLACEHOLDER;
+        }
+
+        $ultimo = array_pop($nomes);
+
+        return implode(', ', $nomes) . ' e ' . $ultimo;
+    }
+
+    /**
+     * `data_assinatura` por extenso em pt-BR, derivada de `gerado_em`
+     * (`d/m/Y H:i`) — nunca uma segunda leitura de `now()`. Nome de mês por
+     * helper privado nesta própria classe, mesmo precedente de
+     * `RelatorioMensalPdfService::mesLabelPt()` — sem criar helper global novo.
+     */
+    private function dataPorExtenso(string $geradoEm): string
+    {
+        $data = Carbon::createFromFormat('d/m/Y H:i', $geradoEm);
+
+        return "{$data->day} de {$this->mesPorExtenso($data->month)} de {$data->year}";
+    }
+
+    /**
+     * Nome do mês por extenso, minúsculo, pt-BR — precedente:
+     * `RelatorioMensalPdfService::mesLabelPt()`.
+     */
+    private function mesPorExtenso(int $mes): string
+    {
+        $meses = [
+            1 => 'janeiro', 2 => 'fevereiro', 3 => 'março', 4 => 'abril',
+            5 => 'maio', 6 => 'junho', 7 => 'julho', 8 => 'agosto',
+            9 => 'setembro', 10 => 'outubro', 11 => 'novembro', 12 => 'dezembro',
+        ];
+
+        return $meses[$mes] ?? (string) $mes;
+    }
+}

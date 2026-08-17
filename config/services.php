@@ -195,4 +195,51 @@ return [
         ],
     ],
 
+    // Fase 126 Plan 126-01 (CLICK-01) — client HTTP para a API Clicksign v3
+    // (envelope/documento/signatário/requisito). ⚠️ O token vai PURO no
+    // header Authorization — gate #2 medido em CLICKSIGN-SANDBOX-EMPIRICO.md
+    // §1. NUNCA usar `Http::withToken()` no client: o helper do Laravel
+    // prefixa "Bearer" e a API devolve 401. `max_upload_bytes` é o gate #5,
+    // **NÃO MEDIDO** (o PDF de teste do sandbox tinha 1,5 KB) — fechado pelo
+    // checkpoint humano do plano 126-06; o default abaixo é conservador.
+    'clicksign' => [
+        'env'              => env('CLICKSIGN_ENV', 'sandbox'),
+        'base_url'         => env('CLICKSIGN_BASE_URL', 'https://sandbox.clicksign.com/api/v3'),
+        'access_token'     => env('CLICKSIGN_ACCESS_TOKEN'),
+        'webhook_secret'   => env('CLICKSIGN_WEBHOOK_SECRET'),
+        'api_user_email'   => env('CLICKSIGN_API_USER_EMAIL'),
+        'max_upload_bytes' => env('CLICKSIGN_MAX_UPLOAD_BYTES', 20971520),
+
+        // Fase 126 Plan 126-10 — UUID do modelo (.docx) de contrato cadastrado
+        // na conta Clicksign, lido pelo comando `clicksign:sondar-modelo` e,
+        // depois, pela Fase 127. Sandbox e produção têm UUIDs DIFERENTES —
+        // valor real só no `.env` local ou nas variáveis do servidor, nunca
+        // aqui nem no `.env.example` (mesmo não sendo segredo, um exemplo
+        // preenchido vira produção por engano).
+        'template_id'      => env('CLICKSIGN_TEMPLATE_ID'),
+
+        // Fase 126 Plan 126-02 (D-08) — os 3 signatários FIXOS da ECF que
+        // entram em todo contrato (dois sócios como "contratada" + Comercial
+        // como "testemunha"), lidos de `env()`. Nome e e-mail reais NUNCA
+        // entram aqui hardcoded nem no `.env.example` — só no `.env` local
+        // (gitignored) ou nas variáveis de ambiente do servidor.
+        'signatarios_ecf' => [
+            [
+                'nome'  => env('CLICKSIGN_SIG1_NOME', ''),
+                'email' => env('CLICKSIGN_SIG1_EMAIL', ''),
+                'papel' => 'contratada',
+            ],
+            [
+                'nome'  => env('CLICKSIGN_SIG2_NOME', ''),
+                'email' => env('CLICKSIGN_SIG2_EMAIL', ''),
+                'papel' => 'contratada',
+            ],
+            [
+                'nome'  => env('CLICKSIGN_SIG3_NOME', ''),
+                'email' => env('CLICKSIGN_SIG3_EMAIL', ''),
+                'papel' => 'testemunha',
+            ],
+        ],
+    ],
+
 ];

@@ -8,10 +8,11 @@ use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
 use App\Models\HubspotLineItemMapping;
 use App\Models\MlbEmpresa;
-use App\Models\MlbImplementacao;
 use App\Models\Servico;
 use App\Models\Setor;
 use App\Notifications\EmpresaCadastradaNotification;
+use App\Services\Comercial\PendenciasComerciaisService;
+use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -175,7 +176,7 @@ class ComercialController extends Controller
      * ao alterar 1. Backend honra o whitelist nos enums (setor/ordem/pendencia)
      * com `in_array` antes de aplicar.
      */
-    public function listagem(Request $request)
+    public function listagem(Request $request, PendenciasComerciaisService $pendencias)
     {
         abort_unless(
             auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
@@ -237,9 +238,9 @@ class ComercialController extends Controller
         // (paginação manual depois do filtro pendencia para não falsear contagens).
         $todasEmpresas = $query->get();
 
-        $todasEmpresas->each(function (Company $c) {
+        $todasEmpresas->each(function (Company $c) use ($pendencias) {
             $c->is_origem_hubspot      = (bool) ($c->hubspot_evento_origem_exists ?? false);
-            $c->pendencias_comerciais  = $this->calcularPendenciasComerciais($c);
+            $c->pendencias_comerciais  = $pendencias->calcular($c);
         });
 
         // (5) pendencia_counts ANTES do filtro pendencia (contagens absolutas)
@@ -455,129 +456,6 @@ class ComercialController extends Controller
     }
 
     /**
-     * Calcula as 5 pendencias comerciais de uma empresa (Phase 37 REQ-37-06).
-     *
-     * REQ-37-10: empresas SEM HubspotEvento::company_id_criada (legacy) sempre
-     * retornam array vazio — pendencias comerciais sao calculadas APENAS para
-     * empresas de origem HubSpot. Outros tipos de pendencia (sem_responsavel,
-     * sem_cust_id, etc.) ficam em /companies (CompanyController::index).
-     *
-     * @return array<int, string>  Lista de slugs de pendencia encontradas
-     */
-    private function calcularPendenciasComerciais(Company $c): array
-    {
-        if (!$c->is_origem_hubspot) {
-            return [];
-        }
-
-        $pendencias = [];
-        $contratosAtivos = $c->contratosServico->where('ativo', true);
-
-        // sem_servico: zero contratos ativos
-        if ($contratosAtivos->isEmpty()) {
-            $pendencias[] = 'sem_servico';
-        }
-
-        // sem_valor: tem contrato ativo COM valor_contratado=0
-        if ($contratosAtivos->isNotEmpty() && $contratosAtivos->contains(fn($ct) => (float) $ct->valor_contratado === 0.0)) {
-            $pendencias[] = 'sem_valor';
-        }
-
-        // servico_nao_reconhecido: payload de algum HubspotEvento tem line_items_nao_mapeados
-        // (gravado pelo Plan 37-04 quando line item HubSpot nao bate no mapping).
-        //
-        // Hotfix 2026-06-19 — re-valida via paraNome() em tempo de leitura. Se o
-        // admin cadastrou o mapping depois (ou o paraNome substring agora bate), o
-        // nome deixa de contar como nao-reconhecido — a pendencia some sem precisar
-        // mexer no payload historico do evento. Cache estatica por request evita
-        // re-query do mesmo nome em empresas diferentes.
-        static $matchCache = [];
-        $resolverNome = function (string $nome) use (&$matchCache): bool {
-            $key = mb_strtolower(trim($nome));
-            if ($key === '') {
-                return true;
-            }
-            if (!array_key_exists($key, $matchCache)) {
-                $matchCache[$key] = (bool) HubspotLineItemMapping::paraNome($nome);
-            }
-            return $matchCache[$key];
-        };
-
-        $temLineItemNaoResolvidoAgora = $c->hubspotEventos->contains(function ($ev) use ($resolverNome) {
-            $payload = $ev->payload ?? [];
-            $itens = $payload['line_items_nao_mapeados'] ?? [];
-            if (empty($itens)) {
-                return false;
-            }
-            foreach ($itens as $item) {
-                $nome = (string) ($item['name'] ?? '');
-                if ($nome === '') {
-                    continue;
-                }
-                // Se algum item AINDA nao bate em mapping ativo, a pendencia persiste.
-                if (!$resolverNome($nome)) {
-                    return true;
-                }
-            }
-            return false;
-        });
-        if ($temLineItemNaoResolvidoAgora) {
-            $pendencias[] = 'servico_nao_reconhecido';
-        }
-
-        // sem_setor: TODOS os contratos ativos apontam para Servico com setor='outros'
-        // (catalogo ainda nao categorizado — admin precisa ajustar). Se nao ha contrato,
-        // a pendencia 'sem_servico' ja cobre o caso.
-        if ($contratosAtivos->isNotEmpty()) {
-            $todosOutros = $contratosAtivos->every(function ($ct) {
-                $setor = optional($ct->servico)->setor;
-                return $setor === Servico::SETOR_OUTROS || $setor === null;
-            });
-            if ($todosOutros) {
-                $pendencias[] = 'sem_setor';
-            }
-        }
-
-        // Quick task 260805-eqk — a pendencia `dados_close_incompletos` foi
-        // removida: nicho/dor/faturamento_mensal nunca chegavam do HubSpot
-        // (properties inexistentes) e as colunas deixaram de existir.
-
-        // ── Phase 114 (HUB-UI-02) — 3 pendencias novas, aditivas, SO para
-        // origem HubSpot (guarda no topo do metodo ja cobre o isolamento).
-
-        // sem_contato: contato principal nao foi resolvido no handoff (Fase 113).
-        if ($c->nome_contato === null || $c->nome_contato === '') {
-            $pendencias[] = 'sem_contato';
-        }
-
-        // valor_revisar: algum contrato ativo tem inferencia de valor insegura
-        // (confidence 'low') OU um warning explicito (ex.: amount indecidivel).
-        $temValorParaRevisar = $contratosAtivos->contains(
-            fn($ct) => $ct->hubspot_valor_confidence === 'low' || $ct->hubspot_valor_warning !== null
-        );
-        if ($temValorParaRevisar) {
-            $pendencias[] = 'valor_revisar';
-        }
-
-        // possivel_duplicidade: o dedup fraco (Fase 113) marcou candidata por
-        // nome — checa primeiro o snapshot da empresa (sempre reescrito no
-        // ultimo evento), com fallback no payload do(s) HubspotEvento eager-loaded
-        // (sem query nova — mesma colecao usada em servico_nao_reconhecido).
-        $warningsSnapshot = $c->hubspot_snapshot['warnings'] ?? [];
-        $temDuplicidadeSnapshot = collect($warningsSnapshot)->contains(
-            fn($w) => ($w['tipo'] ?? null) === 'possivel_duplicidade'
-        );
-        $temDuplicidadeEvento = $c->hubspotEventos->contains(
-            fn($ev) => isset(($ev->payload ?? [])['possivel_duplicidade'])
-        );
-        if ($temDuplicidadeSnapshot || $temDuplicidadeEvento) {
-            $pendencias[] = 'possivel_duplicidade';
-        }
-
-        return $pendencias;
-    }
-
-    /**
      * Processa o cadastro centralizado de uma nova empresa.
      *
      * Fluxo (Phase 14 Plan 14-04):
@@ -641,6 +519,7 @@ class ComercialController extends Controller
         $servicosCriados = collect();
 
         DB::transaction(function () use ($validated, &$company, &$servicosCriados) {
+            $router = app(EmpresaOperacionalRouter::class);
             // (a) Cria company com status pendente
             $company = Company::create([
                 'name'                => $validated['nome'],
@@ -680,39 +559,13 @@ class ComercialController extends Controller
                 $servicosCriados->push($servico);
             }
 
-            // (c) Roteamento Phase 13 PRESERVADO — inspeciona NOMES dos serviços
-            // (e não slugs legacy) via helper estático.
-            $tiposImplementacao = $servicosCriados
-                ->map(fn($s) => self::servicoDisparaImplementacao($s->nome))
-                ->filter()
-                ->unique()
-                ->values();
-
-            foreach ($tiposImplementacao as $tipo) {
-                if ($tipo === 'polos') {
-                    $mlbEmp = MlbEmpresa::create([
-                        'nome'       => $company->name,
-                        'tipo'       => 'POLO',
-                        'projeto'    => 'POLOS',
-                        'company_id' => $company->id,
-                    ]);
-                    $this->criarImplementacaoPolo($mlbEmp, $validated);
-                } elseif ($tipo === 'assessoria') {
-                    MlbEmpresa::create([
-                        'nome'       => $company->name,
-                        'tipo'       => 'ASSESSORIA',
-                        'company_id' => $company->id,
-                    ]);
-                } elseif ($tipo === 'incubadora') {
-                    MlbEmpresa::create([
-                        'nome'       => $company->name,
-                        'tipo'       => 'INCUBADORA',
-                        'company_id' => $company->id,
-                    ]);
-                }
-                // Publicidade/Gestão/Publicação (helper retorna null) — sem
-                // mlb_empresas, apenas company (COM-06 preservado).
-            }
+            // (c) Roteamento — Fase 124 (FLUXO-04): a mecânica que antes vivia
+            // inline aqui (dedup por TIPO, sem guard entre iterações — D-08)
+            // agora mora no EmpresaOperacionalRouter, lugar único
+            // compartilhado com o caminho HubSpot. `$validated` é o pacote
+            // opcional do wizard (D-02) de onde a factory de Polos lê o
+            // `gmail_colaborador`.
+            $router->rotearCadastro($company, $servicosCriados->pluck('nome'), $validated);
         });
 
         // (4) Activity log — fora da transaction para não afetar rollback
@@ -955,28 +808,4 @@ class ComercialController extends Controller
         };
     }
 
-
-    /**
-     * Cria uma MlbImplementacao para uma empresa POLO com os dados padrão
-     * configurados em MlbConfiguracao::implementacaoPadroes().
-     *
-     * Lógica extraída de MlbImplementacaoController::criar() (linhas 192-207)
-     * para reutilização no fluxo do Comercial sem duplicação de código (D-20).
-     *
-     * @param  MlbEmpresa  $empresa  Empresa POLO recém-criada.
-     * @param  array        $handoff  Campos do wizard (usa só gmail_colaborador aqui).
-     * @return MlbImplementacao
-     */
-    /**
-     * Phase 35 Plan 35-02 — proxy para `MlbImplementacaoFactory::criarParaPolo`.
-     *
-     * Lógica original extraída para a factory estática reutilizável (D-05),
-     * permitindo o `HubspotWebhookController` chamar o mesmo fluxo quando um
-     * deal "Fechado Ganho" do HubSpot dispara cadastro automático. Mantemos
-     * o método private aqui para preservar a API interna do controller.
-     */
-    private function criarImplementacaoPolo(MlbEmpresa $empresa, array $handoff = []): MlbImplementacao
-    {
-        return \App\Services\MlbImplementacaoFactory::criarParaPolo($empresa, $handoff);
-    }
 }

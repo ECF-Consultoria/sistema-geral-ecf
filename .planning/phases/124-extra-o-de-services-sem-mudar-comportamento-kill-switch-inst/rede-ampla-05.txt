@@ -1,0 +1,93 @@
+PHPUnit 11.5.55 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.2.12
+Configuration: C:\xampp\htdocs\ecf_admin\ecf_admin\phpunit.xml
+
+.............................................................[41;37mF[0m.   63 / 63 (100%)
+
+Time: 01:04.726, Memory: 80.00 MB
+
+[4mPhase113Hubspot Dedup (Tests\Feature\Phase113HubspotDedup)[0m
+[32m ✔ [0mNenhum criterio bate retorna sem match
+[32m ✔ [0mMatch por hubspot company id e forte
+[32m ✔ [0mMatch por cnpj e forte com formatacao diferente
+[32m ✔ [0mMatch por email e fraco
+[32m ✔ [0mMatch por domain e fraco
+[32m ✔ [0mMatch por nome normalizado e fraco
+[32m ✔ [0mNomes distintos nao casam por nome
+[32m ✔ [0mPrecedencia hubspot company id sobre cnpj
+[32m ✔ [0mPrecedencia cnpj sobre email
+[32m ✔ [0mCriterios vazios nao geram match espurio
+[32m ✔ [0mMatch forte por cnpj enriquece sem duplicar
+[32m ✔ [0mMatch forte por hubspot company id guard contrato line item inedito
+[32m ✔ [0mMatch fraco por nome cria empresa nova e grava warning
+[32m ✔ [0mDb fresco sem match cria normalmente sem warning
+
+[4mPhase113Hubspot Enrichment (Tests\Feature\Phase113HubspotEnrichment)[0m
+[32m ✔ [0mContato principal escolhido entre 3 e campos estruturados gravados
+[32m ✔ [0mSnapshot completo contem todos os contatos e metadados
+[32m ✔ [0mHandoff data company e contact preenchidos
+
+[4mPhase114Comercial Listagem Enrichment (Tests\Feature\Phase114ComercialListagemEnrichment)[0m
+[32m ✔ [0mCampos spin do snapshot fluem para o payload da listagem
+[32m ✔ [0mSpin vem com 4 chaves null quando snapshot sem deal
+[32m ✔ [0mPendencia sem contato quando nome contato null
+[32m ✔ [0mSem contato ausente quando nome contato preenchido
+[32m ✔ [0mPendencia valor revisar quando confidence low
+[32m ✔ [0mPendencia valor revisar quando warning nao nulo
+[32m ✔ [0mValor revisar ausente quando confidence high sem warning
+[32m ✔ [0mPendencia possivel duplicidade via snapshot
+[32m ✔ [0mPendencia possivel duplicidade via payload evento
+[32m ✔ [0mPossivel duplicidade ausente sem marcacao
+[32m ✔ [0mEmpresa legada NAO recebe nenhuma pendencia nova
+[32m ✔ [0mPayload expoe campos de contato e ids hubspot
+[32m ✔ [0mPayload expoe created at com hora em iso8601
+[32m ✔ [0mPayload campos novos sao null quando ausentes
+[32m ✔ [0mContrato expoe bloco de valor hubspot
+[32m ✔ [0mContrato bloco de valor null quando ausente
+[32m ✔ [0mPendencia counts tem 8 chaves e conta valor revisar
+[32m ✔ [0mFiltro pendencia valor revisar filtra lista
+[32m ✔ [0mDetalhes possivel duplicidade e array com nome real da candidata
+[32m ✔ [0mDetalhes possivel duplicidade fallback nome normalizado quando candidata sumiu
+[32m ✔ [0mDetalhes valor revisar e array de nomes de servico
+
+[4mPhase114Hubspot Replay (Tests\Feature\Phase114HubspotReplay)[0m
+[32m ✔ [0mReplay cria contrato faltante apos mapping cadastrado
+[32m ✔ [0mReplay e idempotente rodando 2x
+[32m ✔ [0mComando com evento inexistente falha amigavel
+
+[4mPhase115Hubspot Invariantes (Tests\Feature\Phase115HubspotInvariantes)[0m
+[32m ✔ [0mNenhuma chamada hubspot real no processamento do webhook
+[32m ✔ [0mTokens e segredos nunca aparecem no log ecf webhooks
+
+[4mPhase116Hubspot Reenriquecer Handoff (Tests\Feature\Phase116HubspotReenriquecerHandoff)[0m
+[32m ✔ [0mVarredura reenriquece company criada sem associacoes prontas
+[32m ✔ [0mVarredura nao sobrescreve contato preenchido manualmente
+[32m ✔ [0mVarredura ignora company criada ha menos de 2 minutos
+[32m ✔ [0mDry run apenas lista nao reprocessa
+
+[4mPhase33Onboarding Ficha (Tests\Feature\Phase33OnboardingFicha)[0m
+[32m ✔ [0mFicha retorna props impl empresa e opcoes
+[32m ✔ [0mIndex filtra por polo
+[32m ✔ [0mIndex filtra por fase
+[32m ✔ [0mConsultor sem publication role recebe 403 na ficha
+[32m ✔ [0mPatch bloco acessos persiste subconjunto
+[32m ✔ [0mPatch bloco identificacao grava fase polo em empresa
+[32m ✔ [0mPatch bloco produtos valor longo demais e rejeitado
+[32m ✔ [0mPatch bloco logistica valor longo demais e rejeitado
+[32m ✔ [0mGrupo whatsapp persiste como boolean
+[32m ✔ [0mDecola persiste como texto
+[32m ✔ [0mBlocos aceitam valor criado fora do catalogo
+[32m ✔ [0mFase rejeita valor fora do catalogo
+[32m ✔ [0mPatch bloco logistica persiste campos
+[32m ✔ [0mPatch bloco produtos persiste campos
+[31m ✘ [0mPadroes expoem mensagem e grants padrao
+   [31m┐[0m
+   [31m├[0m [41;37mFailed asserting that an array has the key 'Serra Gaúcha'.[0m
+   [31m│[0m
+   [31m│[0m C:[2m\[22mxampp[2m\[22mhtdocs[2m\[22mecf_admin[2m\[22mecf_admin[2m\[22mtests[2m\[22mFeature[2m\[22mPhase33OnboardingFichaTest.php[2m:[22m[34m435[0m
+   [31m┴[0m
+[32m ✔ [0mSalvar padroes persiste mensagem e grants
+
+[37;41mFAILURES![0m
+[37;41mTests: 63[0m[37;41m, Assertions: 398[0m[37;41m, Failures: 1[0m[37;41m, PHPUnit Deprecations: 1[0m[37;41m.[0m

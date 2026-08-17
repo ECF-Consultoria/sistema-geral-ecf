@@ -1541,15 +1541,15 @@ Plans:
   4. Reprocessar um evento antigo do HubSpot (`hubspot:reprocess-event`) contra uma empresa que já tem `MlbEmpresa` continua sem criar nada duplicado nem prender a empresa retroativamente
   5. Existe uma chave `Configuracao` (`administrativo_bloqueio_ativo`, default `false`) que, ligada manualmente em ambiente de teste, interrompe a chamada automática ao roteamento — comprovado por teste isolado, ainda não usada em produção
 
-**Plans:** 5 plans
+**Plans:** 5/5 plans complete
 
 Plans:
 
-- [ ] 124-01-PLAN.md — Caracteriza o roteamento do cadastro manual antes da extração (gmail_colaborador, Incubadora, divergência D-08, inércia do interruptor)
-- [ ] 124-02-PLAN.md — Caracteriza o roteamento do webhook HubSpot antes da extração (Incubadora, assimetria do gmail, FLUXO-05, FLUXO-06)
-- [ ] 124-03-PLAN.md — Congela o baseline nominal e extrai `PendenciasComerciaisService` (FLUXO-03)
-- [ ] 124-04-PLAN.md — Cria `EmpresaOperacionalRouter` com o interruptor inerte instalado (REDE-01)
-- [ ] 124-05-PLAN.md — Religa os dois controllers ao roteador, remove o código duplicado e fecha o gate de regressão
+- [x] 124-01-PLAN.md — Caracteriza o roteamento do cadastro manual antes da extração (gmail_colaborador, Incubadora, divergência D-08, inércia do interruptor)
+- [x] 124-02-PLAN.md — Caracteriza o roteamento do webhook HubSpot antes da extração (Incubadora, assimetria do gmail, FLUXO-05, FLUXO-06)
+- [x] 124-03-PLAN.md — Congela o baseline nominal e extrai `PendenciasComerciaisService` (FLUXO-03)
+- [x] 124-04-PLAN.md — Cria `EmpresaOperacionalRouter` com o interruptor inerte instalado (REDE-01)
+- [x] 124-05-PLAN.md — Religa os dois controllers ao roteador, remove o código duplicado e fecha o gate de regressão
 
 > **Waves:** 1 = {124-01, 124-02} · 2 = {124-03, 124-04} · 3 = {124-05}
 > Os testes de caracterização (wave 1) existem ANTES de qualquer refatoração — é isso que caracteriza refatoração pura. O gate compara por NOME de teste (`baseline-antes.txt` × `baseline-depois-05.txt`), nunca por contagem.
@@ -1566,13 +1566,48 @@ Plans:
   3. `recusado` e `expirado` existem como estados próprios do model, nunca colapsados em `cancelado` ou `erro` — teste unitário comprova que os dois nunca resolvem para o mesmo valor interno
   4. Gate empírico #9 (formato do certificado de autenticação do signatário) resolvido e refletido no campo de payload do signatário
 
-**Plans:** TBD
+**Plans:** 3/3 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 125-01-PLAN.md — Tabela contrato_assinaturas, model com os 7 estados, factory e relação em Company (DADOS-01, DADOS-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 125-02-PLAN.md — Tabela contrato_assinatura_signatarios, model, factory e a evidência do Gate #9 (DADOS-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 125-03-PLAN.md — Guarda estática das 3 cicatrizes de schema + gate de MariaDB real (checkpoint humano)
 
 ### Phase 126: Client Clicksign + PDF do contrato (v22.0)
 
 **Goal:** O sistema sabe conversar com a Clicksign sem nunca vazar credencial, e sabe gerar um PDF de contrato correto em pt-BR — os dois blocos prontos para serem combinados na fase seguinte.
 **Requirements**: CLICK-01, PDF-01, PDF-02, PDF-03
 **Depends on:** Nada (fundação, paralela às Fases 124/125)
+
+> 🔁 **REVERSÃO EM 2026-08-10, com a fase em execução (decisão do usuário).** No checkpoint humano
+> do plano 126-06 o usuário abriu o PDF gerado, apontou que ele não se parece com o contrato real da
+> ECF, e decidiu **usar o modelo cadastrado na Clicksign** em vez de renderizar aqui — *"se ficarmos
+> gerando o contrato por aqui perdemos todo o benefício da plataforma"*. Isso reverte as decisões
+> travadas D-01 e D-02 (ver bloco de revisão no topo de `126-CONTEXT.md`, decisões D-16/D-17/D-18).
+>
+> **Efeito nos Success Criteria:** o nº 3 continua valendo em conteúdo (os dados corretos precisam
+> chegar ao documento), mas quem renderiza passa a ser a Clicksign. Os nº 4 e nº 5 **caem** — o texto
+> jurídico sai do git e vai para o modelo `.docx`, e não há mais layout nosso para quebrar.
+>
+> **Efeito nos planos:** 126-01 a 126-04 seguem válidos e executados. O **126-05 está SUPERADO** —
+> as views e o `gerar()`/`gerarESalvar()` viram código morto e saem num plano dedicado. O **126-06
+> foi descartado**: dois dos seus três gates perderam o sentido, e o que ele mediu de fato está em
+> `126-06-CHECKPOINT.md` (achou e corrigiu 2 bugs reais do client).
+>
+> **Bônus do gate humano:** a medição contra o sandbox real derrubou os dois pontos `NÃO MEDIDO` do
+> client — `communicate_by` não é aceito na entrada (quebrava 100% dos envelopes no primeiro
+> signatário) e o cancelamento é `DELETE`, não `PATCH status=canceled`. Ambos corrigidos em
+> `d5256f3a`. Lição registrada em `CLICKSIGN-SANDBOX-EMPIRICO.md` §9.1: **forma de resposta da API
+> não é contrato de entrada** — a fixture foi modelada a partir da resposta e o `Http::fake()`
+> confirmava o payload errado.
 **Success Criteria** (o que deve ser VERDADE):
 
   1. `ClicksignClient` faz as chamadas HTTP (envelope, documento, signatário, requisito, notificação, consulta, cancelamento) contra o sandbox e nenhuma linha de log jamais contém o token — comprovado por teste que inspeciona o conteúdo logado em cenário de erro
@@ -1581,13 +1616,71 @@ Plans:
   4. O texto jurídico das cláusulas vive isolado da lógica de montagem de dados (view/config separado), permitindo trocar o texto sem mexer em código
   5. PDF gerado com nome de empresa real extremo (longo, com caractere especial) mantém acentuação pt-BR correta e não corta cláusula no meio de uma página — reusando literalmente o precedente de `RelatorioMensalPdfService`
 
-**Plans:** TBD
+**Plans:** 12/12 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 126-01-PLAN.md — Fundação do client: bloco `config('services.clicksign')`, `ClicksignException`, núcleo HTTP (header sem `Bearer`, retry só 429/5xx, log que não vaza token), `criarEnvelope`/`anexarDocumento` com Data URI, fixtures anonimizadas do sandbox (CLICK-01)
+- [x] 126-03-PLAN.md — Migration aditiva `pdf_path`/`pdf_assinado_path` + `$fillable` na mesma entrega + guarda estática das 3 armadilhas de schema + states `comSnapshot()`/`comEmpresaDeNomeExtremo()` na factory (PDF-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 126-02-PLAN.md — Signatários, requisitos (`agree`+`role` / `provide_evidence`+`auth email`), ativação com prazo 30d e lembrete 3d explícitos, consulta, notificação, cancelamento e `montarEnvelope()` com rollback (CLICK-01)
+- [x] 126-04-PLAN.md — `ContratoPdfService::montarDados()`: leitura exclusiva do `servicos_snapshot`, formatação pt-BR e placeholder visível `A DEFINIR` + `campos_pendentes` (PDF-01, PDF-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] ~~126-05-PLAN.md~~ — **SUPERADO pela reversão de 10/08/2026.** Foi executado (views `contratos/pdf.blade.php` e `contratos/clausulas.blade.php`, `gerar()`/`gerarESalvar()`, 13 testes), mas a renderização passa a ser da Clicksign. O código sai num plano dedicado, depois que o caminho de modelo estiver funcionando
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] ~~126-06-PLAN.md~~ — **DESCARTADO pela reversão de 10/08/2026.** Dos 3 gates: a inspeção visual do PDF perdeu o sentido; as 2 confirmações jurídicas foram respondidas (`companies.name` mistura razão social e nome fantasia → entrada da Fase 131; placeholder `A DEFINIR` mantido); o gate #5 ficou parcial (10 MB aceitos) e a migration no MariaDB segue pendente de autorização. Registro completo em `126-06-CHECKPOINT.md`
+
+**Wave 5** *(replanejamento de 10/08/2026 — o caminho de MODELO da Clicksign, sobre os planos 01-04 preservados)*
+
+- [x] 126-07-PLAN.md — Métodos de modelo no `ClicksignClient`: CRUD do recurso `templates` (listar/criar/excluir, `content_base64` como Data URI de `.docx`), `anexarDocumentoPorModelo()` com `filename` + `template:{key,data}` na forma medida na §9.6 do empírico, `montarEnvelopePorModelo()` com o mesmo rollback (D-12), e o 403 de conta sem acesso a modelos deixando de ser diagnosticado como e-mail da API não configurado (CLICK-01)
+- [x] 126-08-PLAN.md — **Checkpoint de decisão do usuário:** como um contrato com N serviços vira documento (4 opções, incluindo a tabela em loop `{{#servicos}}` que a pesquisa encontrou) e quem aparece nomeado no rodapé do modelo; fecha as tensões 2.2 e 2.3 como D-19/D-20 e produz a lista FINAL de variáveis do `.docx` (PDF-01, PDF-02)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 126-09-PLAN.md — `ContratoVariaveisModeloService`: a ponte do array aninhado de `montarDados()` para o hash plano de `template.data`, com mapa explícito (nada de achatamento automático), regras de nome vigiadas por regex e `nomes()` consultável sem contrato (PDF-01)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [x] 126-10-PLAN.md — Comando `clicksign:sondar-modelo`: dry-run por padrão, guarda de ambiente, contagem declarada de requisições contra a janela medida de 20/min, e a tabela de confronto entre as variáveis que o código emite e os `{{nomes}}` do `.docx` real (CLICK-01)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [x] 126-11-PLAN.md — **Gate de medição com `.docx` real** (autonomous: false): o usuário entrega o arquivo, a sondagem roda contra o sandbox e fecha os 7 itens em aberto — inclusive a **dívida da D-16** (excluir o modelo derruba o documento já gerado?) — e o usuário confirma visualmente o documento que a Clicksign gera (CLICK-01, PDF-01, PDF-03)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [x] 126-12-PLAN.md — Remoção do caminho superado do plano 126-05: `contratos/pdf.blade.php`, `contratos/clausulas.blade.php`, `gerar()`/`gerarESalvar()` e `ContratoPdfServiceTest.php`. `montarDados()`, as colunas `pdf_path`/`pdf_assinado_path` e o dompdf permanecem; `ContratoPdfDadosTest` tem que passar **sem ser editado** (PDF-02)
 
 ### Phase 127: Service administrativo de contrato — orquestração (v22.0)
 
 **Goal:** Existe um único ponto que decide se uma empresa está pronta para contrato, monta o envelope na Clicksign com prazo e lembrete configurados, e nunca gasta uma chamada HTTP com dado que já sabia estar incompleto.
 **Requirements**: CLICK-02, CLICK-08, DADOS-06, REDE-05
 **Depends on:** Fases 125, 126
+
+> ⚠️ **ENTRADA OBRIGATÓRIA DA FASE 126 — ler antes de planejar.** A Fase 126 provou o caminho de
+> modelo contra a API real e o gate humano foi aprovado, mas deixou **quatro coisas que esta fase
+> precisa resolver**, todas registradas na **D-21** de `126-CONTEXT.md` e no `126-11-SUMMARY.md`:
+>
+> 1. **Um modelo `.docx` por serviço** (D-21 superou a D-19). Empresa com N serviços recebe **N
+>    contratos** → 2 serviços = 30 chamadas contra a janela **medida** de 20/min. **Espaçar a
+>    geração não é opcional.**
+> 2. **Escolher o modelo pelo serviço** — hoje há um único `CLICKSIGN_TEMPLATE_ID`. Código que não
+>    existe.
+> 3. **Variável faltando vira BRANCO no contrato, sem erro nenhum** (§10.5 do empírico). Não há
+>    resposta HTTP que denuncie. Regra: recadastrou o `.docx`, roda `clicksign:sondar-modelo` antes
+>    de gerar contrato de cliente.
+> 4. **Não existe pré-visualizar sem enviar** (§10.4). Ver o contrato preenchido exige ativar o
+>    envelope, o que dispara e-mail ao cliente. Se o Comercial quiser conferir antes, é pela
+>    interface web da Clicksign — decisão de produto desta fase.
+>
+> ✅ A **dívida D-16 está fechada** (§10.6): excluir o modelo **não** derruba documento já gerado.
 **Success Criteria** (o que deve ser VERDADE):
 
   1. `ContratoClicksignService::iniciarParaEmpresa()` recusa continuar (sem chamar a Clicksign) quando falta e-mail do cliente, CNPJ válido ou nome do contato — devolve erro claro apontando o campo, antes de gerar PDF ou criar envelope
@@ -1683,7 +1776,7 @@ Plans:
 ### Phase 133: Liga o bloqueio — ativação real (v22.0)
 
 **Goal:** A partir de agora, contrato assinado é de fato a porta de entrada do operacional — e existe uma saída rápida se algo der errado.
-**Requirements**: FLUXO-01, FLUXO-02
+**Requirements**: FLUXO-01, FLUXO-02, FLUXO-09
 **Depends on:** Fases 128, 130, 131, 132
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -1693,6 +1786,7 @@ Plans:
 
   3. Uma empresa só chega ao operacional depois que o webhook confirma assinatura completa (reconsultada) ou um admin libera manualmente com motivo registrado
   4. Desligar a chave `administrativo_bloqueio_ativo` sem deploy volta o sistema ao roteamento imediato de antes, imediatamente
+  5. **(FLUXO-09)** Com o bloqueio ligado, a ativação manual do time de Publicação (`MlbController::ativarEmpresaPendente()`, tela `/mlb/empresas`) também não cria ficha operacional — provado por teste. Lacuna descoberta na verificação da Fase 124: esse método cria `MlbEmpresa`+`MlbImplementacao` por cópia inline, fora do `EmpresaOperacionalRouter` e sem consultar a chave
 
 **Plans:** TBD
 

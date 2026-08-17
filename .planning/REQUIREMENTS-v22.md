@@ -42,6 +42,8 @@ Decisão derivada da pesquisa (FEATURES.md). Não basta guardar `clicksign_downl
 
 Motivo: evidência jurídica não pode depender de URL de terceiro. Se a Clicksign mudar política de retenção ou a conta for encerrada, o contrato assinado some.
 
+**Reforçado empiricamente em 2026-08-10 — o risco é MUITO maior do que esta redação sugeria.** Os links `files.original` / `files.signed` / `files.ziped` são URLs S3 pré-assinadas com **`X-Amz-Expires=300`**: valem **5 minutos**. Não é um risco de longo prazo ("se a conta for encerrada"), é um link morto na próxima vez que alguém abrir a tela. Baixar e persistir o PDF deixa de ser preferência e passa a ser a única forma de o documento existir. Ver `.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` §7.
+
 ### D7 — Liberação operacional só a partir de estado reconsultado
 Decisão derivada da pesquisa. O webhook nunca libera a empresa lendo apenas o payload do próprio evento; sempre reconsulta o estado agregado do envelope na Clicksign antes de liberar.
 
@@ -114,7 +116,9 @@ As duas pesquisas chegaram a fórmulas **contraditórias** a partir da mesma doc
 
 São algoritmos diferentes que produzem hashes diferentes. Implementar o errado faz **100% dos webhooks reais falharem em silêncio** — e webhook rejeitado significa contrato assinado que nunca libera a empresa. **Resolver empiricamente**: disparar webhook real do sandbox, calcular as duas fórmulas, logar os dois valores (nunca o secret) e ver qual bate. Só então escrever o teste automatizado, com fixture calculado fora do código de produção.
 
-**A2 — Rollback de envelope montado pela metade.** Não há estratégia definida para quando a montagem falha no meio (documento criado, signatário falha). Decidir: apagar o envelope parcial na Clicksign, ou deixar e marcar `erro` com o id para retomada.
+**A2 — Rollback de envelope montado pela metade.** ✅ **RESOLVIDA no discuss-phase da Fase 126 (2026-08-10), não na 127.** Decisão do usuário: **o client cancela o que criou** — guarda o id do envelope e, ao falhar no meio, cancela na Clicksign antes de propagar o erro. A conta não acumula lixo e tentar de novo começa limpo; envelope em `draft` não dispara e-mail, então cancelar é invisível para o cliente. Custa 1 chamada extra no caminho de erro. Ver `126-CONTEXT.md` D-12.
+
+Recusadas: deixar e guardar o id para retomar (exigiria saber em que passo parou — complexidade herdada pela 127); deixar e ignorar (cada falha deixaria envelope órfão em `draft`).
 
 **A3 — Resposta HTTP do webhook em erro interno.** O webhook do HubSpot responde 200 sempre. Para a Clicksign, responder 5xx permitiria retry do provedor — e a idempotência por `payload_hash` torna isso seguro. Decidir na fase do webhook.
 
@@ -127,24 +131,25 @@ São algoritmos diferentes que produzem hashes diferentes. Implementar o errado 
 - [ ] **FLUXO-01**: Empresa criada pelo webhook HubSpot deixa de ser roteada automaticamente ao operacional e passa a aguardar a etapa administrativa — **exceto** serviços isentos de contrato (D9)
 - [ ] **FLUXO-02**: Empresa cadastrada à mão pelo Comercial segue exatamente o mesmo caminho, sem porta dos fundos (D2) — mesma exceção do FLUXO-01
 - [ ] **FLUXO-08**: A lista de serviços que exigem contrato é um dado configurável, não um `if` espalhado pelo código; empresa de serviço isento (Polos) vai direto para a operação e **não** aparece como pendente na tela do Administrativo (D9)
-- [ ] **FLUXO-03**: A regra de pendências comerciais vive num único lugar, consumida por Comercial, HubSpot e Administrativo
-- [ ] **FLUXO-04**: O roteamento operacional vive num único lugar, sem a duplicação atual entre `ComercialController::store()` e `HubspotWebhookController::rotearImplementacao()`
-- [ ] **FLUXO-05**: Empresa que já tem `MlbEmpresa` (legada, já roteada) não é afetada por nada desta milestone
-- [ ] **FLUXO-06**: Reprocessar um evento antigo do HubSpot (`hubspot:reprocess-event`) não prende retroativamente uma empresa que já está operando
-- [ ] **FLUXO-07**: A extração dos services preserva o `gmail_colaborador` no caminho do Comercial (regressão identificada na pesquisa: `rotearImplementacao` roda em laço por serviço; `liberarEmpresa` não)
+- [ ] **FLUXO-09**: A ativação manual pelo time de Publicação (`MlbController::ativarEmpresaPendente()`, tela `/mlb/empresas`) respeita o mesmo bloqueio dos demais caminhos — não existe porta dos fundos para o operacional quando o bloqueio está ligado
+- [x] **FLUXO-03**: A regra de pendências comerciais vive num único lugar, consumida por Comercial, HubSpot e Administrativo
+- [x] **FLUXO-04**: O roteamento operacional vive num único lugar, sem a duplicação atual entre `ComercialController::store()` e `HubspotWebhookController::rotearImplementacao()`
+- [x] **FLUXO-05**: Empresa que já tem `MlbEmpresa` (legada, já roteada) não é afetada por nada desta milestone
+- [x] **FLUXO-06**: Reprocessar um evento antigo do HubSpot (`hubspot:reprocess-event`) não prende retroativamente uma empresa que já está operando
+- [x] **FLUXO-07**: A extração dos services preserva o `gmail_colaborador` no caminho do Comercial (regressão identificada na pesquisa: `rotearImplementacao` roda em laço por serviço; `liberarEmpresa` não)
 
 ### Estrutura de dados
 
-- [ ] **DADOS-01**: O sistema registra o processo de assinatura de cada empresa, com o estado atual e as datas de envio, assinatura e liberação
-- [ ] **DADOS-02**: O sistema registra cada signatário do contrato com seu papel, contato e situação individual de assinatura
+- [x] **DADOS-01**: O sistema registra o processo de assinatura de cada empresa, com o estado atual e as datas de envio, assinatura e liberação
+- [x] **DADOS-02**: O sistema registra cada signatário do contrato com seu papel, contato e situação individual de assinatura
 - [ ] **DADOS-03**: Todo evento recebido da Clicksign é gravado bruto, e um evento repetido nunca é processado duas vezes
-- [ ] **DADOS-04**: Recusa de assinatura e prazo expirado são estados próprios, distintos de cancelamento e de falha técnica (D5)
+- [x] **DADOS-04**: Recusa de assinatura e prazo expirado são estados próprios, distintos de cancelamento e de falha técnica (D5)
 - [ ] **DADOS-05**: Quando um admin libera a empresa manualmente, o sistema registra quem liberou e por quê
 - [ ] **DADOS-06**: Cada contrato pode ter seu próprio prazo de assinatura (D3)
 
 ### Integração Clicksign
 
-- [ ] **CLICK-01**: O sistema conversa com a Clicksign sem nunca registrar o token de acesso em log algum
+- [x] **CLICK-01**: O sistema conversa com a Clicksign sem nunca registrar o token de acesso em log algum
 - [ ] **CLICK-02**: O sistema cria o envelope na Clicksign com o documento, os signatários e os requisitos de assinatura
 - [ ] **CLICK-03**: O sistema recusa webhook cuja assinatura não confere (A1 é gate bloqueante desta capacidade)
 - [ ] **CLICK-04**: Webhook repetido não duplica evento, signatário, assinatura, `MlbEmpresa` nem implementação operacional
@@ -158,13 +163,13 @@ São algoritmos diferentes que produzem hashes diferentes. Implementar o errado 
 
 ### Contrato em PDF
 
-- [ ] **PDF-01**: O contrato gerado traz os dados da empresa, do contato, os serviços contratados e os valores
-- [ ] **PDF-02**: O texto jurídico fica isolado do código, para ser trocado sem mexer na geração
-- [ ] **PDF-03**: O PDF sai com acentuação pt-BR correta e layout íntegro (reusar o precedente já resolvido em `RelatorioMensalPdfService`)
+- [x] **PDF-01**: O contrato gerado traz os dados da empresa, do contato, os serviços contratados e os valores
+- [x] **PDF-02**: O texto jurídico fica isolado do código, para ser trocado sem mexer na geração
+- [x] **PDF-03**: O PDF sai com acentuação pt-BR correta e layout íntegro (reusar o precedente já resolvido em `RelatorioMensalPdfService`)
 
 ### Rede de segurança (D4)
 
-- [ ] **REDE-01**: Um admin consegue desligar o bloqueio do operacional sem precisar de deploy, voltando ao roteamento imediato
+- [x] **REDE-01**: Um admin consegue desligar o bloqueio do operacional sem precisar de deploy, voltando ao roteamento imediato
 - [ ] **REDE-02**: O sistema avisa quando uma empresa está parada aguardando assinatura além do prazo aceitável
 - [ ] **REDE-03**: Um admin consegue liberar uma empresa ao operacional manualmente quando a Clicksign falha, e essa liberação fica registrada com autor e motivo
 - [ ] **REDE-04**: Uma varredura periódica reconcilia com a Clicksign os contratos cujo webhook nunca chegou (D3)
@@ -205,20 +210,25 @@ São algoritmos diferentes que produzem hashes diferentes. Implementar o errado 
 
 ## Gate empírico de sandbox (antes de codificar as fases correspondentes)
 
-Consolidado da pesquisa. Cada item trava a fase indicada:
+Consolidado da pesquisa. Cada item trava a fase indicada.
 
-| # | A validar | Trava |
-|---|---|---|
-| 1 | Algoritmo do `Content-Hmac` (A1) — **bloqueante** | Webhook |
-| 2 | Formato do header `Authorization` (com ou sem `Bearer`) | Client |
-| 3 | URL base de produção | Cutover |
-| 4 | `content_base64` exige prefixo data URI ou string pura | Client |
-| 5 | Limite de tamanho de arquivo no upload | Client |
-| 6 | Expiração de prazo emite evento distinguível | Schema + Webhook |
-| 7 | Recusa de signatário emite evento distinguível | Schema + Webhook |
-| 8 | Endpoint de correção de e-mail de signatário na v3 | CLICK-09 |
-| 9 | Formato do certificado de autenticação do signatário | DADOS-02 |
-| 10 | Granularidade da consulta de envelope (suficiente para reconciliação) | REDE-04 |
+> **Rodada empírica de 2026-08-10** — envelope real criado, assinado e consultado no sandbox.
+> Resultados completos em **`.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md`**, que tem
+> **precedência sobre a pesquisa** onde houver divergência (dois pontos da doc oficial estavam
+> errados). Gates 2, 3, 4, 9 e 10 fechados.
+
+| # | A validar | Trava | Situação |
+|---|---|---|---|
+| 1 | Algoritmo do `Content-Hmac` (A1) — **bloqueante** | Webhook | ⏳ aberto — doc diz `SHA256(body + secret)`, não testado contra webhook real |
+| 2 | Formato do header `Authorization` (com ou sem `Bearer`) | Client | ✅ **token PURO**; com `Bearer` → 401. Não usar `Http::withToken()` |
+| 3 | URL base de produção | Cutover | ✅ `https://app.clicksign.com/api/v3` |
+| 4 | `content_base64` exige prefixo data URI ou string pura | Client | ✅ **exige Data URI completo**; base64 puro → 400 (a doc mostra o contrário) |
+| 5 | Limite de tamanho de arquivo no upload | Client | ⏳ aberto — testado só com PDF de 1,5 KB |
+| 6 | Expiração de prazo emite evento distinguível | Schema + Webhook | ⏳ aberto — não bloqueia a Fase 125 (a D5 já trava o estado por decisão) |
+| 7 | Recusa de signatário emite evento distinguível | Schema + Webhook | ⏳ aberto — idem |
+| 8 | Endpoint de correção de e-mail de signatário na v3 | CLICK-09 | ⏳ aberto |
+| 9 | Formato do certificado de autenticação do signatário | DADOS-02 | ✅ **`documents/{id}/events` → evento `sign` → `data.signer`** (`auths[]`, `address` = IP, timestamp no `created`). O recurso `/signers/{id}` **não** carrega evidência nenhuma |
+| 10 | Granularidade da consulta de envelope (suficiente para reconciliação) | REDE-04 | ✅ suficiente — `status` + `meta.record_count` + eventos paginados; rate limit **20** no sandbox |
 | 11 | Política de retry e garantia de ordem dos webhooks | CLICK-04/05 |
 
 ## Traceability
@@ -229,18 +239,19 @@ Consolidado da pesquisa. Cada item trava a fase indicada:
 |-------------|------|--------|
 | FLUXO-01 | Fase 133 | Pending |
 | FLUXO-02 | Fase 133 | Pending |
-| FLUXO-03 | Fase 124 | Pending |
-| FLUXO-04 | Fase 124 | Pending |
-| FLUXO-05 | Fase 124 | Pending |
-| FLUXO-06 | Fase 124 | Pending |
-| FLUXO-07 | Fase 124 | Pending |
-| DADOS-01 | Fase 125 | Pending |
-| DADOS-02 | Fase 125 | Pending |
+| FLUXO-03 | Fase 124 | Done |
+| FLUXO-04 | Fase 124 | Done |
+| FLUXO-05 | Fase 124 | Done |
+| FLUXO-06 | Fase 124 | Done |
+| FLUXO-07 | Fase 124 | Done |
+| FLUXO-09 | Fase 133 | Pending |
+| DADOS-01 | Fase 125 | Done |
+| DADOS-02 | Fase 125 | Done |
 | DADOS-03 | Fase 129 | Pending |
-| DADOS-04 | Fase 125 | Pending |
+| DADOS-04 | Fase 125 | Done |
 | DADOS-05 | Fase 130 | Pending |
 | DADOS-06 | Fase 127 | Pending |
-| CLICK-01 | Fase 126 | Pending |
+| CLICK-01 | Fase 126 | Done |
 | CLICK-02 | Fase 127 | Pending |
 | CLICK-03 | Fase 129 | Pending |
 | CLICK-04 | Fase 129 | Pending |
@@ -251,10 +262,10 @@ Consolidado da pesquisa. Cada item trava a fase indicada:
 | CLICK-09 | Fase 131 | Pending |
 | CLICK-10 | Fase 131 | Pending |
 | CLICK-11 | Fase 129 | Pending |
-| PDF-01 | Fase 126 | Pending |
-| PDF-02 | Fase 126 | Pending |
-| PDF-03 | Fase 126 | Pending |
-| REDE-01 | Fase 124 | Pending |
+| PDF-01 | Fase 126 | Done |
+| PDF-02 | Fase 126 | Done |
+| PDF-03 | Fase 126 | Done |
+| REDE-01 | Fase 124 | Done |
 | REDE-02 | Fase 130 | Pending |
 | REDE-03 | Fase 130 | Pending |
 | REDE-04 | Fase 130 | Pending |
@@ -272,7 +283,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada:
 | Decisão | Fase |
 |---------|------|
 | A1 — Algoritmo do `Content-Hmac` (BLOQUEANTE) | Fase 129 |
-| A2 — Rollback de envelope montado pela metade | Fase 127 |
+| A2 — Rollback de envelope montado pela metade | ✅ Resolvida na Fase **126** (D-12) |
 | A3 — Resposta HTTP do webhook em erro interno | Fase 129 |
 | A4 — Quais das 7 pendências comerciais valem para empresa manual | Fase 128 |
 
