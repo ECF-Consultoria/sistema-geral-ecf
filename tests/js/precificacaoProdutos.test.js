@@ -12,6 +12,10 @@ import {
     familiaUniforme,
     aplicarNaFamilia,
     replicarPrecificacao,
+    impostoEfetivo,
+    mcEfetivo,
+    llEfetivo,
+    calcPrecoFinal,
 } from '../../resources/js/lib/precificacaoProdutos.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -398,4 +402,85 @@ test('replicar com origem inexistente devolve tudo como estava', () => {
     const rows = [{ custo: '10' }];
     assert.equal(replicarPrecificacao(rows, [0], 5), rows);
     assert.deepEqual(replicarPrecificacao(null, [0], 0), []);
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Percentuais efetivos e preço — a régua compartilhada entre o Simulador do
+// cliente (/implementacao/{token}) e a visão do Publicador (.../publicador).
+//
+// Bug de origem: a tela do Publicador tinha a PRÓPRIA cópia da conta e lia só os
+// alvos globais `margem_contribuicao`/`lucro_liquido`, ignorando o override por
+// produto. No onboarding do Renan Souza (global 0%, produto com MC 10% + LL 25%)
+// o publicador anunciava R$ 4.381,86 onde o cliente havia configurado R$ 7.706,48.
+// ═══════════════════════════════════════════════════════════════════════
+
+test('MC e LL do produto vencem o global; campo vazio herda o global', () => {
+    const comOverride = { mc_individual: '10', ll_individual: '25' };
+    assert.equal(mcEfetivo(comOverride, 0), 0.10);
+    assert.equal(llEfetivo(comOverride, 0), 0.25);
+
+    const semOverride = { mc_individual: '', ll_individual: '' };
+    assert.equal(mcEfetivo(semOverride, 0.32), 0.32);
+    assert.equal(llEfetivo(semOverride, 0.05), 0.05);
+
+    // Zero é override legítimo — não pode cair no global.
+    assert.equal(mcEfetivo({ mc_individual: '0' }, 0.32), 0);
+    // Linha inexistente / sem a chave: global.
+    assert.equal(mcEfetivo(undefined, 0.32), 0.32);
+    assert.equal(llEfetivo({}, 0.05), 0.05);
+    // Sem global informado, o padrão é zero (e não NaN no divisor do preço).
+    assert.equal(mcEfetivo({}, undefined), 0);
+});
+
+test('imposto: modo massa usa o tier, modo individual usa o produto', () => {
+    const row = { imposto_individual: '12' };
+    assert.equal(impostoEfetivo(row, 0.0737, 'massa'), 0.0737);
+    assert.equal(impostoEfetivo(row, 0.0737, undefined), 0.0737, 'precificacao antiga sem a chave = massa');
+    assert.equal(impostoEfetivo(row, 0.0737, 'individual'), 0.12);
+    // No individual, campo em branco é ZERO por escolha do cliente — não herda o tier.
+    assert.equal(impostoEfetivo({ imposto_individual: '' }, 0.0737, 'individual'), 0);
+});
+
+test('preco final reproduz o caso real que divergiu entre as duas telas', () => {
+    const linha = { custo: '3450', frete_classico: '105', mc_individual: '10', ll_individual: '25' };
+    const comissao = 0.115;
+    const imposto  = impostoEfetivo(linha, 0.0737, 'massa');
+
+    // Com o override do produto: o que o cliente configurou e o publicador deve anunciar.
+    const correto = calcPrecoFinal(linha.custo, linha.frete_classico, comissao, imposto,
+        mcEfetivo(linha, 0), llEfetivo(linha, 0));
+    assert.equal(correto.toFixed(2), '7706.48');
+    assert.equal((correto * 1.20).toFixed(2), '9247.78', 'publicar por = final + 20% de acrescimo');
+
+    // Ignorando o override (o bug): 43% mais barato.
+    const bug = calcPrecoFinal(linha.custo, linha.frete_classico, comissao, imposto, 0, 0);
+    assert.equal(bug.toFixed(2), '4381.86');
+});
+
+test('preco final sem custo, ou com percentuais somando 100%, nao existe', () => {
+    assert.equal(calcPrecoFinal('', 105, 0.115, 0.0737, 0.10, 0.25), null);
+    assert.equal(calcPrecoFinal(null, 105, 0.115, 0.0737, 0.10, 0.25), null);
+    assert.equal(calcPrecoFinal('abc', 105, 0.115, 0.0737, 0, 0), null);
+    assert.equal(calcPrecoFinal('100', 0, 0.5, 0.3, 0.1, 0.1), null, 'divisor zerado');
+    assert.equal(calcPrecoFinal('100', 0, 0.6, 0.3, 0.2, 0.1), null, 'divisor negativo');
+    // Frete ausente conta como zero, mas custo sozinho já produz preço.
+    assert.equal(calcPrecoFinal('100', '', 0.115, 0.0737, 0, 0).toFixed(2), '123.26');
+});
+
+test('publicador e simulador chegam ao mesmo preco a partir do mesmo estado salvo', () => {
+    // A tela do Publicador parte da planilha + linhas salvas; a do cliente, das linhas
+    // mescladas. Com SKU repetido nos 11 produtos, os dois lados têm de casar linha a linha.
+    const salvos = NOMES.map((n, i) => linha({
+        sku: 'Não tenho', descricao: n, custo: String(1000 + i * 100),
+        frete_classico: '105', mc_individual: '10', ll_individual: '25',
+    }));
+    const rows = mesclarPrecificacaoComPlanilha(planilhaSemSku, salvos);
+
+    assert.equal(rows.length, 11);
+    const precos = rows.map(r => calcPrecoFinal(r.custo, r.frete_classico, 0.115,
+        impostoEfetivo(r, 0.0737, 'massa'), mcEfetivo(r, 0), llEfetivo(r, 0)));
+
+    assert.equal(new Set(precos).size, 11, 'onze custos distintos = onze precos distintos');
+    assert.equal(precos[0].toFixed(2), ((1000 + 105) / 0.4613).toFixed(2));
+    assert.equal(precos[10].toFixed(2), ((2000 + 105) / 0.4613).toFixed(2));
 });

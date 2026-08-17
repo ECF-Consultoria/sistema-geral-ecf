@@ -1,16 +1,18 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { router } from '@inertiajs/react';
 import axios from 'axios';
 import { cn } from '@/lib/utils';
 import { Copy, Check, RefreshCw, Maximize2, X } from 'lucide-react';
+import {
+    produtosPreenchidos,
+    mesclarPrecificacaoComPlanilha,
+    impostoEfetivo,
+    mcEfetivo,
+    llEfetivo,
+    calcPrecoFinal,
+} from '@/lib/precificacaoProdutos';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function calcPreco(custo, frete, comissao, imposto, mc, ll) {
-    const d = 1 - comissao - imposto - mc - ll;
-    if (d <= 0 || !custo || isNaN(parseFloat(custo))) return null;
-    return (parseFloat(custo) + parseFloat(frete || 0)) / d;
-}
 
 function brl(n) {
     if (n === null || n === undefined || isNaN(n)) return '—';
@@ -18,34 +20,61 @@ function brl(n) {
 }
 
 function pct(n) {
-    if (n === null || n === undefined) return '—';
+    if (n === null || n === undefined || isNaN(n)) return '—';
     return (Number(n) * 100).toFixed(1) + '%';
+}
+
+/**
+ * Rótulo de um percentual que pode variar produto a produto: valor único quando
+ * todos batem, faixa quando não. O card de parâmetros mostrava só o alvo GLOBAL,
+ * e com override por produto isso virava mentira — "0,0%" de margem numa tela em
+ * que o preço já embutia 10%.
+ */
+function faixaPct(valores) {
+    const nums = (valores ?? []).filter(v => v !== null && v !== undefined && !isNaN(v));
+    if (nums.length === 0) return '—';
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
+    return min === max ? pct(min) : `${pct(min)} – ${pct(max)}`;
 }
 
 // ─── Merge produtos + precificação ───────────────────────────────────────────
 
-function mergeProdutos(produtos, precif) {
+/**
+ * Junta a Planilha de Produtos com as linhas de precificação já pareadas.
+ *
+ * Os percentuais saem de lib/precificacaoProdutos.js — a MESMA régua do Simulador
+ * do cliente. Esta tela tinha a própria cópia da conta e lia só os alvos globais
+ * (`margem_contribuicao`/`lucro_liquido`), ignorando o override por produto: com
+ * MC 10% + LL 25% no produto e 0% no global, o publicador anunciava R$ 4.381,86
+ * onde o cliente configurou R$ 7.706,48.
+ */
+function mergeProdutos(planilhaProdutos, linhasPrecif, precif) {
     const cfg = {
         classico: { comissao: 0.115, imposto: 0.19, ...(precif.classico ?? {}) },
         premium:  { comissao: 0.165, imposto: 0.19, ...(precif.premium  ?? {}) },
     };
     // Globais: acréscimo + alvos Margem de Contribuição e Lucro Líquido (default 0).
-    const acr = precif.acrescimo ?? 0.20;
-    const mc  = precif.margem_contribuicao ?? 0;
-    const ll  = precif.lucro_liquido ?? 0;
-    cfg.margem_contribuicao = mc;
-    cfg.lucro_liquido = ll;
-    const pricingMap = {};
-    (precif.produtos ?? []).forEach((p, i) => { pricingMap[p.sku || `__idx_${i}`] = p; });
+    const acr  = precif.acrescimo ?? 0.20;
+    const mcG  = precif.margem_contribuicao ?? 0;
+    const llG  = precif.lucro_liquido ?? 0;
+    const modo = precif.modo_imposto;
+    cfg.margem_contribuicao = mcG;
+    cfg.lucro_liquido = llG;
 
-    return (produtos ?? []).filter(p => p.produto?.trim() || p.sku?.trim()).map((p, i) => {
-        const key = p.sku?.trim() || `__idx_${i}`;
-        const pr = pricingMap[key] ?? {};
+    return produtosPreenchidos(planilhaProdutos).map((p, i) => {
+        // Pareamento 1-para-1 pela ordem da planilha (linhasPrecif já vem mesclado).
+        const pr = linhasPrecif[i] ?? {};
         const fc = parseFloat(pr.frete_classico || 0);
         const fp = parseFloat(pr.frete_premium  || 0);
-        const precoC = calcPreco(pr.custo, fc, cfg.classico.comissao, cfg.classico.imposto, mc, ll);
-        const precoP = calcPreco(pr.custo, fp, cfg.premium.comissao,  cfg.premium.imposto,  mc, ll);
+        const impC = impostoEfetivo(pr, cfg.classico.imposto, modo);
+        const impP = impostoEfetivo(pr, cfg.premium.imposto,  modo);
+        const mc   = mcEfetivo(pr, mcG);
+        const ll   = llEfetivo(pr, llG);
+        const precoC = calcPrecoFinal(pr.custo, fc, cfg.classico.comissao, impC, mc, ll);
+        const precoP = calcPrecoFinal(pr.custo, fp, cfg.premium.comissao,  impP, mc, ll);
         return {
+            _i:            i,   // índice na lista mesclada — chave do frete e do save
             sku:           p.sku,
             produto:       p.produto       || '—',
             curva:         p.curva         || '—',
@@ -72,6 +101,11 @@ function mergeProdutos(produtos, precif) {
             margem_p_r:        precoP ? precoP * mc : null,
             lucro_c_r:         precoC ? precoC * ll : null,   // lucro líquido R$
             lucro_p_r:         precoP ? precoP * ll : null,
+            // Percentuais EFETIVOS deste produto — é o que o card de parâmetros mostra.
+            imposto_c: impC,
+            imposto_p: impP,
+            mc,
+            ll,
             cfg,
         };
     });
@@ -294,38 +328,52 @@ function BtnCopy({ text }) {
  * botão de copiar. O Publicador só pode mexer no FRETE (recalcula ao vivo e
  * persiste via implementacao.salvar). Comissão/imposto/MC/LL/acréscimo travados.
  */
-function PrecificacaoAcao({ produtos, precif, token }) {
+function PrecificacaoAcao({ produtos, linhasPrecif, precif, token }) {
     const [tier, setTier] = useState('classico');
+    // Frete indexado pela POSIÇÃO, nunca pelo SKU: cliente que digita "Não tenho" em
+    // todos os produtos fazia um único input governar (e salvar) a linha de todos.
     const [fretes, setFretes] = useState(() => {
         const m = {};
-        produtos.forEach(p => { if (p.sku) m[p.sku] = { frete_classico: p.frete_classico ?? '', frete_premium: p.frete_premium ?? '' }; });
+        produtos.forEach(p => { m[p._i] = { frete_classico: p.frete_classico ?? '', frete_premium: p.frete_premium ?? '' }; });
         return m;
     });
     const debRef = useRef(null);
 
     const cfg = tier === 'classico'
-        ? (precif.classico ?? { comissao: 0.115, imposto: 0.19 })
-        : (precif.premium  ?? { comissao: 0.165, imposto: 0.19 });
-    const mc  = precif.margem_contribuicao ?? 0;
-    const ll  = precif.lucro_liquido ?? 0;
-    const acr = precif.acrescimo ?? 0.20;
+        ? { comissao: 0.115, imposto: 0.19, ...(precif.classico ?? {}) }
+        : { comissao: 0.165, imposto: 0.19, ...(precif.premium  ?? {}) };
+    const mcG  = precif.margem_contribuicao ?? 0;
+    const llG  = precif.lucro_liquido ?? 0;
+    const acr  = precif.acrescimo ?? 0.20;
+    const modo = precif.modo_imposto;
     const campoFrete = tier === 'classico' ? 'frete_classico' : 'frete_premium';
 
+    /**
+     * Salva os fretes preservando TODO o resto de cada linha.
+     *
+     * Este save já destruiu dado de cliente: ele reconstruía a lista a partir de um
+     * mapa chaveado por SKU, então com o SKU repetido todas as N linhas viravam cópia
+     * da última — custo, imposto e margens de todos os produtos substituídos pelos de
+     * um só, a cada tecla de frete. Agora parte das linhas já pareadas 1-para-1 e só
+     * troca o frete; as linhas que o Simulador criou à parte (avulsos, que ficam depois
+     * das da planilha) seguem intactas porque não têm entrada em `fmap`.
+     */
     function persist(fmap) {
-        const base = {};
-        (precif.produtos ?? []).forEach(p => { if (p.sku) base[p.sku] = p; });
-        const lista = produtos.filter(p => p.sku).map(p => ({
-            ...(base[p.sku] ?? { sku: p.sku }),
-            sku: p.sku,
-            frete_classico: fmap[p.sku]?.frete_classico ?? (base[p.sku]?.frete_classico ?? ''),
-            frete_premium:  fmap[p.sku]?.frete_premium  ?? (base[p.sku]?.frete_premium  ?? ''),
-        }));
+        const lista = linhasPrecif.map((linha, i) => {
+            const f = fmap[i];
+            if (!f) return linha;
+            return {
+                ...linha,
+                frete_classico: f.frete_classico ?? linha.frete_classico ?? '',
+                frete_premium:  f.frete_premium  ?? linha.frete_premium  ?? '',
+            };
+        });
         // salvarItem retorna JSON → usar axios (não o router do Inertia).
         axios.patch(route('implementacao.salvar', token), { id: 'precificacao', campo: 'produtos', valor: lista });
     }
 
-    function setFrete(sku, valor) {
-        const novo = { ...fretes, [sku]: { ...(fretes[sku] ?? {}), [campoFrete]: valor } };
+    function setFrete(idx, valor) {
+        const novo = { ...fretes, [idx]: { ...(fretes[idx] ?? {}), [campoFrete]: valor } };
         setFretes(novo);
         clearTimeout(debRef.current);
         debRef.current = setTimeout(() => persist(novo), 800);
@@ -360,8 +408,13 @@ function PrecificacaoAcao({ produtos, precif, token }) {
                     </thead>
                     <tbody>
                         {produtos.map((p, i) => {
-                            const frete = parseFloat(fretes[p.sku]?.[campoFrete] || 0) || 0;
-                            const preco = calcPreco(p.custo, frete, cfg.comissao, cfg.imposto, mc, ll); // final (c/ desconto)
+                            const frete = parseFloat(fretes[p._i]?.[campoFrete] || 0) || 0;
+                            // Percentuais do PRODUTO (override) com o global como padrão —
+                            // a mesma régua que o cliente viu no Simulador.
+                            const linha = linhasPrecif[p._i] ?? {};
+                            const preco = calcPrecoFinal(p.custo, frete, cfg.comissao,
+                                impostoEfetivo(linha, cfg.imposto, modo),
+                                mcEfetivo(linha, mcG), llEfetivo(linha, llG)); // final (c/ desconto)
                             const anunciado = preco ? preco * (1 + acr) : null;
                             return (
                                 <tr key={i} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]">
@@ -373,8 +426,8 @@ function PrecificacaoAcao({ produtos, precif, token }) {
                                         <div className="flex items-center rounded-lg bg-white/[0.05] border border-white/[0.1] focus-within:border-ecf-yellow/40 w-28">
                                             <span className="pl-2 text-white/30 text-[12px]">R$</span>
                                             <input type="number" step="0.01" min="0" inputMode="decimal"
-                                                value={fretes[p.sku]?.[campoFrete] ?? ''}
-                                                onChange={e => setFrete(p.sku, e.target.value)}
+                                                value={fretes[p._i]?.[campoFrete] ?? ''}
+                                                onChange={e => setFrete(p._i, e.target.value)}
                                                 placeholder="0,00"
                                                 className="w-full h-9 px-1.5 bg-transparent text-white text-[13px] focus:outline-none placeholder:text-white/20" />
                                         </div>
@@ -447,12 +500,27 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
 
     const produtosBase  = itens.planilha_produtos?.produtos ?? [];
     const precif        = itens.precificacao ?? {};
-    const produtos      = mergeProdutos(produtosBase, precif);
+    // Pareamento Planilha × precificação salva: lógica pura em lib/precificacaoProdutos.js,
+    // a MESMA que o Simulador do cliente usa. As linhas da planilha vêm primeiro, na ordem
+    // dela; depois os avulsos criados só no Simulador (que esta tela não publica).
+    const linhasPrecif  = useMemo(
+        () => mesclarPrecificacaoComPlanilha(produtosBase, precif.produtos),
+        [produtosBase, precif.produtos]
+    );
+    const produtos      = useMemo(
+        () => mergeProdutos(produtosBase, linhasPrecif, precif),
+        [produtosBase, linhasPrecif, precif]
+    );
     const catalogo      = agruparVariacoes(produtos);
     const feitos        = produtos.filter(p => p.sku && checkin[p.sku]).length;
 
-    const cfgC = precif.classico ?? { comissao: 0.115, imposto: 0.19, margem: 0.32 };
-    const cfgP = precif.premium  ?? { comissao: 0.165, imposto: 0.19, margem: 0.35 };
+    const cfgC = { comissao: 0.115, imposto: 0.19, ...(precif.classico ?? {}) };
+    const cfgP = { comissao: 0.165, imposto: 0.19, ...(precif.premium  ?? {}) };
+
+    // Algum percentual varia entre os produtos? Só então a legenda da faixa faz sentido.
+    const temFaixa = ['mc', 'll', 'imposto_c', 'imposto_p'].some(
+        k => new Set(produtos.map(p => p[k])).size > 1
+    );
 
     const erp   = itens.erp   ?? {};
     const integ = itens.integrador_logistico ?? {};
@@ -525,15 +593,17 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                 <SectionCard title="Parâmetros de Precificação" accent>
                     <div className="grid grid-cols-2 gap-6">
                         {[
-                            { label: 'Clássico', cfg: cfgC, color: 'text-blue-300' },
-                            { label: 'Premium',  cfg: cfgP, color: 'text-violet-300' },
-                        ].map(({ label, cfg, color }) => (
+                            { label: 'Clássico', cfg: cfgC, color: 'text-blue-300', impostos: produtos.map(p => p.imposto_c) },
+                            { label: 'Premium',  cfg: cfgP, color: 'text-violet-300', impostos: produtos.map(p => p.imposto_p) },
+                        ].map(({ label, cfg, color, impostos }) => (
                             <div key={label}>
                                 <p className={cn('text-[11px] font-bold uppercase tracking-wider mb-3', color)}>{label}</p>
                                 <div className="space-y-1.5">
                                     {[
                                         { k: 'Comissão',  v: pct(cfg.comissao) },
-                                        { k: 'Imposto',   v: pct(cfg.imposto)  },
+                                        // Imposto EFETIVO: no modo individual o valor vem de cada
+                                        // produto, então aqui vira faixa em vez do global do tier.
+                                        { k: 'Imposto',   v: produtos.length ? faixaPct(impostos) : pct(cfg.imposto) },
                                     ].map(({ k, v }) => (
                                         <div key={k} className="flex justify-between text-[12px]">
                                             <span className="text-white/40">{k}</span>
@@ -544,11 +614,13 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                             </div>
                         ))}
                     </div>
-                    {/* Alvos globais (valem p/ os dois tiers) */}
+                    {/* Alvos que entram no preço — EFETIVOS. Margem e lucro podem ser
+                        definidos produto a produto no Simulador do cliente; mostrar só o
+                        alvo global aqui já exibiu "0,0%" numa tela cujo preço embutia 10%. */}
                     <div className="mt-4 pt-3 border-t border-white/[0.06] grid grid-cols-3 gap-3">
                         {[
-                            { k: 'Margem Contrib.', v: pct(precif.margem_contribuicao ?? 0) },
-                            { k: 'Lucro Líquido',   v: pct(precif.lucro_liquido ?? 0)       },
+                            { k: 'Margem Contrib.', v: produtos.length ? faixaPct(produtos.map(p => p.mc)) : pct(precif.margem_contribuicao ?? 0) },
+                            { k: 'Lucro Líquido',   v: produtos.length ? faixaPct(produtos.map(p => p.ll)) : pct(precif.lucro_liquido ?? 0)       },
                             { k: 'Acréscimo',       v: pct(precif.acrescimo ?? 0.20)         },
                         ].map(({ k, v }) => (
                             <div key={k} className="flex flex-col">
@@ -557,6 +629,11 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                             </div>
                         ))}
                     </div>
+                    {temFaixa && (
+                        <p className="mt-3 text-white/30 text-[11px]">
+                            Onde aparece uma faixa, o cliente definiu o valor produto a produto no Simulador — cada linha da tabela abaixo usa o seu.
+                        </p>
+                    )}
                 </SectionCard>
 
                 {/* Catálogo de Produtos */}
@@ -623,7 +700,7 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
 
                 {/* Precificação — visão de AÇÃO (frete editável, publicar por / preço final) */}
                 {produtos.length > 0 && (
-                    <PrecificacaoAcao produtos={produtos} precif={precif} token={impl.token} />
+                    <PrecificacaoAcao produtos={produtos} linhasPrecif={linhasPrecif} precif={precif} token={impl.token} />
                 )}
 
                 {produtos.length === 0 && (
