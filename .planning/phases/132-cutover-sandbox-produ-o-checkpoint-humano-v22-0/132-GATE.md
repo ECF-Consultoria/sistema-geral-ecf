@@ -424,8 +424,74 @@ mudança de código, então vira plano de gap, não edição improvisada no meio
 marcada, envelope de produção em rascunho, nada enviado — **sem nunca abrir a janela em que
 qualquer administrador poderia gerar contrato**. O caminho acidental foi mais seguro que o
 planejado.
-- Webhook chegou e foi processado corretamente — confirmado por reconsulta em
-  `contrato_assinatura_eventos`: ______
+- Envelope ATIVADO pelo usuário em 2026-08-18. **Três das quatro pessoas assinaram**
+  (falta apenas um signatário da ECF).
+- Webhook chegou e foi processado corretamente — **SIM, depois de duas correções.**
+  Reconsulta final: os **11 eventos** do documento estão `processado` e ligados ao
+  `contrato_assinatura_id = 1`; o contrato saiu de `rascunho` para
+  **`aguardando_assinaturas`**.
+- `signature_valid` do primeiro evento real: **`true`** ✅ — e em 24 dos 25 eventos da base
+  (o único inválido é a sonda sem assinatura que eu mesmo disparei para provar o 404/401).
+  **O segredo do webhook está certo e a entrega funciona.**
+
+#### Veredito do critério de parar (D-06)
+
+**NÃO manda parar.** O critério é *"depois de ativar o contrato, nenhum evento aparecer em
+`contrato_assinatura_eventos`"*. Eventos apareceram, com HMAC válido, e agora resolvem para o
+contrato e movem o estado dele. O mecanismo está provado ponta a ponta: Clicksign → receiver
+→ validação → gravação → job → contrato.
+
+#### 🔴 Dois defeitos precisaram ser corrigidos para chegar aqui
+
+**1. A resolução do contrato usava o identificador errado.** O corpo do webhook é baseado em
+DOCUMENTO (`document.key`), mas a busca comparava com a coluna do ENVELOPE. As três
+assinaturas reais chegaram e foram **todas descartadas** com *"envelope nao pertence a nenhum
+contrato deste sistema"*; `ContratoLiberacao::count()` era 0. Corrigido por
+`ContratoAssinatura::resolverPorReferenciaClicksign()`, que tenta envelope e cai para
+documento — coluna que já existia e já vinha preenchida com exatamente o id que chega.
+6 testes novos; commit `faf54f73`.
+
+**2. REGRESSÃO EM PRODUÇÃO — a rota do receiver tinha sido REMOVIDA.** O deploy da milestone
+de onboarding (09:44 de 2026-08-18, commit `616a2711`) apagou 56 linhas de `routes/web.php`
+num merge sem conflito, entre elas:
+
+| Rota perdida | Efeito |
+|---|---|
+| `POST /api/webhooks/clicksign` | **o receiver inteiro** — medido ao vivo: `404`. Todo evento da Clicksign era descartado sem registro |
+| `GET /admin/contratos/{id}/pdf-assinado` | download da evidência jurídica |
+| grupo `admin.contratos.*` (Fase 131) | index, show, cadastro, gerar, reenviar, cancelamento, liberação manual |
+
+O controller e as telas continuavam versionados — só as rotas sumiram. O item **"Contratos"**
+do menu aponta para `admin.contratos.index`, então a barra lateral resolvia rota inexistente
+para todo usuário com a permissão.
+
+**Janela do apagão: 09:44 até ~11:00 de 2026-08-18.** Restaurado no commit `26535a0c` e
+deployado; `POST /api/webhooks/clicksign` voltou a responder `401` (vivo) em vez de `404`.
+
+⚠️ **Lição:** este merge não teve conflito. Git aceitou a remoção em silêncio. Uma milestone
+paralela pode apagar rotas de outra sem nenhum aviso — vale um teste que afirme a existência
+das rotas críticas (`webhooks.clicksign` acima de tudo), para que a suíte pegue o que o merge
+não pega.
+
+#### Reprocessamento das assinaturas já colhidas
+
+Os 11 eventos ficaram gravados com payload íntegro. Depois do fix foram reenfileirados e
+**todos processaram** — nenhuma assinatura se perdeu, e não foi preciso gastar outro envelope.
+
+⚠️ O reprocessamento em lote esbarra no limite de **3/min** do bucket `clicksign-webhook`:
+a primeira tentativa estourou tentativas em 8 dos 11 (`MaxAttemptsExceededException`, 8 linhas
+novas em `failed_jobs`). Refeito em lotes de 2 com 70 s de intervalo, todos passaram. Quem for
+reprocessar evento em massa precisa respeitar esse limite.
+
+#### ⚠️ Pendência observada, não resolvida
+
+`ContratoAssinaturaSignatario` para o contrato 1 continua com **0 linhas**, mesmo com os
+quatro `add_signer` processados sem erro. A situação por signatário não está sendo
+materializada. Não bloqueia o veredito do D-06 (o elo Clicksign → contrato está provado), mas
+**precisa ser investigado antes de a Fase 133 depender da liberação automática** — é a tabela
+que diz quem já assinou.
+
+- Empresa liberada para o operacional: **não** — esperado, falta a quarta assinatura.
 - `signature_valid` do primeiro evento real (prova melhor que ler o painel — responde de
   uma vez se o segredo do SC2 é o certo): ______
 
