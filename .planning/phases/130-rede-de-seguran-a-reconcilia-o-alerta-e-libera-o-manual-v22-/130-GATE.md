@@ -121,6 +121,10 @@ Depois de preencher: `C:\xampp\php\php.exe artisan config:clear`.
 
 ### Resultado
 
+> ✅ **DESBLOQUEADO E FECHADO NA FASE 132 (2026-08-18).** O bloqueio era da sandbox, que não
+> conclui assinatura. Em produção a rodada foi possível e a rede de segurança passou — ver
+> `132-GATE.md`. O texto abaixo é registro histórico.
+
 **STATUS: ⛔ BLOQUEADO pela sandbox da Clicksign** (rodada de 2026-08-13/14, decisão do usuário
 de parar aqui e fechar os demais gates).
 
@@ -183,7 +187,14 @@ código da reconciliação em si tem **18 testes automatizados verdes** (`Reconc
 é de evidência empírica, não de corretude conhecida. O envelope segue válido até **12/09/2026**:
 se a assinatura destravar antes disso, basta retomar do passo 5 do roteiro acima.
 
-**Veredito do gate empírico #10: PENDENTE** — não pode ser julgado sem uma rodada real de
+> ✅ **RESOLVIDO NA FASE 132 (2026-08-18) — ver `132-GATE.md`, seção do gate empírico #10.**
+> A rodada real aconteceu contra a Clicksign de **produção**, com envelope realmente assinado
+> (3 assinaturas) e o aviso automático desligado de propósito. A varredura corrigiu sozinha:
+> `ContratoLiberacao id=1` com `via=reconciliacao`, e a contagem de eventos ficou inalterada
+> em 25 do começo ao fim — o webhook não contribuiu com nada. **Veredito: SUFICIENTE.**
+> O texto abaixo é o registro histórico de por que a Fase 130 não conseguiu fechar isto.
+
+**Veredito do gate empírico #10: PENDENTE (à época)** — não pode ser julgado sem uma rodada real de
 reconciliação para confrontar com `CLICKSIGN-SANDBOX-EMPIRICO.md` §8.
 
 #### Estado do ambiente deixado para trás
