@@ -1894,14 +1894,14 @@ Plans:
   4. Desligar a chave `administrativo_bloqueio_ativo` sem deploy volta o sistema ao roteamento imediato de antes, imediatamente
   5. **(FLUXO-09)** Com o bloqueio ligado, a ativação manual do time de Publicação (`MlbController::ativarEmpresaPendente()`, tela `/mlb/empresas`) também não cria ficha operacional — provado por teste. Lacuna descoberta na verificação da Fase 124: esse método cria `MlbEmpresa`+`MlbImplementacao` por cópia inline, fora do `EmpresaOperacionalRouter` e sem consultar a chave
 
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 Plans:
 **Wave 1**
 
 - [x] 133-01-PLAN.md — Exceção por serviço em `rotear()` (Polos nunca é bloqueado) + os 4 testes do Phase124 trocados de cenário [wave 1]
 - [x] 133-02-PLAN.md — Porta dos fundos do time de Publicação (FLUXO-09) + registro da dívida das duas rotas extras (D-06) [wave 1]
-- [ ] 133-03-PLAN.md — A tela `/administrativo/contratos` conta a consequência: faixa condicional sem jargão (D-04) [wave 1]
+- [x] 133-03-PLAN.md — A tela `/administrativo/contratos` conta a consequência: faixa condicional sem jargão (D-04) [wave 1]
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
