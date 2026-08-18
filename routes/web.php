@@ -30,8 +30,6 @@ use App\Http\Controllers\ShopeeOAuthController;
 use App\Http\Controllers\GrantController;
 use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MeetingController;
-use App\Http\Controllers\MetasDevController;
-use App\Http\Controllers\MetasDevGestorController;
 use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsCicloController;
 use App\Http\Controllers\NpsController;
@@ -758,29 +756,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{company}/toggle-shadow',               [SugadoresMlOnboardingController::class, 'toggleShadow'])->name('toggle_shadow');
         });
 
-        // ─── Metas do Dev — proposta de régua de bonificação do time de dev ───
-        // Módulo em `homologacao` no ModuleRegistry (fora de produção enquanto
-        // for proposta). O grupo já é role:admin, mas a custódia REAL é mais
-        // fina e mora nos FormRequests: tudo que entra no cálculo da nota exige
-        // `is_gestor_dev`, flag que o dev avaliado NÃO tem — ele é admin.
-        // Ver .planning/seeds/metas-dev-proposta.md ("Matriz de custódia").
-        Route::prefix('dev/metas')->name('dev.metas.')->group(function () {
-            // Painel único: o dev lê, o gestor classifica inline.
-            Route::get('/', [MetasDevController::class, 'index'])->name('index');
 
-            // Lado do DEV: registra e propõe prazo. Só isso.
-            Route::post('/entregas',                   [MetasDevController::class, 'store'])->name('entregas.store');
-            Route::patch('/entregas/{entrega}',        [MetasDevController::class, 'update'])->name('entregas.update');
-            Route::post('/entregas/{entrega}/enviar',  [MetasDevController::class, 'enviar'])->name('entregas.enviar');
-
-            // Lado do GESTOR: tudo que vira número na régua.
-            Route::post('/entregas/{entrega}/baseline', [MetasDevGestorController::class, 'congelarBaseline'])->name('entregas.baseline');
-            Route::post('/entregas/{entrega}/aprovar',  [MetasDevGestorController::class, 'aprovar'])->name('entregas.aprovar');
-            Route::put('/entregas/{entrega}/avaliacao', [MetasDevGestorController::class, 'avaliar'])->name('entregas.avaliar');
-            Route::patch('/entregas/{entrega}/hotfix',  [MetasDevGestorController::class, 'classificarHotfix'])->name('entregas.hotfix');
-            Route::put('/cotas',                        [MetasDevGestorController::class, 'definirCota'])->name('cotas.definir');
-        });
-
+        // ─── Metas do Dev — REMOVIDO de main (2a vez, 2026-08-18) ─────────────
+        // As rotas `dev/metas` apontavam para MetasDevController e
+        // MetasDevGestorController, que NUNCA foram versionados: existem so na
+        // arvore de trabalho da sessao que os escreve. Em producao isso mata
+        // `php artisan route:list` inteiro e da 500 em /dev/metas.
+        //
+        // Voltaram porque eu copiei o routes/web.php da arvore principal por
+        // cima da worktree, desfazendo a remocao anterior — copia cega de
+        // arquivo compartilhado apaga correcao que so existe de um lado.
+        //
+        // Para reativar: commitar controllers, models, migrations e FormRequests
+        // JUNTO com este bloco, num commit so.
         // PUT /goals/{goal} movida pra fora do grupo (META-04) — estrategista pode
         // editar. DELETE segue restrita ao admin.
         Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
