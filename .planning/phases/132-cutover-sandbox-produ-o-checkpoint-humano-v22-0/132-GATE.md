@@ -628,8 +628,8 @@ tempo. Vale conhecer antes de alguém remover signatário achando que "resolve".
 ### SC5 — Aprovação explícita da virada
 
 - **CHECKPOINT HUMANO.** Usuário aprova, por escrito, que a virada está correta ANTES de
-  qualquer contrato real de cliente ser gerado em produção: ______
-- Data/hora: ______
+  qualquer contrato real de cliente ser gerado em produção: **APROVADO** ✅
+- Data/hora: **2026-08-18, ~11:20 (BRT)** — aprovação explícita do usuário, sem ressalvas.
 
 ### Interruptor de emissão — as quatro linhas
 
@@ -658,7 +658,11 @@ reconsulta, nunca a ausência de mensagem de erro.
   conter, é o melhor desfecho possível — em nenhum momento a tela ficou liberada para
   qualquer administrador gerar contrato.
 - Travado de novo em: **não se aplica** — nunca foi destravado
-- Desligado no fim em: ______ (data, hora, quem) — reconsulta devolveu: ______
+- Desligado no fim em: **2026-08-18, ~11:20 (BRT), por dev.01 (sessão Claude Code), após a
+  aprovação SC5** — reconsulta devolveu: **`desligado`** ✅
+  Conferido também que o gatilho automático voltou a avaliar normalmente.
+  ⚠️ **A emissão de contratos está LIBERADA desde este momento.** Contrato gerado pela tela do
+  Administrativo agora vale juridicamente e vai para o cliente de verdade.
 
 **Backup do `.env` anterior à virada (passo 2 da Task 2):**
 `/root/env-antes-da-virada-clicksign-20260817`, permissão `600`, dono `root`, 104 linhas —
@@ -723,6 +727,35 @@ manda parar — anota-se e segue.
 ---
 
 ## 7. Lixo que fica para limpar depois
+
+**Registrado em 2026-08-18, ao fim da fase:**
+
+| Item | id | O que é |
+|---|---|---|
+| Empresa fictícia | **424** | `TESTE CUTOVER 132 - NAO E CLIENTE`, CNPJ `99.999.999/0001-99` |
+| Vínculo de serviço | **321** | serviço Gestão (id 6) |
+| Contrato de teste | **1** | envelope `5d2458b6…`, `assinado`, 3 assinaturas reais |
+| Liberação | **1** | `via=reconciliacao` — é a evidência do gate #10, **não apagar sem registrar** |
+
+O envelope `5d2458b6…` fica `closed` na conta de produção da Clicksign com três assinaturas
+de gente da casa. É o custo aceito na D-03.
+
+⚠️ **Erro do executor, corrigido na hora:** ao desligar o interruptor, invoquei o gatilho
+automático "só para conferir que voltou a avaliar" — e ele **gerou um segundo envelope**
+(contrato 2, `1e789230…`). Nasceu em rascunho, então nada foi enviado a ninguém. Apagado
+imediatamente: `DELETE /envelopes/{id}` → **204**, reconsulta → **404**, e o registro local
+removido. A empresa 424 voltou a ter 1 contrato. Fica a lição: **com o interruptor desligado,
+não se testa gatilho de geração em produção** — o guard de "em andamento" não protege quando
+o contrato anterior já está `assinado`.
+
+### Estado do interruptor ao fim da fase
+
+**DESLIGADO**, conforme o SC5 aprovado. A seção 7 exigia declaração escrita do estado dele se
+a fase parasse por qualquer motivo — a fase não parou, foi aprovada, e o interruptor saiu.
+
+---
+
+## 7.1. Dívidas registradas (o que esta fase descobriu e não fechou)
 
 - A empresa fictícia e o contrato criados no plano 132-03 (D-03, custo aceito) ficam na
   base de produção. Registrar aqui os ids assim que existirem, para que a limpeza futura
