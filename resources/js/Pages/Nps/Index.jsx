@@ -1498,7 +1498,9 @@ function CoberturaPreview({ modo, carregando, cobertura }) {
 }
 
 // Uma linha por empresa excluída do grupo, com o motivo em português simples
-// — os 5 textos são EXATOS (contrato de UI item 2). Cada flag é derivada
+// — os textos são EXATOS (contrato de UI item 2; `sem_responsavel` entrou em
+// 2026-08-18, junto com a régua que deixa a empresa órfã de fora do link em
+// vez de travar o grupo inteiro). Cada flag é derivada
 // DENTRO do .map() (pitfall Rollup do projeto: variável de escopo do
 // componente usada só dentro do callback some no bundle de produção).
 function MotivosExclusao({ excluidas = [] }) {
@@ -1510,6 +1512,7 @@ function MotivosExclusao({ excluidas = [] }) {
                 const ehSemServicoEmComum    = e.motivo === 'sem_servico_em_comum';
                 const ehJaTemLink            = e.motivo === 'ja_tem_link';
                 const ehEmpresaInativa       = e.motivo === 'empresa_inativa';
+                const ehSemResponsavel       = e.motivo === 'sem_responsavel';
 
                 return (
                     <li key={e.company_id} className="text-xs text-amber-200/90 leading-relaxed">
@@ -1529,6 +1532,9 @@ function MotivosExclusao({ excluidas = [] }) {
                         )}
                         {ehEmpresaInativa && (
                             <>está inativa no sistema.</>
+                        )}
+                        {ehSemResponsavel && (
+                            <>ainda não tem estrategista nem analista atribuídos, então a nota dela não teria dono. Ela fica de fora até alguém ser vinculado no cadastro da empresa.</>
                         )}
                     </li>
                 );

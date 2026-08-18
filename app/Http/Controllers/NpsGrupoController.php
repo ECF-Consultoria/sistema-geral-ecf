@@ -448,14 +448,13 @@ class NpsGrupoController extends Controller
      */
     private function autorizarAcessoAoGrupo(CompanyGroup $grupo, User $user): void
     {
-        if ($user->isAdmin()) {
-            return;
-        }
-
-        $permitidas = $user->companies()->pluck('companies.id');
-        $doGrupo    = $grupo->companies()->pluck('companies.id');
-
-        if ($doGrupo->isEmpty() || $doGrupo->diff($permitidas)->isNotEmpty()) {
+        // 2026-08-18 — a régua virou `CompanyGroup::visivelPara()`, a MESMA
+        // que monta o seletor de grupos em `NpsController::index()`. Antes
+        // eram duas cópias: oferecer aqui um grupo que o seletor não lista
+        // (ou o contrário) significa 403 em cima de um botão que a tela
+        // mostrou. Lá está escrito por que empresa sem responsável deixou de
+        // bloquear o grupo.
+        if (! $grupo->visivelPara($user)) {
             abort(403);
         }
     }
