@@ -854,6 +854,40 @@ não assumir que existe endpoint.
 | Reenviar notificação | ✅ funciona | §14 — corpo JSON:API medido; 429 anti-spam é resposta ESPERADA, em texto puro |
 | Cancelar envelope em `draft` | ✅ funciona | `DELETE /envelopes/{id}` |
 | Ativar envelope | ✅ funciona | `ativarEnvelope()` — ⚠️ pela API; a tela do sandbox NÃO ativa envelope gerado por modelo (`130-GATE.md`) |
+| **Remover signatário de envelope `running`** | ✅ **funciona** | §15.4 — medido em PRODUÇÃO em 2026-08-18: `DELETE /envelopes/{id}/signers/{signerId}` → **204** |
+| **Antecipar o prazo (`deadline_at`)** | ✅ funciona | §15.4 — `PATCH /envelopes/{id}` com `deadline_at` → 200; é o caminho para fechar envelope |
+
+### 15.4 Remover signatário funciona; fechar por status, não — medido em produção
+
+Medido em 2026-08-18 na virada da Fase 132, com envelope real de 4 signatários (3 assinaram).
+
+**`DELETE /envelopes/{id}/signers/{signerId}` devolve 204** em envelope `running`, e os
+`requirements` daquele signatário saem junto (8 → 6, conferido por reconsulta). Isso corrige a
+leitura do §15.1: lá está registrado que corrigir e-mail não existe e que "trocar a pessoa que
+assina colapsa em cancelar e reemitir". **Remover é diferente de trocar — remover funciona.**
+
+⚠️ **Mas remover o último pendente NÃO fecha o envelope.** Mesmo com `auto_close: true` e
+todos os 6 requisitos restantes cumpridos (`modified` batendo com os horários das três
+assinaturas), o envelope permaneceu `running`. A leitura: **a Clicksign avalia o fechamento
+quando chega uma ASSINATURA**, não quando a lista de pendentes esvazia por remoção.
+
+**Fechar por status é recusado:**
+
+```
+PATCH /envelopes/{id}  data.attributes.status = "closed"
+  -> 400  "status deve estar em: draft, running"
+```
+
+Mesma família do §15.2 (`canceled` → 400): a API não faz transição para estado terminal.
+
+**O que fecha:** antecipar o prazo. `PATCH /envelopes/{id}` com `deadline_at` para daqui a
+poucos minutos devolve 200, e quando o prazo vence o `deadline_partial_signature_action:
+"closed"` (§12.4) fecha o envelope — conferido por reconsulta, `status: closed`.
+
+⚠️ **Consequência operacional:** um contrato de cliente real cujo último signatário pendente
+seja removido **fica preso em `running` até o prazo**, e a empresa não é liberada nesse
+intervalo. Quem remover signatário achando que "resolve o travamento" precisa saber disso —
+resolver de verdade exige mexer também no `deadline_at`.
 
 ---
 
