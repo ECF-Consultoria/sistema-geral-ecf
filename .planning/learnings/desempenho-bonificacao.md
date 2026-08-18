@@ -358,6 +358,87 @@ Armadilha de shell que já enganou nesta casa: `comando | tail -20; echo $?` dev
 
 Em controllers use `DesempenhoScoreService::computeCached()`; `compute()` puro só em jobs e commands. Sem cache o dashboard levava 70 segundos, 99% esperando HTTP da Adman.
 
+### 5.1. O `gerado_em` do snapshot por empresa NÃO prova que o conteúdo é novo
+
+Descoberto em 2026-08-18, e custou meia investigação em falso.
+
+`WarmDesempenhoCache` (a cada 8 min) chama `computeCached()` e grava o
+resultado em `desempenho_company_score_snapshots` via `CompanyScoreSnapshotWriter`.
+Quando o payload vem do cache — que é o caso normal, já que só recomputa em
+cache MISS —, **a linha é reescrita com `gerado_em` de agora e conteúdo de até
+7 dias atrás**. A tela `/performance` lê essa linha.
+
+O efeito prático: uma empresa aparece em "Não entraram" com motivo
+`nps_janela_aberta` e `gerado_em` de 5 minutos atrás, enquanto
+`NpsPorEmpresaService` recalculado ao vivo devolve nota 5,0 para ela. Nada na
+tela denuncia — o carimbo novo parece um álibi.
+
+**Como diagnosticar sem se enganar:** compare o snapshot com o cálculo AO VIVO,
+nunca com o `gerado_em`. `NpsPorEmpresaService::notasNpsPorEmpresa()` é
+DB-only (zero HTTP à Adman), então roda barato em produção via `tinker`:
+
+```php
+$r = app(NpsPorEmpresaService::class)
+    ->notasNpsPorEmpresa(User::find($id), Carbon::parse('2026-07-01'), true);
+// compare $r->get($companyId)->nota com a coluna nps_pontos do snapshot
+```
+
+E leia a chave de cache direto (`Cache::get($scoreService->cacheKey($u, $mes))`) —
+o payload cacheado carrega `empresas_score`, então dá para ver o valor velho
+lado a lado com o vivo.
+
+**O bônus consolidado não herda isso:** `ConsolidarMesDesempenho` chama
+`compute()` direto, sem cache. O estrago é só de tela — mas a tela é a que o
+gestor usa para conferir bônus, então "só de tela" não quer dizer inofensivo.
+
+### 5.2. Todo caminho que grava resposta de NPS precisa bustar o cache
+
+A spec de 2026-08-14 fez o fluxo INDIVIDUAL (`NpsController::submitResponse`)
+derrubar a chave do desempenho ao receber a resposta. O fluxo de **GRUPO**
+(`NpsGrupoController::submitResponse` → `NpsGrupoReplicacaoService`) ficou de
+fora e grava exatamente as mesmas coisas: survey-espelho completo, resposta,
+snapshot congelado da Fase 79 e `nps_score_assignments`.
+
+Medido em 2026-08-18 na competência 2026-07: **20 linhas erradas em 4
+profissionais**, todas dos links de grupo respondidos naquela manhã. As
+respostas de 4 dias antes apareciam certas por acidente — alguém tinha
+respondido um link INDIVIDUAL da mesma carteira e o busting dele carregou os
+grupos de carona.
+
+Corrigido em `NpsGrupoController::bustarCacheDoBonusDosEspelhos()`. A régua é
+uma cópia deliberada da de `NpsController::bustarCacheDoBonus()` (que é
+`private` no arquivo mais disputado do módulo): competência = mês do
+`completed_at` **menos 1**, responsáveis por `nps_score_assignments` com
+fallback para `company_users`. **São duas cópias de uma decisão só — mudou uma,
+mude a outra.** Coberto por `tests/Feature/NpsGrupoBustaCacheDesempenhoTest.php`.
+
+Se aparecer um terceiro caminho de gravação de resposta (importação, backfill,
+API), ele precisa do mesmo tratamento — o sintoma é sempre o mesmo e sempre
+parece outra coisa.
+
+**Derrubar a chave na mão não segura o problema — só o deploy segura.** Ainda em
+2026-08-18, o mesmo sintoma reapareceu **28 minutos** depois da correção manual:
+os grupos 7 e 8 foram respondidos às 10:40/10:45 e tiveram o cache derrubado à
+mão por volta das 11:12; o grupo 2 foi respondido às **11:40** e voltou a
+congelar. Chegou como "POZELAR e MPozenato responderam a Ana Julia e não está
+contabilizando" — 4 linhas erradas (2 empresas × Ana Julia e Luiz Henrique) na
+competência 2026-07, `nps_pontos` NULL com motivo `nps_janela_aberta` onde o
+cálculo ao vivo devolvia **5,00**, e o `gerado_em` do snapshot carimbado 5
+minutos antes pelo `WarmDesempenhoCache`. O código do fix já existia na árvore
+local havia horas — só não estava em produção. Deployado em `09c2e005`
+(2026-08-18).
+
+Dois detalhes que economizam tempo em qualquer repetição disto:
+
+- **`compute()` só devolve `empresas_score` com o 4º argumento `true`**
+  (`compute($user, $mes, null, true)`). Chamado sem ele, o array vem vazio e a
+  comparação "cache × vivo" mostra `null` dos dois lados — parece que o vivo
+  também está errado e joga a investigação na direção contrária. Custou uma
+  volta inteira.
+- **O `periodo` exposto no payload NÃO carrega `is_closed`**, embora o `$periodo`
+  interno carregue. Ler `is_closed` do payload cacheado dá sempre "mês em curso"
+  e sugere um bug de janela que não existe.
+
 ## 6. Armadilhas de banco que o SQLite dos testes não pega
 
 Os testes rodam em SQLite; produção é MariaDB. Estas três já quebraram deploy:
