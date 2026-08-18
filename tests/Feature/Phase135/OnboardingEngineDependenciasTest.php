@@ -144,11 +144,11 @@ class OnboardingEngineDependenciasTest extends TestCase
         $onboarding = $this->criarOnboardingDeGestaoEmAndamento();
         (new OnboardingEngineService())->reavaliar($onboarding);
 
+        // v10 — saíram daqui `mensagem_boas_vindas` e `confirmacao_pagamento`,
+        // os dois passos sem dependência que o negócio removeu da régua.
         $semDependencia = [
-            'mensagem_boas_vindas',
             'grant_sistema_ecf',
             'planilha_custos_adman',
-            'confirmacao_pagamento',
             'custos_app_ecf',
         ];
         foreach ($semDependencia as $chave) {
@@ -157,15 +157,12 @@ class OnboardingEngineDependenciasTest extends TestCase
             $this->assertNotNull($passo->disponivel_em, "chave={$chave}");
         }
 
-        // v7 — `mensagem_boas_vindas` saiu daqui: dependia de `grupo_criado`,
-        // que foi removido da definição, e passou a nascer aberta.
+        // v10 — `excluir_anuncios_inativos` e `grant_de_ads` também saíram.
         $comDependencia = [
             'acesso_colaborador_ml',
             'grant_consultoria_adman',
             'metricas_da_conta',
             'anuncios_ativos_inativos',
-            'excluir_anuncios_inativos',
-            'grant_de_ads',
             'agendar_reuniao_onboarding',
             'reuniao_realizada',
         ];
@@ -207,7 +204,9 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $passo = $this->passo($onboarding, 'mensagem_boas_vindas');
+        // v10: era `mensagem_boas_vindas`, que saiu da régua. Qualquer passo sem
+        // dependência serve — o que se mede é o carimbo não ser reescrito.
+        $passo = $this->passo($onboarding, 'grant_sistema_ecf');
         $carimboOriginal = $passo->disponivel_em;
         $this->assertNotNull($carimboOriginal);
 
@@ -218,61 +217,63 @@ class OnboardingEngineDependenciasTest extends TestCase
     }
 
     // ─── Regras 5 e 6: passo condicional ──────────────────────────────────
+    //
+    // v10: `excluir_anuncios_inativos` era o ÚNICO passo condicional do
+    // template de Gestão e saiu da régua. O mecanismo de condição
+    // (`CONDICAO_ANUNCIOS_INATIVOS` no model, `avaliarCondicao()` no engine)
+    // continua no código, então os três casos seguem cobertos — agora sobre a
+    // fixture sintética, que já existia neste arquivo justamente para exercitar
+    // a regra genérica sem depender de um passo específico do template.
 
     /** @test */
-    public function excluir_anuncios_inativos_fica_nao_aplicavel_quando_passo8_apura_zero_inativos(): void
+    public function passo_condicional_fica_nao_aplicavel_quando_a_ancora_apura_zero_inativos(): void
     {
-        $onboarding = $this->criarOnboardingDeGestaoEmAndamento();
+        [$onboarding, $ancora, $condicional] = $this->criarOnboardingSinteticoComCadeiaCondicional();
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $usuario = User::factory()->create();
-        $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
-        $engine->aplicarResultado($this->passo($onboarding, 'grant_sistema_ecf'), OnboardingResolverResultado::concluido(['token' => 'ativo']));
-        $engine->aplicarResultado($this->passo($onboarding, 'anuncios_ativos_inativos'), OnboardingResolverResultado::concluido(['inativos' => 0]));
+        $engine->aplicarResultado(
+            $this->passo($onboarding, $ancora),
+            OnboardingResolverResultado::concluido(['inativos' => 0]),
+        );
 
-        $passo9 = $this->passo($onboarding, 'excluir_anuncios_inativos');
-        $this->assertSame(OnboardingPasso::STATUS_NAO_APLICAVEL, $passo9->status);
-        $this->assertNotNull($passo9->auto_em);
+        $passo = $this->passo($onboarding, $condicional);
+        $this->assertSame(OnboardingPasso::STATUS_NAO_APLICAVEL, $passo->status);
+        $this->assertNotNull($passo->auto_em);
     }
 
     /** @test */
-    public function excluir_anuncios_inativos_fica_aberto_quando_passo8_apura_inativos_maior_que_zero(): void
+    public function passo_condicional_fica_aberto_quando_a_ancora_apura_inativos_maior_que_zero(): void
     {
-        $onboarding = $this->criarOnboardingDeGestaoEmAndamento();
+        [$onboarding, $ancora, $condicional] = $this->criarOnboardingSinteticoComCadeiaCondicional();
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $usuario = User::factory()->create();
-        $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
-        $engine->aplicarResultado($this->passo($onboarding, 'grant_sistema_ecf'), OnboardingResolverResultado::concluido(['token' => 'ativo']));
-        $engine->aplicarResultado($this->passo($onboarding, 'anuncios_ativos_inativos'), OnboardingResolverResultado::concluido(['inativos' => 12]));
+        $engine->aplicarResultado(
+            $this->passo($onboarding, $ancora),
+            OnboardingResolverResultado::concluido(['inativos' => 12]),
+        );
 
-        $passo9 = $this->passo($onboarding, 'excluir_anuncios_inativos');
-        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passo9->status);
-        $this->assertNotNull($passo9->disponivel_em);
+        $passo = $this->passo($onboarding, $condicional);
+        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passo->status);
+        $this->assertNotNull($passo->disponivel_em);
     }
 
     /** @test */
-    public function excluir_anuncios_inativos_permanece_bloqueado_enquanto_passo8_nao_concluiu(): void
+    public function passo_condicional_permanece_bloqueado_enquanto_a_ancora_nao_concluiu(): void
     {
-        $onboarding = $this->criarOnboardingDeGestaoEmAndamento();
+        [$onboarding, $ancora, $condicional] = $this->criarOnboardingSinteticoComCadeiaCondicional();
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $usuario = User::factory()->create();
-        $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
-        $engine->aplicarResultado($this->passo($onboarding, 'grant_sistema_ecf'), OnboardingResolverResultado::concluido(['token' => 'ativo']));
-        // anuncios_ativos_inativos já está aberto (dependência satisfeita) mas NÃO foi concluído.
+        // A âncora não tem dependência: já está aberta, mas NÃO foi concluída.
+        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $this->passo($onboarding, $ancora)->status);
 
-        $passo8 = $this->passo($onboarding, 'anuncios_ativos_inativos');
-        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passo8->status);
-
-        $passo9 = $this->passo($onboarding, 'excluir_anuncios_inativos');
-        $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $passo9->status);
+        $passo = $this->passo($onboarding, $condicional);
+        $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $passo->status);
 
         // Também via chamada direta (defensiva — regra 6 não decide por omissão).
-        $this->assertNull((new OnboardingEngineService())->avaliarCondicao($passo9->fresh()));
+        $this->assertNull((new OnboardingEngineService())->avaliarCondicao($passo->fresh()));
     }
 
     /** @test */
@@ -443,8 +444,14 @@ class OnboardingEngineDependenciasTest extends TestCase
 
     // ─── Regra 8: conclusão do onboarding ──────────────────────────────────
 
-    /** @test */
-    public function concluir_os_12_passos_obrigatorios_restantes_com_passo9_nao_aplicavel_fecha_o_onboarding(): void
+    /**
+     * v10 — eram 12 passos obrigatórios + 1 condicional; a régua agora tem 9 e
+     * nenhum condicional. Os passos com `auto_fonte` fecham por
+     * `aplicarResultado()`, nunca na mão.
+     *
+     * @test
+     */
+    public function concluir_todos_os_passos_da_regua_fecha_o_onboarding(): void
     {
         $onboarding = $this->criarOnboardingDeGestaoEmAndamento();
         $engine = new OnboardingEngineService();
@@ -452,25 +459,16 @@ class OnboardingEngineDependenciasTest extends TestCase
 
         $usuario = User::factory()->create();
 
-        $engine->concluirManualmente($this->passo($onboarding, 'mensagem_boas_vindas'), $usuario);
-        $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
-        $engine->concluirManualmente($this->passo($onboarding, 'confirmacao_pagamento'), $usuario);
-        $engine->concluirManualmente($this->passo($onboarding, 'custos_app_ecf'), $usuario);
-
+        $engine->aplicarResultado($this->passo($onboarding, 'grant_sistema_ecf'), OnboardingResolverResultado::concluido(['token' => 'ativo']));
         $engine->aplicarResultado($this->passo($onboarding, 'planilha_custos_adman'), OnboardingResolverResultado::concluido(['adman_account_id' => '123']));
         $engine->aplicarResultado($this->passo($onboarding, 'grant_consultoria_adman'), OnboardingResolverResultado::concluido(['grant' => 'ativo']));
-        $engine->aplicarResultado($this->passo($onboarding, 'grant_sistema_ecf'), OnboardingResolverResultado::concluido(['token' => 'ativo']));
+
+        $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
+        $engine->concluirManualmente($this->passo($onboarding, 'custos_app_ecf'), $usuario);
 
         $engine->aplicarResultado($this->passo($onboarding, 'metricas_da_conta'), OnboardingResolverResultado::concluido(['faturamento' => 1000]));
         $engine->aplicarResultado($this->passo($onboarding, 'anuncios_ativos_inativos'), OnboardingResolverResultado::concluido(['inativos' => 0]));
 
-        // O relatório inicial tem auto_fonte — não fecha na mão, nem aqui.
-        $engine->aplicarResultado($this->passo($onboarding, 'relatorio_inicial'), OnboardingResolverResultado::concluido(['secoes_escritas' => 3]));
-
-        // excluir_anuncios_inativos deve ter virado nao_aplicavel automaticamente (cascata acima).
-        $this->assertSame(OnboardingPasso::STATUS_NAO_APLICAVEL, $this->passo($onboarding, 'excluir_anuncios_inativos')->status);
-
-        $engine->concluirManualmente($this->passo($onboarding, 'grant_de_ads'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'agendar_reuniao_onboarding'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'reuniao_realizada'), $usuario);
 
@@ -479,8 +477,17 @@ class OnboardingEngineDependenciasTest extends TestCase
         $this->assertNotNull($onboarding->concluido_em);
     }
 
-    /** @test */
-    public function concluir_passos_de_mapeamento_sem_confirmacao_pagamento_nao_fecha_o_onboarding_d15(): void
+    /**
+     * Regra 8 pelo lado negativo: falta UM passo obrigatório e o onboarding não
+     * fecha.
+     *
+     * v10 — este teste provava D-15 ("pagamento trava a conclusão"), regra que
+     * morreu junto com `confirmacao_pagamento`. O que ela protegia em geral
+     * continua valendo e agora é medido com `reuniao_realizada` em aberto.
+     *
+     * @test
+     */
+    public function falta_um_passo_obrigatorio_e_o_onboarding_nao_fecha(): void
     {
         $onboarding = $this->criarOnboardingDeGestaoEmAndamento();
         $engine = new OnboardingEngineService();
@@ -488,20 +495,19 @@ class OnboardingEngineDependenciasTest extends TestCase
 
         $usuario = User::factory()->create();
 
-        // confirmacao_pagamento é deliberadamente NUNCA concluído neste teste.
-        $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
-        $engine->aplicarResultado($this->passo($onboarding, 'planilha_custos_adman'), OnboardingResolverResultado::concluido(['adman_account_id' => '123']));
         $engine->aplicarResultado($this->passo($onboarding, 'grant_sistema_ecf'), OnboardingResolverResultado::concluido(['token' => 'ativo']));
+        $engine->aplicarResultado($this->passo($onboarding, 'planilha_custos_adman'), OnboardingResolverResultado::concluido(['adman_account_id' => '123']));
+        $engine->aplicarResultado($this->passo($onboarding, 'grant_consultoria_adman'), OnboardingResolverResultado::concluido(['grant' => 'ativo']));
+
+        $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
+        $engine->concluirManualmente($this->passo($onboarding, 'custos_app_ecf'), $usuario);
 
         $engine->aplicarResultado($this->passo($onboarding, 'metricas_da_conta'), OnboardingResolverResultado::concluido(['faturamento' => 1000]));
         $engine->aplicarResultado($this->passo($onboarding, 'anuncios_ativos_inativos'), OnboardingResolverResultado::concluido(['inativos' => 0]));
         $engine->concluirManualmente($this->passo($onboarding, 'agendar_reuniao_onboarding'), $usuario);
 
-        $this->assertSame(OnboardingPasso::STATUS_CONCLUIDO, $this->passo($onboarding, 'metricas_da_conta')->status);
-        $this->assertSame(OnboardingPasso::STATUS_CONCLUIDO, $this->passo($onboarding, 'anuncios_ativos_inativos')->status);
-        $this->assertSame(OnboardingPasso::STATUS_CONCLUIDO, $this->passo($onboarding, 'agendar_reuniao_onboarding')->status);
-
-        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $this->passo($onboarding, 'confirmacao_pagamento')->status);
+        // `reuniao_realizada` é deliberadamente NUNCA concluída neste teste.
+        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $this->passo($onboarding, 'reuniao_realizada')->status);
 
         $onboarding->refresh();
         $this->assertSame(Onboarding::STATUS_ANDAMENTO, $onboarding->status);

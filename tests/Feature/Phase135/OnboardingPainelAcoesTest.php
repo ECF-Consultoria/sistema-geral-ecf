@@ -153,8 +153,9 @@ class OnboardingPainelAcoesTest extends TestCase
         $this->assertSame($responsavel->id, $onboarding->responsavel_id);
         $this->assertNotNull($onboarding->iniciado_em);
 
-        // Os 5 passos sem depende_de (135-04-PLAN.md) destravam na hora.
-        foreach (['mensagem_boas_vindas', 'grant_sistema_ecf', 'planilha_custos_adman', 'confirmacao_pagamento', 'custos_app_ecf'] as $chave) {
+        // Os passos sem depende_de destravam na hora. Eram 5 (135-04-PLAN.md);
+        // v10 removeu `mensagem_boas_vindas` e `confirmacao_pagamento` da régua.
+        foreach (['grant_sistema_ecf', 'planilha_custos_adman', 'custos_app_ecf'] as $chave) {
             $passo = $this->passo($onboarding, $chave);
             $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passo->status, "passo {$chave} deveria estar aberto");
             $this->assertNotNull($passo->disponivel_em, "passo {$chave} deveria ter disponivel_em carimbado");

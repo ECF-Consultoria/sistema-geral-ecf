@@ -5,7 +5,6 @@ namespace Tests\Feature\Phase135;
 use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\Onboarding;
-use App\Models\OnboardingPasso;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
@@ -16,17 +15,22 @@ use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
- * Criação do Grupo e Boas-vindas (PDF §7) — o documento pede os dois como
- * parte do "acompanhamento inicial da entrada da empresa".
+ * Grupo de WhatsApp e Boas-vindas — os DOIS passos saíram do onboarding.
  *
- * São dois passos internos simples, sem tabela nem resolver. Não têm auto_fonte
- * porque o sistema não consegue verificar sozinho que um grupo foi criado nem
- * que uma mensagem foi enviada — fingir automação ali seria pior que o
- * checkbox honesto.
+ * `grupo_criado` saiu na v7 e `mensagem_boas_vindas` na v10, ambos por decisão
+ * do negócio: não fazem parte do onboarding. O arquivo mudou de propósito —
+ * antes protegia o comportamento dos passos, agora protege a REMOÇÃO deles.
+ *
+ * Por que continua existindo: os dois nasceram de um pedido explícito (PDF §7)
+ * e foram retirados depois. Sem este teste, a próxima leitura daquele documento
+ * os reintroduz sem ninguém perceber que já foram removidos duas vezes.
  */
 class OnboardingGrupoBoasVindasTest extends TestCase
 {
     use RefreshDatabase;
+
+    /** As duas chaves que não devem voltar à régua. */
+    private const CHAVES_REMOVIDAS = ['grupo_criado', 'mensagem_boas_vindas'];
 
     private function servicoDeGestao(): Servico
     {
@@ -51,57 +55,53 @@ class OnboardingGrupoBoasVindasTest extends TestCase
         return $onboarding->fresh();
     }
 
-    private function passo(Onboarding $onboarding, string $chave): OnboardingPasso
+    #[Test]
+    public function os_dois_passos_nao_existem_mais_na_definicao(): void
     {
-        return OnboardingPasso::where('onboarding_id', $onboarding->id)
-            ->where('chave', $chave)
-            ->firstOrFail();
+        $chaves = collect(DefinicaoOnboarding::paraServico($this->servicoDeGestao()))
+            ->pluck('chave')
+            ->all();
+
+        foreach (self::CHAVES_REMOVIDAS as $chave) {
+            $this->assertNotContains($chave, $chaves, "\"{$chave}\" foi removido da régua e não deve voltar");
+        }
     }
 
     #[Test]
-    public function a_mensagem_de_boas_vindas_nasce_interna_e_manual(): void
-    {
-        $onboarding = $this->onboardingEmAndamento();
-
-        $passo = $this->passo($onboarding, 'mensagem_boas_vindas');
-        $this->assertSame(OnboardingPasso::DONO_INTERNO, $passo->dono);
-        $this->assertNull($passo->auto_fonte, 'Não há como o sistema verificar isso sozinho.');
-    }
-
-    /** v7 — o negócio removeu o passo do grupo de WhatsApp do onboarding. */
-    #[Test]
-    public function o_passo_do_grupo_de_whatsapp_nao_existe_mais(): void
+    public function onboarding_novo_nasce_sem_os_dois_passos(): void
     {
         $onboarding = $this->onboardingEmAndamento();
 
-        $this->assertNull(
-            $onboarding->passos()->where('chave', 'grupo_criado')->first(),
-            'grupo_criado saiu da definição na v7'
-        );
-
-        $this->assertNotContains(
-            'grupo_criado',
-            collect(DefinicaoOnboarding::paraServico($this->servicoDeGestao()))->pluck('chave')->all()
-        );
+        foreach (self::CHAVES_REMOVIDAS as $chave) {
+            $this->assertNull(
+                $onboarding->passos()->where('chave', $chave)->first(),
+                "\"{$chave}\" nasceu num onboarding novo"
+            );
+        }
     }
 
+    /**
+     * Nenhum passo pode DEPENDER de uma chave removida: a dependência aponta
+     * para algo que nunca nasce, e o passo dependente fica bloqueado para
+     * sempre. Foi o que aconteceria com `reuniao_realizada` na v10 se a
+     * remoção não tivesse ajustado o `depende_de` dela.
+     */
     #[Test]
-    public function a_mensagem_nao_depende_mais_de_nada(): void
+    public function nenhum_passo_depende_de_uma_chave_removida(): void
     {
-        $onboarding = $this->onboardingEmAndamento();
-
-        $this->assertNull($this->passo($onboarding, 'mensagem_boas_vindas')->depende_de);
-
-        // Sem dependência, nasce aberta com os demais — não fica esperando
-        // ninguém fechar um passo que já não existe.
-        $this->assertSame(
-            OnboardingPasso::STATUS_ABERTO,
-            $this->passo($onboarding, 'mensagem_boas_vindas')->status
-        );
+        foreach (DefinicaoOnboarding::paraServico($this->servicoDeGestao()) as $passo) {
+            foreach ($passo['depende_de'] ?? [] as $dependencia) {
+                $this->assertNotContains(
+                    $dependencia,
+                    self::CHAVES_REMOVIDAS,
+                    "\"{$passo['chave']}\" depende de \"{$dependencia}\", que não nasce mais — ficaria bloqueado para sempre"
+                );
+            }
+        }
     }
 
     #[Test]
-    public function os_dois_passos_sao_internos_e_nao_aparecem_para_o_cliente(): void
+    public function o_cliente_nunca_viu_nenhum_dos_dois(): void
     {
         $onboarding = $this->onboardingEmAndamento();
 
@@ -109,8 +109,9 @@ class OnboardingGrupoBoasVindasTest extends TestCase
             ->pluck('chave')
             ->all();
 
-        $this->assertNotContains('grupo_criado', $chaves);
-        $this->assertNotContains('mensagem_boas_vindas', $chaves);
+        foreach (self::CHAVES_REMOVIDAS as $chave) {
+            $this->assertNotContains($chave, $chaves);
+        }
     }
 
     #[Test]

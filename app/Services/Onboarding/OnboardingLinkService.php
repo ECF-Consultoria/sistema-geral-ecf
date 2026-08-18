@@ -98,6 +98,12 @@ class OnboardingLinkService
                     // corrigido precisa alcançar quem já está travado por não
                     // ter entendido a versão anterior.
                     'instrucao'            => DefinicaoOnboarding::instrucaoDe($primeiro->chave),
+                    // Ajuda opcional, mesma natureza da instrução (texto em
+                    // código, nunca congelado na linha do passo). Chave sem
+                    // conteúdo devolve null e o portal não renderiza o botão —
+                    // é o contrato do `TutorialBtn` de Polos.
+                    'tutorial_url'         => DefinicaoOnboarding::tutorialDe($primeiro->chave),
+                    'passo_a_passo'        => DefinicaoOnboarding::passoAPassoDe($primeiro->chave),
                     'depende_de_titulo'    => collect($primeiro->depende_de ?? [])
                         ->map(fn (string $chave) => $titulosVisiveis->get($chave))
                         ->filter()

@@ -35,7 +35,16 @@ use Inertia\Inertia;
  */
 class OnboardingController extends Controller
 {
-    /** Chave do único passo administrativo do onboarding de Gestão (D-15). */
+    /**
+     * Chave do único passo administrativo do onboarding de Gestão (D-15).
+     *
+     * v10 da definição REMOVEU este passo da régua. A regra continua aqui de
+     * propósito: os onboardings que nasceram antes da v10 carregam o passo
+     * (cada um guarda a definição com que nasceu) e para eles `situacao` ainda
+     * precisa distinguir "só falta o administrativo" de "aguardando interno".
+     * Para onboarding novo, `prontoParaConcluir()` devolve `false` na primeira
+     * linha — a chave não existe — e a situação nunca aparece.
+     */
     private const CHAVE_PASSO_ADMINISTRATIVO = 'confirmacao_pagamento';
 
     /**

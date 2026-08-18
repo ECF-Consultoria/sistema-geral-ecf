@@ -297,11 +297,29 @@ class OnboardingPainelPropsTest extends TestCase
 
     // ─── D-15 — pronto_para_concluir não se confunde com aguardando_interno ─
 
+    /**
+     * v10 tirou `confirmacao_pagamento` da régua, mas a regra D-15 continua
+     * viva para os onboardings que nasceram ANTES (cada um carrega a definição
+     * do seu nascimento). O passo é criado à mão aqui exatamente por isso: o
+     * cenário sob teste é o do onboarding legado, o único em que a situação
+     * `pronto_para_concluir` ainda pode aparecer.
+     */
     #[Test]
     public function tudo_concluido_menos_confirmacao_pagamento_produz_pronto_para_concluir(): void
     {
         $this->withoutVite();
         $onboarding = $this->onboardingEmAndamento();
+
+        OnboardingPasso::create([
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 7,
+            'etapa'         => OnboardingPasso::ETAPA_ADMINISTRATIVO,
+            'chave'         => 'confirmacao_pagamento',
+            'titulo'        => 'Confirmação de pagamento',
+            'dono'          => OnboardingPasso::DONO_INTERNO,
+            'sla_dias'      => 5,
+            'status'        => OnboardingPasso::STATUS_BLOQUEADO,
+        ]);
 
         OnboardingPasso::where('onboarding_id', $onboarding->id)
             ->where('chave', '!=', 'confirmacao_pagamento')
@@ -344,9 +362,30 @@ class OnboardingPainelPropsTest extends TestCase
             ['Grant com o Sistema ECF (OAuth)'],
             $passos['grant_consultoria_adman']['depende_de'],
         );
+        // v10 — nenhum passo da régua tem `condicao`: o único condicional era
+        // `excluir_anuncios_inativos`, que saiu. A TRADUÇÃO segue no controller
+        // (onboarding legado ainda carrega o passo), então o que se mede aqui é
+        // ela, sobre um passo condicional criado à mão.
+        OnboardingPasso::create([
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 99,
+            'etapa'         => OnboardingPasso::ETAPA_MAPEAMENTO,
+            'chave'         => 'passo_condicional_legado',
+            'titulo'        => 'Condicional de onboarding legado',
+            'dono'          => OnboardingPasso::DONO_INTERNO,
+            'condicao'      => ['tipo' => OnboardingPasso::CONDICAO_ANUNCIOS_INATIVOS],
+            'status'        => OnboardingPasso::STATUS_BLOQUEADO,
+        ]);
+
+        $passosComCondicional = collect(
+            $this->actingAs($this->admin())
+                ->get(route('onboarding.painel.show', $onboarding))
+                ->viewData('page')['props']['passos']
+        )->keyBy('chave');
+
         $this->assertSame(
             'Só se aplica quando há anúncios inativos',
-            $passos['excluir_anuncios_inativos']['condicao'],
+            $passosComCondicional['passo_condicional_legado']['condicao'],
         );
     }
 

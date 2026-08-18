@@ -93,9 +93,14 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
             OnboardingPasso::ETAPA_AGENDAMENTO,
             $onboarding->passos()->where('chave', 'reuniao_realizada')->value('etapa')
         );
-        $this->assertSame(
+        // v10: `confirmacao_pagamento` era o exemplo de ETAPA_ADMINISTRATIVO e
+        // saiu da régua junto com os outros quatro passos internos. Nenhum
+        // passo vigente é administrativo — a etapa continua no catálogo (o
+        // portal do cliente ainda a ordena) e volta a ter passo no dia em que
+        // o negócio pedir um.
+        $this->assertNotContains(
             OnboardingPasso::ETAPA_ADMINISTRATIVO,
-            $onboarding->passos()->where('chave', 'confirmacao_pagamento')->value('etapa')
+            $onboarding->passos()->pluck('etapa')->all(),
         );
     }
 
@@ -170,7 +175,7 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
     #[Test]
     public function a_versao_da_definicao_acompanha_a_receita_vigente(): void
     {
-        $this->assertSame(9, DefinicaoOnboarding::VERSAO);
+        $this->assertSame(10, DefinicaoOnboarding::VERSAO);
 
         $onboarding = $this->onboardingEmAndamento(Company::factory()->create());
         $this->assertSame(DefinicaoOnboarding::VERSAO, $onboarding->definicao_versao);

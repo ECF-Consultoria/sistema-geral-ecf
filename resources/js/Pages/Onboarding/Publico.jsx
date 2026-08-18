@@ -1,9 +1,14 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, CalendarDays, CheckCircle2, Lock, RefreshCw, Zap } from 'lucide-react';
-import { Checkbox } from '@/Components/ui/checkbox';
+import { AlertTriangle, CalendarDays, Check, CheckCircle2, Lock, RefreshCw, Zap } from 'lucide-react';
 import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
-import { cn, formatDate } from '@/lib/utils';
+import {
+    PassoAPassoBtn,
+    PassoAPassoModal,
+    TutorialBtn,
+    VideoModal,
+} from '@/Components/Onboarding/AjudaDoPasso';
+import { cn } from '@/lib/utils';
 
 // ─── Portal público do cliente por EMPRESA (Fase 135 Plano 11, D-06) ────────
 // A lista agrupa por `chave` (D-10), NUNCA por onboarding_passo/onboarding —
@@ -36,17 +41,21 @@ const ETAPA_LABELS = {
     outros:         { titulo: 'Outros',                   ajuda: null },
 };
 
+// Só a moldura do card por status. O ícone saiu daqui: quem o desenha agora é
+// o selo numerado, que trata os três casos visuais (número · ✓ · cadeado) num
+// único lugar — manter um segundo mapa de ícone era garantir que os dois
+// divergissem com o tempo.
 const ESTADO_CARD = {
-    concluido:         { classe: 'border-emerald-500/20 bg-emerald-500/[0.06]', Icone: CheckCircle2, corIcone: 'text-emerald-300' },
-    aberto:             { classe: 'border-white/[0.10] bg-white/[0.03]', Icone: null, corIcone: '' },
-    bloqueado:          { classe: 'border-white/10 border-dashed bg-white/[0.02]', Icone: Lock, corIcone: 'text-white/30' },
-    aguardando_coleta:  { classe: 'border-sky-500/20 bg-sky-500/[0.06]', Icone: RefreshCw, corIcone: 'text-sky-300' },
-    indeterminado:      { classe: 'border-amber-500/20 bg-amber-500/[0.06]', Icone: AlertTriangle, corIcone: 'text-amber-400' },
+    concluido:          { classe: 'border-emerald-500/20 bg-emerald-500/[0.06]' },
+    aberto:             { classe: 'border-white/[0.10] bg-white/[0.03]' },
+    bloqueado:          { classe: 'border-white/10 border-dashed bg-white/[0.02]' },
+    aguardando_coleta:  { classe: 'border-sky-500/20 bg-sky-500/[0.06]' },
+    indeterminado:      { classe: 'border-amber-500/20 bg-amber-500/[0.06]' },
 };
 
 // ─── Card de um passo (1 por `chave`, nunca por onboarding_passo) ───────────
 
-function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
+function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onPlay, onOpenPassoAPasso }) {
     const [marcando, setMarcando] = useState(false);
     const estado = ESTADO_CARD[passo.status] ?? ESTADO_CARD.aberto;
     const concluido = passo.status === 'concluido';
@@ -84,18 +93,25 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
     return (
         <div className={cn('rounded-2xl border p-4', estado.classe)}>
             <div className="flex items-start gap-3">
-                {!concluido && !bloqueado && !passo.tem_auto_fonte && (
-                    <Checkbox
-                        checked={false}
-                        onCheckedChange={marcarComoFeito}
-                        disabled={marcando}
-                        className="mt-1"
-                        aria-label={`Marcar "${passo.titulo}" como feito`}
-                    />
-                )}
-                {(concluido || bloqueado) && estado.Icone && (
-                    <estado.Icone size={16} className={cn('shrink-0 mt-0.5', estado.corIcone)} />
-                )}
+                {/*
+                  * Selo do passo, no padrão do portal de Polos: o NÚMERO
+                  * enquanto falta, ✓ verde quando concluído, cadeado quando
+                  * bloqueado. É INDICADOR, nunca controle — quem age é o rodapé
+                  * do card. Manter isto inerte é o que preserva D-19: um passo
+                  * com `auto_fonte` não pode dar a impressão de fechar por
+                  * clique, e o selo é igual para todos os passos.
+                  */}
+                <div
+                    className={cn(
+                        'w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 text-[11px] font-bold mt-0.5',
+                        concluido   ? 'border-emerald-400 bg-emerald-400 text-white'
+                        : bloqueado ? 'border-white/10 text-white/25'
+                        : 'border-white/20 text-white/40',
+                    )}
+                    aria-hidden="true"
+                >
+                    {concluido ? <Check size={12} /> : bloqueado ? <Lock size={11} /> : num}
+                </div>
 
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -110,6 +126,10 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
                                 title="Passo verificado automaticamente pelo sistema"
                             />
                         )}
+                        {/* Ajuda opcional por chave — cada botão se esconde
+                            sozinho quando o backend não tem conteúdo. */}
+                        <TutorialBtn url={passo.tutorial_url} titulo={passo.titulo} onPlay={onPlay} />
+                        <PassoAPassoBtn conteudo={passo.passo_a_passo} onOpen={onOpenPassoAPasso} />
                     </div>
 
                     {passo.instrucao && (
@@ -145,7 +165,7 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
                       * já produziu botão errado uma vez.
                       */}
                     {!concluido && !bloqueado && (
-                        <div className="mt-2">
+                        <div className="mt-3 pt-3 border-t border-white/[0.06]">
                             {passo.acao === 'oauth_ml' && (
                                 conectando ? (
                                     <span className="inline-flex items-center gap-1.5 text-white/50 text-[12px]">
@@ -161,13 +181,27 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
                                 )
                             )}
 
+                            {/* Caixa de marcar no desenho de Polos. Substitui o
+                                Checkbox que ficava no topo do card: ali havia
+                                DOIS controles para a mesma ação (a caixa e este
+                                texto), e o cliente não sabia qual valia. */}
                             {passo.acao === 'marcar' && (
-                                <span
-                                    onClick={marcarComoFeito}
-                                    className="text-white/70 hover:text-white text-[12px] font-medium cursor-pointer select-none"
-                                >
-                                    {marcando ? 'Marcando…' : 'Marcar como feito'}
-                                </span>
+                                <label className="flex items-center gap-2.5 group w-fit cursor-pointer">
+                                    <div
+                                        onClick={marcarComoFeito}
+                                        role="checkbox"
+                                        aria-checked="false"
+                                        aria-label={`Marcar "${passo.titulo}" como feito`}
+                                        className={cn(
+                                            'w-5 h-5 rounded border-2 border-white/20 flex items-center justify-center transition-all',
+                                            'group-hover:border-emerald-400/50',
+                                            marcando && 'opacity-40',
+                                        )}
+                                    />
+                                    <span className="text-[13px] font-medium text-white/40 group-hover:text-white/60 transition-colors">
+                                        {marcando ? 'Marcando…' : 'Marcar como feito'}
+                                    </span>
+                                </label>
                             )}
 
                             {/*
@@ -308,10 +342,78 @@ function ReuniaoCard({ reuniao, token, varios }) {
     );
 }
 
+// ─── Progresso ────────────────────────────────────────────────────────────
+//
+// O que ENTRA na conta: passos do cliente + mapeamentos visíveis + reuniões.
+// Contar só os passos faria a barra bater 100% com o mapeamento ainda por
+// conferir e a reunião ainda por marcar — o cliente leria "acabei" e pararia.
+// O portal de Polos não tem esse problema porque lá TUDO mora no checklist;
+// aqui a reunião e o mapeamento são blocos próprios, então precisam entrar
+// explicitamente.
+//
+// Mapeamento bloqueado não conta em lugar nenhum: ele nem aparece na tela
+// (depende do grant), e somar um item invisível ao denominador faria o cliente
+// perseguir um número que não tem como fechar.
+function calcularProgresso(passos, mapeamentos, reunioes) {
+    const itens = [
+        ...passos.map((p) => p.status === 'concluido'),
+        ...mapeamentos
+            .filter((m) => m.estado !== 'bloqueado')
+            .map((m) => Boolean(m.confirmacao?.confirmado)),
+        // Reunião conta como feita quando já tem data na agenda — a bola volta
+        // a ser nossa nesse momento. Esperar a reunião ACONTECER deixaria a
+        // barra travada em 90% por dias, sem nada que o cliente possa fazer.
+        ...reunioes.map((r) => Boolean(r.realizada) || r.status === 'agendada'),
+    ];
+
+    const total  = itens.length;
+    const feitos = itens.filter(Boolean).length;
+
+    return { total, feitos, pct: total > 0 ? Math.round((feitos / total) * 100) : 0 };
+}
+
+// Cabeçalho sticky com barra de progresso — mesmas três faixas de cor do
+// portal de Polos (índigo → amarelo a partir de 60% → verde em 100%).
+function ProgressoHeader({ empresaNome, progresso }) {
+    const { pct, feitos, total } = progresso;
+    const cor = pct === 100 ? '#22c55e' : pct >= 60 ? '#eab308' : '#6366f1';
+
+    return (
+        <div className="bg-ecf-card border-b border-white/[0.06] sticky top-0 z-10">
+            <div className="max-w-2xl mx-auto px-4 py-4">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="min-w-0">
+                        <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wider">
+                            ECF Consultoria · Onboarding
+                        </p>
+                        <h1 className="text-white font-display font-bold text-lg mt-0.5 truncate">{empresaNome}</h1>
+                    </div>
+                    {total > 0 && (
+                        <div className="text-right shrink-0">
+                            <span className="text-white font-bold text-xl">{pct}%</span>
+                            <p className="text-white/40 text-[11px]">{feitos}/{total} itens</p>
+                        </div>
+                    )}
+                </div>
+                {total > 0 && (
+                    <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
+                        <div
+                            style={{ width: `${pct}%`, background: cor, transition: 'width 0.4s ease' }}
+                            className="h-full rounded-full"
+                        />
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // ─── Página ───────────────────────────────────────────────────────────────
 
 export default function Publico({ token, empresa, passos = [], reunioes = [], mapeamentos = [] }) {
     const [conectandoChave, setConectandoChave] = useState(null);
+    const [video, setVideo] = useState(null);
+    const [passoAPasso, setPassoAPasso] = useState(null);
 
     // Estado "Link inválido": na prática, `OnboardingPublicoController::workspace()`
     // usa `firstOrFail()` e devolve 404 ANTES de renderizar este componente
@@ -337,7 +439,8 @@ export default function Publico({ token, empresa, passos = [], reunioes = [], ma
     // fazer.
     const nadaPendente = passos.length === 0 && reunioes.length === 0;
     const passosTodosConcluidos = passos.length > 0 && passos.every((p) => p.status === 'concluido');
-    const faltam = passos.filter((p) => p.status !== 'concluido').length;
+
+    const progresso = calcularProgresso(passos, mapeamentos, reunioes);
 
     // Blocos na ordem fixa de ETAPAS_ORDEM, preservando dentro de cada um a
     // ordem que o backend já mandou (`ordem` do passo). Bloco vazio não vira
@@ -349,26 +452,22 @@ export default function Publico({ token, empresa, passos = [], reunioes = [], ma
         }))
         .filter(({ itens }) => itens.length > 0);
 
+    // Numeração 01, 02, 03… CONTÍNUA entre os blocos, como no checklist de
+    // Polos: o cliente conta "quantos ainda faltam" pelo número, e reiniciar a
+    // contagem em cada bloco destruiria essa leitura. O mapa é por `chave`
+    // porque a lista já é agrupada por ela (D-10).
+    const numeroPorChave = {};
+    blocos.flatMap(({ itens }) => itens).forEach((passo, i) => {
+        numeroPorChave[passo.chave] = String(i + 1).padStart(2, '0');
+    });
+
     return (
         <div className="min-h-screen bg-ecf-bg">
-            {/* Header sticky — legenda + nome da empresa; indicação de "quantos
-                faltam" é secundária ao conteúdo (o cliente monitora o próprio
-                progresso, diferente do painel operacional — SC-11) */}
-            <div className="bg-ecf-card border-b border-white/[0.06] sticky top-0 z-10">
-                <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                        <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wider">
-                            ECF Consultoria · Onboarding
-                        </p>
-                        <h1 className="text-white font-display font-bold text-lg mt-0.5 truncate">{empresa.nome}</h1>
-                    </div>
-                    {faltam > 0 && (
-                        <p className="text-white/40 text-[11px] shrink-0">
-                            {faltam} pendente{faltam === 1 ? '' : 's'}
-                        </p>
-                    )}
-                </div>
-            </div>
+            {/* Header sticky com progresso. Antes trazia só "N pendentes" em
+                texto miúdo — o cliente não tinha noção de quanto do onboarding
+                já andou, que é justamente o que faz o checklist de Polos
+                funcionar. */}
+            <ProgressoHeader empresaNome={empresa.nome} progresso={progresso} />
 
             <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
                 {nadaPendente && (
@@ -382,17 +481,14 @@ export default function Publico({ token, empresa, passos = [], reunioes = [], ma
                     </div>
                 )}
 
-                {passosTodosConcluidos && (
-                    <div className="text-center py-10 space-y-3">
-                        <CheckCircle2 className="h-14 w-14 text-emerald-400 mx-auto" />
-                        <h2 className="text-white font-display font-bold text-xl">Tudo certo por aqui!</h2>
-                        <p className="text-white/50 text-[13px] max-w-sm mx-auto">
-                            Nossa equipe foi notificada e vai continuar com as próximas etapas do seu onboarding.
-                        </p>
-                    </div>
-                )}
-
-                {!nadaPendente && !passosTodosConcluidos && (
+                {/*
+                  * A lista NUNCA desaparece. Antes, com tudo concluído, ela era
+                  * trocada por uma tela de parabéns — o cliente perdia de vista
+                  * o que tinha feito e não conseguia mais desmarcar um item
+                  * marcado por engano. Igual a Polos: os cards ficam, a
+                  * conclusão vira rodapé.
+                  */}
+                {!nadaPendente && (
                     <div className="space-y-8">
                         {blocos.map(({ etapa, itens }) => (
                             <section key={etapa} className="space-y-3">
@@ -410,8 +506,11 @@ export default function Publico({ token, empresa, passos = [], reunioes = [], ma
                                         key={passo.chave}
                                         passo={passo}
                                         token={token}
+                                        num={numeroPorChave[passo.chave]}
                                         conectandoChave={conectandoChave}
                                         setConectandoChave={setConectandoChave}
+                                        onPlay={(url, titulo) => setVideo({ url, titulo })}
+                                        onOpenPassoAPasso={setPassoAPasso}
                                     />
                                 ))}
                             </section>
@@ -456,7 +555,39 @@ export default function Publico({ token, empresa, passos = [], reunioes = [], ma
                         ))}
                     </section>
                 )}
+
+                {/* Rodapé de conclusão — o lugar do "acabou" agora que a lista
+                    não sai mais da tela. Mesmo desenho do fim do checklist de
+                    Polos: a mensagem muda, os cards ficam. */}
+                {!nadaPendente && (
+                    <div className="text-center py-6 space-y-1">
+                        {progresso.pct === 100 ? (
+                            <p className="text-emerald-400 font-semibold text-[15px]">
+                                Tudo certo por aqui! Nossa equipe segue com as próximas etapas.
+                            </p>
+                        ) : passosTodosConcluidos ? (
+                            <p className="text-emerald-400/80 font-semibold text-[14px]">
+                                Seus itens estão concluídos — falta só o que está acima.
+                            </p>
+                        ) : (
+                            <p className="text-white/30 text-[13px]">
+                                Conclua os itens acima para seguirmos com o seu onboarding.
+                            </p>
+                        )}
+                        <p className="text-white/20 text-[11px]">
+                            Cada item é salvo no momento em que você marca.
+                        </p>
+                    </div>
+                )}
             </div>
+
+            {video && (
+                <VideoModal url={video.url} titulo={video.titulo} onClose={() => setVideo(null)} />
+            )}
+
+            {passoAPasso && (
+                <PassoAPassoModal conteudo={passoAPasso} onClose={() => setPassoAPasso(null)} />
+            )}
         </div>
     );
 }

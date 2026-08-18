@@ -27,6 +27,13 @@ use Tests\TestCase;
  *    não é relatório;
  *  - declarado e apurado andam LADO A LADO, nunca fundidos: a divergência é a
  *    informação.
+ *
+ * v10 DA DEFINIÇÃO: `relatorio_inicial` deixou de ser passo da régua — o
+ * negócio disse que não faz parte do onboarding. A MÁQUINARIA continua de pé
+ * (service, resolver, tabela `onboarding_relatorios` e a tela no painel), e
+ * continua coberta aqui: o passo passou a ser criado à mão em
+ * `onboardingEmAndamento()`, que é exatamente a situação dos onboardings
+ * nascidos antes da v10 — os únicos que ainda o carregam.
  */
 class OnboardingRelatorioInicialTest extends TestCase
 {
@@ -56,6 +63,22 @@ class OnboardingRelatorioInicialTest extends TestCase
         $engine = app(OnboardingEngineService::class);
         $onboarding = $engine->criarParaContrato($contrato);
         $engine->confirmarResponsavel($onboarding, User::factory()->create());
+
+        // Passo do relatório como um onboarding pré-v10 o carrega. `auto_fonte`
+        // preservado: é o que garante que ninguém o feche na mão (D-19) e o que
+        // o resolver procura para fechá-lo.
+        OnboardingPasso::create([
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 14,
+            'etapa'         => OnboardingPasso::ETAPA_AGENDAMENTO,
+            'chave'         => 'relatorio_inicial',
+            'titulo'        => 'Relatório inicial da empresa',
+            'dono'          => OnboardingPasso::DONO_INTERNO,
+            'depende_de'    => ['metricas_da_conta', 'anuncios_ativos_inativos'],
+            'sla_dias'      => 3,
+            'auto_fonte'    => OnboardingPasso::AUTO_FONTE_RELATORIO_INICIAL,
+            'status'        => OnboardingPasso::STATUS_BLOQUEADO,
+        ]);
 
         return $onboarding->fresh();
     }
@@ -89,21 +112,23 @@ class OnboardingRelatorioInicialTest extends TestCase
     // ─── O passo entra na definição no lugar certo ───────────────────────────
 
     #[Test]
-    public function onboarding_de_gestao_tem_o_relatorio_antes_da_reuniao(): void
+    public function o_relatorio_saiu_da_regua_e_nao_trava_mais_a_reuniao(): void
     {
+        $chavesDaRegua = collect(\App\Support\Onboarding\DefinicaoOnboarding::paraServico($this->servicoDeGestao()))
+            ->pluck('chave')
+            ->all();
+
+        $this->assertNotContains('relatorio_inicial', $chavesDaRegua, 'O passo saiu na v10 e não deve voltar');
+
+        // O ponto crítico da remoção: a reunião DEPENDIA do relatório. Se a
+        // dependência tivesse ficado, ela nasceria bloqueada para sempre,
+        // esperando um passo que não existe mais.
         $onboarding = $this->onboardingEmAndamento();
 
-        $this->assertSame(
-            count(\App\Support\Onboarding\DefinicaoOnboarding::paraServico($this->servicoDeGestao())),
-            $onboarding->passos()->count(),
+        $this->assertNotContains(
+            'relatorio_inicial',
+            $this->passo($onboarding, 'reuniao_realizada')->depende_de ?? [],
         );
-
-        $relatorio = $this->passo($onboarding, 'relatorio_inicial');
-        $this->assertSame(OnboardingPasso::AUTO_FONTE_RELATORIO_INICIAL, $relatorio->auto_fonte);
-        $this->assertSame(['metricas_da_conta', 'anuncios_ativos_inativos'], $relatorio->depende_de);
-
-        // A reunião não acontece sem o documento que ela existe para apresentar.
-        $this->assertContains('relatorio_inicial', $this->passo($onboarding, 'reuniao_realizada')->depende_de);
     }
 
     // ─── O sistema monta o factual ───────────────────────────────────────────
