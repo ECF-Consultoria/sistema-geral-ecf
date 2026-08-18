@@ -483,13 +483,45 @@ a primeira tentativa estourou tentativas em 8 dos 11 (`MaxAttemptsExceededExcept
 novas em `failed_jobs`). Refeito em lotes de 2 com 70 s de intervalo, todos passaram. Quem for
 reprocessar evento em massa precisa respeitar esse limite.
 
-#### ⚠️ Pendência observada, não resolvida
+#### 🔴 Terceiro defeito, encontrado e CORRIGIDO — nada criava linha de signatário
 
-`ContratoAssinaturaSignatario` para o contrato 1 continua com **0 linhas**, mesmo com os
-quatro `add_signer` processados sem erro. A situação por signatário não está sendo
-materializada. Não bloqueia o veredito do D-06 (o elo Clicksign → contrato está provado), mas
-**precisa ser investigado antes de a Fase 133 depender da liberação automática** — é a tabela
-que diz quem já assinou.
+`ContratoAssinaturaSignatario` estava com **0 linhas na base de produção inteira**, e o grep
+por `::create` nessa tabela não achava nada: **nenhum código do sistema a preenchia.**
+
+As três assinaturas reais chegaram, validaram o HMAC, e o sync mandou as três para
+`naoReconhecidos` — porque `ContratoSignatariosSyncService` só ATUALIZA linha existente,
+nunca cria. Isso é deliberado (T-129-16: o webhook não pode inventar quem assina) e a decisão
+está certa; o que faltava era o lado que cria. O `ClicksignClient` **já devolvia**
+`signatarios` com id, nome, e-mail e papel em `montarEnvelopePorModelo()` — o
+`GerarContratoAssinaturaJob` simplesmente descartava o retorno.
+
+Sem isso também não funcionavam:
+- o **reenvio de aviso** da Fase 131 — a rota liga `{signatario}`, que nunca resolveria;
+- a **guarda de evidência** (`ip_address`, `auths`, `evidencia_signer`), que só é gravada
+  sobre linha existente.
+
+**Corrigido** no commit `727183eb`: o job persiste os signatários pela chave do signer, todos
+nascendo `pendente`; `updateOrCreate` torna a reentrega idempotente. 3 testes novos, sendo o
+principal a prova do elo quebrado (evento `sign` acha o signatário, marca `assinou`, grava
+data e IP). 176 testes verdes nas suítes 129, 131 e 132.
+
+**Backfill do contrato 1** (nasceu antes do fix): as 4 linhas foram criadas a partir da
+própria Clicksign, e o sync reaplicado devolveu:
+
+```
+{"assinaram":3,"recusaram":0,"nao_reconhecidos":[]}
+```
+
+| Signatário | Papel | Situação | Assinou em |
+|---|---|---|---|
+| `thiago@` | contratada | **assinou** | 2026-08-18 09:19:43 |
+| `dev.01@` | contratante | **assinou** | 2026-08-18 09:16:44 |
+| `comercial@` | testemunha | **assinou** | 2026-08-18 09:06:23 |
+| `emerson@` | contratada | pendente | — |
+
+✅ **A corrente está completa e provada com dados reais:** Clicksign → receiver → HMAC →
+gravação → job → contrato → **situação por signatário**. O sistema sabe quem assinou, quando,
+e quem falta.
 
 - Empresa liberada para o operacional: **não** — esperado, falta a quarta assinatura.
 - `signature_valid` do primeiro evento real (prova melhor que ler o painel — responde de
