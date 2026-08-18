@@ -121,7 +121,6 @@ export default function MapeamentoInicial({
     }
 
     const medalhaConta = conta.medalha_conta;
-    const bloqueios = medalhaConta?.bloqueios ?? [];
 
     return (
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-4">
@@ -202,36 +201,6 @@ export default function MapeamentoInicial({
                         <Campo rotulo="Anúncios inativos" valor={anuncios.inativos} />
                     </div>
 
-                    {medalhaConta?.proxima_medalha_nome && (
-                        <div className="rounded-xl bg-white/[0.03] p-3 space-y-1.5">
-                            <p className="text-white/70 text-[12px] font-medium">
-                                Para chegar a {medalhaConta.proxima_medalha_nome}
-                            </p>
-                            {bloqueios.length > 0 ? (
-                                <ul className="space-y-1">
-                                    {bloqueios.map((b) => (
-                                        <li key={b} className="text-amber-400/90 text-[12px] flex items-start gap-1.5">
-                                            <AlertTriangle size={11} className="shrink-0 mt-1" />
-                                            {b}
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p className="text-emerald-300/80 text-[12px]">
-                                    As métricas de qualidade estão dentro do exigido.
-                                </p>
-                            )}
-                            {/* Volume é reportado, nunca julgado — a régua não afirma
-                                limiar que não pôde verificar. */}
-                            {medalhaConta.volume?.vendas !== null && medalhaConta.volume?.vendas !== undefined && (
-                                <p className="text-white/40 text-[11px]">
-                                    {medalhaConta.volume.vendas} vendas concluídas
-                                    {medalhaConta.volume.periodo ? ` nos últimos ${medalhaConta.volume.periodo.replace('days', 'dias')}` : ''}.
-                                    O volume mínimo é definido pelo Mercado Livre e conferido caso a caso.
-                                </p>
-                            )}
-                        </div>
-                    )}
 
                     {/* O único campo que a API não entrega. */}
                     <div>
