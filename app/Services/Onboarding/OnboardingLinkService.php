@@ -263,12 +263,31 @@ class OnboardingLinkService
 
         $primeiro = $passos->first();
 
-        if ($primeiro->auto_fonte !== null) {
+        // D-19 com a linha no lugar certo.
+        //
+        // A regra original barrava o cliente em QUALQUER passo automático. Só
+        // que os passos da Adman são `instrucao`: a ação acontece fora do
+        // nosso alcance e, quando a empresa não tem cadastro Adman, o sistema
+        // NUNCA vai detectar. O cliente lia "detectamos automaticamente" e
+        // ficava presente para sempre, sem nenhuma ação disponível.
+        //
+        // A linha que faz sentido não é "tem auto_fonte", é "o sistema
+        // consegue confirmar isto sozinho de forma confiável":
+        //  - `oauth_ml`  — consegue (o token aparece em `ml_tokens`): barrado.
+        //  - `instrucao` — não consegue: o cliente pode DECLARAR que fez.
+        //  - `nenhuma`   — nada a declarar: barrado.
+        //
+        // A declaração fica marcada como declaração, nunca como apuração.
+        $acao = self::acaoDoCliente($primeiro->auto_fonte);
+
+        if ($primeiro->auto_fonte !== null && $acao !== self::ACAO_INSTRUCAO) {
             throw new \DomainException(
                 "O passo \"{$primeiro->titulo}\" é verificado automaticamente pelo sistema — "
                 . 'não pode ser marcado como feito pelo cliente (D-19).'
             );
         }
+
+        $ehDeclaracao = $primeiro->auto_fonte !== null;
 
         $fechados = 0;
         $onboardingsTocados = collect();
@@ -280,6 +299,18 @@ class OnboardingLinkService
 
             $passo->status = OnboardingPasso::STATUS_CONCLUIDO;
             $passo->feito_em = now();
+
+            if ($ehDeclaracao) {
+                // Quem olhar depois precisa saber que este "concluído" é
+                // palavra do cliente, não leitura do sistema.
+                $passo->valor = array_merge($passo->valor ?? [], [
+                    'concluido_manualmente' => true,
+                    'declarado_pelo_cliente' => true,
+                    'declarado_em'          => now()->toISOString(),
+                    'declarado_ip'          => $ip,
+                ]);
+            }
+
             $passo->save();
 
             $fechados++;

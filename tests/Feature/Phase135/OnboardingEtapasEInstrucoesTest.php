@@ -239,22 +239,52 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
     }
 
     /**
-     * D-19 segue valendo: `instrucao` não é licença para fechar na mão um
-     * passo que só o resolver confirma.
+     * D-19 com a linha no lugar certo.
+     *
+     * A regra original barrava o cliente em QUALQUER passo automático. Só que
+     * os passos da Adman são `instrucao`: a ação acontece fora do nosso
+     * alcance e, sem cadastro Adman, o sistema NUNCA vai detectar. O cliente
+     * lia "detectamos automaticamente" e ficava preso para sempre.
+     *
+     * A linha correta não é "tem auto_fonte", é "o sistema consegue confirmar
+     * isto sozinho de forma confiável". Ele pode DECLARAR o que fez fora
+     * daqui — e a declaração fica marcada como declaração.
      */
     #[Test]
-    public function cliente_nao_consegue_marcar_como_feito_um_passo_da_adman(): void
+    public function cliente_declara_o_passo_da_adman_e_fica_registrado_como_declaracao(): void
     {
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
         $link = app(OnboardingLinkService::class)->paraEmpresa($company);
 
-        $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'grant_consultoria_adman'])
+        $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'planilha_custos_adman'])
+            ->assertSessionHasNoErrors();
+
+        $passo = OnboardingPasso::where('chave', 'planilha_custos_adman')->firstOrFail();
+
+        $this->assertSame(OnboardingPasso::STATUS_CONCLUIDO, $passo->status);
+        $this->assertTrue($passo->valor['declarado_pelo_cliente'] ?? false);
+        $this->assertTrue($passo->valor['concluido_manualmente'] ?? false);
+    }
+
+    /**
+     * O que a D-19 protege de verdade continua protegido: o OAuth do Mercado
+     * Livre o sistema CONSEGUE confirmar (o token aparece em `ml_tokens`), e
+     * por isso o cliente não fecha esse na mão.
+     */
+    #[Test]
+    public function cliente_nao_marca_o_passo_de_oauth_que_o_sistema_confirma(): void
+    {
+        $company = Company::factory()->create();
+        $this->onboardingEmAndamento($company);
+        $link = app(OnboardingLinkService::class)->paraEmpresa($company);
+
+        $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'grant_sistema_ecf'])
             ->assertSessionHasErrors('chave');
 
         $this->assertNotSame(
             OnboardingPasso::STATUS_CONCLUIDO,
-            OnboardingPasso::where('chave', 'grant_consultoria_adman')->value('status')
+            OnboardingPasso::where('chave', 'grant_sistema_ecf')->value('status')
         );
     }
 

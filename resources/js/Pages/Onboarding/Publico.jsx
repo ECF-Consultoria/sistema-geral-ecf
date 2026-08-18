@@ -154,10 +154,34 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
                               * proíbe fechar na mão um passo com `auto_fonte`.
                               */}
                             {passo.acao === 'instrucao' && (
-                                <span className="inline-flex items-center gap-1.5 text-white/40 text-[12px]">
-                                    <Zap size={12} className="text-ecf-yellow shrink-0" />
-                                    Assim que você concluir, detectamos automaticamente.
-                                </span>
+                                <div className="space-y-1.5">
+                                    <span className="inline-flex items-center gap-1.5 text-white/40 text-[12px]">
+                                        <Zap size={12} className="text-ecf-yellow shrink-0" />
+                                        Assim que você concluir, detectamos automaticamente.
+                                    </span>
+                                    {/*
+                                      * "Já fiz isso" existe porque a deteção
+                                      * automática NÃO cobre todo mundo: sem
+                                      * cadastro na Adman, o sistema nunca vai
+                                      * confirmar, e sem este botão o cliente
+                                      * lia "detectamos automaticamente" e
+                                      * ficava preso para sempre, sem nenhuma
+                                      * ação disponível.
+                                      *
+                                      * A declaração fica registrada COMO
+                                      * declaração — o painel interno mostra
+                                      * que foi o cliente quem disse, não o
+                                      * sistema que apurou.
+                                      */}
+                                    <div>
+                                        <span
+                                            onClick={marcarComoFeito}
+                                            className="text-white/60 hover:text-white text-[12px] font-medium cursor-pointer select-none underline underline-offset-2"
+                                        >
+                                            {marcando ? 'Marcando…' : 'Já fiz isso'}
+                                        </span>
+                                    </div>
+                                </div>
                             )}
 
                             {passo.acao === 'nenhuma' && (
