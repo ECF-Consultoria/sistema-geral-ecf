@@ -147,7 +147,7 @@ a rota de produção em `129-GATE.md` (plano 129-07): assinatura válida → 200
 - [ ] **FLUXO-01**: Empresa criada pelo webhook HubSpot deixa de ser roteada automaticamente ao operacional e passa a aguardar a etapa administrativa — **exceto** serviços isentos de contrato (D9)
 - [ ] **FLUXO-02**: Empresa cadastrada à mão pelo Comercial segue exatamente o mesmo caminho, sem porta dos fundos (D2) — mesma exceção do FLUXO-01
 - [x] **FLUXO-08**: A lista de serviços que exigem contrato é um dado configurável, não um `if` espalhado pelo código; empresa de serviço isento (Polos) vai direto para a operação e **não** aparece como pendente na tela do Administrativo (D9)
-- [ ] **FLUXO-09**: A ativação manual pelo time de Publicação (`MlbController::ativarEmpresaPendente()`, tela `/mlb/empresas`) respeita o mesmo bloqueio dos demais caminhos — não existe porta dos fundos para o operacional quando o bloqueio está ligado
+- [x] **FLUXO-09**: A ativação manual pelo time de Publicação (`MlbController::ativarEmpresaPendente()`, tela `/mlb/empresas`) respeita o mesmo bloqueio dos demais caminhos — não existe porta dos fundos para o operacional quando o bloqueio está ligado
 - [x] **FLUXO-03**: A regra de pendências comerciais vive num único lugar, consumida por Comercial, HubSpot e Administrativo
 - [x] **FLUXO-04**: O roteamento operacional vive num único lugar, sem a duplicação atual entre `ComercialController::store()` e `HubspotWebhookController::rotearImplementacao()`
 - [x] **FLUXO-05**: Empresa que já tem `MlbEmpresa` (legada, já roteada) não é afetada por nada desta milestone
@@ -261,7 +261,7 @@ Consolidado da pesquisa. Cada item trava a fase indicada.
 | FLUXO-05 | Fase 124 | Done |
 | FLUXO-06 | Fase 124 | Done |
 | FLUXO-07 | Fase 124 | Done |
-| FLUXO-09 | Fase 133 | Pending |
+| FLUXO-09 | Fase 133 | Done |
 | DADOS-01 | Fase 125 | Done |
 | DADOS-02 | Fase 125 | Done |
 | DADOS-03 | Fase 129 (plano 01) | Done |
