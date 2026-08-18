@@ -43,6 +43,10 @@ class ReavaliacaoAutomaticaTest extends TestCase
             return new SpyGatilhoContratoAdministrativoService(
                 $app->make(PendenciasComerciaisService::class),
                 $app->make(ContratoClicksignService::class),
+                // Fase 132: o interruptor de emissão (D-07) passou a ser
+                // checado também neste caminho — o gatilho automático gerava
+                // contrato por fora dele (medido em produção em 2026-08-18).
+                $app->make(\App\Services\Clicksign\CongelamentoEmissaoService::class),
             );
         });
 

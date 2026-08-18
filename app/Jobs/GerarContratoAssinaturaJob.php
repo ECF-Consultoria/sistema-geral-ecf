@@ -192,6 +192,34 @@ class GerarContratoAssinaturaJob implements ShouldQueue
 
         $contrato->clicksign_envelope_id = $resultado['envelope_id'];
         $contrato->clicksign_document_id = $resultado['document_id'];
+
+        // Persiste os signatários que a Clicksign acabou de criar.
+        //
+        // Sem isto a tabela `contrato_assinatura_signatarios` fica VAZIA e o
+        // sistema nunca sabe quem assinou: `ContratoSignatariosSyncService`
+        // só ATUALIZA linha existente — nunca cria, de propósito (T-129-16,
+        // para o webhook não conseguir inventar quem assina). Medido em
+        // produção em 2026-08-18: três assinaturas reais chegaram, validaram
+        // o HMAC e foram todas para `naoReconhecidos` porque não havia linha
+        // para casar. Sem elas também não funcionam o reenvio de aviso da
+        // Fase 131 (a rota liga `{signatario}`) nem a guarda de evidência
+        // (`ip_address`, `auths`, `evidencia_signer`).
+        //
+        // `updateOrCreate` pela chave do signer torna a reentrega do job
+        // idempotente — o guard de reentrega já barra o caso normal, mas
+        // aqui a idempotência é barata e o dano de duplicar seria silencioso.
+        foreach ($resultado['signatarios'] ?? [] as $signatarioCriado) {
+            $contrato->signatarios()->updateOrCreate(
+                ['clicksign_signer_key' => $signatarioCriado['id']],
+                [
+                    'nome'     => $signatarioCriado['nome'],
+                    'email'    => $signatarioCriado['email'],
+                    'papel'    => $signatarioCriado['papel'],
+                    'situacao' => ContratoAssinaturaSignatario::SITUACAO_PENDENTE,
+                ]
+            );
+        }
+
         // status permanece rascunho; enviado_em NÃO é tocado (D-02) — quem
         // sabe que foi enviado é o webhook da Fase 129.
         $contrato->save();
