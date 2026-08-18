@@ -4,15 +4,21 @@ namespace App\Http\Controllers;
 
 use App\Models\CompanyGroup;
 use App\Models\NpsGroupSurvey;
+use App\Models\NpsScoreAssignment;
+use App\Models\NpsSurvey;
 use App\Models\NpsTemplate;
 use App\Models\NpsTemplateQuestion;
 use App\Models\User;
+use App\Services\DesempenhoScoreService;
 use App\Services\Nps\NpsGrupoCoberturaService;
 use App\Services\Nps\NpsGrupoReplicacaoService;
 use App\Services\Nps\NpsSuspicionService;
 use App\Support\NpsTextRenderer;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -300,6 +306,12 @@ class NpsGrupoController extends Controller
             );
         } catch (QueryException $e) {
             if ((string) $e->getCode() === '23000') {
+                // 2026-08-18 — mesmo com o dedup barrando UMA empresa, os
+                // espelhos que já entraram na transação anterior podem ter
+                // sido gravados; bustar aqui também evita deixar a tela
+                // errada por causa de uma corrida.
+                $this->bustarCacheDoBonusDosEspelhos($groupSurvey);
+
                 // Fase 68 Plan 04 — o dedup unique parcial pode disparar
                 // numa empresa coberta que já tenha resposta completa no
                 // mês (race entre o link de grupo e um link individual
@@ -310,7 +322,89 @@ class NpsGrupoController extends Controller
             throw $e;
         }
 
+        $this->bustarCacheDoBonusDosEspelhos($groupSurvey);
+
         return Inertia::render('Nps/ThankYou');
+    }
+
+    /**
+     * Derruba o cache do `DesempenhoScoreService::computeCached()` de todo
+     * profissional tocado pelos surveys-espelho deste link de grupo.
+     *
+     * Existe porque o fluxo INDIVIDUAL já fazia isso desde a spec de
+     * 2026-08-14 (`NpsController::bustarCacheDoBonus()`) e o de GRUPO nunca
+     * fez — resposta de grupo gravava nota, assignment e tudo mais, e a tela
+     * `/performance` continuava mostrando as empresas em "Não entraram" com
+     * o motivo `nps_janela_aberta` por até 7 DIAS (o TTL de mês fechado).
+     * Medido em 2026-08-18: 20 linhas erradas em 4 profissionais, todas
+     * vindas dos links de grupo 7 e 8. Pior, o `WarmDesempenhoCache` reescreve
+     * o snapshot por empresa a partir desse payload cacheado — o `gerado_em`
+     * ficava novinho carimbando conteúdo velho, e nada na tela denunciava.
+     *
+     * A régua é a MESMA de `NpsController::bustarCacheDoBonus()`, replicada
+     * aqui (e não reusada) pelo motivo já registrado no docblock da classe:
+     * o método é `private` no arquivo mais disputado do módulo. Se a régua
+     * mudar lá, muda aqui junto — são duas cópias de uma decisão só:
+     *
+     *  - competência = mês do `completed_at` MENOS 1 (o NPS de agosto decide
+     *    a competência financeira de julho — ver `NpsJanelaResolver`);
+     *  - responsáveis = `nps_score_assignments` da resposta, com fallback
+     *    para `company_users` quando o modelo não cobre nenhum serviço e
+     *    portanto nenhum assignment nasceu.
+     *
+     * NUNCA pode derrubar a resposta do cliente: ela já está commitada, e o
+     * pior caso de uma falha aqui é a nota demorar o TTL para aparecer.
+     */
+    private function bustarCacheDoBonusDosEspelhos(NpsGroupSurvey $groupSurvey): void
+    {
+        try {
+            $espelhos = NpsSurvey::query()
+                ->where('group_survey_id', $groupSurvey->id)
+                ->whereNotNull('completed_at')
+                ->with('response')
+                ->get();
+
+            if ($espelhos->isEmpty()) {
+                return;
+            }
+
+            $scoreService = app(DesempenhoScoreService::class);
+            $paresParaBustar = [];   // "userId|Y-m-d" => [userId, Carbon]
+
+            foreach ($espelhos as $espelho) {
+                $mesCompetencia = $espelho->completed_at
+                    ->copy()
+                    ->startOfMonth()
+                    ->subMonthNoOverflow()
+                    ->startOfMonth();
+
+                $userIds = $espelho->response
+                    ? NpsScoreAssignment::where('nps_response_id', $espelho->response->id)
+                        ->pluck('user_id')
+                        ->unique()
+                    : collect();
+
+                if ($userIds->isEmpty() && $espelho->company_id) {
+                    $userIds = DB::table('company_users')
+                        ->where('company_id', $espelho->company_id)
+                        ->pluck('user_id')
+                        ->unique();
+                }
+
+                foreach ($userIds as $userId) {
+                    $paresParaBustar[$userId . '|' . $mesCompetencia->toDateString()] = [$userId, $mesCompetencia];
+                }
+            }
+
+            foreach ($paresParaBustar as [$userId, $mesCompetencia]) {
+                Cache::forget($scoreService->cacheKey((int) $userId, $mesCompetencia));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[NPS Grupo] falha ao invalidar o cache do desempenho após a resposta de grupo', [
+                'group_survey_id' => $groupSurvey->id,
+                'erro'            => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
