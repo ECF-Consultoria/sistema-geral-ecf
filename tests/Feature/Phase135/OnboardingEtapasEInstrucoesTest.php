@@ -288,6 +288,42 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         );
     }
 
+    /** O caminho de volta no portal: o cliente desfaz o que ele marcou. */
+    #[Test]
+    public function cliente_desmarca_o_que_marcou_no_portal(): void
+    {
+        $company = Company::factory()->create();
+        $this->onboardingEmAndamento($company);
+        $link = app(OnboardingLinkService::class)->paraEmpresa($company);
+
+        $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'planilha_custos_adman'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(
+            OnboardingPasso::STATUS_CONCLUIDO,
+            OnboardingPasso::where('chave', 'planilha_custos_adman')->value('status')
+        );
+
+        $this->patch(route('onboarding.publico.passo.desmarcar', $link->token), ['chave' => 'planilha_custos_adman'])
+            ->assertSessionHasNoErrors();
+
+        $passo = OnboardingPasso::where('chave', 'planilha_custos_adman')->firstOrFail();
+        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passo->status);
+        $this->assertNull($passo->feito_em);
+        $this->assertArrayNotHasKey('declarado_pelo_cliente', $passo->valor ?? []);
+    }
+
+    /** O que o SISTEMA confirma o cliente não desmarca — o resolver refecharia. */
+    #[Test]
+    public function cliente_nao_desmarca_passo_confirmado_pelo_sistema(): void
+    {
+        $company = Company::factory()->create();
+        $this->onboardingEmAndamento($company);
+        $link = app(OnboardingLinkService::class)->paraEmpresa($company);
+
+        $this->patch(route('onboarding.publico.passo.desmarcar', $link->token), ['chave' => 'grant_sistema_ecf'])
+            ->assertSessionHasErrors('chave');
+    }
+
     // ─── Ordem e explicação do cadeado ──────────────────────────────────────
 
     #[Test]

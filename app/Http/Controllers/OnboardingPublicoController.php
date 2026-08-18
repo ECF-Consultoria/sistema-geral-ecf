@@ -93,6 +93,32 @@ class OnboardingPublicoController extends Controller
     }
 
     /**
+     * PATCH /onboarding-cliente/{token}/passo/desmarcar — o cliente desfaz o
+     * que marcou. Espelho de {@see self::marcarFeito()}.
+     */
+    public function desmarcarPasso(Request $request, string $token)
+    {
+        $link = OnboardingLink::where('token', $token)->firstOrFail();
+
+        $data = $request->validate(['chave' => ['required', 'string']]);
+
+        try {
+            $this->linkService->desmarcarPorChave($link->company, $data['chave'], $request->ip());
+        } catch (\DomainException $e) {
+            throw ValidationException::withMessages([
+                'chave' => 'Este passo é confirmado pelo sistema e não pode ser desmarcado por aqui.',
+            ]);
+        }
+
+        activity('onboarding')
+            ->performedOn($link)
+            ->withProperties(['chave' => $data['chave'], 'ip' => $request->ip()])
+            ->log("Passo de chave \"{$data['chave']}\" desmarcado pelo cliente via portal público");
+
+        return back()->with('success', 'Desmarcado.');
+    }
+
+    /**
      * POST /onboarding-cliente/{token}/mapeamento/sincronizar — o cliente pede
      * ao sistema que busque os dados da conta dele.
      *

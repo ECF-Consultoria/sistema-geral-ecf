@@ -62,6 +62,17 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
         });
     }
 
+    // Espelho do marcar. Sem isto, um clique errado no portal era definitivo
+    // — o cliente não tinha como voltar atrás.
+    function desmarcar() {
+        if (marcando) return;
+        setMarcando(true);
+        router.patch(route('onboarding.publico.passo.desmarcar', token), { chave: passo.chave }, {
+            preserveScroll: true,
+            onFinish: () => setMarcando(false),
+        });
+    }
+
     // Sai do portal para o OAuth do Mercado Livre. Navegação de página inteira
     // (não Inertia): o destino é o domínio do ML, e o cliente volta pelo
     // callback já com o passo fechado pelo resolver.
@@ -113,7 +124,19 @@ function PassoCard({ passo, token, conectandoChave, setConectandoChave }) {
                         </p>
                     )}
 
-                    {concluido && <p className="text-emerald-300/70 text-[11px] mt-2">Concluído.</p>}
+                    {concluido && (
+                        <div className="mt-2 flex items-center gap-3 flex-wrap">
+                            <p className="text-emerald-300/70 text-[11px]">Concluído.</p>
+                            {passo.pode_desmarcar && (
+                                <span
+                                    onClick={desmarcar}
+                                    className="text-white/40 hover:text-white text-[11px] cursor-pointer select-none underline underline-offset-2"
+                                >
+                                    {marcando ? 'Desmarcando…' : 'Desmarcar'}
+                                </span>
+                            )}
+                        </div>
+                    )}
 
                     {/*
                       * A ação vem decidida do backend (`passo.acao`), nunca de
