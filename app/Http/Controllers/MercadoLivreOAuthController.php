@@ -135,6 +135,16 @@ class MercadoLivreOAuthController extends Controller
                 'corrected'  => $corrected,
             ]);
 
+            // Quando o fluxo começou numa página que sabe continuar sozinha (o
+            // portal público do Onboarding), devolve o cliente pra lá em vez da
+            // página de resultado — ele volta e vê o passo já fechado pelo
+            // resolver. A URL vem do state, montada com `route()` por quem
+            // iniciou; nunca do request (seria open redirect).
+            $retornoUrl = $stateData['retorno_url'] ?? null;
+            if ($retornoUrl) {
+                return redirect($retornoUrl)->with('success', 'Acesso autorizado — obrigado!');
+            }
+
             return view('oauth.ml-result', [
                 'success'      => true,
                 'company_name' => $company->name,

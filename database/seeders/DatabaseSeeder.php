@@ -24,5 +24,8 @@ class DatabaseSeeder extends Seeder
                 'active'   => true,
             ]
         );
+
+        // O onboarding não tem seeder: a definição dos passos mora em código,
+        // em App\Support\Onboarding\DefinicaoOnboarding.
     }
 }

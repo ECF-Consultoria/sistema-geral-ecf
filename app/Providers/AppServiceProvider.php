@@ -31,6 +31,27 @@ class AppServiceProvider extends ServiceProvider
         // a do ShadowRunService devolve zeros — quebrando o objetivo do Plan 41-04
         // (telemetria ml_metrics no summary JSON usada pelo cut-over Phase 42).
         $this->app->singleton(\App\Services\Sugadores\MercadoLivreAdsService::class);
+
+        // Fase 135 Plano 03 — catálogo fechado de resolvers automáticos do
+        // Onboarding geral (D-09). Lista EXPLÍCITA de instâncias — nunca
+        // descoberta implícita por diretório. Os Planos 05/06 acrescentam
+        // mais resolvers a esta mesma lista.
+        $this->app->singleton(\App\Services\Onboarding\OnboardingResolverFactory::class, function ($app) {
+            return new \App\Services\Onboarding\OnboardingResolverFactory([
+                $app->make(\App\Services\Onboarding\Resolvers\AdmanAccountIdResolver::class),
+                $app->make(\App\Services\Onboarding\Resolvers\MlTokenAtivoResolver::class),
+                // Fase 135 Plano 06 — sondas de rede (Job-only, Pitfall 2).
+                $app->make(\App\Services\Onboarding\Resolvers\AdmanGrantResolver::class),
+                $app->make(\App\Services\Onboarding\Resolvers\MetricasContaResolver::class),
+                // Fase 135 Plano 07 — passo 8, único resolver autorizado a
+                // setar a chave reservada coleta_em_andamento (D-11). Fecha
+                // o catálogo com as 5 chaves de OnboardingPasso::AUTO_FONTES.
+                $app->make(\App\Services\Onboarding\Resolvers\AcervoColetadoResolver::class),
+                // Relatorio inicial (PDF §3) — fecha so com as tres secoes de
+                // analise escritas, nunca so com o retrato de dados.
+                $app->make(\App\Services\Onboarding\Resolvers\RelatorioInicialResolver::class),
+            ]);
+        });
     }
 
     public function boot(): void

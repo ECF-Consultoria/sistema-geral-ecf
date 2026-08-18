@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'implementacao/*',
             'api/webhooks/*',   // Phase 26 — receivers HMAC (ECF Drive em /api/webhooks/ecf; futuros parceiros entram aqui)
+            'onboarding-cliente/*', // Fase 135 Plano 11 — portal público do cliente por empresa (D-06); prefixo NOVO e distinto do prefixo do Polos (D-02)
         ]);
 
         $middleware->web(append: [

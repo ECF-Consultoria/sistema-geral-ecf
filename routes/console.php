@@ -344,6 +344,23 @@ Schedule::command('desempenho:warm-cache')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Fase 135 Plano 07 — reavalia periodicamente os passos automáticos que
+// ficaram esperando (aguardando_coleta/indeterminado/aberto-com-auto_fonte,
+// D-05/D-09/D-11). Existe porque o resolver do passo 8 (acervo ML) DISPARA
+// a coleta e devolve o controle na hora — a cadência de 10min é casada com
+// dois limites: o timeout de 30min da camada barata do acervo
+// (SyncMlAcervoCompanyJob), dando margem de sobra para reconferir depois
+// que o job termina; e o rate limit de 10 rpm da Adman (o throttle de 7s do
+// AdmanGrantResolver já respeita a chamada individual — esta cadência evita
+// empilhar sondas na fila entre uma passada e outra). A trava de não
+// sobreposição abaixo é obrigatória: uma passada atrasada não pode se
+// sobrepor à seguinte.
+Schedule::command('onboarding:reavaliar-passos')
+    ->cron('*/10 * * * *')
+    ->timezone('America/Sao_Paulo')
+    ->name('onboarding-reavaliar-passos')
+    ->withoutOverlapping();
+
 // Debug hubspot-handoff-sem-contatos (2026-07-27) — fix sistêmico do race
 // condition/eventual consistency do HubSpot: o webhook processa o deal
 // fechado quase instantaneamente, mas as associações deal→company/contacts

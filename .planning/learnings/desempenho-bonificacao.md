@@ -120,6 +120,70 @@ Empresa com os dois vínculos elegíveis resolve `adman` pela regra de desempate
 e aparece como Mercado Livre. É o marketplace que produziu os números daquela
 linha — não é omissão.
 
+## 0.04. "Faturamento não vem" quase nunca é bug de cálculo — e o desempate de fonte tem um furo
+
+Levantado em 2026-08-11 a partir de `/performance/21?mes=2026-07` (Felipe, 11 de
+30 empresas sem faturamento). A coluna Faturamento exibe `faturamento_var_pct`;
+ela fica vazia quando não há baseline. **Antes de suspeitar do motor, cheque a
+origem** — em produção, todas as ocorrências vinham de dado inexistente:
+
+| causa | como confirmar | quantas em 2026-07 |
+|---|---|---|
+| vínculo Shopee sem conexão OAuth | `shopee_tokens` (app `erp`) vazio **e** `shopee_metrics` com 0 linhas | 10 empresas |
+| conta nova, backfill sem o mês-base | `MIN(reference_date)` cai dentro do mês atual | 1 (Tuki Pet, conectou 28/07) |
+| desempate de fonte (abaixo) | `fonte_financeira='adman'` com `adman_account_id` NULL | 1 (Interior Magazine) |
+| cadastro de teste | empresa sem conta em lugar nenhum | 3 |
+
+A armadilha que faz perder tempo: **7 das 10 empresas Shopee sem OAuth TÊM dado
+na Adman** no mesmo período. Olhar `adman_metrics` e ver linha lá dá a impressão
+de que o dado existe e o motor está errado — mas o vínculo daquele profissional
+naquela empresa é do setor `shopee`, então o dispatcher lê `shopee_metrics`, que
+está vazia. A fonte é resolvida por VÍNCULO, não pela existência de dado.
+
+**O furo real:** `CompanyScoreService::computeEmpresasScore()` resolve o
+desempate com `$sources->contains('adman') ? 'adman' : $sources->first()` —
+`'adman'` vence **sem verificar se a empresa tem conta Adman**. Interior
+Magazine não tem `adman_account_id` nem uma linha em `adman_metrics`, mas tem
+token Shopee e 71 linhas de métrica: para o Felipe (só vínculo shopee) a empresa
+aparece com **+37,77%**; para Douglas e Gabriela (vínculo performance) resolve
+`adman`, lê da conta que não existe e aparece **em branco**. Mesma empresa,
+mesmo mês, dois profissionais vendo coisas diferentes.
+
+Corrigir isso **muda nota** — Interior Magazine sairia de ausente para 5 pontos
+de faturamento nas duas carteiras. Não é um fix cosmético; trate como mudança de
+número de bônus (§2). Endereçado na Fase 136.
+
+## 0.041. O "calculando…" que não sai é quase sempre a fila `default` parada
+
+Mesmo dia, mesma investigação. O gate quente/frio enfileira
+`desempenho:warm-cache` via `Artisan::queue`, que cai na fila **`default`**. Em
+produção, quem consome `default` é só o `ecf-worker` (2 processos) — o
+`ecf-worker-high` escuta **exclusivamente** a fila `high` e **não drena
+`default`**. Quando os dois `ecf-worker` travam (o modo de falha conhecido:
+`STOPPING` preso num job longo, aqui `SyncTodasVendasAdmanJob`), o warm nunca
+roda e toda tela de desempenho fria fica em "calculando…" para sempre. "Carrega
+alguns só" é o sintoma clássico: quem já tinha cache quente aparece, quem não
+tinha nunca aquece.
+
+Diagnóstico em 3 comandos, nesta ordem — o primeiro sozinho já responde:
+
+```
+supervisorctl status                                          # algum ecf-worker em STOPPING?
+redis-cli -n 1 llen "ecf-admin-database-queues:default"       # fila acumulando?
+redis-cli -n 2 --scan --pattern "*desempenho.compute.v19*"    # quais users/meses estão quentes
+```
+
+Destrave com `supervisorctl signal KILL ecf-worker:ecf-worker_00 ...` (o
+`stop`/`restart` não resolve: eles JÁ estão em STOPPING). Mata o job em voo, que
+volta no próximo ciclo.
+
+**Defeito de desenho que sobrevive ao incidente e ainda não foi corrigido:** o
+teto de poll do front é de 2 min (`Show.jsx`, 20 × 6s) mas o lock do warm é de
+**3 min e global por MÊS**, não por usuário (`WarmDesempenhoDispatcher`, chave
+`desempenho.warm.lock.YYYY-MM`). Se outro request pegou o lock, o job desta
+pessoa não chega a ser enfileirado e ela queima o poll inteiro esperando algo
+que nunca foi agendado — trava mesmo com worker saudável. Ainda sem fase.
+
 ## 0. A nota mudou de MÉTODO em 2026-08-05 — leia antes de tudo
 
 A nota final deixou de aplicar a régua **uma vez sobre a % agregada da

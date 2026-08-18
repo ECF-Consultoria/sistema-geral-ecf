@@ -410,6 +410,12 @@ class Company extends Model
         return $this->hasMany(ContratoServico::class);
     }
 
+    /** Onboardings da empresa — um por serviço contratado (D-01). */
+    public function onboardings()
+    {
+        return $this->hasMany(Onboarding::class);
+    }
+
     // Fase 125 — contratos de assinatura (Clicksign) da empresa.
     public function contratoAssinaturas()
     {

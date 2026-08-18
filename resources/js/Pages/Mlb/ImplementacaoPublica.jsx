@@ -14,6 +14,9 @@ import {
     familiaUniforme,
     aplicarNaFamilia,
     replicarPrecificacao,
+    impostoEfetivo as impostoEfetivoLib,
+    mcEfetivo as mcEfetivoLib,
+    llEfetivo as llEfetivoLib,
 } from '@/lib/precificacaoProdutos';
 
 // ─── CustomSelect — dropdown cross-browser sem seta dupla ────────────────────
@@ -1319,24 +1322,14 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
         onSaveCfg('modo_imposto', novo);
     }
 
-    // Helper: no modo individual usa o imposto_individual do produto (string %, ex: "12" → 0.12).
-    // No modo massa devolve o imposto decimal do tier (comportamento atual sem alteração).
-    const impostoEfetivo = (row, tierImpostoDecimal) =>
-        modoImposto === 'individual'
-            ? ((parseFloat(row?.imposto_individual) || 0) / 100)
-            : tierImpostoDecimal;
-
-    // Helpers de MC e LL efetivos — MC e LL são SEMPRE por produto (independente do modo do imposto).
-    // Campo VAZIO = HERDA o global (mcNum/llNum, o "padrão"); preenchido = override só daquele produto.
-    const mcEfetivo = (row) =>
-        (row?.mc_individual !== '' && row?.mc_individual != null)
-            ? ((parseFloat(row.mc_individual) || 0) / 100)
-            : mcNum;
-
-    const llEfetivo = (row) =>
-        (row?.ll_individual !== '' && row?.ll_individual != null)
-            ? ((parseFloat(row.ll_individual) || 0) / 100)
-            : llNum;
+    // Percentuais efetivos: no modo individual o imposto vem do produto; MC e LL são
+    // SEMPRE por produto, com o global como padrão herdado quando o campo está vazio.
+    // A conta vive em lib/precificacaoProdutos.js porque a visão do Publicador precisa
+    // da MESMA régua — quando ela tinha a própria cópia, mostrava preço mais barato do
+    // que o cliente configurou aqui.
+    const impostoEfetivo = (row, tierImpostoDecimal) => impostoEfetivoLib(row, tierImpostoDecimal, modoImposto);
+    const mcEfetivo      = (row) => mcEfetivoLib(row, mcNum);
+    const llEfetivo      = (row) => llEfetivoLib(row, llNum);
 
     const emptyRow = PRECIF_LINHA_VAZIA;
 

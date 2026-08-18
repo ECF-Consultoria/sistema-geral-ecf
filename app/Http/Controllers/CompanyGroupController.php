@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CompanyGroup;
 use App\Models\ContratoServico;
+use App\Observers\ContratoServicoGatilhoObserver;
 use Illuminate\Http\Request;
 
 /**
@@ -84,7 +85,14 @@ class CompanyGroupController extends Controller
 
         $criados = 0;
         $pulados = 0;
-        ContratoServico::withoutEvents(function () use ($group, $data, &$criados, &$pulados) {
+        // Supressão DIRIGIDA (merge 135×128): antes era
+        // `ContratoServico::withoutEvents()`, que silencia TODOS os observers
+        // do model. A Fase 135 acrescentou um segundo (`ContratoServicoObserver`,
+        // onboarding em rascunho) que precisa disparar aqui — ele não tem o
+        // risco que motivou esta guarda, porque rascunho não vai para cliente
+        // nenhum. A garantia original segue intacta: o gatilho de contrato
+        // administrativo continua desligado dentro do laço.
+        ContratoServicoGatilhoObserver::semDisparo(function () use ($group, $data, &$criados, &$pulados) {
             foreach ($group->companies()->get() as $company) {
                 $jaTem = ContratoServico::where('company_id', $company->id)
                     ->where('servico_id', $data['servico_id'])

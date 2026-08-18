@@ -1,0 +1,244 @@
+<?php
+
+namespace App\Services\Onboarding\Resolvers;
+
+use App\Contracts\OnboardingResolver;
+use App\Models\MlAcervoItem;
+use App\Models\Onboarding;
+use App\Models\OnboardingPasso;
+use App\Services\AdmanService;
+use App\Services\MercadoLivreService;
+use App\Services\Onboarding\OnboardingResolverResultado;
+use App\Support\Onboarding\ReguaMercadoLider;
+
+/**
+ * Resolver do passo 7 do template de Gestão — "Métricas da conta".
+ *
+ * Agrega 3 fontes e conclui com o que conseguiu ler — parsing DEFENSIVO é a
+ * regra, porque o parsing de `seller_reputation`/medalha não tem nenhum
+ * consumidor confirmado no repositório hoje e o payload real da API não foi
+ * verificado nesta pesquisa [ASSUMIDO]: campo ausente vira `null` marcado em
+ * `valor['nao_obtidos']`, nunca um `false`/`0` que mentiria sobre o dado. A
+ * verificação contra uma conta real do Mercado Livre é checagem manual do
+ * Plano 13.
+ *
+ * Falha isolada de UMA fonte não derruba o passo inteiro — mesmo espírito de
+ * "log then continue" já documentado no CLAUDE.md para loops de batch: cada
+ * campo não obtido entra em `valor['nao_obtidos']` e o passo conclui com o
+ * resto.
+ *
+ * As 4 fontes — todas do Mercado Livre, exceto a última:
+ *  - `MercadoLivreService::fetchUserInfo()` — nickname e reputação. Se o
+ *    cliente ainda não autorizou o acesso, o service lança exceção antes de
+ *    qualquer chamada de rede — tratado aqui como `nao_coletado` (pendência
+ *    humana real, e o template já expressa isso com
+ *    `depende_de: grant_sistema_ecf`).
+ *  - `MercadoLivreService::fetchOrdersSummary()` — faturamento dos últimos 3
+ *    meses, somando `total_amount` dos pedidos pagos.
+ *  - `ml_acervo_itens.shipping->logistic_type` — se a conta usa Full. NÃO sai
+ *    de `tags` do usuário: medido contra conta real, `tags` descreve tipo de
+ *    conta e não existe tag de Full.
+ *  - `Company::activeGrant` — medalha/programa do parceiro ML, dado que a
+ *    ECF recebe (não um acesso que o cliente concede) — entra dentro deste
+ *    passo, nunca como passo próprio (D-18).
+ */
+class MetricasContaResolver implements OnboardingResolver
+{
+    public function __construct(
+        private readonly MercadoLivreService $ml,
+        private readonly AdmanService $adman,
+    ) {
+    }
+
+    public function chave(): string
+    {
+        return OnboardingPasso::AUTO_FONTE_METRICAS;
+    }
+
+    public function label(): string
+    {
+        return 'Métricas da conta';
+    }
+
+    public function ajuda(): string
+    {
+        return 'Agrega reputação/Full do Mercado Livre + faturamento Adman dos últimos 3 meses + medalha do parceiro (assíncrono, roda em fila).';
+    }
+
+    public function assincrono(): bool
+    {
+        return true;
+    }
+
+    public function resolver(Onboarding $onboarding, OnboardingPasso $passo): OnboardingResolverResultado
+    {
+        $company = $onboarding->company;
+
+        try {
+            $userInfo = $this->ml->fetchUserInfo($company);
+        } catch (\Throwable $e) {
+            $mensagem = $e->getMessage();
+
+            if (str_contains($mensagem, 'sem token válido')) {
+                return OnboardingResolverResultado::naoColetado(
+                    'Cliente ainda não autorizou o acesso ao Mercado Livre'
+                );
+            }
+
+            if (str_contains($mensagem, '400') || str_contains($mensagem, '404') || str_contains($mensagem, '500')) {
+                return OnboardingResolverResultado::naoColetado(
+                    'O Mercado Livre não reconhece esta conta'
+                );
+            }
+
+            // 429, timeout, erro de rede — D-11: nunca concluir a partir de
+            // um estado indeterminado.
+            return OnboardingResolverResultado::indeterminado($mensagem);
+        }
+
+        $naoObtidos = [];
+
+        $valor = ['nickname' => $userInfo['nickname'] ?? null];
+        if ($valor['nickname'] === null) {
+            $naoObtidos[] = 'nickname';
+        }
+
+        $reputacao = $userInfo['seller_reputation'] ?? null;
+        if ($reputacao === null) {
+            $valor['reputacao'] = ['level_id' => null, 'power_seller_status' => null];
+            $naoObtidos[] = 'seller_reputation';
+        } else {
+            $levelId = $reputacao['level_id'] ?? null;
+            $powerSellerStatus = $reputacao['power_seller_status'] ?? null;
+            $valor['reputacao'] = [
+                'level_id'            => $levelId,
+                'power_seller_status' => $powerSellerStatus,
+                // Guardadas cruas: são elas que sustentam o diagnóstico de
+                // "o que falta para a próxima medalha" e o que a pessoa
+                // apresenta na reunião. Antes a API entregava e nós
+                // descartávamos.
+                'metrics'             => $reputacao['metrics'] ?? null,
+                'transactions'        => $reputacao['transactions'] ?? null,
+            ];
+
+            if ($levelId === null) {
+                $naoObtidos[] = 'seller_reputation.level_id';
+            }
+
+            // `power_seller_status` AUSENTE não é dado faltando: é assim que o
+            // Mercado Livre representa "não é MercadoLíder" (o campo só existe
+            // para quem tem medalha — confirmado contra conta real em
+            // 2026-08-17). Marcá-lo como não obtido fazia a tela dizer as duas
+            // coisas ao mesmo tempo: "Ainda não é MercadoLíder" e "não obtido".
+            if (($reputacao['metrics'] ?? null) === null) {
+                $naoObtidos[] = 'seller_reputation.metrics';
+            }
+        }
+
+        // ─── As DUAS medalhas, separadas ────────────────────────────────────
+        // `medalha_conta` é a MercadoLíder da conta do CLIENTE; `medalha_parceiro`
+        // (mais abaixo) é a do programa de parceiros, que é da ECF. Antes as
+        // duas dividiam o mesmo slot e se confundiam na leitura.
+        $valor['medalha_conta']   = ReguaMercadoLider::diagnosticar($reputacao);
+        $valor['proxima_medalha'] = $valor['medalha_conta']['proxima_medalha'];
+
+        // ─── Full: vem do ACERVO, não de `tags` ─────────────────────────────
+        // A versão anterior derivava Full de `tags` conter 'full'. Marca
+        // `[ASSUMIDO]`, e estava ERRADA — medido contra conta real em
+        // 2026-08-17: `tags` traz ["business","eshop","messages_as_seller",
+        // "normal"], que descreve o TIPO DE CONTA, não logística. Não existe
+        // tag de Full, então a ausência não provava nada e a tela mostrava
+        // "—" para quem usa Full.
+        //
+        // A fonte real é por ANÚNCIO: `shipping.logistic_type = fulfillment`,
+        // que a coleta de acervo já grava. Conta com ao menos um item assim
+        // usa Full.
+        //
+        // Sem acervo coletado NÃO se afirma nada: `null` + `nao_obtidos`,
+        // nunca `false` (D-11 — "não coletado" ≠ "não tem").
+        $itensAcervo = MlAcervoItem::where('company_id', $company->id);
+
+        if ($itensAcervo->clone()->exists()) {
+            // Consulta JSON de verdade (`->`), nunca LIKE sobre o texto.
+            // A primeira versão usava LIKE '%"logistic_type":"fulfillment"%'
+            // e NUNCA casava: `shipping` é coluna JSON do MySQL, que normaliza
+            // o documento com espaço depois dos dois-pontos
+            // (`{"mode": "me2", ... "logistic_type": "fulfillment"}`). Conta
+            // com 16 anúncios em Full aparecia como "sem Full" — e sem erro
+            // nenhum, que é o pior tipo de falha.
+            $comFull = $itensAcervo->clone()
+                ->where('shipping->logistic_type', 'fulfillment')
+                ->count();
+
+            $valor['full'] = $comFull > 0;
+            $valor['full_anuncios'] = $comFull;
+        } else {
+            $valor['full'] = null;
+            $naoObtidos[] = 'full';
+        }
+
+        // ─── Faturamento: MERCADO LIVRE, não Adman ──────────────────────────
+        // A ficha é da conta do Mercado Livre, e o faturamento tem de vir da
+        // mesma fonte. A versão anterior perguntava à Adman pelo `cust_id`, e
+        // conta conectada só por OAuth (sem cadastro Adman próprio) devolvia
+        // `null` — a tela mostrava "não obtido" para vendedor que fatura
+        // normalmente. Medido em produção em 2026-08-17.
+        //
+        // `fetchOrdersSummary()` soma `total_amount` dos pedidos PAGOS do
+        // período, paginando sozinho.
+        $de  = now()->subMonths(3)->toDateString();
+        $ate = now()->toDateString();
+
+        try {
+            $resumo = $this->ml->fetchOrdersSummary($company, $de, $ate);
+
+            $valor['faturamento_3_meses'] = $resumo['revenue'] ?? null;
+            $valor['faturamento_pedidos'] = $resumo['orders_count'] ?? null;
+            $valor['faturamento_periodo'] = ['de' => $de, 'ate' => $ate];
+
+            // `fetchOrdersSummary()` para em 1000 pedidos por segurança. Ao
+            // bater o teto o número vira PISO, não total — deixar isso
+            // implícito subestimaria o faturamento de quem vende muito, em
+            // silêncio.
+            $valor['faturamento_parcial'] = ($resumo['orders_count'] ?? 0) >= 1000;
+
+            if ($valor['faturamento_3_meses'] === null) {
+                $naoObtidos[] = 'faturamento_3_meses';
+            }
+        } catch (\Throwable $e) {
+            // Falha só do faturamento não derruba o passo — o resto da ficha
+            // continua válido (mesmo "log then continue" do resto da classe).
+            $valor['faturamento_3_meses'] = null;
+            $naoObtidos[] = 'faturamento_3_meses';
+        }
+
+        // Medalha do PROGRAMA DE PARCEIROS — dado que a ECF recebe pelo ECF
+        // Drive, não algo da conta do cliente. Nome próprio para não ser
+        // confundida com a MercadoLíder acima.
+        $grant = $company->activeGrant;
+        $valor['medalha_parceiro'] = $grant ? [
+            'programa'   => $grant->programa,
+            'iniciativa' => $grant->iniciativa,
+            'parceiro'   => $grant->parceiro,
+            'fecha_in'   => optional($grant->medalha_fecha_in)->toDateString(),
+            'fecha_out'  => optional($grant->medalha_fecha_out)->toDateString(),
+        ] : null;
+
+        if (! $grant) {
+            $naoObtidos[] = 'grant_parceiro_ml';
+        }
+
+        // Chaves planas do shape antigo, mantidas para não quebrar leitura de
+        // `valor` gravado antes desta mudança (RelatorioInicialService e as
+        // telas já publicadas leem por elas).
+        $valor['medalha_fecha_in']  = $valor['medalha_parceiro']['fecha_in'] ?? null;
+        $valor['medalha_fecha_out'] = $valor['medalha_parceiro']['fecha_out'] ?? null;
+        $valor['programa']          = $valor['medalha_parceiro']['programa'] ?? null;
+        $valor['iniciativa']        = $valor['medalha_parceiro']['iniciativa'] ?? null;
+        $valor['parceiro']          = $valor['medalha_parceiro']['parceiro'] ?? null;
+
+        $valor['nao_obtidos'] = $naoObtidos;
+
+        return OnboardingResolverResultado::concluido($valor);
+    }
+}

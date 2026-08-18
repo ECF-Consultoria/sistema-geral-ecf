@@ -1973,9 +1973,42 @@ Plans:
   10. Cliente recebe **um link por empresa** que agrega os passos `dono=cliente` de todos os serviços ativos; passo de mesma `chave` em serviços diferentes fecha uma vez só
   11. O painel responde "o que está travando, há quantos dias e de quem é a bola" — não uma barra de porcentagem
 
-**Plans:** 0 plans
+**Plans:** 12/13 plans executed
 
 Plans:
+**Wave 1**
+
+- [x] 135-01-PLAN.md — Wave 0: baseline de regressao do Polos, ContratoServicoFactory e scaffold da suite [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 135-02-PLAN.md — Schema do motor: 5 tabelas versionadas (com disponivel_em) + 5 models com catalogo fechado [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 135-03-PLAN.md — Catalogo fechado de resolvers: Contract, resultado de 3 estados, registry + 2 resolvers locais [wave 3]
+- [x] 135-04-PLAN.md — Template de Gestao v1 (13 passos) + engine de montagem, dependencias e condicoes [wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 135-05-PLAN.md — Observer de ContratoServico nos 4 call-sites + transicao rascunho→andamento [wave 4]
+- [x] 135-06-PLAN.md — Resolvers de rede (sonda de grant Adman, metricas da conta) + Job assincrono [wave 4]
+- [x] 135-08-PLAN.md — CRUD de template: versao N+1 imutavel, guarda de ciclo, migracao explicita [wave 4]
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 135-07-PLAN.md — Resolver de acervo (SC-07: vazio ≠ zero) + comando de reavaliacao agendado [wave 5]
+- [x] 135-09-PLAN.md — Painel operacional (backend): permission core.onboarding, props de "o que trava" [wave 5]
+- [x] 135-10-PLAN.md — Tela 2: builder de template (React) [wave 5]
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 135-11-PLAN.md — Link publico por empresa + Tela 3: portal do cliente [wave 6]
+- [x] 135-12-PLAN.md — Tela 1: painel operacional (React) + item de menu [wave 6]
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [~] 135-13-PLAN.md — Gate de regressao do Polos, mapa de evidencia SC/D e verificacoes manuais [wave 7] — Tasks 1-2 OK (gate do Polos APROVADO); Task 3 AGUARDANDO GATE HUMANO
 
 - [ ] TBD (run /gsd-plan-phase 135 to break down)
 
@@ -1986,6 +2019,42 @@ Plans:
 > **Fora de escopo (fase própria):** geração automática do relatório inicial de onboarding (cenário, métricas, estrutura, pontos de atenção, oportunidades, próximos passos). Os passos 7 e 8 já produzem quase todo o dado e `RelatorioMensalPdfService` é o molde — mas montar o PDF é fase separada.
 >
 > **Assunção fechada pelo usuário em 2026-08-11 (D-18 do `135-CONTEXT.md`):** "Grant com o Sistema ECF" (item 11 do fluxo do cliente) = autorizar o app ECF por OAuth → `ml_tokens` — **confirmado**. "Grant com a Consultoria" = grant com a **Adman** (`api.adman.com.br`), a plataforma que a consultoria usa — **corrigido**: não é `company_grants`. O que `company_grants` guarda (populado por `SyncGrantsFromEcfDrive`/`SyncGrantsFromSftp`) é o programa de parceiros do ML — medalha, programa, iniciativa — dado que a ECF *recebe*, não acesso que o cliente *concede*; segue como fonte dentro do passo 7, não como passo próprio. Pendência para o `RESEARCH.md`: qual chamada do `AdmanService` serve de sonda barata de "grant ativo para este cust_id" — se nenhuma servir, o passo 4 cai para dono `interno` com checagem manual. **Nada disso muda a arquitetura do motor.**
+
+### Phase 136: Métricas manuais por empresa/mês no Desempenho
+
+**Goal:** Permitir que o admin decida, por empresa e por mês, se faturamento e margem vêm da API ou de um valor lançado à mão — sem o qual carteira Shopee fica estruturalmente sem margem (a plataforma não expõe CMV) e empresa sem conexão OAuth fica sem faturamento nenhum. A margem manual se lança pelo **CMV do mês**: o sistema já tem o faturamento e deriva `margem % = (fat − CMV) / fat`, e daí os p.p. contra o mês anterior — mantém o "antes → depois" da tela e o número auditável. Vale **só para competência em curso e não consolidada** (a trava de congelamento continua valendo), é **admin-only**, e o lançamento acontece em **tela própria, em grade empresa × mês**, porque o CMV chega em lote no fechamento. Inclui a correção do desempate de fonte financeira: hoje `'adman'` vence sobre `'shopee'` sem verificar se a empresa tem conta Adman, o que faz a mesma empresa mostrar faturamento para um profissional e nada para outro.
+
+**Requirements**: TBD — a unidade de rastreabilidade desta fase sao os IDs de decisao do `136-CONTEXT.md` (D-01..D-12 + D-EXC-01), todos cobertos pelos planos abaixo.
+**Depends on:** Phase 135
+**Plans:** 6/7 plans executed
+
+Plans:
+
+**Wave 1** *(paralelos, sem sobreposicao de arquivos)*
+
+- [x] 136-01-PLAN.md — D-10: resolvedor unico de fonte financeira nos 3 call-sites + bump de cache v19->v20 + rotacao do gate de hash da Fase 119 + baseline de falhas [wave 1]
+- [x] 136-02-PLAN.md — Fundacao de dados: tabela `desempenho_metricas_manuais`, model com activitylog, helper de competencia consolidada e FormRequest (D-01/D-02/D-07/D-09/D-12) [wave 1]
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [x] 136-03-PLAN.md — `ManualMetricOverrideService` + fiacao no motor de nota + liberacao da margem Shopee com CMV manual + rastro no snapshot (D-01..D-08, D-03, D-EXC-01) [wave 2]
+- [x] 136-06-PLAN.md — Comando read-only `desempenho:relatorio-impacto-fonte` (D-11) [wave 2]
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [x] 136-04-PLAN.md — Backend da grade: controller, rotas admin-only e escrita transacional com lock (D-01/D-02/D-07/D-09/D-12) [wave 3]
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [x] 136-05-PLAN.md — Front: grade empresa x mes, selo discreto por metrica em `/performance/{user}` e item de menu (D-04) [wave 4]
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 136-07-PLAN.md — Gate de regressao contra a baseline, conferencia do FIXMARG-03 por exit code e checkpoint humano bloqueante [wave 5]
+
+> **Leitura deliberada do goal (D-09):** "em curso **e** nao consolidada" e aplicado como **"nao consolidada"**, nao como "mes corrente". Julho/2026 esta fechado pelo calendario e nao consolidado (esperando NPS coletado em agosto) — e precisamente o caso que a fase precisa atender, e D-05 (celula manual compara mes cheio x mes cheio) torna o valor de mes cheio impossivel antes do fim do mes. Ler literalmente "em curso" entregaria uma tela inutil.
+>
+> **Fora de escopo, nao planejado:** recalibrar reguas; reconsolidar competencias fechadas (a fase entrega so o relatorio read-only de impacto, D-11); mudar a agregacao (faturamento usa mediana, margem usa media — de proposito); mexer no piso de NPS; corrigir o lock global por mes do `WarmDesempenhoDispatcher`.
 
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*

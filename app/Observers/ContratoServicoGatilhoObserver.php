@@ -45,8 +45,44 @@ class ContratoServicoGatilhoObserver
      */
     public const CAMPOS_GATILHO = ['ativo', 'valor_contratado', 'data_contratacao', 'servico_id'];
 
+    /**
+     * Supressão DIRIGIDA a este observer.
+     *
+     * Nasceu no merge da Fase 135 com a 128. A atribuição de serviço a um
+     * grupo usava `ContratoServico::withoutEvents()` para impedir que um
+     * clique disparasse N contratos reais para assinatura de N clientes —
+     * garantia correta e que continua valendo. Só que `withoutEvents()`
+     * silencia TODOS os observers do model, e a Fase 135 acrescentou um
+     * segundo (`ContratoServicoObserver`, que cria o onboarding em rascunho).
+     * O comentário original dizia "o Observer", no singular, porque na época
+     * só havia um.
+     *
+     * O onboarding não tem o risco que motivou a supressão: nasce em
+     * `rascunho`, não corre SLA e não expõe nada a cliente nenhum até alguém
+     * confirmar o responsável. Então o laço passa a suprimir só ESTE gancho,
+     * em vez de todos.
+     */
+    private static bool $suprimido = false;
+
+    /** Roda `$callback` com este observer desligado — os demais seguem ativos. */
+    public static function semDisparo(callable $callback): mixed
+    {
+        $anterior = self::$suprimido;
+        self::$suprimido = true;
+
+        try {
+            return $callback();
+        } finally {
+            self::$suprimido = $anterior;
+        }
+    }
+
     public function created(ContratoServico $contrato): void
     {
+        if (self::$suprimido) {
+            return;
+        }
+
         DB::afterCommit(function () use ($contrato) {
             $this->reavaliar($contrato);
         });
@@ -54,6 +90,10 @@ class ContratoServicoGatilhoObserver
 
     public function updated(ContratoServico $contrato): void
     {
+        if (self::$suprimido) {
+            return;
+        }
+
         if (! $contrato->wasChanged(self::CAMPOS_GATILHO)) {
             return;
         }

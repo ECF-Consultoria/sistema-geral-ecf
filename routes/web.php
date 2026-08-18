@@ -6,7 +6,6 @@ use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\EcfWebhookController;
 use App\Http\Controllers\ComercialController;
 use App\Http\Controllers\ConcentracaoController;
-use App\Http\Controllers\ContratoAdminController;
 use App\Http\Controllers\EmpresaAnaliseEcfController;
 use App\Http\Controllers\Admin\CargoController;
 use App\Http\Controllers\Admin\SetorController;
@@ -31,6 +30,8 @@ use App\Http\Controllers\ShopeeOAuthController;
 use App\Http\Controllers\GrantController;
 use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MeetingController;
+use App\Http\Controllers\MetasDevController;
+use App\Http\Controllers\MetasDevGestorController;
 use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsCicloController;
 use App\Http\Controllers\NpsController;
@@ -39,6 +40,8 @@ use App\Http\Controllers\NpsGrupoController;
 use App\Http\Controllers\NpsTemplateController;
 use App\Http\Controllers\NpsTemplateOptionController;
 use App\Http\Controllers\NpsTemplateQuestionController;
+use App\Http\Controllers\OnboardingController;
+use App\Http\Controllers\OnboardingPublicoController;
 use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PolosController;
 use App\Http\Controllers\PolosPpaController;
@@ -85,34 +88,6 @@ Route::post('/api/webhooks/hubspot', [\App\Http\Controllers\Api\HubspotWebhookCo
     ->middleware('throttle:60,1')
     ->name('webhooks.hubspot');
 
-// ─── Receiver de webhooks Clicksign (Fase 129 Plano 129-03) ──────────────────
-// URL de produção: https://admin.ecfconsultoria.com.br/api/webhooks/clicksign
-// Autenticação via HMAC (header Content-Hmac, fórmula MEDIDA no gate A1 —
-// ver App\Support\Clicksign\ClicksignHmacVarredura::FORMULA_CONFIRMADA).
-// CSRF isento por bootstrap/app.php (api/webhooks/*) + withoutMiddleware
-// (defensivo, mesma disciplina de /api/webhooks/hubspot).
-// Rate limit: throttle:60,1 (defesa contra spam; o trabalho pesado nem
-// chega a rodar na janela síncrona — vai para ProcessarEventoClicksignJob).
-Route::post('/api/webhooks/clicksign', [\App\Http\Controllers\Api\ClicksignWebhookController::class, 'receive'])
-    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
-    ->middleware('throttle:60,1')
-    ->name('webhooks.clicksign');
-
-// ─── Download do PDF assinado (Fase 129 Plano 129-06, CLICK-11, D-13) ────────
-// O arquivo é evidência jurídica: vive em disco PRIVADO (storage/app) e só
-// sai do servidor por esta rota, com login de admin. `role:admin` é o
-// controle CORRETO até a permissão dedicada `admin.contratos` (UI-05) existir
-// na Fase 131 — não é um atalho provisório, é a trava certa hoje.
-Route::get('/admin/contratos/{contratoAssinatura}/pdf-assinado', [\App\Http\Controllers\ContratoPdfAssinadoController::class, 'download'])
-    ->middleware(['auth', 'role:admin'])
-    ->name('contratos.pdf-assinado');
-
-// ─── Liberação manual da rede de segurança (Fase 130 Plano 04) — ABSORVIDA ──
-// D-10 (Fase 131 Plano 06): a rota `contratos.liberacao-manual.*` e a tela
-// `Admin/ContratosLiberacaoManual` foram REMOVIDAS. A ação virou
-// `admin.contratos.liberacao-manual` dentro do grupo `permission:admin.contratos`
-// abaixo — o Administrativo passa a ter uma tela só.
-
 // PPA Workspace público (sem autenticação) — cliente acessa pelo token
 Route::get('/ppa/workspace/{token}', [PpaController::class, 'workspace'])->name('ppa.workspace');
 Route::patch('/ppa/workspace/{token}/tasks/{task}', [PpaTaskController::class, 'clientUpdate'])->name('ppa.workspace.task.update');
@@ -124,6 +99,45 @@ Route::patch('/implementacao/{token}', [MlbImplementacaoController::class, 'salv
 // Visão do publicador (sem autenticação) — leitura + check-in por SKU
 Route::get('/implementacao/{token}/publicador', [MlbImplementacaoController::class, 'publicador'])->name('implementacao.publicador');
 Route::patch('/implementacao/{token}/publicador/checkin', [MlbImplementacaoController::class, 'checkinPublicador'])->name('implementacao.publicador.checkin');
+// Frete de UMA linha da precificação. Rota própria porque o publicador não pode
+// mandar a lista inteira: a tela dele é de leitura com um campo editável, e
+// reescrever o array todo já reverteu o que outra pessoa tinha preenchido.
+Route::patch('/implementacao/{token}/publicador/frete', [MlbImplementacaoController::class, 'salvarFretePublicador'])->name('implementacao.publicador.frete');
+
+// ─── Fase 135 Plano 11 — Portal público do cliente por EMPRESA (D-06) ───────
+// Prefixo NOVO e distinto de 'implementacao/*' (Polos, D-02) — NUNCA reusar
+// aquele prefixo. O token vive na EMPRESA (não no onboarding): uma empresa
+// pode ter mais de um serviço com onboarding ativo ao mesmo tempo (Gestão
+// hoje; outros depois, D-08) e o cliente recebe um único link. Sem
+// middleware 'auth' — acesso é por posse do token (mesmo risco já aceito no
+// precedente do Polos: Str::random(48), unique() no banco, sem expiração).
+// CSRF isento via bootstrap/app.php (entrada 'onboarding-cliente/*',
+// distinta da entrada 'implementacao/*' já existente).
+Route::get('/onboarding-cliente/{token}', [OnboardingPublicoController::class, 'workspace'])
+    ->name('onboarding.publico.workspace');
+Route::patch('/onboarding-cliente/{token}/passo', [OnboardingPublicoController::class, 'marcarFeito'])
+    ->middleware('throttle:20,1')
+    ->name('onboarding.publico.passo');
+// Porta pública para o OAuth do Mercado Livre. O callback continua sendo o
+// mesmo de sempre (`ml.oauth.callback`, logo abaixo) — o que muda é que ele
+// devolve o cliente ao portal quando o fluxo começou aqui.
+Route::get('/onboarding-cliente/{token}/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
+    ->middleware('throttle:20,1')
+    ->name('onboarding.publico.conectar-ml');
+// O cliente PEDE a reunião (sem data — quem marca é o responsável).
+Route::post('/onboarding-cliente/{token}/reuniao', [OnboardingPublicoController::class, 'solicitarReuniao'])
+    ->middleware('throttle:20,1')
+    ->name('onboarding.publico.reuniao');
+// Mapeamento inicial: o cliente pede a busca dos dados e confere o apurado.
+// Throttle mais apertado no sincronizar — cada clique vira sonda contra a
+// Adman, que tem ADMAN_RATE_LIMIT_RPM = 10 (o cooldown do service é a segunda
+// rede).
+Route::post('/onboarding-cliente/{token}/mapeamento/sincronizar', [OnboardingPublicoController::class, 'sincronizarMapeamento'])
+    ->middleware('throttle:6,1')
+    ->name('onboarding.publico.mapeamento.sincronizar');
+Route::post('/onboarding-cliente/{token}/mapeamento/confirmar', [OnboardingPublicoController::class, 'confirmarMapeamento'])
+    ->middleware('throttle:20,1')
+    ->name('onboarding.publico.mapeamento.confirmar');
 
 // ML OAuth — callback público (o cliente autoriza fora do painel)
 Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])
@@ -744,6 +758,29 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{company}/toggle-shadow',               [SugadoresMlOnboardingController::class, 'toggleShadow'])->name('toggle_shadow');
         });
 
+        // ─── Metas do Dev — proposta de régua de bonificação do time de dev ───
+        // Módulo em `homologacao` no ModuleRegistry (fora de produção enquanto
+        // for proposta). O grupo já é role:admin, mas a custódia REAL é mais
+        // fina e mora nos FormRequests: tudo que entra no cálculo da nota exige
+        // `is_gestor_dev`, flag que o dev avaliado NÃO tem — ele é admin.
+        // Ver .planning/seeds/metas-dev-proposta.md ("Matriz de custódia").
+        Route::prefix('dev/metas')->name('dev.metas.')->group(function () {
+            // Painel único: o dev lê, o gestor classifica inline.
+            Route::get('/', [MetasDevController::class, 'index'])->name('index');
+
+            // Lado do DEV: registra e propõe prazo. Só isso.
+            Route::post('/entregas',                   [MetasDevController::class, 'store'])->name('entregas.store');
+            Route::patch('/entregas/{entrega}',        [MetasDevController::class, 'update'])->name('entregas.update');
+            Route::post('/entregas/{entrega}/enviar',  [MetasDevController::class, 'enviar'])->name('entregas.enviar');
+
+            // Lado do GESTOR: tudo que vira número na régua.
+            Route::post('/entregas/{entrega}/baseline', [MetasDevGestorController::class, 'congelarBaseline'])->name('entregas.baseline');
+            Route::post('/entregas/{entrega}/aprovar',  [MetasDevGestorController::class, 'aprovar'])->name('entregas.aprovar');
+            Route::put('/entregas/{entrega}/avaliacao', [MetasDevGestorController::class, 'avaliar'])->name('entregas.avaliar');
+            Route::patch('/entregas/{entrega}/hotfix',  [MetasDevGestorController::class, 'classificarHotfix'])->name('entregas.hotfix');
+            Route::put('/cotas',                        [MetasDevGestorController::class, 'definirCota'])->name('cotas.definir');
+        });
+
         // PUT /goals/{goal} movida pra fora do grupo (META-04) — estrategista pode
         // editar. DELETE segue restrita ao admin.
         Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
@@ -825,6 +862,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::resource('servicos', ServicoController::class)
             ->only(['index', 'store', 'update', 'destroy']);
 
+
         Route::post('/empresas/{company}/contratos-servico',                  [CompanyController::class, 'storeContrato'])->name('empresas.contratos.store');
         Route::put('/empresas/{company}/contratos-servico/{contrato}',        [CompanyController::class, 'updateContrato'])->name('empresas.contratos.update');
         Route::delete('/empresas/{company}/contratos-servico/{contrato}',     [CompanyController::class, 'destroyContrato'])->name('empresas.contratos.destroy');
@@ -840,6 +878,56 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/sistema/hubspot-line-items/{mapping}',  [HubspotLineItemMappingController::class, 'destroy'])->name('sistema.hubspot-line-items.destroy');
     });
 });
+
+// ─── Fase 135 Plano 09 — Painel operacional de Onboarding geral (D-01) ──────
+// Gate DEDICADO permission:core.onboarding — NÃO role:admin: o CRUD de
+// template é que é admin-only (D-04), mas a coordenação de onboarding
+// (confirmar responsável, concluir passo) provavelmente envolve
+// consultor/estrategista, não só admin (135-RESEARCH.md, Open Question 2;
+// decisão registrada no 135-09-PLAN.md). Admin passa pelo short-circuit em
+// User::hasPermission() (EnsurePermission) — não precisa da key explícita
+// em setor_permissoes.
+//
+// ATENÇÃO DE ROTEAMENTO: 'GET /onboarding/{onboarding}' captura QUALQUER
+// segmento. Rota nova com caminho literal sob '/onboarding/...' precisa ser
+// registrada ANTES deste grupo, senão o literal vira o parâmetro.
+Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
+    ->group(function () {
+        Route::get('/onboarding', [OnboardingController::class, 'index'])
+            ->name('onboarding.painel.index');
+        Route::get('/onboarding/{onboarding}', [OnboardingController::class, 'show'])
+            ->name('onboarding.painel.show');
+        Route::post('/onboarding/{onboarding}/responsavel', [OnboardingController::class, 'confirmarResponsavel'])
+            ->name('onboarding.responsavel.confirmar');
+        Route::post('/onboarding/passos/{passo}/concluir', [OnboardingController::class, 'concluirPasso'])
+            ->name('onboarding.passos.concluir');
+        // Desmarcar — o caminho de volta que faltava.
+        Route::post('/onboarding/passos/{passo}/reabrir', [OnboardingController::class, 'reabrirPasso'])
+            ->name('onboarding.passos.reabrir');
+        // Data e hora da reunião — a volta da informação que o cliente pediu.
+        Route::post('/onboarding/{onboarding}/reuniao', [OnboardingController::class, 'agendarReuniao'])
+            ->name('onboarding.reuniao.agendar');
+        // Mapeamento inicial pelo lado de quem opera: "Sincronizar agora" (em
+        // vez de esperar o cron de 10 min) e conferência assistida em call.
+        Route::post('/onboarding/{onboarding}/mapeamento/sincronizar', [OnboardingController::class, 'sincronizarMapeamento'])
+            ->name('onboarding.mapeamento.sincronizar');
+        Route::post('/onboarding/{onboarding}/mapeamento/confirmar', [OnboardingController::class, 'confirmarMapeamento'])
+            ->name('onboarding.mapeamento.confirmar');
+
+        // ─── Fase 135 Plano 11 — geração do link único por empresa (D-06) ──
+        // Ação interna: a Coordenação gera/copia o token do portal público
+        // do cliente. Mesmo gate deste bloco (permission:core.onboarding) —
+        // o cliente nunca chega a esta rota, só ao prefixo público
+        // 'onboarding-cliente/*' registrado fora do grupo 'auth' acima.
+        Route::post('/onboarding/empresas/{company}/link', [OnboardingController::class, 'gerarLink'])
+            ->name('onboarding.link.gerar');
+        // Relatório inicial (PDF §3): gerar monta o retrato factual; salvar
+        // grava as três seções que só uma pessoa escreve.
+        Route::post('/onboarding/{onboarding}/relatorio', [OnboardingController::class, 'gerarRelatorio'])
+            ->name('onboarding.relatorio.gerar');
+        Route::put('/onboarding/{onboarding}/relatorio', [OnboardingController::class, 'salvarRelatorio'])
+            ->name('onboarding.relatorio.salvar');
+    });
 
 // ─── Alertas Estratégicos (Phase 23) ────────────────────────────────────────
 // Consome /signals da API ECF Drive (Phase 22 wrapper). Caixa de entrada
@@ -1073,33 +1161,6 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     Route::post  ('/setores/{setor}/metas',                    [SetorGoalController::class, 'store'])  ->name('setores.metas.store');
     Route::put   ('/setores-metas/{meta}',                     [SetorGoalController::class, 'update']) ->name('setores.metas.update');
     Route::delete('/setores-metas/{meta}',                     [SetorGoalController::class, 'destroy'])->name('setores.metas.destroy');
-});
-
-// ─── Contratos administrativos (Fase 131, UI-01/UI-05, D-09/D-10) ────────────
-// FORA do grupo `role:admin` acima DE PROPÓSITO: `admin.contratos` é
-// permissão PRÓPRIA, refinável na tela de setores sem deploy (D-09). Se
-// estas rotas entrarem no grupo `role:admin`, um usuário que receba
-// `admin.contratos` via setor continua batendo 403 — a UI-05 vira letra
-// morta (ContratoAdminPermissaoTest fica vermelho se isso acontecer).
-// D-10: esta tela ABSORVEU a liberação manual da Fase 130 (plano 131-06) —
-// `liberacao-manual` abaixo é a ação nova; a rota antiga foi removida (ver
-// bloco acima).
-Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('administrativo/contratos')->name('admin.contratos.')->group(function () {
-    Route::get('/', [ContratoAdminController::class, 'index'])->name('index');
-    // Plano 131-04 (D-01/ADM-01/ADM-02/UI-02) — detalhe da empresa: onde o
-    // Administrativo completa o cadastro e dispara a geração do contrato.
-    Route::get('/empresa/{company}',            [ContratoAdminController::class, 'show'])            ->name('show');
-    Route::patch('/empresa/{company}/cadastro', [ContratoAdminController::class, 'atualizarCadastro'])->name('cadastro');
-    Route::post('/empresa/{company}/gerar',     [ContratoAdminController::class, 'gerarContrato'])    ->name('gerar');
-    // Plano 131-05 (CLICK-07/CLICK-10, D-13) — reenviar aviso e registrar
-    // cancelamento (registra aqui, cancela no painel da Clicksign).
-    Route::post('/{contratoAssinatura}/signatarios/{signatario}/reenviar', [ContratoAdminController::class, 'reenviar'])
-        ->name('reenviar');
-    Route::post('/{contratoAssinatura}/cancelamento', [ContratoAdminController::class, 'registrarCancelamento'])
-        ->name('cancelamento');
-    // Plano 131-06 (D-10) — absorve ContratoLiberacaoManualController::store()
-    // (Fase 130). Ação disparada de dentro do detalhe da empresa.
-    Route::post('/liberacao-manual', [ContratoAdminController::class, 'liberarManual'])->name('liberacao-manual');
 });
 
 // ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────
