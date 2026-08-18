@@ -2,6 +2,7 @@
 
 namespace App\Services\Contratos;
 
+use App\Services\Clicksign\CongelamentoEmissaoService;
 use App\Models\Company;
 use App\Models\ContratoAssinatura;
 use App\Services\Clicksign\ContratoClicksignService;
@@ -47,6 +48,7 @@ class GatilhoContratoAdministrativoService
     public function __construct(
         private PendenciasComerciaisService $pendencias,
         private ContratoClicksignService $clicksign,
+        private CongelamentoEmissaoService $congelamento,
     ) {
     }
 
@@ -128,6 +130,31 @@ class GatilhoContratoAdministrativoService
      */
     public function dispararSeElegivel(Company $company): array
     {
+        // Interruptor de emissão (D-07 da Fase 132) — PRIMEIRA coisa, antes de
+        // qualquer avaliação ou I/O.
+        //
+        // Medido em produção em 2026-08-18: com o interruptor LIGADO, criar uma
+        // empresa e vincular um serviço fez nascer contrato e envelope no mesmo
+        // segundo. O interruptor só era checado em
+        // `ContratoAdminController::gerarContrato()`, e este caminho — os
+        // observers da Fase 128 — passava por fora. O plano 132-01 afirmava que
+        // `gerarContrato()` era o "único ponto de geração do sistema"; não é.
+        //
+        // O envelope nascia em rascunho (`ativar: false`), então não saía e-mail
+        // — mas rascunho de cliente real acumulava na conta de produção da
+        // Clicksign durante um congelamento, a um passo humano de ser ativado.
+        // Com esta checagem, congelar a emissão passa a ser propriedade do
+        // SISTEMA, não de uma tela.
+        if ($this->congelamento->ativo()) {
+            Log::warning('[Administrativo] geração automática recusada — emissão congelada', [
+                'chave'      => CongelamentoEmissaoService::CHAVE,
+                'company_id' => $company->id,
+                'origem'     => 'gatilho_automatico',
+            ]);
+
+            return ['status' => 'emissao_congelada'];
+        }
+
         // Guard de reentrância por request (T-128-05): corta o laço
         // Observer → disparo → gravação → Observer antes de chegar no banco.
         if (self::$emAvaliacao[$company->id] ?? false) {
