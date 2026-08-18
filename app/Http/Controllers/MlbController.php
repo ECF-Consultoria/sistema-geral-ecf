@@ -16,6 +16,7 @@ use App\Models\PublicacaoAbsenteismo;
 use App\Models\Revisao;
 use App\Models\User;
 use App\Services\AdmanService;
+use App\Services\Operacional\EmpresaOperacionalRouter;
 use App\Services\PlanoMetasPublicacaoService;
 use App\Services\RevisaoService;
 use App\Services\VendasSyncService;
@@ -2429,7 +2430,7 @@ class MlbController extends Controller
      * Não altera o status da Company — isso acontece normalmente ao editar a mlb_empresa
      * pela primeira vez (updateEmpresa já lida com o status pendente → ativo).
      */
-    public function ativarEmpresaPendente(Request $request, Company $company)
+    public function ativarEmpresaPendente(Request $request, Company $company, EmpresaOperacionalRouter $router)
     {
         $this->checkPubAccess('empresas');
 
@@ -2442,6 +2443,24 @@ class MlbController extends Controller
         $validated = $request->validate([
             'tipo' => 'required|in:polos,assessoria',
         ]);
+
+        // Fase 133 Plano 02 (D-03/D-07) — a "porta dos fundos" do FLUXO-09.
+        // Este método cria MlbEmpresa/MlbImplementacao INLINE, por fora do
+        // EmpresaOperacionalRouter — por isso a checagem do interruptor
+        // administrativo_bloqueio_ativo vive em uma SEGUNDA cópia aqui
+        // dentro (consequência aceita da D-03; a outra cópia é
+        // EmpresaOperacionalRouter::rotear()). Quem mudar uma precisa mudar
+        // a outra. Checagem ANTES da DB::transaction: a recusa acontece
+        // antes de qualquer escrita.
+        if ($router->bloqueioAtivo() && ! $this->servicoContratadoIsentoParaTipo($company, $validated['tipo'])) {
+            Log::warning('[Administrativo] Ativação manual retida pelo gate administrativo.', [
+                'company_id'  => $company->id,
+                'user_id'     => $request->user()?->id,
+                'tipo_pedido' => $validated['tipo'],
+            ]);
+
+            return back()->with('error', 'Esta empresa ainda não pode entrar na operação. O motivo é que o contrato do serviço contratado ainda não foi assinado. Assim que a assinatura for concluída, ela entra sem ninguém precisar clicar de novo.');
+        }
 
         DB::transaction(function () use ($company, $validated, $request) {
             if ($validated['tipo'] === 'polos') {
@@ -2484,6 +2503,42 @@ class MlbController extends Controller
         $label = $validated['tipo'] === 'polos' ? 'Polos (com Onboarding)' : 'Assessoria';
 
         return back()->with('success', '"' . $company->name . '" ativada como ' . $label . '.');
+    }
+
+    /**
+     * Fase 133 Plano 02 (D-07) — decide se a empresa pode ser ativada
+     * manualmente como `$tipo`, olhando os SERVIÇOS REALMENTE CONTRATADOS
+     * (`$company->contratosServico`), nunca o `$validated['tipo']` cru.
+     *
+     * Motivo: `tipo` é um rótulo escolhido a mão por quem clica no botão da
+     * tela — confiar nele deixaria a porta aberta para alguém marcar
+     * "polos" numa empresa que na verdade contratou Assessoria. A fonte da
+     * verdade é o que a empresa contratou, não o que foi clicado.
+     *
+     * Fail-safe: sem NENHUM contrato ativo que resolva para o tipo pedido e
+     * seja isento, devolve falso. Ausência de dado nunca é isenção.
+     */
+    private function servicoContratadoIsentoParaTipo(Company $company, string $tipo): bool
+    {
+        $contratosAtivos = $company->contratosServico()->where('ativo', true)->with('servico')->get();
+
+        foreach ($contratosAtivos as $contrato) {
+            $servico = $contrato->servico;
+
+            if (! $servico) {
+                continue;
+            }
+
+            if (ComercialController::servicoDisparaImplementacao($servico->nome) !== $tipo) {
+                continue;
+            }
+
+            if (! $servico->exigeContrato()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function storeEmpresa(Request $request)
