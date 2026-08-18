@@ -1894,7 +1894,22 @@ Plans:
   4. Desligar a chave `administrativo_bloqueio_ativo` sem deploy volta o sistema ao roteamento imediato de antes, imediatamente
   5. **(FLUXO-09)** Com o bloqueio ligado, a ativação manual do time de Publicação (`MlbController::ativarEmpresaPendente()`, tela `/mlb/empresas`) também não cria ficha operacional — provado por teste. Lacuna descoberta na verificação da Fase 124: esse método cria `MlbEmpresa`+`MlbImplementacao` por cópia inline, fora do `EmpresaOperacionalRouter` e sem consultar a chave
 
-**Plans:** TBD
+**Plans:** 5 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 133-01-PLAN.md — Exceção por serviço em `rotear()` (Polos nunca é bloqueado) + os 4 testes do Phase124 trocados de cenário [wave 1]
+- [ ] 133-02-PLAN.md — Porta dos fundos do time de Publicação (FLUXO-09) + registro da dívida das duas rotas extras (D-06) [wave 1]
+- [ ] 133-03-PLAN.md — A tela `/administrativo/contratos` conta a consequência: faixa condicional sem jargão (D-04) [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 133-04-PLAN.md — Roteiro de rollout, checkpoint das 4 pré-condições e ativação da chave em produção (D-05) [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 133-05-PLAN.md — Conferência da faixa e do primeiro cadastro real de Polos por reconsulta ao banco (D-05) [wave 3]
 
 > 🚦 **CHECKPOINT HUMANO — bloqueia a ATIVAÇÃO, não a escrita.** A flag `administrativo_bloqueio_ativo` só pode ser ligada em produção depois de confirmar, com o usuário: (a) o webhook chegou de forma confiável durante o período de observação (Fase 128/129 rodando em produção por tempo suficiente); (b) o alerta de contrato preso já disparou pelo menos uma vez em sandbox (Fase 130); (c) a liberação manual foi testada em produção ao menos uma vez (Fase 130); (d) o cutover para produção Clicksign foi concluído e aprovado (Fase 132). Rollback de código sozinho nunca é o plano de saída — desligar a flag é.
 
