@@ -69,12 +69,16 @@ class DefinicaoOnboarding
      * mexer em 13 números para fechar um buraco de um introduz risco sem
      * ganho nenhum — a lista continua saindo na mesma sequência.
      *
+     * v9 — `grant_consultoria_adman` passa a depender de `grant_sistema_ecf`
+     * em vez de `planilha_custos_adman`: é a ordem real do processo (autoriza
+     * o sistema, depois concede à Consultoria).
+     *
      * v8 — `metricas_da_conta` deixa de depender de `planilha_custos_adman`.
      * A ficha da conta é do Mercado Livre; a Adman só fornece faturamento, e
      * o resolver já conclui sem ela. A dependência travava a ficha inteira
      * esperando um cadastro na Adman que não tem relação com ela.
      */
-    public const VERSAO = 8;
+    public const VERSAO = 9;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -230,11 +234,17 @@ class DefinicaoOnboarding
                 'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
                 'chave'      => 'grant_consultoria_adman',
                 'titulo'     => 'Grant com a Consultoria (Adman)',
-                // v6 — idem: só o cliente concede o grant à Consultoria dentro
-                // da Adman. A sonda continua sendo quem confirma.
+                // v6 — só o cliente concede o grant à Consultoria dentro da
+                // Adman. A sonda continua sendo quem confirma.
+                //
+                // v9 — depende do GRANT COM O SISTEMA, não mais da planilha de
+                // custos. É a ordem que o negócio pratica: o cliente autoriza
+                // o sistema primeiro e só então concede à Consultoria. Amarrar
+                // na planilha punha um passo de cadastro no meio de dois
+                // passos de acesso.
                 'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
-                'depende_de' => ['planilha_custos_adman'],
+                'depende_de' => ['grant_sistema_ecf'],
                 'sla_dias'   => 5,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_ADMAN_GRANT,
                 'condicao'   => null,

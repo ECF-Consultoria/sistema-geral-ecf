@@ -232,22 +232,73 @@ class OnboardingPainelAcoesTest extends TestCase
         $this->assertNotNull($passo->feito_em);
     }
 
+    /**
+     * D-19 mudou de forma, não de intenção.
+     *
+     * A regra original proibia conclusão manual de passo automático em
+     * QUALQUER caminho. Na prática isso criou beco sem saída: "Planilha de
+     * custos ADMAN" só fecha com `companies.adman_account_id` preenchido, e
+     * empresa conectada só por OAuth não tem esse campo — o passo não fechava
+     * sozinho nem podia ser fechado à mão, travando tudo que dependia dele.
+     *
+     * Agora quem opera POR DENTRO pode concluir como override explícito, e
+     * isso fica registrado. O portal do CLIENTE continua barrado — a proteção
+     * que importa (cliente não fecha o que o sistema deveria confirmar) está
+     * coberta por OnboardingEtapasEInstrucoesTest.
+     */
     #[Test]
-    public function concluir_passo_com_auto_fonte_devolve_erro_e_nao_muda_o_status_d19(): void
+    public function interno_conclui_passo_automatico_como_override_registrado(): void
     {
         $onboarding = $this->onboardingEmRascunho();
         $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
 
-        // 'planilha_custos_adman': auto_fonte=adman_account_id_preenchido (D-19).
         $passo = $this->passo($onboarding, 'planilha_custos_adman');
-        $statusOriginal = $passo->status;
+        $admin = $this->admin();
 
-        $response = $this->actingAs($this->admin())->post(route('onboarding.passos.concluir', $passo));
+        $this->actingAs($admin)
+            ->post(route('onboarding.passos.concluir', $passo))
+            ->assertStatus(302)
+            ->assertSessionHasNoErrors();
 
-        $response->assertStatus(302);
-        $response->assertInvalid(['passo' => 'verificado automaticamente pelo sistema']);
+        $fresh = $passo->fresh();
+        $this->assertSame(OnboardingPasso::STATUS_CONCLUIDO, $fresh->status);
+        $this->assertTrue($fresh->valor['concluido_manualmente'] ?? false, 'o override precisa ficar registrado');
+        $this->assertSame($admin->id, $fresh->valor['override_por'] ?? null);
+    }
 
-        $this->assertSame($statusOriginal, $passo->fresh()->status);
+    /** O caminho de volta que faltava: desmarcar um passo concluído. */
+    #[Test]
+    public function desmarcar_devolve_o_passo_para_aberto_e_limpa_o_registro(): void
+    {
+        $onboarding = $this->onboardingEmRascunho();
+        $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
+
+        $passo = $this->passo($onboarding, 'planilha_custos_adman');
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->post(route('onboarding.passos.concluir', $passo))->assertSessionHasNoErrors();
+        $this->assertSame(OnboardingPasso::STATUS_CONCLUIDO, $passo->fresh()->status);
+
+        $this->actingAs($admin)->post(route('onboarding.passos.reabrir', $passo))->assertSessionHasNoErrors();
+
+        $fresh = $passo->fresh();
+        $this->assertSame(OnboardingPasso::STATUS_ABERTO, $fresh->status);
+        $this->assertNull($fresh->feito_por);
+        $this->assertNull($fresh->feito_em);
+        $this->assertArrayNotHasKey('concluido_manualmente', $fresh->valor ?? []);
+    }
+
+    #[Test]
+    public function desmarcar_passo_que_nao_esta_concluido_devolve_erro(): void
+    {
+        $onboarding = $this->onboardingEmRascunho();
+        $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
+
+        $passo = $this->passo($onboarding, 'custos_app_ecf');
+
+        $this->actingAs($this->admin())
+            ->post(route('onboarding.passos.reabrir', $passo))
+            ->assertInvalid(['passo']);
     }
 
     // ─── Task 3: escopo de carteira nas ações ───────────────────────────────

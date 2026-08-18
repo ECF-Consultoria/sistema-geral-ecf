@@ -133,9 +133,21 @@ function LinhaPasso({ passo }) {
         form.post(route('onboarding.passos.concluir', passo.id), { preserveScroll: true });
     };
 
-    // Botão "Marcar como concluído" só em passo manual ABERTO — nunca num
-    // passo com `tem_auto_fonte` (D-19: o sistema é quem confirma).
-    const podeConcluirManualmente = passo.status === 'aberto' && !passo.tem_auto_fonte;
+    const desmarcar = () => {
+        form.post(route('onboarding.passos.reabrir', passo.id), { preserveScroll: true });
+    };
+
+    // Passo manual aberto: fecha direto.
+    // Passo AUTOMÁTICO aberto: fecha como override explícito. D-19 segue
+    // valendo no portal do cliente; aqui dentro, a regra sem escape criava
+    // beco sem saída — "Planilha de custos ADMAN" não fechava sozinha (a
+    // empresa não tem `adman_account_id`) nem podia ser fechada à mão.
+    const podeConcluir = passo.status === 'aberto';
+    const ehOverride = passo.status === 'aberto' && passo.tem_auto_fonte;
+
+    // Todo passo concluído pode ser desmarcado — o caminho de volta que
+    // faltava. Em passo automático, desmarcar devolve à apuração do resolver.
+    const podeDesmarcar = passo.status === 'concluido';
 
     return (
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 space-y-2">
@@ -153,14 +165,31 @@ function LinhaPasso({ passo }) {
                     )}
                 </div>
 
-                {podeConcluirManualmente && (
-                    <Button size="sm" variant="outline" onClick={concluirManualmente} disabled={form.processing}>
-                        Marcar como concluído
-                    </Button>
-                )}
+                <div className="flex items-center gap-2">
+                    {podeConcluir && (
+                        <Button size="sm" variant="outline" onClick={concluirManualmente} disabled={form.processing}>
+                            {ehOverride ? 'Concluir mesmo assim' : 'Marcar como concluído'}
+                        </Button>
+                    )}
+                    {podeDesmarcar && (
+                        <button
+                            onClick={desmarcar}
+                            disabled={form.processing}
+                            className="text-white/40 hover:text-white text-[12px] transition-colors disabled:opacity-50"
+                        >
+                            Desmarcar
+                        </button>
+                    )}
+                </div>
             </div>
 
             <EstadoPasso passo={passo} />
+
+            {passo.concluido_manualmente && (
+                <p className="text-[11px] text-amber-400/80">
+                    Concluído manualmente — o sistema não confirmou este passo sozinho.
+                </p>
+            )}
 
             {passo.condicao && (
                 <p className="text-[12px] text-white/30 italic">Só se aplica quando: {passo.condicao}</p>

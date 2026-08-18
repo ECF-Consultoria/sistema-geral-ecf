@@ -501,18 +501,81 @@ class OnboardingEngineService
      * quando o passo tem `auto_fonte` preenchido (D-19) — nem cliente nem
      * interno fecha na mão um passo que só o resolver fecha.
      */
-    public function concluirManualmente(OnboardingPasso $passo, User $usuario): void
+    public function concluirManualmente(OnboardingPasso $passo, User $usuario, bool $forcar = false): void
     {
-        if ($passo->auto_fonte !== null) {
+        // D-19 continua valendo para o CLIENTE: pelo portal público nunca se
+        // fecha na mão um passo que o sistema verifica sozinho.
+        //
+        // Para quem opera por dentro, `$forcar` abre a exceção — e ela existe
+        // porque a regra sem escape criava beco sem saída real: "Planilha de
+        // custos ADMAN" só fecha quando `companies.adman_account_id` está
+        // preenchido, e empresa conectada só por OAuth não tem esse campo.
+        // O passo não fechava sozinho e não podia ser fechado à mão: ficava
+        // travado para sempre, segurando tudo que dependia dele.
+        //
+        // O override fica REGISTRADO em `valor` — quem olhar depois vê que
+        // aquele "concluído" foi decisão de gente, não apuração do sistema.
+        if ($passo->auto_fonte !== null && ! $forcar) {
             throw new \DomainException(
                 "O passo \"{$passo->titulo}\" tem verificação automática — conclusão manual não é permitida (D-19)."
             );
+        }
+
+        if ($passo->auto_fonte !== null) {
+            $passo->valor = array_merge($passo->valor ?? [], [
+                'concluido_manualmente' => true,
+                'override_por'          => $usuario->id,
+                'override_em'           => now()->toISOString(),
+            ]);
         }
 
         $passo->status = OnboardingPasso::STATUS_CONCLUIDO;
         $passo->feito_por = $usuario->id;
         $passo->feito_em = now();
         $passo->save();
+
+        $this->reavaliar($passo->onboarding);
+    }
+
+    /**
+     * Desfaz a conclusão de um passo — o "desmarcar" que faltava.
+     *
+     * Sem isto, um clique errado era definitivo: não havia caminho de volta em
+     * tela nenhuma, e a única saída era mexer no banco.
+     *
+     * Volta para `aberto` e deixa a reavaliação decidir o estado final (pode
+     * virar `bloqueado` de novo se a dependência não estiver cumprida). Limpa
+     * `feito_por`/`feito_em` e a marca de override — o passo deixa de alegar
+     * que alguém o concluiu.
+     *
+     * Passo automático volta a ser do resolver: na próxima passada ele reapura
+     * e conclui de novo se o dado estiver lá. Reabrir não é "negar o dado", é
+     * "recomeçar a apuração".
+     */
+    public function reabrirPasso(OnboardingPasso $passo, User $usuario): void
+    {
+        if ($passo->status !== OnboardingPasso::STATUS_CONCLUIDO) {
+            throw new \DomainException(
+                "O passo \"{$passo->titulo}\" não está concluído — não há o que desmarcar."
+            );
+        }
+
+        $passo->status = OnboardingPasso::STATUS_ABERTO;
+        $passo->feito_por = null;
+        $passo->feito_em = null;
+
+        if (is_array($passo->valor)) {
+            $passo->valor = array_diff_key($passo->valor, array_flip([
+                'concluido_manualmente', 'override_por', 'override_em',
+            ]));
+        }
+
+        $passo->save();
+
+        activity('onboarding')
+            ->performedOn($passo->onboarding)
+            ->withProperties(['passo_id' => $passo->id, 'chave' => $passo->chave, 'por' => $usuario->id])
+            ->log("Passo \"{$passo->titulo}\" desmarcado");
 
         $this->reavaliar($passo->onboarding);
     }

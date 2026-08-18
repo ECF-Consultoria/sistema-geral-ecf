@@ -289,6 +289,27 @@ class OnboardingController extends Controller
     }
 
     /**
+     * POST /onboarding/passos/{passo}/reabrir — desmarca um passo concluído.
+     *
+     * Faltava caminho de volta: um clique errado era definitivo e só se
+     * desfazia mexendo no banco. Vale para passo automático também — reabrir
+     * não nega o dado, devolve o passo à apuração do resolver.
+     */
+    public function reabrirPasso(Request $request, OnboardingPasso $passo)
+    {
+        $onboarding = $passo->onboarding;
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        try {
+            $this->engine->reabrirPasso($passo, $request->user());
+        } catch (\DomainException $e) {
+            throw ValidationException::withMessages(['passo' => $e->getMessage()]);
+        }
+
+        return back()->with('success', 'Passo desmarcado.');
+    }
+
+    /**
      * POST /onboarding/{onboarding}/reuniao — o responsável marca data e hora.
      * É a volta da informação que o cliente pediu: a partir daqui a data
      * aparece no portal dele.
@@ -338,7 +359,9 @@ class OnboardingController extends Controller
         $this->autorizarEscopo($request->user(), $onboarding);
 
         try {
-            $this->engine->concluirManualmente($passo, $request->user());
+            // Override permitido a quem opera por dentro: o portal do
+            // cliente continua barrado por D-19 (ele usa outra rota).
+            $this->engine->concluirManualmente($passo, $request->user(), forcar: true);
         } catch (\DomainException $e) {
             throw ValidationException::withMessages([
                 // Mensagem fixa (D-19) — não repassa $e->getMessage(): o
@@ -548,6 +571,9 @@ class OnboardingController extends Controller
             $item['coleta_demorando'] = $passo->coleta_iniciada_em !== null
                 && $passo->coleta_iniciada_em->diffInMinutes(now()) > 30;
         } elseif ($passo->status === OnboardingPasso::STATUS_CONCLUIDO) {
+            // A tela precisa saber que ESTE concluído veio de decisão humana
+            // sobre um passo automático — e oferecer o desmarcar.
+            $item['concluido_manualmente'] = (bool) ($passo->valor['concluido_manualmente'] ?? false);
             // Único ramo que grava valor numérico definitivo (D-11) — nunca
             // em aguardando_coleta/indeterminado/aberto/bloqueado.
             $item['valor'] = $passo->valor;

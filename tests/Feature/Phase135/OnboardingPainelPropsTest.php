@@ -337,8 +337,11 @@ class OnboardingPainelPropsTest extends TestCase
         // Por CHAVE, nunca por índice — a definição pode ganhar passos no meio.
         $passos = collect($response->viewData('page')['props']['passos'])->keyBy('chave');
 
+        // v9 — o grant com a Consultoria depende do grant com o SISTEMA, que
+        // é a ordem real do processo. Antes dependia da planilha de custos,
+        // pondo um passo de cadastro no meio de dois passos de acesso.
         $this->assertSame(
-            ['Planilha de custos ADMAN'],
+            ['Grant com o Sistema ECF (OAuth)'],
             $passos['grant_consultoria_adman']['depende_de'],
         );
         $this->assertSame(
