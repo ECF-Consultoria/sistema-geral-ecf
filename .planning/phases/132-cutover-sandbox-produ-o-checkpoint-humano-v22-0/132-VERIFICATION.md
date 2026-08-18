@@ -150,11 +150,12 @@ dívida (não como gap de verificação) na rodada anterior.
 
 **Nenhum gap remanescente.** O único gap da primeira rodada — propagação do resultado do gate
 empírico #10 para `130-GATE.md` e `REQUIREMENTS-v22.md` — foi fechado pelo commit `fccc567e`,
-conferido acima linha por linha via `git show`. Fica registrada, como observação de baixo custo e
-não bloqueante, a existência de duas menções redundantes em `130-GATE.md` (linha 47 e a tabela
-"Resumo para o usuário", linhas 374-375) que ainda mostram o status pré-Fase 132 sem apontamento —
-não são a fonte primária do veredito e não impedem a rastreabilidade, mas podem ser limpas em uma
-próxima edição rápida se algum desenvolvedor passar por ali.
+conferido acima linha por linha via `git show`. A observação de higiene levantada nesta rodada — duas menções
+redundantes em `130-GATE.md` (a frase de abertura do SC1 e a tabela "Resumo para o usuário") que
+ainda mostravam o status pré-Fase 132 — **foi resolvida em seguida**, no mesmo commit desta
+verificação: as duas passaram a apontar para `132-GATE.md`, com o texto histórico preservado e
+marcado como "à época". O resultado líquido da Fase 130 passa de 2 de 3 para **3 de 3** Success
+Criteria humanos aprovados. Não restou nenhuma menção contraditória no documento.
 
 **Fase 132 aprovada.** Pronta para a Fase 133.
 
