@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: ready_to_plan
-stopped_at: Phase 132 complete (4/4) — ready to discuss Phase 133 (fecha a milestone v22.0)
-last_updated: 2026-08-18T14:43:45.602Z
-last_activity: 2026-08-12 -- 136-05 executado (grade admin + selo por metrica + item de menu, D-04)
+status: destravada pela Fase 132 (cutover aprovado em 2026-08-18)
+stopped_at: Phase 133 context gathered
+last_updated: "2026-08-18T19:58:57.779Z"
+last_activity: 2026-08-18
 progress:
   total_phases: 13
-  completed_phases: 1
-  total_plans: 35
-  completed_plans: 282
-  percent: 8
+  completed_phases: 10
+  total_plans: 87
+  completed_plans: 85
+  percent: 77
 ---
 
 # Project State
@@ -75,10 +75,12 @@ Status: Tasks 1 e 2 do 135-13 aprovadas e commitadas. **NADA DEPLOYADO.**
 Last activity: 2026-08-12 -- 135-13 Tasks 1-2 (gate de regressão do Polos APROVADO + mapa de evidência SC/D completo)
 
 **Estado verificado em 2026-08-12 (execução independente do orquestrador, não relato de agente):**
+
 - `tests/Feature/Phase135` — **162/162 verde**, 745 asserções.
 - Gate do Polos (D-02) — `git diff --name-only 735b8f7d..HEAD` não lista **nenhum** arquivo de Polos
   nem de `implementacao`. As 10 falhas da suíte de Polos são as pré-existentes documentadas em
   `.planning/learnings/painel-polos-status-e-meta.md` §2, sem relação com esta fase.
+
 - `onboarding:reavaliar-passos` agendado a cada 10 min (confirmado em `schedule:list`).
 - 4 páginas no manifest do Vite: `Painel`, `Detalhe`, `Templates/Index`, `Publico`.
 - CSRF: **uma** entrada nova, `onboarding-cliente/*` — prefixo distinto do `implementacao/*` do Polos,
@@ -1312,8 +1314,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-12T14:05:00.000Z
-Stopped at: Completed 136-05-PLAN.md (front da grade + selo por métrica + item de menu). Resta 136-07 (wave 5: gate de regressão + FIXMARG-03 por exit code + checkpoint humano bloqueante).
+Last session: 2026-08-18T19:58:57.559Z
+Stopped at: Phase 133 context gathered
 Last session: 2026-08-10T21:59:33.127Z
 Stopped at: Completed 126-09-PLAN.md
 Last session: 2026-08-17T14:46:47.243Z
