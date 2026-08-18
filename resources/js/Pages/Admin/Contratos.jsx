@@ -33,7 +33,7 @@ import {
  * (`admin.contratos.show`), que é onde o Administrativo completa o
  * cadastro e dispara a geração do contrato.
  */
-export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contrato_count = 0 }) {
+export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contrato_count = 0, bloqueio_ativo = false }) {
     const [qInput, setQInput] = useState(filters.q || '');
     const debounceRef = useRef(null);
 
@@ -67,6 +67,21 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                         <FileSignature size={20} className="text-ecf-yellow" />
                         Contratos
                     </h1>
+
+                    {/* Fase 133 Plano 03 (D-04) — faixa informativa sem card, que
+                        aparece só com o interruptor ligado e some quando desligado.
+                        Conta a consequência para quem lê, não o mecanismo — sem
+                        jargão de arquitetura no texto (UI-06). */}
+                    {bloqueio_ativo && (
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-300">
+                            <p className="font-semibold">Estas empresas estão aguardando a assinatura do contrato</p>
+                            <p className="mt-0.5 text-amber-300/80">
+                                Enquanto o contrato não for assinado, a empresa não entra na operação. É proposital
+                                e vale para todas — não é problema de uma empresa específica. Assim que a assinatura
+                                for concluída, a empresa entra sozinha, sem ninguém precisar fazer nada.
+                            </p>
+                        </div>
+                    )}
 
                     {/* Ponto focal — grid de resumo por situação, 7 estados (D-04),
                         também funciona como filtro. NÃO copiar o número de colunas
