@@ -180,6 +180,10 @@ class LiberacaoManualEstadoRealTest extends TestCase
                 'causa', 'enviado_em', 'assinado_em', 'liberado_em',
                 'cancelamento_solicitado_em', 'cancelamento_motivo',
                 'cancelamento_solicitado_por_nome', 'ja_liberado', 'signatarios',
+                // `preparando` entrou pela quick 260816-d72 (estado "Preparando"
+                // em âmbar na lista e no detalhe). É booleano derivado, sem PII —
+                // mas a lista aqui é EXATA de propósito, então precisa constar.
+                'preparando',
             ];
 
             $this->assertEqualsCanonicalizing($chavesEsperadas, array_keys($primeiroContrato));
