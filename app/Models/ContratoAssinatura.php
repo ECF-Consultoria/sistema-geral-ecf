@@ -343,4 +343,32 @@ class ContratoAssinatura extends Model
     {
         return $this->hasMany(ContratoAssinaturaSignatario::class);
     }
+
+    /**
+     * Resolve o contrato a partir do identificador que o webhook da Clicksign
+     * traz — e ele NÃO é o do envelope.
+     *
+     * O corpo real do webhook é baseado em DOCUMENTO (`document.key`, §12.2 do
+     * empírico), enquanto `clicksign_envelope_id` guarda o id do ENVELOPE da
+     * API v3. São namespaces diferentes: comparar um com o outro nunca casa.
+     * Medido em produção em 2026-08-18, no cutover da Fase 132: três
+     * assinaturas reais chegaram com HMAC válido e foram TODAS descartadas com
+     * "envelope nao pertence a nenhum contrato deste sistema", e nenhuma
+     * empresa seria liberada.
+     *
+     * Tenta as duas colunas de propósito: a forma do payload varia (a doc
+     * oficial mostra duas), então o id que chega pode ser de qualquer uma das
+     * duas famílias. Envelope primeiro por ser o identificador canônico do
+     * nosso lado; documento como queda, que é o caso que acontece de fato.
+     */
+    public static function resolverPorReferenciaClicksign(?string $referencia): ?self
+    {
+        if (blank($referencia)) {
+            return null;
+        }
+
+        return static::where('clicksign_envelope_id', $referencia)->first()
+            ?? static::where('clicksign_document_id', $referencia)->first();
+    }
+
 }

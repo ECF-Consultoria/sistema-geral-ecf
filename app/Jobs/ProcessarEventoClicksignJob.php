@@ -121,7 +121,7 @@ class ProcessarEventoClicksignJob implements ShouldQueue
         $contrato = $evento->contrato;
 
         if ($contrato === null && filled($evento->clicksign_envelope_id)) {
-            $contrato = ContratoAssinatura::where('clicksign_envelope_id', $evento->clicksign_envelope_id)->first();
+            $contrato = ContratoAssinatura::resolverPorReferenciaClicksign($evento->clicksign_envelope_id);
 
             if ($contrato !== null) {
                 $evento->contrato_assinatura_id = $contrato->id;
@@ -130,7 +130,7 @@ class ProcessarEventoClicksignJob implements ShouldQueue
 
         if ($contrato === null) {
             $evento->status        = ContratoAssinaturaEvento::STATUS_IGNORADO;
-            $evento->erro_msg      = 'envelope nao pertence a nenhum contrato deste sistema';
+            $evento->erro_msg      = 'referencia clicksign (envelope ou documento) nao pertence a nenhum contrato deste sistema';
             $evento->processado_em = now();
             $evento->save();
 
