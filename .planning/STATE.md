@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: ready_to_plan
-stopped_at: Phase 132 complete (4/4) — ready to discuss Phase 134
+stopped_at: Phase 132 complete (4/4) — ready to discuss Phase 133 (fecha a milestone v22.0)
 last_updated: 2026-08-18T14:43:45.602Z
 last_activity: 2026-08-12 -- 136-05 executado (grade admin + selo por metrica + item de menu, D-04)
 progress:
@@ -21,12 +21,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 134 — meus anuncios saude analitica do anuncio publicado
+**Current focus:** Phase 133 — Liga o bloqueio: ativação real (fecha a milestone v22.0)
+
+> ⚠️ **Não é a 134.** O `phase.complete` apontou 134 ao fechar a 132, mas isso é artefato da
+> ferramenta: a **Fase 133 tem `Plans: TBD`** e nenhum diretório, então foi pulada na busca pela
+> "próxima fase". A milestone v22.0 é **Fases 124-133** — a 133 é a última dela, e é exatamente a
+> que a 132 destravou (o checkpoint da 133 exige, na letra (d), "o cutover para produção Clicksign
+> foi concluído e aprovado — Fase 132"). As Fases 134/135/136 são **avulsas, fora de milestone**, e
+> já foram executadas em paralelo por outra sessão.
 
 ## Current Position
 
-Phase: 134
-Plan: Not started
+Phase: 133 (Liga o bloqueio — ativação real) — NÃO PLANEJADA (`Plans: TBD`)
+Plan: Not started — precisa de `/gsd:discuss-phase 133` ou `/gsd:plan-phase 133`
+Status: destravada pela Fase 132 (cutover aprovado em 2026-08-18)
+
+⚠️ **Antes de planejar a 133, conferir a dívida aberta:**
+`.planning/todos/pending/260818-ficha-operacional-nao-criada-na-liberacao.md` — na prova do gate
+#10 a `ContratoLiberacao` nasceu mas a ficha operacional (`MlbEmpresa`) não foi criada. Provável
+que seja esperado (empresa fictícia sem loja ML), mas **não confirmado** — e a 133 é justamente a
+fase que decide quem entra no operacional.
 Status: Ready to plan
 Last activity: 2026-08-18
 
