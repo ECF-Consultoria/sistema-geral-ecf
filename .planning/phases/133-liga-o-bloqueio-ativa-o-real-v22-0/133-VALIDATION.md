@@ -1,9 +1,9 @@
 ---
 phase: 133
 slug: liga-o-bloqueio-ativa-o-real-v22-0
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: false  # a Wave 0 (fixture exige_contrato) é executada dentro de 133-01 T1 e 133-02 T1
 created: 2026-08-18
 ---
 
@@ -98,11 +98,11 @@ A intenção original (a chave bloqueia) continua válida; o que mudou é que ag
 
 ## Validation Sign-Off
 
-- [ ] Todas as tasks têm `<automated>` ou dependência de Wave 0
-- [ ] Continuidade de amostragem: nunca 3 tasks seguidas sem verificação automatizada
-- [ ] Wave 0 cobre a fixture de `exige_contrato` explícito
-- [ ] Nenhum flag de watch-mode
-- [ ] Latência de feedback < 90 s
-- [ ] `nyquist_compliant: true` no frontmatter
+- [x] Todas as tasks têm `<automated>` ou dependência de Wave 0
+- [x] Continuidade de amostragem: nunca 3 tasks seguidas sem verificação automatizada
+- [x] Wave 0 cobre a fixture de `exige_contrato` explícito
+- [x] Nenhum flag de watch-mode
+- [x] Latência de feedback < 90 s
+- [x] `nyquist_compliant: true` no frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-08-18 — plan-checker confirmou que todas as tasks `auto`/`tdd` dos 5 planos têm `<automated>`, que as `checkpoint:*` usam `<human-check>`, que não há flag de watch-mode e que não existe janela de 3 tasks de implementação sem verificação automatizada.

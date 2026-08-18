@@ -21,7 +21,18 @@ saber para planejar com segurança. O achado mais importante: **existem duas
 portas adicionais** que criam `MlbEmpresa` sem passar pelo router e sem vínculo
 com `Company` — `MlbImplementacaoController::criar()` e
 `MlbController::storeEmpresa()`. Nenhuma das duas é uma regressão desta fase
-nem precisa necessariamente entrar no escopo (ver `## Open Questions`), mas o
+nem precisa necessariamente entrar no escopo (ver `## Open Questions (RESOLVED)
+
+> ✅ **As duas foram decididas em 2026-08-18, logo após esta pesquisa.** As resoluções viraram
+> **D-06** e **D-07** no `133-CONTEXT.md`, seção "Decisões acrescentadas após a pesquisa", e os
+> planos 133-02 as implementam. O texto abaixo é o registro de como as perguntas foram
+> formuladas.
+>
+> - **Pergunta 1** (escopo das duas portas extras) → **RESOLVED: ver D-06** — ficam fora de
+>   escopo; o plano 133-02 T3 cria o arquivo de dívida.
+> - **Pergunta 2** (fonte da decisão do FLUXO-09) → **RESOLVED: ver D-07** — decide pelos
+>   serviços contratados (`$company->contratosServico`), não pelo tipo do formulário.
+`), mas o
 usuário perguntou explicitamente se existe uma "quarta porta" e a resposta
 honesta é sim — com uma ressalva importante: as duas sempre criam registros
 `tipo='POLO'` (isento por D9), então hoje não violam a regra de negócio, mas
