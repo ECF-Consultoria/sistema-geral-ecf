@@ -571,9 +571,59 @@ retornar não prova que o worker subiu, e é o worker quem cria o envelope na Cl
 
 ### Gate empírico #10 (rede de segurança / SC1 da Fase 130) — retomado pela D-04
 
-- Aviso automático impedido de propósito, depois `clicksign:reconciliar` rodado: ______
-- `ContratoLiberacao` criado com `via='reconciliacao'`: ______
-- Veredito (`suficiente` / `insuficiente`, comparado com §8 do empírico): ______
+- Aviso automático impedido de propósito, depois `clicksign:reconciliar` rodado: **SIM** —
+  2026-08-18, entre ~11:05 e ~11:14 (BRT), executado por dev.01 (sessão Claude Code).
+- `ContratoLiberacao` criado com `via='reconciliacao'`: **SIM** — `id=1`, `via=reconciliacao`,
+  `company_id=424`, `servico_id=6`, criado `2026-08-18 11:13:02`.
+- Veredito: **SUFICIENTE.** ✅
+
+#### Como o cenário foi montado — e por que ele é honesto
+
+O Emerson (`contratada`) viajou e não assinaria. Sem a quarta assinatura o envelope não
+fecharia, e sem envelope fechado não há liberação — o `GateLiberacaoOperacionalService`
+exige `status === 'closed'` como primeira condição.
+
+Sequência executada, cada passo conferido por reconsulta:
+
+| # | Ação | Resultado |
+|---|---|---|
+| 1 | `PATCH /webhooks/{id}` → `status: inactive` | aviso desligado; endpoint e 32 eventos preservados |
+| 2 | `DELETE /envelopes/{id}/signers/{id}` do pendente | **HTTP 204** — signatários no envelope: 4 → 3 |
+| 3 | Aguardar auto-close | ❌ **não fechou** — ver o achado abaixo |
+| 4 | `PATCH /envelopes/{id}` → `status: closed` | ❌ **HTTP 400** — `status deve estar em: draft, running` |
+| 5 | `PATCH /envelopes/{id}` → `deadline_at` = agora + 3 min | ✅ HTTP 200 |
+| 6 | Aguardar o prazo vencer | ✅ envelope → **`closed`** |
+| 7 | `php artisan clicksign:reconciliar` | `1 contratos vistos, 1 despachados` |
+| 8 | Reconsulta | ✅ contrato `assinado`, `ContratoLiberacao via=reconciliacao` |
+| 9 | `PATCH /webhooks/{id}` → `status: active` | aviso religado, conferido |
+
+**A prova é honesta porque o sistema esteve genuinamente cego.** A contagem de eventos ficou
+em **25 do começo ao fim** — nenhum evento de fechamento entrou. O contrato passou de
+`aguardando_assinaturas` para `assinado` **sem o webhook contribuir com nada**: quem percebeu
+foi a varredura, e o carimbo `via=reconciliacao` prova isso no histórico.
+
+A Fase 130 tem 18 testes verdes e **nunca havia enfrentado um contrato realmente assinado** —
+o sandbox da Clicksign não conclui assinatura. Esta foi a primeira vez, e ela passou.
+
+#### 🔬 Dois achados novos sobre a API, para o empírico
+
+**1. Remover signatário de envelope `running` FUNCIONA** — `DELETE
+/envelopes/{id}/signers/{signerId}` devolveu **204** e os requisitos daquele signatário
+saíram junto (8 → 6). Isso não estava medido: o §15.1 dizia que corrigir e-mail de signatário
+não existe e que "trocar a pessoa que assina colapsa em cancelar e reemitir". **Remover, não —
+remover funciona.**
+
+**2. Remover o último pendente NÃO dispara o auto-close.** Mesmo com `auto_close: true` e
+todos os requisitos restantes cumpridos (os 6 com `modified` batendo com os horários das três
+assinaturas), o envelope ficou `running`. A leitura: a Clicksign avalia o fechamento **quando
+chega uma assinatura**, não quando a lista de pendentes esvazia por remoção. Quem quiser
+fechar um envelope cujo último pendente saiu precisa **antecipar o `deadline_at`** e deixar o
+`deadline_partial_signature_action: "closed"` agir — foi o que funcionou aqui, e é operação
+suportada (`update_deadline` está na lista de eventos do webhook).
+
+⚠️ Consequência prática para a operação: um contrato de cliente real cujo último signatário
+seja removido **fica preso em `running` até o prazo** — e a empresa não é liberada nesse
+tempo. Vale conhecer antes de alguém remover signatário achando que "resolve".
 
 ### SC5 — Aprovação explícita da virada
 
