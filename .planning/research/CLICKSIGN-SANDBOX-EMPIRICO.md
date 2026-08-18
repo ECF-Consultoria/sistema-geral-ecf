@@ -617,8 +617,45 @@ o retorno deste método lê `null` em silêncio.
 
 - **Gate #6 (`deadline`, prazo vencido)** — não exercitado, janela usada para o gate A1 bloqueante.
 - **Gate #7 (`refusal`, recusa de assinatura)** — idem.
-- **Pergunta A4 (webhook por conta ou por envelope)** — não observado; o cadastro do webhook não
-  foi refeito nesta sessão.
+- **Pergunta A4 (webhook por conta ou por envelope)** — ✅ **RESPONDIDA em 2026-08-17**, na
+  virada para produção (Fase 132). Ver §12.9.
+
+### 12.9. `GET /webhooks` existe, é por CONTA, e devolve o `secret` — medido em produção
+
+Medido em 2026-08-17 contra `https://app.clicksign.com/api/v3`, durante a Fase 132.
+
+**`GET {base_url}/webhooks` responde 200** e devolve, para cada webhook cadastrado na conta,
+um objeto com estes atributos:
+
+```
+endpoint · secret · status · events · created · modified
+```
+
+Três consequências práticas:
+
+1. **Pergunta A4 respondida: o webhook é por CONTA, não por envelope.** A conta de produção
+   tinha exatamente 1 webhook, criado em 12/08, valendo para tudo.
+
+2. **O SC2 tem, sim, conferência automatizada.** Os planos das Fases 129 e 132 registravam
+   *"não existe conferência automatizada do painel de um terceiro"* e mandavam esperar o
+   `signature_valid` do primeiro evento real. Não é preciso: dá para conferir URL, estado,
+   lista de eventos **e o segredo** por uma chamada somente-leitura — inclusive **sem
+   nenhum acesso ao painel**, que foi exatamente a situação da Fase 132 (o webhook havia
+   sido cadastrado por uma conta à qual o usuário não tinha mais acesso).
+
+3. **O `secret` vem na resposta.** Permite comparar com `config('services.clicksign.webhook_secret')`
+   por `hash_equals()` e reportar só `confere`/`não confere`, sem imprimir valor nenhum.
+   ⚠️ Em compensação, **a resposta de `GET /webhooks` contém segredo** — nunca despejar o
+   corpo cru em log, em arquivo versionado ou em terminal compartilhado.
+
+**`PATCH {base_url}/webhooks/{id}` também funciona** (medido: 200), no formato JSON:API,
+e altera só os atributos enviados — foi usado para corrigir o `endpoint` preservando os 32
+eventos e o segredo. Conferir sempre por **reconsulta**, não pela resposta do PATCH.
+
+⚠️ **O erro que isso pegou vale ser lembrado:** a URL cadastrada apontava para um caminho
+que não casa com nenhuma rota da aplicação (`/administrativo/clicksign` em vez de
+`/api/webhooks/clicksign`), e um POST nela devolve **404**. Nada indicaria o problema até o
+primeiro contrato real ficar sem liberar. Conferir o `endpoint` por API custa uma requisição.
 
 ---
 

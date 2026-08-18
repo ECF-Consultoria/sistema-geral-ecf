@@ -1,6 +1,7 @@
 <?php
 
 use Inertia\Inertia;
+use App\Http\Controllers\ContratoAdminController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\EcfWebhookController;
@@ -85,6 +86,28 @@ Route::post('/api/webhooks/hubspot', [\App\Http\Controllers\Api\HubspotWebhookCo
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
     ->middleware('throttle:60,1')
     ->name('webhooks.hubspot');
+
+// ─── Receiver de webhooks Clicksign (Fase 129 Plano 129-03) ──────────────────
+// URL de produção: https://admin.ecfconsultoria.com.br/api/webhooks/clicksign
+// Autenticação via HMAC (header Content-Hmac, fórmula MEDIDA no gate A1 —
+// ver App\Support\Clicksign\ClicksignHmacVarredura::FORMULA_CONFIRMADA).
+// CSRF isento por bootstrap/app.php (api/webhooks/*) + withoutMiddleware
+// (defensivo, mesma disciplina de /api/webhooks/hubspot).
+// Rate limit: throttle:60,1 (defesa contra spam; o trabalho pesado nem
+// chega a rodar na janela síncrona — vai para ProcessarEventoClicksignJob).
+Route::post('/api/webhooks/clicksign', [\App\Http\Controllers\Api\ClicksignWebhookController::class, 'receive'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
+    ->middleware('throttle:60,1')
+    ->name('webhooks.clicksign');
+
+// ─── Download do PDF assinado (Fase 129 Plano 129-06, CLICK-11, D-13) ────────
+// O arquivo é evidência jurídica: vive em disco PRIVADO (storage/app) e só
+// sai do servidor por esta rota, com login de admin. `role:admin` é o
+// controle CORRETO até a permissão dedicada `admin.contratos` (UI-05) existir
+// na Fase 131 — não é um atalho provisório, é a trava certa hoje.
+Route::get('/admin/contratos/{contratoAssinatura}/pdf-assinado', [\App\Http\Controllers\ContratoPdfAssinadoController::class, 'download'])
+    ->middleware(['auth', 'role:admin'])
+    ->name('contratos.pdf-assinado');
 
 // PPA Workspace público (sem autenticação) — cliente acessa pelo token
 Route::get('/ppa/workspace/{token}', [PpaController::class, 'workspace'])->name('ppa.workspace');
@@ -1149,6 +1172,33 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     Route::post  ('/setores/{setor}/metas',                    [SetorGoalController::class, 'store'])  ->name('setores.metas.store');
     Route::put   ('/setores-metas/{meta}',                     [SetorGoalController::class, 'update']) ->name('setores.metas.update');
     Route::delete('/setores-metas/{meta}',                     [SetorGoalController::class, 'destroy'])->name('setores.metas.destroy');
+});
+
+// ─── Contratos administrativos (Fase 131, UI-01/UI-05, D-09/D-10) ────────────
+// FORA do grupo `role:admin` acima DE PROPÓSITO: `admin.contratos` é
+// permissão PRÓPRIA, refinável na tela de setores sem deploy (D-09). Se
+// estas rotas entrarem no grupo `role:admin`, um usuário que receba
+// `admin.contratos` via setor continua batendo 403 — a UI-05 vira letra
+// morta (ContratoAdminPermissaoTest fica vermelho se isso acontecer).
+// D-10: esta tela ABSORVEU a liberação manual da Fase 130 (plano 131-06) —
+// `liberacao-manual` abaixo é a ação nova; a rota antiga foi removida (ver
+// bloco acima).
+Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('administrativo/contratos')->name('admin.contratos.')->group(function () {
+    Route::get('/', [ContratoAdminController::class, 'index'])->name('index');
+    // Plano 131-04 (D-01/ADM-01/ADM-02/UI-02) — detalhe da empresa: onde o
+    // Administrativo completa o cadastro e dispara a geração do contrato.
+    Route::get('/empresa/{company}',            [ContratoAdminController::class, 'show'])            ->name('show');
+    Route::patch('/empresa/{company}/cadastro', [ContratoAdminController::class, 'atualizarCadastro'])->name('cadastro');
+    Route::post('/empresa/{company}/gerar',     [ContratoAdminController::class, 'gerarContrato'])    ->name('gerar');
+    // Plano 131-05 (CLICK-07/CLICK-10, D-13) — reenviar aviso e registrar
+    // cancelamento (registra aqui, cancela no painel da Clicksign).
+    Route::post('/{contratoAssinatura}/signatarios/{signatario}/reenviar', [ContratoAdminController::class, 'reenviar'])
+        ->name('reenviar');
+    Route::post('/{contratoAssinatura}/cancelamento', [ContratoAdminController::class, 'registrarCancelamento'])
+        ->name('cancelamento');
+    // Plano 131-06 (D-10) — absorve ContratoLiberacaoManualController::store()
+    // (Fase 130). Ação disparada de dentro do detalhe da empresa.
+    Route::post('/liberacao-manual', [ContratoAdminController::class, 'liberarManual'])->name('liberacao-manual');
 });
 
 // ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────

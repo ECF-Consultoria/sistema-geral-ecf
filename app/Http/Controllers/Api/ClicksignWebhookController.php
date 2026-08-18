@@ -111,7 +111,7 @@ class ClicksignWebhookController extends Controller
 
         // Contrato não encontrado NÃO é erro — corrida possível com o
         // commit do envelope; o job tenta resolver de novo.
-        $contrato = $envelopeId ? ContratoAssinatura::where('clicksign_envelope_id', $envelopeId)->first() : null;
+        $contrato = ContratoAssinatura::resolverPorReferenciaClicksign($envelopeId);
 
         // 4. Grava o evento — dedup por payload_hash UNIQUE (CLICK-04).
         try {
