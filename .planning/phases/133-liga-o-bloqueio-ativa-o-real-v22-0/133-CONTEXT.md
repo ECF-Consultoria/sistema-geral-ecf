@@ -66,6 +66,24 @@ seria capacidade nova — ver `<deferred>`.
   nascendo = **desligar na hora** — a própria chave é a saída, nunca rollback de código.
   Nada de empresa de teste: o usuário optou por esperar o cadastro real.
 
+### Decisões acrescentadas após a pesquisa (2026-08-18)
+
+- **D-06: As duas rotas extras que criam ficha ficam FORA do escopo.**
+  A pesquisa achou uma quarta e uma quinta porta: `MlbImplementacaoController::criar()`
+  (`POST /mlb/implementacao`) e `MlbController::storeEmpresa()` (`POST /mlb/empresas`), que criam
+  `MlbEmpresa` sem passar pelo router, **sem `company_id` e sempre com `tipo='POLO'`**.
+  Hoje são inofensivas porque Polos é isento. A fase fecha os três caminhos declarados no ROADMAP
+  (FLUXO-01/02/09) e **registra as duas como dívida conhecida** — a fechar quando alguém usar
+  essas rotas para tipo não-isento.
+  ⚠️ O plano DEVE criar o registro dessa dívida (todo em `.planning/todos/pending/`), não só
+  mencioná-la de passagem.
+
+- **D-07: No FLUXO-09, a decisão olha os SERVIÇOS CONTRATADOS, não o tipo do formulário.**
+  Consultar `$company->contratosServico` — já usado no mesmo controller. Motivo: o
+  `$validated['tipo']` é um rótulo escolhido a mão; confiar nele deixa a porta aberta para quem
+  marcar "polos" numa empresa que contratou Assessoria. A fonte da verdade é o que a empresa
+  contratou.
+
 ### Claude's Discretion
 
 - Granularidade da faixa de aviso (texto exato, posição na tela).
