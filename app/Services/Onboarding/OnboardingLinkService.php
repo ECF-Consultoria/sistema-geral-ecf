@@ -105,6 +105,15 @@ class OnboardingLinkService
                     'status'               => $this->statusAgregado($grupo),
                     'tem_auto_fonte'       => $primeiro->auto_fonte !== null,
                     'acao'                 => self::acaoDoCliente($primeiro->auto_fonte),
+                    // O cliente desfaz exatamente o que ele pôde marcar: os
+                    // passos manuais e os de instrução. O que o SISTEMA
+                    // confirmou (OAuth) não é dele para desfazer — e o
+                    // resolver fecharia de novo na passada seguinte.
+                    'pode_desmarcar'       => in_array(
+                        self::acaoDoCliente($primeiro->auto_fonte),
+                        [self::ACAO_MARCAR, self::ACAO_INSTRUCAO],
+                        true
+                    ),
                     'servicos'             => $grupo
                         ->map(fn (OnboardingPasso $p) => $p->onboarding->servico->nome)
                         ->unique()
@@ -163,6 +172,70 @@ class OnboardingLinkService
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * Desfaz, pelo portal, o que o cliente marcou — o espelho de
+     * {@see self::marcarFeitoPorChave()}.
+     *
+     * Sem isto, um clique errado no portal era definitivo: o cliente não tinha
+     * como voltar atrás e ninguém do lado dele conseguia corrigir.
+     *
+     * Mesma régua do marcar: desfaz o que o cliente pôde fechar (manual e
+     * instrução) e recusa o que o SISTEMA confirma (OAuth) — ali o resolver
+     * fecharia de novo na passada seguinte, então "desmarcar" seria mentira de
+     * tela.
+     */
+    public function desmarcarPorChave(Company $company, string $chave, ?string $ip): int
+    {
+        $passos = OnboardingPasso::query()
+            ->where('chave', $chave)
+            ->whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id)->emAndamento())
+            ->with('onboarding')
+            ->get();
+
+        if ($passos->isEmpty()) {
+            return 0;
+        }
+
+        $primeiro = $passos->first();
+        $acao = self::acaoDoCliente($primeiro->auto_fonte);
+
+        if (! in_array($acao, [self::ACAO_MARCAR, self::ACAO_INSTRUCAO], true)) {
+            throw new \DomainException(
+                "O passo \"{$primeiro->titulo}\" é confirmado pelo sistema — não pode ser desmarcado por aqui."
+            );
+        }
+
+        $reabertos = 0;
+        $onboardingsTocados = collect();
+
+        foreach ($passos as $passo) {
+            if ($passo->status !== OnboardingPasso::STATUS_CONCLUIDO) {
+                continue;
+            }
+
+            $passo->status = OnboardingPasso::STATUS_ABERTO;
+            $passo->feito_em = null;
+            $passo->feito_por = null;
+
+            if (is_array($passo->valor)) {
+                $passo->valor = array_diff_key($passo->valor, array_flip([
+                    'concluido_manualmente', 'declarado_pelo_cliente', 'declarado_em', 'declarado_ip',
+                ]));
+            }
+
+            $passo->save();
+
+            $reabertos++;
+            $onboardingsTocados->put($passo->onboarding_id, $passo->onboarding);
+        }
+
+        foreach ($onboardingsTocados as $onboarding) {
+            $this->engine->reavaliar($onboarding);
+        }
+
+        return $reabertos;
     }
 
     // ─── O que o cliente faz em cada passo (catálogo fechado) ───────────────

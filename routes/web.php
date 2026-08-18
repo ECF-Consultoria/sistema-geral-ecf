@@ -139,6 +139,10 @@ Route::get('/onboarding-cliente/{token}', [OnboardingPublicoController::class, '
 Route::patch('/onboarding-cliente/{token}/passo', [OnboardingPublicoController::class, 'marcarFeito'])
     ->middleware('throttle:20,1')
     ->name('onboarding.publico.passo');
+// O cliente desfaz o que marcou — sem isto, clique errado era definitivo.
+Route::patch('/onboarding-cliente/{token}/passo/desmarcar', [OnboardingPublicoController::class, 'desmarcarPasso'])
+    ->middleware('throttle:20,1')
+    ->name('onboarding.publico.passo.desmarcar');
 // Porta pública para o OAuth do Mercado Livre. O callback continua sendo o
 // mesmo de sempre (`ml.oauth.callback`, logo abaixo) — o que muda é que ele
 // devolve o cliente ao portal quando o fluxo começou aqui.
