@@ -44,9 +44,10 @@ Nenhum dado de e-mail/CPF de signatário Clicksign real entrou em qualquer um de
 
 ## SC1 — Reconciliação em sandbox (+ gate empírico #10)
 
-**STATUS: ⏳ PENDENTE.** Depende de ação humana real na interface web da Clicksign (ativar e
-assinar um envelope) — nenhuma ferramenta deste executor abre navegador ou assina documento.
-Nenhum resultado foi inventado.
+**STATUS: ✅ RESOLVIDO NA FASE 132 (2026-08-18)** — ver `132-GATE.md`, seção do gate empírico
+#10. À época desta rodada era PENDENTE: dependia de ação humana real na interface web da
+Clicksign (ativar e assinar um envelope) — nenhuma ferramenta deste executor abre navegador ou
+assina documento. Nenhum resultado foi inventado.
 
 ### Pré-requisito que só o usuário pode resolver
 
@@ -371,13 +372,14 @@ a lacuna é de observação humana, não de corretude conhecida.
 
 | SC | Status | O que falta |
 |---|---|---|
-| SC1 (reconciliação) | ⛔ BLOQUEADO | Assinatura impossível na sandbox: o painel não conclui (3 `signature_started`, 0 `sign`) e a sandbox não envia e-mail — e a v3 não expõe link de assinatura. `.env` já preenchido, envelope `f010d235-…` criado e ativado, válido até 12/09/2026 |
-| Gate empírico #10 | ⏳ PENDENTE | Depende do SC1 acontecer de verdade |
+| SC1 (reconciliação) | ✅ **RESOLVIDO na Fase 132** | À época: bloqueado porque a sandbox não conclui assinatura (3 `signature_started`, 0 `sign`, sem e-mail, e a v3 não expõe link). Provado em **produção** em 2026-08-18 com envelope realmente assinado — ver `132-GATE.md` |
+| Gate empírico #10 | ✅ **SUFICIENTE (Fase 132)** | Aviso desligado de propósito, envelope fechado, 25 eventos do começo ao fim, e a varredura corrigiu sozinha: `ContratoLiberacao via=reconciliacao` |
 | SC2 (alerta) | ✅ APROVADO | Nada — disparo provado por reconsulta ao banco, linguagem confirmada pelo usuário. Com a ressalva de que a repetição da D-04 só passou a funcionar após a quick task `260814-cro` |
 | SC3 (liberação manual) | ✅ APROVADO (essencial) | O critério do ROADMAP está provado por reconsulta ao banco. 3 sub-passos de tela (faixa vermelha, validação sem motivo, 403 do não-admin) não foram observados pelo usuário — têm cobertura automatizada |
 
-**Resultado líquido: 2 de 3 Success Criteria humanos aprovados.** O SC1 depende da sandbox da
-Clicksign, não do código deste projeto.
+**Resultado líquido à época: 2 de 3 Success Criteria humanos aprovados.** O SC1 dependia da
+sandbox da Clicksign, não do código deste projeto — e foi **fechado na Fase 132**, contra a
+Clicksign de produção. Com isso os **3 de 3** estão aprovados.
 
 **Achado mais valioso desta rodada não estava em nenhum roteiro:** o gate do SC3 encontrou um bug
 real na própria Fase 130 — o alerta zerava o próprio relógio e nunca repetiria (quick task

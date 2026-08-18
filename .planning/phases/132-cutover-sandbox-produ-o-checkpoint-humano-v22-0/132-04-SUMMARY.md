@@ -28,6 +28,8 @@ key-files:
     - app/Services/Contratos/GatilhoContratoAdministrativoService.php
     - .planning/phases/132-cutover-sandbox-produ-o-checkpoint-humano-v22-0/132-GATE.md
     - .planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md
+    - .planning/REQUIREMENTS-v22.md
+    - .planning/phases/130-rede-de-seguran-a-reconcilia-o-alerta-e-libera-o-manual-v22-/130-GATE.md
 ---
 
 ## Accomplishments
@@ -41,6 +43,11 @@ key-files:
   reconsulta e pelo gatilho automático voltando a avaliar.
 - Fechado o furo do interruptor: a checagem entrou também no gatilho automático, e as afirmações
   erradas do plano 132-01 (`<interfaces>` e T-132-06) foram corrigidas.
+- **Propagação do resultado para as fontes-mestras (commit `fccc567e`, fechamento do gap
+  apontado na primeira rodada de verificação da Fase 132):** `REQUIREMENTS-v22.md` (gate #10,
+  linha 248) e `130-GATE.md` (SC1 — seção "Resultado" e "Veredito do gate empírico #10")
+  atualizados com o desfecho medido em produção, preservando o texto histórico e apontando para
+  esta seção do `132-GATE.md`.
 
 ## Decisions Made
 
@@ -62,6 +69,9 @@ dispara o auto-close**; e `PATCH status=closed` é recusado com 400.
 - **Não confirmado:** a ficha operacional (`MlbEmpresa`) não foi criada na liberação.
   Provavelmente esperado para empresa fictícia sem loja ML, mas registrado como dívida por não
   ter sido lido até o fim — é o passo de que a Fase 133 depende.
+- **Apontado pela verificação (fechado depois, fora da execução original):** `130-GATE.md` e
+  `REQUIREMENTS-v22.md` não haviam recebido o resultado medido em produção — corrigido no commit
+  `fccc567e`, listado acima em `key-files.modified`.
 
 ## Next Phase Readiness
 
