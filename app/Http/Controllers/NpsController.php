@@ -1491,6 +1491,66 @@ class NpsController extends Controller
     }
 
     /**
+     * Responsáveis (estrategista + analista) que o formulário público nomeia —
+     * resolvidos pelo SERVIÇO que o modelo do survey cobre, nunca pela empresa
+     * inteira.
+     *
+     * Bugfix 2026-08-18 (relatado em produção). Empresa com contrato de
+     * Performance E de Shopee tem DUAS linhas por papel em `company_users`
+     * (uma por `servico_id`). O `wherePivot('role', ...)->first()` que existia
+     * aqui devolvia a primeira linha gravada — na prática, a de ML —, então o
+     * cliente de Shopee abria a pesquisa e via "Quem cuida da sua conta" com
+     * quem não cuida da conta dele. É o mesmo defeito que a `index()` já havia
+     * fechado no painel interno (fallback por serviço, 2026-07-22); na tela do
+     * cliente ele tinha ficado.
+     *
+     * A régua é a MESMA do bônus (`NpsSnapshotService::registrar()`): serviços
+     * COBERTOS pelo modelo ∩ contratos ATIVOS da empresa e, dentro de cada
+     * serviço, `Company::responsavelDoServicoOuConsolidado()` — que prefere a
+     * linha específica do serviço e só cai na consolidada (`servico_id` NULL)
+     * quando nenhuma específica existe. Assim quem a pesquisa nomeia é quem
+     * leva a nota.
+     *
+     * Fallback preservado para modelo SEM serviço coberto e para survey legado
+     * (`template_id` NULL): sem recorte de serviço vale o vínculo na empresa em
+     * qualquer serviço — comportamento anterior, correto para empresa de
+     * serviço único. Quando HÁ recorte e ninguém está atribuído àquele serviço,
+     * devolve null de propósito: o card deixa de nomear a pessoa em vez de
+     * nomear a do setor errado (o ResponsaveisCard some sozinho quando não
+     * sobra ninguém).
+     *
+     * @return array{0: ?\App\Models\User, 1: ?\App\Models\User}
+     */
+    private function responsaveisDoSurvey(NpsSurvey $survey): array
+    {
+        $company = $survey->company;
+
+        $servicoIds = [];
+        if ($survey->template) {
+            $cobertos = $survey->template->servicos()->pluck('servicos.id')->all();
+            if (! empty($cobertos)) {
+                $ativos     = $company->contratosServico()->active()->pluck('servico_id')->all();
+                $servicoIds = array_values(array_intersect($cobertos, $ativos));
+            }
+        }
+
+        $resolver = function (string $role) use ($company, $servicoIds) {
+            foreach ($servicoIds as $servicoId) {
+                $user = $company->responsavelDoServicoOuConsolidado($role, (int) $servicoId)->first();
+                if ($user) {
+                    return $user;
+                }
+            }
+
+            return empty($servicoIds)
+                ? $company->users()->wherePivot('role', $role)->first()
+                : null;
+        };
+
+        return [$resolver('estrategista'), $resolver('consultor')];
+    }
+
+    /**
      * Form público de resposta — recebe o token e renderiza a UI Nps/Respond.jsx.
      *
      * Payload Inertia em Phase 31 (D-07): expõe `estrategista_name`,
@@ -1581,8 +1641,13 @@ class NpsController extends Controller
             return Inertia::render('Nps/Blocked');
         }
 
-        $estrategista = $survey->company->users()->wherePivot('role', 'estrategista')->first();
-        $analista     = $survey->company->users()->wherePivot('role', 'consultor')->first();
+        // Bugfix 2026-08-18 — o card "Quem cuida da sua conta" (e os
+        // placeholders {nome_estrategista}/{nome_analista} das perguntas)
+        // mostrava o responsável de QUALQUER serviço da empresa. Num NPS de
+        // Shopee de empresa que também tem Performance, isso nomeava o time do
+        // Mercado Livre. A resolução passa a ser POR SERVIÇO COBERTO PELO
+        // MODELO — ver docblock de responsaveisDoSurvey().
+        [$estrategista, $analista] = $this->responsaveisDoSurvey($survey);
 
         $estrategistaNome = $estrategista?->name;
         $analistaNome     = $analista?->name;
