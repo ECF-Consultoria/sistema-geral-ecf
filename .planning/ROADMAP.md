@@ -1860,7 +1860,7 @@ Plans:
   4. Gate empírico #3 (URL base de produção) confirmado contra o ambiente real
   5. **CHECKPOINT HUMANO:** usuário aprova explicitamente que o cutover está correto antes de qualquer contrato real de cliente ser gerado em produção
 
-**Plans:** 1/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -1869,15 +1869,15 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 132-02-PLAN.md — Publica a correção, troca as variáveis de produção e confirma a URL base contra a API real (SC1 + SC4 / gate empírico #3) (wave 2, checkpoint humano)
+- [x] 132-02-PLAN.md — Publica a correção, troca as variáveis de produção e confirma a URL base contra a API real (SC1 + SC4 / gate empírico #3) (wave 2, checkpoint humano)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 132-03-PLAN.md — Cadastra o aviso automático na conta de produção e emite o primeiro envelope contra empresa fictícia, provando que o webhook chega (SC2 + SC3) (wave 3, checkpoint humano)
+- [x] 132-03-PLAN.md — Cadastra o aviso automático na conta de produção e emite o primeiro envelope contra empresa fictícia, provando que o webhook chega (SC2 + SC3) (wave 3, checkpoint humano)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 132-04-PLAN.md — Prova a rede de segurança com o mesmo envelope (D-04, SC1 da Fase 130 + gate #10) e colhe a aprovação explícita da virada (SC5) (wave 4, checkpoint humano)
+- [x] 132-04-PLAN.md — Prova a rede de segurança com o mesmo envelope (D-04, SC1 da Fase 130 + gate #10) e colhe a aprovação explícita da virada (SC5) (wave 4, checkpoint humano)
 
 ### Phase 133: Liga o bloqueio — ativação real (v22.0)
 

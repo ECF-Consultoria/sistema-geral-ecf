@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: executing
-stopped_at: Completed 136-05-PLAN.md
-last_updated: "2026-08-12T14:20:00.000Z"
+status: ready_to_plan
+stopped_at: Phase 132 complete (4/4) — ready to discuss Phase 134
+last_updated: 2026-08-18T14:43:45.602Z
 last_activity: 2026-08-12 -- 136-05 executado (grade admin + selo por metrica + item de menu, D-04)
 progress:
   total_phases: 13
   completed_phases: 1
   total_plans: 35
-  completed_plans: 22
-  percent: 9
+  completed_plans: 282
+  percent: 8
 ---
 
 # Project State
@@ -21,14 +21,32 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 136 — m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api-
+**Current focus:** Phase 134 — meus anuncios saude analitica do anuncio publicado
 
 ## Current Position
 
+Phase: 134
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-18
+
+## Posição paralela — Fase 136 (Métricas manuais por empresa/mês) — AGUARDANDO GATE HUMANO
+
+⚠️ **Preservado aqui em 2026-08-18 pela sessão da Fase 132.** Ao fechar a 132, o
+`phase.complete` reescreveu o "Current Position" — que naquele momento rastreava a **Fase 136**,
+de outra sessão/máquina. O conteúdo abaixo é o que estava lá, recolocado no mesmo padrão de
+bloco paralelo que a Fase 135 já usa. **Nada da 136 foi concluído nem revertido por esta
+sessão.**
+
 Phase: 136 (m-tricas-manuais-por-empresa-m-s-no-desempenho-override-api-) — EXECUTING
-Plan: 7 of 7 (01/02/03/04/05/06 concluidos; resta 136-07 — GATE HUMANO, autonomous: false)
-Status: Executing Phase 136 — aguardando verificacao humana do 136-07
-Last activity: 2026-08-12 -- 136-05 executado (grade admin + selo por metrica + item de menu, D-04)
+Plan: 7 de 7 (01/02/03/04/05/06 concluídos; resta **136-07 — GATE HUMANO**, `autonomous: false`)
+Status: aguardando verificação humana do 136-07
+Last activity: 2026-08-12 — 136-05 executado (grade admin + selo por métrica + item de menu, D-04)
+
+⚠️ **Lição do dia:** duas milestones em paralelo compartilham um único `STATE.md`, e
+`phase.complete` sobrescreve o "Current Position" sem perguntar. Quem fechar fase enquanto outra
+está `EXECUTING` precisa conferir o diff de `STATE.md` **antes de commitar** — foi o que
+preservou este bloco.
 
 ## Posição paralela — Fase 135 (Onboarding Geral por Serviço) — AGUARDANDO GATE HUMANO
 
@@ -291,7 +309,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 
 **Velocity:**
 
-- Total plans completed: 95
+- Total plans completed: 99
 - Average duration: ~15 min/plan
 - Total execution time: ~1.5 hours
 
@@ -323,6 +341,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | 125 | 3 | - | - |
 | 126 | 12 | - | - |
 | 127 | 7 | - | - |
+| 132 | 4 | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
