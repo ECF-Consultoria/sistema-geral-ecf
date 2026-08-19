@@ -8,6 +8,7 @@ import { Textarea } from '@/Components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
+import { IMaskInput } from 'react-imask';
 import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO } from '@/lib/contratoStatus';
@@ -317,10 +318,30 @@ export default function ContratoDetalhe({
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1.5">
                                         <Label>CNPJ</Label>
-                                        <Input
-                                            value={cadastroForm.data.cnpj}
-                                            onChange={(e) => cadastroForm.setData('cnpj', e.target.value)}
-                                            className="focus:border-ecf-yellow/40"
+                                        {/* Mascara de CNPJ com IMaskInput — mesmo padrao ja usado em
+                                            Companies/Index.jsx e Comercial/NovaEmpresa.jsx (Fase 34,
+                                            D-08); nao inventar um segundo jeito de mascarar CNPJ.
+
+                                            A mascara aqui e FRICCAO DE UX, nunca controle: quem valida
+                                            o digito verificador e o servidor — `CnpjValido` no
+                                            `atualizarCadastro()` e `Cnpj::valido()` na regra 2 de
+                                            `ContratoDadosMinimosService::faltantes()`. Mesma disciplina
+                                            do T-131-04-03 (o `disabled` do botao no client tambem nao e
+                                            controle). Colar um CNPJ invalido continua sendo recusado.
+
+                                            As classes replicam `Components/ui/input.jsx` porque
+                                            IMaskInput renderiza um `<input>` cru, sem o wrapper do
+                                            componente — sem isso o campo destoa do "E-mail do cliente"
+                                            ao lado. */}
+                                        <IMaskInput
+                                            mask="00.000.000/0000-00"
+                                            value={cadastroForm.data.cnpj ?? ''}
+                                            onAccept={(value) => cadastroForm.setData('cnpj', value)}
+                                            placeholder="00.000.000/0001-00"
+                                            className={cn(
+                                                'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                                                'focus:border-ecf-yellow/40'
+                                            )}
                                         />
                                         {cadastroForm.errors.cnpj && <p className="text-red-400 text-[11px]">{cadastroForm.errors.cnpj}</p>}
                                     </div>
