@@ -104,6 +104,51 @@ pela nossa API. Precisa de teste controlado em sandbox (4 hipóteses e um roteir
 estão no todo) antes de qualquer mudança de código. Se nenhuma variação nossa reproduzir a
 diferença, é chamado com o suporte da Clicksign — temos `envelope_id` e horário.
 
+## DEPLOYADO em 2026-08-19
+
+Commit em producao: **`bdcb9ce4`** (autorizacao explicita do usuario nesta conversa).
+
+Conferido por **reconsulta ao banco**, nunca pela tela:
+
+- `HEAD` no VPS = `bdcb9ce4`
+- As 4 colunas existem (`Schema::hasColumn` = 1 para as quatro)
+- Contagens **identicas ao baseline** medido antes do deploy: `mlb_empresas` 496,
+  `companies` 194, `contrato_assinaturas` 4 — o deploy nao criou nem apagou linha nenhuma
+- `administrativo_bloqueio_ativo` continua **ligado** (Fase 133, ligado mais cedo no mesmo dia)
+- As 2 migrations rodaram: `2026_08_19_100000` (575ms) e `2026_08_19_100001` (36ms)
+- Smoke: `/login` 200, `/administrativo/contratos` 302, `/onboarding` 302
+- **Zero** `production.ERROR` novo no log apos o deploy
+- Nenhum `cache:clear` executado
+
+**Foi junto o trabalho de outra sessao** (Onboarding v10, Fase 135 — commits `c88c8b27`,
+`11ea482d`, `7f89a5c9`), porque a arvore e compartilhada e esse trabalho ja estava em
+`origin/main`. Zero intersecao de arquivos com este quick task, conferida antes do rebase.
+
+### Regressao encontrada e corrigida antes de subir
+
+O teste de PII `Phase130\LiberacaoManualEstadoRealTest::test_nenhum_prop_de_contrato_expoe_dado_de_signatario`
+fixa a lista EXATA de props que o detalhe expoe, e pegou as duas props novas da Tarefa 7.
+Estava certo em exigir decisao. Liberadas conscientemente em `bdcb9ce4`, com o motivo no
+proprio teste: `erro_mensagem` so e seguro porque `podarPii()` roda ANTES de gravar (a protecao
+mora na gravacao, nao na whitelist), e `ja_tentou_antes` e booleano derivado.
+
+### Falhas PRE-EXISTENTES, confirmadas como nao sendo deste trabalho
+
+Isoladas empiricamente: com as duas migrations deste quick **removidas do caminho**, as mesmas
+falhas acontecem.
+
+- `Phase14MigrationTest` (2 erros) e `AdminFechamentoControllerTest::test_update_persiste_datas_contrato`
+  — a migration legada `2026_05_27_100002` le `companies.contract_start`, coluna que a
+  `2026_05_27_100003` ja dropou; no SQLite, coluna inexistente entre aspas duplas vira **string
+  literal**, entao o `Carbon::parse()` recebe `'contract_start'`. Problema de desenho do teste.
+- `Phase33OnboardingFichaTest::test_padroes_expoem_mensagem_e_grants_padrao` — polo renomeado
+  para "Serra Gaucha" em `ONB_POLO_OPCOES` mas `GRANTS_POR_POLO_PADRAO` ficou com a chave
+  "Bento Goncalves". **Bug real, ja em producao**, registrado em
+  `.planning/todos/pending/260819-grant-serra-gaucha-chave-antiga.md`.
+- A **suite completa nao roda localmente**: trava em `MercadoLivreAdsService.php:215` e estoura
+  o limite de 300s do PHP. Tambem pre-existente. A cobertura usada como gate foi o dominio de
+  contrato inteiro: **597 testes, 1989 assercoes, verde**.
+
 ## Não deployado
 
 Nada foi para produção. As migrations rodaram só no banco local. O deploy publica o trabalho de
