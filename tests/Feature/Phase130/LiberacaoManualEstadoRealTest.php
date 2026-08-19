@@ -184,6 +184,26 @@ class LiberacaoManualEstadoRealTest extends TestCase
                 // em âmbar na lista e no detalhe). É booleano derivado, sem PII —
                 // mas a lista aqui é EXATA de propósito, então precisa constar.
                 'preparando',
+                // `erro_mensagem` e `ja_tentou_antes` entraram pela quick
+                // 260819-guy (Tarefa 7, itens 1 e 4). Liberados aqui por decisão
+                // CONSCIENTE, não por conveniência de fazer o teste passar:
+                //
+                //   - `erro_mensagem` é o texto da recusa da Clicksign, e é a
+                //     única forma de o Administrativo saber POR QUE o envio
+                //     falhou (antes ficava só no banco, e a tela repetia
+                //     "tente novamente" para sempre depois de um reload). O que
+                //     torna seguro expor é `GerarContratoAssinaturaJob::podarPii()`,
+                //     que roda ANTES de gravar e troca qualquer e-mail por
+                //     "[e-mail removido]" — a proteção mora na gravação, não
+                //     aqui. Quem afrouxar `podarPii()` reabre este buraco.
+                //   - `ja_tentou_antes` é booleano derivado no backend (a linha
+                //     mais antiga por serviço é a primeira tentativa). Substituiu
+                //     um `useState({})` no React que zerava a cada reload. Sem PII.
+                //
+                // A lista continua EXATA de propósito: e-mail, CPF e
+                // clicksign_signer_key seguem proibidos aqui (T-130-04-05 /
+                // T-131-04-04), por mais que a prop cresça.
+                'erro_mensagem', 'ja_tentou_antes',
             ];
 
             $this->assertEqualsCanonicalizing($chavesEsperadas, array_keys($primeiroContrato));
