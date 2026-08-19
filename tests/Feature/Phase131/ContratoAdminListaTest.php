@@ -275,22 +275,29 @@ class ContratoAdminListaTest extends TestCase
         $this->assertSame(['Empresa Busca Alvo Único'], $nomes);
     }
 
-    public function test_ordenacao_padrao_traz_primeiro_a_linha_com_maior_dias_parado(): void
+    /**
+     * Ordenação padrão: EMPRESA MAIS RECENTE PRIMEIRO.
+     *
+     * ⚠️ Histórico — até 2026-08-19 a ordenação padrão era "mais tempo parado
+     * primeiro" (`sortByDesc('dias_parado')`, decisão do 131-UI-SPEC), e este
+     * teste provava exatamente o contrário do que prova agora. Superada por
+     * pedido do usuário. A coluna "Parado há" continua na tela e o filtro de
+     * situação continua funcionando — mudou só quem aparece no topo.
+     *
+     * O cenário é montado de propósito com o antigo critério em CONFLITO com o
+     * novo: a empresa mais recente é a que está parada há MENOS tempo. Se
+     * alguém reverter a ordenação sem querer, este teste reprova.
+     */
+    public function test_ordenacao_padrao_traz_primeiro_a_empresa_mais_recente(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-08-14 12:00:00'));
 
         $servico = $this->servicoComContrato();
 
-        $empresaRecente = $this->empresa(['name' => 'Empresa Parada Recente']);
-        $this->vincularServico($empresaRecente, $servico);
-        ContratoAssinatura::factory()->create([
-            'company_id' => $empresaRecente->id,
-            'servico_id' => $servico->id,
-            'status'     => ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS,
-            'enviado_em' => now()->subDay(),
+        $empresaAntiga = $this->empresa([
+            'name'       => 'Empresa Antiga Parada Há Muito Tempo',
+            'created_at' => Carbon::parse('2026-05-25 10:00:00'),
         ]);
-
-        $empresaAntiga = $this->empresa(['name' => 'Empresa Parada Há Muito Tempo']);
         $this->vincularServico($empresaAntiga, $servico);
         ContratoAssinatura::factory()->create([
             'company_id' => $empresaAntiga->id,
@@ -299,11 +306,94 @@ class ContratoAdminListaTest extends TestCase
             'enviado_em' => now()->subDays(30),
         ]);
 
+        $empresaRecente = $this->empresa([
+            'name'       => 'Empresa Recente Parada Ontem',
+            'created_at' => Carbon::parse('2026-08-13 10:00:00'),
+        ]);
+        $this->vincularServico($empresaRecente, $servico);
+        ContratoAssinatura::factory()->create([
+            'company_id' => $empresaRecente->id,
+            'servico_id' => $servico->id,
+            'status'     => ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS,
+            'enviado_em' => now()->subDay(),
+        ]);
+
         $response = $this->actingAs($this->admin())->get(route('admin.contratos.index'));
         $response->assertOk();
         $linhas = $response->viewData('page')['props']['linhas']['data'];
 
-        $this->assertSame('Empresa Parada Há Muito Tempo', $linhas[0]['company_nome']);
+        $this->assertSame('Empresa Recente Parada Ontem', $linhas[0]['company_nome']);
+        $this->assertSame('Empresa Antiga Parada Há Muito Tempo', $linhas[1]['company_nome']);
+    }
+
+    /**
+     * Desempate determinístico entre empresas com o MESMO `created_at`.
+     *
+     * Não é caso de laboratório: `companies.created_at` tem um bloco grande de
+     * empresas empatadas em 2026-05-25 por causa de um reimport em massa (a
+     * coluna é artefato de importação, não data real de entrada da empresa).
+     * Como a paginação de `index()` é MANUAL, sobre a coleção já ordenada, um
+     * empate sem desempate faz linha trocar de página entre requisições — a
+     * pessoa pagina e vê a mesma empresa duas vezes, ou nenhuma.
+     *
+     * O desempate é `company_id` DESC: entre empatadas, a cadastrada por último.
+     */
+    public function test_empresas_com_mesmo_created_at_desempatam_por_id_decrescente(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-14 12:00:00'));
+
+        $servico = $this->servicoComContrato();
+        $mesmaData = Carbon::parse('2026-05-25 10:00:00');
+
+        $primeira = $this->empresa(['name' => 'Empresa Empatada A', 'created_at' => $mesmaData]);
+        $this->vincularServico($primeira, $servico);
+
+        $segunda = $this->empresa(['name' => 'Empresa Empatada B', 'created_at' => $mesmaData]);
+        $this->vincularServico($segunda, $servico);
+
+        $this->assertGreaterThan($primeira->id, $segunda->id, 'fixture inválida: B precisa ter id maior que A');
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index'));
+        $response->assertOk();
+        $linhas = $response->viewData('page')['props']['linhas']['data'];
+
+        $this->assertSame('Empresa Empatada B', $linhas[0]['company_nome']);
+        $this->assertSame('Empresa Empatada A', $linhas[1]['company_nome']);
+    }
+
+    /**
+     * Uma empresa com DOIS serviços que exigem contrato gera duas linhas — e
+     * elas precisam continuar adjacentes depois da ordenação, senão a leitura
+     * da tela fica picotada (empresa A, empresa B, empresa A de novo).
+     */
+    public function test_linhas_da_mesma_empresa_ficam_adjacentes(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-14 12:00:00'));
+
+        $servicoUm   = $this->servicoComContrato('Gestão de Tráfego (adjacência)');
+        $servicoDois = $this->servicoComContrato('Assessoria (adjacência)');
+
+        $doisServicos = $this->empresa([
+            'name'       => 'Empresa Com Dois Servicos',
+            'created_at' => Carbon::parse('2026-08-13 10:00:00'),
+        ]);
+        $this->vincularServico($doisServicos, $servicoUm);
+        $this->vincularServico($doisServicos, $servicoDois);
+
+        $outra = $this->empresa([
+            'name'       => 'Empresa Do Meio',
+            'created_at' => Carbon::parse('2026-08-12 10:00:00'),
+        ]);
+        $this->vincularServico($outra, $servicoUm);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index'));
+        $response->assertOk();
+        $nomes = collect($response->viewData('page')['props']['linhas']['data'])->pluck('company_nome')->all();
+
+        $this->assertSame(
+            ['Empresa Com Dois Servicos', 'Empresa Com Dois Servicos', 'Empresa Do Meio'],
+            $nomes
+        );
     }
 
     public function test_nenhuma_linha_carrega_nome_email_ou_cpf_de_signatario(): void

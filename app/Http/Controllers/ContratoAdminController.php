@@ -177,8 +177,35 @@ class ContratoAdminController extends Controller
             $linhas = $linhas->filter(fn (array $l) => $l['status'] === $situacao)->values();
         }
 
-        // (7) Ordenação padrão: "mais tempo parado primeiro" (UI-SPEC).
-        $linhas = $linhas->sortByDesc('dias_parado')->values();
+        // (7) Ordenação padrão: EMPRESA MAIS RECENTE PRIMEIRO.
+        //
+        // Substituiu "mais tempo parado primeiro" (`sortByDesc('dias_parado')`,
+        // decisão do 131-UI-SPEC) a pedido do usuário em 2026-08-19. A coluna
+        // "Parado há" continua na tela e o filtro de situação continua
+        // funcionando — o que mudou é só qual linha aparece no topo por padrão.
+        //
+        // ⚠️ O desempate por `company_id` NÃO é capricho. `companies.created_at`
+        // tem um bloco grande de empresas empatadas em 2026-05-25 por causa de
+        // um reimport em massa (a coluna é artefato de importação, não data real
+        // de entrada da empresa — ver `.planning/learnings/`). Como a paginação
+        // do passo (8) é MANUAL, via `LengthAwarePaginator` sobre esta coleção já
+        // ordenada, um empate sem desempate determinístico faz linhas trocarem de
+        // página entre requisições — a pessoa pagina e vê a mesma empresa duas
+        // vezes, ou nenhuma.
+        //
+        // O mapa é montado FORA do loop de linhas de propósito: a forma de cada
+        // linha é uma whitelist deliberada (T-131-03-*/T-131-04-* — nenhum dado
+        // de signatário atravessa para o browser), então a chave de ordenação
+        // não entra no payload.
+        $criadoEmPorEmpresa = $companies->pluck('created_at', 'id');
+
+        $linhas = $linhas
+            ->sortBy([
+                fn (array $a, array $b) => ($criadoEmPorEmpresa[$b['company_id']] ?? null)
+                    <=> ($criadoEmPorEmpresa[$a['company_id']] ?? null),
+                fn (array $a, array $b) => $b['company_id'] <=> $a['company_id'],
+            ])
+            ->values();
 
         // (8) Paginação manual via LengthAwarePaginator, preservando path e
         // query — mesmo padrão de ComercialController::listagem().
