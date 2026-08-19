@@ -273,6 +273,51 @@ class OnboardingController extends Controller
     }
 
     /**
+     * POST /onboarding/{onboarding}/responsaveis — define estrategista e/ou
+     * analista (R-01).
+     *
+     * É o "iniciar onboarding" da listagem de `/companies`: qualquer um dos
+     * dois já liga o SLA (R-02), e é por esta mesma rota que se volta depois
+     * para preencher o papel que faltava — por isso ela aceita onboarding já
+     * em andamento, ao contrário de `confirmarResponsavel()`.
+     */
+    public function definirResponsaveis(Request $request, Onboarding $onboarding)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'responsavel_estrategista_id' => ['nullable', 'integer', 'exists:users,id'],
+            'responsavel_analista_id'     => ['nullable', 'integer', 'exists:users,id'],
+        ]);
+
+        $estrategista = ($data['responsavel_estrategista_id'] ?? null)
+            ? User::find($data['responsavel_estrategista_id'])
+            : null;
+
+        $analista = ($data['responsavel_analista_id'] ?? null)
+            ? User::find($data['responsavel_analista_id'])
+            : null;
+
+        try {
+            $this->engine->definirResponsaveis($onboarding, $estrategista, $analista);
+        } catch (\DomainException $e) {
+            // A mensagem cai no campo do analista porque é o papel operacional
+            // e o primeiro que a tela oferece — sem isso o erro fica órfão de
+            // campo e o Inertia não o mostra em lugar nenhum.
+            throw ValidationException::withMessages([
+                'responsavel_analista_id' => $e->getMessage(),
+            ]);
+        }
+
+        return back()->with(
+            'success',
+            $onboarding->wasChanged('status')
+                ? 'Onboarding iniciado — responsáveis definidos.'
+                : 'Responsáveis atualizados.'
+        );
+    }
+
+    /**
      * POST /onboarding/passos/{passo}/reabrir — desmarca um passo concluído.
      *
      * Faltava caminho de volta: um clique errado era definitivo e só se

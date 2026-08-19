@@ -914,6 +914,12 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
             ->name('onboarding.painel.show');
         Route::post('/onboarding/{onboarding}/responsavel', [OnboardingController::class, 'confirmarResponsavel'])
             ->name('onboarding.responsavel.confirmar');
+        // Estrategista E analista (R-01) — é o "iniciar onboarding" da aba
+        // Onboarding de /companies e também o caminho de volta para preencher
+        // depois o papel que faltava. Convive com a rota de cima, que é o
+        // botão de um clique do painel antigo.
+        Route::post('/onboarding/{onboarding}/responsaveis', [OnboardingController::class, 'definirResponsaveis'])
+            ->name('onboarding.responsaveis.definir');
         Route::post('/onboarding/passos/{passo}/concluir', [OnboardingController::class, 'concluirPasso'])
             ->name('onboarding.passos.concluir');
         // Desmarcar — o caminho de volta que faltava.

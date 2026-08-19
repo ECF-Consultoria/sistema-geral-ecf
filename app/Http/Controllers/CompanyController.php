@@ -6,11 +6,13 @@ use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\Goal;
+use App\Models\Onboarding;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
 use App\Services\Metrics\MetricsProviderFactory;
+use App\Services\Onboarding\OnboardingSituacaoService;
 use App\Models\CompanyManagerHistory;
 use App\Services\Nps\NpsScoreCalculator;
 use Carbon\Carbon;
@@ -26,6 +28,7 @@ class CompanyController extends Controller
         private AdmanService $adman,
         private EcfDriveService $ecf,
         private MetricsProviderFactory $metricsFactory,
+        private OnboardingSituacaoService $situacaoService,
     ) {}
 
     /**
@@ -109,6 +112,24 @@ class CompanyController extends Controller
                 'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
                 'mlToken',
                 'grupo:id,name,color',
+                // Onboarding por serviço — uma empresa pode ter N ao mesmo
+                // tempo (D-01). Projeção EXPLÍCITA nos passos: `valor` é JSON
+                // com as métricas da conta e `ultimo_erro` guarda texto de
+                // exceção; nenhum dos dois é lido aqui, e arrastá-los por
+                // empresa numa listagem sem paginação é exatamente o que já
+                // derrubou /dashboard por OOM (AdmanMetric.raw_data).
+                'onboardings' => fn($q) => $q->with([
+                    'servico:id,nome',
+                    'responsavel:id,name',
+                    'responsavelEstrategista:id,name',
+                    'responsavelAnalista:id,name',
+                    'passos' => fn($qp) => $qp
+                        ->select([
+                            'id', 'onboarding_id', 'ordem', 'chave', 'titulo',
+                            'dono', 'setor_id', 'status', 'sla_dias', 'disponivel_em',
+                        ])
+                        ->with('setor:id,nome'),
+                ]),
             ])
             // Grant ativo local (company_grants sincronizado da API ECF Drive) para a pendência "sem grant".
             ->withCount(['grants as grants_ativos_count' => fn($q) => $q->where('status', 'active')])
@@ -223,6 +244,13 @@ class CompanyController extends Controller
                     // tem >=1 contrato Performance ativo por definicao.
                     $c->empresa_nova                                          ? 'empresa_nova' : null,
                 ])),
+                // Data de cadastro da empresa — o "quando chegou" de quem
+                // ainda não tem onboarding nenhum. Para quem tem, o
+                // `chegou_em` do onboarding é mais preciso: é o instante em
+                // que o contrato nasceu.
+                'criada_em'        => $c->created_at?->toISOString(),
+                // ─── Aba Onboarding ──────────────────────────────────────
+                ...$this->onboardingDaEmpresa($c),
             ]);
 
         $users = User::where('active', true)
@@ -293,6 +321,56 @@ class CompanyController extends Controller
                 'sort'           => $sort,
             ],
         ]);
+    }
+
+    /**
+     * Bloco de Onboarding de uma empresa na listagem.
+     *
+     * `onboardings` é a lista completa (uma empresa pode ter N serviços em
+     * onboarding ao mesmo tempo); `onboarding_resumo` é o que a LINHA da
+     * tabela mostra — a leitura de um só onboarding, o mais grave, porque uma
+     * linha por empresa não comporta N situações e a pergunta que a tela
+     * responde é "esta empresa precisa de mim agora?".
+     *
+     * "Mais grave" segue {@see OnboardingSituacaoService::GRAVIDADE}, onde
+     * `rascunho` vem primeiro: é o único estado em que o tempo passa sem SLA
+     * correndo e sem o cliente ver nada.
+     */
+    private function onboardingDaEmpresa(Company $company): array
+    {
+        $onboardings = $company->onboardings
+            ->map(fn (Onboarding $o) => $this->situacaoService->resumo($o))
+            ->values();
+
+        if ($onboardings->isEmpty()) {
+            return ['onboardings' => [], 'onboarding_resumo' => null];
+        }
+
+        $pior = $onboardings
+            ->sortBy(fn (array $o) => OnboardingSituacaoService::GRAVIDADE[$o['situacao']] ?? 99)
+            ->first();
+
+        return [
+            'onboardings'       => $onboardings->all(),
+            'onboarding_resumo' => [
+                'onboarding_id'   => $pior['id'],
+                'situacao'        => $pior['situacao'],
+                'situacao_label'  => $pior['situacao_label'],
+                'servico'         => $pior['servico']['nome'],
+                'passo_que_trava' => $pior['passo_que_trava']['titulo'] ?? null,
+                'bola_de_quem'    => $pior['passo_que_trava']['dono'] ?? null,
+                'dias_parado'     => $pior['passo_que_trava']['dias_parado'] ?? null,
+                'total'           => $onboardings->count(),
+                'nao_concluidos'  => $onboardings
+                    ->filter(fn (array $o) => $o['status'] !== Onboarding::STATUS_CONCLUIDO)
+                    ->count(),
+                'em_rascunho'     => $onboardings
+                    ->contains(fn (array $o) => $o['status'] === Onboarding::STATUS_RASCUNHO),
+                // O mais ANTIGO: é a chegada da empresa ao onboarding, não a
+                // do último serviço contratado.
+                'chegou_em'       => $onboardings->pluck('chegou_em')->filter()->min(),
+            ],
+        ];
     }
 
     public function show(Company $company)
