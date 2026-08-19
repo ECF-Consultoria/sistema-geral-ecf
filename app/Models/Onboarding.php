@@ -33,6 +33,8 @@ class Onboarding extends Model
         'definicao_versao',
         'status',
         'responsavel_id',
+        'responsavel_estrategista_id',
+        'responsavel_analista_id',
         'iniciado_em',
         'concluido_em',
         'reuniao_status',
@@ -93,7 +95,7 @@ class Onboarding extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['status', 'responsavel_id'])
+            ->logOnly(['status', 'responsavel_id', 'responsavel_estrategista_id', 'responsavel_analista_id'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn (string $eventName) => match ($eventName) {
@@ -122,6 +124,41 @@ class Onboarding extends Model
     public function responsavel(): BelongsTo
     {
         return $this->belongsTo(User::class, 'responsavel_id');
+    }
+
+    /**
+     * Estrategista responsável por este onboarding.
+     *
+     * Slot próprio, e não uma leitura de `company_users`, porque o vínculo da
+     * empresa é o estado ATUAL da carteira e muda com o tempo — o responsável
+     * do onboarding é um carimbo daquele onboarding. Trocar o estrategista da
+     * carteira em outubro não pode reescrever quem atendeu o onboarding de
+     * agosto (decisão de schema §2.3).
+     */
+    public function responsavelEstrategista(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responsavel_estrategista_id');
+    }
+
+    /** Analista responsável por este onboarding — mesmo espírito do slot acima. */
+    public function responsavelAnalista(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responsavel_analista_id');
+    }
+
+    /**
+     * Tem ao menos um dos dois responsáveis definidos?
+     *
+     * É esta a régua que libera o SLA (R-02): confirmar estrategista OU
+     * analista já tira o onboarding de rascunho — a tela cobra o papel que
+     * faltar como pendência. Espelha `em_operacao` de `/companies`, que é "tem
+     * pelo menos um dos dois papéis", em vez de criar uma segunda verdade
+     * sobre quem cuida da empresa.
+     */
+    public function temAlgumResponsavel(): bool
+    {
+        return $this->responsavel_estrategista_id !== null
+            || $this->responsavel_analista_id !== null;
     }
 
     /** Quem, do nosso lado, marcou a data da reunião — nunca exposto ao cliente. */

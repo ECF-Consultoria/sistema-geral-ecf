@@ -135,19 +135,119 @@ class OnboardingEngineService
             );
         }
 
-        $onboarding->responsavel_id = $responsavel->id;
-        $onboarding->status = Onboarding::STATUS_ANDAMENTO;
-        $onboarding->iniciado_em = now();
+        // Um clique, um responsável: o slot sai do vínculo que a pessoa já tem
+        // com a empresa — mesma regra do backfill da migration dos dois
+        // responsáveis. Quem quiser preencher os dois papéis usa
+        // definirResponsaveis() direto.
+        $ehEstrategista = $this->papelNaEmpresa($onboarding, $responsavel) === 'estrategista';
+
+        return $this->definirResponsaveis(
+            $onboarding,
+            $ehEstrategista ? $responsavel : null,
+            $ehEstrategista ? null : $responsavel,
+        );
+    }
+
+    /**
+     * Define estrategista e/ou analista do onboarding (R-01) e, se ele ainda
+     * estiver em `rascunho`, liga o SLA.
+     *
+     * **Qualquer um dos dois basta para ligar** (R-02): confirmar só o
+     * estrategista, ou só o analista, já leva a `andamento`, carimba
+     * `iniciado_em` e libera o portal do cliente. A tela cobra o papel que
+     * faltar como pendência. Espelha a régua que `/companies` já aplica
+     * (`em_operacao` = tem pelo menos um dos dois papéis), em vez de criar uma
+     * segunda verdade sobre quem cuida da empresa.
+     *
+     * Diferente de {@see self::confirmarResponsavel()}, aceita onboarding já
+     * em `andamento`: é o caminho para preencher depois o papel que faltava —
+     * sem ele, "a tela cobra o que falta" seria cobrança sem botão. Passar
+     * `null` num papel APAGA aquele slot; o guard é que os dois não podem
+     * ficar vazios ao mesmo tempo.
+     *
+     * @param  ?User  $estrategista  null apaga o slot de estrategista
+     * @param  ?User  $analista      null apaga o slot de analista
+     */
+    public function definirResponsaveis(
+        Onboarding $onboarding,
+        ?User $estrategista,
+        ?User $analista,
+    ): Onboarding {
+        if ($estrategista === null && $analista === null) {
+            throw new \DomainException(
+                "Onboarding {$onboarding->id} precisa de ao menos um responsável — "
+                . 'estrategista ou analista (R-02).'
+            );
+        }
+
+        if ($onboarding->status === Onboarding::STATUS_CONCLUIDO) {
+            throw new \DomainException(
+                "Onboarding {$onboarding->id} já está concluído — responsável não muda mais."
+            );
+        }
+
+        $onboarding->responsavel_estrategista_id = $estrategista?->id;
+        $onboarding->responsavel_analista_id = $analista?->id;
+
+        // Invariante do responsável PRINCIPAL (decisão de schema §2.2): se um
+        // dos slots está preenchido, `responsavel_id` aponta para um deles.
+        // Mantém quem já estava lá se ainda ocupar um slot — trocar o
+        // principal sem necessidade mexeria no que o portal e o detalhe
+        // mostram como "seu responsável".
+        $slots = array_filter([$estrategista?->id, $analista?->id]);
+        if (! in_array($onboarding->responsavel_id, $slots, true)) {
+            $onboarding->responsavel_id = $estrategista?->id ?? $analista?->id;
+        }
+
+        $ligouAgora = $onboarding->status === Onboarding::STATUS_RASCUNHO;
+
+        if ($ligouAgora) {
+            $onboarding->status = Onboarding::STATUS_ANDAMENTO;
+            $onboarding->iniciado_em = now();
+        }
+
         $onboarding->save();
 
-        $this->reavaliar($onboarding);
+        // `reavaliar()` é quem carimba `disponivel_em` dos passos sem
+        // dependência — só faz sentido na transição, não a cada ajuste de
+        // papel num onboarding que já está correndo.
+        if ($ligouAgora) {
+            $this->reavaliar($onboarding);
+        }
 
         activity('onboarding')
             ->performedOn($onboarding)
-            ->withProperties(['responsavel_id' => $responsavel->id])
-            ->log("Responsável confirmado — onboarding {$onboarding->id} em andamento");
+            ->withProperties([
+                'responsavel_id'              => $onboarding->responsavel_id,
+                'responsavel_estrategista_id' => $onboarding->responsavel_estrategista_id,
+                'responsavel_analista_id'     => $onboarding->responsavel_analista_id,
+            ])
+            ->log($ligouAgora
+                ? "Responsável confirmado — onboarding {$onboarding->id} em andamento"
+                : "Responsáveis atualizados — onboarding {$onboarding->id}");
 
         return $onboarding;
+    }
+
+    /**
+     * Papel do usuário NAQUELA empresa, lido de `company_users`: devolve
+     * `'estrategista'` só quando é estrategista e não é consultor.
+     *
+     * Mesma regra do backfill da migration — quem tem os dois vínculos cai no
+     * lado do analista, que é o papel operacional e o primeiro de
+     * {@see Onboarding::ROLES_RESPONSAVEL_SUGERIDO}.
+     */
+    private function papelNaEmpresa(Onboarding $onboarding, User $usuario): string
+    {
+        $papeis = $onboarding->company
+            ->users()
+            ->where('users.id', $usuario->id)
+            ->pluck('company_users.role')
+            ->all();
+
+        return in_array('estrategista', $papeis, true) && ! in_array('consultor', $papeis, true)
+            ? 'estrategista'
+            : 'analista';
     }
 
     // ─── Reunião de onboarding ───────────────────────────────────────────────
@@ -247,7 +347,12 @@ class OnboardingEngineService
             return false;
         }
 
-        return $onboarding->responsavel_id !== null || $this->sugerirResponsavel($onboarding) !== null;
+        // Os dois slots contam junto com o principal (R-01): um onboarding
+        // com analista definido e `responsavel_id` vazio por qualquer motivo
+        // continua podendo iniciar.
+        return $onboarding->responsavel_id !== null
+            || $onboarding->temAlgumResponsavel()
+            || $this->sugerirResponsavel($onboarding) !== null;
     }
 
     /**
