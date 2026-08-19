@@ -4,15 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\Onboarding;
+use App\Models\OnboardingContato;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingMapeamento;
 use App\Models\OnboardingPasso;
 use App\Services\MercadoLivreService;
 use App\Services\Onboarding\OnboardingEngineService;
+use App\Services\Onboarding\OnboardingResolverFactory;
 use App\Services\Onboarding\OnboardingLinkService;
 use App\Services\Onboarding\OnboardingMapeamentoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -54,6 +57,24 @@ class OnboardingPublicoController extends Controller
             'token'    => $token,
             'empresa'  => ['nome' => $company->name],
             'passos'   => $this->linkService->passosDoCliente($company),
+            // Agrupadas por papel para a tela não precisar filtrar. Deduplicadas
+            // por (papel, nome, e-mail): a mesma pessoa é gravada em cada
+            // onboarding da empresa, e o cliente não tem por que ver o próprio
+            // contato repetido porque contratou dois serviços.
+            'pessoas'  => OnboardingContato::whereIn(
+                    'onboarding_id',
+                    Onboarding::where('company_id', $company->id)->naoConcluido()->pluck('id')
+                )
+                ->orderBy('id')
+                ->get()
+                ->unique(fn (OnboardingContato $ct) => $ct->papel.'|'.$ct->nome.'|'.$ct->email)
+                ->groupBy('papel')
+                ->map(fn ($grupo) => $grupo->map(fn (OnboardingContato $ct) => [
+                    'id'     => $ct->id,
+                    'nome'   => $ct->nome,
+                    'email'  => $ct->email,
+                    'funcao' => $ct->funcao,
+                ])->values()),
             'reunioes' => $this->linkService->reunioesDaEmpresa($company),
             'mapeamentos' => Onboarding::where('company_id', $company->id)
                 ->emAndamento()
@@ -252,6 +273,104 @@ class OnboardingPublicoController extends Controller
             ->log("Passo de chave \"{$data['chave']}\" marcado como feito pelo cliente via portal público");
 
         return back()->with('success', 'Marcado como feito.');
+    }
+
+    /**
+     * POST /onboarding-cliente/{token}/pessoas — o CLIENTE informa quem
+     * acionamos e quem participa das reuniões (§13.2 e §16).
+     *
+     * O token vale para a EMPRESA, e uma empresa pode ter mais de um
+     * onboarding em curso. A pessoa é gravada em CADA onboarding que ainda
+     * tem o passo correspondente em aberto — mesma régua de agregação por
+     * chave que o portal já usa para marcar passo feito. Cada onboarding fica
+     * com a própria linha: nada é compartilhado entre eles, e apagar um não
+     * mexe no outro.
+     *
+     * Só ADICIONA. Editar e remover ficam do lado interno de propósito: este é
+     * um link sem senha, e dar a ele poder de apagar o cadastro de terceiros
+     * seria conceder mais do que "informe quem participa".
+     */
+    public function salvarPessoa(Request $request, string $token)
+    {
+        $link = OnboardingLink::where('token', $token)->firstOrFail();
+
+        $data = $request->validate([
+            'papel'    => ['required', 'string', Rule::in(OnboardingContato::PAPEIS)],
+            'nome'     => ['required', 'string', 'max:120'],
+            // E-mail é obrigatório para participante: o objetivo declarado do
+            // §16 é enviar o convite, e participante sem e-mail não recebe
+            // nada. Para ponto de contato é opcional — telefone pode bastar.
+            'email'    => [
+                Rule::requiredIf(fn () => $request->input('papel') === OnboardingContato::PAPEL_PARTICIPANTE),
+                'nullable', 'email', 'max:190',
+            ],
+            'funcao'   => ['nullable', 'string', 'max:80'],
+            'telefone' => ['nullable', 'string', 'max:30'],
+        ]);
+
+        $chave = $data['papel'] === OnboardingContato::PAPEL_PARTICIPANTE
+            ? 'participantes_reuniao_cadastrados'
+            : 'ponto_contato_definido';
+
+        $onboardings = Onboarding::where('company_id', $link->company_id)
+            ->naoConcluido()
+            ->whereHas('passos', fn ($q) => $q->where('chave', $chave))
+            ->get();
+
+        abort_if($onboardings->isEmpty(), 422, 'Este item não está disponível agora.');
+
+        foreach ($onboardings as $onboarding) {
+            OnboardingContato::create([
+                'onboarding_id' => $onboarding->id,
+                'papel'         => $data['papel'],
+                'nome'          => $data['nome'],
+                'email'         => $data['email'] ?? null,
+                'funcao'        => $data['funcao'] ?? null,
+                'telefone'      => $data['telefone'] ?? null,
+            ]);
+
+            $this->resolverPessoas($onboarding);
+        }
+
+        activity('onboarding')
+            ->performedOn($link)
+            ->withProperties([
+                'papel' => $data['papel'],
+                'nome'  => $data['nome'],
+                'ip'    => $request->ip(),
+            ])
+            ->log('Pessoa cadastrada pelo cliente via portal público');
+
+        return back()->with('success', 'Pessoa cadastrada.');
+    }
+
+    /**
+     * Fecha na hora os passos de pessoas daquele onboarding.
+     *
+     * Sem isto o cliente cadastraria e o item continuaria pendente na tela
+     * dele por até 10 minutos — `reavaliar()` não executa resolver, quem
+     * executa é o cron.
+     */
+    private function resolverPessoas(Onboarding $onboarding): void
+    {
+        $engine = app(OnboardingEngineService::class);
+        $factory = app(OnboardingResolverFactory::class);
+
+        $passos = OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->whereIn('auto_fonte', [
+                OnboardingPasso::AUTO_FONTE_PONTO_CONTATO,
+                OnboardingPasso::AUTO_FONTE_PARTICIPANTES,
+            ])
+            ->get();
+
+        foreach ($passos as $passo) {
+            $engine->aplicarResultado(
+                $passo,
+                $factory->for($passo->auto_fonte)->resolver($onboarding, $passo)
+            );
+        }
+
+        $engine->reavaliar($onboarding->fresh());
     }
 
 }

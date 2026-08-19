@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import PessoasDoCliente from '@/Components/Onboarding/PessoasDoCliente';
 import { router } from '@inertiajs/react';
 import { AlertTriangle, CalendarDays, Check, CheckCircle2, Lock, RefreshCw, Zap } from 'lucide-react';
 import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
@@ -31,10 +32,16 @@ import { cn } from '@/lib/utils';
 // não entra: nenhum passo dele é `dono=cliente`. Passo sem etapa (nascido
 // antes da v6) cai em `outros` e ainda assim aparece — some da tela é pior do
 // que aparecer sem título de bloco.
-const ETAPAS_ORDEM = ['acessos', 'mapeamento', 'agendamento', 'administrativo', 'outros'];
+// ATENÇÃO: esta lista é espelho manual de `OnboardingPasso::ETAPAS` — não há
+// tipo compartilhado entre PHP e JS. Etapa que exista no back e falte aqui faz
+// o passo SUMIR da tela do cliente sem erro nenhum: o filtro abaixo é
+// `(p.etapa ?? 'outros') === etapa`, e o que não casa com bloco nenhum não é
+// renderizado. Só entram etapas que tenham passo `dono=cliente`.
+const ETAPAS_ORDEM = ['acessos', 'responsaveis', 'mapeamento', 'agendamento', 'administrativo', 'outros'];
 
 const ETAPA_LABELS = {
     acessos:        { titulo: 'Configuração de acessos', ajuda: 'Comece por aqui — é o que nos permite buscar seus dados automaticamente.' },
+    responsaveis:   { titulo: 'Quem é quem',              ajuda: 'Quem devemos acionar e quem participa das reuniões.' },
     mapeamento:     { titulo: 'Mapeamento da conta',      ajuda: 'O que precisamos entender sobre a sua operação hoje.' },
     agendamento:    { titulo: 'Reunião de onboarding',    ajuda: null },
     administrativo: { titulo: 'Administrativo',           ajuda: null },
@@ -55,7 +62,7 @@ const ESTADO_CARD = {
 
 // ─── Card de um passo (1 por `chave`, nunca por onboarding_passo) ───────────
 
-function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onPlay, onOpenPassoAPasso }) {
+function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onPlay, onOpenPassoAPasso, pessoas = {} }) {
     const [marcando, setMarcando] = useState(false);
     const estado = ESTADO_CARD[passo.status] ?? ESTADO_CARD.aberto;
     const concluido = passo.status === 'concluido';
@@ -142,6 +149,27 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
                                 ? `Liberamos assim que "${passo.depende_de_titulo}" estiver concluído.`
                                 : 'Aguardando outra etapa ser concluída.'}
                         </p>
+                    )}
+
+                    {/* `pessoas` é a única ação que continua disponível DEPOIS de
+                        concluída: o item fecha com a primeira pessoa cadastrada, e
+                        §16 pede que dê para cadastrar mais de uma. Sem isto, o
+                        cliente cadastraria um participante, o item fecharia, o
+                        formulário sumiria — e ele não teria como incluir o
+                        segundo. A lista também precisa continuar visível: quem
+                        informou quer poder conferir o que informou. */}
+                    {concluido && passo.acao === 'pessoas' && (
+                        <div className="mt-2">
+                            <PessoasDoCliente
+                                token={token}
+                                papel={passo.chave === 'ponto_contato_definido'
+                                    ? 'ponto_de_contato'
+                                    : 'participante_reuniao'}
+                                pessoas={passo.chave === 'ponto_contato_definido'
+                                    ? (pessoas.ponto_de_contato ?? [])
+                                    : (pessoas.participante_reuniao ?? [])}
+                            />
+                        </div>
                     )}
 
                     {concluido && (
@@ -239,6 +267,22 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
                                         </span>
                                     </div>
                                 </div>
+                            )}
+
+                            {/* §13.2 e §16 — o cliente informa quem acionamos e
+                                quem participa das reuniões. É a única ação em que
+                                ele DIGITA algo no portal; as outras são marcar,
+                                autorizar ou acompanhar. */}
+                            {passo.acao === 'pessoas' && (
+                                <PessoasDoCliente
+                                    token={token}
+                                    papel={passo.chave === 'ponto_contato_definido'
+                                        ? 'ponto_de_contato'
+                                        : 'participante_reuniao'}
+                                    pessoas={passo.chave === 'ponto_contato_definido'
+                                        ? (pessoas.ponto_de_contato ?? [])
+                                        : (pessoas.participante_reuniao ?? [])}
+                                />
                             )}
 
                             {passo.acao === 'nenhuma' && (
@@ -410,7 +454,7 @@ function ProgressoHeader({ empresaNome, progresso }) {
 
 // ─── Página ───────────────────────────────────────────────────────────────
 
-export default function Publico({ token, empresa, passos = [], reunioes = [], mapeamentos = [] }) {
+export default function Publico({ token, empresa, passos = [], reunioes = [], mapeamentos = [], pessoas = {} }) {
     const [conectandoChave, setConectandoChave] = useState(null);
     const [video, setVideo] = useState(null);
     const [passoAPasso, setPassoAPasso] = useState(null);
@@ -503,6 +547,7 @@ export default function Publico({ token, empresa, passos = [], reunioes = [], ma
 
                                 {itens.map((passo) => (
                                     <PassoCard
+                                        pessoas={pessoas}
                                         key={passo.chave}
                                         passo={passo}
                                         token={token}

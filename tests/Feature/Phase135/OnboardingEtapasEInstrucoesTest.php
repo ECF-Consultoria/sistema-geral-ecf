@@ -342,7 +342,18 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
             ->all();
 
         $this->assertSame(
-            ['grant_sistema_ecf', 'acesso_colaborador_ml', 'planilha_custos_adman', 'grant_consultoria_adman', 'custos_app_ecf'],
+            [
+                'grant_sistema_ecf',
+                'acesso_colaborador_ml',
+                'planilha_custos_adman',
+                'grant_consultoria_adman',
+                'custos_app_ecf',
+                // Fluxo de 19/08 — ordem 24 e 25, depois dos acessos: o que
+                // destrava a automação vem primeiro, e informar pessoas não
+                // depende de nada.
+                'ponto_contato_definido',
+                'participantes_reuniao_cadastrados',
+            ],
             $chaves,
             'O cliente precisa receber "autorize o acesso" antes do que depende dele'
         );

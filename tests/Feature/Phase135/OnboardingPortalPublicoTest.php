@@ -187,12 +187,16 @@ class OnboardingPortalPublicoTest extends TestCase
         // v6 — os 4 acessos passaram a ser `dono=cliente`, então os dois da
         // Adman entram nesta lista. Antes o cliente não via (nem era cobrado
         // por) dois dos quatro acessos que só ele pode conceder.
+        // Fluxo de 19/08 — §13.2 e §16 pedem ao CLIENTE quem acionamos e quem
+        // participa das reuniões, então os dois itens entram nesta lista.
         $this->assertSame([
             'acesso_colaborador_ml',
             'custos_app_ecf',
             'grant_consultoria_adman',
             'grant_sistema_ecf',
+            'participantes_reuniao_cadastrados',
             'planilha_custos_adman',
+            'ponto_contato_definido',
         ], $chaves);
     }
 

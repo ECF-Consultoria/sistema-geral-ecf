@@ -150,6 +150,13 @@ Route::get('/onboarding-cliente/{token}/conectar/ml', [OnboardingPublicoControll
     ->middleware('throttle:20,1')
     ->name('onboarding.publico.conectar-ml');
 // O cliente PEDE a reunião (sem data — quem marca é o responsável).
+// §13.2 e §16 — o cliente informa quem acionamos e quem participa das
+// reuniões. Só ADICIONA: editar e remover ficam do lado interno, porque este é
+// um link sem senha e apagar cadastro de terceiros é mais poder do que
+// "informe quem participa".
+Route::post('/onboarding-cliente/{token}/pessoas', [OnboardingPublicoController::class, 'salvarPessoa'])
+    ->name('onboarding.publico.pessoas');
+
 Route::post('/onboarding-cliente/{token}/reuniao', [OnboardingPublicoController::class, 'solicitarReuniao'])
     ->middleware('throttle:20,1')
     ->name('onboarding.publico.reuniao');

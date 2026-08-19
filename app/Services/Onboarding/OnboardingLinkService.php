@@ -257,6 +257,17 @@ class OnboardingLinkService
      * que alguém feche na mão o que só o resolver confirma.
      */
     public const ACAO_INSTRUCAO = 'instrucao';
+    /**
+     * O cliente PREENCHE pessoas no próprio portal — nome, e-mail e função de
+     * quem participa das reuniões, e quem é o ponto de contato.
+     *
+     * Ação própria porque nenhuma das outras serve: não é `marcar` (não há o
+     * que declarar, há o que informar), não é `instrucao` (a ação acontece
+     * AQUI, não fora), e cair em `nenhuma` renderizaria "você não precisa
+     * fazer nada" — o oposto exato de "solicitar os Gmails das pessoas do
+     * cliente" (§16 do fluxo de 19/08).
+     */
+    public const ACAO_PESSOAS = 'pessoas';
     /** Nada a fazer: o sistema resolve sozinho, o cliente só acompanha. */
     public const ACAO_NENHUMA = 'nenhuma';
 
@@ -279,6 +290,8 @@ class OnboardingLinkService
             OnboardingPasso::AUTO_FONTE_ML_TOKEN          => self::ACAO_OAUTH_ML,
             OnboardingPasso::AUTO_FONTE_ADMAN_ACCOUNT_ID  => self::ACAO_INSTRUCAO,
             OnboardingPasso::AUTO_FONTE_ADMAN_GRANT       => self::ACAO_INSTRUCAO,
+            OnboardingPasso::AUTO_FONTE_PONTO_CONTATO     => self::ACAO_PESSOAS,
+            OnboardingPasso::AUTO_FONTE_PARTICIPANTES     => self::ACAO_PESSOAS,
             default                                       => self::ACAO_NENHUMA,
         };
     }

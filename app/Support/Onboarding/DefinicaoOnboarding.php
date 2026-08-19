@@ -162,6 +162,14 @@ class DefinicaoOnboarding
             . 'Sem esse acesso não conseguimos ler seus custos e seu faturamento pela Adman. '
             . 'Assim que você concluir, detectamos automaticamente — você não precisa avisar.',
 
+        'ponto_contato_definido' => 'Diga quem devemos acionar no dia a dia: nome, e-mail e telefone. '
+            . 'É esta a pessoa que vamos procurar quando precisarmos de uma decisão ou de um dado. '
+            . 'Você pode indicar outra pessoa depois, quando quiser.',
+
+        'participantes_reuniao_cadastrados' => 'Cadastre quem vai participar das reuniões, com o Gmail de cada um. '
+            . 'É para esses e-mails que enviamos o convite e a recorrência no calendário — sem o Gmail, '
+            . 'a pessoa não recebe os encontros. Pode incluir quantas pessoas quiser.',
+
         'custos_app_ecf' => 'Preencha os custos dos seus produtos no App ECF. '
             . 'São eles que transformam faturamento em margem — sem os custos, conseguimos mostrar quanto você '
             . 'vendeu, mas não quanto sobrou. Quando terminar, marque este item como feito.',
@@ -294,6 +302,31 @@ class DefinicaoOnboarding
                 'Volte a este portal e marque o item como feito.',
             ],
             'atencao'  => null,
+        ],
+
+        'ponto_contato_definido' => [
+            'titulo'   => 'Quem devemos acionar no dia a dia',
+            'saudacao' => 'É a pessoa que vamos procurar quando precisarmos de uma decisão, de um dado ou de uma aprovação:',
+            'passos'   => [
+                'Clique em "Indicar ponto de contato".',
+                'Informe o nome e o melhor e-mail ou telefone dessa pessoa.',
+                'Se ela tiver um cargo que ajude a entender o papel dela, escreva também.',
+                'Salve. Pode trocar de pessoa depois, quando quiser.',
+            ],
+            'atencao'  => null,
+        ],
+
+        'participantes_reuniao_cadastrados' => [
+            'titulo'   => 'Quem vai participar das reuniões',
+            'saudacao' => 'É para estes e-mails que enviamos o convite e a recorrência no calendário:',
+            'passos'   => [
+                'Clique em "Adicionar participante".',
+                'Informe o nome e o Gmail da pessoa.',
+                'Repita para cada pessoa que deve participar — pode incluir quantas quiser.',
+                'Confira se todos têm Gmail: sem ele, a pessoa não recebe o convite.',
+            ],
+            'atencao'  => 'Use o Gmail de cada participante. O convite e o calendário são do Google, '
+                . 'e um e-mail de outro provedor pode não receber os encontros recorrentes.',
         ],
     ];
 
@@ -548,12 +581,16 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
+                // §13.2 pergunta ao CLIENTE quem será o ponto de contato — é ele
+                // quem sabe. Continua preenchível por nós na call (mesma tabela,
+                // mesma tela interna); `dono=cliente` decide de quem o painel
+                // cobra e o que aparece no portal.
                 'ordem'      => 24,
                 'etapa'      => OnboardingPasso::ETAPA_RESPONSAVEIS,
                 'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
                 'chave'      => 'ponto_contato_definido',
                 'titulo'     => 'Ponto de contato do cliente definido',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
                 'depende_de' => [],
                 'sla_dias'   => 5,
@@ -569,7 +606,10 @@ class DefinicaoOnboarding
                 'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
                 'chave'      => 'participantes_reuniao_cadastrados',
                 'titulo'     => 'Participantes das reunioes cadastrados',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
+                // §16: "uma etapa específica para SOLICITAR os Gmails das
+                // pessoas do cliente que participarão das reuniões". Quem sabe
+                // quem vai participar é o cliente.
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
                 'depende_de' => [],
                 'sla_dias'   => 5,

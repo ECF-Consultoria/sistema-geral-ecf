@@ -63,7 +63,7 @@ class PontoContatoResolver implements OnboardingResolver
         }
 
         $completos = $contatos->filter(
-            fn (OnboardingContato $contato) => filled($contato->nome) && $contato->temEmail()
+            fn (OnboardingContato $contato) => filled($contato->nome) && $contato->temComoAcionar()
         );
 
         if ($completos->isEmpty()) {
@@ -92,7 +92,7 @@ class PontoContatoResolver implements OnboardingResolver
      */
     private function motivoDoIncompleto(Collection $contatos): string
     {
-        $semEmail = $contatos->reject(fn (OnboardingContato $c) => $c->temEmail());
+        $semEmail = $contatos->reject(fn (OnboardingContato $c) => $c->temComoAcionar());
         $semNome = $contatos->reject(fn (OnboardingContato $c) => filled($c->nome));
 
         $partes = [];

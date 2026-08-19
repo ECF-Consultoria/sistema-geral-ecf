@@ -118,6 +118,21 @@ class OnboardingContato extends Model
      * pergunta se repete nos dois resolvers e porque "tem e-mail" é a régua
      * do §16: participante sem e-mail não recebe convite, logo não conta.
      */
+    /**
+     * Dá para ACIONAR esta pessoa?
+     *
+     * O §13.2 lista telefone E e-mail para o ponto de contato, sem dizer qual
+     * é obrigatório. O requisito real é conseguir falar com ela — exigir
+     * e-mail deixaria de fora o cliente que só passa o WhatsApp, que é o caso
+     * comum. Para PARTICIPANTE a régua é outra e continua sendo o e-mail:
+     * ali o objetivo declarado é enviar o convite do calendário, e telefone
+     * não recebe convite.
+     */
+    public function temComoAcionar(): bool
+    {
+        return filled($this->email) || filled($this->telefone);
+    }
+
     public function temEmail(): bool
     {
         return filled($this->email);
