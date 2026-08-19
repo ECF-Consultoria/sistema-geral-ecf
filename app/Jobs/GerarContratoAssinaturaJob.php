@@ -14,6 +14,7 @@ use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Fase 127 Plano 127-05 (CLICK-02, CLICK-08, DADOS-06) — trabalhador da fila
@@ -120,7 +121,10 @@ class GerarContratoAssinaturaJob implements ShouldQueue
      *    CRIAÇÃO (D-03) — mesma forma literal usada em
      *    `ClicksignClient::ativarEnvelope()`, reusada aqui, não reinventada.
      * 5. `$nomeArquivo` termina em `.docx` (§10.2 do empírico, MEDIDO: `.pdf`
-     *    aqui devolve 400).
+     *    aqui devolve 400) e, desde a Quick 260819-guy (Tarefa 6), carrega o
+     *    slug ASCII de razão social + serviço — não mais `contrato-{id}.docx`
+     *    genérico — para a lista de Rascunhos do painel da Clicksign dizer de
+     *    qual empresa/serviço se trata.
      * 6. `$signatarioCliente` vem de `Company::nome_contato`/`email_cliente`
      *    — os dados mínimos já foram checados por
      *    `ContratoDadosMinimosService` ANTES do dispatch deste job
@@ -191,8 +195,19 @@ class GerarContratoAssinaturaJob implements ShouldQueue
             'remind_interval' => $contrato->lembreteDiasEfetivo(),
         ];
 
-        // §10.2 do empírico (MEDIDO): documento por modelo exige .docx.
-        $nomeArquivo = "contrato-{$contrato->id}.docx";
+        // Quick 260819-guy (Tarefa 6) — antes era sempre "contrato-{id}.docx",
+        // e é EXATAMENTE isso que a lista de Rascunhos do painel da Clicksign
+        // mostra: impossível saber de qual empresa/serviço se trata sem abrir
+        // o envelope. Slug conservador ASCII de razão social (fallback
+        // `company->name`) + nome do serviço. §10.2 do empírico (MEDIDO):
+        // documento por modelo exige .docx — a guarda em
+        // `ClicksignClient::anexarDocumentoPorModelo()` continua valendo,
+        // então o slug NUNCA pode comer a extensão.
+        $nomeArquivo = $this->nomeArquivoContrato(
+            (string) ($company->razao_social ?: $company->name),
+            (string) $servico->nome,
+            $contrato->id,
+        );
 
         $signatarioCliente = [
             'nome'  => (string) $company->nome_contato,
@@ -274,6 +289,40 @@ class GerarContratoAssinaturaJob implements ShouldQueue
         $contrato->status        = ContratoAssinatura::STATUS_ERRO;
         $contrato->erro_mensagem = $this->podarPii($e->getMessage());
         $contrato->save();
+    }
+
+    /**
+     * Quick 260819-guy (Tarefa 6) — nome de arquivo identificável na lista
+     * de Rascunhos do painel da Clicksign: `{slug(empresa-servico)}.docx`.
+     * Cai em `contrato-{id}.docx` (o nome antigo) se o slug sair vazio —
+     * ex.: razão social/serviço composto só de caracteres que o slug
+     * descarta — para nunca gerar `.docx` sozinho.
+     */
+    private function nomeArquivoContrato(string $empresa, string $servico, int $contratoIdFallback): string
+    {
+        $slug = $this->slugArquivo("{$empresa}-{$servico}");
+
+        return $slug === '' ? "contrato-{$contratoIdFallback}.docx" : "{$slug}.docx";
+    }
+
+    /**
+     * Slug conservador ASCII (Quick 260819-guy): só `[A-Za-z0-9_-]` sobra.
+     * `Str::ascii()` transliteral o acento SEM baixar caixa (diferente de
+     * `Str::slug()`, que força minúsculo) — "Gestão" vira "Gestao", não
+     * "gestao", porque o caso real medido no plano
+     * (`"Embralumi - Novo(a) Deal"` + `"Gestão"`) espera
+     * `Embralumi-Novo-a-Deal-Gestao.docx`. Espaço, parêntese e qualquer
+     * outra pontuação viram hífen; hífens repetidos colapsam; limite de
+     * tamanho evita nome de arquivo absurdamente longo.
+     */
+    private function slugArquivo(string $texto): string
+    {
+        $ascii = Str::ascii($texto);
+        $slug  = preg_replace('/[^A-Za-z0-9_-]+/', '-', $ascii) ?? '';
+        $slug  = preg_replace('/-{2,}/', '-', $slug) ?? '';
+        $slug  = trim($slug, '-');
+
+        return mb_substr($slug, 0, 150);
     }
 
     /**

@@ -463,4 +463,82 @@ class GerarContratoAssinaturaJobTest extends TestCase
         $contrato->refresh();
         $this->assertNotEmpty($contrato->clicksign_envelope_id);
     }
+
+    // ─── Teste 14 (Quick 260819-guy, Tarefa 6) ───
+
+    /**
+     * Caso real medido no plano: `"Embralumi - Novo(a) Deal"` (razão social)
+     * + `"Gestão"` (serviço) produz `Embralumi-Novo-a-Deal-Gestao.docx` — só
+     * `[A-Za-z0-9_-]` antes do `.docx`, acento transliterado, espaço/
+     * parêntese viram hífen, hífens repetidos colapsados.
+     */
+    #[Test]
+    public function nome_do_arquivo_usa_slug_ascii_conservador_de_razao_social_e_servico(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
+        $this->fakeSequenciaSemAtivacao();
+
+        $company = Company::factory()->create([
+            'name'          => 'Embralumi',
+            'cnpj'          => '11.222.333/0001-99',
+            'nome_contato'  => 'Cliente Teste',
+            'email_cliente' => 'cliente@example.com',
+            'razao_social'  => 'Embralumi - Novo(a) Deal',
+        ]);
+
+        $servico  = $this->servicoDeTeste();
+        $servico->forceFill(['nome' => 'Gestão'])->save();
+
+        $contrato = $this->contratoDeTeste($servico, $company);
+
+        (new GerarContratoAssinaturaJob($contrato))->handle($this->client(), $this->variaveisService());
+
+        Http::assertSent(function ($request) {
+            if ($request->method() !== 'POST' || $request->url() !== self::BASE . '/envelopes/' . self::ENVELOPE_ID . '/documents') {
+                return false;
+            }
+
+            $filename = data_get($request->data(), 'data.attributes.filename');
+
+            return $filename === 'Embralumi-Novo-a-Deal-Gestao.docx'
+                && preg_match('/^[A-Za-z0-9_-]+\.docx$/', $filename) === 1;
+        });
+    }
+
+    // ─── Teste 15 (Quick 260819-guy, Tarefa 6) ───
+
+    /**
+     * Sem razão social preenchida (empresa antiga), cai no fallback
+     * `company->name` — o nome do arquivo continua identificável, nunca
+     * volta ao genérico `contrato-{id}.docx` só por falta desse campo.
+     */
+    #[Test]
+    public function nome_do_arquivo_cai_no_fallback_de_company_name_sem_razao_social(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
+        $this->fakeSequenciaSemAtivacao();
+
+        $company = Company::factory()->create([
+            'name'          => 'Empresa Sem Razao Social',
+            'cnpj'          => '11.222.333/0001-99',
+            'nome_contato'  => 'Cliente Teste',
+            'email_cliente' => 'cliente@example.com',
+            'razao_social'  => null,
+        ]);
+
+        $contrato = $this->contratoDeTeste(company: $company);
+
+        (new GerarContratoAssinaturaJob($contrato))->handle($this->client(), $this->variaveisService());
+
+        Http::assertSent(function ($request) {
+            if ($request->method() !== 'POST' || $request->url() !== self::BASE . '/envelopes/' . self::ENVELOPE_ID . '/documents') {
+                return false;
+            }
+
+            $filename = data_get($request->data(), 'data.attributes.filename');
+
+            return str_starts_with($filename, 'Empresa-Sem-Razao-Social-')
+                && str_ends_with($filename, '.docx');
+        });
+    }
 }
