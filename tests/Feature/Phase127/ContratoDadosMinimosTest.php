@@ -75,6 +75,9 @@ class ContratoDadosMinimosTest extends TestCase
             'email_cliente' => 'cliente@empresa.com.br',
             'cnpj'          => '12.345.678/0001-95',
             'nome_contato'  => 'Fulano de Tal',
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'razao_social'  => 'Empresa de Teste LTDA',
+            'endereco'      => 'Rua de Teste, 123',
         ], $overrides));
     }
 
@@ -86,6 +89,9 @@ class ContratoDadosMinimosTest extends TestCase
             'valor_contratado' => 100,
             'data_contratacao' => '2026-01-10',
             'ativo'            => true,
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'data_primeira_parcela' => '2026-02-05',
+            'dia_vencimento'        => 5,
         ], $overrides));
     }
 
@@ -184,18 +190,83 @@ class ContratoDadosMinimosTest extends TestCase
         $this->assertFalse($this->service->estaPronta($company));
     }
 
+    // ─── Quick 260819-guy — razao_social/endereco/data_primeira_parcela/dia_vencimento SUPERAM o "A DEFINIR" ───
+    //
+    // Renomeado de `campos_a_definir_nao_aparecem_em_faltantes`: a premissa
+    // daquele teste (esses 4 campos NUNCA reprovam) foi explicitamente
+    // revertida pelo usuário em 2026-08-19. Preservado por histórico no
+    // docblock da classe, não apagado.
+
     #[Test]
-    public function campos_a_definir_nao_aparecem_em_faltantes(): void
+    public function empresa_completa_com_os_4_campos_novos_preenchidos_nao_tem_faltantes(): void
     {
         $company = $this->companyCompleta();
         $this->contratoAtivo($company);
 
-        $faltantes = $this->service->faltantes($company);
-        $campos = collect($faltantes)->pluck('campo')->all();
+        $this->assertSame([], $this->service->faltantes($company));
+        $this->assertTrue($this->service->estaPronta($company));
+    }
 
-        $this->assertNotContains('endereco', $campos);
-        $this->assertNotContains('dia_vencimento', $campos);
-        $this->assertNotContains('data_primeira_parcela', $campos);
+    #[Test]
+    public function sem_razao_social_reprova_como_ausente(): void
+    {
+        $company = $this->companyCompleta(['razao_social' => null]);
+        $this->contratoAtivo($company);
+
+        $item = collect($this->service->faltantes($company))->firstWhere('campo', 'razao_social');
+        $this->assertNotNull($item);
+        $this->assertSame('ausente', $item['motivo']);
+        $this->assertFalse($this->service->estaPronta($company));
+    }
+
+    #[Test]
+    public function sem_endereco_reprova_como_ausente(): void
+    {
+        $company = $this->companyCompleta(['endereco' => null]);
+        $this->contratoAtivo($company);
+
+        $item = collect($this->service->faltantes($company))->firstWhere('campo', 'endereco');
+        $this->assertNotNull($item);
+        $this->assertSame('ausente', $item['motivo']);
+        $this->assertFalse($this->service->estaPronta($company));
+    }
+
+    #[Test]
+    public function sem_data_primeira_parcela_reprova_como_ausente_com_servico_id(): void
+    {
+        $company = $this->companyCompleta();
+        $servicoId = $this->servicoId();
+        $this->contratoAtivo($company, ['servico_id' => $servicoId, 'data_primeira_parcela' => null]);
+
+        $item = collect($this->service->faltantes($company))->firstWhere('campo', 'data_primeira_parcela');
+        $this->assertNotNull($item);
+        $this->assertSame('ausente', $item['motivo']);
+        $this->assertSame($servicoId, $item['servico_id']);
+    }
+
+    #[Test]
+    public function sem_dia_vencimento_reprova_como_ausente(): void
+    {
+        $company = $this->companyCompleta();
+        $this->contratoAtivo($company, ['dia_vencimento' => null]);
+
+        $item = collect($this->service->faltantes($company))->firstWhere('campo', 'dia_vencimento');
+        $this->assertNotNull($item);
+        $this->assertSame('ausente', $item['motivo']);
+    }
+
+    #[Test]
+    public function dia_vencimento_fora_da_faixa_1_a_31_reprova_como_formato(): void
+    {
+        $company = $this->companyCompleta();
+        // O schema permite qualquer unsignedTinyInteger (0-255); a validação
+        // de save (Tarefa 2) trava 1-31, mas este teste prova a defesa em
+        // profundidade em faltantes() para dado gravado por outro caminho.
+        $this->contratoAtivo($company, ['dia_vencimento' => 45]);
+
+        $item = collect($this->service->faltantes($company))->firstWhere('campo', 'dia_vencimento');
+        $this->assertNotNull($item);
+        $this->assertSame('formato', $item['motivo']);
     }
 
     #[Test]

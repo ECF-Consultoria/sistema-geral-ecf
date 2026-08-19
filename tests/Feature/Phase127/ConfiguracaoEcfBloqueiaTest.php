@@ -53,6 +53,9 @@ class ConfiguracaoEcfBloqueiaTest extends TestCase
             'cnpj'          => '11.222.333/0001-81',
             'email_cliente' => 'cliente@example.com',
             'nome_contato'  => 'Contato de Teste',
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'razao_social'  => 'Contato de Teste LTDA',
+            'endereco'      => 'Rua de Teste, 123',
         ]);
 
         ContratoServico::create([
@@ -61,6 +64,9 @@ class ConfiguracaoEcfBloqueiaTest extends TestCase
             'data_contratacao' => '2026-08-01',
             'valor_contratado' => 3000.00,
             'ativo'            => true,
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'data_primeira_parcela' => '2026-09-05',
+            'dia_vencimento'        => 5,
         ]);
 
         return $company;

@@ -69,6 +69,9 @@ class ContratoClicksignServiceTest extends TestCase
             'email_cliente' => 'cliente@empresa.com.br',
             'cnpj'          => '12.345.678/0001-95',
             'nome_contato'  => 'Fulano de Tal',
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'razao_social'  => 'Fulano de Tal LTDA',
+            'endereco'      => 'Rua de Teste, 123',
         ], $overrides));
     }
 
@@ -94,6 +97,9 @@ class ContratoClicksignServiceTest extends TestCase
             'data_contratacao' => '2026-01-10',
             'data_vencimento'  => '2027-01-10',
             'ativo'            => true,
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'data_primeira_parcela' => '2026-02-05',
+            'dia_vencimento'        => 5,
         ], $overrides)));
     }
 

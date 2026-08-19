@@ -97,6 +97,9 @@ class ReavaliacaoAutomaticaTest extends TestCase
             'email_cliente' => 'cliente@empresa.com.br',
             'cnpj'          => '12.345.678/0001-95',
             'nome_contato'  => 'Fulano de Tal',
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'razao_social'  => 'Fulano de Tal LTDA',
+            'endereco'      => 'Rua de Teste, 123',
         ], $overrides));
     }
 
@@ -109,6 +112,9 @@ class ReavaliacaoAutomaticaTest extends TestCase
             'data_contratacao' => '2026-01-10',
             'data_vencimento'  => '2027-01-10',
             'ativo'            => true,
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'data_primeira_parcela' => '2026-02-05',
+            'dia_vencimento'        => 5,
         ], $overrides));
     }
 
@@ -252,7 +258,17 @@ class ReavaliacaoAutomaticaTest extends TestCase
 
         $company = Company::where('name', 'Empresa Anti Laco 128-05')->firstOrFail();
 
-        $this->assertSame(1, ContratoAssinatura::where('company_id', $company->id)->count());
+        // Quick 260819-guy — desde 2026-08-19, razão social/endereço (por
+        // empresa) e data da 1ª parcela/dia de vencimento (por serviço) são
+        // OBRIGATÓRIOS em ContratoDadosMinimosService::faltantes(). O
+        // Comercial (`ComercialController::store()`) nunca coleta esses 4
+        // campos — são território exclusivo do Administrativo (ADM-01). O
+        // gate ainda É chamado (é o que este teste mede, ver assert abaixo),
+        // só que agora sempre recusa no 2º portão por dado faltando — zero
+        // ContratoAssinatura nasce até o Administrativo completar o
+        // cadastro. O teto de invocações continua o ponto principal desta
+        // suíte, não mudou.
+        $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->count());
         $this->assertGreaterThan(0, SpyGatilhoContratoAdministrativoService::$invocacoes);
         $this->assertLessThanOrEqual(2, SpyGatilhoContratoAdministrativoService::$invocacoes);
     }

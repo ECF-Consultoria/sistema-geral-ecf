@@ -97,6 +97,9 @@ class ContratoAdminDetalheTest extends TestCase
             'cnpj'          => '11.222.333/0001-81',
             'email_cliente' => 'cliente@example.com',
             'nome_contato'  => 'Contato de Teste',
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'razao_social'  => 'Contato de Teste LTDA',
+            'endereco'      => 'Rua de Teste, 123',
         ], $overrides));
     }
 
@@ -105,11 +108,18 @@ class ContratoAdminDetalheTest extends TestCase
      * `ContratoServicoGatilhoObserver` como efeito colateral do SETUP, antes
      * da chamada explícita que cada teste está medindo — mesmo cuidado do
      * `ContratoClicksignServiceTest` da Fase 127.
+     *
+     * Quick 260819-guy — `data_primeira_parcela`/`dia_vencimento` no default
+     * também: quem chama `vincularServico()` esperando uma empresa "pronta"
+     * (via `empresaCompleta()`) só fica de fato pronta com os 4 campos
+     * novos completos nos dois lados (empresa + serviço).
      */
     private function vincularServico(Company $c, Servico $s, array $overrides = []): ContratoServico
     {
         return ContratoServico::withoutEvents(fn () => ContratoServico::create(array_merge([
             'company_id'       => $c->id,
+            'data_primeira_parcela' => now()->addMonth()->toDateString(),
+            'dia_vencimento'        => 10,
             'servico_id'       => $s->id,
             'valor_contratado' => 100,
             'data_contratacao' => now()->toDateString(),
