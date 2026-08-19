@@ -46,6 +46,13 @@ class ContratoServico extends Model
         'data_vencimento',
         'ativo',
         'observacoes',
+        // Quick 260819-guy — data da 1ª parcela (data única) e dia do mês
+        // em que vencem as parcelas seguintes (1 a 31, NÃO uma data — ver
+        // comentário da migration). Completados pelo Administrativo na tela
+        // de contrato (ADM-01); alimentam `data_primeira_parcela` e
+        // `dia_vencimento` do modelo `.docx` da Clicksign.
+        'data_primeira_parcela',
+        'dia_vencimento',
         // Phase 111 — origem/valor HubSpot (HUB-SCHEMA-02). Colunas de
         // proveniência, sem uso ainda; valor_contratado segue como o valor
         // operacional (não mexer).
@@ -66,6 +73,9 @@ class ContratoServico extends Model
         'valor_contratado' => 'decimal:2',
         'data_contratacao' => 'date:Y-m-d',
         'data_vencimento'  => 'date:Y-m-d',
+        // Quick 260819-guy.
+        'data_primeira_parcela' => 'date:Y-m-d',
+        'dia_vencimento'        => 'integer',
         'ativo'            => 'boolean',
         // Phase 111 — casts decimal/json das novas colunas HubSpot (HUB-SCHEMA-02).
         'hubspot_valor_original'           => 'decimal:2',

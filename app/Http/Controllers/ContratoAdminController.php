@@ -275,6 +275,9 @@ class ContratoAdminController extends Controller
                 'cnpj'              => $company->cnpj,
                 'email_cliente'     => $company->email_cliente,
                 'nome_contato'      => $company->nome_contato,
+                // Quick 260819-guy.
+                'razao_social'      => $company->razao_social,
+                'endereco'          => $company->endereco,
             ],
             'contratos_servico' => $contratosServicoAtivos->map(fn (ContratoServico $cs) => [
                 'id'                => $cs->id,
@@ -284,6 +287,9 @@ class ContratoAdminController extends Controller
                 'valor_contratado'  => (float) $cs->valor_contratado,
                 'data_contratacao'  => optional($cs->data_contratacao)->format('Y-m-d'),
                 'data_vencimento'   => optional($cs->data_vencimento)->format('Y-m-d'),
+                // Quick 260819-guy.
+                'data_primeira_parcela' => optional($cs->data_primeira_parcela)->format('Y-m-d'),
+                'dia_vencimento'        => $cs->dia_vencimento,
             ])->values(),
             // Retorno CRU de faltantes() — a tela exibe `rotulo`, não recalcula
             // nada no client (contrato de retorno é PÚBLICO, ver docblock do
@@ -343,10 +349,12 @@ class ContratoAdminController extends Controller
 
     /**
      * ADM-01 — o Administrativo completa aqui o que o Comercial deixou pela
-     * metade: CNPJ, e-mail do cliente, nome de quem assina e as datas de
-     * início/término de cada serviço. E-mail do colaborador (acesso à conta
-     * do Mercado Livre) fica fora desta tela — Quick 260817-d6h — e é
-     * completado em `/companies` (`CompanyController`).
+     * metade: CNPJ, e-mail do cliente, nome de quem assina, razão social e
+     * endereço da empresa (Quick 260819-guy), e — por serviço — as datas de
+     * início/término, a data da 1ª parcela e o dia do mês do vencimento das
+     * demais (Quick 260819-guy). E-mail do colaborador (acesso à conta do
+     * Mercado Livre) fica fora desta tela — Quick 260817-d6h — e é completado
+     * em `/companies` (`CompanyController`).
      *
      * D8 travada da milestone: nada aqui volta para o Comercial — a cobrança
      * do dado termina nesta tela.
@@ -357,10 +365,20 @@ class ContratoAdminController extends Controller
             'cnpj'                                 => ['nullable', 'string', 'max:20'],
             'email_cliente'                        => ['nullable', 'email'],
             'nome_contato'                          => ['nullable', 'string', 'max:255'],
+            // Quick 260819-guy — razão social/endereço são POR EMPRESA (mesmo
+            // bloco de cnpj/email/nome_contato); campos por serviço vão em
+            // contratos_servico.*.
+            'razao_social'                          => ['nullable', 'string', 'max:255'],
+            'endereco'                               => ['nullable', 'string', 'max:255'],
             'contratos_servico'                     => ['array'],
             'contratos_servico.*.id'                => ['required', 'integer', 'exists:contratos_servico,id'],
             'contratos_servico.*.data_contratacao'  => ['nullable', 'date'],
             'contratos_servico.*.data_vencimento'   => ['nullable', 'date'],
+            // Quick 260819-guy — data da 1ª parcela (data única) e dia do mês
+            // (1 a 31, NÃO uma data — ver docblock da migration) em que
+            // vencem as parcelas seguintes.
+            'contratos_servico.*.data_primeira_parcela' => ['nullable', 'date'],
+            'contratos_servico.*.dia_vencimento'        => ['nullable', 'integer', 'min:1', 'max:31'],
         ]);
 
         $itensServico = $data['contratos_servico'] ?? [];
@@ -384,13 +402,16 @@ class ContratoAdminController extends Controller
 
         // Mass assignment sobre os $fillable já existentes de Company — nunca
         // $guarded = [].
-        $company->fill(collect($data)->only(['cnpj', 'email_cliente', 'nome_contato'])->all());
+        $company->fill(collect($data)->only(['cnpj', 'email_cliente', 'nome_contato', 'razao_social', 'endereco'])->all());
         $company->save();
 
         foreach ($paresParaAtualizar as [$contratoServico, $item]) {
             $contratoServico->update([
-                'data_contratacao' => $item['data_contratacao'] ?? null,
-                'data_vencimento'  => $item['data_vencimento'] ?? null,
+                'data_contratacao'       => $item['data_contratacao'] ?? null,
+                'data_vencimento'        => $item['data_vencimento'] ?? null,
+                // Quick 260819-guy.
+                'data_primeira_parcela'  => $item['data_primeira_parcela'] ?? null,
+                'dia_vencimento'         => $item['dia_vencimento'] ?? null,
             ]);
         }
 

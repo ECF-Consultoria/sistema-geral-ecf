@@ -253,6 +253,74 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertSame('2027-01-10', $contratoServicoFresco->data_vencimento->format('Y-m-d'));
     }
 
+    // ─── Quick 260819-guy — PATCH grava razao_social/endereco/data_primeira_parcela/dia_vencimento ───
+
+    public function test_atualizar_cadastro_grava_razao_social_endereco_e_datas_de_pagamento_por_servico(): void
+    {
+        $admin           = $this->admin();
+        $empresa         = $this->empresaIncompleta(['name' => 'Empresa Para Dados De Pagamento']);
+        $servico         = $this->servicoComContrato();
+        $contratoServico = $this->vincularServico($empresa, $servico);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            'razao_social'      => 'Empresa Para Dados De Pagamento LTDA',
+            'endereco'          => 'Rua das Empresas, 100 — Centro',
+            'contratos_servico' => [
+                [
+                    // atualizarCadastro() sobrescreve TODOS os campos do
+                    // item, sempre — reenvia data_contratacao já existente
+                    // para não nulificá-la (NOT NULL na coluna).
+                    'id'                     => $contratoServico->id,
+                    'data_contratacao'       => $contratoServico->data_contratacao->format('Y-m-d'),
+                    'data_primeira_parcela'  => '2026-09-05',
+                    'dia_vencimento'         => 10,
+                ],
+            ],
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        // Reconsulta ao banco — nunca confia na mensagem de sucesso.
+        $empresaFresca = $empresa->fresh();
+        $this->assertSame('Empresa Para Dados De Pagamento LTDA', $empresaFresca->razao_social);
+        $this->assertSame('Rua das Empresas, 100 — Centro', $empresaFresca->endereco);
+
+        $contratoServicoFresco = $contratoServico->fresh();
+        $this->assertSame('2026-09-05', $contratoServicoFresco->data_primeira_parcela->format('Y-m-d'));
+        $this->assertSame(10, $contratoServicoFresco->dia_vencimento);
+    }
+
+    // ─── Quick 260819-guy — show() devolve os 4 campos novos e eles sobrevivem a um recarregamento ───
+
+    public function test_show_devolve_razao_social_endereco_e_datas_de_pagamento_apos_recarregar(): void
+    {
+        $admin           = $this->admin();
+        $empresa         = $this->empresaCompleta([
+            'name'         => 'Empresa Com Dados De Pagamento',
+            'razao_social' => 'Empresa Com Dados De Pagamento LTDA',
+            'endereco'     => 'Av. Principal, 500',
+        ]);
+        $servico         = $this->servicoComContrato();
+        $contratoServico = $this->vincularServico($empresa, $servico, [
+            'data_primeira_parcela' => '2026-09-05',
+            'dia_vencimento'        => 15,
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $this->assertSame('Empresa Com Dados De Pagamento LTDA', $props['company']['razao_social']);
+        $this->assertSame('Av. Principal, 500', $props['company']['endereco']);
+
+        $itemServico = collect($props['contratos_servico'])->firstWhere('id', $contratoServico->id);
+        $this->assertNotNull($itemServico);
+        $this->assertSame('2026-09-05', $itemServico['data_primeira_parcela']);
+        $this->assertSame(15, $itemServico['dia_vencimento']);
+    }
+
     // ─── Caso 6 — IDOR: contratos_servico[0][id] de OUTRA empresa devolve 422 e não grava nada ───
 
     public function test_atualizar_cadastro_com_contrato_servico_de_outra_empresa_devolve_422_e_nao_grava_nada(): void

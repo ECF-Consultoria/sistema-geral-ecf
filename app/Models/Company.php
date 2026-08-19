@@ -35,6 +35,11 @@ class Company extends Model
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
         'cust_id_status', 'marketplace',
         'segment', 'active', 'status', 'notes', 'email_cliente', 'telefone',
+        // Quick 260819-guy — razão social (nome jurídico, distinto de `name`
+        // que é o nome fantasia) e endereço, completados pelo Administrativo
+        // na tela de contrato (ADM-01). Alimentam variáveis do modelo `.docx`
+        // da Clicksign que hoje saem "A DEFINIR" (ver ContratoPdfService).
+        'razao_social', 'endereco',
         'parent_company_id', 'company_group_id', 'ml_link_generated_at', 'ml_link_url',
         // Link pendente de autorização Shopee (espelha ml_link_*).
         'shopee_link_generated_at', 'shopee_link_url',

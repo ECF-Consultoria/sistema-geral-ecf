@@ -63,10 +63,17 @@ export default function ContratoDetalhe({
         cnpj:               company.cnpj ?? '',
         email_cliente:      company.email_cliente ?? '',
         nome_contato:       company.nome_contato ?? '',
+        // Quick 260819-guy — razão social/endereço são por EMPRESA.
+        razao_social:       company.razao_social ?? '',
+        endereco:           company.endereco ?? '',
         contratos_servico:  contratos_servico.map((cs) => ({
-            id:                cs.id,
-            data_contratacao:  cs.data_contratacao ?? '',
-            data_vencimento:   cs.data_vencimento ?? '',
+            id:                     cs.id,
+            data_contratacao:       cs.data_contratacao ?? '',
+            data_vencimento:        cs.data_vencimento ?? '',
+            // Quick 260819-guy — data da 1ª parcela e dia do mês do
+            // vencimento das demais são por SERVIÇO.
+            data_primeira_parcela:  cs.data_primeira_parcela ?? '',
+            dia_vencimento:         cs.dia_vencimento ?? '',
         })),
     });
 
@@ -345,6 +352,32 @@ export default function ContratoDetalhe({
                                     )}
                                 </div>
 
+                                <div className="space-y-1.5">
+                                    <Label>Razão social</Label>
+                                    <Input
+                                        value={cadastroForm.data.razao_social}
+                                        onChange={(e) => cadastroForm.setData('razao_social', e.target.value)}
+                                        placeholder="Nome jurídico completo — pode ser diferente do nome usado no dia a dia"
+                                        className="focus:border-ecf-yellow/40"
+                                    />
+                                    {cadastroForm.errors.razao_social && (
+                                        <p className="text-red-400 text-[11px]">{cadastroForm.errors.razao_social}</p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label>Endereço</Label>
+                                    <Input
+                                        value={cadastroForm.data.endereco}
+                                        onChange={(e) => cadastroForm.setData('endereco', e.target.value)}
+                                        placeholder="Endereço completo que vai constar no contrato"
+                                        className="focus:border-ecf-yellow/40"
+                                    />
+                                    {cadastroForm.errors.endereco && (
+                                        <p className="text-red-400 text-[11px]">{cadastroForm.errors.endereco}</p>
+                                    )}
+                                </div>
+
                                 {contratos_servico.length > 0 && (
                                     <div className="space-y-3 pt-3 border-t border-white/[0.06]">
                                         <p className="text-[11px] text-white/40 uppercase tracking-wide">Datas por serviço</p>
@@ -352,27 +385,55 @@ export default function ContratoDetalhe({
                                             const item = cadastroForm.data.contratos_servico.find((x) => x.id === cs.id) ?? {
                                                 data_contratacao: '',
                                                 data_vencimento: '',
+                                                data_primeira_parcela: '',
+                                                dia_vencimento: '',
                                             };
                                             return (
-                                                <div key={cs.id} className="grid grid-cols-3 gap-3 items-end">
+                                                <div key={cs.id} className="space-y-2">
                                                     <div className="text-[13px] text-white/70">{cs.servico_nome}</div>
-                                                    <div className="space-y-1.5">
-                                                        <Label className="text-[11px]">Data de início</Label>
-                                                        <Input
-                                                            type="date"
-                                                            value={item.data_contratacao}
-                                                            onChange={(e) => atualizarDataServico(cs.id, 'data_contratacao', e.target.value)}
-                                                            className="focus:border-ecf-yellow/40"
-                                                        />
+                                                    <div className="grid grid-cols-2 gap-3 items-end">
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-[11px]">Data de início</Label>
+                                                            <Input
+                                                                type="date"
+                                                                value={item.data_contratacao}
+                                                                onChange={(e) => atualizarDataServico(cs.id, 'data_contratacao', e.target.value)}
+                                                                className="focus:border-ecf-yellow/40"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-[11px]">Data de término</Label>
+                                                            <Input
+                                                                type="date"
+                                                                value={item.data_vencimento}
+                                                                onChange={(e) => atualizarDataServico(cs.id, 'data_vencimento', e.target.value)}
+                                                                className="focus:border-ecf-yellow/40"
+                                                            />
+                                                        </div>
                                                     </div>
-                                                    <div className="space-y-1.5">
-                                                        <Label className="text-[11px]">Data de término</Label>
-                                                        <Input
-                                                            type="date"
-                                                            value={item.data_vencimento}
-                                                            onChange={(e) => atualizarDataServico(cs.id, 'data_vencimento', e.target.value)}
-                                                            className="focus:border-ecf-yellow/40"
-                                                        />
+                                                    {/* Quick 260819-guy — data da 1ª parcela e dia do vencimento
+                                                        das demais, por serviço, ao lado das datas de vigência. */}
+                                                    <div className="grid grid-cols-2 gap-3 items-end">
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-[11px]">Data da 1ª parcela</Label>
+                                                            <Input
+                                                                type="date"
+                                                                value={item.data_primeira_parcela}
+                                                                onChange={(e) => atualizarDataServico(cs.id, 'data_primeira_parcela', e.target.value)}
+                                                                className="focus:border-ecf-yellow/40"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-[11px]">Dia do vencimento das demais (dia do mês, 1 a 31)</Label>
+                                                            <Input
+                                                                type="number"
+                                                                min={1}
+                                                                max={31}
+                                                                value={item.dia_vencimento}
+                                                                onChange={(e) => atualizarDataServico(cs.id, 'dia_vencimento', e.target.value)}
+                                                                className="focus:border-ecf-yellow/40"
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );
