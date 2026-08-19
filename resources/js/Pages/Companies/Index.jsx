@@ -20,6 +20,9 @@ import NpsPendingBadge from '@/Components/Nps/NpsPendingBadge';
 // junto pois o botao "Servico" inline tambem nao aparece mais (pendencia
 // sem_servico migrou para o Comercial).
 import { IMaskInput } from 'react-imask';
+// Aba "Onboarding" — a leitura do painel /onboarding dentro da tela onde os
+// responsáveis já são atribuídos.
+import AbaOnboarding from './components/AbaOnboarding';
 
 // Quick task 260805-eqk — MARKETPLACES_EXTRAS removida junto com a coluna
 // companies.marketplaces_extras (substituida pela tabela company_marketplaces).
@@ -139,7 +142,7 @@ export default function Companies({ companies, users, estrategistas = [], analis
     // caem silenciosamente em 'empresas'. Gestao de grupos migrou para /comercial/empresas/listagem.
     const [tab, setTab] = useState(() => {
         const t = new URLSearchParams(window.location.search).get('tab');
-        return ['empresas', 'pendencias'].includes(t) ? t : 'empresas';
+        return ['empresas', 'pendencias', 'onboarding'].includes(t) ? t : 'empresas';
     });
     const [search, setSearch] = useRemember('', 'companies-index-search');
     const [servicoFilter, setServicoFilter] = useState(''); // servico id (string) ou ''
@@ -337,9 +340,15 @@ export default function Companies({ companies, users, estrategistas = [], analis
 
     // Phase 37 Plan 37-06 (REQ-37-07) — aba Grupos removida; migrou para
     // /comercial/empresas/listagem (Plan 37-05).
+    // Contagem da aba Onboarding: empresas com ao menos um onboarding NÃO
+    // concluído. Onboarding fechado não é trabalho pendente de ninguém e
+    // inflaria o número que a pessoa usa para decidir se abre a aba.
+    const emOnboarding = companies.filter(c => (c.onboarding_resumo?.nao_concluidos ?? 0) > 0);
+
     const TABS = [
         { key: 'empresas',   label: `Empresas (${totalAtivas})` },
         { key: 'pendencias', label: `Pendências (${pendentes.length})` },
+        { key: 'onboarding', label: `Onboarding (${emOnboarding.length})` },
     ];
 
     return (
@@ -620,6 +629,15 @@ export default function Companies({ companies, users, estrategistas = [], analis
                             </CardContent>
                         </Card>
                     </>
+                )}
+
+                {/* ══════════════ ABA ONBOARDING ══════════════ */}
+                {tab === 'onboarding' && (
+                    <AbaOnboarding
+                        companies={companies}
+                        estrategistas={estrategistasOptions}
+                        analistas={analistasOptions}
+                    />
                 )}
 
                 {/* Phase 37 Plan 37-06 (REQ-37-07) — aba Grupos migrou para /comercial/empresas/listagem (Plan 37-05). */}
