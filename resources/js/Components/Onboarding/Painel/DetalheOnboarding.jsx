@@ -3,6 +3,7 @@ import { RefreshCw, Lock, Zap, AlertTriangle, CheckCircle2, MinusCircle } from '
 import { Button } from '@/Components/ui/button';
 import { cn } from '@/lib/utils';
 import DonoBadge from './DonoBadge';
+import NaturezaBadge from './NaturezaBadge';
 
 const DONO_LABEL = { cliente: 'cliente', interno: 'interno', sistema: 'sistema' };
 
@@ -155,6 +156,7 @@ function LinhaPasso({ passo }) {
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-white font-semibold text-[14px]">{passo.titulo}</span>
                     <DonoBadge dono={passo.dono} setor={passo.setor} />
+                    <NaturezaBadge natureza={passo.natureza} />
                     {passo.tem_auto_fonte && (
                         <Zap
                             size={14}

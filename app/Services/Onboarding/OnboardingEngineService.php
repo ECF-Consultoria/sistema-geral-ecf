@@ -392,6 +392,10 @@ class OnboardingEngineService
                 'onboarding_id' => $onboarding->id,
                 'ordem'         => $passo['ordem'],
                 'etapa'         => $passo['etapa'] ?? null,
+                // Estrutural como `etapa`: copiada, não referenciada. Default
+                // `acao` para que uma entrada de definição que esqueça o campo
+                // nasça no valor mais conservador em vez de `null`.
+                'natureza'      => $passo['natureza'] ?? OnboardingPasso::NATUREZA_ACAO,
                 'chave'         => $passo['chave'],
                 'titulo'        => $passo['titulo'],
                 'dono'          => $passo['dono'],

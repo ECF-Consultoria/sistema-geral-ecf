@@ -45,6 +45,7 @@ class OnboardingPasso extends Model
         'onboarding_id',
         'ordem',
         'etapa',
+        'natureza',
         'chave',
         'titulo',
         'dono',
@@ -146,6 +147,34 @@ class OnboardingPasso extends Model
         self::ETAPA_MAPEAMENTO,
         self::ETAPA_AGENDAMENTO,
         self::ETAPA_ADMINISTRATIVO,
+    ];
+
+    // ─── Catálogo fechado de `natureza` (COMO o item se preenche) ───────────
+    /**
+     * Terceiro eixo do passo, ortogonal a `dono` e a `auto_fonte`.
+     *
+     *  - `dono`       → de QUEM é a bola (cliente | interno | sistema)
+     *  - `auto_fonte` → COMO o sistema sabe que aconteceu
+     *  - `natureza`   → COMO o item se preenche
+     *
+     * Existe porque "conduzir na reunião" e "responder uma pergunta" são
+     * ambos `dono=interno`: mesmo dono, comportamento de tela completamente
+     * diferente. Sem eixo próprio, a tela não tem como saber que um item se
+     * responde numa call e o outro se preenche a qualquer momento.
+     *
+     * ESTRUTURAL: copiada da definição no nascimento, como `etapa`.
+     */
+    /** Alguém executa algo fora do sistema e o passo registra que foi feito. */
+    public const NATUREZA_ACAO = 'acao';
+    /** Conduzido NA REUNIÃO — a resposta nasce da conversa com o cliente. */
+    public const NATUREZA_REUNIAO = 'reuniao';
+    /** Pergunta com resposta preenchida pela equipe. */
+    public const NATUREZA_PERGUNTA = 'pergunta';
+
+    public const NATUREZAS = [
+        self::NATUREZA_ACAO,
+        self::NATUREZA_REUNIAO,
+        self::NATUREZA_PERGUNTA,
     ];
 
     // ─── Catálogo fechado de `condicao` (D-12 — passo condicional) ──────────

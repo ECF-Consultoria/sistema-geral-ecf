@@ -93,8 +93,19 @@ class DefinicaoOnboarding
      * a volta atrás caríssima, e ninguém pediu isso.
      *
      * A `ordem` segue não renumerada, pelo mesmo motivo da v7.
+     *
+     * v11 — todo passo passa a declarar `natureza` (COMO o item se preenche):
+     * `acao` | `reuniao` | `pergunta`. Os 9 passos existentes são todos
+     * `acao` e NADA neles muda — título, dono, SLA e dependências seguem
+     * iguais. A versão sobe porque a receita ganhou um campo estrutural, que
+     * é copiado no nascimento: quem nasceu antes carrega `natureza` nula e o
+     * front a lê como `acao`.
+     *
+     * O eixo existe porque os itens que o negócio pediu em 2026-08-19 —
+     * conduzir na reunião × responder uma pergunta — são AMBOS `dono=interno`.
+     * Sem eixo próprio a tela não distingue os dois.
      */
-    public const VERSAO = 10;
+    public const VERSAO = 11;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -321,6 +332,7 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 3,
                 'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'grant_sistema_ecf',
                 'titulo'     => 'Grant com o Sistema ECF (OAuth)',
                 // PRIMEIRA ação do cliente, e a que destrava o resto: é por ela
@@ -340,6 +352,7 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 4,
                 'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'acesso_colaborador_ml',
                 'titulo'     => 'Acesso colaborador Mercado Livre',
                 // Vem DEPOIS do grant: primeiro o cliente autoriza e o sistema
@@ -354,6 +367,7 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 5,
                 'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'planilha_custos_adman',
                 'titulo'     => 'Planilha de custos ADMAN',
                 // v6 — passa a ser do CLIENTE: é ele quem concede/vincula a
@@ -369,6 +383,7 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 6,
                 'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'grant_consultoria_adman',
                 'titulo'     => 'Grant com a Consultoria (Adman)',
                 // v6 — só o cliente concede o grant à Consultoria dentro da
@@ -389,6 +404,7 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 8,
                 'etapa'      => OnboardingPasso::ETAPA_MAPEAMENTO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'metricas_da_conta',
                 'titulo'     => 'Métricas da conta',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -407,6 +423,7 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 9,
                 'etapa'      => OnboardingPasso::ETAPA_MAPEAMENTO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'anuncios_ativos_inativos',
                 'titulo'     => 'Anúncios ativos / inativos',
                 'dono'       => OnboardingPasso::DONO_SISTEMA,
@@ -419,6 +436,7 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 11,
                 'etapa'      => OnboardingPasso::ETAPA_MAPEAMENTO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'custos_app_ecf',
                 'titulo'     => 'Custos no App ECF',
                 'dono'       => OnboardingPasso::DONO_CLIENTE,
@@ -431,6 +449,7 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 13,
                 'etapa'      => OnboardingPasso::ETAPA_AGENDAMENTO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'agendar_reuniao_onboarding',
                 'titulo'     => 'Agendar reunião de onboarding',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
@@ -443,6 +462,7 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 15,
                 'etapa'      => OnboardingPasso::ETAPA_AGENDAMENTO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'reuniao_realizada',
                 'titulo'     => 'Reunião de onboarding realizada',
                 // v10 — dependia também de `confirmacao_pagamento` e

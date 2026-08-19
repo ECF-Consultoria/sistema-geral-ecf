@@ -579,6 +579,9 @@ class OnboardingController extends Controller
             'id'             => $passo->id,
             'chave'          => $passo->chave,
             'etapa'          => $passo->etapa,
+            // `null` vira `acao`: linha antiga, anterior ao eixo, se comporta
+            // como o que sempre foi.
+            'natureza'       => $passo->natureza ?? OnboardingPasso::NATUREZA_ACAO,
             'titulo'         => $passo->titulo,
             'dono'           => $passo->dono,
             'setor'          => $passo->setor?->nome,
