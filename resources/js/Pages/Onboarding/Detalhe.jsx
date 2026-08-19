@@ -8,6 +8,7 @@ import DetalheOnboarding from '@/Components/Onboarding/Painel/DetalheOnboarding'
 import RelatorioInicial from '@/Components/Onboarding/RelatorioInicial';
 import ReuniaoBloco from '@/Components/Onboarding/Painel/ReuniaoBloco';
 import LinkDoCliente from '@/Components/Onboarding/Painel/LinkDoCliente';
+import ContextoDaVenda from '@/Components/Onboarding/Painel/ContextoDaVenda';
 import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
 
 const initials = (name) =>
@@ -77,6 +78,11 @@ export default function Detalhe({
 
                 {/* Link antes dos passos: a primeira pergunta de quem abre esta
                     tela é "o cliente já viu o que pedimos?" */}
+                {/* O que o Comercial já coletou — os itens "revisar SPIN" e
+                    "revisar contexto" do checklist novo precisam disto na MESMA
+                    tela, senão revisar significa procurar em outra (§3). */}
+                <ContextoDaVenda spin={onboarding.spin} contexto={onboarding.contexto} />
+
                 <LinkDoCliente companyId={onboarding.empresa.id} link={link} />
 
                 {mapeamento && (
