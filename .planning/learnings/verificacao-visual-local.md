@@ -141,3 +141,48 @@ chown -R www-data:www-data /var/www/ecf_admin
 
 Sem `composer install`, sem `migrate`, sem restart de worker — ~20s de build em
 vez de 10+ minutos. Confirme pelo hash novo em `public/build/manifest.json`.
+
+## 7. Worktree para DESENVOLVER (não só para deployar): 3 armadilhas de ambiente
+
+O §6 acima trata da worktree como veículo de deploy. Quando ela é o lugar onde
+se **escreve** o código — porque a árvore principal está centenas de commits
+atrás e com trabalho vivo de outra sessão —, três coisas custam tempo antes de
+qualquer linha ser escrita. Medido em 2026-08-19, com o `main` local **443
+commits atrás** do `origin/main`.
+
+1. **`composer install` falha por plataforma.** O `composer.lock` atual exige
+   `php-64bit ^8.3` (via `maennchen/zipstream-php`) e o PHP local é 8.2.12. O
+   `vendor/` da árvore principal foi instalado antes disso e não denuncia o
+   problema. Use `--ignore-platform-req=php-64bit`. **O binário é
+   `/c/xampp/htdocs/ecf_admin/composer.phar`** — não há `composer` no PATH do
+   Bash tool, e o caminho do ComposerSetup não existe.
+
+2. **O autoloader não vem junto.** Mesmo com o install completo, `vendor/autoload.php`
+   pode não ser gerado (o `dump-autoload` do install morre no mesmo platform
+   check). Rode `dump-autoload --ignore-platform-reqs` explicitamente — é isso
+   que também remove o `platform_check.php` que abortaria toda execução. Confira
+   que `autoload_psr4.php` usa `$baseDir = dirname($vendorDir)` (relativo): é o
+   que faz o autoloader apontar para a worktree e não para a árvore principal.
+
+3. **Sem `public/build`, a suíte inteira mente.** `public/build/` é gitignored,
+   então a worktree nasce sem manifest do Vite. Sem manifest, **todo**
+   `Inertia::render` estoura e o PHPUnit reporta `The response is not a view` —
+   deram 34 falhas que sumiram sozinhas depois de um `npm run build`. Antes de
+   investigar qualquer "falha de baseline" numa worktree nova, rode o build.
+
+E para a verificação visual: `ASSET_URL` aponta para
+`http://localhost/ecf_admin/public/` — a árvore **principal**, servida pelo
+Apache. Uma worktree servida por `artisan serve` numa porta própria carrega,
+sem interceptação, o bundle **antigo** da outra árvore. A receita do §3 resolve
+apontando a interceptação para o `public/` da worktree.
+
+### Falhas pré-existentes medidas neste dia (não são regressão sua)
+
+Rodadas em `7f89a5c9` com a árvore limpa:
+
+- `Phase61/PortfolioMultiFonteE2ETest` (2) e `Phase61/PortfolioSourceEnrichmentTest` (1)
+  — `user_portfolios` volta vazio.
+- `V16/DesempenhoElegibilidadeTest` (2) e `V16/PerformanceIndexMetadadosTest` (3).
+
+`tests/Feature/Phase135` estava **verde** (248/248), assim como os testes de
+`/companies` — o que faz dessas 8 uma lista fechada e conferível.
