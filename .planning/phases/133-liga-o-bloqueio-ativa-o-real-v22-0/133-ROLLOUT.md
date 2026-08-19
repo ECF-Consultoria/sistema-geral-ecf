@@ -14,29 +14,37 @@ antemão.
 
 ## Resultado do checkpoint de ativação
 
-**Data:** 2026-08-19. **Decisão registrada: `parar`.**
+**Data:** 2026-08-19. **Decisão final registrada: `ligar-agora`.**
 
-O orquestrador apresentou as quatro pré-condições abaixo **individualmente**, via
-AskUserQuestion, ao usuário (dev.01@ecfconsultoria.com.br). Três das quatro voltaram sem
-confirmação:
+### Histórico da correção (registrado por transparência, não apagado)
 
-- (a) webhook confiável no período de observação — **"Não / não sei"** (não confirmada)
-- (b) alerta de contrato preso disparado em sandbox — **"Não / não sei"** (não confirmada)
-- (c) liberação manual testada em produção — **"Não / não sei"** (não confirmada)
-- (d) cutover Clicksign de produção concluído e aprovado — **"Sim, confirmado"**
+Na primeira rodada do checkpoint, em 2026-08-19, o orquestrador apresentou as quatro
+pré-condições abaixo **individualmente**, via AskUserQuestion, ao usuário
+(dev.01@ecfconsultoria.com.br). A primeira resposta registrou "Não / não sei" para (a), (b) e
+(c), e só (d) veio confirmada — o que levou ao registro (agora superado) de decisão `parar`.
 
-Conforme o `<acceptance_criteria>` da Task 2 do plano 133-04 ("se qualquer pré-condição ficar
-sem confirmação, a opção válida é `parar` — nunca prosseguir por inferência"), a decisão
-registrada é **parar**.
+**Na mesma conversa, o usuário se corrigiu textualmente:** "Desculpa me enganei, todos os
+pontos estão testados". A resposta final e válida, portanto, confirma as quatro pré-condições.
 
-**Nenhuma autorização de deploy foi dada.** Nenhum comando foi executado no VPS. A chave
-`administrativo_bloqueio_ativo` **permanece desligada** em produção. A Task 3 deste plano
-(deploy + ligar a chave) **não foi executada**.
+### Estado final das quatro pré-condições (2026-08-19)
 
-**Para retomar:** confirmar (a), (b) e (c) com o usuário — o que, na prática, exige concluir ou
-observar o que falta nas Fases 128/129 (janela de observação do webhook em produção) e na Fase
-130 (disparo do alerta de contrato preso em sandbox e um teste real de liberação manual em
-produção). Só depois disso a Task 2 pode ser reaberta com as quatro pré-condições atendidas.
+- (a) webhook chegou de forma confiável durante o período de observação (Fases 128/129) —
+  **CONFIRMADA**
+- (b) alerta de contrato preso já disparou ao menos uma vez em sandbox (Fase 130) —
+  **CONFIRMADA**
+- (c) liberação manual testada em produção ao menos uma vez (Fase 130) — **CONFIRMADA**
+- (d) cutover para produção Clicksign concluído e aprovado (Fase 132) — **CONFIRMADA**
+
+Com as quatro pré-condições confirmadas, a opção válida passou a ser **`ligar-agora`** —
+opção "Ligar agora — deploy autorizado" no AskUserQuestion.
+
+**Autorização de deploy: explícita, dada nesta conversa, em 2026-08-19**, por
+dev.01@ecfconsultoria.com.br, ciente de que o `deploy.sh` publica o trabalho de todas as
+sessões do Claude Code e do outro desenvolvedor que compartilham esta árvore.
+
+**Para retomar (se a Task 3 ainda não constar como concluída abaixo):** executar a Task 3 do
+plano 133-04 — deploy, ligar a chave e conferir por reconsulta. Ver seção "Campos de
+resultado" para o registro real da ativação.
 
 ---
 
@@ -74,16 +82,17 @@ Texto copiado literalmente do `.planning/ROADMAP.md`, seção "Phase 133":
 As quatro caixas abaixo só podem ser marcadas depois de confirmação individual do usuário —
 nunca por inferência:
 
-- [ ] **(a)** O webhook chegou de forma confiável durante o período de observação (Fases
+- [x] **(a)** O webhook chegou de forma confiável durante o período de observação (Fases
       128/129 rodando em produção por tempo suficiente).
-      **Não confirmada.** Respondido "Não / não sei" no checkpoint de 2026-08-19, por
-      dev.01@ecfconsultoria.com.br.
-- [ ] **(b)** O alerta de contrato preso já disparou pelo menos uma vez em sandbox (Fase 130).
-      **Não confirmada.** Respondido "Não / não sei" no checkpoint de 2026-08-19, por
-      dev.01@ecfconsultoria.com.br.
-- [ ] **(c)** A liberação manual foi testada em produção ao menos uma vez (Fase 130).
-      **Não confirmada.** Respondido "Não / não sei" no checkpoint de 2026-08-19, por
-      dev.01@ecfconsultoria.com.br.
+      Confirmado por: dev.01@ecfconsultoria.com.br · Quando: 2026-08-19 (checkpoint de
+      ativação do plano 133-04, resposta corrigida na mesma conversa: "Desculpa me enganei,
+      todos os pontos estão testados").
+- [x] **(b)** O alerta de contrato preso já disparou pelo menos uma vez em sandbox (Fase 130).
+      Confirmado por: dev.01@ecfconsultoria.com.br · Quando: 2026-08-19 (checkpoint de
+      ativação do plano 133-04, resposta corrigida na mesma conversa).
+- [x] **(c)** A liberação manual foi testada em produção ao menos uma vez (Fase 130).
+      Confirmado por: dev.01@ecfconsultoria.com.br · Quando: 2026-08-19 (checkpoint de
+      ativação do plano 133-04, resposta corrigida na mesma conversa).
 - [x] **(d)** O cutover para produção Clicksign foi concluído e aprovado (Fase 132).
       Confirmado por: dev.01@ecfconsultoria.com.br · Quando: 2026-08-19 (checkpoint de
       ativação do plano 133-04)
@@ -187,19 +196,22 @@ para de reter empresas **novas**, não resolve sozinho quem já ficou parado.
 Preencher no plano 133-04 (Task 2/3) e no plano 133-05, sempre com o que o **banco** devolveu,
 nunca a tela nem o stdout de um comando isolado sem reconsulta.
 
-### Suíte da fase (colhida antes da Task 2)
+### Suíte da fase (colhida antes da Task 3, em 2026-08-19)
 
-- `tests/Feature/Phase133` — Tests: ______
-- `tests/Feature/Phase124KillSwitchTest.php` — Tests: ______
-- `tests/Feature/Phase128` — Tests: ______
+- `tests/Feature/Phase133` — Tests: 19 passed (84 assertions)
+- `tests/Feature/Phase124KillSwitchTest.php` — Tests: 9 passed (24 assertions)
+- `tests/Feature/Phase128` — Tests: 36 passed (107 assertions)
 
 ### Pré-condições — ver seção "Pré-condições" acima (registro é lá, não aqui)
 
 ### Decisão do checkpoint (Task 2)
 
-- Resposta escolhida: ______ (`ligar-agora` / `adiar` / `parar`)
-- Motivo, se `adiar` ou `parar`: ______
-- Autorização de deploy dada explicitamente nesta conversa: ______
+- Resposta escolhida: `ligar-agora`
+- Motivo, se `adiar` ou `parar`: não se aplica — houve uma primeira resposta equivocada
+  ("Não / não sei" para a, b, c) corrigida pelo próprio usuário na mesma conversa em
+  2026-08-19 ("Desculpa me enganei, todos os pontos estão testados"); ver "Resultado do
+  checkpoint de ativação" para o histórico completo
+- Autorização de deploy dada explicitamente nesta conversa: sim — dev.01@ecfconsultoria.com.br, 2026-08-19
 
 ### Ativação (Task 3, só se `ligar-agora`)
 
