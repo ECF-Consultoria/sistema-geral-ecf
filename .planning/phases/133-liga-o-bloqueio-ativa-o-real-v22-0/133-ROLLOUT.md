@@ -12,6 +12,34 @@ antemão.
 
 ---
 
+## Resultado do checkpoint de ativação
+
+**Data:** 2026-08-19. **Decisão registrada: `parar`.**
+
+O orquestrador apresentou as quatro pré-condições abaixo **individualmente**, via
+AskUserQuestion, ao usuário (dev.01@ecfconsultoria.com.br). Três das quatro voltaram sem
+confirmação:
+
+- (a) webhook confiável no período de observação — **"Não / não sei"** (não confirmada)
+- (b) alerta de contrato preso disparado em sandbox — **"Não / não sei"** (não confirmada)
+- (c) liberação manual testada em produção — **"Não / não sei"** (não confirmada)
+- (d) cutover Clicksign de produção concluído e aprovado — **"Sim, confirmado"**
+
+Conforme o `<acceptance_criteria>` da Task 2 do plano 133-04 ("se qualquer pré-condição ficar
+sem confirmação, a opção válida é `parar` — nunca prosseguir por inferência"), a decisão
+registrada é **parar**.
+
+**Nenhuma autorização de deploy foi dada.** Nenhum comando foi executado no VPS. A chave
+`administrativo_bloqueio_ativo` **permanece desligada** em produção. A Task 3 deste plano
+(deploy + ligar a chave) **não foi executada**.
+
+**Para retomar:** confirmar (a), (b) e (c) com o usuário — o que, na prática, exige concluir ou
+observar o que falta nas Fases 128/129 (janela de observação do webhook em produção) e na Fase
+130 (disparo do alerta de contrato preso em sandbox e um teste real de liberação manual em
+produção). Só depois disso a Task 2 pode ser reaberta com as quatro pré-condições atendidas.
+
+---
+
 ## O que muda quando a chave liga
 
 Em linguagem simples: quando `administrativo_bloqueio_ativo` está ligada, toda empresa cujo
@@ -48,13 +76,17 @@ nunca por inferência:
 
 - [ ] **(a)** O webhook chegou de forma confiável durante o período de observação (Fases
       128/129 rodando em produção por tempo suficiente).
-      Confirmado por: ______ · Quando: ______
+      **Não confirmada.** Respondido "Não / não sei" no checkpoint de 2026-08-19, por
+      dev.01@ecfconsultoria.com.br.
 - [ ] **(b)** O alerta de contrato preso já disparou pelo menos uma vez em sandbox (Fase 130).
-      Confirmado por: ______ · Quando: ______
+      **Não confirmada.** Respondido "Não / não sei" no checkpoint de 2026-08-19, por
+      dev.01@ecfconsultoria.com.br.
 - [ ] **(c)** A liberação manual foi testada em produção ao menos uma vez (Fase 130).
-      Confirmado por: ______ · Quando: ______
-- [ ] **(d)** O cutover para produção Clicksign foi concluído e aprovado (Fase 132).
-      Confirmado por: ______ · Quando: ______
+      **Não confirmada.** Respondido "Não / não sei" no checkpoint de 2026-08-19, por
+      dev.01@ecfconsultoria.com.br.
+- [x] **(d)** O cutover para produção Clicksign foi concluído e aprovado (Fase 132).
+      Confirmado por: dev.01@ecfconsultoria.com.br · Quando: 2026-08-19 (checkpoint de
+      ativação do plano 133-04)
 
 ---
 
