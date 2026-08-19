@@ -407,9 +407,15 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertNull($empresa->fresh()->email_colaborador);
     }
 
-    // ─── Caso 8 — POST gerar para empresa incompleta: 422 e ZERO ContratoAssinatura ───
+    // ─── Caso 8 — POST gerar para empresa incompleta: flash de erro (não mais 422 cru) e ZERO ContratoAssinatura ───
+    //
+    // Quick 260819-guy (Tarefa 7 item 2) — antes era `abort(422, ...)`, que
+    // renderizava a página branca do Symfony, fora da aplicação. Agora é
+    // `back()->with('error', ...)`, igual ao ramo de emissão congelada e ao
+    // do Caso 11 abaixo — a checagem no servidor continua a mesma, só a
+    // apresentação mudou.
 
-    public function test_gerar_contrato_para_empresa_incompleta_devolve_422_e_nao_cria_nada(): void
+    public function test_gerar_contrato_para_empresa_incompleta_devolve_flash_de_erro_e_nao_cria_nada(): void
     {
         $admin   = $this->admin();
         $empresa = $this->empresaIncompleta(['name' => 'Empresa Incompleta Gerar']);
@@ -418,8 +424,10 @@ class ContratoAdminDetalheTest extends TestCase
 
         $response = $this->actingAs($admin)->post(route('admin.contratos.gerar', $empresa));
 
-        $response->assertStatus(422);
-        // Reconsulta ao banco — nunca confia só no status HTTP.
+        $response->assertRedirect();
+        $response->assertSessionHas('error');
+        $response->assertSessionMissing('success');
+        // Reconsulta ao banco — nunca confia só no flash da tela.
         $this->assertSame(0, ContratoAssinatura::where('company_id', $empresa->id)->count());
     }
 
@@ -522,5 +530,101 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertArrayNotHasKey('email', $signatarioProp);
         $this->assertArrayNotHasKey('cpf', $signatarioProp);
         $this->assertArrayNotHasKey('clicksign_signer_key', $signatarioProp);
+    }
+
+    // ─── Quick 260819-guy — Tarefa 7 item 1: erro_mensagem exposta e "já tentou antes" derivado ───
+
+    public function test_contrato_em_erro_expoe_erro_mensagem_e_ja_tentou_antes_falso_na_primeira_tentativa(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Primeira Tentativa Com Erro']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+
+        $contrato = ContratoAssinatura::factory()->create([
+            'company_id'    => $empresa->id,
+            'servico_id'    => $servico->id,
+            'status'        => ContratoAssinatura::STATUS_ERRO,
+            'erro_mensagem' => '[Clicksign] name não está em um formato válido',
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+        $response->assertOk();
+
+        $contratoProp = collect($response->viewData('page')['props']['contratos'])->firstWhere('id', $contrato->id);
+        $this->assertNotNull($contratoProp);
+        $this->assertSame('[Clicksign] name não está em um formato válido', $contratoProp['erro_mensagem']);
+        $this->assertFalse($contratoProp['ja_tentou_antes'], 'é a única linha deste serviço — é a primeira tentativa.');
+    }
+
+    public function test_segunda_linha_de_erro_do_mesmo_servico_vem_com_ja_tentou_antes_verdadeiro(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Segunda Tentativa Com Erro']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+
+        // Cada nova tentativa nasce como uma linha NOVA (a antiga, em erro,
+        // já liberou o slot — GerarContratoAssinaturaJob::failed()).
+        $primeiraTentativa = ContratoAssinatura::factory()->create([
+            'company_id'    => $empresa->id,
+            'servico_id'    => $servico->id,
+            'status'        => ContratoAssinatura::STATUS_ERRO,
+            'erro_mensagem' => 'Primeira falha',
+        ]);
+
+        $segundaTentativa = ContratoAssinatura::factory()->create([
+            'company_id'    => $empresa->id,
+            'servico_id'    => $servico->id,
+            'status'        => ContratoAssinatura::STATUS_ERRO,
+            'erro_mensagem' => 'Segunda falha',
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+        $response->assertOk();
+
+        $props = collect($response->viewData('page')['props']['contratos']);
+
+        $this->assertFalse($props->firstWhere('id', $primeiraTentativa->id)['ja_tentou_antes']);
+        $this->assertTrue($props->firstWhere('id', $segundaTentativa->id)['ja_tentou_antes']);
+    }
+
+    // ─── Quick 260819-guy — Tarefa 7 item 4: nome de uma palavra só é recusado no save ───
+
+    public function test_atualizar_cadastro_com_nome_contato_de_uma_palavra_e_recusado_e_nao_grava(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaIncompleta(['name' => 'Empresa Nome Sem Sobrenome']);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            'nome_contato' => 'teste',
+        ]);
+
+        $response->assertSessionHasErrors('nome_contato');
+        $this->assertNull($empresa->fresh()->nome_contato);
+    }
+
+    public function test_atualizar_cadastro_com_nome_completo_e_aceito(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaIncompleta(['name' => 'Empresa Nome Completo']);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            'nome_contato' => 'Maria Silva',
+        ]);
+
+        $response->assertSessionDoesntHaveErrors('nome_contato');
+        $this->assertSame('Maria Silva', $empresa->fresh()->nome_contato);
+    }
+
+    public function test_nome_contato_de_uma_palavra_so_entra_em_faltantes_como_motivo_formato(): void
+    {
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Nome Formato Ruim', 'nome_contato' => 'teste']);
+
+        $faltantes = app(ContratoDadosMinimosService::class)->faltantes($empresa);
+        $item = collect($faltantes)->firstWhere('campo', 'nome_contato');
+
+        $this->assertNotNull($item, 'nome_contato de uma palavra só deveria aparecer em faltantes().');
+        $this->assertSame('formato', $item['motivo']);
     }
 }

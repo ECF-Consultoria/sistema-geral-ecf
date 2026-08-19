@@ -4,6 +4,7 @@ namespace App\Services\Contratos;
 
 use App\Models\Company;
 use App\Support\Cnpj;
+use App\Support\NomeCompleto;
 
 /**
  * ContratoDadosMinimosService — a recusa que acontece ANTES de qualquer
@@ -91,9 +92,24 @@ class ContratoDadosMinimosService
             $itens[] = $this->item('cnpj', 'CNPJ', 'formato');
         }
 
-        // 3. Nome de quem assina pela empresa.
+        // 3. Nome de quem assina pela empresa — presença e, desde 2026-08-19
+        // (Quick 260819-guy, Tarefa 7 item 4), nome COMPLETO (mínimo duas
+        // palavras).
+        //
+        // ⚠️ SUPERADO — texto original preservado por histórico: esta regra
+        // checava só presença. Palavra única (ex.: "teste") passava aqui e só
+        // era recusada pela própria Clicksign, DEPOIS de já ter criado
+        // envelope e documento (`400 "name não está em um formato válido"`,
+        // caso real medido) — dois round-trips e ~6 minutos até o registro
+        // terminar em `status = erro`. `App\Support\NomeCompleto::valido()`
+        // (helper novo deste quick) recusa nome de uma palavra só ANTES de
+        // qualquer chamada HTTP. Nome de uma palavra só vira
+        // `motivo: 'formato'` — reusa o valor já existente do contrato
+        // público (nunca inventar um `motivo` novo).
         if (blank($company->nome_contato)) {
             $itens[] = $this->item('nome_contato', 'Nome de quem assina pela empresa', 'ausente');
+        } elseif (! NomeCompleto::valido((string) $company->nome_contato)) {
+            $itens[] = $this->item('nome_contato', 'Nome de quem assina pela empresa', 'formato');
         }
 
         // 4. Razão social (Quick 260819-guy) — presença. `companies.razao_social`

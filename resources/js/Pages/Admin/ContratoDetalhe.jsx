@@ -165,15 +165,13 @@ export default function ContratoDetalhe({
     }
 
     // ─── D-05 — Estado `erro`: assume a falha e oferece a saída ─────────
-    // Sem carimbo persistido de "quantas vezes já tentou" — a distinção
-    // 1ª/2ª falha é por sessão de navegação (reseta ao recarregar a página).
-    const [tentativasErro, setTentativasErro] = useState({});
+    // Quick 260819-guy (Tarefa 7 item 1) — "já tentou antes" e a mensagem de
+    // erro agora vêm PRONTOS do backend (`c.ja_tentou_antes`/
+    // `c.erro_mensagem`, calculados em `ContratoAdminController::show()`),
+    // não mais de um `useState({})` local que zerava a cada reload. O que
+    // continua local é só o toggle de abrir/fechar "Ver detalhes técnicos"
+    // — estado de exibição, não de dado.
     const [detalhesTecnicosAbertos, setDetalhesTecnicosAbertos] = useState({});
-
-    function tentarNovamente(contratoId) {
-        setTentativasErro((atual) => ({ ...atual, [contratoId]: (atual[contratoId] ?? 0) + 1 }));
-        gerarContrato();
-    }
 
     // ─── D-10 — Liberar manualmente (absorve a Fase 130, preserva D-11) ──
     // Reusa literalmente o texto já validado em
@@ -345,6 +343,7 @@ export default function ContratoDetalhe({
                                     <Input
                                         value={cadastroForm.data.nome_contato}
                                         onChange={(e) => cadastroForm.setData('nome_contato', e.target.value)}
+                                        placeholder="Nome completo — nome e sobrenome"
                                         className="focus:border-ecf-yellow/40"
                                     />
                                     {cadastroForm.errors.nome_contato && (
@@ -497,7 +496,11 @@ export default function ContratoDetalhe({
                                         const signatariosPendentes = podeAgir
                                             ? (c.signatarios || []).filter((s) => s.situacao === 'pendente')
                                             : [];
-                                        const tentativas = tentativasErro[c.id] ?? 0;
+                                        // Quick 260819-guy (Tarefa 7 item 1) — vem pronto do backend.
+                                        const jaTentouAntes = Boolean(c.ja_tentou_antes);
+                                        // Quick 260819-guy (Tarefa 7 item 3) — contrato pronto, mas
+                                        // ainda não enviado pelo painel da Clicksign (D-02, não é falha).
+                                        const faltaEnviarPelaClicksign = c.status === 'rascunho' && !c.preparando;
 
                                         return (
                                             <Fragment key={c.id}>
@@ -555,7 +558,7 @@ export default function ContratoDetalhe({
                                                                 <button
                                                                     type="button"
                                                                     disabled={gerarForm.processing}
-                                                                    onClick={() => tentarNovamente(c.id)}
+                                                                    onClick={gerarContrato}
                                                                     className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-ecf-yellow/80 hover:text-ecf-yellow hover:bg-ecf-yellow/[0.06] text-[12px] disabled:opacity-40 transition-colors"
                                                                 >
                                                                     <RefreshCcw size={11} />
@@ -597,6 +600,37 @@ export default function ContratoDetalhe({
                                                     </TableRow>
                                                 )}
 
+                                                {/* Quick 260819-guy (Tarefa 7 item 3) — o sistema para no rascunho
+                                                    DE PROPÓSITO (D-02 da Fase 127-05,
+                                                    `GerarContratoAssinaturaJob`, "a ativação acontece FORA do
+                                                    sistema"), mas nada na tela dizia isso nem linkava para o
+                                                    painel — o único link para a Clicksign era o do fluxo de
+                                                    cancelamento. Âmbar (ação pendente), nunca vermelho — isto
+                                                    não é uma falha. */}
+                                                {faltaEnviarPelaClicksign && (
+                                                    <TableRow key={`${c.id}-falta-enviar`}>
+                                                        <TableCell colSpan={4} className="py-2 border-t-0">
+                                                            <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[12px] text-amber-300/90">
+                                                                Este contrato já foi montado e está pronto — falta enviar para o cliente
+                                                                assinar, pelo painel da Clicksign.
+                                                                {painel_clicksign_url && (
+                                                                    <>
+                                                                        {' '}
+                                                                        <a
+                                                                            href={painel_clicksign_url}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="underline hover:text-amber-200"
+                                                                        >
+                                                                            Abrir o painel da Clicksign
+                                                                        </a>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+
                                                 {/* Aviso persistente de cancelamento solicitado (D-13) — âmbar,
                                                     "aguardando algo externo", nunca vermelho de erro. Some
                                                     sozinho quando a confirmação da Clicksign fechar o estado. */}
@@ -611,12 +645,17 @@ export default function ContratoDetalhe({
                                                     </TableRow>
                                                 )}
 
-                                                {/* D-05 — Estado `erro`: assume a falha e oferece a saída. */}
+                                                {/* D-05 — Estado `erro`: assume a falha e oferece a saída.
+                                                    Quick 260819-guy (Tarefa 7 item 1) — "já tentou antes" vem
+                                                    PRONTO do backend (não mais de um contador de sessão que
+                                                    zerava a cada reload), e o motivo real do erro
+                                                    (`c.erro_mensagem`, já podado de PII antes de gravar) fica
+                                                    disponível SEMPRE, não só depois da 2ª falha. */}
                                                 {c.status === 'erro' && (
                                                     <TableRow key={`${c.id}-erro`}>
                                                         <TableCell colSpan={4} className="py-2 border-t-0">
                                                             <div className="rounded-lg border border-rose-500/20 bg-rose-500/[0.05] px-3 py-2.5 text-[12px] space-y-1.5">
-                                                                {tentativas === 0 ? (
+                                                                {!jaTentouAntes ? (
                                                                     <>
                                                                         <p className="text-rose-300 font-semibold">Não deu para enviar este contrato</p>
                                                                         <p className="text-white/50">
@@ -631,20 +670,20 @@ export default function ContratoDetalhe({
                                                                             Tentamos de novo e não deu certo. Avise o time técnico para verificar — pode
                                                                             levar um tempinho para resolver.
                                                                         </p>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => setDetalhesTecnicosAbertos((atual) => ({ ...atual, [c.id]: !atual[c.id] }))}
-                                                                            className="inline-flex items-center gap-1 text-white/40 hover:text-white/70"
-                                                                        >
-                                                                            {detalhesTecnicosAbertos[c.id] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                                                            Ver detalhes técnicos
-                                                                        </button>
-                                                                        {detalhesTecnicosAbertos[c.id] && (
-                                                                            <p className="text-white/35 font-mono text-[11px] break-words">
-                                                                                {flash?.error || 'Sem detalhes adicionais registrados nesta sessão.'}
-                                                                            </p>
-                                                                        )}
                                                                     </>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setDetalhesTecnicosAbertos((atual) => ({ ...atual, [c.id]: !atual[c.id] }))}
+                                                                    className="inline-flex items-center gap-1 text-white/40 hover:text-white/70"
+                                                                >
+                                                                    {detalhesTecnicosAbertos[c.id] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                                                    Ver detalhes técnicos
+                                                                </button>
+                                                                {detalhesTecnicosAbertos[c.id] && (
+                                                                    <p className="text-white/35 font-mono text-[11px] break-words">
+                                                                        {c.erro_mensagem || 'Sem detalhes técnicos registrados para esta tentativa.'}
+                                                                    </p>
                                                                 )}
                                                             </div>
                                                         </TableCell>

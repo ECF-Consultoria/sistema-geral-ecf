@@ -11,6 +11,7 @@ use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Models\User;
 use App\Rules\CnpjValido;
+use App\Rules\NomeCompletoValido;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\CongelamentoEmissaoService;
 use App\Services\Contratos\ContratoDadosMinimosService;
@@ -269,6 +270,17 @@ class ContratoAdminController extends Controller
             ->orderByDesc('id')
             ->get();
 
+        // Quick 260819-guy — Tarefa 7 item 1: "já tentou antes" DERIVADO
+        // aqui, no backend, em vez do `useState({})` que zerava a cada
+        // reload em `ContratoDetalhe.jsx`. Cada nova tentativa de gerar
+        // contrato nasce como uma linha NOVA de `ContratoAssinatura` para o
+        // mesmo (empresa, serviço) — `GatilhoContratoAdministrativoService`
+        // não reaproveita a linha `erro` antiga (o slot já foi liberado por
+        // `GerarContratoAssinaturaJob::failed()`). Então: a linha mais
+        // ANTIGA por serviço é a primeira tentativa; qualquer outra linha do
+        // mesmo serviço já é, por definição, uma tentativa seguinte.
+        $idMaisAntigoPorServico = $contratos->groupBy('servico_id')->map(fn ($grupo) => $grupo->min('id'));
+
         return Inertia::render('Admin/ContratoDetalhe', [
             'company' => [
                 'id'                => $company->id,
@@ -313,7 +325,7 @@ class ContratoAdminController extends Controller
             // desta tela para alimentar o select do modal "Liberar
             // manualmente".
             'motivos_manuais' => ContratoLiberacao::MOTIVOS_MANUAIS_LABELS,
-            'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos) {
+            'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico) {
                 return [
                     'id'                                => $c->id,
                     'servico_id'                        => $c->servico_id,
@@ -321,6 +333,12 @@ class ContratoAdminController extends Controller
                     'status'                             => $c->status,
                     'dias_parado'                        => $presos->diasParado($c),
                     'causa'                              => $presos->causa($c),
+                    // Quick 260819-guy (Tarefa 7 item 1) — texto exato da
+                    // recusa. Já passou por `podarPii()` (WR-11) antes de
+                    // gravar, em `GerarContratoAssinaturaJob::failed()`; a
+                    // tela exibe cru, sem reprocessar.
+                    'erro_mensagem'                     => $c->erro_mensagem,
+                    'ja_tentou_antes'                   => $c->id !== ($idMaisAntigoPorServico[$c->servico_id] ?? $c->id),
                     'enviado_em'                         => $c->enviado_em?->toIso8601String(),
                     'assinado_em'                        => $c->assinado_em?->toIso8601String(),
                     'liberado_em'                        => $c->liberado_em?->toIso8601String(),
@@ -369,7 +387,11 @@ class ContratoAdminController extends Controller
             // ContratoDadosMinimosService).
             'cnpj'                                 => ['nullable', 'string', 'max:20', new CnpjValido()],
             'email_cliente'                        => ['nullable', 'email'],
-            'nome_contato'                          => ['nullable', 'string', 'max:255'],
+            // Quick 260819-guy — Tarefa 7 item 4: NomeCompletoValido exige
+            // pelo menos duas palavras (nome + sobrenome); nullable-aware,
+            // mesma disciplina de CnpjValido acima (ausência é a regra 3 de
+            // ContratoDadosMinimosService, não desta Rule).
+            'nome_contato'                          => ['nullable', 'string', 'max:255', new NomeCompletoValido()],
             // Quick 260819-guy — razão social/endereço são POR EMPRESA (mesmo
             // bloco de cnpj/email/nome_contato); campos por serviço vão em
             // contratos_servico.*.
@@ -462,7 +484,13 @@ class ContratoAdminController extends Controller
         $avaliacao = $gatilho->avaliar($company);
 
         if (! $dados->estaPronta($company) || $avaliacao['status'] !== 'elegivel') {
-            abort(422, 'Ainda falta completar algum dado, ou já existe um contrato em andamento para esta empresa.');
+            // Quick 260819-guy — Tarefa 7 item 2: antes era `abort(422, ...)`,
+            // que renderiza a página branca do Symfony ("Oops! An Error
+            // Occurred"), fora da aplicação. Mesmo tratamento do ramo de
+            // emissão congelada, dez linhas acima — a checagem no servidor
+            // está certa (o `disabled` do client não é controle,
+            // T-131-04-03), só a apresentação estava errada.
+            return back()->with('error', 'Ainda falta completar algum dado, ou já existe um contrato em andamento para esta empresa.');
         }
 
         $retorno = $gatilho->dispararSeElegivel($company);

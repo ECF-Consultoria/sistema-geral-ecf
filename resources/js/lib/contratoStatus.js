@@ -26,8 +26,15 @@
 // 131-UI-SPEC.md ("Copywriting Contract" / D-04). Exatamente 7 chaves: se o
 // resumo por situação (D-04) contar mais ou menos que isso, alguma tela
 // desviou deste módulo.
+//
+// Quick 260819-guy (Tarefa 7 item 3, 2026-08-19) — `rascunho` era "Não
+// enviado": literalmente verdade, mas lê como falha ("alguém esqueceu de
+// enviar"). O sistema para no rascunho DE PROPÓSITO (D-02 da Fase 127-05,
+// `GerarContratoAssinaturaJob`, `ativar: false` — "a ativação acontece FORA
+// do sistema"); "Falta enviar" descreve a AÇÃO PENDENTE, não uma falha.
+// Chave e quantidade de chaves NÃO mudaram — só o texto do rótulo.
 export const CONTRATO_STATUS_LABELS = {
-    rascunho:               'Não enviado',
+    rascunho:               'Falta enviar',
     aguardando_assinaturas: 'Esperando assinatura',
     assinado:                'Assinado',
     recusado:                'Cliente recusou',
