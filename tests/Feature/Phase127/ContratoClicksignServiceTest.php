@@ -210,6 +210,33 @@ class ContratoClicksignServiceTest extends TestCase
         $this->assertEqualsWithDelta(100.0, $contrato1->servicos_snapshot[0]['valor_contratado'], 0.001);
     }
 
+    // ─── Teste 4b (Quick 260819-guy) — dia_vencimento/data_primeira_parcela também congelam ───
+
+    #[Test]
+    public function snapshot_congela_dia_vencimento_e_data_primeira_parcela_do_servico(): void
+    {
+        $company = $this->companyCompleta();
+        $servico = $this->servicoDeTeste();
+        $cs = $this->contratoServicoAtivo($company, $servico, [
+            'dia_vencimento'        => 15,
+            'data_primeira_parcela' => '2026-02-05',
+        ]);
+
+        $this->service->iniciarParaEmpresa($company);
+
+        $contrato = ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $servico->id)->firstOrFail();
+
+        $this->assertSame(15, $contrato->servicos_snapshot[0]['dia_vencimento']);
+        $this->assertSame('2026-02-05', $contrato->servicos_snapshot[0]['data_primeira_parcela']);
+
+        // Congelamento: mudar o dado na origem DEPOIS não afeta o snapshot.
+        $cs->update(['dia_vencimento' => 28, 'data_primeira_parcela' => '2099-12-31']);
+        $contrato->refresh();
+
+        $this->assertSame(15, $contrato->servicos_snapshot[0]['dia_vencimento']);
+        $this->assertSame('2026-02-05', $contrato->servicos_snapshot[0]['data_primeira_parcela']);
+    }
+
     // ─── Teste 5 ───
 
     #[Test]

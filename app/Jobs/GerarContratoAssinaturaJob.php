@@ -104,10 +104,18 @@ class GerarContratoAssinaturaJob implements ShouldQueue
      * 2. Guard de modelo (D-21): serviço sem `clicksign_template_id` nem
      *    `CLICKSIGN_TEMPLATE_ID` padrão falha ANTES de qualquer chamada
      *    HTTP — gerar contrato com modelo errado é pior que não gerar.
-     * 3. `ContratoVariaveisModeloService::montar()` — puro, sem HTTP. Os
-     *    `campos_pendentes` (os 3 `A DEFINIR` por decisão do usuário) não
-     *    bloqueiam; só a QUANTIDADE é logada (nunca os valores), como pista
-     *    para a Fase 131.
+     * 3. `ContratoVariaveisModeloService::montar()` — puro, sem HTTP.
+     *    `$complementos` mistura duas origens de propósito: `endereco` é
+     *    dado de EMPRESA, lido AO VIVO de `Company` (mesma disciplina de
+     *    nome_contato/email_cliente, que também não são snapshot);
+     *    `dia_vencimento`/`data_primeira_parcela` são dado de SERVIÇO, lidos
+     *    do `servicos_snapshot` CONGELADO do próprio `$contrato` — nunca da
+     *    tabela `contratos_servico` ao vivo (D-04; quem gravou os dois no
+     *    snapshot foi `ContratoClicksignService::iniciarParaEmpresa()`, na
+     *    hora de CRIAR o contrato). Os `campos_pendentes` que ainda
+     *    restarem (defesa em profundidade — `ContratoDadosMinimosService`
+     *    já trava a geração sem eles, Quick 260819-guy Tarefa 3) não
+     *    bloqueiam; só a QUANTIDADE é logada (nunca os valores).
      * 4. `$dadosEnvelope` leva `deadline_at`/`remind_interval` já na
      *    CRIAÇÃO (D-03) — mesma forma literal usada em
      *    `ClicksignClient::ativarEnvelope()`, reusada aqui, não reinventada.
@@ -154,7 +162,19 @@ class GerarContratoAssinaturaJob implements ShouldQueue
 
         $company = $contrato->company;
 
-        $resultadoVariaveis = $variaveisService->montar($contrato);
+        // Quick 260819-guy — ver item 3 do docblock acima: endereco é lido
+        // AO VIVO da empresa; dia_vencimento/data_primeira_parcela vêm do
+        // snapshot CONGELADO (nunca de `$contrato->servico`/`ContratoServico`
+        // ao vivo — o snapshot é sempre um array de UM item, D-06).
+        $servicoSnapshot = $contrato->servicos_snapshot[0] ?? [];
+
+        $complementos = [
+            'endereco'              => $company->endereco,
+            'dia_vencimento'        => isset($servicoSnapshot['dia_vencimento']) ? (string) $servicoSnapshot['dia_vencimento'] : null,
+            'data_primeira_parcela' => $servicoSnapshot['data_primeira_parcela'] ?? null,
+        ];
+
+        $resultadoVariaveis = $variaveisService->montar($contrato, $complementos);
         $variaveis          = $resultadoVariaveis['variaveis'];
 
         Log::info('[GerarContratoAssinaturaJob] variáveis do modelo montadas', [

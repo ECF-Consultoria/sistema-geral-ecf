@@ -388,4 +388,79 @@ class GerarContratoAssinaturaJobTest extends TestCase
 
         Http::assertNothingSent();
     }
+
+    // ─── Teste 12 (Quick 260819-guy) ───
+
+    /**
+     * `endereco` (dado de EMPRESA, lido ao vivo) e `dia_vencimento`/
+     * `data_primeira_parcela` (dado de SERVIÇO, lido do snapshot congelado)
+     * chegam com valor REAL no payload de `POST /envelopes/{id}/documents`
+     * — não mais "A DEFINIR" fixo.
+     */
+    #[Test]
+    public function endereco_dia_vencimento_e_data_primeira_parcela_chegam_com_valor_real_no_payload_do_documento(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
+        $this->fakeSequenciaSemAtivacao();
+
+        $company = Company::factory()->create([
+            'name'          => 'Empresa Teste LTDA',
+            'cnpj'          => '11.222.333/0001-99',
+            'nome_contato'  => 'Cliente Teste',
+            'email_cliente' => 'cliente@example.com',
+            'razao_social'  => 'Empresa Teste Comércio e Serviços LTDA',
+            'endereco'      => 'Rua Exemplo, 123 - São Paulo/SP',
+        ]);
+
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([[
+                'servico'               => 'Gestão de Tráfego — Mercado Livre',
+                'valor_contratado'      => 1847.32,
+                'data_contratacao'      => '2026-01-15',
+                'data_vencimento'       => '2027-01-15',
+                'dia_vencimento'        => 10,
+                'data_primeira_parcela' => '2026-02-05',
+            ]])
+            ->create([
+                'company_id' => $company->id,
+                'servico_id' => $this->servicoDeTeste()->id,
+            ]);
+
+        (new GerarContratoAssinaturaJob($contrato))->handle($this->client(), $this->variaveisService());
+
+        Http::assertSent(function ($request) {
+            if ($request->method() !== 'POST' || $request->url() !== self::BASE . '/envelopes/' . self::ENVELOPE_ID . '/documents') {
+                return false;
+            }
+
+            $data = data_get($request->data(), 'data.attributes.template.data');
+
+            return $data['razao_social']          === 'Empresa Teste Comércio e Serviços LTDA'
+                && $data['endereco']               === 'Rua Exemplo, 123 - São Paulo/SP'
+                && $data['dia_vencimento']          === '10'
+                && $data['data_primeira_parcela']   === '05/02/2026';
+        });
+    }
+
+    // ─── Teste 13 (Quick 260819-guy) ───
+
+    /**
+     * Contrato sem os complementos (snapshot antigo, sem dia_vencimento/
+     * data_primeira_parcela, e empresa sem endereco) ainda monta o
+     * envelope com sucesso — os campos caem em `campos_pendentes`
+     * internamente (só a QUANTIDADE é logada), nunca quebram o job.
+     */
+    #[Test]
+    public function ausencia_de_endereco_e_datas_de_pagamento_nao_quebra_o_job(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
+        $this->fakeSequenciaSemAtivacao();
+
+        $contrato = $this->contratoDeTeste();
+
+        (new GerarContratoAssinaturaJob($contrato))->handle($this->client(), $this->variaveisService());
+
+        $contrato->refresh();
+        $this->assertNotEmpty($contrato->clicksign_envelope_id);
+    }
 }

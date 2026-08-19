@@ -99,9 +99,12 @@ class ContratoVariaveisModeloService
             'valor_mensal'          => fn (array $d) => $d['totais']['valor_mensal_formatado'],
             'vigencia_inicio'       => fn (array $d) => $d['vigencia']['inicio'],
             'vigencia_fim'          => fn (array $d) => $d['vigencia']['fim'],
-            // Não existe em montarDados() hoje — território da Fase 131
-            // (ADM-01). Sempre A DEFINIR até lá (126-VARIAVEIS-DO-MODELO.md §4.1).
-            'data_primeira_parcela' => fn () => ContratoPdfService::PLACEHOLDER,
+            // Quick 260819-guy (2026-08-19) — deixou de ser fixo A DEFINIR
+            // (território previsto para a Fase 131 em
+            // 126-VARIAVEIS-DO-MODELO.md §4.1, adiado até então). Lê o dado
+            // real via montarDados()/ContratoPdfService, com o mesmo
+            // placeholder como rede de segurança quando ausente.
+            'data_primeira_parcela' => fn (array $d) => $d['pagamento']['data_primeira_parcela'],
             'dia_vencimento'        => fn (array $d) => $d['pagamento']['dia_vencimento'],
             'data_assinatura'       => fn (array $d, self $self) => $self->dataPorExtenso($d['gerado_em']),
         ];

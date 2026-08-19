@@ -126,11 +126,23 @@ class ContratoClicksignService
                     // `ContratoPdfService::montarDados()` já espera.
                     // Congelamento deliberado: valor lido ao vivo já zerou
                     // contrato neste projeto (`hs_mrr = 0` do HubSpot).
+                    //
+                    // Quick 260819-guy (2026-08-19) — dia_vencimento e
+                    // data_primeira_parcela ENTRAM no snapshot congelado
+                    // aqui, na hora de CRIAR (não são lidos ao vivo depois,
+                    // em GerarContratoAssinaturaJob): são dado de SERVIÇO
+                    // (mesma disciplina de valor_contratado/data_contratacao/
+                    // data_vencimento acima, D-04), diferente de `endereco`
+                    // (dado de EMPRESA, lido ao vivo em
+                    // GerarContratoAssinaturaJob — não pertence a este
+                    // snapshot).
                     'servicos_snapshot' => [[
                         'servico'          => $contratoServico->servico->nome,
                         'valor_contratado' => (float) $contratoServico->valor_contratado,
                         'data_contratacao' => optional($contratoServico->data_contratacao)->format('Y-m-d'),
                         'data_vencimento'  => optional($contratoServico->data_vencimento)->format('Y-m-d'),
+                        'dia_vencimento'        => $contratoServico->dia_vencimento,
+                        'data_primeira_parcela' => optional($contratoServico->data_primeira_parcela)->format('Y-m-d'),
                     ]],
                 ]);
             } catch (QueryException $e) {
