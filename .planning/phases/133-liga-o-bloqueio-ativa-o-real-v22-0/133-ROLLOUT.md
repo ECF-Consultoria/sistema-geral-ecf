@@ -215,13 +215,62 @@ nunca a tela nem o stdout de um comando isolado sem reconsulta.
 
 ### Ativação (Task 3, só se `ligar-agora`)
 
-- Data/hora da ativação (com fuso): ______
-- Quem autorizou: ______
-- Quem executou: ______
-- Commit implantado (`git rev-parse --short HEAD`): ______
-- Contagem de `mlb_empresas` antes: ______ (total) / ______ (`POLO`)
-- Contagem de `mlb_empresas` depois: ______ (total) / ______ (`POLO`)
-- Resultado da reconsulta de `bloqueioAtivo()`: ______
+**Executor:** a Task 3 (deploy + ligar a chave + conferir por reconsulta) foi executada pelo
+**orquestrador da Fase 133**, e não pelo subagente executor do plano 133-04 — o classificador de
+permissões bloqueou o `plink`/`pscp` no subagente, então o próprio orquestrador rodou os comandos
+de produção na máquina do dev.01. Este registro (agente de continuação) apenas documenta o
+resultado real, sem executar nenhum comando novo no VPS.
+
+- Data/hora da ativação (com fuso): **2026-08-19, por volta de 09:05 BRT (-03:00)**
+- Quem autorizou: **dev.01@ecfconsultoria.com.br** — autorização explícita dada nesta conversa,
+  em 2026-08-19, via AskUserQuestion ("Ligar agora — deploy autorizado"), ciente de que o deploy
+  publica o trabalho de todas as sessões e do outro desenvolvedor que compartilham a árvore
+- Quem executou: **sessão Claude Code (orquestrador da Fase 133), na máquina do dev.01**
+- Commit implantado (`git rev-parse --short HEAD`): **`c4043014`**
+  (`docs(133-04): corrige o registro do checkpoint - decisao final e ligar-agora`) — `HEAD` local
+  == `origin/main` == `c4043014` antes do deploy, conferido no VPS após o envio
+  (`git rev-parse --short HEAD` em `/var/www/ecf_admin` também devolveu `c4043014`)
+- Contagem de `mlb_empresas` antes (baseline, reconsulta ANTES do deploy): **488** (total) /
+  **488** (`POLO`)
+- Contagem de `mlb_empresas` depois (reconsulta, após ligar a chave): **488** (total) / **488**
+  (`POLO`) — **idêntica ao baseline**: ligar não criou nem apagou ficha nenhuma
+- Resultado da reconsulta de `bloqueioAtivo()`: **`ligado`** (comando combinado devolveu
+  `ligado|488|488`)
+
+**Nota sobre a baseline (486 → 488):** o `133-04-PLAN.md` registrava 486 fichas medidas em
+2026-08-18. A recontagem de 2026-08-19, antes do deploy, encontrou **488** — ou seja, **2 Polos
+novos entraram entre 18/08 e 19/08**. É sinal de que o fluxo de Polos está vivo em produção, o que
+torna a prova do plano 133-05 (primeiro cadastro real depois da chave ligada) mais realista, não
+menos. A baseline usada para a comparação "antes/depois" desta ativação é a de 2026-08-19
+(488|488), medida imediatamente antes do deploy — não a de 2026-08-18.
+
+**Pré-checagem antes do deploy:**
+- `git status --porcelain --untracked-files=no` → vazio (árvore rastreada limpa)
+- Suíte da fase verde: Phase133 19 testes / Phase124KillSwitchTest 9 / Phase128 36 — **64 testes,
+  0 falhas**
+
+**Passos do deploy (`deploy.sh`):**
+- `npx vite build` OK; `composer install --no-dev` OK
+- `php artisan migrate --force` → "Nothing to migrate" (esta fase não tem migration)
+- `storage:link` já existia (idempotente); `config:cache` / `route:cache` / `view:cache` OK
+- `supervisorctl restart ecf-worker:*` → `ecf-worker_00` e `_01` reiniciados
+- ⛔ Nenhum `cache:clear` foi executado em nenhum passo
+
+**Conferência do que chegou no VPS antes de ligar:**
+- `git rev-parse --short HEAD` no VPS → `c4043014`
+- `grep -c 'exige_contrato' app/Services/Operacional/EmpresaOperacionalRouter.php` → `2` (código
+  da exceção por serviço presente)
+- `bloqueioAtivo()` antes de ligar → `desligado` (estado inicial correto)
+
+**Smoke check pós-ativação:**
+- `https://admin.ecfconsultoria.com.br/login` → HTTP `200`
+- `https://admin.ecfconsultoria.com.br/administrativo/contratos` → HTTP `302` (redirect para
+  login, esperado — requisição não autenticada)
+- `tail storage/logs/laravel.log`: só erros pré-existentes e não relacionados (`[MercadoLivre]
+  Erro 429 ao renovar token (transitório)`, das 08:00). Nenhum erro novo.
+- `grep -c 'Ativação manual retida' storage/logs/laravel.log` → `0` — nenhuma ativação manual
+  legítima foi recusada até agora
+- ⛔ Nenhuma empresa de teste foi criada em produção
 
 ### Primeiro cadastro real de Polos (plano 133-05)
 
