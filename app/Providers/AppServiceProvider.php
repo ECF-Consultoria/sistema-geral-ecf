@@ -50,6 +50,19 @@ class AppServiceProvider extends ServiceProvider
                 // Relatorio inicial (PDF §3) — fecha so com as tres secoes de
                 // analise escritas, nunca so com o retrato de dados.
                 $app->make(\App\Services\Onboarding\Resolvers\RelatorioInicialResolver::class),
+                // ── Itens do fluxo consolidado de 19/08 ────────────────────
+                // Todos SÍNCRONOS e sem rede: fecham lendo uma tabela do
+                // próprio módulo. Continuam sendo `auto_fonte` em vez de
+                // conclusão manual pelo motivo que o RelatorioInicialResolver
+                // já provou (D-19): com "marcar como feito", alguém fecha a
+                // etapa sem ter respondido nada.
+                $app->make(\App\Services\Onboarding\Resolvers\ConfirmacaoResolver::class),
+                $app->make(\App\Services\Onboarding\Resolvers\InvestimentoResolver::class),
+                $app->make(\App\Services\Onboarding\Resolvers\InvestimentoPublicidadeResolver::class),
+                $app->make(\App\Services\Onboarding\Resolvers\PontoContatoResolver::class),
+                $app->make(\App\Services\Onboarding\Resolvers\ParticipantesResolver::class),
+                $app->make(\App\Services\Onboarding\Resolvers\AgendaQuinzenalResolver::class),
+                $app->make(\App\Services\Onboarding\Resolvers\AnalistaDefinidoResolver::class),
             ]);
         });
     }

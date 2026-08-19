@@ -472,6 +472,15 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine->concluirManualmente($this->passo($onboarding, 'agendar_reuniao_onboarding'), $usuario);
         $engine->concluirManualmente($this->passo($onboarding, 'reuniao_realizada'), $usuario);
 
+        // Os itens do fluxo de 19/08 (confirmações, investimento, contatos,
+        // agenda) também precisam fechar — este teste é sobre a TRANSIÇÃO do
+        // onboarding quando o último passo resolve, não sobre quais passos a
+        // régua tem. Fechar por lista fixa quebraria a cada item novo.
+        $onboarding->refresh();
+        foreach ($onboarding->passos()->where('status', '!=', OnboardingPasso::STATUS_CONCLUIDO)->get() as $restante) {
+            $engine->concluirManualmente($restante, $usuario, forcar: true);
+        }
+
         $onboarding->refresh();
         $this->assertSame(Onboarding::STATUS_CONCLUIDO, $onboarding->status);
         $this->assertNotNull($onboarding->concluido_em);

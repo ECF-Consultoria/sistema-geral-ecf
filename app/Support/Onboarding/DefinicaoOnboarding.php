@@ -105,7 +105,7 @@ class DefinicaoOnboarding
      * conduzir na reunião × responder uma pergunta — são AMBOS `dono=interno`.
      * Sem eixo próprio a tela não distingue os dois.
      */
-    public const VERSAO = 11;
+    public const VERSAO = 12;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -473,6 +473,277 @@ class DefinicaoOnboarding
                 'setor_id'   => null,
                 'depende_de' => ['agendar_reuniao_onboarding'],
                 'sla_dias'   => 10,
+                'auto_fonte' => null,
+                'condicao'   => null,
+            ],
+
+            // ═══ Itens do fluxo consolidado de 19/08 ════════════════════
+            // Todos `dono=interno`: sao conduzidos ou respondidos por nos. O
+            // portal do cliente nao muda — ele filtra por `dono=cliente`.
+            //
+            // Os `natureza=reuniao` dependem de `reuniao_realizada` de proposito:
+            // nao da para responder "explicamos a publicidade" antes de a call
+            // acontecer. Isso tambem resolve o SLA — ficam bloqueados ate la,
+            // entao nao aparecem como parados no painel.
+            //
+            // A `ordem` comeca em 20 para nao renumerar a faixa 3-15 dos que ja
+            // existem (mesmo motivo registrado nas notas v7 e v10).
+            [
+                // Nome da empresa e produto adquirido, conferidos contra o que veio do
+                // Comercial. NAO inclui razao social nem endereco: nao existe coluna para
+                // eles, e tres desses campos tem decisao escrita em contrario
+                // (ContratoDadosMinimosService, checkpoint 126-06).
+                'ordem'      => 20,
+                'etapa'      => OnboardingPasso::ETAPA_INFORMACOES_CLIENTE,
+                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
+                'chave'      => 'confirmar_dados_cadastrais',
+                'titulo'     => 'Dados cadastrais da empresa conferidos',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => [],
+                'sla_dias'   => 5,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 21,
+                'etapa'      => OnboardingPasso::ETAPA_INFORMACOES_CLIENTE,
+                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'chave'      => 'revisar_spin',
+                'titulo'     => 'SPIN revisado com o cliente',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['reuniao_realizada'],
+                'sla_dias'   => 3,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 22,
+                'etapa'      => OnboardingPasso::ETAPA_INFORMACOES_CLIENTE,
+                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'chave'      => 'revisar_contexto',
+                'titulo'     => 'Contexto da venda revisado com o cliente',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['reuniao_realizada'],
+                'sla_dias'   => 3,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
+                'condicao'   => null,
+            ],
+            [
+                // Fecha sozinho quando o slot de analista do onboarding esta preenchido.
+                // O ato ja existia - a Coordenacao confirma o responsavel; faltava o item
+                // dizendo que ele e parte do checklist.
+                'ordem'      => 23,
+                'etapa'      => OnboardingPasso::ETAPA_RESPONSAVEIS,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
+                'chave'      => 'analista_definido',
+                'titulo'     => 'Analista responsavel definido',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => [],
+                'sla_dias'   => 2,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_ANALISTA_DEFINIDO,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 24,
+                'etapa'      => OnboardingPasso::ETAPA_RESPONSAVEIS,
+                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
+                'chave'      => 'ponto_contato_definido',
+                'titulo'     => 'Ponto de contato do cliente definido',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => [],
+                'sla_dias'   => 5,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_PONTO_CONTATO,
+                'condicao'   => null,
+            ],
+            [
+                // Um item so para participantes e Gmails: o resolver exige e-mail em
+                // todos, entao 'cadastrados' e 'com gmail' sempre responderiam a mesma
+                // coisa.
+                'ordem'      => 25,
+                'etapa'      => OnboardingPasso::ETAPA_RESPONSAVEIS,
+                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
+                'chave'      => 'participantes_reuniao_cadastrados',
+                'titulo'     => 'Participantes das reunioes cadastrados',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => [],
+                'sla_dias'   => 5,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_PARTICIPANTES,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 26,
+                'etapa'      => OnboardingPasso::ETAPA_INVESTIMENTO,
+                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
+                'chave'      => 'investimento_alinhado',
+                'titulo'     => 'Investimento previsto alinhado',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => [],
+                'sla_dias'   => 5,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_INVESTIMENTO,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 27,
+                'etapa'      => OnboardingPasso::ETAPA_INVESTIMENTO,
+                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
+                'chave'      => 'investimento_publicidade_alinhado',
+                'titulo'     => 'Investimento em publicidade alinhado',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => [],
+                'sla_dias'   => 5,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_INVESTIMENTO_PUBLICIDADE,
+                'condicao'   => null,
+            ],
+            [
+                // Dia, horario e recorrencia num item so: sao tres colunas da mesma
+                // linha, e tres itens separados nunca divergiriam entre si.
+                'ordem'      => 28,
+                'etapa'      => OnboardingPasso::ETAPA_AGENDAMENTO,
+                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
+                'chave'      => 'agenda_quinzenal_definida',
+                'titulo'     => 'Agenda das reunioes quinzenais definida',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => [],
+                'sla_dias'   => 5,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_AGENDA_QUINZENAL,
+                'condicao'   => null,
+            ],
+            [
+                // Manual de proposito: o convite sai da agenda de quem envia, e o OAuth
+                // do repo hoje e calendar.readonly. Automatizar exigiria trocar escopo e
+                // forcar reconsentimento de todos os usuarios ja conectados.
+                'ordem'      => 29,
+                'etapa'      => OnboardingPasso::ETAPA_AGENDAMENTO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
+                'chave'      => 'participantes_convidados',
+                'titulo'     => 'Participantes convidados para a agenda',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['agenda_quinzenal_definida', 'participantes_reuniao_cadastrados'],
+                'sla_dias'   => 3,
+                'auto_fonte' => null,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 30,
+                'etapa'      => OnboardingPasso::ETAPA_PUBLICIDADE,
+                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'chave'      => 'publicidade_processo_explicado',
+                'titulo'     => 'Processo de publicidade explicado',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['reuniao_realizada'],
+                'sla_dias'   => 3,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 31,
+                'etapa'      => OnboardingPasso::ETAPA_PUBLICIDADE,
+                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'chave'      => 'publicidade_investimento_explicado',
+                'titulo'     => 'Uso do investimento em publicidade explicado',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['reuniao_realizada'],
+                'sla_dias'   => 3,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 32,
+                'etapa'      => OnboardingPasso::ETAPA_PUBLICIDADE,
+                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'chave'      => 'publicidade_operacao_explicada',
+                'titulo'     => 'Operacao da publicidade explicada',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['reuniao_realizada'],
+                'sla_dias'   => 3,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 33,
+                'etapa'      => OnboardingPasso::ETAPA_PUBLICIDADE,
+                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'chave'      => 'publicidade_responsabilidades_alinhadas',
+                'titulo'     => 'Responsabilidades de publicidade alinhadas',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['reuniao_realizada'],
+                'sla_dias'   => 3,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 34,
+                'etapa'      => OnboardingPasso::ETAPA_ADMAN,
+                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'chave'      => 'adman_uso_explicado',
+                'titulo'     => 'Uso da ADMAN explicado ao cliente',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['reuniao_realizada'],
+                'sla_dias'   => 3,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 35,
+                'etapa'      => OnboardingPasso::ETAPA_ADMAN,
+                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'chave'      => 'adman_funcionamento_explicado',
+                'titulo'     => 'Funcionamento da ADMAN explicado',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['reuniao_realizada'],
+                'sla_dias'   => 3,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
+                'condicao'   => null,
+            ],
+            [
+                'ordem'      => 36,
+                'etapa'      => OnboardingPasso::ETAPA_ADMAN,
+                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'chave'      => 'adman_responsabilidades_alinhadas',
+                'titulo'     => 'Responsabilidades sobre a ADMAN alinhadas',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['reuniao_realizada'],
+                'sla_dias'   => 3,
+                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
+                'condicao'   => null,
+            ],
+            [
+                // Sec.10 do documento: quem preenche as informacoes da ADMAN e o
+                // ANALISTA, e a responsabilidade nao se divide com o Estrategista.
+                //
+                // Este passo NAO reverte a v6: `planilha_custos_adman` e
+                // `grant_consultoria_adman` continuam `dono=cliente`, porque criar a
+                // conta e conceder o grant sao atos que so o dono da conta pode fazer.
+                // O que a Sec.10 descreve e o trabalho INTERNO que vem DEPOIS do acesso
+                // concedido - por isso depende do grant.
+                //
+                // Manual: nao existe sinal no banco que diga 'a conta foi parametrizada'.
+                'ordem'      => 37,
+                'etapa'      => OnboardingPasso::ETAPA_ADMAN,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
+                'chave'      => 'adman_preenchimento_interno',
+                'titulo'     => 'Informacoes da ADMAN preenchidas pelo Analista',
+                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'setor_id'   => null,
+                'depende_de' => ['grant_consultoria_adman'],
+                'sla_dias'   => 5,
                 'auto_fonte' => null,
                 'condicao'   => null,
             ],

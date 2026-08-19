@@ -4,19 +4,36 @@ import { Button } from '@/Components/ui/button';
 import { cn } from '@/lib/utils';
 import DonoBadge from './DonoBadge';
 import NaturezaBadge from './NaturezaBadge';
+import RespostaConfirmacao from './RespostaConfirmacao';
 
 const DONO_LABEL = { cliente: 'cliente', interno: 'interno', sistema: 'sistema' };
 
 // Blocos na ordem em que o processo acontece. `outros` recolhe passo nascido
 // antes da etapa existir — sumir da tela seria pior do que aparecer sem bloco.
-const ETAPAS_ORDEM = ['acessos', 'mapeamento', 'agendamento', 'administrativo', 'outros'];
+const ETAPAS_ORDEM = [
+    'informacoes_cliente',
+    'responsaveis',
+    'acessos',
+    'mapeamento',
+    'investimento',
+    'publicidade',
+    'adman',
+    'agendamento',
+    'administrativo',
+    'outros',
+];
 
 const ETAPA_LABELS = {
-    acessos:        'Configuração de acessos',
-    mapeamento:     'Mapeamento da conta',
-    agendamento:    'Agendamento e relatório',
-    administrativo: 'Administrativo',
-    outros:         'Outros',
+    informacoes_cliente: 'Informações do cliente',
+    responsaveis:        'Responsáveis',
+    acessos:             'Configuração de acessos',
+    mapeamento:          'Mapeamento da conta',
+    investimento:        'Investimento',
+    publicidade:         'Publicidade',
+    adman:               'ADMAN',
+    agendamento:         'Agendamento e reuniões',
+    administrativo:      'Administrativo',
+    outros:              'Outros',
 };
 
 // Contagem por bloco é orientação de leitura ("3/4 dos acessos fecharam"),
@@ -127,7 +144,7 @@ function EstadoPasso({ passo }) {
 }
 
 /** Uma linha do passo — título, dono, selo de automação, estado, dependências, condição, ação. */
-function LinhaPasso({ passo }) {
+function LinhaPasso({ passo, onboardingId, confirmacao }) {
     const form = useForm({});
 
     const concluirManualmente = () => {
@@ -187,6 +204,19 @@ function LinhaPasso({ passo }) {
 
             <EstadoPasso passo={passo} />
 
+            {/* Itens de confirmação respondem aqui mesmo, na própria linha: a
+                pergunta e a resposta no mesmo lugar. "Não" fica gravado e o
+                item continua aberto — dizer que não foi explicado é
+                informação, não silêncio. */}
+            {passo.aceita_confirmacao && onboardingId && (
+                <RespostaConfirmacao
+                    onboardingId={onboardingId}
+                    chave={passo.chave}
+                    resposta={confirmacao?.resposta}
+                    observacoes={confirmacao?.observacoes}
+                />
+            )}
+
             {passo.concluido_manualmente && (
                 <p className="text-[11px] text-amber-400/80">
                     Concluído manualmente — o sistema não confirmou este passo sozinho.
@@ -208,7 +238,7 @@ function LinhaPasso({ passo }) {
  * potencialmente, embutido em outro contexto — por isso não depende de
  * `AppLayout` nem de rota própria.
  */
-export default function DetalheOnboarding({ passos }) {
+export default function DetalheOnboarding({ passos, onboardingId = null, confirmacoes = {} }) {
     // Agrupado por etapa, na ordem fixa em que o processo acontece. Uma lista
     // corrida de passos não responde "em que pé está" — o operador precisa
     // ver que os acessos fecharam antes de cobrar o mapeamento.
@@ -233,7 +263,12 @@ export default function DetalheOnboarding({ passos }) {
                     </div>
 
                     {itens.map((passo) => (
-                        <LinhaPasso key={passo.id} passo={passo} />
+                        <LinhaPasso
+                            key={passo.id}
+                            passo={passo}
+                            onboardingId={onboardingId}
+                            confirmacao={confirmacoes[passo.chave]}
+                        />
                     ))}
                 </section>
             ))}

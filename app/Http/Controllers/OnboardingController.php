@@ -4,6 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\Onboarding;
+use App\Models\OnboardingAgenda;
+use App\Models\OnboardingConfirmacao;
+use App\Models\OnboardingContato;
+use App\Models\OnboardingInvestimento;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingMapeamento;
 use App\Models\OnboardingPasso;
@@ -17,6 +21,7 @@ use App\Services\Onboarding\OnboardingSituacaoService;
 use App\Services\Onboarding\RelatorioInicialService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -162,6 +167,10 @@ class OnboardingController extends Controller
             ],
             'passos' => $passosOrdenados,
             'relatorio'   => $this->relatorioPayload($onboarding),
+            // Respostas do checklist do fluxo de 19/08. Cada bloco é a
+            // tabela própria do assunto — nunca `onboarding_passos.valor`,
+            // que só é gravado quando o passo fecha e some ao desmarcar.
+            'respostas'   => $this->respostasPayload($onboarding),
             'reuniao'     => [
                 'status'        => $onboarding->reuniao_status,
                 'solicitada_em' => $onboarding->reuniao_solicitada_em?->toISOString(),
@@ -521,6 +530,264 @@ class OnboardingController extends Controller
      * `concluirPasso()`, que chegam por id direto (sem passar pelo filtro da
      * listagem).
      */
+    /**
+     * Roda AGORA o resolver dos passos afetados por uma resposta que acabou de
+     * ser gravada.
+     *
+     * Sem isto o item continuaria pendente por até 10 minutos: `reavaliar()`
+     * apenas destrava passo bloqueado cuja dependência resolveu — quem executa
+     * resolver é o comando `onboarding:reavaliar-passos`, agendado no cron.
+     * A pessoa responde "Sim", a página recarrega e nada muda; ela responde de
+     * novo. Mesmo caminho que o fluxo do relatório inicial já usa logo abaixo.
+     *
+     * Só resolver SÍNCRONO: assíncrono depende de job/rede e tem o cron como
+     * dono legítimo — chamá-lo aqui seguraria a request numa chamada externa.
+     *
+     * @param  array<int, string>  $autoFontes
+     * @param  ?string  $apenasChave  limita a UM item (o que a pessoa respondeu)
+     */
+    private function resolverAgora(Onboarding $onboarding, array $autoFontes, ?string $apenasChave = null): void
+    {
+        $factory = app(OnboardingResolverFactory::class);
+
+        $passos = OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->whereIn('auto_fonte', $autoFontes)
+            ->when($apenasChave !== null, fn ($q) => $q->where('chave', $apenasChave))
+            ->get();
+
+        foreach ($passos as $passo) {
+            $resolver = $factory->for($passo->auto_fonte);
+
+            if ($resolver->assincrono()) {
+                continue;
+            }
+
+            $this->engine->aplicarResultado($passo, $resolver->resolver($onboarding, $passo));
+        }
+
+        // Depois de aplicar: destrava quem dependia desses passos.
+        $this->engine->reavaliar($onboarding->fresh());
+    }
+
+    /**
+     * As respostas já dadas, por assunto. Shape consumido por
+     * `Onboarding/Detalhe` para pré-preencher os formulários — a tela nunca
+     * remonta isto a partir dos passos.
+     */
+    private function respostasPayload(Onboarding $onboarding): array
+    {
+        $investimento = OnboardingInvestimento::where('onboarding_id', $onboarding->id)->first();
+        $agenda = OnboardingAgenda::where('onboarding_id', $onboarding->id)->first();
+
+        return [
+            // Indexado por `chave` do passo: é assim que o item do checklist
+            // encontra a própria resposta sem varrer a lista.
+            'confirmacoes' => OnboardingConfirmacao::where('onboarding_id', $onboarding->id)
+                ->get()
+                ->keyBy('chave')
+                ->map(fn (OnboardingConfirmacao $r) => [
+                    'resposta'      => $r->resposta,
+                    'observacoes'   => $r->observacoes,
+                    'respondido_em' => $r->respondido_em?->toISOString(),
+                ]),
+
+            'investimento' => $investimento ? [
+                'investimento_disponivel'      => $investimento->investimento_disponivel,
+                'investimento_mensal_previsto' => $investimento->investimento_mensal_previsto,
+                'investimento_publicidade'     => $investimento->investimento_publicidade,
+                'observacoes'                  => $investimento->observacoes,
+            ] : null,
+
+            'contatos' => OnboardingContato::where('onboarding_id', $onboarding->id)
+                ->orderBy('id')
+                ->get()
+                ->map(fn (OnboardingContato $ct) => [
+                    'id'        => $ct->id,
+                    'papel'     => $ct->papel,
+                    'nome'      => $ct->nome,
+                    'email'     => $ct->email,
+                    'funcao'    => $ct->funcao,
+                    'telefone'  => $ct->telefone,
+                    'principal' => (bool) $ct->principal,
+                ])
+                ->values(),
+
+            'agenda' => $agenda ? [
+                'dia_semana'    => $agenda->dia_semana,
+                'horario'       => $agenda->horario,
+                'periodicidade' => $agenda->periodicidade,
+                'observacoes'   => $agenda->observacoes,
+            ] : null,
+        ];
+    }
+
+    /**
+     * POST /onboarding/{onboarding}/confirmacao — responde Sim ou Não a um
+     * item de confirmação (§17/§18).
+     *
+     * "Não" é resposta gravada, não ausência de resposta: o passo continua
+     * `aberto` e o painel mostra que houve uma negativa. Reusar
+     * `nao_aplicavel` do passo faria o onboarding se dar por concluído com a
+     * publicidade nunca explicada — aquele status conta como resolvido.
+     */
+    public function responderConfirmacao(Request $request, Onboarding $onboarding)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'chave'       => ['required', 'string', 'max:60'],
+            'resposta'    => ['required', 'string', Rule::in(OnboardingConfirmacao::RESPOSTAS)],
+            'observacoes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        // A chave tem de ser de um passo DESTE onboarding — sem isso a rota
+        // aceitaria gravar resposta para qualquer texto.
+        $passo = OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->where('chave', $data['chave'])
+            ->first();
+
+        abort_unless($passo !== null, 422, 'Este item não existe neste onboarding.');
+
+        OnboardingConfirmacao::updateOrCreate(
+            ['onboarding_id' => $onboarding->id, 'chave' => $data['chave']],
+            [
+                'resposta'       => $data['resposta'],
+                'observacoes'    => $data['observacoes'] ?? null,
+                'respondido_em'  => now(),
+                'respondido_por' => $request->user()->id,
+            ]
+        );
+
+        $this->resolverAgora($onboarding, [OnboardingPasso::AUTO_FONTE_CONFIRMACAO], $data['chave']);
+
+        return back()->with('success', 'Resposta registrada.');
+    }
+
+    /** PUT /onboarding/{onboarding}/investimento — §13.1. */
+    public function salvarInvestimento(Request $request, Onboarding $onboarding)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            // `nullable` + `min:0`: zero é um valor INFORMADO ("não vai
+            // investir agora"), diferente de não ter respondido.
+            'investimento_disponivel'      => ['nullable', 'numeric', 'min:0'],
+            'investimento_mensal_previsto' => ['nullable', 'numeric', 'min:0'],
+            'investimento_publicidade'     => ['nullable', 'numeric', 'min:0'],
+            'observacoes'                  => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        OnboardingInvestimento::updateOrCreate(
+            ['onboarding_id' => $onboarding->id],
+            $data + [
+                'informado_em'  => now(),
+                'informado_por' => $request->user()->id,
+                'informado_canal' => 'interno_call',
+            ]
+        );
+
+        $this->resolverAgora($onboarding, [
+            OnboardingPasso::AUTO_FONTE_INVESTIMENTO,
+            OnboardingPasso::AUTO_FONTE_INVESTIMENTO_PUBLICIDADE,
+        ]);
+
+        return back()->with('success', 'Investimento registrado.');
+    }
+
+    /** PUT /onboarding/{onboarding}/agenda — §14. */
+    public function salvarAgenda(Request $request, Onboarding $onboarding)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'dia_semana'    => ['nullable', 'integer', 'between:1,7'],
+            'horario'       => ['nullable', 'date_format:H:i'],
+            'periodicidade' => ['nullable', 'string', Rule::in(OnboardingAgenda::PERIODICIDADES)],
+            'observacoes'   => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        OnboardingAgenda::updateOrCreate(
+            ['onboarding_id' => $onboarding->id],
+            $data + [
+                'definida_em'  => now(),
+                'definida_por' => $request->user()->id,
+            ]
+        );
+
+        $this->resolverAgora($onboarding, [OnboardingPasso::AUTO_FONTE_AGENDA_QUINZENAL]);
+
+        return back()->with('success', 'Agenda registrada.');
+    }
+
+    /**
+     * POST /onboarding/{onboarding}/contatos — §13.2 e §16.
+     *
+     * Uma linha por contato, sempre. A lista NUNCA é reconstruída inteira a
+     * cada save: foi exatamente assim que, noutro módulo deste sistema, N
+     * produtos colapsaram num só e o custo do cliente sumiu sem volta.
+     */
+    public function salvarContato(Request $request, Onboarding $onboarding)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'papel'     => ['required', 'string', Rule::in(OnboardingContato::PAPEIS)],
+            'nome'      => ['required', 'string', 'max:120'],
+            'email'     => ['nullable', 'email', 'max:190'],
+            'funcao'    => ['nullable', 'string', 'max:80'],
+            'telefone'  => ['nullable', 'string', 'max:30'],
+        ]);
+
+        OnboardingContato::create($data + [
+            'onboarding_id' => $onboarding->id,
+            'criado_por'    => $request->user()->id,
+        ]);
+
+        $this->resolverAgora($onboarding, [
+            OnboardingPasso::AUTO_FONTE_PONTO_CONTATO,
+            OnboardingPasso::AUTO_FONTE_PARTICIPANTES,
+        ]);
+
+        return back()->with('success', 'Contato adicionado.');
+    }
+
+    /** PUT /onboarding/contatos/{contato} — edita UMA linha, nunca a lista. */
+    public function atualizarContato(Request $request, OnboardingContato $contato)
+    {
+        $onboarding = $contato->onboarding;
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'nome'     => ['required', 'string', 'max:120'],
+            'email'    => ['nullable', 'email', 'max:190'],
+            'funcao'   => ['nullable', 'string', 'max:80'],
+            'telefone' => ['nullable', 'string', 'max:30'],
+        ]);
+
+        $contato->update($data);
+        $this->resolverAgora($onboarding, [
+            OnboardingPasso::AUTO_FONTE_PONTO_CONTATO,
+            OnboardingPasso::AUTO_FONTE_PARTICIPANTES,
+        ]);
+
+        return back()->with('success', 'Contato atualizado.');
+    }
+
+    /** DELETE /onboarding/contatos/{contato}. */
+    public function removerContato(Request $request, OnboardingContato $contato)
+    {
+        $onboarding = $contato->onboarding;
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $contato->delete();
+        $this->resolverAgora($onboarding, [
+            OnboardingPasso::AUTO_FONTE_PONTO_CONTATO,
+            OnboardingPasso::AUTO_FONTE_PARTICIPANTES,
+        ]);
+
+        return back()->with('success', 'Contato removido.');
+    }
+
     private function autorizarEscopo(User $user, Onboarding $onboarding): void
     {
         if ($user->isAdmin()) {
@@ -594,6 +861,10 @@ class OnboardingController extends Controller
                 ->values(),
             'condicao'       => $this->condicaoLegivel($passo->condicao),
             'tem_auto_fonte' => $passo->auto_fonte !== null,
+            // Flag explícito em vez de expor a chave crua de `auto_fonte`:
+            // a tela precisa saber se ESTE item aceita resposta Sim/Não, não
+            // qual resolver o fecha.
+            'aceita_confirmacao' => $passo->auto_fonte === OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
         ];
 
         if ($passo->status === OnboardingPasso::STATUS_AGUARDANDO_COLETA) {

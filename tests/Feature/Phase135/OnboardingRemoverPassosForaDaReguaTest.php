@@ -9,6 +9,7 @@ use App\Models\OnboardingPasso;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
+use App\Support\Onboarding\DefinicaoOnboarding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -178,8 +179,12 @@ class OnboardingRemoverPassosForaDaReguaTest extends TestCase
 
         $this->artisan(self::COMANDO, ['--apply' => true])->assertExitCode(0);
 
-        // Os 9 passos da régua v10 continuam todos lá.
-        $this->assertSame(9, OnboardingPasso::where('onboarding_id', $onboarding->id)->count());
+        // Todos os passos da régua vigente continuam lá. A contagem sai da
+        // própria definição, e não de um número escrito à mão: este teste é
+        // sobre o comando NÃO remover o que está na régua, não sobre quantos
+        // itens a régua tem hoje.
+        $daRegua = count(DefinicaoOnboarding::paraServico($onboarding->servico));
+        $this->assertSame($daRegua, OnboardingPasso::where('onboarding_id', $onboarding->id)->count());
         $this->assertNotNull($this->passo($onboarding, 'grant_sistema_ecf'));
         $this->assertNotNull($this->passo($onboarding, 'reuniao_realizada'));
     }

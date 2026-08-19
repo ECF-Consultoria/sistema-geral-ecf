@@ -116,6 +116,26 @@ class OnboardingPasso extends Model
     public const AUTO_FONTE_METRICAS = 'metricas_conta';
     public const AUTO_FONTE_RELATORIO_INICIAL = 'relatorio_inicial_escrito';
 
+    // ── Fontes dos itens de checklist do fluxo de 19/08 ────────────────────
+    // Todas SÍNCRONAS e sem rede: fecham lendo uma tabela do próprio módulo.
+    // Continuam sendo `auto_fonte` (e não conclusão manual) pelo motivo de
+    // D-19 que o RelatorioInicialResolver já provou: sem isso o passo ganha um
+    // "marcar como feito" e alguém fecha a etapa sem ter respondido nada.
+    /** Respondida a pergunta Sim/Não daquele item (§17/§18). */
+    public const AUTO_FONTE_CONFIRMACAO = 'confirmacao_respondida';
+    /** Investimento previsto informado (§13.1). */
+    public const AUTO_FONTE_INVESTIMENTO = 'investimento_informado';
+    /** Investimento destinado à publicidade informado (§13.1). */
+    public const AUTO_FONTE_INVESTIMENTO_PUBLICIDADE = 'investimento_publicidade_informado';
+    /** Ponto de contato do cliente cadastrado (§13.2). */
+    public const AUTO_FONTE_PONTO_CONTATO = 'ponto_de_contato_definido';
+    /** Ao menos um participante de reunião cadastrado, todos com e-mail (§16). */
+    public const AUTO_FONTE_PARTICIPANTES = 'participantes_cadastrados';
+    /** Dia, horário e periodicidade das reuniões definidos (§14). */
+    public const AUTO_FONTE_AGENDA_QUINZENAL = 'agenda_quinzenal_definida';
+    /** O slot de analista do onboarding está preenchido (§8/§19). */
+    public const AUTO_FONTE_ANALISTA_DEFINIDO = 'responsavel_analista_definido';
+
     public const AUTO_FONTES = [
         self::AUTO_FONTE_ADMAN_ACCOUNT_ID,
         self::AUTO_FONTE_ADMAN_GRANT,
@@ -123,6 +143,13 @@ class OnboardingPasso extends Model
         self::AUTO_FONTE_ACERVO,
         self::AUTO_FONTE_METRICAS,
         self::AUTO_FONTE_RELATORIO_INICIAL,
+        self::AUTO_FONTE_CONFIRMACAO,
+        self::AUTO_FONTE_INVESTIMENTO,
+        self::AUTO_FONTE_INVESTIMENTO_PUBLICIDADE,
+        self::AUTO_FONTE_PONTO_CONTATO,
+        self::AUTO_FONTE_PARTICIPANTES,
+        self::AUTO_FONTE_AGENDA_QUINZENAL,
+        self::AUTO_FONTE_ANALISTA_DEFINIDO,
     ];
 
     // ─── Catálogo fechado de `etapa` (bloco em que o passo aparece) ─────────
@@ -141,12 +168,27 @@ class OnboardingPasso extends Model
     public const ETAPA_MAPEAMENTO = 'mapeamento';
     public const ETAPA_AGENDAMENTO = 'agendamento';
     public const ETAPA_ADMINISTRATIVO = 'administrativo';
+    // ── Blocos do checklist de 19/08 ───────────────────────────────────────
+    // "Operação Mercado Livre" do documento NÃO vira etapa: é o que
+    // `acessos` + `mapeamento` já são, e o slug teria 22 chars — a coluna é
+    // varchar(20) e o MariaDB truncaria calado (learnings §6). "Agenda" reusa
+    // `agendamento`, que já existe.
+    public const ETAPA_INFORMACOES_CLIENTE = 'informacoes_cliente';
+    public const ETAPA_RESPONSAVEIS = 'responsaveis';
+    public const ETAPA_INVESTIMENTO = 'investimento';
+    public const ETAPA_PUBLICIDADE = 'publicidade';
+    public const ETAPA_ADMAN = 'adman';
 
     public const ETAPAS = [
         self::ETAPA_ACESSOS,
         self::ETAPA_MAPEAMENTO,
         self::ETAPA_AGENDAMENTO,
         self::ETAPA_ADMINISTRATIVO,
+        self::ETAPA_INFORMACOES_CLIENTE,
+        self::ETAPA_RESPONSAVEIS,
+        self::ETAPA_INVESTIMENTO,
+        self::ETAPA_PUBLICIDADE,
+        self::ETAPA_ADMAN,
     ];
 
     // ─── Catálogo fechado de `natureza` (COMO o item se preenche) ───────────

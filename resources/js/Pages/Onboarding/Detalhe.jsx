@@ -9,6 +9,9 @@ import RelatorioInicial from '@/Components/Onboarding/RelatorioInicial';
 import ReuniaoBloco from '@/Components/Onboarding/Painel/ReuniaoBloco';
 import LinkDoCliente from '@/Components/Onboarding/Painel/LinkDoCliente';
 import ContextoDaVenda from '@/Components/Onboarding/Painel/ContextoDaVenda';
+import BlocoInvestimento from '@/Components/Onboarding/Painel/BlocoInvestimento';
+import BlocoContatos from '@/Components/Onboarding/Painel/BlocoContatos';
+import BlocoAgenda from '@/Components/Onboarding/Painel/BlocoAgenda';
 import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
 
 const initials = (name) =>
@@ -33,6 +36,7 @@ export default function Detalhe({
     reuniao = null,
     link = null,
     mapeamento = null,
+    respostas = null,
 }) {
     return (
         <AppLayout title="Detalhe do onboarding">
@@ -98,7 +102,29 @@ export default function Detalhe({
 
                 {relatorio && <RelatorioInicial onboardingId={onboarding.id} relatorio={relatorio} />}
 
-                <DetalheOnboarding passos={passos} />
+                {/* Blocos de resposta do checklist (fluxo de 19/08). Ficam
+                    ANTES da lista de passos porque é aqui que se preenche;
+                    a lista abaixo mostra o efeito disso nos itens. */}
+                <BlocoInvestimento
+                    onboardingId={onboarding.id}
+                    investimento={respostas?.investimento}
+                />
+
+                <BlocoContatos
+                    onboardingId={onboarding.id}
+                    contatos={respostas?.contatos ?? []}
+                />
+
+                <BlocoAgenda
+                    onboardingId={onboarding.id}
+                    agenda={respostas?.agenda}
+                />
+
+                <DetalheOnboarding
+                    passos={passos}
+                    onboardingId={onboarding.id}
+                    confirmacoes={respostas?.confirmacoes ?? {}}
+                />
             </div>
         </AppLayout>
     );

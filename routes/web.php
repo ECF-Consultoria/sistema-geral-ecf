@@ -920,6 +920,24 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
         // botão de um clique do painel antigo.
         Route::post('/onboarding/{onboarding}/responsaveis', [OnboardingController::class, 'definirResponsaveis'])
             ->name('onboarding.responsaveis.definir');
+
+        // ─── Respostas do checklist (fluxo consolidado de 19/08) ──────────
+        // Cada assunto grava na tabela própria, nunca em
+        // `onboarding_passos.valor`: aquela coluna só é escrita quando o passo
+        // fecha, e é limpa ao desmarcar — resposta rascunhada sumiria.
+        Route::post('/onboarding/{onboarding}/confirmacao', [OnboardingController::class, 'responderConfirmacao'])
+            ->name('onboarding.confirmacao.responder');
+        Route::put('/onboarding/{onboarding}/investimento', [OnboardingController::class, 'salvarInvestimento'])
+            ->name('onboarding.investimento.salvar');
+        Route::put('/onboarding/{onboarding}/agenda', [OnboardingController::class, 'salvarAgenda'])
+            ->name('onboarding.agenda.salvar');
+        Route::post('/onboarding/{onboarding}/contatos', [OnboardingController::class, 'salvarContato'])
+            ->name('onboarding.contatos.salvar');
+        // Edição e remoção são por LINHA (id próprio), nunca pela lista inteira.
+        Route::put('/onboarding/contatos/{contato}', [OnboardingController::class, 'atualizarContato'])
+            ->name('onboarding.contatos.atualizar');
+        Route::delete('/onboarding/contatos/{contato}', [OnboardingController::class, 'removerContato'])
+            ->name('onboarding.contatos.remover');
         Route::post('/onboarding/passos/{passo}/concluir', [OnboardingController::class, 'concluirPasso'])
             ->name('onboarding.passos.concluir');
         // Desmarcar — o caminho de volta que faltava.

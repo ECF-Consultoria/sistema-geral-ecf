@@ -171,7 +171,7 @@ class OnboardingNaturezaTest extends TestCase
     /** @test */
     public function a_versao_da_definicao_subiu_junto_com_o_eixo(): void
     {
-        $this->assertSame(11, DefinicaoOnboarding::VERSAO);
-        $this->assertSame(11, $this->onboardingNovo()->definicao_versao);
+        $this->assertSame(12, DefinicaoOnboarding::VERSAO);
+        $this->assertSame(12, $this->onboardingNovo()->definicao_versao);
     }
 }

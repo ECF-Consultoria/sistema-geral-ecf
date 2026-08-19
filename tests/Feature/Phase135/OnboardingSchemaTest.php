@@ -39,16 +39,29 @@ class OnboardingSchemaTest extends TestCase
     // ─── Catálogos fechados ───────────────────────────────────────────────
 
     /** @test */
-    public function auto_fontes_tem_exatamente_6_valores_do_catalogo_fechado(): void
+    public function auto_fontes_tem_exatamente_13_valores_do_catalogo_fechado(): void
     {
-        $this->assertCount(6, OnboardingPasso::AUTO_FONTES);
+        // 6 da Fase 135 + 7 do fluxo consolidado de 19/08. A contagem exata é
+        // proposital: o catálogo é FECHADO, e um resolver novo que entre sem
+        // passar por aqui é exatamente o que este teste existe para pegar.
+        $this->assertCount(13, OnboardingPasso::AUTO_FONTES);
         $this->assertSame([
+            // Fase 135
             'adman_account_id_preenchido',
             'adman_grant_ativo',
             'ml_token_ativo',
             'acervo_coletado',
             'metricas_conta',
             'relatorio_inicial_escrito',
+            // Fluxo consolidado de 19/08 — todos síncronos, sem rede: fecham
+            // lendo uma tabela do próprio módulo.
+            'confirmacao_respondida',
+            'investimento_informado',
+            'investimento_publicidade_informado',
+            'ponto_de_contato_definido',
+            'participantes_cadastrados',
+            'agenda_quinzenal_definida',
+            'responsavel_analista_definido',
         ], OnboardingPasso::AUTO_FONTES);
     }
 
