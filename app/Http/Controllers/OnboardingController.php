@@ -13,6 +13,7 @@ use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
 use App\Services\Onboarding\OnboardingMapeamentoService;
 use App\Services\Onboarding\OnboardingResolverFactory;
+use App\Services\Onboarding\OnboardingSituacaoService;
 use App\Services\Onboarding\RelatorioInicialService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -35,37 +36,10 @@ use Inertia\Inertia;
  */
 class OnboardingController extends Controller
 {
-    /**
-     * Chave do único passo administrativo do onboarding de Gestão (D-15).
-     *
-     * v10 da definição REMOVEU este passo da régua. A regra continua aqui de
-     * propósito: os onboardings que nasceram antes da v10 carregam o passo
-     * (cada um guarda a definição com que nasceu) e para eles `situacao` ainda
-     * precisa distinguir "só falta o administrativo" de "aguardando interno".
-     * Para onboarding novo, `prontoParaConcluir()` devolve `false` na primeira
-     * linha — a chave não existe — e a situação nunca aparece.
-     */
-    private const CHAVE_PASSO_ADMINISTRATIVO = 'confirmacao_pagamento';
-
-    /**
-     * Rótulo pt-BR para cada um dos 6 valores de `situacao` (SC-11 — nenhum
-     * deles é porcentagem). Índice pela string devolvida por
-     * {@see self::situacaoDe()}.
-     */
-    private const SITUACAO_LABELS = [
-        'rascunho'             => 'Rascunho — aguardando responsável',
-        'vencido'              => 'Vencido',
-        'aguardando_cliente'   => 'Aguardando cliente',
-        'aguardando_interno'   => 'Aguardando interno',
-        'aguardando_sistema'   => 'Aguardando sistema',
-        'coletando'            => 'Coletando dados',
-        'pronto_para_concluir' => 'Pronto para concluir',
-        'concluido'            => 'Concluído',
-    ];
-
     public function __construct(
         private OnboardingEngineService $engine,
         private OnboardingLinkService $linkService,
+        private OnboardingSituacaoService $situacaoService,
     ) {
     }
 
@@ -152,7 +126,7 @@ class OnboardingController extends Controller
             fn (OnboardingPasso $p) => [$p->chave => $p->titulo]
         );
 
-        $situacao = $this->situacaoDe($onboarding, $passos);
+        $situacao = $this->situacaoService->situacao($onboarding, $passos);
 
         $passosOrdenados = $passos
             ->sortBy(fn (OnboardingPasso $p) => $p->ordem)
@@ -166,7 +140,7 @@ class OnboardingController extends Controller
                 'servico'         => ['id' => $onboarding->servico->id, 'nome' => $onboarding->servico->nome],
                 'status'          => $onboarding->status,
                 'situacao'        => $situacao,
-                'situacao_label'  => self::SITUACAO_LABELS[$situacao],
+                'situacao_label'  => $this->situacaoService->label($situacao),
                 'responsavel'     => $onboarding->responsavel ? [
                     'id'   => $onboarding->responsavel->id,
                     'name' => $onboarding->responsavel->name,
@@ -509,29 +483,10 @@ class OnboardingController extends Controller
      */
     private function resumoOnboarding(Onboarding $onboarding): array
     {
-        $passos = $onboarding->passos;
-        $situacao = $this->situacaoDe($onboarding, $passos);
-        $trava = $this->passoQueTrava($passos);
-
-        $item = [
-            'id'      => $onboarding->id,
-            'servico' => ['id' => $onboarding->servico->id, 'nome' => $onboarding->servico->nome],
-            'status'  => $onboarding->status,
-            'situacao'       => $situacao,
-            'situacao_label' => self::SITUACAO_LABELS[$situacao],
-            'responsavel'    => $onboarding->responsavel ? [
-                'id'   => $onboarding->responsavel->id,
-                'name' => $onboarding->responsavel->name,
-            ] : null,
-            'passo_que_trava' => $trava ? $this->passoTravaPayload($trava) : null,
-            'contadores'      => $this->contadores($passos),
-            'definicao_versao' => $onboarding->definicao_versao,
-            // Data de chegada da empresa ao onboarding = `created_at` da linha,
-            // gravada pelo Observer no `created` do contrato. NÃO usar
-            // `iniciado_em`: ele é null enquanto o onboarding está em rascunho,
-            // e é justamente o rascunho recém-chegado que se quer enxergar.
-            'chegou_em'        => $onboarding->created_at?->toISOString(),
-        ];
+        // O shape vem do service, que é a MESMA fonte usada pela listagem de
+        // /companies — duas telas calculando "quem está travado" por conta
+        // própria seriam duas verdades.
+        $item = $this->situacaoService->resumo($onboarding);
 
         // D-17: a sugestão só faz sentido enquanto o onboarding ainda não
         // tem responsável CONFIRMADO — é o CTA "Confirmar responsável" do
@@ -553,7 +508,7 @@ class OnboardingController extends Controller
     private function detalhePasso(OnboardingPasso $passo, Collection $titulosPorChave): array
     {
         $passo = $passo;
-        $diasParado = $this->diasParado($passo);
+        $diasParado = $this->situacaoService->diasParado($passo);
         $slaDias = $passo->sla_dias;
         $vencido = $passo->status === OnboardingPasso::STATUS_ABERTO
             && $diasParado !== null
@@ -595,180 +550,6 @@ class OnboardingController extends Controller
         }
 
         return $item;
-    }
-
-    /**
-     * Classificação de situação — função pura sobre os passos já carregados
-     * (nenhuma consulta aqui). Precedência de 6 valores (UI-SPEC Tela 1):
-     *
-     *  1. rascunho             — onboarding.status = rascunho, não corre SLA (D-05/SC-04)
-     *  2. vencido               — algum passo aberto-e-parado fora do SLA
-     *  3. aguardando_{dono}     — algum passo aberto-e-parado dentro do SLA
-     *  4. coletando             — só resta pendência em aguardando_coleta/indeterminado
-     *  5. pronto_para_concluir  — só falta o passo administrativo (D-15)
-     *  6. concluido             — onboarding.status = concluido
-     *
-     * A checagem de `pronto_para_concluir` roda ANTES da checagem geral de
-     * vencido/aguardando (que olha `passoQueTrava()` sobre TODOS os abertos,
-     * administrativo incluso) — senão um passo "Confirmação de pagamento"
-     * vencido sozinho classificaria o onboarding como "vencido"/"aguardando
-     * interno", confundindo questão administrativa com mapeamento parado
-     * (D-15). Isso não muda nenhum outro caso: se ainda há pendência
-     * NÃO-administrativa, `prontoParaConcluir()` é falso e o fluxo cai nos
-     * ramos 2/3/4 normalmente.
-     */
-    private function situacaoDe(Onboarding $onboarding, Collection $passos): string
-    {
-        if ($onboarding->status === Onboarding::STATUS_RASCUNHO) {
-            return 'rascunho';
-        }
-
-        if ($onboarding->status === Onboarding::STATUS_CONCLUIDO) {
-            return 'concluido';
-        }
-
-        if ($this->prontoParaConcluir($passos)) {
-            return 'pronto_para_concluir';
-        }
-
-        $trava = $this->passoQueTrava($passos);
-
-        if ($trava) {
-            $diasParado = $this->diasParado($trava);
-            $slaDias = $trava->sla_dias;
-
-            if ($diasParado !== null && $slaDias !== null && $diasParado > $slaDias) {
-                return 'vencido';
-            }
-
-            return 'aguardando_'.$trava->dono;
-        }
-
-        if ($passos->contains(fn (OnboardingPasso $p) => in_array(
-            $p->status,
-            [OnboardingPasso::STATUS_AGUARDANDO_COLETA, OnboardingPasso::STATUS_INDETERMINADO],
-            true
-        ))) {
-            return 'coletando';
-        }
-
-        // Sem passo aberto, sem coleta pendente e ainda não concluído — não
-        // deveria acontecer com dados consistentes (só se restar bloqueado
-        // preso por dependência cíclica, guarda já existente no
-        // catálogo fechado de OnboardingPasso). 'coletando' é o
-        // estado neutro mais seguro pra nunca devolver um valor fora do
-        // catálogo de 6 pro frontend.
-        return 'coletando';
-    }
-
-    /**
-     * D-15: `true` só quando TODOS os passos não-administrativos estão
-     * `concluido`/`nao_aplicavel` e o passo administrativo
-     * (`confirmacao_pagamento`) ainda não está — a pendência que resta é
-     * administrativa, não mapeamento parado.
-     */
-    private function prontoParaConcluir(Collection $passos): bool
-    {
-        $administrativo = $passos->firstWhere('chave', self::CHAVE_PASSO_ADMINISTRATIVO);
-
-        if (! $administrativo) {
-            return false;
-        }
-
-        $administrativoPendente = ! in_array(
-            $administrativo->status,
-            [OnboardingPasso::STATUS_CONCLUIDO, OnboardingPasso::STATUS_NAO_APLICAVEL],
-            true
-        );
-
-        if (! $administrativoPendente) {
-            return false;
-        }
-
-        return $passos
-            ->reject(fn (OnboardingPasso $p) => $p->chave === self::CHAVE_PASSO_ADMINISTRATIVO)
-            ->every(fn (OnboardingPasso $p) => in_array(
-                $p->status,
-                [OnboardingPasso::STATUS_CONCLUIDO, OnboardingPasso::STATUS_NAO_APLICAVEL],
-                true
-            ));
-    }
-
-    /**
-     * O passo que mais trava: entre os `aberto`, o de maior `dias_parado`
-     * (empate → menor `ordem`). Nenhum aberto → `null`. `aguardando_coleta`
-     * nunca é escolhido — não é pendência humana (D-11).
-     */
-    private function passoQueTrava(Collection $passos): ?OnboardingPasso
-    {
-        $abertos = $passos->filter(fn (OnboardingPasso $p) => $p->status === OnboardingPasso::STATUS_ABERTO);
-
-        if ($abertos->isEmpty()) {
-            return null;
-        }
-
-        return $abertos->reduce(function (?OnboardingPasso $atual, OnboardingPasso $candidato) {
-            if ($atual === null) {
-                return $candidato;
-            }
-
-            $diasAtual = $this->diasParado($atual) ?? 0;
-            $diasCandidato = $this->diasParado($candidato) ?? 0;
-
-            if ($diasCandidato > $diasAtual) {
-                return $candidato;
-            }
-
-            if ($diasCandidato === $diasAtual && $candidato->ordem < $atual->ordem) {
-                return $candidato;
-            }
-
-            return $atual;
-        });
-    }
-
-    private function passoTravaPayload(OnboardingPasso $passo): array
-    {
-        $diasParado = $this->diasParado($passo);
-        $slaDias = $passo->sla_dias;
-
-        return [
-            'chave'       => $passo->chave,
-            'titulo'      => $passo->titulo,
-            'dono'        => $passo->dono,
-            'setor'       => $passo->setor?->nome,
-            'dias_parado' => $diasParado,
-            'sla_dias'    => $slaDias,
-            'vencido'     => $diasParado !== null && $slaDias !== null && $diasParado > $slaDias,
-        ];
-    }
-
-    /** @return array{abertos:int,bloqueados:int,aguardando_coleta:int,indeterminados:int,concluidos:int,nao_aplicaveis:int} */
-    private function contadores(Collection $passos): array
-    {
-        return [
-            'abertos'           => $passos->where('status', OnboardingPasso::STATUS_ABERTO)->count(),
-            'bloqueados'        => $passos->where('status', OnboardingPasso::STATUS_BLOQUEADO)->count(),
-            'aguardando_coleta' => $passos->where('status', OnboardingPasso::STATUS_AGUARDANDO_COLETA)->count(),
-            'indeterminados'    => $passos->where('status', OnboardingPasso::STATUS_INDETERMINADO)->count(),
-            'concluidos'        => $passos->where('status', OnboardingPasso::STATUS_CONCLUIDO)->count(),
-            'nao_aplicaveis'    => $passos->where('status', OnboardingPasso::STATUS_NAO_APLICAVEL)->count(),
-        ];
-    }
-
-    /**
-     * Dias inteiros desde `disponivel_em` até agora. `null` (nunca `0`)
-     * quando o passo ainda não abriu — contar do `created_at` do onboarding
-     * mentiria sobre um passo que ficou bloqueado (D-11, comentário do
-     * 135-09-PLAN.md).
-     */
-    private function diasParado(OnboardingPasso $passo): ?int
-    {
-        if ($passo->disponivel_em === null) {
-            return null;
-        }
-
-        return (int) $passo->disponivel_em->diffInDays(now());
     }
 
     /**
