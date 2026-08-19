@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
 status: executing
-stopped_at: "133-04: checkpoint de ativação respondido com 'parar' — chave administrativo_bloqueio_ativo segue desligada em produção; 133-05 bloqueado por dependência"
-last_updated: "2026-08-19T00:00:00.000Z"
+stopped_at: "133-04: checkpoint corrigido para 'ligar-agora' — chave administrativo_bloqueio_ativo LIGADA em produção (2026-08-19, ~09:05 BRT); 133-05 desbloqueado e pendente (verificação 48h + primeiro cadastro real de Polos)"
+last_updated: "2026-08-19T12:05:00.000Z"
 last_activity: 2026-08-19
 progress:
   total_phases: 13
@@ -32,21 +32,23 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 133 (liga-o-bloqueio-ativa-o-real-v22-0) — EXECUTING (PARADA no gate de ativação)
-Plan: 4 of 5 — 133-04 concluído com decisão `parar` no checkpoint da Task 2; **Task 3 (deploy +
-ligar a chave) NÃO foi executada**
-Status: Aguardando confirmação do usuário das pré-condições (a) webhook confiável em produção
-(Fases 128/129), (b) alerta de contrato preso em sandbox (Fase 130) e (c) liberação manual
-testada em produção (Fase 130) — a (d) cutover Clicksign já está confirmada. **A chave
-`administrativo_bloqueio_ativo` permanece desligada em produção.** O plano 133-05 fica
-bloqueado por dependência até a Task 2/3 do 133-04 serem reabertas e a ativação ocorrer.
-**A milestone v22.0 NÃO está fechada.**
+Phase: 133 (liga-o-bloqueio-ativa-o-real-v22-0) — EXECUTING (chave LIGADA, aguardando prova do 133-05)
+Plan: 4 of 5 — 133-04 concluído com decisão **`ligar-agora`** no checkpoint da Task 2 (a resposta
+inicial "parar" foi corrigida pelo próprio usuário na mesma conversa); **Task 3 executada** —
+deploy do commit `c4043014` + chave `administrativo_bloqueio_ativo` **LIGADA em produção** em
+2026-08-19 (~09:05 BRT), conferida por reconsulta ao banco (`bloqueioAtivo()` = `ligado`,
+`mlb_empresas` idêntica antes/depois: 488|488). Task 3 executada pelo **orquestrador** (não pelo
+subagente executor — o classificador de permissões bloqueou `plink`/`pscp` no subagente).
+Status: **Plano 133-05 DESBLOQUEADO e pendente** — falta a verificação em produção nas primeiras
+48h e o registro do primeiro cadastro real de Polos (prova de que a exceção por serviço D-02
+continua funcionando com a chave ligada). Requirements FLUXO-01/FLUXO-02 seguem `Pending` até essa
+prova; FLUXO-09 já é `Done` desde o 133-02. **A milestone v22.0 NÃO está fechada.**
 
-⚠️ Dívida ainda aberta, sem relação com o checkpoint acima:
+⚠️ Dívida ainda aberta, sem relação com a ativação acima:
 `.planning/todos/pending/260818-ficha-operacional-nao-criada-na-liberacao.md` — na prova do gate
 #10 a `ContratoLiberacao` nasceu mas a ficha operacional (`MlbEmpresa`) não foi criada. Provável
 que seja esperado (empresa fictícia sem loja ML), mas **não confirmado**.
-Last activity: 2026-08-19 — checkpoint de ativação do 133-04 respondido com `parar`
+Last activity: 2026-08-19 — chave `administrativo_bloqueio_ativo` LIGADA em produção; 133-05 desbloqueado
 
 ## Posição paralela — Fase 136 (Métricas manuais por empresa/mês) — AGUARDANDO GATE HUMANO
 
@@ -587,6 +589,8 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 ### Roadmap Evolution
 
 - 2026-08-19 — **Fase 133 Plan 04 — checkpoint de ativação respondido com `parar`; chave `administrativo_bloqueio_ativo` permanece DESLIGADA em produção.** O orquestrador apresentou as quatro pré-condições do checkpoint humano do ROADMAP **individualmente**, via AskUserQuestion, ao usuário (dev.01@ecfconsultoria.com.br): (a) webhook confiável no período de observação (Fases 128/129), (b) alerta de contrato preso disparado em sandbox (Fase 130) e (c) liberação manual testada em produção (Fase 130) voltaram **"Não / não sei"** — não confirmadas; (d) cutover Clicksign de produção concluído e aprovado (Fase 132) voltou **"Sim, confirmado"**. Conforme o `<acceptance_criteria>` da Task 2 do plano 133-04 ("se qualquer pré-condição ficar sem confirmação, a opção válida é `parar` — nunca prosseguir por inferência"), a decisão registrada é **parar**: nenhuma autorização de deploy foi dada, nenhum comando executado no VPS, a chave segue desligada, e a Task 3 (deploy + ligar a chave + conferir por reconsulta) **não foi executada**. Registro completo em `133-ROLLOUT.md` (nova seção "Resultado do checkpoint de ativação" + as quatro caixas de pré-condição atualizadas com o resultado real). **A Fase 133 permanece aberta** — 4 dos 5 planos executados; o plano **133-05 fica bloqueado por dependência** (precisa da chave ligada para conferir o primeiro cadastro real de Polos). Requirements FLUXO-01/FLUXO-02 continuam `Pending` em `REQUIREMENTS-v22.md` (só se completam com a ativação real); FLUXO-09 já estava `Done` desde o plano 133-02 e não foi alterado. **A milestone v22.0 NÃO está fechada.** **Para retomar:** confirmar (a), (b) e (c) com o usuário — na prática, concluir/observar o que falta nas Fases 128/129 (janela de observação do webhook em produção) e na Fase 130 (disparo real do alerta em sandbox + teste real de liberação manual em produção). Próximo: aguardar o usuário avançar essas frentes antes de reabrir o checkpoint.
+
+- 2026-08-19 — **Fase 133 Plan 04 CORRIGIDO — na MESMA conversa, o usuário se corrigiu ("Desculpa me enganei, todos os pontos estão testados"); as quatro pré-condições foram confirmadas, o checkpoint virou `ligar-agora`, e a chave `administrativo_bloqueio_ativo` está LIGADA em produção.** A entrada acima (decisão `parar`) fica preservada como histórico honesto da primeira rodada — não é regressão nem erro do executor, é uma correção humana da própria resposta humana, antes de qualquer ação de produção com base na resposta errada. Com as quatro pré-condições confirmadas, deploy autorizado explicitamente por dev.01@ecfconsultoria.com.br nesta conversa (ciente de que publica o trabalho de todas as sessões que compartilham a árvore), a **Task 3 foi executada pelo ORQUESTRADOR da Fase 133** (não pelo subagente executor — o classificador de permissões bloqueou `plink`/`pscp` no subagente): deploy do commit **`c4043014`** (`bash deploy.sh`, `migrate --force` → "Nothing to migrate", zero `cache:clear`), chave ligada via `Configuracao::set(EmpresaOperacionalRouter::CHAVE_BLOQUEIO, '1')` em **2026-08-19 (~09:05 BRT)**, conferida por **reconsulta** ao banco (`bloqueioAtivo()` = `ligado`), com `mlb_empresas` **idêntica antes e depois (488|488)** — ligar não criou nem apagou ficha nenhuma. Nota: a baseline de 2026-08-18 media 486 fichas; a recontagem de 19/08 achou 488 — 2 Polos novos entraram entre os dois dias, sinal de fluxo vivo. Smoke check sem erro novo (`/login` 200, `/administrativo/contratos` sem sessão 302, log sem `Ativação manual retida` indevida). Registro completo em `133-ROLLOUT.md` (seção "Campos de resultado" > "Ativação") e `133-04-SUMMARY.md` reescrito para refletir o desfecho real. **A Fase 133 permanece aberta** — 4 dos 5 planos executados; o plano **133-05 passa de bloqueado para DESBLOQUEADO e pendente** (falta a verificação em produção nas primeiras 48h e o primeiro cadastro real de Polos). Requirements FLUXO-01/FLUXO-02 continuam `Pending` — só fecham com a prova do 133-05, não com a ativação sozinha; FLUXO-09 segue `Done` desde o 133-02. **A milestone v22.0 NÃO está fechada.** **Próximo:** executar o plano 133-05.
 
 - 2026-08-11 — **Fase 135 Plan 05 EXECUTADO — `ContratoServicoObserver` cobre os 4 call-sites de criação de contrato; onboarding só sai de rascunho quando a Coordenação confirma o responsável.** `#[ObservedBy(ContratoServicoObserver::class)]` em `ContratoServico` (D-13) — Observer leve, sem I/O de rede (provado por grep + `Http::assertNothingSent()` no cenário de 3 empresas via `CompanyGroupController::atribuirServico`), delega para `OnboardingEngineService::criarParaContrato()` e nunca deixa uma falha do onboarding derrubar a criação do contrato (`try/catch` + `Log::error`). `OnboardingEngineService` ganhou `sugerirResponsavel()` (D-17, vínculo `consultor`→fallback `estrategista`, discrição documentada em `Onboarding::ROLES_RESPONSAVEL_SUGERIDO`), `confirmarResponsavel()` (único caminho rascunho→andamento, D-05/SC-04 — `\DomainException` se já não estiver em rascunho) e `podeIniciar()`. Os 4 call-sites reais provados via rota/controller (webhook HubSpot com HMAC v3, `ComercialController::store`, `CompanyController::storeContrato`, `CompanyGroupController::atribuirServico`) — nenhum teste chama o Observer diretamente. Zero regressão: as 4 suítes de risco (`Phase112HubspotHandoffWebhookTest` 6/0, `Phase113HubspotDedupTest` 14/0, `Phase37ComercialListagemTest` 17/0, `Phase37CompaniesPerformanceFilterTest` 15/0) e o gate de Polos (`PolosControllerTest` 6/6, `PolosFaturamentoSnapshotTest` 0/4) batem exatamente com `135-BASELINE-TESTES.md`. Único ajuste fora do escopo direto: fixture de `OnboardingSchemaTest` (Plano 02) reescrita para nascer via `DB::table` em vez de Eloquent, contornando o novo Observer sem mudar a prova de constraint (deviation Rule 1, documentada no SUMMARY). `git diff --name-only` não toca nenhum dos 4 controllers nem arquivo de Polos — D-02 intacto. **Nota de execução paralela:** esta plan rodou concorrentemente com a Fase 136 (outra sessão) — `state.advance-plan`/`state.record-session` foram deliberadamente PULADOS neste plano porque a seção `## Current Position` do STATE.md já estava ocupada pelo ponteiro da Fase 136; atualizar aqui teria corrompido a contagem de planos daquela sessão. Ver `.planning/phases/135-.../135-05-SUMMARY.md`. **Próximo:** `135-06`/`135-08` (Wave 4, paralelizáveis).
 
@@ -1323,6 +1327,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-08-19T12:05:00.000Z
+Stopped at: 133-04 corrigido (ligar-agora) — chave administrativo_bloqueio_ativo LIGADA em produção; 133-05 desbloqueado
 Last session: 2026-08-18T21:34:08.162Z
 Stopped at: Completed 133-03-PLAN.md
 Last session: 2026-08-10T21:59:33.127Z
