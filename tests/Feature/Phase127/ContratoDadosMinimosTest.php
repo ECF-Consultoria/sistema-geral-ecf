@@ -164,6 +164,34 @@ class ContratoDadosMinimosTest extends TestCase
         $this->assertNull($item);
     }
 
+    // ─── Quick 260819-guy — dígito verificador de CNPJ ──────────────────
+
+    #[Test]
+    public function cnpj_valido_do_plano_passa(): void
+    {
+        // Exemplo literal do 260819-guy-PLAN.md (Tarefa 4, critério de aceite).
+        $company = $this->companyCompleta(['cnpj' => '26.754.383/0001-87']);
+        $this->contratoAtivo($company);
+
+        $item = collect($this->service->faltantes($company))->firstWhere('campo', 'cnpj');
+        $this->assertNull($item);
+    }
+
+    #[Test]
+    public function cnpj_com_digito_verificador_trocado_reprova_como_formato(): void
+    {
+        // Mesmo CNPJ do teste acima, com o último dígito trocado — 14
+        // dígitos, formato "correto" no sentido antigo, mas o dígito
+        // verificador não bate.
+        $company = $this->companyCompleta(['cnpj' => '26.754.383/0001-88']);
+        $this->contratoAtivo($company);
+
+        $item = collect($this->service->faltantes($company))->firstWhere('campo', 'cnpj');
+        $this->assertNotNull($item);
+        $this->assertSame('formato', $item['motivo']);
+        $this->assertFalse($this->service->estaPronta($company));
+    }
+
     #[Test]
     public function sem_nome_contato_reprova(): void
     {

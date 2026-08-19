@@ -10,6 +10,7 @@ use App\Models\ContratoLiberacao;
 use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Models\User;
+use App\Rules\CnpjValido;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\CongelamentoEmissaoService;
 use App\Services\Contratos\ContratoDadosMinimosService;
@@ -362,7 +363,11 @@ class ContratoAdminController extends Controller
     public function atualizarCadastro(Request $request, Company $company): RedirectResponse
     {
         $data = $request->validate([
-            'cnpj'                                 => ['nullable', 'string', 'max:20'],
+            // Quick 260819-guy — dígito verificador entra aqui além de
+            // presença/formato; CnpjValido é `nullable`-aware (CNPJ ausente
+            // não é problema desta Rule, é a regra 1/2 de
+            // ContratoDadosMinimosService).
+            'cnpj'                                 => ['nullable', 'string', 'max:20', new CnpjValido()],
             'email_cliente'                        => ['nullable', 'email'],
             'nome_contato'                          => ['nullable', 'string', 'max:255'],
             // Quick 260819-guy — razão social/endereço são POR EMPRESA (mesmo

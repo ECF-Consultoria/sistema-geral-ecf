@@ -3,6 +3,7 @@
 namespace App\Services\Contratos;
 
 use App\Models\Company;
+use App\Support\Cnpj;
 
 /**
  * ContratoDadosMinimosService — a recusa que acontece ANTES de qualquer
@@ -18,8 +19,9 @@ use App\Models\Company;
  * gated por `is_origem_hubspot` — retorna array vazio para qualquer empresa
  * cadastrada à mão — e das 7 pendências que calcula, nenhuma olha
  * `email_cliente` nem `cnpj`. Reusá-lo abriria uma brecha onde metade das
- * empresas passaria pela checagem sem nenhum bloqueio. Aqui as 5 regras
- * abaixo rodam SEMPRE, independente da origem da empresa.
+ * empresas passaria pela checagem sem nenhum bloqueio. Aqui as regras
+ * abaixo (7 desde o Quick 260819-guy) rodam SEMPRE, independente da origem
+ * da empresa.
  *
  * ⚠️ SUPERADO em 2026-08-19 (Quick 260819-guy, decisão explícita do usuário
  * via AskUserQuestion — ver `.planning/quick/260819-guy-ajustes-fluxo-
@@ -68,14 +70,24 @@ class ContratoDadosMinimosService
             $itens[] = $this->item('email_cliente', 'E-mail do cliente', 'formato');
         }
 
-        // 2. CNPJ — presença e formato (14 dígitos após remover pontuação).
-        // ⚠️ Presença e formato, NÃO dígito verificador — é literalmente o
-        // que o REDE-05 pede ("presença e formato"), e o projeto não tem
-        // helper de validação de dígito verificador de CNPJ hoje. Não é
-        // esquecimento: é escopo deliberado desta checagem.
+        // 2. CNPJ — presença, formato (14 dígitos após remover pontuação) e,
+        // desde 2026-08-19 (Quick 260819-guy), dígito verificador.
+        //
+        // ⚠️ SUPERADO — texto original preservado por histórico: "Presença e
+        // formato, NÃO dígito verificador — é literalmente o que o REDE-05
+        // pede ('presença e formato'), e o projeto não tem helper de
+        // validação de dígito verificador de CNPJ hoje. Não é esquecimento:
+        // é escopo deliberado desta checagem." O usuário decidiu, em
+        // 2026-08-19, fechar essa lacuna: `App\Support\Cnpj::valido()`
+        // (helper novo deste quick) calcula o dígito verificador de verdade.
+        // Dígito trocado vira `motivo: 'formato'` — reusa o valor JÁ
+        // existente do contrato público de `faltantes()` (nunca inventar um
+        // `motivo` novo, isso quebraria a tela do Administrativo).
         if (blank($company->cnpj)) {
             $itens[] = $this->item('cnpj', 'CNPJ', 'ausente');
         } elseif (strlen(preg_replace('/\D/', '', (string) $company->cnpj)) !== 14) {
+            $itens[] = $this->item('cnpj', 'CNPJ', 'formato');
+        } elseif (! Cnpj::valido((string) $company->cnpj)) {
             $itens[] = $this->item('cnpj', 'CNPJ', 'formato');
         }
 

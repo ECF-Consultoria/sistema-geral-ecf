@@ -227,6 +227,31 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertNull($empresa->fresh()->email_colaborador);
     }
 
+    // ─── Quick 260819-guy — PATCH com CNPJ de dígito verificador trocado é recusado ───
+
+    public function test_atualizar_cadastro_com_cnpj_de_digito_trocado_e_recusado_e_nao_grava(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaIncompleta(['name' => 'Empresa CNPJ Digito Trocado']);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            // Mesmo CNPJ válido do plano ('26.754.383/0001-87'), com o
+            // último dígito trocado.
+            'cnpj' => '26.754.383/0001-88',
+        ]);
+
+        $response->assertSessionHasErrors('cnpj');
+        $this->assertNull($empresa->fresh()->cnpj);
+
+        // A mesma empresa, sem o cnpj corrigido, também aparece como
+        // pendência ao consultar a tela de detalhe — prova que o save() e
+        // o faltantes() concordam sobre o mesmo dado.
+        $response2 = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+        $props = $response2->viewData('page')['props'];
+        $campos = collect($props['faltantes'])->pluck('campo')->all();
+        $this->assertContains('cnpj', $campos);
+    }
+
     // ─── Caso 5 — PATCH grava CNPJ/e-mails/nome_contato/datas — RECONSULTA ao banco ───
 
     public function test_atualizar_cadastro_grava_todos_os_campos_conferido_por_reconsulta_ao_banco(): void
@@ -237,7 +262,7 @@ class ContratoAdminDetalheTest extends TestCase
         $contratoServico = $this->vincularServico($empresa, $servico);
 
         $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
-            'cnpj'              => '22.333.444/0001-55',
+            'cnpj'              => '22.333.444/0001-81',
             'email_cliente'     => 'novo-cliente@example.com',
             'nome_contato'      => 'Fulano Atualizado',
             'contratos_servico' => [
@@ -254,7 +279,7 @@ class ContratoAdminDetalheTest extends TestCase
 
         // Reconsulta ao banco — nunca confia na mensagem de sucesso.
         $empresaFresca = $empresa->fresh();
-        $this->assertSame('22.333.444/0001-55', $empresaFresca->cnpj);
+        $this->assertSame('22.333.444/0001-81', $empresaFresca->cnpj);
         $this->assertSame('novo-cliente@example.com', $empresaFresca->email_cliente);
         $this->assertSame('Fulano Atualizado', $empresaFresca->nome_contato);
 
@@ -344,7 +369,10 @@ class ContratoAdminDetalheTest extends TestCase
         $contratoServicoDeOutraEmpresa  = $this->vincularServico($empresaOutra, $servico);
 
         $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresaAlvo), [
-            'cnpj'              => '11.111.111/0001-11',
+            // Quick 260819-guy — precisa ser um CNPJ com dígito verificador
+            // VÁLIDO: senão a validação (CnpjValido) barra antes do 422 de
+            // IDOR que este teste está medindo.
+            'cnpj'              => '11.111.111/0001-91',
             'contratos_servico' => [
                 ['id' => $contratoServicoDeOutraEmpresa->id, 'data_contratacao' => '2026-02-01'],
             ],
