@@ -114,7 +114,12 @@ class OnboardingController extends Controller
             // tela mesmo com a empresa tendo o valor gravado ("meli").
             // Projeção que esconde coluna usada mais adiante é silenciosa —
             // não dá erro, só mostra "—".
-            'company:id,name,marketplace',
+            // `hubspot_observacao` e `hubspot_snapshot` entram pelo mesmo
+            // motivo: o payload expõe contexto e SPIN (PDF §3, "não perguntar
+            // de novo o que o Comercial já coletou") e o accessor
+            // `hubspot_spin` lê o snapshot. Fora da projeção, os dois voltam
+            // null sem erro nenhum — foi o que aconteceu na primeira versão.
+            'company:id,name,marketplace,hubspot_observacao,hubspot_snapshot',
             'servico:id,nome',
             'responsavel:id,name',
             'reuniaoAgendadaPor:id,name',
@@ -147,6 +152,13 @@ class OnboardingController extends Controller
                 ] : null,
                 'definicao_versao' => $onboarding->definicao_versao,
                 'chegou_em'        => $onboarding->created_at?->toISOString(),
+                // O que o Comercial já coletou, para não ser perguntado de novo
+                // (PDF §3: "não deverá existir necessidade de preencher
+                // novamente informações que já foram coletadas durante a
+                // venda"). Vem do `hubspot_snapshot` por accessor pronto — sem
+                // consulta nova e sem coluna nova.
+                'spin'             => $onboarding->company->hubspot_spin,
+                'contexto'         => $onboarding->company->hubspot_observacao,
             ],
             'passos' => $passosOrdenados,
             'relatorio'   => $this->relatorioPayload($onboarding),

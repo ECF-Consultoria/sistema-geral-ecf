@@ -128,6 +128,15 @@ class OnboardingSituacaoService
      * D-15: `true` só quando TODOS os passos não-administrativos estão
      * `concluido`/`nao_aplicavel` e o passo administrativo ainda não está — a
      * pendência que resta é administrativa, não mapeamento parado.
+     *
+     * NÃO É BUG este método devolver sempre `false` para onboarding nascido da
+     * v10 em diante: a v10 removeu `confirmacao_pagamento`, o único passo
+     * administrativo, e sem ele não existe o estado "só falta o
+     * administrativo". Quando o último passo fecha,
+     * `OnboardingEngineService::avaliarConclusaoDoOnboarding()` leva o
+     * onboarding direto para `concluido` — que é o indicador de "pronta para
+     * seguir para operação". O caminho continua aqui porque os onboardings
+     * anteriores à v10 carregam o passo e para eles a distinção ainda existe.
      */
     public function prontoParaConcluir(Collection $passos): bool
     {

@@ -154,6 +154,24 @@ class CompanyController extends Controller
             })
             ->get();
 
+        // ─── Quem enxerga o Onboarding dentro desta tela ────────────────────
+        // /companies e /onboarding tinham réguas de visibilidade DIFERENTES: a
+        // listagem mostra todas as empresas a quem tem `core.empresas`,
+        // enquanto o painel restringe não-admin à própria carteira
+        // (OnboardingController::index). Trazer o bloco de onboarding para cá
+        // sem repetir essa régua alargava o acesso em silêncio — e o que vai
+        // aparecer aqui (investimento do cliente, telefone e e-mail dos
+        // participantes) é mais sensível do que a lista de empresas.
+        //
+        // Duas travas, na mesma ordem do painel:
+        //  1. sem `core.onboarding`, o bloco não é montado (a aba some);
+        //  2. não-admin só vê onboarding das empresas da própria carteira.
+        $usuario = $request->user();
+        $podeVerOnboarding = $usuario->hasPermission(\App\Support\Permissions::CORE_ONBOARDING);
+        $empresasDaCarteira = $usuario->isAdmin()
+            ? null
+            : $usuario->companies()->pluck('companies.id')->all();
+
         $companies = $companies->map(fn($c) => [
                 'id'               => $c->id,
                 'name'             => $c->name,
@@ -250,7 +268,7 @@ class CompanyController extends Controller
                 // que o contrato nasceu.
                 'criada_em'        => $c->created_at?->toISOString(),
                 // ─── Aba Onboarding ──────────────────────────────────────
-                ...$this->onboardingDaEmpresa($c),
+                ...$this->onboardingDaEmpresa($c, $podeVerOnboarding, $empresasDaCarteira),
             ]);
 
         $users = User::where('active', true)
@@ -320,6 +338,10 @@ class CompanyController extends Controller
                 'cust_id_status' => $custIdStatusFilter,
                 'sort'           => $sort,
             ],
+            // A aba Onboarding só existe para quem tem a permission dedicada —
+            // esconder no front é cosmético; o que protege é o bloco vazio
+            // acima, montado no servidor.
+            'pode_ver_onboarding' => $podeVerOnboarding,
         ]);
     }
 
@@ -336,8 +358,20 @@ class CompanyController extends Controller
      * `rascunho` vem primeiro: é o único estado em que o tempo passa sem SLA
      * correndo e sem o cliente ver nada.
      */
-    private function onboardingDaEmpresa(Company $company): array
-    {
+    private function onboardingDaEmpresa(
+        Company $company,
+        bool $podeVer,
+        ?array $empresasDaCarteira,
+    ): array {
+        // Fora do gate ou fora da carteira: a linha continua existindo na
+        // listagem (a empresa não é segredo), mas sem nada de onboarding.
+        $foraDaCarteira = $empresasDaCarteira !== null
+            && ! in_array($company->id, $empresasDaCarteira, true);
+
+        if (! $podeVer || $foraDaCarteira) {
+            return ['onboardings' => [], 'onboarding_resumo' => null];
+        }
+
         $onboardings = $company->onboardings
             ->map(fn (Onboarding $o) => $this->situacaoService->resumo($o))
             ->values();

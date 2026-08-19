@@ -136,13 +136,22 @@ export default function Companies({ companies, users, estrategistas = [], analis
     const { auth } = usePage().props;
     const isAdmin = auth?.user?.role === 'admin';
 
+    // A aba Onboarding só existe para quem tem `core.onboarding`. Guard
+    // defensivo com `?? false`: prop ausente esconde, nunca mostra. Lido AQUI,
+    // antes do estado da aba, porque o deep-link ?tab=onboarding precisa dele.
+    const podeVerOnboarding = usePage().props.pode_ver_onboarding ?? false;
+
     // Lê a aba inicial do query param ?tab (deep-link vindo do menu lateral, ex: Empresas › Pendências).
     // Lazy initializer roda apenas uma vez no mount; valores inválidos/ausentes caem em 'empresas'.
     // Phase 37 Plan 37-06 (REQ-37-07) — aba 'grupos' removida; deep-links antigos
     // caem silenciosamente em 'empresas'. Gestao de grupos migrou para /comercial/empresas/listagem.
     const [tab, setTab] = useState(() => {
         const t = new URLSearchParams(window.location.search).get('tab');
-        return ['empresas', 'pendencias', 'onboarding'].includes(t) ? t : 'empresas';
+        // ?tab=onboarding de quem não tem a permission cai em 'empresas': sem
+        // isto o deep-link deixaria a pessoa numa tela em branco — a aba não
+        // renderiza e nenhuma outra assume.
+        const abas = ['empresas', 'pendencias', ...(podeVerOnboarding ? ['onboarding'] : [])];
+        return abas.includes(t) ? t : 'empresas';
     });
     const [search, setSearch] = useRemember('', 'companies-index-search');
     const [servicoFilter, setServicoFilter] = useState(''); // servico id (string) ou ''
@@ -348,7 +357,9 @@ export default function Companies({ companies, users, estrategistas = [], analis
     const TABS = [
         { key: 'empresas',   label: `Empresas (${totalAtivas})` },
         { key: 'pendencias', label: `Pendências (${pendentes.length})` },
-        { key: 'onboarding', label: `Onboarding (${emOnboarding.length})` },
+        ...(podeVerOnboarding
+            ? [{ key: 'onboarding', label: `Onboarding (${emOnboarding.length})` }]
+            : []),
     ];
 
     return (
@@ -632,7 +643,7 @@ export default function Companies({ companies, users, estrategistas = [], analis
                 )}
 
                 {/* ══════════════ ABA ONBOARDING ══════════════ */}
-                {tab === 'onboarding' && (
+                {tab === 'onboarding' && podeVerOnboarding && (
                     <AbaOnboarding
                         companies={companies}
                         estrategistas={estrategistasOptions}

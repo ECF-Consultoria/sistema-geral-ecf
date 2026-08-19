@@ -208,7 +208,7 @@ function LinhaPasso({ passo }) {
  */
 export default function DetalheOnboarding({ passos }) {
     // Agrupado por etapa, na ordem fixa em que o processo acontece. Uma lista
-    // corrida de 15 passos não responde "em que pé está" — o operador precisa
+    // corrida de passos não responde "em que pé está" — o operador precisa
     // ver que os acessos fecharam antes de cobrar o mapeamento.
     const blocos = ETAPAS_ORDEM
         .map((etapa) => ({

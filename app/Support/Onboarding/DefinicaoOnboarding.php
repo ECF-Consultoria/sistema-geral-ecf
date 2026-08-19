@@ -297,7 +297,12 @@ class DefinicaoOnboarding
     }
 
     /**
-     * Os 15 passos do onboarding de Gestão (Performance), 6 automáticos.
+     * Os 9 passos do onboarding de Gestão (Performance), 5 automáticos.
+     *
+     * A contagem mudou com a régua e o docblock ficou para trás: até a v9 eram
+     * 15 passos, e a v10 removeu os cinco `dono=interno` que o negócio disse
+     * não fazerem parte do onboarding. Quem planeja pela contagem antiga
+     * superestima o que existe — conferido item a item em 2026-08-19.
      *
      * `dono` e `auto_fonte` são eixos INDEPENDENTES:
      *  - `dono` responde "de quem é a bola?" — quem precisa AGIR.
