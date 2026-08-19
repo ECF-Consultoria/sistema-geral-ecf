@@ -106,17 +106,44 @@ class EmpresaOperacionalRouter
     private function rotear(Company $company, iterable $nomesServicos, array $handoff, bool $guardPorEmpresa): void
     {
         if ($this->bloqueioAtivo()) {
-            // Interruptor de emergência (REDE-01). Ligado, o roteamento automático PARA:
-            // nenhuma MlbEmpresa e nenhuma implementação são criadas.
-            // Em produção a chave está desligada e continua desligada até a Fase 133 —
-            // nada muda hoje. O bloqueio existe e é exercitado agora para que, quando a
-            // operação passar a depender dele, ele já tenha sido provado.
+            // Interruptor de emergência (REDE-01), com a exceção por SERVIÇO da
+            // Fase 133 (D-02): a decisão não é mais "bloqueia tudo" — é tomada
+            // nome a nome, dentro do laço. Uma empresa com Polos + Assessoria
+            // tem o Polos roteado e a Assessoria retida; prender a empresa
+            // inteira porque um dos serviços exige contrato foi rejeitado
+            // explicitamente pelo usuário (contrariaria o SC 2b).
             //
-            // PONTO DE EXTENSÃO da Fase 128 (FLUXO-08/D-09): aqui vai entrar a consulta
-            // "este serviço exige contrato?", que isenta Polos do bloqueio.
-            Log::warning('[Administrativo] Roteamento operacional bloqueado pelo interruptor de emergência (' . self::CHAVE_BLOQUEIO . ').', [
-                'company_id' => $company->id,
-            ]);
+            // Nome de serviço que não bate com nenhuma linha de `servicos`
+            // fica FORA de $isentos e é tratado como "exige contrato" —
+            // fail-safe, mesmo espírito do default(true) da migration
+            // 2026_08_13_100001_add_exige_contrato_to_servicos_table: uma
+            // eventual divergência de grafia nunca deve virar passe livre.
+            //
+            // Consulta em lote (uma única query, nunca dentro de foreach) —
+            // ver 133-RESEARCH.md "Recomendação de implementação".
+            $nomes = collect($nomesServicos)->values();
+
+            $isentos = Servico::whereIn('nome', $nomes)
+                ->where('exige_contrato', false)
+                ->pluck('nome');
+
+            $liberados = $nomes->intersect($isentos)->values();
+            $retidos   = $nomes->diff($liberados)->values();
+
+            if ($retidos->isNotEmpty()) {
+                Log::warning('[Administrativo] Roteamento operacional retido pelo gate administrativo.', [
+                    'company_id'       => $company->id,
+                    'servicos_retidos' => $retidos->all(),
+                ]);
+            }
+
+            if ($liberados->isEmpty()) {
+                return;
+            }
+
+            // Só os serviços isentos passam — o resto da mecânica
+            // (guard/lock/dedup) é idêntica, não muda.
+            $this->aplicarRoteamento($company, $liberados, $handoff, $guardPorEmpresa);
 
             return;
         }

@@ -54,7 +54,7 @@ class ContratoAdminController extends Controller
      * contrato dentro do limiar), com resumo de 7 contagens, filtro por
      * situação e busca por empresa.
      */
-    public function index(Request $request, ContratosPresosService $presos): \Inertia\Response
+    public function index(Request $request, ContratosPresosService $presos, EmpresaOperacionalRouter $router): \Inertia\Response
     {
         // (1) Universo (D9 — isenção, ver Servico::exigeContrato()): empresas
         // ATIVAS com ao menos um ContratoServico ATIVO cujo serviço exige
@@ -201,6 +201,12 @@ class ContratoAdminController extends Controller
             ],
             'resumo'             => $resumo,
             'sem_contrato_count' => $semContratoCount,
+            // Fase 133 (D-04) — leitura pelo ÚNICO ponto autorizado
+            // (EmpresaOperacionalRouter::bloqueioAtivo()), nunca
+            // Configuracao::get() direto aqui. Não muda o universo da
+            // listagem (Fase 131); só diz à tela se deve contar a
+            // consequência do bloqueio na faixa.
+            'bloqueio_ativo'     => $router->bloqueioAtivo(),
         ]);
     }
 

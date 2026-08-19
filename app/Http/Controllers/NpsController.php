@@ -487,9 +487,18 @@ class NpsController extends Controller
         // empresa + filtro de pessoa POR SERVIÇO do setor (ou consolidada,
         // servico_id NULL). "Tem survey" no setor = survey de QUALQUER modelo
         // que cobre o setor.
+        // 2026-08-18 — a lista de trabalho NÃO depende mais de
+        // `envio_automatico_mensal`. A flag descreve o DISPARO (comando
+        // `nps:disparar-mensal`, sem agendamento desde a Fase 119.1), e em
+        // 11/08 os modelos de Performance foram refeitos sem ela: o setor
+        // performance inteiro sumiu de Faltantes (medido: 102 empresas,
+        // entre elas 12 de uma única estrategista, que reportou o bug).
+        // Aqui vale o mesmo princípio já escrito em `NpsElegibilidadeService`
+        // para canal e dia de aniversário: requisito de DISPARO não é
+        // requisito de "deveria ter NPS". O que conta nota 1 continua sendo
+        // decidido por `$elegiveisPorEmpresa` (régua antiga) mais abaixo.
         $autoModelos = \App\Models\NpsTemplate::query()
             ->where('active', true)
-            ->where('envio_automatico_mensal', true)
             ->with('servicos')
             ->get();
 
@@ -526,6 +535,22 @@ class NpsController extends Controller
         // a lista de trabalho fica alinhada com o que a nota já ignorava
         // (DQ-02). Calculado ANTES do laço dos setores para servir de FILTRO
         // aqui embaixo, e reaproveitado mais adiante para `conta_nota_1`.
+        //
+        // 2026-08-18 — a partir daqui são DUAS réguas, de propósito:
+        //  - `$visiveisPorEmpresa` decide quem APARECE na lista de trabalho
+        //    (ignora `envio_automatico_mensal`, mesmo motivo do
+        //    `$autoModelos` acima);
+        //  - `$elegiveisPorEmpresa` decide quem PESA nota 1 — régua ANTIGA,
+        //    intocada de propósito: mexer nela reescreve nota de competência
+        //    fechada, que é decisão de negócio (learnings §2), não efeito
+        //    colateral de um fix de visibilidade.
+        // O guard de estrategista (D-07) continua valendo nas duas — empresa
+        // sem estrategista atribuído segue fora da lista.
+        $visiveisPorEmpresa = [];
+        foreach ($this->elegibilidadeService->empresasElegiveis($mesInicio, false) as $item) {
+            $visiveisPorEmpresa[$item->company_id] = true;
+        }
+
         $elegiveisPorEmpresa = [];
         foreach ($this->elegibilidadeService->empresasElegiveis($mesInicio) as $item) {
             $elegiveisPorEmpresa[$item->company_id] = true;
@@ -575,7 +600,10 @@ class NpsController extends Controller
                 // Quick task 260730-jzx (ajuste 4) — sem estrategista atribuído,
                 // a empresa ainda não entrou na operação: não aparece na lista
                 // de trabalho (mesmo corte de `empresasElegiveis()` acima).
-                if (!isset($elegiveisPorEmpresa[$c->id])) {
+                // 2026-08-18: passou a ler `$visiveisPorEmpresa` (o corte de
+                // estrategista é o MESMO; o que saiu foi a exigência de modelo
+                // com envio automático).
+                if (!isset($visiveisPorEmpresa[$c->id])) {
                     continue;
                 }
 
@@ -980,18 +1008,13 @@ class NpsController extends Controller
 
         // Fase 119.1 Plan 07 (deviation Rule 2/3 — sem isto o seletor "Um
         // grupo de empresas" do modal "Gerar link" não tem o que listar).
-        // Admin vê todos os grupos; não-admin só vê grupo em que TODAS as
-        // empresas estão na carteira dele — mesma regra de
-        // NpsGrupoController::autorizarAcessoAoGrupo() (nunca parcial, para
-        // não vazar nem a existência de um grupo com empresa fora do escopo).
-        $companyIdsUsuario = $user->isAdmin() ? null : $user->companies()->pluck('companies.id');
+        // 2026-08-18 — a régua saiu daqui para `CompanyGroup::scopeVisivelPara()`,
+        // fonte única compartilhada com `NpsGrupoController::autorizarAcessoAoGrupo()`
+        // (antes eram duas cópias, com o comentário pedindo que não divergissem).
+        // Lá está escrito por que empresa SEM responsável deixou de bloquear o
+        // grupo inteiro.
         $grupos = \App\Models\CompanyGroup::query()
-            ->when(!$user->isAdmin(), function ($q) use ($companyIdsUsuario) {
-                $q->whereHas('companies')
-                    ->whereDoesntHave('companies', function ($qq) use ($companyIdsUsuario) {
-                        $qq->whereNotIn('companies.id', $companyIdsUsuario);
-                    });
-            })
+            ->visivelPara($user)
             ->orderBy('name')
             ->get(['id', 'name']);
 

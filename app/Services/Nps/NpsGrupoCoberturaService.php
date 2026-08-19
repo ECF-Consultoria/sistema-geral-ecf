@@ -96,6 +96,30 @@ class NpsGrupoCoberturaService
         // O(n²) é o desperdício a evitar, não o O(n²) em si.
         $resolvidos = $this->resolverResponsaveis($candidatas);
 
+        // 2026-08-18 — empresa sem NENHUM responsável (nenhum papel, nenhum
+        // dos serviços aplicáveis) sai ANTES da comparação, com motivo
+        // próprio. Dois motivos:
+        //  (a) ela nunca poderia entrar no link — a nota não teria a quem ser
+        //      atribuída (`NpsSnapshotService` só logaria "responsável
+        //      faltante" e a nota ficaria órfã);
+        //  (b) se ficasse, poderia virar a REFERÊNCIA da comparação
+        //      (`escolherReferencia()` desempata por menor id) e excluir do
+        //      link justamente as empresas que TÊM responsável.
+        // Antes ela caía em `responsavel_diferente` com `quem_cuida` vazio, e
+        // a tela escrevia "é cuidado por outra pessoa ()". É o mesmo
+        // princípio de `CompanyGroup::visivelPara()`, que desconsidera a
+        // empresa órfã ao decidir se o grupo aparece para a pessoa.
+        [$candidatas, $orfas] = $this->separarSemResponsavel($candidatas, $resolvidos);
+        $excluidas = $excluidas->merge($orfas);
+
+        if ($candidatas->isEmpty()) {
+            return [
+                'referencia' => null,
+                'incluidas'  => [],
+                'excluidas'  => $excluidas->values()->all(),
+            ];
+        }
+
         $referenciaIdx = $this->escolherReferencia($candidatas, $resolvidos);
         $referencia = $candidatas[$referenciaIdx];
 
@@ -158,6 +182,16 @@ class NpsGrupoCoberturaService
         foreach ($empresasGrupo as $empresa) {
             if (! $empresa->active) {
                 $excluidas->push($this->linhaExcluida($empresa, 'empresa_inativa'));
+
+                continue;
+            }
+
+            // 2026-08-18 — mesma exclusão do ramo principal, só que aqui o
+            // teste é "tem QUALQUER vínculo em company_users": sem serviço
+            // coberto não há por qual serviço perguntar. Empresa órfã não
+            // entra no link porque a nota dela não teria dono.
+            if ($empresa->users()->doesntExist()) {
+                $excluidas->push($this->linhaExcluida($empresa, 'sem_responsavel'));
 
                 continue;
             }
@@ -249,6 +283,45 @@ class NpsGrupoCoberturaService
         }
 
         return ['ids' => $ids, 'nomes' => $nomes];
+    }
+
+    /**
+     * Separa as candidatas SEM responsável nenhum das demais — 2026-08-18.
+     * Lê o mapa já resolvido por `resolverResponsaveis()`: nada de query
+     * nova, e a régua de "quem é responsável" continua vindo de um único
+     * lugar (`responsavelDoServicoOuConsolidado()`).
+     *
+     * @return array{0: Collection, 1: Collection}
+     */
+    private function separarSemResponsavel(Collection $candidatas, array $resolvidos): array
+    {
+        $comResponsavel = collect();
+        $excluidas = collect();
+
+        foreach ($candidatas as $candidata) {
+            $empresa = $candidata['empresa'];
+            $temResponsavel = false;
+
+            foreach ($candidata['servicos'] as $servicoId) {
+                foreach (self::PAPEIS as $papel) {
+                    if (! empty($resolvidos['ids'][$empresa->id][$servicoId][$papel])) {
+                        $temResponsavel = true;
+
+                        break 2;
+                    }
+                }
+            }
+
+            if ($temResponsavel) {
+                $comResponsavel->push($candidata);
+
+                continue;
+            }
+
+            $excluidas->push($this->linhaExcluida($empresa, 'sem_responsavel'));
+        }
+
+        return [$comResponsavel->values(), $excluidas];
     }
 
     /**

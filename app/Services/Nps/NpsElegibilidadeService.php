@@ -76,14 +76,30 @@ class NpsElegibilidadeService
      *
      * ESTRITO por construção — sem fallback `is_default`. Empresa sem
      * cobertura devolve coleção vazia (nenhum NPS, DEC-79-A).
+     *
+     * `$somenteAutomaticos = false` — 2026-08-18, bug reportado: "tem
+     * empresa que não aparece como pendente, nem nada". `envio_automatico_
+     * mensal` descreve o DISPARO (o comando `nps:disparar-mensal`, que nem
+     * está mais agendado — ver `routes/console.php:194`), NÃO se a empresa
+     * deveria ter NPS. Em 11/08 os modelos de Performance foram refeitos
+     * (#2 desativado; #5/#6 nasceram com a flag em `false`) e, sem querer,
+     * 102 empresas sumiram da lista de trabalho da tela — medido em
+     * produção: 30 elegíveis contra 132.
+     *
+     * Quem só quer saber "esta empresa deveria ter NPS neste mês" passa
+     * `false`. O default segue `true` DE PROPÓSITO: os consumidores do
+     * BÔNUS (`NpsSemLinkService`, `NpsPorEmpresaService`) leem a régua
+     * antiga até o usuário decidir sobre o retroativo — mudar a nota 1 de
+     * competência fechada é decisão de negócio, não efeito colateral de um
+     * fix de tela (learnings §2).
      */
-    public function modelosAplicaveis(Company $empresa): Collection
+    public function modelosAplicaveis(Company $empresa, bool $somenteAutomaticos = true): Collection
     {
         $servicoIds = $empresa->contratosServico()->active()->pluck('servico_id');
 
         return NpsTemplate::query()
             ->where('active', true)
-            ->where('envio_automatico_mensal', true)
+            ->when($somenteAutomaticos, fn ($q) => $q->where('envio_automatico_mensal', true))
             ->whereHas('serviceScopes', fn ($q) => $q->whereIn('nps_template_service_scopes.servico_id', $servicoIds))
             ->get();
     }
@@ -102,11 +118,18 @@ class NpsElegibilidadeService
      *  - filtro de dia do aniversário do cadastro — também é requisito de
      *    DISPARO (QUANDO o automático dispara), não de elegibilidade.
      *
+     * `$somenteAutomaticos` é repassado a `modelosAplicaveis()` — ver o
+     * docblock de lá para o motivo de o default ser `true` (bônus lê a
+     * régua antiga; a tela de trabalho pede `false`).
+     *
      * @return Collection<int, object{company_id:int, company:Company, template_id:int, template:NpsTemplate, servico_ids:array, tem_canal:bool}>
      */
-    public function empresasElegiveis(Carbon $mes): Collection
+    public function empresasElegiveis(Carbon $mes, bool $somenteAutomaticos = true): Collection
     {
-        $chaveMes = $mes->format('Y-m');
+        // Chave do memo carrega o modo — as duas leituras convivem no MESMO
+        // request (a tela pede `false` para a lista de trabalho e `true`
+        // para o `conta_nota_1` de cada linha) e não podem se sobrescrever.
+        $chaveMes = $mes->format('Y-m').($somenteAutomaticos ? '|auto' : '|todos');
 
         if (array_key_exists($chaveMes, $this->memoElegiveisPorMes)) {
             return $this->memoElegiveisPorMes[$chaveMes];
@@ -115,13 +138,13 @@ class NpsElegibilidadeService
         $itens = collect();
 
         Company::where('active', true)
-            ->chunkById(50, function ($empresas) use ($itens) {
+            ->chunkById(50, function ($empresas) use ($itens, $somenteAutomaticos) {
                 foreach ($empresas as $empresa) {
                     if (! $this->estrategistaDaEmpresa($empresa)) {
                         continue;
                     }
 
-                    $modelosAplicaveis = $this->modelosAplicaveis($empresa);
+                    $modelosAplicaveis = $this->modelosAplicaveis($empresa, $somenteAutomaticos);
 
                     if ($modelosAplicaveis->isEmpty()) {
                         continue;
