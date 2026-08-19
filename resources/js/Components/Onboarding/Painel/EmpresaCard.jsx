@@ -3,10 +3,11 @@ import { Avatar, AvatarFallback } from '@/Components/ui/avatar';
 import { Card, CardContent, CardHeader } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/Components/ui/select';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, CalendarDays } from 'lucide-react';
 import SituacaoChip from './SituacaoChip';
 import DonoBadge from './DonoBadge';
 import { SEM_VALOR } from '@/Components/Onboarding/sentinelaSemValor';
+import { formatDate } from '@/lib/utils';
 
 const initials = (name) =>
     (name || '?').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
@@ -92,7 +93,21 @@ export default function EmpresaCard({ empresa, onboardings, usuarios }) {
                         className="rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 space-y-3"
                     >
                         <div className="flex items-center justify-between gap-3 flex-wrap">
-                            <SituacaoChip situacao={o.situacao} label={o.situacao_label} />
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <SituacaoChip situacao={o.situacao} label={o.situacao_label} />
+                                {/* Chegada da empresa ao onboarding. Fica ao lado da
+                                    situação de propósito: "chegou há muito e ainda
+                                    está em rascunho" é a leitura que ela habilita. */}
+                                {o.chegou_em && (
+                                    <span
+                                        className="inline-flex items-center gap-1 text-[12px] text-white/35"
+                                        title="Data em que a empresa chegou ao onboarding"
+                                    >
+                                        <CalendarDays size={12} />
+                                        Chegou em {formatDate(o.chegou_em)}
+                                    </span>
+                                )}
+                            </div>
                             <Link
                                 href={route('onboarding.painel.show', o.id)}
                                 className="inline-flex items-center gap-0.5 text-[12px] text-white/40 hover:text-ecf-yellow transition-colors"

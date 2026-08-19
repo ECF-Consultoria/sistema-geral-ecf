@@ -172,6 +172,7 @@ class OnboardingController extends Controller
                     'name' => $onboarding->responsavel->name,
                 ] : null,
                 'definicao_versao' => $onboarding->definicao_versao,
+                'chegou_em'        => $onboarding->created_at?->toISOString(),
             ],
             'passos' => $passosOrdenados,
             'relatorio'   => $this->relatorioPayload($onboarding),
@@ -525,6 +526,11 @@ class OnboardingController extends Controller
             'passo_que_trava' => $trava ? $this->passoTravaPayload($trava) : null,
             'contadores'      => $this->contadores($passos),
             'definicao_versao' => $onboarding->definicao_versao,
+            // Data de chegada da empresa ao onboarding = `created_at` da linha,
+            // gravada pelo Observer no `created` do contrato. NÃO usar
+            // `iniciado_em`: ele é null enquanto o onboarding está em rascunho,
+            // e é justamente o rascunho recém-chegado que se quer enxergar.
+            'chegou_em'        => $onboarding->created_at?->toISOString(),
         ];
 
         // D-17: a sugestão só faz sentido enquanto o onboarding ainda não

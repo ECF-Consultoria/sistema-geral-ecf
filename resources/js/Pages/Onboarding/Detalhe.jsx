@@ -1,6 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CalendarDays } from 'lucide-react';
+import { formatDate } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/Components/ui/avatar';
 import SituacaoChip from '@/Components/Onboarding/Painel/SituacaoChip';
 import DetalheOnboarding from '@/Components/Onboarding/Painel/DetalheOnboarding';
@@ -52,6 +53,12 @@ export default function Detalhe({
                                 {onboarding.servico.nome}
                                 {onboarding.definicao_versao ? ` · versão ${onboarding.definicao_versao}` : ''}
                             </p>
+                            {onboarding.chegou_em && (
+                                <p className="text-white/35 text-[12px] mt-1 inline-flex items-center gap-1">
+                                    <CalendarDays size={12} />
+                                    Chegou ao onboarding em {formatDate(onboarding.chegou_em)}
+                                </p>
+                            )}
                         </div>
                         <SituacaoChip situacao={onboarding.situacao} label={onboarding.situacao_label} />
                     </div>

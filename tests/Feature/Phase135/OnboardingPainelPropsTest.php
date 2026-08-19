@@ -202,6 +202,43 @@ class OnboardingPainelPropsTest extends TestCase
         );
     }
 
+    /**
+     * Data de chegada da empresa ao onboarding, nas DUAS telas.
+     *
+     * O cenário é o rascunho de propósito: é ali que `iniciado_em` ainda é
+     * null, e é justamente a empresa recém-chegada e ainda não confirmada que
+     * se quer enxergar. Um `chegou_em` amarrado a `iniciado_em` passaria no
+     * onboarding em andamento e devolveria null exatamente no caso que motivou
+     * o campo.
+     */
+    #[Test]
+    public function painel_e_detalhe_expoem_a_data_de_chegada_mesmo_em_rascunho(): void
+    {
+        $this->withoutVite();
+        $servico = $this->servicoDeGestao();
+        $company = Company::factory()->create();
+        $contrato = ContratoServico::factory()->paraServico($servico)->create(['company_id' => $company->id]);
+        $onboarding = $this->engine()->criarParaContrato($contrato);
+
+        $this->assertNull($onboarding->iniciado_em, 'pré-condição: rascunho não tem iniciado_em');
+
+        $esperado = $onboarding->fresh()->created_at->toISOString();
+
+        $painel = $this->actingAs($this->admin())->get(route('onboarding.painel.index'));
+        $painel->assertOk();
+        $painel->assertInertia(fn ($page) => $page
+            ->component('Onboarding/Painel')
+            ->where('empresas.0.onboardings.0.chegou_em', $esperado)
+        );
+
+        $detalhe = $this->actingAs($this->admin())->get(route('onboarding.painel.show', $onboarding));
+        $detalhe->assertOk();
+        $detalhe->assertInertia(fn ($page) => $page
+            ->component('Onboarding/Detalhe')
+            ->where('onboarding.chegou_em', $esperado)
+        );
+    }
+
     // ─── index() — passo_que_trava / vencido ───────────────────────────────
 
     #[Test]
