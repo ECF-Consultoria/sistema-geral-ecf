@@ -1894,7 +1894,7 @@ Plans:
   4. Desligar a chave `administrativo_bloqueio_ativo` sem deploy volta o sistema ao roteamento imediato de antes, imediatamente
   5. **(FLUXO-09)** Com o bloqueio ligado, a ativação manual do time de Publicação (`MlbController::ativarEmpresaPendente()`, tela `/mlb/empresas`) também não cria ficha operacional — provado por teste. Lacuna descoberta na verificação da Fase 124: esse método cria `MlbEmpresa`+`MlbImplementacao` por cópia inline, fora do `EmpresaOperacionalRouter` e sem consultar a chave
 
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed — **PARADA no checkpoint de ativação (Task 2 do 133-04, 2026-08-19): decisão `parar`.** Três das quatro pré-condições abaixo (a, b, c) não foram confirmadas. Chave `administrativo_bloqueio_ativo` segue **desligada** em produção. 133-05 bloqueado por dependência. Ver `133-ROLLOUT.md` e `133-04-SUMMARY.md`.
 
 Plans:
 **Wave 1**
@@ -1905,13 +1905,15 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 133-04-PLAN.md — Roteiro de rollout, checkpoint das 4 pré-condições e ativação da chave em produção (D-05) [wave 2]
+- [x] 133-04-PLAN.md — Roteiro de rollout (`133-ROLLOUT.md`) escrito e checkpoint das 4 pré-condições respondido com **`parar`** em 2026-08-19 — ativação da chave (Task 3) **NÃO executada** [wave 2]
 
-**Wave 3** *(blocked on Wave 2 completion)*
+**Wave 3** *(blocked on Wave 2 completion — AINDA BLOQUEADO: ativação real não ocorreu)*
 
 - [ ] 133-05-PLAN.md — Conferência da faixa e do primeiro cadastro real de Polos por reconsulta ao banco (D-05) [wave 3]
 
 > 🚦 **CHECKPOINT HUMANO — bloqueia a ATIVAÇÃO, não a escrita.** A flag `administrativo_bloqueio_ativo` só pode ser ligada em produção depois de confirmar, com o usuário: (a) o webhook chegou de forma confiável durante o período de observação (Fase 128/129 rodando em produção por tempo suficiente); (b) o alerta de contrato preso já disparou pelo menos uma vez em sandbox (Fase 130); (c) a liberação manual foi testada em produção ao menos uma vez (Fase 130); (d) o cutover para produção Clicksign foi concluído e aprovado (Fase 132). Rollback de código sozinho nunca é o plano de saída — desligar a flag é.
+>
+> **Resultado em 2026-08-19:** (a), (b) e (c) responderam "Não / não sei" — não confirmadas. Apenas (d) foi confirmada. Decisão: **parar**. Nenhum deploy autorizado, chave segue desligada. Para retomar: confirmar (a)/(b)/(c) com o usuário (avançar/observar o que falta nas Fases 128/129/130), depois reabrir o checkpoint.
 
 ## Fase avulsa — Módulo Anunciar Mercado Livre (fora de milestone)
 
