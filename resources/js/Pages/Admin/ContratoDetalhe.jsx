@@ -11,7 +11,7 @@ import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { IMaskInput } from 'react-imask';
 import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
-import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO } from '@/lib/contratoStatus';
+import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO, MONTAGEM_TRAVADA_AVISO } from '@/lib/contratoStatus';
 
 // D-11 (herdada da Fase 130, absorvida no plano 131-06) — causas de
 // ContratosPresosService que merecem a faixa de destaque vermelha ANTES de
@@ -521,15 +521,21 @@ export default function ContratoDetalhe({
                                         const jaTentouAntes = Boolean(c.ja_tentou_antes);
                                         // Quick 260819-guy (Tarefa 7 item 3) — contrato pronto, mas
                                         // ainda não enviado pelo painel da Clicksign (D-02, não é falha).
-                                        const faltaEnviarPelaClicksign = c.status === 'rascunho' && !c.preparando;
+                                        //
+                                        // Quick 260820-my3 (Tarefa 2) — precisa excluir `montagem_travada`
+                                        // também, não só `preparando`: sem isto, um rascunho com envelope
+                                        // NULO que já passou da janela (preparando=false, travado=true)
+                                        // caía aqui e mostrava "já foi montado, falta enviar" — exatamente
+                                        // o bug do incidente de produção, só que nesta tela em vez da lista.
+                                        const faltaEnviarPelaClicksign = c.status === 'rascunho' && !c.preparando && !c.montagem_travada;
 
                                         return (
                                             <Fragment key={c.id}>
                                                 <TableRow>
                                                     <TableCell className="text-[13px] text-white/85 align-top">{c.servico_nome}</TableCell>
                                                     <TableCell className="align-top">
-                                                        <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContratoComPreparo(c.status, c.preparando))}>
-                                                            {rotuloContratoComPreparo(c.status, c.preparando)}
+                                                        <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContratoComPreparo(c.status, c.preparando, c.montagem_travada))}>
+                                                            {rotuloContratoComPreparo(c.status, c.preparando, c.montagem_travada)}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="text-[13px] text-white/50 align-top">{formatarHaDias(c.dias_parado)}</TableCell>
@@ -616,6 +622,24 @@ export default function ContratoDetalhe({
                                                         <TableCell colSpan={4} className="py-2 border-t-0">
                                                             <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[12px] text-amber-300/90">
                                                                 {PREPARANDO_AVISO}
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+
+                                                {/* Quick 260820-my3 (Tarefa 2) — irmão do aviso de "preparando"
+                                                    acima, mesma família visual mas laranja (mais alarmante):
+                                                    a mesma condição PASSOU da janela sem terminar. Incidente
+                                                    real (2026-08-20): contrato pedido, nada criado, e a tela
+                                                    antiga dizia "Falta enviar", mandando procurar na Clicksign
+                                                    onde não havia nada. Copy sem jargão — diz que foi pedido,
+                                                    não ficou pronto, não adianta procurar na Clicksign, e o
+                                                    time técnico precisa olhar. */}
+                                                {c.montagem_travada && (
+                                                    <TableRow key={`${c.id}-montagem-travada`}>
+                                                        <TableCell colSpan={4} className="py-2 border-t-0">
+                                                            <div className="rounded-lg border border-orange-500/20 bg-orange-500/[0.06] px-3 py-2 text-[12px] text-orange-300/90">
+                                                                {MONTAGEM_TRAVADA_AVISO}
                                                             </div>
                                                         </TableCell>
                                                     </TableRow>

@@ -103,19 +103,56 @@ export const PREPARANDO_TITULO = 'O contrato acabou de ser pedido e pode levar a
 // solicitado" já existente em `Admin/ContratoDetalhe.jsx`.
 export const PREPARANDO_AVISO = 'Preparando o contrato, pode levar até um minuto. Atualize a página em instantes para ver a situação.';
 
+// Quick 260820-my3 (Tarefa 2) — estado SÓ DE EXIBIÇÃO, irmão de
+// `PREPARANDO_*` acima: deriva de `ContratoAssinatura::estaMontagemTravada()`
+// no BACKEND — mesma regra de `estaPreparando()` (status + envelope), do
+// lado OPOSTO da mesma janela de tempo. Mutuamente exclusivo com
+// `preparando` por construção. NÃO é valor do enum
+// `ContratoAssinatura::STATUS_*` e NUNCA deve entrar em
+// `CONTRATO_STATUS_LABELS`/`CONTRATO_STATUS_CLS` — mesma disciplina do
+// resumo de 7 contagens (D-04), continua contando "montagem travada" dentro
+// de `rascunho`.
+//
+// Incidente que originou (2026-08-20, produção): contrato pedido, nada
+// criado, e a tela dizia "Falta enviar" — mandando o usuário procurar na
+// Clicksign onde não havia nada. Copy SEM jargão (nada de "envelope",
+// "job", "fila", "worker"): diz que o contrato foi pedido, ainda não ficou
+// pronto, não adianta procurar na Clicksign, e o time técnico precisa
+// olhar.
+export const MONTAGEM_TRAVADA_LABEL = 'Travado';
+
+// Laranja — mais alarmante que o âmbar de `preparando` (pede atenção do
+// time técnico, não é mais "só espera"), mas NUNCA o rose de `erro`: não é
+// uma falha registrada, é uma montagem que não terminou. Mesma classe já
+// usada por `expirado` em `CONTRATO_STATUS_CLS` (reuso de tom, não de
+// significado — este estado não entra naquele mapa).
+export const MONTAGEM_TRAVADA_CLS = 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+
+// `title` do badge na lista — mesmo molde de `PREPARANDO_TITULO`.
+export const MONTAGEM_TRAVADA_TITULO = 'O contrato foi pedido, mas não ficou pronto. Não procure na Clicksign — avise o time técnico.';
+
+// Faixa explicativa do detalhe — mesmo molde de `PREPARANDO_AVISO`.
+export const MONTAGEM_TRAVADA_AVISO = 'Este contrato foi pedido, mas não ficou pronto — ainda não existe nada para encontrar na Clicksign. Avise o time técnico para verificar.';
+
 /**
- * Rótulo com o sub-estado de espera: devolve "Preparando" quando
- * `preparando` for verdadeiro, senão delega para `rotuloContrato()`.
+ * Rótulo com os sub-estados de espera/travamento: devolve "Travado" quando
+ * `travado` for verdadeiro, "Preparando" quando `preparando` for
+ * verdadeiro, senão delega para `rotuloContrato()`. `travado` é opcional —
+ * chamadas existentes com dois argumentos continuam funcionando.
  */
-export function rotuloContratoComPreparo(status, preparando) {
+export function rotuloContratoComPreparo(status, preparando, travado = false) {
+    if (travado) return MONTAGEM_TRAVADA_LABEL;
     return preparando ? PREPARANDO_LABEL : rotuloContrato(status);
 }
 
 /**
- * Classe com o sub-estado de espera: devolve a classe âmbar quando
- * `preparando` for verdadeiro, senão delega para `classeContrato()`.
+ * Classe com os sub-estados de espera/travamento: devolve a classe laranja
+ * quando `travado` for verdadeiro, a âmbar quando `preparando` for
+ * verdadeiro, senão delega para `classeContrato()`. `travado` é opcional —
+ * chamadas existentes com dois argumentos continuam funcionando.
  */
-export function classeContratoComPreparo(status, preparando) {
+export function classeContratoComPreparo(status, preparando, travado = false) {
+    if (travado) return MONTAGEM_TRAVADA_CLS;
     return preparando ? PREPARANDO_CLS : classeContrato(status);
 }
 

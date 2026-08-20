@@ -119,6 +119,12 @@ class ContratoAdminController extends Controller
                         // Quick 260816-d72 (UI-06/D-05) — sub-estado de exibição
                         // de 'rascunho', não entra no resumo de 7 chaves (D-04).
                         'preparando'                   => $contrato->estaPreparando(),
+                        // Quick 260820-my3 (Tarefa 2) — sub-estado irmão de
+                        // 'preparando', mutuamente exclusivo por construção:
+                        // rascunho + envelope vazio que passou da janela sem
+                        // terminar a montagem. Também não entra no resumo de 7
+                        // chaves (D-04) — a mesma disciplina de 'preparando'.
+                        'montagem_travada'             => $contrato->estaMontagemTravada(),
                         // Quick 260819-o4x — término do contrato do SERVIÇO
                         // desta linha (`contratos_servico.data_vencimento`),
                         // não do ContratoAssinatura. Alimenta a coluna
@@ -148,6 +154,10 @@ class ContratoAdminController extends Controller
                         // "preparando"; chave sempre presente (nunca undefined
                         // no front).
                         'preparando'                   => false,
+                        // Quick 260820-my3 (Tarefa 2) — mesma disciplina:
+                        // par sem contrato nunca está "travado na montagem"
+                        // (não existe ContratoAssinatura para travar).
+                        'montagem_travada'              => false,
                         // Quick 260819-o4x — o término vem do ContratoServico,
                         // que EXISTE mesmo sem ContratoAssinatura: empresa que
                         // ainda aguarda o Administrativo já tem prazo contratado.
@@ -456,6 +466,10 @@ class ContratoAdminController extends Controller
                         : null,
                     // Quick 260816-d72 (UI-06/D-05).
                     'preparando'                         => $c->estaPreparando(),
+                    // Quick 260820-my3 (Tarefa 2) — irmão de 'preparando',
+                    // mutuamente exclusivo por construção (ver docblock de
+                    // estaMontagemTravada()).
+                    'montagem_travada'                   => $c->estaMontagemTravada(),
                     // Array achatado — NUNCA email/cpf/clicksign_signer_key/
                     // auths/evidencia_signer (T-131-04-04). Consumido também
                     // pelos planos 131-05/06.

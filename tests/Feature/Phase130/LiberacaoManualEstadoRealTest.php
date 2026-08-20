@@ -184,6 +184,14 @@ class LiberacaoManualEstadoRealTest extends TestCase
                 // em âmbar na lista e no detalhe). É booleano derivado, sem PII —
                 // mas a lista aqui é EXATA de propósito, então precisa constar.
                 'preparando',
+                // `montagem_travada` entrou pela quick 260820-my3 (Tarefa 2):
+                // estado "Travado" em laranja, irmão de `preparando` e
+                // mutuamente exclusivo com ele por construção (mesma regra de
+                // status+envelope, do lado oposto da janela de tempo — ver
+                // `ContratoAssinatura::estaMontagemTravada()`). Também booleano
+                // derivado, sem PII, e também precisa constar por a lista ser
+                // EXATA de propósito.
+                'montagem_travada',
                 // `erro_mensagem` e `ja_tentou_antes` entraram pela quick
                 // 260819-guy (Tarefa 7, itens 1 e 4). Liberados aqui por decisão
                 // CONSCIENTE, não por conveniência de fazer o teste passar:

@@ -16,6 +16,7 @@ import {
     SEM_CONTRATO,
     SEM_CONTRATO_LABEL,
     PREPARANDO_TITULO,
+    MONTAGEM_TRAVADA_TITULO,
 } from '@/lib/contratoStatus';
 
 /**
@@ -215,11 +216,11 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                                 <span
                                                     className={cn(
                                                         'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border',
-                                                        linha.status === SEM_CONTRATO ? classeContrato(linha.status) : classeContratoComPreparo(linha.status, linha.preparando),
+                                                        linha.status === SEM_CONTRATO ? classeContrato(linha.status) : classeContratoComPreparo(linha.status, linha.preparando, linha.montagem_travada),
                                                     )}
-                                                    title={linha.preparando ? PREPARANDO_TITULO : undefined}
+                                                    title={linha.montagem_travada ? MONTAGEM_TRAVADA_TITULO : (linha.preparando ? PREPARANDO_TITULO : undefined)}
                                                 >
-                                                    {linha.status === SEM_CONTRATO ? SEM_CONTRATO_LABEL : rotuloContratoComPreparo(linha.status, linha.preparando)}
+                                                    {linha.status === SEM_CONTRATO ? SEM_CONTRATO_LABEL : rotuloContratoComPreparo(linha.status, linha.preparando, linha.montagem_travada)}
                                                 </span>
                                             </TableCell>
                                             <TableCell className="text-[13px] text-white/50">{formatarHaDias(linha.dias_parado)}</TableCell>
