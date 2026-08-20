@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect } from 'react';
 import { FileSignature, Search, ChevronLeft, ChevronRight } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import {
     CONTRATO_STATUS_LABELS,
     classeContrato,
@@ -33,7 +33,7 @@ import {
  * (`admin.contratos.show`), que é onde o Administrativo completa o
  * cadastro e dispara a geração do contrato.
  */
-export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contrato_count = 0, bloqueio_ativo = false }) {
+export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contrato_count = 0, bloqueio_ativo = false, servicos = [] }) {
     const [qInput, setQInput] = useState(filters.q || '');
     const debounceRef = useRef(null);
 
@@ -124,15 +124,44 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                         {sem_contrato_count} empresa{sem_contrato_count === 1 ? '' : 's'} aguardando o Administrativo
                     </button>
 
-                    {/* Busca por empresa */}
-                    <div className="relative max-w-md">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
-                        <Input
-                            value={qInput}
-                            onChange={onSearchChange}
-                            placeholder="Buscar por empresa..."
-                            className="pl-9 focus:border-ecf-yellow/40"
-                        />
+                    {/* Busca, filtro por serviço e ordenação — mesma marcação da
+                        barra de Comercial/EmpresasListagem.jsx (select nativo com
+                        os tokens ecf-*), para as duas telas não divergirem. Os
+                        três entram pelo mesmo `applyFilter`, que espalha
+                        `...filters`, então combinam entre si e com o filtro de
+                        situação dos cartões acima. */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative flex-1 min-w-[220px] max-w-md">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+                            <Input
+                                value={qInput}
+                                onChange={onSearchChange}
+                                placeholder="Buscar por empresa..."
+                                className="pl-9 focus:border-ecf-yellow/40"
+                            />
+                        </div>
+
+                        <select
+                            value={filters.servico ?? ''}
+                            onChange={(e) => applyFilter('servico', e.target.value)}
+                            className="h-9 px-3 rounded-lg border border-white/10 bg-white/[0.03] text-[13px] text-white focus:outline-none focus:border-ecf-yellow/40"
+                            aria-label="Filtrar por serviço"
+                        >
+                            <option value="" className="bg-[#0f1116]">Todos os serviços</option>
+                            {servicos.map((s) => (
+                                <option key={s.id} value={s.id} className="bg-[#0f1116]">{s.nome}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={filters.ordenar ?? 'recente'}
+                            onChange={(e) => applyFilter('ordenar', e.target.value)}
+                            className="h-9 px-3 rounded-lg border border-white/10 bg-white/[0.03] text-[13px] text-white focus:outline-none focus:border-ecf-yellow/40"
+                            aria-label="Ordenar a lista"
+                        >
+                            <option value="recente" className="bg-[#0f1116]">Empresa mais recente</option>
+                            <option value="vencimento" className="bg-[#0f1116]">Término mais próximo</option>
+                        </select>
                     </div>
 
                     {/* Tabela compacta */}
@@ -145,16 +174,23 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                         <TableHead className="text-[11px] uppercase tracking-wide">Serviço</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Situação</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Parado há</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Término</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Ações</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {linhasData.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={5} className="text-center py-10">
-                                                {filters.q ? (
+                                            <TableCell colSpan={6} className="text-center py-10">
+                                                {/* O vazio precisa dizer QUAL recorte esvaziou a lista —
+                                                    antes citava só a busca, e quem tinha esvaziado pelo
+                                                    filtro de serviço lia uma explicação que não era a dele. */}
+                                                {(filters.q || filters.servico || filters.situacao) ? (
                                                     <p className="text-[13px] text-white/40">
-                                                        Nenhuma empresa encontrada para "{filters.q}". Revise o termo buscado ou limpe o filtro de situação.
+                                                        {filters.q
+                                                            ? <>Nenhuma empresa encontrada para "{filters.q}" com os filtros atuais.</>
+                                                            : <>Nenhuma empresa encontrada com os filtros atuais.</>}
+                                                        {' '}Revise a busca, o serviço ou a situação escolhida.
                                                     </p>
                                                 ) : (
                                                     <>
@@ -187,6 +223,13 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                                 </span>
                                             </TableCell>
                                             <TableCell className="text-[13px] text-white/50">{formatarHaDias(linha.dias_parado)}</TableCell>
+                                            {/* Término vazio é contrato por prazo indeterminado, não
+                                                dado faltando — por isso "Sem prazo" e não "—". */}
+                                            <TableCell className="text-[13px] text-white/50">
+                                                {linha.data_vencimento
+                                                    ? formatDate(linha.data_vencimento)
+                                                    : <span className="text-white/30">Sem prazo</span>}
+                                            </TableCell>
                                             <TableCell>
                                                 <Link
                                                     href={route('admin.contratos.show', linha.company_id)}

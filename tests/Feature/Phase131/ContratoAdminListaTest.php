@@ -288,6 +288,174 @@ class ContratoAdminListaTest extends TestCase
      * novo: a empresa mais recente é a que está parada há MENOS tempo. Se
      * alguém reverter a ordenação sem querer, este teste reprova.
      */
+    /**
+     * `ordenar=vencimento` — término mais PRÓXIMO primeiro.
+     *
+     * ⚠️ A parte que importa é o NULO. Término vazio não é dado faltando: é
+     * contrato por prazo indeterminado, caso que a regra 5 do
+     * `ContratoDadosMinimosService` registra explicitamente. Como `null`
+     * ordena antes de qualquer data em PHP, uma ordenação ingênua colocaria
+     * no TOPO justamente quem não tem prazo, apresentado como o mais urgente.
+     * Aqui a empresa sem prazo é criada por ÚLTIMO de propósito: se o
+     * desempate por id vazar para cima da regra de nulo, ela sobe e o teste
+     * reprova.
+     */
+    public function test_ordenacao_por_vencimento_traz_termino_mais_proximo_e_joga_sem_prazo_para_o_fim(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-14 12:00:00'));
+
+        $servico = $this->servicoComContrato();
+
+        $distante = $this->empresa(['name' => 'Empresa Termino Distante']);
+        $this->vincularServico($distante, $servico)->update(['data_vencimento' => '2027-12-31']);
+
+        $proxima = $this->empresa(['name' => 'Empresa Termino Proximo']);
+        $this->vincularServico($proxima, $servico)->update(['data_vencimento' => '2026-09-01']);
+
+        $semPrazo = $this->empresa(['name' => 'Empresa Sem Prazo']);
+        $this->vincularServico($semPrazo, $servico)->update(['data_vencimento' => null]);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index', ['ordenar' => 'vencimento']));
+        $response->assertOk();
+        $nomes = collect($response->viewData('page')['props']['linhas']['data'])->pluck('company_nome')->all();
+
+        $this->assertSame(
+            ['Empresa Termino Proximo', 'Empresa Termino Distante', 'Empresa Sem Prazo'],
+            $nomes
+        );
+    }
+
+    /**
+     * Filtro por serviço adquirido.
+     *
+     * ⚠️ O caso que define a implementação é a empresa com DOIS serviços: ela
+     * gera duas linhas, e filtrar precisa manter só a linha do serviço
+     * escolhido — não sumir com a empresa inteira nem trazê-la inteira. Por
+     * isso o filtro é aplicado sobre as LINHAS, em memória, e nunca na query
+     * de companies.
+     */
+    public function test_filtro_por_servico_mantem_apenas_a_linha_do_servico_escolhido(): void
+    {
+        $servicoAlvo  = $this->servicoComContrato('Gestão de Tráfego (filtro)');
+        $servicoOutro = $this->servicoComContrato('Assessoria (filtro)');
+
+        $doisServicos = $this->empresa(['name' => 'Empresa Com Dois Servicos']);
+        $this->vincularServico($doisServicos, $servicoAlvo);
+        $this->vincularServico($doisServicos, $servicoOutro);
+
+        $soOutro = $this->empresa(['name' => 'Empresa So Do Outro Servico']);
+        $this->vincularServico($soOutro, $servicoOutro);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index', ['servico' => $servicoAlvo->id]));
+        $response->assertOk();
+        $linhas = collect($response->viewData('page')['props']['linhas']['data']);
+
+        // A empresa dos dois serviços continua, com UMA linha só; a que não
+        // tem o serviço alvo sai.
+        $this->assertSame(['Empresa Com Dois Servicos'], $linhas->pluck('company_nome')->all());
+        $this->assertSame([$servicoAlvo->id], $linhas->pluck('servico_id')->unique()->values()->all());
+    }
+
+    /**
+     * O resumo de 7 contagens é ABSOLUTO — não encolhe com o filtro de
+     * serviço, mesma disciplina do filtro de situação. É a régua fixa contra
+     * a qual se compara o recorte escolhido; se encolhesse junto, os cartões
+     * marcariam sempre 100% do que está na tela e deixariam de informar.
+     */
+    public function test_filtro_por_servico_nao_encolhe_o_resumo_de_sete_contagens(): void
+    {
+        $servicoAlvo  = $this->servicoComContrato('Gestão de Tráfego (resumo)');
+        $servicoOutro = $this->servicoComContrato('Assessoria (resumo)');
+
+        $umaEmpresa = $this->empresa(['name' => 'Empresa Alvo Resumo']);
+        $this->vincularServico($umaEmpresa, $servicoAlvo);
+
+        $outraEmpresa = $this->empresa(['name' => 'Empresa Fora Do Filtro']);
+        $this->vincularServico($outraEmpresa, $servicoOutro);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index', ['servico' => $servicoAlvo->id]));
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $this->assertCount(1, $props['linhas']['data'], 'o filtro precisa recortar a lista');
+        $this->assertCount(7, $props['resumo'], 'o resumo trava em 7 contagens (D-04)');
+        $this->assertSame(2, $props['sem_contrato_count'], 'a contagem absoluta ignora o filtro de serviço');
+    }
+
+    /**
+     * Whitelist: valor inválido degrada para o default e NUNCA chega a
+     * ordenar ou filtrar nada — mesma disciplina do `situacao` (T-131-03-03).
+     * `filters` volta saneado, senão o select da tela mostraria selecionado
+     * um critério que o backend não usou.
+     */
+    public function test_valores_invalidos_de_ordenar_e_servico_caem_no_default(): void
+    {
+        $servico = $this->servicoComContrato();
+        $empresa = $this->empresa(['name' => 'Empresa Whitelist']);
+        $this->vincularServico($empresa, $servico);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index', [
+            'ordenar' => 'coluna_inexistente',
+            'servico' => 99999,
+        ]));
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $this->assertSame('recente', $props['filters']['ordenar']);
+        $this->assertNull($props['filters']['servico']);
+        $this->assertCount(1, $props['linhas']['data'], 'servico invalido nao pode filtrar nada');
+    }
+
+    /** Os filtros combinam entre si — serviço + situação + ordenação juntos. */
+    public function test_servico_situacao_e_ordenar_combinam(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-14 12:00:00'));
+
+        $servicoAlvo  = $this->servicoComContrato('Gestão de Tráfego (combina)');
+        $servicoOutro = $this->servicoComContrato('Assessoria (combina)');
+
+        // Alvo: serviço certo E situação certa.
+        $alvo = $this->empresa(['name' => 'Empresa Alvo Combinado']);
+        $this->vincularServico($alvo, $servicoAlvo)->update(['data_vencimento' => '2026-09-01']);
+        ContratoAssinatura::factory()->create([
+            'company_id' => $alvo->id,
+            'servico_id' => $servicoAlvo->id,
+            'status'     => ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS,
+            'enviado_em' => now()->subDay(),
+        ]);
+
+        // Serviço certo, situação errada.
+        $situacaoErrada = $this->empresa(['name' => 'Empresa Situacao Errada']);
+        $this->vincularServico($situacaoErrada, $servicoAlvo);
+        ContratoAssinatura::factory()->create([
+            'company_id' => $situacaoErrada->id,
+            'servico_id' => $servicoAlvo->id,
+            'status'     => ContratoAssinatura::STATUS_ASSINADO,
+        ]);
+
+        // Situação certa, serviço errado.
+        $servicoErrado = $this->empresa(['name' => 'Empresa Servico Errado']);
+        $this->vincularServico($servicoErrado, $servicoOutro);
+        ContratoAssinatura::factory()->create([
+            'company_id' => $servicoErrado->id,
+            'servico_id' => $servicoOutro->id,
+            'status'     => ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS,
+            'enviado_em' => now()->subDay(),
+        ]);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index', [
+            'servico'  => $servicoAlvo->id,
+            'situacao' => ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS,
+            'ordenar'  => 'vencimento',
+        ]));
+
+        $response->assertOk();
+        $nomes = collect($response->viewData('page')['props']['linhas']['data'])->pluck('company_nome')->all();
+
+        $this->assertSame(['Empresa Alvo Combinado'], $nomes);
+    }
+
     public function test_ordenacao_padrao_traz_primeiro_a_empresa_mais_recente(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-08-14 12:00:00'));
