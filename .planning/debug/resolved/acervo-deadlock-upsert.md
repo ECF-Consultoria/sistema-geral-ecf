@@ -369,3 +369,45 @@ commit: 5cfd1eec
 metrica de deadlock — que estava INFLADA pelo carimbo em massa, agora corrigido — esta e carimbada
 item a item e NAO esta inflada. E o problema numero 1 da qualidade do acervo. **Nao investigado.**
 Merece sessao propria.
+
+## DEPLOYADO em 2026-08-20 (~19:00 BRT)
+
+Commit em producao: **`2cc66624`**. Conferido por reconsulta: `AcervoEscritaLock.php` presente no
+VPS (era a classe que teria dado `Class not found` se ficasse fora do commit), workers RUNNING,
+smoke 200/302, nenhum erro novo no log (o ultimo e das 17:25, anterior ao deploy).
+
+Foi junto o commit `5a567bec` de outra sessao (fix de NPS, link de grupo) — ja estava em
+`origin/main`, zero intersecao de arquivos, conferida antes do rebase.
+
+### BASELINE PARA O CRITERIO DE REFUTACAO
+
+| Dia | Deadlocks |
+|---|---|
+| 12/08 | 21 |
+| 13/08 | 17 |
+| 14/08 | 26 |
+| 15/08 | 15 |
+| 16/08 | 14 |
+| 17/08 | 23 |
+| 18/08 | 25 |
+| 19/08 | 17 |
+| **20/08 (dia do deploy)** | **30** — CONTAMINADO, deploy foi ~19:00 |
+
+Media dos 8 dias limpos: **~20/dia**.
+
+⚠️ **20/08 nao serve de comparacao** — mistura pre e pos-deploy. Os primeiros dias limpos sao
+**21, 22 e 23 de agosto**.
+
+Comando da medicao:
+```bash
+grep -c "^\[2026-08-DD.*Deadlock found" storage/logs/laravel.log
+```
+
+**Se 21, 22 e 23/08 NAO cairem materialmente dos ~20/dia, a hipotese esta ERRADA** — o par que
+colide nao seria camada-barata x camada-cara da mesma empresa, e sobraria o gap de fronteira entre
+empresas. Reabrir esta sessao nesse caso.
+
+Sinal complementar a observar: `grep -c 'AcervoEscritaLock' storage/logs/laravel.log`. Cada
+ocorrencia e um timeout de 10s no lock, onde a escrita degradou e seguiu mesmo assim (decisao do
+usuario). Zero ate o momento do deploy. Muitos avisos = a serializacao esta apertada demais e o
+`ESPERA_SEGUNDOS` precisa de revisao.
