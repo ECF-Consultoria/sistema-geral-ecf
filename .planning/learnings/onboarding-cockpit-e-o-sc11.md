@@ -211,3 +211,53 @@ Comandos aparentemente idênticos rodaram ora em `C:\xampp\htdocs\ecf_admin`
 `FluxoOnboarding.jsx` não existe e `Detalhe.jsx` é a versão antiga — o que
 parece "arquivo apagado por outra sessão" e não é. Confirmar com
 `git branch --show-current` antes de concluir qualquer coisa sobre a árvore.
+
+## 10. A régua v14 e o critério que a enxugou (29 → 19 passos)
+
+Em 20/08 o negócio revisou o checklist item a item. O critério, dito por ele:
+**se a resposta já existe em outro lugar da tela, o item não deve pedir check**.
+Um item que pede confirmação do que o formulário ao lado acabou de gravar não
+acrescenta informação — cobra um clique que ninguém dá, e o onboarding fica
+eternamente "pendente" por burocracia própria.
+
+Saíram 10 da régua (`agendar_reuniao_onboarding`, os dois de gravação, os três
+de dados/SPIN/contexto, os dois de investimento, agenda quinzenal e
+participantes convidados) e 3 LEGADAS que já estavam fora da definição e que
+nenhum comando alcançava (`ficha_cliente_recebida`, `ficha_conta_preenchida`,
+`grupo_criado`) — apareciam abertas, sem SLA que as fechasse e sem definição que
+as recriasse.
+
+**O que ficou, e por quê ficou** (a parte que se esquece): os itens de
+publicidade e ADMAN ("explicado", "alinhado") NÃO passam no critério — nenhum
+formulário captura "explicamos a publicidade", e a etapa existe justamente para
+explicar, não para confirmar que existe. Já `analista_definido`,
+`ponto_contato_definido` e `participantes_reuniao_cadastrados` ficaram porque
+JÁ fecham sozinhos pelos resolvers: são dado, não pergunta.
+
+### A armadilha da remoção, de novo
+
+`reuniao_realizada` dependia de `agendar_reuniao_onboarding`. Apagar sem limpar
+a dependência a deixaria BLOQUEADA para sempre esperando um passo que não nasce
+mais — a mesma cilada que a v10 criou com `confirmacao_pagamento`. É o segundo
+registro disto neste arquivo; da próxima vez, **conferir `depende_de` ANTES de
+tirar qualquer passo da régua**.
+
+`onboarding:remover-passos-fora-da-regua` tem uma lista EXPLÍCITA de chaves, por
+desenho (comparação cega apagaria passos legítimos de outro serviço). Tirar da
+definição não basta: **tem de registrar a chave lá também**, senão o passo
+continua vivo em quem já nasceu e nenhum comando o alcança.
+
+### Produção ainda não foi limpa
+
+O `--apply` rodou só no banco LOCAL (47 passos em 4 onboardings, 0 concluídos).
+**No deploy é preciso rodar o mesmo comando em produção**, senão as 13 chaves
+continuam aparecendo para todas as empresas que entraram antes.
+
+### O formulário de agenda ficou de propósito
+
+O passo `agenda_quinzenal_definida` saiu, mas o bloco "Agenda das reuniões
+recorrentes" continua na tela por decisão do negócio: a integração com a API do
+Google Calendar entra em breve e é ela que resolve a dupla digitação. Antes de
+mexer nele, ler `.planning/seeds/onboarding-agenda-google-calendar.md` — em
+especial o bloqueio do escopo `calendar.readonly`, que decide o tamanho daquele
+projeto.
