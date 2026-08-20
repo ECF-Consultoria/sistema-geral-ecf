@@ -150,6 +150,27 @@ return [
                 'spin_problema'      => env('HUBSPOT_PROP_DEAL_SPIN_PROBLEMA', 'problema_principal_identificado'),
                 'spin_implicacao'    => env('HUBSPOT_PROP_DEAL_SPIN_IMPLICACAO', 'implicacao_do_problema'),
                 'spin_necessidade'   => env('HUBSPOT_PROP_DEAL_SPIN_NECESSIDADE', 'necessidade_de_solucao'),
+                // Quick task 260820-jc8 — o Comercial criou properties no DEAL
+                // (não na company) pros dados do contrato que entram no ganho:
+                // razão social, CNPJ, endereço (5 partes) e data da 1ª parcela.
+                // Nomes internos MEDIDOS contra a conta real do HubSpot via
+                // `php artisan hubspot:inspect-properties --objects=deals` em
+                // 2026-08-20 — não são adivinhação (ver PLAN.md do quick;
+                // precedente: quick 260805-eqk, onde adivinhar quebrou em
+                // silêncio). `dia_vencimento` NÃO tem property própria — é
+                // DERIVADO do dia de `data_do_1_pagamento`
+                // (HubspotDealHandoffService::montarContrato()).
+                'cnpj_da_empresa'    => env('HUBSPOT_PROP_DEAL_CNPJ', 'cnpj_da_empresa'),
+                'razao_social'       => env('HUBSPOT_PROP_DEAL_RAZAO_SOCIAL', 'razao_social'),
+                'logradouro'         => env('HUBSPOT_PROP_DEAL_LOGRADOURO', 'logradouro'),
+                'bairro'             => env('HUBSPOT_PROP_DEAL_BAIRRO', 'bairro'),
+                'cidade'             => env('HUBSPOT_PROP_DEAL_CIDADE', 'cidade'),
+                'estado'             => env('HUBSPOT_PROP_DEAL_ESTADO', 'estado'),
+                'cep'                => env('HUBSPOT_PROP_DEAL_CEP', 'cep'),
+                // Property tipo "date" no HubSpot — vem como epoch em
+                // MILISSEGUNDOS (string), não 'Y-m-d'. Conversão em
+                // HubspotDealHandoffService::parseDataHubspot().
+                'data_do_1_pagamento' => env('HUBSPOT_PROP_DEAL_DATA_1_PAGAMENTO', 'data_do_1_pagamento'),
             ],
             'company' => [
                 'name'          => env('HUBSPOT_PROP_COMPANY_NAME', 'name'),
