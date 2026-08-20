@@ -885,14 +885,16 @@ class OnboardingController extends Controller
     {
         abort_unless($request->user()->isAdmin(), 403, 'Só admin altera o padrão que vale para todas as empresas.');
 
+        // Só o LINK. O e-mail do colaborador é de cada empresa — cada cliente
+        // concede acesso a um endereço criado para ele, e um padrão global aqui
+        // seria um convite para o endereço errado ser usado em massa.
         $data = $request->validate([
-            'app_ecf_link'      => ['nullable', 'url', 'max:500'],
-            'email_colaborador' => ['nullable', 'email', 'max:255'],
+            'app_ecf_link' => ['nullable', 'url', 'max:500'],
         ]);
 
-        $acessos->salvarPadroes($data['app_ecf_link'] ?? null, $data['email_colaborador'] ?? null);
+        $acessos->salvarPadroes($data['app_ecf_link'] ?? null);
 
-        return back()->with('success', 'Padrões de acesso atualizados para todas as empresas.');
+        return back()->with('success', 'Link padrão do App ECF atualizado.');
     }
 
     /**

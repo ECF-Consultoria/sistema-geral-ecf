@@ -8,11 +8,15 @@ import { cn } from '@/lib/utils';
  * BlocoAcessos — o link do App ECF e o e-mail do colaborador, que a ECF
  * configura e o CLIENTE consome no portal.
  *
- * ### Um componente, dois escopos
- * `escopo="padrao"` edita o valor que vale para TODAS as empresas (cockpit de
- * `/companies`); `escopo="empresa"` edita o override de uma só
- * (`/onboarding/{id}`). São a mesma dupla de campos e a mesma validação — dois
- * componentes divergiriam no primeiro ajuste feito só de um lado.
+ * ### Um componente, dois escopos — com campos diferentes
+ * `escopo="padrao"` edita o que vale para TODAS as empresas (cockpit de
+ * `/companies`) e mostra SÓ o link do App ECF. `escopo="empresa"` edita o
+ * override de uma só (`/onboarding/{id}`) e mostra os dois campos.
+ *
+ * O e-mail do colaborador não aparece no padrão de propósito: cada cliente
+ * concede acesso a um endereço criado para ele, e "o e-mail de todos" não
+ * existe. Deixar o campo ali convidaria alguém a preencher um endereço único
+ * que iria para toda a base.
  *
  * ### O `placeholder` faz um trabalho de verdade no modo empresa
  * Campo vazio ali significa "segue o padrão", não "sem valor". Mostrar o valor
@@ -73,7 +77,10 @@ export default function BlocoAcessos({
         setSalvando(true);
         router.put(
             rota,
-            { app_ecf_link: link || null, email_colaborador: email || null },
+            // No padrão o e-mail nem viaja: a rota global não o aceita.
+            daEmpresa
+                ? { app_ecf_link: link || null, email_colaborador: email || null }
+                : { app_ecf_link: link || null },
             {
                 preserveScroll: true,
                 onSuccess: () => {
@@ -92,7 +99,7 @@ export default function BlocoAcessos({
                 {ajuda && <p className="text-white/40 text-[12px] mt-0.5">{ajuda}</p>}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className={cn('grid gap-4', daEmpresa ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 max-w-xl')}>
                 <Campo
                     icone={Link2}
                     rotulo="Link do App ECF"
@@ -104,16 +111,18 @@ export default function BlocoAcessos({
                     ajuda={daEmpresa ? 'Vazio = usa o padrão.' : 'Vale para toda empresa sem link próprio.'}
                 />
 
-                <Campo
-                    icone={Mail}
-                    rotulo="E-mail do colaborador"
-                    valor={email}
-                    aoMudar={setEmail}
-                    tipo="email"
-                    origem={daEmpresa ? origem?.email_colaborador : null}
-                    placeholder={daEmpresa ? (padroes?.email_colaborador ?? 'acessos@...') : 'acessos@...'}
-                    ajuda={daEmpresa ? 'Vazio = usa o padrão.' : 'É o endereço que o cliente convida no Mercado Livre.'}
-                />
+                {daEmpresa && (
+                    <Campo
+                        icone={Mail}
+                        rotulo="E-mail do colaborador"
+                        valor={email}
+                        aoMudar={setEmail}
+                        tipo="email"
+                        origem={origem?.email_colaborador}
+                        placeholder="acessos.cliente@ecfconsultoria.com.br"
+                        ajuda="Endereço desta empresa — não há padrão global."
+                    />
+                )}
             </div>
 
             <div className="flex items-center gap-3">

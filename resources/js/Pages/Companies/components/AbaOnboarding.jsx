@@ -658,8 +658,8 @@ export default function AbaOnboarding({
                     escopo="padrao"
                     rota={route('onboarding.acessos.padroes')}
                     valores={acessosPadroes}
-                    titulo="Acessos padrão do onboarding"
-                    ajuda="Vale para toda empresa que não tenha o seu. Cada empresa pode sobrescrever no detalhe dela."
+                    titulo="Link padrão do App ECF"
+                    ajuda="Vale para toda empresa que não tenha um link próprio. O e-mail do colaborador é de cada empresa e se configura no detalhe dela."
                 />
             )}
 

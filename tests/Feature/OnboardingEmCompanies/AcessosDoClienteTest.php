@@ -73,14 +73,17 @@ class AcessosDoClienteTest extends TestCase
     {
         [$company] = $this->empresaComOnboarding();
 
-        $this->svc()->salvarPadroes('https://app.ecf.test', 'padrao@ecf.test');
+        $this->svc()->salvarPadroes('https://app.ecf.test');
 
         $r = $this->svc()->paraEmpresa($company->fresh());
 
         $this->assertSame('https://app.ecf.test', $r['app_ecf_link']);
-        $this->assertSame('padrao@ecf.test', $r['email_colaborador']);
         $this->assertSame('padrao', $r['origem']['app_ecf_link']);
-        $this->assertSame('padrao', $r['origem']['email_colaborador']);
+
+        // O e-mail NÃO tem padrão global: cada cliente concede acesso a um
+        // endereço criado para ele. Empresa sem o seu fica sem, e a tela avisa.
+        $this->assertNull($r['email_colaborador']);
+        $this->assertSame('ausente', $r['origem']['email_colaborador']);
     }
 
     /** @test */
@@ -88,7 +91,7 @@ class AcessosDoClienteTest extends TestCase
     {
         [$company] = $this->empresaComOnboarding();
 
-        $this->svc()->salvarPadroes('https://app.ecf.test', 'padrao@ecf.test');
+        $this->svc()->salvarPadroes('https://app.ecf.test');
         $this->svc()->salvarDaEmpresa($company, 'https://app.proprio.test', 'proprio@ecf.test');
 
         $r = $this->svc()->paraEmpresa($company->fresh());
@@ -108,7 +111,7 @@ class AcessosDoClienteTest extends TestCase
     {
         [$company] = $this->empresaComOnboarding();
 
-        $this->svc()->salvarPadroes('https://app.ecf.test', 'padrao@ecf.test');
+        $this->svc()->salvarPadroes('https://app.ecf.test');
         $this->svc()->salvarDaEmpresa($company, 'https://app.proprio.test', 'proprio@ecf.test');
 
         // String vazia é o que o formulário manda quando o usuário apaga.
@@ -140,7 +143,7 @@ class AcessosDoClienteTest extends TestCase
     public function portal_do_cliente_recebe_o_valor_resolvido(): void
     {
         [$company] = $this->empresaComOnboarding();
-        $this->svc()->salvarPadroes('https://app.ecf.test', 'padrao@ecf.test');
+        $this->svc()->salvarPadroes('https://app.ecf.test');
 
         $token = OnboardingLink::firstOrCreate(
             ['company_id' => $company->id],
@@ -152,7 +155,7 @@ class AcessosDoClienteTest extends TestCase
             ->viewData('page')['props'];
 
         $this->assertSame('https://app.ecf.test', $props['empresa']['app_ecf_link']);
-        $this->assertSame('padrao@ecf.test', $props['empresa']['email_colaborador']);
+        $this->assertNull($props['empresa']['email_colaborador'], 'E-mail não tem padrão global.');
     }
 
     /**
@@ -170,16 +173,42 @@ class AcessosDoClienteTest extends TestCase
             'active'   => true,
         ]);
 
-        $this->svc()->salvarPadroes('https://original.test', 'original@ecf.test');
+        $this->svc()->salvarPadroes('https://original.test');
 
         $this->actingAs($consultor)
-            ->put(route('onboarding.acessos.padroes'), [
-                'app_ecf_link'      => 'https://invasor.test',
-                'email_colaborador' => 'invasor@ecf.test',
-            ])
+            ->put(route('onboarding.acessos.padroes'), ['app_ecf_link' => 'https://invasor.test'])
             ->assertForbidden();
 
         $this->assertSame('https://original.test', Configuracao::get(OnboardingAcessosService::CHAVE_APP_ECF));
+    }
+
+    /**
+     * A rota do PADRÃO não aceita e-mail. Se alguém mandar, o campo é ignorado
+     * — nunca vira um endereço único para a base inteira.
+     *
+     * @test
+     */
+    public function padrao_global_nao_guarda_email_de_colaborador(): void
+    {
+        [$company] = $this->empresaComOnboarding();
+
+        $admin = User::create([
+            'name'     => 'Admin '.uniqid(),
+            'email'    => 'adm.'.uniqid().'@ecf.test',
+            'password' => bcrypt('senha'),
+            'role'     => 'admin',
+            'active'   => true,
+        ]);
+
+        $this->actingAs($admin)
+            ->put(route('onboarding.acessos.padroes'), [
+                'app_ecf_link'      => 'https://app.ecf.test',
+                'email_colaborador' => 'ninguem@ecf.test',
+            ])
+            ->assertRedirect();
+
+        $this->assertNull(Configuracao::get('onboarding_email_colaborador'));
+        $this->assertNull($this->svc()->paraEmpresa($company->fresh())['email_colaborador']);
     }
 
     /** URL malformada não entra — o cliente clicaria num link quebrado. */
