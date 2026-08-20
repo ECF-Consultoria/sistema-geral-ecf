@@ -161,3 +161,53 @@ Consequências práticas:
 Não foi alterado agora porque o recorte é o comportamento existente de
 `/companies` e mudá-lo afeta outra aba — mas é uma decisão de produto pendente,
 não um detalhe técnico.
+
+## 9. O detalhe também virou cockpit (20/08) — e a ordem das etapas NÃO mudou
+
+`Onboarding/Detalhe` ganhou cabeçalho, linha do tempo, destaque de próxima ação,
+responsabilidades e atividade recente. Quatro decisões que vão morder quem
+mexer depois:
+
+**A ordem das etapas é decisão de negócio, não de layout.** `ETAPAS_FLUXO`
+começa em `agendamento` desde 19/08 — nós marcamos a data e cobramos o cliente
+para ela, então a reunião ABRE o processo. Foi junto com isso que
+`agendar_reuniao_onboarding` perdeu a dependência do mapeamento
+(`DefinicaoOnboarding` v13); sem aquilo a primeira etapa nasceria bloqueada.
+Referência visual que sugira outra sequência não é motivo para mudar.
+
+**"Reunião" não é dono, é natureza.** `dono` (cliente/interno/sistema) é
+EXCLUSIVO e os três somam o total de pendências — é o que permite exibi-los
+lado a lado. `reuniao` é `natureza` (COMO o item se preenche), eixo
+independente: um passo "na reunião" já está contado em interno ou cliente.
+Promovê-lo a quarto card irmão produz quatro números que não somam o total, e
+quem conferir na mão conclui que a tela está errada. Ele aparece como
+SUBCONJUNTO, com o rótulo dizendo isso. Travado por teste
+(`donos_somam_o_total_de_pendencias_e_reuniao_e_subconjunto`).
+
+**A linha do tempo tem TRÊS marcos porque o banco registra três.**
+`created_at`, `iniciado_em`, `concluido_em`. Não existe "Em operação" como
+estado de onboarding — o catálogo é rascunho/andamento/concluído, e concluir É
+o sinal de que a empresa pode operar. Um quarto marco ficaria cinza para
+sempre, inclusive nos onboardings que terminaram bem, e marco que nunca acende
+ensina o time a ignorar a régua inteira.
+
+**O feed de atividade não tem tabela própria.** Ele lê
+`onboarding_passos.feito_em/feito_por/auto_em` — colunas que existiam desde
+sempre e que nenhuma tela lia. Um log de auditoria próprio seria uma segunda
+verdade sobre o mesmo fato e divergiria do checklist no primeiro passo
+desmarcado. `auto_em` preenchido é o que distingue "o resolver fechou" de
+"alguém conferiu", e essa diferença muda o quanto se confia na informação.
+
+### Armadilha de ambiente: o scroll não é da janela
+
+`AppLayout` põe o scroll em `MAIN.overflow-y-auto`, não no documento. Um probe
+que mede `window.scrollY` para verificar navegação interna sempre vê `0` e
+conclui, errado, que nada rolou. Medir `document.querySelector('main').scrollTop`.
+
+### Armadilha de ambiente: o cwd do shell volta para a árvore principal
+
+Comandos aparentemente idênticos rodaram ora em `C:\xampp\htdocs\ecf_admin`
+(branch `main`), ora na worktree `ecf_admin_onb`. Na principal,
+`FluxoOnboarding.jsx` não existe e `Detalhe.jsx` é a versão antiga — o que
+parece "arquivo apagado por outra sessão" e não é. Confirmar com
+`git branch --show-current` antes de concluir qualquer coisa sobre a árvore.
