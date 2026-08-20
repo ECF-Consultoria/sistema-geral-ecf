@@ -213,7 +213,20 @@ class ContratoDadosMinimosService
     }
 
     /**
-     * Os signatários FIXOS da ECF (D-08) estão configurados?
+     * Os signatários da ECF (D-08) estão configurados?
+     *
+     * ⚠️ **Eram três, obrigatórios, até 2026-08-20.** Por decisão da diretoria
+     * passou a assinar só o Thiago Messina pela ECF — o sócio e a testemunha
+     * saíram, e o rodapé do `.docx` na Clicksign foi editado junto. A lista em
+     * `config/services.php` virou VARIÁVEL: descarta o slot com nome e e-mail
+     * ambos vazios. Esta checagem acompanhou — passou a exigir **pelo menos
+     * um**, em vez dos três.
+     *
+     * ⚠️ O que NÃO afrouxou: entrada preenchida **pela metade** (nome sem
+     * e-mail, ou o contrário) continua reprovando. Meio preenchido é erro de
+     * digitação, não remoção intencional — e é justamente o caso que o gate do
+     * plano 127-07 pegou contra o sandbox real. Só o slot com os DOIS vazios
+     * significa "não usado", e esse o `config` já descartou antes de chegar aqui.
      *
      * ⚠️ **Achado no gate do plano 127-07, contra o sandbox real.** Sem isto, a
      * checagem validava só os dados da EMPRESA e deixava passar um contrato que
@@ -239,8 +252,11 @@ class ContratoDadosMinimosService
     {
         $signatarios = config('services.clicksign.signatarios_ecf', []);
 
+        // Pelo menos UM. Zero significa que nenhum slot do `.env` tem nome ou
+        // e-mail — nesse estado o envelope nasceria só com o cliente, sem
+        // ninguém assinando pela ECF.
         if (! is_array($signatarios) || $signatarios === []) {
-            return ['Signatários fixos da ECF (CLICKSIGN_SIGNATARIO_*) não configurados'];
+            return ['Nenhum signatário da ECF (CLICKSIGN_SIG*_NOME / _EMAIL) está configurado'];
         }
 
         $problemas = [];

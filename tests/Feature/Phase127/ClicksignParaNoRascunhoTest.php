@@ -129,6 +129,45 @@ class ClicksignParaNoRascunhoTest extends TestCase
         $this->assertCount(4, $resultado['signatarios']);
     }
 
+    /**
+     * O efeito ponta-a-ponta da decisão da diretoria de 2026-08-20: pela ECF
+     * assina só o Thiago Messina, então o envelope nasce com **2** signatários
+     * (cliente + ECF) em vez de 4, e gasta **8** chamadas em vez de 14.
+     *
+     * A conta importa porque a janela da Clicksign é medida e apertada
+     * (20 req/min, bucket de 1 envelope/min): cada signatário custa 3 chamadas
+     * — criar + requisito de qualificação + requisito de autenticação. Sair de
+     * 4 para 2 signatários devolve 6 chamadas por contrato.
+     *
+     * 1 envelope + 1 documento + (2 signatários × 3) = 8, sem a ativação (D-02).
+     */
+    #[Test]
+    public function com_um_unico_signatario_da_ecf_o_envelope_nasce_com_dois_e_gasta_menos_chamadas(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => [
+            ['nome' => 'Thiago Messina', 'email' => 'thiago@example.com', 'papel' => ContratoAssinaturaSignatario::PAPEL_CONTRATADA],
+        ]]);
+        $this->fakeSequenciaCompleta();
+
+        $resultado = $this->client()->montarEnvelopePorModelo(
+            ['name' => 'Contrato de teste — ECF Admin'],
+            'Contrato de teste.docx',
+            self::TEMPLATE_ID,
+            ['razao_social' => 'Empresa Teste LTDA'],
+            $this->signatarioCliente(),
+            ativar: false
+        );
+
+        Http::assertSentCount(8);
+
+        $this->assertCount(2, $resultado['signatarios']);
+        $this->assertSame(
+            [ContratoAssinaturaSignatario::PAPEL_CONTRATANTE, ContratoAssinaturaSignatario::PAPEL_CONTRATADA],
+            array_column($resultado['signatarios'], 'papel'),
+            'a ordem importa: o cliente entra primeiro, a ECF depois'
+        );
+    }
+
     // ─── Teste 3: default preservado — rede contra regressão da Fase 126 ───
 
     #[Test]

@@ -254,28 +254,45 @@ return [
         'prazo_dias_padrao'    => (int) env('CLICKSIGN_PRAZO_DIAS', 30),
         'lembrete_dias_padrao' => (int) env('CLICKSIGN_LEMBRETE_DIAS', 3),
 
-        // Fase 126 Plan 126-02 (D-08) — os 3 signatários FIXOS da ECF que
-        // entram em todo contrato (dois sócios como "contratada" + Comercial
-        // como "testemunha"), lidos de `env()`. Nome e e-mail reais NUNCA
-        // entram aqui hardcoded nem no `.env.example` — só no `.env` local
+        // Fase 126 Plan 126-02 (D-08) — os signatários da ECF que entram em
+        // todo contrato, lidos de `env()`. Nome e e-mail reais NUNCA entram
+        // aqui hardcoded nem no `.env.example` — só no `.env` local
         // (gitignored) ou nas variáveis de ambiente do servidor.
-        'signatarios_ecf' => [
+        //
+        // ⚠️ A lista era FIXA em 3 entradas (dois sócios como "contratada" +
+        // Comercial como "testemunha"). Virou VARIÁVEL em 2026-08-20, por
+        // decisão da diretoria: pela ECF passa a assinar só o Thiago Messina;
+        // o sócio e a testemunha saíram. Os slots continuam existindo, e o
+        // papel continua POSICIONAL — repreencher `CLICKSIGN_SIG2_*` devolve
+        // um "contratada", `SIG3` devolve uma "testemunha".
+        //
+        // ⚠️ O filtro descarta APENAS a entrada com nome E e-mail vazios, que
+        // é como se diz "este slot não é usado". Entrada PELA METADE (nome sem
+        // e-mail, ou o contrário) é erro de digitação e passa de propósito —
+        // quem reprova é `ContratoDadosMinimosService::faltantesDaConfiguracaoEcf()`,
+        // e engolir isso aqui esconderia o erro até a Clicksign recusar o
+        // signatário no meio da montagem do envelope, que é exatamente o que
+        // aquela checagem existe para evitar.
+        'signatarios_ecf' => array_values(array_filter(
             [
-                'nome'  => env('CLICKSIGN_SIG1_NOME', ''),
-                'email' => env('CLICKSIGN_SIG1_EMAIL', ''),
-                'papel' => 'contratada',
+                [
+                    'nome'  => env('CLICKSIGN_SIG1_NOME', ''),
+                    'email' => env('CLICKSIGN_SIG1_EMAIL', ''),
+                    'papel' => 'contratada',
+                ],
+                [
+                    'nome'  => env('CLICKSIGN_SIG2_NOME', ''),
+                    'email' => env('CLICKSIGN_SIG2_EMAIL', ''),
+                    'papel' => 'contratada',
+                ],
+                [
+                    'nome'  => env('CLICKSIGN_SIG3_NOME', ''),
+                    'email' => env('CLICKSIGN_SIG3_EMAIL', ''),
+                    'papel' => 'testemunha',
+                ],
             ],
-            [
-                'nome'  => env('CLICKSIGN_SIG2_NOME', ''),
-                'email' => env('CLICKSIGN_SIG2_EMAIL', ''),
-                'papel' => 'contratada',
-            ],
-            [
-                'nome'  => env('CLICKSIGN_SIG3_NOME', ''),
-                'email' => env('CLICKSIGN_SIG3_EMAIL', ''),
-                'papel' => 'testemunha',
-            ],
-        ],
+            fn (array $s) => trim((string) $s['nome']) !== '' || trim((string) $s['email']) !== ''
+        )),
     ],
 
 ];
