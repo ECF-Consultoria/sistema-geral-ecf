@@ -70,9 +70,59 @@ const ESTADO_CARD = {
     indeterminado:      { classe: 'border-amber-500/20 bg-amber-500/[0.06]' },
 };
 
+/**
+ * EmailColaborador — o endereço que o cliente precisa convidar, pronto para
+ * copiar.
+ *
+ * Mesmo desenho do `GmailDisplay` do portal de Polos
+ * (`Mlb/ImplementacaoPublica.jsx`). A instrução do passo diz "envie o convite
+ * para o e-mail que combinamos com você" — sem o endereço na tela, o cliente
+ * vai procurar num e-mail antigo e convida o endereço errado, que é um erro
+ * que só aparece dias depois, quando o acesso não chega.
+ *
+ * Não cadastrado devolve um aviso em vez de nada: campo vazio pareceria
+ * instrução incompleta, e o cliente ficaria esperando sem saber o quê.
+ */
+function EmailColaborador({ email }) {
+    const [copiado, setCopiado] = useState(false);
+
+    if (!email) {
+        return (
+            <p className="text-[12px] text-amber-300/80 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 mt-2.5">
+                O e-mail para o convite ainda não foi cadastrado pela ECF — vamos enviá-lo para você.
+            </p>
+        );
+    }
+
+    const copiar = () => {
+        navigator.clipboard?.writeText(email);
+        setCopiado(true);
+        setTimeout(() => setCopiado(false), 2000);
+    };
+
+    return (
+        <div className="mt-2.5">
+            <span className="block text-white/40 text-[11px] font-medium uppercase tracking-wider mb-1.5">
+                Convide este e-mail
+            </span>
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-ecf-yellow/5 border border-ecf-yellow/20">
+                <span className="flex-1 min-w-0 text-ecf-yellow font-mono text-[13px] font-semibold truncate">{email}</span>
+                <button
+                    type="button"
+                    onClick={copiar}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow text-[12px] font-medium transition-all shrink-0"
+                >
+                    {copiado && <Check size={12} />}
+                    {copiado ? 'Copiado!' : 'Copiar'}
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // ─── Card de um passo (1 por `chave`, nunca por onboarding_passo) ───────────
 
-function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onPlay, onOpenPassoAPasso, pessoas = {} }) {
+function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onPlay, onOpenPassoAPasso, pessoas = {}, emailColaborador = null }) {
     const [marcando, setMarcando] = useState(false);
     const estado = ESTADO_CARD[passo.status] ?? ESTADO_CARD.aberto;
     const concluido = passo.status === 'concluido';
@@ -154,6 +204,12 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
 
                     {passo.instrucao && (
                         <p className="text-white/60 text-[12px] mt-1.5 leading-relaxed">{passo.instrucao}</p>
+                    )}
+
+                    {/* O endereço fica ao LADO da instrução que manda convidá-lo
+                        — não num bloco separado no fim do card. */}
+                    {passo.chave === 'acesso_colaborador_ml' && (
+                        <EmailColaborador email={emailColaborador} />
                     )}
 
                     {bloqueado && (
@@ -854,6 +910,7 @@ export default function Publico({
                                                         setConectandoChave={setConectandoChave}
                                                         onPlay={(url, titulo) => setVideo({ url, titulo })}
                                                         onOpenPassoAPasso={setPassoAPasso}
+                                                        emailColaborador={empresa.email_colaborador}
                                                     />
                                                 ))}
                                             </section>

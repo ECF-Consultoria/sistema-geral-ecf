@@ -55,7 +55,17 @@ class OnboardingPublicoController extends Controller
 
         return Inertia::render('Onboarding/Publico', [
             'token'    => $token,
-            'empresa'  => ['nome' => $company->name],
+            'empresa'  => [
+                'nome' => $company->name,
+                // O e-mail que a ECF criou para entrar na conta do cliente. O
+                // portal de Polos ja mostrava o equivalente
+                // (`mlb_implementacoes.gmail_colaborador`) com botao de copiar;
+                // aqui o campo e `companies.email_colaborador`, que ja existia
+                // e nenhuma tela do cliente lia. Sem ele, "envie o convite para
+                // o e-mail que combinamos" obriga o cliente a procurar num
+                // e-mail antigo — e ele convida o endereco errado.
+                'email_colaborador' => $company->email_colaborador,
+            ],
             'passos'   => $this->linkService->passosDoCliente($company),
             // Agrupadas por papel para a tela não precisar filtrar. Deduplicadas
             // por (papel, nome, e-mail): a mesma pessoa é gravada em cada
