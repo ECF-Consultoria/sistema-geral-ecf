@@ -57,14 +57,11 @@ class OnboardingPublicoController extends Controller
             'token'    => $token,
             'empresa'  => [
                 'nome' => $company->name,
-                // O e-mail que a ECF criou para entrar na conta do cliente. O
-                // portal de Polos ja mostrava o equivalente
-                // (`mlb_implementacoes.gmail_colaborador`) com botao de copiar;
-                // aqui o campo e `companies.email_colaborador`, que ja existia
-                // e nenhuma tela do cliente lia. Sem ele, "envie o convite para
-                // o e-mail que combinamos" obriga o cliente a procurar num
-                // e-mail antigo — e ele convida o endereco errado.
-                'email_colaborador' => $company->email_colaborador,
+                // Resolvidos pelo service (empresa > padrão global) — a tela do
+                // cliente nunca lê a coluna crua, senão empresa sem override
+                // mostraria vazio mesmo havendo padrão configurado.
+                ...app(\App\Services\Onboarding\OnboardingAcessosService::class)
+                    ->paraEmpresa($company),
             ],
             'passos'   => $this->linkService->passosDoCliente($company),
             // Agrupadas por papel para a tela não precisar filtrar. Deduplicadas

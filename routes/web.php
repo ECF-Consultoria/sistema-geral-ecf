@@ -971,6 +971,14 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
             ->name('onboarding.link.gerar');
         // Relatório inicial (PDF §3): gerar monta o retrato factual; salvar
         // grava as três seções que só uma pessoa escreve.
+        // Link do App ECF e e-mail do colaborador. O PADRAO vale para todas as
+        // empresas (admin-only, checado no controller); o override e por
+        // empresa e a coordenacao inteira pode editar.
+        Route::put('/onboarding/acessos/padroes', [OnboardingController::class, 'salvarPadroesAcessos'])
+            ->name('onboarding.acessos.padroes');
+        Route::put('/onboarding/{onboarding}/acessos', [OnboardingController::class, 'salvarAcessosDaEmpresa'])
+            ->name('onboarding.acessos.empresa');
+
         Route::post('/onboarding/{onboarding}/relatorio', [OnboardingController::class, 'gerarRelatorio'])
             ->name('onboarding.relatorio.gerar');
         Route::put('/onboarding/{onboarding}/relatorio', [OnboardingController::class, 'salvarRelatorio'])

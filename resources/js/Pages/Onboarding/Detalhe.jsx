@@ -10,6 +10,7 @@ import FluxoOnboarding from '@/Components/Onboarding/Painel/FluxoOnboarding';
 import RelatorioInicial from '@/Components/Onboarding/RelatorioInicial';
 import ReuniaoBloco from '@/Components/Onboarding/Painel/ReuniaoBloco';
 import LinkDoCliente from '@/Components/Onboarding/Painel/LinkDoCliente';
+import BlocoAcessos from '@/Components/Onboarding/Painel/BlocoAcessos';
 import ContextoDaVenda from '@/Components/Onboarding/Painel/ContextoDaVenda';
 import BlocoInvestimento from '@/Components/Onboarding/Painel/BlocoInvestimento';
 import BlocoContatos from '@/Components/Onboarding/Painel/BlocoContatos';
@@ -59,6 +60,7 @@ export default function Detalhe({
     link = null,
     mapeamento = null,
     respostas = null,
+    acessos = null,
     proxima_acao = null,
     responsabilidades = null,
     linha_do_tempo = [],
@@ -161,6 +163,22 @@ export default function Detalhe({
 
                     <aside className="space-y-5 min-w-0 xl:sticky xl:top-4">
                         <LinkDoCliente companyId={onboarding.empresa.id} link={link} />
+
+                        {/* O que o CLIENTE vê no portal desta empresa. Fica na
+                            coluna de ferramentas, junto do link do portal, pelo
+                            mesmo motivo: responde "o cliente consegue seguir?",
+                            não é passo de nenhuma etapa. */}
+                        {acessos && (
+                            <BlocoAcessos
+                                escopo="empresa"
+                                rota={route('onboarding.acessos.empresa', onboarding.id)}
+                                valores={acessos.da_empresa}
+                                padroes={acessos}
+                                origem={acessos.origem}
+                                titulo="Acessos que o cliente vê"
+                                ajuda="Link do App ECF e e-mail para o convite. Vazio segue o padrão da ECF."
+                            />
+                        )}
                         <AtividadeRecente atividade={atividade} />
                     </aside>
                 </div>

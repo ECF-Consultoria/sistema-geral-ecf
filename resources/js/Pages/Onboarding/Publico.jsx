@@ -3,7 +3,7 @@ import PessoasDoCliente from '@/Components/Onboarding/PessoasDoCliente';
 import { router } from '@inertiajs/react';
 import {
     AlertTriangle, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
-    Home, ListChecks, Lock, RefreshCw, Zap,
+    ExternalLink, Home, ListChecks, Lock, RefreshCw, Zap,
 } from 'lucide-react';
 import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
 import {
@@ -120,9 +120,49 @@ function EmailColaborador({ email }) {
     );
 }
 
+/**
+ * LinkAppEcf — o endereço do App ECF, pronto para abrir.
+ *
+ * Mesmo papel do `EmailColaborador` acima e do item `app_ecf` do portal de
+ * Polos ("Acesse o App ECF pelo link abaixo"). O passo a passo continua vindo
+ * do botão "Passo a passo" do card, que já existe — aqui é só o link, que era
+ * o que faltava: a instrução mandava acessar o App e não dizia onde.
+ *
+ * O endereço chega resolvido do backend (empresa > padrão global), então esta
+ * tela não sabe nem precisa saber de qual dos dois veio.
+ */
+function LinkAppEcf({ url }) {
+    if (!url) {
+        return (
+            <p className="text-[12px] text-amber-300/80 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 mt-2.5">
+                O link do App ECF ainda não foi configurado pela ECF — vamos enviá-lo para você.
+            </p>
+        );
+    }
+
+    return (
+        <div className="mt-2.5">
+            <span className="block text-white/40 text-[11px] font-medium uppercase tracking-wider mb-1.5">
+                Acesse o App ECF pelo link abaixo
+            </span>
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-ecf-yellow/5 border border-ecf-yellow/20">
+                <span className="flex-1 min-w-0 text-ecf-yellow font-mono text-[13px] truncate">{url}</span>
+                <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow text-[12px] font-medium transition-all shrink-0"
+                >
+                    <ExternalLink size={12} /> Acessar
+                </a>
+            </div>
+        </div>
+    );
+}
+
 // ─── Card de um passo (1 por `chave`, nunca por onboarding_passo) ───────────
 
-function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onPlay, onOpenPassoAPasso, pessoas = {}, emailColaborador = null }) {
+function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onPlay, onOpenPassoAPasso, pessoas = {}, emailColaborador = null, appEcfLink = null }) {
     const [marcando, setMarcando] = useState(false);
     const estado = ESTADO_CARD[passo.status] ?? ESTADO_CARD.aberto;
     const concluido = passo.status === 'concluido';
@@ -211,6 +251,8 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
                     {passo.chave === 'acesso_colaborador_ml' && (
                         <EmailColaborador email={emailColaborador} />
                     )}
+
+                    {passo.chave === 'custos_app_ecf' && <LinkAppEcf url={appEcfLink} />}
 
                     {bloqueado && (
                         <p className="text-white/30 text-[11px] mt-2">
@@ -911,6 +953,7 @@ export default function Publico({
                                                         onPlay={(url, titulo) => setVideo({ url, titulo })}
                                                         onOpenPassoAPasso={setPassoAPasso}
                                                         emailColaborador={empresa.email_colaborador}
+                                                        appEcfLink={empresa.app_ecf_link}
                                                     />
                                                 ))}
                                             </section>

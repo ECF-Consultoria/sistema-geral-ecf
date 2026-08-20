@@ -346,6 +346,12 @@ class CompanyController extends Controller
             // cockpit não oferece "criar onboarding": oferece o caminho real,
             // que é cadastrar a empresa/contrato. Sem esta flag o botão
             // apareceria para quem leva 403 ao clicar.
+            // Padrao global de acessos do onboarding — so montado para quem ve
+            // a aba; o formulario em si e admin-only (checado no controller que
+            // grava, nunca so no front).
+            'acessos_padroes' => $podeVerOnboarding
+                ? app(\App\Services\Onboarding\OnboardingAcessosService::class)->padroes()
+                : null,
             'pode_cadastrar_empresa' => $usuario->hasPermission(\App\Support\Permissions::COMERCIAL_CADASTRAR_EMPRESA),
         ]);
     }

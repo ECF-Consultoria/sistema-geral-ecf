@@ -17,6 +17,7 @@ use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
 use App\Services\Onboarding\OnboardingMapeamentoService;
 use App\Services\Onboarding\OnboardingResolverFactory;
+use App\Services\Onboarding\OnboardingAcessosService;
 use App\Services\Onboarding\OnboardingSituacaoService;
 use App\Services\Onboarding\RelatorioInicialService;
 use Illuminate\Http\Request;
@@ -124,7 +125,7 @@ class OnboardingController extends Controller
             // de novo o que o Comercial já coletou") e o accessor
             // `hubspot_spin` lê o snapshot. Fora da projeção, os dois voltam
             // null sem erro nenhum — foi o que aconteceu na primeira versão.
-            'company:id,name,marketplace,hubspot_observacao,hubspot_snapshot',
+            'company:id,name,marketplace,hubspot_observacao,hubspot_snapshot,email_colaborador,app_ecf_link',
             'servico:id,nome',
             'responsavel:id,name,avatar_url',
             'reuniaoAgendadaPor:id,name',
@@ -216,6 +217,16 @@ class OnboardingController extends Controller
             // o que travar agora, de quem e a bola, em que ponto da vida o
             // onboarding esta e o que aconteceu por ultimo. Nenhuma delas cria
             // regra — todas leem o que ja estava persistido.
+            // Link do App ECF e e-mail do colaborador, ja resolvidos
+            // (empresa > padrao) mais a ORIGEM de cada um: sem ela, quem abre
+            // a tela nao sabe se apagar o campo muda alguma coisa.
+            'acessos'           => array_merge(
+                app(OnboardingAcessosService::class)->paraEmpresa($onboarding->company),
+                ['da_empresa' => [
+                    'app_ecf_link'      => $onboarding->company->app_ecf_link,
+                    'email_colaborador' => $onboarding->company->email_colaborador,
+                ]],
+            ),
             'proxima_acao'      => $this->proximaAcaoPayload($onboarding, $passos),
             'responsabilidades' => $this->responsabilidadesPayload($passos),
             'linha_do_tempo'    => $this->linhaDoTempoPayload($onboarding),
@@ -860,6 +871,53 @@ class OnboardingController extends Controller
         }
 
         return $item;
+    }
+
+    /**
+     * PUT /onboarding/acessos/padroes — os valores que valem para TODA empresa
+     * que não tenha o seu (cockpit de `/companies?tab=onboarding`).
+     *
+     * Admin-only: mexer aqui muda o que todo cliente vê no portal de uma vez.
+     * O gate da rota (`permission:core.onboarding`) libera a coordenação, que
+     * pode editar o override de UMA empresa — mudar o padrão é outra escala.
+     */
+    public function salvarPadroesAcessos(Request $request, OnboardingAcessosService $acessos)
+    {
+        abort_unless($request->user()->isAdmin(), 403, 'Só admin altera o padrão que vale para todas as empresas.');
+
+        $data = $request->validate([
+            'app_ecf_link'      => ['nullable', 'url', 'max:500'],
+            'email_colaborador' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        $acessos->salvarPadroes($data['app_ecf_link'] ?? null, $data['email_colaborador'] ?? null);
+
+        return back()->with('success', 'Padrões de acesso atualizados para todas as empresas.');
+    }
+
+    /**
+     * PUT /onboarding/{onboarding}/acessos — o override DESTA empresa.
+     *
+     * Campo apagado grava `null`, que significa "volta a seguir o padrão" — é
+     * o caminho de volta. Sem isso, quem preenchesse por engano ficaria preso
+     * ao valor próprio para sempre.
+     */
+    public function salvarAcessosDaEmpresa(Request $request, Onboarding $onboarding, OnboardingAcessosService $acessos)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'app_ecf_link'      => ['nullable', 'url', 'max:500'],
+            'email_colaborador' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        $acessos->salvarDaEmpresa(
+            $onboarding->company,
+            $data['app_ecf_link'] ?? null,
+            $data['email_colaborador'] ?? null,
+        );
+
+        return back()->with('success', 'Acessos desta empresa atualizados.');
     }
 
     /**
