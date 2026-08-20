@@ -128,7 +128,14 @@ class OnboardingController extends Controller
             'servico:id,nome',
             'responsavel:id,name',
             'reuniaoAgendadaPor:id,name',
+            // O cabecalho do cockpit mostra "Analista responsavel" (R-01) —
+            // sem estes dois ele cairia sempre no `responsavel` generico.
+            'responsavelEstrategista:id,name',
+            'responsavelAnalista:id,name',
             'passos.setor:id,nome',
+            // Quem fechou cada passo, para o feed de atividade. Sem o eager
+            // load isto seria uma consulta por passo dentro do laco.
+            'passos.feitoPor:id,name',
         ]);
 
         $passos = $onboarding->passos;
@@ -137,6 +144,11 @@ class OnboardingController extends Controller
         );
 
         $situacao = $this->situacaoService->situacao($onboarding, $passos);
+
+        // Calculado ANTES do render: o feed de atividade tambem le o
+        // `ultimo_acesso` daqui, e montar o payload duas vezes seria uma
+        // consulta a mais por abertura de tela.
+        $link = $this->linkPayload($onboarding);
 
         $passosOrdenados = $passos
             ->sortBy(fn (OnboardingPasso $p) => $p->ordem)
@@ -155,6 +167,15 @@ class OnboardingController extends Controller
                     'id'   => $onboarding->responsavel->id,
                     'name' => $onboarding->responsavel->name,
                 ] : null,
+                // Os dois papeis (R-01). O cabecalho mostra o ANALISTA como
+                // "Analista responsavel"; `responsavel` acima continua sendo o
+                // principal, que e o nome que o portal do cliente mostra.
+                'responsavel_estrategista' => $onboarding->responsavelEstrategista
+                    ? ['id' => $onboarding->responsavelEstrategista->id, 'name' => $onboarding->responsavelEstrategista->name]
+                    : null,
+                'responsavel_analista' => $onboarding->responsavelAnalista
+                    ? ['id' => $onboarding->responsavelAnalista->id, 'name' => $onboarding->responsavelAnalista->name]
+                    : null,
                 // Mesma fração que a listagem mostra — vem do service, não de
                 // uma contagem local, senão as duas telas divergem.
                 'progresso'        => $this->situacaoService->progresso($passos),
@@ -182,8 +203,18 @@ class OnboardingController extends Controller
                 'realizada'     => $passos
                     ->firstWhere('chave', 'reuniao_realizada')?->status === OnboardingPasso::STATUS_CONCLUIDO,
             ],
-            'link'        => $this->linkPayload($onboarding),
+            'link'        => $link,
             'mapeamento'  => app(OnboardingMapeamentoService::class)->visao($onboarding),
+
+            // ─── Cockpit (20/08) ────────────────────────────────────────────
+            // Quatro leituras que a tela ja tinha os dados para dar e nao dava:
+            // o que travar agora, de quem e a bola, em que ponto da vida o
+            // onboarding esta e o que aconteceu por ultimo. Nenhuma delas cria
+            // regra — todas leem o que ja estava persistido.
+            'proxima_acao'      => $this->proximaAcaoPayload($onboarding, $passos),
+            'responsabilidades' => $this->responsabilidadesPayload($passos),
+            'linha_do_tempo'    => $this->linhaDoTempoPayload($onboarding),
+            'atividade'         => $this->atividadePayload($onboarding, $passos, $link['ultimo_acesso']),
         ]);
     }
 
@@ -824,6 +855,194 @@ class OnboardingController extends Controller
         }
 
         return $item;
+    }
+
+    /**
+     * "Onde eu preciso agir agora?" — a MESMA leitura da listagem, vinda do
+     * mesmo serviço.
+     *
+     * O detalhe já mostrava o passo que trava, mas diluído: era só mais uma
+     * linha dentro da etapa corrente. Quem abria a tela tinha de varrer o
+     * fluxo inteiro para achá-lo. Aqui ele sobe para o topo — sem virar uma
+     * segunda régua: `passoQueTrava()` é o mesmo método que a linha da tabela
+     * usa, então lista e detalhe nunca apontam para passos diferentes.
+     */
+    private function proximaAcaoPayload(Onboarding $onboarding, Collection $passos): ?array
+    {
+        if ($onboarding->status === Onboarding::STATUS_CONCLUIDO) {
+            return null;
+        }
+
+        $trava = $this->situacaoService->passoQueTrava($passos);
+
+        if (! $trava) {
+            return null;
+        }
+
+        $payload = $this->situacaoService->passoTravaPayload($trava);
+
+        // O MOTIVO REAL, não "não enviado". Passo bloqueado sabe de quem
+        // depende; passo condicional sabe a condição. Sem isto o destaque
+        // repete o título do passo e não acrescenta nada a quem já o leu.
+        $payload['id'] = $trava->id;
+        $payload['etapa'] = $trava->etapa;
+        $payload['natureza'] = $trava->natureza ?? OnboardingPasso::NATUREZA_ACAO;
+        $payload['depende_de'] = collect($trava->depende_de ?? [])
+            ->map(fn (string $chave) => $passos->firstWhere('chave', $chave)?->titulo ?? $chave)
+            ->values();
+        $payload['condicao'] = $this->condicaoLegivel($trava->condicao);
+
+        return $payload;
+    }
+
+    /**
+     * Pendências por RESPONSÁVEL, para responder "de quem é a bola" sem abrir
+     * etapa nenhuma.
+     *
+     * Os três primeiros (`cliente`/`interno`/`sistema`) são o eixo `dono`, que
+     * é EXCLUSIVO: todo passo aberto cai em exatamente um deles, e os três
+     * somam o total de pendências. É por isso que "reunião" NÃO é um quarto
+     * item lado a lado — `reuniao` é `natureza` (COMO o item se preenche), um
+     * eixo independente, e um passo "na reunião" já está contado em `interno`
+     * ou `cliente`. Exibi-lo como irmão faria quatro números que não somam o
+     * total, e ninguém descobriria por quê. Ele vai como SUBCONJUNTO.
+     *
+     * `automaticos` é outra métrica: o que o sistema fechou sozinho. Não é
+     * pendência — é o contrário disso.
+     */
+    private function responsabilidadesPayload(Collection $passos): array
+    {
+        $abertos = $passos->where('status', OnboardingPasso::STATUS_ABERTO);
+
+        return [
+            'cliente' => $abertos->where('dono', 'cliente')->count(),
+            'interno' => $abertos->where('dono', 'interno')->count(),
+            'sistema' => $abertos->where('dono', 'sistema')->count(),
+            // Subconjunto dos acima — nunca somar com eles.
+            'na_reuniao' => $abertos
+                ->where('natureza', OnboardingPasso::NATUREZA_REUNIAO)
+                ->count(),
+            // Fechados pelo resolver, sem ninguém clicar.
+            'automaticos' => $passos
+                ->filter(fn (OnboardingPasso $p) => $p->auto_em !== null
+                    && $p->status === OnboardingPasso::STATUS_CONCLUIDO)
+                ->count(),
+        ];
+    }
+
+    /**
+     * A vida do onboarding em marcos REAIS — os três que o banco de fato
+     * registra (`created_at`, `iniciado_em`, `concluido_em`), nunca uma régua
+     * decorativa de cinco caixinhas que não corresponde a coluna nenhuma.
+     *
+     * "Em operação" não entra: não existe como estado de onboarding (o
+     * catálogo é rascunho/andamento/concluído). Concluir É o sinal de que a
+     * empresa está pronta para operar, e inventar um marco a mais criaria uma
+     * etapa que nada no sistema consegue preencher — ela ficaria cinza para
+     * sempre, em todo onboarding, inclusive nos que terminaram bem.
+     */
+    private function linhaDoTempoPayload(Onboarding $onboarding): array
+    {
+        $emRascunho = $onboarding->status === Onboarding::STATUS_RASCUNHO;
+        $concluido = $onboarding->status === Onboarding::STATUS_CONCLUIDO;
+
+        return [
+            [
+                'chave'  => 'chegou',
+                'titulo' => 'Chegou',
+                'ajuda'  => 'Contrato criado — o onboarding nasceu junto.',
+                'data'   => $onboarding->created_at?->toISOString(),
+                'estado' => 'feito',
+            ],
+            [
+                'chave'  => 'iniciado',
+                'titulo' => 'Em andamento',
+                'ajuda'  => 'Responsável definido — o prazo corre e o cliente ganha o portal.',
+                'data'   => $onboarding->iniciado_em?->toISOString(),
+                'estado' => $emRascunho ? 'atual' : 'feito',
+            ],
+            [
+                'chave'  => 'concluido',
+                'titulo' => 'Concluído',
+                'ajuda'  => 'Todos os passos fechados — a empresa está pronta para operar.',
+                'data'   => $onboarding->concluido_em?->toISOString(),
+                'estado' => $concluido ? 'feito' : ($emRascunho ? 'futuro' : 'atual'),
+            ],
+        ];
+    }
+
+    /**
+     * O que aconteceu de fato, mais recente primeiro.
+     *
+     * Fonte: `onboarding_passos.feito_em/feito_por/auto_em` — colunas que já
+     * existiam e nunca tinham sido lidas por tela nenhuma. Nenhuma tabela
+     * nova: um feed de auditoria próprio seria uma segunda verdade sobre o
+     * mesmo fato e divergiria do checklist no primeiro passo desmarcado.
+     *
+     * `auto_em` preenchido distingue "o sistema fechou" de "alguém fechou",
+     * que é a diferença que muda a confiança na informação.
+     */
+    private function atividadePayload(
+        Onboarding $onboarding,
+        Collection $passos,
+        ?string $ultimoAcessoCliente,
+    ): array {
+        $eventos = $passos
+            ->filter(fn (OnboardingPasso $p) => $p->feito_em !== null)
+            ->map(fn (OnboardingPasso $p) => [
+                'tipo'       => 'passo',
+                'titulo'     => $p->titulo,
+                'quem'       => $p->auto_em !== null
+                    ? 'Sistema'
+                    : ($p->feitoPor?->name ?? ucfirst((string) $p->dono)),
+                'automatico' => $p->auto_em !== null,
+                'dono'       => $p->dono,
+                'quando'     => $p->feito_em->toISOString(),
+            ])
+            ->values()
+            ->all();
+
+        if ($onboarding->iniciado_em) {
+            $eventos[] = [
+                'tipo'       => 'marco',
+                'titulo'     => 'Onboarding iniciado',
+                'quem'       => $onboarding->responsavel?->name ?? 'ECF',
+                'automatico' => false,
+                'dono'       => 'interno',
+                'quando'     => $onboarding->iniciado_em->toISOString(),
+            ];
+        }
+
+        if ($onboarding->reuniao_agendada_para) {
+            $eventos[] = [
+                'tipo'       => 'marco',
+                'titulo'     => 'Reunião de onboarding agendada',
+                'quem'       => $onboarding->reuniaoAgendadaPor?->name ?? 'ECF',
+                'automatico' => false,
+                'dono'       => 'interno',
+                'quando'     => $onboarding->reuniao_agendada_para->toISOString(),
+            ];
+        }
+
+        // "O cliente já viu o que pedimos?" — a pergunta que o time faz antes
+        // de cobrar. Sem isto, cobrar quem nunca recebeu o link é rotina.
+        if ($ultimoAcessoCliente) {
+            $eventos[] = [
+                'tipo'       => 'acesso',
+                'titulo'     => 'Cliente abriu o portal',
+                'quem'       => 'Cliente',
+                'automatico' => false,
+                'dono'       => 'cliente',
+                'quando'     => $ultimoAcessoCliente,
+            ];
+        }
+
+        // Comparação de string em ISO-8601 UTC ordena igual a comparação de
+        // data — todas as datas saem de `toISOString()`, mesmo fuso e mesmo
+        // número de casas.
+        usort($eventos, fn (array $a, array $b) => strcmp($b['quando'], $a['quando']));
+
+        return array_slice($eventos, 0, 12);
     }
 
     /**

@@ -8,37 +8,10 @@ import RespostaConfirmacao from './RespostaConfirmacao';
 
 const DONO_LABEL = { cliente: 'cliente', interno: 'interno', sistema: 'sistema' };
 
-// Blocos na ordem em que o processo acontece. `outros` recolhe passo nascido
-// antes da etapa existir — sumir da tela seria pior do que aparecer sem bloco.
-const ETAPAS_ORDEM = [
-    'informacoes_cliente',
-    'responsaveis',
-    'acessos',
-    'mapeamento',
-    'investimento',
-    'publicidade',
-    'adman',
-    'agendamento',
-    'administrativo',
-    'outros',
-];
-
-const ETAPA_LABELS = {
-    informacoes_cliente: 'Informações do cliente',
-    responsaveis:        'Responsáveis',
-    acessos:             'Configuração de acessos',
-    mapeamento:          'Mapeamento da conta',
-    investimento:        'Investimento',
-    publicidade:         'Publicidade',
-    adman:               'ADMAN',
-    agendamento:         'Agendamento e reuniões',
-    administrativo:      'Administrativo',
-    outros:              'Outros',
-};
-
-// Contagem por bloco é orientação de leitura ("3/4 dos acessos fecharam"),
-// não a resposta principal da tela — SC-11 proíbe porcentagem como resposta,
-// e é isso que continua valendo no cabeçalho e no painel.
+// A ordem das etapas e a contagem por etapa moraram aqui até 19/08 — foram
+// para `FluxoOnboarding`, que é quem agrupa. SC-11 (porcentagem não é a
+// resposta da tela) segue valendo lá: o "3/5" da etapa é orientação de
+// leitura, e o cabeçalho e o painel continuam respondendo por situação.
 
 /**
  * Coletando — terceiro estado (o mais fácil de acertar torto, D-11). Recebe
@@ -144,7 +117,7 @@ function EstadoPasso({ passo }) {
 }
 
 /** Uma linha do passo — título, dono, selo de automação, estado, dependências, condição, ação. */
-function LinhaPasso({ passo, onboardingId, confirmacao }) {
+export function LinhaPasso({ passo, onboardingId, confirmacao }) {
     const form = useForm({});
 
     const concluirManualmente = () => {
@@ -168,7 +141,12 @@ function LinhaPasso({ passo, onboardingId, confirmacao }) {
     const podeDesmarcar = passo.status === 'concluido';
 
     return (
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 space-y-2">
+        // `id` e o alvo do "Ver pendencia" do destaque no topo — sem ele o
+        // botao abre a etapa certa mas nao leva os olhos ate a linha.
+        <div
+            id={`passo-${passo.id}`}
+            className="rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 space-y-2 scroll-mt-24"
+        >
             <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-white font-semibold text-[14px]">{passo.titulo}</span>
@@ -230,48 +208,13 @@ function LinhaPasso({ passo, onboardingId, confirmacao }) {
     );
 }
 
-/**
- * DetalheOnboarding — Nível 2 (UI-SPEC): os 13 passos do template de Gestão.
- * Presentational puro — nenhum cálculo de estado aqui, o backend já resolveu
- * `situacao`/`dias_parado`/`vencido`/`condicao` legível (Plano 09). Usado
- * tanto pela página `Onboarding/Detalhe` (drill-down do Nível 1) quanto,
- * potencialmente, embutido em outro contexto — por isso não depende de
- * `AppLayout` nem de rota própria.
+/*
+ * O agrupamento por etapa NÃO mora mais aqui — quem monta as etapas numeradas,
+ * com o formulário do assunto junto dos passos dele, é `FluxoOnboarding`. Este
+ * módulo ficou sendo o desenho de UMA linha de passo (`LinhaPasso` e os
+ * estados que ela usa), que é o que os dois lados compartilham.
+ *
+ * Manter aqui uma segunda lista de etapas era garantir que as duas ordens
+ * divergissem: a ordem do processo mudou em 19/08 (agendamento passou a ser o
+ * primeiro) e teria de ser corrigida em dois lugares.
  */
-export default function DetalheOnboarding({ passos, onboardingId = null, confirmacoes = {} }) {
-    // Agrupado por etapa, na ordem fixa em que o processo acontece. Uma lista
-    // corrida de passos não responde "em que pé está" — o operador precisa
-    // ver que os acessos fecharam antes de cobrar o mapeamento.
-    const blocos = ETAPAS_ORDEM
-        .map((etapa) => ({
-            etapa,
-            itens: passos.filter((p) => (p.etapa ?? 'outros') === etapa),
-        }))
-        .filter(({ itens }) => itens.length > 0);
-
-    return (
-        <div className="space-y-6">
-            {blocos.map(({ etapa, itens }) => (
-                <section key={etapa} className="space-y-3">
-                    <div className="flex items-baseline gap-2">
-                        <h3 className="text-white/70 font-semibold text-[12px] uppercase tracking-wider">
-                            {ETAPA_LABELS[etapa]}
-                        </h3>
-                        <span className="text-white/25 text-[11px]">
-                            {itens.filter((p) => p.status === 'concluido' || p.status === 'nao_aplicavel').length}/{itens.length}
-                        </span>
-                    </div>
-
-                    {itens.map((passo) => (
-                        <LinhaPasso
-                            key={passo.id}
-                            passo={passo}
-                            onboardingId={onboardingId}
-                            confirmacao={confirmacoes[passo.chave]}
-                        />
-                    ))}
-                </section>
-            ))}
-        </div>
-    );
-}
