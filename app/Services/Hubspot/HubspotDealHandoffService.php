@@ -225,14 +225,26 @@ class HubspotDealHandoffService
      * Quick 260820-jc8 (Tarefa 2) — converte a property `date` do deal
      * `data_do_1_pagamento` para Carbon.
      *
-     * ⚠️ HubSpot manda properties tipo "date" como epoch em MILISSEGUNDOS
-     * (string), representando MEIA-NOITE UTC do dia — NUNCA 'Y-m-d'. Forçar
-     * timezone UTC no parse é obrigatório: o app roda em America/Sao_Paulo
-     * (UTC-3) e meia-noite UTC vira 21h do dia ANTERIOR nesse fuso — sem
-     * isso o dia lido vem ERRADO, e dia errado aqui vira dia de vencimento
-     * errado num contrato assinado (caro de desfazer). Formato conferido
-     * contra a doc da HubSpot CRM API v3 em 2026-08-20 (prova definitiva do
-     * payload real só quando um deal for para ganho de fato).
+     * ⚠️ **MEDIDO contra a conta real da ECF em 2026-08-20**, lendo o deal da
+     * Maderatto Móveis (`64133858455`) pela própria API:
+     *
+     *   data_do_1_pagamento  (tipo `date`)      => '2026-08-24'
+     *   closedate            (tipo `datetime`)  => '2026-08-31T11:49:23.585Z'
+     *
+     * Ou seja: property `date` chega como **string 'Y-m-d'**, e `datetime`
+     * como **ISO 8601** — NÃO como epoch em milissegundos. A primeira versão
+     * deste método afirmava o contrário (epoch ms como formato principal e
+     * 'Y-m-d' como "fallback para o futuro"); a medição inverteu isso, e o
+     * registro fica aqui para ninguém reintroduzir a suposição errada.
+     *
+     * O ramo numérico continua existindo porque é barato e cobre o caso de o
+     * HubSpot passar a mandar epoch ms — mas é o ramo EXCEPCIONAL, não o real.
+     *
+     * ⚠️ O timezone UTC explícito no parse não é decoração: o app roda em
+     * `America/Sao_Paulo` (UTC-3). Uma data que chegue com componente de hora
+     * em meia-noite UTC viraria 21h do dia ANTERIOR se parseada no fuso local
+     * — e **dia errado aqui vira dia de vencimento errado num contrato
+     * assinado**, que é caro de desfazer.
      */
     private function parseDataHubspot(mixed $valor): ?Carbon
     {
@@ -240,13 +252,13 @@ class HubspotDealHandoffService
             return null;
         }
 
+        // Ramo EXCEPCIONAL: epoch em milissegundos. Não é o que a conta da ECF
+        // devolve hoje (ver docblock), mas custa uma linha cobrir.
         if (is_numeric($valor)) {
             return Carbon::createFromTimestampMs((int) $valor, 'UTC');
         }
 
-        // Fallback defensivo — caso o HubSpot mude o formato pra 'Y-m-d' no
-        // futuro (property fica tipo "date" mas o valor já vem como string
-        // de data em vez de epoch ms).
+        // Ramo REAL, medido: 'Y-m-d' (property `date`) e ISO 8601 (`datetime`).
         try {
             return Carbon::parse((string) $valor, 'UTC');
         } catch (\Throwable) {

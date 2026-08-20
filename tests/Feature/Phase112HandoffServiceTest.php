@@ -302,10 +302,51 @@ class Phase112HandoffServiceTest extends TestCase
     // ── Tarefa 2 (HUB-CONTRATO-02) — data da 1a parcela + dia de vencimento ─
 
     /**
-     * Prova o dia CORRETO a partir do formato REAL do HubSpot (epoch ms,
-     * meia-noite UTC) — 2025-08-31T00:00:00Z escolhido de proposito: em
-     * America/Sao_Paulo (UTC-3) meia-noite UTC de 31/08 vira 21h de 30/08.
-     * Sem forcar UTC no parse, o teste pegaria dia 30 (ERRADO) em vez de 31.
+     * O formato REAL, MEDIDO contra a conta da ECF em 2026-08-20.
+     *
+     * Lido pela propria API no deal da Maderatto Moveis (`64133858455`):
+     *
+     *   data_do_1_pagamento  (tipo `date`)      => '2026-08-24'
+     *   closedate            (tipo `datetime`)  => '2026-08-31T11:49:23.585Z'
+     *
+     * Property `date` chega como **string 'Y-m-d'** — NAO como epoch em
+     * milissegundos. A primeira versao do parser assumia epoch ms como
+     * formato principal e tratava 'Y-m-d' como "fallback para o futuro"; era
+     * o contrario. O comportamento estava certo por causa desse fallback,
+     * mas nenhum teste exercitava o formato que de fato ocorre — este passou
+     * a exercitar.
+     *
+     * O teste irmao abaixo cobre epoch ms, que continua sendo aceito como
+     * ramo EXCEPCIONAL.
+     */
+    public function test_data_primeira_parcela_no_formato_real_y_m_d_prova_o_dia_correto(): void
+    {
+        $gestao = $this->criarServico('Gestão', Servico::TIPO_MENSAL, 1000);
+        $this->criarMapping('MAP', $gestao);
+
+        $deal = ['properties' => [
+            'dealname'            => 'Maderatto Móveis (payload medido)',
+            // Valor LITERAL medido na conta real — nao normalizar, nao "arrumar".
+            'data_do_1_pagamento' => '2026-08-24',
+        ]];
+        $lineItems = [
+            ['id' => '9101', 'name' => 'MAP', 'price' => '3000', 'quantity' => 1, 'recurringbillingfrequency' => 'monthly'],
+        ];
+
+        $dto = $this->service()->build($deal, $lineItems, $this->propsDealCompleto);
+
+        $contrato = $dto->contracts_to_create[0];
+        $this->assertSame('2026-08-24', $contrato['data_primeira_parcela']);
+        $this->assertSame(24, $contrato['dia_vencimento'], 'dia_vencimento deve ser o dia de data_primeira_parcela');
+    }
+
+    /**
+     * Ramo EXCEPCIONAL — epoch ms. NAO e o formato que a conta da ECF
+     * devolve (ver o teste acima, medido), mas continua aceito.
+     *
+     * 2025-08-31T00:00:00Z escolhido de proposito: em America/Sao_Paulo
+     * (UTC-3) meia-noite UTC de 31/08 vira 21h de 30/08. Sem forcar UTC no
+     * parse, o teste pegaria dia 30 (ERRADO) em vez de 31.
      */
     public function test_data_primeira_parcela_epoch_ms_meia_noite_utc_prova_o_dia_correto(): void
     {
