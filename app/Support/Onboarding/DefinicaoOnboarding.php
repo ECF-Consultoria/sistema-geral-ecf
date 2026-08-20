@@ -133,7 +133,7 @@ class DefinicaoOnboarding
      * títulos antigos ficam como estão — reescrevê-los exigiria mexer no
      * congelamento, e ninguém pediu isso.
      */
-    public const VERSAO = 14;
+    public const VERSAO = 15;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -201,6 +201,44 @@ class DefinicaoOnboarding
         'custos_app_ecf' => 'Preencha os custos dos seus produtos no App ECF. '
             . 'São eles que transformam faturamento em margem — sem os custos, conseguimos mostrar quanto você '
             . 'vendeu, mas não quanto sobrou. Quando terminar, marque este item como feito.',
+
+        // ─── Publicidade (v15) ──────────────────────────────────────────────
+        // Estes quatro deixaram de ser `natureza=reuniao` e viraram do CLIENTE:
+        // a explicação continua acontecendo na call, mas quem não pôde ir
+        // consegue se informar por aqui e destravar sozinho. Por isso o texto
+        // tem de EXPLICAR, não apenas lembrar do que foi dito — quem lê pode
+        // estar vendo o assunto pela primeira vez.
+        'publicidade_processo_explicado' => 'A publicidade dentro do Mercado Livre coloca seus anúncios '
+            . 'à frente de quem já está procurando o que você vende. Nós cuidamos de escolher quais produtos '
+            . 'anunciar, quanto investir em cada um e quando ajustar — acompanhando os resultados semana a semana.',
+
+        'publicidade_investimento_explicado' => 'O valor investido é usado para dar visibilidade aos produtos '
+            . 'com mais chance de venda, não distribuído igualmente entre todos. '
+            . 'Produto que vende bem recebe mais; produto que não responde tem o investimento reduzido. '
+            . 'Você acompanha quanto foi gasto e o que aquilo trouxe de retorno.',
+
+        'publicidade_operacao_explicada' => 'Os ajustes são contínuos: acompanhamos o que cada anúncio gasta '
+            . 'e o que ele traz de venda, e realocamos o investimento para onde está funcionando melhor. '
+            . 'Quando algo muda de comportamento — concorrência, preço, estoque — a estratégia muda junto.',
+
+        'publicidade_responsabilidades_alinhadas' => 'Do nosso lado: escolher os produtos, definir os valores '
+            . 'e otimizar os resultados. Do seu lado: manter estoque e preço em dia e nos avisar de mudanças '
+            . 'importantes (uma promoção, um produto que vai sair de linha). Anúncio sem estoque gasta '
+            . 'investimento sem retorno — é a única coisa que depende de você no dia a dia.',
+
+        // ─── ADMAN (v15) ────────────────────────────────────────────────────
+        'adman_uso_explicado' => 'A ADMAN é a ferramenta que usamos para enxergar o resultado real da sua '
+            . 'operação: quanto cada venda deixou depois de tarifas, frete, impostos e custo do produto. '
+            . 'É ela que mostra a margem de verdade, e não apenas o faturamento.',
+
+        'adman_funcionamento_explicado' => 'Ela lê automaticamente suas vendas e cruza com os custos que você '
+            . 'cadastrou. A partir disso conseguimos dizer quais produtos realmente dão lucro, quais estão '
+            . 'no prejuízo e onde vale mexer no preço. É daqui que sai boa parte do que discutimos nas reuniões.',
+
+        'adman_responsabilidades_alinhadas' => 'Do nosso lado: acompanhar os números e trazer as recomendações. '
+            . 'Do seu lado: manter os custos atualizados — se o custo do produto muda e a informação não chega, '
+            . 'a margem calculada fica errada e a decisão sai errada junto.',
+
     ];
 
     /**
@@ -586,12 +624,12 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 30,
                 'etapa'      => OnboardingPasso::ETAPA_PUBLICIDADE,
-                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'publicidade_processo_explicado',
                 'titulo'     => 'Processo de publicidade explicado',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -599,12 +637,12 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 31,
                 'etapa'      => OnboardingPasso::ETAPA_PUBLICIDADE,
-                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'publicidade_investimento_explicado',
                 'titulo'     => 'Uso do investimento em publicidade explicado',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -612,12 +650,12 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 32,
                 'etapa'      => OnboardingPasso::ETAPA_PUBLICIDADE,
-                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'publicidade_operacao_explicada',
                 'titulo'     => 'Operação da publicidade explicada',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -625,12 +663,12 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 33,
                 'etapa'      => OnboardingPasso::ETAPA_PUBLICIDADE,
-                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'publicidade_responsabilidades_alinhadas',
                 'titulo'     => 'Responsabilidades de publicidade alinhadas',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -638,12 +676,12 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 34,
                 'etapa'      => OnboardingPasso::ETAPA_ADMAN,
-                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'adman_uso_explicado',
                 'titulo'     => 'Uso da ADMAN explicado ao cliente',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -651,12 +689,12 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 35,
                 'etapa'      => OnboardingPasso::ETAPA_ADMAN,
-                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'adman_funcionamento_explicado',
                 'titulo'     => 'Funcionamento da ADMAN explicado',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -664,12 +702,12 @@ class DefinicaoOnboarding
             [
                 'ordem'      => 36,
                 'etapa'      => OnboardingPasso::ETAPA_ADMAN,
-                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
+                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'adman_responsabilidades_alinhadas',
                 'titulo'     => 'Responsabilidades sobre a ADMAN alinhadas',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
+                'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,

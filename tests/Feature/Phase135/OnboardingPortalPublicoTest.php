@@ -189,14 +189,24 @@ class OnboardingPortalPublicoTest extends TestCase
         // por) dois dos quatro acessos que só ele pode conceder.
         // Fluxo de 19/08 — §13.2 e §16 pedem ao CLIENTE quem acionamos e quem
         // participa das reuniões, então os dois itens entram nesta lista.
+        // v15 — os 7 itens de publicidade e ADMAN passaram de `dono=interno`
+        // para `dono=cliente`: a explicação continua acontecendo na call, mas
+        // quem não pôde ir se informa pelo portal e confirma sozinho.
         $this->assertSame([
             'acesso_colaborador_ml',
+            'adman_funcionamento_explicado',
+            'adman_responsabilidades_alinhadas',
+            'adman_uso_explicado',
             'custos_app_ecf',
             'grant_consultoria_adman',
             'grant_sistema_ecf',
             'participantes_reuniao_cadastrados',
             'planilha_custos_adman',
             'ponto_contato_definido',
+            'publicidade_investimento_explicado',
+            'publicidade_operacao_explicada',
+            'publicidade_processo_explicado',
+            'publicidade_responsabilidades_alinhadas',
         ], $chaves);
     }
 

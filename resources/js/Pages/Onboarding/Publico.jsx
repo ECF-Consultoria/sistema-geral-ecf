@@ -12,6 +12,7 @@ import {
     TutorialBtn,
     VideoModal,
 } from '@/Components/Onboarding/AjudaDoPasso';
+import ApresentacaoGuiada from '@/Components/Onboarding/Portal/ApresentacaoGuiada';
 import ProximaAcaoCliente from '@/Components/Onboarding/Portal/ProximaAcaoCliente';
 import ResponsaveisCliente from '@/Components/Onboarding/Portal/ResponsaveisCliente';
 import { cn } from '@/lib/utils';
@@ -47,12 +48,25 @@ import { cn } from '@/lib/utils';
 // antes destes), e os contatos vêm logo em seguida. O motivo é o mesmo dos
 // dois lados do sistema — quem conduz o processo somos nós: marcamos a data,
 // dizemos quem precisa estar, e só então pedimos os acessos.
-const ETAPAS_ORDEM = ['responsaveis', 'acessos', 'mapeamento', 'agendamento', 'administrativo', 'outros'];
+// v15: `publicidade` e `adman` entram porque os 7 itens de explicacao
+// viraram `dono=cliente` — a call continua existindo, mas quem nao pode ir
+// se informa por aqui e destrava. Ficam DEPOIS de acessos e mapeamento de
+// proposito: sao leitura, nao desbloqueiam nada, e disputar a atencao com o
+// grant que trava o resto seria trocar o urgente pelo explicativo.
+const ETAPAS_ORDEM = ['responsaveis', 'acessos', 'mapeamento', 'publicidade', 'adman', 'agendamento', 'administrativo', 'outros'];
+
+// Etapas que sao EXPLICACAO, nao tarefa: renderizam como apresentacao guiada
+// com um unico "Entendi" no fim, em vez de N cards com "marcar como feito".
+// Pedir quatro confirmacoes de "eu entendi" transformaria leitura em
+// formulario — o oposto do que o negocio pediu.
+const ETAPAS_APRESENTACAO = ['publicidade', 'adman'];
 
 const ETAPA_LABELS = {
     responsaveis:   { titulo: 'Seus contatos',            ajuda: 'Quem devemos acionar no dia a dia e quem participa das reuniões.' },
     acessos:        { titulo: 'Configuração de acessos',  ajuda: 'É o que nos permite buscar seus dados automaticamente.' },
     mapeamento:     { titulo: 'Mapeamento da conta',      ajuda: 'O que precisamos entender sobre a sua operação hoje.' },
+    publicidade:    { titulo: 'Como funciona a publicidade', ajuda: 'Uma leitura rápida sobre como anunciamos e o que esperamos de você.' },
+    adman:          { titulo: 'Conheça a ADMAN',            ajuda: 'A ferramenta que mostra o resultado real da sua operação.' },
     agendamento:    { titulo: 'Reunião de onboarding',    ajuda: null },
     administrativo: { titulo: 'Administrativo',           ajuda: null },
     outros:         { titulo: 'Outros',                   ajuda: null },
@@ -843,7 +857,17 @@ export default function Publico({
                                                     aoAlternar={() => alternar(etapa)}
                                                 />
 
-                                                {aberta && itens.map((passo) => (
+                                                {aberta && ETAPAS_APRESENTACAO.includes(etapa) && (
+                                                    <ApresentacaoGuiada
+                                                        titulo={ETAPA_LABELS[etapa].titulo}
+                                                        ajuda={ETAPA_LABELS[etapa].ajuda}
+                                                        itens={itens}
+                                                        token={token}
+                                                        ctaLabel={etapa === 'adman' ? 'Entendi' : 'Entendi como funciona'}
+                                                    />
+                                                )}
+
+                                                {aberta && !ETAPAS_APRESENTACAO.includes(etapa) && itens.map((passo) => (
                                                     <PassoCard
                                                         pessoas={pessoas}
                                                         key={passo.chave}

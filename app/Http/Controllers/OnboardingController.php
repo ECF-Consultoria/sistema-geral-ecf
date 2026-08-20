@@ -992,8 +992,13 @@ class OnboardingController extends Controller
         Collection $passos,
         ?string $ultimoAcessoCliente,
     ): array {
+        // `feito_em` OU `auto_em`: passo fechado por pessoa grava o primeiro,
+        // passo fechado por resolver grava o segundo — e nunca os dois. Filtrar
+        // só por `feito_em` (como esta primeira versão fazia) escondia do feed
+        // exatamente o que o sistema resolve sozinho, inclusive a confirmação
+        // que o cliente acabou de dar no portal.
         $eventos = $passos
-            ->filter(fn (OnboardingPasso $p) => $p->feito_em !== null)
+            ->filter(fn (OnboardingPasso $p) => $p->feito_em !== null || $p->auto_em !== null)
             ->map(fn (OnboardingPasso $p) => [
                 'tipo'       => 'passo',
                 'titulo'     => $p->titulo,
@@ -1002,7 +1007,7 @@ class OnboardingController extends Controller
                     : ($p->feitoPor?->name ?? ucfirst((string) $p->dono)),
                 'automatico' => $p->auto_em !== null,
                 'dono'       => $p->dono,
-                'quando'     => $p->feito_em->toISOString(),
+                'quando'     => ($p->feito_em ?? $p->auto_em)->toISOString(),
             ])
             ->values()
             ->all();

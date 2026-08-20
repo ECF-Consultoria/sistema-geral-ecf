@@ -175,7 +175,7 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
     #[Test]
     public function a_versao_da_definicao_acompanha_a_receita_vigente(): void
     {
-        $this->assertSame(14, DefinicaoOnboarding::VERSAO);
+        $this->assertSame(15, DefinicaoOnboarding::VERSAO);
 
         $onboarding = $this->onboardingEmAndamento(Company::factory()->create());
         $this->assertSame(DefinicaoOnboarding::VERSAO, $onboarding->definicao_versao);
@@ -353,6 +353,17 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
                 // depende de nada.
                 'ponto_contato_definido',
                 'participantes_reuniao_cadastrados',
+                // v15 — publicidade e ADMAN viraram do cliente. Vêm por
+                // último porque são LEITURA: não destravam nada, e disputar a
+                // atenção com o grant que trava o resto seria trocar o urgente
+                // pelo explicativo.
+                'publicidade_processo_explicado',
+                'publicidade_investimento_explicado',
+                'publicidade_operacao_explicada',
+                'publicidade_responsabilidades_alinhadas',
+                'adman_uso_explicado',
+                'adman_funcionamento_explicado',
+                'adman_responsabilidades_alinhadas',
             ],
             $chaves,
             'O cliente precisa receber "autorize o acesso" antes do que depende dele'

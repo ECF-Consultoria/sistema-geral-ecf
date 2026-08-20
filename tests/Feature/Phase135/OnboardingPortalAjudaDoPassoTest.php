@@ -84,9 +84,25 @@ class OnboardingPortalAjudaDoPassoTest extends TestCase
     // ─── Passo a passo: conteúdo real para todo passo do cliente ────────────
 
     /**
-     * Não é só "a chave existe": todo passo que o cliente precisa executar tem
+     * Etapas que são EXPLICAÇÃO, não tarefa (v15).
+     *
+     * `publicidade` e `adman` viraram `dono=cliente` para que o cliente possa
+     * se informar sozinho e confirmar, mas continuam sendo leitura. "Passo a
+     * passo" ali seria inventar um procedimento para algo que não tem
+     * procedimento — o conteúdo é o texto explicativo, e é ele que o teste
+     * abaixo exige.
+     *
+     * @var array<int, string>
+     */
+    private const ETAPAS_DE_LEITURA = ['publicidade', 'adman'];
+
+    /**
+     * Não é só "a chave existe": todo passo que o cliente precisa EXECUTAR tem
      * de ter o detalhe disponível. Um passo do cliente sem passo a passo é
      * exatamente o que produzia a ligação para o responsável.
+     *
+     * As etapas de leitura têm a garantia equivalente logo abaixo — a regra não
+     * foi afrouxada, foi dividida em duas conforme a natureza do item.
      */
     #[Test]
     public function todo_passo_do_cliente_tem_passo_a_passo_com_conteudo(): void
@@ -95,6 +111,10 @@ class OnboardingPortalAjudaDoPassoTest extends TestCase
         $this->onboardingEmAndamento($company);
 
         foreach ($this->payloadPorChave($company) as $chave => $item) {
+            if (in_array($item['etapa'] ?? null, self::ETAPAS_DE_LEITURA, true)) {
+                continue;
+            }
+
             $ajuda = $item['passo_a_passo'];
 
             $this->assertIsArray($ajuda, "O passo \"{$chave}\" chega ao cliente sem passo a passo");
@@ -106,6 +126,39 @@ class OnboardingPortalAjudaDoPassoTest extends TestCase
                 $this->assertNotSame('', trim($linha), "Etapa {$i} do passo a passo de \"{$chave}\" está vazia");
             }
         }
+    }
+
+    /**
+     * A contrapartida: item de LEITURA sem texto explicativo é pior do que
+     * item sem passo a passo — a seção inteira renderiza um número e nada ao
+     * lado, e o cliente confirma ter entendido uma caixa vazia.
+     */
+    #[Test]
+    public function todo_item_de_leitura_do_cliente_tem_explicacao(): void
+    {
+        $company = Company::factory()->create();
+        $this->onboardingEmAndamento($company);
+
+        $deLeitura = 0;
+
+        foreach ($this->payloadPorChave($company) as $chave => $item) {
+            if (! in_array($item['etapa'] ?? null, self::ETAPAS_DE_LEITURA, true)) {
+                continue;
+            }
+
+            $deLeitura++;
+
+            $this->assertNotNull($item['instrucao'], "O item de leitura \"{$chave}\" chega ao cliente sem explicação");
+            $this->assertNotSame('', trim($item['instrucao']), "A explicação de \"{$chave}\" está vazia");
+            // Frase curta demais não explica nada — é rótulo repetido.
+            $this->assertGreaterThan(
+                80,
+                mb_strlen(trim($item['instrucao'])),
+                "A explicação de \"{$chave}\" é curta demais para servir de apresentação"
+            );
+        }
+
+        $this->assertGreaterThan(0, $deLeitura, 'Nenhum item de leitura chegou ao cliente — a v15 não aplicou.');
     }
 
     /**

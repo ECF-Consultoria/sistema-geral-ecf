@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\Onboarding;
+use App\Models\OnboardingConfirmacao;
 use App\Models\OnboardingContato;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingMapeamento;
@@ -100,6 +101,89 @@ class OnboardingPublicoController extends Controller
                 ->values()
                 ->all(),
         ]);
+    }
+
+    /**
+     * POST /onboarding-cliente/{token}/confirmacao — o cliente diz "entendi"
+     * numa apresentação guiada (publicidade, ADMAN).
+     *
+     * ### Por que aceita VÁRIAS chaves
+     * A apresentação é uma leitura só, com um botão só no fim ("Entendi como
+     * funciona"). Ela cobre 4 itens de publicidade ou 3 de ADMAN. Pedir um
+     * clique por item transformaria a explicação em formulário — exatamente o
+     * que o negócio pediu para evitar.
+     *
+     * ### Trava de escopo
+     * Só fecha passo que seja, ao mesmo tempo: de um onboarding EM ANDAMENTO
+     * desta empresa, `dono=cliente` e `auto_fonte=confirmacao_respondida`.
+     * Sem os três, esta rota viraria uma porta para o cliente fechar qualquer
+     * passo por chave — inclusive os nossos. Chave que não passa é IGNORADA em
+     * silêncio de propósito: devolver erro entregaria ao cliente um oráculo
+     * para descobrir quais chaves existem do lado de dentro.
+     *
+     * `respondido_por` fica null: quem respondeu não é usuário do sistema. É
+     * o mesmo desenho de `marcarFeitoPorChave()`, que registra o IP no log de
+     * atividade em vez de inventar um autor interno.
+     */
+    public function responderConfirmacao(Request $request, string $token)
+    {
+        $link = OnboardingLink::where('token', $token)->with('company')->firstOrFail();
+
+        $data = $request->validate([
+            'chaves'   => ['required', 'array', 'min:1', 'max:20'],
+            'chaves.*' => ['required', 'string', 'max:60'],
+        ]);
+
+        $onboardings = Onboarding::where('company_id', $link->company_id)
+            ->emAndamento()
+            ->pluck('id');
+
+        $passos = OnboardingPasso::whereIn('onboarding_id', $onboardings)
+            ->whereIn('chave', $data['chaves'])
+            ->where('dono', OnboardingPasso::DONO_CLIENTE)
+            ->where('auto_fonte', OnboardingPasso::AUTO_FONTE_CONFIRMACAO)
+            ->get();
+
+        if ($passos->isEmpty()) {
+            return back();
+        }
+
+        foreach ($passos as $passo) {
+            OnboardingConfirmacao::updateOrCreate(
+                ['onboarding_id' => $passo->onboarding_id, 'chave' => $passo->chave],
+                [
+                    'resposta'       => 'sim',
+                    'respondido_em'  => now(),
+                    'respondido_por' => null,
+                ]
+            );
+        }
+
+        // Um resolver por onboarding afetado, não por passo: `reavaliar()` já
+        // varre o onboarding inteiro, e chamá-lo por item repetiria o trabalho
+        // tantas vezes quantos forem os passos da apresentação.
+        $factory = app(OnboardingResolverFactory::class);
+        $engine = app(OnboardingEngineService::class);
+
+        foreach ($passos->groupBy('onboarding_id') as $onboardingId => $doOnboarding) {
+            $onboarding = Onboarding::find($onboardingId);
+
+            foreach ($doOnboarding as $passo) {
+                $engine->aplicarResultado(
+                    $passo,
+                    $factory->for($passo->auto_fonte)->resolver($onboarding, $passo)
+                );
+            }
+
+            $engine->reavaliar($onboarding->fresh());
+        }
+
+        activity('onboarding')
+            ->performedOn($link)
+            ->withProperties(['chaves' => $passos->pluck('chave')->all(), 'ip' => $request->ip()])
+            ->log('Apresentação confirmada pelo cliente via portal público');
+
+        return back()->with('success', 'Obrigado! Registramos que você viu esta explicação.');
     }
 
     /**

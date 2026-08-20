@@ -149,7 +149,6 @@ Route::patch('/onboarding-cliente/{token}/passo/desmarcar', [OnboardingPublicoCo
 Route::get('/onboarding-cliente/{token}/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
     ->middleware('throttle:20,1')
     ->name('onboarding.publico.conectar-ml');
-// O cliente PEDE a reunião (sem data — quem marca é o responsável).
 // §13.2 e §16 — o cliente informa quem acionamos e quem participa das
 // reuniões. Só ADICIONA: editar e remover ficam do lado interno, porque este é
 // um link sem senha e apagar cadastro de terceiros é mais poder do que
@@ -157,9 +156,20 @@ Route::get('/onboarding-cliente/{token}/conectar/ml', [OnboardingPublicoControll
 Route::post('/onboarding-cliente/{token}/pessoas', [OnboardingPublicoController::class, 'salvarPessoa'])
     ->name('onboarding.publico.pessoas');
 
-Route::post('/onboarding-cliente/{token}/reuniao', [OnboardingPublicoController::class, 'solicitarReuniao'])
-    ->middleware('throttle:20,1')
-    ->name('onboarding.publico.reuniao');
+// Apresentacao guiada (publicidade / ADMAN): o cliente le e confirma "entendi"
+// (v15). Mesmo prefixo isento de CSRF e mesma regra de posse do token das
+// demais rotas do portal. A trava de escopo esta no controller: so fecha passo
+// `dono=cliente` + `auto_fonte=confirmacao_respondida` de onboarding EM
+// ANDAMENTO desta empresa — nunca um passo nosso.
+Route::post('/onboarding-cliente/{token}/confirmacao', [OnboardingPublicoController::class, 'responderConfirmacao'])
+    ->name('onboarding.publico.confirmacao');
+
+// NÃO existe rota para o cliente pedir reunião. Quem define data e hora somos
+// nós, no painel interno, e o portal só mostra a data para o cliente se
+// organizar — decisão de negócio de 19/08. A rota antiga
+// (`onboarding.publico.reuniao`) foi removida junto com o botão "Solicitar
+// reunião": deixá-la de pé sem botão seria manter aberto um endpoint público
+// que rebaixa o status da reunião.
 // Mapeamento inicial: o cliente pede a busca dos dados e confere o apurado.
 // Throttle mais apertado no sincronizar — cada clique vira sonda contra a
 // Adman, que tem ADMAN_RATE_LIMIT_RPM = 10 (o cooldown do service é a segunda
