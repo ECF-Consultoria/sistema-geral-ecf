@@ -168,7 +168,21 @@ class ContratoClicksignService
             // substitui o bucket global 'clicksign-envelope' (a conta
             // inteira compartilha o mesmo rate limit — duas empresas
             // diferentes disparando ao mesmo tempo estouram igual).
-            GerarContratoAssinaturaJob::dispatch($contrato)->delay(now()->addSeconds($i * 5));
+            //
+            // Quick 260820-my3 — fila `high`. Incidente em produção
+            // (2026-08-20): o contrato da Maderatto ficou mais de uma hora
+            // em `rascunho` sem nada criado porque o job foi para a fila
+            // `default`, atrás de dezenas de `SyncMlAcervoCompanyJob`
+            // (sync de acervo, pesado e sem urgência humana) que estavam
+            // em deadlock e retentando. Gerar contrato é ação HUMANA e
+            // sensível a tempo — não pode competir com sync em lote pela
+            // mesma fila. `->onQueue('high')` não tem relação com o
+            // `->delay($i * 5)` abaixo: o delay é o espaçamento por
+            // serviço por causa do bucket de 1 envelope/min da Clicksign
+            // (comentário acima), a fila é só POR ONDE o job entra.
+            GerarContratoAssinaturaJob::dispatch($contrato)
+                ->onQueue('high')
+                ->delay(now()->addSeconds($i * 5));
         }
 
         return ['ok' => true, 'faltando' => [], 'criados' => $criados, 'pulados' => $pulados];

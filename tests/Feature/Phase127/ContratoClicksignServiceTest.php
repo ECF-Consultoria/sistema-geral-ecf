@@ -329,4 +329,43 @@ class ContratoClicksignServiceTest extends TestCase
         $this->assertArrayHasKey('criados', $resultado2);
         $this->assertArrayHasKey('pulados', $resultado2);
     }
+
+    // ─── Teste 9 (Quick 260820-my3) ───
+
+    /**
+     * O incidente que originou o quick: o job foi para a fila `default`,
+     * atrás de dezenas de `SyncMlAcervoCompanyJob` em deadlock, e o contrato
+     * ficou parado mais de uma hora sem nada criado. Prova as duas coisas na
+     * MESMA chamada: o job vai para a fila `high`, e o delay escalonado por
+     * serviço (bucket de 1 envelope/min da Clicksign) continua intacto — a
+     * fila é só POR ONDE o job entra, não tem relação com o espaçamento.
+     */
+    #[Test]
+    public function job_e_despachado_na_fila_high_preservando_o_delay_escalonado(): void
+    {
+        $company = $this->companyCompleta();
+        $servico1 = $this->servicoDeTeste(['nome' => 'Gestão de Tráfego']);
+        $servico2 = $this->servicoDeTeste(['nome' => 'Publicação de Anúncios']);
+        $this->contratoServicoAtivo($company, $servico1);
+        $this->contratoServicoAtivo($company, $servico2);
+
+        $this->service->iniciarParaEmpresa($company);
+
+        Queue::assertPushedOn('high', GerarContratoAssinaturaJob::class);
+        Queue::assertPushed(GerarContratoAssinaturaJob::class, 2);
+
+        // Delay escalonado (`$i * 5`) preservado: o primeiro contrato do
+        // laço tem delay 0s, o segundo 5s — mesma regra de sempre, só a
+        // fila mudou. Ordem de push == ordem do laço, então lê direto pelo
+        // índice, sem reordenar.
+        $pushados = collect(Queue::pushedJobs()[GerarContratoAssinaturaJob::class] ?? [])->pluck('job');
+
+        $this->assertCount(2, $pushados);
+        $delayPrimeiro = $pushados[0]->delay;
+        $delaySegundo  = $pushados[1]->delay;
+
+        $this->assertNotNull($delayPrimeiro);
+        $this->assertNotNull($delaySegundo);
+        $this->assertTrue($delayPrimeiro->timestamp < $delaySegundo->timestamp);
+    }
 }
