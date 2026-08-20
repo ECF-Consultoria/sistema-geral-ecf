@@ -209,7 +209,19 @@ class MlAcervoDetalheService
         // necessariamente já existe (a fatia sai de ml_acervo_itens), e
         // escrita de linha inteira com payload parcial é exatamente o
         // mecanismo pelo qual uma camada apaga a outra.
-        MlAcervoItem::query()
+        //
+        // Serializado por empresa e com retry de deadlock (AcervoEscritaLock):
+        // este update e o upsert da camada BARATA disputavam as mesmas linhas e
+        // as mesmas colunas indexadas (`severidade` está nos dois lados, e
+        // indexa em `mai_company_sev_nota_idx`) da mesma empresa, ao mesmo
+        // tempo — e `ShouldBeUnique` não separa as duas classes de job. Era a
+        // causa dos ~20 deadlocks/dia desde 12/08/2026
+        // (.planning/debug/acervo-deadlock-upsert.md).
+        //
+        // `gravarVisitasSerieDiaria()` fica DE FORA do bloco de propósito: é
+        // outra tabela, e juntá-las numa transação só criaria deadlock
+        // cross-table, que hoje é impossível (ver E9 no arquivo da sessão).
+        AcervoEscritaLock::naEmpresa($company->id, static fn () => MlAcervoItem::query()
             ->where('company_id', $company->id)
             ->where('ml_item_id', $linha->ml_item_id)
             ->update([
@@ -221,7 +233,7 @@ class MlAcervoDetalheService
                 'motivos' => json_encode($triagem['motivos']),
                 'severidade' => $triagem['severidade'],
                 'detalhe_coletado_em' => $agora,
-            ]);
+            ]));
 
         $this->gravarVisitasSerieDiaria($company, $linha->ml_item_id, $visitas30d, $hoje);
     }

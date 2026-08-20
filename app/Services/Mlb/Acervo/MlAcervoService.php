@@ -240,8 +240,30 @@ class MlAcervoService
                 "[MlAcervo] falha na coleta da empresa {$company->id} ({$company->name}): {$e->getMessage()}"
             );
 
-            MlAcervoItem::where('company_id', $company->id)
-                ->update(['coleta_erro' => Str::limit($e->getMessage(), 250)]);
+            // Erro de concorrência (deadlock) NÃO carimba coleta_erro.
+            //
+            // Este carimbo é um UPDATE de FAIXA INTEIRA: uma transação que
+            // marca TODAS as linhas da empresa (até 66.747). Aplicá-lo a um
+            // deadlock produzia duas consequências, ambas medidas em produção
+            // (.planning/debug/acervo-deadlock-upsert.md, E6):
+            //
+            //   1. MENTIRA NA TELA — um deadlock em UM upsert de 20 linhas
+            //      marcava o acervo inteiro da empresa como falho. Os 136.432
+            //      itens com `coleta_erro` de deadlock não eram 136 mil falhas,
+            //      eram poucas dezenas de eventos multiplicados pelo tamanho do
+            //      acervo. O banner do D-08 deve dizer defasagem REAL.
+            //   2. REALIMENTAÇÃO — o próprio UPDATE de faixa inteira segura
+            //      lock exclusivo em dezenas de milhares de linhas e entradas
+            //      de índice, colidindo com todo job da camada cara da mesma
+            //      empresa em curso. Deadlock gerava mais deadlock.
+            //
+            // Deadlock é transitório: o job retenta (tries=3) e a rotação do
+            // D-23 é auto-corretiva. A exceção segue propagando — quem decide
+            // retry e log continua sendo o job.
+            if (! AcervoEscritaLock::ehErroDeConcorrencia($e)) {
+                MlAcervoItem::where('company_id', $company->id)
+                    ->update(['coleta_erro' => Str::limit($e->getMessage(), 250)]);
+            }
 
             throw $e;
         }
@@ -351,7 +373,22 @@ class MlAcervoService
             // economia de 587 mil para 84 mil chamadas/dia iria a zero, e
             // todo item já avaliado voltaria ao "não avaliado" do D-18 —
             // que passaria a MENTIR por omissão em vez de dizer a verdade.
-            MlAcervoItem::upsert($linhas, ['company_id', 'ml_item_id'], self::COLUNAS_CAMADA_BARATA);
+            // Ordenação determinística por (company_id, ml_item_id): o lote vem
+            // na ordem de retorno do multiget do ML, que varia entre execuções.
+            // É HIGIENE, não a correção do deadlock — o par que de fato colide
+            // é este upsert contra o update de UMA linha da camada cara, que
+            // não tem "ordem de lote" a alinhar (ver
+            // .planning/debug/acervo-deadlock-upsert.md). Quem serializa é o
+            // AcervoEscritaLock abaixo.
+            usort($linhas, static fn ($a, $b) => [$a['company_id'], $a['ml_item_id']] <=> [$b['company_id'], $b['ml_item_id']]);
+
+            // Serializado por empresa e com retry de deadlock — as duas camadas
+            // do acervo escrevem nas mesmas linhas e o ShouldBeUnique não as
+            // separa (a chave dele inclui a classe do job). Ver AcervoEscritaLock.
+            AcervoEscritaLock::naEmpresa(
+                $company->id,
+                static fn () => MlAcervoItem::upsert($linhas, ['company_id', 'ml_item_id'], self::COLUNAS_CAMADA_BARATA)
+            );
         }
 
         return [count($linhas), $falhas];
