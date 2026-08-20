@@ -119,6 +119,13 @@ class ContratoAdminController extends Controller
                         // Quick 260816-d72 (UI-06/D-05) — sub-estado de exibição
                         // de 'rascunho', não entra no resumo de 7 chaves (D-04).
                         'preparando'                   => $contrato->estaPreparando(),
+                        // Quick 260819-o4x — término do contrato do SERVIÇO
+                        // desta linha (`contratos_servico.data_vencimento`),
+                        // não do ContratoAssinatura. Alimenta a coluna
+                        // "Término" e a ordenação `vencimento`. `null` é
+                        // prazo indeterminado, caso legítimo — a tela mostra
+                        // "Sem prazo" e a ordenação joga para o fim.
+                        'data_vencimento'              => optional($contratoServico->data_vencimento)->format('Y-m-d'),
                     ]);
                 } else {
                     // Par sem contrato ainda — estado só-de-exibição, base
@@ -141,6 +148,10 @@ class ContratoAdminController extends Controller
                         // "preparando"; chave sempre presente (nunca undefined
                         // no front).
                         'preparando'                   => false,
+                        // Quick 260819-o4x — o término vem do ContratoServico,
+                        // que EXISTE mesmo sem ContratoAssinatura: empresa que
+                        // ainda aguarda o Administrativo já tem prazo contratado.
+                        'data_vencimento'              => optional($contratoServico->data_vencimento)->format('Y-m-d'),
                     ]);
                 }
             }
@@ -177,7 +188,39 @@ class ContratoAdminController extends Controller
             $linhas = $linhas->filter(fn (array $l) => $l['status'] === $situacao)->values();
         }
 
-        // (7) Ordenação padrão: EMPRESA MAIS RECENTE PRIMEIRO.
+        // (6b) Filtro por serviço adquirido — whitelist pelos ids que o
+        // próprio universo da tela admite (serviços com `exige_contrato`),
+        // mesma disciplina do `situacao`: id fora da lista vira null e nunca
+        // chega a filtrar nada.
+        //
+        // ⚠️ Aplicado EM MEMÓRIA, sobre as LINHAS — nunca na query de
+        // companies do passo (1). É requisito de correção, não preferência:
+        // a linha é o par (empresa, serviço), então empresa com dois serviços
+        // precisa manter só a linha do serviço escolhido. Filtrar na query
+        // faria a empresa inteira sumir (se o `whereHas` não casasse) ou
+        // aparecer inteira, com as duas linhas — os dois resultados errados.
+        //
+        // ⚠️ Roda DEPOIS do resumo (passo 5), de propósito: as 7 contagens
+        // seguem ABSOLUTAS, iguais ao que o filtro de situação já faz. O
+        // resumo é a régua fixa contra a qual a pessoa compara o recorte que
+        // escolheu — se ele encolhesse junto, os cartões marcariam sempre
+        // 100% do que está na tela e deixariam de informar. (A busca `q` é a
+        // exceção histórica: mora na query e por isso encolhe o resumo.)
+        $servicosDoUniverso = Servico::where('exige_contrato', true)
+            ->orderBy('nome')
+            ->get(['id', 'nome']);
+
+        $servicoInput = $request->input('servico');
+        $servico = $servicosDoUniverso->contains('id', (int) $servicoInput) ? (int) $servicoInput : null;
+
+        if ($servico !== null) {
+            $linhas = $linhas->filter(fn (array $l) => $l['servico_id'] === $servico)->values();
+        }
+
+        // (7) Ordenação — whitelist em PHP, valor fora da lista cai no
+        // default (`recente`) e nunca chega a ordenar nada.
+        //
+        // `recente` (DEFAULT): EMPRESA MAIS RECENTE PRIMEIRO.
         //
         // Substituiu "mais tempo parado primeiro" (`sortByDesc('dias_parado')`,
         // decisão do 131-UI-SPEC) a pedido do usuário em 2026-08-19. A coluna
@@ -197,15 +240,36 @@ class ContratoAdminController extends Controller
         // linha é uma whitelist deliberada (T-131-03-*/T-131-04-* — nenhum dado
         // de signatário atravessa para o browser), então a chave de ordenação
         // não entra no payload.
+        // `vencimento`: TÉRMINO MAIS PRÓXIMO PRIMEIRO
+        // (`contratos_servico.data_vencimento` crescente).
+        //
+        // ⚠️ Término VAZIO não é dado faltando — é contrato por prazo
+        // indeterminado, caso legítimo que a regra 5 do
+        // `ContratoDadosMinimosService` registra explicitamente ("data_vencimento
+        // vazia NÃO reprova"). Por isso essas linhas vão para o FIM da lista, e
+        // não para o topo: `null` ordena antes de qualquer data em PHP, e o
+        // resultado seria a tela apresentar como "mais urgente" justamente quem
+        // não tem prazo nenhum. A flag booleana no primeiro critério empurra os
+        // sem-prazo para baixo antes de a data ser comparada.
         $criadoEmPorEmpresa = $companies->pluck('created_at', 'id');
 
-        $linhas = $linhas
-            ->sortBy([
+        $ordenacoes = ['recente', 'vencimento'];
+        $ordenarInput = $request->input('ordenar');
+        $ordenar = in_array($ordenarInput, $ordenacoes, true) ? $ordenarInput : 'recente';
+
+        $criterios = $ordenar === 'vencimento'
+            ? [
+                fn (array $a, array $b) => ($a['data_vencimento'] === null) <=> ($b['data_vencimento'] === null),
+                fn (array $a, array $b) => $a['data_vencimento'] <=> $b['data_vencimento'],
+                fn (array $a, array $b) => $b['company_id'] <=> $a['company_id'],
+            ]
+            : [
                 fn (array $a, array $b) => ($criadoEmPorEmpresa[$b['company_id']] ?? null)
                     <=> ($criadoEmPorEmpresa[$a['company_id']] ?? null),
                 fn (array $a, array $b) => $b['company_id'] <=> $a['company_id'],
-            ])
-            ->values();
+            ];
+
+        $linhas = $linhas->sortBy($criterios)->values();
 
         // (8) Paginação manual via LengthAwarePaginator, preservando path e
         // query — mesmo padrão de ComercialController::listagem().
@@ -227,7 +291,20 @@ class ContratoAdminController extends Controller
             'filters'            => [
                 'situacao' => $situacao,
                 'q'        => $q,
+                // Quick 260819-o4x — devolvidos JÁ SANEADOS pela whitelist,
+                // nunca o que veio na URL: a tela ecoa `filters` de volta nos
+                // selects, e devolver o valor cru faria um `?ordenar=xxx`
+                // aparecer selecionado enquanto o backend ordenou por outro
+                // critério.
+                'servico'  => $servico,
+                'ordenar'  => $ordenar,
             ],
+            // Lista para o select de serviço — os mesmos que definem o
+            // universo da tela (`exige_contrato`), ordenados por nome.
+            'servicos'           => $servicosDoUniverso->map(fn (Servico $s) => [
+                'id'   => $s->id,
+                'nome' => $s->nome,
+            ])->values(),
             'resumo'             => $resumo,
             'sem_contrato_count' => $semContratoCount,
             // Fase 133 (D-04) — leitura pelo ÚNICO ponto autorizado
