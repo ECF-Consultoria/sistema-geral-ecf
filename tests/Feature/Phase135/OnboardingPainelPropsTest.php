@@ -101,17 +101,39 @@ class OnboardingPainelPropsTest extends TestCase
         return $user->fresh();
     }
 
-    /** Varre recursivamente as CHAVES do payload por "pct"/"percent"/"progresso" (SC-11). */
-    private function assertSemChaveDePorcentagem(array $props): void
+    /**
+     * Varre as CHAVES do payload por porcentagem SOLTA.
+     *
+     * ### O que mudou em 20/08
+     * O guarda original bania `pct`, `percent` E `progresso` em qualquer
+     * lugar do payload. A Coordenação pediu volume de atividades no cockpit,
+     * e a decisão foi acrescentar `progresso` — em UM lugar nomeado, com
+     * shape fixo `{feitos,total,percentual}`, vindo de
+     * `OnboardingSituacaoService::progresso()`.
+     *
+     * O invariante do SC-11 que continua valendo, e que este guarda agora
+     * protege, é outro: porcentagem não pode VAZAR pelo payload afora. Uma
+     * `pct_conclusao` aqui, uma `percentual_etapa` ali, e em pouco tempo cada
+     * tela escolhe a sua — que é exatamente como nasceram as duas verdades
+     * que o service foi extraído para impedir. Fora da subárvore `progresso`,
+     * nenhuma chave de porcentagem é aceita.
+     */
+    private function assertSemPorcentagemSolta(array $props): void
     {
         $encontrada = $this->primeiraChaveProibida($props);
 
-        $this->assertNull($encontrada, "Chave de porcentagem encontrada no payload: \"{$encontrada}\"");
+        $this->assertNull($encontrada, "Chave de porcentagem solta no payload: \"{$encontrada}\"");
     }
 
     private function primeiraChaveProibida(array $valor): ?string
     {
         foreach ($valor as $chave => $item) {
+            // A subárvore `progresso` é o ÚNICO lugar autorizado a falar em
+            // porcentagem — não desce nela.
+            if ($chave === 'progresso') {
+                continue;
+            }
+
             if (is_string($chave)) {
                 foreach (['pct', 'percent', 'progresso'] as $proibida) {
                     if (str_contains(strtolower($chave), $proibida)) {
@@ -457,21 +479,66 @@ class OnboardingPainelPropsTest extends TestCase
         );
     }
 
-    // ─── SC-11 — nenhuma porcentagem no payload ────────────────────────────
+    // ─── SC-11 — porcentagem mora em UM lugar só ───────────────────────────
 
     #[Test]
-    public function nenhuma_chave_de_porcentagem_nas_props_do_index_e_do_show(): void
+    public function porcentagem_nao_vaza_pelo_payload_fora_de_progresso(): void
     {
         $this->withoutVite();
         $onboarding = $this->onboardingEmAndamento();
 
         $indexResponse = $this->actingAs($this->admin())->get(route('onboarding.painel.index'));
         $indexResponse->assertOk();
-        $this->assertSemChaveDePorcentagem($indexResponse->viewData('page')['props']);
+        $this->assertSemPorcentagemSolta($indexResponse->viewData('page')['props']);
 
         $showResponse = $this->actingAs($this->admin())->get(route('onboarding.painel.show', $onboarding));
         $showResponse->assertOk();
-        $this->assertSemChaveDePorcentagem($showResponse->viewData('page')['props']);
+        $this->assertSemPorcentagemSolta($showResponse->viewData('page')['props']);
+    }
+
+    /**
+     * O `progresso` do detalhe tem shape FIXO. Quem acrescentar um quarto
+     * campo aqui precisa passar por este teste — e decidir conscientemente se
+     * a listagem também vai mostrá-lo.
+     */
+    #[Test]
+    public function progresso_do_detalhe_tem_shape_fixo(): void
+    {
+        $this->withoutVite();
+        $onboarding = $this->onboardingEmAndamento();
+
+        $showResponse = $this->actingAs($this->admin())->get(route('onboarding.painel.show', $onboarding));
+        $showResponse->assertOk();
+
+        $progresso = $showResponse->viewData('page')['props']['onboarding']['progresso'];
+
+        $this->assertSame(['feitos', 'total', 'percentual'], array_keys($progresso));
+        $this->assertIsInt($progresso['percentual']);
+        $this->assertGreaterThanOrEqual(0, $progresso['percentual']);
+        $this->assertLessThanOrEqual(100, $progresso['percentual']);
+    }
+
+    /**
+     * A SITUAÇÃO continua sendo vocabulário fechado, nunca um número. É este o
+     * invariante de fundo do SC-11: o estado de um onboarding se lê em
+     * palavras ("Aguardando cliente"), e a porcentagem é informação de apoio.
+     */
+    #[Test]
+    public function situacao_continua_sendo_vocabulario_e_nao_numero(): void
+    {
+        $this->withoutVite();
+        $onboarding = $this->onboardingEmAndamento();
+
+        $showResponse = $this->actingAs($this->admin())->get(route('onboarding.painel.show', $onboarding));
+        $showResponse->assertOk();
+
+        $props = $showResponse->viewData('page')['props']['onboarding'];
+
+        $this->assertContains($props['situacao'], array_keys(
+            \App\Services\Onboarding\OnboardingSituacaoService::SITUACAO_LABELS
+        ));
+        $this->assertIsString($props['situacao_label']);
+        $this->assertStringNotContainsString('%', $props['situacao_label']);
     }
 
     /**

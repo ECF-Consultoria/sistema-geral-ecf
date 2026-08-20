@@ -342,6 +342,11 @@ class CompanyController extends Controller
             // esconder no front é cosmético; o que protege é o bloco vazio
             // acima, montado no servidor.
             'pode_ver_onboarding' => $podeVerOnboarding,
+            // Onboarding NASCE do contrato (Observer), nunca de um botão. O
+            // cockpit não oferece "criar onboarding": oferece o caminho real,
+            // que é cadastrar a empresa/contrato. Sem esta flag o botão
+            // apareceria para quem leva 403 ao clicar.
+            'pode_cadastrar_empresa' => $usuario->hasPermission(\App\Support\Permissions::COMERCIAL_CADASTRAR_EMPRESA),
         ]);
     }
 
@@ -394,6 +399,11 @@ class CompanyController extends Controller
                 'passo_que_trava' => $pior['passo_que_trava']['titulo'] ?? null,
                 'bola_de_quem'    => $pior['passo_que_trava']['dono'] ?? null,
                 'dias_parado'     => $pior['passo_que_trava']['dias_parado'] ?? null,
+                // Progresso do MESMO onboarding que a linha descreve (o mais
+                // grave), nunca a média da empresa: a linha inteira fala de um
+                // só, e misturar as duas coisas produz "45%" que não
+                // corresponde a nada que o detalhe vá mostrar.
+                'progresso'       => $pior['progresso'],
                 'total'           => $onboardings->count(),
                 'nao_concluidos'  => $onboardings
                     ->filter(fn (array $o) => $o['status'] !== Onboarding::STATUS_CONCLUIDO)

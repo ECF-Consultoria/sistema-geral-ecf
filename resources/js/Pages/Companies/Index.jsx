@@ -140,6 +140,10 @@ export default function Companies({ companies, users, estrategistas = [], analis
     // defensivo com `?? false`: prop ausente esconde, nunca mostra. Lido AQUI,
     // antes do estado da aba, porque o deep-link ?tab=onboarding precisa dele.
     const podeVerOnboarding = usePage().props.pode_ver_onboarding ?? false;
+    // O CTA do cockpit aponta para o cadastro de empresa (onboarding nasce do
+    // contrato, nunca de um botão próprio). Sem esta flag o botão apareceria
+    // para quem leva 403 ao clicar.
+    const podeCadastrarEmpresa = usePage().props.pode_cadastrar_empresa ?? false;
 
     // Lê a aba inicial do query param ?tab (deep-link vindo do menu lateral, ex: Empresas › Pendências).
     // Lazy initializer roda apenas uma vez no mount; valores inválidos/ausentes caem em 'empresas'.
@@ -349,10 +353,15 @@ export default function Companies({ companies, users, estrategistas = [], analis
 
     // Phase 37 Plan 37-06 (REQ-37-07) — aba Grupos removida; migrou para
     // /comercial/empresas/listagem (Plan 37-05).
-    // Contagem da aba Onboarding: empresas com ao menos um onboarding NÃO
-    // concluído. Onboarding fechado não é trabalho pendente de ninguém e
-    // inflaria o número que a pessoa usa para decidir se abre a aba.
-    const emOnboarding = companies.filter(c => (c.onboarding_resumo?.nao_concluidos ?? 0) > 0);
+    // Contagem da aba Onboarding: onboardings NÃO concluídos (não empresas).
+    // Onboarding fechado não é trabalho pendente de ninguém e inflaria o
+    // número que a pessoa usa para decidir se abre a aba.
+    //
+    // Conta ONBOARDING e não EMPRESA desde 20/08, quando o cockpit passou a
+    // listar uma linha por onboarding: uma empresa com dois serviços travados
+    // é dois trabalhos, e o rótulo precisa bater com o que a tabela mostra.
+    const emOnboarding = companies.flatMap(c => c.onboardings || [])
+        .filter(o => o.status !== 'concluido');
 
     const TABS = [
         { key: 'empresas',   label: `Empresas (${totalAtivas})` },
@@ -648,6 +657,7 @@ export default function Companies({ companies, users, estrategistas = [], analis
                         companies={companies}
                         estrategistas={estrategistasOptions}
                         analistas={analistasOptions}
+                        podeCadastrarEmpresa={podeCadastrarEmpresa}
                     />
                 )}
 

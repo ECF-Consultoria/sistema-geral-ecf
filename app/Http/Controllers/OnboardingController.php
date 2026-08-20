@@ -155,6 +155,9 @@ class OnboardingController extends Controller
                     'id'   => $onboarding->responsavel->id,
                     'name' => $onboarding->responsavel->name,
                 ] : null,
+                // Mesma fração que a listagem mostra — vem do service, não de
+                // uma contagem local, senão as duas telas divergem.
+                'progresso'        => $this->situacaoService->progresso($passos),
                 'definicao_versao' => $onboarding->definicao_versao,
                 'chegou_em'        => $onboarding->created_at?->toISOString(),
                 // O que o Comercial já coletou, para não ser perguntado de novo

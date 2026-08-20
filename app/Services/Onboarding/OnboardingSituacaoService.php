@@ -228,6 +228,45 @@ class OnboardingSituacaoService
     }
 
     /**
+     * Andamento em ATIVIDADES do onboarding: `feitos de total` e o percentual.
+     *
+     * ### Por que isto existe apesar do SC-11
+     * O SC-11 rejeitou `feitos/total` como **a resposta da tela** — a leitura
+     * que importa continua sendo "o que trava, há quantos dias e de quem é a
+     * bola", e é ela que ocupa a coluna dominante em toda listagem. O que a
+     * Coordenação pediu (20/08) é diferente: uma noção de VOLUME que responda
+     * "quanto falta?" ao lado de "o que falta?", para priorizar entre dois
+     * onboardings igualmente travados. Os dois números convivem; o percentual
+     * é o secundário, nunca o título da linha.
+     *
+     * ### `nao_aplicavel` sai dos DOIS lados da fração
+     * Um passo marcado como não-aplicável nunca vai ser concluído. Deixá-lo no
+     * denominador trava o onboarding num teto abaixo de 100% para sempre, e
+     * some com o estado "acabou" justamente de quem acabou. Contá-lo como
+     * feito seria mentira de outro tipo: infla o andamento de quem teve muita
+     * coisa dispensada. Ele simplesmente não é atividade — sai da conta.
+     *
+     * Onboarding cujos passos são TODOS não-aplicáveis fica com `total = 0`;
+     * o percentual devolve 0 em vez de estourar divisão por zero, e a tela
+     * mostra "—" (ver `Progresso` no JSX).
+     *
+     * @return array{feitos:int,total:int,percentual:int}
+     */
+    public function progresso(Collection $passos): array
+    {
+        $contadores = $this->contadores($passos);
+
+        $total = $passos->count() - $contadores['nao_aplicaveis'];
+        $feitos = $contadores['concluidos'];
+
+        return [
+            'feitos'     => $feitos,
+            'total'      => $total,
+            'percentual' => $total > 0 ? (int) round($feitos / $total * 100) : 0,
+        ];
+    }
+
+    /**
      * Dias inteiros desde `disponivel_em` até agora. `null` (nunca `0`)
      * quando o passo ainda não abriu — contar do `created_at` do onboarding
      * mentiria sobre um passo que ficou bloqueado (D-11).
@@ -267,6 +306,10 @@ class OnboardingSituacaoService
             'responsavel_analista'     => $this->usuario($onboarding->responsavelAnalista),
             'passo_que_trava' => $trava ? $this->passoTravaPayload($trava) : null,
             'contadores'      => $this->contadores($passos),
+            // Volume de atividades ao lado da leitura de bloqueio (20/08).
+            // Sai daqui, e não de cada tela, para que a listagem e o detalhe
+            // nunca mostrem percentuais diferentes do mesmo onboarding.
+            'progresso'       => $this->progresso($passos),
             'definicao_versao' => $onboarding->definicao_versao,
             // Data de chegada da empresa ao onboarding = `created_at` da linha,
             // gravada pelo Observer no `created` do contrato. NÃO usar
