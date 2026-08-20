@@ -277,3 +277,36 @@ menos. A baseline usada para a comparação "antes/depois" desta ativação é a
 - Empresa: ______
 - Ficha gerada: ______
 - Data/hora: ______
+
+## Varredura de log — 2026-08-20 (parcial do plano 133-05)
+
+Conferido por reconsulta ao VPS, ~30h depois de a chave ser ligada:
+
+| Sinal | Ocorrencias |
+|---|---|
+| `[Administrativo] Roteamento operacional retido pelo gate administrativo.` | **0** |
+| `[Administrativo] Ativação manual retida pelo gate administrativo.` | **0** |
+
+**Zero e o resultado ESPERADO** (D-01): nao existe ficha de Assessoria ou Incubadora na base, entao
+nao ha o que reter. E, mais importante, **nenhuma ativacao manual legitima foi recusada por engano**
+— um dos criterios de aceite do 133-05, este SATISFEITO.
+
+### ⚠️ O que AINDA NAO esta provado: o primeiro cadastro real de Polos
+
+`mlb_empresas` subiu de 488 (na ativacao) para **503** — 16 fichas novas, todas `tipo=POLO`, entre
+19/08 09:06 e 20/08 09:20. A leitura obvia seria "Polos continua entrando com a chave ligada, esta
+provado". **Nao esta.**
+
+Todas as 16 nasceram com **`company_id = NULL`**. Das 503 fichas da base, so **4** tem `company_id`
+preenchido, e a mais recente delas e de **2026-08-12** — antes de a chave ser ligada.
+
+Ficha sem `company_id` **nao passou pelo `EmpresaOperacionalRouter`**: o router roteia uma
+`Company`. Essas 16 vieram por outro caminho — quase certamente uma das duas rotas registradas em
+`.planning/todos/pending/260818-portas-extras-criam-mlbempresa-fora-do-router.md` (divida D-06).
+
+Por isso o plano 133-05 pede a reconsulta **por `company_id`**, e nao a contagem geral: e exatamente
+o que distingue "o router deixou o Polos passar" de "uma ficha apareceu por outra porta". A contagem
+geral subindo e um falso positivo confortavel.
+
+**Segue pendente:** um cadastro real de Polos pelo Comercial ou pelo webhook do HubSpot, que gere
+`MlbEmpresa` COM `company_id`, reconsultado por ele.
