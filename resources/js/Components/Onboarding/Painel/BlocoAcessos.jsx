@@ -8,38 +8,22 @@ import { cn } from '@/lib/utils';
  * BlocoAcessos — o link do App ECF e o e-mail do colaborador, que a ECF
  * configura e o CLIENTE consome no portal.
  *
- * ### Um componente, dois escopos — com campos diferentes
- * `escopo="padrao"` edita o que vale para TODAS as empresas (cockpit de
- * `/companies`) e mostra SÓ o link do App ECF. `escopo="empresa"` edita o
- * override de uma só (`/onboarding/{id}`) e mostra os dois campos.
+ * ### Por EMPRESA, sem padrão global
+ * A primeira versão tinha os dois escopos, com um padrão que valia para toda a
+ * base. O negócio corrigiu: cada cliente tem o seu link e o seu e-mail. Um
+ * padrão único mandaria a base inteira para o mesmo endereço, e o erro só
+ * apareceria dias depois — quando o acesso não chegasse a ninguém.
  *
- * O e-mail do colaborador não aparece no padrão de propósito: cada cliente
- * concede acesso a um endereço criado para ele, e "o e-mail de todos" não
- * existe. Deixar o campo ali convidaria alguém a preencher um endereço único
- * que iria para toda a base.
- *
- * ### O `placeholder` faz um trabalho de verdade no modo empresa
- * Campo vazio ali significa "segue o padrão", não "sem valor". Mostrar o valor
- * global como placeholder é o que comunica isso — sem ele, quem abre a tela vê
- * dois campos em branco e conclui que nada está configurado, quando o cliente
- * está vendo o padrão normalmente.
+ * Por isso campo vazio aqui significa **não configurado**, e não "usa outro
+ * valor". O portal do cliente mostra um aviso nesse caso, em vez de um campo em
+ * branco que pareceria instrução incompleta.
  */
-function Campo({ icone: Icone, rotulo, valor, aoMudar, placeholder, tipo = 'text', ajuda, origem }) {
+function Campo({ icone: Icone, rotulo, valor, aoMudar, placeholder, tipo = 'text', ajuda }) {
     return (
         <div>
             <label className="flex items-center gap-1.5 text-[12px] text-white/60 mb-1.5">
                 <Icone size={13} className="text-white/40" />
                 {rotulo}
-                {origem === 'empresa' && (
-                    <span className="rounded border border-ecf-yellow/25 bg-ecf-yellow/10 px-1.5 py-0.5 text-[10px] font-semibold text-ecf-yellow">
-                        próprio desta empresa
-                    </span>
-                )}
-                {origem === 'padrao' && (
-                    <span className="rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-white/40">
-                        usando o padrão
-                    </span>
-                )}
             </label>
 
             <input
@@ -55,21 +39,11 @@ function Campo({ icone: Icone, rotulo, valor, aoMudar, placeholder, tipo = 'text
     );
 }
 
-export default function BlocoAcessos({
-    escopo,
-    rota,
-    valores,
-    padroes = null,
-    origem = null,
-    titulo,
-    ajuda,
-}) {
+export default function BlocoAcessos({ rota, valores, titulo, ajuda }) {
     const [link, setLink] = useState(valores.app_ecf_link ?? '');
     const [email, setEmail] = useState(valores.email_colaborador ?? '');
     const [salvando, setSalvando] = useState(false);
     const [salvo, setSalvo] = useState(false);
-
-    const daEmpresa = escopo === 'empresa';
 
     const salvar = () => {
         if (salvando) return;
@@ -77,10 +51,7 @@ export default function BlocoAcessos({
         setSalvando(true);
         router.put(
             rota,
-            // No padrão o e-mail nem viaja: a rota global não o aceita.
-            daEmpresa
-                ? { app_ecf_link: link || null, email_colaborador: email || null }
-                : { app_ecf_link: link || null },
+            { app_ecf_link: link || null, email_colaborador: email || null },
             {
                 preserveScroll: true,
                 onSuccess: () => {
@@ -99,30 +70,26 @@ export default function BlocoAcessos({
                 {ajuda && <p className="text-white/40 text-[12px] mt-0.5">{ajuda}</p>}
             </div>
 
-            <div className={cn('grid gap-4', daEmpresa ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 max-w-xl')}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Campo
                     icone={Link2}
                     rotulo="Link do App ECF"
                     valor={link}
                     aoMudar={setLink}
                     tipo="url"
-                    origem={daEmpresa ? origem?.app_ecf_link : null}
-                    placeholder={daEmpresa ? (padroes?.app_ecf_link ?? 'https://...') : 'https://...'}
-                    ajuda={daEmpresa ? 'Vazio = usa o padrão.' : 'Vale para toda empresa sem link próprio.'}
+                    placeholder="https://..."
+                    ajuda="Vazio: o cliente vê um aviso em vez do link."
                 />
 
-                {daEmpresa && (
-                    <Campo
-                        icone={Mail}
-                        rotulo="E-mail do colaborador"
-                        valor={email}
-                        aoMudar={setEmail}
-                        tipo="email"
-                        origem={origem?.email_colaborador}
-                        placeholder="acessos.cliente@ecfconsultoria.com.br"
-                        ajuda="Endereço desta empresa — não há padrão global."
-                    />
-                )}
+                <Campo
+                    icone={Mail}
+                    rotulo="E-mail do colaborador"
+                    valor={email}
+                    aoMudar={setEmail}
+                    tipo="email"
+                    placeholder="acessos.cliente@ecfconsultoria.com.br"
+                    ajuda="É o endereço que o cliente convida no Mercado Livre."
+                />
             </div>
 
             <div className="flex items-center gap-3">

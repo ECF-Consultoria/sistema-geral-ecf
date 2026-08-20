@@ -658,8 +658,6 @@ export default function Companies({ companies, users, estrategistas = [], analis
                         estrategistas={estrategistasOptions}
                         analistas={analistasOptions}
                         podeCadastrarEmpresa={podeCadastrarEmpresa}
-                        acessosPadroes={usePage().props.acessos_padroes ?? null}
-                        podeEditarPadroes={usePage().props.auth?.user?.role === 'admin'}
                     />
                 )}
 

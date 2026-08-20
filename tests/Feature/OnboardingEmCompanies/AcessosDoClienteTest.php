@@ -3,7 +3,6 @@
 namespace Tests\Feature\OnboardingEmCompanies;
 
 use App\Models\Company;
-use App\Models\Configuracao;
 use App\Models\ContratoServico;
 use App\Models\Onboarding;
 use App\Models\OnboardingLink;
@@ -15,33 +14,31 @@ use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
- * Link do App ECF e e-mail do colaborador: padrão global com override por
- * empresa.
+ * Link do App ECF e e-mail do colaborador: os dois são de CADA EMPRESA.
  *
  * ### O que este teste protege
- * A regra do `null`. Campo vazio na empresa significa "segue o padrão", nunca
- * "sem valor" — e é isso que permite trocar o endereço em UM lugar quando ele
- * mudar. Se um dia alguém gravar o padrão copiado dentro de cada empresa, a
- * cópia que ficar para trás manda o cliente para um link morto e o portal
- * continua mostrando um link, só que o errado. Os testes de fallback e de
- * "apagar volta ao padrão" são os que seguram isso.
+ * Que não volte a existir padrão global. A primeira versão desta feature tinha
+ * um, copiado do onboarding de Polos; o negócio corrigiu. Um valor único para a
+ * base inteira mandaria todo cliente para o mesmo endereço, e o erro só
+ * apareceria dias depois — quando o acesso não chegasse a ninguém.
+ *
+ * O outro invariante é o `null`: campo apagado grava `null`, nunca string
+ * vazia. `""` faria o portal renderizar um botão que não leva a lugar nenhum,
+ * em vez do aviso de "ainda não configurado".
  */
 class AcessosDoClienteTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function servico(): Servico
+    /** @return array{0:Company,1:Onboarding} */
+    private function empresaComOnboarding(): array
     {
-        return Servico::query()
+        $servico = Servico::query()
             ->where('ativo', true)
             ->where('setor', Servico::SETOR_PERFORMANCE)
             ->where('nome', 'like', '%Gestão%')
             ->firstOrFail();
-    }
 
-    /** @return array{0:Company,1:Onboarding} */
-    private function empresaComOnboarding(): array
-    {
         $company = Company::create([
             'name'              => 'Empresa Acessos '.uniqid(),
             'cnpj'              => substr(str_pad((string) random_int(1, 99999999999999), 14, '0', STR_PAD_LEFT), 0, 14),
@@ -54,7 +51,7 @@ class AcessosDoClienteTest extends TestCase
 
         $contrato = ContratoServico::create([
             'company_id'       => $company->id,
-            'servico_id'       => $this->servico()->id,
+            'servico_id'       => $servico->id,
             'valor_contratado' => 1500,
             'data_contratacao' => now()->toDateString(),
             'ativo'            => true,
@@ -68,82 +65,76 @@ class AcessosDoClienteTest extends TestCase
         return app(OnboardingAcessosService::class);
     }
 
-    /** @test */
-    public function empresa_sem_valor_proprio_recebe_o_padrao(): void
+    private function admin(): User
     {
-        [$company] = $this->empresaComOnboarding();
-
-        $this->svc()->salvarPadroes('https://app.ecf.test');
-
-        $r = $this->svc()->paraEmpresa($company->fresh());
-
-        $this->assertSame('https://app.ecf.test', $r['app_ecf_link']);
-        $this->assertSame('padrao', $r['origem']['app_ecf_link']);
-
-        // O e-mail NÃO tem padrão global: cada cliente concede acesso a um
-        // endereço criado para ele. Empresa sem o seu fica sem, e a tela avisa.
-        $this->assertNull($r['email_colaborador']);
-        $this->assertSame('ausente', $r['origem']['email_colaborador']);
+        return User::create([
+            'name'     => 'Admin '.uniqid(),
+            'email'    => 'adm.'.uniqid().'@ecf.test',
+            'password' => bcrypt('senha'),
+            'role'     => 'admin',
+            'active'   => true,
+        ]);
     }
 
     /** @test */
-    public function valor_da_empresa_vence_o_padrao(): void
+    public function cada_empresa_tem_os_seus_valores(): void
     {
-        [$company] = $this->empresaComOnboarding();
+        [$a] = $this->empresaComOnboarding();
+        [$b] = $this->empresaComOnboarding();
 
-        $this->svc()->salvarPadroes('https://app.ecf.test');
-        $this->svc()->salvarDaEmpresa($company, 'https://app.proprio.test', 'proprio@ecf.test');
+        $this->svc()->salvarDaEmpresa($a, 'https://app-a.test', 'a@ecf.test');
+        $this->svc()->salvarDaEmpresa($b, 'https://app-b.test', 'b@ecf.test');
 
-        $r = $this->svc()->paraEmpresa($company->fresh());
+        $this->assertSame('https://app-a.test', $this->svc()->paraEmpresa($a->fresh())['app_ecf_link']);
+        $this->assertSame('a@ecf.test', $this->svc()->paraEmpresa($a->fresh())['email_colaborador']);
 
-        $this->assertSame('https://app.proprio.test', $r['app_ecf_link']);
-        $this->assertSame('proprio@ecf.test', $r['email_colaborador']);
-        $this->assertSame('empresa', $r['origem']['app_ecf_link']);
+        $this->assertSame('https://app-b.test', $this->svc()->paraEmpresa($b->fresh())['app_ecf_link']);
+        $this->assertSame('b@ecf.test', $this->svc()->paraEmpresa($b->fresh())['email_colaborador']);
     }
 
     /**
-     * O caminho de VOLTA: apagar o campo devolve a empresa ao padrão. Sem isto,
-     * quem preenchesse por engano ficaria preso ao valor próprio para sempre.
+     * Empresa sem valor fica SEM — nada de herdar de lugar nenhum. É o teste
+     * que quebra no dia em que alguém reintroduzir um padrão global.
      *
      * @test
      */
-    public function apagar_o_campo_faz_a_empresa_voltar_ao_padrao(): void
+    public function empresa_sem_valor_nao_herda_de_outra_nem_de_padrao(): void
+    {
+        [$configurada] = $this->empresaComOnboarding();
+        [$vazia] = $this->empresaComOnboarding();
+
+        $this->svc()->salvarDaEmpresa($configurada, 'https://app.test', 'alguem@ecf.test');
+
+        $r = $this->svc()->paraEmpresa($vazia->fresh());
+
+        $this->assertNull($r['app_ecf_link'], 'A empresa sem link herdou de algum lugar.');
+        $this->assertNull($r['email_colaborador'], 'A empresa sem e-mail herdou de algum lugar.');
+    }
+
+    /**
+     * Campo apagado grava `null`, nunca `""` — senão o portal mostraria um
+     * botão que não leva a lugar nenhum.
+     *
+     * @test
+     */
+    public function apagar_o_campo_grava_nulo_e_nao_string_vazia(): void
     {
         [$company] = $this->empresaComOnboarding();
 
-        $this->svc()->salvarPadroes('https://app.ecf.test');
-        $this->svc()->salvarDaEmpresa($company, 'https://app.proprio.test', 'proprio@ecf.test');
-
-        // String vazia é o que o formulário manda quando o usuário apaga.
+        $this->svc()->salvarDaEmpresa($company, 'https://app.test', 'alguem@ecf.test');
         $this->svc()->salvarDaEmpresa($company->fresh(), '', '   ');
 
         $company = $company->fresh();
 
-        $this->assertNull($company->app_ecf_link, 'Campo apagado tem de virar null, não string vazia.');
+        $this->assertNull($company->app_ecf_link);
         $this->assertNull($company->email_colaborador);
-
-        $r = $this->svc()->paraEmpresa($company);
-        $this->assertSame('https://app.ecf.test', $r['app_ecf_link']);
-        $this->assertSame('padrao', $r['origem']['app_ecf_link']);
-    }
-
-    /** Sem padrão e sem valor próprio: `null`, e a tela avisa em vez de mentir. */
-    /** @test */
-    public function sem_padrao_e_sem_valor_proprio_devolve_nulo(): void
-    {
-        [$company] = $this->empresaComOnboarding();
-
-        $r = $this->svc()->paraEmpresa($company);
-
-        $this->assertNull($r['app_ecf_link']);
-        $this->assertSame('ausente', $r['origem']['app_ecf_link']);
     }
 
     /** @test */
-    public function portal_do_cliente_recebe_o_valor_resolvido(): void
+    public function portal_do_cliente_recebe_os_valores_da_empresa(): void
     {
         [$company] = $this->empresaComOnboarding();
-        $this->svc()->salvarPadroes('https://app.ecf.test');
+        $this->svc()->salvarDaEmpresa($company, 'https://app.test', 'alguem@ecf.test');
 
         $token = OnboardingLink::firstOrCreate(
             ['company_id' => $company->id],
@@ -154,61 +145,22 @@ class AcessosDoClienteTest extends TestCase
             ->assertOk()
             ->viewData('page')['props'];
 
-        $this->assertSame('https://app.ecf.test', $props['empresa']['app_ecf_link']);
-        $this->assertNull($props['empresa']['email_colaborador'], 'E-mail não tem padrão global.');
+        $this->assertSame('https://app.test', $props['empresa']['app_ecf_link']);
+        $this->assertSame('alguem@ecf.test', $props['empresa']['email_colaborador']);
     }
 
     /**
-     * Mexer no padrão muda o que TODA empresa vê de uma vez. Só admin.
+     * A rota de padrão global não existe mais. Se alguém a recriar sem pensar,
+     * este teste não pega — mas o de herança acima pega.
      *
      * @test
      */
-    public function nao_admin_nao_altera_o_padrao_global(): void
+    public function nao_existe_rota_de_padrao_global(): void
     {
-        $consultor = User::create([
-            'name'     => 'Consultor '.uniqid(),
-            'email'    => 'c.'.uniqid().'@ecf.test',
-            'password' => bcrypt('senha'),
-            'role'     => 'consultor',
-            'active'   => true,
-        ]);
-
-        $this->svc()->salvarPadroes('https://original.test');
-
-        $this->actingAs($consultor)
-            ->put(route('onboarding.acessos.padroes'), ['app_ecf_link' => 'https://invasor.test'])
-            ->assertForbidden();
-
-        $this->assertSame('https://original.test', Configuracao::get(OnboardingAcessosService::CHAVE_APP_ECF));
-    }
-
-    /**
-     * A rota do PADRÃO não aceita e-mail. Se alguém mandar, o campo é ignorado
-     * — nunca vira um endereço único para a base inteira.
-     *
-     * @test
-     */
-    public function padrao_global_nao_guarda_email_de_colaborador(): void
-    {
-        [$company] = $this->empresaComOnboarding();
-
-        $admin = User::create([
-            'name'     => 'Admin '.uniqid(),
-            'email'    => 'adm.'.uniqid().'@ecf.test',
-            'password' => bcrypt('senha'),
-            'role'     => 'admin',
-            'active'   => true,
-        ]);
-
-        $this->actingAs($admin)
-            ->put(route('onboarding.acessos.padroes'), [
-                'app_ecf_link'      => 'https://app.ecf.test',
-                'email_colaborador' => 'ninguem@ecf.test',
-            ])
-            ->assertRedirect();
-
-        $this->assertNull(Configuracao::get('onboarding_email_colaborador'));
-        $this->assertNull($this->svc()->paraEmpresa($company->fresh())['email_colaborador']);
+        $this->assertFalse(
+            app('router')->has('onboarding.acessos.padroes'),
+            'Voltou a existir uma rota de padrão global de acessos.'
+        );
     }
 
     /** URL malformada não entra — o cliente clicaria num link quebrado. */
@@ -217,18 +169,26 @@ class AcessosDoClienteTest extends TestCase
     {
         [, $onboarding] = $this->empresaComOnboarding();
 
-        $admin = User::create([
-            'name'     => 'Admin '.uniqid(),
-            'email'    => 'a.'.uniqid().'@ecf.test',
-            'password' => bcrypt('senha'),
-            'role'     => 'admin',
-            'active'   => true,
-        ]);
-
-        $this->actingAs($admin)
+        $this->actingAs($this->admin())
             ->put(route('onboarding.acessos.empresa', $onboarding->id), [
                 'app_ecf_link' => 'isto-nao-e-url',
             ])
             ->assertSessionHasErrors('app_ecf_link');
+    }
+
+    /** @test */
+    public function salvar_pela_rota_reflete_no_portal(): void
+    {
+        [$company, $onboarding] = $this->empresaComOnboarding();
+
+        $this->actingAs($this->admin())
+            ->put(route('onboarding.acessos.empresa', $onboarding->id), [
+                'app_ecf_link'      => 'https://app.salvo.test',
+                'email_colaborador' => 'salvo@ecf.test',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame('https://app.salvo.test', $company->fresh()->app_ecf_link);
+        $this->assertSame('salvo@ecf.test', $company->fresh()->email_colaborador);
     }
 }

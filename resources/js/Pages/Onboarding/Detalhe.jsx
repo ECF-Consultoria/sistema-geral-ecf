@@ -170,13 +170,10 @@ export default function Detalhe({
                             não é passo de nenhuma etapa. */}
                         {acessos && (
                             <BlocoAcessos
-                                escopo="empresa"
                                 rota={route('onboarding.acessos.empresa', onboarding.id)}
-                                valores={acessos.da_empresa}
-                                padroes={acessos}
-                                origem={acessos.origem}
+                                valores={acessos}
                                 titulo="Acessos que o cliente vê"
-                                ajuda="Link do App ECF e e-mail para o convite. Vazio segue o padrão da ECF."
+                                ajuda="Link do App ECF e e-mail para o convite, desta empresa."
                             />
                         )}
                         <AtividadeRecente atividade={atividade} />

@@ -217,16 +217,9 @@ class OnboardingController extends Controller
             // o que travar agora, de quem e a bola, em que ponto da vida o
             // onboarding esta e o que aconteceu por ultimo. Nenhuma delas cria
             // regra — todas leem o que ja estava persistido.
-            // Link do App ECF e e-mail do colaborador, ja resolvidos
-            // (empresa > padrao) mais a ORIGEM de cada um: sem ela, quem abre
-            // a tela nao sabe se apagar o campo muda alguma coisa.
-            'acessos'           => array_merge(
-                app(OnboardingAcessosService::class)->paraEmpresa($onboarding->company),
-                ['da_empresa' => [
-                    'app_ecf_link'      => $onboarding->company->app_ecf_link,
-                    'email_colaborador' => $onboarding->company->email_colaborador,
-                ]],
-            ),
+            // Link do App ECF e e-mail do colaborador desta empresa. Nao ha
+            // padrao global: vazio quer dizer "ainda nao configurado".
+            'acessos'           => app(OnboardingAcessosService::class)->paraEmpresa($onboarding->company),
             'proxima_acao'      => $this->proximaAcaoPayload($onboarding, $passos),
             'responsabilidades' => $this->responsabilidadesPayload($passos),
             'linha_do_tempo'    => $this->linhaDoTempoPayload($onboarding),
@@ -871,30 +864,6 @@ class OnboardingController extends Controller
         }
 
         return $item;
-    }
-
-    /**
-     * PUT /onboarding/acessos/padroes — os valores que valem para TODA empresa
-     * que não tenha o seu (cockpit de `/companies?tab=onboarding`).
-     *
-     * Admin-only: mexer aqui muda o que todo cliente vê no portal de uma vez.
-     * O gate da rota (`permission:core.onboarding`) libera a coordenação, que
-     * pode editar o override de UMA empresa — mudar o padrão é outra escala.
-     */
-    public function salvarPadroesAcessos(Request $request, OnboardingAcessosService $acessos)
-    {
-        abort_unless($request->user()->isAdmin(), 403, 'Só admin altera o padrão que vale para todas as empresas.');
-
-        // Só o LINK. O e-mail do colaborador é de cada empresa — cada cliente
-        // concede acesso a um endereço criado para ele, e um padrão global aqui
-        // seria um convite para o endereço errado ser usado em massa.
-        $data = $request->validate([
-            'app_ecf_link' => ['nullable', 'url', 'max:500'],
-        ]);
-
-        $acessos->salvarPadroes($data['app_ecf_link'] ?? null);
-
-        return back()->with('success', 'Link padrão do App ECF atualizado.');
     }
 
     /**

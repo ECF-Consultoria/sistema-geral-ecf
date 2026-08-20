@@ -3,104 +3,57 @@
 namespace App\Services\Onboarding;
 
 use App\Models\Company;
-use App\Models\Configuracao;
 
 /**
- * Os dois dados que a ECF configura e o CLIENTE consome no portal: o e-mail
- * que ele precisa convidar e o link do App ECF.
+ * Os dois dados que a ECF configura por EMPRESA e o cliente consome no portal:
+ * o e-mail que ele precisa convidar e o link do App ECF.
  *
- * ### Escopos DIFERENTES, e de propósito
- * **Link do App ECF**: global, com override por empresa. Na prática é o mesmo
- * endereço para todo mundo — é o mesmo desenho do onboarding de Polos
- * ("configurado nos Padrões Globais — serve todo mundo").
+ * ### Não existe padrão global — nem para um, nem para o outro
+ * O onboarding de Polos guarda o link do App ECF como global ("serve todo
+ * mundo"), e esta feature nasceu copiando aquele desenho. O negócio corrigiu:
+ * aqui os dois são de cada empresa. O e-mail porque cada cliente concede acesso
+ * a um endereço criado para ele; o link pelo mesmo princípio.
  *
- * **E-mail do colaborador**: SÓ por empresa. Cada cliente concede acesso a um
- * endereço próprio, criado para ele — não existe "o e-mail de todos". Um padrão
- * global aqui seria um convite para o endereço errado ser usado em massa, e o
- * erro só apareceria dias depois, quando o acesso não chegasse.
- *
- * `null` no link da empresa significa "siga o global", nunca "sem valor". É por
- * isso que o padrão não é copiado para dentro de cada linha no cadastro: no dia
- * em que o endereço mudar, a cópia que ficasse para trás mandaria um cliente
- * para um link morto, e ninguém notaria — o portal continuaria mostrando um
- * link, só que o errado. No e-mail esse risco não existe justamente porque não
- * há padrão a copiar.
+ * A consequência que importa: um valor em branco significa **não configurado**,
+ * e não "usa o padrão". O portal avisa em vez de mostrar campo vazio, porque
+ * campo vazio pareceria instrução incompleta e o cliente ficaria esperando sem
+ * saber o quê.
  *
  * ### Existe para as três telas lerem a mesma coisa
- * O portal do cliente, o cockpit de `/companies` e o detalhe de
- * `/onboarding/{id}` mostram este mesmo par. Três leituras próprias divergiriam
- * na primeira vez que alguém mexesse em uma delas — que é exatamente a história
- * que o `OnboardingSituacaoService` já conta neste módulo.
+ * O portal do cliente e o detalhe de `/onboarding/{id}` mostram este mesmo par.
+ * Duas leituras próprias divergiriam na primeira vez que alguém mexesse em uma
+ * delas — que é exatamente a história que o `OnboardingSituacaoService` já
+ * conta neste módulo.
  */
 class OnboardingAcessosService
 {
-    public const CHAVE_APP_ECF = 'onboarding_app_ecf_link';
-
     /**
-     * O padrão é UM só: o link do App ECF. Não há padrão de e-mail — ver o
-     * docblock da classe.
-     */
-    public function padroes(): array
-    {
-        return ['app_ecf_link' => Configuracao::get(self::CHAVE_APP_ECF) ?: null];
-    }
-
-    public function salvarPadroes(?string $appEcfLink): void
-    {
-        Configuracao::set(self::CHAVE_APP_ECF, $this->limpar($appEcfLink));
-    }
-
-    /**
-     * O que o CLIENTE desta empresa vê, já resolvido.
+     * O que o CLIENTE desta empresa vê. `null` em qualquer um dos dois
+     * significa "a ECF ainda não configurou", nunca "usa outro valor".
      *
-     * `origem` viaja junto porque a tela interna precisa distinguir "esta
-     * empresa tem link próprio" de "está usando o padrão" — sem isso, quem
-     * abre o detalhe não sabe se apagar o campo muda alguma coisa.
-     *
-     * @return array{
-     *   app_ecf_link: ?string, email_colaborador: ?string,
-     *   origem: array{app_ecf_link: string, email_colaborador: string}
-     * }
+     * @return array{app_ecf_link: ?string, email_colaborador: ?string}
      */
     public function paraEmpresa(Company $company): array
     {
-        $padroes = $this->padroes();
-
-        // O e-mail NÃO tem fallback: ou a empresa tem o dela, ou não há. É a
-        // diferença de escopo entre os dois campos, e ela vive aqui.
-        $email = $this->limpar($company->email_colaborador);
-
         return [
-            'app_ecf_link'      => $this->limpar($company->app_ecf_link) ?? $padroes['app_ecf_link'],
-            'email_colaborador' => $email,
-            'origem'            => [
-                'app_ecf_link'      => $this->origem($company->app_ecf_link, $padroes['app_ecf_link']),
-                'email_colaborador' => $email !== null ? 'empresa' : 'ausente',
-            ],
+            'app_ecf_link'      => $this->limpar($company->app_ecf_link),
+            'email_colaborador' => $this->limpar($company->email_colaborador),
         ];
     }
 
     public function salvarDaEmpresa(Company $company, ?string $appEcfLink, ?string $emailColaborador): void
     {
-        // Campo apagado volta a `null` — ou seja, volta a seguir o padrão. É o
-        // caminho de VOLTA que faltaria se string vazia fosse gravada como tal:
-        // "" não é null e faria a empresa exibir um link em branco para sempre.
+        // Campo apagado grava `null`, nunca string vazia: `""` não é null e
+        // faria o portal renderizar um link em branco em vez do aviso de "ainda
+        // não configurado" — o cliente veria um botão que não leva a lugar
+        // nenhum.
         $company->forceFill([
             'app_ecf_link'      => $this->limpar($appEcfLink),
             'email_colaborador' => $this->limpar($emailColaborador),
         ])->save();
     }
 
-    private function origem(?string $daEmpresa, ?string $global): string
-    {
-        if ($this->limpar($daEmpresa) !== null) {
-            return 'empresa';
-        }
-
-        return $global !== null ? 'padrao' : 'ausente';
-    }
-
-    /** String vazia e espaço em branco viram `null` — só assim "apagar" volta ao padrão. */
+    /** String vazia e espaço em branco viram `null`. */
     private function limpar(?string $valor): ?string
     {
         $valor = trim((string) $valor);

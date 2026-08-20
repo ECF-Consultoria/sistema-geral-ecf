@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import AvatarUsuario from '@/Components/AvatarUsuario';
-import BlocoAcessos from '@/Components/Onboarding/Painel/BlocoAcessos';
 import SituacaoChip from '@/Components/Onboarding/Painel/SituacaoChip';
 import ProgressoBarra from '@/Components/Onboarding/Painel/ProgressoBarra';
 import ProximaAcao from '@/Components/Onboarding/Painel/ProximaAcao';
@@ -332,8 +331,6 @@ export default function AbaOnboarding({
     estrategistas,
     analistas,
     podeCadastrarEmpresa = false,
-    acessosPadroes = null,
-    podeEditarPadroes = false,
 }) {
     const [busca, setBusca] = useState('');
     const [bucket, setBucket] = useState('total');
@@ -649,18 +646,6 @@ export default function AbaOnboarding({
                         {JANELAS.map((j) => <option key={j.key} value={j.key}>{j.label}</option>)}
                     </select>
                 </div>
-            )}
-
-            {/* Padrão que vale para TODAS as empresas. Admin-only: mexer aqui
-                muda o que todo cliente vê no portal de uma vez. */}
-            {podeEditarPadroes && acessosPadroes && (
-                <BlocoAcessos
-                    escopo="padrao"
-                    rota={route('onboarding.acessos.padroes')}
-                    valores={acessosPadroes}
-                    titulo="Link padrão do App ECF"
-                    ajuda="Vale para toda empresa que não tenha um link próprio. O e-mail do colaborador é de cada empresa e se configura no detalhe dela."
-                />
             )}
 
             {/* ─── Tabela ────────────────────────────────────────────────── */}
