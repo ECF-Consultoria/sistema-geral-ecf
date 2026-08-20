@@ -4,6 +4,7 @@ namespace App\Services\Hubspot;
 
 use App\Models\HubspotLineItemMapping;
 use App\Models\Servico;
+use Carbon\Carbon;
 
 /**
  * HubspotDealHandoffService — extrai do `HubspotWebhookController` a
@@ -60,6 +61,18 @@ class HubspotDealHandoffService
         $warnings    = [];
         $confidences = [];
 
+        // ── Quick 260820-jc8 (Tarefa 2) — data da 1ª parcela + dia de vencimento ──
+        // `data_do_1_pagamento` é property do DEAL e vale pra TODOS os serviços
+        // do negócio (não existe uma data por line item) — resolvida UMA vez
+        // aqui e aplicada a CADA contrato via montarContrato(). Vazia => os
+        // dois campos ficam null e caem nas pendências que a tela do
+        // Administrativo já mostra (ContratoDadosMinimosService) — sem default
+        // inventado.
+        $dataPrimeiraParcela = $this->parseDataHubspot(
+            $dprops[$propsDeal['data_do_1_pagamento'] ?? 'data_do_1_pagamento'] ?? null
+        );
+        $diaVencimento = $dataPrimeiraParcela?->day;
+
         if (!empty($lineItems)) {
             foreach ($lineItems as $item) {
                 $nome = (string) ($item['name'] ?? '');
@@ -83,7 +96,7 @@ class HubspotDealHandoffService
                 $result  = $this->resolver->resolve($servico, $item, $dprops);
 
                 $confidences[] = $result['confidence'];
-                $contracts[]   = $this->montarContrato($servico, $item, $result);
+                $contracts[]   = $this->montarContrato($servico, $item, $result, $dataPrimeiraParcela, $diaVencimento);
             }
         } else {
             // ── Fluxo legado (sem line items) — deal.amount + Servico::where nome ──
@@ -95,7 +108,7 @@ class HubspotDealHandoffService
             if ($servico) {
                 $result = $this->resolver->resolve($servico, [], $dprops);
                 $confidences[] = $result['confidence'];
-                $contracts[]   = $this->montarContrato($servico, [], $result);
+                $contracts[]   = $this->montarContrato($servico, [], $result, $dataPrimeiraParcela, $diaVencimento);
             } elseif ($servicoNome) {
                 // Nome presente no deal mas nao bate com o catalogo — warning
                 // (gravacao em notes fica a cargo do controller, como hoje).
@@ -139,6 +152,21 @@ class HubspotDealHandoffService
             ];
         }
 
+        // ── Quick 260820-jc8 (Tarefa 1) — dados de CONTRATO que vêm do DEAL
+        // (razão social/CNPJ/endereço), distintos de company_data (que vem da
+        // HubSpot COMPANY). Sempre calculado — o deal sempre existe aqui.
+        $dealContractData = [
+            'razao_social' => $dprops[$propsDeal['razao_social'] ?? 'razao_social'] ?? null,
+            'cnpj'         => $dprops[$propsDeal['cnpj_da_empresa'] ?? 'cnpj_da_empresa'] ?? null,
+            'endereco'     => $this->comporEndereco([
+                'logradouro' => $dprops[$propsDeal['logradouro'] ?? 'logradouro'] ?? null,
+                'bairro'     => $dprops[$propsDeal['bairro'] ?? 'bairro'] ?? null,
+                'cidade'     => $dprops[$propsDeal['cidade'] ?? 'cidade'] ?? null,
+                'estado'     => $dprops[$propsDeal['estado'] ?? 'estado'] ?? null,
+                'cep'        => $dprops[$propsDeal['cep'] ?? 'cep'] ?? null,
+            ]),
+        ];
+
         return new HubspotHandoffData(
             deal_data: $dprops,
             line_items: $lineItems,
@@ -147,16 +175,101 @@ class HubspotDealHandoffService
             confidence: $confidence,
             company_data: $companyData,
             contact_data: $contactData,
+            deal_contract_data: $dealContractData,
         );
+    }
+
+    /**
+     * Quick 260820-jc8 (Tarefa 1) — compõe `companies.endereco` (coluna
+     * ÚNICA, decisão AskUserQuestion 2026-08-20) a partir das 5 partes do
+     * deal HubSpot, pulando partes vazias sem deixar vírgula solta nem
+     * separador duplo. Endereço parcial (ex.: só cidade+estado) é caso
+     * NORMAL — o Comercial pode não ter preenchido tudo ainda.
+     *
+     * Formato: "Logradouro, Bairro, Cidade - Estado, CEP 00000-000" — cada
+     * bloco só entra se tiver conteúdo; "Cidade - Estado" vira só "Cidade"
+     * ou só "Estado" quando falta um dos dois (nunca um hífen solto).
+     *
+     * @param  array{logradouro?: ?string, bairro?: ?string, cidade?: ?string, estado?: ?string, cep?: ?string}  $partes
+     */
+    private function comporEndereco(array $partes): ?string
+    {
+        $logradouro = trim((string) ($partes['logradouro'] ?? ''));
+        $bairro     = trim((string) ($partes['bairro'] ?? ''));
+        $cidade     = trim((string) ($partes['cidade'] ?? ''));
+        $estado     = trim((string) ($partes['estado'] ?? ''));
+        $cep        = trim((string) ($partes['cep'] ?? ''));
+
+        $blocos = array_values(array_filter([$logradouro, $bairro], static fn (string $v) => $v !== ''));
+
+        $cidadeEstado = null;
+        if ($cidade !== '' && $estado !== '') {
+            $cidadeEstado = "{$cidade} - {$estado}";
+        } elseif ($cidade !== '') {
+            $cidadeEstado = $cidade;
+        } elseif ($estado !== '') {
+            $cidadeEstado = $estado;
+        }
+        if ($cidadeEstado !== null) {
+            $blocos[] = $cidadeEstado;
+        }
+
+        if ($cep !== '') {
+            $blocos[] = "CEP {$cep}";
+        }
+
+        return !empty($blocos) ? implode(', ', $blocos) : null;
+    }
+
+    /**
+     * Quick 260820-jc8 (Tarefa 2) — converte a property `date` do deal
+     * `data_do_1_pagamento` para Carbon.
+     *
+     * ⚠️ HubSpot manda properties tipo "date" como epoch em MILISSEGUNDOS
+     * (string), representando MEIA-NOITE UTC do dia — NUNCA 'Y-m-d'. Forçar
+     * timezone UTC no parse é obrigatório: o app roda em America/Sao_Paulo
+     * (UTC-3) e meia-noite UTC vira 21h do dia ANTERIOR nesse fuso — sem
+     * isso o dia lido vem ERRADO, e dia errado aqui vira dia de vencimento
+     * errado num contrato assinado (caro de desfazer). Formato conferido
+     * contra a doc da HubSpot CRM API v3 em 2026-08-20 (prova definitiva do
+     * payload real só quando um deal for para ganho de fato).
+     */
+    private function parseDataHubspot(mixed $valor): ?Carbon
+    {
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+
+        if (is_numeric($valor)) {
+            return Carbon::createFromTimestampMs((int) $valor, 'UTC');
+        }
+
+        // Fallback defensivo — caso o HubSpot mude o formato pra 'Y-m-d' no
+        // futuro (property fica tipo "date" mas o valor já vem como string
+        // de data em vez de epoch ms).
+        try {
+            return Carbon::parse((string) $valor, 'UTC');
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
      * Monta o array pronto para virar um ContratoServico a partir do
      * resultado de HubspotValueResolver::resolve() + dados brutos do line item
      * (ou [] no fluxo legado — hubspot_line_item_id/product_id/currency ficam null).
+     *
+     * Quick 260820-jc8 (Tarefa 2) — $dataPrimeiraParcela/$diaVencimento
+     * chegam JÁ resolvidos do build() (property do DEAL, uma vez só) e são
+     * aplicados IDÊNTICOS a cada contrato deste deal.
      */
-    private function montarContrato(Servico $servico, array $lineItem, array $result): array
-    {
+    private function montarContrato(
+        Servico $servico,
+        array $lineItem,
+        array $result,
+        ?Carbon $dataPrimeiraParcela = null,
+        ?int $diaVencimento = null,
+    ): array {
         return [
             'servico_id'                       => $servico->id,
             'servico_nome'                      => $servico->nome,
@@ -175,6 +288,10 @@ class HubspotDealHandoffService
                 'line_item'       => $lineItem,
                 'resolver_result' => $result,
             ],
+            // Quick 260820-jc8 (Tarefa 2) — property do DEAL, mesma data em
+            // TODOS os contratos deste deal (não existe uma data por serviço).
+            'data_primeira_parcela'             => $dataPrimeiraParcela?->toDateString(),
+            'dia_vencimento'                    => $diaVencimento,
         ];
     }
 
