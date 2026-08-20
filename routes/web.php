@@ -156,14 +156,6 @@ Route::get('/onboarding-cliente/{token}/conectar/ml', [OnboardingPublicoControll
 Route::post('/onboarding-cliente/{token}/pessoas', [OnboardingPublicoController::class, 'salvarPessoa'])
     ->name('onboarding.publico.pessoas');
 
-// Apresentacao guiada (publicidade / ADMAN): o cliente le e confirma "entendi"
-// (v15). Mesmo prefixo isento de CSRF e mesma regra de posse do token das
-// demais rotas do portal. A trava de escopo esta no controller: so fecha passo
-// `dono=cliente` + `auto_fonte=confirmacao_respondida` de onboarding EM
-// ANDAMENTO desta empresa — nunca um passo nosso.
-Route::post('/onboarding-cliente/{token}/confirmacao', [OnboardingPublicoController::class, 'responderConfirmacao'])
-    ->name('onboarding.publico.confirmacao');
-
 // NÃO existe rota para o cliente pedir reunião. Quem define data e hora somos
 // nós, no painel interno, e o portal só mostra a data para o cliente se
 // organizar — decisão de negócio de 19/08. A rota antiga
