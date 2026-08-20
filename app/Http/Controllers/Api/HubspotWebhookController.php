@@ -524,18 +524,37 @@ class HubspotWebhookController extends Controller
 
         return DB::transaction(function () use ($deal, $dprops, $cprops, $propsDeal, $propsCompany, $lineItems, $evento, $contatoPrincipal, $contatos, $companyId, $hubCompany, $notes) {
             // ── Phase 35 D-04 / Fase 113 — fallback contato p/ email/telefone ──
-            // Prioridade: Company > Contato PRINCIPAL (Fase 113 plano 01 escolhe
+            // Prioridade do E-MAIL desde 2026-08-20: property `email_envio_contrato`
+            // do DEAL > Company > Contato PRINCIPAL (ver bloco logo abaixo). A do
+            // TELEFONE não mudou: Company > Contato PRINCIPAL (Fase 113 plano 01 escolhe
             // entre TODOS os contatos do deal, nao so o primeiro). Strings vazias
             // sao tratadas como ausencia (a Company HubSpot pode mandar "" em vez
             // de omitir). Fase 113 plano 02 (HUB-CONTATO-02) — adiciona coalesce
             // p/ mobilephone quando o contato principal nao tem phone.
+            // ── 2026-08-20 — `email_para_envio_do_contrato` entra NA FRENTE ────
+            // Property do DEAL, criada pelo Comercial justamente porque o e-mail
+            // da company/contato não servia (genérico, `contato@`, endereço
+            // antigo). É o endereço para onde o contrato É DE FATO ENVIADO, então
+            // ganha dos dois: errar aqui manda contrato assinado para a caixa
+            // errada de alguém.
+            //
+            // ⚠️ Isto decide apenas o PRIMEIRO preenchimento. A regra "só preenche
+            // se vazio" (ver `$candidatos` mais abaixo) continua valendo, então
+            // empresa que JÁ tem `email_cliente` não é sobrescrita por esta
+            // precedência — mudar o campo no HubSpot depois não reescreve o que
+            // já está no banco.
+            $emailContrato = $dprops[$propsDeal['email_envio_contrato'] ?? 'email_para_envio_do_contrato'] ?? null;
+
             $companyEmail  = $cprops[$propsCompany['email']] ?? null;
             $companyPhone  = $cprops[$propsCompany['phone']] ?? null;
             $contactEmail  = $contatoPrincipal['email'] ?? null;
             $contactPhone  = $contatoPrincipal['phone'] ?? null;
             $contactMobile = $contatoPrincipal['mobilephone'] ?? null;
 
-            $emailFinal = ($companyEmail !== null && $companyEmail !== '') ? $companyEmail : $contactEmail;
+            // Precedência: e-mail de envio do contrato (deal) > Company > Contato.
+            $emailFinal = ($emailContrato !== null && $emailContrato !== '')
+                ? $emailContrato
+                : (($companyEmail !== null && $companyEmail !== '') ? $companyEmail : $contactEmail);
             $foneFinal  = ($companyPhone !== null && $companyPhone !== '')
                 ? $companyPhone
                 : (($contactPhone !== null && $contactPhone !== '') ? $contactPhone : $contactMobile);

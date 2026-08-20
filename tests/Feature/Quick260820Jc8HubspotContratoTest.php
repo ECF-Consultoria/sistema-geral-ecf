@@ -56,6 +56,7 @@ class Quick260820Jc8HubspotContratoTest extends TestCase
                 'estado'              => 'estado',
                 'cep'                 => 'cep',
                 'data_do_1_pagamento' => 'data_do_1_pagamento',
+                'email_envio_contrato' => 'email_para_envio_do_contrato',
             ],
             'services.hubspot.props.company' => [
                 'name'   => 'name',
@@ -239,6 +240,104 @@ class Quick260820Jc8HubspotContratoTest extends TestCase
 
         $company = Company::first();
         $this->assertSame('99888777000166', $company->cnpj);
+    }
+
+    /**
+     * `email_para_envio_do_contrato` (property do DEAL, 2026-08-20) VENCE o
+     * e-mail da company e o do contato.
+     *
+     * Não é preferência estética: é o endereço para onde o contrato é de fato
+     * enviado ao cliente. O Comercial digita ali justamente quando os outros
+     * dois não servem (genérico, `contato@`, endereço antigo) — e errar aqui
+     * manda contrato assinado para a caixa de outra pessoa.
+     *
+     * A company do mock traz um e-mail VÁLIDO de propósito: se a precedência
+     * se inverter, o teste pega, porque o resultado passaria a ser o dela.
+     */
+    public function test_email_de_envio_do_contrato_vence_o_email_da_company(): void
+    {
+        $gestao = $this->criarServico('Gestão');
+        $this->criarMapping('MAP', $gestao);
+
+        $this->mockaHubSpot(
+            ['email_para_envio_do_contrato' => 'financeiro@cliente.com.br'],
+            companyProps: [
+                'name'   => 'Cliente Com Email Generico',
+                'cnpj'   => '',
+                'email'  => 'contato@cliente.com.br',
+                'phone'  => '',
+                'domain' => '',
+            ],
+        );
+
+        $r = $this->disparaWebhook([$this->eventoPadrao()]);
+        $r->assertStatus(200);
+
+        $this->assertSame('financeiro@cliente.com.br', Company::first()->email_cliente);
+    }
+
+    /**
+     * Property vazia ('') é tratada como ausência — mesma disciplina que o
+     * e-mail da company já seguia (a API pode mandar "" em vez de omitir).
+     * O comportamento anterior à mudança fica preservado.
+     */
+    public function test_email_de_envio_vazio_cai_para_o_email_da_company(): void
+    {
+        $gestao = $this->criarServico('Gestão');
+        $this->criarMapping('MAP', $gestao);
+
+        $this->mockaHubSpot(
+            ['email_para_envio_do_contrato' => ''],
+            companyProps: [
+                'name'   => 'Cliente Fallback Company',
+                'cnpj'   => '',
+                'email'  => 'contato@cliente.com.br',
+                'phone'  => '',
+                'domain' => '',
+            ],
+        );
+
+        $r = $this->disparaWebhook([$this->eventoPadrao()]);
+        $r->assertStatus(200);
+
+        $this->assertSame('contato@cliente.com.br', Company::first()->email_cliente);
+    }
+
+    /**
+     * A precedência decide apenas o PRIMEIRO preenchimento. A regra "só
+     * preenche se vazio" continua acima dela: empresa que já tem
+     * `email_cliente` não é sobrescrita, por mais que a property nova venha
+     * preenchida. Trocar o campo no HubSpot depois NÃO reescreve o banco.
+     */
+    public function test_email_ja_preenchido_nao_e_sobrescrito_pela_property_nova(): void
+    {
+        $gestao = $this->criarServico('Gestão');
+        $this->criarMapping('MAP', $gestao);
+
+        Company::factory()->create([
+            'hubspot_company_id' => '88001',
+            'email_cliente'      => 'digitado.a.mao@cliente.com.br',
+        ]);
+
+        $this->mockaHubSpot(
+            ['email_para_envio_do_contrato' => 'financeiro@cliente.com.br'],
+            companyProps: [
+                'name'   => 'Cliente Já Existente',
+                'cnpj'   => '',
+                'email'  => '',
+                'phone'  => '',
+                'domain' => '',
+            ],
+        );
+
+        $r = $this->disparaWebhook([$this->eventoPadrao()]);
+        $r->assertStatus(200);
+
+        $this->assertSame(
+            'digitado.a.mao@cliente.com.br',
+            Company::first()->email_cliente,
+            'a regra "só preenche se vazio" está acima da precedência'
+        );
     }
 
     public function test_dado_ja_preenchido_a_mao_nao_e_sobrescrito_pelo_replay(): void

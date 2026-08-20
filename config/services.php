@@ -167,10 +167,18 @@ return [
                 'cidade'             => env('HUBSPOT_PROP_DEAL_CIDADE', 'cidade'),
                 'estado'             => env('HUBSPOT_PROP_DEAL_ESTADO', 'estado'),
                 'cep'                => env('HUBSPOT_PROP_DEAL_CEP', 'cep'),
-                // Property tipo "date" no HubSpot — vem como epoch em
-                // MILISSEGUNDOS (string), não 'Y-m-d'. Conversão em
-                // HubspotDealHandoffService::parseDataHubspot().
+                // Property tipo "date" no HubSpot. MEDIDO no deal da Maderatto
+                // (`64133858455`) em 2026-08-20: chega como string **'Y-m-d'**
+                // (ex.: '2026-08-24'), NÃO como epoch em milissegundos — este
+                // comentário afirmava o contrário e foi corrigido pela medição.
+                // Conversão em HubspotDealHandoffService::parseDataHubspot().
                 'data_do_1_pagamento' => env('HUBSPOT_PROP_DEAL_DATA_1_PAGAMENTO', 'data_do_1_pagamento'),
+                // Medida na conta real em 2026-08-20. É o endereço para onde o
+                // contrato de fato é enviado ao cliente — o Comercial digita
+                // aqui justamente quando o e-mail da company/contato não serve.
+                // Por isso VENCE os dois na cadeia do `email_cliente`
+                // (Api/HubspotWebhookController, resolução de `$emailFinal`).
+                'email_envio_contrato' => env('HUBSPOT_PROP_DEAL_EMAIL_ENVIO_CONTRATO', 'email_para_envio_do_contrato'),
             ],
             'company' => [
                 'name'          => env('HUBSPOT_PROP_COMPANY_NAME', 'name'),
