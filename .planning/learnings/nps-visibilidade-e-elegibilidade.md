@@ -193,3 +193,88 @@ rodando de novo):
   SQLite, já descrita no próprio comentário do teste.
 
 Não são regressão de quem chegar depois. Medir o baseline ANTES de caçar.
+
+---
+
+## 5. O link de NPS de GRUPO não existia para a tela enquanto ninguém respondia
+
+Reportado em 2026-08-20, grupo `MaxiGold` (5 empresas): *"quando vou gerar
+fala que já tem um link, porém essa empresa está em Faltantes, não em
+Pendentes"*.
+
+As duas telas estavam certas isoladamente — e é aí que mora a armadilha. A
+decisão arquitetural da Fase 119.1 é que **os surveys-espelho (`nps_surveys`)
+só nascem quando o cliente RESPONDE** o link de grupo
+(`NpsGrupoReplicacaoService::replicar()`, que recalcula a cobertura no submit e
+NÃO deve ser mexido — é o que faz 1 resposta de grupo ser indistinguível de N
+respostas individuais para todo consumidor de agregação).
+
+Consequência que ninguém tinha percebido: entre GERAR e RESPONDER, o link vive
+só em `nps_group_surveys` — e **as duas réguas da tela de NPS leem apenas
+`nps_surveys`**:
+
+| régua | o que fazia | resultado |
+|---|---|---|
+| Faltantes (`NpsController::index`) | "empresa ativa sem `nps_survey` no mês" | listava as 5 empresas |
+| Pendentes/Todos | `COUNT` sobre `$baseQuery` (`NpsSurvey`) | não mostrava nada |
+| `NpsGrupoController::generate()` | guard `(grupo, modelo, mês)` em `nps_group_surveys` | recusava gerar de novo |
+
+O link certo, portanto, **não aparecia em lugar nenhum da tela** — e o botão
+que a própria tela oferecia era o único caminho, sempre recusado.
+
+### O agravante: o "devolve o link que já existe" nunca chegou ao navegador
+
+O Plan 119.1-07 já previa isso: o guard devolve `nps_link_existente` no flash
+e `Pages/Nps/Index.jsx` tem o `useEffect` que abre o modal com ele. Só que
+`HandleInertiaRequests::share()` compartilhava apenas `success`, `error`,
+`nps_link` e `workspace_url` — **a chave nunca era exposta**. O recurso existia
+inteiro dos dois lados e morria no meio. Vale também para o individual
+(`NpsController::generate()`, mesma chave).
+
+Lição maior que o bug: **flash key nova exige linha nova em
+`HandleInertiaRequests`**. Não há erro, não há warning — a prop simplesmente
+chega `undefined` e o efeito nunca dispara.
+
+### O que passou a valer (2026-08-20)
+
+`NpsController::linksDeGrupoDoMes()` é a ponte: lê `nps_group_surveys` do mês
+com `status != completed`, resolve a cobertura pela MESMA fonte do envio
+(`NpsGrupoCoberturaService::calcular()` — nunca uma segunda régua de "quem está
+no link") e devolve, de uma passada:
+
+- as empresas cobertas, que **saem de Faltantes** (mesma régua do individual,
+  que sai assim que o survey existe — inclusive expirado);
+- **1 linha** na listagem, `tipo => 'grupo'`, que entra em Pendentes com o
+  endereço para copiar e a lista de empresas cobertas no modal de detalhe;
+- a contagem por status, porque **os chips somam EMPRESAS, nunca LINHAS**
+  (mesma decisão DQ-03 já praticada no colapso de Faltantes): as N que saem de
+  Faltantes entram em Pendentes e nenhum total muda de tamanho.
+
+Empresa do grupo que ficou de FORA da cobertura (responsável diferente, sem
+serviço contratado, órfã) **continua faltante** — é o comportamento correto: o
+link não vale para ela.
+
+⚠ **A distinção que não pode ser perdida ao mexer nesse método: PERMISSÃO ≠
+RECORTE.** A lista de empresas cobertas (que tira de Faltantes) é montada
+ANTES dos filtros de empresa/pessoa/modelo e DEPOIS do escopo de acesso.
+Inverter isso recria o bug em escala menor: filtrar por outra empresa faria a
+coberta reaparecer em Faltantes, e — pior — quem não enxerga o grupo perderia
+a empresa da lista de trabalho sem nada no lugar.
+
+### O que NÃO foi mexido, de propósito
+
+Empresa coberta por link de grupo pendente **continua contando nota 1** no
+bônus: `NpsSemLinkService`/`NpsPorEmpresaService` decidem por
+`surveyExistenteNaCompetencia()`, que lê `nps_surveys`. Na prática o número
+final não muda (se ninguém responder, a empresa vale 1 de qualquer jeito, por
+imputação), mas as duas réguas divergem no ROTEIRO. Mexer nisso é tocar em
+nota de competência possivelmente já paga — mesma trava do §2 acima. O que
+mudou aqui foi só VISIBILIDADE.
+
+Efeito colateral aceito e decidido pelo usuário: o aviso "X empresas estão
+contando nota 1" da aba Faltantes deixa de contar as empresas que passaram
+para Pendentes por link de grupo.
+
+Travado por `tests/Feature/NpsLinkDeGrupoNaTelaTest.php` (5 testes; 3 deles
+comprovadamente vermelhos sem o fix — verificado por mutação, não por
+suposição).

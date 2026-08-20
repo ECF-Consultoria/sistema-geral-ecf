@@ -53,6 +53,16 @@ class HandleInertiaRequests extends Middleware
                 'success'       => $request->session()->get('success'),
                 'error'         => $request->session()->get('error'),
                 'nps_link'      => $request->session()->get('nps_link'),
+                // 2026-08-20 — o guard de duplicidade (individual em
+                // `NpsController::generate()`, grupo em
+                // `NpsGrupoController::generate()`) devolve o link que JÁ
+                // existe nesta chave, e a tela já sabe abrir o modal com ele
+                // (`Pages/Nps/Index.jsx`, efeito de `flash.nps_link_existente`).
+                // A chave nunca foi compartilhada aqui: o operador via só o
+                // aviso "este grupo já tem um link deste modelo neste mês" e
+                // NENHUM link — sem como copiar o que já existia nem como
+                // gerar outro (o guard barra). Bug reportado no grupo MaxiGold.
+                'nps_link_existente' => $request->session()->get('nps_link_existente'),
                 'workspace_url' => $request->session()->get('workspace_url'),
                 // Fase 131 Plano 131-05 (CLICK-07) — canal neutro/âmbar para
                 // resposta ESPERADA que não é sucesso nem erro (o 429 do
