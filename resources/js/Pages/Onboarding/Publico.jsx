@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import PessoasDoCliente from '@/Components/Onboarding/PessoasDoCliente';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, CalendarDays, Check, CheckCircle2, Lock, RefreshCw, Zap } from 'lucide-react';
+import {
+    AlertTriangle, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
+    Home, ListChecks, Lock, RefreshCw, Zap,
+} from 'lucide-react';
 import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
 import {
     PassoAPassoBtn,
@@ -9,6 +12,8 @@ import {
     TutorialBtn,
     VideoModal,
 } from '@/Components/Onboarding/AjudaDoPasso';
+import ProximaAcaoCliente from '@/Components/Onboarding/Portal/ProximaAcaoCliente';
+import ResponsaveisCliente from '@/Components/Onboarding/Portal/ResponsaveisCliente';
 import { cn } from '@/lib/utils';
 
 // ─── Portal público do cliente por EMPRESA (Fase 135 Plano 11, D-06) ────────
@@ -37,11 +42,16 @@ import { cn } from '@/lib/utils';
 // o passo SUMIR da tela do cliente sem erro nenhum: o filtro abaixo é
 // `(p.etapa ?? 'outros') === etapa`, e o que não casa com bloco nenhum não é
 // renderizado. Só entram etapas que tenham passo `dono=cliente`.
-const ETAPAS_ORDEM = ['acessos', 'responsaveis', 'mapeamento', 'agendamento', 'administrativo', 'outros'];
+//
+// A ordem mudou em 19/08: a REUNIÃO abre a tela (bloco próprio, renderizado
+// antes destes), e os contatos vêm logo em seguida. O motivo é o mesmo dos
+// dois lados do sistema — quem conduz o processo somos nós: marcamos a data,
+// dizemos quem precisa estar, e só então pedimos os acessos.
+const ETAPAS_ORDEM = ['responsaveis', 'acessos', 'mapeamento', 'agendamento', 'administrativo', 'outros'];
 
 const ETAPA_LABELS = {
-    acessos:        { titulo: 'Configuração de acessos', ajuda: 'Comece por aqui — é o que nos permite buscar seus dados automaticamente.' },
-    responsaveis:   { titulo: 'Quem é quem',              ajuda: 'Quem devemos acionar e quem participa das reuniões.' },
+    responsaveis:   { titulo: 'Seus contatos',            ajuda: 'Quem devemos acionar no dia a dia e quem participa das reuniões.' },
+    acessos:        { titulo: 'Configuração de acessos',  ajuda: 'É o que nos permite buscar seus dados automaticamente.' },
     mapeamento:     { titulo: 'Mapeamento da conta',      ajuda: 'O que precisamos entender sobre a sua operação hoje.' },
     agendamento:    { titulo: 'Reunião de onboarding',    ajuda: null },
     administrativo: { titulo: 'Administrativo',           ajuda: null },
@@ -98,7 +108,10 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
     }
 
     return (
-        <div className={cn('rounded-2xl border p-4', estado.classe)}>
+        // `id` por CHAVE (nunca por onboarding_passo — D-10): e o alvo do
+        // "Preencher agora" do bloco de proxima acao la em cima. Sem ele o CTA
+        // levaria o cliente para o topo da lista, que e onde ele ja estava.
+        <div id={`passo-${passo.chave}`} className={cn('rounded-2xl border p-4 scroll-mt-24', estado.classe)}>
             <div className="flex items-start gap-3">
                 {/*
                   * Selo do passo, no padrão do portal de Polos: o NÚMERO
@@ -273,17 +286,33 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
                                 quem participa das reuniões. É a única ação em que
                                 ele DIGITA algo no portal; as outras são marcar,
                                 autorizar ou acompanhar. */}
-                            {passo.acao === 'pessoas' && (
-                                <PessoasDoCliente
-                                    token={token}
-                                    papel={passo.chave === 'ponto_contato_definido'
-                                        ? 'ponto_de_contato'
-                                        : 'participante_reuniao'}
-                                    pessoas={passo.chave === 'ponto_contato_definido'
-                                        ? (pessoas.ponto_de_contato ?? [])
-                                        : (pessoas.participante_reuniao ?? [])}
-                                />
-                            )}
+                            {passo.acao === 'pessoas' && (() => {
+                                const papel = passo.chave === 'ponto_contato_definido'
+                                    ? 'ponto_de_contato'
+                                    : 'participante_reuniao';
+
+                                const doPapel   = pessoas[papel] ?? [];
+                                const outroPapel = papel === 'ponto_de_contato'
+                                    ? 'participante_reuniao'
+                                    : 'ponto_de_contato';
+
+                                // Quem o cliente já cadastrou no OUTRO papel e
+                                // ainda não está neste. É o que faz "eu mesmo"
+                                // aparecer nos participantes sem redigitar
+                                // nome, e-mail e telefone.
+                                const jaAqui = new Set(doPapel.map((p) => `${p.nome}|${p.email ?? ''}`));
+                                const sugestoes = (pessoas[outroPapel] ?? [])
+                                    .filter((p) => !jaAqui.has(`${p.nome}|${p.email ?? ''}`));
+
+                                return (
+                                    <PessoasDoCliente
+                                        token={token}
+                                        papel={papel}
+                                        pessoas={doPapel}
+                                        sugestoes={sugestoes}
+                                    />
+                                );
+                            })()}
 
                             {passo.acao === 'nenhuma' && (
                                 <span className="text-white/40 text-[12px]">
@@ -300,8 +329,14 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
 
 // ─── Reunião de onboarding ────────────────────────────────────────────────
 // Não é um passo: `agendar_reuniao_onboarding` é `dono=interno` e nunca
-// apareceria na lista do cliente. Este bloco existe para ele PEDIR a reunião
-// e para VER a data quando o responsável marcar.
+// apareceria na lista do cliente. Este bloco existe para ele VER a data que
+// NÓS marcamos.
+//
+// O cliente NÃO pede reunião. Existia aqui um botão "Solicitar reunião" e um
+// estado "Recebemos seu pedido" — o negócio derrubou os dois em 19/08: quem
+// define a data somos nós, e a partir dela cobramos a presença do cliente.
+// Pedir invertia o sentido do processo, e deixava a empresa parada esperando
+// um clique que muitas vezes nunca vinha.
 
 function formatarQuando(iso) {
     if (!iso) return null;
@@ -312,18 +347,7 @@ function formatarQuando(iso) {
     });
 }
 
-function ReuniaoCard({ reuniao, token, varios }) {
-    const [enviando, setEnviando] = useState(false);
-
-    function solicitar() {
-        if (enviando) return;
-        setEnviando(true);
-        router.post(route('onboarding.publico.reuniao', token), { onboarding_id: reuniao.onboarding_id }, {
-            preserveScroll: true,
-            onFinish: () => setEnviando(false),
-        });
-    }
-
+function ReuniaoCard({ reuniao, varios }) {
     if (reuniao.realizada) {
         return (
             <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
@@ -331,7 +355,7 @@ function ReuniaoCard({ reuniao, token, varios }) {
                     <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-emerald-300" />
                     <div>
                         <h3 className="text-[14px] font-semibold text-emerald-200">
-                            Reunião realizada{varios ? ` · ${reuniao.servico}` : ''}
+                            Realizada{varios ? ` · ${reuniao.servico}` : ''}
                         </h3>
                         <p className="text-emerald-300/70 text-[11px] mt-1">Obrigado pelo seu tempo.</p>
                     </div>
@@ -347,38 +371,31 @@ function ReuniaoCard({ reuniao, token, varios }) {
             <div className="flex items-start gap-3">
                 <CalendarDays size={16} className="shrink-0 mt-0.5 text-white/40" />
                 <div className="min-w-0 flex-1">
-                    <h3 className="text-[14px] font-semibold text-white">
-                        Reunião de onboarding{varios ? ` · ${reuniao.servico}` : ''}
-                    </h3>
+                    {/* Sem título repetido: o `<h2>` da seção logo acima já
+                        diz "Reunião de onboarding", e o card o repetia — a
+                        primeira coisa que o negócio apontou ao ler a tela. Com
+                        mais de um serviço o card volta a ter cabeçalho, porque
+                        aí ele precisa dizer QUAL reunião é. */}
+                    {varios && (
+                        <h3 className="text-[14px] font-semibold text-white">{reuniao.servico}</h3>
+                    )}
 
-                    {reuniao.status === 'agendada' && quando && (
+                    {quando ? (
                         <>
                             <p className="text-ecf-yellow text-[13px] font-semibold mt-1.5">{quando}</p>
                             <p className="text-white/40 text-[12px] mt-1">
-                                Está na agenda. Se precisar remarcar, fale com a gente pelo grupo.
-                            </p>
-                        </>
-                    )}
-
-                    {reuniao.status === 'solicitada' && (
-                        <p className="text-white/50 text-[12px] mt-1.5">
-                            Recebemos seu pedido. Em breve confirmamos a data e ela aparece aqui.
-                        </p>
-                    )}
-
-                    {!reuniao.status && (
-                        <>
-                            <p className="text-white/50 text-[12px] mt-1.5">
                                 É a conversa em que apresentamos o diagnóstico da sua conta e os próximos passos.
+                                Se esse horário não funcionar para você, fale com a gente pelo grupo.
                             </p>
-                            <button
-                                onClick={solicitar}
-                                disabled={enviando}
-                                className="mt-2 px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 text-[12px] font-semibold transition-all disabled:opacity-60"
-                            >
-                                {enviando ? 'Enviando…' : 'Solicitar reunião'}
-                            </button>
                         </>
+                    ) : (
+                        // Sem data ainda. Nenhum botão: não há nada para o
+                        // cliente fazer aqui, e oferecer uma ação que não é
+                        // dele foi exatamente o que se removeu.
+                        <p className="text-white/50 text-[12px] mt-1.5">
+                            É a conversa em que apresentamos o diagnóstico da sua conta e os próximos passos.
+                            Estamos definindo a data — assim que ela estiver marcada, aparece aqui.
+                        </p>
                     )}
                 </div>
             </div>
@@ -454,10 +471,182 @@ function ProgressoHeader({ empresaNome, progresso }) {
 
 // ─── Página ───────────────────────────────────────────────────────────────
 
-export default function Publico({ token, empresa, passos = [], reunioes = [], mapeamentos = [], pessoas = {} }) {
+/**
+ * Barra lateral do portal.
+ *
+ * ### "Documentos" NÃO entra
+ * A referência visual traz um item de Documentos com guias para baixar. O
+ * projeto não tem biblioteca de documentos de onboarding — o material de apoio
+ * que existe é POR PASSO (`DefinicaoOnboarding::TUTORIAIS` e `PASSO_A_PASSO`),
+ * e já aparece dentro do card de cada item. Criar o item de menu agora seria
+ * uma prateleira vazia, ou pior, com links inventados. Quando existir acervo de
+ * verdade, ele entra aqui.
+ *
+ * ### Os links são âncoras, não rotas
+ * O portal é UMA página. Rota nova por seção obrigaria o cliente a recarregar
+ * para ver o que já está na tela.
+ */
+function PortalSidebar({ empresaNome, pendentes }) {
+    const item = 'flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] transition-colors';
+
+    return (
+        <aside className="lg:w-[248px] lg:shrink-0 lg:min-h-screen bg-[#0b1220] border-b lg:border-b-0 lg:border-r border-white/[0.06]">
+            <div className="lg:sticky lg:top-0 p-4 lg:p-5">
+                <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                        <p className="text-ecf-yellow font-display font-extrabold text-lg leading-none">ECF</p>
+                        <p className="text-white/35 text-[10px] tracking-[0.18em] uppercase mt-0.5">Consultoria</p>
+                    </div>
+                    {/* No mobile a sidebar vira faixa: o nome da empresa vai
+                        para o lado do logo em vez de sumir. */}
+                    <p className="lg:hidden text-white/60 text-[12px] truncate">{empresaNome}</p>
+                </div>
+
+                <div className="hidden lg:block mt-6">
+                    <p className="text-white text-[13px] font-semibold truncate">Olá, {empresaNome}!</p>
+                    <p className="text-white/35 text-[12px] mt-0.5">Este é o seu portal de onboarding.</p>
+                </div>
+
+                <nav className="hidden lg:block mt-6 space-y-1">
+                    <a href="#inicio" className={`${item} bg-ecf-yellow/10 text-ecf-yellow font-semibold`}>
+                        <Home size={15} /> Início
+                    </a>
+                    <a href="#pendencias" className={`${item} text-white/55 hover:text-white hover:bg-white/[0.04]`}>
+                        <ListChecks size={15} /> Minhas pendências
+                        {pendentes > 0 && (
+                            <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-ecf-yellow/15 text-ecf-yellow text-[11px] font-bold">
+                                {pendentes}
+                            </span>
+                        )}
+                    </a>
+                </nav>
+
+                <div className="hidden lg:block mt-8 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5">
+                    <p className="text-white text-[12px] font-semibold">Dúvidas?</p>
+                    <p className="text-white/40 text-[12px] mt-1 leading-relaxed">
+                        Fale com o seu analista responsável — ele acompanha este onboarding com você.
+                    </p>
+                </div>
+            </div>
+        </aside>
+    );
+}
+
+/**
+ * As etapas como trilha, para o cliente ver ONDE está sem abrir nada.
+ *
+ * A ordem é `ETAPAS_ORDEM`, a mesma que a lista usa — decisão de 19/08, não da
+ * referência visual. Etapa sem passo do cliente não aparece: ela existe no
+ * processo interno, mas para quem está do lado de fora seria uma caixa que
+ * nunca acende.
+ */
+function TrilhaEtapas({ blocos }) {
+    if (blocos.length === 0) return null;
+
+    return (
+        <ol className="flex items-start gap-2 overflow-x-auto pb-1">
+            {blocos.map(({ etapa, itens }, i) => {
+                const feitos = itens.filter((p) => p.status === 'concluido').length;
+                const completa = feitos === itens.length;
+                const corrente = !completa && blocos.slice(0, i).every(
+                    (b) => b.itens.filter((p) => p.status === 'concluido').length === b.itens.length
+                );
+
+                return (
+                    <li key={etapa} className="flex items-center gap-2 shrink-0">
+                        <div className="flex flex-col items-center gap-1.5 w-[128px]">
+                            <span
+                                aria-hidden="true"
+                                className={cn(
+                                    'grid place-items-center h-8 w-8 rounded-full border-2 text-[12px] font-bold',
+                                    completa ? 'border-emerald-400 bg-emerald-400 text-ecf-bg'
+                                        : corrente ? 'border-ecf-yellow text-ecf-yellow bg-ecf-yellow/10'
+                                            : 'border-white/12 text-white/25'
+                                )}
+                            >
+                                {completa ? <Check size={14} /> : i + 1}
+                            </span>
+                            <span className={cn(
+                                'text-[11px] text-center leading-tight',
+                                completa ? 'text-white/70' : corrente ? 'text-ecf-yellow' : 'text-white/30'
+                            )}>
+                                {ETAPA_LABELS[etapa].titulo}
+                            </span>
+                            <span className="text-[10px] text-white/25 tabular-nums">
+                                {completa ? 'Concluído' : `${feitos} de ${itens.length}`}
+                            </span>
+                        </div>
+                        {i < blocos.length - 1 && (
+                            <span aria-hidden="true" className={cn(
+                                'h-px w-6 shrink-0', completa ? 'bg-emerald-400/40' : 'bg-white/10'
+                            )} />
+                        )}
+                    </li>
+                );
+            })}
+        </ol>
+    );
+}
+
+/** Cabeçalho de um bloco de etapa, com contagem e barra própria. */
+function CabecalhoBloco({ etapa, itens, aberta, aoAlternar }) {
+    const feitos = itens.filter((p) => p.status === 'concluido').length;
+    const pct = Math.round((feitos / itens.length) * 100);
+
+    return (
+        <button
+            type="button"
+            onClick={aoAlternar}
+            aria-expanded={aberta}
+            className="w-full flex items-center gap-3 text-left"
+        >
+            <div className="min-w-0 flex-1">
+                <h2 className="text-white font-display font-bold text-[15px]">
+                    {ETAPA_LABELS[etapa].titulo}
+                </h2>
+                {ETAPA_LABELS[etapa].ajuda && (
+                    <p className="text-white/40 text-[12px] mt-0.5">{ETAPA_LABELS[etapa].ajuda}</p>
+                )}
+            </div>
+
+            <div className="shrink-0 w-[92px]">
+                <span className="block text-[11px] text-white/40 tabular-nums text-right">
+                    {feitos} de {itens.length}
+                </span>
+                <span className="mt-1 block h-1 w-full rounded-full bg-white/[0.06] overflow-hidden">
+                    <span
+                        className={cn('block h-full rounded-full', pct === 100 ? 'bg-emerald-400/70' : 'bg-ecf-yellow/70')}
+                        style={{ width: `${pct}%` }}
+                    />
+                </span>
+            </div>
+
+            {aberta
+                ? <ChevronDown size={16} className="text-white/30 shrink-0" />
+                : <ChevronRight size={16} className="text-white/30 shrink-0" />}
+        </button>
+    );
+}
+
+// ─── Página ───────────────────────────────────────────────────────────────
+
+export default function Publico({
+    token,
+    empresa,
+    passos = [],
+    reunioes = [],
+    mapeamentos = [],
+    pessoas = {},
+    responsaveis = [],
+}) {
     const [conectandoChave, setConectandoChave] = useState(null);
     const [video, setVideo] = useState(null);
     const [passoAPasso, setPassoAPasso] = useState(null);
+    // `null` = ninguém mexeu ainda; nesse caso a etapa corrente nasce aberta e
+    // as concluídas nascem fechadas. Guardar a decisão só a partir do primeiro
+    // clique impede que a tela feche debaixo do cliente a cada item salvo:
+    // todo `router.patch` traz props novas.
+    const [abertas, setAbertas] = useState(null);
 
     // Estado "Link inválido": na prática, `OnboardingPublicoController::workspace()`
     // usa `firstOrFail()` e devolve 404 ANTES de renderizar este componente
@@ -505,126 +694,251 @@ export default function Publico({ token, empresa, passos = [], reunioes = [], ma
         numeroPorChave[passo.chave] = String(i + 1).padStart(2, '0');
     });
 
+    // A próxima ação e a contagem de pendências do CLIENTE. `bloqueado` fica
+    // de fora dos dois: é passo que espera outro, e mandar o cliente para um
+    // card que ele não pode mexer é o oposto do que o bloco existe para fazer.
+    const acionaveis = blocos.flatMap(({ itens }) => itens).filter((p) => p.status === 'aberto');
+    const proximaAcao = acionaveis[0] ?? null;
+
+    // Primeira etapa ainda incompleta — é ela que nasce aberta.
+    const etapaCorrente = blocos.find(
+        ({ itens }) => itens.some((p) => p.status !== 'concluido')
+    )?.etapa ?? blocos[0]?.etapa ?? null;
+
+    const estaAberta = (etapa) => (abertas === null ? etapa === etapaCorrente : abertas.has(etapa));
+
+    const alternar = (etapa) => setAbertas((atual) => {
+        const proximo = new Set(atual ?? (etapaCorrente ? [etapaCorrente] : []));
+        if (proximo.has(etapa)) proximo.delete(etapa); else proximo.add(etapa);
+        return proximo;
+    });
+
+    // "Preencher agora": garante a etapa aberta ANTES de rolar — o card só
+    // existe no DOM depois disso.
+    const irParaPasso = (passo) => {
+        const etapa = passo.etapa ?? 'outros';
+        setAbertas((atual) => new Set(atual ?? (etapaCorrente ? [etapaCorrente] : [])).add(etapa));
+
+        requestAnimationFrame(() => {
+            document
+                .getElementById(`passo-${passo.chave}`)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    };
+
     return (
-        <div className="min-h-screen bg-ecf-bg">
-            {/* Header sticky com progresso. Antes trazia só "N pendentes" em
-                texto miúdo — o cliente não tinha noção de quanto do onboarding
-                já andou, que é justamente o que faz o checklist de Polos
-                funcionar. */}
-            <ProgressoHeader empresaNome={empresa.nome} progresso={progresso} />
+        <div className="min-h-screen bg-ecf-bg lg:flex">
+            <PortalSidebar empresaNome={empresa.nome} pendentes={acionaveis.length} />
 
-            <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-                {nadaPendente && (
-                    <div className="text-center py-16 space-y-3">
-                        <h2 className="text-white font-display font-bold text-xl">
-                            Ainda não há nada pendente da sua parte
-                        </h2>
-                        <p className="text-white/50 text-[13px] max-w-sm mx-auto">
-                            Em breve entraremos em contato para dar continuidade ao seu onboarding.
-                        </p>
-                    </div>
-                )}
+            <main id="inicio" className="flex-1 min-w-0">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+                    {/* ─── Boas-vindas e progresso ───────────────────────── */}
+                    <header className="flex items-start justify-between gap-6 flex-wrap">
+                        <div className="min-w-0">
+                            <h1 className="text-white font-display font-bold text-2xl sm:text-3xl tracking-tight">
+                                Bem-vindo, {empresa.nome}!
+                            </h1>
+                            <p className="text-white/45 text-[14px] mt-1">
+                                Estamos juntos para preparar sua operação para o sucesso.
+                            </p>
+                        </div>
 
-                {/*
-                  * A lista NUNCA desaparece. Antes, com tudo concluído, ela era
-                  * trocada por uma tela de parabéns — o cliente perdia de vista
-                  * o que tinha feito e não conseguia mais desmarcar um item
-                  * marcado por engano. Igual a Polos: os cards ficam, a
-                  * conclusão vira rodapé.
-                  */}
-                {!nadaPendente && (
-                    <div className="space-y-8">
-                        {blocos.map(({ etapa, itens }) => (
-                            <section key={etapa} className="space-y-3">
-                                <div>
-                                    <h2 className="text-white font-display font-bold text-[15px]">
-                                        {ETAPA_LABELS[etapa].titulo}
-                                    </h2>
-                                    {ETAPA_LABELS[etapa].ajuda && (
-                                        <p className="text-white/40 text-[12px] mt-0.5">{ETAPA_LABELS[etapa].ajuda}</p>
-                                    )}
+                        {progresso.total > 0 && (
+                            <div className="min-w-[240px]">
+                                <div className="flex items-baseline justify-between gap-3">
+                                    <span className="text-white/40 text-[12px]">Seu progresso</span>
+                                    <span className="text-white/40 text-[12px] tabular-nums">
+                                        {progresso.feitos} de {progresso.total} concluídas
+                                    </span>
                                 </div>
-
-                                {itens.map((passo) => (
-                                    <PassoCard
-                                        pessoas={pessoas}
-                                        key={passo.chave}
-                                        passo={passo}
-                                        token={token}
-                                        num={numeroPorChave[passo.chave]}
-                                        conectandoChave={conectandoChave}
-                                        setConectandoChave={setConectandoChave}
-                                        onPlay={(url, titulo) => setVideo({ url, titulo })}
-                                        onOpenPassoAPasso={setPassoAPasso}
-                                    />
-                                ))}
-                            </section>
-                        ))}
-                    </div>
-                )}
-
-                {/* Mapeamento: só aparece depois que há o que mostrar. Antes do
-                    grant `fetchUserInfo()` nem sai da porta, e um bloco de
-                    campos em branco pareceria erro nosso. */}
-                {mapeamentos.filter((m) => m.estado !== 'bloqueado').map((m) => (
-                    <section key={m.onboarding_id} className="space-y-3 pt-2">
-                        <h2 className="text-white font-display font-bold text-[15px]">
-                            {ETAPA_LABELS.mapeamento.titulo}
-                            {mapeamentos.length > 1 ? ` · ${m.servico}` : ''}
-                        </h2>
-                        <MapeamentoInicial
-                            mapeamento={m}
-                            contexto="cliente"
-                            payloadExtra={{ onboarding_id: m.onboarding_id }}
-                            rotaSincronizar={route('onboarding.publico.mapeamento.sincronizar', token)}
-                            rotaConfirmar={route('onboarding.publico.mapeamento.confirmar', token)}
-                        />
-                    </section>
-                ))}
-
-                {/* Reunião fica FORA do bloco de passos: ela permanece na tela
-                    mesmo depois de tudo concluído — é justamente aí que ela
-                    passa a ser a única coisa que importa. */}
-                {reunioes.length > 0 && (
-                    <section className="space-y-3 pt-2">
-                        <h2 className="text-white font-display font-bold text-[15px]">
-                            {ETAPA_LABELS.agendamento.titulo}
-                        </h2>
-                        {reunioes.map((reuniao) => (
-                            <ReuniaoCard
-                                key={reuniao.onboarding_id}
-                                reuniao={reuniao}
-                                token={token}
-                                varios={reunioes.length > 1}
-                            />
-                        ))}
-                    </section>
-                )}
-
-                {/* Rodapé de conclusão — o lugar do "acabou" agora que a lista
-                    não sai mais da tela. Mesmo desenho do fim do checklist de
-                    Polos: a mensagem muda, os cards ficam. */}
-                {!nadaPendente && (
-                    <div className="text-center py-6 space-y-1">
-                        {progresso.pct === 100 ? (
-                            <p className="text-emerald-400 font-semibold text-[15px]">
-                                Tudo certo por aqui! Nossa equipe segue com as próximas etapas.
-                            </p>
-                        ) : passosTodosConcluidos ? (
-                            <p className="text-emerald-400/80 font-semibold text-[14px]">
-                                Seus itens estão concluídos — falta só o que está acima.
-                            </p>
-                        ) : (
-                            <p className="text-white/30 text-[13px]">
-                                Conclua os itens acima para seguirmos com o seu onboarding.
-                            </p>
+                                <div className="flex items-center gap-3 mt-1">
+                                    <span className={cn(
+                                        'font-display font-extrabold text-2xl tabular-nums',
+                                        progresso.pct === 100 ? 'text-emerald-400' : 'text-ecf-yellow'
+                                    )}>
+                                        {progresso.pct}%
+                                    </span>
+                                    <div className="flex-1 h-2 bg-white/[0.06] rounded-full overflow-hidden">
+                                        <div
+                                            className={cn(
+                                                'h-full rounded-full transition-[width] duration-500',
+                                                progresso.pct === 100 ? 'bg-emerald-400' : 'bg-ecf-yellow'
+                                            )}
+                                            style={{ width: `${progresso.pct}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         )}
-                        <p className="text-white/20 text-[11px]">
-                            Cada item é salvo no momento em que você marca.
-                        </p>
+                    </header>
+
+                    <TrilhaEtapas blocos={blocos} />
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                        <div className="lg:col-span-2 min-w-0 space-y-6">
+                            {!nadaPendente && (
+                                <ProximaAcaoCliente
+                                    passo={proximaAcao}
+                                    totalPendentes={acionaveis.length}
+                                    aoIr={irParaPasso}
+                                />
+                            )}
+
+                            {nadaPendente && (
+                                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] text-center py-14 px-6">
+                                    <h2 className="text-white font-display font-bold text-xl">
+                                        Ainda não há nada pendente da sua parte
+                                    </h2>
+                                    <p className="text-white/45 text-[13px] mt-2 max-w-sm mx-auto">
+                                        Em breve entraremos em contato para dar continuidade ao seu onboarding.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* A REUNIÃO ABRE A LISTA (19/08). Ela fica fora dos
+                                passos por dois motivos: nenhum passo de
+                                agendamento é `dono=cliente`, e ela permanece
+                                visível mesmo depois de tudo concluído — é aí
+                                que passa a ser a única coisa que importa. */}
+                            {reunioes.length > 0 && (
+                                <section className="space-y-3">
+                                    <h2 className="text-white font-display font-bold text-[15px]">
+                                        {ETAPA_LABELS.agendamento.titulo}
+                                    </h2>
+                                    {reunioes.map((reuniao) => (
+                                        <ReuniaoCard
+                                            key={reuniao.onboarding_id}
+                                            reuniao={reuniao}
+                                            varios={reunioes.length > 1}
+                                        />
+                                    ))}
+                                </section>
+                            )}
+
+                            {/*
+                              * A lista NUNCA desaparece. Antes, com tudo
+                              * concluído, ela era trocada por uma tela de
+                              * parabéns — o cliente perdia de vista o que tinha
+                              * feito e não conseguia mais desmarcar um item
+                              * marcado por engano.
+                              */}
+                            {!nadaPendente && (
+                                <div id="pendencias" className="space-y-4 scroll-mt-6">
+                                    <h2 className="text-white/70 font-semibold text-[12px] uppercase tracking-wider">
+                                        Suas etapas
+                                    </h2>
+
+                                    {blocos.map(({ etapa, itens }) => {
+                                        const aberta = estaAberta(etapa);
+
+                                        return (
+                                            <section
+                                                key={etapa}
+                                                className="rounded-2xl border border-white/[0.06] bg-white/[0.01] p-4 space-y-3"
+                                            >
+                                                <CabecalhoBloco
+                                                    etapa={etapa}
+                                                    itens={itens}
+                                                    aberta={aberta}
+                                                    aoAlternar={() => alternar(etapa)}
+                                                />
+
+                                                {aberta && itens.map((passo) => (
+                                                    <PassoCard
+                                                        pessoas={pessoas}
+                                                        key={passo.chave}
+                                                        passo={passo}
+                                                        token={token}
+                                                        num={numeroPorChave[passo.chave]}
+                                                        conectandoChave={conectandoChave}
+                                                        setConectandoChave={setConectandoChave}
+                                                        onPlay={(url, titulo) => setVideo({ url, titulo })}
+                                                        onOpenPassoAPasso={setPassoAPasso}
+                                                    />
+                                                ))}
+                                            </section>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* Mapeamento: só aparece depois que há o que
+                                mostrar. Antes do grant `fetchUserInfo()` nem sai
+                                da porta, e um bloco de campos em branco
+                                pareceria erro nosso. */}
+                            {mapeamentos.filter((m) => m.estado !== 'bloqueado').map((m) => (
+                                <section key={m.onboarding_id} className="space-y-3">
+                                    <h2 className="text-white font-display font-bold text-[15px]">
+                                        {ETAPA_LABELS.mapeamento.titulo}
+                                        {mapeamentos.length > 1 ? ` · ${m.servico}` : ''}
+                                    </h2>
+                                    <MapeamentoInicial
+                                        mapeamento={m}
+                                        contexto="cliente"
+                                        payloadExtra={{ onboarding_id: m.onboarding_id }}
+                                        rotaSincronizar={route('onboarding.publico.mapeamento.sincronizar', token)}
+                                        rotaConfirmar={route('onboarding.publico.mapeamento.confirmar', token)}
+                                    />
+                                </section>
+                            ))}
+
+                            {/* Rodapé de conclusão — o lugar do "acabou" agora
+                                que a lista não sai mais da tela. */}
+                            {!nadaPendente && (
+                                <div className="text-center py-4 space-y-1">
+                                    {progresso.pct === 100 ? (
+                                        <p className="text-emerald-400 font-semibold text-[15px]">
+                                            Tudo certo por aqui! Nossa equipe segue com as próximas etapas.
+                                        </p>
+                                    ) : passosTodosConcluidos ? (
+                                        <p className="text-emerald-400/80 font-semibold text-[14px]">
+                                            Seus itens estão concluídos — falta só o que está acima.
+                                        </p>
+                                    ) : (
+                                        <p className="text-white/30 text-[13px]">
+                                            Conclua os itens acima para seguirmos com o seu onboarding.
+                                        </p>
+                                    )}
+                                    <p className="text-white/20 text-[11px]">
+                                        Cada item é salvo no momento em que você marca.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Coluna de apoio: quem atende e como o processo
+                            funciona. Desce para o fim no mobile, que é onde ela
+                            atrapalha menos. */}
+                        <aside className="space-y-5 min-w-0">
+                            <ResponsaveisCliente responsaveis={responsaveis} />
+
+                            <section className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+                                <h2 className="text-white font-display font-bold text-[15px]">Como funciona</h2>
+                                <ol className="mt-3 space-y-3">
+                                    {[
+                                        ['Responda às solicitações', 'Preencha as informações pedidas em cada etapa.'],
+                                        ['Acompanhe em tempo real', 'Seu progresso atualiza assim que você marca um item.'],
+                                        ['Seguimos juntos', 'Quando você conclui a sua parte, nossa equipe segue com a próxima etapa.'],
+                                    ].map(([titulo, texto], i) => (
+                                        <li key={titulo} className="flex gap-3">
+                                            <span
+                                                aria-hidden="true"
+                                                className="grid place-items-center h-6 w-6 shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[11px] font-bold text-white/50"
+                                            >
+                                                {i + 1}
+                                            </span>
+                                            <div className="min-w-0">
+                                                <p className="text-white text-[13px] font-semibold">{titulo}</p>
+                                                <p className="text-white/40 text-[12px] mt-0.5 leading-relaxed">{texto}</p>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ol>
+                            </section>
+                        </aside>
                     </div>
-                )}
-            </div>
+                </div>
+            </main>
 
             {video && (
                 <VideoModal url={video.url} titulo={video.titulo} onClose={() => setVideo(null)} />

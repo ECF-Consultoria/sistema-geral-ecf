@@ -65,7 +65,7 @@ class OnboardingController extends Controller
         $query = Onboarding::query()->with([
             'company:id,name',
             'servico:id,nome',
-            'responsavel:id,name',
+            'responsavel:id,name,avatar_url',
             'passos.setor:id,nome',
         ]);
 
@@ -126,12 +126,12 @@ class OnboardingController extends Controller
             // null sem erro nenhum — foi o que aconteceu na primeira versão.
             'company:id,name,marketplace,hubspot_observacao,hubspot_snapshot',
             'servico:id,nome',
-            'responsavel:id,name',
+            'responsavel:id,name,avatar_url',
             'reuniaoAgendadaPor:id,name',
             // O cabecalho do cockpit mostra "Analista responsavel" (R-01) —
             // sem estes dois ele cairia sempre no `responsavel` generico.
-            'responsavelEstrategista:id,name',
-            'responsavelAnalista:id,name',
+            'responsavelEstrategista:id,name,avatar_url',
+            'responsavelAnalista:id,name,avatar_url',
             'passos.setor:id,nome',
             // Quem fechou cada passo, para o feed de atividade. Sem o eager
             // load isto seria uma consulta por passo dentro do laco.
@@ -164,18 +164,23 @@ class OnboardingController extends Controller
                 'situacao'        => $situacao,
                 'situacao_label'  => $this->situacaoService->label($situacao),
                 'responsavel'     => $onboarding->responsavel ? [
-                    'id'   => $onboarding->responsavel->id,
-                    'name' => $onboarding->responsavel->name,
+                    'id'         => $onboarding->responsavel->id,
+                    'name'       => $onboarding->responsavel->name,
+                    'avatar_url' => $onboarding->responsavel->avatar_url,
                 ] : null,
                 // Os dois papeis (R-01). O cabecalho mostra o ANALISTA como
                 // "Analista responsavel"; `responsavel` acima continua sendo o
                 // principal, que e o nome que o portal do cliente mostra.
-                'responsavel_estrategista' => $onboarding->responsavelEstrategista
-                    ? ['id' => $onboarding->responsavelEstrategista->id, 'name' => $onboarding->responsavelEstrategista->name]
-                    : null,
-                'responsavel_analista' => $onboarding->responsavelAnalista
-                    ? ['id' => $onboarding->responsavelAnalista->id, 'name' => $onboarding->responsavelAnalista->name]
-                    : null,
+                'responsavel_estrategista' => $onboarding->responsavelEstrategista ? [
+                    'id'         => $onboarding->responsavelEstrategista->id,
+                    'name'       => $onboarding->responsavelEstrategista->name,
+                    'avatar_url' => $onboarding->responsavelEstrategista->avatar_url,
+                ] : null,
+                'responsavel_analista' => $onboarding->responsavelAnalista ? [
+                    'id'         => $onboarding->responsavelAnalista->id,
+                    'name'       => $onboarding->responsavelAnalista->name,
+                    'avatar_url' => $onboarding->responsavelAnalista->avatar_url,
+                ] : null,
                 // Mesma fração que a listagem mostra — vem do service, não de
                 // uma contagem local, senão as duas telas divergem.
                 'progresso'        => $this->situacaoService->progresso($passos),

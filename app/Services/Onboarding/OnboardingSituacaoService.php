@@ -319,9 +319,21 @@ class OnboardingSituacaoService
         ];
     }
 
-    /** @param  \App\Models\User|null  $usuario */
+    /**
+     * @param  \App\Models\User|null  $usuario
+     *
+     * `avatar_url` entra porque toda tela de onboarding mostra o rosto de quem
+     * responde, e sem ele as telas caíam nas iniciais para todo mundo — a foto
+     * já existia em `users.avatar_url` e nenhuma projeção a trazia. Pode vir
+     * null (usuário sem foto) ou apontar para arquivo já apagado; quem
+     * renderiza trata os dois casos.
+     */
     private function usuario($usuario): ?array
     {
-        return $usuario ? ['id' => $usuario->id, 'name' => $usuario->name] : null;
+        return $usuario ? [
+            'id'         => $usuario->id,
+            'name'       => $usuario->name,
+            'avatar_url' => $usuario->avatar_url,
+        ] : null;
     }
 }

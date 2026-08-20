@@ -133,6 +133,61 @@ class OnboardingLinkService
     }
 
     /**
+     * Quem atende esta empresa, para o portal do cliente: analista e
+     * estrategista, com nome, foto e papel.
+     *
+     * ### Emenda consciente ao T-135-11-02
+     * A regra original do portal é "nenhum dado de operação interna sai daqui —
+     * sem responsável, sem SLA, sem dias parado, sem nome de usuário interno".
+     * Ela continua valendo para tudo o que é OPERAÇÃO: carga de trabalho, fila,
+     * prazo estourado, quem está atrasado. Dizer ao cliente quem é o analista
+     * dele não é operação — é relacionamento, e ele já sabe pelo primeiro
+     * e-mail e pela reunião. O que segue fora, de propósito: e-mail interno,
+     * telefone interno, qualquer métrica.
+     *
+     * ### Por que deduplica
+     * Uma empresa pode ter N onboardings em andamento (um por serviço) e o
+     * mesmo analista em todos. Sem `unique`, o cliente veria o mesmo rosto
+     * repetido porque contratou dois serviços — que é a mesma razão de o bloco
+     * de `pessoas` deduplicar no controller.
+     *
+     * Rascunho fica de fora pelo mesmo motivo de sempre (SC-04): onboarding em
+     * rascunho não expõe portal, então o responsável dele não é assunto aqui.
+     *
+     * @return array<int, array{papel: string, nome: string, foto: ?string}>
+     */
+    public function responsaveisDaEmpresa(Company $company): array
+    {
+        $onboardings = Onboarding::where('company_id', $company->id)
+            ->emAndamento()
+            ->with(['responsavelAnalista:id,name,avatar_url', 'responsavelEstrategista:id,name,avatar_url'])
+            ->get();
+
+        // Ordem fixa: o analista primeiro porque é o contato do dia a dia — o
+        // estrategista aparece menos na rotina do cliente.
+        $papeis = [
+            ['papel' => 'Analista responsável', 'usuarios' => $onboardings->map->responsavelAnalista],
+            ['papel' => 'Estrategista',         'usuarios' => $onboardings->map->responsavelEstrategista],
+        ];
+
+        $resultado = [];
+
+        foreach ($papeis as $linha) {
+            $usuarios = $linha['usuarios']->filter()->unique('id');
+
+            foreach ($usuarios as $usuario) {
+                $resultado[] = [
+                    'papel' => $linha['papel'],
+                    'nome'  => $usuario->name,
+                    'foto'  => $usuario->avatar_url,
+                ];
+            }
+        }
+
+        return $resultado;
+    }
+
+    /**
      * Reuniões de onboarding da empresa, uma por onboarding em andamento.
      *
      * Não é um passo: o passo `agendar_reuniao_onboarding` é `dono=interno` e

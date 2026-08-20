@@ -3,7 +3,6 @@ import { Link, router, useForm } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
-import { Avatar, AvatarFallback } from '@/Components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
@@ -15,6 +14,7 @@ import {
     Eye, Link2, ListChecks, Loader2, MoreHorizontal, Plus, Search, SlidersHorizontal, Users, X,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
+import AvatarUsuario from '@/Components/AvatarUsuario';
 import SituacaoChip from '@/Components/Onboarding/Painel/SituacaoChip';
 import ProgressoBarra from '@/Components/Onboarding/Painel/ProgressoBarra';
 import ProximaAcao from '@/Components/Onboarding/Painel/ProximaAcao';
@@ -116,9 +116,6 @@ const JANELAS = [
 ];
 
 const POR_PAGINA = [10, 25, 50];
-
-const initials = (name) =>
-    (name || '?').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
 /** Dias inteiros entre a data e agora. `null` para data ausente. */
 function diasDesde(iso) {
@@ -706,11 +703,11 @@ export default function AbaOnboarding({
                                         <TableCell>
                                             {l.analista ? (
                                                 <div className="flex items-center gap-2 min-w-0">
-                                                    <Avatar className="h-6 w-6 shrink-0">
-                                                        <AvatarFallback className="text-[10px] bg-white/10 text-white/70">
-                                                            {initials(l.analista.name)}
-                                                        </AvatarFallback>
-                                                    </Avatar>
+                                                    <AvatarUsuario
+                                                        nome={l.analista.name}
+                                                        foto={l.analista.avatar_url}
+                                                        size={24}
+                                                    />
                                                     <span className="text-[13px] text-white/80 truncate">{l.analista.name}</span>
                                                 </div>
                                             ) : (

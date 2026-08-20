@@ -1,5 +1,5 @@
 import { Building2, CalendarDays, Check, Package, UserRound } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/Components/ui/avatar';
+import AvatarUsuario from '@/Components/AvatarUsuario';
 import { cn, formatDate } from '@/lib/utils';
 import SituacaoChip from './SituacaoChip';
 import ProgressoBarra from './ProgressoBarra';
@@ -38,9 +38,6 @@ const ESTADO_MARCO = {
         linha: 'bg-white/10',
     },
 };
-
-const initials = (name) =>
-    (name || '?').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
 /** Um dado do cabeçalho: rótulo pequeno em cima, valor legível embaixo. */
 function Info({ icone: Icone, rotulo, children }) {
@@ -123,11 +120,7 @@ export default function CabecalhoOnboarding({ onboarding, linhaDoTempo = [] }) {
                     <Info icone={UserRound} rotulo="Analista responsável">
                         {analista ? (
                             <span className="inline-flex items-center gap-1.5">
-                                <Avatar className="h-4 w-4">
-                                    <AvatarFallback className="text-[8px] bg-white/10 text-white/70">
-                                        {initials(analista.name)}
-                                    </AvatarFallback>
-                                </Avatar>
+                                <AvatarUsuario nome={analista.name} foto={analista.avatar_url} size={18} />
                                 {analista.name}
                             </span>
                         ) : (
@@ -145,7 +138,14 @@ export default function CabecalhoOnboarding({ onboarding, linhaDoTempo = [] }) {
 
                     {onboarding.responsavel_estrategista && (
                         <Info icone={Building2} rotulo="Estrategista">
-                            {onboarding.responsavel_estrategista.name}
+                            <span className="inline-flex items-center gap-1.5">
+                                <AvatarUsuario
+                                    nome={onboarding.responsavel_estrategista.name}
+                                    foto={onboarding.responsavel_estrategista.avatar_url}
+                                    size={18}
+                                />
+                                {onboarding.responsavel_estrategista.name}
+                            </span>
                         </Info>
                     )}
                 </div>

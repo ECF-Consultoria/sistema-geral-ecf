@@ -120,9 +120,9 @@ class CompanyController extends Controller
                 // derrubou /dashboard por OOM (AdmanMetric.raw_data).
                 'onboardings' => fn($q) => $q->with([
                     'servico:id,nome',
-                    'responsavel:id,name',
-                    'responsavelEstrategista:id,name',
-                    'responsavelAnalista:id,name',
+                    'responsavel:id,name,avatar_url',
+                    'responsavelEstrategista:id,name,avatar_url',
+                    'responsavelAnalista:id,name,avatar_url',
                     'passos' => fn($qp) => $qp
                         ->select([
                             'id', 'onboarding_id', 'ordem', 'chave', 'titulo',
@@ -199,8 +199,8 @@ class CompanyController extends Controller
                 'adman_account_id' => $c->cust_id,
                 'adman_store_id'   => $c->adman_store_id,
                 'ml_store_id'      => $c->ml_store_id,
-                'consultor'        => $c->analistaPerformance->first()?->only(['id', 'name']),
-                'estrategista'     => $c->estrategistaPerformance->first()?->only(['id', 'name']),
+                'consultor'        => $c->analistaPerformance->first()?->only(['id', 'name', 'avatar_url']),
+                'estrategista'     => $c->estrategistaPerformance->first()?->only(['id', 'name', 'avatar_url']),
                 // fast-260806 — empresa SEM analista E SEM estrategista nao entrou
                 // em operacao: ninguem cuida dela. O frontend usa esta flag para
                 // deixa-la SO na aba "Pendencias", fora da contagem e da lista da

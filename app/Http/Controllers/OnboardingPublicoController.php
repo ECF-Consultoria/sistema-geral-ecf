@@ -70,12 +70,25 @@ class OnboardingPublicoController extends Controller
                 ->unique(fn (OnboardingContato $ct) => $ct->papel.'|'.$ct->nome.'|'.$ct->email)
                 ->groupBy('papel')
                 ->map(fn ($grupo) => $grupo->map(fn (OnboardingContato $ct) => [
-                    'id'     => $ct->id,
-                    'nome'   => $ct->nome,
-                    'email'  => $ct->email,
-                    'funcao' => $ct->funcao,
+                    'id'       => $ct->id,
+                    'nome'     => $ct->nome,
+                    'email'    => $ct->email,
+                    'funcao'   => $ct->funcao,
+                    // Vai junto porque o seletor "usar alguém já cadastrado"
+                    // reaproveita o cadastro inteiro — sem o telefone aqui, o
+                    // contato reaproveitado perderia o dado silenciosamente.
+                    'telefone' => $ct->telefone,
                 ])->values()),
             'reunioes' => $this->linkService->reunioesDaEmpresa($company),
+            // Quem atende este cliente, com rosto (pedido do negocio 20/08).
+            //
+            // EMENDA CONSCIENTE ao T-135-11-02 ("sem nome de usuario interno").
+            // Aquela regra existe para nao vazar OPERACAO — SLA, dias parado,
+            // fila de trabalho, quem esta atrasado. Dizer ao cliente quem e o
+            // analista dele nao e operacao: e relacionamento, e ele ja sabe
+            // disso pela reuniao. O que continua fora: e-mail interno, carga de
+            // trabalho, qualquer metrica. Só nome, foto e papel.
+            'responsaveis' => $this->linkService->responsaveisDaEmpresa($company),
             'mapeamentos' => Onboarding::where('company_id', $company->id)
                 ->emAndamento()
                 ->with('servico:id,nome')
@@ -87,30 +100,6 @@ class OnboardingPublicoController extends Controller
                 ->values()
                 ->all(),
         ]);
-    }
-
-    /**
-     * POST /onboarding-cliente/{token}/reuniao — o cliente PEDE a reunião.
-     * Sem data: ele não escolhe agenda nossa, só sinaliza que quer. Quem marca
-     * data e hora é o responsável, pelo painel interno.
-     *
-     * `onboarding_id` é validado contra a empresa do token — sem isso um
-     * token válido conseguiria solicitar reunião no onboarding de outra
-     * empresa só trocando o id no corpo do request.
-     */
-    public function solicitarReuniao(Request $request, string $token, OnboardingEngineService $engine)
-    {
-        $link = OnboardingLink::where('token', $token)->firstOrFail();
-
-        $data = $request->validate([
-            'onboarding_id' => ['required', 'integer'],
-        ]);
-
-        $onboarding = $this->onboardingDoToken($link, $data['onboarding_id']);
-
-        $engine->solicitarReuniao($onboarding, $request->ip());
-
-        return back()->with('success', 'Pedido de reunião enviado. Nossa equipe entra em contato com a data.');
     }
 
     /**
@@ -319,6 +308,17 @@ class OnboardingPublicoController extends Controller
 
         abort_if($onboardings->isEmpty(), 422, 'Este item não está disponível agora.');
 
+        // O ponto de contato entra TAMBÉM como participante das reuniões. Ele
+        // é, na prática, quem sempre participa — e obrigar o cliente a digitar
+        // os mesmos dados duas vezes, em dois itens seguidos da mesma tela, era
+        // a parte mais confusa do portal.
+        //
+        // Só quando há e-mail: o §16 existe para enviar o convite, e
+        // participante sem Gmail não recebe encontro nenhum. Sem e-mail o
+        // portal oferece a pessoa no seletor, pedindo o Gmail que falta.
+        $espelharComoParticipante = $data['papel'] === OnboardingContato::PAPEL_PONTO_CONTATO
+            && ! empty($data['email']);
+
         foreach ($onboardings as $onboarding) {
             OnboardingContato::create([
                 'onboarding_id' => $onboarding->id,
@@ -328,6 +328,10 @@ class OnboardingPublicoController extends Controller
                 'funcao'        => $data['funcao'] ?? null,
                 'telefone'      => $data['telefone'] ?? null,
             ]);
+
+            if ($espelharComoParticipante) {
+                $this->garantirParticipante($onboarding, $data);
+            }
 
             $this->resolverPessoas($onboarding);
         }
@@ -342,6 +346,48 @@ class OnboardingPublicoController extends Controller
             ->log('Pessoa cadastrada pelo cliente via portal público');
 
         return back()->with('success', 'Pessoa cadastrada.');
+    }
+
+    /**
+     * Cria a linha de PARTICIPANTE espelhando um contato, sem duplicar.
+     *
+     * A dedupe é por (nome, e-mail) dentro do mesmo onboarding — mesma chave
+     * que o `workspace()` usa para não mostrar a pessoa repetida ao cliente.
+     * Sem ela, cadastrar o ponto de contato duas vezes (ou cadastrá-lo depois
+     * de já tê-lo posto como participante à mão) produziria dois convites para
+     * o mesmo e-mail.
+     *
+     * Só roda se o onboarding tiver o passo de participantes: um onboarding
+     * que não pede participantes não deve ganhar a linha de tabela.
+     */
+    private function garantirParticipante(Onboarding $onboarding, array $data): void
+    {
+        $temPasso = OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->where('chave', 'participantes_reuniao_cadastrados')
+            ->exists();
+
+        if (! $temPasso) {
+            return;
+        }
+
+        $jaExiste = OnboardingContato::where('onboarding_id', $onboarding->id)
+            ->where('papel', OnboardingContato::PAPEL_PARTICIPANTE)
+            ->where('nome', $data['nome'])
+            ->where('email', $data['email'])
+            ->exists();
+
+        if ($jaExiste) {
+            return;
+        }
+
+        OnboardingContato::create([
+            'onboarding_id' => $onboarding->id,
+            'papel'         => OnboardingContato::PAPEL_PARTICIPANTE,
+            'nome'          => $data['nome'],
+            'email'         => $data['email'],
+            'funcao'        => $data['funcao'] ?? null,
+            'telefone'      => $data['telefone'] ?? null,
+        ]);
     }
 
     /**
