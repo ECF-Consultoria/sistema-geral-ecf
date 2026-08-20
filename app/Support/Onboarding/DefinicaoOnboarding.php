@@ -104,8 +104,36 @@ class DefinicaoOnboarding
      * O eixo existe porque os itens que o negócio pediu em 2026-08-19 —
      * conduzir na reunião × responder uma pergunta — são AMBOS `dono=interno`.
      * Sem eixo próprio a tela não distingue os dois.
+     *
+     * v13 — a REUNIÃO passa a abrir o processo, e entra o §15 do PDF.
+     *
+     * 1. `agendar_reuniao_onboarding` perde as duas dependências
+     *    (`metricas_da_conta`, `anuncios_ativos_inativos`). O negócio inverteu
+     *    a premissa: não esperamos o cliente conceder acesso para então marcar
+     *    a call — nós definimos a data assim que a empresa chega e cobramos o
+     *    cliente para ela. Enquanto o passo dependia da coleta, a data ficava
+     *    bloqueada por algo que só o cliente destrava, que é exatamente o
+     *    contrário de conduzir.
+     *
+     * 2. Entram `gravacao_informada` e `gravacao_acesso_explicado` (ordem 16 e
+     *    17), os dois itens do §15/§19 que não tinham linha nenhuma na régua —
+     *    uma seção inteira do documento sem representação no checklist.
+     *    Deliberadamente NÃO dependem de `reuniao_realizada`: avisar que a call
+     *    é gravada é coisa que se diz junto com o convite, não depois dela.
+     *
+     * 3. Cinco títulos ganharam os acentos que faltavam ("Participantes das
+     *    reuniões cadastrados" e companhia). Um deles é `dono=cliente` e
+     *    aparecia sem acento no portal do cliente.
+     *
+     * Quem já está rodando não recebe os dois passos novos sozinho — é o que
+     * `onboarding:aplicar-passos-novos --apply` existe para fazer. O mesmo vale
+     * para os títulos e para a dependência solta: são COPIADOS no nascimento,
+     * então quem já existe segue com o valor antigo até
+     * `onboarding:sincronizar-dependencias --apply` (dependência) rodar. Os
+     * títulos antigos ficam como estão — reescrevê-los exigiria mexer no
+     * congelamento, e ninguém pediu isso.
      */
-    public const VERSAO = 12;
+    public const VERSAO = 14;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -480,19 +508,6 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 13,
-                'etapa'      => OnboardingPasso::ETAPA_AGENDAMENTO,
-                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
-                'chave'      => 'agendar_reuniao_onboarding',
-                'titulo'     => 'Agendar reunião de onboarding',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => ['metricas_da_conta', 'anuncios_ativos_inativos'],
-                'sla_dias'   => 3,
-                'auto_fonte' => null,
-                'condicao'   => null,
-            ],
-            [
                 'ordem'      => 15,
                 'etapa'      => OnboardingPasso::ETAPA_AGENDAMENTO,
                 'natureza'   => OnboardingPasso::NATUREZA_ACAO,
@@ -504,64 +519,16 @@ class DefinicaoOnboarding
                 // dependência aponta para passos que não nascem mais.
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
-                'depende_de' => ['agendar_reuniao_onboarding'],
+                'depende_de' => [],
+                // v14 — `agendar_reuniao_onboarding` saiu da régua: o bloco
+                // "Reunião de onboarding" da tela já grava data e hora, e um
+                // item de checklist pedindo para agendar o que o formulário ao
+                // lado agenda era pedir a mesma coisa duas vezes. Sem esta
+                // limpeza a reunião ficaria BLOQUEADA para sempre, esperando um
+                // passo que não nasce mais — a mesma armadilha que a v10 já
+                // tinha criado com `confirmacao_pagamento`.
                 'sla_dias'   => 10,
                 'auto_fonte' => null,
-                'condicao'   => null,
-            ],
-
-            // ═══ Itens do fluxo consolidado de 19/08 ════════════════════
-            // Todos `dono=interno`: sao conduzidos ou respondidos por nos. O
-            // portal do cliente nao muda — ele filtra por `dono=cliente`.
-            //
-            // Os `natureza=reuniao` dependem de `reuniao_realizada` de proposito:
-            // nao da para responder "explicamos a publicidade" antes de a call
-            // acontecer. Isso tambem resolve o SLA — ficam bloqueados ate la,
-            // entao nao aparecem como parados no painel.
-            //
-            // A `ordem` comeca em 20 para nao renumerar a faixa 3-15 dos que ja
-            // existem (mesmo motivo registrado nas notas v7 e v10).
-            [
-                // Nome da empresa e produto adquirido, conferidos contra o que veio do
-                // Comercial. NAO inclui razao social nem endereco: nao existe coluna para
-                // eles, e tres desses campos tem decisao escrita em contrario
-                // (ContratoDadosMinimosService, checkpoint 126-06).
-                'ordem'      => 20,
-                'etapa'      => OnboardingPasso::ETAPA_INFORMACOES_CLIENTE,
-                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
-                'chave'      => 'confirmar_dados_cadastrais',
-                'titulo'     => 'Dados cadastrais da empresa conferidos',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => [],
-                'sla_dias'   => 5,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
-                'condicao'   => null,
-            ],
-            [
-                'ordem'      => 21,
-                'etapa'      => OnboardingPasso::ETAPA_INFORMACOES_CLIENTE,
-                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
-                'chave'      => 'revisar_spin',
-                'titulo'     => 'SPIN revisado com o cliente',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
-                'sla_dias'   => 3,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
-                'condicao'   => null,
-            ],
-            [
-                'ordem'      => 22,
-                'etapa'      => OnboardingPasso::ETAPA_INFORMACOES_CLIENTE,
-                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
-                'chave'      => 'revisar_contexto',
-                'titulo'     => 'Contexto da venda revisado com o cliente',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
-                'sla_dias'   => 3,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
             ],
             [
@@ -572,7 +539,7 @@ class DefinicaoOnboarding
                 'etapa'      => OnboardingPasso::ETAPA_RESPONSAVEIS,
                 'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'analista_definido',
-                'titulo'     => 'Analista responsavel definido',
+                'titulo'     => 'Analista responsável definido',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
                 'depende_de' => [],
@@ -605,7 +572,7 @@ class DefinicaoOnboarding
                 'etapa'      => OnboardingPasso::ETAPA_RESPONSAVEIS,
                 'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
                 'chave'      => 'participantes_reuniao_cadastrados',
-                'titulo'     => 'Participantes das reunioes cadastrados',
+                'titulo'     => 'Participantes das reuniões cadastrados',
                 // §16: "uma etapa específica para SOLICITAR os Gmails das
                 // pessoas do cliente que participarão das reuniões". Quem sabe
                 // quem vai participar é o cliente.
@@ -614,63 +581,6 @@ class DefinicaoOnboarding
                 'depende_de' => [],
                 'sla_dias'   => 5,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_PARTICIPANTES,
-                'condicao'   => null,
-            ],
-            [
-                'ordem'      => 26,
-                'etapa'      => OnboardingPasso::ETAPA_INVESTIMENTO,
-                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
-                'chave'      => 'investimento_alinhado',
-                'titulo'     => 'Investimento previsto alinhado',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => [],
-                'sla_dias'   => 5,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_INVESTIMENTO,
-                'condicao'   => null,
-            ],
-            [
-                'ordem'      => 27,
-                'etapa'      => OnboardingPasso::ETAPA_INVESTIMENTO,
-                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
-                'chave'      => 'investimento_publicidade_alinhado',
-                'titulo'     => 'Investimento em publicidade alinhado',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => [],
-                'sla_dias'   => 5,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_INVESTIMENTO_PUBLICIDADE,
-                'condicao'   => null,
-            ],
-            [
-                // Dia, horario e recorrencia num item so: sao tres colunas da mesma
-                // linha, e tres itens separados nunca divergiriam entre si.
-                'ordem'      => 28,
-                'etapa'      => OnboardingPasso::ETAPA_AGENDAMENTO,
-                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
-                'chave'      => 'agenda_quinzenal_definida',
-                'titulo'     => 'Agenda das reunioes quinzenais definida',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => [],
-                'sla_dias'   => 5,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_AGENDA_QUINZENAL,
-                'condicao'   => null,
-            ],
-            [
-                // Manual de proposito: o convite sai da agenda de quem envia, e o OAuth
-                // do repo hoje e calendar.readonly. Automatizar exigiria trocar escopo e
-                // forcar reconsentimento de todos os usuarios ja conectados.
-                'ordem'      => 29,
-                'etapa'      => OnboardingPasso::ETAPA_AGENDAMENTO,
-                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
-                'chave'      => 'participantes_convidados',
-                'titulo'     => 'Participantes convidados para a agenda',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => ['agenda_quinzenal_definida', 'participantes_reuniao_cadastrados'],
-                'sla_dias'   => 3,
-                'auto_fonte' => null,
                 'condicao'   => null,
             ],
             [
@@ -704,7 +614,7 @@ class DefinicaoOnboarding
                 'etapa'      => OnboardingPasso::ETAPA_PUBLICIDADE,
                 'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
                 'chave'      => 'publicidade_operacao_explicada',
-                'titulo'     => 'Operacao da publicidade explicada',
+                'titulo'     => 'Operação da publicidade explicada',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
                 'depende_de' => ['reuniao_realizada'],
@@ -779,7 +689,7 @@ class DefinicaoOnboarding
                 'etapa'      => OnboardingPasso::ETAPA_ADMAN,
                 'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'adman_preenchimento_interno',
-                'titulo'     => 'Informacoes da ADMAN preenchidas pelo Analista',
+                'titulo'     => 'Informações da ADMAN preenchidas pelo Analista',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
                 'depende_de' => ['grant_consultoria_adman'],

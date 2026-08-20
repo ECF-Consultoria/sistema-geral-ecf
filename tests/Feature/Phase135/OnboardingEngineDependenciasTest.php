@@ -146,10 +146,21 @@ class OnboardingEngineDependenciasTest extends TestCase
 
         // v10 — saíram daqui `mensagem_boas_vindas` e `confirmacao_pagamento`,
         // os dois passos sem dependência que o negócio removeu da régua.
+        //
+        // v13 — `agendar_reuniao_onboarding` passou a não depender de nada: o
+        // negócio inverteu quem conduz (nós marcamos a data e cobramos o
+        // cliente para ela, em vez de esperar o grant).
+        //
+        // v14 — ele saiu da régua por completo, junto de `gravacao_informada`:
+        // o bloco "Reunião de onboarding" da tela já grava data e hora, e um
+        // item pedindo para agendar ao lado do formulário que agenda cobrava a
+        // mesma coisa duas vezes. `reuniao_realizada` herdou o lugar dele aqui
+        // — é ele que agora nasce SEM dependência.
         $semDependencia = [
             'grant_sistema_ecf',
             'planilha_custos_adman',
             'custos_app_ecf',
+            'reuniao_realizada',
         ];
         foreach ($semDependencia as $chave) {
             $passo = $this->passo($onboarding, $chave);
@@ -163,8 +174,6 @@ class OnboardingEngineDependenciasTest extends TestCase
             'grant_consultoria_adman',
             'metricas_da_conta',
             'anuncios_ativos_inativos',
-            'agendar_reuniao_onboarding',
-            'reuniao_realizada',
         ];
         foreach ($comDependencia as $chave) {
             $passo = $this->passo($onboarding, $chave);
@@ -469,7 +478,8 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine->aplicarResultado($this->passo($onboarding, 'metricas_da_conta'), OnboardingResolverResultado::concluido(['faturamento' => 1000]));
         $engine->aplicarResultado($this->passo($onboarding, 'anuncios_ativos_inativos'), OnboardingResolverResultado::concluido(['inativos' => 0]));
 
-        $engine->concluirManualmente($this->passo($onboarding, 'agendar_reuniao_onboarding'), $usuario);
+        // v14: `agendar_reuniao_onboarding` saiu da régua — a reunião fechou de
+        // ser o primeiro passo do bloco de agendamento.
         $engine->concluirManualmente($this->passo($onboarding, 'reuniao_realizada'), $usuario);
 
         // Os itens do fluxo de 19/08 (confirmações, investimento, contatos,
@@ -513,8 +523,8 @@ class OnboardingEngineDependenciasTest extends TestCase
 
         $engine->aplicarResultado($this->passo($onboarding, 'metricas_da_conta'), OnboardingResolverResultado::concluido(['faturamento' => 1000]));
         $engine->aplicarResultado($this->passo($onboarding, 'anuncios_ativos_inativos'), OnboardingResolverResultado::concluido(['inativos' => 0]));
-        $engine->concluirManualmente($this->passo($onboarding, 'agendar_reuniao_onboarding'), $usuario);
-
+        // v14: `agendar_reuniao_onboarding` saiu da régua — a reunião passou a
+        // nascer sem dependência nenhuma, aberta desde o início do andamento.
         // `reuniao_realizada` é deliberadamente NUNCA concluída neste teste.
         $this->assertSame(OnboardingPasso::STATUS_ABERTO, $this->passo($onboarding, 'reuniao_realizada')->status);
 

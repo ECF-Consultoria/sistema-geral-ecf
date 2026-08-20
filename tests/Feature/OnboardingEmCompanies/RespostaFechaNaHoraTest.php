@@ -79,6 +79,20 @@ class RespostaFechaNaHoraTest extends TestCase
         return $admin;
     }
 
+    /**
+     * Fecha `reuniao_realizada` e reavalia — é o que abre os itens de
+     * confirmação de publicidade/ADMAN, que dependem dela.
+     */
+    private function destravarPosReuniao(Onboarding $onboarding): void
+    {
+        $this->passo($onboarding, 'reuniao_realizada')->update([
+            'status'   => OnboardingPasso::STATUS_CONCLUIDO,
+            'feito_em' => now(),
+        ]);
+
+        app(\App\Services\Onboarding\OnboardingEngineService::class)->reavaliar($onboarding->fresh());
+    }
+
     private function passo(Onboarding $onboarding, string $chave): OnboardingPasso
     {
         return OnboardingPasso::where('onboarding_id', $onboarding->id)
@@ -87,8 +101,12 @@ class RespostaFechaNaHoraTest extends TestCase
     }
 
     /**
-     * `confirmar_dados_cadastrais` é o item de confirmação que NÃO depende da
-     * reunião — por isso serve para provar o fechamento imediato.
+     * v14: `confirmar_dados_cadastrais` saiu da régua (o bloco "Contexto da
+     * venda" já mostra os dados — confirmar "eu li" não mudava dado nenhum).
+     * Os itens de confirmação que sobraram são os de publicidade/ADMAN, e
+     * TODOS dependem de `reuniao_realizada`: por isso o teste fecha a reunião
+     * antes. Sem isso o passo estaria `bloqueado` e o teste provaria só que
+     * bloqueado não fecha, que não é o que ele existe para provar.
      *
      * @test
      */
@@ -96,20 +114,21 @@ class RespostaFechaNaHoraTest extends TestCase
     {
         $this->admin();
         $onboarding = $this->onboardingEmAndamento();
+        $this->destravarPosReuniao($onboarding);
 
         $this->assertSame(
             OnboardingPasso::STATUS_ABERTO,
-            $this->passo($onboarding, 'confirmar_dados_cadastrais')->status
+            $this->passo($onboarding, 'publicidade_processo_explicado')->status
         );
 
         $this->post(route('onboarding.confirmacao.responder', $onboarding), [
-            'chave'    => 'confirmar_dados_cadastrais',
+            'chave'    => 'publicidade_processo_explicado',
             'resposta' => 'sim',
         ])->assertRedirect();
 
         $this->assertSame(
             OnboardingPasso::STATUS_CONCLUIDO,
-            $this->passo($onboarding, 'confirmar_dados_cadastrais')->status,
+            $this->passo($onboarding, 'publicidade_processo_explicado')->status,
             'O item não fechou na hora — a resposta gravou mas o resolver não rodou.'
         );
     }
@@ -120,26 +139,38 @@ class RespostaFechaNaHoraTest extends TestCase
     {
         $this->admin();
         $onboarding = $this->onboardingEmAndamento();
+        $this->destravarPosReuniao($onboarding);
 
         $this->post(route('onboarding.confirmacao.responder', $onboarding), [
-            'chave'    => 'confirmar_dados_cadastrais',
+            'chave'    => 'publicidade_processo_explicado',
             'resposta' => 'nao',
         ])->assertRedirect();
 
         $this->assertSame(
             OnboardingPasso::STATUS_ABERTO,
-            $this->passo($onboarding, 'confirmar_dados_cadastrais')->status
+            $this->passo($onboarding, 'publicidade_processo_explicado')->status
         );
 
         $this->assertDatabaseHas('onboarding_confirmacoes', [
             'onboarding_id' => $onboarding->id,
-            'chave'         => 'confirmar_dados_cadastrais',
+            'chave'         => 'publicidade_processo_explicado',
             'resposta'      => 'nao',
         ]);
     }
 
-    /** @test */
-    public function salvar_investimento_fecha_os_dois_itens_na_hora(): void
+    /**
+     * v14: `investimento_alinhado` e `investimento_publicidade_alinhado` saíram
+     * da régua — o negócio decidiu que pedir "confirme que alinhou" ao lado do
+     * formulário que grava os valores era cobrar duas vezes a mesma coisa.
+     *
+     * O que estes testes protegem mudou junto: não há mais passo para fechar,
+     * então o que precisa continuar verdadeiro é que **o dado persiste**. Se o
+     * formulário parar de gravar, o bloco fica mudo e ninguém percebe — não há
+     * mais um item de checklist reclamando.
+     *
+     * @test
+     */
+    public function salvar_investimento_persiste_os_valores(): void
     {
         $this->admin();
         $onboarding = $this->onboardingEmAndamento();
@@ -149,22 +180,20 @@ class RespostaFechaNaHoraTest extends TestCase
             'investimento_publicidade' => 1500,
         ])->assertRedirect();
 
-        $this->assertSame(
-            OnboardingPasso::STATUS_CONCLUIDO,
-            $this->passo($onboarding, 'investimento_alinhado')->status
-        );
-        $this->assertSame(
-            OnboardingPasso::STATUS_CONCLUIDO,
-            $this->passo($onboarding, 'investimento_publicidade_alinhado')->status
-        );
+        $this->assertDatabaseHas('onboarding_investimentos', [
+            'onboarding_id'            => $onboarding->id,
+            'investimento_disponivel'  => 5000,
+            'investimento_publicidade' => 1500,
+        ]);
     }
 
     /**
-     * Zero é resposta informada, não ausência — e tem de fechar o item igual.
+     * Zero é resposta informada, não ausência. Continua valendo depois da v14 —
+     * agora sobre o dado gravado, não sobre um passo fechado.
      *
      * @test
      */
-    public function investimento_zero_fecha_o_item(): void
+    public function investimento_zero_e_gravado_como_valor_e_nao_como_vazio(): void
     {
         $this->admin();
         $onboarding = $this->onboardingEmAndamento();
@@ -173,15 +202,24 @@ class RespostaFechaNaHoraTest extends TestCase
             'investimento_publicidade' => 0,
         ])->assertRedirect();
 
-        $this->assertSame(
-            OnboardingPasso::STATUS_CONCLUIDO,
-            $this->passo($onboarding, 'investimento_publicidade_alinhado')->status,
-            'Zero foi tratado como "sem resposta".'
+        $investimento = \App\Models\OnboardingInvestimento::where('onboarding_id', $onboarding->id)->first();
+
+        $this->assertNotNull($investimento, 'Salvar zero não criou a linha.');
+        $this->assertNotNull(
+            $investimento->investimento_publicidade,
+            'Zero virou null — foi tratado como "sem resposta".'
         );
+        $this->assertEquals(0, $investimento->investimento_publicidade);
     }
 
-    /** @test */
-    public function salvar_agenda_fecha_o_item_na_hora(): void
+    /**
+     * v14: `agenda_quinzenal_definida` saiu da régua pelo mesmo motivo. O bloco
+     * "Agenda das reuniões recorrentes" continua sendo onde a rotina se
+     * registra, e é a gravação que precisa seguir de pé.
+     *
+     * @test
+     */
+    public function salvar_agenda_persiste_a_rotina(): void
     {
         $this->admin();
         $onboarding = $this->onboardingEmAndamento();
@@ -192,10 +230,11 @@ class RespostaFechaNaHoraTest extends TestCase
             'periodicidade' => 'quinzenal',
         ])->assertRedirect();
 
-        $this->assertSame(
-            OnboardingPasso::STATUS_CONCLUIDO,
-            $this->passo($onboarding, 'agenda_quinzenal_definida')->status
-        );
+        $this->assertDatabaseHas('onboarding_agendas', [
+            'onboarding_id' => $onboarding->id,
+            'dia_semana'    => 3,
+            'periodicidade' => 'quinzenal',
+        ]);
     }
 
     /** @test */

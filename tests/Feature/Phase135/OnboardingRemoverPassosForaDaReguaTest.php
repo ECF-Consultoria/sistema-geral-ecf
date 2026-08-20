@@ -152,9 +152,14 @@ class OnboardingRemoverPassosForaDaReguaTest extends TestCase
 
         $reuniao = $this->passo($onboarding, 'reuniao_realizada');
 
-        $this->assertSame(['agendar_reuniao_onboarding'], $reuniao->depende_de);
-        $this->assertNotContains('confirmacao_pagamento', $reuniao->depende_de);
-        $this->assertNotContains('relatorio_inicial', $reuniao->depende_de);
+        // v14: `agendar_reuniao_onboarding` também saiu da régua (o bloco
+        // "Reunião de onboarding" da tela já grava data e hora), então a
+        // reunião fica SEM dependência nenhuma — e é isso que a destrava.
+        // Antes da v14 este teste esperava que ela sobrasse aqui.
+        $this->assertEmpty(
+            $reuniao->depende_de ?? [],
+            'A reunião ficou esperando um passo que não existe mais.'
+        );
     }
 
     /**

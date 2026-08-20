@@ -53,11 +53,53 @@ class OnboardingRemoverPassosForaDaRegua extends Command
      * comparação cega classificaria como órfãos e apagaria.
      */
     private const CHAVES_FORA_DA_REGUA = [
+        // ─── Saíram na v10 ─────────────────────────────────────────────
         'mensagem_boas_vindas',
         'confirmacao_pagamento',
         'excluir_anuncios_inativos',
         'grant_de_ads',
         'relatorio_inicial',
+
+        // ─── Saíram na v14 (20/08) — o checklist pedia o que o formulário
+        // ao lado já respondia ──────────────────────────────────────────
+        // O negócio revisou item a item e o critério foi um só: se a
+        // resposta já existe em outro lugar da tela, o item de checklist
+        // não acrescenta informação — só cobra um clique a mais de quem
+        // acabou de preencher o formulário. Ninguém dá esse clique, e o
+        // onboarding fica eternamente "pendente" por burocracia própria.
+        //
+        // `agendar_reuniao_onboarding`: o bloco "Reunião de onboarding" já
+        // grava data e hora. Pedir para agendar ao lado do formulário que
+        // agenda era pedir duas vezes.
+        'agendar_reuniao_onboarding',
+        // Gravação das reuniões: o §15 do PDF virou item de checklist, mas
+        // não há nada a registrar nem a conferir — é fala de call.
+        'gravacao_informada',
+        'gravacao_acesso_explicado',
+        // Dados/SPIN/contexto: o bloco "Contexto da venda" mostra os três
+        // na mesma tela. Confirmar "eu li" não muda dado nenhum.
+        'confirmar_dados_cadastrais',
+        'revisar_spin',
+        'revisar_contexto',
+        // Investimento: `BlocoInvestimento` grava os valores. Se há valor
+        // gravado, está alinhado; se não há, o campo vazio já diz isso.
+        'investimento_alinhado',
+        'investimento_publicidade_alinhado',
+        // Agenda e participantes: `BlocoAgenda` e `BlocoContatos` são a
+        // resposta. Os passos que restaram nessas etapas fecham SOZINHOS
+        // pelos resolvers (`agenda_quinzenal_definida` virou dado, não
+        // pergunta).
+        'agenda_quinzenal_definida',
+        'participantes_convidados',
+
+        // ─── Legado: já tinham saído da régua em versões anteriores e
+        // continuavam vivos em quem nasceu antes ────────────────────────
+        // Não estavam nesta lista, então nenhum comando os alcançava: eles
+        // apareciam ABERTOS no painel, sem SLA que os fechasse e sem
+        // definição que os recriasse. Pendência eterna por esquecimento.
+        'ficha_cliente_recebida',
+        'ficha_conta_preenchida',
+        'grupo_criado',
     ];
 
     public function handle(OnboardingEngineService $engine): int
