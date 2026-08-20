@@ -75,6 +75,37 @@ Cinco testes novos. O do nulo é o que importa, e foi **provado RED**: removendo
 controller, ele falha. A empresa sem prazo é criada por último de propósito — se o desempate por
 id vazar para cima da regra de nulo, ela sobe e o teste reprova.
 
+## DEPLOYADO em 2026-08-20
+
+Commit em producao: **`7ef6961b`** (autorizacao explicita do usuario nesta conversa).
+
+Conferido por **reconsulta ao banco**, nunca pela tela:
+
+- `HEAD` no VPS = `7ef6961b`
+- `migrate --force` = **"Nothing to migrate"** (este lote nao tem migration: 1 controller, 2 telas, 1 teste)
+- Contagens **identicas ao baseline** medido antes do deploy: `mlb_empresas` 495, `companies` 194,
+  `contrato_assinaturas` 4
+- `administrativo_bloqueio_ativo` continua **ligado**
+- Codigo novo presente no VPS (`grep -c "'vencimento'"` no controller = 2)
+- Smoke: `/login` 200, `/administrativo/contratos` 302, e a URL com os filtros novos
+  (`?ordenar=vencimento&servico=1`) tambem 302 — redirect de nao-autenticado, esperado
+- **Zero erro depois do deploy**: a ultima linha do log e das 08:00 e o deploy foi as ~11:39
+- Nenhum `cache:clear` executado
+
+**Nada de outra sessao foi junto** desta vez: os 5 commits publicados eram todos desta sessao,
+conferido antes do push.
+
+### Observacoes de producao (nao sao deste trabalho)
+
+- `mlb_empresas` caiu de **496 para 495** entre 19/08 e 20/08. Nao foi este deploy (a contagem e
+  identica antes e depois dele). Alguem removeu uma ficha, ou houve limpeza — vale conferir se foi
+  intencional.
+- Dois erros de 19/08 no log que merecem olhar, nenhum deles deste trabalho:
+  - `Call to undefined relationship [contrato] on model [App\Models\Onboarding]` — vem do
+    Onboarding v10 da outra sessao; e um 500 para quem cair nesse caminho.
+  - `Arquivo baixado para o contrato #5 nao e um PDF valido (assinatura %PDF ausente)` — o caminho
+    de download do PDF assinado falhou.
+
 ## Não deployado
 
 Commitado e pronto para subir. O deploy publica o trabalho de todas as sessões que compartilham a
