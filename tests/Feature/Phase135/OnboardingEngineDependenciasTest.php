@@ -156,9 +156,16 @@ class OnboardingEngineDependenciasTest extends TestCase
         // item pedindo para agendar ao lado do formulário que agenda cobrava a
         // mesma coisa duas vezes. `reuniao_realizada` herdou o lugar dele aqui
         // — é ele que agora nasce SEM dependência.
+        // v17 — `acesso_colaborador_ml` e `grant_consultoria_adman` perderam a
+        // dependência do OAuth: convidar colaborador no Mercado Livre e liberar
+        // acesso dentro da Adman são plataformas diferentes, e nenhuma precisa
+        // do nosso grant para acontecer. O cadeado só adiava trabalho que o
+        // cliente já podia fazer em paralelo.
         $semDependencia = [
             'grant_sistema_ecf',
+            'acesso_colaborador_ml',
             'planilha_custos_adman',
+            'grant_consultoria_adman',
             'custos_app_ecf',
             'reuniao_realizada',
         ];
@@ -170,8 +177,6 @@ class OnboardingEngineDependenciasTest extends TestCase
 
         // v10 — `excluir_anuncios_inativos` e `grant_de_ads` também saíram.
         $comDependencia = [
-            'acesso_colaborador_ml',
-            'grant_consultoria_adman',
             'metricas_da_conta',
             'anuncios_ativos_inativos',
         ];

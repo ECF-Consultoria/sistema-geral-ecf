@@ -133,7 +133,7 @@ class DefinicaoOnboarding
      * títulos antigos ficam como estão — reescrevê-los exigiria mexer no
      * congelamento, e ninguém pediu isso.
      */
-    public const VERSAO = 16;
+    public const VERSAO = 17;
 
     /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
@@ -420,7 +420,13 @@ class DefinicaoOnboarding
                 // puxa o que consegue; só então se pede o acesso de colaborador.
                 'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
-                'depende_de' => ['grant_sistema_ecf'],
+                // v17 — SEM dependencia do OAuth. Convidar colaborador no Mercado
+                // Livre e conceder acesso dentro da Adman sao acoes de plataformas
+                // diferentes: nenhuma delas precisa do nosso grant para acontecer.
+                // A dependencia so produzia cadeado e a frase "Liberamos assim que
+                // ... estiver concluido" num item que o cliente ja podia fazer,
+                // empurrando para depois um trabalho que cabia em paralelo.
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => null,
                 'condicao'   => null,
@@ -457,7 +463,13 @@ class DefinicaoOnboarding
                 // passos de acesso.
                 'dono'       => OnboardingPasso::DONO_CLIENTE,
                 'setor_id'   => null,
-                'depende_de' => ['grant_sistema_ecf'],
+                // v17 — SEM dependencia do OAuth. Convidar colaborador no Mercado
+                // Livre e conceder acesso dentro da Adman sao acoes de plataformas
+                // diferentes: nenhuma delas precisa do nosso grant para acontecer.
+                // A dependencia so produzia cadeado e a frase "Liberamos assim que
+                // ... estiver concluido" num item que o cliente ja podia fazer,
+                // empurrando para depois um trabalho que cabia em paralelo.
+                'depende_de' => [],
                 'sla_dias'   => 5,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_ADMAN_GRANT,
                 'condicao'   => null,

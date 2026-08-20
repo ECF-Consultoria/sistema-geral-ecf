@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Alinha `dono` e `natureza` de passos JÁ EXISTENTES com a régua vigente.
+ * Alinha `dono`, `natureza` e `ordem` de passos JÁ EXISTENTES com a régua vigente.
  *
  * ### Por que este comando precisa existir
  * A definição é COPIADA para `onboarding_passos` no nascimento — é o que
@@ -25,21 +25,28 @@ use Illuminate\Support\Facades\DB;
  * já em andamento continuaria sem ver as seções — a feature ficaria invisível
  * exatamente para quem já está no processo.
  *
+ * ### `ordem` entrou depois, e por um motivo concreto
+ * O onboarding 3 tinha `grant_sistema_ecf` congelado em ordem 8 enquanto a
+ * régua o define como 3 — resultado: o portal listava "Grant com a Consultoria
+ * (Adman)" ANTES do "Grant com o Sistema ECF", que é o oposto da sequência que
+ * o negócio combinou. `ordem` é apresentação pura: mudar não desfaz nada nem
+ * reabre passo, só corrige a leitura.
+ *
  * ### É uma exceção CONSCIENTE ao congelamento, e por isso é estreita
- * Só toca `dono` e `natureza`, e só quando divergem da régua. Não mexe em
- * `status`, `feito_por`, `feito_em`, `sla_dias` nem `ordem`: mudar dono não
- * pode desfazer trabalho feito nem reabrir o que já fechou. Um passo concluído
- * continua concluído, só troca de coluna na leitura de "de quem é a bola".
+ * Só toca `dono`, `natureza` e `ordem`, e só quando divergem da régua. Não
+ * mexe em `status`, `feito_por`, `feito_em` nem `sla_dias`: alinhar estrutura
+ * não pode desfazer trabalho feito nem reabrir o que já fechou. Um passo
+ * concluído continua concluído.
  *
  * Dry-run por padrão, como os outros comandos da família.
  */
-class OnboardingSincronizarDonoNatureza extends Command
+class OnboardingSincronizarEstrutura extends Command
 {
-    protected $signature = 'onboarding:sincronizar-dono-natureza
+    protected $signature = 'onboarding:sincronizar-estrutura
         {--apply     : Grava de verdade. Sem esta flag o comando só mostra o que faria}
         {--company=  : Restringe a um company_id}';
 
-    protected $description = 'Alinha dono e natureza dos passos existentes com a régua vigente (dry-run por padrão)';
+    protected $description = 'Alinha dono, natureza e ordem dos passos existentes com a régua vigente (dry-run por padrão)';
 
     public function handle(OnboardingEngineService $engine): int
     {
@@ -74,8 +81,11 @@ class OnboardingSincronizarDonoNatureza extends Command
                 $donoNovo = $naRegua['dono'];
                 $naturezaNova = $naRegua['natureza'] ?? OnboardingPasso::NATUREZA_ACAO;
                 $naturezaAtual = $passo->natureza ?? OnboardingPasso::NATUREZA_ACAO;
+                $ordemNova = (int) $naRegua['ordem'];
 
-                if ($passo->dono === $donoNovo && $naturezaAtual === $naturezaNova) {
+                if ($passo->dono === $donoNovo
+                    && $naturezaAtual === $naturezaNova
+                    && (int) $passo->ordem === $ordemNova) {
                     continue;
                 }
 
@@ -85,23 +95,25 @@ class OnboardingSincronizarDonoNatureza extends Command
                         $onboarding->id,
                         $onboarding->company->name,
                         $passo->chave,
-                        "{$passo->dono} → {$donoNovo}",
-                        "{$naturezaAtual} → {$naturezaNova}",
+                        $passo->dono === $donoNovo ? '=' : "{$passo->dono} → {$donoNovo}",
+                        $naturezaAtual === $naturezaNova ? '=' : "{$naturezaAtual} → {$naturezaNova}",
+                        (int) $passo->ordem === $ordemNova ? '=' : "{$passo->ordem} → {$ordemNova}",
                     ],
                     'dono'     => $donoNovo,
                     'natureza' => $naturezaNova,
+                    'ordem'    => $ordemNova,
                 ];
             }
         }
 
         if ($mudancas === []) {
-            $this->info('[Onboarding] nenhuma divergência de dono/natureza — nada a fazer.');
+            $this->info('[Onboarding] nenhuma divergência de estrutura — nada a fazer.');
 
             return self::SUCCESS;
         }
 
         $this->table(
-            ['Onboarding', 'Empresa', 'Chave', 'Dono', 'Natureza'],
+            ['Onboarding', 'Empresa', 'Chave', 'Dono', 'Natureza', 'Ordem'],
             array_column($mudancas, 'linha')
         );
 
@@ -118,11 +130,12 @@ class OnboardingSincronizarDonoNatureza extends Command
                 OnboardingPasso::whereKey($m['passo']->id)->update([
                     'dono'     => $m['dono'],
                     'natureza' => $m['natureza'],
+                    'ordem'    => $m['ordem'],
                 ]);
             }
         });
 
-        // Reavaliar depois: `dono` não muda dependência, mas o passo pode ter
+        // Reavaliar depois: nenhum destes campos muda dependência, mas o passo pode ter
         // ficado disponível por outro motivo enquanto isto rodava, e sair daqui
         // com o estado fresco é mais barato que descobrir depois.
         foreach ($onboardings->whereIn('id', array_unique(array_map(

@@ -161,8 +161,10 @@ class OnboardingPainelAcoesTest extends TestCase
             $this->assertNotNull($passo->disponivel_em, "passo {$chave} deveria ter disponivel_em carimbado");
         }
 
-        // Passo com dependência (ex.: grant_consultoria_adman) continua bloqueado.
-        $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $this->passo($onboarding, 'grant_consultoria_adman')->status);
+        // Passo com dependência continua bloqueado. v17: os dois grants
+        // deixaram de depender do OAuth, então quem sobra com dependência é a
+        // coleta automática — que de fato só roda depois do grant.
+        $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $this->passo($onboarding, 'metricas_da_conta')->status);
     }
 
     #[Test]

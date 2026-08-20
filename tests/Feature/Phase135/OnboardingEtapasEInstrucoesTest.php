@@ -175,7 +175,7 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
     #[Test]
     public function a_versao_da_definicao_acompanha_a_receita_vigente(): void
     {
-        $this->assertSame(16, DefinicaoOnboarding::VERSAO);
+        $this->assertSame(17, DefinicaoOnboarding::VERSAO);
 
         $onboarding = $this->onboardingEmAndamento(Company::factory()->create());
         $this->assertSame(DefinicaoOnboarding::VERSAO, $onboarding->definicao_versao);
@@ -359,23 +359,42 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         );
     }
 
+    /**
+     * v17 — nenhum passo do cliente depende mais de outro passo VISÍVEL a ele:
+     * os dois grants perderam a dependência do OAuth. O mecanismo continua no
+     * código (`passosDoCliente()` traduz `depende_de` em `depende_de_titulo`)
+     * e vale para a próxima régua que o use, então o caso é MONTADO aqui em
+     * vez de a cobertura ser apagada junto com a dependência.
+     */
     #[Test]
     public function passo_bloqueado_diz_qual_passo_visivel_o_libera(): void
     {
         $company = Company::factory()->create();
-        $this->onboardingEmAndamento($company);
+        $onboarding = $this->onboardingEmAndamento($company);
+
+        OnboardingPasso::create([
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 99,
+            'etapa'         => OnboardingPasso::ETAPA_ACESSOS,
+            'natureza'      => OnboardingPasso::NATUREZA_ACAO,
+            'chave'         => 'passo_dependente_de_teste',
+            'titulo'        => 'Passo que espera o grant',
+            'dono'          => OnboardingPasso::DONO_CLIENTE,
+            'depende_de'    => ['grant_sistema_ecf'],
+            'status'        => OnboardingPasso::STATUS_BLOQUEADO,
+        ]);
 
         $payload = collect(app(OnboardingLinkService::class)->passosDoCliente($company))
             ->keyBy('chave');
 
         $this->assertSame(
             OnboardingPasso::STATUS_BLOQUEADO,
-            $payload['acesso_colaborador_ml']['status'],
-            'Pré-condição: este passo depende do grant e nasce bloqueado'
+            $payload['passo_dependente_de_teste']['status']
         );
         $this->assertSame(
             'Grant com o Sistema ECF (OAuth)',
-            $payload['acesso_colaborador_ml']['depende_de_titulo']
+            $payload['passo_dependente_de_teste']['depende_de_titulo'],
+            'O cliente precisa saber QUAL item libera o que está cadeado.'
         );
     }
 

@@ -414,12 +414,13 @@ class OnboardingPainelPropsTest extends TestCase
         // Por CHAVE, nunca por índice — a definição pode ganhar passos no meio.
         $passos = collect($response->viewData('page')['props']['passos'])->keyBy('chave');
 
-        // v9 — o grant com a Consultoria depende do grant com o SISTEMA, que
-        // é a ordem real do processo. Antes dependia da planilha de custos,
-        // pondo um passo de cadastro no meio de dois passos de acesso.
+        // v17 — os dois grants perderam a dependência do OAuth (plataformas
+        // diferentes). Quem ainda depende dele é a COLETA automática, que
+        // realmente não tem como rodar antes da autorização existir. É ela que
+        // prova a tradução de chave para título legível.
         $this->assertSame(
             ['Grant com o Sistema ECF (OAuth)'],
-            $passos['grant_consultoria_adman']['depende_de'],
+            $passos['metricas_da_conta']['depende_de'],
         );
         // v10 — nenhum passo da régua tem `condicao`: o único condicional era
         // `excluir_anuncios_inativos`, que saiu. A TRADUÇÃO segue no controller
