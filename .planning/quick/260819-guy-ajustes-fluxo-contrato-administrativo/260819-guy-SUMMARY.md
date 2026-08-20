@@ -153,3 +153,30 @@ falhas acontecem.
 
 Nada foi para produção. As migrations rodaram só no banco local. O deploy publica o trabalho de
 todas as sessões que compartilham a árvore e precisa de autorização explícita.
+
+## HOTFIX 2026-08-20 — classe nao commitada quebrou producao com 500
+
+`App\Support\NomeCompleto` (Tarefa 7 item 4) **existia no disco local mas nunca foi commitada**.
+Efeito: a suite passava aqui (arquivo presente) e producao quebrava
+(`Class "App\Support\NomeCompleto" not found`).
+
+Quem chama e `ContratoDadosMinimosService::faltantes()`, na regra 3: `blank()` primeiro,
+`NomeCompleto::valido()` depois. Ou seja **`/administrativo/contratos/{company}` dava 500 em toda
+empresa com `nome_contato` PREENCHIDO** — justamente quem ja tem cadastro completo e contrato
+assinado. Empresa com o campo vazio escapava pelo curto-circuito do `blank()`, o que fez o bug
+parecer "so acontece em contrato assinado" quando o usuario reportou.
+
+3 ocorrencias em producao, todas entre o deploy de `bdcb9ce4` (19/08) e o hotfix.
+
+**Causa:** commit por caminho explicito (`git commit -- <paths>`, disciplina obrigatoria na arvore
+compartilhada) sem conferir arquivo NOVO nao rastreado no lote — e
+`git status --porcelain --untracked-files=no`, usado o tempo todo para ignorar o WIP das outras
+sessoes, **esconde exatamente esse caso**. Passou por todos os gates verdes e por um deploy inteiro.
+
+**Fix:** `db22dbf2` — a classe e o teste de unidade dela (4 casos, que tambem estava fora).
+Deployado e conferido por reconsulta: arquivo presente no VPS e `faltantes()` executado com sucesso
+numa empresa real com `nome_contato` preenchido (company 396), o caminho exato que quebrava.
+
+**Licao registrada:** antes de commitar/deployar, rodar
+`git status --porcelain app/ resources/ tests/ database/` **sem** `--untracked-files=no` e conferir
+os `??`.
