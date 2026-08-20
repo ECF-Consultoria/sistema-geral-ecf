@@ -106,7 +106,3 @@ conferido antes do push.
   - `Arquivo baixado para o contrato #5 nao e um PDF valido (assinatura %PDF ausente)` — o caminho
     de download do PDF assinado falhou.
 
-## Não deployado
-
-Commitado e pronto para subir. O deploy publica o trabalho de todas as sessões que compartilham a
-árvore e precisa de autorização explícita.
