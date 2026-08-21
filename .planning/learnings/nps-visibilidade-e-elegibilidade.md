@@ -278,3 +278,84 @@ para Pendentes por link de grupo.
 Travado por `tests/Feature/NpsLinkDeGrupoNaTelaTest.php` (5 testes; 3 deles
 comprovadamente vermelhos sem o fix — verificado por mutação, não por
 suposição).
+
+---
+
+## 6. "Responderam o NPS e não refletiu no grupo" quase nunca é o grupo — é link INDIVIDUAL, ou é a régua de responsável POR SERVIÇO
+
+Reportado em 2026-08-21, grupo `Camillo Parts` (id 3, 7 empresas): *"teve
+empresa que respondeu NPS de Shopee, era para refletir nas outras, já que são
+grupo"*. Diagnosticado inteiro em produção, **sem nenhuma mudança de código —
+não havia bug**. Fica aqui porque a assinatura do relato é idêntica à de um bug
+real e o caminho de investigação é longo.
+
+### O que era
+
+A resposta de Shopee do grupo veio da `GENUINEAUTOMOTIVE` (survey 458), num
+link **individual** — `group_survey_id IS NULL`. Resposta em link individual
+**nunca** replica; só a de link de grupo dispara
+`NpsGrupoReplicacaoService::replicar()`. O grupo nunca teve link de grupo de
+Shopee: o único que existia (`nps_group_surveys` #7) era do modelo
+**Performance**, e esse replicou corretamente para as 5 empresas em 18/08.
+
+Primeira query a rodar em qualquer relato desse feitio — ela sozinha separa
+"não replicou" de "nunca foi de grupo":
+
+```sql
+SELECT s.id, s.company_id, c.name, s.template_id, s.status, s.group_survey_id, s.created_at
+  FROM nps_surveys s JOIN companies c ON c.id=s.company_id
+ WHERE c.company_group_id = <grupo> AND s.template_id = <modelo>
+ ORDER BY s.id DESC;
+-- group_survey_id NULL na resposta = link individual = replicação nunca foi pedida
+```
+
+### O agravante, que é o ponto realmente não dedutível
+
+Mesmo que tivessem gerado o link de GRUPO, ele **não** cobriria as empresas que
+a pessoa esperava. A cobertura roda por SERVIÇO coberto pelo modelo (D3/D6), e
+o modelo de Shopee (#7) cobre um serviço só: `Gestão de ADS Shopee` (id 9) — um
+serviço com dupla responsável PRÓPRIA, diferente da de Performance. Medido:
+
+| empresa | entra? | motivo |
+|---|---|---|
+| EDUMAC PARTS (144) | sim | Felipe + Matheus Estrela no serviço 9 |
+| CAMILLOPARTS FILIAL RS (358) | sim | mesma dupla |
+| CAMILLOPARTSFILIALSCCAMILLO (131) | **não** | `sem_responsavel` — contrato 9 ATIVO, mas vínculo só no serviço 6 |
+| CAMILLO PARTS MATRIZ (1) | **não** | idem |
+| TRWCAMILLOPARTS (175) | **não** | `sem_servico_contratado` — contrato 9 inativo |
+| GENUINEAUTOMOTIVE (132) | **não** | `responsavel_diferente` — analista Shopee é o Gustavo, nas outras é o Matheus |
+
+Ou seja: **a empresa que respondeu é justamente a que o link de grupo teria
+excluído.** Nada disso é visível na tela do grupo antes de gerar a prévia, e
+nenhuma dessas três exclusões é bug — são D4/D6 funcionando.
+
+A armadilha de cadastro por trás disso é geral, não é da Camillo: **empresa com
+contrato ATIVO num serviço e vínculo em `company_users` só de OUTRO serviço não
+tem responsável naquele serviço**, porque `responsavelDoServicoOuConsolidado()`
+só cai no slot consolidado quando existe linha com `servico_id IS NULL` — um
+vínculo em outro `servico_id` não serve de fallback. Para achar todos os casos:
+
+```sql
+SELECT c.id, c.name, cs.servico_id
+  FROM companies c
+  JOIN contratos_servico cs ON cs.company_id=c.id AND cs.ativo=1
+ WHERE c.active=1
+   AND NOT EXISTS (SELECT 1 FROM company_users cu WHERE cu.company_id=c.id
+                     AND (cu.servico_id = cs.servico_id OR cu.servico_id IS NULL));
+```
+
+### Por que gerar o link de grupo "para consertar" também não resolveria
+
+Depois da resposta individual, o analista gerou links **individuais** de Shopee
+para EDUMAC (487) e RS (488). A partir daí a cobertura de um link de grupo novo
+é **vazia**: as duas saem por `ja_tem_link`
+(`surveyExistenteNaCompetencia()` conta survey manual com `month_reference
+NULL` pelo `created_at` do mês) e as outras três pelos motivos da tabela.
+A ordem das ações fecha a porta sem avisar.
+
+### Decisão de 2026-08-21
+
+Usuário optou por **não** replicar retroativamente a resposta da GENUINE para
+as demais (seria gravar nota nova em competência corrente, mesma trava dos §2 e
+§5) e por tratar o cadastro pela tela, com o time. Nenhuma linha de código e
+nenhum UPDATE em produção saíram deste diagnóstico.
