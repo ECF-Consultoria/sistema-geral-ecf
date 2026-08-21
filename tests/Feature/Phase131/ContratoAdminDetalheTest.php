@@ -254,9 +254,17 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertNull($empresa->fresh()->email_colaborador);
     }
 
-    // ─── Quick 260819-guy — PATCH com CNPJ de dígito verificador trocado é recusado ───
-
-    public function test_atualizar_cadastro_com_cnpj_de_digito_trocado_e_recusado_e_nao_grava(): void
+    // ─── Quick 260821-odj — PATCH com CNPJ de dígito verificador trocado GRAVA os demais campos ───
+    //
+    // SUPERSEDE o teste antigo (Quick 260819-guy) que exigia recusa da
+    // requisição inteira. Era exatamente a causa raiz do incidente em
+    // produção (empresa 430 Mons Bike, 2026-08-21): `new CnpjValido()` no
+    // salvar reprovava a REQUISIÇÃO INTEIRA por causa de um campo com
+    // problema, perdendo razão social/endereço digitados junto, sem
+    // problema nenhum. `CnpjValido`/`Cnpj::valido()` seguem em uso — só
+    // migraram para o gate da GERAÇÃO (`ContratoDadosMinimosService::
+    // faltantes()`), que roda antes de qualquer chamada à Clicksign.
+    public function test_atualizar_cadastro_com_cnpj_de_digito_trocado_grava_os_demais_campos(): void
     {
         $admin   = $this->admin();
         $empresa = $this->empresaIncompleta(['name' => 'Empresa CNPJ Digito Trocado']);
@@ -264,19 +272,36 @@ class ContratoAdminDetalheTest extends TestCase
         $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
             // Mesmo CNPJ válido do plano ('26.754.383/0001-87'), com o
             // último dígito trocado.
-            'cnpj' => '26.754.383/0001-88',
+            'cnpj'          => '26.754.383/0001-88',
+            'razao_social'  => 'Empresa CNPJ Digito Trocado LTDA',
+            'endereco'      => 'Rua de Teste, 123',
+            'bairro'        => 'Bairro de Teste',
+            'cidade'        => 'Cidade de Teste',
+            'estado'        => 'TS',
+            'cep'           => '00000-000',
         ]);
 
-        $response->assertSessionHasErrors('cnpj');
-        $this->assertNull($empresa->fresh()->cnpj);
+        $response->assertSessionDoesntHaveErrors('cnpj');
+        $response->assertSessionHas('success');
 
-        // A mesma empresa, sem o cnpj corrigido, também aparece como
-        // pendência ao consultar a tela de detalhe — prova que o save() e
-        // o faltantes() concordam sobre o mesmo dado.
+        // RECONSULTA ao banco — nunca por stdout nem pela mensagem de
+        // sucesso da tela. O cnpj com dígito trocado É gravado (o salvar não
+        // valida mais dígito verificador); os demais campos também.
+        $fresca = $empresa->fresh();
+        $this->assertSame('26.754.383/0001-88', $fresca->cnpj);
+        $this->assertSame('Empresa CNPJ Digito Trocado LTDA', $fresca->razao_social);
+        $this->assertSame('Rua de Teste, 123', $fresca->endereco);
+
+        // O gate da GERAÇÃO não afrouxou: a mesma empresa, com o cnpj
+        // inválido gravado, continua bloqueada em faltantes() com
+        // motivo 'formato' — prova que o save() e o faltantes() concordam
+        // sobre o mesmo dado, só o efeito (recusar vs. registrar pendência)
+        // mudou de lugar.
         $response2 = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
         $props = $response2->viewData('page')['props'];
-        $campos = collect($props['faltantes'])->pluck('campo')->all();
-        $this->assertContains('cnpj', $campos);
+        $item = collect($props['faltantes'])->firstWhere('campo', 'cnpj');
+        $this->assertNotNull($item, 'cnpj com dígito trocado deveria seguir bloqueando a geração.');
+        $this->assertSame('formato', $item['motivo']);
     }
 
     // ─── Caso 5 — PATCH grava CNPJ/e-mails/nome_contato/datas — RECONSULTA ao banco ───
@@ -616,19 +641,48 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertTrue($props->firstWhere('id', $segundaTentativa->id)['ja_tentou_antes']);
     }
 
-    // ─── Quick 260819-guy — Tarefa 7 item 4: nome de uma palavra só é recusado no save ───
-
-    public function test_atualizar_cadastro_com_nome_contato_de_uma_palavra_e_recusado_e_nao_grava(): void
+    // ─── Quick 260821-odj — nome de uma palavra só GRAVA os demais campos ───
+    //
+    // SUPERSEDE o teste antigo (Quick 260819-guy Tarefa 7 item 4). É a
+    // regressão MEDIDA do incidente em produção: empresa 430 Mons Bike,
+    // `nome_contato = "Vitor"` (veio do contato do HubSpot), duas tentativas
+    // de "Salvar cadastro" com razão social + CNPJ + os 5 campos de
+    // endereço preenchidos, ambas `303` sem gravar nada.
+    // `NomeCompletoValido`/`NomeCompleto::valido()` seguem em uso — só
+    // migraram para o gate da GERAÇÃO.
+    public function test_atualizar_cadastro_com_nome_contato_de_uma_palavra_grava_os_demais_campos(): void
     {
         $admin   = $this->admin();
         $empresa = $this->empresaIncompleta(['name' => 'Empresa Nome Sem Sobrenome']);
 
         $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
-            'nome_contato' => 'teste',
+            'nome_contato'  => 'Vitor',
+            'cnpj'          => '26.754.383/0001-87',
+            'razao_social'  => 'Empresa Nome Sem Sobrenome LTDA',
+            'endereco'      => 'Rua de Teste, 123',
+            'bairro'        => 'Bairro de Teste',
+            'cidade'        => 'Cidade de Teste',
+            'estado'        => 'TS',
+            'cep'           => '00000-000',
         ]);
 
-        $response->assertSessionHasErrors('nome_contato');
-        $this->assertNull($empresa->fresh()->nome_contato);
+        $response->assertSessionDoesntHaveErrors('nome_contato');
+        $response->assertSessionHas('success');
+
+        // RECONSULTA ao banco — nunca por stdout.
+        $fresca = $empresa->fresh();
+        $this->assertSame('Vitor', $fresca->nome_contato);
+        $this->assertSame('26.754.383/0001-87', $fresca->cnpj);
+        $this->assertSame('Empresa Nome Sem Sobrenome LTDA', $fresca->razao_social);
+        $this->assertSame('Rua de Teste, 123', $fresca->endereco);
+
+        // O gate da GERAÇÃO não afrouxou: nome de uma palavra só continua
+        // bloqueando a geração com motivo 'formato'.
+        $response2 = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+        $props = $response2->viewData('page')['props'];
+        $item = collect($props['faltantes'])->firstWhere('campo', 'nome_contato');
+        $this->assertNotNull($item, 'nome_contato de uma palavra só deveria seguir bloqueando a geração.');
+        $this->assertSame('formato', $item['motivo']);
     }
 
     public function test_atualizar_cadastro_com_nome_completo_e_aceito(): void

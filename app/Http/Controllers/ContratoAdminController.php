@@ -10,8 +10,6 @@ use App\Models\ContratoLiberacao;
 use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Models\User;
-use App\Rules\CnpjValido;
-use App\Rules\NomeCompletoValido;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\CongelamentoEmissaoService;
 use App\Services\Clicksign\ContratoClicksignService;
@@ -519,17 +517,23 @@ class ContratoAdminController extends Controller
     public function atualizarCadastro(Request $request, Company $company): RedirectResponse
     {
         $data = $request->validate([
-            // Quick 260819-guy — dígito verificador entra aqui além de
-            // presença/formato; CnpjValido é `nullable`-aware (CNPJ ausente
-            // não é problema desta Rule, é a regra 1/2 de
-            // ContratoDadosMinimosService).
-            'cnpj'                                 => ['nullable', 'string', 'max:20', new CnpjValido()],
+            // Quick 260821-odj — CnpjValido() SAIU daqui (incidente em
+            // produção, empresa 430 Mons Bike: `nome_contato` de uma palavra
+            // só reprovava a REQUISIÇÃO INTEIRA, e razão social/endereço sem
+            // problema nenhum não eram gravados junto). O dígito verificador
+            // já é checado por `ContratoDadosMinimosService::faltantes()`
+            // (o gate da GERAÇÃO, não do salvar) — nada chega à Clicksign
+            // sem essa validação. Aqui só formato estrutural (tamanho/tipo).
+            'cnpj'                                 => ['nullable', 'string', 'max:20'],
             'email_cliente'                        => ['nullable', 'email'],
-            // Quick 260819-guy — Tarefa 7 item 4: NomeCompletoValido exige
-            // pelo menos duas palavras (nome + sobrenome); nullable-aware,
-            // mesma disciplina de CnpjValido acima (ausência é a regra 3 de
-            // ContratoDadosMinimosService, não desta Rule).
-            'nome_contato'                          => ['nullable', 'string', 'max:255', new NomeCompletoValido()],
+            // Quick 260821-odj — NomeCompletoValido() SAIU pelo mesmo
+            // motivo do `cnpj` acima: era a causa raiz do incidente medido
+            // (nome_contato de uma palavra só, vindo do HubSpot, bloqueava o
+            // salvar de TODOS os outros campos do formulário). A exigência
+            // de nome completo continua valendo — só migrou para o gate da
+            // geração (`ContratoDadosMinimosService::faltantes()`), que roda
+            // antes de qualquer chamada à Clicksign.
+            'nome_contato'                          => ['nullable', 'string', 'max:255'],
             // Quick 260819-guy — razão social/endereço são POR EMPRESA (mesmo
             // bloco de cnpj/email/nome_contato); campos por serviço vão em
             // contratos_servico.*.
