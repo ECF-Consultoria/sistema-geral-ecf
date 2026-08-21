@@ -353,9 +353,41 @@ para EDUMAC (487) e RS (488). A partir daí a cobertura de um link de grupo novo
 NULL` pelo `created_at` do mês) e as outras três pelos motivos da tabela.
 A ordem das ações fecha a porta sem avisar.
 
-### Decisão de 2026-08-21
+### O que foi feito em 2026-08-21 — e o comando que nasceu disso
 
-Usuário optou por **não** replicar retroativamente a resposta da GENUINE para
-as demais (seria gravar nota nova em competência corrente, mesma trava dos §2 e
-§5) e por tratar o cadastro pela tela, com o time. Nenhuma linha de código e
-nenhum UPDATE em produção saíram deste diagnóstico.
+A decisão inicial foi não mexer em nota. Ela foi REVERTIDA no mesmo dia: o
+usuário pediu que a resposta da GENUINE valesse para todas as empresas do grupo
+que contratam Shopee, "como se fosse grupo". Antes de replicar, ele cadastrou
+pela tela os responsáveis de Shopee que faltavam — MATRIZ e SC ganharam Felipe
+(estrategista) + Gustavo (analista).
+
+Como não existe caminho de tela para isso, nasceu
+`nps:replicar-resposta-para-grupo` (commit `22d9fef3`), que faz o que o link de
+grupo teria feito, depois do fato: reaproveita o link pendente da empresa (ou
+cria um), copia a resposta com os snapshots LITERAIS da origem e chama
+`NpsSnapshotService::registrar()` — sem reimplementar nada da régua de score.
+Ele também cria o `nps_group_surveys` retroativo que amarra os espelhos: sem
+esse vínculo, N respostas idênticas ficam indistinguíveis de N clientes
+distintos, que foi exatamente o que tornou este diagnóstico caro.
+
+**Aplicado em produção em 21/08/2026** (`--survey=458 --empresas=1,131,144,358`):
+4 empresas, 8 atribuições, 0 falhas, link de grupo retroativo #12. Conferido por
+reconsulta ao banco: as 5 empresas do grupo com Shopee ficaram com nota 5,00 —
+Felipe como estrategista nas 5, Gustavo como analista em MATRIZ/SC/GENUINE e
+Matheus Estrela em EDUMAC/RS.
+
+⚠ **Duas armadilhas ao reusar este comando:**
+
+1. **A ordem importa.** Ele lê os responsáveis de HOJE (via
+   `responsavelDoServicoOuConsolidado()`), então cadastro errado no momento da
+   execução vira atribuição errada congelada. Rodar `--dry-run` primeiro não é
+   formalidade: a tabela que ele imprime é a única conferência de QUEM recebe a
+   nota antes de virar snapshot imutável.
+2. **Serviço sem responsável não trava nada.** A empresa recebe a nota e sai de
+   Faltantes, mas nenhuma atribuição é criada (`NpsSnapshotService` só loga
+   warning). O dry-run marca esse caso explicitamente — se aparecer
+   "SEM RESPONSAVEL", corrigir o cadastro ANTES em vez de seguir.
+
+Travado por `tests/Feature/NpsReplicarRespostaParaGrupoTest.php` (6 testes),
+que cobrem inclusive o que mais assusta aqui: a nota vai para o responsável de
+CADA empresa, nunca para o da empresa que respondeu.
