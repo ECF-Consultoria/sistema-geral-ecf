@@ -238,7 +238,7 @@ class OnboardingPortalPublicoTest extends TestCase
         $this->onboardingDeGestaoEmAndamento($company);
         $link = $this->linkService()->paraEmpresa($company);
 
-        $response = $this->get(route('onboarding.publico.workspace', $link->token));
+        $response = $this->get(route('portal.onboarding', $link->token));
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page->component('Onboarding/Publico', false));
@@ -247,7 +247,7 @@ class OnboardingPortalPublicoTest extends TestCase
     #[Test]
     public function get_workspace_com_token_inexistente_retorna_404(): void
     {
-        $response = $this->get(route('onboarding.publico.workspace', 'token-inexistente-0000'));
+        $response = $this->get(route('portal.onboarding', 'token-inexistente-0000'));
 
         $response->assertNotFound();
     }
@@ -261,7 +261,7 @@ class OnboardingPortalPublicoTest extends TestCase
         $link = $this->linkService()->paraEmpresa($company);
         $this->assertNull($link->ultimo_acesso);
 
-        $this->get(route('onboarding.publico.workspace', $link->token));
+        $this->get(route('portal.onboarding', $link->token));
 
         $this->assertNotNull($link->fresh()->ultimo_acesso);
     }
@@ -274,7 +274,7 @@ class OnboardingPortalPublicoTest extends TestCase
         $this->onboardingDeGestaoEmAndamento($company);
         $link = $this->linkService()->paraEmpresa($company);
 
-        $response = $this->get(route('onboarding.publico.workspace', $link->token));
+        $response = $this->get(route('portal.onboarding', $link->token));
         $response->assertOk();
 
         $response->assertInertia(function ($page) {

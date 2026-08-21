@@ -99,7 +99,7 @@ class OnboardingConectarMlTest extends TestCase
 
         $guardado = Cache::get("ml_oauth_state_{$state}");
         $this->assertSame($company->id, $guardado['company_id']);
-        $this->assertSame(route('onboarding.publico.workspace', $token), $guardado['retorno_url']);
+        $this->assertSame(route('portal.onboarding', $token), $guardado['retorno_url']);
     }
 
     #[Test]

@@ -11,10 +11,10 @@ import {
     ArrowLeft, Building2, Star, Target, Briefcase, Plus, Pencil, PowerOff,
     ShoppingCart, Copy, Check, Unplug, RefreshCw, Info, CheckCircle2,
     Users, UserPlus, UserMinus, History, Medal, DollarSign, Percent,
-    AlertTriangle, FileText, CalendarDays,
+    AlertTriangle, FileText, CalendarDays, ImagePlus, Trash2,
 } from 'lucide-react';
 import { formatCurrency, formatPercent, formatDate, formatDateTime, cn } from '@/lib/utils';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import HistoricoMedalhas from '@/Pages/EmpresaAnaliseEcf/components/HistoricoMedalhas';
 import GoalProgressPanel from '@/Components/goals/GoalProgressPanel';
 
@@ -281,6 +281,98 @@ const ML_STATUS_HERO = {
     revoked: { label: 'ML revogado',  className: 'bg-red-500/15 text-red-300 border-red-500/25' },
 };
 
+/**
+ * LogoEmpresa — envio da marca do cliente, no hero da empresa.
+ *
+ * ### Por que isto vive aqui e não numa tela de configuração
+ * A logo é identidade da empresa, como nome e CNPJ, e é aqui que se olha
+ * quando se pergunta "quem é esta empresa". Uma tela separada só para isso
+ * seria um lugar que ninguém lembraria de visitar.
+ *
+ * ### Onde ela aparece
+ * No topo do menu do Portal do Cliente (`/portal-cliente/{token}`), no lugar
+ * onde antes ficava fixo "ECF Consultoria" — é a única superfície do sistema
+ * em que a marca do CLIENTE substitui a nossa. Sem logo enviada, o portal cai
+ * num monograma com as iniciais, que é um estado final aceitável e não um
+ * defeito.
+ *
+ * O arquivo é reduzido para 512px no maior lado e reencodado em WebP no
+ * servidor (`App\Support\ImagemUpload`) — a proporção original é preservada.
+ */
+function LogoEmpresa({ company, podeEditar }) {
+    const input = useRef(null);
+    const [enviando, setEnviando] = useState(false);
+
+    const enviar = (e) => {
+        const arquivo = e.target.files?.[0];
+        if (!arquivo) return;
+
+        setEnviando(true);
+        router.post(route('companies.logo.update', company.id), { logo: arquivo }, {
+            preserveScroll: true,
+            forceFormData: true,
+            onFinish: () => {
+                setEnviando(false);
+                // Sem isto, escolher o MESMO arquivo de novo (depois de um erro
+                // de validação, por exemplo) não dispara `onChange`.
+                if (input.current) input.current.value = '';
+            },
+        });
+    };
+
+    const remover = () => {
+        if (!confirm(`Remover a logo de "${company.name}"? O portal do cliente volta a mostrar as iniciais.`)) return;
+        router.delete(route('companies.logo.destroy', company.id), { preserveScroll: true });
+    };
+
+    return (
+        <div className="shrink-0">
+            <div className={cn(
+                'h-14 w-14 rounded-2xl flex items-center justify-center overflow-hidden',
+                company.logo_url
+                    // Fundo claro pelo mesmo motivo do portal: logo preta em
+                    // fundo escuro desaparece, e o sintoma parece "não subiu".
+                    ? 'bg-white/95 p-1.5'
+                    : 'bg-ecf-yellow/10 border border-ecf-yellow/25',
+            )}>
+                {company.logo_url
+                    ? <img src={company.logo_url} alt={company.name} className="max-h-full max-w-full object-contain" />
+                    : <Building2 className="h-7 w-7 text-ecf-yellow" />}
+            </div>
+
+            {podeEditar && (
+                <div className="flex items-center gap-2 mt-1.5">
+                    <input
+                        ref={input}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={enviar}
+                        className="hidden"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => input.current?.click()}
+                        disabled={enviando}
+                        className="inline-flex items-center gap-1 text-[11px] text-white/35 hover:text-white/70 transition-colors disabled:opacity-50"
+                        title="A logo aparece no Portal do Cliente"
+                    >
+                        <ImagePlus size={11} /> {enviando ? 'Enviando…' : (company.logo_url ? 'Trocar' : 'Logo')}
+                    </button>
+                    {company.logo_url && (
+                        <button
+                            type="button"
+                            onClick={remover}
+                            className="inline-flex items-center gap-1 text-[11px] text-white/25 hover:text-red-300 transition-colors"
+                        >
+                            <Trash2 size={11} />
+                        </button>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function CompanyShow({
     company,
     servicos_disponiveis = [],
@@ -418,9 +510,7 @@ export default function CompanyShow({
                         style={{ background: 'radial-gradient(circle, rgba(255,230,0,0.5), transparent 70%)' }} />
                     <div className="relative z-10 flex items-start justify-between gap-4 flex-wrap">
                         <div className="flex items-start gap-4 min-w-0">
-                            <div className="h-14 w-14 rounded-2xl bg-ecf-yellow/10 border border-ecf-yellow/25 flex items-center justify-center shrink-0">
-                                <Building2 className="h-7 w-7 text-ecf-yellow" />
-                            </div>
+                            <LogoEmpresa company={company} podeEditar={!!permissions.can_edit_logo} />
                             <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <h1 className="text-white text-2xl font-display font-extrabold tracking-tight truncate">{company.name}</h1>

@@ -21,7 +21,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'implementacao/*',
             'api/webhooks/*',   // Phase 26 — receivers HMAC (ECF Drive em /api/webhooks/ecf; futuros parceiros entram aqui)
-            'onboarding-cliente/*', // Fase 135 Plano 11 — portal público do cliente por empresa (D-06); prefixo NOVO e distinto do prefixo do Polos (D-02)
+            // Portal do Cliente — acesso por posse do token, sem sessão e sem
+            // CSRF (Fase 135 Plano 11, D-06). Prefixo NOVO e distinto do prefixo
+            // do Polos ('implementacao/*', D-02).
+            'portal-cliente/*',
+            // Prefixo antigo do mesmo portal, antes de ele virar multimódulo em
+            // 21/08/2026. Fica porque `routes/web.php` mantém o GET com redirect
+            // 301 para os links já enviados a clientes.
+            'onboarding-cliente/*',
         ]);
 
         $middleware->web(append: [

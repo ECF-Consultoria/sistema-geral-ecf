@@ -10,10 +10,38 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/Components/ui/textarea';
 import { useForm, router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, FileText, LayoutDashboard } from 'lucide-react';
+import { Plus, Pencil, Trash2, FileText, LayoutDashboard, Eye, EyeOff } from 'lucide-react';
 
 const statusColor = { draft: 'secondary', sent: 'default', completed: 'success' };
 const statusLabel = { draft: 'Rascunho', sent: 'Enviado', completed: 'Concluído' };
+
+// O status decide se o PPA aparece no Portal do Cliente
+// (`PortalPpaService::STATUS_VISIVEIS`) — rascunho é trabalho interno e fica
+// escondido. Isso NÃO era visível em lugar nenhum desta tela: quem criava um
+// PPA (e ele nasce SEMPRE em rascunho, `PpaController::store()`) ia ao portal
+// do cliente, não via nada e não tinha como saber por quê. O selo abaixo é a
+// resposta na própria linha.
+const visibilidade = {
+    draft:     { visivel: false, texto: 'Só interno',         ajuda: 'Rascunho não aparece no Portal do Cliente. Mude para "Enviado" para o cliente ver.' },
+    sent:      { visivel: true,  texto: 'Visível ao cliente', ajuda: 'O cliente vê este plano no Portal e pode mover as tarefas.' },
+    completed: { visivel: true,  texto: 'Visível ao cliente', ajuda: 'O cliente vê este plano no Portal, em modo leitura.' },
+};
+
+function SeloVisibilidade({ status }) {
+    const v = visibilidade[status];
+    if (!v) return null;
+
+    const Icone = v.visivel ? Eye : EyeOff;
+
+    return (
+        <span
+            title={v.ajuda}
+            className={'inline-flex items-center gap-1 text-[11px] mt-1 ' + (v.visivel ? 'text-emerald-400/80' : 'text-amber-300/80')}
+        >
+            <Icone className="h-3 w-3" /> {v.texto}
+        </span>
+    );
+}
 
 // Nomes de rota do PPA de carteira. O PPA Polos (quick 260805-dzu) renderiza este
 // mesmo componente passando `rotas` próprio — a tela é a mesma, só o escopo muda.
@@ -120,7 +148,10 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas }) {
                                         </TableCell>
                                         <TableCell className="text-sm">{p.due_date || '—'}</TableCell>
                                         <TableCell>
-                                            <Badge variant={statusColor[p.status]}>{statusLabel[p.status]}</Badge>
+                                            <div className="flex flex-col items-start">
+                                                <Badge variant={statusColor[p.status]}>{statusLabel[p.status]}</Badge>
+                                                <SeloVisibilidade status={p.status} />
+                                            </div>
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-1">
@@ -228,11 +259,12 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas }) {
                                     <Select value={editForm.data.status} onValueChange={v => editForm.setData('status', v)}>
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="draft">Rascunho</SelectItem>
-                                            <SelectItem value="sent">Enviado</SelectItem>
-                                            <SelectItem value="completed">Concluído</SelectItem>
+                                            <SelectItem value="draft">Rascunho — só interno</SelectItem>
+                                            <SelectItem value="sent">Enviado — visível ao cliente</SelectItem>
+                                            <SelectItem value="completed">Concluído — visível ao cliente</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                    <SeloVisibilidade status={editForm.data.status} />
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label>Prazo</Label>

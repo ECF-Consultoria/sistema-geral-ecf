@@ -165,6 +165,85 @@ class PortalPessoasDoClienteTest extends TestCase
         );
     }
 
+    /**
+     * O ponto de contato COM e-mail já entra como participante das reuniões —
+     * é ele quem sempre participa, e obrigar o cliente a redigitar os mesmos
+     * dados no item seguinte era a parte mais confusa do portal.
+     */
+    /** @test */
+    public function ponto_de_contato_com_email_ja_entra_como_participante(): void
+    {
+        [, $onboarding, $token] = $this->cenario();
+
+        $this->post(route('onboarding.publico.pessoas', $token), [
+            'papel'  => 'ponto_de_contato',
+            'nome'   => 'Fulano Contato',
+            'email'  => 'fulano@empresa.com',
+            'funcao' => 'Sócio',
+        ])->assertRedirect();
+
+        $participantes = OnboardingContato::where('onboarding_id', $onboarding->id)
+            ->where('papel', OnboardingContato::PAPEL_PARTICIPANTE)
+            ->get();
+
+        $this->assertCount(1, $participantes);
+        $this->assertSame('Fulano Contato', $participantes->first()->nome);
+        $this->assertSame('fulano@empresa.com', $participantes->first()->email);
+
+        // E o item de participantes fecha junto, sem novo cadastro.
+        $this->assertSame(
+            OnboardingPasso::STATUS_CONCLUIDO,
+            $this->passo($onboarding, 'participantes_reuniao_cadastrados')->status
+        );
+    }
+
+    /**
+     * Sem e-mail não há espelho: o §16 existe para ENVIAR o convite, e
+     * participante sem Gmail não recebe encontro nenhum. O portal oferece a
+     * pessoa no seletor, pedindo o e-mail que falta.
+     */
+    /** @test */
+    public function ponto_de_contato_sem_email_nao_vira_participante(): void
+    {
+        [, $onboarding, $token] = $this->cenario();
+
+        $this->post(route('onboarding.publico.pessoas', $token), [
+            'papel'    => 'ponto_de_contato',
+            'nome'     => 'Fulano Contato',
+            'telefone' => '11999998888',
+        ])->assertRedirect();
+
+        $this->assertSame(
+            0,
+            OnboardingContato::where('onboarding_id', $onboarding->id)
+                ->where('papel', OnboardingContato::PAPEL_PARTICIPANTE)
+                ->count()
+        );
+    }
+
+    /** Cadastrar o mesmo ponto de contato duas vezes não duplica o convite. */
+    /** @test */
+    public function espelho_do_ponto_de_contato_nao_duplica(): void
+    {
+        [, $onboarding, $token] = $this->cenario();
+
+        $payload = [
+            'papel' => 'ponto_de_contato',
+            'nome'  => 'Fulano Contato',
+            'email' => 'fulano@empresa.com',
+        ];
+
+        $this->post(route('onboarding.publico.pessoas', $token), $payload)->assertRedirect();
+        $this->post(route('onboarding.publico.pessoas', $token), $payload)->assertRedirect();
+
+        $this->assertSame(
+            1,
+            OnboardingContato::where('onboarding_id', $onboarding->id)
+                ->where('papel', OnboardingContato::PAPEL_PARTICIPANTE)
+                ->count()
+        );
+    }
+
     /** §16: "deve ser possível cadastrar mais de um participante". */
     /** @test */
     public function cliente_cadastra_varios_participantes(): void
@@ -224,16 +303,26 @@ class PortalPessoasDoClienteTest extends TestCase
      * é um link sem senha, e apagar cadastro de terceiros é mais poder do que
      * "informe quem participa".
      *
+     * O prefixo é `portal-cliente/` desde 21/08/2026, quando o portal virou
+     * multimódulo. Isto NÃO é cosmético: com o prefixo antigo o filtro passou
+     * a devolver lista vazia (sobrou só o redirect 301 de compatibilidade), e
+     * as duas asserções passavam por vacuidade — o teste continuaria verde
+     * mesmo que alguém abrisse um DELETE público no portal.
+     *
      * @test
      */
     public function nao_existe_rota_publica_de_remover_pessoa(): void
     {
         $rotas = collect(app('router')->getRoutes())
-            ->filter(fn ($r) => str_starts_with($r->uri(), 'onboarding-cliente/'))
+            ->filter(fn ($r) => str_starts_with($r->uri(), 'portal-cliente/'))
             ->flatMap(fn ($r) => $r->methods())
             ->unique()
             ->values()
             ->all();
+
+        // Guarda contra o próprio teste esvaziar de novo: se o prefixo mudar
+        // e ninguém atualizar aqui, isto quebra em vez de passar em branco.
+        $this->assertNotEmpty($rotas, 'Nenhuma rota sob portal-cliente/ — o filtro está olhando para o prefixo errado.');
 
         $this->assertNotContains('DELETE', $rotas);
         $this->assertNotContains('PUT', $rotas);

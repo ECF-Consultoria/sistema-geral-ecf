@@ -20,7 +20,7 @@ class Company extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['name', 'cnpj', 'segment', 'active', 'status', 'notes', 'adman_account_id', 'ml_store_id', 'marketplace'])
+            ->logOnly(['name', 'cnpj', 'segment', 'active', 'status', 'notes', 'adman_account_id', 'ml_store_id', 'marketplace', 'logo_url'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
@@ -42,6 +42,9 @@ class Company extends Model
         // removeu nicho/dor/vende_ml/faturamento_mensal/marketplaces_extras
         // (properties inexistentes no HubSpot); email_colaborador permanece.
         'email_colaborador',
+        // Portal do Cliente (21/08/2026) — a marca do cliente no topo do menu
+        // lateral. Ver a migration `adicionar_logo_url_em_companies`.
+        'logo_url',
         // Phase 34 Plan 34-01 — tag "Empresa nova" (D-06).
         'empresa_nova', 'empresa_nova_visto_em', 'empresa_nova_visto_por',
         // v15.5 — Mapeamento Digisac (grupo WhatsApp por empresa).

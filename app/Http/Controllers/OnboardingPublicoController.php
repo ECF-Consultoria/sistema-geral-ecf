@@ -13,6 +13,8 @@ use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingResolverFactory;
 use App\Services\Onboarding\OnboardingLinkService;
 use App\Services\Onboarding\OnboardingMapeamentoService;
+use App\Services\Portal\PortalClienteService;
+use App\Support\Portal\ModulosPortal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -20,13 +22,20 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
- * OnboardingPublicoController — portal público do cliente por EMPRESA
- * (Fase 135, Plano 11, D-06). As 3 rotas deste controller ficam FORA de
- * qualquer grupo `auth`, no prefixo `onboarding-cliente/*` isento de CSRF
- * (`bootstrap/app.php`) — acesso é por posse do token, mesmo risco já
- * aceito no precedente do Polos (`MlbImplementacaoController::workspace()`,
- * usado só como molde de FORMA — D-02 proíbe reuso de código daquele
- * módulo).
+ * OnboardingPublicoController — o módulo de ONBOARDING do Portal do Cliente
+ * (Fase 135, Plano 11, D-06).
+ *
+ * Nasceu como o portal inteiro, em `/onboarding-cliente/*`. Desde 21/08/2026
+ * o portal é multimódulo (`/portal-cliente/{token}`, ver
+ * `App\Support\Portal\ModulosPortal`) e este controller responde por um dos
+ * módulos — o Onboarding. A tela e as regras são as mesmas; o que mudou foi a
+ * URL e o fato de a página renderizar dentro do `PortalClienteLayout`.
+ *
+ * As rotas ficam FORA de qualquer grupo `auth`, no prefixo `portal-cliente/*`
+ * isento de CSRF (`bootstrap/app.php`) — acesso é por posse do token, mesmo
+ * risco já aceito no precedente do Polos
+ * (`MlbImplementacaoController::workspace()`, usado só como molde de FORMA —
+ * D-02 proíbe reuso de código daquele módulo).
  *
  * Nenhum dado de operação interna sai daqui (T-135-11-02): sem
  * responsável, sem SLA, sem dias parado, sem nome de usuário interno — o
@@ -35,28 +44,45 @@ use Inertia\Inertia;
  */
 class OnboardingPublicoController extends Controller
 {
-    public function __construct(private OnboardingLinkService $linkService)
-    {
+    public function __construct(
+        private OnboardingLinkService $linkService,
+        private PortalClienteService $portal,
+    ) {
     }
 
     /**
-     * GET /onboarding-cliente/{token} — workspace do cliente. `firstOrFail()`
-     * é o que produz o 404 de token inexistente/adivinhado (T-135-11-01).
-     * Carimba `ultimo_acesso` a cada visita.
+     * GET /portal-cliente/{token}/onboarding — o módulo de Onboarding dentro
+     * do Portal do Cliente.
+     *
+     * O 404 de token inexistente ou adivinhado (T-135-11-01) continua vindo
+     * do `firstOrFail()`, que hoje mora em `PortalClienteService::resolver()`
+     * — junto com o carimbo de `ultimo_acesso` a cada visita. A troca foi
+     * para que TODO módulo do portal entre pela mesma porta: um módulo novo
+     * que resolvesse o token por conta própria poderia esquecer o carimbo, e
+     * o painel interno passaria a mostrar "nem viu" para um cliente que
+     * entrou.
+     *
+     * A tela é a mesma de quando o portal era só o onboarding — o que mudou é
+     * que ela recebe o contexto do portal (identidade da empresa + menu de
+     * módulos) e renderiza dentro do `PortalClienteLayout`.
      */
     public function workspace(Request $request, string $token, OnboardingMapeamentoService $mapeamentos)
     {
-        $link = OnboardingLink::where('token', $token)->with('company')->firstOrFail();
-
-        $link->ultimo_acesso = now();
-        $link->save();
+        $link = $this->portal->resolver($token);
 
         $company = $link->company;
 
+        $contexto = $this->portal->contexto($link, ModulosPortal::ONBOARDING);
+
         return Inertia::render('Onboarding/Publico', [
-            'token'    => $token,
+            ...$contexto,
+            // A identidade que veio do contexto (nome, logo, iniciais) MAIS o
+            // que só o onboarding usa. Escrito com o spread por dentro porque
+            // uma chave 'empresa' depois de `...$contexto` sobrescreveria a do
+            // contexto inteira, e o sintoma seria a logo do cliente sumir do
+            // menu só nesta página.
             'empresa'  => [
-                'nome' => $company->name,
+                ...$contexto['empresa'],
                 // Resolvidos pelo service (empresa > padrão global) — a tela do
                 // cliente nunca lê a coluna crua, senão empresa sem override
                 // mostraria vazio mesmo havendo padrão configurado.
@@ -110,7 +136,7 @@ class OnboardingPublicoController extends Controller
     }
 
     /**
-     * PATCH /onboarding-cliente/{token}/passo/desmarcar — o cliente desfaz o
+     * PATCH /portal-cliente/{token}/onboarding/passo/desmarcar — o cliente desfaz o
      * que marcou. Espelho de {@see self::marcarFeito()}.
      */
     public function desmarcarPasso(Request $request, string $token)
@@ -136,7 +162,7 @@ class OnboardingPublicoController extends Controller
     }
 
     /**
-     * POST /onboarding-cliente/{token}/mapeamento/sincronizar — o cliente pede
+     * POST /portal-cliente/{token}/onboarding/mapeamento/sincronizar — o cliente pede
      * ao sistema que busque os dados da conta dele.
      *
      * Despacha e volta: os resolvers de rede levam de 2 a 30 minutos e a tela
@@ -161,7 +187,7 @@ class OnboardingPublicoController extends Controller
     }
 
     /**
-     * POST /onboarding-cliente/{token}/mapeamento/confirmar — o cliente confere
+     * POST /portal-cliente/{token}/onboarding/mapeamento/confirmar — o cliente confere
      * o apurado e completa o que o sistema não conseguiu buscar.
      *
      * `confirmado_por` fica `null` de propósito: não há usuário autenticado no
@@ -212,7 +238,7 @@ class OnboardingPublicoController extends Controller
     }
 
     /**
-     * GET /onboarding-cliente/{token}/conectar/ml — leva o cliente ao OAuth do
+     * GET /portal-cliente/{token}/onboarding/conectar/ml — leva o cliente ao OAuth do
      * Mercado Livre a partir do portal, sem login.
      *
      * O padrão já existia para a Shopee (`/shopee/conectar/{company}`, rota
@@ -230,7 +256,7 @@ class OnboardingPublicoController extends Controller
 
         $url = $ml->buildAuthUrl(
             company: $link->company,
-            retornoUrl: route('onboarding.publico.workspace', $token),
+            retornoUrl: route('portal.onboarding', $token),
         );
 
         activity('onboarding')
@@ -241,7 +267,7 @@ class OnboardingPublicoController extends Controller
     }
 
     /**
-     * PATCH /onboarding-cliente/{token}/passo — conclui manualmente todos os
+     * PATCH /portal-cliente/{token}/onboarding/passo — conclui manualmente todos os
      * passos daquela `chave` (D-10) nos onboardings ativos da empresa. A
      * `\DomainException` de passo automático (D-19) vira 422 em pt-BR — nunca
      * repassa a mensagem de domínio crua ao cliente. `throttle:20,1` na rota
@@ -272,7 +298,7 @@ class OnboardingPublicoController extends Controller
     }
 
     /**
-     * POST /onboarding-cliente/{token}/pessoas — o CLIENTE informa quem
+     * POST /portal-cliente/{token}/onboarding/pessoas — o CLIENTE informa quem
      * acionamos e quem participa das reuniões (§13.2 e §16).
      *
      * O token vale para a EMPRESA, e uma empresa pode ter mais de um

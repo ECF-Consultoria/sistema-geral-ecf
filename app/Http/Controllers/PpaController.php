@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\Ppa;
+use App\Services\Ppa\PpaQuadroService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -106,32 +107,12 @@ class PpaController extends Controller
 
     // ── Kanban (admin / mentor) ───────────────────────────────────────────────
 
-    public function kanban(Ppa $ppa)
+    public function kanban(Ppa $ppa, PpaQuadroService $quadro)
     {
-        $ppa->load(['company', 'mentor', 'tasks']);
-
-        $tasks = $ppa->tasks->map(fn($t) => [
-            'id'          => $t->id,
-            'title'       => $t->title,
-            'description' => $t->description,
-            'status'      => $t->status,
-            'order'       => $t->order,
-        ]);
-
-        return Inertia::render('Ppa/Kanban', [
-            'ppa' => [
-                'id'              => $ppa->id,
-                'title'           => $ppa->title,
-                'company_name'    => $ppa->nomeEmpresa(),
-                'mentor_name'     => $ppa->mentor->name,
-                'status'          => $ppa->status,
-                'workspace_token' => $ppa->workspace_token,
-                'workspace_url'   => $ppa->workspace_token
-                    ? route('ppa.workspace', $ppa->workspace_token)
-                    : null,
-            ],
-            'tasks' => $tasks,
-        ]);
+        // O payload inteiro (cabeçalho, colunas, tarefas e resumo) vem do
+        // service porque a MESMA tela serve os dois escopos — ver
+        // `PolosPpaController::kanban()`, que chama exatamente isto.
+        return Inertia::render('Ppa/Kanban', $quadro->payload($ppa));
     }
 
     // ── Workspace público (cliente) ───────────────────────────────────────────

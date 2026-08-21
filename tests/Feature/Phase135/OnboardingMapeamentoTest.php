@@ -374,7 +374,7 @@ class OnboardingMapeamentoTest extends TestCase
         $this->comApurado($onboarding);
         $link = app(OnboardingLinkService::class)->paraEmpresa($onboarding->company);
 
-        $this->get(route('onboarding.publico.workspace', $link->token))
+        $this->get(route('portal.onboarding', $link->token))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->has('mapeamentos', 1)

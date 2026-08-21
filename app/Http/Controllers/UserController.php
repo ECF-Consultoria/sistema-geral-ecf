@@ -175,65 +175,15 @@ class UserController extends Controller
     }
 
     /**
-     * Redimensiona a imagem enviada para no máximo 512px (mantendo proporção, só reduz)
-     * e re-encoda para um formato leve — WebP quando disponível, senão JPEG. Devolve o
-     * caminho salvo no disco público. Usa GD (sem dependência externa). Assim o usuário
-     * pode subir uma foto grande, mas o arquivo guardado fica em ~100–200 KB.
+     * Redimensiona a foto para no máximo 512px (mantendo proporção) e guarda em
+     * `storage/app/public/avatars`. A rotina vive em {@see \App\Support\ImagemUpload}
+     * desde que o Portal do Cliente passou a precisar dela para a logo da
+     * empresa — este método é só o ponto de entrada com a pasta e o prefixo do
+     * avatar.
      */
     private function salvarAvatarRedimensionado(\Illuminate\Http\UploadedFile $file, User $user): string
     {
-        $maxDim = 512;
-        $origem = $file->getRealPath();
-        $mime   = $file->getMimeType();
-
-        $src = match (true) {
-            $mime === 'image/jpeg' && function_exists('imagecreatefromjpeg') => @imagecreatefromjpeg($origem),
-            $mime === 'image/png'  && function_exists('imagecreatefrompng')  => @imagecreatefrompng($origem),
-            $mime === 'image/webp' && function_exists('imagecreatefromwebp') => @imagecreatefromwebp($origem),
-            default => null,
-        };
-
-        // Se o GD não conseguiu abrir (formato exótico/corrompido), guarda o original.
-        if (! $src) {
-            return $file->store('avatars', 'public');
-        }
-
-        $w = imagesx($src);
-        $h = imagesy($src);
-        $escala = min(1, $maxDim / max($w, $h)); // nunca amplia
-        $nw = max(1, (int) round($w * $escala));
-        $nh = max(1, (int) round($h * $escala));
-
-        $dst = imagecreatetruecolor($nw, $nh);
-        imagealphablending($dst, false);   // preserva transparência (PNG/WebP)
-        imagesavealpha($dst, true);
-        imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
-
-        if (function_exists('imagewebp')) {
-            $ext = 'webp';
-            ob_start();
-            imagewebp($dst, null, 82);
-            $bin = ob_get_clean();
-        } else {
-            // Sem WebP: achata a transparência em branco e salva JPEG.
-            $fundo  = imagecreatetruecolor($nw, $nh);
-            $branco = imagecolorallocate($fundo, 255, 255, 255);
-            imagefilledrectangle($fundo, 0, 0, $nw, $nh, $branco);
-            imagecopy($fundo, $dst, 0, 0, 0, 0, $nw, $nh);
-            $ext = 'jpg';
-            ob_start();
-            imagejpeg($fundo, null, 85);
-            $bin = ob_get_clean();
-            imagedestroy($fundo);
-        }
-
-        imagedestroy($src);
-        imagedestroy($dst);
-
-        $path = 'avatars/' . $user->id . '_' . uniqid() . '.' . $ext;
-        Storage::disk('public')->put($path, $bin);
-
-        return $path;
+        return \App\Support\ImagemUpload::salvarRedimensionada($file, "avatars", (string) $user->id);
     }
 
     /** Remove a foto do usuário (apaga o arquivo local, se houver, e zera a URL). */
@@ -248,10 +198,7 @@ class UserController extends Controller
     /** Apaga o arquivo físico da foto quando ela é um upload local (/storage/avatars/...). */
     private function apagarAvatarLocal(User $user): void
     {
-        $url = (string) $user->avatar_url;
-        if (str_starts_with($url, '/storage/')) {
-            Storage::disk('public')->delete(substr($url, strlen('/storage/')));
-        }
+        \App\Support\ImagemUpload::apagarSeLocal($user->avatar_url);
     }
 
     private function validateUser(Request $request, bool $isUpdate, ?int $userId = null): array

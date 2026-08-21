@@ -285,7 +285,7 @@ class OnboardingController extends Controller
 
         return [
             'existe'        => (bool) $link,
-            'url'           => $link ? route('onboarding.publico.workspace', $link->token) : null,
+            'url'           => $link ? route('portal.inicio', $link->token) : null,
             'ultimo_acesso' => $link?->ultimo_acesso?->toISOString(),
         ];
     }
@@ -494,7 +494,7 @@ class OnboardingController extends Controller
 
         return back()->with(
             'success',
-            'Link do portal do cliente: ' . route('onboarding.publico.workspace', $link->token)
+            'Link do portal do cliente: ' . route('portal.inicio', $link->token)
         );
     }
 

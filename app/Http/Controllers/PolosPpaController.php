@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MlbEmpresa;
 use App\Models\Ppa;
+use App\Services\Ppa\PpaQuadroService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -128,33 +129,15 @@ class PolosPpaController extends Controller
 
     // ── Kanban ───────────────────────────────────────────────────────────────
 
-    public function kanban(Ppa $ppa)
+    public function kanban(Ppa $ppa, PpaQuadroService $quadro)
     {
         $this->garantirEscopo($ppa);
-        $ppa->load(['mlbEmpresa', 'mentor', 'tasks']);
 
-        $tasks = $ppa->tasks->map(fn ($t) => [
-            'id'          => $t->id,
-            'title'       => $t->title,
-            'description' => $t->description,
-            'status'      => $t->status,
-            'order'       => $t->order,
-        ]);
-
+        // Mesmo payload do PPA de carteira — a tela é a mesma componente. O
+        // workspace do cliente por token continua compartilhado entre os dois
+        // escopos (rota `ppa.workspace`), como sempre foi.
         return Inertia::render('Polos/Ppa/Kanban', [
-            'ppa' => [
-                'id'              => $ppa->id,
-                'title'           => $ppa->title,
-                'company_name'    => $ppa->nomeEmpresa(),
-                'mentor_name'     => $ppa->mentor->name,
-                'status'          => $ppa->status,
-                'workspace_token' => $ppa->workspace_token,
-                // Workspace do cliente é compartilhado com o PPA de carteira (rota por token).
-                'workspace_url'   => $ppa->workspace_token
-                    ? route('ppa.workspace', $ppa->workspace_token)
-                    : null,
-            ],
-            'tasks'  => $tasks,
+            ...$quadro->payload($ppa),
             'escopo' => Ppa::ESCOPO_POLOS,
             'rotas'  => $this->rotas(),
         ]);

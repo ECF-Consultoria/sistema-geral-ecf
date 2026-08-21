@@ -141,7 +141,7 @@ class AcessosDoClienteTest extends TestCase
             ['token' => Str::random(48)]
         )->token;
 
-        $props = $this->get(route('onboarding.publico.workspace', $token))
+        $props = $this->get(route('portal.onboarding', $token))
             ->assertOk()
             ->viewData('page')['props'];
 

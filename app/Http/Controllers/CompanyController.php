@@ -15,10 +15,12 @@ use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\Onboarding\OnboardingSituacaoService;
 use App\Models\CompanyManagerHistory;
 use App\Services\Nps\NpsScoreCalculator;
+use App\Support\ImagemUpload;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
@@ -646,6 +648,9 @@ class CompanyController extends Controller
                 // 260805-eqk removeu nicho/dor/vende_ml/faturamento_mensal/
                 // marketplaces_extras da seção "Informações comerciais".
                 'email_colaborador'   => $company->email_colaborador,
+                // A marca do cliente no topo do Portal do Cliente
+                // (`/portal-cliente/{token}`). Esta tela é onde ela é enviada.
+                'logo_url'            => $company->logo_url,
                 'adman_account_id' => $company->adman_account_id,
                 'adman_store_id'   => $company->adman_store_id,
                 'ml_store_id'      => $company->ml_store_id,
@@ -782,6 +787,12 @@ class CompanyController extends Controller
             'goal_percentage_only_metrics' => Goal::$percentageOnlyMetrics,
             'permissions'           => [
                 'can_manage_contracts'    => $user->isAdmin(),
+                // Espelha o `role:admin` das rotas `companies.logo.*`. Flag
+                // própria em vez de reusar `can_manage_contracts`: hoje as duas
+                // valem `isAdmin()`, mas amarrar a marca do cliente à semântica
+                // de contratos faria o botão sumir junto no dia em que contrato
+                // ganhasse uma permissão dedicada.
+                'can_edit_logo'           => $user->isAdmin(),
                 'can_create_goals'        => $user->isAdmin() || $this->userIsCompanyEstrategista($user, $company),
                 'can_initiate_ml_oauth'   => true,
                 'can_disconnect_ml_oauth' => $user->isAdmin(),
@@ -1118,5 +1129,53 @@ class CompanyController extends Controller
         $contrato->update(['ativo' => false]);
 
         return back()->with('success', 'Contrato desativado.');
+    }
+
+    // ── Logo da empresa (Portal do Cliente) ──────────────────────────────────
+
+    /**
+     * Upload da logo da empresa. Guarda em `storage/app/public/logos` e salva a
+     * URL pública em `companies.logo_url`. Requer `php artisan storage:link`.
+     *
+     * É a marca que o cliente vê no topo do menu do Portal
+     * (`/portal-cliente/{token}`) — o único lugar do sistema em que a
+     * identidade visual do CLIENTE aparece no lugar da nossa. Por isso a
+     * imagem é guardada com a proporção original: logo esticada num portal que
+     * leva o nome do cliente é o tipo de detalhe que ele nota na primeira
+     * visita.
+     *
+     * Mesma rotina do avatar de usuário ({@see \App\Support\ImagemUpload}):
+     * aceita arquivo grande e devolve algo em torno de 100–200 KB.
+     */
+    public function updateLogo(Request $request, Company $company)
+    {
+        $request->validate(
+            ['logo' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:15360']],
+            [
+                'logo.required' => 'Selecione uma imagem.',
+                'logo.image'    => 'O arquivo precisa ser uma imagem.',
+                'logo.mimes'    => 'Formatos aceitos: JPG, PNG ou WEBP.',
+                'logo.max'      => 'A imagem deve ter no máximo 15 MB.',
+            ],
+        );
+
+        // PNG/WebP com fundo transparente é o caso comum de logo e sobrevive ao
+        // reencode — o Portal desenha a marca sobre um fundo claro justamente
+        // para servir tanto a logo transparente quanto a que já vem com fundo.
+        ImagemUpload::apagarSeLocal($company->logo_url);
+
+        $path = ImagemUpload::salvarRedimensionada($request->file('logo'), 'logos', (string) $company->id);
+        $company->update(['logo_url' => Storage::url($path)]);
+
+        return back()->with('success', "Logo de {$company->name} atualizada.");
+    }
+
+    /** Remove a logo (apaga o arquivo local, se houver, e zera a URL). */
+    public function destroyLogo(Company $company)
+    {
+        ImagemUpload::apagarSeLocal($company->logo_url);
+        $company->update(['logo_url' => null]);
+
+        return back()->with('success', "Logo de {$company->name} removida.");
     }
 }

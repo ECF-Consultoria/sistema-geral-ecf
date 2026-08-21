@@ -53,87 +53,31 @@ class OnboardingReuniaoTest extends TestCase
         return $onboarding->fresh();
     }
 
-    // ─── O cliente pede ─────────────────────────────────────────────────────
+    // ─── O cliente NÃO pede ─────────────────────────────────────────────────
+    //
+    // Até 19/08 o portal tinha um botão "Solicitar reunião" e o cliente
+    // disparava `POST /onboarding-cliente/{token}/reuniao`. O negócio derrubou
+    // o fluxo: quem define data e hora somos nós, e a partir daí cobramos a
+    // presença dele. Os testes de solicitação saíram junto com a rota, o
+    // método do controller e `OnboardingEngineService::solicitarReuniao()`.
+    //
+    // O que ficou de pé é a constante `REUNIAO_SOLICITADA` e a coluna
+    // `reuniao_solicitada_em`: há linhas em produção nesse estado e o painel
+    // interno ainda sabe desenhá-las. O teste abaixo é o que impede a rota de
+    // voltar por descuido.
 
     #[Test]
-    public function cliente_solicita_a_reuniao_pelo_portal_sem_escolher_data(): void
+    public function nao_existe_rota_para_o_cliente_pedir_reuniao(): void
     {
-        $onboarding = $this->onboardingEmAndamento();
-        $link = app(OnboardingLinkService::class)->paraEmpresa($onboarding->company);
+        $this->assertFalse(
+            \Illuminate\Support\Facades\Route::has('onboarding.publico.reuniao'),
+            'O cliente não pede reunião: quem define a data somos nós (decisão de 19/08).'
+        );
 
-        $this->post(route('onboarding.publico.reuniao', $link->token), [
-            'onboarding_id' => $onboarding->id,
-        ])->assertSessionHasNoErrors();
-
-        $onboarding->refresh();
-
-        $this->assertSame(Onboarding::REUNIAO_SOLICITADA, $onboarding->reuniao_status);
-        $this->assertNotNull($onboarding->reuniao_solicitada_em);
-        $this->assertNull($onboarding->reuniao_agendada_para, 'Quem escolhe a data é o responsável, não o cliente');
-    }
-
-    #[Test]
-    public function solicitar_duas_vezes_nao_move_nada(): void
-    {
-        $onboarding = $this->onboardingEmAndamento();
-
-        $this->assertTrue($this->engine()->solicitarReuniao($onboarding));
-        $primeiroPedido = $onboarding->fresh()->reuniao_solicitada_em;
-
-        $this->assertFalse($this->engine()->solicitarReuniao($onboarding->fresh()));
-        $this->assertEquals($primeiroPedido, $onboarding->fresh()->reuniao_solicitada_em);
-    }
-
-    /**
-     * O caso que apagaria informação: cliente clica de novo depois de a data
-     * já estar marcada. Rebaixar para `solicitada` sumiria com a data da tela
-     * dele.
-     */
-    #[Test]
-    public function pedido_do_cliente_nao_rebaixa_uma_reuniao_ja_agendada(): void
-    {
-        $onboarding = $this->onboardingEmAndamento();
-        $quando = now()->addDays(3)->setTime(14, 30);
-        $this->engine()->agendarReuniao($onboarding, $quando, User::factory()->create());
-
-        $this->assertFalse($this->engine()->solicitarReuniao($onboarding->fresh()));
-
-        $onboarding->refresh();
-        $this->assertSame(Onboarding::REUNIAO_AGENDADA, $onboarding->reuniao_status);
-        $this->assertEquals($quando->format('Y-m-d H:i'), $onboarding->reuniao_agendada_para->format('Y-m-d H:i'));
-    }
-
-    #[Test]
-    public function rascunho_nao_aceita_pedido_de_reuniao(): void
-    {
-        $contrato = ContratoServico::factory()
-            ->paraServico($this->servicoDeGestao())
-            ->create(['company_id' => Company::factory()->create()->id]);
-
-        $onboarding = Onboarding::where('contrato_servico_id', $contrato->id)->firstOrFail();
-
-        $this->assertSame(Onboarding::STATUS_RASCUNHO, $onboarding->status);
-        $this->assertFalse($this->engine()->solicitarReuniao($onboarding));
-        $this->assertNull($onboarding->fresh()->reuniao_status);
-    }
-
-    /**
-     * Token válido não pode virar chave para o onboarding de outra empresa só
-     * trocando o id no corpo do request.
-     */
-    #[Test]
-    public function token_de_uma_empresa_nao_solicita_reuniao_de_outra(): void
-    {
-        $minha = $this->onboardingEmAndamento();
-        $alheia = $this->onboardingEmAndamento();
-
-        $link = app(OnboardingLinkService::class)->paraEmpresa($minha->company);
-
-        $this->post(route('onboarding.publico.reuniao', $link->token), [
-            'onboarding_id' => $alheia->id,
-        ])->assertSessionHasErrors('onboarding_id');
-
-        $this->assertNull($alheia->fresh()->reuniao_status);
+        $this->assertFalse(
+            method_exists(\App\Services\Onboarding\OnboardingEngineService::class, 'solicitarReuniao'),
+            'Sem produtor de REUNIAO_SOLICITADA — a constante segue só para ler dado antigo.'
+        );
     }
 
     // ─── O responsável marca ────────────────────────────────────────────────
@@ -227,7 +171,7 @@ class OnboardingReuniaoTest extends TestCase
         $onboarding = $this->onboardingEmAndamento();
         $link = app(OnboardingLinkService::class)->paraEmpresa($onboarding->company);
 
-        $this->get(route('onboarding.publico.workspace', $link->token))
+        $this->get(route('portal.onboarding', $link->token))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Onboarding/Publico')

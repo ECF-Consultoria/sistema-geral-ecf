@@ -42,6 +42,9 @@ use App\Http\Controllers\NpsTemplateQuestionController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\OnboardingPublicoController;
 use App\Http\Controllers\PainelExecutivoController;
+use App\Http\Controllers\PortalClienteController;
+use App\Http\Controllers\PpaColunaController;
+use App\Http\Controllers\PortalPpaController;
 use App\Http\Controllers\PolosController;
 use App\Http\Controllers\PolosPpaController;
 use App\Http\Controllers\BonusAuditoriaController;
@@ -125,54 +128,87 @@ Route::patch('/implementacao/{token}/publicador/checkin', [MlbImplementacaoContr
 // reescrever o array todo já reverteu o que outra pessoa tinha preenchido.
 Route::patch('/implementacao/{token}/publicador/frete', [MlbImplementacaoController::class, 'salvarFretePublicador'])->name('implementacao.publicador.frete');
 
-// ─── Fase 135 Plano 11 — Portal público do cliente por EMPRESA (D-06) ───────
+// ─── Portal do Cliente (`/portal-cliente/{token}`) ──────────────────────────
+//
+// Nasceu na Fase 135 Plano 11 como portal de ONBOARDING (`/onboarding-cliente`,
+// D-06) e virou o ambiente da empresa em 21/08/2026: o Onboarding é hoje UM dos
+// módulos, ao lado do Início e do PPA. O catálogo de módulos vive em
+// `App\Support\Portal\ModulosPortal` — módulo novo entra lá, ganha um controller
+// que resolve o token pelo `PortalClienteService`, e uma rota neste grupo.
+//
 // Prefixo NOVO e distinto de 'implementacao/*' (Polos, D-02) — NUNCA reusar
-// aquele prefixo. O token vive na EMPRESA (não no onboarding): uma empresa
-// pode ter mais de um serviço com onboarding ativo ao mesmo tempo (Gestão
-// hoje; outros depois, D-08) e o cliente recebe um único link. Sem
-// middleware 'auth' — acesso é por posse do token (mesmo risco já aceito no
-// precedente do Polos: Str::random(48), unique() no banco, sem expiração).
-// CSRF isento via bootstrap/app.php (entrada 'onboarding-cliente/*',
-// distinta da entrada 'implementacao/*' já existente).
-Route::get('/onboarding-cliente/{token}', [OnboardingPublicoController::class, 'workspace'])
-    ->name('onboarding.publico.workspace');
-Route::patch('/onboarding-cliente/{token}/passo', [OnboardingPublicoController::class, 'marcarFeito'])
-    ->middleware('throttle:20,1')
-    ->name('onboarding.publico.passo');
-// O cliente desfaz o que marcou — sem isto, clique errado era definitivo.
-Route::patch('/onboarding-cliente/{token}/passo/desmarcar', [OnboardingPublicoController::class, 'desmarcarPasso'])
-    ->middleware('throttle:20,1')
-    ->name('onboarding.publico.passo.desmarcar');
-// Porta pública para o OAuth do Mercado Livre. O callback continua sendo o
-// mesmo de sempre (`ml.oauth.callback`, logo abaixo) — o que muda é que ele
-// devolve o cliente ao portal quando o fluxo começou aqui.
-Route::get('/onboarding-cliente/{token}/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
-    ->middleware('throttle:20,1')
-    ->name('onboarding.publico.conectar-ml');
-// §13.2 e §16 — o cliente informa quem acionamos e quem participa das
-// reuniões. Só ADICIONA: editar e remover ficam do lado interno, porque este é
-// um link sem senha e apagar cadastro de terceiros é mais poder do que
-// "informe quem participa".
-Route::post('/onboarding-cliente/{token}/pessoas', [OnboardingPublicoController::class, 'salvarPessoa'])
-    ->name('onboarding.publico.pessoas');
+// aquele prefixo. O token vive na EMPRESA (não no onboarding): uma empresa pode
+// ter mais de um serviço com onboarding ativo ao mesmo tempo (D-08) e o cliente
+// recebe um único link. Sem middleware 'auth' — acesso é por posse do token
+// (mesmo risco já aceito no precedente do Polos: Str::random(48), unique() no
+// banco, sem expiração). CSRF isento via bootstrap/app.php.
+//
+// Os NOMES das rotas de onboarding seguem `onboarding.publico.*`. Só a URL
+// mudou: renomeá-los arrastaria dezenas de call-sites e testes sem ganhar nada,
+// e o nome continua descrevendo com precisão o que a rota faz — o módulo de
+// onboarding, dentro do portal. Módulo novo usa o namespace `portal.*`.
+Route::prefix('portal-cliente/{token}')->group(function () {
+    Route::get('/', [PortalClienteController::class, 'inicio'])->name('portal.inicio');
 
-// NÃO existe rota para o cliente pedir reunião. Quem define data e hora somos
-// nós, no painel interno, e o portal só mostra a data para o cliente se
-// organizar — decisão de negócio de 19/08. A rota antiga
-// (`onboarding.publico.reuniao`) foi removida junto com o botão "Solicitar
-// reunião": deixá-la de pé sem botão seria manter aberto um endpoint público
-// que rebaixa o status da reunião.
-// Mapeamento inicial: o cliente pede a busca dos dados e confere o apurado.
-// Throttle mais apertado no sincronizar — cada clique vira sonda contra a
-// Adman, que tem ADMAN_RATE_LIMIT_RPM = 10 (o cooldown do service é a segunda
-// rede).
-Route::post('/onboarding-cliente/{token}/mapeamento/sincronizar', [OnboardingPublicoController::class, 'sincronizarMapeamento'])
-    ->middleware('throttle:6,1')
-    ->name('onboarding.publico.mapeamento.sincronizar');
-Route::post('/onboarding-cliente/{token}/mapeamento/confirmar', [OnboardingPublicoController::class, 'confirmarMapeamento'])
-    ->middleware('throttle:20,1')
-    ->name('onboarding.publico.mapeamento.confirmar');
+    // ── Módulo Onboarding ──────────────────────────────────────────────────
+    Route::get('/onboarding', [OnboardingPublicoController::class, 'workspace'])
+        ->name('portal.onboarding');
+    Route::patch('/onboarding/passo', [OnboardingPublicoController::class, 'marcarFeito'])
+        ->middleware('throttle:20,1')
+        ->name('onboarding.publico.passo');
+    // O cliente desfaz o que marcou — sem isto, clique errado era definitivo.
+    Route::patch('/onboarding/passo/desmarcar', [OnboardingPublicoController::class, 'desmarcarPasso'])
+        ->middleware('throttle:20,1')
+        ->name('onboarding.publico.passo.desmarcar');
+    // Porta pública para o OAuth do Mercado Livre. O callback continua sendo o
+    // mesmo de sempre (`ml.oauth.callback`, logo abaixo) — o que muda é que ele
+    // devolve o cliente ao portal quando o fluxo começou aqui.
+    Route::get('/onboarding/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
+        ->middleware('throttle:20,1')
+        ->name('onboarding.publico.conectar-ml');
+    // §13.2 e §16 — o cliente informa quem acionamos e quem participa das
+    // reuniões. Só ADICIONA: editar e remover ficam do lado interno, porque este
+    // é um link sem senha e apagar cadastro de terceiros é mais poder do que
+    // "informe quem participa".
+    Route::post('/onboarding/pessoas', [OnboardingPublicoController::class, 'salvarPessoa'])
+        ->name('onboarding.publico.pessoas');
+    // Mapeamento inicial: o cliente pede a busca dos dados e confere o apurado.
+    // Throttle mais apertado no sincronizar — cada clique vira sonda contra a
+    // Adman, que tem ADMAN_RATE_LIMIT_RPM = 10 (o cooldown do service é a
+    // segunda rede).
+    Route::post('/onboarding/mapeamento/sincronizar', [OnboardingPublicoController::class, 'sincronizarMapeamento'])
+        ->middleware('throttle:6,1')
+        ->name('onboarding.publico.mapeamento.sincronizar');
+    Route::post('/onboarding/mapeamento/confirmar', [OnboardingPublicoController::class, 'confirmarMapeamento'])
+        ->middleware('throttle:20,1')
+        ->name('onboarding.publico.mapeamento.confirmar');
 
+    // NÃO existe rota para o cliente pedir reunião. Quem define data e hora
+    // somos nós, no painel interno, e o portal só mostra a data para o cliente
+    // se organizar — decisão de negócio de 19/08. A rota antiga
+    // (`onboarding.publico.reuniao`) foi removida junto com o botão "Solicitar
+    // reunião": deixá-la de pé sem botão seria manter aberto um endpoint
+    // público que rebaixa o status da reunião.
+
+    // ── Módulo PPA ─────────────────────────────────────────────────────────
+    // Mesmas linhas de `ppas`/`ppa_tasks` que a equipe gerencia em /ppa e
+    // /polos-ppa. Não há cópia, espelho nem sincronização.
+    Route::get('/ppa', [PortalPpaController::class, 'index'])->name('portal.ppa');
+    Route::patch('/ppa/tarefas/{task}', [PortalPpaController::class, 'moverTarefa'])
+        ->middleware('throttle:60,1')
+        ->name('portal.ppa.tarefa');
+});
+
+// Links já enviados a clientes (WhatsApp, e-mail, mensagem antiga) apontam para
+// `/onboarding-cliente/{token}` e precisam continuar funcionando — não há como
+// recolher um link que já está com o cliente. 301 permanente para o módulo de
+// Onboarding do portal, que é a tela que aquele link sempre abriu.
+//
+// Só o GET tem redirect: as demais rotas antigas eram POST/PATCH disparados de
+// dentro da própria página, e a página agora é servida já com as URLs novas.
+Route::get('/onboarding-cliente/{token}', function (string $token) {
+    return redirect()->route('portal.onboarding', $token, 301);
+})->name('portal.legado.onboarding');
 // ML OAuth — callback público (o cliente autoriza fora do painel)
 Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])
     ->name('ml.oauth.callback');
@@ -594,6 +630,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/ppa/{ppa}/tasks', [PpaTaskController::class, 'store'])->name('ppa.tasks.store');
     Route::put('/ppa/tasks/{task}', [PpaTaskController::class, 'update'])->name('ppa.tasks.update');
     Route::delete('/ppa/tasks/{task}', [PpaTaskController::class, 'destroy'])->name('ppa.tasks.destroy');
+    // Destino do arraste no quadro: status + coluna extra + ordem da coluna.
+    // Separada de `ppa.tasks.update` porque é a única que reordena e a única
+    // que responde JSON — a tela já moveu o card na hora, e uma resposta
+    // Inertia faria o quadro piscar a cada arraste.
+    Route::patch('/ppa/tasks/{task}/mover', [PpaTaskController::class, 'mover'])->name('ppa.tasks.mover');
+
+    // Colunas EXTRAS do quadro ("Aguardando Cliente", "Em Revisão"...). As três
+    // fixas são o ENUM `ppa_tasks.status` e NÃO passam por estas rotas — não há
+    // caminho aqui capaz de renomear, mover ou apagar uma delas. Servem os dois
+    // escopos: a coluna pertence ao PPA, não ao escopo.
+    Route::post('/ppa/{ppa}/colunas', [PpaColunaController::class, 'store'])->name('ppa.colunas.store');
+    Route::put('/ppa/colunas/{coluna}', [PpaColunaController::class, 'update'])->name('ppa.colunas.update');
+    Route::delete('/ppa/colunas/{coluna}', [PpaColunaController::class, 'destroy'])->name('ppa.colunas.destroy');
 
     // Google Calendar sync (todos os usuários)
     Route::post('/google/sync', [GoogleCalendarController::class, 'sync'])->name('google.sync');
@@ -845,6 +894,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/companies/{company}/marcar-visto', [CompanyController::class, 'marcarVisto'])->name('companies.marcar-visto');
         // Atribui/remove a empresa de um grupo nomeado (sem efeitos colaterais do update completo)
         Route::put('/companies/{company}/group', [CompanyController::class, 'setGroup'])->name('companies.set-group');
+
+        // Logo da empresa — a marca que o CLIENTE vê no topo do menu do Portal
+        // (`/portal-cliente/{token}`). Fica no grupo admin junto de
+        // `companies.update`: é edição do cadastro da empresa, e trocar a marca
+        // que o cliente enxerga não é operação de rotina.
+        Route::post('/companies/{company}/logo', [CompanyController::class, 'updateLogo'])->name('companies.logo.update');
+        Route::delete('/companies/{company}/logo', [CompanyController::class, 'destroyLogo'])->name('companies.logo.destroy');
         // Ações em massa da aba Pendências (excluir / atribuir analista|estrategista)
         Route::post('/companies/bulk-destroy', [CompanyController::class, 'bulkDestroy'])->name('companies.bulk-destroy');
         Route::post('/companies/bulk-assign', [CompanyController::class, 'bulkAssign'])->name('companies.bulk-assign');
@@ -966,7 +1022,7 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
         // Ação interna: a Coordenação gera/copia o token do portal público
         // do cliente. Mesmo gate deste bloco (permission:core.onboarding) —
         // o cliente nunca chega a esta rota, só ao prefixo público
-        // 'onboarding-cliente/*' registrado fora do grupo 'auth' acima.
+        // 'portal-cliente/{token}/*' registrado fora do grupo 'auth' acima.
         Route::post('/onboarding/empresas/{company}/link', [OnboardingController::class, 'gerarLink'])
             ->name('onboarding.link.gerar');
         // Relatório inicial (PDF §3): gerar monta o retrato factual; salvar

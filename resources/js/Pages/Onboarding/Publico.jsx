@@ -3,7 +3,7 @@ import PessoasDoCliente from '@/Components/Onboarding/PessoasDoCliente';
 import { router } from '@inertiajs/react';
 import {
     AlertTriangle, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
-    ExternalLink, Home, ListChecks, Lock, RefreshCw, Zap,
+    ExternalLink, Lock, RefreshCw, Zap,
 } from 'lucide-react';
 import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
 import {
@@ -13,6 +13,7 @@ import {
     VideoModal,
 } from '@/Components/Onboarding/AjudaDoPasso';
 import ProximaAcaoCliente from '@/Components/Onboarding/Portal/ProximaAcaoCliente';
+import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import ResponsaveisCliente from '@/Components/Onboarding/Portal/ResponsaveisCliente';
 import { cn } from '@/lib/utils';
 
@@ -570,64 +571,19 @@ function ProgressoHeader({ empresaNome, progresso }) {
 // ─── Página ───────────────────────────────────────────────────────────────
 
 /**
- * Barra lateral do portal.
+ * Contagem de um bloco de etapa — régua ÚNICA para a trilha e para o cabeçalho.
  *
- * ### "Documentos" NÃO entra
- * A referência visual traz um item de Documentos com guias para baixar. O
- * projeto não tem biblioteca de documentos de onboarding — o material de apoio
- * que existe é POR PASSO (`DefinicaoOnboarding::TUTORIAIS` e `PASSO_A_PASSO`),
- * e já aparece dentro do card de cada item. Criar o item de menu agora seria
- * uma prateleira vazia, ou pior, com links inventados. Quando existir acervo de
- * verdade, ele entra aqui.
- *
- * ### Os links são âncoras, não rotas
- * O portal é UMA página. Rota nova por seção obrigaria o cliente a recarregar
- * para ver o que já está na tela.
+ * Desde 21/08 o bloco `mapeamento` pode ter ZERO passos e só a ficha da conta,
+ * então contar por `itens.length` marcaria a etapa como concluída sem ninguém
+ * ter conferido nada. O critério de "feito" do mapeamento é o mesmo de
+ * `calcularProgresso`: confirmação registrada.
  */
-function PortalSidebar({ empresaNome, pendentes }) {
-    const item = 'flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] transition-colors';
+function contarBloco({ itens, mapas = [] }) {
+    const total  = itens.length + mapas.length;
+    const feitos = itens.filter((p) => p.status === 'concluido').length
+                 + mapas.filter((m) => Boolean(m.confirmacao?.confirmado)).length;
 
-    return (
-        <aside className="lg:w-[248px] lg:shrink-0 lg:min-h-screen bg-[#0b1220] border-b lg:border-b-0 lg:border-r border-white/[0.06]">
-            <div className="lg:sticky lg:top-0 p-4 lg:p-5">
-                <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                        <p className="text-ecf-yellow font-display font-extrabold text-lg leading-none">ECF</p>
-                        <p className="text-white/35 text-[10px] tracking-[0.18em] uppercase mt-0.5">Consultoria</p>
-                    </div>
-                    {/* No mobile a sidebar vira faixa: o nome da empresa vai
-                        para o lado do logo em vez de sumir. */}
-                    <p className="lg:hidden text-white/60 text-[12px] truncate">{empresaNome}</p>
-                </div>
-
-                <div className="hidden lg:block mt-6">
-                    <p className="text-white text-[13px] font-semibold truncate">Olá, {empresaNome}!</p>
-                    <p className="text-white/35 text-[12px] mt-0.5">Este é o seu portal de onboarding.</p>
-                </div>
-
-                <nav className="hidden lg:block mt-6 space-y-1">
-                    <a href="#inicio" className={`${item} bg-ecf-yellow/10 text-ecf-yellow font-semibold`}>
-                        <Home size={15} /> Início
-                    </a>
-                    <a href="#pendencias" className={`${item} text-white/55 hover:text-white hover:bg-white/[0.04]`}>
-                        <ListChecks size={15} /> Minhas pendências
-                        {pendentes > 0 && (
-                            <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-ecf-yellow/15 text-ecf-yellow text-[11px] font-bold">
-                                {pendentes}
-                            </span>
-                        )}
-                    </a>
-                </nav>
-
-                <div className="hidden lg:block mt-8 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5">
-                    <p className="text-white text-[12px] font-semibold">Dúvidas?</p>
-                    <p className="text-white/40 text-[12px] mt-1 leading-relaxed">
-                        Fale com o seu analista responsável — ele acompanha este onboarding com você.
-                    </p>
-                </div>
-            </div>
-        </aside>
-    );
+    return { total, feitos, completa: total > 0 && feitos === total };
 }
 
 /**
@@ -643,12 +599,10 @@ function TrilhaEtapas({ blocos }) {
 
     return (
         <ol className="flex items-start gap-2 overflow-x-auto pb-1">
-            {blocos.map(({ etapa, itens }, i) => {
-                const feitos = itens.filter((p) => p.status === 'concluido').length;
-                const completa = feitos === itens.length;
-                const corrente = !completa && blocos.slice(0, i).every(
-                    (b) => b.itens.filter((p) => p.status === 'concluido').length === b.itens.length
-                );
+            {blocos.map((bloco, i) => {
+                const { etapa } = bloco;
+                const { feitos, total, completa } = contarBloco(bloco);
+                const corrente = !completa && blocos.slice(0, i).every((b) => contarBloco(b).completa);
 
                 return (
                     <li key={etapa} className="flex items-center gap-2 shrink-0">
@@ -671,7 +625,7 @@ function TrilhaEtapas({ blocos }) {
                                 {ETAPA_LABELS[etapa].titulo}
                             </span>
                             <span className="text-[10px] text-white/25 tabular-nums">
-                                {completa ? 'Concluído' : `${feitos} de ${itens.length}`}
+                                {completa ? 'Concluído' : `${feitos} de ${total}`}
                             </span>
                         </div>
                         {i < blocos.length - 1 && (
@@ -687,9 +641,12 @@ function TrilhaEtapas({ blocos }) {
 }
 
 /** Cabeçalho de um bloco de etapa, com contagem e barra própria. */
-function CabecalhoBloco({ etapa, itens, aberta, aoAlternar }) {
-    const feitos = itens.filter((p) => p.status === 'concluido').length;
-    const pct = Math.round((feitos / itens.length) * 100);
+function CabecalhoBloco({ etapa, itens, mapas = [], aberta, aoAlternar }) {
+    // O mapeamento da conta conta como item DO BLOCO, na mesma régua que
+    // `calcularProgresso` usa lá em cima — senão a barra da etapa bateria 100%
+    // com a ficha da conta ainda por conferir.
+    const { feitos, total } = contarBloco({ itens, mapas });
+    const pct = total > 0 ? Math.round((feitos / total) * 100) : 0;
 
     return (
         <button
@@ -709,7 +666,7 @@ function CabecalhoBloco({ etapa, itens, aberta, aoAlternar }) {
 
             <div className="shrink-0 w-[92px]">
                 <span className="block text-[11px] text-white/40 tabular-nums text-right">
-                    {feitos} de {itens.length}
+                    {feitos} de {total}
                 </span>
                 <span className="mt-1 block h-1 w-full rounded-full bg-white/[0.06] overflow-hidden">
                     <span
@@ -731,6 +688,9 @@ function CabecalhoBloco({ etapa, itens, aberta, aoAlternar }) {
 export default function Publico({
     token,
     empresa,
+    // Vem do `PortalClienteService` e é repassado ao layout sem a tela
+    // precisar saber quais módulos existem.
+    modulos = [],
     passos = [],
     reunioes = [],
     mapeamentos = [],
@@ -757,7 +717,7 @@ export default function Publico({
                     <AlertTriangle className="h-16 w-16 text-amber-400 mx-auto" />
                     <h1 className="text-white font-display font-bold text-2xl">Link inválido</h1>
                     <p className="text-white/50 text-[13px] leading-relaxed">
-                        Este link de onboarding não foi encontrado. Verifique se copiou o endereço completo ou entre
+                        Este link não foi encontrado. Verifique se copiou o endereço completo ou entre
                         em contato com a ECF Consultoria.
                     </p>
                 </div>
@@ -765,10 +725,17 @@ export default function Publico({
         );
     }
 
+    // Bloqueado fica de fora da tela inteira: antes do grant `fetchUserInfo()`
+    // nem sai da porta, e um bloco de campos em branco pareceria erro nosso.
+    const mapeamentosVisiveis = mapeamentos.filter((m) => m.estado !== 'bloqueado');
+
     // "Nada pendente" agora considera a reunião: um cliente que já cumpriu
     // todos os passos mas ainda precisa marcar a conversa NÃO está sem nada a
-    // fazer.
-    const nadaPendente = passos.length === 0 && reunioes.length === 0;
+    // fazer. O mesmo vale para o mapeamento — ele é item de progresso desde
+    // sempre em `calcularProgresso`, e agora mora dentro do bloco da etapa.
+    const nadaPendente = passos.length === 0
+        && reunioes.length === 0
+        && mapeamentosVisiveis.length === 0;
     const passosTodosConcluidos = passos.length > 0 && passos.every((p) => p.status === 'concluido');
 
     const progresso = calcularProgresso(passos, mapeamentos, reunioes);
@@ -780,8 +747,14 @@ export default function Publico({
         .map((etapa) => ({
             etapa,
             itens: passos.filter((p) => (p.etapa ?? 'outros') === etapa),
+            // O mapeamento da conta É a etapa `mapeamento` — vive DENTRO do
+            // bloco dela. Antes era um segundo bloco logo abaixo, com o mesmo
+            // título, e a tela mostrava "Mapeamento da conta" duas vezes
+            // (21/08). O bloco existe mesmo sem passo nenhum na etapa: a ficha
+            // da conta sozinha já justifica o cabeçalho.
+            mapas: etapa === 'mapeamento' ? mapeamentosVisiveis : [],
         }))
-        .filter(({ itens }) => itens.length > 0);
+        .filter(({ itens, mapas }) => itens.length > 0 || mapas.length > 0);
 
     // Numeração 01, 02, 03… CONTÍNUA entre os blocos, como no checklist de
     // Polos: o cliente conta "quantos ainda faltam" pelo número, e reiniciar a
@@ -800,7 +773,9 @@ export default function Publico({
 
     // Primeira etapa ainda incompleta — é ela que nasce aberta.
     const etapaCorrente = blocos.find(
-        ({ itens }) => itens.some((p) => p.status !== 'concluido')
+        ({ itens, mapas }) =>
+            itens.some((p) => p.status !== 'concluido')
+            || mapas.some((m) => !m.confirmacao?.confirmado)
     )?.etapa ?? blocos[0]?.etapa ?? null;
 
     const estaAberta = (etapa) => (abertas === null ? etapa === etapaCorrente : abertas.has(etapa));
@@ -825,10 +800,8 @@ export default function Publico({
     };
 
     return (
-        <div className="min-h-screen bg-ecf-bg lg:flex">
-            <PortalSidebar empresaNome={empresa.nome} pendentes={acionaveis.length} />
-
-            <main id="inicio" className="flex-1 min-w-0">
+        <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Onboarding">
+            <div>
                 <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
                     {/* ─── Boas-vindas e progresso ───────────────────────── */}
                     <header className="flex items-start justify-between gap-6 flex-wrap">
@@ -921,12 +894,12 @@ export default function Publico({
                               * marcado por engano.
                               */}
                             {!nadaPendente && (
-                                <div id="pendencias" className="space-y-4 scroll-mt-6">
+                                <div className="space-y-4">
                                     <h2 className="text-white/70 font-semibold text-[12px] uppercase tracking-wider">
                                         Suas etapas
                                     </h2>
 
-                                    {blocos.map(({ etapa, itens }) => {
+                                    {blocos.map(({ etapa, itens, mapas }) => {
                                         const aberta = estaAberta(etapa);
 
                                         return (
@@ -937,6 +910,7 @@ export default function Publico({
                                                 <CabecalhoBloco
                                                     etapa={etapa}
                                                     itens={itens}
+                                                    mapas={mapas}
                                                     aberta={aberta}
                                                     aoAlternar={() => alternar(etapa)}
                                                 />
@@ -956,31 +930,27 @@ export default function Publico({
                                                         appEcfLink={empresa.app_ecf_link}
                                                     />
                                                 ))}
+
+                                                {/* A ficha da conta fecha o
+                                                    bloco da etapa `mapeamento`
+                                                    — é o retrato do que os
+                                                    passos acima destravaram. */}
+                                                {aberta && mapas.map((m) => (
+                                                    <MapeamentoInicial
+                                                        key={m.onboarding_id}
+                                                        mapeamento={m}
+                                                        contexto="cliente"
+                                                        rotulo={mapas.length > 1 ? m.servico : null}
+                                                        payloadExtra={{ onboarding_id: m.onboarding_id }}
+                                                        rotaSincronizar={route('onboarding.publico.mapeamento.sincronizar', token)}
+                                                        rotaConfirmar={route('onboarding.publico.mapeamento.confirmar', token)}
+                                                    />
+                                                ))}
                                             </section>
                                         );
                                     })}
                                 </div>
                             )}
-
-                            {/* Mapeamento: só aparece depois que há o que
-                                mostrar. Antes do grant `fetchUserInfo()` nem sai
-                                da porta, e um bloco de campos em branco
-                                pareceria erro nosso. */}
-                            {mapeamentos.filter((m) => m.estado !== 'bloqueado').map((m) => (
-                                <section key={m.onboarding_id} className="space-y-3">
-                                    <h2 className="text-white font-display font-bold text-[15px]">
-                                        {ETAPA_LABELS.mapeamento.titulo}
-                                        {mapeamentos.length > 1 ? ` · ${m.servico}` : ''}
-                                    </h2>
-                                    <MapeamentoInicial
-                                        mapeamento={m}
-                                        contexto="cliente"
-                                        payloadExtra={{ onboarding_id: m.onboarding_id }}
-                                        rotaSincronizar={route('onboarding.publico.mapeamento.sincronizar', token)}
-                                        rotaConfirmar={route('onboarding.publico.mapeamento.confirmar', token)}
-                                    />
-                                </section>
-                            ))}
 
                             {/* Rodapé de conclusão — o lugar do "acabou" agora
                                 que a lista não sai mais da tela. */}
@@ -1038,7 +1008,7 @@ export default function Publico({
                         </aside>
                     </div>
                 </div>
-            </main>
+            </div>
 
             {video && (
                 <VideoModal url={video.url} titulo={video.titulo} onClose={() => setVideo(null)} />
@@ -1047,6 +1017,6 @@ export default function Publico({
             {passoAPasso && (
                 <PassoAPassoModal conteudo={passoAPasso} onClose={() => setPassoAPasso(null)} />
             )}
-        </div>
+        </PortalClienteLayout>
     );
 }

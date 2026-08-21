@@ -85,7 +85,7 @@ class OnboardingDetalhePayloadTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('link.existe', true)
-                ->where('link.url', route('onboarding.publico.workspace', $link->token))
+                ->where('link.url', route('portal.inicio', $link->token))
                 ->where('link.ultimo_acesso', null)
             );
     }
@@ -101,7 +101,7 @@ class OnboardingDetalhePayloadTest extends TestCase
         $link = app(OnboardingLinkService::class)->paraEmpresa($onboarding->company);
 
         // O cliente abre o portal.
-        $this->get(route('onboarding.publico.workspace', $link->token))->assertOk();
+        $this->get(route('portal.inicio', $link->token))->assertOk();
 
         $this->actingAs($this->admin())
             ->get(route('onboarding.painel.show', $onboarding))
@@ -126,11 +126,21 @@ class OnboardingDetalhePayloadTest extends TestCase
             );
     }
 
+    /**
+     * O cliente não pede mais reunião (19/08) — mas há linhas em PRODUÇÃO em
+     * `solicitada`, gravadas antes da mudança, e o painel interno tem de
+     * continuar sabendo lê-las. Por isso o estado é montado direto no modelo:
+     * `solicitarReuniao()` não existe mais, e o que este teste protege é a
+     * LEITURA do dado antigo, não o fluxo que o produzia.
+     */
     #[Test]
-    public function pedido_do_cliente_aparece_para_quem_opera(): void
+    public function pedido_antigo_do_cliente_ainda_aparece_para_quem_opera(): void
     {
         $onboarding = $this->onboardingEmAndamento();
-        app(OnboardingEngineService::class)->solicitarReuniao($onboarding);
+        $onboarding->forceFill([
+            'reuniao_status'       => Onboarding::REUNIAO_SOLICITADA,
+            'reuniao_solicitada_em' => now(),
+        ])->save();
 
         $this->actingAs($this->admin())
             ->get(route('onboarding.painel.show', $onboarding))

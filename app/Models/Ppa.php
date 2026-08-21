@@ -47,6 +47,9 @@ class Ppa extends Model
     public function mentor() { return $this->belongsTo(User::class, 'mentor_id'); }
     public function tasks() { return $this->hasMany(PpaTask::class)->orderBy('order'); }
 
+    /** Colunas EXTRAS do quadro. As três fixas são o ENUM `ppa_tasks.status`. */
+    public function colunas() { return $this->hasMany(PpaColuna::class)->orderBy('posicao'); }
+
     /** Filtra por escopo ('geral' ou 'polos'); PPA antigo sem escopo conta como geral. */
     public function scopeDoEscopo($query, string $escopo)
     {

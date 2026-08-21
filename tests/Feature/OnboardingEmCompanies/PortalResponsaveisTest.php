@@ -112,7 +112,7 @@ class PortalResponsaveisTest extends TestCase
 
         $this->definir($onboarding, $estrategista, $analista);
 
-        $props = $this->get(route('onboarding.publico.workspace', $this->token($company)))
+        $props = $this->get(route('portal.onboarding', $this->token($company)))
             ->assertOk()
             ->viewData('page')['props'];
 
@@ -142,7 +142,7 @@ class PortalResponsaveisTest extends TestCase
         $analista = $this->usuario('Fulano Analista');
         $this->definir($onboarding, null, $analista);
 
-        $props = $this->get(route('onboarding.publico.workspace', $this->token($company)))
+        $props = $this->get(route('portal.onboarding', $this->token($company)))
             ->assertOk()
             ->viewData('page')['props'];
 
@@ -178,7 +178,7 @@ class PortalResponsaveisTest extends TestCase
 
         $this->assertSame(Onboarding::STATUS_RASCUNHO, $onboarding->fresh()->status);
 
-        $props = $this->get(route('onboarding.publico.workspace', $this->token($company)))
+        $props = $this->get(route('portal.onboarding', $this->token($company)))
             ->assertOk()
             ->viewData('page')['props'];
 
@@ -217,7 +217,7 @@ class PortalResponsaveisTest extends TestCase
             $this->definir($o, null, $analista);
         }
 
-        $props = $this->get(route('onboarding.publico.workspace', $this->token($company)))
+        $props = $this->get(route('portal.onboarding', $this->token($company)))
             ->assertOk()
             ->viewData('page')['props'];
 
