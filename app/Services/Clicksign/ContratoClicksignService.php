@@ -234,4 +234,22 @@ class ContratoClicksignService
 
         return ['ok' => ! $duplicidadeImpediuTudo, 'faltando' => [], 'criados' => $criados, 'pulados' => $pulados];
     }
+
+    /**
+     * Leitura pura (sem efeito colateral, nunca cria nada) dos `servico_id`
+     * com mais de um `ContratoServico` ATIVO — mesma regra da guarda de
+     * `iniciarParaEmpresa()` (quick 260821-l8n), exposta para
+     * `ContratoAdminController::show()` explicar o bloqueio ANTES do
+     * clique, sem precisar chamar `iniciarParaEmpresa()` (que teria efeito
+     * colateral) só para descobrir isso.
+     *
+     * @return array<int, int> servico_id => quantidade de ContratoServico ativos
+     */
+    public function servicosDuplicados(Company $company): array
+    {
+        return $company->contratosServico()->where('ativo', true)->get()
+            ->countBy('servico_id')
+            ->filter(fn (int $qtd) => $qtd > 1)
+            ->all();
+    }
 }

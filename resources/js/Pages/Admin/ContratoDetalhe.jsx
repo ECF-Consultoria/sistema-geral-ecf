@@ -108,6 +108,11 @@ export default function ContratoDetalhe({
         ja_em_andamento:      'Já existe um contrato em andamento para um dos serviços desta empresa.',
         aguardando_comercial: 'Ainda há uma pendência comercial nesta empresa antes de gerar o contrato.',
         isento:               'Nenhum serviço desta empresa passa por contrato.',
+        // Quick 260821-l8n — empresa Mons Bike: mesmo serviço lançado duas
+        // vezes no HubSpot (ex.: pagamento parcelado em mais de uma linha).
+        // Sem jargão técnico (nada de "ContratoServico"/"item de linha") —
+        // a pessoa só precisa saber que tem serviço repetido e onde mexer.
+        servicos_duplicados:  'O mesmo serviço aparece cadastrado mais de uma vez para esta empresa. Corrija no HubSpot (deixando só um lançamento por serviço) antes de gerar o contrato — assim nenhum valor fica de fora.',
         // Fase 132 Plano 01 (D-07) — este caso não usa MOTIVO_BLOQUEIO_TEXTO
         // no bloco de tela (tem bloco próprio, ver abaixo), mas a chave fica
         // aqui documentada por completude.
