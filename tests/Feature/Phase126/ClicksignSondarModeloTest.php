@@ -277,14 +277,16 @@ class ClicksignSondarModeloTest extends TestCase
     {
         $this->fakeTudo();
 
-        // As 10 variáveis de ContratoVariaveisModeloService::nomes() são:
-        // razao_social, cnpj, endereco, servico_contratado, valor_mensal,
-        // vigencia_inicio, vigencia_fim, data_primeira_parcela,
-        // dia_vencimento, data_assinatura.
+        // As 15 variáveis de ContratoVariaveisModeloService::nomes() são:
+        // razao_social, cnpj, endereco, bairro, cidade, estado, cep,
+        // servico_contratado, valor_mensal, vigencia_inicio, vigencia_fim,
+        // data_primeira_parcela, dia_vencimento, data_assinatura,
+        // plano_parcelas.
         //
-        // O .docx de teste inclui 8 delas (faltam data_primeira_parcela e
-        // data_assinatura -> "faltando no .docx") e mais uma que o código
-        // não emite (-> "sobrando no .docx").
+        // O .docx de teste inclui 8 delas (faltam data_primeira_parcela,
+        // data_assinatura, bairro, cidade, estado, cep e plano_parcelas ->
+        // "faltando no .docx") e mais uma que o código não emite ->
+        // "sobrando no .docx".
         $docx = $this->criarDocxDeTeste([
             'razao_social', 'cnpj', 'endereco', 'servico_contratado', 'valor_mensal',
             'vigencia_inicio', 'vigencia_fim', 'dia_vencimento',

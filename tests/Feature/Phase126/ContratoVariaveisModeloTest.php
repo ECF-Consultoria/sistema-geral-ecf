@@ -300,4 +300,29 @@ class ContratoVariaveisModeloTest extends TestCase
             $resultado['variaveis']['servico_contratado']
         );
     }
+
+    // ─── Quick 260821-m9h — {{plano_parcelas}} do modelo de Gestão (caso simples) ───
+
+    #[Test]
+    public function plano_parcelas_emite_a_frase_constante_do_caso_simples(): void
+    {
+        $contrato = $this->contratoComSnapshot();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame(
+            ContratoVariaveisModeloService::PLANO_PARCELAS_CASO_SIMPLES,
+            $resultado['variaveis']['plano_parcelas']
+        );
+        $this->assertSame(
+            'As parcelas seguirão a faixa apurada na forma da Cláusula 2.1.2.',
+            $resultado['variaveis']['plano_parcelas']
+        );
+    }
+
+    #[Test]
+    public function nomes_inclui_plano_parcelas(): void
+    {
+        $this->assertContains('plano_parcelas', ContratoVariaveisModeloService::nomes());
+    }
 }
