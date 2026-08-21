@@ -66,7 +66,14 @@ export default function ContratoDetalhe({
         nome_contato:       company.nome_contato ?? '',
         // Quick 260819-guy — razão social/endereço são por EMPRESA.
         razao_social:       company.razao_social ?? '',
+        // Quick 260821-cq0 — endereço volta a ser 5 campos separados: o
+        // contrato de Gestão do jurídico precisa de rua, bairro, cidade,
+        // estado e CEP como variáveis próprias.
         endereco:           company.endereco ?? '',
+        bairro:             company.bairro ?? '',
+        cidade:             company.cidade ?? '',
+        estado:             company.estado ?? '',
+        cep:                company.cep ?? '',
         contratos_servico:  contratos_servico.map((cs) => ({
             id:                     cs.id,
             data_contratacao:       cs.data_contratacao ?? '',
@@ -385,17 +392,77 @@ export default function ContratoDetalhe({
                                     )}
                                 </div>
 
+                                {/* Quick 260821-cq0 — endereço volta a ser 5 campos separados
+                                    (rua, bairro, cidade, estado, CEP): o contrato de Gestão do
+                                    jurídico monta "com sede {{endereco}}, {{bairro}},
+                                    {{cidade}}/{{estado}} - CEP: {{cep}}" com cada pedaço numa
+                                    variável própria. Sem jargão — nada de "logradouro" cru na
+                                    tela. */}
                                 <div className="space-y-1.5">
-                                    <Label>Endereço</Label>
+                                    <Label>Rua e número</Label>
                                     <Input
                                         value={cadastroForm.data.endereco}
                                         onChange={(e) => cadastroForm.setData('endereco', e.target.value)}
-                                        placeholder="Endereço completo que vai constar no contrato"
+                                        placeholder="Rua das Indústrias, 500"
                                         className="focus:border-ecf-yellow/40"
                                     />
                                     {cadastroForm.errors.endereco && (
                                         <p className="text-red-400 text-[11px]">{cadastroForm.errors.endereco}</p>
                                     )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label>Bairro</Label>
+                                        <Input
+                                            value={cadastroForm.data.bairro}
+                                            onChange={(e) => cadastroForm.setData('bairro', e.target.value)}
+                                            placeholder="Distrito Industrial"
+                                            className="focus:border-ecf-yellow/40"
+                                        />
+                                        {cadastroForm.errors.bairro && (
+                                            <p className="text-red-400 text-[11px]">{cadastroForm.errors.bairro}</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>CEP</Label>
+                                        <Input
+                                            value={cadastroForm.data.cep}
+                                            onChange={(e) => cadastroForm.setData('cep', e.target.value)}
+                                            placeholder="89219-500"
+                                            className="focus:border-ecf-yellow/40"
+                                        />
+                                        {cadastroForm.errors.cep && (
+                                            <p className="text-red-400 text-[11px]">{cadastroForm.errors.cep}</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label>Cidade</Label>
+                                        <Input
+                                            value={cadastroForm.data.cidade}
+                                            onChange={(e) => cadastroForm.setData('cidade', e.target.value)}
+                                            placeholder="Joinville"
+                                            className="focus:border-ecf-yellow/40"
+                                        />
+                                        {cadastroForm.errors.cidade && (
+                                            <p className="text-red-400 text-[11px]">{cadastroForm.errors.cidade}</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>Estado</Label>
+                                        <Input
+                                            value={cadastroForm.data.estado}
+                                            onChange={(e) => cadastroForm.setData('estado', e.target.value)}
+                                            placeholder="SC"
+                                            className="focus:border-ecf-yellow/40"
+                                        />
+                                        {cadastroForm.errors.estado && (
+                                            <p className="text-red-400 text-[11px]">{cadastroForm.errors.estado}</p>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {contratos_servico.length > 0 && (

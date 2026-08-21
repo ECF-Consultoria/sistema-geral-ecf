@@ -404,7 +404,13 @@ class ContratoAdminController extends Controller
                 'nome_contato'      => $company->nome_contato,
                 // Quick 260819-guy.
                 'razao_social'      => $company->razao_social,
+                // Quick 260821-cq0 — endereço volta a ser 5 campos
+                // separados (endereco aqui é só o logradouro).
                 'endereco'          => $company->endereco,
+                'bairro'            => $company->bairro,
+                'cidade'            => $company->cidade,
+                'estado'            => $company->estado,
+                'cep'               => $company->cep,
             ],
             'contratos_servico' => $contratosServicoAtivos->map(fn (ContratoServico $cs) => [
                 'id'                => $cs->id,
@@ -487,11 +493,12 @@ class ContratoAdminController extends Controller
     /**
      * ADM-01 — o Administrativo completa aqui o que o Comercial deixou pela
      * metade: CNPJ, e-mail do cliente, nome de quem assina, razão social e
-     * endereço da empresa (Quick 260819-guy), e — por serviço — as datas de
-     * início/término, a data da 1ª parcela e o dia do mês do vencimento das
-     * demais (Quick 260819-guy). E-mail do colaborador (acesso à conta do
-     * Mercado Livre) fica fora desta tela — Quick 260817-d6h — e é completado
-     * em `/companies` (`CompanyController`).
+     * endereço da empresa (Quick 260819-guy, endereço em 5 campos separados
+     * desde a Quick 260821-cq0), e — por serviço — as datas de início/
+     * término, a data da 1ª parcela e o dia do mês do vencimento das demais
+     * (Quick 260819-guy). E-mail do colaborador (acesso à conta do Mercado
+     * Livre) fica fora desta tela — Quick 260817-d6h — e é completado em
+     * `/companies` (`CompanyController`).
      *
      * D8 travada da milestone: nada aqui volta para o Comercial — a cobrança
      * do dado termina nesta tela.
@@ -513,8 +520,15 @@ class ContratoAdminController extends Controller
             // Quick 260819-guy — razão social/endereço são POR EMPRESA (mesmo
             // bloco de cnpj/email/nome_contato); campos por serviço vão em
             // contratos_servico.*.
+            //
+            // Quick 260821-cq0 — endereço volta a ser 5 campos separados
+            // (endereco aqui é só o logradouro).
             'razao_social'                          => ['nullable', 'string', 'max:255'],
             'endereco'                               => ['nullable', 'string', 'max:255'],
+            'bairro'                                 => ['nullable', 'string', 'max:255'],
+            'cidade'                                  => ['nullable', 'string', 'max:255'],
+            'estado'                                  => ['nullable', 'string', 'max:255'],
+            'cep'                                     => ['nullable', 'string', 'max:20'],
             'contratos_servico'                     => ['array'],
             'contratos_servico.*.id'                => ['required', 'integer', 'exists:contratos_servico,id'],
             'contratos_servico.*.data_contratacao'  => ['nullable', 'date'],
@@ -547,7 +561,11 @@ class ContratoAdminController extends Controller
 
         // Mass assignment sobre os $fillable já existentes de Company — nunca
         // $guarded = [].
-        $company->fill(collect($data)->only(['cnpj', 'email_cliente', 'nome_contato', 'razao_social', 'endereco'])->all());
+        $company->fill(collect($data)->only([
+            'cnpj', 'email_cliente', 'nome_contato', 'razao_social',
+            // Quick 260821-cq0 — endereço volta a ser 5 campos separados.
+            'endereco', 'bairro', 'cidade', 'estado', 'cep',
+        ])->all());
         $company->save();
 
         foreach ($paresParaAtualizar as [$contratoServico, $item]) {

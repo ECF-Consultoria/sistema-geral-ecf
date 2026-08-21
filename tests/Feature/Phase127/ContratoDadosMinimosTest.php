@@ -77,7 +77,12 @@ class ContratoDadosMinimosTest extends TestCase
             'nome_contato'  => 'Fulano de Tal',
             // Quick 260819-guy — obrigatórios desde 2026-08-19.
             'razao_social'  => 'Empresa de Teste LTDA',
+            // Quick 260821-cq0 — endereço em 5 campos, todos obrigatórios.
             'endereco'      => 'Rua de Teste, 123',
+            'bairro'        => 'Bairro de Teste',
+            'cidade'        => 'Cidade de Teste',
+            'estado'        => 'TS',
+            'cep'           => '00000-000',
         ], $overrides));
     }
 
@@ -257,6 +262,82 @@ class ContratoDadosMinimosTest extends TestCase
         $this->assertNotNull($item);
         $this->assertSame('ausente', $item['motivo']);
         $this->assertFalse($this->service->estaPronta($company));
+    }
+
+    // ─── Quick 260821-cq0 — bairro/cidade/estado/cep são obrigatórios, mesma disciplina de endereco ───
+
+    #[Test]
+    public function sem_bairro_reprova_como_ausente(): void
+    {
+        $company = $this->companyCompleta(['bairro' => null]);
+        $this->contratoAtivo($company);
+
+        $item = collect($this->service->faltantes($company))->firstWhere('campo', 'bairro');
+        $this->assertNotNull($item);
+        $this->assertSame('ausente', $item['motivo']);
+        $this->assertFalse($this->service->estaPronta($company));
+    }
+
+    #[Test]
+    public function sem_cidade_reprova_como_ausente(): void
+    {
+        $company = $this->companyCompleta(['cidade' => null]);
+        $this->contratoAtivo($company);
+
+        $item = collect($this->service->faltantes($company))->firstWhere('campo', 'cidade');
+        $this->assertNotNull($item);
+        $this->assertSame('ausente', $item['motivo']);
+        $this->assertFalse($this->service->estaPronta($company));
+    }
+
+    #[Test]
+    public function sem_estado_reprova_como_ausente(): void
+    {
+        $company = $this->companyCompleta(['estado' => null]);
+        $this->contratoAtivo($company);
+
+        $item = collect($this->service->faltantes($company))->firstWhere('campo', 'estado');
+        $this->assertNotNull($item);
+        $this->assertSame('ausente', $item['motivo']);
+        $this->assertFalse($this->service->estaPronta($company));
+    }
+
+    #[Test]
+    public function sem_cep_reprova_como_ausente(): void
+    {
+        $company = $this->companyCompleta(['cep' => null]);
+        $this->contratoAtivo($company);
+
+        $item = collect($this->service->faltantes($company))->firstWhere('campo', 'cep');
+        $this->assertNotNull($item);
+        $this->assertSame('ausente', $item['motivo']);
+        $this->assertFalse($this->service->estaPronta($company));
+    }
+
+    /**
+     * Endereço PARCIAL (só cidade e estado preenchidos) não quebra — acusa
+     * exatamente os 3 campos que faltam (endereco/bairro/cep), nunca os
+     * dois que já estão preenchidos.
+     */
+    #[Test]
+    public function endereco_parcial_so_cidade_e_estado_acusa_so_o_que_falta(): void
+    {
+        $company = $this->companyCompleta([
+            'endereco' => null,
+            'bairro'   => null,
+            'cidade'   => 'Blumenau',
+            'estado'   => 'SC',
+            'cep'      => null,
+        ]);
+        $this->contratoAtivo($company);
+
+        $campos = collect($this->service->faltantes($company))->pluck('campo')->all();
+
+        $this->assertContains('endereco', $campos);
+        $this->assertContains('bairro', $campos);
+        $this->assertContains('cep', $campos);
+        $this->assertNotContains('cidade', $campos);
+        $this->assertNotContains('estado', $campos);
     }
 
     #[Test]

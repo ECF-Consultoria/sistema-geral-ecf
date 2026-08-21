@@ -71,7 +71,12 @@ class ContratoClicksignServiceTest extends TestCase
             'nome_contato'  => 'Fulano de Tal',
             // Quick 260819-guy — obrigatórios desde 2026-08-19.
             'razao_social'  => 'Fulano de Tal LTDA',
+            // Quick 260821-cq0 — endereço em 5 campos, todos obrigatórios.
             'endereco'      => 'Rua de Teste, 123',
+            'bairro'        => 'Bairro de Teste',
+            'cidade'        => 'Cidade de Teste',
+            'estado'        => 'TS',
+            'cep'           => '00000-000',
         ], $overrides));
     }
 

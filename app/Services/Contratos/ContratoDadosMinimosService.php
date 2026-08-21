@@ -122,8 +122,28 @@ class ContratoDadosMinimosService
 
         // 5. Endereço (Quick 260819-guy) — presença. Alimenta a variável
         // `endereco` do modelo `.docx`.
+        //
+        // Quick 260821-cq0 — o endereço voltou a ser 5 campos separados. As
+        // 4 partes novas (bairro/cidade/estado/cep) entram aqui como
+        // OBRIGATÓRIAS, mesma disciplina de `endereco`: o contrato de Gestão
+        // do jurídico usa as cinco como variáveis próprias, e campo em
+        // branco num documento assinado é pior do que segurar a geração até
+        // alguém preencher (mesma decisão da Quick 260819-guy, agora
+        // estendida aos 4 campos novos).
         if (blank($company->endereco)) {
-            $itens[] = $this->item('endereco', 'Endereço', 'ausente');
+            $itens[] = $this->item('endereco', 'Rua e número', 'ausente');
+        }
+        if (blank($company->bairro)) {
+            $itens[] = $this->item('bairro', 'Bairro', 'ausente');
+        }
+        if (blank($company->cidade)) {
+            $itens[] = $this->item('cidade', 'Cidade', 'ausente');
+        }
+        if (blank($company->estado)) {
+            $itens[] = $this->item('estado', 'Estado', 'ausente');
+        }
+        if (blank($company->cep)) {
+            $itens[] = $this->item('cep', 'CEP', 'ausente');
         }
 
         // 6. Nenhum ContratoServico ativo — sem serviço não há o que
