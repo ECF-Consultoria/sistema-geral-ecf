@@ -214,10 +214,13 @@ class Quick260820Jc8HubspotContratoTest extends TestCase
         $company = Company::first();
         $this->assertNotNull($company);
         $this->assertSame('Maderatto Moveis LTDA', $company->razao_social);
-        $this->assertSame(
-            'Rua das Industrias, 500, Distrito Industrial, Joinville - SC, CEP 89219-500',
-            $company->endereco,
-        );
+        // Quick 260821-cq0 — endereço volta a ser 5 colunas SEPARADAS, sem
+        // concatenação nenhuma; `endereco` é só o logradouro cru.
+        $this->assertSame('Rua das Industrias, 500', $company->endereco);
+        $this->assertSame('Distrito Industrial', $company->bairro);
+        $this->assertSame('Joinville', $company->cidade);
+        $this->assertSame('SC', $company->estado);
+        $this->assertSame('89219-500', $company->cep);
 
         $contrato = ContratoServico::where('company_id', $company->id)->first();
         $this->assertNotNull($contrato);
@@ -371,6 +374,49 @@ class Quick260820Jc8HubspotContratoTest extends TestCase
         $this->assertSame('Razao Social Manual LTDA', $company->razao_social, 'razao_social manual nao pode ser sobrescrita');
         $this->assertSame('Endereco Preenchido a Mao, 123', $company->endereco, 'endereco manual nao pode ser sobrescrito');
         $this->assertSame('00111222000133', $company->cnpj, 'cnpj manual nao pode ser sobrescrito pelo fallback do deal');
+        // Quick 260821-cq0 — cidade/estado vieram VAZIOS na empresa (nunca
+        // preenchidos à mão), então a regra "só preenche se vazio" DEIXA o
+        // HubSpot preencher — prova que a regra funciona nos dois sentidos.
+        $this->assertSame('Curitiba', $company->cidade);
+        $this->assertSame('PR', $company->estado);
+    }
+
+    /**
+     * Quick 260821-cq0 — "só preenche se vazio" preservado nas 4 colunas
+     * novas: bairro/cidade/estado/cep JÁ preenchidos à mão não são
+     * sobrescritos pelo replay, mesma disciplina de razao_social/endereco.
+     */
+    public function test_bairro_cidade_estado_cep_ja_preenchidos_a_mao_nao_sao_sobrescritos_pelo_replay(): void
+    {
+        $gestao = $this->criarServico('Gestão');
+        $this->criarMapping('MAP', $gestao);
+
+        $company = Company::create([
+            'name'               => 'Cliente Endereco Manual',
+            'bairro'             => 'Bairro Manual',
+            'cidade'             => 'Cidade Manual',
+            'estado'             => 'MG',
+            'cep'                => '11111-111',
+            'hubspot_company_id' => '88001',
+            'status'             => 'ativo',
+            'active'             => true,
+        ]);
+
+        $this->mockaHubSpot([
+            'bairro' => 'Bairro Vindo do HubSpot',
+            'cidade' => 'Cidade Vinda do HubSpot',
+            'estado' => 'SP',
+            'cep'    => '99999-999',
+        ], companyProps: ['name' => 'Cliente Endereco Manual', 'cnpj' => '', 'email' => '', 'phone' => '', 'domain' => '']);
+
+        $r = $this->disparaWebhook([$this->eventoPadrao()]);
+        $r->assertStatus(200);
+
+        $company->refresh();
+        $this->assertSame('Bairro Manual', $company->bairro);
+        $this->assertSame('Cidade Manual', $company->cidade);
+        $this->assertSame('MG', $company->estado);
+        $this->assertSame('11111-111', $company->cep);
     }
 
     public function test_props_ausentes_vazias_nao_quebram_o_fluxo_e_ficam_null(): void
@@ -391,6 +437,10 @@ class Quick260820Jc8HubspotContratoTest extends TestCase
         $this->assertNotNull($company);
         $this->assertNull($company->razao_social);
         $this->assertNull($company->endereco);
+        $this->assertNull($company->bairro);
+        $this->assertNull($company->cidade);
+        $this->assertNull($company->estado);
+        $this->assertNull($company->cep);
 
         $contrato = ContratoServico::where('company_id', $company->id)->first();
         $this->assertNotNull($contrato);

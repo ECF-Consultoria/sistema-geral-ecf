@@ -155,16 +155,22 @@ class HubspotDealHandoffService
         // ── Quick 260820-jc8 (Tarefa 1) — dados de CONTRATO que vêm do DEAL
         // (razão social/CNPJ/endereço), distintos de company_data (que vem da
         // HubSpot COMPANY). Sempre calculado — o deal sempre existe aqui.
+        //
+        // Quick 260821-cq0 — voltou a devolver as 5 partes do endereço
+        // SEPARADAS (não mais uma string composta via comporEndereco(),
+        // removido): o contrato de Gestão do jurídico precisa de
+        // `{{endereco}}`, `{{bairro}}`, `{{cidade}}`, `{{estado}}` e
+        // `{{cep}}` como variáveis distintas. `endereco` aqui é o
+        // LOGRADOURO cru (rua e número), mesma property `logradouro` de
+        // antes — só parou de ser concatenado com o resto.
         $dealContractData = [
             'razao_social' => $dprops[$propsDeal['razao_social'] ?? 'razao_social'] ?? null,
             'cnpj'         => $dprops[$propsDeal['cnpj_da_empresa'] ?? 'cnpj_da_empresa'] ?? null,
-            'endereco'     => $this->comporEndereco([
-                'logradouro' => $dprops[$propsDeal['logradouro'] ?? 'logradouro'] ?? null,
-                'bairro'     => $dprops[$propsDeal['bairro'] ?? 'bairro'] ?? null,
-                'cidade'     => $dprops[$propsDeal['cidade'] ?? 'cidade'] ?? null,
-                'estado'     => $dprops[$propsDeal['estado'] ?? 'estado'] ?? null,
-                'cep'        => $dprops[$propsDeal['cep'] ?? 'cep'] ?? null,
-            ]),
+            'endereco'     => $dprops[$propsDeal['logradouro'] ?? 'logradouro'] ?? null,
+            'bairro'       => $dprops[$propsDeal['bairro'] ?? 'bairro'] ?? null,
+            'cidade'       => $dprops[$propsDeal['cidade'] ?? 'cidade'] ?? null,
+            'estado'       => $dprops[$propsDeal['estado'] ?? 'estado'] ?? null,
+            'cep'          => $dprops[$propsDeal['cep'] ?? 'cep'] ?? null,
         ];
 
         return new HubspotHandoffData(
@@ -177,48 +183,6 @@ class HubspotDealHandoffService
             contact_data: $contactData,
             deal_contract_data: $dealContractData,
         );
-    }
-
-    /**
-     * Quick 260820-jc8 (Tarefa 1) — compõe `companies.endereco` (coluna
-     * ÚNICA, decisão AskUserQuestion 2026-08-20) a partir das 5 partes do
-     * deal HubSpot, pulando partes vazias sem deixar vírgula solta nem
-     * separador duplo. Endereço parcial (ex.: só cidade+estado) é caso
-     * NORMAL — o Comercial pode não ter preenchido tudo ainda.
-     *
-     * Formato: "Logradouro, Bairro, Cidade - Estado, CEP 00000-000" — cada
-     * bloco só entra se tiver conteúdo; "Cidade - Estado" vira só "Cidade"
-     * ou só "Estado" quando falta um dos dois (nunca um hífen solto).
-     *
-     * @param  array{logradouro?: ?string, bairro?: ?string, cidade?: ?string, estado?: ?string, cep?: ?string}  $partes
-     */
-    private function comporEndereco(array $partes): ?string
-    {
-        $logradouro = trim((string) ($partes['logradouro'] ?? ''));
-        $bairro     = trim((string) ($partes['bairro'] ?? ''));
-        $cidade     = trim((string) ($partes['cidade'] ?? ''));
-        $estado     = trim((string) ($partes['estado'] ?? ''));
-        $cep        = trim((string) ($partes['cep'] ?? ''));
-
-        $blocos = array_values(array_filter([$logradouro, $bairro], static fn (string $v) => $v !== ''));
-
-        $cidadeEstado = null;
-        if ($cidade !== '' && $estado !== '') {
-            $cidadeEstado = "{$cidade} - {$estado}";
-        } elseif ($cidade !== '') {
-            $cidadeEstado = $cidade;
-        } elseif ($estado !== '') {
-            $cidadeEstado = $estado;
-        }
-        if ($cidadeEstado !== null) {
-            $blocos[] = $cidadeEstado;
-        }
-
-        if ($cep !== '') {
-            $blocos[] = "CEP {$cep}";
-        }
-
-        return !empty($blocos) ? implode(', ', $blocos) : null;
     }
 
     /**

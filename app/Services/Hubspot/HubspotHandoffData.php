@@ -56,11 +56,15 @@ class HubspotHandoffData
      * @param  array|null $contact_data       Fase 113 (HUB-CONTATO-01) — ['principal' => contato escolhido (chaves lógicas)
      *                                        ou null, 'todos' => lista completa de contatos normalizados]; null quando build()
      *                                        não recebeu contatos.
-     * @param  array|null $deal_contract_data Quick 260820-jc8 — dados de CONTRATO que vêm do DEAL (não da company/contato
-     *                                        HubSpot): ['razao_social' => string|null, 'endereco' => string|null (5 partes
-     *                                        compostas, vazio => null), 'cnpj' => string|null]. Sempre preenchido (o deal
-     *                                        sempre existe em build()) — os 3 valores individuais podem vir null quando a
-     *                                        property correspondente está vazia na conta HubSpot.
+     * @param  array|null $deal_contract_data Quick 260820-jc8 (Tarefa 1) — dados de CONTRATO que vêm do DEAL (não da
+     *                                        company/contato HubSpot). Quick 260821-cq0 — voltou a devolver o
+     *                                        endereço em PARTES SEPARADAS (não mais uma string composta):
+     *                                        ['razao_social' => string|null, 'cnpj' => string|null, 'endereco' =>
+     *                                        string|null (LOGRADOURO cru, rua e número), 'bairro' => string|null,
+     *                                        'cidade' => string|null, 'estado' => string|null, 'cep' => string|null].
+     *                                        Sempre preenchido (o deal sempre existe em build()) — cada valor
+     *                                        individual pode vir null quando a property correspondente está vazia
+     *                                        na conta HubSpot.
      */
     public function __construct(
         public array $deal_data = [],

@@ -249,7 +249,12 @@ class Phase112HandoffServiceTest extends TestCase
 
     // ── Tarefa 1 (HUB-CONTRATO-01) — razão social/CNPJ/endereço do deal ────
 
-    public function test_deal_contract_data_com_endereco_completo_compoe_string_limpa(): void
+    /**
+     * Quick 260821-cq0 — deal_contract_data volta a devolver as 5 partes do
+     * endereço SEPARADAS (nunca mais uma string composta): `endereco` é o
+     * LOGRADOURO cru (mesma property `logradouro`, sem concatenar).
+     */
+    public function test_deal_contract_data_com_endereco_completo_devolve_as_5_partes_separadas(): void
     {
         $deal = ['properties' => [
             'dealname'        => 'Cliente Endereco Completo',
@@ -266,13 +271,19 @@ class Phase112HandoffServiceTest extends TestCase
 
         $this->assertSame('Maderatto Moveis LTDA', $dto->deal_contract_data['razao_social']);
         $this->assertSame('11222333000144', $dto->deal_contract_data['cnpj']);
-        $this->assertSame(
-            'Rua das Industrias, 500, Distrito Industrial, Joinville - SC, CEP 89219-500',
-            $dto->deal_contract_data['endereco'],
-        );
+        $this->assertSame('Rua das Industrias, 500', $dto->deal_contract_data['endereco']);
+        $this->assertSame('Distrito Industrial', $dto->deal_contract_data['bairro']);
+        $this->assertSame('Joinville', $dto->deal_contract_data['cidade']);
+        $this->assertSame('SC', $dto->deal_contract_data['estado']);
+        $this->assertSame('89219-500', $dto->deal_contract_data['cep']);
     }
 
-    public function test_deal_contract_data_com_endereco_parcial_so_cidade_e_estado_sem_pontuacao_solta(): void
+    /**
+     * Endereço PARCIAL (só cidade e estado) é caso NORMAL — não quebra, e
+     * cada parte ausente vem null individualmente (nada de vírgula/hífen
+     * soltos, porque não existe mais composição de string).
+     */
+    public function test_deal_contract_data_com_endereco_parcial_so_cidade_e_estado_devolve_as_outras_partes_null(): void
     {
         $deal = ['properties' => [
             'dealname' => 'Cliente Endereco Parcial',
@@ -282,10 +293,11 @@ class Phase112HandoffServiceTest extends TestCase
 
         $dto = $this->service()->build($deal, [], $this->propsDealCompleto);
 
-        $this->assertSame('Blumenau - SC', $dto->deal_contract_data['endereco']);
-        $this->assertStringNotContainsString(',,', $dto->deal_contract_data['endereco']);
-        $this->assertStringNotContainsString(', -', $dto->deal_contract_data['endereco']);
-        $this->assertNotSame(',', substr($dto->deal_contract_data['endereco'], -1), 'Nao pode terminar com virgula solta');
+        $this->assertSame('Blumenau', $dto->deal_contract_data['cidade']);
+        $this->assertSame('SC', $dto->deal_contract_data['estado']);
+        $this->assertNull($dto->deal_contract_data['endereco']);
+        $this->assertNull($dto->deal_contract_data['bairro']);
+        $this->assertNull($dto->deal_contract_data['cep']);
     }
 
     public function test_deal_contract_data_sem_nenhuma_parte_de_endereco_fica_null(): void
@@ -295,6 +307,10 @@ class Phase112HandoffServiceTest extends TestCase
         $dto = $this->service()->build($deal, [], $this->propsDealCompleto);
 
         $this->assertNull($dto->deal_contract_data['endereco']);
+        $this->assertNull($dto->deal_contract_data['bairro']);
+        $this->assertNull($dto->deal_contract_data['cidade']);
+        $this->assertNull($dto->deal_contract_data['estado']);
+        $this->assertNull($dto->deal_contract_data['cep']);
         $this->assertNull($dto->deal_contract_data['razao_social']);
         $this->assertNull($dto->deal_contract_data['cnpj']);
     }

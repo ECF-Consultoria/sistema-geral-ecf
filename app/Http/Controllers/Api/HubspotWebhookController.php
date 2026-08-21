@@ -604,9 +604,18 @@ class HubspotWebhookController extends Controller
             // Quick task 260820-jc8 — razao_social/endereco vem SO do DEAL (nao
             // existe fonte alternativa como o cnpj); string vazia normalizada
             // pra null pra nao acionar a regra "so preenche se vazio" com lixo.
+            //
+            // Quick 260821-cq0 — endereco volta a ser so o LOGRADOURO cru
+            // (rua e numero); bairro/cidade/estado/cep entram como campos
+            // PROPRIOS, mesma fonte (deal_contract_data), mesma disciplina
+            // "so preenche se vazio" das colunas ja existentes.
             $razaoSocialRaw = trim((string) ($handoff->deal_contract_data['razao_social'] ?? ''));
             $razaoSocialRaw = $razaoSocialRaw !== '' ? $razaoSocialRaw : null;
             $enderecoRaw    = $handoff->deal_contract_data['endereco'] ?? null;
+            $bairroRaw      = $handoff->deal_contract_data['bairro'] ?? null;
+            $cidadeRaw      = $handoff->deal_contract_data['cidade'] ?? null;
+            $estadoRaw      = $handoff->deal_contract_data['estado'] ?? null;
+            $cepRaw         = $handoff->deal_contract_data['cep'] ?? null;
 
             // ── Quick task 260805-eqk — observacoes vindas das Notes do deal ────
             // Texto consolidado = bodies unidos por linha em branco, na ordem
@@ -663,6 +672,10 @@ class HubspotWebhookController extends Controller
                     origemLead: $origemLead,
                     razaoSocialRaw: $razaoSocialRaw,
                     enderecoRaw: $enderecoRaw,
+                    bairroRaw: $bairroRaw,
+                    cidadeRaw: $cidadeRaw,
+                    estadoRaw: $estadoRaw,
+                    cepRaw: $cepRaw,
                 );
             } else {
                 // ── SEM match forte (null ou fraco) — cria empresa nova. ────────
@@ -689,8 +702,13 @@ class HubspotWebhookController extends Controller
                     'origem_lead'        => $origemLead,
                     // Quick task 260820-jc8 — razao_social/endereco vem SO do
                     // DEAL (empresa recem-criada, sem valor previo pra proteger).
+                    // Quick 260821-cq0 — bairro/cidade/estado/cep, mesma fonte.
                     'razao_social'       => $razaoSocialRaw,
                     'endereco'           => $enderecoRaw,
+                    'bairro'             => $bairroRaw,
+                    'cidade'             => $cidadeRaw,
+                    'estado'             => $estadoRaw,
+                    'cep'                => $cepRaw,
                 ]);
 
                 // Quick task 260805-ohs — REMOVIDA a linha legada
@@ -798,6 +816,9 @@ class HubspotWebhookController extends Controller
      * ja compostas/normalizadas por HubspotDealHandoffService) entram na
      * MESMA regra "so preenche se vazio": dado ja preenchido a mao pelo
      * Administrativo nunca e sobrescrito.
+     *
+     * Quick 260821-cq0 — `bairroRaw`/`cidadeRaw`/`estadoRaw`/`cepRaw` entram
+     * pela mesma porta, mesma disciplina "so preenche se vazio".
      */
     private function enriquecerEmpresaExistente(
         Company $company,
@@ -813,6 +834,10 @@ class HubspotWebhookController extends Controller
         ?string $origemLead = null,
         ?string $razaoSocialRaw = null,
         ?string $enderecoRaw = null,
+        ?string $bairroRaw = null,
+        ?string $cidadeRaw = null,
+        ?string $estadoRaw = null,
+        ?string $cepRaw = null,
     ): Company {
         $candidatos = [
             'cnpj'               => $cnpjRaw,
@@ -828,8 +853,13 @@ class HubspotWebhookController extends Controller
             // pelo Comercial; entra na regra "so preenche se vazio".
             'origem_lead'        => $origemLead,
             // Quick task 260820-jc8 — razao_social/endereco do deal HubSpot.
+            // Quick 260821-cq0 — bairro/cidade/estado/cep, mesma fonte.
             'razao_social'       => $razaoSocialRaw,
             'endereco'           => $enderecoRaw,
+            'bairro'             => $bairroRaw,
+            'cidade'             => $cidadeRaw,
+            'estado'             => $estadoRaw,
+            'cep'                => $cepRaw,
         ];
 
         $updates = [];
