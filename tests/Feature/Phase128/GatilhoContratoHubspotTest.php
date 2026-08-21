@@ -221,15 +221,20 @@ class GatilhoContratoHubspotTest extends TestCase
         Http::fake($fakes);
     }
 
-    // ─── Cenário 1 — dados completos, 1 serviço que exige contrato ─────────
+    // ─── Cenário 1 — dados completos PELA ÓTICA DO HUBSPOT, 1 serviço que exige contrato ─────
 
     /**
-     * Empresa criada pelo webhook, serviço exige contrato, SEM pendência e
-     * com dados mínimos completos (e-mail, CNPJ, nome de quem assina) →
-     * ContratoAssinatura criado (1 por ContratoServico que exige contrato)
-     * e GerarContratoAssinaturaJob despachado.
+     * Empresa criada pelo webhook, serviço exige contrato, SEM pendência
+     * comercial e com os dados que o HubSpot alimenta completos (e-mail,
+     * CNPJ, nome de quem assina) → o gate É chamado e chega ao 2º portão.
+     *
+     * ⚠️ Quick 260819-guy (2026-08-19): o HubSpot não alimenta razão
+     * social/endereço/data da 1ª parcela/dia de vencimento — só o
+     * Administrativo completa esses 4 campos (ADM-01). Com eles OBRIGATÓRIOS
+     * desde então, zero ContratoAssinatura nasce só pelo webhook, mesmo com
+     * tudo que o HubSpot sabe preenchido.
      */
-    public function test_webhook_com_dados_completos_dispara_contrato_e_job(): void
+    public function test_webhook_com_dados_completos_chama_o_gate_mas_nao_gera_contrato_sem_os_campos_do_administrativo(): void
     {
         $this->fakeSignatariosEcf();
         Bus::fake();
@@ -250,8 +255,12 @@ class GatilhoContratoHubspotTest extends TestCase
 
         $company = Company::where('name', 'Cliente Teste Gate 128')->firstOrFail();
 
-        $this->assertSame(1, ContratoAssinatura::where('company_id', $company->id)->count());
-        Bus::assertDispatched(GerarContratoAssinaturaJob::class, 1);
+        // Quick 260819-guy — ver docblock do teste: o HubSpot não alimenta os
+        // 4 campos que só o Administrativo preenche, então o gate agora
+        // recusa no 2º portão. Zero contrato, zero job — a fiação (o gate
+        // foi chamado) já está provada por outras suítes desta fase.
+        $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->count());
+        Bus::assertNotDispatched(GerarContratoAssinaturaJob::class);
     }
 
     // ─── Cenário 2 — Gestão + Polos no mesmo deal ───────────────────────────
@@ -260,10 +269,14 @@ class GatilhoContratoHubspotTest extends TestCase
      * Mesma empresa (agora via line items, Fase 37) com serviço 'Polos'
      * junto de um serviço que exige contrato: nenhum ContratoAssinatura é
      * criado para Polos (isenção do plano 128-01, aplicada dentro do
-     * ContratoClicksignService), mas o serviço que exige contrato dispara
-     * normalmente.
+     * ContratoClicksignService) — isso vale independente do 2º portão.
+     *
+     * ⚠️ Quick 260819-guy (2026-08-19): o serviço 'Gestão' NÃO dispara mais
+     * sozinho por este caminho — os 4 campos do Administrativo (ADM-01)
+     * seguem faltando (o HubSpot não os alimenta), então ele também fica
+     * pendente no 2º portão, igual ao cenário 1.
      */
-    public function test_webhook_com_gestao_e_polos_no_mesmo_deal_pula_polos(): void
+    public function test_webhook_com_gestao_e_polos_no_mesmo_deal_pula_polos_e_gestao_fica_pendente_do_administrativo(): void
     {
         $this->fakeSignatariosEcf();
         Bus::fake();
@@ -298,7 +311,10 @@ class GatilhoContratoHubspotTest extends TestCase
         $company = Company::where('name', 'Cliente Teste Gate 128 Line Items')->firstOrFail();
 
         $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $polos->id)->count());
-        $this->assertSame(1, ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $gestao->id)->count());
+        // Quick 260819-guy — antes deste quick, Gestão disparava sozinha
+        // aqui (=1). Agora fica pendente do Administrativo, igual ao
+        // cenário 1 desta suíte.
+        $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $gestao->id)->count());
     }
 
     // ─── Cenário 3 — só Polos ────────────────────────────────────────────

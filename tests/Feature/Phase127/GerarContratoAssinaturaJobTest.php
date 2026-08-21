@@ -388,4 +388,157 @@ class GerarContratoAssinaturaJobTest extends TestCase
 
         Http::assertNothingSent();
     }
+
+    // ─── Teste 12 (Quick 260819-guy) ───
+
+    /**
+     * `endereco` (dado de EMPRESA, lido ao vivo) e `dia_vencimento`/
+     * `data_primeira_parcela` (dado de SERVIÇO, lido do snapshot congelado)
+     * chegam com valor REAL no payload de `POST /envelopes/{id}/documents`
+     * — não mais "A DEFINIR" fixo.
+     */
+    #[Test]
+    public function endereco_dia_vencimento_e_data_primeira_parcela_chegam_com_valor_real_no_payload_do_documento(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
+        $this->fakeSequenciaSemAtivacao();
+
+        $company = Company::factory()->create([
+            'name'          => 'Empresa Teste LTDA',
+            'cnpj'          => '11.222.333/0001-99',
+            'nome_contato'  => 'Cliente Teste',
+            'email_cliente' => 'cliente@example.com',
+            'razao_social'  => 'Empresa Teste Comércio e Serviços LTDA',
+            'endereco'      => 'Rua Exemplo, 123 - São Paulo/SP',
+        ]);
+
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([[
+                'servico'               => 'Gestão de Tráfego — Mercado Livre',
+                'valor_contratado'      => 1847.32,
+                'data_contratacao'      => '2026-01-15',
+                'data_vencimento'       => '2027-01-15',
+                'dia_vencimento'        => 10,
+                'data_primeira_parcela' => '2026-02-05',
+            ]])
+            ->create([
+                'company_id' => $company->id,
+                'servico_id' => $this->servicoDeTeste()->id,
+            ]);
+
+        (new GerarContratoAssinaturaJob($contrato))->handle($this->client(), $this->variaveisService());
+
+        Http::assertSent(function ($request) {
+            if ($request->method() !== 'POST' || $request->url() !== self::BASE . '/envelopes/' . self::ENVELOPE_ID . '/documents') {
+                return false;
+            }
+
+            $data = data_get($request->data(), 'data.attributes.template.data');
+
+            return $data['razao_social']          === 'Empresa Teste Comércio e Serviços LTDA'
+                && $data['endereco']               === 'Rua Exemplo, 123 - São Paulo/SP'
+                && $data['dia_vencimento']          === '10'
+                && $data['data_primeira_parcela']   === '05/02/2026';
+        });
+    }
+
+    // ─── Teste 13 (Quick 260819-guy) ───
+
+    /**
+     * Contrato sem os complementos (snapshot antigo, sem dia_vencimento/
+     * data_primeira_parcela, e empresa sem endereco) ainda monta o
+     * envelope com sucesso — os campos caem em `campos_pendentes`
+     * internamente (só a QUANTIDADE é logada), nunca quebram o job.
+     */
+    #[Test]
+    public function ausencia_de_endereco_e_datas_de_pagamento_nao_quebra_o_job(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
+        $this->fakeSequenciaSemAtivacao();
+
+        $contrato = $this->contratoDeTeste();
+
+        (new GerarContratoAssinaturaJob($contrato))->handle($this->client(), $this->variaveisService());
+
+        $contrato->refresh();
+        $this->assertNotEmpty($contrato->clicksign_envelope_id);
+    }
+
+    // ─── Teste 14 (Quick 260819-guy, Tarefa 6) ───
+
+    /**
+     * Caso real medido no plano: `"Embralumi - Novo(a) Deal"` (razão social)
+     * + `"Gestão"` (serviço) produz `Embralumi-Novo-a-Deal-Gestao.docx` — só
+     * `[A-Za-z0-9_-]` antes do `.docx`, acento transliterado, espaço/
+     * parêntese viram hífen, hífens repetidos colapsados.
+     */
+    #[Test]
+    public function nome_do_arquivo_usa_slug_ascii_conservador_de_razao_social_e_servico(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
+        $this->fakeSequenciaSemAtivacao();
+
+        $company = Company::factory()->create([
+            'name'          => 'Embralumi',
+            'cnpj'          => '11.222.333/0001-99',
+            'nome_contato'  => 'Cliente Teste',
+            'email_cliente' => 'cliente@example.com',
+            'razao_social'  => 'Embralumi - Novo(a) Deal',
+        ]);
+
+        $servico  = $this->servicoDeTeste();
+        $servico->forceFill(['nome' => 'Gestão'])->save();
+
+        $contrato = $this->contratoDeTeste($servico, $company);
+
+        (new GerarContratoAssinaturaJob($contrato))->handle($this->client(), $this->variaveisService());
+
+        Http::assertSent(function ($request) {
+            if ($request->method() !== 'POST' || $request->url() !== self::BASE . '/envelopes/' . self::ENVELOPE_ID . '/documents') {
+                return false;
+            }
+
+            $filename = data_get($request->data(), 'data.attributes.filename');
+
+            return $filename === 'Embralumi-Novo-a-Deal-Gestao.docx'
+                && preg_match('/^[A-Za-z0-9_-]+\.docx$/', $filename) === 1;
+        });
+    }
+
+    // ─── Teste 15 (Quick 260819-guy, Tarefa 6) ───
+
+    /**
+     * Sem razão social preenchida (empresa antiga), cai no fallback
+     * `company->name` — o nome do arquivo continua identificável, nunca
+     * volta ao genérico `contrato-{id}.docx` só por falta desse campo.
+     */
+    #[Test]
+    public function nome_do_arquivo_cai_no_fallback_de_company_name_sem_razao_social(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
+        $this->fakeSequenciaSemAtivacao();
+
+        $company = Company::factory()->create([
+            'name'          => 'Empresa Sem Razao Social',
+            'cnpj'          => '11.222.333/0001-99',
+            'nome_contato'  => 'Cliente Teste',
+            'email_cliente' => 'cliente@example.com',
+            'razao_social'  => null,
+        ]);
+
+        $contrato = $this->contratoDeTeste(company: $company);
+
+        (new GerarContratoAssinaturaJob($contrato))->handle($this->client(), $this->variaveisService());
+
+        Http::assertSent(function ($request) {
+            if ($request->method() !== 'POST' || $request->url() !== self::BASE . '/envelopes/' . self::ENVELOPE_ID . '/documents') {
+                return false;
+            }
+
+            $filename = data_get($request->data(), 'data.attributes.filename');
+
+            return str_starts_with($filename, 'Empresa-Sem-Razao-Social-')
+                && str_ends_with($filename, '.docx');
+        });
+    }
 }

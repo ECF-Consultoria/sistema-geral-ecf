@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Company;
 use App\Models\MlAcervoItem;
+use App\Services\Mlb\Acervo\AcervoEscritaLock;
 use App\Services\Mlb\Acervo\MlAcervoService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -78,10 +79,20 @@ class SyncMlAcervoCompanyJob implements ShouldQueue, ShouldBeUnique
      * Falha definitiva: grava coleta_erro nas linhas já existentes da
      * empresa — update nomeado só dessa coluna, nunca upsert de linha
      * inteira — para o banner de defasagem do D-08 poder dizer o motivo.
+     *
+     * Exceção: erro de concorrência (deadlock) NÃO carimba. Mesmo motivo do
+     * catch em MlAcervoService::coletarCamadaBarata() — é um UPDATE de faixa
+     * inteira (até 66.747 linhas) que, aplicado a um erro transitório, mente
+     * na tela e ainda realimenta o próprio deadlock ao segurar lock exclusivo
+     * na faixa toda. Ver .planning/debug/acervo-deadlock-upsert.md (E6).
      */
     public function failed(\Throwable $e): void
     {
         Log::error("[MLB Anuncios] falha definitiva na coleta da empresa {$this->company->id} ({$this->company->name}): {$e->getMessage()}");
+
+        if (AcervoEscritaLock::ehErroDeConcorrencia($e)) {
+            return;
+        }
 
         MlAcervoItem::where('company_id', $this->company->id)->update(['coleta_erro' => $e->getMessage()]);
     }

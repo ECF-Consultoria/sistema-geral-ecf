@@ -8,9 +8,10 @@ import { Textarea } from '@/Components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
+import { IMaskInput } from 'react-imask';
 import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
-import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO } from '@/lib/contratoStatus';
+import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO, MONTAGEM_TRAVADA_AVISO } from '@/lib/contratoStatus';
 
 // D-11 (herdada da Fase 130, absorvida no plano 131-06) — causas de
 // ContratosPresosService que merecem a faixa de destaque vermelha ANTES de
@@ -63,10 +64,24 @@ export default function ContratoDetalhe({
         cnpj:               company.cnpj ?? '',
         email_cliente:      company.email_cliente ?? '',
         nome_contato:       company.nome_contato ?? '',
+        // Quick 260819-guy — razão social/endereço são por EMPRESA.
+        razao_social:       company.razao_social ?? '',
+        // Quick 260821-cq0 — endereço volta a ser 5 campos separados: o
+        // contrato de Gestão do jurídico precisa de rua, bairro, cidade,
+        // estado e CEP como variáveis próprias.
+        endereco:           company.endereco ?? '',
+        bairro:             company.bairro ?? '',
+        cidade:             company.cidade ?? '',
+        estado:             company.estado ?? '',
+        cep:                company.cep ?? '',
         contratos_servico:  contratos_servico.map((cs) => ({
-            id:                cs.id,
-            data_contratacao:  cs.data_contratacao ?? '',
-            data_vencimento:   cs.data_vencimento ?? '',
+            id:                     cs.id,
+            data_contratacao:       cs.data_contratacao ?? '',
+            data_vencimento:        cs.data_vencimento ?? '',
+            // Quick 260819-guy — data da 1ª parcela e dia do mês do
+            // vencimento das demais são por SERVIÇO.
+            data_primeira_parcela:  cs.data_primeira_parcela ?? '',
+            dia_vencimento:         cs.dia_vencimento ?? '',
         })),
     });
 
@@ -158,15 +173,13 @@ export default function ContratoDetalhe({
     }
 
     // ─── D-05 — Estado `erro`: assume a falha e oferece a saída ─────────
-    // Sem carimbo persistido de "quantas vezes já tentou" — a distinção
-    // 1ª/2ª falha é por sessão de navegação (reseta ao recarregar a página).
-    const [tentativasErro, setTentativasErro] = useState({});
+    // Quick 260819-guy (Tarefa 7 item 1) — "já tentou antes" e a mensagem de
+    // erro agora vêm PRONTOS do backend (`c.ja_tentou_antes`/
+    // `c.erro_mensagem`, calculados em `ContratoAdminController::show()`),
+    // não mais de um `useState({})` local que zerava a cada reload. O que
+    // continua local é só o toggle de abrir/fechar "Ver detalhes técnicos"
+    // — estado de exibição, não de dado.
     const [detalhesTecnicosAbertos, setDetalhesTecnicosAbertos] = useState({});
-
-    function tentarNovamente(contratoId) {
-        setTentativasErro((atual) => ({ ...atual, [contratoId]: (atual[contratoId] ?? 0) + 1 }));
-        gerarContrato();
-    }
 
     // ─── D-10 — Liberar manualmente (absorve a Fase 130, preserva D-11) ──
     // Reusa literalmente o texto já validado em
@@ -312,10 +325,30 @@ export default function ContratoDetalhe({
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1.5">
                                         <Label>CNPJ</Label>
-                                        <Input
-                                            value={cadastroForm.data.cnpj}
-                                            onChange={(e) => cadastroForm.setData('cnpj', e.target.value)}
-                                            className="focus:border-ecf-yellow/40"
+                                        {/* Mascara de CNPJ com IMaskInput — mesmo padrao ja usado em
+                                            Companies/Index.jsx e Comercial/NovaEmpresa.jsx (Fase 34,
+                                            D-08); nao inventar um segundo jeito de mascarar CNPJ.
+
+                                            A mascara aqui e FRICCAO DE UX, nunca controle: quem valida
+                                            o digito verificador e o servidor — `CnpjValido` no
+                                            `atualizarCadastro()` e `Cnpj::valido()` na regra 2 de
+                                            `ContratoDadosMinimosService::faltantes()`. Mesma disciplina
+                                            do T-131-04-03 (o `disabled` do botao no client tambem nao e
+                                            controle). Colar um CNPJ invalido continua sendo recusado.
+
+                                            As classes replicam `Components/ui/input.jsx` porque
+                                            IMaskInput renderiza um `<input>` cru, sem o wrapper do
+                                            componente — sem isso o campo destoa do "E-mail do cliente"
+                                            ao lado. */}
+                                        <IMaskInput
+                                            mask="00.000.000/0000-00"
+                                            value={cadastroForm.data.cnpj ?? ''}
+                                            onAccept={(value) => cadastroForm.setData('cnpj', value)}
+                                            placeholder="00.000.000/0001-00"
+                                            className={cn(
+                                                'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                                                'focus:border-ecf-yellow/40'
+                                            )}
                                         />
                                         {cadastroForm.errors.cnpj && <p className="text-red-400 text-[11px]">{cadastroForm.errors.cnpj}</p>}
                                     </div>
@@ -338,11 +371,98 @@ export default function ContratoDetalhe({
                                     <Input
                                         value={cadastroForm.data.nome_contato}
                                         onChange={(e) => cadastroForm.setData('nome_contato', e.target.value)}
+                                        placeholder="Nome completo — nome e sobrenome"
                                         className="focus:border-ecf-yellow/40"
                                     />
                                     {cadastroForm.errors.nome_contato && (
                                         <p className="text-red-400 text-[11px]">{cadastroForm.errors.nome_contato}</p>
                                     )}
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label>Razão social</Label>
+                                    <Input
+                                        value={cadastroForm.data.razao_social}
+                                        onChange={(e) => cadastroForm.setData('razao_social', e.target.value)}
+                                        placeholder="Nome jurídico completo — pode ser diferente do nome usado no dia a dia"
+                                        className="focus:border-ecf-yellow/40"
+                                    />
+                                    {cadastroForm.errors.razao_social && (
+                                        <p className="text-red-400 text-[11px]">{cadastroForm.errors.razao_social}</p>
+                                    )}
+                                </div>
+
+                                {/* Quick 260821-cq0 — endereço volta a ser 5 campos separados
+                                    (rua, bairro, cidade, estado, CEP): o contrato de Gestão do
+                                    jurídico monta "com sede {{endereco}}, {{bairro}},
+                                    {{cidade}}/{{estado}} - CEP: {{cep}}" com cada pedaço numa
+                                    variável própria. Sem jargão — nada de "logradouro" cru na
+                                    tela. */}
+                                <div className="space-y-1.5">
+                                    <Label>Rua e número</Label>
+                                    <Input
+                                        value={cadastroForm.data.endereco}
+                                        onChange={(e) => cadastroForm.setData('endereco', e.target.value)}
+                                        placeholder="Rua das Indústrias, 500"
+                                        className="focus:border-ecf-yellow/40"
+                                    />
+                                    {cadastroForm.errors.endereco && (
+                                        <p className="text-red-400 text-[11px]">{cadastroForm.errors.endereco}</p>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label>Bairro</Label>
+                                        <Input
+                                            value={cadastroForm.data.bairro}
+                                            onChange={(e) => cadastroForm.setData('bairro', e.target.value)}
+                                            placeholder="Distrito Industrial"
+                                            className="focus:border-ecf-yellow/40"
+                                        />
+                                        {cadastroForm.errors.bairro && (
+                                            <p className="text-red-400 text-[11px]">{cadastroForm.errors.bairro}</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>CEP</Label>
+                                        <Input
+                                            value={cadastroForm.data.cep}
+                                            onChange={(e) => cadastroForm.setData('cep', e.target.value)}
+                                            placeholder="89219-500"
+                                            className="focus:border-ecf-yellow/40"
+                                        />
+                                        {cadastroForm.errors.cep && (
+                                            <p className="text-red-400 text-[11px]">{cadastroForm.errors.cep}</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label>Cidade</Label>
+                                        <Input
+                                            value={cadastroForm.data.cidade}
+                                            onChange={(e) => cadastroForm.setData('cidade', e.target.value)}
+                                            placeholder="Joinville"
+                                            className="focus:border-ecf-yellow/40"
+                                        />
+                                        {cadastroForm.errors.cidade && (
+                                            <p className="text-red-400 text-[11px]">{cadastroForm.errors.cidade}</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>Estado</Label>
+                                        <Input
+                                            value={cadastroForm.data.estado}
+                                            onChange={(e) => cadastroForm.setData('estado', e.target.value)}
+                                            placeholder="SC"
+                                            className="focus:border-ecf-yellow/40"
+                                        />
+                                        {cadastroForm.errors.estado && (
+                                            <p className="text-red-400 text-[11px]">{cadastroForm.errors.estado}</p>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {contratos_servico.length > 0 && (
@@ -352,27 +472,55 @@ export default function ContratoDetalhe({
                                             const item = cadastroForm.data.contratos_servico.find((x) => x.id === cs.id) ?? {
                                                 data_contratacao: '',
                                                 data_vencimento: '',
+                                                data_primeira_parcela: '',
+                                                dia_vencimento: '',
                                             };
                                             return (
-                                                <div key={cs.id} className="grid grid-cols-3 gap-3 items-end">
+                                                <div key={cs.id} className="space-y-2">
                                                     <div className="text-[13px] text-white/70">{cs.servico_nome}</div>
-                                                    <div className="space-y-1.5">
-                                                        <Label className="text-[11px]">Data de início</Label>
-                                                        <Input
-                                                            type="date"
-                                                            value={item.data_contratacao}
-                                                            onChange={(e) => atualizarDataServico(cs.id, 'data_contratacao', e.target.value)}
-                                                            className="focus:border-ecf-yellow/40"
-                                                        />
+                                                    <div className="grid grid-cols-2 gap-3 items-end">
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-[11px]">Data de início</Label>
+                                                            <Input
+                                                                type="date"
+                                                                value={item.data_contratacao}
+                                                                onChange={(e) => atualizarDataServico(cs.id, 'data_contratacao', e.target.value)}
+                                                                className="focus:border-ecf-yellow/40"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-[11px]">Data de término</Label>
+                                                            <Input
+                                                                type="date"
+                                                                value={item.data_vencimento}
+                                                                onChange={(e) => atualizarDataServico(cs.id, 'data_vencimento', e.target.value)}
+                                                                className="focus:border-ecf-yellow/40"
+                                                            />
+                                                        </div>
                                                     </div>
-                                                    <div className="space-y-1.5">
-                                                        <Label className="text-[11px]">Data de término</Label>
-                                                        <Input
-                                                            type="date"
-                                                            value={item.data_vencimento}
-                                                            onChange={(e) => atualizarDataServico(cs.id, 'data_vencimento', e.target.value)}
-                                                            className="focus:border-ecf-yellow/40"
-                                                        />
+                                                    {/* Quick 260819-guy — data da 1ª parcela e dia do vencimento
+                                                        das demais, por serviço, ao lado das datas de vigência. */}
+                                                    <div className="grid grid-cols-2 gap-3 items-end">
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-[11px]">Data da 1ª parcela</Label>
+                                                            <Input
+                                                                type="date"
+                                                                value={item.data_primeira_parcela}
+                                                                onChange={(e) => atualizarDataServico(cs.id, 'data_primeira_parcela', e.target.value)}
+                                                                className="focus:border-ecf-yellow/40"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <Label className="text-[11px]">Dia do vencimento das demais (dia do mês, 1 a 31)</Label>
+                                                            <Input
+                                                                type="number"
+                                                                min={1}
+                                                                max={31}
+                                                                value={item.dia_vencimento}
+                                                                onChange={(e) => atualizarDataServico(cs.id, 'dia_vencimento', e.target.value)}
+                                                                className="focus:border-ecf-yellow/40"
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );
@@ -436,15 +584,25 @@ export default function ContratoDetalhe({
                                         const signatariosPendentes = podeAgir
                                             ? (c.signatarios || []).filter((s) => s.situacao === 'pendente')
                                             : [];
-                                        const tentativas = tentativasErro[c.id] ?? 0;
+                                        // Quick 260819-guy (Tarefa 7 item 1) — vem pronto do backend.
+                                        const jaTentouAntes = Boolean(c.ja_tentou_antes);
+                                        // Quick 260819-guy (Tarefa 7 item 3) — contrato pronto, mas
+                                        // ainda não enviado pelo painel da Clicksign (D-02, não é falha).
+                                        //
+                                        // Quick 260820-my3 (Tarefa 2) — precisa excluir `montagem_travada`
+                                        // também, não só `preparando`: sem isto, um rascunho com envelope
+                                        // NULO que já passou da janela (preparando=false, travado=true)
+                                        // caía aqui e mostrava "já foi montado, falta enviar" — exatamente
+                                        // o bug do incidente de produção, só que nesta tela em vez da lista.
+                                        const faltaEnviarPelaClicksign = c.status === 'rascunho' && !c.preparando && !c.montagem_travada;
 
                                         return (
                                             <Fragment key={c.id}>
                                                 <TableRow>
                                                     <TableCell className="text-[13px] text-white/85 align-top">{c.servico_nome}</TableCell>
                                                     <TableCell className="align-top">
-                                                        <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContratoComPreparo(c.status, c.preparando))}>
-                                                            {rotuloContratoComPreparo(c.status, c.preparando)}
+                                                        <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', classeContratoComPreparo(c.status, c.preparando, c.montagem_travada))}>
+                                                            {rotuloContratoComPreparo(c.status, c.preparando, c.montagem_travada)}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="text-[13px] text-white/50 align-top">{formatarHaDias(c.dias_parado)}</TableCell>
@@ -494,7 +652,7 @@ export default function ContratoDetalhe({
                                                                 <button
                                                                     type="button"
                                                                     disabled={gerarForm.processing}
-                                                                    onClick={() => tentarNovamente(c.id)}
+                                                                    onClick={gerarContrato}
                                                                     className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-ecf-yellow/80 hover:text-ecf-yellow hover:bg-ecf-yellow/[0.06] text-[12px] disabled:opacity-40 transition-colors"
                                                                 >
                                                                     <RefreshCcw size={11} />
@@ -536,6 +694,55 @@ export default function ContratoDetalhe({
                                                     </TableRow>
                                                 )}
 
+                                                {/* Quick 260820-my3 (Tarefa 2) — irmão do aviso de "preparando"
+                                                    acima, mesma família visual mas laranja (mais alarmante):
+                                                    a mesma condição PASSOU da janela sem terminar. Incidente
+                                                    real (2026-08-20): contrato pedido, nada criado, e a tela
+                                                    antiga dizia "Falta enviar", mandando procurar na Clicksign
+                                                    onde não havia nada. Copy sem jargão — diz que foi pedido,
+                                                    não ficou pronto, não adianta procurar na Clicksign, e o
+                                                    time técnico precisa olhar. */}
+                                                {c.montagem_travada && (
+                                                    <TableRow key={`${c.id}-montagem-travada`}>
+                                                        <TableCell colSpan={4} className="py-2 border-t-0">
+                                                            <div className="rounded-lg border border-orange-500/20 bg-orange-500/[0.06] px-3 py-2 text-[12px] text-orange-300/90">
+                                                                {MONTAGEM_TRAVADA_AVISO}
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+
+                                                {/* Quick 260819-guy (Tarefa 7 item 3) — o sistema para no rascunho
+                                                    DE PROPÓSITO (D-02 da Fase 127-05,
+                                                    `GerarContratoAssinaturaJob`, "a ativação acontece FORA do
+                                                    sistema"), mas nada na tela dizia isso nem linkava para o
+                                                    painel — o único link para a Clicksign era o do fluxo de
+                                                    cancelamento. Âmbar (ação pendente), nunca vermelho — isto
+                                                    não é uma falha. */}
+                                                {faltaEnviarPelaClicksign && (
+                                                    <TableRow key={`${c.id}-falta-enviar`}>
+                                                        <TableCell colSpan={4} className="py-2 border-t-0">
+                                                            <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[12px] text-amber-300/90">
+                                                                Este contrato já foi montado e está pronto — falta enviar para o cliente
+                                                                assinar, pelo painel da Clicksign.
+                                                                {painel_clicksign_url && (
+                                                                    <>
+                                                                        {' '}
+                                                                        <a
+                                                                            href={painel_clicksign_url}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="underline hover:text-amber-200"
+                                                                        >
+                                                                            Abrir o painel da Clicksign
+                                                                        </a>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+
                                                 {/* Aviso persistente de cancelamento solicitado (D-13) — âmbar,
                                                     "aguardando algo externo", nunca vermelho de erro. Some
                                                     sozinho quando a confirmação da Clicksign fechar o estado. */}
@@ -550,12 +757,17 @@ export default function ContratoDetalhe({
                                                     </TableRow>
                                                 )}
 
-                                                {/* D-05 — Estado `erro`: assume a falha e oferece a saída. */}
+                                                {/* D-05 — Estado `erro`: assume a falha e oferece a saída.
+                                                    Quick 260819-guy (Tarefa 7 item 1) — "já tentou antes" vem
+                                                    PRONTO do backend (não mais de um contador de sessão que
+                                                    zerava a cada reload), e o motivo real do erro
+                                                    (`c.erro_mensagem`, já podado de PII antes de gravar) fica
+                                                    disponível SEMPRE, não só depois da 2ª falha. */}
                                                 {c.status === 'erro' && (
                                                     <TableRow key={`${c.id}-erro`}>
                                                         <TableCell colSpan={4} className="py-2 border-t-0">
                                                             <div className="rounded-lg border border-rose-500/20 bg-rose-500/[0.05] px-3 py-2.5 text-[12px] space-y-1.5">
-                                                                {tentativas === 0 ? (
+                                                                {!jaTentouAntes ? (
                                                                     <>
                                                                         <p className="text-rose-300 font-semibold">Não deu para enviar este contrato</p>
                                                                         <p className="text-white/50">
@@ -570,20 +782,20 @@ export default function ContratoDetalhe({
                                                                             Tentamos de novo e não deu certo. Avise o time técnico para verificar — pode
                                                                             levar um tempinho para resolver.
                                                                         </p>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => setDetalhesTecnicosAbertos((atual) => ({ ...atual, [c.id]: !atual[c.id] }))}
-                                                                            className="inline-flex items-center gap-1 text-white/40 hover:text-white/70"
-                                                                        >
-                                                                            {detalhesTecnicosAbertos[c.id] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                                                            Ver detalhes técnicos
-                                                                        </button>
-                                                                        {detalhesTecnicosAbertos[c.id] && (
-                                                                            <p className="text-white/35 font-mono text-[11px] break-words">
-                                                                                {flash?.error || 'Sem detalhes adicionais registrados nesta sessão.'}
-                                                                            </p>
-                                                                        )}
                                                                     </>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setDetalhesTecnicosAbertos((atual) => ({ ...atual, [c.id]: !atual[c.id] }))}
+                                                                    className="inline-flex items-center gap-1 text-white/40 hover:text-white/70"
+                                                                >
+                                                                    {detalhesTecnicosAbertos[c.id] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                                                    Ver detalhes técnicos
+                                                                </button>
+                                                                {detalhesTecnicosAbertos[c.id] && (
+                                                                    <p className="text-white/35 font-mono text-[11px] break-words">
+                                                                        {c.erro_mensagem || 'Sem detalhes técnicos registrados para esta tentativa.'}
+                                                                    </p>
                                                                 )}
                                                             </div>
                                                         </TableCell>

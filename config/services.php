@@ -150,6 +150,35 @@ return [
                 'spin_problema'      => env('HUBSPOT_PROP_DEAL_SPIN_PROBLEMA', 'problema_principal_identificado'),
                 'spin_implicacao'    => env('HUBSPOT_PROP_DEAL_SPIN_IMPLICACAO', 'implicacao_do_problema'),
                 'spin_necessidade'   => env('HUBSPOT_PROP_DEAL_SPIN_NECESSIDADE', 'necessidade_de_solucao'),
+                // Quick task 260820-jc8 — o Comercial criou properties no DEAL
+                // (não na company) pros dados do contrato que entram no ganho:
+                // razão social, CNPJ, endereço (5 partes) e data da 1ª parcela.
+                // Nomes internos MEDIDOS contra a conta real do HubSpot via
+                // `php artisan hubspot:inspect-properties --objects=deals` em
+                // 2026-08-20 — não são adivinhação (ver PLAN.md do quick;
+                // precedente: quick 260805-eqk, onde adivinhar quebrou em
+                // silêncio). `dia_vencimento` NÃO tem property própria — é
+                // DERIVADO do dia de `data_do_1_pagamento`
+                // (HubspotDealHandoffService::montarContrato()).
+                'cnpj_da_empresa'    => env('HUBSPOT_PROP_DEAL_CNPJ', 'cnpj_da_empresa'),
+                'razao_social'       => env('HUBSPOT_PROP_DEAL_RAZAO_SOCIAL', 'razao_social'),
+                'logradouro'         => env('HUBSPOT_PROP_DEAL_LOGRADOURO', 'logradouro'),
+                'bairro'             => env('HUBSPOT_PROP_DEAL_BAIRRO', 'bairro'),
+                'cidade'             => env('HUBSPOT_PROP_DEAL_CIDADE', 'cidade'),
+                'estado'             => env('HUBSPOT_PROP_DEAL_ESTADO', 'estado'),
+                'cep'                => env('HUBSPOT_PROP_DEAL_CEP', 'cep'),
+                // Property tipo "date" no HubSpot. MEDIDO no deal da Maderatto
+                // (`64133858455`) em 2026-08-20: chega como string **'Y-m-d'**
+                // (ex.: '2026-08-24'), NÃO como epoch em milissegundos — este
+                // comentário afirmava o contrário e foi corrigido pela medição.
+                // Conversão em HubspotDealHandoffService::parseDataHubspot().
+                'data_do_1_pagamento' => env('HUBSPOT_PROP_DEAL_DATA_1_PAGAMENTO', 'data_do_1_pagamento'),
+                // Medida na conta real em 2026-08-20. É o endereço para onde o
+                // contrato de fato é enviado ao cliente — o Comercial digita
+                // aqui justamente quando o e-mail da company/contato não serve.
+                // Por isso VENCE os dois na cadeia do `email_cliente`
+                // (Api/HubspotWebhookController, resolução de `$emailFinal`).
+                'email_envio_contrato' => env('HUBSPOT_PROP_DEAL_EMAIL_ENVIO_CONTRATO', 'email_para_envio_do_contrato'),
             ],
             'company' => [
                 'name'          => env('HUBSPOT_PROP_COMPANY_NAME', 'name'),
@@ -254,28 +283,45 @@ return [
         'prazo_dias_padrao'    => (int) env('CLICKSIGN_PRAZO_DIAS', 30),
         'lembrete_dias_padrao' => (int) env('CLICKSIGN_LEMBRETE_DIAS', 3),
 
-        // Fase 126 Plan 126-02 (D-08) — os 3 signatários FIXOS da ECF que
-        // entram em todo contrato (dois sócios como "contratada" + Comercial
-        // como "testemunha"), lidos de `env()`. Nome e e-mail reais NUNCA
-        // entram aqui hardcoded nem no `.env.example` — só no `.env` local
+        // Fase 126 Plan 126-02 (D-08) — os signatários da ECF que entram em
+        // todo contrato, lidos de `env()`. Nome e e-mail reais NUNCA entram
+        // aqui hardcoded nem no `.env.example` — só no `.env` local
         // (gitignored) ou nas variáveis de ambiente do servidor.
-        'signatarios_ecf' => [
+        //
+        // ⚠️ A lista era FIXA em 3 entradas (dois sócios como "contratada" +
+        // Comercial como "testemunha"). Virou VARIÁVEL em 2026-08-20, por
+        // decisão da diretoria: pela ECF passa a assinar só o Thiago Messina;
+        // o sócio e a testemunha saíram. Os slots continuam existindo, e o
+        // papel continua POSICIONAL — repreencher `CLICKSIGN_SIG2_*` devolve
+        // um "contratada", `SIG3` devolve uma "testemunha".
+        //
+        // ⚠️ O filtro descarta APENAS a entrada com nome E e-mail vazios, que
+        // é como se diz "este slot não é usado". Entrada PELA METADE (nome sem
+        // e-mail, ou o contrário) é erro de digitação e passa de propósito —
+        // quem reprova é `ContratoDadosMinimosService::faltantesDaConfiguracaoEcf()`,
+        // e engolir isso aqui esconderia o erro até a Clicksign recusar o
+        // signatário no meio da montagem do envelope, que é exatamente o que
+        // aquela checagem existe para evitar.
+        'signatarios_ecf' => array_values(array_filter(
             [
-                'nome'  => env('CLICKSIGN_SIG1_NOME', ''),
-                'email' => env('CLICKSIGN_SIG1_EMAIL', ''),
-                'papel' => 'contratada',
+                [
+                    'nome'  => env('CLICKSIGN_SIG1_NOME', ''),
+                    'email' => env('CLICKSIGN_SIG1_EMAIL', ''),
+                    'papel' => 'contratada',
+                ],
+                [
+                    'nome'  => env('CLICKSIGN_SIG2_NOME', ''),
+                    'email' => env('CLICKSIGN_SIG2_EMAIL', ''),
+                    'papel' => 'contratada',
+                ],
+                [
+                    'nome'  => env('CLICKSIGN_SIG3_NOME', ''),
+                    'email' => env('CLICKSIGN_SIG3_EMAIL', ''),
+                    'papel' => 'testemunha',
+                ],
             ],
-            [
-                'nome'  => env('CLICKSIGN_SIG2_NOME', ''),
-                'email' => env('CLICKSIGN_SIG2_EMAIL', ''),
-                'papel' => 'contratada',
-            ],
-            [
-                'nome'  => env('CLICKSIGN_SIG3_NOME', ''),
-                'email' => env('CLICKSIGN_SIG3_EMAIL', ''),
-                'papel' => 'testemunha',
-            ],
-        ],
+            fn (array $s) => trim((string) $s['nome']) !== '' || trim((string) $s['email']) !== ''
+        )),
     ],
 
 ];

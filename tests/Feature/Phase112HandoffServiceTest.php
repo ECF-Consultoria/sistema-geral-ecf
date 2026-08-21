@@ -229,4 +229,204 @@ class Phase112HandoffServiceTest extends TestCase
         $this->assertCount(1, $dto->warnings);
         $this->assertSame('Servico Inexistente', $dto->warnings[0]['name']);
     }
+
+    /**
+     * Quick 260820-jc8 — Tarefas 1 e 2: props do deal (razão social, CNPJ,
+     * endereço, data da 1ª parcela) que o Comercial criou pro handoff de
+     * contrato no ganho.
+     */
+    private array $propsDealCompleto = [
+        'servico'             => 'servico_ecf',
+        'cnpj_da_empresa'     => 'cnpj_da_empresa',
+        'razao_social'        => 'razao_social',
+        'logradouro'          => 'logradouro',
+        'bairro'              => 'bairro',
+        'cidade'              => 'cidade',
+        'estado'              => 'estado',
+        'cep'                 => 'cep',
+        'data_do_1_pagamento' => 'data_do_1_pagamento',
+    ];
+
+    // ── Tarefa 1 (HUB-CONTRATO-01) — razão social/CNPJ/endereço do deal ────
+
+    /**
+     * Quick 260821-cq0 — deal_contract_data volta a devolver as 5 partes do
+     * endereço SEPARADAS (nunca mais uma string composta): `endereco` é o
+     * LOGRADOURO cru (mesma property `logradouro`, sem concatenar).
+     */
+    public function test_deal_contract_data_com_endereco_completo_devolve_as_5_partes_separadas(): void
+    {
+        $deal = ['properties' => [
+            'dealname'        => 'Cliente Endereco Completo',
+            'razao_social'    => 'Maderatto Moveis LTDA',
+            'cnpj_da_empresa' => '11222333000144',
+            'logradouro'      => 'Rua das Industrias, 500',
+            'bairro'          => 'Distrito Industrial',
+            'cidade'          => 'Joinville',
+            'estado'          => 'SC',
+            'cep'             => '89219-500',
+        ]];
+
+        $dto = $this->service()->build($deal, [], $this->propsDealCompleto);
+
+        $this->assertSame('Maderatto Moveis LTDA', $dto->deal_contract_data['razao_social']);
+        $this->assertSame('11222333000144', $dto->deal_contract_data['cnpj']);
+        $this->assertSame('Rua das Industrias, 500', $dto->deal_contract_data['endereco']);
+        $this->assertSame('Distrito Industrial', $dto->deal_contract_data['bairro']);
+        $this->assertSame('Joinville', $dto->deal_contract_data['cidade']);
+        $this->assertSame('SC', $dto->deal_contract_data['estado']);
+        $this->assertSame('89219-500', $dto->deal_contract_data['cep']);
+    }
+
+    /**
+     * Endereço PARCIAL (só cidade e estado) é caso NORMAL — não quebra, e
+     * cada parte ausente vem null individualmente (nada de vírgula/hífen
+     * soltos, porque não existe mais composição de string).
+     */
+    public function test_deal_contract_data_com_endereco_parcial_so_cidade_e_estado_devolve_as_outras_partes_null(): void
+    {
+        $deal = ['properties' => [
+            'dealname' => 'Cliente Endereco Parcial',
+            'cidade'   => 'Blumenau',
+            'estado'   => 'SC',
+        ]];
+
+        $dto = $this->service()->build($deal, [], $this->propsDealCompleto);
+
+        $this->assertSame('Blumenau', $dto->deal_contract_data['cidade']);
+        $this->assertSame('SC', $dto->deal_contract_data['estado']);
+        $this->assertNull($dto->deal_contract_data['endereco']);
+        $this->assertNull($dto->deal_contract_data['bairro']);
+        $this->assertNull($dto->deal_contract_data['cep']);
+    }
+
+    public function test_deal_contract_data_sem_nenhuma_parte_de_endereco_fica_null(): void
+    {
+        $deal = ['properties' => ['dealname' => 'Cliente Sem Endereco']];
+
+        $dto = $this->service()->build($deal, [], $this->propsDealCompleto);
+
+        $this->assertNull($dto->deal_contract_data['endereco']);
+        $this->assertNull($dto->deal_contract_data['bairro']);
+        $this->assertNull($dto->deal_contract_data['cidade']);
+        $this->assertNull($dto->deal_contract_data['estado']);
+        $this->assertNull($dto->deal_contract_data['cep']);
+        $this->assertNull($dto->deal_contract_data['razao_social']);
+        $this->assertNull($dto->deal_contract_data['cnpj']);
+    }
+
+    // ── Tarefa 2 (HUB-CONTRATO-02) — data da 1a parcela + dia de vencimento ─
+
+    /**
+     * O formato REAL, MEDIDO contra a conta da ECF em 2026-08-20.
+     *
+     * Lido pela propria API no deal da Maderatto Moveis (`64133858455`):
+     *
+     *   data_do_1_pagamento  (tipo `date`)      => '2026-08-24'
+     *   closedate            (tipo `datetime`)  => '2026-08-31T11:49:23.585Z'
+     *
+     * Property `date` chega como **string 'Y-m-d'** — NAO como epoch em
+     * milissegundos. A primeira versao do parser assumia epoch ms como
+     * formato principal e tratava 'Y-m-d' como "fallback para o futuro"; era
+     * o contrario. O comportamento estava certo por causa desse fallback,
+     * mas nenhum teste exercitava o formato que de fato ocorre — este passou
+     * a exercitar.
+     *
+     * O teste irmao abaixo cobre epoch ms, que continua sendo aceito como
+     * ramo EXCEPCIONAL.
+     */
+    public function test_data_primeira_parcela_no_formato_real_y_m_d_prova_o_dia_correto(): void
+    {
+        $gestao = $this->criarServico('Gestão', Servico::TIPO_MENSAL, 1000);
+        $this->criarMapping('MAP', $gestao);
+
+        $deal = ['properties' => [
+            'dealname'            => 'Maderatto Móveis (payload medido)',
+            // Valor LITERAL medido na conta real — nao normalizar, nao "arrumar".
+            'data_do_1_pagamento' => '2026-08-24',
+        ]];
+        $lineItems = [
+            ['id' => '9101', 'name' => 'MAP', 'price' => '3000', 'quantity' => 1, 'recurringbillingfrequency' => 'monthly'],
+        ];
+
+        $dto = $this->service()->build($deal, $lineItems, $this->propsDealCompleto);
+
+        $contrato = $dto->contracts_to_create[0];
+        $this->assertSame('2026-08-24', $contrato['data_primeira_parcela']);
+        $this->assertSame(24, $contrato['dia_vencimento'], 'dia_vencimento deve ser o dia de data_primeira_parcela');
+    }
+
+    /**
+     * Ramo EXCEPCIONAL — epoch ms. NAO e o formato que a conta da ECF
+     * devolve (ver o teste acima, medido), mas continua aceito.
+     *
+     * 2025-08-31T00:00:00Z escolhido de proposito: em America/Sao_Paulo
+     * (UTC-3) meia-noite UTC de 31/08 vira 21h de 30/08. Sem forcar UTC no
+     * parse, o teste pegaria dia 30 (ERRADO) em vez de 31.
+     */
+    public function test_data_primeira_parcela_epoch_ms_meia_noite_utc_prova_o_dia_correto(): void
+    {
+        $gestao = $this->criarServico('Gestão', Servico::TIPO_MENSAL, 1000);
+        $this->criarMapping('MAP', $gestao);
+
+        $msMeiaNoiteUtc = (int) (gmmktime(0, 0, 0, 8, 31, 2025) * 1000);
+
+        $deal = ['properties' => [
+            'dealname'            => 'Cliente Data 1a Parcela',
+            'data_do_1_pagamento' => (string) $msMeiaNoiteUtc,
+        ]];
+        $lineItems = [
+            ['id' => '9001', 'name' => 'MAP', 'price' => '500', 'quantity' => 1, 'recurringbillingfrequency' => 'monthly'],
+        ];
+
+        $dto = $this->service()->build($deal, $lineItems, $this->propsDealCompleto);
+
+        $contrato = $dto->contracts_to_create[0];
+        $this->assertSame('2025-08-31', $contrato['data_primeira_parcela']);
+        $this->assertSame(31, $contrato['dia_vencimento'], 'dia_vencimento deve ser o dia de data_primeira_parcela');
+    }
+
+    public function test_data_primeira_parcela_vazia_deixa_os_dois_campos_null_sem_default(): void
+    {
+        $gestao = $this->criarServico('Gestão', Servico::TIPO_MENSAL, 1000);
+        $this->criarMapping('MAP', $gestao);
+
+        $deal = ['properties' => ['dealname' => 'Cliente Sem Data']];
+        $lineItems = [
+            ['id' => '9002', 'name' => 'MAP', 'price' => '500', 'quantity' => 1, 'recurringbillingfrequency' => 'monthly'],
+        ];
+
+        $dto = $this->service()->build($deal, $lineItems, $this->propsDealCompleto);
+
+        $contrato = $dto->contracts_to_create[0];
+        $this->assertNull($contrato['data_primeira_parcela']);
+        $this->assertNull($contrato['dia_vencimento']);
+    }
+
+    public function test_deal_com_2_line_items_recebem_a_mesma_data_primeira_parcela(): void
+    {
+        $gestao = $this->criarServico('Gestão', Servico::TIPO_MENSAL, 1000);
+        $polos  = $this->criarServico('Polos', Servico::TIPO_MENSAL, 2000);
+        $this->criarMapping('MAP', $gestao);
+        $this->criarMapping('Polo', $polos);
+
+        $msMeiaNoiteUtc = (int) (gmmktime(0, 0, 0, 6, 10, 2025) * 1000);
+
+        $deal = ['properties' => [
+            'dealname'            => 'Cliente 2 Itens Mesma Data',
+            'data_do_1_pagamento' => (string) $msMeiaNoiteUtc,
+        ]];
+        $lineItems = [
+            ['id' => '9101', 'name' => 'MAP',  'price' => '500',  'quantity' => 1, 'recurringbillingfrequency' => 'monthly'],
+            ['id' => '9102', 'name' => 'Polo', 'price' => '1500', 'quantity' => 1, 'recurringbillingfrequency' => 'monthly'],
+        ];
+
+        $dto = $this->service()->build($deal, $lineItems, $this->propsDealCompleto);
+
+        $this->assertCount(2, $dto->contracts_to_create);
+        $this->assertSame('2025-06-10', $dto->contracts_to_create[0]['data_primeira_parcela']);
+        $this->assertSame('2025-06-10', $dto->contracts_to_create[1]['data_primeira_parcela']);
+        $this->assertSame(10, $dto->contracts_to_create[0]['dia_vencimento']);
+        $this->assertSame(10, $dto->contracts_to_create[1]['dia_vencimento']);
+    }
 }

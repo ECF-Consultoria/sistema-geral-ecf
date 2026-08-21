@@ -145,17 +145,40 @@ class ClicksignClientEnvelopeTest extends TestCase
         });
     }
 
+    /**
+     * A forma de `signatarios_ecf` — chaves certas e nenhum slot fantasma.
+     *
+     * ⚠️ Este teste afirmava `assertCount(3, ...)` até 2026-08-20. A lista
+     * deixou de ser fixa em três: por decisão da diretoria passou a assinar só
+     * o Thiago Messina pela ECF, e `config/services.php` agora descarta o slot
+     * com nome e e-mail ambos vazios. Travar a quantidade aqui reprovaria o
+     * ambiente correto — o invariante real é a FORMA de cada entrada, mais a
+     * garantia de que entrada totalmente vazia não sobrevive ao filtro (ela
+     * viraria um signatário sem e-mail e a Clicksign recusaria no meio da
+     * montagem do envelope).
+     */
     #[Test]
-    public function config_signatarios_ecf_tem_exatamente_tres_entradas_com_as_chaves_certas(): void
+    public function config_signatarios_ecf_tem_as_chaves_certas_e_nenhuma_entrada_totalmente_vazia(): void
     {
         $signatarios = config('services.clicksign.signatarios_ecf');
 
-        $this->assertCount(3, $signatarios);
+        $this->assertIsArray($signatarios);
+        $this->assertNotEmpty($signatarios, 'precisa haver ao menos um signatário da ECF configurado');
+        $this->assertSame(
+            range(0, count($signatarios) - 1),
+            array_keys($signatarios),
+            'o filtro precisa reindexar — buraco de índice quebraria o array_merge do envelope'
+        );
 
         foreach ($signatarios as $sig) {
             $this->assertArrayHasKey('nome', $sig);
             $this->assertArrayHasKey('email', $sig);
             $this->assertArrayHasKey('papel', $sig);
+
+            $this->assertFalse(
+                trim((string) $sig['nome']) === '' && trim((string) $sig['email']) === '',
+                'entrada com nome E e-mail vazios devia ter sido descartada pelo filtro do config'
+            );
         }
     }
 

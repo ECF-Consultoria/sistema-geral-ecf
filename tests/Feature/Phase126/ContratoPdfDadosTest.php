@@ -243,18 +243,30 @@ class ContratoPdfDadosTest extends TestCase
     }
 
     #[Test]
-    public function sem_complementos_os_tres_campos_ausentes_no_banco_viram_a_definir_e_entram_em_campos_pendentes(): void
+    public function sem_complementos_os_oito_campos_ausentes_no_banco_viram_a_definir_e_entram_em_campos_pendentes(): void
     {
+        // Quick 260819-guy — passou de 3 para 4: `data_primeira_parcela`
+        // deixou de ser placeholder FIXO (`ContratoVariaveisModeloService`)
+        // e passou a cair na mesma disciplina de complemento opcional dos
+        // outros três.
+        //
+        // Quick 260821-cq0 — passou de 4 para 8: bairro/cidade/estado/cep
+        // entram na mesma disciplina de `endereco`.
         $contrato = $this->contratoComSnapshot();
 
         $dados = (new ContratoPdfService())->montarDados($contrato);
 
         $this->assertSame('A DEFINIR', $dados['pagamento']['dia_vencimento']);
         $this->assertSame('A DEFINIR', $dados['pagamento']['forma_pagamento']);
+        $this->assertSame('A DEFINIR', $dados['pagamento']['data_primeira_parcela']);
         $this->assertSame('A DEFINIR', $dados['empresa']['endereco']);
+        $this->assertSame('A DEFINIR', $dados['empresa']['bairro']);
+        $this->assertSame('A DEFINIR', $dados['empresa']['cidade']);
+        $this->assertSame('A DEFINIR', $dados['empresa']['estado']);
+        $this->assertSame('A DEFINIR', $dados['empresa']['cep']);
 
         $this->assertSame(
-            ['dia_vencimento', 'endereco', 'forma_pagamento'],
+            ['bairro', 'cep', 'cidade', 'data_primeira_parcela', 'dia_vencimento', 'endereco', 'estado', 'forma_pagamento'],
             $dados['campos_pendentes']
         );
     }
@@ -265,15 +277,51 @@ class ContratoPdfDadosTest extends TestCase
         $contrato = $this->contratoComSnapshot();
 
         $dados = (new ContratoPdfService())->montarDados($contrato, [
-            'dia_vencimento'  => 'Todo dia 10',
-            'forma_pagamento' => 'Boleto bancário',
-            'endereco'        => 'Rua Exemplo, 123 - São Paulo/SP',
+            'dia_vencimento'         => 'Todo dia 10',
+            'forma_pagamento'        => 'Boleto bancário',
+            'endereco'               => 'Rua Exemplo, 123',
+            // Quick 260821-cq0 — bairro/cidade/estado/cep, mesma disciplina.
+            'bairro'                 => 'Centro',
+            'cidade'                 => 'São Paulo',
+            'estado'                 => 'SP',
+            'cep'                    => '01000-000',
+            // Quick 260819-guy.
+            'data_primeira_parcela'  => '2026-09-05',
         ]);
 
         $this->assertSame('Todo dia 10', $dados['pagamento']['dia_vencimento']);
         $this->assertSame('Boleto bancário', $dados['pagamento']['forma_pagamento']);
-        $this->assertSame('Rua Exemplo, 123 - São Paulo/SP', $dados['empresa']['endereco']);
+        $this->assertSame('Rua Exemplo, 123', $dados['empresa']['endereco']);
+        $this->assertSame('Centro', $dados['empresa']['bairro']);
+        $this->assertSame('São Paulo', $dados['empresa']['cidade']);
+        $this->assertSame('SP', $dados['empresa']['estado']);
+        $this->assertSame('01000-000', $dados['empresa']['cep']);
+        // formatarData() converte 'Y-m-d' para 'd/m/Y' (pt-BR), igual às
+        // demais datas do documento.
+        $this->assertSame('05/09/2026', $dados['pagamento']['data_primeira_parcela']);
         $this->assertSame([], $dados['campos_pendentes']);
+    }
+
+    #[Test]
+    public function razao_social_usa_a_coluna_nova_com_fallback_para_o_nome_fantasia(): void
+    {
+        // Quick 260819-guy — a coluna nova (`companies.razao_social`) tem
+        // prioridade; quando vazia, cai no fallback `Company::name` (nome
+        // fantasia) — nunca em branco/A DEFINIR enquanto `name` existir.
+        $comRazaoSocial = $this->contratoComSnapshot([
+            'name'         => 'Empresa Fantasia Ltda',
+            'razao_social' => 'Empresa Fantasia Comércio e Serviços Ltda',
+        ]);
+        $dadosComRazaoSocial = (new ContratoPdfService())->montarDados($comRazaoSocial);
+        $this->assertSame('Empresa Fantasia Comércio e Serviços Ltda', $dadosComRazaoSocial['empresa']['razao_social']);
+
+        $semRazaoSocial = $this->contratoComSnapshot([
+            'name'         => 'Empresa Só Com Nome Fantasia Ltda',
+            'razao_social' => null,
+        ]);
+        $dadosSemRazaoSocial = (new ContratoPdfService())->montarDados($semRazaoSocial);
+        $this->assertSame('Empresa Só Com Nome Fantasia Ltda', $dadosSemRazaoSocial['empresa']['razao_social']);
+        $this->assertNotContains('razao_social', $dadosSemRazaoSocial['campos_pendentes']);
     }
 
     #[Test]

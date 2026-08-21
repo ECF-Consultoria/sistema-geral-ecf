@@ -10,6 +10,8 @@ use App\Models\ContratoLiberacao;
 use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Models\User;
+use App\Rules\CnpjValido;
+use App\Rules\NomeCompletoValido;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\CongelamentoEmissaoService;
 use App\Services\Contratos\ContratoDadosMinimosService;
@@ -117,6 +119,19 @@ class ContratoAdminController extends Controller
                         // Quick 260816-d72 (UI-06/D-05) — sub-estado de exibição
                         // de 'rascunho', não entra no resumo de 7 chaves (D-04).
                         'preparando'                   => $contrato->estaPreparando(),
+                        // Quick 260820-my3 (Tarefa 2) — sub-estado irmão de
+                        // 'preparando', mutuamente exclusivo por construção:
+                        // rascunho + envelope vazio que passou da janela sem
+                        // terminar a montagem. Também não entra no resumo de 7
+                        // chaves (D-04) — a mesma disciplina de 'preparando'.
+                        'montagem_travada'             => $contrato->estaMontagemTravada(),
+                        // Quick 260819-o4x — término do contrato do SERVIÇO
+                        // desta linha (`contratos_servico.data_vencimento`),
+                        // não do ContratoAssinatura. Alimenta a coluna
+                        // "Término" e a ordenação `vencimento`. `null` é
+                        // prazo indeterminado, caso legítimo — a tela mostra
+                        // "Sem prazo" e a ordenação joga para o fim.
+                        'data_vencimento'              => optional($contratoServico->data_vencimento)->format('Y-m-d'),
                     ]);
                 } else {
                     // Par sem contrato ainda — estado só-de-exibição, base
@@ -139,6 +154,14 @@ class ContratoAdminController extends Controller
                         // "preparando"; chave sempre presente (nunca undefined
                         // no front).
                         'preparando'                   => false,
+                        // Quick 260820-my3 (Tarefa 2) — mesma disciplina:
+                        // par sem contrato nunca está "travado na montagem"
+                        // (não existe ContratoAssinatura para travar).
+                        'montagem_travada'              => false,
+                        // Quick 260819-o4x — o término vem do ContratoServico,
+                        // que EXISTE mesmo sem ContratoAssinatura: empresa que
+                        // ainda aguarda o Administrativo já tem prazo contratado.
+                        'data_vencimento'              => optional($contratoServico->data_vencimento)->format('Y-m-d'),
                     ]);
                 }
             }
@@ -175,8 +198,88 @@ class ContratoAdminController extends Controller
             $linhas = $linhas->filter(fn (array $l) => $l['status'] === $situacao)->values();
         }
 
-        // (7) Ordenação padrão: "mais tempo parado primeiro" (UI-SPEC).
-        $linhas = $linhas->sortByDesc('dias_parado')->values();
+        // (6b) Filtro por serviço adquirido — whitelist pelos ids que o
+        // próprio universo da tela admite (serviços com `exige_contrato`),
+        // mesma disciplina do `situacao`: id fora da lista vira null e nunca
+        // chega a filtrar nada.
+        //
+        // ⚠️ Aplicado EM MEMÓRIA, sobre as LINHAS — nunca na query de
+        // companies do passo (1). É requisito de correção, não preferência:
+        // a linha é o par (empresa, serviço), então empresa com dois serviços
+        // precisa manter só a linha do serviço escolhido. Filtrar na query
+        // faria a empresa inteira sumir (se o `whereHas` não casasse) ou
+        // aparecer inteira, com as duas linhas — os dois resultados errados.
+        //
+        // ⚠️ Roda DEPOIS do resumo (passo 5), de propósito: as 7 contagens
+        // seguem ABSOLUTAS, iguais ao que o filtro de situação já faz. O
+        // resumo é a régua fixa contra a qual a pessoa compara o recorte que
+        // escolheu — se ele encolhesse junto, os cartões marcariam sempre
+        // 100% do que está na tela e deixariam de informar. (A busca `q` é a
+        // exceção histórica: mora na query e por isso encolhe o resumo.)
+        $servicosDoUniverso = Servico::where('exige_contrato', true)
+            ->orderBy('nome')
+            ->get(['id', 'nome']);
+
+        $servicoInput = $request->input('servico');
+        $servico = $servicosDoUniverso->contains('id', (int) $servicoInput) ? (int) $servicoInput : null;
+
+        if ($servico !== null) {
+            $linhas = $linhas->filter(fn (array $l) => $l['servico_id'] === $servico)->values();
+        }
+
+        // (7) Ordenação — whitelist em PHP, valor fora da lista cai no
+        // default (`recente`) e nunca chega a ordenar nada.
+        //
+        // `recente` (DEFAULT): EMPRESA MAIS RECENTE PRIMEIRO.
+        //
+        // Substituiu "mais tempo parado primeiro" (`sortByDesc('dias_parado')`,
+        // decisão do 131-UI-SPEC) a pedido do usuário em 2026-08-19. A coluna
+        // "Parado há" continua na tela e o filtro de situação continua
+        // funcionando — o que mudou é só qual linha aparece no topo por padrão.
+        //
+        // ⚠️ O desempate por `company_id` NÃO é capricho. `companies.created_at`
+        // tem um bloco grande de empresas empatadas em 2026-05-25 por causa de
+        // um reimport em massa (a coluna é artefato de importação, não data real
+        // de entrada da empresa — ver `.planning/learnings/`). Como a paginação
+        // do passo (8) é MANUAL, via `LengthAwarePaginator` sobre esta coleção já
+        // ordenada, um empate sem desempate determinístico faz linhas trocarem de
+        // página entre requisições — a pessoa pagina e vê a mesma empresa duas
+        // vezes, ou nenhuma.
+        //
+        // O mapa é montado FORA do loop de linhas de propósito: a forma de cada
+        // linha é uma whitelist deliberada (T-131-03-*/T-131-04-* — nenhum dado
+        // de signatário atravessa para o browser), então a chave de ordenação
+        // não entra no payload.
+        // `vencimento`: TÉRMINO MAIS PRÓXIMO PRIMEIRO
+        // (`contratos_servico.data_vencimento` crescente).
+        //
+        // ⚠️ Término VAZIO não é dado faltando — é contrato por prazo
+        // indeterminado, caso legítimo que a regra 5 do
+        // `ContratoDadosMinimosService` registra explicitamente ("data_vencimento
+        // vazia NÃO reprova"). Por isso essas linhas vão para o FIM da lista, e
+        // não para o topo: `null` ordena antes de qualquer data em PHP, e o
+        // resultado seria a tela apresentar como "mais urgente" justamente quem
+        // não tem prazo nenhum. A flag booleana no primeiro critério empurra os
+        // sem-prazo para baixo antes de a data ser comparada.
+        $criadoEmPorEmpresa = $companies->pluck('created_at', 'id');
+
+        $ordenacoes = ['recente', 'vencimento'];
+        $ordenarInput = $request->input('ordenar');
+        $ordenar = in_array($ordenarInput, $ordenacoes, true) ? $ordenarInput : 'recente';
+
+        $criterios = $ordenar === 'vencimento'
+            ? [
+                fn (array $a, array $b) => ($a['data_vencimento'] === null) <=> ($b['data_vencimento'] === null),
+                fn (array $a, array $b) => $a['data_vencimento'] <=> $b['data_vencimento'],
+                fn (array $a, array $b) => $b['company_id'] <=> $a['company_id'],
+            ]
+            : [
+                fn (array $a, array $b) => ($criadoEmPorEmpresa[$b['company_id']] ?? null)
+                    <=> ($criadoEmPorEmpresa[$a['company_id']] ?? null),
+                fn (array $a, array $b) => $b['company_id'] <=> $a['company_id'],
+            ];
+
+        $linhas = $linhas->sortBy($criterios)->values();
 
         // (8) Paginação manual via LengthAwarePaginator, preservando path e
         // query — mesmo padrão de ComercialController::listagem().
@@ -198,7 +301,20 @@ class ContratoAdminController extends Controller
             'filters'            => [
                 'situacao' => $situacao,
                 'q'        => $q,
+                // Quick 260819-o4x — devolvidos JÁ SANEADOS pela whitelist,
+                // nunca o que veio na URL: a tela ecoa `filters` de volta nos
+                // selects, e devolver o valor cru faria um `?ordenar=xxx`
+                // aparecer selecionado enquanto o backend ordenou por outro
+                // critério.
+                'servico'  => $servico,
+                'ordenar'  => $ordenar,
             ],
+            // Lista para o select de serviço — os mesmos que definem o
+            // universo da tela (`exige_contrato`), ordenados por nome.
+            'servicos'           => $servicosDoUniverso->map(fn (Servico $s) => [
+                'id'   => $s->id,
+                'nome' => $s->nome,
+            ])->values(),
             'resumo'             => $resumo,
             'sem_contrato_count' => $semContratoCount,
             // Fase 133 (D-04) — leitura pelo ÚNICO ponto autorizado
@@ -268,6 +384,17 @@ class ContratoAdminController extends Controller
             ->orderByDesc('id')
             ->get();
 
+        // Quick 260819-guy — Tarefa 7 item 1: "já tentou antes" DERIVADO
+        // aqui, no backend, em vez do `useState({})` que zerava a cada
+        // reload em `ContratoDetalhe.jsx`. Cada nova tentativa de gerar
+        // contrato nasce como uma linha NOVA de `ContratoAssinatura` para o
+        // mesmo (empresa, serviço) — `GatilhoContratoAdministrativoService`
+        // não reaproveita a linha `erro` antiga (o slot já foi liberado por
+        // `GerarContratoAssinaturaJob::failed()`). Então: a linha mais
+        // ANTIGA por serviço é a primeira tentativa; qualquer outra linha do
+        // mesmo serviço já é, por definição, uma tentativa seguinte.
+        $idMaisAntigoPorServico = $contratos->groupBy('servico_id')->map(fn ($grupo) => $grupo->min('id'));
+
         return Inertia::render('Admin/ContratoDetalhe', [
             'company' => [
                 'id'                => $company->id,
@@ -275,6 +402,15 @@ class ContratoAdminController extends Controller
                 'cnpj'              => $company->cnpj,
                 'email_cliente'     => $company->email_cliente,
                 'nome_contato'      => $company->nome_contato,
+                // Quick 260819-guy.
+                'razao_social'      => $company->razao_social,
+                // Quick 260821-cq0 — endereço volta a ser 5 campos
+                // separados (endereco aqui é só o logradouro).
+                'endereco'          => $company->endereco,
+                'bairro'            => $company->bairro,
+                'cidade'            => $company->cidade,
+                'estado'            => $company->estado,
+                'cep'               => $company->cep,
             ],
             'contratos_servico' => $contratosServicoAtivos->map(fn (ContratoServico $cs) => [
                 'id'                => $cs->id,
@@ -284,6 +420,9 @@ class ContratoAdminController extends Controller
                 'valor_contratado'  => (float) $cs->valor_contratado,
                 'data_contratacao'  => optional($cs->data_contratacao)->format('Y-m-d'),
                 'data_vencimento'   => optional($cs->data_vencimento)->format('Y-m-d'),
+                // Quick 260819-guy.
+                'data_primeira_parcela' => optional($cs->data_primeira_parcela)->format('Y-m-d'),
+                'dia_vencimento'        => $cs->dia_vencimento,
             ])->values(),
             // Retorno CRU de faltantes() — a tela exibe `rotulo`, não recalcula
             // nada no client (contrato de retorno é PÚBLICO, ver docblock do
@@ -306,7 +445,7 @@ class ContratoAdminController extends Controller
             // desta tela para alimentar o select do modal "Liberar
             // manualmente".
             'motivos_manuais' => ContratoLiberacao::MOTIVOS_MANUAIS_LABELS,
-            'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos) {
+            'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico) {
                 return [
                     'id'                                => $c->id,
                     'servico_id'                        => $c->servico_id,
@@ -314,6 +453,12 @@ class ContratoAdminController extends Controller
                     'status'                             => $c->status,
                     'dias_parado'                        => $presos->diasParado($c),
                     'causa'                              => $presos->causa($c),
+                    // Quick 260819-guy (Tarefa 7 item 1) — texto exato da
+                    // recusa. Já passou por `podarPii()` (WR-11) antes de
+                    // gravar, em `GerarContratoAssinaturaJob::failed()`; a
+                    // tela exibe cru, sem reprocessar.
+                    'erro_mensagem'                     => $c->erro_mensagem,
+                    'ja_tentou_antes'                   => $c->id !== ($idMaisAntigoPorServico[$c->servico_id] ?? $c->id),
                     'enviado_em'                         => $c->enviado_em?->toIso8601String(),
                     'assinado_em'                        => $c->assinado_em?->toIso8601String(),
                     'liberado_em'                        => $c->liberado_em?->toIso8601String(),
@@ -327,6 +472,10 @@ class ContratoAdminController extends Controller
                         : null,
                     // Quick 260816-d72 (UI-06/D-05).
                     'preparando'                         => $c->estaPreparando(),
+                    // Quick 260820-my3 (Tarefa 2) — irmão de 'preparando',
+                    // mutuamente exclusivo por construção (ver docblock de
+                    // estaMontagemTravada()).
+                    'montagem_travada'                   => $c->estaMontagemTravada(),
                     // Array achatado — NUNCA email/cpf/clicksign_signer_key/
                     // auths/evidencia_signer (T-131-04-04). Consumido também
                     // pelos planos 131-05/06.
@@ -343,10 +492,13 @@ class ContratoAdminController extends Controller
 
     /**
      * ADM-01 — o Administrativo completa aqui o que o Comercial deixou pela
-     * metade: CNPJ, e-mail do cliente, nome de quem assina e as datas de
-     * início/término de cada serviço. E-mail do colaborador (acesso à conta
-     * do Mercado Livre) fica fora desta tela — Quick 260817-d6h — e é
-     * completado em `/companies` (`CompanyController`).
+     * metade: CNPJ, e-mail do cliente, nome de quem assina, razão social e
+     * endereço da empresa (Quick 260819-guy, endereço em 5 campos separados
+     * desde a Quick 260821-cq0), e — por serviço — as datas de início/
+     * término, a data da 1ª parcela e o dia do mês do vencimento das demais
+     * (Quick 260819-guy). E-mail do colaborador (acesso à conta do Mercado
+     * Livre) fica fora desta tela — Quick 260817-d6h — e é completado em
+     * `/companies` (`CompanyController`).
      *
      * D8 travada da milestone: nada aqui volta para o Comercial — a cobrança
      * do dado termina nesta tela.
@@ -354,13 +506,38 @@ class ContratoAdminController extends Controller
     public function atualizarCadastro(Request $request, Company $company): RedirectResponse
     {
         $data = $request->validate([
-            'cnpj'                                 => ['nullable', 'string', 'max:20'],
+            // Quick 260819-guy — dígito verificador entra aqui além de
+            // presença/formato; CnpjValido é `nullable`-aware (CNPJ ausente
+            // não é problema desta Rule, é a regra 1/2 de
+            // ContratoDadosMinimosService).
+            'cnpj'                                 => ['nullable', 'string', 'max:20', new CnpjValido()],
             'email_cliente'                        => ['nullable', 'email'],
-            'nome_contato'                          => ['nullable', 'string', 'max:255'],
+            // Quick 260819-guy — Tarefa 7 item 4: NomeCompletoValido exige
+            // pelo menos duas palavras (nome + sobrenome); nullable-aware,
+            // mesma disciplina de CnpjValido acima (ausência é a regra 3 de
+            // ContratoDadosMinimosService, não desta Rule).
+            'nome_contato'                          => ['nullable', 'string', 'max:255', new NomeCompletoValido()],
+            // Quick 260819-guy — razão social/endereço são POR EMPRESA (mesmo
+            // bloco de cnpj/email/nome_contato); campos por serviço vão em
+            // contratos_servico.*.
+            //
+            // Quick 260821-cq0 — endereço volta a ser 5 campos separados
+            // (endereco aqui é só o logradouro).
+            'razao_social'                          => ['nullable', 'string', 'max:255'],
+            'endereco'                               => ['nullable', 'string', 'max:255'],
+            'bairro'                                 => ['nullable', 'string', 'max:255'],
+            'cidade'                                  => ['nullable', 'string', 'max:255'],
+            'estado'                                  => ['nullable', 'string', 'max:255'],
+            'cep'                                     => ['nullable', 'string', 'max:20'],
             'contratos_servico'                     => ['array'],
             'contratos_servico.*.id'                => ['required', 'integer', 'exists:contratos_servico,id'],
             'contratos_servico.*.data_contratacao'  => ['nullable', 'date'],
             'contratos_servico.*.data_vencimento'   => ['nullable', 'date'],
+            // Quick 260819-guy — data da 1ª parcela (data única) e dia do mês
+            // (1 a 31, NÃO uma data — ver docblock da migration) em que
+            // vencem as parcelas seguintes.
+            'contratos_servico.*.data_primeira_parcela' => ['nullable', 'date'],
+            'contratos_servico.*.dia_vencimento'        => ['nullable', 'integer', 'min:1', 'max:31'],
         ]);
 
         $itensServico = $data['contratos_servico'] ?? [];
@@ -384,13 +561,20 @@ class ContratoAdminController extends Controller
 
         // Mass assignment sobre os $fillable já existentes de Company — nunca
         // $guarded = [].
-        $company->fill(collect($data)->only(['cnpj', 'email_cliente', 'nome_contato'])->all());
+        $company->fill(collect($data)->only([
+            'cnpj', 'email_cliente', 'nome_contato', 'razao_social',
+            // Quick 260821-cq0 — endereço volta a ser 5 campos separados.
+            'endereco', 'bairro', 'cidade', 'estado', 'cep',
+        ])->all());
         $company->save();
 
         foreach ($paresParaAtualizar as [$contratoServico, $item]) {
             $contratoServico->update([
-                'data_contratacao' => $item['data_contratacao'] ?? null,
-                'data_vencimento'  => $item['data_vencimento'] ?? null,
+                'data_contratacao'       => $item['data_contratacao'] ?? null,
+                'data_vencimento'        => $item['data_vencimento'] ?? null,
+                // Quick 260819-guy.
+                'data_primeira_parcela'  => $item['data_primeira_parcela'] ?? null,
+                'dia_vencimento'         => $item['dia_vencimento'] ?? null,
             ]);
         }
 
@@ -436,7 +620,13 @@ class ContratoAdminController extends Controller
         $avaliacao = $gatilho->avaliar($company);
 
         if (! $dados->estaPronta($company) || $avaliacao['status'] !== 'elegivel') {
-            abort(422, 'Ainda falta completar algum dado, ou já existe um contrato em andamento para esta empresa.');
+            // Quick 260819-guy — Tarefa 7 item 2: antes era `abort(422, ...)`,
+            // que renderiza a página branca do Symfony ("Oops! An Error
+            // Occurred"), fora da aplicação. Mesmo tratamento do ramo de
+            // emissão congelada, dez linhas acima — a checagem no servidor
+            // está certa (o `disabled` do client não é controle,
+            // T-131-04-03), só a apresentação estava errada.
+            return back()->with('error', 'Ainda falta completar algum dado, ou já existe um contrato em andamento para esta empresa.');
         }
 
         $retorno = $gatilho->dispararSeElegivel($company);

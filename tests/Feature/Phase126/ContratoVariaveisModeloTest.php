@@ -214,6 +214,62 @@ class ContratoVariaveisModeloTest extends TestCase
         }
     }
 
+    // ─── Quick 260819-guy — as 4 variáveis saem com valor real quando o complemento existe ───
+
+    #[Test]
+    public function razao_social_endereco_dia_vencimento_e_data_primeira_parcela_saem_com_valor_real(): void
+    {
+        $contrato = $this->contratoComSnapshot([
+            'name'         => 'Empresa Fantasia Ltda',
+            'razao_social' => 'Empresa Fantasia Comércio e Serviços Ltda',
+        ]);
+
+        $resultado = $this->service()->montar($contrato, [
+            'endereco'              => 'Rua Exemplo, 123',
+            // Quick 260821-cq0 — bairro/cidade/estado/cep são variáveis
+            // próprias, mesma disciplina de endereco/dia_vencimento/
+            // data_primeira_parcela testados aqui.
+            'bairro'                => 'Centro',
+            'cidade'                => 'São Paulo',
+            'estado'                => 'SP',
+            'cep'                   => '01000-000',
+            'dia_vencimento'        => '10',
+            'data_primeira_parcela' => '2026-09-05',
+        ]);
+
+        $this->assertSame('Empresa Fantasia Comércio e Serviços Ltda', $resultado['variaveis']['razao_social']);
+        $this->assertSame('Rua Exemplo, 123', $resultado['variaveis']['endereco']);
+        $this->assertSame('Centro', $resultado['variaveis']['bairro']);
+        $this->assertSame('São Paulo', $resultado['variaveis']['cidade']);
+        $this->assertSame('SP', $resultado['variaveis']['estado']);
+        $this->assertSame('01000-000', $resultado['variaveis']['cep']);
+        $this->assertSame('10', $resultado['variaveis']['dia_vencimento']);
+        $this->assertSame('05/09/2026', $resultado['variaveis']['data_primeira_parcela']);
+        // `forma_pagamento` não é uma variável do modelo (não está em
+        // `mapa()`) — continua pendente mesmo com os complementos desta
+        // Tarefa preenchidos; não é o que este teste mede.
+        $this->assertSame(['forma_pagamento'], $resultado['campos_pendentes']);
+    }
+
+    #[Test]
+    public function ausencia_de_dado_cai_em_campos_pendentes_em_vez_de_quebrar(): void
+    {
+        // Sem complementos e sem razao_social/endereco na empresa — o
+        // caminho que hoje é bloqueado ANTES pelo ContratoDadosMinimosService
+        // (Tarefa 3), mas esta ponte continua sendo defensiva por conta
+        // própria: nunca deve lançar exceção, sempre placeholder + pendência.
+        $contrato = $this->contratoComSnapshot(['razao_social' => null]);
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame(ContratoPdfService::PLACEHOLDER, $resultado['variaveis']['endereco']);
+        $this->assertSame(ContratoPdfService::PLACEHOLDER, $resultado['variaveis']['dia_vencimento']);
+        $this->assertSame(ContratoPdfService::PLACEHOLDER, $resultado['variaveis']['data_primeira_parcela']);
+        $this->assertContains('endereco', $resultado['campos_pendentes']);
+        $this->assertContains('dia_vencimento', $resultado['campos_pendentes']);
+        $this->assertContains('data_primeira_parcela', $resultado['campos_pendentes']);
+    }
+
     #[Test]
     public function com_dois_servicos_no_snapshot_servico_contratado_concatena_os_dois_nomes(): void
     {

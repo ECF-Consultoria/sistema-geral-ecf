@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\CompanyGroup;
 use App\Models\Configuracao;
 use App\Models\NpsEmailEnvio;
+use App\Models\NpsGroupSurvey;
 use App\Models\NpsImputedAssignment;
 use App\Models\NpsPerguntaCustomizada;
 use App\Models\NpsRespostaCustomizada;
@@ -469,6 +470,26 @@ class NpsController extends Controller
             'pendentes'   => max(0, $totalGeral - $respondidos - $expirados),
         ];
 
+        // ─── Links de NPS de GRUPO do mês (2026-08-20) ───────────────────────
+        // Bug reportado (grupo MaxiGold, 5 empresas): "quando vou gerar fala
+        // que já tem um link, porém a empresa está em Faltantes, não em
+        // Pendentes". Os dois estavam certos isoladamente — e é essa a
+        // armadilha: os surveys-espelho (`nps_surveys`) só nascem quando o
+        // cliente RESPONDE (`NpsGrupoReplicacaoService`), então um link de
+        // grupo gerado e ainda sem resposta não existe para NENHUMA das duas
+        // réguas desta tela, que leem só `nps_surveys`:
+        //  - Faltantes ("empresa sem survey no mês") listava as 5 empresas;
+        //  - Pendentes/Todos (COUNT sobre `$baseQuery`) não mostravam nada.
+        // O link ficava invisível — e o guard de duplicidade de
+        // `NpsGrupoController::generate()` barrava a segunda tentativa.
+        //
+        // A partir daqui o link de grupo entra na tela como o individual já
+        // entra: as empresas cobertas saem de Faltantes e o link vira UMA
+        // linha em Pendentes (ou Expirados), com o endereço para copiar.
+        $linksGrupo = $this->linksDeGrupoDoMes(
+            $mesInicio, $mesFim, $user, $empresaId, $estrategistaId, $analistaId, $templateId
+        );
+
         // ─── Faltantes por (empresa, SETOR) — Bugfix 2026-07-21 (v2) ─────────
         // NPS é conceitualmente por SETOR de serviço (Mercado Livre/performance
         // e Shopee), não por modelo. Em produção há 2 modelos automáticos que
@@ -596,6 +617,24 @@ class NpsController extends Controller
 
             $q->whereNotIn('id', $comSurvey);
 
+            // 2026-08-20 — empresa coberta por um link de GRUPO deste mês
+            // também não é faltante: ela TEM link, só não tem espelho ainda
+            // (o espelho nasce na resposta). Mesma régua do individual, que
+            // sai de Faltantes assim que o survey existe — inclusive quando
+            // já expirou. A cobertura vem de `linksDeGrupoDoMes()`, que a
+            // calcula pela MESMA fonte do envio (`NpsGrupoCoberturaService`):
+            // empresa do grupo que ficou de FORA do link (responsável
+            // diferente, sem serviço contratado, órfã) continua faltante,
+            // como deve.
+            $cobertasPorGrupo = collect($templateIds)
+                ->flatMap(fn ($tid) => $linksGrupo['cobertas'][$tid] ?? [])
+                ->unique()
+                ->values();
+
+            if ($cobertasPorGrupo->isNotEmpty()) {
+                $q->whereNotIn('id', $cobertasPorGrupo);
+            }
+
             foreach ($q->get(['id', 'name', 'company_group_id']) as $c) {
                 // Quick task 260730-jzx (ajuste 4) — sem estrategista atribuído,
                 // a empresa ainda não entrou na operação: não aparece na lista
@@ -670,6 +709,14 @@ class NpsController extends Controller
         // (campo `empresas_count`), nunca LINHAS. Colapsar um grupo de N
         // empresas em 1 linha (Task 2) não pode mudar nenhum destes números.
         $contadores['faltantes'] = array_sum(array_column($faltantes, 'empresas_count'));
+
+        // 2026-08-20 — os chips somam EMPRESAS, nunca LINHAS (mesma decisão
+        // DQ-03 já praticada em Faltantes, logo acima). Um link de grupo é 1
+        // linha na lista e N empresas nos contadores: as mesmas N que
+        // acabaram de sair de Faltantes entram aqui, então nenhum total muda
+        // de tamanho por causa do colapso — só muda de coluna.
+        $contadores['pendentes'] += $linksGrupo['empresas']['pending'];
+        $contadores['expirados'] += $linksGrupo['empresas']['expired'];
         // Fase 119.1 (D1) — quantos faltantes estão pesando na média (o
         // plano 07/UI consome esta chave, ver 119.1-04-PLAN.md).
         $contadores['contam_nota_1'] = array_sum(array_column($faltantes, 'conta_nota_1_count'));
@@ -679,7 +726,10 @@ class NpsController extends Controller
         // (empresas sem link no mês). Antes contava só os surveys e escondia os
         // faltantes do total. Respeita o filtro de pessoa aplicado — filtrando
         // por um estrategista/analista, "Todos" reflete a carteira dele.
-        $contadores['todos'] = $totalGeral + array_sum(array_column($faltantes, 'empresas_count'));
+        $contadores['todos'] = $totalGeral
+            + $linksGrupo['empresas']['pending']
+            + $linksGrupo['empresas']['expired']
+            + array_sum(array_column($faltantes, 'empresas_count'));
 
         // Status efetivo por linha — coerente com os contadores acima (mesma
         // regra de "expirado"). Apresentação pura; a coluna `status` do banco
@@ -749,6 +799,18 @@ class NpsController extends Controller
 
             return $item;
         });
+
+        // 2026-08-20 — as linhas dos links de GRUPO entram no MESMO payload da
+        // listagem (`surveys.data`), com `tipo => 'grupo'` para a tela saber
+        // que aquela linha é 1 link para N empresas. Vira array aqui (e não
+        // um item novo no paginator) porque `LengthAwarePaginator::$total` não
+        // tem setter — e o rodapé da tabela lê `surveys.total`, que ficaria
+        // menor que a própria lista renderizada.
+        $surveys = $surveys->toArray();
+        if (!empty($linksGrupo['linhas'])) {
+            $surveys['data']  = array_merge($surveys['data'], $linksGrupo['linhas']);
+            $surveys['total'] = ($surveys['total'] ?? count($surveys['data'])) + count($linksGrupo['linhas']);
+        }
 
         // ─── 3 cards de média (somente respostas do mês filtrado) ────────────
         // Bugfix 2026-07-08 — dual-path: como AVG(score_*) do SQL ignora
@@ -1090,6 +1152,207 @@ class NpsController extends Controller
         }
 
         return Inertia::render('Nps/Index', $props);
+    }
+
+    /**
+     * Links de NPS de GRUPO do mês — a ponte que faltava entre
+     * `nps_group_surveys` e esta tela (2026-08-20).
+     *
+     * Os surveys-espelho (`nps_surveys`) só nascem quando o cliente responde
+     * (`NpsGrupoReplicacaoService::replicar()`, decisão arquitetural da Fase
+     * 119.1 que NÃO se mexe aqui). Antes disso o link existe apenas em
+     * `nps_group_surveys`, e as duas réguas desta tela — Faltantes e a
+     * listagem — leem só `nps_surveys`. O efeito reportado em produção
+     * (grupo MaxiGold): as 5 empresas em Faltantes, nada em Pendentes, e o
+     * botão "Gerar link" recusando com "este grupo já tem um link" — o link
+     * certo não aparecia em lugar nenhum da tela.
+     *
+     * Devolve, de UMA passada, as três coisas que o `index()` precisa:
+     *  - `linhas`: 1 linha por link, no MESMO shape dos itens de
+     *    `surveys.data` (mais `tipo`/`empresas_*`), já recortada pelos
+     *    filtros da vista;
+     *  - `cobertas`: `template_id => company_ids`, para tirar essas empresas
+     *    de Faltantes;
+     *  - `empresas`: quantas empresas por status efetivo, para os chips
+     *    somarem EMPRESAS e não LINHAS (DQ-03).
+     *
+     * Duas assimetrias, de propósito:
+     *
+     *  (a) PERMISSÃO x RECORTE. `cobertas` é montado ANTES dos filtros de
+     *      empresa/pessoa/modelo, mas DEPOIS do escopo de quem pode ver o
+     *      grupo. Filtro é da vista: esconder o link porque a pessoa filtrou
+     *      por outra empresa não pode fazer a empresa coberta reaparecer em
+     *      Faltantes. Já o escopo é de acesso: quem não enxerga o grupo
+     *      também não perde a empresa de Faltantes — senão ela sumiria da
+     *      lista de trabalho sem nada no lugar, que é exatamente o modo de
+     *      falha que este método existe para corrigir.
+     *
+     *  (b) Quem GEROU o link sempre o enxerga, mesmo que o grupo não passe
+     *      em `CompanyGroup::visivelPara()` — mesmo princípio do bugfix de
+     *      2026-08-14 no filtro por pessoa do individual (autorização de
+     *      escrita mais ampla que a de leitura fazia o link sumir de quem
+     *      acabara de gerá-lo).
+     *
+     * Link já RESPONDIDO (`status = completed`) fica de fora: os espelhos
+     * existem e cada empresa já aparece na listagem por conta própria.
+     *
+     * @return array{
+     *   linhas: array<int, array>,
+     *   cobertas: array<int, int[]>,
+     *   empresas: array{pending:int, expired:int},
+     * }
+     */
+    private function linksDeGrupoDoMes(
+        Carbon $mesInicio,
+        Carbon $mesFim,
+        \App\Models\User $user,
+        ?int $empresaId,
+        ?int $estrategistaId,
+        ?int $analistaId,
+        ?int $templateId,
+    ): array {
+        $links = NpsGroupSurvey::query()
+            ->with(['grupo.companies', 'template', 'geradoPor'])
+            ->where('status', '!=', 'completed')
+            // `month_reference` do link de grupo é SEMPRE preenchido (ver o
+            // guard de duplicidade em NpsGrupoController::generate()) — aqui
+            // não existe o fallback `?? created_at` do individual.
+            ->whereBetween('month_reference', [$mesInicio->toDateString(), $mesFim->toDateString()])
+            ->orderByDesc('created_at')
+            ->get();
+
+        $linhas   = [];
+        $cobertas = [];
+        $empresas = ['pending' => 0, 'expired' => 0];
+
+        foreach ($links as $link) {
+            if (!$link->grupo || !$link->template) {
+                continue; // defesa — link órfão de grupo/modelo apagado
+            }
+
+            if (!$user->isAdmin()
+                && !$link->grupo->visivelPara($user)
+                && (int) $link->generated_by !== (int) $user->id) {
+                continue;
+            }
+
+            // MESMA fonte que decide quem recebe a nota no envio — nunca uma
+            // segunda régua de "quem está no link" (o serviço já resolve
+            // responsável por serviço, empresa órfã e `ja_tem_link`).
+            $cobertura = $this->grupoCoberturaService->calcular($link->grupo, $link->template, $mesInicio);
+            $incluidas = collect($cobertura['incluidas']);
+
+            if ($incluidas->isEmpty()) {
+                // Cobertura vazia hoje = toda empresa do grupo já está
+                // representada por um survey individual na listagem. A linha
+                // não acrescentaria nada, e o link continua alcançável pelo
+                // aviso de duplicidade (`flash.nps_link_existente`).
+                continue;
+            }
+
+            $companyIds = $incluidas->pluck('company_id')->all();
+
+            $cobertas[$link->template_id] = array_merge(
+                $cobertas[$link->template_id] ?? [],
+                $companyIds
+            );
+
+            // ─── daqui para baixo é só RECORTE da vista (ver (a) acima) ────
+            if ($templateId && (int) $link->template_id !== $templateId) {
+                continue;
+            }
+            if ($empresaId && !in_array($empresaId, $companyIds, true)) {
+                continue;
+            }
+            if ($estrategistaId && !$this->coberturaTemPessoa($incluidas, $estrategistaId, 'estrategista')) {
+                continue;
+            }
+            if ($analistaId && !$this->coberturaTemPessoa($incluidas, $analistaId, 'consultor')) {
+                continue;
+            }
+
+            // Mesma régua de status EFETIVO da listagem individual: a coluna
+            // grava pending|completed, e "expirado" é apresentação.
+            $status = ($link->expires_at && $link->expires_at->isPast()) ? 'expired' : 'pending';
+            $empresas[$status] += count($companyIds);
+
+            $linhas[] = [
+                // Id textual: a tabela usa `id` como key do React e como
+                // alvo da exclusão em massa (que só existe para survey
+                // individual). O prefixo garante que nunca colida com um id
+                // numérico de `nps_surveys` — e a tela esconde checkbox e
+                // lixeira quando `tipo === 'grupo'`.
+                'id'                 => 'grupo-' . $link->id,
+                'tipo'               => 'grupo',
+                'group_survey_id'    => $link->id,
+                'group_id'           => $link->company_group_id,
+                'token'              => $link->token,
+                'company_name'       => $link->grupo->name,
+                'company_id'         => null,
+                'empresas_count'     => count($companyIds),
+                'empresas_nomes'     => $incluidas->pluck('name')->values()->all(),
+                'status'             => $status,
+                'modelo'             => $link->template->nome,
+                'auto_generated'     => false,
+                'generated_by'       => $link->geradoPor?->name,
+                'created_at'         => $link->created_at->format('d/m/Y H:i'),
+                'expires_at'         => $link->expires_at?->format('d/m/Y'),
+                'completed_at'       => null,
+                'score_estrategista' => null,
+                'score_analista'     => null,
+                'score_empresa'      => null,
+                'responsaveis'       => ['estrategista' => [], 'analista' => []],
+                'respondent'         => null,
+                'comment'            => null,
+                'link'               => route('nps.grupo.respond', $link->token),
+                'de_grupo'           => true,
+                'respostas_customizadas' => [],
+            ];
+        }
+
+        foreach ($cobertas as $templateIdCoberto => $ids) {
+            $cobertas[$templateIdCoberto] = array_values(array_unique($ids));
+        }
+
+        return ['linhas' => $linhas, 'cobertas' => $cobertas, 'empresas' => $empresas];
+    }
+
+    /**
+     * A cobertura de um link de grupo tem alguma empresa cuidada por esta
+     * pessoa NESTE papel? — usado só pelos filtros de estrategista/analista
+     * da tela.
+     *
+     * O vínculo é lido POR SERVIÇO (`company_users.servico_id`), com
+     * `servico_id NULL` valendo como responsável CONSOLIDADO — os serviços
+     * considerados são os que o próprio serviço de cobertura já resolveu
+     * para cada empresa (`servico_ids`). É a mesma leitura que
+     * `$filtroPessoaFaltante` faz em Faltantes: filtrar por uma pessoa não
+     * pode trazer o link de um serviço que é de outra.
+     *
+     * @param  \Illuminate\Support\Collection<int, array{company_id:int, servico_ids:int[]}>  $incluidas
+     */
+    private function coberturaTemPessoa(\Illuminate\Support\Collection $incluidas, int $personId, string $role): bool
+    {
+        foreach ($incluidas as $item) {
+            $existe = DB::table('company_users')
+                ->where('company_id', $item['company_id'])
+                ->where('user_id', $personId)
+                ->where('role', $role)
+                ->where(function ($q) use ($item) {
+                    $q->whereNull('servico_id');
+
+                    if (!empty($item['servico_ids'])) {
+                        $q->orWhereIn('servico_id', $item['servico_ids']);
+                    }
+                })
+                ->exists();
+
+            if ($existe) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

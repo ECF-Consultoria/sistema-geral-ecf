@@ -69,6 +69,14 @@ class ContratoClicksignServiceTest extends TestCase
             'email_cliente' => 'cliente@empresa.com.br',
             'cnpj'          => '12.345.678/0001-95',
             'nome_contato'  => 'Fulano de Tal',
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'razao_social'  => 'Fulano de Tal LTDA',
+            // Quick 260821-cq0 — endereço em 5 campos, todos obrigatórios.
+            'endereco'      => 'Rua de Teste, 123',
+            'bairro'        => 'Bairro de Teste',
+            'cidade'        => 'Cidade de Teste',
+            'estado'        => 'TS',
+            'cep'           => '00000-000',
         ], $overrides));
     }
 
@@ -94,6 +102,9 @@ class ContratoClicksignServiceTest extends TestCase
             'data_contratacao' => '2026-01-10',
             'data_vencimento'  => '2027-01-10',
             'ativo'            => true,
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'data_primeira_parcela' => '2026-02-05',
+            'dia_vencimento'        => 5,
         ], $overrides)));
     }
 
@@ -204,6 +215,33 @@ class ContratoClicksignServiceTest extends TestCase
         $this->assertEqualsWithDelta(100.0, $contrato1->servicos_snapshot[0]['valor_contratado'], 0.001);
     }
 
+    // ─── Teste 4b (Quick 260819-guy) — dia_vencimento/data_primeira_parcela também congelam ───
+
+    #[Test]
+    public function snapshot_congela_dia_vencimento_e_data_primeira_parcela_do_servico(): void
+    {
+        $company = $this->companyCompleta();
+        $servico = $this->servicoDeTeste();
+        $cs = $this->contratoServicoAtivo($company, $servico, [
+            'dia_vencimento'        => 15,
+            'data_primeira_parcela' => '2026-02-05',
+        ]);
+
+        $this->service->iniciarParaEmpresa($company);
+
+        $contrato = ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $servico->id)->firstOrFail();
+
+        $this->assertSame(15, $contrato->servicos_snapshot[0]['dia_vencimento']);
+        $this->assertSame('2026-02-05', $contrato->servicos_snapshot[0]['data_primeira_parcela']);
+
+        // Congelamento: mudar o dado na origem DEPOIS não afeta o snapshot.
+        $cs->update(['dia_vencimento' => 28, 'data_primeira_parcela' => '2099-12-31']);
+        $contrato->refresh();
+
+        $this->assertSame(15, $contrato->servicos_snapshot[0]['dia_vencimento']);
+        $this->assertSame('2026-02-05', $contrato->servicos_snapshot[0]['data_primeira_parcela']);
+    }
+
     // ─── Teste 5 ───
 
     #[Test]
@@ -240,7 +278,9 @@ class ContratoClicksignServiceTest extends TestCase
         $this->assertSame(10, $contrato->prazo_dias);
         $this->assertSame(2, $contrato->lembrete_dias);
 
-        $company2 = $this->companyCompleta(['cnpj' => '98.765.432/0001-10']);
+        // Quick 260819-guy — precisa ser um CNPJ com dígito verificador
+        // VÁLIDO: este trecho exige que a empresa passe pelo gate inteiro.
+        $company2 = $this->companyCompleta(['cnpj' => '98.765.432/0001-98']);
         $this->contratoServicoAtivo($company2);
 
         $this->service->iniciarParaEmpresa($company2);
@@ -293,5 +333,44 @@ class ContratoClicksignServiceTest extends TestCase
         $this->assertArrayHasKey('faltando', $resultado2);
         $this->assertArrayHasKey('criados', $resultado2);
         $this->assertArrayHasKey('pulados', $resultado2);
+    }
+
+    // ─── Teste 9 (Quick 260820-my3) ───
+
+    /**
+     * O incidente que originou o quick: o job foi para a fila `default`,
+     * atrás de dezenas de `SyncMlAcervoCompanyJob` em deadlock, e o contrato
+     * ficou parado mais de uma hora sem nada criado. Prova as duas coisas na
+     * MESMA chamada: o job vai para a fila `high`, e o delay escalonado por
+     * serviço (bucket de 1 envelope/min da Clicksign) continua intacto — a
+     * fila é só POR ONDE o job entra, não tem relação com o espaçamento.
+     */
+    #[Test]
+    public function job_e_despachado_na_fila_high_preservando_o_delay_escalonado(): void
+    {
+        $company = $this->companyCompleta();
+        $servico1 = $this->servicoDeTeste(['nome' => 'Gestão de Tráfego']);
+        $servico2 = $this->servicoDeTeste(['nome' => 'Publicação de Anúncios']);
+        $this->contratoServicoAtivo($company, $servico1);
+        $this->contratoServicoAtivo($company, $servico2);
+
+        $this->service->iniciarParaEmpresa($company);
+
+        Queue::assertPushedOn('high', GerarContratoAssinaturaJob::class);
+        Queue::assertPushed(GerarContratoAssinaturaJob::class, 2);
+
+        // Delay escalonado (`$i * 5`) preservado: o primeiro contrato do
+        // laço tem delay 0s, o segundo 5s — mesma regra de sempre, só a
+        // fila mudou. Ordem de push == ordem do laço, então lê direto pelo
+        // índice, sem reordenar.
+        $pushados = collect(Queue::pushedJobs()[GerarContratoAssinaturaJob::class] ?? [])->pluck('job');
+
+        $this->assertCount(2, $pushados);
+        $delayPrimeiro = $pushados[0]->delay;
+        $delaySegundo  = $pushados[1]->delay;
+
+        $this->assertNotNull($delayPrimeiro);
+        $this->assertNotNull($delaySegundo);
+        $this->assertTrue($delayPrimeiro->timestamp < $delaySegundo->timestamp);
     }
 }

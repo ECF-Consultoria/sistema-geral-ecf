@@ -98,9 +98,21 @@ class SyncMlAcervo extends Command
                 $lotes = array_chunk($fatia, $chunkDetalhe);
 
                 // O delay do detalhe continua de onde o fan-out da camada
-                // barata DESTA empresa parou — para os jobs de detalhe não
-                // competirem com os de multiget da mesma empresa na mesma
-                // janela.
+                // barata DESTA empresa parou.
+                //
+                // ATENÇÃO — este delay NÃO separa as duas camadas, e nunca
+                // separou. O comentário anterior aqui afirmava que ele evitava
+                // "os jobs de detalhe competirem com os de multiget da mesma
+                // empresa na mesma janela": era falso. A camada barata tem
+                // timeout de 1800s e a maior conta faz ~3.340 lotes de
+                // multiget, então 2 segundos garantem o OPOSTO — a sobreposição
+                // é a regra. Foi essa a origem dos ~20 deadlocks/dia desde
+                // 12/08/2026 (.planning/debug/acervo-deadlock-upsert.md, E4).
+                //
+                // Quem serializa as escritas das duas camadas é o
+                // AcervoEscritaLock, no nível da escrita — não este delay, que
+                // segue existindo só para escalonar pressão de rate limit no
+                // Mercado Livre.
                 $delayDetalheBase = $delayBarata + 2;
 
                 foreach ($lotes as $j => $lote) {

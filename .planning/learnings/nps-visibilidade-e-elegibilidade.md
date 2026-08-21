@@ -193,3 +193,201 @@ rodando de novo):
   SQLite, já descrita no próprio comentário do teste.
 
 Não são regressão de quem chegar depois. Medir o baseline ANTES de caçar.
+
+---
+
+## 5. O link de NPS de GRUPO não existia para a tela enquanto ninguém respondia
+
+Reportado em 2026-08-20, grupo `MaxiGold` (5 empresas): *"quando vou gerar
+fala que já tem um link, porém essa empresa está em Faltantes, não em
+Pendentes"*.
+
+As duas telas estavam certas isoladamente — e é aí que mora a armadilha. A
+decisão arquitetural da Fase 119.1 é que **os surveys-espelho (`nps_surveys`)
+só nascem quando o cliente RESPONDE** o link de grupo
+(`NpsGrupoReplicacaoService::replicar()`, que recalcula a cobertura no submit e
+NÃO deve ser mexido — é o que faz 1 resposta de grupo ser indistinguível de N
+respostas individuais para todo consumidor de agregação).
+
+Consequência que ninguém tinha percebido: entre GERAR e RESPONDER, o link vive
+só em `nps_group_surveys` — e **as duas réguas da tela de NPS leem apenas
+`nps_surveys`**:
+
+| régua | o que fazia | resultado |
+|---|---|---|
+| Faltantes (`NpsController::index`) | "empresa ativa sem `nps_survey` no mês" | listava as 5 empresas |
+| Pendentes/Todos | `COUNT` sobre `$baseQuery` (`NpsSurvey`) | não mostrava nada |
+| `NpsGrupoController::generate()` | guard `(grupo, modelo, mês)` em `nps_group_surveys` | recusava gerar de novo |
+
+O link certo, portanto, **não aparecia em lugar nenhum da tela** — e o botão
+que a própria tela oferecia era o único caminho, sempre recusado.
+
+### O agravante: o "devolve o link que já existe" nunca chegou ao navegador
+
+O Plan 119.1-07 já previa isso: o guard devolve `nps_link_existente` no flash
+e `Pages/Nps/Index.jsx` tem o `useEffect` que abre o modal com ele. Só que
+`HandleInertiaRequests::share()` compartilhava apenas `success`, `error`,
+`nps_link` e `workspace_url` — **a chave nunca era exposta**. O recurso existia
+inteiro dos dois lados e morria no meio. Vale também para o individual
+(`NpsController::generate()`, mesma chave).
+
+Lição maior que o bug: **flash key nova exige linha nova em
+`HandleInertiaRequests`**. Não há erro, não há warning — a prop simplesmente
+chega `undefined` e o efeito nunca dispara.
+
+### O que passou a valer (2026-08-20)
+
+`NpsController::linksDeGrupoDoMes()` é a ponte: lê `nps_group_surveys` do mês
+com `status != completed`, resolve a cobertura pela MESMA fonte do envio
+(`NpsGrupoCoberturaService::calcular()` — nunca uma segunda régua de "quem está
+no link") e devolve, de uma passada:
+
+- as empresas cobertas, que **saem de Faltantes** (mesma régua do individual,
+  que sai assim que o survey existe — inclusive expirado);
+- **1 linha** na listagem, `tipo => 'grupo'`, que entra em Pendentes com o
+  endereço para copiar e a lista de empresas cobertas no modal de detalhe;
+- a contagem por status, porque **os chips somam EMPRESAS, nunca LINHAS**
+  (mesma decisão DQ-03 já praticada no colapso de Faltantes): as N que saem de
+  Faltantes entram em Pendentes e nenhum total muda de tamanho.
+
+Empresa do grupo que ficou de FORA da cobertura (responsável diferente, sem
+serviço contratado, órfã) **continua faltante** — é o comportamento correto: o
+link não vale para ela.
+
+⚠ **A distinção que não pode ser perdida ao mexer nesse método: PERMISSÃO ≠
+RECORTE.** A lista de empresas cobertas (que tira de Faltantes) é montada
+ANTES dos filtros de empresa/pessoa/modelo e DEPOIS do escopo de acesso.
+Inverter isso recria o bug em escala menor: filtrar por outra empresa faria a
+coberta reaparecer em Faltantes, e — pior — quem não enxerga o grupo perderia
+a empresa da lista de trabalho sem nada no lugar.
+
+### O que NÃO foi mexido, de propósito
+
+Empresa coberta por link de grupo pendente **continua contando nota 1** no
+bônus: `NpsSemLinkService`/`NpsPorEmpresaService` decidem por
+`surveyExistenteNaCompetencia()`, que lê `nps_surveys`. Na prática o número
+final não muda (se ninguém responder, a empresa vale 1 de qualquer jeito, por
+imputação), mas as duas réguas divergem no ROTEIRO. Mexer nisso é tocar em
+nota de competência possivelmente já paga — mesma trava do §2 acima. O que
+mudou aqui foi só VISIBILIDADE.
+
+Efeito colateral aceito e decidido pelo usuário: o aviso "X empresas estão
+contando nota 1" da aba Faltantes deixa de contar as empresas que passaram
+para Pendentes por link de grupo.
+
+Travado por `tests/Feature/NpsLinkDeGrupoNaTelaTest.php` (5 testes; 3 deles
+comprovadamente vermelhos sem o fix — verificado por mutação, não por
+suposição).
+
+---
+
+## 6. "Responderam o NPS e não refletiu no grupo" quase nunca é o grupo — é link INDIVIDUAL, ou é a régua de responsável POR SERVIÇO
+
+Reportado em 2026-08-21, grupo `Camillo Parts` (id 3, 7 empresas): *"teve
+empresa que respondeu NPS de Shopee, era para refletir nas outras, já que são
+grupo"*. Diagnosticado inteiro em produção, **sem nenhuma mudança de código —
+não havia bug**. Fica aqui porque a assinatura do relato é idêntica à de um bug
+real e o caminho de investigação é longo.
+
+### O que era
+
+A resposta de Shopee do grupo veio da `GENUINEAUTOMOTIVE` (survey 458), num
+link **individual** — `group_survey_id IS NULL`. Resposta em link individual
+**nunca** replica; só a de link de grupo dispara
+`NpsGrupoReplicacaoService::replicar()`. O grupo nunca teve link de grupo de
+Shopee: o único que existia (`nps_group_surveys` #7) era do modelo
+**Performance**, e esse replicou corretamente para as 5 empresas em 18/08.
+
+Primeira query a rodar em qualquer relato desse feitio — ela sozinha separa
+"não replicou" de "nunca foi de grupo":
+
+```sql
+SELECT s.id, s.company_id, c.name, s.template_id, s.status, s.group_survey_id, s.created_at
+  FROM nps_surveys s JOIN companies c ON c.id=s.company_id
+ WHERE c.company_group_id = <grupo> AND s.template_id = <modelo>
+ ORDER BY s.id DESC;
+-- group_survey_id NULL na resposta = link individual = replicação nunca foi pedida
+```
+
+### O agravante, que é o ponto realmente não dedutível
+
+Mesmo que tivessem gerado o link de GRUPO, ele **não** cobriria as empresas que
+a pessoa esperava. A cobertura roda por SERVIÇO coberto pelo modelo (D3/D6), e
+o modelo de Shopee (#7) cobre um serviço só: `Gestão de ADS Shopee` (id 9) — um
+serviço com dupla responsável PRÓPRIA, diferente da de Performance. Medido:
+
+| empresa | entra? | motivo |
+|---|---|---|
+| EDUMAC PARTS (144) | sim | Felipe + Matheus Estrela no serviço 9 |
+| CAMILLOPARTS FILIAL RS (358) | sim | mesma dupla |
+| CAMILLOPARTSFILIALSCCAMILLO (131) | **não** | `sem_responsavel` — contrato 9 ATIVO, mas vínculo só no serviço 6 |
+| CAMILLO PARTS MATRIZ (1) | **não** | idem |
+| TRWCAMILLOPARTS (175) | **não** | `sem_servico_contratado` — contrato 9 inativo |
+| GENUINEAUTOMOTIVE (132) | **não** | `responsavel_diferente` — analista Shopee é o Gustavo, nas outras é o Matheus |
+
+Ou seja: **a empresa que respondeu é justamente a que o link de grupo teria
+excluído.** Nada disso é visível na tela do grupo antes de gerar a prévia, e
+nenhuma dessas três exclusões é bug — são D4/D6 funcionando.
+
+A armadilha de cadastro por trás disso é geral, não é da Camillo: **empresa com
+contrato ATIVO num serviço e vínculo em `company_users` só de OUTRO serviço não
+tem responsável naquele serviço**, porque `responsavelDoServicoOuConsolidado()`
+só cai no slot consolidado quando existe linha com `servico_id IS NULL` — um
+vínculo em outro `servico_id` não serve de fallback. Para achar todos os casos:
+
+```sql
+SELECT c.id, c.name, cs.servico_id
+  FROM companies c
+  JOIN contratos_servico cs ON cs.company_id=c.id AND cs.ativo=1
+ WHERE c.active=1
+   AND NOT EXISTS (SELECT 1 FROM company_users cu WHERE cu.company_id=c.id
+                     AND (cu.servico_id = cs.servico_id OR cu.servico_id IS NULL));
+```
+
+### Por que gerar o link de grupo "para consertar" também não resolveria
+
+Depois da resposta individual, o analista gerou links **individuais** de Shopee
+para EDUMAC (487) e RS (488). A partir daí a cobertura de um link de grupo novo
+é **vazia**: as duas saem por `ja_tem_link`
+(`surveyExistenteNaCompetencia()` conta survey manual com `month_reference
+NULL` pelo `created_at` do mês) e as outras três pelos motivos da tabela.
+A ordem das ações fecha a porta sem avisar.
+
+### O que foi feito em 2026-08-21 — e o comando que nasceu disso
+
+A decisão inicial foi não mexer em nota. Ela foi REVERTIDA no mesmo dia: o
+usuário pediu que a resposta da GENUINE valesse para todas as empresas do grupo
+que contratam Shopee, "como se fosse grupo". Antes de replicar, ele cadastrou
+pela tela os responsáveis de Shopee que faltavam — MATRIZ e SC ganharam Felipe
+(estrategista) + Gustavo (analista).
+
+Como não existe caminho de tela para isso, nasceu
+`nps:replicar-resposta-para-grupo` (commit `22d9fef3`), que faz o que o link de
+grupo teria feito, depois do fato: reaproveita o link pendente da empresa (ou
+cria um), copia a resposta com os snapshots LITERAIS da origem e chama
+`NpsSnapshotService::registrar()` — sem reimplementar nada da régua de score.
+Ele também cria o `nps_group_surveys` retroativo que amarra os espelhos: sem
+esse vínculo, N respostas idênticas ficam indistinguíveis de N clientes
+distintos, que foi exatamente o que tornou este diagnóstico caro.
+
+**Aplicado em produção em 21/08/2026** (`--survey=458 --empresas=1,131,144,358`):
+4 empresas, 8 atribuições, 0 falhas, link de grupo retroativo #12. Conferido por
+reconsulta ao banco: as 5 empresas do grupo com Shopee ficaram com nota 5,00 —
+Felipe como estrategista nas 5, Gustavo como analista em MATRIZ/SC/GENUINE e
+Matheus Estrela em EDUMAC/RS.
+
+⚠ **Duas armadilhas ao reusar este comando:**
+
+1. **A ordem importa.** Ele lê os responsáveis de HOJE (via
+   `responsavelDoServicoOuConsolidado()`), então cadastro errado no momento da
+   execução vira atribuição errada congelada. Rodar `--dry-run` primeiro não é
+   formalidade: a tabela que ele imprime é a única conferência de QUEM recebe a
+   nota antes de virar snapshot imutável.
+2. **Serviço sem responsável não trava nada.** A empresa recebe a nota e sai de
+   Faltantes, mas nenhuma atribuição é criada (`NpsSnapshotService` só loga
+   warning). O dry-run marca esse caso explicitamente — se aparecer
+   "SEM RESPONSAVEL", corrigir o cadastro ANTES em vez de seguir.
+
+Travado por `tests/Feature/NpsReplicarRespostaParaGrupoTest.php` (6 testes),
+que cobrem inclusive o que mais assusta aqui: a nota vai para o responsável de
+CADA empresa, nunca para o da empresa que respondeu.

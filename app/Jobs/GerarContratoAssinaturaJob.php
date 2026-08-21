@@ -14,6 +14,7 @@ use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Fase 127 Plano 127-05 (CLICK-02, CLICK-08, DADOS-06) — trabalhador da fila
@@ -104,15 +105,26 @@ class GerarContratoAssinaturaJob implements ShouldQueue
      * 2. Guard de modelo (D-21): serviço sem `clicksign_template_id` nem
      *    `CLICKSIGN_TEMPLATE_ID` padrão falha ANTES de qualquer chamada
      *    HTTP — gerar contrato com modelo errado é pior que não gerar.
-     * 3. `ContratoVariaveisModeloService::montar()` — puro, sem HTTP. Os
-     *    `campos_pendentes` (os 3 `A DEFINIR` por decisão do usuário) não
-     *    bloqueiam; só a QUANTIDADE é logada (nunca os valores), como pista
-     *    para a Fase 131.
+     * 3. `ContratoVariaveisModeloService::montar()` — puro, sem HTTP.
+     *    `$complementos` mistura duas origens de propósito: `endereco` é
+     *    dado de EMPRESA, lido AO VIVO de `Company` (mesma disciplina de
+     *    nome_contato/email_cliente, que também não são snapshot);
+     *    `dia_vencimento`/`data_primeira_parcela` são dado de SERVIÇO, lidos
+     *    do `servicos_snapshot` CONGELADO do próprio `$contrato` — nunca da
+     *    tabela `contratos_servico` ao vivo (D-04; quem gravou os dois no
+     *    snapshot foi `ContratoClicksignService::iniciarParaEmpresa()`, na
+     *    hora de CRIAR o contrato). Os `campos_pendentes` que ainda
+     *    restarem (defesa em profundidade — `ContratoDadosMinimosService`
+     *    já trava a geração sem eles, Quick 260819-guy Tarefa 3) não
+     *    bloqueiam; só a QUANTIDADE é logada (nunca os valores).
      * 4. `$dadosEnvelope` leva `deadline_at`/`remind_interval` já na
      *    CRIAÇÃO (D-03) — mesma forma literal usada em
      *    `ClicksignClient::ativarEnvelope()`, reusada aqui, não reinventada.
      * 5. `$nomeArquivo` termina em `.docx` (§10.2 do empírico, MEDIDO: `.pdf`
-     *    aqui devolve 400).
+     *    aqui devolve 400) e, desde a Quick 260819-guy (Tarefa 6), carrega o
+     *    slug ASCII de razão social + serviço — não mais `contrato-{id}.docx`
+     *    genérico — para a lista de Rascunhos do painel da Clicksign dizer de
+     *    qual empresa/serviço se trata.
      * 6. `$signatarioCliente` vem de `Company::nome_contato`/`email_cliente`
      *    — os dados mínimos já foram checados por
      *    `ContratoDadosMinimosService` ANTES do dispatch deste job
@@ -154,7 +166,27 @@ class GerarContratoAssinaturaJob implements ShouldQueue
 
         $company = $contrato->company;
 
-        $resultadoVariaveis = $variaveisService->montar($contrato);
+        // Quick 260819-guy — ver item 3 do docblock acima: endereco é lido
+        // AO VIVO da empresa; dia_vencimento/data_primeira_parcela vêm do
+        // snapshot CONGELADO (nunca de `$contrato->servico`/`ContratoServico`
+        // ao vivo — o snapshot é sempre um array de UM item, D-06).
+        //
+        // Quick 260821-cq0 — bairro/cidade/estado/cep entram pela mesma
+        // porta de `endereco`: dado de EMPRESA, lido AO VIVO, mesma
+        // disciplina.
+        $servicoSnapshot = $contrato->servicos_snapshot[0] ?? [];
+
+        $complementos = [
+            'endereco'              => $company->endereco,
+            'bairro'                => $company->bairro,
+            'cidade'                => $company->cidade,
+            'estado'                => $company->estado,
+            'cep'                   => $company->cep,
+            'dia_vencimento'        => isset($servicoSnapshot['dia_vencimento']) ? (string) $servicoSnapshot['dia_vencimento'] : null,
+            'data_primeira_parcela' => $servicoSnapshot['data_primeira_parcela'] ?? null,
+        ];
+
+        $resultadoVariaveis = $variaveisService->montar($contrato, $complementos);
         $variaveis          = $resultadoVariaveis['variaveis'];
 
         Log::info('[GerarContratoAssinaturaJob] variáveis do modelo montadas', [
@@ -171,8 +203,19 @@ class GerarContratoAssinaturaJob implements ShouldQueue
             'remind_interval' => $contrato->lembreteDiasEfetivo(),
         ];
 
-        // §10.2 do empírico (MEDIDO): documento por modelo exige .docx.
-        $nomeArquivo = "contrato-{$contrato->id}.docx";
+        // Quick 260819-guy (Tarefa 6) — antes era sempre "contrato-{id}.docx",
+        // e é EXATAMENTE isso que a lista de Rascunhos do painel da Clicksign
+        // mostra: impossível saber de qual empresa/serviço se trata sem abrir
+        // o envelope. Slug conservador ASCII de razão social (fallback
+        // `company->name`) + nome do serviço. §10.2 do empírico (MEDIDO):
+        // documento por modelo exige .docx — a guarda em
+        // `ClicksignClient::anexarDocumentoPorModelo()` continua valendo,
+        // então o slug NUNCA pode comer a extensão.
+        $nomeArquivo = $this->nomeArquivoContrato(
+            (string) ($company->razao_social ?: $company->name),
+            (string) $servico->nome,
+            $contrato->id,
+        );
 
         $signatarioCliente = [
             'nome'  => (string) $company->nome_contato,
@@ -254,6 +297,40 @@ class GerarContratoAssinaturaJob implements ShouldQueue
         $contrato->status        = ContratoAssinatura::STATUS_ERRO;
         $contrato->erro_mensagem = $this->podarPii($e->getMessage());
         $contrato->save();
+    }
+
+    /**
+     * Quick 260819-guy (Tarefa 6) — nome de arquivo identificável na lista
+     * de Rascunhos do painel da Clicksign: `{slug(empresa-servico)}.docx`.
+     * Cai em `contrato-{id}.docx` (o nome antigo) se o slug sair vazio —
+     * ex.: razão social/serviço composto só de caracteres que o slug
+     * descarta — para nunca gerar `.docx` sozinho.
+     */
+    private function nomeArquivoContrato(string $empresa, string $servico, int $contratoIdFallback): string
+    {
+        $slug = $this->slugArquivo("{$empresa}-{$servico}");
+
+        return $slug === '' ? "contrato-{$contratoIdFallback}.docx" : "{$slug}.docx";
+    }
+
+    /**
+     * Slug conservador ASCII (Quick 260819-guy): só `[A-Za-z0-9_-]` sobra.
+     * `Str::ascii()` transliteral o acento SEM baixar caixa (diferente de
+     * `Str::slug()`, que força minúsculo) — "Gestão" vira "Gestao", não
+     * "gestao", porque o caso real medido no plano
+     * (`"Embralumi - Novo(a) Deal"` + `"Gestão"`) espera
+     * `Embralumi-Novo-a-Deal-Gestao.docx`. Espaço, parêntese e qualquer
+     * outra pontuação viram hífen; hífens repetidos colapsam; limite de
+     * tamanho evita nome de arquivo absurdamente longo.
+     */
+    private function slugArquivo(string $texto): string
+    {
+        $ascii = Str::ascii($texto);
+        $slug  = preg_replace('/[^A-Za-z0-9_-]+/', '-', $ascii) ?? '';
+        $slug  = preg_replace('/-{2,}/', '-', $slug) ?? '';
+        $slug  = trim($slug, '-');
+
+        return mb_substr($slug, 0, 150);
     }
 
     /**

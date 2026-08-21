@@ -66,6 +66,14 @@ class EmissaoCongeladaTest extends TestCase
             'cnpj'          => '11.222.333/0001-81',
             'email_cliente' => 'cliente@example.com',
             'nome_contato'  => 'Contato de Teste',
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'razao_social'  => 'Contato de Teste LTDA',
+            // Quick 260821-cq0 — endereço em 5 campos, todos obrigatórios.
+            'endereco'      => 'Rua de Teste, 123',
+            'bairro'        => 'Bairro de Teste',
+            'cidade'        => 'Cidade de Teste',
+            'estado'        => 'TS',
+            'cep'           => '00000-000',
         ], $overrides));
     }
 
@@ -87,6 +95,9 @@ class EmissaoCongeladaTest extends TestCase
             'valor_contratado' => 100,
             'data_contratacao' => now()->toDateString(),
             'ativo'            => true,
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'data_primeira_parcela' => now()->addMonth()->toDateString(),
+            'dia_vencimento'        => 10,
         ], $overrides)));
     }
 

@@ -53,6 +53,14 @@ class ConfiguracaoEcfBloqueiaTest extends TestCase
             'cnpj'          => '11.222.333/0001-81',
             'email_cliente' => 'cliente@example.com',
             'nome_contato'  => 'Contato de Teste',
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'razao_social'  => 'Contato de Teste LTDA',
+            // Quick 260821-cq0 — endereço em 5 campos, todos obrigatórios.
+            'endereco'      => 'Rua de Teste, 123',
+            'bairro'        => 'Bairro de Teste',
+            'cidade'        => 'Cidade de Teste',
+            'estado'        => 'TS',
+            'cep'           => '00000-000',
         ]);
 
         ContratoServico::create([
@@ -61,6 +69,9 @@ class ConfiguracaoEcfBloqueiaTest extends TestCase
             'data_contratacao' => '2026-08-01',
             'valor_contratado' => 3000.00,
             'ativo'            => true,
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'data_primeira_parcela' => '2026-09-05',
+            'dia_vencimento'        => 5,
         ]);
 
         return $company;
@@ -81,6 +92,61 @@ class ConfiguracaoEcfBloqueiaTest extends TestCase
         // 3 signatários × (nome + e-mail) = 6 problemas.
         $this->assertCount(6, $problemas);
         $this->assertStringContainsString('ECF', $problemas[0]);
+    }
+
+    /**
+     * UM signatário só é configuração VÁLIDA.
+     *
+     * Decisão da diretoria em 2026-08-20: pela ECF assina só o Thiago Messina;
+     * o sócio e a testemunha saíram, e o rodapé do `.docx` na Clicksign foi
+     * editado junto. Antes disso esta checagem exigia as TRÊS entradas, então
+     * apagar `CLICKSIGN_SIG2_*`/`SIG3_*` do `.env` não removia signatário —
+     * travava a emissão de contrato para TODAS as empresas com "Signatários da
+     * ECF não configurados". Era a armadilha desta mudança.
+     */
+    #[Test]
+    public function um_unico_signatario_e_configuracao_valida(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => [
+            ['nome' => 'Thiago Messina', 'email' => 'thiago@example.com', 'papel' => 'contratada'],
+        ]]);
+
+        $this->assertSame([], app(ContratoDadosMinimosService::class)->faltantesDaConfiguracaoEcf());
+    }
+
+    /** Zero signatários reprova — ninguém assinaria pela ECF. */
+    #[Test]
+    public function nenhum_signatario_reprova(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => []]);
+
+        $problemas = app(ContratoDadosMinimosService::class)->faltantesDaConfiguracaoEcf();
+
+        $this->assertCount(1, $problemas);
+        $this->assertStringContainsString('Nenhum signatário da ECF', $problemas[0]);
+    }
+
+    /**
+     * ⚠️ O que NÃO afrouxou junto com a mudança acima: entrada preenchida pela
+     * METADE continua reprovando. Meio preenchido é erro de digitação, não
+     * remoção intencional — e é exatamente o caso que o gate do plano 127-07
+     * pegou contra o sandbox real (o envelope e o documento nasciam, e só então
+     * a API recusava o signatário com `email - não pode ficar em branco`).
+     * Só o slot com os DOIS vazios significa "não usado", e esse o
+     * `config/services.php` descarta antes de chegar aqui.
+     */
+    #[Test]
+    public function signatario_preenchido_pela_metade_continua_reprovando(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => [
+            ['nome' => 'Thiago Messina', 'email' => 'thiago@example.com', 'papel' => 'contratada'],
+            ['nome' => 'Sobrou Do Env', 'email' => '', 'papel' => 'contratada'],
+        ]]);
+
+        $problemas = app(ContratoDadosMinimosService::class)->faltantesDaConfiguracaoEcf();
+
+        $this->assertCount(1, $problemas);
+        $this->assertStringContainsString('E-mail do signatário da ECF', $problemas[0]);
     }
 
     #[Test]

@@ -48,19 +48,38 @@ class ContratoPdfService
     /**
      * Monta o array de dados do contrato a partir do `servicos_snapshot`
      * congelado (D-04), formatado em pt-BR, com placeholder visível para os
-     * campos que ainda não existem no banco (dia de vencimento, forma de
-     * pagamento, endereço — D-05).
+     * campos que ainda não existem no banco (D-05).
      *
-     * @param  array{dia_vencimento?: string, forma_pagamento?: string, endereco?: string}  $complementos
-     *         Campos opcionais que a Fase 131 (ADM-01) passa a preencher.
-     *         Ausentes → caem no placeholder e entram em `campos_pendentes`.
+     * ⚠️ SUPERADO em 2026-08-19 (Quick 260819-guy): `dia_vencimento`,
+     * `data_primeira_parcela` e `razao_social` (com fallback) DEIXARAM de
+     * ser "campos que ainda não existem no banco" — as colunas nasceram nas
+     * migrations 2026_08_19_100000/100001 e `ContratoDadosMinimosService`
+     * já trava a geração até elas serem preenchidas (Tarefa 3 do mesmo
+     * quick). O placeholder aqui continua existindo como REDE DE SEGURANÇA
+     * (defesa em profundidade: um contrato gerado por um caminho que pule o
+     * gate de dados mínimos ainda cai em "A DEFINIR" visível, nunca em
+     * branco silencioso), não porque o dado seja opcional.
+     *
+     * @param  array{dia_vencimento?: string, forma_pagamento?: string, endereco?: string, bairro?: string, cidade?: string, estado?: string, cep?: string, data_primeira_parcela?: string}  $complementos
+     *         `endereco`/`bairro`/`cidade`/`estado`/`cep` vêm de
+     *         `Company::endereco`/`bairro`/`cidade`/`estado`/`cep` (lidos AO
+     *         VIVO pelo chamador — dado de EMPRESA, mesma disciplina de
+     *         cnpj/nome_contato/email_cliente abaixo, nunca do snapshot).
+     *         Quick 260821-cq0 — `endereco` aqui é só o LOGRADOURO (rua e
+     *         número); os outros 4 pedaços do endereço entram como campos
+     *         próprios, mesma disciplina de placeholder/pendência.
+     *         `dia_vencimento`/`data_primeira_parcela` vêm do
+     *         `servicos_snapshot` CONGELADO (são dado de SERVIÇO — D-04, o
+     *         chamador nunca deve lê-los da tabela `contratos_servico` ao
+     *         vivo). Ausentes → caem no placeholder e entram em
+     *         `campos_pendentes`.
      * @return array{
-     *     empresa: array{razao_social: string, cnpj: string, endereco: string},
+     *     empresa: array{razao_social: string, cnpj: string, endereco: string, bairro: string, cidade: string, estado: string, cep: string},
      *     contato: array{nome: string, email: string, telefone: string},
      *     servicos: array<int, array{servico: string, valor: float, valor_formatado: string, inicio: string, fim: string}>,
      *     totais: array{valor_mensal_formatado: string},
      *     vigencia: array{inicio: string, fim: string},
-     *     pagamento: array{dia_vencimento: string, forma_pagamento: string},
+     *     pagamento: array{dia_vencimento: string, forma_pagamento: string, data_primeira_parcela: string},
      *     campos_pendentes: array<int, string>,
      *     gerado_em: string
      * }
@@ -87,9 +106,23 @@ class ContratoPdfService
 
         $dados = [
             'empresa' => [
-                'razao_social' => $this->resolverOuPendente($company->name ?? null, 'razao_social', $camposPendentes),
+                // Quick 260819-guy — razão social de verdade
+                // (`companies.razao_social`), com fallback para o nome
+                // fantasia (`Company::name`) só quando a coluna nova está
+                // vazia. Fallback, não pendência: `ContratoDadosMinimosService`
+                // já trava a geração sem `razao_social` preenchido (Tarefa
+                // 3), então este `??` é rede de segurança, não o caminho
+                // esperado.
+                'razao_social' => $this->resolverOuPendente($company->razao_social ?? $company->name ?? null, 'razao_social', $camposPendentes),
                 'cnpj'         => $this->resolverOuPendente($company->cnpj ?? null, 'cnpj', $camposPendentes),
                 'endereco'     => $this->resolverOuPendente($complementos['endereco'] ?? null, 'endereco', $camposPendentes),
+                // Quick 260821-cq0 — 4 pedaços do endereço que voltaram a
+                // ser variáveis próprias do modelo `.docx`, mesma disciplina
+                // de `resolverOuPendente()` que `endereco` já usa.
+                'bairro'       => $this->resolverOuPendente($complementos['bairro'] ?? null, 'bairro', $camposPendentes),
+                'cidade'       => $this->resolverOuPendente($complementos['cidade'] ?? null, 'cidade', $camposPendentes),
+                'estado'       => $this->resolverOuPendente($complementos['estado'] ?? null, 'estado', $camposPendentes),
+                'cep'          => $this->resolverOuPendente($complementos['cep'] ?? null, 'cep', $camposPendentes),
             ],
             'contato' => [
                 'nome'     => $this->resolverOuPendente($company->nome_contato ?? null, 'contato_nome', $camposPendentes),
@@ -104,6 +137,10 @@ class ContratoPdfService
             'pagamento' => [
                 'dia_vencimento'  => $this->resolverOuPendente($complementos['dia_vencimento'] ?? null, 'dia_vencimento', $camposPendentes),
                 'forma_pagamento' => $this->resolverOuPendente($complementos['forma_pagamento'] ?? null, 'forma_pagamento', $camposPendentes),
+                // Quick 260819-guy — data única (não é "dia do mês" como
+                // dia_vencimento), formatada em pt-BR igual às demais datas
+                // do documento (mesma disciplina de `formatarData()`).
+                'data_primeira_parcela' => $this->resolverDataOuPendente($complementos['data_primeira_parcela'] ?? null, 'data_primeira_parcela', $camposPendentes),
             ],
             'gerado_em' => now()->format('d/m/Y H:i'),
         ];
@@ -191,6 +228,24 @@ class ContratoPdfService
     {
         if (is_string($valor) && $valor !== '') {
             return $valor;
+        }
+
+        $camposPendentes[] = $chave;
+
+        return self::PLACEHOLDER;
+    }
+
+    /**
+     * Quick 260819-guy — mesma lógica de `resolverOuPendente()`, mas para um
+     * complemento que é DATA (não texto livre): quando presente, formata em
+     * pt-BR via `formatarData()` (mesma função usada pelos demais campos de
+     * data do documento); ausente/vazio cai no placeholder e entra em
+     * `campos_pendentes`, igual a qualquer outro campo pendente.
+     */
+    private function resolverDataOuPendente(?string $data, string $chave, array &$camposPendentes): string
+    {
+        if (is_string($data) && $data !== '') {
+            return $this->formatarData($data);
         }
 
         $camposPendentes[] = $chave;

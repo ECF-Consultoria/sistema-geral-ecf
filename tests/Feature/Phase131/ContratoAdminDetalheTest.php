@@ -97,6 +97,14 @@ class ContratoAdminDetalheTest extends TestCase
             'cnpj'          => '11.222.333/0001-81',
             'email_cliente' => 'cliente@example.com',
             'nome_contato'  => 'Contato de Teste',
+            // Quick 260819-guy — obrigatórios desde 2026-08-19.
+            'razao_social'  => 'Contato de Teste LTDA',
+            // Quick 260821-cq0 — endereço em 5 campos, todos obrigatórios.
+            'endereco'      => 'Rua de Teste, 123',
+            'bairro'        => 'Bairro de Teste',
+            'cidade'        => 'Cidade de Teste',
+            'estado'        => 'TS',
+            'cep'           => '00000-000',
         ], $overrides));
     }
 
@@ -105,11 +113,18 @@ class ContratoAdminDetalheTest extends TestCase
      * `ContratoServicoGatilhoObserver` como efeito colateral do SETUP, antes
      * da chamada explícita que cada teste está medindo — mesmo cuidado do
      * `ContratoClicksignServiceTest` da Fase 127.
+     *
+     * Quick 260819-guy — `data_primeira_parcela`/`dia_vencimento` no default
+     * também: quem chama `vincularServico()` esperando uma empresa "pronta"
+     * (via `empresaCompleta()`) só fica de fato pronta com os 4 campos
+     * novos completos nos dois lados (empresa + serviço).
      */
     private function vincularServico(Company $c, Servico $s, array $overrides = []): ContratoServico
     {
         return ContratoServico::withoutEvents(fn () => ContratoServico::create(array_merge([
             'company_id'       => $c->id,
+            'data_primeira_parcela' => now()->addMonth()->toDateString(),
+            'dia_vencimento'        => 10,
             'servico_id'       => $s->id,
             'valor_contratado' => 100,
             'data_contratacao' => now()->toDateString(),
@@ -217,6 +232,31 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertNull($empresa->fresh()->email_colaborador);
     }
 
+    // ─── Quick 260819-guy — PATCH com CNPJ de dígito verificador trocado é recusado ───
+
+    public function test_atualizar_cadastro_com_cnpj_de_digito_trocado_e_recusado_e_nao_grava(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaIncompleta(['name' => 'Empresa CNPJ Digito Trocado']);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            // Mesmo CNPJ válido do plano ('26.754.383/0001-87'), com o
+            // último dígito trocado.
+            'cnpj' => '26.754.383/0001-88',
+        ]);
+
+        $response->assertSessionHasErrors('cnpj');
+        $this->assertNull($empresa->fresh()->cnpj);
+
+        // A mesma empresa, sem o cnpj corrigido, também aparece como
+        // pendência ao consultar a tela de detalhe — prova que o save() e
+        // o faltantes() concordam sobre o mesmo dado.
+        $response2 = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+        $props = $response2->viewData('page')['props'];
+        $campos = collect($props['faltantes'])->pluck('campo')->all();
+        $this->assertContains('cnpj', $campos);
+    }
+
     // ─── Caso 5 — PATCH grava CNPJ/e-mails/nome_contato/datas — RECONSULTA ao banco ───
 
     public function test_atualizar_cadastro_grava_todos_os_campos_conferido_por_reconsulta_ao_banco(): void
@@ -227,7 +267,7 @@ class ContratoAdminDetalheTest extends TestCase
         $contratoServico = $this->vincularServico($empresa, $servico);
 
         $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
-            'cnpj'              => '22.333.444/0001-55',
+            'cnpj'              => '22.333.444/0001-81',
             'email_cliente'     => 'novo-cliente@example.com',
             'nome_contato'      => 'Fulano Atualizado',
             'contratos_servico' => [
@@ -244,13 +284,81 @@ class ContratoAdminDetalheTest extends TestCase
 
         // Reconsulta ao banco — nunca confia na mensagem de sucesso.
         $empresaFresca = $empresa->fresh();
-        $this->assertSame('22.333.444/0001-55', $empresaFresca->cnpj);
+        $this->assertSame('22.333.444/0001-81', $empresaFresca->cnpj);
         $this->assertSame('novo-cliente@example.com', $empresaFresca->email_cliente);
         $this->assertSame('Fulano Atualizado', $empresaFresca->nome_contato);
 
         $contratoServicoFresco = $contratoServico->fresh();
         $this->assertSame('2026-01-10', $contratoServicoFresco->data_contratacao->format('Y-m-d'));
         $this->assertSame('2027-01-10', $contratoServicoFresco->data_vencimento->format('Y-m-d'));
+    }
+
+    // ─── Quick 260819-guy — PATCH grava razao_social/endereco/data_primeira_parcela/dia_vencimento ───
+
+    public function test_atualizar_cadastro_grava_razao_social_endereco_e_datas_de_pagamento_por_servico(): void
+    {
+        $admin           = $this->admin();
+        $empresa         = $this->empresaIncompleta(['name' => 'Empresa Para Dados De Pagamento']);
+        $servico         = $this->servicoComContrato();
+        $contratoServico = $this->vincularServico($empresa, $servico);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            'razao_social'      => 'Empresa Para Dados De Pagamento LTDA',
+            'endereco'          => 'Rua das Empresas, 100 — Centro',
+            'contratos_servico' => [
+                [
+                    // atualizarCadastro() sobrescreve TODOS os campos do
+                    // item, sempre — reenvia data_contratacao já existente
+                    // para não nulificá-la (NOT NULL na coluna).
+                    'id'                     => $contratoServico->id,
+                    'data_contratacao'       => $contratoServico->data_contratacao->format('Y-m-d'),
+                    'data_primeira_parcela'  => '2026-09-05',
+                    'dia_vencimento'         => 10,
+                ],
+            ],
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        // Reconsulta ao banco — nunca confia na mensagem de sucesso.
+        $empresaFresca = $empresa->fresh();
+        $this->assertSame('Empresa Para Dados De Pagamento LTDA', $empresaFresca->razao_social);
+        $this->assertSame('Rua das Empresas, 100 — Centro', $empresaFresca->endereco);
+
+        $contratoServicoFresco = $contratoServico->fresh();
+        $this->assertSame('2026-09-05', $contratoServicoFresco->data_primeira_parcela->format('Y-m-d'));
+        $this->assertSame(10, $contratoServicoFresco->dia_vencimento);
+    }
+
+    // ─── Quick 260819-guy — show() devolve os 4 campos novos e eles sobrevivem a um recarregamento ───
+
+    public function test_show_devolve_razao_social_endereco_e_datas_de_pagamento_apos_recarregar(): void
+    {
+        $admin           = $this->admin();
+        $empresa         = $this->empresaCompleta([
+            'name'         => 'Empresa Com Dados De Pagamento',
+            'razao_social' => 'Empresa Com Dados De Pagamento LTDA',
+            'endereco'     => 'Av. Principal, 500',
+        ]);
+        $servico         = $this->servicoComContrato();
+        $contratoServico = $this->vincularServico($empresa, $servico, [
+            'data_primeira_parcela' => '2026-09-05',
+            'dia_vencimento'        => 15,
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $this->assertSame('Empresa Com Dados De Pagamento LTDA', $props['company']['razao_social']);
+        $this->assertSame('Av. Principal, 500', $props['company']['endereco']);
+
+        $itemServico = collect($props['contratos_servico'])->firstWhere('id', $contratoServico->id);
+        $this->assertNotNull($itemServico);
+        $this->assertSame('2026-09-05', $itemServico['data_primeira_parcela']);
+        $this->assertSame(15, $itemServico['dia_vencimento']);
     }
 
     // ─── Caso 6 — IDOR: contratos_servico[0][id] de OUTRA empresa devolve 422 e não grava nada ───
@@ -266,7 +374,10 @@ class ContratoAdminDetalheTest extends TestCase
         $contratoServicoDeOutraEmpresa  = $this->vincularServico($empresaOutra, $servico);
 
         $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresaAlvo), [
-            'cnpj'              => '11.111.111/0001-11',
+            // Quick 260819-guy — precisa ser um CNPJ com dígito verificador
+            // VÁLIDO: senão a validação (CnpjValido) barra antes do 422 de
+            // IDOR que este teste está medindo.
+            'cnpj'              => '11.111.111/0001-91',
             'contratos_servico' => [
                 ['id' => $contratoServicoDeOutraEmpresa->id, 'data_contratacao' => '2026-02-01'],
             ],
@@ -301,9 +412,15 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertNull($empresa->fresh()->email_colaborador);
     }
 
-    // ─── Caso 8 — POST gerar para empresa incompleta: 422 e ZERO ContratoAssinatura ───
+    // ─── Caso 8 — POST gerar para empresa incompleta: flash de erro (não mais 422 cru) e ZERO ContratoAssinatura ───
+    //
+    // Quick 260819-guy (Tarefa 7 item 2) — antes era `abort(422, ...)`, que
+    // renderizava a página branca do Symfony, fora da aplicação. Agora é
+    // `back()->with('error', ...)`, igual ao ramo de emissão congelada e ao
+    // do Caso 11 abaixo — a checagem no servidor continua a mesma, só a
+    // apresentação mudou.
 
-    public function test_gerar_contrato_para_empresa_incompleta_devolve_422_e_nao_cria_nada(): void
+    public function test_gerar_contrato_para_empresa_incompleta_devolve_flash_de_erro_e_nao_cria_nada(): void
     {
         $admin   = $this->admin();
         $empresa = $this->empresaIncompleta(['name' => 'Empresa Incompleta Gerar']);
@@ -312,8 +429,10 @@ class ContratoAdminDetalheTest extends TestCase
 
         $response = $this->actingAs($admin)->post(route('admin.contratos.gerar', $empresa));
 
-        $response->assertStatus(422);
-        // Reconsulta ao banco — nunca confia só no status HTTP.
+        $response->assertRedirect();
+        $response->assertSessionHas('error');
+        $response->assertSessionMissing('success');
+        // Reconsulta ao banco — nunca confia só no flash da tela.
         $this->assertSame(0, ContratoAssinatura::where('company_id', $empresa->id)->count());
     }
 
@@ -416,5 +535,101 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertArrayNotHasKey('email', $signatarioProp);
         $this->assertArrayNotHasKey('cpf', $signatarioProp);
         $this->assertArrayNotHasKey('clicksign_signer_key', $signatarioProp);
+    }
+
+    // ─── Quick 260819-guy — Tarefa 7 item 1: erro_mensagem exposta e "já tentou antes" derivado ───
+
+    public function test_contrato_em_erro_expoe_erro_mensagem_e_ja_tentou_antes_falso_na_primeira_tentativa(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Primeira Tentativa Com Erro']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+
+        $contrato = ContratoAssinatura::factory()->create([
+            'company_id'    => $empresa->id,
+            'servico_id'    => $servico->id,
+            'status'        => ContratoAssinatura::STATUS_ERRO,
+            'erro_mensagem' => '[Clicksign] name não está em um formato válido',
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+        $response->assertOk();
+
+        $contratoProp = collect($response->viewData('page')['props']['contratos'])->firstWhere('id', $contrato->id);
+        $this->assertNotNull($contratoProp);
+        $this->assertSame('[Clicksign] name não está em um formato válido', $contratoProp['erro_mensagem']);
+        $this->assertFalse($contratoProp['ja_tentou_antes'], 'é a única linha deste serviço — é a primeira tentativa.');
+    }
+
+    public function test_segunda_linha_de_erro_do_mesmo_servico_vem_com_ja_tentou_antes_verdadeiro(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Segunda Tentativa Com Erro']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+
+        // Cada nova tentativa nasce como uma linha NOVA (a antiga, em erro,
+        // já liberou o slot — GerarContratoAssinaturaJob::failed()).
+        $primeiraTentativa = ContratoAssinatura::factory()->create([
+            'company_id'    => $empresa->id,
+            'servico_id'    => $servico->id,
+            'status'        => ContratoAssinatura::STATUS_ERRO,
+            'erro_mensagem' => 'Primeira falha',
+        ]);
+
+        $segundaTentativa = ContratoAssinatura::factory()->create([
+            'company_id'    => $empresa->id,
+            'servico_id'    => $servico->id,
+            'status'        => ContratoAssinatura::STATUS_ERRO,
+            'erro_mensagem' => 'Segunda falha',
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+        $response->assertOk();
+
+        $props = collect($response->viewData('page')['props']['contratos']);
+
+        $this->assertFalse($props->firstWhere('id', $primeiraTentativa->id)['ja_tentou_antes']);
+        $this->assertTrue($props->firstWhere('id', $segundaTentativa->id)['ja_tentou_antes']);
+    }
+
+    // ─── Quick 260819-guy — Tarefa 7 item 4: nome de uma palavra só é recusado no save ───
+
+    public function test_atualizar_cadastro_com_nome_contato_de_uma_palavra_e_recusado_e_nao_grava(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaIncompleta(['name' => 'Empresa Nome Sem Sobrenome']);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            'nome_contato' => 'teste',
+        ]);
+
+        $response->assertSessionHasErrors('nome_contato');
+        $this->assertNull($empresa->fresh()->nome_contato);
+    }
+
+    public function test_atualizar_cadastro_com_nome_completo_e_aceito(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaIncompleta(['name' => 'Empresa Nome Completo']);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            'nome_contato' => 'Maria Silva',
+        ]);
+
+        $response->assertSessionDoesntHaveErrors('nome_contato');
+        $this->assertSame('Maria Silva', $empresa->fresh()->nome_contato);
+    }
+
+    public function test_nome_contato_de_uma_palavra_so_entra_em_faltantes_como_motivo_formato(): void
+    {
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Nome Formato Ruim', 'nome_contato' => 'teste']);
+
+        $faltantes = app(ContratoDadosMinimosService::class)->faltantes($empresa);
+        $item = collect($faltantes)->firstWhere('campo', 'nome_contato');
+
+        $this->assertNotNull($item, 'nome_contato de uma palavra só deveria aparecer em faltantes().');
+        $this->assertSame('formato', $item['motivo']);
     }
 }

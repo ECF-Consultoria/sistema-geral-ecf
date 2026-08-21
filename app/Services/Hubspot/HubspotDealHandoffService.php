@@ -4,6 +4,7 @@ namespace App\Services\Hubspot;
 
 use App\Models\HubspotLineItemMapping;
 use App\Models\Servico;
+use Carbon\Carbon;
 
 /**
  * HubspotDealHandoffService — extrai do `HubspotWebhookController` a
@@ -60,6 +61,18 @@ class HubspotDealHandoffService
         $warnings    = [];
         $confidences = [];
 
+        // ── Quick 260820-jc8 (Tarefa 2) — data da 1ª parcela + dia de vencimento ──
+        // `data_do_1_pagamento` é property do DEAL e vale pra TODOS os serviços
+        // do negócio (não existe uma data por line item) — resolvida UMA vez
+        // aqui e aplicada a CADA contrato via montarContrato(). Vazia => os
+        // dois campos ficam null e caem nas pendências que a tela do
+        // Administrativo já mostra (ContratoDadosMinimosService) — sem default
+        // inventado.
+        $dataPrimeiraParcela = $this->parseDataHubspot(
+            $dprops[$propsDeal['data_do_1_pagamento'] ?? 'data_do_1_pagamento'] ?? null
+        );
+        $diaVencimento = $dataPrimeiraParcela?->day;
+
         if (!empty($lineItems)) {
             foreach ($lineItems as $item) {
                 $nome = (string) ($item['name'] ?? '');
@@ -83,7 +96,7 @@ class HubspotDealHandoffService
                 $result  = $this->resolver->resolve($servico, $item, $dprops);
 
                 $confidences[] = $result['confidence'];
-                $contracts[]   = $this->montarContrato($servico, $item, $result);
+                $contracts[]   = $this->montarContrato($servico, $item, $result, $dataPrimeiraParcela, $diaVencimento);
             }
         } else {
             // ── Fluxo legado (sem line items) — deal.amount + Servico::where nome ──
@@ -95,7 +108,7 @@ class HubspotDealHandoffService
             if ($servico) {
                 $result = $this->resolver->resolve($servico, [], $dprops);
                 $confidences[] = $result['confidence'];
-                $contracts[]   = $this->montarContrato($servico, [], $result);
+                $contracts[]   = $this->montarContrato($servico, [], $result, $dataPrimeiraParcela, $diaVencimento);
             } elseif ($servicoNome) {
                 // Nome presente no deal mas nao bate com o catalogo — warning
                 // (gravacao em notes fica a cargo do controller, como hoje).
@@ -139,6 +152,27 @@ class HubspotDealHandoffService
             ];
         }
 
+        // ── Quick 260820-jc8 (Tarefa 1) — dados de CONTRATO que vêm do DEAL
+        // (razão social/CNPJ/endereço), distintos de company_data (que vem da
+        // HubSpot COMPANY). Sempre calculado — o deal sempre existe aqui.
+        //
+        // Quick 260821-cq0 — voltou a devolver as 5 partes do endereço
+        // SEPARADAS (não mais uma string composta via comporEndereco(),
+        // removido): o contrato de Gestão do jurídico precisa de
+        // `{{endereco}}`, `{{bairro}}`, `{{cidade}}`, `{{estado}}` e
+        // `{{cep}}` como variáveis distintas. `endereco` aqui é o
+        // LOGRADOURO cru (rua e número), mesma property `logradouro` de
+        // antes — só parou de ser concatenado com o resto.
+        $dealContractData = [
+            'razao_social' => $dprops[$propsDeal['razao_social'] ?? 'razao_social'] ?? null,
+            'cnpj'         => $dprops[$propsDeal['cnpj_da_empresa'] ?? 'cnpj_da_empresa'] ?? null,
+            'endereco'     => $dprops[$propsDeal['logradouro'] ?? 'logradouro'] ?? null,
+            'bairro'       => $dprops[$propsDeal['bairro'] ?? 'bairro'] ?? null,
+            'cidade'       => $dprops[$propsDeal['cidade'] ?? 'cidade'] ?? null,
+            'estado'       => $dprops[$propsDeal['estado'] ?? 'estado'] ?? null,
+            'cep'          => $dprops[$propsDeal['cep'] ?? 'cep'] ?? null,
+        ];
+
         return new HubspotHandoffData(
             deal_data: $dprops,
             line_items: $lineItems,
@@ -147,16 +181,71 @@ class HubspotDealHandoffService
             confidence: $confidence,
             company_data: $companyData,
             contact_data: $contactData,
+            deal_contract_data: $dealContractData,
         );
+    }
+
+    /**
+     * Quick 260820-jc8 (Tarefa 2) — converte a property `date` do deal
+     * `data_do_1_pagamento` para Carbon.
+     *
+     * ⚠️ **MEDIDO contra a conta real da ECF em 2026-08-20**, lendo o deal da
+     * Maderatto Móveis (`64133858455`) pela própria API:
+     *
+     *   data_do_1_pagamento  (tipo `date`)      => '2026-08-24'
+     *   closedate            (tipo `datetime`)  => '2026-08-31T11:49:23.585Z'
+     *
+     * Ou seja: property `date` chega como **string 'Y-m-d'**, e `datetime`
+     * como **ISO 8601** — NÃO como epoch em milissegundos. A primeira versão
+     * deste método afirmava o contrário (epoch ms como formato principal e
+     * 'Y-m-d' como "fallback para o futuro"); a medição inverteu isso, e o
+     * registro fica aqui para ninguém reintroduzir a suposição errada.
+     *
+     * O ramo numérico continua existindo porque é barato e cobre o caso de o
+     * HubSpot passar a mandar epoch ms — mas é o ramo EXCEPCIONAL, não o real.
+     *
+     * ⚠️ O timezone UTC explícito no parse não é decoração: o app roda em
+     * `America/Sao_Paulo` (UTC-3). Uma data que chegue com componente de hora
+     * em meia-noite UTC viraria 21h do dia ANTERIOR se parseada no fuso local
+     * — e **dia errado aqui vira dia de vencimento errado num contrato
+     * assinado**, que é caro de desfazer.
+     */
+    private function parseDataHubspot(mixed $valor): ?Carbon
+    {
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+
+        // Ramo EXCEPCIONAL: epoch em milissegundos. Não é o que a conta da ECF
+        // devolve hoje (ver docblock), mas custa uma linha cobrir.
+        if (is_numeric($valor)) {
+            return Carbon::createFromTimestampMs((int) $valor, 'UTC');
+        }
+
+        // Ramo REAL, medido: 'Y-m-d' (property `date`) e ISO 8601 (`datetime`).
+        try {
+            return Carbon::parse((string) $valor, 'UTC');
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
      * Monta o array pronto para virar um ContratoServico a partir do
      * resultado de HubspotValueResolver::resolve() + dados brutos do line item
      * (ou [] no fluxo legado — hubspot_line_item_id/product_id/currency ficam null).
+     *
+     * Quick 260820-jc8 (Tarefa 2) — $dataPrimeiraParcela/$diaVencimento
+     * chegam JÁ resolvidos do build() (property do DEAL, uma vez só) e são
+     * aplicados IDÊNTICOS a cada contrato deste deal.
      */
-    private function montarContrato(Servico $servico, array $lineItem, array $result): array
-    {
+    private function montarContrato(
+        Servico $servico,
+        array $lineItem,
+        array $result,
+        ?Carbon $dataPrimeiraParcela = null,
+        ?int $diaVencimento = null,
+    ): array {
         return [
             'servico_id'                       => $servico->id,
             'servico_nome'                      => $servico->nome,
@@ -175,6 +264,10 @@ class HubspotDealHandoffService
                 'line_item'       => $lineItem,
                 'resolver_result' => $result,
             ],
+            // Quick 260820-jc8 (Tarefa 2) — property do DEAL, mesma data em
+            // TODOS os contratos deste deal (não existe uma data por serviço).
+            'data_primeira_parcela'             => $dataPrimeiraParcela?->toDateString(),
+            'dia_vencimento'                    => $diaVencimento,
         ];
     }
 

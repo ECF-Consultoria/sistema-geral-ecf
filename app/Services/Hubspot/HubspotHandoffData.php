@@ -36,6 +36,12 @@ namespace App\Services\Hubspot;
  * - hubspot_snapshot (array): { 'line_item' => array normalizado do item
  *   (ou [] no fluxo legado), 'resolver_result' => retorno bruto de
  *   HubspotValueResolver::resolve() } — rastro completo para auditoria/replay.
+ * - data_primeira_parcela (string|null): 'Y-m-d' derivado da property `date`
+ *   do DEAL `data_do_1_pagamento` (epoch ms — ver parseDataHubspot()); a
+ *   MESMA data em TODOS os contratos do mesmo deal (property é do deal, não
+ *   por line item). null quando a property vem vazia.
+ * - dia_vencimento (int|null): dia do mês (1-31) de data_primeira_parcela —
+ *   DERIVADO, não vem de property própria. null junto com data_primeira_parcela.
  */
 class HubspotHandoffData
 {
@@ -50,6 +56,15 @@ class HubspotHandoffData
      * @param  array|null $contact_data       Fase 113 (HUB-CONTATO-01) — ['principal' => contato escolhido (chaves lógicas)
      *                                        ou null, 'todos' => lista completa de contatos normalizados]; null quando build()
      *                                        não recebeu contatos.
+     * @param  array|null $deal_contract_data Quick 260820-jc8 (Tarefa 1) — dados de CONTRATO que vêm do DEAL (não da
+     *                                        company/contato HubSpot). Quick 260821-cq0 — voltou a devolver o
+     *                                        endereço em PARTES SEPARADAS (não mais uma string composta):
+     *                                        ['razao_social' => string|null, 'cnpj' => string|null, 'endereco' =>
+     *                                        string|null (LOGRADOURO cru, rua e número), 'bairro' => string|null,
+     *                                        'cidade' => string|null, 'estado' => string|null, 'cep' => string|null].
+     *                                        Sempre preenchido (o deal sempre existe em build()) — cada valor
+     *                                        individual pode vir null quando a property correspondente está vazia
+     *                                        na conta HubSpot.
      */
     public function __construct(
         public array $deal_data = [],
@@ -59,6 +74,7 @@ class HubspotHandoffData
         public string $confidence = 'high',
         public ?array $company_data = null,
         public ?array $contact_data = null,
+        public ?array $deal_contract_data = null,
     ) {
     }
 }

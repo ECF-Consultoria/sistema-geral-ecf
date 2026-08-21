@@ -810,7 +810,14 @@ function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, set
         const list = surveys.data ?? [];
         const q = buscaEmpresa.trim().toLowerCase();
         let f = activeStatus === 'todos' ? list : list.filter(s => s.status === activeStatus);
-        if (q) f = f.filter(s => (s.company_name || '').toLowerCase().includes(q));
+        // 2026-08-20 · a linha de GRUPO tem o nome do grupo em company_name;
+        // quem digita o nome de UMA das empresas cobertas (o caso real: a
+        // pessoa procura "Chikweb", que só existe dentro do grupo MaxiGold)
+        // precisa achar a linha do mesmo jeito.
+        if (q) f = f.filter(s => (
+            (s.company_name || '').toLowerCase().includes(q)
+            || (s.empresas_nomes ?? []).some(n => (n || '').toLowerCase().includes(q))
+        ));
         // Sort client-side por company/date
         const dir = sort.dir === 'asc' ? 1 : -1;
         return [...f].sort((a, b) => {
@@ -837,7 +844,13 @@ function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, set
     const [selected, setSelected] = useState(new Set());
     useEffect(() => { setSelected(new Set()); }, [activeStatus, surveys.data]);
 
-    const visibleIds = useMemo(() => filtrados.map(s => s.id), [filtrados]);
+    // 2026-08-20 · a exclusão em massa fala com `nps_surveys` (ids numéricos).
+    // Linha de grupo (`tipo === 'grupo'`, id textual "grupo-N") nunca entra na
+    // seleção — a tela também não renderiza checkbox nem lixeira para ela.
+    const visibleIds = useMemo(
+        () => filtrados.filter(s => s.tipo !== 'grupo').map(s => s.id),
+        [filtrados]
+    );
     const allSelected = visibleIds.length > 0 && visibleIds.every(id => selected.has(id));
 
     const toggleOne = (id) => setSelected(prev => {
@@ -1089,6 +1102,13 @@ function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, set
                     : s.status === 'completed' ? 'no prazo' : 'expirado';
                 const statusCol = STATUS_COLOR[s.status] ?? '#888';
 
+                // 2026-08-20 · linha de LINK DE GRUPO: 1 link, N empresas. Vem
+                // de `nps_group_surveys` (o espelho por empresa só nasce na
+                // resposta), então não tem empresa única, nota, respondente
+                // nem id de survey para excluir.
+                const ehGrupo = s.tipo === 'grupo';
+                const nomesGrupo = ehGrupo ? (s.empresas_nomes ?? []).join(', ') : '';
+
                 const rowSelected = selected.has(s.id);
 
                 return (
@@ -1099,26 +1119,38 @@ function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, set
                         alignItems: 'center',
                         background: rowSelected ? 'rgba(244,67,107,0.06)' : 'transparent',
                     }}>
-                        {isAdmin && (
-                            <input
-                                type="checkbox"
-                                checked={rowSelected}
-                                onChange={() => toggleOne(s.id)}
-                                style={checkboxStyle}
-                            />
+                        {isAdmin && (ehGrupo
+                            ? <span />
+                            : (
+                                <input
+                                    type="checkbox"
+                                    checked={rowSelected}
+                                    onChange={() => toggleOne(s.id)}
+                                    style={checkboxStyle}
+                                />
+                            )
                         )}
                         <div style={{ minWidth: 0 }}>
-                            <div style={{
+                            <div title={ehGrupo ? nomesGrupo : undefined} style={{
                                 color: '#eef', fontSize: 13.5, fontWeight: 600,
                                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                             }}>{s.company_name}</div>
-                            <span style={{
-                                display: 'inline-flex', alignItems: 'center', height: 18, padding: '0 7px',
-                                marginTop: 4, borderRadius: 5,
-                                background: s.auto_generated ? 'rgba(255,255,255,0.06)' : 'rgba(255,184,32,0.12)',
-                                color: s.auto_generated ? 'rgba(255,255,255,0.6)' : '#ffb020',
-                                fontSize: 9.5, fontWeight: 700, letterSpacing: '0.04em',
-                            }}>{s.auto_generated ? 'MENSAL' : 'MANUAL'}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4, flexWrap: 'wrap' }}>
+                                <span style={{
+                                    display: 'inline-flex', alignItems: 'center', height: 18, padding: '0 7px',
+                                    borderRadius: 5,
+                                    background: ehGrupo ? 'rgba(91,141,239,0.16)' : (s.auto_generated ? 'rgba(255,255,255,0.06)' : 'rgba(255,184,32,0.12)'),
+                                    color: ehGrupo ? '#9cc0ff' : (s.auto_generated ? 'rgba(255,255,255,0.6)' : '#ffb020'),
+                                    fontSize: 9.5, fontWeight: 700, letterSpacing: '0.04em',
+                                }}>{ehGrupo ? 'GRUPO' : (s.auto_generated ? 'MENSAL' : 'MANUAL')}</span>
+                                {ehGrupo && (
+                                    <span title={nomesGrupo} style={{
+                                        display: 'inline-flex', alignItems: 'center', height: 18, padding: '0 7px',
+                                        borderRadius: 5, background: 'rgba(255,255,255,0.06)',
+                                        color: 'rgba(255,255,255,0.6)', fontSize: 9.5, fontWeight: 700,
+                                    }}>{s.empresas_count} EMPRESAS</span>
+                                )}
+                            </div>
                         </div>
 
                         {/* 2026-07-20 · Modelo (template) do NPS — distingue
@@ -1253,8 +1285,11 @@ function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, set
                                 </button>
                             )}
                             {/* Excluir a pesquisa inteira — admin, qualquer status
-                                (inclusive pendente). Cascade no banco limpa respostas. */}
-                            {isAdmin && (
+                                (inclusive pendente). Cascade no banco limpa respostas.
+                                2026-08-20 · nunca em linha de GRUPO: a rota
+                                apaga `nps_surveys` por id, e apagar o link de
+                                grupo é outra operação (não existe hoje). */}
+                            {isAdmin && !ehGrupo && (
                                 <button
                                     type="button"
                                     onClick={() => deleteOne(s)}
@@ -2330,6 +2365,27 @@ export default function NpsIndex({
                                 <p><span className="text-white/40">Vale até:</span> {linkPendente.expires_at ?? 'Sem prazo'}</p>
                                 <p><span className="text-white/40">Tipo de link:</span> {linkPendente.de_grupo ? 'Link de grupo (vale para todas as empresas do grupo)' : 'Link só desta empresa'}</p>
                             </div>
+                            {/* 2026-08-20 · quais empresas ESTE link cobre. Só
+                                a linha vinda de `nps_group_surveys` traz a
+                                lista (a cobertura é recalculada no servidor);
+                                o espelho já respondido continua sendo de uma
+                                empresa só. */}
+                            {linkPendente.tipo === 'grupo' && (
+                                <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
+                                    <p className="text-xs text-white/40 mb-1.5">
+                                        Empresas que recebem a nota deste link ({linkPendente.empresas_count})
+                                    </p>
+                                    <ul className="text-sm text-white/75 space-y-0.5">
+                                        {(linkPendente.empresas_nomes ?? []).map((nome) => (
+                                            <li key={nome}>{nome}</li>
+                                        ))}
+                                    </ul>
+                                    <p className="text-xs text-white/40 mt-2">
+                                        Uma resposta só vale para todas elas. Empresa do grupo que não está
+                                        nesta lista continua em Faltantes e precisa de link próprio.
+                                    </p>
+                                </div>
+                            )}
                         </>
                     )}
                     <DialogFooter>

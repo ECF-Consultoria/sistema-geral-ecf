@@ -243,6 +243,38 @@ class ContratoAssinatura extends Model
     }
 
     /**
+     * Quick 260820-my3 (Tarefa 2): `true` quando a mesma condição de
+     * `estaPreparando()` (rascunho + envelope vazio) PERSISTE passada a
+     * janela — a montagem não terminou dentro do tempo esperado e não sabemos
+     * por quê, sem virar `erro` no banco.
+     *
+     * Incidente que originou (2026-08-20, produção): o contrato da Maderatto
+     * (`ContratoAssinatura` id=6, empresa 429) ficou mais de uma hora em
+     * `rascunho` com `clicksign_envelope_id` NULL — o job estava preso atrás
+     * de outros jobs na fila (ver Tarefa 1 deste mesmo quick). Passados os 5
+     * minutos de `JANELA_PREPARANDO_MINUTOS`, `estaPreparando()` já tinha
+     * voltado a `false`, e a tela caía de volta no rótulo de `rascunho`
+     * ("Falta enviar"), que descreve o caso ERRADO (envelope existe, falta
+     * só enviar pelo painel) — o usuário foi procurar na Clicksign e não
+     * achou nada, porque nada tinha sido criado.
+     *
+     * Condição idêntica a `estaPreparando()`, exceto no lado OPOSTO da
+     * mesma janela de tempo (`lte` em vez de `gt`) — as duas são
+     * MUTUAMENTE EXCLUSIVAS por construção: nunca `true` ao mesmo tempo, e
+     * juntas cobrem os dois lados da janela para todo contrato `rascunho`
+     * com envelope vazio. Um `rascunho` com envelope PREENCHIDO nunca
+     * ativa nenhuma das duas, qualquer que seja a idade — esse é o caso
+     * legítimo de "falta enviar pelo painel" (D-02).
+     */
+    public function estaMontagemTravada(): bool
+    {
+        return $this->status === self::STATUS_RASCUNHO
+            && blank($this->clicksign_envelope_id)
+            && $this->created_at !== null
+            && $this->created_at->lte(now()->subMinutes(self::JANELA_PREPARANDO_MINUTOS));
+    }
+
+    /**
      * Guard de código da D-01: devolve QUALQUER contrato em andamento da
      * empresa (de qualquer serviço), ou `null` se não houver nenhum. Uso
      * histórico da suíte da Fase 125; quem for CRIAR contrato deve preferir

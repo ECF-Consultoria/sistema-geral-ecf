@@ -524,18 +524,37 @@ class HubspotWebhookController extends Controller
 
         return DB::transaction(function () use ($deal, $dprops, $cprops, $propsDeal, $propsCompany, $lineItems, $evento, $contatoPrincipal, $contatos, $companyId, $hubCompany, $notes) {
             // ── Phase 35 D-04 / Fase 113 — fallback contato p/ email/telefone ──
-            // Prioridade: Company > Contato PRINCIPAL (Fase 113 plano 01 escolhe
+            // Prioridade do E-MAIL desde 2026-08-20: property `email_envio_contrato`
+            // do DEAL > Company > Contato PRINCIPAL (ver bloco logo abaixo). A do
+            // TELEFONE não mudou: Company > Contato PRINCIPAL (Fase 113 plano 01 escolhe
             // entre TODOS os contatos do deal, nao so o primeiro). Strings vazias
             // sao tratadas como ausencia (a Company HubSpot pode mandar "" em vez
             // de omitir). Fase 113 plano 02 (HUB-CONTATO-02) — adiciona coalesce
             // p/ mobilephone quando o contato principal nao tem phone.
+            // ── 2026-08-20 — `email_para_envio_do_contrato` entra NA FRENTE ────
+            // Property do DEAL, criada pelo Comercial justamente porque o e-mail
+            // da company/contato não servia (genérico, `contato@`, endereço
+            // antigo). É o endereço para onde o contrato É DE FATO ENVIADO, então
+            // ganha dos dois: errar aqui manda contrato assinado para a caixa
+            // errada de alguém.
+            //
+            // ⚠️ Isto decide apenas o PRIMEIRO preenchimento. A regra "só preenche
+            // se vazio" (ver `$candidatos` mais abaixo) continua valendo, então
+            // empresa que JÁ tem `email_cliente` não é sobrescrita por esta
+            // precedência — mudar o campo no HubSpot depois não reescreve o que
+            // já está no banco.
+            $emailContrato = $dprops[$propsDeal['email_envio_contrato'] ?? 'email_para_envio_do_contrato'] ?? null;
+
             $companyEmail  = $cprops[$propsCompany['email']] ?? null;
             $companyPhone  = $cprops[$propsCompany['phone']] ?? null;
             $contactEmail  = $contatoPrincipal['email'] ?? null;
             $contactPhone  = $contatoPrincipal['phone'] ?? null;
             $contactMobile = $contatoPrincipal['mobilephone'] ?? null;
 
-            $emailFinal = ($companyEmail !== null && $companyEmail !== '') ? $companyEmail : $contactEmail;
+            // Precedência: e-mail de envio do contrato (deal) > Company > Contato.
+            $emailFinal = ($emailContrato !== null && $emailContrato !== '')
+                ? $emailContrato
+                : (($companyEmail !== null && $companyEmail !== '') ? $companyEmail : $contactEmail);
             $foneFinal  = ($companyPhone !== null && $companyPhone !== '')
                 ? $companyPhone
                 : (($contactPhone !== null && $contactPhone !== '') ? $contactPhone : $contactMobile);
@@ -549,6 +568,54 @@ class HubspotWebhookController extends Controller
             $cnpjRaw         = $cprops[$propsCompany['cnpj']] ?? null;
             $nameRaw         = $cprops[$propsCompany['name']] ?? ($deal['properties']['dealname'] ?? null);
             $dealIdStr       = $evento?->object_id !== null ? (string) $evento->object_id : null;
+
+            // ── Fase 112 Plan 112-03 (HUB-VAL-05) — controller fino delega a ────
+            // montagem de valor/contratos ao HubspotDealHandoffService. Line items
+            // HubSpot tem PRIORIDADE (avaliado internamente pelo build()); quando
+            // vazio, o proprio service resolve o fluxo legado (servico_ecf + amount).
+            // Fase 113 plano 02 — parametros extras OPCIONAIS preenchem
+            // company_data/contact_data do DTO (nao alteram valor/contratos).
+            //
+            // Quick task 260820-jc8 — montado AQUI (antes do match/criacao da
+            // empresa, nao mais depois) porque deal_contract_data (razao
+            // social/CNPJ/endereco do DEAL) precisa alimentar tanto o fallback
+            // de cnpjRaw abaixo quanto enriquecerEmpresaExistente()/Company::create().
+            // Nao depende de $company nem do resultado do match — so de deal/
+            // lineItems/hubCompany/contatos, todos ja disponiveis aqui.
+            $handoff = app(HubspotDealHandoffService::class)->build(
+                $deal,
+                $lineItems,
+                $propsDeal,
+                $hubCompany,
+                $contatos,
+                $contatoPrincipal,
+                $propsCompany,
+            );
+
+            // Quick task 260820-jc8 — cnpj_da_empresa do DEAL como FALLBACK do
+            // CNPJ (que hoje vem da HubSpot COMPANY, `$cprops[cnpj]`). NUNCA
+            // substitui um CNPJ ja resolvido pela company — so entra quando ela
+            // nao trouxe nada.
+            $cnpjDealRaw = $handoff->deal_contract_data['cnpj'] ?? null;
+            if (($cnpjRaw === null || $cnpjRaw === '') && $cnpjDealRaw !== null && $cnpjDealRaw !== '') {
+                $cnpjRaw = $cnpjDealRaw;
+            }
+
+            // Quick task 260820-jc8 — razao_social/endereco vem SO do DEAL (nao
+            // existe fonte alternativa como o cnpj); string vazia normalizada
+            // pra null pra nao acionar a regra "so preenche se vazio" com lixo.
+            //
+            // Quick 260821-cq0 — endereco volta a ser so o LOGRADOURO cru
+            // (rua e numero); bairro/cidade/estado/cep entram como campos
+            // PROPRIOS, mesma fonte (deal_contract_data), mesma disciplina
+            // "so preenche se vazio" das colunas ja existentes.
+            $razaoSocialRaw = trim((string) ($handoff->deal_contract_data['razao_social'] ?? ''));
+            $razaoSocialRaw = $razaoSocialRaw !== '' ? $razaoSocialRaw : null;
+            $enderecoRaw    = $handoff->deal_contract_data['endereco'] ?? null;
+            $bairroRaw      = $handoff->deal_contract_data['bairro'] ?? null;
+            $cidadeRaw      = $handoff->deal_contract_data['cidade'] ?? null;
+            $estadoRaw      = $handoff->deal_contract_data['estado'] ?? null;
+            $cepRaw         = $handoff->deal_contract_data['cep'] ?? null;
 
             // ── Quick task 260805-eqk — observacoes vindas das Notes do deal ────
             // Texto consolidado = bodies unidos por linha em branco, na ordem
@@ -603,6 +670,12 @@ class HubspotWebhookController extends Controller
                     contactId: $contatoPrincipal['id'] ?? null,
                     dealIdStr: $dealIdStr,
                     origemLead: $origemLead,
+                    razaoSocialRaw: $razaoSocialRaw,
+                    enderecoRaw: $enderecoRaw,
+                    bairroRaw: $bairroRaw,
+                    cidadeRaw: $cidadeRaw,
+                    estadoRaw: $estadoRaw,
+                    cepRaw: $cepRaw,
                 );
             } else {
                 // ── SEM match forte (null ou fraco) — cria empresa nova. ────────
@@ -627,6 +700,15 @@ class HubspotWebhookController extends Controller
                     // (dado manual e soberano). hubspot_notas/hubspot_observacao
                     // sao gravados no update final (espelho, sempre reescrito).
                     'origem_lead'        => $origemLead,
+                    // Quick task 260820-jc8 — razao_social/endereco vem SO do
+                    // DEAL (empresa recem-criada, sem valor previo pra proteger).
+                    // Quick 260821-cq0 — bairro/cidade/estado/cep, mesma fonte.
+                    'razao_social'       => $razaoSocialRaw,
+                    'endereco'           => $enderecoRaw,
+                    'bairro'             => $bairroRaw,
+                    'cidade'             => $cidadeRaw,
+                    'estado'             => $estadoRaw,
+                    'cep'                => $cepRaw,
                 ]);
 
                 // Quick task 260805-ohs — REMOVIDA a linha legada
@@ -638,21 +720,6 @@ class HubspotWebhookController extends Controller
                 // modal "Detalhes HubSpot".
             }
 
-            // ── Fase 112 Plan 112-03 (HUB-VAL-05) — controller fino delega a ────
-            // montagem de valor/contratos ao HubspotDealHandoffService. Line items
-            // HubSpot tem PRIORIDADE (avaliado internamente pelo build()); quando
-            // vazio, o proprio service resolve o fluxo legado (servico_ecf + amount).
-            // Fase 113 plano 02 — parametros extras OPCIONAIS preenchem
-            // company_data/contact_data do DTO (nao alteram valor/contratos).
-            $handoff = app(HubspotDealHandoffService::class)->build(
-                $deal,
-                $lineItems,
-                $propsDeal,
-                $hubCompany,
-                $contatos,
-                $contatoPrincipal,
-                $propsCompany,
-            );
             $servicosCriados = $this->persistirContratos($company, $handoff, $evento);
 
             // ── Roteamento MlbEmpresa por CADA servico criado ───────────────────────────
@@ -744,6 +811,14 @@ class HubspotWebhookController extends Controller
      * junto com `hubspot_notas` ela e espelho do HubSpot e e sempre reescrita
      * no update final de criarEmpresa(). Se ficasse nesta regra, nota criada
      * depois que a empresa ja existe nunca apareceria no ECF.
+     *
+     * Quick task 260820-jc8 — `razaoSocialRaw`/`enderecoRaw` (props do DEAL,
+     * ja compostas/normalizadas por HubspotDealHandoffService) entram na
+     * MESMA regra "so preenche se vazio": dado ja preenchido a mao pelo
+     * Administrativo nunca e sobrescrito.
+     *
+     * Quick 260821-cq0 — `bairroRaw`/`cidadeRaw`/`estadoRaw`/`cepRaw` entram
+     * pela mesma porta, mesma disciplina "so preenche se vazio".
      */
     private function enriquecerEmpresaExistente(
         Company $company,
@@ -757,6 +832,12 @@ class HubspotWebhookController extends Controller
         ?string $contactId,
         ?string $dealIdStr,
         ?string $origemLead = null,
+        ?string $razaoSocialRaw = null,
+        ?string $enderecoRaw = null,
+        ?string $bairroRaw = null,
+        ?string $cidadeRaw = null,
+        ?string $estadoRaw = null,
+        ?string $cepRaw = null,
     ): Company {
         $candidatos = [
             'cnpj'               => $cnpjRaw,
@@ -771,6 +852,14 @@ class HubspotWebhookController extends Controller
             // Quick task 260805-eqk — origem do lead pode ser corrigida a mao
             // pelo Comercial; entra na regra "so preenche se vazio".
             'origem_lead'        => $origemLead,
+            // Quick task 260820-jc8 — razao_social/endereco do deal HubSpot.
+            // Quick 260821-cq0 — bairro/cidade/estado/cep, mesma fonte.
+            'razao_social'       => $razaoSocialRaw,
+            'endereco'           => $enderecoRaw,
+            'bairro'             => $bairroRaw,
+            'cidade'             => $cidadeRaw,
+            'estado'             => $estadoRaw,
+            'cep'                => $cepRaw,
         ];
 
         $updates = [];
@@ -874,6 +963,11 @@ class HubspotWebhookController extends Controller
                 'hubspot_valor_confidence'         => $c['hubspot_valor_confidence'],
                 'hubspot_valor_warning'            => $c['hubspot_valor_warning'],
                 'hubspot_snapshot'                 => $c['hubspot_snapshot'],
+                // Quick task 260820-jc8 (Tarefa 3) — mesma data/dia em TODOS os
+                // contratos deste deal (data_do_1_pagamento e property do DEAL,
+                // resolvida uma vez em HubspotDealHandoffService::build()).
+                'data_primeira_parcela'            => $c['data_primeira_parcela'] ?? null,
+                'dia_vencimento'                   => $c['dia_vencimento'] ?? null,
             ]);
 
             Log::channel('ecf-webhooks')->info('[HubSpot Webhook] ContratoServico criado', [
