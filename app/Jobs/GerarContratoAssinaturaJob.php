@@ -170,10 +170,18 @@ class GerarContratoAssinaturaJob implements ShouldQueue
         // AO VIVO da empresa; dia_vencimento/data_primeira_parcela vêm do
         // snapshot CONGELADO (nunca de `$contrato->servico`/`ContratoServico`
         // ao vivo — o snapshot é sempre um array de UM item, D-06).
+        //
+        // Quick 260821-cq0 — bairro/cidade/estado/cep entram pela mesma
+        // porta de `endereco`: dado de EMPRESA, lido AO VIVO, mesma
+        // disciplina.
         $servicoSnapshot = $contrato->servicos_snapshot[0] ?? [];
 
         $complementos = [
             'endereco'              => $company->endereco,
+            'bairro'                => $company->bairro,
+            'cidade'                => $company->cidade,
+            'estado'                => $company->estado,
+            'cep'                   => $company->cep,
             'dia_vencimento'        => isset($servicoSnapshot['dia_vencimento']) ? (string) $servicoSnapshot['dia_vencimento'] : null,
             'data_primeira_parcela' => $servicoSnapshot['data_primeira_parcela'] ?? null,
         ];

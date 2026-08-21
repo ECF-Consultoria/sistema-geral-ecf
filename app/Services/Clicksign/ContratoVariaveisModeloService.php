@@ -43,7 +43,7 @@ class ContratoVariaveisModeloService
      * Traduz o contrato no hash plano que vai direto em `template.data` de
      * `anexarDocumentoPorModelo()`.
      *
-     * @param  array{dia_vencimento?: string, forma_pagamento?: string, endereco?: string}  $complementos
+     * @param  array{dia_vencimento?: string, forma_pagamento?: string, endereco?: string, bairro?: string, cidade?: string, estado?: string, cep?: string}  $complementos
      * @return array{variaveis: array<string, string>, campos_pendentes: array<int, string>}
      */
     public function montar(ContratoAssinatura $contrato, array $complementos = []): array
@@ -95,6 +95,14 @@ class ContratoVariaveisModeloService
             'razao_social'          => fn (array $d) => $d['empresa']['razao_social'],
             'cnpj'                  => fn (array $d) => $d['empresa']['cnpj'],
             'endereco'              => fn (array $d) => $d['empresa']['endereco'],
+            // Quick 260821-cq0 — endereço volta a ser 5 pedaços separados: o
+            // contrato de Gestão do jurídico usa `{{bairro}}`, `{{cidade}}`,
+            // `{{estado}}` e `{{cep}}` como variáveis próprias, ao lado de
+            // `{{endereco}}` (que agora é só o logradouro).
+            'bairro'                => fn (array $d) => $d['empresa']['bairro'],
+            'cidade'                => fn (array $d) => $d['empresa']['cidade'],
+            'estado'                => fn (array $d) => $d['empresa']['estado'],
+            'cep'                   => fn (array $d) => $d['empresa']['cep'],
             'servico_contratado'    => fn (array $d, self $self) => $self->concatenarServicos($d['servicos']),
             'valor_mensal'          => fn (array $d) => $d['totais']['valor_mensal_formatado'],
             'vigencia_inicio'       => fn (array $d) => $d['vigencia']['inicio'],

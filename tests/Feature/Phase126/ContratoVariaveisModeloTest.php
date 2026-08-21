@@ -225,18 +225,29 @@ class ContratoVariaveisModeloTest extends TestCase
         ]);
 
         $resultado = $this->service()->montar($contrato, [
-            'endereco'              => 'Rua Exemplo, 123 - São Paulo/SP',
+            'endereco'              => 'Rua Exemplo, 123',
+            // Quick 260821-cq0 — bairro/cidade/estado/cep são variáveis
+            // próprias, mesma disciplina de endereco/dia_vencimento/
+            // data_primeira_parcela testados aqui.
+            'bairro'                => 'Centro',
+            'cidade'                => 'São Paulo',
+            'estado'                => 'SP',
+            'cep'                   => '01000-000',
             'dia_vencimento'        => '10',
             'data_primeira_parcela' => '2026-09-05',
         ]);
 
         $this->assertSame('Empresa Fantasia Comércio e Serviços Ltda', $resultado['variaveis']['razao_social']);
-        $this->assertSame('Rua Exemplo, 123 - São Paulo/SP', $resultado['variaveis']['endereco']);
+        $this->assertSame('Rua Exemplo, 123', $resultado['variaveis']['endereco']);
+        $this->assertSame('Centro', $resultado['variaveis']['bairro']);
+        $this->assertSame('São Paulo', $resultado['variaveis']['cidade']);
+        $this->assertSame('SP', $resultado['variaveis']['estado']);
+        $this->assertSame('01000-000', $resultado['variaveis']['cep']);
         $this->assertSame('10', $resultado['variaveis']['dia_vencimento']);
         $this->assertSame('05/09/2026', $resultado['variaveis']['data_primeira_parcela']);
         // `forma_pagamento` não é uma variável do modelo (não está em
-        // `mapa()`) — continua pendente mesmo com os 4 complementos desta
-        // Tarefa 5 preenchidos; não é o que este teste mede.
+        // `mapa()`) — continua pendente mesmo com os complementos desta
+        // Tarefa preenchidos; não é o que este teste mede.
         $this->assertSame(['forma_pagamento'], $resultado['campos_pendentes']);
     }
 
