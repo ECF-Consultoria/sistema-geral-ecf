@@ -35,6 +35,26 @@ use Carbon\Carbon;
  */
 class ContratoVariaveisModeloService
 {
+    /**
+     * Quick 260821-m9h — caso simples deliberado, NÃO a solução final do
+     * parcelamento escalonado (que exigiria consolidar as duas linhas de
+     * `ContratoServico` do mesmo serviço, somar valores e compor a frase
+     * dinamicamente — fora de escopo deste quick).
+     *
+     * A guarda `servicos_duplicados` (commit `5af2b4d1`) recusa gerar
+     * contrato quando o mesmo serviço aparece em mais de um
+     * `ContratoServico` ativo, que é exatamente a forma do pagamento
+     * escalonado. Logo, todo contrato que hoje CONSEGUE ser gerado tem uma
+     * linha só por serviço — o caso simples — e esta frase constante cobre
+     * 100% dos casos geráveis.
+     *
+     * ⚠️ Texto ACOPLADO ao modelo de Gestão (Cláusula 2.1.2 daquele `.docx`,
+     * `contrato-kive-ESPECIFICACAO-VARIAVEIS.md` §"Os três casos", caso 1).
+     * Se outro serviço passar a usar `{{plano_parcelas}}`, a frase estará
+     * errada — não é genérica.
+     */
+    public const PLANO_PARCELAS_CASO_SIMPLES = 'As parcelas seguirão a faixa apurada na forma da Cláusula 2.1.2.';
+
     public function __construct(private ContratoPdfService $dados)
     {
     }
@@ -115,6 +135,11 @@ class ContratoVariaveisModeloService
             'data_primeira_parcela' => fn (array $d) => $d['pagamento']['data_primeira_parcela'],
             'dia_vencimento'        => fn (array $d) => $d['pagamento']['dia_vencimento'],
             'data_assinatura'       => fn (array $d, self $self) => $self->dataPorExtenso($d['gerado_em']),
+            // Quick 260821-m9h — modelo de Gestão substituído pelo jurídico
+            // com {{plano_parcelas}}; caso simples deliberado (ver docblock
+            // da constante). Não lê ContratoServico nem calcula nada —
+            // devolve sempre a mesma constante, mantendo a classe pura.
+            'plano_parcelas'        => fn () => self::PLANO_PARCELAS_CASO_SIMPLES,
         ];
     }
 
