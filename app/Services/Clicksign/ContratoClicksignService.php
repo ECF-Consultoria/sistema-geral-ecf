@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\ContratoAssinatura;
 use App\Services\Contratos\ContratoDadosMinimosService;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Log;
 
 /**
  * ContratoClicksignService — Fase 127 Plano 127-06. O **ponto único** que o
@@ -85,6 +86,33 @@ class ContratoClicksignService
         // 2. Serviços ativos — a checagem acima já garante que não está vazia.
         $contratosServico = $company->contratosServico()->where('ativo', true)->with('servico')->get();
 
+        // 2b. Incidente Mons Bike (quick 260821-l8n, deal HubSpot 63836845208):
+        // dois itens de linha do MESMO serviço (pagamento escalonado) geram
+        // dois `ContratoServico` do mesmo `servico_id`. Sem esta guarda, o
+        // Observer disparava no primeiro, congelava só aquele valor no
+        // snapshot e o segundo caía silenciosamente em `ja_em_andamento` —
+        // `ok: true`, dado perdido, ninguém avisado. Consolidar as duas
+        // linhas (somar valores / pagamento escalonado) é decisão do
+        // jurídico e está FORA de escopo aqui — o objetivo é só parar de
+        // perder dado em silêncio.
+        //
+        // Pré-computado ANTES do laço (não dentro dele) para que o PRIMEIRO
+        // item de um par duplicado também seja barrado — se a contagem fosse
+        // feita item a item durante o laço, o primeiro passaria batido antes
+        // de o segundo aparecer e reproduziria exatamente o bug original.
+        $servicosDuplicados = $contratosServico->countBy('servico_id')->filter(fn (int $qtd) => $qtd > 1);
+
+        foreach ($servicosDuplicados as $servicoIdDuplicado => $quantidade) {
+            $itensDuplicados = $contratosServico->where('servico_id', $servicoIdDuplicado);
+
+            Log::warning('[Clicksign] serviço duplicado (mais de um ContratoServico ativo) — contrato não gerado para não perder dado', [
+                'company_id'           => $company->id,
+                'servico_id'           => $servicoIdDuplicado,
+                'quantidade'           => $quantidade,
+                'hubspot_line_item_id' => $itensDuplicados->pluck('hubspot_line_item_id')->filter()->values()->all(),
+            ]);
+        }
+
         $criados = [];
         $pulados = [];
 
@@ -105,6 +133,18 @@ class ContratoClicksignService
             // plano 128-01 vale aqui também: nunca isentar por ausência de dado.
             if (optional($contratoServico->servico)?->exigeContrato() === false) {
                 $pulados[] = ['servico_id' => $contratoServico->servico_id, 'motivo' => 'servico_isento'];
+
+                continue;
+            }
+
+            // Guarda de duplicidade (quick 260821-l8n) — checada AQUI, antes
+            // do guard de reentrância abaixo, de propósito: o guard de
+            // `ja_em_andamento` só enxerga contrato que JÁ existe, então o
+            // primeiro item de um par duplicado passaria por ele sem barreira
+            // nenhuma. `$servicosDuplicados` foi computado sobre a coleção
+            // inteira antes do laço, então os DOIS itens do par caem aqui.
+            if ($servicosDuplicados->has($contratoServico->servico_id)) {
+                $pulados[] = ['servico_id' => $contratoServico->servico_id, 'motivo' => 'servicos_duplicados'];
 
                 continue;
             }
@@ -185,6 +225,13 @@ class ContratoClicksignService
                 ->delay(now()->addSeconds($i * 5));
         }
 
-        return ['ok' => true, 'faltando' => [], 'criados' => $criados, 'pulados' => $pulados];
+        // `ok` deixa de ser `true` quando a duplicidade impediu QUALQUER
+        // criação — um "sucesso" que não criou nada é exatamente o silêncio
+        // que causou o incidente da Mons Bike (quick 260821-l8n). Se pelo
+        // menos um outro serviço da mesma empresa gerou contrato normalmente,
+        // `ok` continua `true` — a duplicidade não afetou o resultado geral.
+        $duplicidadeImpediuTudo = $criados === [] && collect($pulados)->contains('motivo', 'servicos_duplicados');
+
+        return ['ok' => ! $duplicidadeImpediuTudo, 'faltando' => [], 'criados' => $criados, 'pulados' => $pulados];
     }
 }

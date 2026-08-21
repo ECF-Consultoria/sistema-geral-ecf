@@ -11,6 +11,7 @@ use App\Services\Clicksign\ContratoClicksignService;
 use App\Services\Contratos\ContratoDadosMinimosService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -372,5 +373,76 @@ class ContratoClicksignServiceTest extends TestCase
         $this->assertNotNull($delayPrimeiro);
         $this->assertNotNull($delaySegundo);
         $this->assertTrue($delayPrimeiro->timestamp < $delaySegundo->timestamp);
+    }
+
+    // ─── Testes 12+ (quick 260821-l8n) — serviço duplicado para de perder dado ───
+
+    /**
+     * Incidente Mons Bike (deal HubSpot 63836845208): dois `ContratoServico`
+     * ativos do MESMO serviço. Antes da correção, o primeiro congelava
+     * sozinho seu valor e o segundo caía em `ja_em_andamento` sem aviso —
+     * `ok: true`, dado perdido em silêncio.
+     */
+    #[Test]
+    public function dois_contratos_servico_do_mesmo_servico_nao_geram_nenhum_contrato_e_ok_deixa_de_ser_true(): void
+    {
+        Log::spy();
+
+        $company = $this->companyCompleta();
+        $servico = $this->servicoDeTeste(['nome' => 'Gestão de Ads']);
+        $cs1 = $this->contratoServicoAtivo($company, $servico, ['valor_contratado' => 5500, 'hubspot_line_item_id' => 'li-1']);
+        $cs2 = $this->contratoServicoAtivo($company, $servico, ['valor_contratado' => 6000, 'hubspot_line_item_id' => 'li-2']);
+
+        $resultado = $this->service->iniciarParaEmpresa($company);
+
+        $this->assertFalse($resultado['ok']);
+        $this->assertSame([], $resultado['criados']);
+        $this->assertCount(2, $resultado['pulados']);
+        foreach ($resultado['pulados'] as $pulado) {
+            $this->assertSame($servico->id, $pulado['servico_id']);
+            $this->assertSame('servicos_duplicados', $pulado['motivo']);
+        }
+        $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->count());
+
+        Queue::assertNothingPushed();
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(function (string $mensagem, array $contexto) use ($company, $servico, $cs1, $cs2) {
+                return str_contains($mensagem, '[Clicksign]')
+                    && str_contains($mensagem, 'duplicado')
+                    && ($contexto['company_id'] ?? null) === $company->id
+                    && ($contexto['servico_id'] ?? null) === $servico->id
+                    && ($contexto['quantidade'] ?? null) === 2
+                    && in_array('li-1', $contexto['hubspot_line_item_id'] ?? [], true)
+                    && in_array('li-2', $contexto['hubspot_line_item_id'] ?? [], true);
+            });
+    }
+
+    /**
+     * Regressão zero: um serviço duplicado e OUTRO serviço normal na mesma
+     * empresa — o normal continua gerando contrato, só o duplicado é
+     * barrado. `ok` continua `true` porque algo FOI criado.
+     */
+    #[Test]
+    public function servico_duplicado_nao_impede_a_criacao_do_contrato_de_outro_servico_da_mesma_empresa(): void
+    {
+        $company = $this->companyCompleta();
+        $servicoDuplicado = $this->servicoDeTeste(['nome' => 'Gestão de Ads']);
+        $servicoNormal = $this->servicoDeTeste(['nome' => 'Publicação de Anúncios']);
+        $this->contratoServicoAtivo($company, $servicoDuplicado, ['valor_contratado' => 5500]);
+        $this->contratoServicoAtivo($company, $servicoDuplicado, ['valor_contratado' => 6000]);
+        $this->contratoServicoAtivo($company, $servicoNormal);
+
+        $resultado = $this->service->iniciarParaEmpresa($company);
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertCount(1, $resultado['criados']);
+        $this->assertSame(
+            $servicoNormal->id,
+            ContratoAssinatura::where('company_id', $company->id)->firstOrFail()->servico_id
+        );
+
+        $pulados = collect($resultado['pulados']);
+        $this->assertCount(2, $pulados->where('motivo', 'servicos_duplicados'));
     }
 }
