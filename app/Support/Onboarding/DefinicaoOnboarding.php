@@ -507,8 +507,16 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 11,
-                'etapa'      => OnboardingPasso::ETAPA_MAPEAMENTO,
+                // v16 (21/08) — saiu de `mapeamento` para `acessos`. Era o
+                // ÚNICO passo `dono=cliente` da etapa de mapeamento, e no
+                // portal ele aparecia sob "Mapeamento da conta" logo acima da
+                // ficha automática de mesmo nome — o cliente lia dois blocos
+                // homônimos e um deles pedia trabalho dele. Aqui ele fica ao
+                // lado de `planilha_custos_adman`, que é a outra metade do
+                // mesmo assunto (custo do produto), e a etapa `mapeamento`
+                // volta a ser só o que o SISTEMA apura sozinho.
+                'ordem'      => 7,
+                'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
                 'natureza'   => OnboardingPasso::NATUREZA_ACAO,
                 'chave'      => 'custos_app_ecf',
                 'titulo'     => 'Custos no App ECF',

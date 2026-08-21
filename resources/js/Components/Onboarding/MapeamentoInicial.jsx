@@ -86,6 +86,10 @@ export default function MapeamentoInicial({
     // O portal público identifica a empresa pelo token na URL, mas o
     // onboarding vem no corpo — a rota interna já o tem no path e não precisa.
     payloadExtra = {},
+    // Só entra quando a empresa tem MAIS DE UM mapeamento na tela: aí o nome
+    // do serviço é a única coisa que distingue um card do outro. Com um só,
+    // fica vazio — a seção que envolve o card já diz do que se trata.
+    rotulo = null,
 }) {
     const [fullPontuacao, setFullPontuacao] = useState(
         mapeamento?.full_pontuacao === null || mapeamento?.full_pontuacao === undefined
@@ -125,9 +129,18 @@ export default function MapeamentoInicial({
     return (
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-4">
             <div className="flex items-start justify-between gap-3 flex-wrap">
+                {/*
+                  * O card NÃO tem título próprio. Os dois pontos de entrada já
+                  * o renderizam dentro de uma seção chamada "Mapeamento da
+                  * conta" — o bloco da etapa no portal e o `FluxoOnboarding`
+                  * no painel interno. Repetir o nome aqui fazia a tela mostrar
+                  * o mesmo título duas vezes seguidas (21/08).
+                  */}
                 <div>
-                    <h3 className="text-white font-semibold text-[14px]">Mapeamento da conta</h3>
-                    <p className="text-white/40 text-[12px] mt-0.5">
+                    {rotulo && (
+                        <h3 className="text-white font-semibold text-[14px] mb-0.5">{rotulo}</h3>
+                    )}
+                    <p className="text-white/40 text-[12px]">
                         {contexto === 'cliente'
                             ? 'Confira se está tudo certo e complete o que faltar.'
                             : 'Conferência assistida — o canal fica registrado.'}

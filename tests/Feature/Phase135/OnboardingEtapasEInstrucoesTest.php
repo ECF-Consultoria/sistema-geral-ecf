@@ -125,14 +125,25 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         );
     }
 
-    // ─── Os 4 acessos são do cliente (v6) ───────────────────────────────────
+    // ─── Os acessos são do cliente (v6) ─────────────────────────────────────
 
     #[Test]
-    public function os_quatro_acessos_sao_dono_cliente_na_v6(): void
+    public function os_acessos_sao_dono_cliente_na_v6(): void
     {
         $onboarding = $this->onboardingEmAndamento(Company::factory()->create());
 
-        $acessos = ['grant_sistema_ecf', 'acesso_colaborador_ml', 'planilha_custos_adman', 'grant_consultoria_adman'];
+        // v16 — `custos_app_ecf` entrou aqui, vindo de `mapeamento`. Era o
+        // único passo `dono=cliente` daquela etapa, e no portal ele abria um
+        // bloco "Mapeamento da conta" logo acima da ficha automática de mesmo
+        // nome. Aqui ele fecha a sequência ao lado de `planilha_custos_adman`,
+        // que é a outra metade do mesmo assunto.
+        $acessos = [
+            'grant_sistema_ecf',
+            'acesso_colaborador_ml',
+            'planilha_custos_adman',
+            'grant_consultoria_adman',
+            'custos_app_ecf',
+        ];
 
         foreach ($acessos as $chave) {
             $this->assertSame(
@@ -149,7 +160,32 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
                 ->orderBy('ordem')
                 ->pluck('chave')
                 ->all(),
-            'A etapa de acessos é exatamente esses 4 passos, nesta ordem'
+            'A etapa de acessos é exatamente esses passos, nesta ordem'
+        );
+    }
+
+    /**
+     * A etapa `mapeamento` não pede mais NADA do cliente.
+     *
+     * Desde a v16 ela é só o que o sistema apura sozinho (`metricas_da_conta`,
+     * `anuncios_ativos_inativos`) mais a ficha do `MapeamentoInicial`. Se um
+     * passo `dono=cliente` voltar para cá, o portal volta a mostrar dois
+     * blocos chamados "Mapeamento da conta" — um pedindo trabalho do cliente e
+     * outro só exibindo a apuração.
+     */
+    #[Test]
+    public function etapa_de_mapeamento_nao_tem_passo_do_cliente(): void
+    {
+        $onboarding = $this->onboardingEmAndamento(Company::factory()->create());
+
+        $this->assertSame(
+            [],
+            $onboarding->passos()
+                ->where('etapa', OnboardingPasso::ETAPA_MAPEAMENTO)
+                ->where('dono', OnboardingPasso::DONO_CLIENTE)
+                ->pluck('chave')
+                ->all(),
+            'A etapa de mapeamento é apuração automática — nenhum passo do cliente'
         );
     }
 

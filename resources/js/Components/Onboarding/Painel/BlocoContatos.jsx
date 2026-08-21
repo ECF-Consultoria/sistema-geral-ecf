@@ -109,7 +109,7 @@ export default function BlocoContatos({ onboardingId, contatos = [] }) {
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
             <div className="flex items-center gap-2">
                 <Users size={15} className="text-ecf-yellow/70" />
-                <h3 className="text-[13px] font-semibold text-white/80">Pessoas do cliente</h3>
+                <h3 className="text-[13px] font-semibold text-white/80">Contatos do cliente</h3>
             </div>
 
             {PAPEIS.map(([papel, rotulo, ajuda]) => {

@@ -252,43 +252,17 @@ class OnboardingEngineService
 
     // ─── Reunião de onboarding ───────────────────────────────────────────────
 
-    /**
-     * O CLIENTE pede a reunião pelo portal — sem data, que é o ponto: ele não
-     * escolhe agenda nossa, só sinaliza que quer.
+    /*
+     * NÃO existe mais `solicitarReuniao()`. O cliente não pede a reunião: nós
+     * definimos a data e cobramos a presença dele (decisão de negócio de
+     * 19/08). O que existia aqui era o único produtor de
+     * `Onboarding::REUNIAO_SOLICITADA`.
      *
-     * Idempotente e não-regressivo: pedir duas vezes não move nada, e pedir
-     * depois de já haver data marcada NÃO rebaixa o status para `solicitada`
-     * (senão um clique acidental do cliente apagaria da tela dele a data que
-     * já estava combinada).
-     *
-     * Só vale para onboarding em `andamento` — rascunho não tem portal
-     * (D-05/SC-04).
+     * A constante e a coluna `reuniao_solicitada_em` FICAM: há linhas em
+     * produção nesse estado, e apagá-las tornaria ilegível o histórico de quem
+     * pediu antes da mudança. O painel interno segue sabendo desenhar o estado
+     * `solicitada`; simplesmente ninguém o cria mais.
      */
-    public function solicitarReuniao(Onboarding $onboarding, ?string $ip = null): bool
-    {
-        if ($onboarding->status !== Onboarding::STATUS_ANDAMENTO) {
-            return false;
-        }
-
-        if ($onboarding->reuniao_status === Onboarding::REUNIAO_AGENDADA) {
-            return false;
-        }
-
-        if ($onboarding->reuniao_status === Onboarding::REUNIAO_SOLICITADA) {
-            return false;
-        }
-
-        $onboarding->reuniao_status = Onboarding::REUNIAO_SOLICITADA;
-        $onboarding->reuniao_solicitada_em = now();
-        $onboarding->save();
-
-        activity('onboarding')
-            ->performedOn($onboarding)
-            ->withProperties(['ip' => $ip])
-            ->log('Cliente solicitou a reunião de onboarding pelo portal');
-
-        return true;
-    }
 
     /**
      * O RESPONSÁVEL marca data e hora. A partir daqui o cliente enxerga a data

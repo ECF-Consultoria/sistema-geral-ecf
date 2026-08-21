@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Alinha `dono`, `natureza` e `ordem` de passos JÁ EXISTENTES com a régua vigente.
+ * Alinha `dono`, `natureza`, `ordem` e `etapa` de passos JÁ EXISTENTES com a régua vigente.
  *
  * ### Por que este comando precisa existir
  * A definição é COPIADA para `onboarding_passos` no nascimento — é o que
@@ -32,11 +32,18 @@ use Illuminate\Support\Facades\DB;
  * o negócio combinou. `ordem` é apresentação pura: mudar não desfaz nada nem
  * reabre passo, só corrige a leitura.
  *
+ * ### `etapa` entrou pelo mesmo motivo que `ordem`
+ * Na v16 `custos_app_ecf` saiu de `mapeamento` para `acessos`. `etapa` é
+ * agrupamento puro — decide sob qual bloco o passo aparece no portal e no
+ * painel interno, nada mais. Sem sincronizar, quem já está em andamento
+ * continuaria vendo o passo sob "Mapeamento da conta", que é justamente o
+ * bloco de onde ele foi tirado.
+ *
  * ### É uma exceção CONSCIENTE ao congelamento, e por isso é estreita
- * Só toca `dono`, `natureza` e `ordem`, e só quando divergem da régua. Não
- * mexe em `status`, `feito_por`, `feito_em` nem `sla_dias`: alinhar estrutura
- * não pode desfazer trabalho feito nem reabrir o que já fechou. Um passo
- * concluído continua concluído.
+ * Só toca `dono`, `natureza`, `ordem` e `etapa`, e só quando divergem da
+ * régua. Não mexe em `status`, `feito_por`, `feito_em` nem `sla_dias`: alinhar
+ * estrutura não pode desfazer trabalho feito nem reabrir o que já fechou. Um
+ * passo concluído continua concluído.
  *
  * Dry-run por padrão, como os outros comandos da família.
  */
@@ -46,7 +53,7 @@ class OnboardingSincronizarEstrutura extends Command
         {--apply     : Grava de verdade. Sem esta flag o comando só mostra o que faria}
         {--company=  : Restringe a um company_id}';
 
-    protected $description = 'Alinha dono, natureza e ordem dos passos existentes com a régua vigente (dry-run por padrão)';
+    protected $description = 'Alinha dono, natureza, ordem e etapa dos passos existentes com a régua vigente (dry-run por padrão)';
 
     public function handle(OnboardingEngineService $engine): int
     {
@@ -82,10 +89,12 @@ class OnboardingSincronizarEstrutura extends Command
                 $naturezaNova = $naRegua['natureza'] ?? OnboardingPasso::NATUREZA_ACAO;
                 $naturezaAtual = $passo->natureza ?? OnboardingPasso::NATUREZA_ACAO;
                 $ordemNova = (int) $naRegua['ordem'];
+                $etapaNova = $naRegua['etapa'] ?? null;
 
                 if ($passo->dono === $donoNovo
                     && $naturezaAtual === $naturezaNova
-                    && (int) $passo->ordem === $ordemNova) {
+                    && (int) $passo->ordem === $ordemNova
+                    && $passo->etapa === $etapaNova) {
                     continue;
                 }
 
@@ -98,10 +107,12 @@ class OnboardingSincronizarEstrutura extends Command
                         $passo->dono === $donoNovo ? '=' : "{$passo->dono} → {$donoNovo}",
                         $naturezaAtual === $naturezaNova ? '=' : "{$naturezaAtual} → {$naturezaNova}",
                         (int) $passo->ordem === $ordemNova ? '=' : "{$passo->ordem} → {$ordemNova}",
+                        $passo->etapa === $etapaNova ? '=' : ($passo->etapa ?? '—')." → ".($etapaNova ?? '—'),
                     ],
                     'dono'     => $donoNovo,
                     'natureza' => $naturezaNova,
                     'ordem'    => $ordemNova,
+                    'etapa'    => $etapaNova,
                 ];
             }
         }
@@ -113,7 +124,7 @@ class OnboardingSincronizarEstrutura extends Command
         }
 
         $this->table(
-            ['Onboarding', 'Empresa', 'Chave', 'Dono', 'Natureza', 'Ordem'],
+            ['Onboarding', 'Empresa', 'Chave', 'Dono', 'Natureza', 'Ordem', 'Etapa'],
             array_column($mudancas, 'linha')
         );
 
@@ -131,6 +142,7 @@ class OnboardingSincronizarEstrutura extends Command
                     'dono'     => $m['dono'],
                     'natureza' => $m['natureza'],
                     'ordem'    => $m['ordem'],
+                    'etapa'    => $m['etapa'],
                 ]);
             }
         });

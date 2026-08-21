@@ -7,12 +7,15 @@ import { cn } from '@/lib/utils';
  * Agendamento da reunião de onboarding, do lado de quem opera.
  *
  * O bloco existe porque `agendar_reuniao_onboarding` era um checkbox sem data:
- * marcava-se "feito" sem que ninguém soubesse quando a reunião seria, e o
- * cliente não tinha como pedir.
+ * marcava-se "feito" sem que ninguém soubesse quando a reunião seria.
  *
- * O estado `solicitada` é o que mais pede ação — o cliente pediu e está
- * esperando resposta —, então ele ganha destaque visual em vez de virar mais
- * uma linha cinza.
+ * Desde 19/08 ele ABRE a tela: é a primeira coisa da primeira etapa. O cliente
+ * não pede mais reunião — nós definimos a data e cobramos a presença dele —, e
+ * por isso o estado "sem data" é o que mais pede ação aqui.
+ *
+ * O ramo `solicitada` é LEGADO: nada mais o produz (`solicitarReuniao()` foi
+ * removido junto com a rota pública), mas há linhas em produção nesse estado e
+ * apagar o desenho tornaria ilegível o que o cliente pediu antes da mudança.
  */
 
 // `datetime-local` exige 'YYYY-MM-DDTHH:mm' em hora LOCAL. Converter com
@@ -82,8 +85,8 @@ export default function ReuniaoBloco({ onboardingId, reuniao }) {
                 <div className="flex items-start gap-1.5">
                     <Clock size={13} className="text-ecf-yellow shrink-0 mt-0.5" />
                     <p className="text-ecf-yellow text-[12px]">
-                        O cliente solicitou{reuniao.solicitada_em ? ` em ${formatar(reuniao.solicitada_em)}` : ''} e está
-                        esperando a data.
+                        O cliente pediu esta reunião{reuniao.solicitada_em ? ` em ${formatar(reuniao.solicitada_em)}` : ''} e
+                        ainda não tem data. (Pedido antigo — o portal não oferece mais essa opção.)
                     </p>
                 </div>
             )}
@@ -106,9 +109,13 @@ export default function ReuniaoBloco({ onboardingId, reuniao }) {
                 </div>
             )}
 
+            {/* Sem data é o estado que ABRE o onboarding: a primeira coisa a
+                fazer com uma empresa que chegou. A frase antiga ("o cliente
+                também pode pedir a reunião pelo portal") virou mentira quando
+                o pedido saiu do portal — e, pior, sugeria esperar. */}
             {!solicitada && !agendada && (
                 <p className="text-white/40 text-[12px]">
-                    Ainda sem data. O cliente também pode pedir a reunião pelo portal.
+                    Ainda sem data. Marque aqui e o cliente passa a ver a data no portal dele.
                 </p>
             )}
 

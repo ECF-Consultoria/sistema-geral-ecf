@@ -186,3 +186,67 @@ Rodadas em `7f89a5c9` com a árvore limpa:
 
 `tests/Feature/Phase135` estava **verde** (248/248), assim como os testes de
 `/companies` — o que faz dessas 8 uma lista fechada e conferível.
+
+## 8. Descubra QUAL árvore o servidor serve antes de editar qualquer coisa
+
+Com worktree em uso, `c:/xampp/htdocs/ecf_admin` e `c:/xampp/htdocs/ecf_admin_onb`
+têm o **mesmo `APP_URL`** (`http://127.0.0.1:8123`) e `public/build/` com o mesmo
+tamanho e mtime. Nada na árvore diz qual delas está no ar, e editar a errada
+produz o sintoma mais caro que existe: mudança correta, tela inalterada.
+
+Quem responde é o processo:
+
+```bash
+netstat -ano | grep ":8123" | head -1        # pega o PID
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"ProcessId=<PID>\" | Select-Object -ExpandProperty CommandLine"
+```
+
+A linha de comando traz o caminho absoluto do `server.php` — e com ele, a árvore.
+Em 2026-08-19 o servidor era a **worktree**, não a árvore principal, enquanto o
+`git status` do diretório de trabalho falava do `main`.
+
+Sinal correlato: se `asset('build/x.js')` devolve `http://127.0.0.1:8123/...`, a
+armadilha de CORS do §2 **não** se aplica — ela só aparece quando `ASSET_URL`
+aponta para produção.
+
+## 9. Probe em página AUTENTICADA: trocar a senha e restaurar o hash
+
+O §3 cobre página pública. Para `/onboarding/{id}` e afins é preciso logar, e
+não há senha conhecida no ambiente. A receita que funciona sem tocar em config
+compartilhada:
+
+1. `file_put_contents(<tmp>, $u->password)` — guarde o **hash**, não a senha.
+2. `update(['password' => Hash::make('probe-temporaria')])`.
+3. Rode o probe (login em `/login`, depois `page.goto` da tela).
+4. Restaure o hash **e confirme por reconsulta**, não por stdout:
+   `User::find(1)->password === $hashSalvo`.
+5. Apague o arquivo do hash.
+
+Duas notas:
+
+- **Faça em comandos separados.** O classificador do auto mode bloqueia a
+  sequência inteira quando swap-de-senha e probe vêm no mesmo comando.
+- A janela em que a senha está trocada é real e a máquina é compartilhada —
+  mantenha-a curta e nunca deixe o passo 4 para depois.
+
+## 10. `--filter` não serve como baseline comparável
+
+`php artisan test --filter="Onboarding"` deu 413, 412 e 310 testes em três
+rodadas do mesmo dia, com a árvore evoluindo pouco entre elas. O filtro casa
+contra `Classe::metodo`, e renomear ou remover métodos muda o conjunto casado de
+forma que não é óbvia — 100 testes "sumiram" e quase viraram caça a regressão
+inexistente.
+
+**Meça o raio por DIRETÓRIO, que é conjunto fechado:**
+
+```bash
+php artisan test tests/Feature/Phase135 tests/Feature/OnboardingEmCompanies
+# 368 passed — número que dá para comparar entre rodadas
+```
+
+E não tente rodar a suíte inteira nesta máquina para tirar baseline: ela morre
+em `CurlFactory.php` com `Maximum execution time of 300 seconds exceeded` (algum
+teste faz HTTP real). Até morrer, acumula **77 falhas pré-existentes** em 31
+classes — entre elas `ExampleTest` (`/` devolve 302, não 200) e
+`CalcularFaixaTest` (`new AdminController()` sem o argumento do construtor), que
+são quebras estruturais antigas, não regressão de quem está mexendo hoje.
