@@ -119,6 +119,21 @@ export default function ContratoDetalhe({
         emissao_congelada:    'A emissão de contratos está pausada no momento.',
     };
 
+    // Quick 260821-odj — `faltantes()` distingue campo VAZIO (`motivo:
+    // 'ausente'`) de campo PREENCHIDO mas num formato que não serve
+    // (`motivo: 'formato'`). Desde que o salvar parou de recusar a
+    // requisição inteira por causa disso (Tarefa 1), esta lista virou o
+    // ÚNICO aviso — sem essa distinção a pessoa veria "Nome de quem assina
+    // pela empresa" pendente com o campo visivelmente preenchido na tela ao
+    // lado, o que é pior do que o bug original. Copy sem jargão: nada de
+    // "motivo"/"formato"/"validação" na tela, a pessoa lê e já sabe o que
+    // digitar. `motivo` é contrato público (`ausente`|`formato`) — não
+    // inventar valor novo aqui.
+    const FORMATO_INVALIDO_TEXTO = {
+        nome_contato: 'precisa de nome e sobrenome (quem assina precisa do nome completo)',
+        cnpj:         'o número não confere',
+    };
+
     // ─── CLICK-07 — Reenviar aviso ──────────────────────────────────────
     // "Por alguns segundos" após o clique — evita repetir o 429 em sequência
     // (UI-SPEC). Sem contagem regressiva exata exigida.
@@ -296,7 +311,9 @@ export default function ContratoDetalhe({
                                         {faltantes.map((item, idx) => (
                                             <li key={idx} className="text-[13px] text-white/60 flex items-center gap-2">
                                                 <span className="h-1.5 w-1.5 rounded-full bg-white/30 shrink-0" />
-                                                {item.rotulo}
+                                                {item.motivo === 'formato' && FORMATO_INVALIDO_TEXTO[item.campo]
+                                                    ? `${item.rotulo}: ${FORMATO_INVALIDO_TEXTO[item.campo]}`
+                                                    : item.rotulo}
                                             </li>
                                         ))}
                                     </ul>
