@@ -39,7 +39,13 @@ class Company extends Model
         // que é o nome fantasia) e endereço, completados pelo Administrativo
         // na tela de contrato (ADM-01). Alimentam variáveis do modelo `.docx`
         // da Clicksign que hoje saem "A DEFINIR" (ver ContratoPdfService).
-        'razao_social', 'endereco',
+        //
+        // Quick 260821-cq0 — `endereco` MUDOU DE SIGNIFICADO: era o endereço
+        // completo concatenado, agora é só o LOGRADOURO (rua e número).
+        // `bairro`/`cidade`/`estado`/`cep` entram como colunas PRÓPRIAS —
+        // o contrato de Gestão do jurídico precisa dos cinco pedaços
+        // separados, não de uma string composta.
+        'razao_social', 'endereco', 'bairro', 'cidade', 'estado', 'cep',
         'parent_company_id', 'company_group_id', 'ml_link_generated_at', 'ml_link_url',
         // Link pendente de autorização Shopee (espelha ml_link_*).
         'shopee_link_generated_at', 'shopee_link_url',
