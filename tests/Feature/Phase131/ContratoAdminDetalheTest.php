@@ -197,6 +197,28 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertSame('ja_em_andamento', $props['motivo_bloqueio']);
     }
 
+    // ─── Quick 260821-l8n — empresa completa mas com serviço duplicado: bloqueia com motivo_bloqueio='servicos_duplicados' ───
+
+    public function test_show_de_empresa_com_servico_duplicado_bloqueia_com_motivo_servicos_duplicados(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Com Serviço Duplicado (Mons Bike)']);
+        $servico = $this->servicoComContrato('Gestão de Ads Duplicado');
+        // Cenário real (deal HubSpot 63836845208): dois itens de linha do
+        // MESMO serviço, pagamento escalonado.
+        $this->vincularServico($empresa, $servico, ['valor_contratado' => 5500]);
+        $this->vincularServico($empresa, $servico, ['valor_contratado' => 6000]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $this->assertSame([], $props['faltantes'], 'a empresa está completa — o bloqueio é por serviço duplicado, não por dado faltando.');
+        $this->assertFalse($props['pode_gerar_contrato']);
+        $this->assertSame('servicos_duplicados', $props['motivo_bloqueio']);
+    }
+
     // ─── Caso 4 — Quick 260817-d6h: email_colaborador saiu da tela de contrato ───
 
     public function test_email_colaborador_nao_aparece_mais_na_tela_de_contrato(): void

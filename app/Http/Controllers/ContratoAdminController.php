@@ -14,6 +14,7 @@ use App\Rules\CnpjValido;
 use App\Rules\NomeCompletoValido;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\CongelamentoEmissaoService;
+use App\Services\Clicksign\ContratoClicksignService;
 use App\Services\Contratos\ContratoDadosMinimosService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
@@ -339,6 +340,7 @@ class ContratoAdminController extends Controller
         Company $company,
         ContratoDadosMinimosService $dados,
         GatilhoContratoAdministrativoService $gatilho,
+        ContratoClicksignService $clicksign,
         ContratosPresosService $presos,
         CongelamentoEmissaoService $congelamento,
     ): \Inertia\Response {
@@ -346,17 +348,28 @@ class ContratoAdminController extends Controller
 
         $faltantes = $dados->faltantes($company);
         $avaliacao = $gatilho->avaliar($company);
-        $podeGerarContrato = $dados->estaPronta($company) && $avaliacao['status'] === 'elegivel';
+        // Quick 260821-l8n — mesmo serviço lançado em mais de um
+        // ContratoServico ativo (ex.: pagamento escalonado do HubSpot com 2
+        // itens de linha). `avaliar()` não enxerga isso (não é dado
+        // faltando nem pendência comercial); sem esta checagem a tela
+        // mostrava o botão "Gerar contrato" HABILITADO para uma empresa que
+        // `iniciarParaEmpresa()` ia recusar sem avisar por quê.
+        $temServicoDuplicado = $clicksign->servicosDuplicados($company) !== [];
+        $podeGerarContrato = $dados->estaPronta($company) && $avaliacao['status'] === 'elegivel' && ! $temServicoDuplicado;
 
         // Escolhe qual bloco a tela mostra quando o botão está desabilitado
         // (D-03). Dados mínimos vem primeiro: se a empresa está incompleta, é
         // essa a razão que o Administrativo precisa ver, mesmo que a empresa
         // também esteja, por exemplo, em 'aguardando_comercial' por outro
-        // motivo (sem_valor/sem_setor, que faltantes() não cobre).
+        // motivo (sem_valor/sem_setor, que faltantes() não cobre). Serviço
+        // duplicado vem logo depois — mesma família de "dado errado no
+        // cadastro", antes dos motivos de fluxo (ja_em_andamento/
+        // aguardando_comercial/isento).
         $motivoBloqueio = null;
         if (! $podeGerarContrato) {
             $motivoBloqueio = match (true) {
                 $faltantes !== []                                => 'dados_minimos',
+                $temServicoDuplicado                              => 'servicos_duplicados',
                 $avaliacao['status'] === 'ja_em_andamento'        => 'ja_em_andamento',
                 $avaliacao['status'] === 'aguardando_comercial'   => 'aguardando_comercial',
                 $avaliacao['status'] === 'isento'                 => 'isento',

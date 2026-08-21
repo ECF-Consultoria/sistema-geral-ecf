@@ -12,6 +12,7 @@ use App\Services\Comercial\PendenciasComerciaisService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use PHPUnit\Framework\Attributes\Test;
@@ -276,6 +277,47 @@ class ReavaliacaoAutomaticaTest extends TestCase
         $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->count());
         $this->assertGreaterThan(0, SpyGatilhoContratoAdministrativoService::$invocacoes);
         $this->assertLessThanOrEqual(2, SpyGatilhoContratoAdministrativoService::$invocacoes);
+    }
+
+    // ─── Serviço duplicado também barra o caminho AUTOMÁTICO (quick 260821-l8n) ───
+
+    /**
+     * Incidente Mons Bike (deal HubSpot 63836845208) reproduzido pelo
+     * caminho automático: os dois `ContratoServico` do mesmo serviço nascem
+     * SEM chamada manual nenhuma — é o `ContratoServicoGatilhoObserver`
+     * quem dispara. Antes da correção, o `created()` do primeiro item
+     * congelava sozinho o valor errado; a guarda em
+     * `ContratoClicksignService::iniciarParaEmpresa()` precisa valer
+     * também aqui, não só quando alguém aperta o botão da tela.
+     */
+    #[Test]
+    public function servico_duplicado_criado_pelo_observer_tambem_nao_gera_contrato(): void
+    {
+        $this->fakeSignatariosEcf();
+        Http::fake();
+        Queue::fake();
+
+        $company = $this->companyCompleta();
+        $servico = $this->servicoQueExige(['nome' => 'Gestão de Ads Duplicado']);
+
+        // Os dois itens de linha (pagamento escalonado) nascem juntos, sem
+        // `withoutEvents` — exatamente como `HubspotWebhookController::
+        // persistirContratos()` cria hoje (dentro de um `DB::transaction()`
+        // único, ver linha 525 do controller). É essa fronteira de commit
+        // que garante que o `created()` do PRIMEIRO item, ao rodar via
+        // `DB::afterCommit()`, já enxergue o SEGUNDO item também commitado —
+        // sem o `DB::transaction()` explícito aqui, os dois `create()`
+        // ficariam em transações/commits separados e o teste não reproduziria
+        // o incidente real.
+        DB::transaction(function () use ($company, $servico) {
+            $this->contratoServicoAtivo($company, $servico, ['valor_contratado' => 5500]);
+            $this->contratoServicoAtivo($company, $servico, ['valor_contratado' => 6000]);
+        });
+
+        $this->assertSame(
+            0,
+            ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $servico->id)->count()
+        );
     }
 }
 
