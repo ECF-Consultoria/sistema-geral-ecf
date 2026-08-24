@@ -197,6 +197,34 @@ class PortalUsuarioController extends Controller
         }
     }
 
+    /**
+     * Apaga a pessoa de vez.
+     *
+     * Diferente de desativar: aqui o cadastro some, junto com os vínculos e
+     * os códigos (cascade nas duas tabelas). É para o cadastro feito por
+     * engano, ou para quem nunca deveria ter entrado na lista.
+     *
+     * A auditoria é gravada ANTES, com nome, e-mail e empresas nas
+     * propriedades: sem isso a resposta a "quem tinha acesso a esta empresa
+     * em agosto?" sumiria junto com a linha. Os registros anteriores da
+     * pessoa (login, tarefa movida) continuam no `activity_log` — o texto
+     * deles já carrega o nome.
+     *
+     * Para tirar o acesso PRESERVANDO o histórico ligado à pessoa, o caminho
+     * é desativar, não excluir. A tela diz isso na confirmação.
+     */
+    public function destroy(PortalUsuario $portalUsuario)
+    {
+        $portalUsuario->loadMissing('empresas');
+        $nome = $portalUsuario->nome;
+
+        $this->auditoria->excluido($portalUsuario);
+
+        $portalUsuario->delete();
+
+        return back()->with('success', "{$nome} foi removido do portal.");
+    }
+
     /** Tira o acesso a UMA empresa; as demais continuam. */
     public function desvincular(PortalUsuario $portalUsuario, Company $company)
     {

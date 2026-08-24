@@ -72,6 +72,25 @@ export default function PortalUsuarios({ usuarios = [], empresas = [], grupos = 
         });
     };
 
+    /**
+     * Excluir é definitivo, e a confirmação precisa dizer isso — inclusive o
+     * caminho reversível, para quem clicou aqui querendo só tirar o acesso.
+     */
+    const excluir = (u) => {
+        const aviso = [
+            `Excluir ${u.nome} (${u.email}) do portal?`,
+            '',
+            'O cadastro e os acessos dele somem de vez.',
+            u.nunca_entrou ? '' : 'O histórico do que ele fez continua registrado.',
+            '',
+            'Para apenas tirar o acesso e poder devolver depois, use Desativar.',
+        ].filter((l) => l !== undefined).join('\n');
+
+        if (!confirm(aviso)) return;
+
+        router.delete(route('portal.usuarios.destroy', u.id), { preserveScroll: true });
+    };
+
     const alternarAtivo = (u) => {
         const acao = u.ativo ? 'Desativar' : 'Reativar';
         if (!confirm(`${acao} o acesso de ${u.nome}?${u.ativo ? ' Ele perde o acesso na hora.' : ''}`)) return;
@@ -180,18 +199,34 @@ export default function PortalUsuarios({ usuarios = [], empresas = [], grupos = 
                                         </p>
                                     </div>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => alternarAtivo(u)}
-                                        className={cn(
-                                            'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium transition-colors shrink-0',
-                                            u.ativo
-                                                ? 'text-white/45 hover:text-rose-300 hover:bg-rose-400/10'
-                                                : 'text-emerald-300 bg-emerald-400/10 hover:bg-emerald-400/15',
-                                        )}
-                                    >
-                                        {u.ativo ? <><ShieldOff size={13} /> Desativar</> : <><ShieldCheck size={13} /> Reativar</>}
-                                    </button>
+                                    {/* Duas ações com pesos diferentes, e a tela precisa
+                                        mostrar isso: desativar é reversível e preserva o
+                                        histórico ligado à pessoa; excluir é definitivo. Por
+                                        isso a segunda é discreta e fica ao lado, não
+                                        competindo com a primeira. */}
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => alternarAtivo(u)}
+                                            className={cn(
+                                                'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium transition-colors',
+                                                u.ativo
+                                                    ? 'text-white/45 hover:text-amber-300 hover:bg-amber-400/10'
+                                                    : 'text-emerald-300 bg-emerald-400/10 hover:bg-emerald-400/15',
+                                            )}
+                                        >
+                                            {u.ativo ? <><ShieldOff size={13} /> Desativar</> : <><ShieldCheck size={13} /> Reativar</>}
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => excluir(u)}
+                                            title={`Excluir ${u.nome} do portal — definitivo`}
+                                            className="grid place-items-center h-8 w-8 rounded-lg text-white/25 hover:text-rose-300 hover:bg-rose-400/10 transition-colors"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}

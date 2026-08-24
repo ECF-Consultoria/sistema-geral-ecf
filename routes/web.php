@@ -973,6 +973,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/acessos-portal/{portalUsuario}', [PortalUsuarioController::class, 'update'])->name('portal.usuarios.update');
         Route::post('/acessos-portal/{portalUsuario}/empresas', [PortalUsuarioController::class, 'vincular'])->name('portal.usuarios.vincular');
         Route::delete('/acessos-portal/{portalUsuario}/empresas/{company}', [PortalUsuarioController::class, 'desvincular'])->name('portal.usuarios.desvincular');
+        Route::delete('/acessos-portal/{portalUsuario}', [PortalUsuarioController::class, 'destroy'])->name('portal.usuarios.destroy');
 
         Route::post('/companies/{company}/logo', [CompanyController::class, 'updateLogo'])->name('companies.logo.update');
         Route::delete('/companies/{company}/logo', [CompanyController::class, 'destroyLogo'])->name('companies.logo.destroy');

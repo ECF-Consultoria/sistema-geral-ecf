@@ -113,6 +113,29 @@ class PortalAuditoria
             ->log("{$usuario->nome} ({$usuario->email}) recebeu acesso ao portal de {$empresa->name}");
     }
 
+    /**
+     * O último registro de alguém que vai ser apagado.
+     *
+     * Escrito ANTES do delete, e sem `performedOn`: o registro precisa
+     * sobreviver ao sujeito. Nome, e-mail e empresas vão nas PROPRIEDADES
+     * porque, depois do delete, não haverá linha de onde lê-los — e a
+     * pergunta "quem tinha acesso a esta empresa em agosto?" continua
+     * precisando de resposta.
+     */
+    public function excluido(PortalUsuario $usuario): void
+    {
+        activity(self::CANAL)
+            ->causedBy(auth()->user())
+            ->withProperties([
+                'evento'   => 'exclusao',
+                'nome'     => $usuario->nome,
+                'email'    => $usuario->email,
+                'empresas' => $usuario->empresas->pluck('name')->all(),
+                'entrou'   => $usuario->primeiro_acesso_em?->toDateTimeString(),
+            ])
+            ->log("Acesso de {$usuario->nome} ({$usuario->email}) excluído do portal");
+    }
+
     public function acessoRevogado(PortalUsuario $usuario, string $detalhe): void
     {
         activity(self::CANAL)
