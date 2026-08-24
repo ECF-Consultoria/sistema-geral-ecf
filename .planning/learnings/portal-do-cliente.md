@@ -391,3 +391,26 @@ naquelas URIs, sem nenhum aviso.
 
 Daí o prefixo `/portal/...`. `/entrar` e `/sair` ficam na raiz porque são as que
 o cliente digita.
+
+## 24. Allowlist com curinga não é allowlist
+
+A primeira versão da allowlist do `RestringeDominioDoPortal` tinha `portal/*`.
+Isso liberou **`/portal/usuarios`** — a tela ADMIN de gerenciar acessos —
+no domínio do cliente. Descoberto testando produção logo após o deploy: ela
+respondia 302 em vez de 404.
+
+Não vazou dado (o `/login` já era 404 lá, então ninguém autenticaria), mas a
+rota interna existia no endereço público. Duas correções, porque uma só não
+bastava:
+
+1. **Uma linha por rota**, nunca curinga. Curinga numa allowlist reintroduz
+   exatamente o vazamento que ela existe para impedir.
+2. **A tela admin saiu do prefixo `portal/`** e virou `/acessos-portal`. Ter as
+   rotas do cliente e as da equipe sob o mesmo prefixo era o que obrigava a
+   allowlist a distinguir uma da outra por padrão de string.
+
+Há um teste que quebra se alguém reintroduzir `portal/*`.
+
+**A lição maior:** o `curl` rota a rota contra PRODUÇÃO, depois do deploy, foi o
+que pegou. A suíte passava — porque o teste que eu tinha escrito verificava as
+rotas que eu me lembrei de listar, e `/portal/usuarios` não estava entre elas.
