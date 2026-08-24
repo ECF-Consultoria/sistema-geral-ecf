@@ -280,3 +280,30 @@ Mesmo motivo para o título do card: o seletor era `p.font-medium` e virou
 `p.font-semibold` no refino. E atenção ao `innerText` de texto com
 `uppercase` — ele devolve JÁ em maiúsculas, então comparação de conteúdo
 precisa ser case-insensitive.
+
+## 17. Subdomínio do Portal — e o `ASSET_URL` que quebra tudo em silêncio
+
+`cliente.ecfconsultoria.com.br` subiu em 24/08/2026: **mesma aplicação**, mesmo
+`root` (`/var/www/ecf_admin/public`), mesmo banco, mesmo deploy. Só outra porta
+de entrada. Vhost em `/etc/nginx/sites-available/ecf-cliente`, certificado por
+`certbot --nginx`.
+
+**A armadilha:** o `.env` de produção tinha
+`ASSET_URL=https://admin.ecfconsultoria.com.br`. Com ele, o subdomínio servia o
+HTML certo (`component: Portal/Inicio`, HTTP 200) mas carregava o JS de
+`admin.*` — e o `laravel-vite-plugin` marca os módulos com `crossorigin`, o que
+faz o navegador exigir CORS que o admin não envia. Resultado: **página branca com
+status 200 e zero erro no log do servidor.**
+
+`curl` não pega isso — o HTML chega inteiro. Só renderizando num navegador de
+verdade aparece.
+
+Correção: comentar `ASSET_URL` no `.env` + `php artisan config:cache`. Sem ele,
+`asset()` usa o host da requisição e cada domínio serve os próprios assets.
+Conferido depois nos dois lados: admin renderiza e a logo carrega
+(`asset_url` monta o `logoSrc` em `AppLayout.jsx:310` e `Auth/Login.jsx:6`).
+
+**Regra geral: `ASSET_URL` fixo e multi-domínio são incompatíveis.** Se um dia
+alguém repuser aquela linha, o Portal volta a dar página branca.
+
+Backups do dia: `/root/backup-nginx-20260824-170449` e `/root/env-backup-*`.

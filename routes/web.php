@@ -63,7 +63,19 @@ use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 // Redireciona raiz para dashboard
-Route::get('/', fn() => redirect()->route('dashboard'));
+// A raiz serve os dois domínios. No do Portal do Cliente, mandar para o
+// `dashboard` levaria o cliente à tela de login do sistema interno — que é
+// exatamente o que o `RestringeDominioDoPortal` existe para impedir. Lá ele
+// recebe a página de entrada do portal.
+Route::get('/', function () {
+    $dominio = config('portal.dominio_cliente');
+
+    if ($dominio && request()->getHost() === $dominio) {
+        return Inertia::render('Portal/Entrada');
+    }
+
+    return redirect()->route('dashboard');
+})->name('raiz');
 
 // Endpoint interno para sincronização de grants (curl fire-and-forget — sem CSRF)
 Route::post('/internal/grants/sync/run', [GrantController::class, 'syncRun'])

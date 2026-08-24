@@ -36,6 +36,15 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
+        // No domínio do Portal do Cliente, só existe o Portal do Cliente.
+        // `prepend` para barrar ANTES de qualquer sessão, CSRF ou binding de
+        // rota: a requisição para o sistema interno não deve nem começar a ser
+        // processada naquele domínio. Desligado quando
+        // PORTAL_CLIENTE_DOMINIO não está no .env.
+        $middleware->web(prepend: [
+            \App\Http\Middleware\RestringeDominioDoPortal::class,
+        ]);
+
         $middleware->alias([
             'role'       => \App\Http\Middleware\EnsureUserHasRole::class,
             'permission' => \App\Http\Middleware\EnsurePermission::class,
