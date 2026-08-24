@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\CompanyGroup;
 use App\Models\PortalUsuario;
 use App\Services\Portal\PortalAuditoria;
 use Illuminate\Http\Request;
@@ -53,10 +54,37 @@ class PortalUsuarioController extends Controller
                 'nunca_entrou'       => $u->primeiro_acesso_em === null,
             ]);
 
+        // As empresas chegam com o grupo a que pertencem, e os grupos vêm
+        // como ALVO próprio: dar acesso a alguém do Camillo Parts costuma
+        // significar as 7 empresas do grupo, não uma. Sem isso, o operador
+        // repetiria a mesma operação sete vezes — e esqueceria a sétima.
+        $empresas = Company::where('active', true)
+            ->with('grupo:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'company_group_id'])
+            ->map(fn (Company $e) => [
+                'id'         => $e->id,
+                'nome'       => $e->name,
+                'grupo_id'   => $e->company_group_id,
+                'grupo_nome' => $e->grupo?->name,
+            ]);
+
         return Inertia::render('Admin/PortalUsuarios', [
-            'usuarios'  => $usuarios,
-            'empresas'  => Company::where('active', true)->orderBy('name')->get(['id', 'name'])
-                ->map(fn ($e) => ['id' => $e->id, 'nome' => $e->name]),
+            'usuarios' => $usuarios,
+            'empresas' => $empresas,
+            // `whereHas`, não `having`: `withCount` gera SUBQUERY, não agregado,
+            // e um HAVING sobre ela quebra ("HAVING clause on a non-aggregate
+            // query"). Grupo sem empresa ativa fica de fora porque seria um alvo
+            // vazio no seletor.
+            'grupos'   => CompanyGroup::withCount(['companies' => fn ($q) => $q->where('active', true)])
+                ->whereHas('companies', fn ($q) => $q->where('active', true))
+                ->orderBy('name')
+                ->get()
+                ->map(fn (CompanyGroup $g) => [
+                    'id'       => $g->id,
+                    'nome'     => $g->name,
+                    'empresas' => $g->companies_count,
+                ]),
         ]);
     }
 
@@ -67,7 +95,10 @@ class PortalUsuarioController extends Controller
             'email'      => ['required', 'email', 'max:190', Rule::unique('portal_usuarios', 'email')],
             'telefone'   => ['nullable', 'string', 'max:30'],
             'cargo'      => ['nullable', 'string', 'max:60'],
-            'company_id' => ['required', 'integer', 'exists:companies,id'],
+            // Um dos dois, nunca os dois. `company_id` para uma empresa;
+            // `company_group_id` para todas as ativas do grupo.
+            'company_id'       => ['required_without:company_group_id', 'nullable', 'integer', 'exists:companies,id'],
+            'company_group_id' => ['required_without:company_id', 'nullable', 'integer', 'exists:company_groups,id'],
         ]);
 
         $usuario = PortalUsuario::create([
@@ -80,12 +111,16 @@ class PortalUsuarioController extends Controller
             'convidado_em'  => now(),
         ]);
 
-        $empresa = Company::findOrFail($dados['company_id']);
-        $usuario->empresas()->attach($empresa->id, ['principal' => true]);
+        $empresas = $this->resolverEmpresas($dados);
 
-        $this->auditoria->convidado($usuario, $empresa);
+        $this->vincularEmpresas($usuario, $empresas, marcarPrincipal: true);
 
-        return back()->with('success', "{$usuario->nome} já pode entrar no portal com o e-mail {$usuario->email}.");
+        $quantas = $empresas->count();
+        $onde = $quantas === 1
+            ? $empresas->first()->name
+            : "{$quantas} empresas";
+
+        return back()->with('success', "{$usuario->nome} já pode entrar no portal ({$onde}) com o e-mail {$usuario->email}.");
     }
 
     public function update(Request $request, PortalUsuario $portalUsuario)
@@ -107,22 +142,59 @@ class PortalUsuarioController extends Controller
         return back()->with('success', 'Acesso atualizado.');
     }
 
-    /** Dá acesso a mais uma empresa (grupos empresariais). */
+    /** Dá acesso a mais uma empresa — ou a um grupo inteiro. */
     public function vincular(Request $request, PortalUsuario $portalUsuario)
     {
         $dados = $request->validate([
-            'company_id' => ['required', 'integer', 'exists:companies,id'],
+            'company_id'       => ['required_without:company_group_id', 'nullable', 'integer', 'exists:companies,id'],
+            'company_group_id' => ['required_without:company_id', 'nullable', 'integer', 'exists:company_groups,id'],
         ]);
 
-        $empresa = Company::findOrFail($dados['company_id']);
+        $empresas = $this->resolverEmpresas($dados);
+        $this->vincularEmpresas($portalUsuario, $empresas);
 
-        // `syncWithoutDetaching` e não `attach`: clicar duas vezes não pode
-        // estourar por violação de índice único.
-        $portalUsuario->empresas()->syncWithoutDetaching([$empresa->id]);
+        $quantas = $empresas->count();
+        $onde = $quantas === 1 ? $empresas->first()->name : "{$quantas} empresas";
 
-        $this->auditoria->convidado($portalUsuario, $empresa);
+        return back()->with('success', "{$portalUsuario->nome} agora também acessa {$onde}.");
+    }
 
-        return back()->with('success', "{$portalUsuario->nome} agora também acessa {$empresa->name}.");
+    /**
+     * Uma empresa, ou todas as ATIVAS do grupo.
+     *
+     * Só as ativas: empresa inativa do grupo não deve aparecer no portal de
+     * ninguém, e incluí-la aqui daria acesso a algo que a própria ECF já
+     * encerrou. Empresa que voltar a ser ativa depois precisa ser vinculada à
+     * mão — é o comportamento seguro.
+     *
+     * @return \Illuminate\Support\Collection<int, Company>
+     */
+    private function resolverEmpresas(array $dados)
+    {
+        if (! empty($dados['company_group_id'])) {
+            return Company::where('company_group_id', $dados['company_group_id'])
+                ->where('active', true)
+                ->orderBy('name')
+                ->get();
+        }
+
+        return collect([Company::findOrFail($dados['company_id'])]);
+    }
+
+    /**
+     * `syncWithoutDetaching` e não `attach`: clicar duas vezes, ou vincular um
+     * grupo do qual a pessoa já tem uma empresa, não pode estourar por violação
+     * do índice único.
+     */
+    private function vincularEmpresas(PortalUsuario $usuario, $empresas, bool $marcarPrincipal = false): void
+    {
+        foreach ($empresas as $i => $empresa) {
+            $usuario->empresas()->syncWithoutDetaching([
+                $empresa->id => ['principal' => $marcarPrincipal && $i === 0],
+            ]);
+
+            $this->auditoria->convidado($usuario, $empresa);
+        }
     }
 
     /** Tira o acesso a UMA empresa; as demais continuam. */
