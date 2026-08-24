@@ -144,12 +144,12 @@ comportamento e aditiva, nao regressiva, para esse cenario especifico.
 
 C:\xampp\php\php.exe vendor/bin/phpunit --filter="Phase126|Phase127|Phase131|Phase132|Phase133"
 
-Tests: 388, Assertions: 1318 - 100% verde ("OK, but there were issues!"
+Tests: 393, Assertions: 1323 - 100% verde ("OK, but there were issues!"
 refere-se so a 450 PHPUnit Deprecations pre-existentes, nao relacionadas a
 este quick - mesma contagem do baseline medido antes de qualquer mudanca).
 
 Baseline antes deste quick (mesmo filtro): 372 tests, 1276 assertions. Este
-quick acrescentou 16 testes e 42 assertions, todos verdes.
+quick acrescentou 16 testes e 42 assertions; a correcao de concordancia de genero (ver secao abaixo) acrescentou mais 5 testes e 5 assertions, todos verdes.
 
 ## npm run build
 
@@ -173,6 +173,48 @@ gerado sem erros (JSX mexido: copy do bloqueio + campo editavel da frase).
 - de66059f - feat: guarda de servico duplicado vira consolidacao de fases
 - 64eff2fe - feat: valor_mensal para de somar fase e plano_parcelas passa a compor a frase
 - ae6851ad - feat: tela edita a frase do parcelamento e copy do bloqueio muda de significado
+- e0be8ca6 - fix: concordancia de genero em pt-BR na contagem de parcelas (correcao pos-conclusao)
+
+## Correcao pos-conclusao (2026-08-24) - concordancia de genero pt-BR
+
+O coordenador apontou um defeito na frase de {{plano_parcelas}} logo apos a
+conclusao inicial deste quick: 'parcela' e substantivo FEMININO em pt-BR, e
+a primeira versao usava a forma masculina fixa da tabela de extenso -
+saia 'As 2 (dois) primeiras parcelas...' (errado), devia ser
+'As 2 (duas) primeiras parcelas...'.
+
+Regra pt-BR aplicada: so 1 e 2 flexionam nessa faixa (uma/duas); de 3 a 99
+o numeral e invariavel ('tres parcelas', nunca uma forma feminina
+diferente), MAS os COMPOSTOS herdam a flexao da unidade - 21 -> 'vinte e
+uma', 22 -> 'vinte e duas', 31 -> 'trinta e uma', etc.
+
+Fix em app/Services/ContratoPdfService.php:
+
+- numeroPorExtenso() ganhou o parametro $feminino = false (default
+  preserva a unica chamada existente - nao havia OUTRO chamador a
+  proteger, mas o default seguro foi mantido por disciplina).
+- Novo metodo dedicado quantidadeDeParcelasPorExtenso() e o unico ponto
+  que a composicao da frase usa - encapsula "contar parcelas sempre usa
+  genero feminino", sem espalhar a flag pelo codigo que monta a frase.
+- Comentario pt-BR no codigo explica O PORQUE da flexao (substantivo
+  feminino), para ninguem reverter para o masculino achando que e erro de
+  digitacao.
+
+Assercao corrigida: tests/Feature/Phase126/ContratoPdfDadosTest.php, teste
+da ultima fase sem periodo ("As 2 (dois)..." -> "As 2 (duas)...").
+
+Teste novo: tests/Feature/Phase126/ContratoPdfDadosTest.php,
+plano_parcelas_flexiona_genero_feminino_para_quantidade_de_parcelas(), com
+data provider cobrindo 1 (uma), 2 (duas), 3 (tres, invariavel), 21 (vinte e
+uma) e 22 (vinte e duas) - 5 casos.
+
+Nenhum outro teste do projeto fixava a forma masculina (conferido por
+busca textual antes do fix).
+
+Gate apos a correcao (mesmo filtro do quick): Tests: 393, Assertions: 1323
+- 100% verde.
+
+Commit: e0be8ca6.
 
 ## Self-Check: PASSED
 
@@ -187,4 +229,4 @@ gerado sem erros (JSX mexido: copy do bloqueio + campo editavel da frase).
 - resources/js/Pages/Admin/ContratoDetalhe.jsx - FOUND, campo editavel +
   copy nova.
 - database/migrations/2026_08_24_100000_add_plano_parcelas_texto_to_contrato_assinaturas_table.php - FOUND.
-- Commits 281ff02e, de66059f, 64eff2fe, ae6851ad - FOUND em git log.
+- Commits 281ff02e, de66059f, 64eff2fe, ae6851ad, e0be8ca6 - FOUND em git log.
