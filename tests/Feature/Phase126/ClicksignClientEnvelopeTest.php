@@ -81,17 +81,19 @@ class ClicksignClientEnvelopeTest extends TestCase
     }
 
     /**
-     * Mapa MEDIDO em produção (2026-08-24, quick 260824-ish): a suposição
-     * original estava invertida — `contractor` é rotulado "Contratante"
-     * pela Clicksign, não "quem executa o trabalho". Ver docblock de
+     * Mapa com fonte oficial (2026-08-24, quick `260824-lfq`): a tabela
+     * publicada do enum `role` da Clicksign confirma `contractee` →
+     * "Contratada" e `witness` → "Testemunha" — a correção anterior (quick
+     * `260824-ish`) tinha se limitado aos três valores medidos no sandbox e
+     * parado em `party`/`sign`. Ver docblock de
      * `ClicksignClient::PAPEL_PARA_CLICKSIGN_ROLE`.
      */
     public static function papeisProvider(): array
     {
         return [
             'contratante -> contractor' => [ContratoAssinaturaSignatario::PAPEL_CONTRATANTE, 'contractor'],
-            'contratada -> party'       => [ContratoAssinaturaSignatario::PAPEL_CONTRATADA, 'party'],
-            'testemunha -> sign'        => [ContratoAssinaturaSignatario::PAPEL_TESTEMUNHA, 'sign'],
+            'contratada -> contractee'  => [ContratoAssinaturaSignatario::PAPEL_CONTRATADA, 'contractee'],
+            'testemunha -> witness'     => [ContratoAssinaturaSignatario::PAPEL_TESTEMUNHA, 'witness'],
         ];
     }
 

@@ -47,18 +47,15 @@ use Illuminate\Support\Facades\Log;
 class ClicksignClient
 {
     /**
-     * Mapa D-08 → vocabulário de `role` da qualificação (§6 do empírico:
-     * `action: "agree"` + `role: "sign" | "party" | "contractor"`). Só esses
-     * três valores foram MEDIDOS no sandbox, e nenhum deles é literalmente
-     * "contratante"/"contratada"/"testemunha" — a correspondência abaixo
-     * precisou ser inferida, e a primeira tentativa errou o sentido.
+     * Mapa D-08 → vocabulário de `role` da qualificação da Clicksign.
      *
-     * ✅ **MEDIDO em produção, 2026-08-24.** O checkpoint humano do plano
-     * 126-06 nunca aconteceu; a suposição original (`PAPEL_CONTRATADA` →
-     * `contractor`, `PAPEL_CONTRATANTE` → `party`) foi para produção sem
-     * confirmação e só foi medida quando o usuário conferiu um contrato de
-     * teste (Mons Bike) já gerado na Clicksign: o prestador (ECF) apareceu
-     * rotulado como "Contratante" e o cliente como "Parte" — invertido.
+     * ✅ **Fonte oficial, 2026-08-24.** A documentação da Clicksign
+     * ([`adicionar-requisito-de-qualificacao`](https://developers.clicksign.com/docs/adicionar-requisito-de-qualificacao))
+     * publica a tabela completa do enum `role` — dezenas de valores. Os três
+     * que interessam a este mapa:
+     *  - `contractee` → rotulado **"Contratada"** na interface.
+     *  - `contractor` → rotulado **"Contratante"** na interface.
+     *  - `witness`    → rotulado **"Testemunha"** na interface.
      *
      * ⚠️ **Por que o valor "óbvio" está do lado errado:** a leitura em
      * inglês de `contractor` — "quem executa o trabalho sob contrato" —
@@ -66,25 +63,38 @@ class ClicksignClient
      * "Contratante"** na interface em português, não como quem presta o
      * serviço. Antes de "consertar" este mapa de volta ao que parece
      * intuitivo, releia este parágrafo: a intuição em inglês foi exatamente
-     * o que causou o bug.
+     * o que causou o bug original.
      *
-     *  - `PAPEL_CONTRATADA`  → `party`      (quem presta o serviço — a ECF;
-     *    a Clicksign exibe `party` como "Parte").
-     *  - `PAPEL_CONTRATANTE` → `contractor` (o cliente; a Clicksign exibe
-     *    `contractor` como "Contratante").
-     *  - `PAPEL_TESTEMUNHA`  → `sign`       (sem papel contratual, só assina
-     *    — inalterado, nunca esteve em dúvida).
+     * **Duas correções na mesma data (2026-08-24) — a história completa:**
+     *  1. O checkpoint humano do plano 126-06 nunca aconteceu; a suposição
+     *     original (`PAPEL_CONTRATADA` → `contractor`, `PAPEL_CONTRATANTE`
+     *     → `party`) foi para produção sem confirmação e só foi medida
+     *     quando o usuário conferiu um contrato de teste (Mons Bike) já
+     *     gerado na Clicksign: o prestador (ECF) apareceu rotulado como
+     *     "Contratante" e o cliente como "Parte" — invertido.
+     *  2. O quick `260824-ish` corrigiu a inversão, mas se restringiu aos
+     *     **três valores medidos no sandbox** (`sign`, `party`,
+     *     `contractor`) — uma restrição autoimposta que nunca existiu na
+     *     API — e pôs a ECF em `party` → "Parte". Só quando o usuário
+     *     conferiu de novo (`"o thiago messina na verdade é o Contratada"`)
+     *     é que se foi buscar a tabela oficial do fornecedor: o valor certo
+     *     (`contractee`) simplesmente não tinha sido procurado. Com a
+     *     tabela na mão, `PAPEL_TESTEMUNHA` também mudou de `sign`
+     *     ("Assinar") para `witness` ("Testemunha") — mesmo chute da mesma
+     *     época, adormecido em produção (a diretoria reduziu os signatários
+     *     da ECF a uma pessoa só), mas prestes a morder quem reativar
+     *     testemunha.
      *
-     * Só `sign`, `party` e `contractor` foram medidos no sandbox — nenhum
-     * quarto valor (ex.: `contractee`) deve entrar neste mapa sem medição:
-     * mandar um `role` inválido só falha DEPOIS que o envelope já existe.
+     * Agora **existe fonte para consultar** antes de alterar este mapa de
+     * novo — confira a tabela oficial em vez de inferir por sentido ou se
+     * limitar ao que já foi observado em runtime.
      *
      * @var array<string, string>
      */
     public const PAPEL_PARA_CLICKSIGN_ROLE = [
-        ContratoAssinaturaSignatario::PAPEL_CONTRATADA  => 'party',
+        ContratoAssinaturaSignatario::PAPEL_CONTRATADA  => 'contractee',
         ContratoAssinaturaSignatario::PAPEL_CONTRATANTE => 'contractor',
-        ContratoAssinaturaSignatario::PAPEL_TESTEMUNHA  => 'sign',
+        ContratoAssinaturaSignatario::PAPEL_TESTEMUNHA  => 'witness',
     ];
 
     private ?string $token;
