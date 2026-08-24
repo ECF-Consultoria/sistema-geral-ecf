@@ -28,6 +28,11 @@ use Illuminate\Support\Facades\Log;
  * Ambos compartilham o mesmo rollback (D-12) via `montarEnvelopeComum()` e
  * o mesmo orçamento de **19 chamadas contra a janela medida de 20** (quick
  * `260824-mv3` acrescentou o requisito de rubrica por signatário — eram 15).
+ * A quick `260824-ot1` acrescenta um requisito A MAIS por signatário
+ * mapeado (`PAPEL_PARA_POSITION_SIGN_ID`), mas só quando o SERVIÇO optou
+ * pela assinatura posicionada (`$assinaturaPosicionada`, default `false`)
+ * — no caminho padrão (a imensa maioria dos serviços, sem a flag), o
+ * orçamento de 19 chamadas não muda nem uma unidade.
  *
  * Referência: `.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` — respostas
  * reais medidas contra o sandbox, com precedência sobre a doc oficial (dois
@@ -39,7 +44,10 @@ use Illuminate\Support\Facades\Log;
  * margem ficou apertada depois da rubrica automática (quick `260824-mv3`).
  * Não acrescentar nenhuma chamada redundante (ex.: reconsultar o envelope
  * após cada passo) — dois contratos seguidos já batem em 429. A Fase 127
- * precisa espaçar a geração em lote.
+ * precisa espaçar a geração em lote. Com `$assinaturaPosicionada = true`, a
+ * margem fica AINDA mais apertada (+1 chamada por signatário mapeado
+ * presente) — hoje só Gestão pode ligar a flag, e ela tem só 2 papéis
+ * mapeados (contratante + contratada), então o teto sobe para 21.
  *
  * O client é feito para rodar dentro de um job de fila (D-14) — sem estado
  * de request, sem `sleep()` longo. A Fase 127 chama `montarEnvelope()`/
@@ -100,6 +108,33 @@ class ClicksignClient
     ];
 
     /**
+     * Quick `260824-ot1` (Tarefa 2) — mapa papel → id da tag de assinatura
+     * POSICIONADA, no mesmo espírito de `PAPEL_PARA_CLICKSIGN_ROLE`: o valor
+     * é o `rubric_field` que vai no requisito de
+     * `criarRequisitoRubricaPosicionada()`.
+     *
+     * ⚠️ **Os IDs deste mapa TÊM que existir como `{{~position_sign_<id>}}`
+     * no `.docx` do modelo.** `contratante` → `{{~position_sign_contratante}}`,
+     * `contratada` → `{{~position_sign_contratada}}` — confirmado no modelo
+     * `modelo-contrato-gestao-v4-ASSINATURA-POSICIONADA.docx` (único modelo
+     * com as tags até esta quick). Renomear de um lado (aqui ou no `.docx`)
+     * sem o outro é o MESMO modo de falha silencioso do T-126-38: a API não
+     * denuncia — ela simplesmente não teria a tag para posicionar, e quem
+     * fica sem a garantia é o próximo `.docx` que reusar este mapa.
+     *
+     * `PAPEL_TESTEMUNHA` fica de fora DE PROPÓSITO — não existe
+     * `{{~position_sign_testemunha}}` no modelo; o signatário testemunha
+     * simplesmente não ganha o requisito posicionado, com ou sem a flag do
+     * serviço ligada.
+     *
+     * @var array<string, string>
+     */
+    public const PAPEL_PARA_POSITION_SIGN_ID = [
+        ContratoAssinaturaSignatario::PAPEL_CONTRATANTE => 'contratante',
+        ContratoAssinaturaSignatario::PAPEL_CONTRATADA  => 'contratada',
+    ];
+
+    /**
      * Quick `260824-mv3` — requisito de rubrica automática, para o rascunho
      * posicionar sozinho o campo (o posicionamento pela UI não salva em
      * envelope criado pela API — ver `criarRequisitoRubrica()`).
@@ -110,10 +145,23 @@ class ClicksignClient
     private const RUBRICA_PAGES = 'all';
 
     /**
-     * Tipo de marca da rubrica: iniciais do signatário (não a rubrica
-     * manuscrita — `"manuscript"` fica fora de escopo, não foi pedido).
+     * Tipo de marca da rubrica em TODAS as páginas: iniciais do signatário.
+     *
+     * Não confundir com `RUBRICA_POSICIONADA_KIND` (`"manuscript"`), que a
+     * quick `260824-ot1` acrescentou para o requisito ALTERNATIVO de
+     * assinatura posicionada — os dois `kind` coexistem, em requisitos
+     * diferentes (ver `criarRequisitoRubricaPosicionada()`).
      */
     private const RUBRICA_KIND = 'initials';
+
+    /**
+     * Quick `260824-ot1` (Tarefa 2) — tipo de marca do requisito de
+     * assinatura POSICIONADA: manuscrita, não iniciais. A doc oficial da
+     * Clicksign (`docs-modelos`) é explícita — quem assina DESENHA a
+     * assinatura na âncora `{{~position_sign_ID}}`, em vez de só confirmar.
+     * Usuário avisado e ciente (2026-08-24).
+     */
+    private const RUBRICA_POSICIONADA_KIND = 'manuscript';
 
     private ?string $token;
     private ?string $baseUrl;
@@ -326,10 +374,11 @@ class ClicksignClient
      * [`criar-requisito-de-rubrica`](https://developers.clicksign.com/reference/criar-requisito-de-rubrica).
      *
      * `pages: "all"` e `kind: "initials"` — rubrica em todas as páginas, por
-     * iniciais. Fora de escopo: `rubric_field` (tag de posicionamento,
-     * sintaxe não publicada) e posicionamento de ASSINATURA por coordenada
-     * (não existe na API — só a rubrica). A assinatura fica onde a Clicksign
-     * põe por padrão.
+     * iniciais. A assinatura em si fica onde a Clicksign põe por padrão —
+     * quem quer posicioná-la sob uma tag `{{~position_sign_ID}}` do `.docx`
+     * usa o requisito ALTERNATIVO `criarRequisitoRubricaPosicionada()`
+     * (quick `260824-ot1`), `rubric_field` em vez de `pages`, nunca os dois
+     * juntos no mesmo requisito.
      *
      * @return array<string, mixed>
      */
@@ -343,7 +392,38 @@ class ClicksignClient
     }
 
     /**
-     * Núcleo comum dos três requisitos acima: todos exigem
+     * POST /envelopes/{envelopeId}/requirements — requisito de RUBRICA
+     * POSICIONADA (quick `260824-ot1`, Tarefa 2), opt-in POR SERVIÇO (só
+     * quem tem a tag no `.docx` deve chamar este método — ver
+     * `Servico::assinaturaPosicionada()` e `PAPEL_PARA_POSITION_SIGN_ID`).
+     *
+     * Referência oficial: [`docs-modelos`](https://developers.clicksign.com/docs/docs-modelos)
+     * (tag `{{~position_sign_ID}}`) + [`criar-requisito-de-rubrica`](https://developers.clicksign.com/reference/criar-requisito-de-rubrica)
+     * (campo `rubric_field`, que liga o requisito à tag).
+     *
+     * `pages` e `rubric_field` são ALTERNATIVAS dentro de um requisito — a
+     * doc nunca pede os dois juntos. Por isso este é um requisito A MAIS
+     * por signatário, não uma troca de `criarRequisitoRubrica()`: quando a
+     * flag do serviço está ligada, o signatário com papel mapeado ganha
+     * OS DOIS requisitos (rubrica em todas as páginas + assinatura
+     * posicionada).
+     *
+     * `kind: "manuscript"` (não `"initials"`) — é assinatura manuscrita, o
+     * signatário desenha ao assinar (usuário avisado e ciente, 2026-08-24).
+     *
+     * @return array<string, mixed>
+     */
+    public function criarRequisitoRubricaPosicionada(string $envelopeId, string $documentId, string $signerId, string $rubricField): array
+    {
+        return $this->criarRequisito($envelopeId, $documentId, $signerId, [
+            'action'       => 'rubricate',
+            'rubric_field' => $rubricField,
+            'kind'         => self::RUBRICA_POSICIONADA_KIND,
+        ], 'criar requisito de rubrica posicionada');
+    }
+
+    /**
+     * Núcleo comum dos requisitos acima: todos exigem
      * `relationships.document` E `relationships.signer` (§6 do empírico).
      *
      * @param  array<string, mixed>  $atributos
@@ -660,18 +740,27 @@ class ClicksignClient
      * precisam ir na CRIAÇÃO do envelope (D-03), dentro de `$dadosEnvelope`,
      * responsabilidade de quem chama.
      *
+     * `$assinaturaPosicionada` (quick `260824-ot1`, D-01, default `false`)
+     * — opt-in por serviço: quando `true`, cada signatário com papel
+     * mapeado em `PAPEL_PARA_POSITION_SIGN_ID` ganha um requisito A MAIS
+     * (assinatura manuscrita posicionada). O client NÃO decide sozinho — a
+     * decisão nasce em `Servico::assinaturaPosicionada()` e desce por quem
+     * chama (mesma disciplina de `$templateId`); o client não consulta
+     * banco.
+     *
      * @param  array<string, mixed>  $dadosEnvelope  atributos de `criarEnvelope()`
      * @param  array{nome: string, email: string, papel: string}  $signatarioCliente  papel esperado: `contratante`
      * @return array{envelope_id: string, document_id: string, signatarios: array<int, array<string, mixed>>}
      */
-    public function montarEnvelope(array $dadosEnvelope, string $nomeArquivo, string $pdfBinario, array $signatarioCliente, bool $ativar = true): array
+    public function montarEnvelope(array $dadosEnvelope, string $nomeArquivo, string $pdfBinario, array $signatarioCliente, bool $ativar = true, bool $assinaturaPosicionada = false): array
     {
         return $this->montarEnvelopeComum(
             $dadosEnvelope,
             $signatarioCliente,
             'anexar documento',
             fn (string $envelopeId) => $this->anexarDocumento($envelopeId, $nomeArquivo, $pdfBinario),
-            $ativar
+            $ativar,
+            $assinaturaPosicionada
         );
     }
 
@@ -691,19 +780,27 @@ class ClicksignClient
      * precisam ir na CRIAÇÃO do envelope (D-03), dentro de `$dadosEnvelope`,
      * responsabilidade de quem chama.
      *
+     * `$assinaturaPosicionada` (quick `260824-ot1`, D-01, default `false`)
+     * — opt-in por serviço, mesma semântica de `montarEnvelope()`: só
+     * ligar para um `.docx` que TEM as tags `{{~position_sign_ID}}`
+     * correspondentes (hoje, só o modelo de Gestão). Quem decide é
+     * `GerarContratoAssinaturaJob`, a partir de
+     * `Servico::assinaturaPosicionada()` — este client não consulta banco.
+     *
      * @param  array<string, mixed>  $dadosEnvelope  atributos de `criarEnvelope()`
      * @param  array<string, mixed>  $variaveis  valores de `{{chave}}` do `.docx`
      * @param  array{nome: string, email: string, papel: string}  $signatarioCliente  papel esperado: `contratante`
      * @return array{envelope_id: string, document_id: string, signatarios: array<int, array<string, mixed>>}
      */
-    public function montarEnvelopePorModelo(array $dadosEnvelope, string $nomeArquivo, string $templateId, array $variaveis, array $signatarioCliente, bool $ativar = true): array
+    public function montarEnvelopePorModelo(array $dadosEnvelope, string $nomeArquivo, string $templateId, array $variaveis, array $signatarioCliente, bool $ativar = true, bool $assinaturaPosicionada = false): array
     {
         return $this->montarEnvelopeComum(
             $dadosEnvelope,
             $signatarioCliente,
             'anexar documento por modelo',
             fn (string $envelopeId) => $this->anexarDocumentoPorModelo($envelopeId, $nomeArquivo, $templateId, $variaveis),
-            $ativar
+            $ativar,
+            $assinaturaPosicionada
         );
     }
 
@@ -727,12 +824,22 @@ class ClicksignClient
      * rollback (D-04). Não duplica a sequência nem cria um segundo caminho
      * de rollback.
      *
+     * `$assinaturaPosicionada` (quick `260824-ot1`, Tarefa 2, default
+     * `false` — D-01 protege os 8 serviços sem tag no `.docx`): quando
+     * `true`, cada signatário cujo papel está em `PAPEL_PARA_POSITION_SIGN_ID`
+     * ganha um requisito A MAIS logo depois do de rubrica normal —
+     * `criarRequisitoRubricaPosicionada()`. `PAPEL_TESTEMUNHA` nunca ganha
+     * esse requisito, com ou sem a flag, porque não está no mapa. Falha
+     * nesse requisito é FATAL como qualquer outro passo desta sequência:
+     * cai no mesmo `catch`, aciona o mesmo rollback D-12, propaga a mesma
+     * exceção original.
+     *
      * @param  array<string, mixed>  $dadosEnvelope  atributos de `criarEnvelope()`
      * @param  array{nome: string, email: string, papel: string}  $signatarioCliente  papel esperado: `contratante`
      * @param  \Closure(string): array<string, mixed>  $anexarDocumento  recebe o `$envelopeId`, devolve o bloco `data` do documento criado
      * @return array{envelope_id: string, document_id: string, signatarios: array<int, array<string, mixed>>}
      */
-    private function montarEnvelopeComum(array $dadosEnvelope, array $signatarioCliente, string $passoAnexar, \Closure $anexarDocumento, bool $ativar = true): array
+    private function montarEnvelopeComum(array $dadosEnvelope, array $signatarioCliente, string $passoAnexar, \Closure $anexarDocumento, bool $ativar = true, bool $assinaturaPosicionada = false): array
     {
         $envelope   = $this->criarEnvelope($dadosEnvelope);
         $envelopeId = $envelope['id'];
@@ -765,6 +872,19 @@ class ClicksignClient
 
                 $passoAtual = "requisito de rubrica ({$papel})";
                 $this->criarRequisitoRubrica($envelopeId, $documentId, $signerId);
+
+                // Quick 260824-ot1 (Tarefa 2, D-01) — requisito A MAIS,
+                // opt-in por serviço. `PAPEL_TESTEMUNHA` nunca está no mapa
+                // → nunca ganha este requisito, com ou sem a flag.
+                if ($assinaturaPosicionada && array_key_exists($papel, self::PAPEL_PARA_POSITION_SIGN_ID)) {
+                    $passoAtual = "requisito de rubrica posicionada ({$papel})";
+                    $this->criarRequisitoRubricaPosicionada(
+                        $envelopeId,
+                        $documentId,
+                        $signerId,
+                        self::PAPEL_PARA_POSITION_SIGN_ID[$papel]
+                    );
+                }
 
                 $signatariosCriados[] = [
                     'id'    => $signerId,
