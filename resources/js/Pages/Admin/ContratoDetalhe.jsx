@@ -110,9 +110,15 @@ export default function ContratoDetalhe({
         isento:               'Nenhum serviço desta empresa passa por contrato.',
         // Quick 260821-l8n — empresa Mons Bike: mesmo serviço lançado duas
         // vezes no HubSpot (ex.: pagamento parcelado em mais de uma linha).
-        // Sem jargão técnico (nada de "ContratoServico"/"item de linha") —
-        // a pessoa só precisa saber que tem serviço repetido e onde mexer.
-        servicos_duplicados:  'O mesmo serviço aparece cadastrado mais de uma vez para esta empresa. Corrija no HubSpot (deixando só um lançamento por serviço) antes de gerar o contrato — assim nenhum valor fica de fora.',
+        //
+        // Quick 260824-bte — deixou de ser "erro de cadastro": mais de um
+        // lançamento do mesmo serviço é a forma legítima de registrar
+        // pagamento escalonado. O que ainda bloqueia é não dar para saber a
+        // ORDEM das parcelas (nenhuma data de início marcada, ou as duas
+        // datas iguais) — "corrija no HubSpot deixando só um lançamento"
+        // virou conselho ERRADO. Sem jargão técnico (nada de
+        // "ContratoServico"/"item de linha"/"hs_recurring_billing_start_date").
+        servicos_duplicados:  'Este serviço tem mais de um lançamento no HubSpot (pagamento escalonado), mas não foi possível saber a ordem das parcelas — falta (ou está repetida) a data de início de uma das parcelas. Corrija a data de início no HubSpot antes de gerar o contrato.',
         // Fase 132 Plano 01 (D-07) — este caso não usa MOTIVO_BLOQUEIO_TEXTO
         // no bloco de tela (tem bloco próprio, ver abaixo), mas a chave fica
         // aqui documentada por completude.
@@ -200,6 +206,32 @@ export default function ContratoDetalhe({
     // continua local é só o toggle de abrir/fechar "Ver detalhes técnicos"
     // — estado de exibição, não de dado.
     const [detalhesTecnicosAbertos, setDetalhesTecnicosAbertos] = useState({});
+
+    // ─── Quick 260824-bte (Tarefa 3c) — frase do parcelamento, editável ──
+    // Texto que vai impresso em {{plano_parcelas}} no contrato que o
+    // cliente assina: override (se já existir) ou o texto composto pelas
+    // fases do HubSpot. Editável só enquanto o contrato está em `rascunho`
+    // — depois de enviado, editar aqui não muda o que já foi montado na
+    // Clicksign.
+    const [planoParcelasEdicao, setPlanoParcelasEdicao] = useState({});
+    const [planoParcelasSalvando, setPlanoParcelasSalvando] = useState(null);
+
+    function textoPlanoParcelas(c) {
+        if (Object.prototype.hasOwnProperty.call(planoParcelasEdicao, c.id)) {
+            return planoParcelasEdicao[c.id];
+        }
+        return c.plano_parcelas_texto ?? c.plano_parcelas_efetivo ?? '';
+    }
+
+    function salvarPlanoParcelas(c) {
+        setPlanoParcelasSalvando(c.id);
+        router.patch(route('admin.contratos.cadastro', company.id), {
+            contratos: [{ id: c.id, plano_parcelas_texto: textoPlanoParcelas(c) }],
+        }, {
+            preserveScroll: true,
+            onFinish: () => setPlanoParcelasSalvando(null),
+        });
+    }
 
     // ─── D-10 — Liberar manualmente (absorve a Fase 130, preserva D-11) ──
     // Reusa literalmente o texto já validado em
@@ -699,6 +731,39 @@ export default function ContratoDetalhe({
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>
+
+                                                {/* Quick 260824-bte (Tarefa 3c) — frase do parcelamento, editável
+                                                    enquanto o contrato ainda está em rascunho (antes de ser enviado
+                                                    pelo painel da Clicksign — depois disso, editar aqui não muda o
+                                                    que já foi montado no documento). Sem jargão: a pessoa precisa
+                                                    saber que este texto vai IMPRESSO no contrato que o cliente
+                                                    assina, nada de "snapshot"/"override"/"variável". */}
+                                                {c.status === 'rascunho' && (
+                                                    <TableRow key={`${c.id}-plano-parcelas`}>
+                                                        <TableCell colSpan={4} className="py-2 border-t-0">
+                                                            <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 space-y-1.5">
+                                                                <Label className="text-[11px] text-white/50">
+                                                                    Frase do parcelamento — vai impressa no contrato que o cliente assina
+                                                                </Label>
+                                                                <Textarea
+                                                                    rows={2}
+                                                                    value={textoPlanoParcelas(c)}
+                                                                    onChange={(e) => setPlanoParcelasEdicao((atual) => ({ ...atual, [c.id]: e.target.value }))}
+                                                                    className="text-[12px] focus:border-ecf-yellow/40"
+                                                                />
+                                                                <Button
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    disabled={planoParcelasSalvando === c.id}
+                                                                    onClick={() => salvarPlanoParcelas(c)}
+                                                                >
+                                                                    {planoParcelasSalvando === c.id ? 'Salvando…' : 'Salvar frase'}
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
 
                                                 {/* Quick 260816-d72 (UI-06/D-05) — aviso de ESPERA, não erro: mesma
                                                     família do aviso de 429 do reenvio (CLICKSIGN-SANDBOX-EMPIRICO.md

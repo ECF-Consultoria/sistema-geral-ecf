@@ -16,6 +16,7 @@ use App\Services\Clicksign\ContratoClicksignService;
 use App\Services\Contratos\ContratoDadosMinimosService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
+use App\Services\ContratoPdfService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -341,6 +342,10 @@ class ContratoAdminController extends Controller
         ContratoClicksignService $clicksign,
         ContratosPresosService $presos,
         CongelamentoEmissaoService $congelamento,
+        // Quick 260824-bte (Tarefa 3c) — só para `ContratoPdfService::planoParcelas()`,
+        // que mostra na tela o texto EFETIVO atual (override ou composto)
+        // do campo editável de {{plano_parcelas}}.
+        ContratoPdfService $pdfDados,
     ): \Inertia\Response {
         $company->loadMissing('contratosServico.servico');
 
@@ -456,7 +461,7 @@ class ContratoAdminController extends Controller
             // desta tela para alimentar o select do modal "Liberar
             // manualmente".
             'motivos_manuais' => ContratoLiberacao::MOTIVOS_MANUAIS_LABELS,
-            'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico) {
+            'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico, $pdfDados) {
                 return [
                     'id'                                => $c->id,
                     'servico_id'                        => $c->servico_id,
@@ -464,6 +469,15 @@ class ContratoAdminController extends Controller
                     'status'                             => $c->status,
                     'dias_parado'                        => $presos->diasParado($c),
                     'causa'                              => $presos->causa($c),
+                    // Quick 260824-bte (Tarefa 3c) — texto de {{plano_parcelas}}:
+                    // `plano_parcelas_texto` é o override CRU (nulo quando
+                    // não preenchido — é o que o formulário edita e
+                    // `atualizarCadastro()` grava); `plano_parcelas_efetivo`
+                    // é o valor que REALMENTE vai para o contrato agora
+                    // (override ou composto pelas fases do snapshot) — é o
+                    // que o campo mostra por padrão antes de qualquer edição.
+                    'plano_parcelas_texto'               => $c->plano_parcelas_texto,
+                    'plano_parcelas_efetivo'              => $pdfDados->planoParcelas($c),
                     // Quick 260819-guy (Tarefa 7 item 1) — texto exato da
                     // recusa. Já passou por `podarPii()` (WR-11) antes de
                     // gravar, em `GerarContratoAssinaturaJob::failed()`; a
@@ -555,9 +569,18 @@ class ContratoAdminController extends Controller
             // vencem as parcelas seguintes.
             'contratos_servico.*.data_primeira_parcela' => ['nullable', 'date'],
             'contratos_servico.*.dia_vencimento'        => ['nullable', 'integer', 'min:1', 'max:31'],
+            // Quick 260824-bte (Tarefa 3c) — override de {{plano_parcelas}}
+            // por CONTRATO (`ContratoAssinatura`, não `ContratoServico`: a
+            // coluna vive lá — Tarefa 3a). String vazia é tratada como "sem
+            // override" (volta a usar o composto) no save abaixo, mesma
+            // disciplina de `?? null` dos demais campos opcionais desta rota.
+            'contratos'                            => ['array'],
+            'contratos.*.id'                       => ['required', 'integer', 'exists:contrato_assinaturas,id'],
+            'contratos.*.plano_parcelas_texto'      => ['nullable', 'string'],
         ]);
 
         $itensServico = $data['contratos_servico'] ?? [];
+        $itensContrato = $data['contratos'] ?? [];
 
         // T-131-04-01 (IDOR) — molde literal do
         // ContratoLiberacaoManualController::store(): valida o PERTENCIMENTO
@@ -576,6 +599,19 @@ class ContratoAdminController extends Controller
             $paresParaAtualizar[] = [$contratoServico, $item];
         }
 
+        // Mesma disciplina de IDOR acima, agora para `contrato_assinaturas`
+        // (Quick 260824-bte, Tarefa 3c).
+        $paresContratoParaAtualizar = [];
+        foreach ($itensContrato as $item) {
+            $contratoAssinatura = ContratoAssinatura::findOrFail($item['id']);
+
+            if ($contratoAssinatura->company_id !== $company->id) {
+                abort(422, 'O contrato informado não pertence a esta empresa.');
+            }
+
+            $paresContratoParaAtualizar[] = [$contratoAssinatura, $item];
+        }
+
         // Mass assignment sobre os $fillable já existentes de Company — nunca
         // $guarded = [].
         $company->fill(collect($data)->only([
@@ -592,6 +628,17 @@ class ContratoAdminController extends Controller
                 // Quick 260819-guy.
                 'data_primeira_parcela'  => $item['data_primeira_parcela'] ?? null,
                 'dia_vencimento'         => $item['dia_vencimento'] ?? null,
+            ]);
+        }
+
+        foreach ($paresContratoParaAtualizar as [$contratoAssinatura, $item]) {
+            // Quick 260824-bte — string vazia grava `null` (volta a usar o
+            // texto composto pelas fases do snapshot); nunca guarda string
+            // vazia como se fosse um override de propósito.
+            $textoOverride = trim((string) ($item['plano_parcelas_texto'] ?? ''));
+
+            $contratoAssinatura->update([
+                'plano_parcelas_texto' => $textoOverride !== '' ? $textoOverride : null,
             ]);
         }
 

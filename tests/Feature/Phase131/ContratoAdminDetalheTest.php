@@ -219,6 +219,73 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertSame('servicos_duplicados', $props['motivo_bloqueio']);
     }
 
+    // ─── Quick 260824-bte — mesma empresa, mas com ordem DERIVÁVEL: deixa de bloquear ───
+
+    /**
+     * Mons Bike reproduzida com a data de início preenchida (o dado real
+     * medido em produção): a mesma empresa que o teste anterior bloqueava
+     * agora gera contrato normalmente — a guarda virou "ordem ambígua", não
+     * mais "mesmo serviço em duas linhas".
+     */
+    public function test_show_de_empresa_com_fases_do_mesmo_servico_e_ordem_derivavel_nao_bloqueia_mais(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Com Pagamento Escalonado Resolvível']);
+        $servico = $this->servicoComContrato('Gestão de Ads Escalonado');
+        $this->vincularServico($empresa, $servico, [
+            'valor_contratado'       => 5500,
+            'hubspot_billing_period' => 'P3M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '']],
+        ]);
+        $this->vincularServico($empresa, $servico, [
+            'valor_contratado'       => 6000,
+            'hubspot_billing_period' => 'P9M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '2026-12-01']],
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $this->assertSame([], $props['faltantes']);
+        $this->assertTrue($props['pode_gerar_contrato']);
+        $this->assertNull($props['motivo_bloqueio']);
+    }
+
+    /**
+     * Fim a fim pelo HTTP: `POST gerar` cria UM único `ContratoAssinatura`
+     * com as duas fases no snapshot — não dois contratos, não um contrato
+     * incompleto.
+     */
+    public function test_gerar_contrato_com_fases_do_mesmo_servico_cria_um_unico_contrato_com_as_duas_fases(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Escalonada Gerar Contrato']);
+        $servico = $this->servicoComContrato('Gestão de Ads Escalonado Gerar');
+        $this->vincularServico($empresa, $servico, [
+            'valor_contratado'       => 5500,
+            'hubspot_billing_period' => 'P3M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '']],
+        ]);
+        $this->vincularServico($empresa, $servico, [
+            'valor_contratado'       => 6000,
+            'hubspot_billing_period' => 'P9M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '2026-12-01']],
+        ]);
+
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfOk()]);
+
+        $response = $this->actingAs($admin)->post(route('admin.contratos.gerar', $empresa));
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        $contratos = ContratoAssinatura::where('company_id', $empresa->id)->where('servico_id', $servico->id)->get();
+        $this->assertCount(1, $contratos);
+        $this->assertCount(2, $contratos->first()->servicos_snapshot);
+    }
+
     // ─── Caso 4 — Quick 260817-d6h: email_colaborador saiu da tela de contrato ───
 
     public function test_email_colaborador_nao_aparece_mais_na_tela_de_contrato(): void
@@ -439,6 +506,105 @@ class ContratoAdminDetalheTest extends TestCase
             '2026-02-01',
             optional($contratoServicoDeOutraEmpresa->fresh()->data_contratacao)->format('Y-m-d'),
         );
+    }
+
+    // ─── Quick 260824-bte (Tarefa 3c) — override de {{plano_parcelas}} por contrato ───
+
+    public function test_show_devolve_plano_parcelas_texto_e_efetivo_por_contrato(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Frase Do Parcelamento']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+
+        $contrato = ContratoAssinatura::factory()->create([
+            'company_id' => $empresa->id,
+            'servico_id' => $servico->id,
+            'status'     => ContratoAssinatura::STATUS_RASCUNHO,
+            'servicos_snapshot' => [[
+                'servico'          => $servico->nome,
+                'valor_contratado' => 100.0,
+                'data_contratacao' => '2026-01-01',
+                'data_vencimento'  => '2027-01-01',
+            ]],
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+        $response->assertOk();
+
+        $contratoProp = collect($response->viewData('page')['props']['contratos'])->firstWhere('id', $contrato->id);
+        $this->assertNotNull($contratoProp);
+        $this->assertNull($contratoProp['plano_parcelas_texto'], 'sem override gravado, o texto CRU é nulo.');
+        $this->assertSame(
+            \App\Services\Clicksign\ContratoVariaveisModeloService::PLANO_PARCELAS_CASO_SIMPLES,
+            $contratoProp['plano_parcelas_efetivo'],
+            'com snapshot de uma fase só, o texto EFETIVO é o caso simples.'
+        );
+    }
+
+    public function test_atualizar_cadastro_grava_plano_parcelas_texto_do_contrato_conferido_por_reconsulta(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Salvar Frase Parcelamento']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+
+        $contrato = ContratoAssinatura::factory()->create([
+            'company_id'        => $empresa->id,
+            'servico_id'        => $servico->id,
+            'status'            => ContratoAssinatura::STATUS_RASCUNHO,
+            'servicos_snapshot' => [[
+                'servico'          => $servico->nome,
+                'valor_contratado' => 100.0,
+                'data_contratacao' => '2026-01-01',
+                'data_vencimento'  => '2027-01-01',
+            ]],
+        ]);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresa), [
+            'contratos' => [
+                ['id' => $contrato->id, 'plano_parcelas_texto' => 'Texto combinado à mão com o cliente.'],
+            ],
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        // Reconsulta ao banco — nunca confia na mensagem de sucesso.
+        $this->assertSame('Texto combinado à mão com o cliente.', $contrato->fresh()->plano_parcelas_texto);
+    }
+
+    public function test_atualizar_cadastro_com_contrato_de_outra_empresa_devolve_422_e_nao_grava_plano_parcelas(): void
+    {
+        $admin = $this->admin();
+
+        $empresaAlvo  = $this->empresaCompleta(['name' => 'Empresa Alvo IDOR Contrato']);
+        $empresaOutra = $this->empresaCompleta(['name' => 'Empresa Outra IDOR Contrato', 'cnpj' => '22.333.444/0001-81']);
+        $servico      = $this->servicoComContrato();
+        $this->vincularServico($empresaOutra, $servico);
+
+        $contratoDeOutraEmpresa = ContratoAssinatura::factory()->create([
+            'company_id'        => $empresaOutra->id,
+            'servico_id'        => $servico->id,
+            'status'            => ContratoAssinatura::STATUS_RASCUNHO,
+            'servicos_snapshot' => [[
+                'servico'          => $servico->nome,
+                'valor_contratado' => 100.0,
+                'data_contratacao' => '2026-01-01',
+                'data_vencimento'  => '2027-01-01',
+            ]],
+        ]);
+
+        $response = $this->actingAs($admin)->patch(route('admin.contratos.cadastro', $empresaAlvo), [
+            'contratos' => [
+                ['id' => $contratoDeOutraEmpresa->id, 'plano_parcelas_texto' => 'Tentativa de IDOR.'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+
+        // Reconsulta ao banco — o contrato de outra empresa não foi alterado.
+        $this->assertNull($contratoDeOutraEmpresa->fresh()->plano_parcelas_texto);
     }
 
     // ─── Caso 7 — Quick 260817-d6h: email_colaborador com formato inválido é ignorado, sem erro de validação ───
