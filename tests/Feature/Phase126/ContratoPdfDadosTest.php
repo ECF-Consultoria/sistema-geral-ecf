@@ -8,6 +8,7 @@ use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Services\ContratoPdfService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -584,7 +585,62 @@ class ContratoPdfDadosTest extends TestCase
         $dados = (new ContratoPdfService())->montarDados($contrato);
 
         $this->assertSame(
-            'As 2 (dois) primeiras parcelas corresponderão a R$ 2.250,00 e as demais seguirão a faixa apurada na forma da Cláusula 2.1.2.',
+            // Concordância de gênero pt-BR (correção pós-deploy, quick
+            // 260824-bte): "parcela" é feminino — "2 (duas)", nunca
+            // "2 (dois)".
+            'As 2 (duas) primeiras parcelas corresponderão a R$ 2.250,00 e as demais seguirão a faixa apurada na forma da Cláusula 2.1.2.',
+            $dados['pagamento']['plano_parcelas']
+        );
+    }
+
+    /**
+     * Concordância de gênero pt-BR (correção pós-deploy, quick 260824-bte):
+     * "parcela" é substantivo FEMININO. 1 e 2 flexionam para "uma"/"duas";
+     * de 3 a 99 o numeral é INVARIÁVEL ("três", nunca "treis"), mas os
+     * COMPOSTOS herdam a flexão da unidade — "21" -> "vinte e uma", "22" ->
+     * "vinte e duas". A quantidade sob teste vai sempre na PRIMEIRA fase
+     * (prefixo "As N (extenso) primeiras..."); a última fase fica fixa em 5
+     * parcelas ("cinco", invariável) só para fechar a frase.
+     *
+     * @return iterable<string, array{0: int, 1: string}>
+     */
+    public static function quantidadesEExtensoFemininoProvider(): iterable
+    {
+        yield 'uma (unidade que flexiona)'   => [1, 'uma'];
+        yield 'duas (unidade que flexiona)'  => [2, 'duas'];
+        yield 'três (invariável)'            => [3, 'três'];
+        yield 'vinte e uma (composto herda)' => [21, 'vinte e uma'];
+        yield 'vinte e duas (composto herda)' => [22, 'vinte e duas'];
+    }
+
+    #[Test]
+    #[DataProvider('quantidadesEExtensoFemininoProvider')]
+    public function plano_parcelas_flexiona_genero_feminino_para_quantidade_de_parcelas(int $quantidade, string $extensoEsperado): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão com parcelas variadas',
+                    'valor_contratado' => 1000.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => $quantidade,
+                ],
+                [
+                    'servico'          => 'Gestão com parcelas variadas',
+                    'valor_contratado' => 2000.0,
+                    'data_contratacao' => '2026-06-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 5,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame(
+            "As {$quantidade} ({$extensoEsperado}) primeiras parcelas corresponderão a R\$ 1.000,00 e as 5 (cinco) demais a R\$ 2.000,00.",
             $dados['pagamento']['plano_parcelas']
         );
     }

@@ -330,7 +330,12 @@ class ContratoPdfService
             }
 
             $qtd = (int) $parcelas;
-            $extenso = $this->numeroPorExtenso($qtd);
+            // Quick 260824-bte (correção pós-deploy) — "parcelas" é
+            // substantivo FEMININO em pt-BR ("2 (duas) primeiras
+            // parcelas", nunca "2 (dois)"). `numeroPorExtenso()` é
+            // genérico (masculino por padrão); quem conta parcelas usa
+            // este wrapper dedicado, nunca a forma crua.
+            $extenso = $this->quantidadeDeParcelasPorExtenso($qtd);
             $valorFormatado = $this->formatarMoeda((float) $fase['valor_contratado']);
 
             if ($indice === 0) {
@@ -352,12 +357,41 @@ class ContratoPdfService
     }
 
     /**
+     * `numeroPorExtenso()` especializado para CONTAR PARCELAS — wrapper
+     * dedicado, não um parâmetro solto na assinatura genérica.
+     *
+     * pt-BR: "parcela" é substantivo FEMININO. Só "um/uma" e "dois/duas"
+     * flexionam em gênero nessa faixa (3 a 99 são invariáveis: "três
+     * parcelas", nunca "treis"/"trêsa"), MAS os COMPOSTOS herdam a flexão
+     * da unidade: "21 parcelas" -> "vinte e uma", "22 parcelas" -> "vinte e
+     * duas", "31" -> "trinta e uma", etc. `numeroPorExtenso(feminino: true)`
+     * já resolve isso — este método existe só para que quem monta a frase
+     * de `{{plano_parcelas}}` nunca precise lembrar de passar a flag.
+     *
+     * Achado real (quick 260824-bte, correção pós-deploy): a primeira versão
+     * usava a forma masculina fixa e produzia "2 (dois) primeiras parcelas"
+     * — errado. Documentado aqui para que ninguém "corrija" de volta para o
+     * masculino achando que é erro de digitação.
+     */
+    private function quantidadeDeParcelasPorExtenso(int $numero): string
+    {
+        return $this->numeroPorExtenso($numero, feminino: true);
+    }
+
+    /**
      * Número por extenso em pt-BR, minúsculo, para a quantidade de parcelas
      * entre parênteses (ex.: "3 (três)"). Cobre 0–99 — mais que suficiente
      * para quantidade de parcelas de um contrato; qualquer valor fora dessa
      * faixa cai no próprio dígito (nunca quebra, só perde o "por extenso").
+     *
+     * `$feminino` flexiona 1 e 2 (e os compostos que terminam neles: 21, 22,
+     * 31, 32, ...) para "uma"/"duas" — de 3 a 99 o numeral é invariável em
+     * pt-BR, então só essas duas unidades (e o resto do composto) mudam.
+     * Default `false` (masculino) para não alterar nenhuma outra chamada
+     * existente — quem precisa da forma feminina usa
+     * `quantidadeDeParcelasPorExtenso()`, nunca esta flag direto.
      */
-    private function numeroPorExtenso(int $numero): string
+    private function numeroPorExtenso(int $numero, bool $feminino = false): string
     {
         $unidades = [
             0 => 'zero', 1 => 'um', 2 => 'dois', 3 => 'três', 4 => 'quatro',
@@ -369,6 +403,13 @@ class ContratoPdfService
             20 => 'vinte', 30 => 'trinta', 40 => 'quarenta', 50 => 'cinquenta',
             60 => 'sessenta', 70 => 'setenta', 80 => 'oitenta', 90 => 'noventa',
         ];
+
+        // Únicas flexões de gênero da faixa 0-19 ("uma"/"duas") — 0 e de 3 a
+        // 19 são invariáveis.
+        if ($feminino) {
+            $unidades[1] = 'uma';
+            $unidades[2] = 'duas';
+        }
 
         if ($numero < 20) {
             return $unidades[$numero] ?? (string) $numero;
@@ -382,6 +423,10 @@ class ContratoPdfService
                 return $dezenas[$dezena] ?? (string) $numero;
             }
 
+            // O composto HERDA a flexão da unidade ($unidades já está
+            // flexionado acima quando $feminino) — "vinte e uma", "trinta e
+            // duas", nunca "vinte e um"/"trinta e dois" para contagem de
+            // parcelas.
             return ($dezenas[$dezena] ?? (string) $dezena) . ' e ' . ($unidades[$resto] ?? (string) $resto);
         }
 
