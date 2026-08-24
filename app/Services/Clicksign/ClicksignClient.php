@@ -50,20 +50,40 @@ class ClicksignClient
      * Mapa D-08 → vocabulário de `role` da qualificação (§6 do empírico:
      * `action: "agree"` + `role: "sign" | "party" | "contractor"`). Só esses
      * três valores foram MEDIDOS no sandbox, e nenhum deles é literalmente
-     * "contratante"/"contratada"/"testemunha" — a correspondência abaixo é a
-     * mais próxima por sentido comum de contrato de prestação de serviço:
+     * "contratante"/"contratada"/"testemunha" — a correspondência abaixo
+     * precisou ser inferida, e a primeira tentativa errou o sentido.
      *
-     * ⚠️ **NÃO MEDIDO** — confirmar no checkpoint humano do plano 126-06.
-     *  - `PAPEL_CONTRATADA`  → `contractor` (quem presta o serviço — a ECF;
-     *    "contractor" em inglês nomeia quem executa o trabalho sob contrato).
-     *  - `PAPEL_CONTRATANTE` → `party` (a outra parte do contrato).
-     *  - `PAPEL_TESTEMUNHA`  → `sign` (sem papel contratual, só assina).
+     * ✅ **MEDIDO em produção, 2026-08-24.** O checkpoint humano do plano
+     * 126-06 nunca aconteceu; a suposição original (`PAPEL_CONTRATADA` →
+     * `contractor`, `PAPEL_CONTRATANTE` → `party`) foi para produção sem
+     * confirmação e só foi medida quando o usuário conferiu um contrato de
+     * teste (Mons Bike) já gerado na Clicksign: o prestador (ECF) apareceu
+     * rotulado como "Contratante" e o cliente como "Parte" — invertido.
+     *
+     * ⚠️ **Por que o valor "óbvio" está do lado errado:** a leitura em
+     * inglês de `contractor` — "quem executa o trabalho sob contrato" —
+     * sugere a ECF, mas a Clicksign **rotula `contractor` como
+     * "Contratante"** na interface em português, não como quem presta o
+     * serviço. Antes de "consertar" este mapa de volta ao que parece
+     * intuitivo, releia este parágrafo: a intuição em inglês foi exatamente
+     * o que causou o bug.
+     *
+     *  - `PAPEL_CONTRATADA`  → `party`      (quem presta o serviço — a ECF;
+     *    a Clicksign exibe `party` como "Parte").
+     *  - `PAPEL_CONTRATANTE` → `contractor` (o cliente; a Clicksign exibe
+     *    `contractor` como "Contratante").
+     *  - `PAPEL_TESTEMUNHA`  → `sign`       (sem papel contratual, só assina
+     *    — inalterado, nunca esteve em dúvida).
+     *
+     * Só `sign`, `party` e `contractor` foram medidos no sandbox — nenhum
+     * quarto valor (ex.: `contractee`) deve entrar neste mapa sem medição:
+     * mandar um `role` inválido só falha DEPOIS que o envelope já existe.
      *
      * @var array<string, string>
      */
     public const PAPEL_PARA_CLICKSIGN_ROLE = [
-        ContratoAssinaturaSignatario::PAPEL_CONTRATADA  => 'contractor',
-        ContratoAssinaturaSignatario::PAPEL_CONTRATANTE => 'party',
+        ContratoAssinaturaSignatario::PAPEL_CONTRATADA  => 'party',
+        ContratoAssinaturaSignatario::PAPEL_CONTRATANTE => 'contractor',
         ContratoAssinaturaSignatario::PAPEL_TESTEMUNHA  => 'sign',
     ];
 

@@ -80,12 +80,18 @@ class ClicksignClientEnvelopeTest extends TestCase
         });
     }
 
+    /**
+     * Mapa MEDIDO em produção (2026-08-24, quick 260824-ish): a suposição
+     * original estava invertida — `contractor` é rotulado "Contratante"
+     * pela Clicksign, não "quem executa o trabalho". Ver docblock de
+     * `ClicksignClient::PAPEL_PARA_CLICKSIGN_ROLE`.
+     */
     public static function papeisProvider(): array
     {
         return [
-            'contratante -> party'    => [ContratoAssinaturaSignatario::PAPEL_CONTRATANTE, 'party'],
-            'contratada -> contractor' => [ContratoAssinaturaSignatario::PAPEL_CONTRATADA, 'contractor'],
-            'testemunha -> sign'      => [ContratoAssinaturaSignatario::PAPEL_TESTEMUNHA, 'sign'],
+            'contratante -> contractor' => [ContratoAssinaturaSignatario::PAPEL_CONTRATANTE, 'contractor'],
+            'contratada -> party'       => [ContratoAssinaturaSignatario::PAPEL_CONTRATADA, 'party'],
+            'testemunha -> sign'        => [ContratoAssinaturaSignatario::PAPEL_TESTEMUNHA, 'sign'],
         ];
     }
 
