@@ -282,6 +282,64 @@ class LoginDoPortalTest extends TestCase
         }
     }
 
+    // ─── Mover tarefa autenticado ───────────────────────────────────────────
+
+    /**
+     * O cliente logado move a tarefa pela rota SEM token.
+     *
+     * A tela tem duas portas para a mesma ação e precisa escolher a certa. Na
+     * primeira versão ela chamava sempre a rota do token — e no modo
+     * autenticado, sem token, o Ziggy lançava por parâmetro faltando. O cliente
+     * via só "Não foi possível salvar".
+     */
+    #[Test]
+    public function cliente_logado_move_tarefa_do_ppa(): void
+    {
+        $empresa = $this->empresa();
+        $usuario = $this->usuario($empresa);
+
+        $ppa = \App\Models\Ppa::create([
+            'escopo' => \App\Models\Ppa::ESCOPO_GERAL, 'company_id' => $empresa->id,
+            'mentor_id' => \App\Models\User::create([
+                'name' => 'M', 'email' => 'm.'.uniqid().'@ecf.test',
+                'password' => bcrypt('x'), 'role' => 'admin', 'active' => true,
+            ])->id,
+            'title' => 'Plano', 'status' => 'sent',
+        ]);
+        $task = \App\Models\PpaTask::create(['ppa_id' => $ppa->id, 'title' => 'Tarefa', 'status' => 'todo', 'order' => 0]);
+
+        $this->post(route('portal.validar'), ['email' => $usuario->email, 'codigo' => $this->pedirCodigo($usuario)]);
+
+        $this->patchJson(route('portal.auth.ppa.tarefa', $task), ['status' => 'doing'])
+            ->assertOk()
+            ->assertJson(['ok' => true, 'status' => 'doing']);
+
+        $this->assertDatabaseHas('ppa_tasks', ['id' => $task->id, 'status' => 'doing']);
+    }
+
+    /** E não move a de outra empresa, mesmo logado. */
+    #[Test]
+    public function cliente_logado_nao_move_tarefa_de_outra_empresa(): void
+    {
+        $usuario = $this->usuario($this->empresa('Minha'));
+        $alheia  = $this->empresa('Alheia');
+
+        $ppaAlheio = \App\Models\Ppa::create([
+            'escopo' => \App\Models\Ppa::ESCOPO_GERAL, 'company_id' => $alheia->id,
+            'mentor_id' => \App\Models\User::create([
+                'name' => 'M', 'email' => 'm2.'.uniqid().'@ecf.test',
+                'password' => bcrypt('x'), 'role' => 'admin', 'active' => true,
+            ])->id,
+            'title' => 'Alheio', 'status' => 'sent',
+        ]);
+        $task = \App\Models\PpaTask::create(['ppa_id' => $ppaAlheio->id, 'title' => 'X', 'status' => 'todo', 'order' => 0]);
+
+        $this->post(route('portal.validar'), ['email' => $usuario->email, 'codigo' => $this->pedirCodigo($usuario)]);
+
+        $this->patchJson(route('portal.auth.ppa.tarefa', $task), ['status' => 'done'])->assertForbidden();
+        $this->assertDatabaseHas('ppa_tasks', ['id' => $task->id, 'status' => 'todo']);
+    }
+
     // ─── Sessão ─────────────────────────────────────────────────────────────
 
     /** Sem regeneração, um id de sessão plantado antes do login continuaria valendo. */

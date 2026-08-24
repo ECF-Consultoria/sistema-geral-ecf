@@ -46,12 +46,29 @@ function CardTarefa({ tarefa, token, somenteLeitura, aoMover }) {
         setSalvando(true);
         setErro(false);
         try {
-            await axios.patch(route('portal.ppa.tarefa', { token, task: tarefa.id }), { status: novo });
+            // Duas portas para a MESMA ação, e a tela precisa escolher: com
+            // token é o acesso por link (legado); sem token, o cliente está
+            // autenticado e a rota não leva token nenhum.
+            //
+            // Chamar a rota do token sem ter token faz o Ziggy lançar por
+            // parâmetro faltando — e o `catch` abaixo transformava isso em
+            // "Não foi possível salvar", sem pista nenhuma de causa. Foi o que
+            // aconteceu no primeiro teste do portal autenticado.
+            const destino = token
+                ? route('portal.ppa.tarefa', { token, task: tarefa.id })
+                : route('portal.auth.ppa.tarefa', { task: tarefa.id });
+
+            await axios.patch(destino, { status: novo });
             aoMover(tarefa.id, novo);
-        } catch {
+        } catch (e) {
             // Mensagem no próprio card, não em `alert()`: o cliente pode ter
             // clicado em três tarefas seguidas, e uma pilha de alertas
             // esconderia qual delas falhou.
+            //
+            // O erro real vai para o console: sem isto, um defeito de montagem
+            // de URL fica indistinguível de uma falha de rede, e foi
+            // exatamente essa confusão que custou tempo aqui.
+            console.error('[Portal PPA] falha ao mover tarefa', e);
             setErro(true);
         } finally {
             setSalvando(false);
