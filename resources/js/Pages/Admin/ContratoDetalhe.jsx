@@ -537,7 +537,9 @@ export default function ContratoDetalhe({
                                             const tituloServico = [
                                                 cs.servico_nome,
                                                 cs.valor_contratado != null ? formatCurrency(cs.valor_contratado) : null,
-                                                cs.parcelas != null ? `${cs.parcelas} parcelas` : null,
+                                                // Singular/plural: uma fase de um mês só sairia
+                                                // "1 parcelas" — é tela interna, mas escrito errado.
+                                                cs.parcelas != null ? `${cs.parcelas} ${cs.parcelas === 1 ? 'parcela' : 'parcelas'}` : null,
                                             ].filter(Boolean).join(' · ');
                                             return (
                                                 <div key={cs.id} className="space-y-2">
