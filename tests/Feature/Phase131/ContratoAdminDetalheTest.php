@@ -475,6 +475,76 @@ class ContratoAdminDetalheTest extends TestCase
         $this->assertSame(15, $itemServico['dia_vencimento']);
     }
 
+    // ─── Quick 260824-r4k — show() expõe a quantidade de parcelas por serviço ───
+    //
+    // "Datas por serviço" tinha dois blocos idênticos ("Gestão") quando o
+    // mesmo serviço tem duas fases (pagamento escalonado) — sem valor nem
+    // parcelas no título, ninguém sabia qual fase era qual (Mons Bike,
+    // relatado com print em 2026-08-24). `parcelas` reusa o MESMO parser de
+    // `hubspot_billing_period` que `ContratoClicksignService` já usa pro
+    // snapshot congelado (quick 260824-bte) — `ContratoServico::parcelas()`.
+
+    public function test_show_expoe_quantidade_de_parcelas_a_partir_do_periodo_hubspot(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Parcelas P3M P9M']);
+        $servico = $this->servicoComContrato('Gestão Escalonada Parcelas');
+        $csTres  = $this->vincularServico($empresa, $servico, [
+            'valor_contratado'       => 5500,
+            'hubspot_billing_period' => 'P3M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '']],
+        ]);
+        $csNove  = $this->vincularServico($empresa, $servico, [
+            'valor_contratado'       => 6000,
+            'hubspot_billing_period' => 'P9M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '2026-12-01']],
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+        $response->assertOk();
+
+        $props = collect($response->viewData('page')['props']['contratos_servico']);
+
+        $this->assertSame(3, $props->firstWhere('id', $csTres->id)['parcelas']);
+        $this->assertSame(9, $props->firstWhere('id', $csNove->id)['parcelas']);
+    }
+
+    public function test_show_devolve_parcelas_null_quando_periodo_ausente_ou_fora_do_formato(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Sem Periodo Hubspot']);
+        $servico = $this->servicoComContrato('Gestão Sem Período');
+        $csAusente = $this->vincularServico($empresa, $servico, ['hubspot_billing_period' => null]);
+
+        $servico2   = $this->servicoComContrato('Gestão Período Fora Do Formato');
+        $csInvalido = $this->vincularServico($empresa, $servico2, ['hubspot_billing_period' => 'mensal']);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+        $response->assertOk();
+
+        $props = collect($response->viewData('page')['props']['contratos_servico']);
+
+        $this->assertNull($props->firstWhere('id', $csAusente->id)['parcelas']);
+        $this->assertNull($props->firstWhere('id', $csInvalido->id)['parcelas']);
+    }
+
+    public function test_show_com_empresa_de_um_servico_so_continua_igual_regressao(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Um Serviço Só Regressão']);
+        $servico = $this->servicoComContrato();
+        $cs      = $this->vincularServico($empresa, $servico, ['hubspot_billing_period' => 'P12M']);
+
+        $response = $this->actingAs($admin)->get(route('admin.contratos.show', $empresa));
+        $response->assertOk();
+
+        $itemServico = collect($response->viewData('page')['props']['contratos_servico'])->firstWhere('id', $cs->id);
+        $this->assertNotNull($itemServico);
+        $this->assertSame($servico->nome, $itemServico['servico_nome']);
+        $this->assertSame(100.0, $itemServico['valor_contratado']);
+        $this->assertSame(12, $itemServico['parcelas']);
+    }
+
     // ─── Caso 6 — IDOR: contratos_servico[0][id] de OUTRA empresa devolve 422 e não grava nada ───
 
     public function test_atualizar_cadastro_com_contrato_servico_de_outra_empresa_devolve_422_e_nao_grava_nada(): void
