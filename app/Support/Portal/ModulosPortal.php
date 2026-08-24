@@ -51,18 +51,21 @@ class ModulosPortal
             'descricao' => 'Uma visão geral do que está acontecendo com a sua operação.',
             'icone'     => 'home',
             'rota'      => 'portal.inicio',
+            'rota_auth' => 'portal.auth.inicio',
         ],
         self::ONBOARDING => [
             'rotulo'    => 'Onboarding',
             'descricao' => 'As etapas para deixar a sua operação pronta para começar.',
             'icone'     => 'list-checks',
             'rota'      => 'portal.onboarding',
+            'rota_auth' => 'portal.auth.onboarding',
         ],
         self::PPA => [
             'rotulo'    => 'PPA',
             'descricao' => 'O Plano Prático de Ação que construímos com você.',
             'icone'     => 'clipboard-list',
             'rota'      => 'portal.ppa',
+            'rota_auth' => 'portal.auth.ppa',
         ],
     ];
 
@@ -70,11 +73,16 @@ class ModulosPortal
      * Os módulos prontos para o front: rótulo, ícone, URL já resolvida com o
      * token, qual está ativo e o badge de cada um.
      *
+     * `$token` nulo significa PORTAL AUTENTICADO: as URLs saem das rotas sem
+     * token (`/inicio`, `/onboarding`, `/ppa`), que é o caminho novo. Com
+     * token, saem das rotas legadas — os dois convivem enquanto os clientes
+     * existentes migram.
+     *
      * @param  string  $ativo   chave do módulo da página atual
      * @param  array<string, ?int>  $badges  contagem por chave; `null` ou 0 não desenha badge
      * @return array<int, array{chave: string, rotulo: string, descricao: string, icone: string, url: string, ativo: bool, badge: ?int}>
      */
-    public static function paraEmpresa(Company $company, string $token, string $ativo, array $badges = []): array
+    public static function paraEmpresa(Company $company, ?string $token, string $ativo, array $badges = []): array
     {
         $modulos = [];
 
@@ -90,7 +98,9 @@ class ModulosPortal
                 'rotulo'    => $def['rotulo'],
                 'descricao' => $def['descricao'],
                 'icone'     => $def['icone'],
-                'url'       => route($def['rota'], $token),
+                'url'       => $token === null
+                    ? route($def['rota_auth'])
+                    : route($def['rota'], $token),
                 'ativo'     => $chave === $ativo,
                 'badge'     => $badge > 0 ? (int) $badge : null,
             ];

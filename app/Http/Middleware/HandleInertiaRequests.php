@@ -64,6 +64,17 @@ class HandleInertiaRequests extends Middleware
                 // gerar outro (o guard barra). Bug reportado no grupo MaxiGold.
                 'nps_link_existente' => $request->session()->get('nps_link_existente'),
                 'workspace_url' => $request->session()->get('workspace_url'),
+                // 2026-08-24 — o login do Portal do Cliente. `portal_codigo_enviado`
+                // é o que faz a tela avançar do campo de e-mail para o de código;
+                // `portal_email` reexibe o endereço para quem esqueceu qual digitou.
+                //
+                // Sem estas duas linhas o fluxo QUEBRA em silêncio: o código é
+                // gerado e enviado, o servidor responde 302, e a tela volta ao
+                // começo como se nada tivesse acontecido. Foi exatamente o que
+                // aconteceu no primeiro teste — e é o mesmo defeito de
+                // `nps_link_existente`, logo acima.
+                'portal_codigo_enviado' => $request->session()->get('portal_codigo_enviado'),
+                'portal_email'          => $request->session()->get('portal_email'),
                 // Fase 131 Plano 131-05 (CLICK-07) — canal neutro/âmbar para
                 // resposta ESPERADA que não é sucesso nem erro (o 429 do
                 // reenvio de aviso da Clicksign).

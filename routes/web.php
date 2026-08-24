@@ -42,9 +42,11 @@ use App\Http\Controllers\NpsTemplateQuestionController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\OnboardingPublicoController;
 use App\Http\Controllers\PainelExecutivoController;
+use App\Http\Controllers\PortalAuthController;
 use App\Http\Controllers\PortalClienteController;
 use App\Http\Controllers\PpaColunaController;
 use App\Http\Controllers\PortalPpaController;
+use App\Http\Controllers\PortalUsuarioController;
 use App\Http\Controllers\PolosController;
 use App\Http\Controllers\PolosPpaController;
 use App\Http\Controllers\BonusAuditoriaController;
@@ -71,7 +73,7 @@ Route::get('/', function () {
     $dominio = config('portal.dominio_cliente');
 
     if ($dominio && request()->getHost() === $dominio) {
-        return Inertia::render('Portal/Entrada');
+        return redirect()->route('portal.entrada');
     }
 
     return redirect()->route('dashboard');
@@ -139,6 +141,52 @@ Route::patch('/implementacao/{token}/publicador/checkin', [MlbImplementacaoContr
 // mandar a lista inteira: a tela dele é de leitura com um campo editável, e
 // reescrever o array todo já reverteu o que outra pessoa tinha preenchido.
 Route::patch('/implementacao/{token}/publicador/frete', [MlbImplementacaoController::class, 'salvarFretePublicador'])->name('implementacao.publicador.frete');
+
+// ═══ Portal do Cliente — ACESSO AUTENTICADO ═════════════════════════════════
+//
+// A porta nova: a pessoa entra com e-mail e código, e a empresa sai do
+// USUÁRIO autenticado — nunca da URL. Vive ao lado das rotas por token, que
+// continuam de pé enquanto os clientes existentes migram. Quando todos
+// tiverem entrado ao menos uma vez, o bloco por token abaixo é removido e o
+// acesso por posse de link morre.
+//
+// Sem token nas URLs — era esse o incômodo original: o cliente não conseguia
+// guardar nem digitar o endereço.
+//
+// O prefixo `/portal` NÃO é enfeite: `/ppa` e `/onboarding` JÁ pertencem ao
+// sistema interno (`ppa.index`, `onboarding.painel.index`). Sem o prefixo, as
+// rotas do cliente eram silenciosamente sobrescritas pelas do admin — o
+// route:list mostrava as internas respondendo naquelas URIs.
+//
+// `/entrar` e `/sair` ficam na raiz de propósito: são as que o cliente digita.
+Route::middleware('portal.auth')->prefix('portal')->group(function () {
+    Route::get('/inicio',     [PortalClienteController::class, 'inicioAutenticado'])->name('portal.auth.inicio');
+    Route::get('/onboarding', [OnboardingPublicoController::class, 'workspaceAutenticado'])->name('portal.auth.onboarding');
+    Route::get('/ppa',        [PortalPpaController::class, 'indexAutenticado'])->name('portal.auth.ppa');
+
+    Route::patch('/ppa/tarefas/{task}', [PortalPpaController::class, 'moverTarefaAutenticado'])
+        ->middleware('throttle:60,1')
+        ->name('portal.auth.ppa.tarefa');
+
+    // Para quem responde por mais de uma empresa. O vínculo é conferido no
+    // servidor: mandar company_id de outro cliente aqui dá 403 e vira
+    // registro de auditoria.
+    Route::post('/empresa', [PortalAuthController::class, 'trocarEmpresa'])->name('portal.auth.empresa');
+});
+
+// Sair fica fora do prefixo — a sessão morre no mesmo lugar em que nasceu.
+Route::post('/sair', [PortalAuthController::class, 'sair'])
+    ->middleware('portal.auth')
+    ->name('portal.sair');
+
+// Entrada e login. Fora do grupo autenticado, por motivo óbvio.
+Route::get('/entrar', [PortalAuthController::class, 'entrada'])->name('portal.entrada');
+Route::post('/entrar/codigo', [PortalAuthController::class, 'enviarCodigo'])
+    ->middleware('throttle:portal-codigo')
+    ->name('portal.codigo');
+Route::post('/entrar', [PortalAuthController::class, 'validarCodigo'])
+    ->middleware('throttle:portal-validar')
+    ->name('portal.validar');
 
 // ─── Portal do Cliente (`/portal-cliente/{token}`) ──────────────────────────
 //
@@ -911,6 +959,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // (`/portal-cliente/{token}`). Fica no grupo admin junto de
         // `companies.update`: é edição do cadastro da empresa, e trocar a marca
         // que o cliente enxerga não é operação de rotina.
+        // ─── Acessos do Portal do Cliente ────────────────────────────────
+        // Quem da EQUIPE cadastra e revoga o acesso dos clientes. Sob o mesmo
+        // `role:admin` do resto do grupo: dar acesso ao portal de uma empresa
+        // não é operação de rotina.
+        Route::get('/portal/usuarios',  [PortalUsuarioController::class, 'index'])->name('portal.usuarios.index');
+        Route::post('/portal/usuarios', [PortalUsuarioController::class, 'store'])->name('portal.usuarios.store');
+        Route::put('/portal/usuarios/{portalUsuario}', [PortalUsuarioController::class, 'update'])->name('portal.usuarios.update');
+        Route::post('/portal/usuarios/{portalUsuario}/empresas', [PortalUsuarioController::class, 'vincular'])->name('portal.usuarios.vincular');
+        Route::delete('/portal/usuarios/{portalUsuario}/empresas/{company}', [PortalUsuarioController::class, 'desvincular'])->name('portal.usuarios.desvincular');
+
         Route::post('/companies/{company}/logo', [CompanyController::class, 'updateLogo'])->name('companies.logo.update');
         Route::delete('/companies/{company}/logo', [CompanyController::class, 'destroyLogo'])->name('companies.logo.destroy');
         // Ações em massa da aba Pendências (excluir / atribuir analista|estrategista)

@@ -6,6 +6,7 @@ use App\Services\Onboarding\OnboardingLinkService;
 use App\Services\Portal\PortalClienteService;
 use App\Services\Portal\PortalPpaService;
 use App\Support\Portal\ModulosPortal;
+use App\Support\Portal\PortalContexto;
 use Inertia\Inertia;
 
 /**
@@ -64,6 +65,31 @@ class PortalClienteController extends Controller
             // `OnboardingPublicoController::workspace()`): só nome, foto e
             // papel — nenhum dado de operação interna.
             'responsaveis' => $this->linkService->responsaveisDaEmpresa($company),
+        ]);
+    }
+
+    /**
+     * GET /inicio — o mesmo hub, no portal AUTENTICADO.
+     *
+     * A empresa vem do usuário logado (`PortalContexto`), nunca da URL. Fora
+     * isso, o payload é idêntico ao do modo por token: a tela é a mesma.
+     */
+    public function inicioAutenticado()
+    {
+        $empresa = PortalContexto::empresa();
+        $usuario = PortalContexto::usuario();
+
+        $ppas = $this->ppaService->ppasDaEmpresa($empresa);
+
+        return Inertia::render('Portal/Inicio', [
+            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::INICIO, $usuario),
+            'resumo' => [
+                'ppa' => [
+                    'planos_ativos' => $ppas->where('status', '!=', 'completed')->count(),
+                    'planos_total'  => $ppas->count(),
+                ],
+            ],
+            'responsaveis' => $this->linkService->responsaveisDaEmpresa($empresa),
         ]);
     }
 }

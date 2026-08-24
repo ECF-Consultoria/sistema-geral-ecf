@@ -307,3 +307,87 @@ Conferido depois nos dois lados: admin renderiza e a logo carrega
 alguém repuser aquela linha, o Portal volta a dar página branca.
 
 Backups do dia: `/root/backup-nginx-20260824-170449` e `/root/env-backup-*`.
+
+---
+
+# Anexo — login do Portal (24/08/2026)
+
+Identidade por pessoa: `portal_usuarios` + pivot `portal_usuario_empresa` +
+`portal_codigos_acesso`, guard `portal` separado do `web`. Entrada por e-mail e
+código de 6 dígitos, sem senha.
+
+## 18. `timestamp` NOT NULL no MariaDB ganha `ON UPDATE CURRENT_TIMESTAMP`
+
+**Custou uma hora de depuração e teria ido para produção.**
+
+`$table->timestamp('expira_em')` na primeira coluna TIMESTAMP NOT NULL sem
+default vira, no MariaDB:
+
+```
+default='current_timestamp()'  extra='on update current_timestamp()'
+```
+
+Efeito: o `increment('tentativas')` dentro da validação **reescrevia
+`expira_em` para agora**, o código morria no primeiro palpite e NENHUM login
+funcionava. O sintoma era "código inválido" com o código certo.
+
+**O SQLite dos testes não reproduz** — os testes passavam. Só apareceu ao rodar
+o service contra o MariaDB local.
+
+Regra: **`dateTime()` para toda coluna de data que não seja `created_at`/
+`updated_at`.** `timestamp()` só com `nullable()` ou default explícito.
+
+## 19. Chave de flash nova exige linha no `HandleInertiaRequests`
+
+Reincidente (já mordeu em `nps_link_existente`, agosto/2026). O controller faz
+`back()->with('portal_codigo_enviado', true)`, o servidor responde 302, e a tela
+**volta ao começo como se nada tivesse acontecido** — o código foi gerado e
+enviado, mas o front nunca soube.
+
+Nenhum erro, nenhum log. Só aparece testando a tela num navegador.
+
+## 20. Amarre o código ao CONTEÚDO da sessão, nunca ao id dela
+
+A primeira versão amarrava ao `session()->getId()`. Dois problemas:
+
+1. O Laravel **regenera o id** no login (proteção contra fixation) e em outras
+   situações — o login legítimo quebraria sozinho.
+2. Em teste com `SESSION_DRIVER=array` o id muda a cada requisição, e nada
+   funcionava.
+
+A correção é um `portal_desafio` (`Str::random(48)`) guardado no CONTEÚDO da
+sessão: sobrevive ao `regenerate()`, e continua sendo específico do navegador.
+
+**É essa amarração que responde "e se o cliente repassar o e-mail?"** — quem
+receber está em outro navegador e o código não abre nada.
+
+## 21. Por que 6 dígitos bastam (e o que os quebra)
+
+Sozinho, um código de 6 dígitos é fraco. O que o sustenta é a SOMA de quatro
+limites, e afrouxar qualquer um muda a conta:
+
+- validade de 10 minutos (`expira_em`);
+- uso único (`usado_em`);
+- teto de 5 tentativas (`tentativas`) — depois o código morre;
+- amarração ao navegador que pediu (`sessao_id`, que guarda o desafio).
+
+Mais: pedir código novo invalida o anterior (senão dez pedidos dariam dez
+chances simultâneas), e o hash em repouso impede que quem tenha `SELECT` no
+banco entre como qualquer um.
+
+## 22. O guard cacheia o usuário — releia do banco
+
+`Auth::guard('portal')->user()` devolve a cópia resolvida em memória. Sem
+`->fresh()` no middleware, desativar alguém só valeria quando a sessão
+expirasse — trinta dias depois. Uma query por requisição é o preço de a
+revogação ser imediata, que é o requisito.
+
+## 23. `/ppa` e `/onboarding` JÁ são do admin
+
+As rotas autenticadas do portal nasceram como `/inicio`, `/onboarding`, `/ppa` —
+e as duas últimas foram **silenciosamente sobrescritas** por `ppa.index` e
+`onboarding.painel.index`. O `route:list` mostrava as internas respondendo
+naquelas URIs, sem nenhum aviso.
+
+Daí o prefixo `/portal/...`. `/entrar` e `/sair` ficam na raiz porque são as que
+o cliente digita.

@@ -452,4 +452,65 @@ class OnboardingPublicoController extends Controller
         $engine->reavaliar($onboarding->fresh());
     }
 
+
+    /**
+     * GET /onboarding — o módulo de Onboarding no portal AUTENTICADO.
+     *
+     * A empresa vem do usuário logado, nunca da URL. O payload é o mesmo do
+     * modo por token, então a tela não muda — só a porta de entrada.
+     *
+     * As AÇÕES do onboarding (marcar passo, mapeamento, pessoas) seguem nas
+     * rotas por token durante a transição. Migrá-las junto exigiria duplicar
+     * seis endpoints de escrita, e o valor está em provar a leitura primeiro.
+     */
+    public function workspaceAutenticado(OnboardingMapeamentoService $mapeamentos)
+    {
+        $company = \App\Support\Portal\PortalContexto::empresa();
+        $usuario = \App\Support\Portal\PortalContexto::usuario();
+
+        // O link continua existindo: é dele que saem as URLs das ações de
+        // escrita, que ainda são por token.
+        $link = $this->linkService->paraEmpresa($company);
+
+        $contexto = $this->portal->contextoAutenticado($company, ModulosPortal::ONBOARDING, $usuario);
+
+        return Inertia::render('Onboarding/Publico', [
+            ...$contexto,
+            // O token das AÇÕES. A leitura já é autenticada; a escrita ainda
+            // usa o token, e a tela precisa dele para montar os formulários.
+            'token'    => $link->token,
+            'empresa'  => [
+                ...$contexto['empresa'],
+                ...app(\App\Services\Onboarding\OnboardingAcessosService::class)->paraEmpresa($company),
+            ],
+            'passos'   => $this->linkService->passosDoCliente($company),
+            'pessoas'  => OnboardingContato::whereIn(
+                    'onboarding_id',
+                    Onboarding::where('company_id', $company->id)->naoConcluido()->pluck('id')
+                )
+                ->orderBy('id')
+                ->get()
+                ->unique(fn (OnboardingContato $ct) => $ct->papel.'|'.$ct->nome.'|'.$ct->email)
+                ->groupBy('papel')
+                ->map(fn ($grupo) => $grupo->map(fn (OnboardingContato $ct) => [
+                    'id'       => $ct->id,
+                    'nome'     => $ct->nome,
+                    'email'    => $ct->email,
+                    'funcao'   => $ct->funcao,
+                    'telefone' => $ct->telefone,
+                ])->values()),
+            'reunioes' => $this->linkService->reunioesDaEmpresa($company),
+            'responsaveis' => $this->linkService->responsaveisDaEmpresa($company),
+            'mapeamentos' => Onboarding::where('company_id', $company->id)
+                ->emAndamento()
+                ->with('servico:id,nome')
+                ->get()
+                ->map(fn (Onboarding $o) => array_merge(
+                    $mapeamentos->visao($o),
+                    ['onboarding_id' => $o->id, 'servico' => $o->servico?->nome ?? ''],
+                ))
+                ->values()
+                ->all(),
+        ]);
+    }
 }

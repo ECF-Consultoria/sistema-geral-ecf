@@ -48,6 +48,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role'       => \App\Http\Middleware\EnsureUserHasRole::class,
             'permission' => \App\Http\Middleware\EnsurePermission::class,
+            // Portal do Cliente: autentica E confere o vínculo com a empresa.
+            // As duas coisas juntas — autenticar sozinho não autoriza nada.
+            'portal.auth' => \App\Http\Middleware\EnsurePortalAutenticado::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

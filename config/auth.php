@@ -42,6 +42,14 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // Portal do Cliente. Guard SEPARADO do 'web' de propósito: o cookie de
+        // sessão é outro, então estar logado como cliente não é estar logado no
+        // sistema interno, e vice-versa. Nada do guard 'web' muda.
+        'portal' => [
+            'driver'   => 'session',
+            'provider' => 'portal_usuarios',
+        ],
     ],
 
     /*
@@ -65,6 +73,13 @@ return [
         'users' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', User::class),
+        ],
+
+        // As pessoas do lado do CLIENTE. Tabela própria (`portal_usuarios`),
+        // nunca `users` — ver o docblock do model PortalUsuario.
+        'portal_usuarios' => [
+            'driver' => 'eloquent',
+            'model'  => \App\Models\PortalUsuario::class,
         ],
 
         // 'users' => [

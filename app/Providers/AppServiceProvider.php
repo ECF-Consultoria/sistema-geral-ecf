@@ -8,6 +8,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 
@@ -76,6 +77,37 @@ class AppServiceProvider extends ServiceProvider
         // Exceder → 429 Too Many Requests. Defesa contra DDoS/replay massivo.
         RateLimiter::for('ecf-webhook', function (Request $request) {
             return Limit::perMinute(600)->by($request->ip());
+        });
+
+        // ─── Portal do Cliente — os primeiros limitadores de ACESSO ──────
+        //
+        // Dupla chave (identidade E IP) de propósito. Só por IP, um escritório
+        // ou operadora com NAT derrubaria clientes legítimos que dividem a
+        // saída; só por identidade, um atacante com uma lista de e-mails
+        // contornaria o limite trocando o alvo. Os dois juntos fecham os dois
+        // caminhos.
+
+        // Pedir código: o gargalo real é o e-mail chegar — pedir mais que isso
+        // não ajuda ninguém legítimo.
+        RateLimiter::for('portal-codigo', function (Request $request) {
+            $email = Str::lower((string) $request->input('email'));
+
+            return [
+                Limit::perMinute(5)->by('portal-codigo-email:'.$email),
+                Limit::perMinute(15)->by('portal-codigo-ip:'.$request->ip()),
+            ];
+        });
+
+        // Validar: é aqui que se tenta adivinhar. O teto de 5 tentativas POR
+        // CÓDIGO já existe no banco; este limite é a segunda rede, contra quem
+        // pede código novo a cada 5 palpites.
+        RateLimiter::for('portal-validar', function (Request $request) {
+            $email = Str::lower((string) $request->input('email'));
+
+            return [
+                Limit::perMinute(10)->by('portal-validar-email:'.$email),
+                Limit::perMinute(30)->by('portal-validar-ip:'.$request->ip()),
+            ];
         });
 
         // Phase 30 D-01 — Rate limiter GLOBAL para chamadas à Adman MCP.

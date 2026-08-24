@@ -4,6 +4,7 @@ namespace App\Services\Portal;
 
 use App\Models\Company;
 use App\Models\OnboardingLink;
+use App\Models\PortalUsuario;
 use App\Services\Onboarding\OnboardingLinkService;
 use App\Support\Portal\ModulosPortal;
 use Illuminate\Support\Str;
@@ -61,13 +62,45 @@ class PortalClienteService
      */
     public function contexto(OnboardingLink $link, string $modulo): array
     {
-        $company = $link->company;
+        return $this->montarContexto($link->company, $modulo, $link->token);
+    }
 
+    /**
+     * O mesmo contexto, para o portal AUTENTICADO.
+     *
+     * A empresa chega pronta — resolvida do usuário logado pelo
+     * `PortalContexto`, nunca da URL. Sem token: as URLs do menu saem das
+     * rotas sem token.
+     *
+     * `usuario` viaja no payload para a tela poder cumprimentar a pessoa pelo
+     * nome e oferecer "sair" — coisas que o modo por token não tem, porque lá
+     * não se sabe QUEM está do outro lado.
+     */
+    public function contextoAutenticado(Company $company, string $modulo, PortalUsuario $usuario): array
+    {
         return [
-            'token'   => $link->token,
+            ...$this->montarContexto($company, $modulo, null),
+            'usuario' => [
+                'nome'  => $usuario->nome,
+                'email' => $usuario->email,
+            ],
+            // Só desenha o seletor quem tem mais de uma. Para a maioria, que
+            // tem uma empresa só, ele não existe.
+            'empresas_disponiveis' => $usuario->empresas()->count() > 1
+                ? $usuario->empresas()->orderBy('name')->get(['companies.id', 'companies.name'])
+                    ->map(fn ($e) => ['id' => $e->id, 'nome' => $e->name])->values()->all()
+                : [],
+        ];
+    }
+
+    /** O que os dois modos têm em comum. */
+    private function montarContexto(Company $company, string $modulo, ?string $token): array
+    {
+        return [
+            'token'   => $token,
             'modulo'  => $modulo,
             'empresa' => $this->identidade($company),
-            'modulos' => ModulosPortal::paraEmpresa($company, $link->token, $modulo, [
+            'modulos' => ModulosPortal::paraEmpresa($company, $token, $modulo, [
                 ModulosPortal::ONBOARDING => $this->pendenciasOnboarding($company),
                 ModulosPortal::PPA        => $this->ppaService->pendentes($company),
             ]),

@@ -21,4 +21,39 @@ return [
 
     'dominio_cliente' => env('PORTAL_CLIENTE_DOMINIO'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Código de acesso
+    |--------------------------------------------------------------------------
+    |
+    | Seis dígitos só são seguros pela SOMA de quatro limites: vida curta, uso
+    | único, teto de tentativas e amarração à sessão que pediu. Afrouxar
+    | qualquer um muda a conta — ver o docblock da migration
+    | `create_portal_codigos_acesso_table`.
+    |
+    | Dez minutos é o equilíbrio entre o e-mail demorar a chegar e a janela em
+    | que um código encaminhado ainda valeria para quem estivesse na mesma
+    | sessão.
+    |
+    */
+
+    'codigo' => [
+        'digitos' => 6,
+        'minutos' => (int) env('PORTAL_CODIGO_MINUTOS', 10),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Duração da sessão do cliente
+    |--------------------------------------------------------------------------
+    |
+    | Em minutos. 30 dias: o cliente entra uma vez por mês e no resto do tempo
+    | só abre o site — que era o incômodo original (ter de achar o link toda
+    | vez). Independente de SESSION_LIFETIME, que vale para o time da ECF e é
+    | curto de propósito.
+    |
+    */
+
+    'sessao_minutos' => (int) env('PORTAL_SESSAO_MINUTOS', 43200),
+
 ];

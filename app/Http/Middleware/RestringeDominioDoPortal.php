@@ -62,6 +62,16 @@ class RestringeDominioDoPortal
 
         // A raiz, que apresenta o portal a quem digitou só o domínio.
         '/',
+
+        // ── Portal AUTENTICADO ───────────────────────────────────────────
+        // A porta nova: entrar por e-mail e código, e navegar sem token na
+        // URL. Cada linha aqui é uma decisão de expor algo no endereço
+        // público do cliente — acrescente com o mesmo cuidado de sempre.
+        'entrar',
+        'entrar/*',
+        'sair',
+        'portal',
+        'portal/*',
     ];
 
     public function handle(Request $request, Closure $next): Response
@@ -72,6 +82,16 @@ class RestringeDominioDoPortal
         if (! $dominio || $request->getHost() !== $dominio) {
             return $next($request);
         }
+
+        // A sessão do CLIENTE dura muito mais que a da equipe. `SESSION_LIFETIME`
+        // é 120 minutos, curto de propósito para quem mexe no sistema interno —
+        // e aplicá-lo ao cliente faria ele pedir código novo a cada duas horas,
+        // reintroduzindo por outra via o atrito que esta mudança veio remover.
+        //
+        // Precisa ser aqui: este middleware roda em `prepend`, ANTES do
+        // `StartSession`, que é quem lê o lifetime para montar o cookie.
+        // Ajustar depois não teria efeito nenhum.
+        config(['session.lifetime' => config('portal.sessao_minutos', 43200)]);
 
         foreach (self::PERMITIDO as $padrao) {
             if ($request->is($padrao)) {

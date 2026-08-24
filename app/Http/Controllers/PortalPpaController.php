@@ -6,6 +6,7 @@ use App\Models\PpaTask;
 use App\Services\Portal\PortalClienteService;
 use App\Services\Portal\PortalPpaService;
 use App\Support\Portal\ModulosPortal;
+use App\Support\Portal\PortalContexto;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -88,6 +89,54 @@ class PortalPpaController extends Controller
             ->performedOn($task)
             ->withProperties(['origem' => 'cliente', 'status' => $data['status'], 'ip' => $request->ip()])
             ->log("Tarefa movida para \"{$data['status']}\" pelo cliente via Portal do Cliente");
+
+        return response()->json(['ok' => true, 'status' => $task->status]);
+    }
+
+    /** GET /ppa — o módulo PPA no portal AUTENTICADO. */
+    public function indexAutenticado()
+    {
+        $empresa = PortalContexto::empresa();
+
+        return Inertia::render('Portal/Ppa', [
+            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::PPA, PortalContexto::usuario()),
+            'ppas' => $this->ppaService->ppasDaEmpresa($empresa)
+                ->map(fn ($ppa) => $this->ppaService->visao($ppa))
+                ->values()
+                ->all(),
+        ]);
+    }
+
+    /**
+     * PATCH /ppa/tarefas/{task} — mover tarefa, autenticado.
+     *
+     * A trava é a MESMA do modo por token (`podeMexer`), só que a empresa vem
+     * do usuário logado. Trocar o id da tarefa na URL para uma de outro cliente
+     * continua dando 403 — e agora o registro de auditoria sabe QUEM tentou.
+     */
+    public function moverTarefaAutenticado(Request $request, PpaTask $task)
+    {
+        $empresa = PortalContexto::empresa();
+        $usuario = PortalContexto::usuario();
+
+        abort_unless($this->ppaService->podeMexer($empresa, $task), 403);
+
+        $data = $request->validate([
+            'status' => ['required', 'in:todo,doing,done'],
+        ]);
+
+        $task->moverPara($data['status'], $task->coluna_id);
+
+        activity('ppa')
+            ->performedOn($task)
+            ->causedBy($usuario)
+            ->withProperties([
+                'origem'     => 'cliente',
+                'status'     => $data['status'],
+                'company_id' => $empresa->id,
+                'ip'         => $request->ip(),
+            ])
+            ->log("Tarefa movida para \"{$data['status']}\" por {$usuario->nome} ({$usuario->email})");
 
         return response()->json(['ok' => true, 'status' => $task->status]);
     }

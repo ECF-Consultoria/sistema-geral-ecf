@@ -1,0 +1,169 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Services\Portal\PortalAuditoria;
+use App\Services\Portal\PortalLoginService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
+
+/**
+ * PortalAuthController — entrar e sair do Portal do Cliente.
+ *
+ * O fluxo tem dois passos, e a tela é a mesma: a pessoa informa o e-mail,
+ * recebe seis dígitos e digita ali mesmo. Não há link de entrada no e-mail — é
+ * o que faz o código encaminhado não servir para ninguém.
+ *
+ * Toda a segurança do fluxo mora no {@see PortalLoginService}; aqui ficam só a
+ * tela, a sessão e os limites de requisição.
+ */
+class PortalAuthController extends Controller
+{
+    public function __construct(
+        private PortalLoginService $login,
+        private PortalAuditoria $auditoria,
+    ) {
+    }
+
+    /** GET / — a porta da frente do domínio do cliente. */
+    public function entrada(Request $request)
+    {
+        // Já autenticado: vai direto para o portal, sem passar pelo login.
+        if (Auth::guard('portal')->check()) {
+            return redirect()->route('portal.auth.inicio');
+        }
+
+        return Inertia::render('Portal/Entrada', [
+            'aviso' => $request->session()->get('portal_aviso'),
+        ]);
+    }
+
+    /**
+     * POST /entrar/codigo — pede o código.
+     *
+     * Responde SEMPRE igual, exista ou não o e-mail. Ver a regra 1 no docblock
+     * do `PortalLoginService`: variar a resposta transformaria esta tela num
+     * verificador de quem é cliente da ECF.
+     */
+    public function enviarCodigo(Request $request)
+    {
+        $dados = $request->validate([
+            'email' => ['required', 'email', 'max:190'],
+        ]);
+
+        $this->login->solicitarCodigo(
+            $dados['email'],
+            $this->desafioDaSessao($request),
+            $request->ip(),
+        );
+
+        return back()->with([
+            'portal_codigo_enviado' => true,
+            'portal_email'          => $dados['email'],
+        ]);
+    }
+
+    /** POST /entrar — confere o código e abre a sessão. */
+    public function validarCodigo(Request $request)
+    {
+        $dados = $request->validate([
+            'email'  => ['required', 'email', 'max:190'],
+            'codigo' => ['required', 'string', 'max:10'],
+        ]);
+
+        $usuario = $this->login->validarCodigo(
+            $dados['email'],
+            $dados['codigo'],
+            $this->desafioDaSessao($request),
+            $request->ip(),
+        );
+
+        if (! $usuario) {
+            // Mensagem única para todos os motivos (código errado, expirado,
+            // sessão diferente, usuário inexistente). Detalhar ajudaria mais o
+            // atacante do que o cliente.
+            return back()
+                ->withErrors(['codigo' => 'Código inválido ou expirado. Peça um novo código.'])
+                ->with('portal_codigo_enviado', true);
+        }
+
+        $empresa = $usuario->empresaPadrao();
+
+        // Regenerar o id ANTES de gravar qualquer coisa na sessão: sem isto, um
+        // id de sessão plantado antes do login continuaria válido depois dele
+        // (session fixation).
+        $request->session()->regenerate();
+
+        Auth::guard('portal')->login($usuario);
+        $request->session()->put('portal_empresa_id', $empresa->id);
+
+        $this->auditoria->entrou($usuario, $empresa, $request->ip());
+
+        return redirect()->route('portal.auth.inicio');
+    }
+
+    /**
+     * O identificador do NAVEGADOR, para amarrar o código a ele.
+     *
+     * Fica no conteúdo da sessão, não no id dela: o id é regenerado pelo
+     * Laravel no login e em outras situações, e amarrar nele derrubaria o login
+     * de quem apenas demorou entre pedir e digitar. O conteúdo sobrevive ao
+     * `regenerate()`.
+     */
+    private function desafioDaSessao(Request $request): string
+    {
+        $desafio = $request->session()->get('portal_desafio');
+
+        if (! $desafio) {
+            $desafio = \Illuminate\Support\Str::random(48);
+            $request->session()->put('portal_desafio', $desafio);
+        }
+
+        return $desafio;
+    }
+
+    /** POST /sair */
+    public function sair(Request $request)
+    {
+        $usuario = Auth::guard('portal')->user();
+
+        if ($usuario) {
+            $this->auditoria->saiu($usuario, $request->ip());
+        }
+
+        Auth::guard('portal')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('portal.entrada');
+    }
+
+    /**
+     * POST /empresa — troca a empresa ativa, para quem responde por mais de uma.
+     *
+     * O `podeVer()` é o que impede a troca virar uma porta: sem ele, bastaria
+     * mandar qualquer `company_id` neste formulário para ver a empresa de outro
+     * cliente.
+     */
+    public function trocarEmpresa(Request $request)
+    {
+        $dados = $request->validate([
+            'company_id' => ['required', 'integer'],
+        ]);
+
+        $usuario = Auth::guard('portal')->user();
+
+        if (! $usuario || ! $usuario->podeVer($dados['company_id'])) {
+            if ($usuario) {
+                $this->auditoria->acessoNegado($usuario, (int) $dados['company_id'], $request->ip());
+            }
+
+            abort(403);
+        }
+
+        $request->session()->put('portal_empresa_id', $dados['company_id']);
+
+        return redirect()->route('portal.auth.inicio');
+    }
+}

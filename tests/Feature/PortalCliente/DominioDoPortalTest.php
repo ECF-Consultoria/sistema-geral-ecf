@@ -153,11 +153,16 @@ class DominioDoPortalTest extends TestCase
         $this->noDominioDoCliente('/onboarding-cliente/'.$token)->assertStatus(301);
     }
 
-    /** Quem digita só o domínio recebe a página de entrada, não um 404. */
+    /**
+     * Quem digita só o domínio vai parar na tela de entrada — nunca num 404,
+     * que faria o cliente achar que o portal saiu do ar.
+     */
     #[Test]
-    public function a_raiz_do_dominio_do_cliente_mostra_a_pagina_de_entrada(): void
+    public function a_raiz_do_dominio_do_cliente_leva_a_tela_de_entrada(): void
     {
-        $this->noDominioDoCliente('/')
+        $this->noDominioDoCliente('/')->assertRedirect(route('portal.entrada'));
+
+        $this->noDominioDoCliente('/entrar')
             ->assertOk()
             ->assertInertia(fn ($page) => $page->component('Portal/Entrada'));
     }
@@ -180,6 +185,25 @@ class DominioDoPortalTest extends TestCase
     {
         $this->get('http://admin.ecfconsultoria.com.br/')
             ->assertRedirect(route('dashboard'));
+    }
+
+    /**
+     * A sessão do cliente dura muito mais que a da equipe — senão ele pediria
+     * código novo a cada duas horas, reintroduzindo o atrito que a mudança veio
+     * remover.
+     */
+    #[Test]
+    public function a_sessao_do_cliente_dura_mais_que_a_interna(): void
+    {
+        config(['session.lifetime' => 120, 'portal.sessao_minutos' => 43200]);
+
+        $this->noDominioDoCliente('/entrar')->assertOk();
+        $this->assertSame(43200, config('session.lifetime'));
+
+        // No domínio interno, o lifetime curto continua valendo.
+        config(['session.lifetime' => 120]);
+        $this->get('http://admin.ecfconsultoria.com.br/login')->assertOk();
+        $this->assertSame(120, config('session.lifetime'));
     }
 
     /**
