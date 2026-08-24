@@ -8,6 +8,7 @@ import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
+import SeletorEmpresa from '@/Components/Portal/SeletorEmpresa';
 import { cn } from '@/lib/utils';
 
 // ─── Acessos do Portal do Cliente ───────────────────────────────────────────
@@ -40,74 +41,6 @@ function Selo({ children, tom = 'neutro', icone: Icone }) {
         <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium', tons[tom])}>
             {Icone && <Icone size={11} />} {children}
         </span>
-    );
-}
-
-/**
- * Seletor de alvo: uma empresa, ou um grupo inteiro.
- *
- * As empresas vêm agrupadas por `CompanyGroup` (`<optgroup>`), e cada grupo
- * abre com "Todas as N empresas". Dar acesso a alguém do Camillo Parts
- * normalmente significa as 7 empresas do grupo — sem esta opção o operador
- * repetiria a mesma operação sete vezes, e esqueceria a sétima.
- *
- * O valor viaja como `e:123` ou `g:5` e é separado antes do envio: o backend
- * recebe `company_id` OU `company_group_id`, nunca uma string ambígua.
- */
-function SeletorAlvo({ empresas, grupos, valor, onChange, excluirIds = [] }) {
-    const disponiveis = empresas.filter((e) => !excluirIds.includes(e.id));
-
-    const porGrupo = new Map();
-    const semGrupo = [];
-
-    for (const e of disponiveis) {
-        if (e.grupo_id) {
-            if (!porGrupo.has(e.grupo_id)) porGrupo.set(e.grupo_id, []);
-            porGrupo.get(e.grupo_id).push(e);
-        } else {
-            semGrupo.push(e);
-        }
-    }
-
-    return (
-        <select
-            value={valor}
-            onChange={(e) => onChange(e.target.value)}
-            className="w-full h-10 rounded-lg bg-white/[0.03] ring-1 ring-inset ring-white/[0.08] px-2.5 text-[13px] text-white outline-none focus:ring-white/25"
-        >
-            <option value="">Selecione…</option>
-
-            {grupos
-                .filter((g) => porGrupo.has(g.id))
-                .map((g) => {
-                    const doGrupo = porGrupo.get(g.id);
-                    // A opção do grupo só faz sentido com mais de uma empresa
-                    // ainda disponível — com uma só, ela seria a mesma coisa
-                    // que a linha logo abaixo.
-                    const valeOGrupo = doGrupo.length > 1;
-
-                    return (
-                        <optgroup key={g.id} label={g.nome}>
-                            {valeOGrupo && (
-                                <option value={`g:${g.id}`}>
-                                    Todas as {doGrupo.length} empresas do grupo
-                                </option>
-                            )}
-                            {doGrupo.map((e) => (
-                                <option key={e.id} value={`e:${e.id}`}>{e.nome}</option>
-                            ))}
-                        </optgroup>
-                    );
-                })}
-
-            {semGrupo.length > 0 && (
-                <optgroup label="Sem grupo">
-                    {semGrupo.map((e) => (
-                        <option key={e.id} value={`e:${e.id}`}>{e.nome}</option>
-                    ))}
-                </optgroup>
-            )}
-        </select>
     );
 }
 
@@ -319,7 +252,7 @@ export default function PortalUsuarios({ usuarios = [], empresas = [], grupos = 
 
                         <div className="space-y-1.5">
                             <Label className="text-[12px]">Empresa</Label>
-                            <SeletorAlvo
+                            <SeletorEmpresa
                                 empresas={empresas}
                                 grupos={grupos}
                                 valor={form.data.alvo}
@@ -353,12 +286,13 @@ export default function PortalUsuarios({ usuarios = [], empresas = [], grupos = 
                     <form onSubmit={salvarVinculo} className="space-y-4">
                         <div className="space-y-1.5">
                             <Label className="text-[12px]">Empresa</Label>
-                            <SeletorAlvo
+                            <SeletorEmpresa
                                 empresas={empresas}
                                 grupos={grupos}
                                 valor={formVinculo.data.alvo}
                                 onChange={(v) => formVinculo.setData('alvo', v)}
                                 excluirIds={vincular?.empresas.map((v) => v.id) ?? []}
+                                placeholder="Selecione…"
                             />
                         </div>
 
