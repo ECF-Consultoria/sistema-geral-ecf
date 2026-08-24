@@ -240,7 +240,12 @@ class ContratoClicksignService
                         'data_vencimento'  => optional($cs->data_vencimento)->format('Y-m-d'),
                         'dia_vencimento'        => $cs->dia_vencimento,
                         'data_primeira_parcela' => optional($cs->data_primeira_parcela)->format('Y-m-d'),
-                        'parcelas'              => $this->parcelasDoPeriodo($cs->hubspot_billing_period),
+                        // Quick 260824-r4k — parser movido para
+                        // `ContratoServico::parcelas()` (ponto comum com
+                        // `ContratoAdminController::show()`, que também
+                        // precisa desta contagem para o título "Datas por
+                        // serviço" da tela).
+                        'parcelas'              => $cs->parcelas(),
                     ])->values()->all(),
                 ]);
             } catch (QueryException $e) {
@@ -371,25 +376,5 @@ class ContratoClicksignService
             ->sortBy(fn (array $x) => $x['chave'] ?? '0000-00-00')
             ->pluck('item')
             ->values();
-    }
-
-    /**
-     * Quantidade de parcelas de uma fase, a partir de
-     * `ContratoServico::hubspot_billing_period` (espelho de
-     * `hs_recurring_billing_period` do HubSpot, formato ISO-8601 `P<N>M`).
-     * `null` quando o período não está definido — a fase "sem período" do
-     * plano ("as demais voltam à faixa apurada").
-     */
-    private function parcelasDoPeriodo(?string $periodo): ?int
-    {
-        if ($periodo === null || $periodo === '') {
-            return null;
-        }
-
-        if (preg_match('/^P(\d+)M$/', $periodo, $matches) === 1) {
-            return (int) $matches[1];
-        }
-
-        return null;
     }
 }

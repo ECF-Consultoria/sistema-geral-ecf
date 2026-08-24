@@ -121,4 +121,39 @@ class ContratoServico extends Model
     {
         return $query->where('ativo', true);
     }
+
+    /**
+     * Quantidade de parcelas desta fase, a partir de `hubspot_billing_period`
+     * (espelho de `hs_recurring_billing_period` do HubSpot, formato ISO-8601
+     * `P<N>M`). `null` quando o período não está definido — a fase "sem
+     * período" ("as demais voltam à faixa apurada").
+     *
+     * Quick 260824-r4k — extraído de
+     * `ContratoClicksignService::parcelasDoPeriodo()` (quick 260824-bte) para
+     * este model, o lugar comum entre o snapshot congelado do contrato e a
+     * prop `contratos_servico` de `ContratoAdminController::show()`. Um único
+     * parser do formato `P<N>M`, não dois.
+     */
+    public function parcelas(): ?int
+    {
+        return self::parcelasDoPeriodo($this->hubspot_billing_period);
+    }
+
+    /**
+     * Leitura pura (sem instância) do mesmo parser — usada por
+     * `ContratoClicksignService` para montar o snapshot a partir de um valor
+     * já em mãos, sem precisar de um `ContratoServico` completo.
+     */
+    public static function parcelasDoPeriodo(?string $periodo): ?int
+    {
+        if ($periodo === null || $periodo === '') {
+            return null;
+        }
+
+        if (preg_match('/^P(\d+)M$/', $periodo, $matches) === 1) {
+            return (int) $matches[1];
+        }
+
+        return null;
+    }
 }

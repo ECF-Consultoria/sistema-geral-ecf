@@ -439,6 +439,14 @@ class ContratoAdminController extends Controller
                 // Quick 260819-guy.
                 'data_primeira_parcela' => optional($cs->data_primeira_parcela)->format('Y-m-d'),
                 'dia_vencimento'        => $cs->dia_vencimento,
+                // Quick 260824-r4k — quantidade de parcelas desta fase, pra
+                // "Datas por serviço" identificar cada bloco quando o mesmo
+                // serviço tem mais de um `ContratoServico` (pagamento
+                // escalonado). `ContratoServico::parcelas()` é o mesmo
+                // parser de `hubspot_billing_period` que o snapshot
+                // congelado do contrato usa (quick 260824-bte) — nunca
+                // reimplementar.
+                'parcelas'              => $cs->parcelas(),
             ])->values(),
             // Retorno CRU de faltantes() — a tela exibe `rotulo`, não recalcula
             // nada no client (contrato de retorno é PÚBLICO, ver docblock do
