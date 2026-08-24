@@ -13,8 +13,9 @@ use Tests\TestCase;
 /**
  * Fase 127 Plan 127-02 (CLICK-02, D-02) — prova o caminho que PARA no
  * rascunho: `montarEnvelope()`/`montarEnvelopePorModelo()` recebem
- * `ativar: false` e montam o envelope inteiro (documento, 4 signatários, 8
- * requisitos) SEM disparar `ativarEnvelope()`. Quem ativa depois é o
+ * `ativar: false` e montam o envelope inteiro (documento, 4 signatários, 12
+ * requisitos — quick `260824-mv3` acrescentou a rubrica) SEM disparar
+ * `ativarEnvelope()`. Quem ativa depois é o
  * Comercial, pela interface da Clicksign (§10.4 do empírico: não existe
  * pré-visualizar sem ativar).
  *
@@ -121,8 +122,9 @@ class ClicksignParaNoRascunhoTest extends TestCase
             ativar: false
         );
 
-        // 15 chamadas do caminho feliz medido (Fase 126) MENOS a ativação: 14.
-        Http::assertSentCount(14);
+        // 19 chamadas do caminho feliz medido (Fase 126 + rubrica do quick
+        // 260824-mv3) MENOS a ativação: 18.
+        Http::assertSentCount(18);
 
         $this->assertSame(self::ENVELOPE_ID, $resultado['envelope_id']);
         $this->assertArrayHasKey('document_id', $resultado);
@@ -132,14 +134,15 @@ class ClicksignParaNoRascunhoTest extends TestCase
     /**
      * O efeito ponta-a-ponta da decisão da diretoria de 2026-08-20: pela ECF
      * assina só o Thiago Messina, então o envelope nasce com **2** signatários
-     * (cliente + ECF) em vez de 4, e gasta **8** chamadas em vez de 14.
+     * (cliente + ECF) em vez de 4, e gasta **10** chamadas em vez de 18.
      *
      * A conta importa porque a janela da Clicksign é medida e apertada
-     * (20 req/min, bucket de 1 envelope/min): cada signatário custa 3 chamadas
-     * — criar + requisito de qualificação + requisito de autenticação. Sair de
-     * 4 para 2 signatários devolve 6 chamadas por contrato.
+     * (20 req/min, bucket de 1 envelope/min): cada signatário custa 4 chamadas
+     * — criar + requisito de qualificação + requisito de autenticação +
+     * requisito de rubrica (quick 260824-mv3). Sair de 4 para 2 signatários
+     * devolve 8 chamadas por contrato.
      *
-     * 1 envelope + 1 documento + (2 signatários × 3) = 8, sem a ativação (D-02).
+     * 1 envelope + 1 documento + (2 signatários × 4) = 10, sem a ativação (D-02).
      */
     #[Test]
     public function com_um_unico_signatario_da_ecf_o_envelope_nasce_com_dois_e_gasta_menos_chamadas(): void
@@ -158,7 +161,7 @@ class ClicksignParaNoRascunhoTest extends TestCase
             ativar: false
         );
 
-        Http::assertSentCount(8);
+        Http::assertSentCount(10);
 
         $this->assertCount(2, $resultado['signatarios']);
         $this->assertSame(
@@ -185,7 +188,7 @@ class ClicksignParaNoRascunhoTest extends TestCase
         );
 
         Http::assertSent(fn ($request) => $this->assertRequisicaoEhAtivacao($request));
-        Http::assertSentCount(15);
+        Http::assertSentCount(19);
     }
 
     // ─── Teste 4: rollback D-04 sobrevive com ativar: false ───
@@ -248,7 +251,7 @@ class ClicksignParaNoRascunhoTest extends TestCase
         );
 
         Http::assertSent(fn ($request) => $this->assertRequisicaoEhAtivacao($request));
-        Http::assertSentCount(15);
+        Http::assertSentCount(19);
     }
 
     #[Test]
@@ -266,7 +269,7 @@ class ClicksignParaNoRascunhoTest extends TestCase
         );
 
         Http::assertNotSent(fn ($request) => $this->assertRequisicaoEhAtivacao($request));
-        Http::assertSentCount(14);
+        Http::assertSentCount(18);
 
         $this->assertSame(self::ENVELOPE_ID, $resultado['envelope_id']);
         $this->assertCount(4, $resultado['signatarios']);

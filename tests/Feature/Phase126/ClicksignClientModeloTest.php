@@ -393,7 +393,7 @@ class ClicksignClientModeloTest extends TestCase
     // ─── montarEnvelopePorModelo() ───
 
     #[Test]
-    public function montar_envelope_por_modelo_caminho_feliz_consome_15_chamadas(): void
+    public function montar_envelope_por_modelo_caminho_feliz_consome_19_chamadas(): void
     {
         config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
 
@@ -413,7 +413,10 @@ class ClicksignClientModeloTest extends TestCase
             ['nome' => 'Cliente Teste', 'email' => 'cliente@example.com', 'papel' => ContratoAssinaturaSignatario::PAPEL_CONTRATANTE]
         );
 
-        Http::assertSentCount(15);
+        // criar (1) + anexar por modelo (1) + 4 signatários × (signer +
+        // qualificação + autenticação + rubrica) (16) + ativar (1) = 19.
+        // Rubrica acrescentada no quick 260824-mv3 — eram 15.
+        Http::assertSentCount(19);
 
         $this->assertSame(self::ENVELOPE_ID, $resultado['envelope_id']);
         $this->assertSame(self::DOCUMENT_ID, $resultado['document_id']);
