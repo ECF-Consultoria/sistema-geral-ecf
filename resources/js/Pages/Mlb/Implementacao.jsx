@@ -844,7 +844,14 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
         });
 
     // Busca local (complementar aos filtros de Polo/Fase do backend)
-    const filtradas = empresas.filter(e => e.nome.toLowerCase().includes(busca.toLowerCase()));
+    // Aceita nome OU Cust ID no mesmo campo - o Cust ID casa por trecho, colar o id inteiro tambem funciona
+    const termoBusca = busca.trim().toLowerCase();
+    const filtradas = !termoBusca
+        ? empresas
+        : empresas.filter(e =>
+            (e.nome || '').toLowerCase().includes(termoBusca)
+            || String(e.cust_id ?? '').toLowerCase().includes(termoBusca)
+        );
 
     return (
         <AppLayout title="Onboarding">
@@ -867,8 +874,8 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                             type="text"
                             value={busca}
                             onChange={e => setBusca(e.target.value)}
-                            placeholder="Buscar empresa..."
-                            className="h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 w-48"
+                            placeholder="Buscar empresa ou Cust ID..."
+                            className="h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 w-56"
                         />
                         <Link
                             href={route('mlb.implementacao.indicadores')}
