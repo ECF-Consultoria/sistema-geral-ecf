@@ -6,7 +6,7 @@ import {
     Wallet, Target, Building2, ChevronDown, ChevronRight, Link2, BookUser,
     Sparkles, MegaphoneOff, ShieldAlert, Pencil, Trash2, Check, X,
     Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2,
-    Archive,
+    Archive, Filter,
 } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -35,6 +35,13 @@ import ImplModal from '@/Pages/Mlb/components/ImplModal';
 // ─── Domínio (strings EXATAS — chaves de comparação no banco) ─────────────────────
 const ORDEM_FASE = ['Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn'];
 const FASES_TERMINAIS = ['Encerrado', 'Churn'];
+
+// Escopo operacional do painel: só quem está EM OPERAÇÃO conta nos filtros/donuts/grade.
+// Fora ficam as fases que não são trabalho ativo — Churn, Encerrado, Aceite no Projeto,
+// Fechamento, M0 e as empresas sem fase preenchida. Sem isso, um filtro de Logística por
+// "Sem informações" devolvia empresa que saiu do projeto há meses. É um recorte de TELA
+// (o toggle abaixo devolve a lista inteira); não altera nada em banco, meta ou faturamento.
+const FASES_ESCOPO = ['M1', 'M2', 'M3', 'M4'];
 const SEM_RESP = '__sem__';
 const SEM_ESTAGIO = '__sem__';
 
@@ -574,6 +581,13 @@ export default function PolosPainel({
         return isAdmin ? [...base, { key: 'financeiro', label: 'Performance' }] : base;
     }, [isAdmin]);
     const [lente, setLente] = useState('geral');
+    // Escopo M1–M4 ligado por padrão (persistido enquanto a aba viver). Ver FASES_ESCOPO.
+    const [soEscopo, setSoEscopo] = useState(() => {
+        try { return window.sessionStorage.getItem('polos-painel-escopo') !== 'todas'; } catch (_) { return true; }
+    });
+    useEffect(() => {
+        try { window.sessionStorage.setItem('polos-painel-escopo', soEscopo ? 'escopo' : 'todas'); } catch (_) { /* quota/priv */ }
+    }, [soEscopo]);
     // Sub-visão da lente Metas: "Entrantes (M0)" (espelha o PDF) | "Visão geral" (MetasPanel).
     const [metaView, setMetaView] = useState('entrantes');
 
@@ -707,7 +721,17 @@ export default function PolosPainel({
         (e, q) => `${e.nome ?? ''} ${e.cust_id ?? ''} ${e.cust_norm ?? ''} ${e.polo ?? ''}`.toLowerCase().includes(q),
         [],
     );
-    const af = useAutoFilter(empresas, COLUNAS, { search: busca, matchSearch: matchBusca, storageKey: 'polos-painel-af', visibleKeys: colsVisiveis });
+    // Base do AutoFiltro: SÓ as fases em operação (FASES_ESCOPO), a menos que o toggle esteja
+    // desligado. Tudo que lê `af` — donuts do Centro de Operações, funis dos cabeçalhos, contagens
+    // e a grade — passa a enxergar o mesmo recorte. A aba Metas continua lendo `empresas` inteiro
+    // de propósito: Entrantes (M0) e as metas por região dependem das fases de fora.
+    const empresasEscopo = useMemo(
+        () => (soEscopo ? empresas.filter((e) => FASES_ESCOPO.includes(e.fase)) : empresas),
+        [empresas, soEscopo],
+    );
+    const nForaDoEscopo = empresas.length - empresasEscopo.length;
+
+    const af = useAutoFilter(empresasEscopo, COLUNAS, { search: busca, matchSearch: matchBusca, storageKey: 'polos-painel-af', visibleKeys: colsVisiveis });
     const filtradas = af.filtered;
 
     // Indicador acionável → filtra + navega p/ a lente da coluna (ou limpa, se já isolado).
@@ -962,7 +986,8 @@ export default function PolosPainel({
                     <div>
                         <h1 className="text-white font-display font-extrabold text-2xl tracking-tight">Painel Polos</h1>
                         <p className="text-white/40 text-sm mt-0.5">
-                            Filtre, edite inline e siga — sem abrir ficha. {empresas.length} empresas Polos.
+                            Filtre, edite inline e siga — sem abrir ficha. {empresasEscopo.length} empresas Polos
+                            {soEscopo ? ' em operação (M1–M4)' : ' (todas as fases)'}.
                         </p>
                     </div>
                     {isAdmin && (
@@ -1119,7 +1144,17 @@ export default function PolosPainel({
                         <input type="text" value={busca} onChange={(ev) => setBusca(ev.target.value)} placeholder="Buscar empresa ou cust_id…"
                             className="w-52 rounded-lg border border-white/[0.08] bg-white/[0.03] pl-8 pr-3 py-1.5 text-[12px] text-white/90 outline-none focus:border-ecf-yellow/40" />
                     </div>
-                    <span className="text-white/30 text-[12px] tabular-nums shrink-0">{filtradas.length}/{empresas.length}</span>
+                    <button type="button" onClick={() => setSoEscopo((v) => !v)}
+                        title={soEscopo
+                            ? `Mostrando só M1–M4. ${nForaDoEscopo} empresa(s) fora do escopo (Churn, Encerrado, Aceite no Projeto, M0, Fechamento, sem fase) estão ocultas — clique para incluir.`
+                            : 'Mostrando todas as fases, inclusive Churn/Encerrado — clique para voltar ao escopo M1–M4.'}
+                        className={cn('inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition shrink-0',
+                            soEscopo ? 'border-ecf-yellow/30 bg-ecf-yellow/[0.08] text-ecf-yellow hover:bg-ecf-yellow/15'
+                                     : 'border-white/[0.1] bg-white/[0.03] text-white/50 hover:text-white/80')}>
+                        <Filter size={12} /> {soEscopo ? 'Só M1–M4' : 'Todas as fases'}
+                        {soEscopo && nForaDoEscopo > 0 && <span className="text-white/40 tabular-nums">(+{nForaDoEscopo})</span>}
+                    </button>
+                    <span className="text-white/30 text-[12px] tabular-nums shrink-0">{filtradas.length}/{empresasEscopo.length}</span>
                 </div>
                 )}
 
@@ -1218,7 +1253,7 @@ export default function PolosPainel({
                         <tbody>
                             {filtradas.length === 0 && (
                                 <tr><td colSpan={13} className="px-4 py-12 text-center text-sm text-white/20">
-                                    {empresas.length === 0 ? 'Nenhuma empresa Polos cadastrada.' : (
+                                    {empresasEscopo.length === 0 ? (empresas.length === 0 ? 'Nenhuma empresa Polos cadastrada.' : 'Nenhuma empresa em M1–M4. Use "Todas as fases" para ver as demais.') : (
                                         <div className="inline-flex flex-col items-center gap-2">
                                             <span>Nenhuma empresa neste filtro.</span>
                                             {af.activeCount > 0 && (

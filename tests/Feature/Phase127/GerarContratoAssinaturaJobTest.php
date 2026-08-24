@@ -24,9 +24,10 @@ use Tests\TestCase;
  * Fase 127 Plano 127-05 (CLICK-02, CLICK-08, DADOS-06) — prova o
  * `GerarContratoAssinaturaJob`: monta o envelope inteiro e PARA no rascunho
  * (D-02), com prazo/lembrete definidos na CRIAÇÃO (D-03), sem nunca gravar
- * `enviado_em`, dentro do orçamento medido de 15 chamadas (D-01/Pitfall 4),
- * e libera a empresa (D-06) quando falha definitivamente (Pitfall 3), sem
- * vazar PII no `erro_mensagem` (WR-11).
+ * `enviado_em`, dentro do orçamento medido de 19 chamadas (D-01/Pitfall 4 —
+ * quick `260824-mv3` acrescentou a rubrica, eram 15), e libera a empresa
+ * (D-06) quando falha definitivamente (Pitfall 3), sem vazar PII no
+ * `erro_mensagem` (WR-11).
  *
  * Todas as fixtures de payload usadas aqui já existem em
  * `ClicksignSandboxFixtures` (Fase 126/127-02) — ENTRADA MEDIDA em
@@ -259,7 +260,7 @@ class GerarContratoAssinaturaJobTest extends TestCase
     // ─── Teste 6 (orçamento — Pitfall 4) ───
 
     #[Test]
-    public function caminho_feliz_gasta_no_maximo_15_chamadas(): void
+    public function caminho_feliz_gasta_no_maximo_19_chamadas(): void
     {
         config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
         $this->fakeSequenciaSemAtivacao();
@@ -269,9 +270,10 @@ class GerarContratoAssinaturaJobTest extends TestCase
         (new GerarContratoAssinaturaJob($contrato))->handle($this->client(), $this->variaveisService());
 
         // criar envelope (1) + anexar por modelo (1) + 4 signatários × (signer
-        // + 2 requisitos) (12) = 14 — 15 do caminho feliz medido na Fase 126
+        // + 3 requisitos: qualificação, autenticação, rubrica) (16) = 18 — 19
+        // do caminho feliz medido (Fase 126 + rubrica do quick 260824-mv3)
         // MENOS a ativação que a D-02 remove. Nenhuma reconsulta extra.
-        Http::assertSentCount(14);
+        Http::assertSentCount(18);
     }
 
     // ─── Teste 7 (D-01) ───

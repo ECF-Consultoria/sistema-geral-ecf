@@ -26,7 +26,8 @@ use Illuminate\Support\Facades\Log;
  *     Clicksign (`anexarDocumentoPorModelo()`). O contrato passou a sair
  *     daqui — a D-16 reverteu a renderização local (D-02 original).
  * Ambos compartilham o mesmo rollback (D-12) via `montarEnvelopeComum()` e
- * o mesmo orçamento de **15 chamadas contra a janela medida de 20**.
+ * o mesmo orçamento de **19 chamadas contra a janela medida de 20** (quick
+ * `260824-mv3` acrescentou o requisito de rubrica por signatário — eram 15).
  *
  * Referência: `.planning/research/CLICKSIGN-SANDBOX-EMPIRICO.md` — respostas
  * reais medidas contra o sandbox, com precedência sobre a doc oficial (dois
@@ -34,10 +35,11 @@ use Illuminate\Support\Facades\Log;
  * `content_base64`).
  *
  * ⚠️ Restrição medida (`126-CONTEXT.md` §restricao_medida): cada envelope
- * consome 15 chamadas contra uma janela medida de 20 (§1 do empírico). Não
- * acrescentar nenhuma chamada redundante (ex.: reconsultar o envelope após
- * cada passo) — dois contratos seguidos já batem em 429. A Fase 127 precisa
- * espaçar a geração em lote.
+ * consome 19 chamadas contra uma janela medida de 20 (§1 do empírico) — a
+ * margem ficou apertada depois da rubrica automática (quick `260824-mv3`).
+ * Não acrescentar nenhuma chamada redundante (ex.: reconsultar o envelope
+ * após cada passo) — dois contratos seguidos já batem em 429. A Fase 127
+ * precisa espaçar a geração em lote.
  *
  * O client é feito para rodar dentro de um job de fila (D-14) — sem estado
  * de request, sem `sleep()` longo. A Fase 127 chama `montarEnvelope()`/
@@ -96,6 +98,22 @@ class ClicksignClient
         ContratoAssinaturaSignatario::PAPEL_CONTRATANTE => 'contractor',
         ContratoAssinaturaSignatario::PAPEL_TESTEMUNHA  => 'witness',
     ];
+
+    /**
+     * Quick `260824-mv3` — requisito de rubrica automática, para o rascunho
+     * posicionar sozinho o campo (o posicionamento pela UI não salva em
+     * envelope criado pela API — ver `criarRequisitoRubrica()`).
+     *
+     * Rubrica em TODAS as páginas do documento — o contrato inteiro precisa
+     * da rubrica, não só a última página.
+     */
+    private const RUBRICA_PAGES = 'all';
+
+    /**
+     * Tipo de marca da rubrica: iniciais do signatário (não a rubrica
+     * manuscrita — `"manuscript"` fica fora de escopo, não foi pedido).
+     */
+    private const RUBRICA_KIND = 'initials';
 
     private ?string $token;
     private ?string $baseUrl;
@@ -299,7 +317,33 @@ class ClicksignClient
     }
 
     /**
-     * Núcleo comum dos dois requisitos acima: ambos exigem
+     * POST /envelopes/{envelopeId}/requirements — requisito de RUBRICA
+     * (`action: "rubricate"`), quick `260824-mv3`. Resolve o achado
+     * confirmado por contraste em 2026-08-24: o Administrativo marcava
+     * "Posicionar campos de assinatura e rubrica" no rascunho da Clicksign e
+     * o posicionamento não salvava — só em envelope criado pela nossa API,
+     * nunca em envelope criado manualmente na UI. Referência oficial:
+     * [`criar-requisito-de-rubrica`](https://developers.clicksign.com/reference/criar-requisito-de-rubrica).
+     *
+     * `pages: "all"` e `kind: "initials"` — rubrica em todas as páginas, por
+     * iniciais. Fora de escopo: `rubric_field` (tag de posicionamento,
+     * sintaxe não publicada) e posicionamento de ASSINATURA por coordenada
+     * (não existe na API — só a rubrica). A assinatura fica onde a Clicksign
+     * põe por padrão.
+     *
+     * @return array<string, mixed>
+     */
+    public function criarRequisitoRubrica(string $envelopeId, string $documentId, string $signerId): array
+    {
+        return $this->criarRequisito($envelopeId, $documentId, $signerId, [
+            'action' => 'rubricate',
+            'pages'  => self::RUBRICA_PAGES,
+            'kind'   => self::RUBRICA_KIND,
+        ], 'criar requisito de rubrica');
+    }
+
+    /**
+     * Núcleo comum dos três requisitos acima: todos exigem
      * `relationships.document` E `relationships.signer` (§6 do empírico).
      *
      * @param  array<string, mixed>  $atributos
@@ -597,10 +641,10 @@ class ClicksignClient
      * Monta um envelope de ponta a ponta com o documento por UPLOAD de PDF
      * binário: cria o envelope, anexa o documento, adiciona os 4
      * signatários (o `$signatarioCliente` + os 3 fixos da ECF de
-     * `config('services.clicksign.signatarios_ecf')`, D-08), cria os 8
-     * requisitos (qualificação + autenticação por signatário) e ativa.
-     * Caminho feliz: 15 requisições — ver o docblock de classe sobre a
-     * restrição medida de janela.
+     * `config('services.clicksign.signatarios_ecf')`, D-08), cria os 12
+     * requisitos (qualificação + autenticação + rubrica por signatário,
+     * quick `260824-mv3`) e ativa. Caminho feliz: 19 requisições — ver o
+     * docblock de classe sobre a restrição medida de janela.
      *
      * A sequência (signatários, requisitos, ativação, rollback D-12) é
      * compartilhada com `montarEnvelopePorModelo()` via
@@ -635,7 +679,7 @@ class ClicksignClient
      * Monta um envelope de ponta a ponta com o documento por MODELO (D-16):
      * cria o envelope, instancia o `.docx` cadastrado via
      * `anexarDocumentoPorModelo()`, e segue a MESMA sequência de
-     * `montarEnvelope()` (4 signatários, 8 requisitos, ativação, 15
+     * `montarEnvelope()` (4 signatários, 12 requisitos, ativação, 19
      * chamadas, rollback D-12) por baixo de `montarEnvelopeComum()`.
      *
      * `$ativar = false` (Fase 127 Plan 127-02, D-02) é o caminho que PARA no
@@ -667,7 +711,8 @@ class ClicksignClient
      * Núcleo comum aos dois caminhos de `montarEnvelope*()` (Fase 126 Plan
      * 126-07): cria o envelope, anexa o documento pela forma que o
      * `$anexarDocumento` (closure) decidir — upload ou modelo —, adiciona
-     * os 4 signatários, cria os 8 requisitos e ativa.
+     * os 4 signatários, cria os 12 requisitos (quick `260824-mv3` acrescentou
+     * a rubrica) e ativa.
      *
      * Rollback (D-12): o `envelope_id` é guardado assim que a criação
      * retorna. Se QUALQUER passo seguinte falhar, `cancelarEnvelope()` é
@@ -717,6 +762,9 @@ class ClicksignClient
 
                 $passoAtual = "requisito de autenticação ({$papel})";
                 $this->criarRequisitoAutenticacao($envelopeId, $documentId, $signerId);
+
+                $passoAtual = "requisito de rubrica ({$papel})";
+                $this->criarRequisitoRubrica($envelopeId, $documentId, $signerId);
 
                 $signatariosCriados[] = [
                     'id'    => $signerId,

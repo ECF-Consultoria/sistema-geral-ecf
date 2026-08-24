@@ -154,6 +154,31 @@ class ClicksignClientEnvelopeTest extends TestCase
     }
 
     /**
+     * Quick `260824-mv3` — requisito de rubrica automática. Referência
+     * oficial: `criar-requisito-de-rubrica` da API Clicksign v3.
+     */
+    #[Test]
+    public function criar_requisito_rubrica_envia_action_rubricate_pages_all_kind_initials_e_as_duas_relationships(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes/*/requirements' => Http::response(ClicksignSandboxFixtures::requisitoCriado(), 200),
+        ]);
+
+        $this->client()->criarRequisitoRubrica(self::ENVELOPE_ID, self::DOCUMENT_ID, self::SIGNER_ID);
+
+        Http::assertSent(function ($request) {
+            $atributos = $request['data']['attributes'] ?? [];
+            $relacoes  = $request['data']['relationships'] ?? [];
+
+            return ($atributos['action'] ?? null) === 'rubricate'
+                && ($atributos['pages'] ?? null) === 'all'
+                && ($atributos['kind'] ?? null) === 'initials'
+                && ($relacoes['document']['data']['id'] ?? null) === self::DOCUMENT_ID
+                && ($relacoes['signer']['data']['id'] ?? null) === self::SIGNER_ID;
+        });
+    }
+
+    /**
      * A forma de `signatarios_ecf` — chaves certas e nenhum slot fantasma.
      *
      * ⚠️ Este teste afirmava `assertCount(3, ...)` até 2026-08-20. A lista
@@ -355,7 +380,7 @@ class ClicksignClientEnvelopeTest extends TestCase
     // ─── Task 3: montarEnvelope — sequência completa com rollback ───
 
     #[Test]
-    public function montar_envelope_caminho_feliz_consome_15_chamadas(): void
+    public function montar_envelope_caminho_feliz_consome_19_chamadas(): void
     {
         config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
 
@@ -374,11 +399,67 @@ class ClicksignClientEnvelopeTest extends TestCase
             ['nome' => 'Cliente Teste', 'email' => 'cliente@example.com', 'papel' => ContratoAssinaturaSignatario::PAPEL_CONTRATANTE]
         );
 
-        Http::assertSentCount(15);
+        // criar (1) + anexar (1) + 4 signatários × (signer + qualificação +
+        // autenticação + rubrica) (16) + ativar (1) = 19. Rubrica acrescentada
+        // no quick 260824-mv3 — eram 15.
+        Http::assertSentCount(19);
 
         $this->assertSame(self::ENVELOPE_ID, $resultado['envelope_id']);
         $this->assertSame(self::DOCUMENT_ID, $resultado['document_id']);
         $this->assertCount(4, $resultado['signatarios']);
+    }
+
+    /**
+     * Quick `260824-mv3` — a rubrica é criada para CADA signatário, com o
+     * `action`/`pages`/`kind` certos e os relacionamentos de `document` e
+     * `signer` apontando para o par certo.
+     */
+    #[Test]
+    public function montar_envelope_cria_requisito_de_rubrica_para_cada_signatario_com_action_rubricate(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
+
+        Http::fake([
+            self::BASE . '/envelopes'                => Http::response(ClicksignSandboxFixtures::envelopeCriado(), 200),
+            self::BASE . '/envelopes/*/documents'     => Http::response(ClicksignSandboxFixtures::documentoCriado(), 200),
+            self::BASE . '/envelopes/*/signers'       => Http::response(ClicksignSandboxFixtures::signatarioCriado(), 200),
+            self::BASE . '/envelopes/*/requirements'  => Http::response(ClicksignSandboxFixtures::requisitoCriado(), 200),
+            self::BASE . '/envelopes/*'               => Http::response(ClicksignSandboxFixtures::envelopeAtivado(), 200),
+        ]);
+
+        $this->client()->montarEnvelope(
+            ['name' => 'Contrato de teste — ECF Admin'],
+            'contrato.pdf',
+            '%PDF-1.4 conteúdo binário falso',
+            ['nome' => 'Cliente Teste', 'email' => 'cliente@example.com', 'papel' => ContratoAssinaturaSignatario::PAPEL_CONTRATANTE]
+        );
+
+        $requisicoesDeRubrica = 0;
+
+        Http::assertSent(function ($request) use (&$requisicoesDeRubrica) {
+            if ($request->method() !== 'POST' || ! str_ends_with($request->url(), '/requirements')) {
+                return false;
+            }
+
+            $atributos = $request['data']['attributes'] ?? [];
+
+            if (($atributos['action'] ?? null) !== 'rubricate') {
+                return false;
+            }
+
+            $relacoes = $request['data']['relationships'] ?? [];
+
+            $this->assertSame('all', $atributos['pages'] ?? null);
+            $this->assertSame('initials', $atributos['kind'] ?? null);
+            $this->assertSame(self::DOCUMENT_ID, $relacoes['document']['data']['id'] ?? null);
+            $this->assertSame(self::SIGNER_ID, $relacoes['signer']['data']['id'] ?? null);
+
+            $requisicoesDeRubrica++;
+
+            return true;
+        });
+
+        $this->assertSame(4, $requisicoesDeRubrica, 'um requisito de rubrica por signatário — 4 no total');
     }
 
     #[Test]
@@ -420,6 +501,57 @@ class ClicksignClientEnvelopeTest extends TestCase
         // criar envelope (1) + anexar documento (1) + 1º signatário (1) +
         // 1º requisito, que falha (1) + cancelamento (1) = 5.
         Http::assertSentCount(5);
+    }
+
+    /**
+     * Quick `260824-mv3` — falha na rubrica é FATAL como os demais passos:
+     * qualificação e autenticação passam (o requisito é o terceiro da
+     * sequência por signatário), a rubrica falha, cai no `catch`, dispara o
+     * rollback D-12 e propaga a exceção ORIGINAL (422), não a do
+     * cancelamento.
+     */
+    #[Test]
+    public function montar_envelope_falha_no_requisito_de_rubrica_cancela_o_envelope_e_propaga_o_erro_original(): void
+    {
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfDeTeste()]);
+
+        Http::fake([
+            self::BASE . '/envelopes'               => Http::response(ClicksignSandboxFixtures::envelopeCriado(), 200),
+            self::BASE . '/envelopes/*/documents'    => Http::response(ClicksignSandboxFixtures::documentoCriado(), 200),
+            self::BASE . '/envelopes/*/signers'      => Http::response(ClicksignSandboxFixtures::signatarioCriado(), 200),
+            // Sequência por requisição: qualificação (ok) -> autenticação (ok)
+            // -> rubrica do 1º signatário (falha) -> a montagem para aqui.
+            self::BASE . '/envelopes/*/requirements' => Http::sequence()
+                ->push(ClicksignSandboxFixtures::requisitoCriado(), 200)
+                ->push(ClicksignSandboxFixtures::requisitoCriado(), 200)
+                ->push(
+                    ['errors' => [['code' => 'unprocessable_entity', 'status' => 422, 'detail' => 'rubric_field inválido']]],
+                    422
+                ),
+            self::BASE . '/envelopes/*'              => Http::response('', ClicksignSandboxFixtures::envelopeDescartadoStatusHttp()),
+        ]);
+
+        try {
+            $this->client()->montarEnvelope(
+                ['name' => 'Contrato de teste — ECF Admin'],
+                'contrato.pdf',
+                '%PDF-1.4 conteúdo binário falso',
+                ['nome' => 'Cliente Teste', 'email' => 'cliente@example.com', 'papel' => ContratoAssinaturaSignatario::PAPEL_CONTRATANTE]
+            );
+            $this->fail('Esperava a ClicksignException original (422) propagada, não a de cancelamento.');
+        } catch (ClicksignException $e) {
+            $this->assertSame(422, $e->httpStatus);
+        }
+
+        Http::assertSent(function ($request) {
+            return $request->method() === 'DELETE'
+                && $request->url() === self::BASE . '/envelopes/' . self::ENVELOPE_ID;
+        });
+
+        // criar envelope (1) + anexar documento (1) + 1º signatário (1) +
+        // qualificação (1) + autenticação (1) + rubrica, que falha (1) +
+        // cancelamento (1) = 7.
+        Http::assertSentCount(7);
     }
 
     #[Test]
