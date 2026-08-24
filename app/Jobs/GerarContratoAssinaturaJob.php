@@ -130,6 +130,11 @@ class GerarContratoAssinaturaJob implements ShouldQueue
      *    `ContratoDadosMinimosService` ANTES do dispatch deste job
      *    (plano 127-06, orquestrador), não é responsabilidade repetir aqui.
      * 7. `ativar: false` (D-02) — o próprio ponto desta fase.
+     * 7a. Quick 260824-ot1 (Tarefa 3) — `Servico::assinaturaPosicionada()`
+     *     decide se o envelope leva o requisito EXTRA de assinatura
+     *     manuscrita posicionada. Opt-in por serviço, default `false`
+     *     (D-01 da quick): sem a flag ligada, o comportamento é IDÊNTICO
+     *     ao de antes desta quick — nenhum `rubric_field` é enviado.
      * 8. Grava pelo `save()` do model — nunca `update()` de query builder
      *    nem `saveQuietly()`: o hook `saving` de `ContratoAssinatura` é o
      *    que ALIMENTA a trava de unicidade (D-06); pular o hook desliga a
@@ -223,6 +228,12 @@ class GerarContratoAssinaturaJob implements ShouldQueue
             'papel' => ContratoAssinaturaSignatario::PAPEL_CONTRATANTE,
         ];
 
+        // Quick 260824-ot1 (Tarefa 3) — a decisão de assinatura posicionada
+        // nasce aqui, a partir do Servico já resolvido acima (mesma
+        // disciplina de $templateId), e desce pro client. O client não
+        // consulta banco: só recebe o booleano.
+        $assinaturaPosicionada = $servico->assinaturaPosicionada();
+
         // D-02 — ativar: false. D-04 (rollback) já vive dentro do client.
         $resultado = $client->montarEnvelopePorModelo(
             $dadosEnvelope,
@@ -231,6 +242,7 @@ class GerarContratoAssinaturaJob implements ShouldQueue
             $variaveis,
             $signatarioCliente,
             ativar: false,
+            assinaturaPosicionada: $assinaturaPosicionada,
         );
 
         $contrato->clicksign_envelope_id = $resultado['envelope_id'];
