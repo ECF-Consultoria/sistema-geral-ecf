@@ -100,6 +100,35 @@ class DominioDoPortalTest extends TestCase
     }
 
     /**
+     * A tela ADMIN de gerenciar acessos não pode existir no domínio do
+     * cliente.
+     *
+     * Nasceu em `/portal/usuarios` e vazou: a allowlist tinha `portal/*`, que
+     * deixava passar tudo sob aquele prefixo. Pego em produção em 24/08/2026.
+     * A rota mudou para `/acessos-portal` e a allowlist virou específica — este
+     * teste guarda as duas decisões.
+     */
+    #[Test]
+    public function a_tela_de_gerenciar_acessos_nao_existe_no_dominio_do_cliente(): void
+    {
+        foreach (['/acessos-portal', '/portal/usuarios'] as $uri) {
+            $this->noDominioDoCliente($uri)->assertNotFound(
+                "A tela interna {$uri} respondeu no domínio do cliente."
+            );
+        }
+    }
+
+    /**
+     * A allowlist não pode voltar a usar curinga sob `portal/`. Se alguém
+     * reintroduzir `portal/*`, este teste quebra.
+     */
+    #[Test]
+    public function a_allowlist_nao_libera_o_prefixo_portal_inteiro(): void
+    {
+        $this->noDominioDoCliente('/portal/qualquer-coisa-nova')->assertNotFound();
+    }
+
+    /**
      * 404 e não 403: dizer "proibido" confirmaria que a rota existe em algum
      * lugar. No domínio do cliente ela simplesmente não existe.
      */

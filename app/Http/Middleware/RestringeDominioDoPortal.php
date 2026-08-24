@@ -70,8 +70,17 @@ class RestringeDominioDoPortal
         'entrar',
         'entrar/*',
         'sair',
-        'portal',
-        'portal/*',
+
+        // Uma linha por rota, NUNCA `portal/*`. O curinga deixava passar
+        // `/portal/usuarios` — a tela ADMIN de gerenciar acessos, que colide
+        // no prefixo. Foi pego em produção, e é a demonstração de por que a
+        // allowlist tem de ser específica: um curinga aqui reintroduz
+        // exatamente o vazamento que este middleware existe para impedir.
+        'portal/inicio',
+        'portal/onboarding',
+        'portal/ppa',
+        'portal/ppa/tarefas/*',
+        'portal/empresa',
     ];
 
     public function handle(Request $request, Closure $next): Response

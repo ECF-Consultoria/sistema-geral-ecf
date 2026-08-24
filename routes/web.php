@@ -963,11 +963,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Quem da EQUIPE cadastra e revoga o acesso dos clientes. Sob o mesmo
         // `role:admin` do resto do grupo: dar acesso ao portal de uma empresa
         // não é operação de rotina.
-        Route::get('/portal/usuarios',  [PortalUsuarioController::class, 'index'])->name('portal.usuarios.index');
-        Route::post('/portal/usuarios', [PortalUsuarioController::class, 'store'])->name('portal.usuarios.store');
-        Route::put('/portal/usuarios/{portalUsuario}', [PortalUsuarioController::class, 'update'])->name('portal.usuarios.update');
-        Route::post('/portal/usuarios/{portalUsuario}/empresas', [PortalUsuarioController::class, 'vincular'])->name('portal.usuarios.vincular');
-        Route::delete('/portal/usuarios/{portalUsuario}/empresas/{company}', [PortalUsuarioController::class, 'desvincular'])->name('portal.usuarios.desvincular');
+        // Fora do prefixo `portal/`, que pertence às rotas do CLIENTE. Ter as
+        // duas coisas sob o mesmo prefixo obrigaria a allowlist do
+        // `RestringeDominioDoPortal` a distinguir uma da outra por curinga — e
+        // foi assim que `/portal/usuarios` acabou respondendo no domínio do
+        // cliente.
+        Route::get('/acessos-portal',  [PortalUsuarioController::class, 'index'])->name('portal.usuarios.index');
+        Route::post('/acessos-portal', [PortalUsuarioController::class, 'store'])->name('portal.usuarios.store');
+        Route::put('/acessos-portal/{portalUsuario}', [PortalUsuarioController::class, 'update'])->name('portal.usuarios.update');
+        Route::post('/acessos-portal/{portalUsuario}/empresas', [PortalUsuarioController::class, 'vincular'])->name('portal.usuarios.vincular');
+        Route::delete('/acessos-portal/{portalUsuario}/empresas/{company}', [PortalUsuarioController::class, 'desvincular'])->name('portal.usuarios.desvincular');
 
         Route::post('/companies/{company}/logo', [CompanyController::class, 'updateLogo'])->name('companies.logo.update');
         Route::delete('/companies/{company}/logo', [CompanyController::class, 'destroyLogo'])->name('companies.logo.destroy');
