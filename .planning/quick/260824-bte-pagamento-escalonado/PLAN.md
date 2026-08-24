@@ -2,7 +2,7 @@
 quick_id: 260824-bte
 slug: pagamento-escalonado
 date: 2026-08-24
-status: in-progress
+status: complete
 ---
 
 # Pagamento escalonado: as fases viram um contrato só, com a frase do parcelamento
