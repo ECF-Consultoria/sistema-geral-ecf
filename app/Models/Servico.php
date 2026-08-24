@@ -39,12 +39,17 @@ class Servico extends Model
         // Fase 128-01 (D-03 / FLUXO-08) — a tela da Fase 131 vai gravar
         // nesta coluna; sem `fillable` o mass assignment falharia em silêncio.
         'exige_contrato',
+        // Quick 260824-ot1 (Tarefa 1) — opt-in por serviço para a assinatura
+        // manuscrita posicionada; sem `fillable` o mass assignment da tela
+        // administrativa falharia em silêncio.
+        'clicksign_assinatura_posicionada',
     ];
 
     protected $casts = [
-        'valor_padrao'    => 'decimal:2',
-        'ativo'           => 'boolean',
-        'exige_contrato'  => 'boolean',
+        'valor_padrao'                      => 'decimal:2',
+        'ativo'                              => 'boolean',
+        'exige_contrato'                    => 'boolean',
+        'clicksign_assinatura_posicionada'  => 'boolean',
     ];
 
     // ─── Constants de tipo de cobrança ──────────────────────────────────────
@@ -141,7 +146,10 @@ class Servico extends Model
             // assina.
             // Fase 128-01 (T-128-01) — trocar exige_contrato é mudança
             // auditável: decide se o serviço entra no gate administrativo.
-            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor', 'clicksign_template_id', 'exige_contrato'])
+            // Quick 260824-ot1 (Tarefa 1) — ligar/desligar a assinatura
+            // posicionada é auditável pela mesma razão de
+            // clicksign_template_id: decide o que o cliente assina.
+            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor', 'clicksign_template_id', 'exige_contrato', 'clicksign_assinatura_posicionada'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match ($eventName) {
@@ -254,5 +262,25 @@ class Servico extends Model
     public function exigeContrato(): bool
     {
         return (bool) $this->exige_contrato;
+    }
+
+    /**
+     * Quick 260824-ot1 (Tarefa 1) — este serviço optou pela assinatura
+     * manuscrita POSICIONADA (`{{~position_sign_ID}}`) no envelope
+     * Clicksign?
+     *
+     * Default `false` (D-01 desta quick): só o modelo `.docx` de Gestão tem
+     * as tags `{{~position_sign_contratante}}` /
+     * `{{~position_sign_contratada}}`. Ligar isto para um serviço cujo
+     * `.docx` não tem as tags correspondentes é recusado pela API Clicksign
+     * (ver `ClicksignClient::PAPEL_PARA_POSITION_SIGN_ID`) — quem liga a
+     * flag precisa ter conferido o `.docx` primeiro. Esta é a ÚNICA leitura
+     * autorizada: `GerarContratoAssinaturaJob` chama este método e desce o
+     * booleano para `ClicksignClient::montarEnvelopePorModelo()` — o client
+     * não consulta banco.
+     */
+    public function assinaturaPosicionada(): bool
+    {
+        return (bool) $this->clicksign_assinatura_posicionada;
     }
 }
