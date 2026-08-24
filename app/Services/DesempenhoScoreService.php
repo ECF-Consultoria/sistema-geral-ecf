@@ -326,6 +326,41 @@ class DesempenhoScoreService
             ? now()->addDays(7)
             : now()->addMinutes(10);
 
+        // ── Guard do payload SEM shadow (2026-08-24) ──────────────────────────
+        // A chave de cache NÃO distingue `$incluirEmpresasScore` (de propósito:
+        // o payload com shadow é superset do sem, e duas chaves dobrariam o
+        // custo do compute). O efeito colateral é que qualquer leitura
+        // interativa — `/performance/{user}`, o ranking, o Portfolio, que
+        // chamam sem o flag — grava aqui um payload em que
+        // `empresas_score` é `[]` (a linha ~851 de `compute()` SEMPRE define a
+        // chave; sem o flag, vazia). Esse payload fica 7 dias no cache de
+        // competência fechada e passa a ser servido a quem PEDIU o shadow.
+        //
+        // Isso não era só "detalhe faltando": `CompanyScoreSnapshotWriter::sync()`
+        // com coleção vazia apaga todas as linhas do par (user, competência) —
+        // contrato deliberado da D-122-03. Em produção, abrir a tela de um
+        // profissional com o cache frio envenenava a chave e o warm seguinte
+        // (≤ 8 min) DELETAVA o detalhe já gravado: 4 dos 9 profissionais
+        // estavam sem "Empresas da carteira" em 2026-07 por esse caminho.
+        //
+        // Por isso: quem pede o shadow nunca aceita um payload que não o tem.
+        // Cobre os dois formatos degradados — chave ausente (payload anterior
+        // à Fase 120) e chave vazia com carteira não-vazia (leitura interativa).
+        // `empresas_carteira > 0` é o que separa o payload degradado do
+        // profissional legitimamente SEM carteira (DESEMP-10), cujo
+        // `empresas_score` vazio é a resposta correta e não deve custar
+        // recompute nenhum.
+        if ($incluirEmpresasScore) {
+            $cacheado = Cache::get($cacheKey);
+
+            if (is_array($cacheado)
+                && (int) ($cacheado['empresas_carteira'] ?? 0) > 0
+                && ($cacheado['empresas_score'] ?? []) === []
+            ) {
+                Cache::forget($cacheKey);
+            }
+        }
+
         return Cache::remember(
             $cacheKey,
             $ttl,

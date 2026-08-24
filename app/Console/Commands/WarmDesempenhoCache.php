@@ -134,6 +134,10 @@ class WarmDesempenhoCache extends Command
         $empresasUpserted = 0;
         $empresasPruned   = 0;
         $pulosCongelados  = 0;
+        // 2026-08-24 — quantas vezes o sync foi PULADO por payload degradado
+        // (lista vazia com carteira não-vazia). Sai no resumo final para o
+        // operador ver sem depender do log.
+        $degradados       = 0;
 
         foreach ($mesesAlvo as $mesReferencia) {
             foreach ($users as $user) {
@@ -147,19 +151,17 @@ class WarmDesempenhoCache extends Command
                     // já estiver quente com um payload ANTERIOR à Fase 120 (ou
                     // populado por leitura interativa, shadow desligado), o
                     // closure de `Cache::remember` NÃO roda e o shadow seria
-                    // SILENCIOSAMENTE pulado neste ciclo. Por isso: recomputa
-                    // só quando falta `empresas_score` no payload cacheado.
-                    // `Cache::forget()` incondicional foi REJEITADO — recomputaria
-                    // ~70s por user a cada ciclo de 8min, exatamente o custo que
-                    // este warm existe pra evitar. `desempenho:consolidar-mes`
-                    // não sofre desse problema porque chama `compute()` direto,
-                    // sem `Cache::remember`.
+                    // SILENCIOSAMENTE pulado neste ciclo.
+                    //
+                    // 2026-08-24: esse guard vivia AQUI e testava
+                    // `! array_key_exists('empresas_score', ...)` — que nunca
+                    // dispara, porque `compute()` SEMPRE define a chave (vazia
+                    // quando o shadow está desligado). Ele passou para dentro
+                    // de `computeCached()`, testando a chave VAZIA com carteira
+                    // não-vazia, e vale agora para todo call-site que pede o
+                    // shadow (este warm e `desempenho:consolidar-mes`), não só
+                    // para este laço.
                     $resultado = $this->scoreService->computeCached($user, $mesReferencia, null, incluirEmpresasScore: true);
-
-                    if (! array_key_exists('empresas_score', $resultado)) {
-                        Cache::forget($this->scoreService->cacheKey($user->id, $mesReferencia));
-                        $resultado = $this->scoreService->computeCached($user, $mesReferencia, null, incluirEmpresasScore: true);
-                    }
 
                     // Fase 122 (SNAP-03/D-122-02) — grava as linhas por
                     // empresa da competência que este ciclo aqueceu. O warm
@@ -174,7 +176,28 @@ class WarmDesempenhoCache extends Command
                     // (mesma competência fechada relida 14h depois deu
                     // 2,52% em vez de 4,24% — 122-CONTEXT.md item 4), e o
                     // warm reprocessa a mesma competência continuamente.
-                    if (array_key_exists('score_status_por_empresa', $resultado)) {
+                    //
+                    // 2026-08-24 — segunda trava, no CALL-SITE: `sync()` com
+                    // coleção vazia APAGA todas as linhas do par (user,
+                    // competência). É contrato deliberado do writer (D-122-03,
+                    // provado em `CompanyScoreSnapshotWriterTest`) e continua
+                    // certo quando a carteira de fato esvaziou — mas quem sabe
+                    // distinguir "esvaziou" de "payload degradado" é quem
+                    // chama, não o writer. Lista vazia COM carteira não-vazia é
+                    // sempre degradação: nunca poda, e grita em ERROR porque
+                    // produção roda `LOG_LEVEL=error` e um `warning` aqui seria
+                    // invisível — foi assim que a perda passou despercebida.
+                    $listaVazia  = ($resultado['empresas_score'] ?? []) === [];
+                    $temCarteira = (int) ($resultado['empresas_carteira'] ?? 0) > 0;
+
+                    if ($listaVazia && $temCarteira) {
+                        Log::error('[Desempenho] Warm recebeu empresas_score VAZIO com carteira não-vazia — sync PULADO para não apagar o detalhe já gravado.', [
+                            'user_id'           => $user->id,
+                            'mes'               => $mesReferencia->format('Y-m'),
+                            'empresas_carteira' => $resultado['empresas_carteira'] ?? null,
+                        ]);
+                        $degradados++;
+                    } elseif (array_key_exists('score_status_por_empresa', $resultado)) {
                         $syncResult = $this->snapshotWriter->sync(
                             $user,
                             $mesReferencia,
@@ -202,7 +225,7 @@ class WarmDesempenhoCache extends Command
         }
 
         $total = round(microtime(true) - $t0, 2);
-        $this->info("[Desempenho] Warm cache concluído em {$total}s — OK={$ok}, FAIL={$fail} · Empresas: {$empresasUpserted} linhas (podadas: {$empresasPruned}, pulos por congelamento: {$pulosCongelados})");
+        $this->info("[Desempenho] Warm cache concluído em {$total}s — OK={$ok}, FAIL={$fail} · Empresas: {$empresasUpserted} linhas (podadas: {$empresasPruned}, pulos por congelamento: {$pulosCongelados}, pulos por payload degradado: {$degradados})");
 
         return $fail > 0 ? self::FAILURE : self::SUCCESS;
     }

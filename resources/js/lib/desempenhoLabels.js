@@ -203,6 +203,21 @@ export const AVISO_SEM_DETALHE_TITULO = 'Detalhe por empresa indisponível';
 
 export const AVISO_SEM_DETALHE_EM_CURSO = 'A lista por empresa aparece só depois que o mês é fechado. Este é o mês em curso — os números ainda mudam até o fechamento.';
 
+/**
+ * 2026-08-24 — a seção deixou de depender de alguém ter gravado o detalhe
+ * antes. Competência fechada e carteira não-vazia agora agendam o cálculo em
+ * segundo plano, e este é o estado de espera (o poll da página troca por
+ * tabela quando o worker termina).
+ */
+export const AVISO_EMPRESAS_CALCULANDO_TITULO = 'Montando o detalhe por empresa';
+
+export const AVISO_EMPRESAS_CALCULANDO = 'A lista está sendo calculada em segundo plano — cada empresa da carteira é consultada uma a uma. Ela aparece aqui sozinha quando terminar, normalmente em menos de dois minutos.';
+
+/** Carteira vazia na competência: não há o que listar, e a tela diz isso. */
+export const AVISO_EMPRESAS_SEM_CARTEIRA_TITULO = 'Sem empresas na carteira';
+
+export const AVISO_EMPRESAS_SEM_CARTEIRA = 'Este profissional não tinha empresas na carteira nesta competência — não há detalhe por empresa a listar.';
+
 /** Aviso da D-03 para competência fechada sem detalhe gravado. */
 export function avisoSemDetalheFechado(mesLabel) {
     return `Ainda não há detalhe por empresa para ${mesLabel}. O detalhe passou a ser gravado no fechamento a partir de agosto/2026 — competências consolidadas antes disso não têm esse registro.`;

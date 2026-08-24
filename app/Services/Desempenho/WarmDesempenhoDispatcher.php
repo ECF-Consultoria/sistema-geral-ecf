@@ -83,8 +83,14 @@ class WarmDesempenhoDispatcher
      *
      * `forUser()` é a ÚNICA porta para resolver vínculos (nunca reimplementar o
      * join em `company_users.servico_id` — perde o ramo legado CTX-05).
+     *
+     * Público desde 2026-08-24: `PerformanceController::show()` decide por ele
+     * se a seção "Empresas da carteira" aquece ou anuncia carteira vazia. A
+     * alternativa era ler `empresas_carteira` do payload — que existe no
+     * `breakdown_json` de produção mas não é garantido em todo snapshot, e
+     * dependeria de uma chave em vez da régua canônica de vínculos.
      */
-    private function temCarteira(User $user): bool
+    public function temCarteira(User $user): bool
     {
         return $this->carteiraContext->forUser($user, ['active' => true])->isNotEmpty();
     }
@@ -110,6 +116,43 @@ class WarmDesempenhoDispatcher
             return false;
         }
 
+        return $this->enfileirar($ids, $mes);
+    }
+
+    /**
+     * Aquecimento do DETALHE POR EMPRESA de UM profissional (2026-08-24).
+     *
+     * Existe separado de `agendarWarm()` por causa do lock: aquele é por MÊS
+     * (global), porque nasceu para o RANKING, onde um job cobre a lista
+     * inteira de uma vez. Aqui a tela é de um profissional só, e dois
+     * profissionais abertos em sequência caem dentro da mesma janela de 3min
+     * — com o lock por mês, o segundo ficaria em "calculando…" para sempre,
+     * sem job nenhum em voo. O lock é por (user, competência).
+     *
+     * @return bool  true se ESTE request disparou o job
+     */
+    public function agendarWarmDetalheEmpresas(User $user, Carbon $mes): bool
+    {
+        if (! $this->temCarteira($user)) {
+            return false;
+        }
+
+        $lockKey = 'desempenho.warm.empresas.lock.' . $user->id . '.' . $mes->format('Y-m');
+        if (! Cache::add($lockKey, true, now()->addMinutes(self::LOCK_MINUTOS))) {
+            return false;
+        }
+
+        return $this->enfileirar([$user->id], $mes);
+    }
+
+    /**
+     * Dispatch propriamente dito — compartilhado pelos dois agendadores acima
+     * para que a escolha de fila (e o motivo dela) exista num lugar só.
+     *
+     * @param  int[]  $ids
+     */
+    private function enfileirar(array $ids, Carbon $mes): bool
+    {
         // Fila `high`, NUNCA a default. A default é onde vivem os syncs em
         // lote (acervo ML, vendas, grants): jobs de 2 a 5 minutos que chegam
         // às centenas. Em 2026-08-12 a default tinha 111 jobs de

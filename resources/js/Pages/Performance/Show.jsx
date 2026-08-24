@@ -11,6 +11,8 @@ import PeriodoBanner from '@/Components/Desempenho/PeriodoBanner';
 import {
     MARGEM_CARD_TITULO, MARGEM_CARD_SUBLABEL,
     AVISO_SEM_DETALHE_TITULO, AVISO_SEM_DETALHE_EM_CURSO, avisoSemDetalheFechado,
+    AVISO_EMPRESAS_CALCULANDO_TITULO, AVISO_EMPRESAS_CALCULANDO,
+    AVISO_EMPRESAS_SEM_CARTEIRA_TITULO, AVISO_EMPRESAS_SEM_CARTEIRA,
     resumoCarteiraLinha, fmtPp, CONTA_NOTA_TOOLTIP,
     composicaoPorMarketplace, MARKETPLACE_TOOLTIP,
 } from '@/lib/desempenhoLabels';
@@ -385,6 +387,9 @@ export default function PerformanceShow({
     empresas_score = [],
     empresas_score_resumo = { entraram: 0, nao_entraram: 0 },
     tem_detalhe_empresas = false,
+    // 2026-08-24 — true quando a seção não tem linhas gravadas mas há um warm
+    // em voo para este par (profissional, competência). Mesmo poll da nota.
+    empresas_aquecendo = false,
     // 2026-08-07 — true enquanto o warm sob-demanda calcula a nota em
     // background. Mesma prop do ranking (Performance/Index.jsx).
     aquecendo = false,
@@ -448,8 +453,14 @@ export default function PerformanceShow({
     const tentativasAquecendoRef = useRef(0);
     const [pollEsgotado, setPollEsgotado] = useState(false);
 
+    // 2026-08-24 — o poll passou a cobrir DOIS aquecimentos: o da nota
+    // (`aquecendo`) e o do detalhe por empresa (`empresas_aquecendo`). São
+    // independentes: a nota pode vir congelada do snapshot mensal, instantânea,
+    // e ainda assim faltar o detalhe por empresa daquela competência.
+    const algoAquecendo = aquecendo || empresas_aquecendo;
+
     useEffect(() => {
-        if (!aquecendo) {
+        if (!algoAquecendo) {
             tentativasAquecendoRef.current = 0;
             setPollEsgotado(false);
             return undefined;
@@ -463,20 +474,20 @@ export default function PerformanceShow({
             if (!document.hidden) {
                 tentativasAquecendoRef.current += 1;
                 router.reload({
-                    only: ['resultado', 'aquecendo', 'empresas_score', 'tem_detalhe_empresas', 'empresas_score_resumo'],
+                    only: ['resultado', 'aquecendo', 'empresas_score', 'tem_detalhe_empresas', 'empresas_score_resumo', 'empresas_aquecendo'],
                     preserveScroll: true,
                     preserveState: true,
                 });
             }
         }, 6000);
         return () => clearInterval(id);
-    }, [aquecendo]);
+    }, [algoAquecendo]);
 
     const recarregarAquecendoManual = () => {
         tentativasAquecendoRef.current = 0;
         setPollEsgotado(false);
         router.reload({
-            only: ['resultado', 'aquecendo', 'empresas_score', 'tem_detalhe_empresas', 'empresas_score_resumo'],
+            only: ['resultado', 'aquecendo', 'empresas_score', 'tem_detalhe_empresas', 'empresas_score_resumo', 'empresas_aquecendo'],
             preserveScroll: true,
             preserveState: true,
         });
@@ -684,11 +695,40 @@ export default function PerformanceShow({
                                 Empresas da carteira
                             </h2>
 
+                            {/* 2026-08-24 — quatro estados, nesta ordem. O aviso de
+                                "indisponível" deixou de ser o padrão de tudo que não
+                                é tabela: competência fechada com carteira agora
+                                AQUECE (o controller agendou o warm), e carteira
+                                vazia tem mensagem própria em vez de uma explicação
+                                sobre consolidação que não é o caso dela. */}
                             {tem_detalhe_empresas ? (
                                 <>
                                     <ComposicaoMarketplaces linhas={empresas_score} />
                                     <EmpresasScoreTabela linhas={empresas_score} resumo={empresas_score_resumo} />
                                 </>
+                            ) : empresas_aquecendo ? (
+                                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-8 flex flex-col items-center text-center gap-3">
+                                    <Loader2 size={28} className="text-ecf-yellow animate-spin" />
+                                    <p className="text-white text-base font-display font-bold">{AVISO_EMPRESAS_CALCULANDO_TITULO}</p>
+                                    <p className="text-white/60 text-xs max-w-lg leading-relaxed">{AVISO_EMPRESAS_CALCULANDO}</p>
+                                    {pollEsgotado && (
+                                        <button
+                                            type="button"
+                                            onClick={recarregarAquecendoManual}
+                                            className="mt-1 rounded-lg border border-white/[0.12] bg-white/[0.04] px-4 py-2 text-sm text-white/80 hover:bg-white/[0.08] transition-colors"
+                                        >
+                                            Ainda calculando — verificar de novo
+                                        </button>
+                                    )}
+                                </div>
+                            ) : semCarteira ? (
+                                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 flex items-start gap-3">
+                                    <UserX size={16} className="text-white/40 shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="text-white/80 text-sm font-semibold">{AVISO_EMPRESAS_SEM_CARTEIRA_TITULO}</p>
+                                        <p className="text-white/50 text-xs mt-1 leading-relaxed">{AVISO_EMPRESAS_SEM_CARTEIRA}</p>
+                                    </div>
+                                </div>
                             ) : (
                                 <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 flex items-start gap-3">
                                     <Info size={16} className="text-white/40 shrink-0 mt-0.5" />

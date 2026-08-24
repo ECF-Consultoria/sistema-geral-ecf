@@ -1456,10 +1456,40 @@ class PerformanceController extends Controller
         // da EXISTÊNCIA de linhas, nunca de `is_closed` isolado.
         // Enquanto aquece não há nota a detalhar — e consultar aqui só somaria
         // trabalho a uma tela que já está esperando o worker.
-        $empresasScore = collect();
+        //
+        // 2026-08-24 — a seção deixou de ser "aparece se alguém já gravou".
+        // Competência fechada + profissional COM carteira + zero linhas não é
+        // mais um beco sem saída: agenda o warm em background (fila `high`) e
+        // a tela renderiza "calculando…", que o poll já existente troca pela
+        // tabela quando o worker termina. Sem isso, a única forma de a seção
+        // aparecer era o ciclo de 8min do warm agendado ter passado por este
+        // profissional — e quem tivesse o cache envenenado (ver o guard em
+        // `DesempenhoScoreService::computeCached`) nunca aparecia.
+        //
+        // Continua valendo a regra que motivou a D-01: NADA de compute
+        // síncrono aqui. O fan-out HTTP por empresa acontece no worker.
+        $empresasScore     = collect();
+        $empresasAquecendo = false;
+
         if ($ctx['periodo']['is_closed'] && ! $aquecendo) {
             $empresasScore = $this->companyScoreReader->paraUsuario($user->id, $mesReferencia);
+
+            // Carteira vazia não aquece: não há empresa a listar, e a tela diz
+            // isso com todas as letras em vez de prometer um cálculo que não
+            // vem. A pergunta vai ao dispatcher (que resolve por
+            // `CarteiraContextService`, a régua canônica de vínculos) e não ao
+            // `empresas_carteira` do payload — essa chave existe no
+            // `breakdown_json` de produção, mas não é garantida em todo
+            // snapshot congelado.
+            if ($empresasScore->isEmpty() && $this->warmDispatcher->temCarteira($user)) {
+                // Retorno ignorado de propósito: `false` aqui significa "já há
+                // um job em voo para este par", que para a tela é o mesmo
+                // estado — calculando.
+                $this->warmDispatcher->agendarWarmDetalheEmpresas($user, $mesReferencia);
+                $empresasAquecendo = true;
+            }
         }
+
         $temDetalheEmpresas = $empresasScore->isNotEmpty();
         $resumoEmpresas     = $this->companyScoreReader->resumo($empresasScore);
 
@@ -1482,6 +1512,10 @@ class PerformanceController extends Controller
             'empresas_score'        => $empresasScore->values()->all(),
             'tem_detalhe_empresas'  => $temDetalheEmpresas,
             'empresas_score_resumo' => $resumoEmpresas,
+            // 2026-08-24 — true quando não há linhas mas há warm em voo para
+            // este par (user, competência). A tela mostra "calculando…" e
+            // polla, em vez do aviso de indisponível.
+            'empresas_aquecendo'    => $empresasAquecendo,
             // 2026-08-07 — true enquanto o warm sob-demanda roda em background;
             // o front usa pra exibir "calculando…" e pollar. Mesmo nome de prop
             // do ranking (Performance/Index.jsx) de propósito.
