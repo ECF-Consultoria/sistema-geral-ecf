@@ -10,6 +10,7 @@ use App\Models\Servico;
 use App\Services\Clicksign\ContratoClicksignService;
 use App\Services\Contratos\ContratoDadosMinimosService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
@@ -444,5 +445,149 @@ class ContratoClicksignServiceTest extends TestCase
 
         $pulados = collect($resultado['pulados']);
         $this->assertCount(2, $pulados->where('motivo', 'servicos_duplicados'));
+    }
+
+    // ─── Quick 260824-bte — pagamento escalonado: as fases viram UM contrato só ───
+
+    /**
+     * Reproduz a Mons Bike (company_id=431 em produção, medido em
+     * 2026-08-24): 2 `ContratoServico` do MESMO serviço, 3 parcelas de
+     * R$ 5.500 (`P3M`, sem data de início — a fase já em vigor) + 9 de
+     * R$ 6.000 (`P9M`, início `2026-12-01`). A ORDEM da entrada não importa
+     * (helper cria a fase P9M primeiro, de propósito) — quem ordena é a
+     * data de início.
+     */
+    #[Test]
+    public function duas_fases_do_mesmo_servico_com_ordem_derivavel_geram_um_unico_contrato_com_as_duas_fases_no_snapshot(): void
+    {
+        $company = $this->companyCompleta();
+        $servico = $this->servicoDeTeste(['nome' => 'Gestão de Ads (Mons Bike)']);
+
+        // Ordem de entrada INVERTIDA de propósito: a fase de 9 parcelas
+        // (com data de início) é criada ANTES da fase de 3 parcelas (sem
+        // data de início) — a ordem no snapshot final tem que sair certa
+        // mesmo assim.
+        $this->contratoServicoAtivo($company, $servico, [
+            'valor_contratado'          => 6000,
+            'hubspot_line_item_id'      => '58210340910',
+            'hubspot_billing_period'    => 'P9M',
+            'hubspot_snapshot'          => ['line_item' => ['hs_recurring_billing_start_date' => '2026-12-01']],
+        ]);
+        $this->contratoServicoAtivo($company, $servico, [
+            'valor_contratado'          => 5500,
+            'hubspot_line_item_id'      => '57973834627',
+            'hubspot_billing_period'    => 'P3M',
+            'hubspot_snapshot'          => ['line_item' => ['hs_recurring_billing_start_date' => '']],
+        ]);
+
+        $resultado = $this->service->iniciarParaEmpresa($company);
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertCount(1, $resultado['criados']);
+        $this->assertSame(1, ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $servico->id)->count());
+
+        $contrato = ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $servico->id)->firstOrFail();
+
+        $this->assertCount(2, $contrato->servicos_snapshot);
+        // Primeira fase é a de 3 parcelas de R$ 5.500 (sem data de início),
+        // mesmo tendo sido criada DEPOIS no banco.
+        $this->assertEqualsWithDelta(5500.0, $contrato->servicos_snapshot[0]['valor_contratado'], 0.001);
+        $this->assertSame(3, $contrato->servicos_snapshot[0]['parcelas']);
+        $this->assertEqualsWithDelta(6000.0, $contrato->servicos_snapshot[1]['valor_contratado'], 0.001);
+        $this->assertSame(9, $contrato->servicos_snapshot[1]['parcelas']);
+
+        Queue::assertPushed(GerarContratoAssinaturaJob::class, 1);
+    }
+
+    /**
+     * Última fase SEM `hs_recurring_billing_period` (período não definido
+     * no HubSpot — "as demais voltam à faixa apurada") continua congelando
+     * `parcelas: null` nessa fase, sem quebrar a criação do contrato.
+     */
+    #[Test]
+    public function ultima_fase_sem_periodo_definido_congela_parcelas_nulo_sem_quebrar(): void
+    {
+        $company = $this->companyCompleta();
+        $servico = $this->servicoDeTeste(['nome' => 'Gestão com faixa aberta']);
+
+        $this->contratoServicoAtivo($company, $servico, [
+            'valor_contratado'       => 2250,
+            'hubspot_line_item_id'   => 'li-fase-1',
+            'hubspot_billing_period' => 'P2M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '']],
+        ]);
+        $this->contratoServicoAtivo($company, $servico, [
+            'valor_contratado'       => 3500,
+            'hubspot_line_item_id'   => 'li-fase-2',
+            'hubspot_billing_period' => null,
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '2026-10-01']],
+        ]);
+
+        $resultado = $this->service->iniciarParaEmpresa($company);
+
+        $this->assertTrue($resultado['ok']);
+        $contrato = ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $servico->id)->firstOrFail();
+
+        $this->assertCount(2, $contrato->servicos_snapshot);
+        $this->assertSame(2, $contrato->servicos_snapshot[0]['parcelas']);
+        $this->assertNull($contrato->servicos_snapshot[1]['parcelas']);
+    }
+
+    /**
+     * Caminho AUTOMÁTICO (Observer, quick 260821-l8n/260824-bte): o mesmo
+     * consolidado acontece sem chamada manual a `iniciarParaEmpresa()` —
+     * `ContratoServico::create()` SEM `withoutEvents()` dispara
+     * `ContratoServicoGatilhoObserver`, que delega para
+     * `GatilhoContratoAdministrativoService::dispararSeElegivel()`, que
+     * chama este MESMO serviço internamente (ponto único).
+     */
+    #[Test]
+    public function caminho_automatico_do_observer_tambem_consolida_as_fases_num_unico_contrato(): void
+    {
+        $company = $this->companyCompleta();
+        $servico = $this->servicoDeTeste(['nome' => 'Gestão via Observer']);
+
+        // Os dois itens de linha nascem juntos, SEM `withoutEvents`, DENTRO
+        // de um único `DB::transaction()` — exatamente como
+        // `HubspotWebhookController::persistirContratos()` cria hoje. É essa
+        // fronteira de commit que garante que o `created()` do PRIMEIRO
+        // item, ao rodar via `DB::afterCommit()`
+        // (`ContratoServicoGatilhoObserver`), já enxergue o SEGUNDO item
+        // também commitado — sem o `DB::transaction()` explícito aqui, os
+        // dois `create()` ficariam em transações/commits separados e o
+        // teste não reproduziria o cenário real (molde idêntico ao de
+        // `ReavaliacaoAutomaticaTest::servico_duplicado_criado_pelo_observer_tambem_nao_gera_contrato`,
+        // Fase 128).
+        DB::transaction(function () use ($company, $servico) {
+            ContratoServico::create([
+                'company_id'             => $company->id,
+                'servico_id'             => $servico->id,
+                'valor_contratado'       => 5500,
+                'data_contratacao'       => '2026-01-10',
+                'data_vencimento'        => '2027-01-10',
+                'ativo'                  => true,
+                'data_primeira_parcela'  => '2026-02-05',
+                'dia_vencimento'         => 5,
+                'hubspot_billing_period' => 'P3M',
+                'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '']],
+            ]);
+            ContratoServico::create([
+                'company_id'             => $company->id,
+                'servico_id'             => $servico->id,
+                'valor_contratado'       => 6000,
+                'data_contratacao'       => '2026-01-10',
+                'data_vencimento'        => '2027-01-10',
+                'ativo'                  => true,
+                'data_primeira_parcela'  => '2026-02-05',
+                'dia_vencimento'         => 5,
+                'hubspot_billing_period' => 'P9M',
+                'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '2026-12-01']],
+            ]);
+        });
+
+        $this->assertSame(1, ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $servico->id)->count());
+
+        $contrato = ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $servico->id)->firstOrFail();
+        $this->assertCount(2, $contrato->servicos_snapshot);
     }
 }
