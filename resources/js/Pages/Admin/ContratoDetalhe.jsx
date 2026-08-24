@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { IMaskInput } from 'react-imask';
 import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
-import { cn, formatDate } from '@/lib/utils';
+import { cn, formatDate, formatCurrency } from '@/lib/utils';
 import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO, MONTAGEM_TRAVADA_AVISO } from '@/lib/contratoStatus';
 
 // D-11 (herdada da Fase 130, absorvida no plano 131-06) — causas de
@@ -529,9 +529,19 @@ export default function ContratoDetalhe({
                                                 data_primeira_parcela: '',
                                                 dia_vencimento: '',
                                             };
+                                            // Quick 260824-r4k — valor e quantidade de parcelas
+                                            // entram no título pra distinguir duas fases do MESMO
+                                            // serviço (pagamento escalonado): sem isso os dois
+                                            // blocos ficam idênticos e ninguém sabe qual é qual.
+                                            // Copy sem jargão: "parcelas", nunca "período"/"P3M".
+                                            const tituloServico = [
+                                                cs.servico_nome,
+                                                cs.valor_contratado != null ? formatCurrency(cs.valor_contratado) : null,
+                                                cs.parcelas != null ? `${cs.parcelas} parcelas` : null,
+                                            ].filter(Boolean).join(' · ');
                                             return (
                                                 <div key={cs.id} className="space-y-2">
-                                                    <div className="text-[13px] text-white/70">{cs.servico_nome}</div>
+                                                    <div className="text-[13px] text-white/70">{tituloServico}</div>
                                                     <div className="grid grid-cols-2 gap-3 items-end">
                                                         <div className="space-y-1.5">
                                                             <Label className="text-[11px]">Data de início</Label>
