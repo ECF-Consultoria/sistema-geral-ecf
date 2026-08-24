@@ -86,6 +86,10 @@ class ContratoAssinatura extends Model
         'cancelamento_motivo',
         'cancelamento_solicitado_por_user_id',
         'cancelamento_solicitado_em',
+        // Quick 260824-bte (Tarefa 3a) — override manual de {{plano_parcelas}}.
+        // Sem isto o mass assignment falharia EM SILÊNCIO, mesmo alerta de
+        // sempre.
+        'plano_parcelas_texto',
     ];
 
     protected $casts = [
