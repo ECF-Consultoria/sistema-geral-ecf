@@ -3,6 +3,11 @@
 namespace App\Services;
 
 use App\Models\ContratoAssinatura;
+// Quick 260824-bte — só para a constante PLANO_PARCELAS_CASO_SIMPLES (leitura
+// de constante, nunca instanciada aqui); não inverte a dependência real, que
+// continua sendo ContratoVariaveisModeloService -> ContratoPdfService via
+// injeção de construtor.
+use App\Services\Clicksign\ContratoVariaveisModeloService;
 use Carbon\Carbon;
 
 /**
@@ -141,6 +146,13 @@ class ContratoPdfService
                 // dia_vencimento), formatada em pt-BR igual às demais datas
                 // do documento (mesma disciplina de `formatarData()`).
                 'data_primeira_parcela' => $this->resolverDataOuPendente($complementos['data_primeira_parcela'] ?? null, 'data_primeira_parcela', $camposPendentes),
+                // Quick 260824-bte — texto de {{plano_parcelas}}: override
+                // literal (`contrato->plano_parcelas_texto`) ou composto a
+                // partir das fases do snapshot (D-06/D-10 herdado, nunca
+                // recalcula de ContratoServico ao vivo). Nunca pendente —
+                // sempre tem um valor (o caso simples é a frase constante
+                // de ContratoVariaveisModeloService).
+                'plano_parcelas' => $this->planoParcelas($contrato),
             ],
             'gerado_em' => now()->format('d/m/Y H:i'),
         ];
@@ -211,11 +223,169 @@ class ContratoPdfService
      * Soma os valores contratados dos serviços do snapshot — o total mensal
      * exibido no contrato.
      *
-     * @param  array<int, array{valor_contratado: float|string}>  $snapshot
+     * Quick 260824-bte — somar serviços DIFERENTES continua certo (Gestão +
+     * Mentoria = soma), mas somar FASES do mesmo serviço (pagamento
+     * escalonado, quick 260824-bte) está errado: daria, por exemplo,
+     * R$ 11.500,00 para um caso de 3 parcelas de R$ 5.500 + 9 de R$ 6.000,
+     * valor que nunca é cobrado. Por serviço vale a PRIMEIRA fase (a
+     * primeira ocorrência do nome no snapshot — a ordem é responsabilidade
+     * de quem grava o snapshot, `ContratoClicksignService`). Snapshot
+     * legado (uma fase só) soma normalmente, sem mudança de comportamento.
+     *
+     * @param  array<int, array{servico: string, valor_contratado: float|string}>  $snapshot
      */
     private function somarValores(array $snapshot): float
     {
-        return array_sum(array_map(fn (array $item) => (float) $item['valor_contratado'], $snapshot));
+        $valorPorServico = [];
+
+        foreach ($snapshot as $item) {
+            $nome = $item['servico'];
+
+            if (array_key_exists($nome, $valorPorServico)) {
+                continue; // fase seguinte do mesmo serviço — já contabilizada pela primeira.
+            }
+
+            $valorPorServico[$nome] = (float) $item['valor_contratado'];
+        }
+
+        return array_sum($valorPorServico);
+    }
+
+    /**
+     * Texto de `{{plano_parcelas}}` (Quick 260824-bte, Tarefa 3): override
+     * literal quando `$contrato->plano_parcelas_texto` está preenchido —
+     * "guardar o override como fato, sem sobrescrever o composto" (D-06/
+     * plano) —, senão o texto composto a partir das fases do snapshot
+     * congelado.
+     *
+     * PÚBLICO de propósito: além de `montarDados()` usar internamente,
+     * `ContratoAdminController::show()` chama direto para mostrar na tela o
+     * texto EFETIVO atual (override ou composto) no campo editável — sem
+     * precisar montar o array inteiro de `montarDados()` (que exige
+     * `$complementos` de empresa que a tela de detalhe não tem à mão nesse
+     * ponto).
+     */
+    public function planoParcelas(ContratoAssinatura $contrato): string
+    {
+        $override = $contrato->plano_parcelas_texto;
+
+        if (is_string($override) && trim($override) !== '') {
+            return $override;
+        }
+
+        return $this->comporPlanoParcelasDasFases((array) ($contrato->servicos_snapshot ?? []));
+    }
+
+    /**
+     * Compõe a frase de `{{plano_parcelas}}` a partir das fases ORDENADAS
+     * do `servicos_snapshot` (a ordem já vem certa de
+     * `ContratoClicksignService::iniciarParaEmpresa()` — esta função nunca
+     * reordena).
+     *
+     * Precedente real do jurídico (contrato de Mentoria já assinado, ver
+     * `260824-bte-PLAN.md`): quantidade em dígito + por extenso entre
+     * parênteses, valor no formato `R$ 0.000,00`, sem valor por extenso
+     * (isso é do modelo de Mentoria, não do de Gestão onde a variável
+     * vive).
+     *
+     * - 1 fase (ou snapshot legado de uma fase só): a constante
+     *   `ContratoVariaveisModeloService::PLANO_PARCELAS_CASO_SIMPLES` —
+     *   comportamento idêntico ao de antes deste quick.
+     * - N fases, todas com quantidade de parcelas conhecida (`parcelas`
+     *   não nulo — vem de `hs_recurring_billing_period`, 'P<N>M' -> N):
+     *   "As 3 (três) primeiras parcelas corresponderão a R$ 5.500,00 e as 9
+     *   (nove) demais a R$ 6.000,00.".
+     * - Última fase SEM `parcelas` (período não definido no HubSpot —
+     *   "as demais voltam à faixa"): termina em "...e as demais seguirão a
+     *   faixa apurada na forma da Cláusula 2.1.2.".
+     *
+     * @param  array<int, array{servico?: string, valor_contratado: float|string, parcelas?: ?int}>  $snapshot
+     */
+    private function comporPlanoParcelasDasFases(array $snapshot): string
+    {
+        // Guarda: a composição só faz sentido para FASES DO MESMO SERVIÇO
+        // (pagamento escalonado, quick 260824-bte). Um snapshot com nomes de
+        // serviço DIFERENTES (o caso multi-serviço "um envelope por
+        // empresa", D-19, ainda suportado por `montarDados()` de forma
+        // genérica) não é "parcelamento" — cai no caso simples, IDÊNTICO ao
+        // comportamento de antes deste quick.
+        $nomesDistintos = count(array_unique(array_column($snapshot, 'servico')));
+
+        if (count($snapshot) <= 1 || $nomesDistintos !== 1) {
+            return ContratoVariaveisModeloService::PLANO_PARCELAS_CASO_SIMPLES;
+        }
+
+        $partes = [];
+        $ultimoIndice = count($snapshot) - 1;
+        $fases = array_values($snapshot);
+
+        foreach ($fases as $indice => $fase) {
+            $ehUltima = $indice === $ultimoIndice;
+            $parcelas = $fase['parcelas'] ?? null;
+
+            if ($ehUltima && $parcelas === null) {
+                $partes[] = 'as demais seguirão a faixa apurada na forma da Cláusula 2.1.2';
+
+                continue;
+            }
+
+            $qtd = (int) $parcelas;
+            $extenso = $this->numeroPorExtenso($qtd);
+            $valorFormatado = $this->formatarMoeda((float) $fase['valor_contratado']);
+
+            if ($indice === 0) {
+                $partes[] = "As {$qtd} ({$extenso}) primeiras parcelas corresponderão a {$valorFormatado}";
+            } elseif ($ehUltima) {
+                $partes[] = "as {$qtd} ({$extenso}) demais a {$valorFormatado}";
+            } else {
+                $partes[] = "as {$qtd} ({$extenso}) seguintes a {$valorFormatado}";
+            }
+        }
+
+        if (count($partes) === 1) {
+            return $partes[0] . '.';
+        }
+
+        $ultimaParte = array_pop($partes);
+
+        return implode(', ', $partes) . ' e ' . $ultimaParte . '.';
+    }
+
+    /**
+     * Número por extenso em pt-BR, minúsculo, para a quantidade de parcelas
+     * entre parênteses (ex.: "3 (três)"). Cobre 0–99 — mais que suficiente
+     * para quantidade de parcelas de um contrato; qualquer valor fora dessa
+     * faixa cai no próprio dígito (nunca quebra, só perde o "por extenso").
+     */
+    private function numeroPorExtenso(int $numero): string
+    {
+        $unidades = [
+            0 => 'zero', 1 => 'um', 2 => 'dois', 3 => 'três', 4 => 'quatro',
+            5 => 'cinco', 6 => 'seis', 7 => 'sete', 8 => 'oito', 9 => 'nove',
+            10 => 'dez', 11 => 'onze', 12 => 'doze', 13 => 'treze', 14 => 'quatorze',
+            15 => 'quinze', 16 => 'dezesseis', 17 => 'dezessete', 18 => 'dezoito', 19 => 'dezenove',
+        ];
+        $dezenas = [
+            20 => 'vinte', 30 => 'trinta', 40 => 'quarenta', 50 => 'cinquenta',
+            60 => 'sessenta', 70 => 'setenta', 80 => 'oitenta', 90 => 'noventa',
+        ];
+
+        if ($numero < 20) {
+            return $unidades[$numero] ?? (string) $numero;
+        }
+
+        if ($numero < 100) {
+            $dezena = intdiv($numero, 10) * 10;
+            $resto   = $numero % 10;
+
+            if ($resto === 0) {
+                return $dezenas[$dezena] ?? (string) $numero;
+            }
+
+            return ($dezenas[$dezena] ?? (string) $dezena) . ' e ' . ($unidades[$resto] ?? (string) $resto);
+        }
+
+        return (string) $numero;
     }
 
     /**

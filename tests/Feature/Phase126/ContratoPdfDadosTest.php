@@ -453,4 +453,174 @@ class ContratoPdfDadosTest extends TestCase
             ? substr($codigo, $inicio)
             : substr($codigo, $inicio, $proximoPublico - $inicio);
     }
+
+    // ─── Quick 260824-bte — pagamento escalonado: fases do mesmo serviço ───
+
+    /**
+     * Duas FASES do MESMO serviço no snapshot (pagamento escalonado) —
+     * `valor_mensal_formatado` soma a PRIMEIRA fase, nunca as duas: hoje
+     * daria R$ 11.500,00 (nunca cobrado) em vez de R$ 5.500,00 (o valor em
+     * vigor). Soma entre serviços DIFERENTES continua intacta (não coberto
+     * aqui — ver `contrato_com_tres_servicos_no_snapshot_...` acima, 3
+     * serviços distintos, sem repetição de nome).
+     */
+    #[Test]
+    public function valor_mensal_soma_apenas_a_primeira_fase_de_cada_servico_nunca_as_fases_do_mesmo_servico(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 5500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 3,
+                ],
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 6000.0,
+                    'data_contratacao' => '2026-12-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 9,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame('R$ 5.500,00', $dados['totais']['valor_mensal_formatado']);
+    }
+
+    #[Test]
+    public function plano_parcelas_com_snapshot_de_uma_fase_so_e_o_caso_simples_legado(): void
+    {
+        // Snapshot LEGADO (uma fase só, sem a chave 'parcelas' nenhuma) —
+        // contratos gravados ANTES deste quick continuam montando sem erro,
+        // sem migração de dado.
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Tráfego',
+                    'valor_contratado' => 1500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame(
+            \App\Services\Clicksign\ContratoVariaveisModeloService::PLANO_PARCELAS_CASO_SIMPLES,
+            $dados['pagamento']['plano_parcelas']
+        );
+    }
+
+    /**
+     * Reproduz a Mons Bike (2 fases, ambas com período conhecido): a frase
+     * exata do plano, com quantidade em dígito + extenso entre parênteses e
+     * valor `R$ 0.000,00`.
+     */
+    #[Test]
+    public function plano_parcelas_compoe_a_frase_da_mons_bike_com_duas_fases_e_periodo_conhecido(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 5500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 3,
+                ],
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 6000.0,
+                    'data_contratacao' => '2026-12-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 9,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame(
+            'As 3 (três) primeiras parcelas corresponderão a R$ 5.500,00 e as 9 (nove) demais a R$ 6.000,00.',
+            $dados['pagamento']['plano_parcelas']
+        );
+    }
+
+    /**
+     * Última fase SEM período definido ("as demais voltam à faixa") —
+     * termina na Cláusula 2.1.2, sem quantidade nem valor para essa fase.
+     */
+    #[Test]
+    public function plano_parcelas_com_ultima_fase_sem_periodo_termina_na_clausula_2_1_2(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão com faixa aberta',
+                    'valor_contratado' => 2250.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 2,
+                ],
+                [
+                    'servico'          => 'Gestão com faixa aberta',
+                    'valor_contratado' => 3500.0,
+                    'data_contratacao' => '2026-03-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => null,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame(
+            'As 2 (dois) primeiras parcelas corresponderão a R$ 2.250,00 e as demais seguirão a faixa apurada na forma da Cláusula 2.1.2.',
+            $dados['pagamento']['plano_parcelas']
+        );
+    }
+
+    /**
+     * Override: `plano_parcelas_texto` preenchido vale LITERALMENTE, mesmo
+     * havendo snapshot de múltiplas fases que produziria outro texto.
+     */
+    #[Test]
+    public function plano_parcelas_com_override_preenchido_usa_o_texto_literal_ignorando_o_composto(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 5500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 3,
+                ],
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 6000.0,
+                    'data_contratacao' => '2026-12-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 9,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create(['plano_parcelas_texto' => 'Texto combinado à mão com o cliente, fora do padrão.']);
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame(
+            'Texto combinado à mão com o cliente, fora do padrão.',
+            $dados['pagamento']['plano_parcelas']
+        );
+    }
 }

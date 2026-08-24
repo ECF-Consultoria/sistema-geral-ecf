@@ -137,9 +137,14 @@ class ContratoVariaveisModeloService
             'data_assinatura'       => fn (array $d, self $self) => $self->dataPorExtenso($d['gerado_em']),
             // Quick 260821-m9h — modelo de Gestão substituído pelo jurídico
             // com {{plano_parcelas}}; caso simples deliberado (ver docblock
-            // da constante). Não lê ContratoServico nem calcula nada —
-            // devolve sempre a mesma constante, mantendo a classe pura.
-            'plano_parcelas'        => fn () => self::PLANO_PARCELAS_CASO_SIMPLES,
+            // da constante).
+            //
+            // Quick 260824-bte — deixou de ser a constante FIXA: agora lê a
+            // chave já resolvida por `ContratoPdfService::montarDados()`
+            // (override ou texto composto pelas fases do snapshot, D-06/
+            // plano). A classe continua PURA (T-126-40) — só LÊ a chave
+            // pronta, não decide override-ou-composto nem consulta nada.
+            'plano_parcelas'        => fn (array $d) => $d['pagamento']['plano_parcelas'],
         ];
     }
 
@@ -149,11 +154,17 @@ class ContratoVariaveisModeloService
      * são unidos por vírgula, com " e " antes do último — não é tabela em
      * loop, não é índice fixo.
      *
+     * Quick 260824-bte — `array_unique()` pelo NOME: pagamento escalonado
+     * (fases do mesmo serviço, mesmo nome repetido no snapshot) não pode
+     * virar "Gestão e Gestão" no contrato assinado. Duas fases do mesmo
+     * serviço contam como um serviço só nesta variável — quem informa a
+     * quantidade de parcelas é `{{plano_parcelas}}`, não esta.
+     *
      * @param  array<int, array{servico: string}>  $servicos
      */
     private function concatenarServicos(array $servicos): string
     {
-        $nomes = array_map(fn (array $servico) => $servico['servico'], $servicos);
+        $nomes = array_values(array_unique(array_map(fn (array $servico) => $servico['servico'], $servicos)));
 
         if (count($nomes) <= 1) {
             return $nomes[0] ?? ContratoPdfService::PLACEHOLDER;

@@ -325,4 +325,98 @@ class ContratoVariaveisModeloTest extends TestCase
     {
         $this->assertContains('plano_parcelas', ContratoVariaveisModeloService::nomes());
     }
+
+    // ─── Quick 260824-bte — pagamento escalonado: plano_parcelas passa a compor ───
+
+    #[Test]
+    public function plano_parcelas_compoe_a_frase_das_duas_fases_do_mesmo_servico(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 5500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 3,
+                ],
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 6000.0,
+                    'data_contratacao' => '2026-12-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 9,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame(
+            'As 3 (três) primeiras parcelas corresponderão a R$ 5.500,00 e as 9 (nove) demais a R$ 6.000,00.',
+            $resultado['variaveis']['plano_parcelas']
+        );
+    }
+
+    #[Test]
+    public function plano_parcelas_com_override_gravado_no_contrato_usa_o_texto_literal(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 5500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 3,
+                ],
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 6000.0,
+                    'data_contratacao' => '2026-12-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 9,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create(['plano_parcelas_texto' => 'Texto combinado à mão com o cliente.']);
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame('Texto combinado à mão com o cliente.', $resultado['variaveis']['plano_parcelas']);
+    }
+
+    /**
+     * Duas FASES do MESMO serviço (mesmo nome repetido no snapshot) não
+     * podem virar "Gestão e Gestão" em `servico_contratado` — dedupe pelo
+     * nome (quick 260824-bte).
+     */
+    #[Test]
+    public function servico_contratado_nao_repete_o_nome_quando_as_duas_entradas_sao_fases_do_mesmo_servico(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 5500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 3,
+                ],
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'valor_contratado' => 6000.0,
+                    'data_contratacao' => '2026-12-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 9,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame('Gestão de Ads (Mons Bike)', $resultado['variaveis']['servico_contratado']);
+    }
 }
