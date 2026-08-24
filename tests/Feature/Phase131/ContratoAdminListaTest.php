@@ -587,4 +587,96 @@ class ContratoAdminListaTest extends TestCase
             $this->assertArrayNotHasKey('signatarios', $linha);
         }
     }
+
+    // ─── Quick 260824-kbk: pagamento escalonado (uma FASE por parcela) ────
+    // não pode duplicar a linha da empresa na lista.
+
+    /**
+     * Causa raiz do bug em produção (Mons Bike, company_id 435): desde o
+     * quick 260824-bte, pagamento escalonado cria um `ContratoServico` por
+     * FASE do mesmo `servico_id`. Os dois resolviam a MESMA chave em
+     * `$contratosPorPar` — a lista mostrava o MESMO `contrato_id` duas
+     * vezes. `data_vencimento` da linha precisa ser o MAIOR não-nulo do
+     * grupo (o serviço termina quando a última fase termina).
+     */
+    public function test_duas_fases_do_mesmo_servico_geram_uma_unica_linha(): void
+    {
+        $servico = $this->servicoComContrato();
+        $empresa = $this->empresa(['name' => 'Empresa Pagamento Escalonado']);
+
+        $this->vincularServico($empresa, $servico)->update(['data_vencimento' => '2026-12-31']);
+        $this->vincularServico($empresa, $servico)->update(['data_vencimento' => '2027-06-30']);
+
+        $contrato = ContratoAssinatura::factory()->create([
+            'company_id' => $empresa->id,
+            'servico_id' => $servico->id,
+            'status'     => ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS,
+        ]);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index'));
+        $response->assertOk();
+        $linhasDaEmpresa = collect($response->viewData('page')['props']['linhas']['data'])
+            ->where('company_id', $empresa->id)
+            ->values();
+
+        $this->assertCount(1, $linhasDaEmpresa, 'duas fases do mesmo serviço devem gerar UMA linha, não duas.');
+        $this->assertSame($contrato->id, $linhasDaEmpresa[0]['contrato_id']);
+        $this->assertSame(
+            '2027-06-30',
+            $linhasDaEmpresa[0]['data_vencimento'],
+            'data_vencimento da linha deve ser o MAIOR valor não-nulo entre as fases do grupo.'
+        );
+    }
+
+    /** Mesma deduplicação no ramo SEM_CONTRATO (regra 3 do plano). */
+    public function test_duas_fases_do_mesmo_servico_sem_contrato_tambem_deduplica(): void
+    {
+        $servico = $this->servicoComContrato();
+        $empresa = $this->empresa(['name' => 'Empresa Escalonado Sem Contrato']);
+
+        $this->vincularServico($empresa, $servico)->update(['data_vencimento' => null]);
+        $this->vincularServico($empresa, $servico)->update(['data_vencimento' => '2027-01-15']);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index'));
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+        $linhasDaEmpresa = collect($props['linhas']['data'])
+            ->where('company_id', $empresa->id)
+            ->values();
+
+        $this->assertCount(1, $linhasDaEmpresa, 'duas fases sem contrato devem gerar UMA linha, não duas.');
+        $this->assertNull($linhasDaEmpresa[0]['contrato_id']);
+        $this->assertSame(
+            '2027-01-15',
+            $linhasDaEmpresa[0]['data_vencimento'],
+            'entre uma fase nula e uma preenchida, vale o maior não-nulo.'
+        );
+        $this->assertSame(1, $props['sem_contrato_count'], 'a empresa não pode ser contada duas vezes no resumo.');
+    }
+
+    /**
+     * Regressão zero: serviços DIFERENTES continuam gerando uma linha por
+     * serviço — o agrupamento é por `servico_id`, não por empresa inteira.
+     */
+    public function test_servicos_diferentes_da_mesma_empresa_continuam_com_uma_linha_cada(): void
+    {
+        $servicoUm   = $this->servicoComContrato('Gestão de Tráfego (regressão dedupe)');
+        $servicoDois = $this->servicoComContrato('Assessoria (regressão dedupe)');
+        $empresa = $this->empresa(['name' => 'Empresa Dois Servicos Regressao']);
+
+        $this->vincularServico($empresa, $servicoUm);
+        $this->vincularServico($empresa, $servicoDois);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index'));
+        $response->assertOk();
+        $linhasDaEmpresa = collect($response->viewData('page')['props']['linhas']['data'])
+            ->where('company_id', $empresa->id)
+            ->values();
+
+        $this->assertCount(2, $linhasDaEmpresa, 'serviços diferentes continuam com uma linha cada.');
+        $this->assertSame(
+            collect([$servicoUm->id, $servicoDois->id])->sort()->values()->all(),
+            $linhasDaEmpresa->pluck('servico_id')->sort()->values()->all()
+        );
+    }
 }

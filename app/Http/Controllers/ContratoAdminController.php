@@ -92,14 +92,32 @@ class ContratoAdminController extends Controller
         // (4) Linhas — uma por par (empresa, serviço que exige contrato).
         // Array ACHATADO por linha — nunca o model inteiro, nunca dado de
         // signatário (nome/e-mail/CPF) atravessando para o browser.
+        //
+        // Quick 260824-kbk — desde o quick 260824-bte, pagamento escalonado
+        // cria um `ContratoServico` por FASE (mesmo `servico_id`), e o laço
+        // antigo emitia uma linha por FASE, não por serviço — quebrando a
+        // invariante do comentário acima e duplicando a mesma empresa (as
+        // duas fases resolvem a MESMA chave em $contratosPorPar, então
+        // apontavam para o MESMO ContratoAssinatura). Agrupamos por
+        // `servico_id` ANTES do loop, nos dois ramos (com contrato e
+        // SEM_CONTRATO) — a consolidação em si (`show()`, "Datas por
+        // serviço") continua mostrando as fases separadas, que é onde a
+        // pessoa preenche as datas de cada uma.
         $linhas = collect();
         foreach ($companies as $company) {
-            foreach ($company->contratosServico as $contratoServico) {
-                if (! $contratoServico->servico?->exigeContrato()) {
-                    continue;
-                }
+            $gruposPorServico = $company->contratosServico
+                ->filter(fn (ContratoServico $cs) => $cs->servico?->exigeContrato())
+                ->groupBy('servico_id');
 
-                $chave = $company->id.':'.$contratoServico->servico_id;
+            foreach ($gruposPorServico as $servicoId => $grupoContratosServico) {
+                $contratoServico = $grupoContratosServico->first();
+                // Término do SERVIÇO (não da fase): o maior `data_vencimento`
+                // não-nulo do grupo — o serviço termina quando a última fase
+                // termina. Todas nulas (ou grupo de uma fase só, sem prazo)
+                // → null, o mesmo "Sem prazo" legítimo de sempre.
+                $dataVencimentoGrupo = $grupoContratosServico->pluck('data_vencimento')->filter()->max();
+
+                $chave = $company->id.':'.$servicoId;
                 $contrato = $contratosPorPar->get($chave);
 
                 if ($contrato) {
@@ -130,8 +148,10 @@ class ContratoAdminController extends Controller
                         // não do ContratoAssinatura. Alimenta a coluna
                         // "Término" e a ordenação `vencimento`. `null` é
                         // prazo indeterminado, caso legítimo — a tela mostra
-                        // "Sem prazo" e a ordenação joga para o fim.
-                        'data_vencimento'              => optional($contratoServico->data_vencimento)->format('Y-m-d'),
+                        // "Sem prazo" e a ordenação joga para o fim. Com
+                        // fases (Quick 260824-kbk), é o maior valor
+                        // não-nulo do GRUPO, não da fase da vez.
+                        'data_vencimento'              => optional($dataVencimentoGrupo)->format('Y-m-d'),
                     ]);
                 } else {
                     // Par sem contrato ainda — estado só-de-exibição, base
@@ -161,7 +181,9 @@ class ContratoAdminController extends Controller
                         // Quick 260819-o4x — o término vem do ContratoServico,
                         // que EXISTE mesmo sem ContratoAssinatura: empresa que
                         // ainda aguarda o Administrativo já tem prazo contratado.
-                        'data_vencimento'              => optional($contratoServico->data_vencimento)->format('Y-m-d'),
+                        // Quick 260824-kbk — maior não-nulo do GRUPO, mesma
+                        // disciplina do ramo com contrato acima.
+                        'data_vencimento'              => optional($dataVencimentoGrupo)->format('Y-m-d'),
                     ]);
                 }
             }
