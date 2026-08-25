@@ -180,6 +180,8 @@ class GerarContratoAssinaturaJobAssinaturaPosicionadaTest extends TestCase
         });
 
         sort($requisicoesPosicionadas);
-        $this->assertSame(['contratada', 'contratada', 'contratante'], $requisicoesPosicionadas);
+        // Quick 260825-c3m — valor completo (`position_sign_<id>`), não o
+        // id cru. Ver docblock de `PAPEL_PARA_POSITION_SIGN_ID`.
+        $this->assertSame(['position_sign_contratada', 'position_sign_contratada', 'position_sign_contratante'], $requisicoesPosicionadas);
     }
 }

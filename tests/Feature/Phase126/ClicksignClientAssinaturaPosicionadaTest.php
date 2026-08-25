@@ -162,7 +162,11 @@ class ClicksignClientAssinaturaPosicionadaTest extends TestCase
             if (array_key_exists('rubric_field', $atributos)) {
                 $requisicoesDeRubricaPosicionada++;
                 $this->assertSame('manuscript', $atributos['kind'] ?? null);
-                $this->assertContains($atributos['rubric_field'], ['contratante', 'contratada']);
+                // Quick 260825-c3m — valor tem que ser o `rubric_field`
+                // completo (com o prefixo), como ficou no documento GERADO
+                // (o `.docx` come o til de `{{~position_sign_<id>}}`), não
+                // o id cru. Ver docblock de `PAPEL_PARA_POSITION_SIGN_ID`.
+                $this->assertContains($atributos['rubric_field'], ['position_sign_contratante', 'position_sign_contratada']);
             } else {
                 $requisicoesDeRubricaTodasPaginas++;
                 $this->assertSame('all', $atributos['pages'] ?? null);
@@ -217,7 +221,8 @@ class ClicksignClientAssinaturaPosicionadaTest extends TestCase
 
             if (array_key_exists('rubric_field', $atributos)) {
                 $requisicoesPosicionadas++;
-                $this->assertSame('contratante', $atributos['rubric_field']);
+                // Quick 260825-c3m — valor completo, não o id cru.
+                $this->assertSame('position_sign_contratante', $atributos['rubric_field']);
             }
 
             return true;

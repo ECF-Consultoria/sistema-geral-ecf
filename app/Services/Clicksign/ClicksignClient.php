@@ -108,14 +108,46 @@ class ClicksignClient
     ];
 
     /**
-     * Quick `260824-ot1` (Tarefa 2) — mapa papel → id da tag de assinatura
-     * POSICIONADA, no mesmo espírito de `PAPEL_PARA_CLICKSIGN_ROLE`: o valor
-     * é o `rubric_field` que vai no requisito de
-     * `criarRequisitoRubricaPosicionada()`.
+     * Quick `260824-ot1` (Tarefa 2) — mapa papel → `rubric_field` da
+     * assinatura POSICIONADA, no mesmo espírito de
+     * `PAPEL_PARA_CLICKSIGN_ROLE`: o valor é enviado tal e qual no requisito
+     * de `criarRequisitoRubricaPosicionada()`.
      *
-     * ⚠️ **Os IDs deste mapa TÊM que existir como `{{~position_sign_<id>}}`
-     * no `.docx` do modelo.** `contratante` → `{{~position_sign_contratante}}`,
-     * `contratada` → `{{~position_sign_contratada}}` — confirmado no modelo
+     * ⚠️ **Incidente em produção, corrigido pela quick `260825-c3m` — o
+     * valor NÃO é o id cru.** A primeira versão deste mapa guardava só
+     * `contratante`/`contratada`. O primeiro contrato gerado com a flag
+     * ligada (2026-08-25 08:37) ficou parado em **"Preparando"** para
+     * sempre, com o log `[Clicksign] rubric_field não encontrado no
+     * documento`. A causa, reconstruída sondando o envelope real
+     * `20b4c47e-faf8-461c-8c1d-b5a8f7812b69`:
+     *
+     *  1. o `.docx` do modelo carrega a tag COM til: `{{~position_sign_<id>}}`.
+     *  2. a GERAÇÃO do documento a partir do modelo (a instanciação feita
+     *     pela própria Clicksign) **come o til** — `~` é o marcador "não
+     *     substitua, emita literal", e ele não sobrevive à geração. O
+     *     documento gerado, baixado e inspecionado, trazia
+     *     `{{position_sign_<id>}}` — SEM o til, mas AINDA com as chaves.
+     *  3. a API quer o `rubric_field` exatamente como o nome ficou no
+     *     documento GERADO: sem chaves, sem til. Ou seja `position_sign_<id>`.
+     *
+     * Sondado contra a API real (envelope acima), os quatro valores testados:
+     *
+     * | `rubric_field` enviado          | resposta              |
+     * |----------------------------------|------------------------|
+     * | `contratante`                    | 422 — não encontrado  |
+     * | **`position_sign_contratante`**  | **201 — aceito**      |
+     * | `~position_sign_contratante`     | 422 — não encontrado  |
+     * | `{{position_sign_contratante}}`  | 422 — não encontrado  |
+     *
+     * **Não "simplificar" este mapa de volta para o id cru** — foi
+     * exatamente essa simplificação que causou o incidente. O valor guardado
+     * aqui já É o `rubric_field` completo, pronto para enviar sem nenhum
+     * prefixo ou transformação adicional em quem chama.
+     *
+     * ⚠️ **Os IDs deste mapa (sem o prefixo `position_sign_`) TÊM que
+     * existir como `{{~position_sign_<id>}}` no `.docx` do modelo.**
+     * `contratante` → `{{~position_sign_contratante}}`, `contratada` →
+     * `{{~position_sign_contratada}}` — confirmado no modelo
      * `modelo-contrato-gestao-v4-ASSINATURA-POSICIONADA.docx` (único modelo
      * com as tags até esta quick). Renomear de um lado (aqui ou no `.docx`)
      * sem o outro é o MESMO modo de falha silencioso do T-126-38: a API não
@@ -130,8 +162,8 @@ class ClicksignClient
      * @var array<string, string>
      */
     public const PAPEL_PARA_POSITION_SIGN_ID = [
-        ContratoAssinaturaSignatario::PAPEL_CONTRATANTE => 'contratante',
-        ContratoAssinaturaSignatario::PAPEL_CONTRATADA  => 'contratada',
+        ContratoAssinaturaSignatario::PAPEL_CONTRATANTE => 'position_sign_contratante',
+        ContratoAssinaturaSignatario::PAPEL_CONTRATADA  => 'position_sign_contratada',
     ];
 
     /**
