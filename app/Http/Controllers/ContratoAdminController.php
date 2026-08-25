@@ -958,6 +958,54 @@ class ContratoAdminController extends Controller
         $retorno = $gatilho->dispararSeElegivel($company);
 
         if ($retorno['status'] === 'disparado' && data_get($retorno, 'resultado.ok') === true) {
+            $contratosNovosIds = data_get($retorno, 'resultado.criados', []);
+
+            // Quick 260825-ixp — transporta `plano_parcelas_texto` (a frase
+            // do parcelamento que a pessoa editou na tela) do contrato
+            // ANTIGO para o NOVO. Sem isto, o override ficava preso no
+            // contrato cancelado e o novo nascia com a coluna `null`
+            // (voltava ao texto composto) — o único caminho de "editar → o
+            // texto valer" é justamente o refazer, que era onde ele se
+            // perdia (ver PLAN.md do quick).
+            //
+            // ⚠️ `dispararSeElegivel()` pode criar MAIS de um contrato (um
+            // por serviço, se a empresa tiver outros serviços elegíveis no
+            // mesmo disparo) — `criados` é só uma lista de ids, sem chave
+            // por serviço. Filtramos pelo `servico_id` do contrato ANTIGO
+            // para herdar o texto só no contrato certo, nunca em todos.
+            //
+            // ⚠️ Transporte LITERAL — nunca recompor. Se o texto composto
+            // mudou (fases diferentes), quem manda é o que a pessoa
+            // escreveu; ela vê o campo na tela e corrige antes de enviar.
+            //
+            // ⚠️ Se o antigo não tinha override (`null`), não faz nada — o
+            // novo continua `null` e usa o composto, sem inventar valor.
+            $planoParcelasTransportado = false;
+            if ($contratoAssinatura->plano_parcelas_texto !== null) {
+                $contratoNovoMesmoServico = ContratoAssinatura::whereIn('id', $contratosNovosIds)
+                    ->where('servico_id', $contratoAssinatura->servico_id)
+                    ->first();
+
+                if (! $contratoNovoMesmoServico) {
+                    // Fallback (não deveria ocorrer no fluxo normal, ver
+                    // docblock de `dispararSeElegivel()`): busca pelo par
+                    // (company_id, servico_id) em andamento depois da
+                    // criação — a trava composta garante no máximo um.
+                    $contratoNovoMesmoServico = ContratoAssinatura::where('company_id', $company->id)
+                        ->where('servico_id', $contratoAssinatura->servico_id)
+                        ->whereIn('status', ContratoAssinatura::STATUS_EM_ANDAMENTO)
+                        ->latest('id')
+                        ->first();
+                }
+
+                if ($contratoNovoMesmoServico) {
+                    $contratoNovoMesmoServico->update([
+                        'plano_parcelas_texto' => $contratoAssinatura->plano_parcelas_texto,
+                    ]);
+                    $planoParcelasTransportado = true;
+                }
+            }
+
             // Rastro (Tarefa 3) — quem refez, quando, o motivo, e a ligação
             // entre o contrato antigo e o(s) novo(s). O trait LogsActivity
             // do model já registra a MUDANÇA de status isolada (passo 2
@@ -967,11 +1015,13 @@ class ContratoAdminController extends Controller
             activity('administrativo')
                 ->causedBy($request->user())
                 ->withProperties([
-                    'empresa'             => $company->name,
-                    'servico_id'          => $contratoAssinatura->servico_id,
-                    'contrato_antigo_id'  => $contratoAssinatura->id,
-                    'contratos_novos_ids' => data_get($retorno, 'resultado.criados', []),
-                    'motivo'              => $data['motivo'],
+                    'empresa'                      => $company->name,
+                    'servico_id'                   => $contratoAssinatura->servico_id,
+                    'contrato_antigo_id'           => $contratoAssinatura->id,
+                    'contratos_novos_ids'          => $contratosNovosIds,
+                    'motivo'                       => $data['motivo'],
+                    // Quick 260825-ixp.
+                    'plano_parcelas_transportado'  => $planoParcelasTransportado,
                 ])
                 ->log('Contrato refeito: "' . $company->name . '"');
 

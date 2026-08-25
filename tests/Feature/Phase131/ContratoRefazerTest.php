@@ -8,6 +8,7 @@ use App\Models\ContratoAssinatura;
 use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Models\User;
+use App\Services\ContratoPdfService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -416,5 +417,195 @@ class ContratoRefazerTest extends TestCase
         $response->assertSessionHasErrors('motivo');
         $this->assertSame(ContratoAssinatura::STATUS_RASCUNHO, $contrato->fresh()->status);
         Http::assertNothingSent();
+    }
+
+    // ─── Quick 260825-ixp — transporte de plano_parcelas_texto no refazer ───
+    //
+    // Incidente em produção (2026-08-25, Maderatto): o Administrativo editou
+    // a frase do parcelamento, salvou, clicou em "Refazer contrato" — e a
+    // frase editada não apareceu no contrato novo (voltou ao texto composto,
+    // `null` na coluna). A edição ficava presa no contrato CANCELADO porque
+    // `refazer()` cria um `ContratoAssinatura` novo, que nasce com a coluna
+    // vazia.
+
+    // Caso 8 — override preenchido: o novo nasce com o MESMO texto, literal.
+    public function test_refazer_transporta_plano_parcelas_texto_do_contrato_antigo_para_o_novo(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Refazer Plano Parcelas']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfOk()]);
+
+        $textoEditado = 'Parcelamento combinado por e-mail: 3x de R$ 500,00, editado manualmente.';
+
+        $contratoAntigo = ContratoAssinatura::factory()->create([
+            'company_id'            => $empresa->id,
+            'servico_id'            => $servico->id,
+            'status'                => ContratoAssinatura::STATUS_RASCUNHO,
+            'clicksign_envelope_id' => self::ENVELOPE_ID,
+            'plano_parcelas_texto'  => $textoEditado,
+        ]);
+
+        Queue::fake();
+        Http::fake([
+            self::BASE . '/envelopes/' . self::ENVELOPE_ID => Http::response('', 204),
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.contratos.refazer', $contratoAntigo), [
+            'motivo' => $this->motivoValido(),
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        $novo = ContratoAssinatura::where('company_id', $empresa->id)
+            ->where('servico_id', $servico->id)
+            ->where('id', '!=', $contratoAntigo->id)
+            ->first();
+
+        $this->assertNotNull($novo, 'um contrato novo deveria ter nascido.');
+        // Transporte LITERAL — reconsulta ao banco, nunca a mensagem de
+        // sucesso da tela.
+        $this->assertSame($textoEditado, $novo->fresh()->plano_parcelas_texto);
+    }
+
+    // Caso 9 — sem override (null): regressão zero, o novo continua null e
+    // usa o composto.
+    public function test_refazer_sem_override_o_novo_continua_null_e_usa_o_composto(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Refazer Sem Override']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfOk()]);
+
+        $contratoAntigo = ContratoAssinatura::factory()->create([
+            'company_id'            => $empresa->id,
+            'servico_id'            => $servico->id,
+            'status'                => ContratoAssinatura::STATUS_RASCUNHO,
+            'clicksign_envelope_id' => self::ENVELOPE_ID,
+            'plano_parcelas_texto'  => null,
+        ]);
+
+        Queue::fake();
+        Http::fake([
+            self::BASE . '/envelopes/' . self::ENVELOPE_ID => Http::response('', 204),
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.contratos.refazer', $contratoAntigo), [
+            'motivo' => $this->motivoValido(),
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        $novo = ContratoAssinatura::where('company_id', $empresa->id)
+            ->where('servico_id', $servico->id)
+            ->where('id', '!=', $contratoAntigo->id)
+            ->first();
+
+        $this->assertNotNull($novo, 'um contrato novo deveria ter nascido.');
+        // Nunca inventar valor — sem override no antigo, o novo continua
+        // null (o campo efetivo passa a usar o composto pelas fases).
+        $this->assertNull($novo->fresh()->plano_parcelas_texto);
+    }
+
+    // Caso 10 — empresa com dois serviços, override só em um: só o contrato
+    // do MESMO servico_id herda; o outro nasce null.
+    public function test_refazer_com_dois_servicos_so_o_contrato_do_mesmo_servico_herda_o_texto(): void
+    {
+        $admin    = $this->admin();
+        $empresa  = $this->empresaCompleta(['name' => 'Empresa Refazer Dois Servicos']);
+        $servicoA = $this->servicoComContrato('Gestão de Tráfego (refazer A)');
+        $servicoB = $this->servicoComContrato('Gestão de Tráfego (refazer B)');
+        $this->vincularServico($empresa, $servicoA);
+        $this->vincularServico($empresa, $servicoB);
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfOk()]);
+
+        $textoEditado = 'Texto exclusivo do parcelamento do serviço A.';
+
+        // Só o serviço A tem contrato (antigo, com override) — o serviço B
+        // ainda não tem nenhum `ContratoAssinatura`, então o mesmo disparo do
+        // refazer cria um contrato NOVO para B também (um por serviço,
+        // exatamente o cenário que o PLAN.md alerta).
+        $contratoAntigoA = ContratoAssinatura::factory()->create([
+            'company_id'            => $empresa->id,
+            'servico_id'            => $servicoA->id,
+            'status'                => ContratoAssinatura::STATUS_RASCUNHO,
+            'clicksign_envelope_id' => self::ENVELOPE_ID,
+            'plano_parcelas_texto'  => $textoEditado,
+        ]);
+
+        Queue::fake();
+        Http::fake([
+            self::BASE . '/envelopes/' . self::ENVELOPE_ID => Http::response('', 204),
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.contratos.refazer', $contratoAntigoA), [
+            'motivo' => $this->motivoValido(),
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        $novoA = ContratoAssinatura::where('company_id', $empresa->id)
+            ->where('servico_id', $servicoA->id)
+            ->where('id', '!=', $contratoAntigoA->id)
+            ->first();
+        $novoB = ContratoAssinatura::where('company_id', $empresa->id)
+            ->where('servico_id', $servicoB->id)
+            ->first();
+
+        $this->assertNotNull($novoA, 'o contrato novo do serviço A deveria ter nascido.');
+        $this->assertNotNull($novoB, 'o contrato novo do serviço B deveria ter nascido.');
+        $this->assertSame($textoEditado, $novoA->fresh()->plano_parcelas_texto);
+        // Nunca todos — o serviço B não tinha override nenhum, então nasce null.
+        $this->assertNull($novoB->fresh()->plano_parcelas_texto);
+    }
+
+    // Caso 11 — o mais importante (a prova de ponta a ponta que falhou para
+    // o usuário): o texto transportado é o que sai em {{plano_parcelas}} do
+    // contrato NOVO.
+    public function test_refazer_texto_transportado_aparece_no_plano_parcelas_do_contrato_novo(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaCompleta(['name' => 'Empresa Refazer Ponta a Ponta']);
+        $servico = $this->servicoComContrato();
+        $this->vincularServico($empresa, $servico);
+        config(['services.clicksign.signatarios_ecf' => $this->signatariosEcfOk()]);
+
+        $textoEditado = '3 parcelas de R$ 1.000,00, conforme combinado por e-mail em 25/08.';
+
+        $contratoAntigo = ContratoAssinatura::factory()->create([
+            'company_id'            => $empresa->id,
+            'servico_id'            => $servico->id,
+            'status'                => ContratoAssinatura::STATUS_RASCUNHO,
+            'clicksign_envelope_id' => self::ENVELOPE_ID,
+            'plano_parcelas_texto'  => $textoEditado,
+        ]);
+
+        Queue::fake();
+        Http::fake([
+            self::BASE . '/envelopes/' . self::ENVELOPE_ID => Http::response('', 204),
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('admin.contratos.refazer', $contratoAntigo), [
+            'motivo' => $this->motivoValido(),
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        $novo = ContratoAssinatura::where('company_id', $empresa->id)
+            ->where('servico_id', $servico->id)
+            ->where('id', '!=', $contratoAntigo->id)
+            ->firstOrFail();
+
+        // A prova de ponta a ponta: o texto que sai em {{plano_parcelas}}
+        // (o mesmo método que `ContratoPdfService::montarDados()` usa para
+        // o PDF de verdade) é o texto transportado, literal.
+        $texto = app(ContratoPdfService::class)->planoParcelas($novo);
+        $this->assertSame($textoEditado, $texto);
     }
 }
