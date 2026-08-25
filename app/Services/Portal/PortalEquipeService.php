@@ -131,13 +131,6 @@ class PortalEquipeService
      */
     public function urlDeEntrada(string $token): string
     {
-        $url = route('portal.equipe.entrar', ['t' => $token]);
-        $dominio = config('portal.dominio_cliente');
-
-        if (! $dominio) {
-            return $url;
-        }
-
-        return preg_replace('#^(https?://)[^/]+#', '$1'.$dominio, $url);
+        return \App\Support\Portal\UrlDoPortal::para('portal.equipe.entrar', ['t' => $token]);
     }
 }

@@ -299,7 +299,7 @@ class PpaQuadroService
         $portalUrl = null;
         if ($compartilhado && $ppa->company_id) {
             $link = OnboardingLink::where('company_id', $ppa->company_id)->first();
-            $portalUrl = $link ? route('portal.ppa', $link->token) : null;
+            $portalUrl = $link ? \App\Support\Portal\UrlDoPortal::para('portal.ppa', $link->token) : null;
         }
 
         return [

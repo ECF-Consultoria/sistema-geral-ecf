@@ -285,8 +285,34 @@ class OnboardingController extends Controller
 
         return [
             'existe'        => (bool) $link,
-            'url'           => $link ? route('portal.inicio', $link->token) : null,
+            // `UrlDoPortal`, não `route()`: este link é COPIADO e mandado ao
+            // cliente, e `route()` o montaria com o host de quem está
+            // olhando — o do admin.
+            'url'           => $link ? \App\Support\Portal\UrlDoPortal::para('portal.inicio', $link->token) : null,
             'ultimo_acesso' => $link?->ultimo_acesso?->toISOString(),
+
+            // ── Quem entra COM LOGIN ─────────────────────────────────
+            // O link e o login convivem: o link é de quem tem o endereço,
+            // o login é de uma pessoa. A tela mostra os dois porque a
+            // pergunta "esse cliente consegue entrar?" hoje tem duas
+            // respostas possíveis, e elas valem coisas diferentes na hora
+            // de cobrar: link aberto não diz QUEM abriu.
+            'acessos'       => \App\Models\PortalUsuario::whereHas(
+                'empresas',
+                fn ($q) => $q->where('companies.id', $onboarding->company_id)
+            )->orderBy('nome')->get()->map(fn ($u) => [
+                'id'            => $u->id,
+                'nome'          => $u->nome,
+                'email'         => $u->email,
+                'ativo'         => $u->ativo,
+                'nunca_entrou'  => $u->primeiro_acesso_em === null,
+                'ultimo_acesso' => $u->ultimo_acesso_em?->format('d/m/Y H:i'),
+            ])->values(),
+
+            // "Ver o portal do cliente" só para quem de fato pode entrar —
+            // a régua é a da carteira, não a de ver esta tela.
+            'pode_entrar'   => app(\App\Services\Portal\PortalEquipeService::class)
+                ->podeEntrar(request()->user(), $onboarding->company),
         ];
     }
 
@@ -494,7 +520,7 @@ class OnboardingController extends Controller
 
         return back()->with(
             'success',
-            'Link do portal do cliente: ' . route('portal.inicio', $link->token)
+            'Link do portal do cliente: ' . \App\Support\Portal\UrlDoPortal::para('portal.inicio', $link->token)
         );
     }
 

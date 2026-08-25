@@ -51,6 +51,9 @@ return Application::configure(basePath: dirname(__DIR__))
             // Portal do Cliente: autentica E confere o vínculo com a empresa.
             // As duas coisas juntas — autenticar sozinho não autoriza nada.
             'portal.auth' => \App\Http\Middleware\EnsurePortalAutenticado::class,
+            // Leva quem chegou ao portal pelo endereço do admin para o do
+            // cliente. Cobre os links já entregues, que não há como recolher.
+            'portal.dominio' => \App\Http\Middleware\LevaPortalParaODominioDoCliente::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

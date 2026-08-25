@@ -9,7 +9,7 @@ import AtividadeRecente from '@/Components/Onboarding/Painel/AtividadeRecente';
 import FluxoOnboarding from '@/Components/Onboarding/Painel/FluxoOnboarding';
 import RelatorioInicial from '@/Components/Onboarding/RelatorioInicial';
 import ReuniaoBloco from '@/Components/Onboarding/Painel/ReuniaoBloco';
-import LinkDoCliente from '@/Components/Onboarding/Painel/LinkDoCliente';
+import AcessoDoClienteAoPortal from '@/Components/Onboarding/Painel/AcessoDoClienteAoPortal';
 import BlocoAcessos from '@/Components/Onboarding/Painel/BlocoAcessos';
 import ContextoDaVenda from '@/Components/Onboarding/Painel/ContextoDaVenda';
 import BlocoInvestimento from '@/Components/Onboarding/Painel/BlocoInvestimento';
@@ -46,7 +46,8 @@ import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
  * Nenhuma regra nova: os quatro leem o que o backend já persistia.
  *
  * ### O que fica FORA das etapas
- * `LinkDoCliente` — é ferramenta, não passo. A pergunta que ele responde ("o
+ * `AcessoDoClienteAoPortal` — é ferramenta, não passo. A pergunta que ele
+ * responde ("o
  * cliente já viu o que pedimos?") vale para a tela inteira, e enfiá-lo numa
  * etapa o esconderia justamente quando aquela etapa estivesse fechada. Ele foi
  * para a coluna lateral, junto da atividade recente, que responde a mesma
@@ -162,7 +163,7 @@ export default function Detalhe({
                     </div>
 
                     <aside className="space-y-5 min-w-0 xl:sticky xl:top-4">
-                        <LinkDoCliente companyId={onboarding.empresa.id} link={link} />
+                        <AcessoDoClienteAoPortal companyId={onboarding.empresa.id} link={link} />
 
                         {/* O que o CLIENTE vê no portal desta empresa. Fica na
                             coluna de ferramentas, junto do link do portal, pelo

@@ -255,7 +255,10 @@ Route::post('/entrar/senha', [PortalAuthController::class, 'entrarComSenha'])
 // mudou: renomeá-los arrastaria dezenas de call-sites e testes sem ganhar nada,
 // e o nome continua descrevendo com precisão o que a rota faz — o módulo de
 // onboarding, dentro do portal. Módulo novo usa o namespace `portal.*`.
-Route::prefix('portal-cliente/{token}')->group(function () {
+// `portal.dominio`: link antigo aponta para o host do admin (era assim que
+// `route()` montava, até 25/08/2026) e está no WhatsApp dos clientes.
+// Redireciona em vez de bloquear — bloquear derrubaria quem usa hoje.
+Route::prefix('portal-cliente/{token}')->middleware('portal.dominio')->group(function () {
     Route::get('/', [PortalClienteController::class, 'inicio'])->name('portal.inicio');
 
     // ── Módulo Onboarding ──────────────────────────────────────────────────
@@ -314,7 +317,7 @@ Route::prefix('portal-cliente/{token}')->group(function () {
 //
 // Só o GET tem redirect: as demais rotas antigas eram POST/PATCH disparados de
 // dentro da própria página, e a página agora é servida já com as URLs novas.
-Route::get('/onboarding-cliente/{token}', function (string $token) {
+Route::middleware('portal.dominio')->get('/onboarding-cliente/{token}', function (string $token) {
     return redirect()->route('portal.onboarding', $token, 301);
 })->name('portal.legado.onboarding');
 // ML OAuth — callback público (o cliente autoriza fora do painel)
