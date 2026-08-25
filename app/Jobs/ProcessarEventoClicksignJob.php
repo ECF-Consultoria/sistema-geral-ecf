@@ -142,6 +142,34 @@ class ProcessarEventoClicksignJob implements ShouldQueue
             return;
         }
 
+        // Quick 260825-dap ("Refazer contrato") — o contrato CANCELADO por
+        // este caminho teve o envelope DELETADO de propósito
+        // (`ClicksignClient::cancelarEnvelope()`, DELETE /envelopes/{id}).
+        // Quando o webhook `cancel` chega depois para este MESMO envelope, a
+        // reconsulta do passo 3 abaixo bateria 404 e o job cairia em
+        // tries/backoff/failed() à toa — não há nada a reconciliar num
+        // contrato já fechado, e reconsultar um envelope que não existe mais
+        // não muda essa conclusão. Mesma disciplina de "estados só avançam"
+        // do passo 7 (guard `emAndamentoAgora` abaixo): cancelado é
+        // terminal, então qualquer evento tardio é IGNORADO sem nenhuma
+        // chamada HTTP — e sem tocar no contrato NOVO, que nasce com um
+        // `clicksign_envelope_id` DIFERENTE e nunca é resolvido por esta
+        // referência (ver `resolverPorReferenciaClicksign()`).
+        if ($contrato->status === ContratoAssinatura::STATUS_CANCELADO) {
+            $evento->status        = ContratoAssinaturaEvento::STATUS_IGNORADO;
+            $evento->erro_msg      = 'contrato ja cancelado - evento tardio ignorado sem reconsulta (envelope pode ja ter sido excluido)';
+            $evento->processado_em = now();
+            $evento->save();
+
+            Log::channel('ecf-webhooks')->info('[ProcessarEventoClicksignJob] Evento tardio para contrato ja cancelado - ignorado sem reconsulta', [
+                'evento_id'   => $evento->id,
+                'contrato_id' => $contrato->id,
+                'company_id'  => $contrato->company_id,
+            ]);
+
+            return;
+        }
+
         // 3. Reconsulta (D-06/D-07) — nenhum estado é lido de
         // $evento->payload; o payload serve só para auditoria e para saber
         // QUAL envelope mudou, nunca para decidir.
