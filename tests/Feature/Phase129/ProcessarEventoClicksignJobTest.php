@@ -168,6 +168,60 @@ class ProcessarEventoClicksignJobTest extends TestCase
         $this->assertSame(ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS, $contrato->status);
     }
 
+    // ─── Quick 260825-dap ("Refazer contrato") — evento cancel tardio para contrato JÁ cancelado ───
+
+    /**
+     * O envelope antigo foi DELETADO de propósito por
+     * `ContratoAdminController::refazer()` (via `cancelarEnvelope()`) — a
+     * reconsulta deste método bateria 404 se chegasse até ela. O guard
+     * precisa cortar ANTES de qualquer chamada HTTP: nenhuma reconsulta,
+     * nenhuma alteração no contrato (que já está fechado), e principalmente
+     * nenhum efeito no contrato NOVO que o `refazer()` criou.
+     */
+    #[Test]
+    public function evento_tardio_para_contrato_ja_cancelado_e_ignorado_sem_reconsulta_e_nao_toca_no_contrato_novo(): void
+    {
+        $contratoCancelado = $this->contratoDeTeste([
+            'status'                => ContratoAssinatura::STATUS_CANCELADO,
+            'cancelamento_motivo'   => 'Refeito — e-mail do cliente estava errado.',
+        ]);
+
+        // O contrato NOVO nasceu para a MESMA empresa/serviço, com um
+        // envelope DIFERENTE — precisa continuar intocado por este evento,
+        // que referencia o envelope ANTIGO.
+        $contratoNovo = ContratoAssinatura::factory()->create([
+            'company_id'             => $contratoCancelado->company_id,
+            'servico_id'             => $contratoCancelado->servico_id,
+            'status'                 => ContratoAssinatura::STATUS_RASCUNHO,
+            'clicksign_envelope_id'  => '00000000-0000-4000-8000-000000000099',
+        ]);
+
+        $evento = $this->eventoDeTeste($contratoCancelado, ['name' => 'cancel']);
+
+        Http::fake();
+
+        (new ProcessarEventoClicksignJob($evento))->handle($this->client(), $this->sync(), new GateLiberacaoOperacionalService(), app(EmpresaOperacionalRouter::class));
+
+        $evento->refresh();
+        $this->assertSame(ContratoAssinaturaEvento::STATUS_IGNORADO, $evento->status);
+        $this->assertNotNull($evento->processado_em);
+        $this->assertNotNull($evento->erro_msg);
+
+        // Nenhuma chamada HTTP — nem reconsulta de envelope, nem eventos de
+        // documento.
+        Http::assertNothingSent();
+
+        // O contrato antigo continua exatamente como estava — nenhuma
+        // regravação de status nem do motivo original.
+        $contratoCanceladoFresco = $contratoCancelado->fresh();
+        $this->assertSame(ContratoAssinatura::STATUS_CANCELADO, $contratoCanceladoFresco->status);
+        $this->assertSame('Refeito — e-mail do cliente estava errado.', $contratoCanceladoFresco->cancelamento_motivo);
+
+        // E o contrato NOVO nunca foi tocado.
+        $contratoNovoFresco = $contratoNovo->fresh();
+        $this->assertSame(ContratoAssinatura::STATUS_RASCUNHO, $contratoNovoFresco->status);
+    }
+
     #[Test]
     public function failed_grava_status_erro_e_erro_msg_sem_email(): void
     {
