@@ -54,18 +54,27 @@ class ContratoPdfDadosTest extends TestCase
             ->comSnapshot([
                 [
                     'servico'          => 'Gestão de Tráfego — Mercado Livre',
+                    // Quick 260825-fn0 — plataforma preenchida nos 3 itens
+                    // padrão para que os testes de `campos_pendentes` desta
+                    // classe continuem isolados do que já testavam antes
+                    // deste quick; os testes de PLATAFORMA propriamente
+                    // ditos (ausência, dedupe, concatenação) montam o
+                    // próprio snapshot explicitamente, mais abaixo.
+                    'plataforma'       => 'Mercado Livre',
                     'valor_contratado' => 1847.32,
                     'data_contratacao' => '2026-01-15',
                     'data_vencimento'  => '2027-01-15',
                 ],
                 [
                     'servico'          => 'Consultoria Shopee',
+                    'plataforma'       => 'Shopee',
                     'valor_contratado' => 923.9,
                     'data_contratacao' => '2026-02-01',
                     'data_vencimento'  => '2027-02-01',
                 ],
                 [
                     'servico'          => 'Análise de Sugadores',
+                    'plataforma'       => 'Mercado Livre',
                     'valor_contratado' => 412.55,
                     'data_contratacao' => '2026-03-10',
                     'data_vencimento'  => '2027-03-10',
@@ -678,5 +687,158 @@ class ContratoPdfDadosTest extends TestCase
             'Texto combinado à mão com o cliente, fora do padrão.',
             $dados['pagamento']['plano_parcelas']
         );
+    }
+
+    // ─── Quick 260825-fn0 — {{plataformas}}: a plataforma sai do serviço ───
+
+    /**
+     * Serviço com `plataforma` configurada no snapshot congelado — a
+     * variável sai com o nome exato, sem placeholder nem pendência.
+     */
+    #[Test]
+    public function plataformas_com_valor_configurado_no_snapshot_sai_o_nome_da_plataforma(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads',
+                    'plataforma'       => 'Mercado Livre',
+                    'valor_contratado' => 1500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame('Mercado Livre', $dados['plataformas']);
+        $this->assertNotContains('plataformas', $dados['campos_pendentes']);
+    }
+
+    /**
+     * Serviço SEM `plataforma` configurada (chave presente, valor `null`) —
+     * ausência tem que ser VISÍVEL: placeholder `A DEFINIR`, nunca espaço em
+     * branco, e a pendência entra em `campos_pendentes` (mesma disciplina
+     * de `resolverOuPendente()`).
+     */
+    #[Test]
+    public function plataformas_sem_valor_configurado_vira_a_definir_e_entra_em_campos_pendentes(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads',
+                    'plataforma'       => null,
+                    'valor_contratado' => 1500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame('A DEFINIR', $dados['plataformas']);
+        $this->assertContains('plataformas', $dados['campos_pendentes']);
+    }
+
+    /**
+     * Contrato ANTIGO: o item do snapshot nem tem a chave `plataforma`
+     * (D-04 — contratos gerados antes deste quick não têm essa chave
+     * nenhuma). A leitura tolera a ausência sem migração de dado e sem
+     * erro — mesmo comportamento do caso "sem valor configurado" acima.
+     */
+    #[Test]
+    public function plataformas_com_snapshot_antigo_sem_a_chave_tolera_a_ausencia_sem_erro(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads',
+                    // Sem a chave 'plataforma' — snapshot gravado antes
+                    // deste quick.
+                    'valor_contratado' => 1500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame('A DEFINIR', $dados['plataformas']);
+        $this->assertContains('plataformas', $dados['campos_pendentes']);
+    }
+
+    /**
+     * Duas FASES do mesmo serviço (pagamento escalonado) têm a mesma
+     * plataforma — aparece UMA VEZ SÓ, nunca repetida.
+     */
+    #[Test]
+    public function plataformas_com_duas_fases_do_mesmo_servico_aparece_uma_vez_so(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'plataforma'       => 'Mercado Livre',
+                    'valor_contratado' => 5500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 3,
+                ],
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'plataforma'       => 'Mercado Livre',
+                    'valor_contratado' => 6000.0,
+                    'data_contratacao' => '2026-12-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 9,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame('Mercado Livre', $dados['plataformas']);
+    }
+
+    /**
+     * Dois serviços de plataformas DIFERENTES no mesmo envelope:
+     * concatenação no estilo `concatenarServicos()` — vírgula e " e " antes
+     * da última.
+     */
+    #[Test]
+    public function plataformas_com_dois_servicos_de_plataformas_diferentes_concatena_com_e(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads',
+                    'plataforma'       => 'Mercado Livre',
+                    'valor_contratado' => 1500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+                [
+                    'servico'          => 'Gestão Shopee',
+                    'plataforma'       => 'Shopee',
+                    'valor_contratado' => 800.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $dados = (new ContratoPdfService())->montarDados($contrato);
+
+        $this->assertSame('Mercado Livre e Shopee', $dados['plataformas']);
+        $this->assertNotContains('plataformas', $dados['campos_pendentes']);
     }
 }

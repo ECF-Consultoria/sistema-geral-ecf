@@ -48,7 +48,22 @@ class ContratoVariaveisModeloTest extends TestCase
         ];
 
         return ContratoAssinatura::factory()
-            ->comSnapshot()
+            // Quick 260825-fn0 — mesmo item ÚNICO padrão da factory
+            // (`comSnapshot()` sem args), mas com `plataforma` preenchida:
+            // os testes desta classe que dependem de `campos_pendentes`
+            // (ex.: lista exata `['forma_pagamento']`) continuam isolados
+            // do que já testavam antes deste quick. Os testes de
+            // PLATAFORMA propriamente ditos montam o próprio snapshot
+            // explicitamente, mais abaixo.
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Tráfego — Mercado Livre',
+                    'plataforma'       => 'Mercado Livre',
+                    'valor_contratado' => 1847.32,
+                    'data_contratacao' => '2026-01-15',
+                    'data_vencimento'  => '2027-01-15',
+                ],
+            ])
             ->for(Company::factory()->state(array_merge($atributosPadrao, $atributosCompany)), 'company')
             ->create();
     }
@@ -418,5 +433,149 @@ class ContratoVariaveisModeloTest extends TestCase
         $resultado = $this->service()->montar($contrato);
 
         $this->assertSame('Gestão de Ads (Mons Bike)', $resultado['variaveis']['servico_contratado']);
+    }
+
+    // ─── Quick 260825-fn0 — {{plataformas}}: a plataforma sai do serviço ───
+
+    #[Test]
+    public function nomes_inclui_plataformas(): void
+    {
+        $this->assertContains('plataformas', ContratoVariaveisModeloService::nomes());
+    }
+
+    #[Test]
+    public function plataformas_com_valor_configurado_sai_o_nome_da_plataforma(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads',
+                    'plataforma'       => 'Mercado Livre',
+                    'valor_contratado' => 1500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame('Mercado Livre', $resultado['variaveis']['plataformas']);
+        $this->assertNotContains('plataformas', $resultado['campos_pendentes']);
+    }
+
+    /**
+     * Serviço sem `plataforma` (ou snapshot antigo sem a chave) — a ponte
+     * não decide nada, só repassa o que `montarDados()` já apurou: o mesmo
+     * placeholder `A DEFINIR` e a mesma pendência.
+     */
+    #[Test]
+    public function plataformas_sem_valor_configurado_repassa_o_placeholder_e_a_pendencia_de_montardados(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads',
+                    // Sem a chave 'plataforma' — snapshot antigo.
+                    'valor_contratado' => 1500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame(ContratoPdfService::PLACEHOLDER, $resultado['variaveis']['plataformas']);
+        $this->assertContains('plataformas', $resultado['campos_pendentes']);
+    }
+
+    #[Test]
+    public function plataformas_com_dois_servicos_de_plataformas_diferentes_concatena_com_e(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads',
+                    'plataforma'       => 'Mercado Livre',
+                    'valor_contratado' => 1500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+                [
+                    'servico'          => 'Gestão Shopee',
+                    'plataforma'       => 'Shopee',
+                    'valor_contratado' => 800.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => '2027-01-01',
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame('Mercado Livre e Shopee', $resultado['variaveis']['plataformas']);
+    }
+
+    /**
+     * Duas FASES do mesmo serviço têm a mesma plataforma — aparece UMA VEZ
+     * SÓ na variável, mesma disciplina de `servico_contratado` acima.
+     */
+    #[Test]
+    public function plataformas_com_duas_fases_do_mesmo_servico_aparece_uma_vez_so(): void
+    {
+        $contrato = ContratoAssinatura::factory()
+            ->comSnapshot([
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'plataforma'       => 'Mercado Livre',
+                    'valor_contratado' => 5500.0,
+                    'data_contratacao' => '2026-01-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 3,
+                ],
+                [
+                    'servico'          => 'Gestão de Ads (Mons Bike)',
+                    'plataforma'       => 'Mercado Livre',
+                    'valor_contratado' => 6000.0,
+                    'data_contratacao' => '2026-12-01',
+                    'data_vencimento'  => null,
+                    'parcelas'         => 9,
+                ],
+            ])
+            ->for(Company::factory(), 'company')
+            ->create();
+
+        $resultado = $this->service()->montar($contrato);
+
+        $this->assertSame('Mercado Livre', $resultado['variaveis']['plataformas']);
+    }
+
+    /**
+     * T-126-40: `ContratoVariaveisModeloService` continua PURA — nenhuma
+     * chamada a `DB::`/`Http::`/`Log::`/`Cache::`/`Storage::` no arquivo
+     * inteiro. Mesma técnica de `montardados_nao_depende_de_nenhuma_view()`
+     * em `ContratoPdfDadosTest`: lido com comentários removidos, para que os
+     * próprios comentários que citam essas palavras (como este docblock, se
+     * estivesse no arquivo de produção) não confundam a checagem.
+     */
+    #[Test]
+    public function service_continua_puro_sem_db_http_log_cache_ou_storage(): void
+    {
+        $caminho = app_path('Services/Clicksign/ContratoVariaveisModeloService.php');
+        $this->assertFileExists($caminho, 'ContratoVariaveisModeloService.php ainda não existe.');
+
+        $conteudo     = file_get_contents($caminho);
+        $semBlocos    = preg_replace('/\/\*.*?\*\//s', '', $conteudo);
+        $semComentarios = preg_replace('/\/\/.*$/m', '', $semBlocos);
+
+        $this->assertDoesNotMatchRegularExpression('/\bDB::/', $semComentarios);
+        $this->assertDoesNotMatchRegularExpression('/\bHttp::/', $semComentarios);
+        $this->assertDoesNotMatchRegularExpression('/\bLog::/', $semComentarios);
+        $this->assertDoesNotMatchRegularExpression('/\bCache::/', $semComentarios);
+        $this->assertDoesNotMatchRegularExpression('/\bStorage::/', $semComentarios);
     }
 }
