@@ -33,7 +33,14 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
-        $user = $request->user();
+        // Guard EXPLÍCITO. `$request->user()` usa o guard padrão, e desde
+        // que o portal do cliente existe há mais de um: um cliente
+        // autenticado no guard `portal` chegando aqui faria
+        // `buildUserPayload()` receber um `PortalUsuario` e estourar
+        // TypeError — 500 numa tela que deveria só não ter usuário interno.
+        //
+        // `auth.user` é, por definição, quem está logado no SISTEMA INTERNO.
+        $user = $request->user('web');
 
         return [
             ...parent::share($request),
@@ -75,6 +82,10 @@ class HandleInertiaRequests extends Middleware
                 // `nps_link_existente`, logo acima.
                 'portal_codigo_enviado' => $request->session()->get('portal_codigo_enviado'),
                 'portal_email'          => $request->session()->get('portal_email'),
+                // Confirmação de "senha salva" / "senha removida". Mesma regra
+                // das duas de cima: chave de flash que a tela lê e que não
+                // existe aqui morre no caminho, sem erro nenhum.
+                'portal_sucesso'        => $request->session()->get('portal_sucesso'),
                 // Fase 131 Plano 131-05 (CLICK-07) — canal neutro/âmbar para
                 // resposta ESPERADA que não é sucesso nem erro (o 429 do
                 // reenvio de aviso da Clicksign).

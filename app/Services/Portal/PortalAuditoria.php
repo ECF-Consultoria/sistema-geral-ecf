@@ -136,6 +136,53 @@ class PortalAuditoria
             ->log("Acesso de {$usuario->nome} ({$usuario->email}) excluído do portal");
     }
 
+    /**
+     * Alguém da EQUIPE entrou no portal de um cliente.
+     *
+     * O `causedBy` é o membro da equipe, e o `performedOn` é a EMPRESA —
+     * porque a pergunta que este registro responde é "quem andou no portal
+     * desta empresa?", e ela se faz olhando a empresa.
+     *
+     * Sem este registro, uma sessão de equipe seria indistinguível de uma
+     * sessão do cliente depois do fato — que é exatamente o problema de
+     * pedir o código de acesso emprestado.
+     */
+    public function equipeEntrou(\App\Models\User $membro, Company $empresa, ?string $ip): void
+    {
+        activity(self::CANAL)
+            ->performedOn($empresa)
+            ->causedBy($membro)
+            ->withProperties([
+                'evento'     => 'equipe_entrou',
+                'company_id' => $empresa->id,
+                'empresa'    => $empresa->name,
+                'ip'         => $ip,
+            ])
+            ->log("{$membro->name} entrou no portal de {$empresa->name} como equipe");
+    }
+
+    /**
+     * A equipe MEXEU em algo dentro do portal do cliente.
+     *
+     * Registrado à parte de {@see equipeEntrou} de propósito: ver e agir são
+     * coisas diferentes, e só a segunda muda o que o cliente encontra na
+     * tela depois. Quando o cliente disser "eu não marquei isso", é aqui
+     * que está a resposta.
+     */
+    public function equipeAgiu(\App\Models\User $membro, Company $empresa, string $oQue): void
+    {
+        activity(self::CANAL)
+            ->performedOn($empresa)
+            ->causedBy($membro)
+            ->withProperties([
+                'evento'     => 'equipe_agiu',
+                'company_id' => $empresa->id,
+                'empresa'    => $empresa->name,
+                'acao'       => $oQue,
+            ])
+            ->log("{$membro->name} fez no portal de {$empresa->name}: {$oQue}");
+    }
+
     public function acessoRevogado(PortalUsuario $usuario, string $detalhe): void
     {
         activity(self::CANAL)

@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { router, useForm } from '@inertiajs/react';
 import {
-    Building2, CheckCircle2, Clock, Mail, Plus, ShieldOff, ShieldCheck, Trash2, UserPlus, X,
+    Building2, CheckCircle2, Clock, KeyRound, Mail, Plus, ShieldOff, ShieldCheck, Trash2, UserPlus, X,
 } from 'lucide-react';
-import AppLayout from '@/Layouts/AppLayout';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
@@ -13,8 +12,14 @@ import { cn } from '@/lib/utils';
 
 // ─── Acessos do Portal do Cliente ───────────────────────────────────────────
 //
-// A tela onde a EQUIPE decide quem entra. Não há auto-cadastro: sem passar por
-// aqui, ninguém acessa o portal.
+// Onde a EQUIPE decide quem entra. Não há auto-cadastro: sem passar por aqui,
+// ninguém acessa o portal.
+//
+// ### Por que fica dentro da aba Onboarding
+// Era uma página própria em `/acessos-portal`, sem link em lugar nenhum — só
+// chegava quem já sabia a URL. Dar acesso ao portal é parte de colocar o
+// cliente para dentro, e a pergunta "esse cliente já consegue entrar?" nasce
+// olhando o onboarding dele. O lugar da operação é aqui.
 //
 // ### As duas formas de tirar acesso, e por que são separadas
 //  - **Desvincular a empresa** tira o acesso àquela empresa e preserva as
@@ -55,9 +60,18 @@ function separarAlvo(valor) {
         : { company_id: Number(id), company_group_id: null };
 }
 
-export default function PortalUsuarios({ usuarios = [], empresas = [], grupos = [] }) {
+/**
+ * `dados` chega `undefined` até o partial reload responder — a lista NÃO vem
+ * na carga de /companies. O esqueleto ocupa esse intervalo; sem ele a sub-aba
+ * abriria vazia e leria como "ninguém tem acesso".
+ */
+export default function AcessosDoPortal({ dados }) {
     const [novoAberto, setNovoAberto] = useState(false);
     const [vincular, setVincular] = useState(null);
+
+    const usuarios = dados?.usuarios ?? [];
+    const empresas = dados?.empresas ?? [];
+    const grupos   = dados?.grupos ?? [];
 
     // `alvo` guarda `e:123` ou `g:5`; vira company_id/company_group_id no envio.
     const form = useForm({ nome: '', email: '', telefone: '', cargo: '', alvo: '' });
@@ -114,125 +128,137 @@ export default function PortalUsuarios({ usuarios = [], empresas = [], grupos = 
     };
 
     return (
-        <AppLayout title="Acessos do Portal do Cliente">
-            <div className="space-y-5 max-w-[1100px] mx-auto">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="min-w-0">
-                        <h1 className="text-white font-display font-extrabold text-2xl tracking-tight">
-                            Acessos do Portal
-                        </h1>
-                        <p className="text-white/40 text-[13px] mt-1">
-                            Quem pode entrar no Portal do Cliente, e de quais empresas. Sem cadastro aqui, ninguém acessa.
-                        </p>
-                    </div>
-
-                    <Button onClick={() => setNovoAberto(true)}>
-                        <UserPlus size={15} className="mr-1.5" /> Dar acesso
-                    </Button>
+        <div className="space-y-5">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                    <h2 className="text-white font-display font-bold text-xl tracking-tight flex items-center gap-2">
+                        <KeyRound size={19} className="text-ecf-yellow" />
+                        Acessos do portal
+                    </h2>
+                    <p className="text-white/40 text-[13px] mt-0.5">
+                        Quem entra no Portal do Cliente, e de quais empresas. Sem cadastro aqui, ninguém acessa.
+                    </p>
                 </div>
 
-                {usuarios.length === 0 ? (
-                    <div className="rounded-2xl bg-white/[0.02] ring-1 ring-inset ring-white/[0.06] text-center py-16 px-6">
-                        <span className="grid place-items-center h-12 w-12 rounded-2xl bg-white/[0.04] text-white/30 mx-auto">
-                            <UserPlus size={22} />
-                        </span>
-                        <h2 className="text-white font-display font-bold text-lg mt-4">Ninguém tem acesso ainda</h2>
-                        <p className="text-white/40 text-[13px] mt-2 max-w-md mx-auto leading-relaxed">
-                            Cadastre a primeira pessoa. Ela vai entrar no portal com o e-mail dela, sem precisar de link nem senha.
-                        </p>
-                    </div>
-                ) : (
-                    <div className="space-y-2.5">
-                        {usuarios.map((u) => (
-                            <div
-                                key={u.id}
-                                className={cn(
-                                    'rounded-2xl ring-1 ring-inset p-4',
-                                    u.ativo ? 'bg-white/[0.025] ring-white/[0.06]' : 'bg-rose-500/[0.03] ring-rose-400/15',
-                                )}
-                            >
-                                <div className="flex items-start justify-between gap-4 flex-wrap">
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <p className="text-white font-semibold text-[15px]">{u.nome}</p>
-                                            {u.cargo && <span className="text-white/35 text-[12px]">· {u.cargo}</span>}
-                                            {!u.ativo && <Selo tom="parado" icone={ShieldOff}>Acesso desativado</Selo>}
-                                            {u.ativo && u.nunca_entrou && <Selo tom="aviso" icone={Clock}>Nunca entrou</Selo>}
-                                            {u.ativo && !u.nunca_entrou && <Selo tom="ok" icone={CheckCircle2}>Ativo</Selo>}
-                                        </div>
+                <Button size="sm" onClick={() => setNovoAberto(true)} disabled={!dados}>
+                    <UserPlus size={14} className="mr-1.5" /> Dar acesso
+                </Button>
+            </div>
 
-                                        <p className="flex items-center gap-1.5 text-white/45 text-[12.5px] mt-1.5">
-                                            <Mail size={12} /> {u.email}
-                                        </p>
+            {!dados ? (
+                // Três cartões cinza no lugar da lista. O intervalo é curto,
+                // mas sem ele a sub-aba abre vazia e lê como "ninguém tem
+                // acesso" — a resposta oposta à verdadeira.
+                <div className="space-y-2.5" aria-busy="true">
+                    {[0, 1, 2].map((i) => (
+                        <div key={i} className="rounded-2xl bg-white/[0.02] ring-1 ring-inset ring-white/[0.05] p-4 animate-pulse">
+                            <div className="h-3.5 w-48 rounded bg-white/[0.06]" />
+                            <div className="h-3 w-64 rounded bg-white/[0.04] mt-3" />
+                            <div className="h-6 w-40 rounded-lg bg-white/[0.04] mt-4" />
+                        </div>
+                    ))}
+                </div>
+            ) : usuarios.length === 0 ? (
+                <div className="rounded-2xl bg-white/[0.02] ring-1 ring-inset ring-white/[0.06] text-center py-16 px-6">
+                    <span className="grid place-items-center h-12 w-12 rounded-2xl bg-white/[0.04] text-white/30 mx-auto">
+                        <UserPlus size={22} />
+                    </span>
+                    <h3 className="text-white font-display font-bold text-lg mt-4">Ninguém tem acesso ainda</h3>
+                    <p className="text-white/40 text-[13px] mt-2 max-w-md mx-auto leading-relaxed">
+                        Cadastre a primeira pessoa. Ela vai entrar no portal com o e-mail dela, sem precisar de link nem senha.
+                    </p>
+                </div>
+            ) : (
+                <div className="space-y-2.5">
+                    {usuarios.map((u) => (
+                        <div
+                            key={u.id}
+                            className={cn(
+                                'rounded-2xl ring-1 ring-inset p-4',
+                                u.ativo ? 'bg-white/[0.025] ring-white/[0.06]' : 'bg-rose-500/[0.03] ring-rose-400/15',
+                            )}
+                        >
+                            <div className="flex items-start justify-between gap-4 flex-wrap">
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <p className="text-white font-semibold text-[15px]">{u.nome}</p>
+                                        {u.cargo && <span className="text-white/35 text-[12px]">· {u.cargo}</span>}
+                                        {!u.ativo && <Selo tom="parado" icone={ShieldOff}>Acesso desativado</Selo>}
+                                        {u.ativo && u.nunca_entrou && <Selo tom="aviso" icone={Clock}>Nunca entrou</Selo>}
+                                        {u.ativo && !u.nunca_entrou && <Selo tom="ok" icone={CheckCircle2}>Ativo</Selo>}
+                                    </div>
 
-                                        <div className="flex items-center gap-1.5 flex-wrap mt-3">
-                                            {u.empresas.map((e) => (
-                                                <span
-                                                    key={e.id}
-                                                    className="group inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-white/[0.05] text-white/70 text-[12px]"
-                                                >
-                                                    <Building2 size={11} className="text-white/35" /> {e.nome}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removerEmpresa(u, e)}
-                                                        title={`Tirar o acesso de ${u.nome} a ${e.nome}`}
-                                                        className="p-0.5 rounded text-white/20 hover:text-rose-300 hover:bg-rose-400/10 transition-colors"
-                                                    >
-                                                        <X size={11} />
-                                                    </button>
-                                                </span>
-                                            ))}
+                                    <p className="flex items-center gap-1.5 text-white/45 text-[12.5px] mt-1.5">
+                                        <Mail size={12} /> {u.email}
+                                    </p>
 
-                                            <button
-                                                type="button"
-                                                onClick={() => { formVinculo.reset(); setVincular(u); }}
-                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/[0.05] text-[12px] transition-colors"
+                                    <div className="flex items-center gap-1.5 flex-wrap mt-3">
+                                        {u.empresas.map((e) => (
+                                            <span
+                                                key={e.id}
+                                                className="group inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-white/[0.05] text-white/70 text-[12px]"
                                             >
-                                                <Plus size={11} /> empresa
-                                            </button>
-                                        </div>
-
-                                        <p className="text-white/25 text-[11.5px] mt-3">
-                                            {u.nunca_entrou
-                                                ? `Convidado ${u.convidado_em ? `em ${u.convidado_em}` : ''}${u.convidado_por ? ` por ${u.convidado_por}` : ''} · ainda não entrou`
-                                                : `Último acesso em ${u.ultimo_acesso_em}`}
-                                        </p>
-                                    </div>
-
-                                    {/* Duas ações com pesos diferentes, e a tela precisa
-                                        mostrar isso: desativar é reversível e preserva o
-                                        histórico ligado à pessoa; excluir é definitivo. Por
-                                        isso a segunda é discreta e fica ao lado, não
-                                        competindo com a primeira. */}
-                                    <div className="flex items-center gap-1 shrink-0">
-                                        <button
-                                            type="button"
-                                            onClick={() => alternarAtivo(u)}
-                                            className={cn(
-                                                'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium transition-colors',
-                                                u.ativo
-                                                    ? 'text-white/45 hover:text-amber-300 hover:bg-amber-400/10'
-                                                    : 'text-emerald-300 bg-emerald-400/10 hover:bg-emerald-400/15',
-                                            )}
-                                        >
-                                            {u.ativo ? <><ShieldOff size={13} /> Desativar</> : <><ShieldCheck size={13} /> Reativar</>}
-                                        </button>
+                                                <Building2 size={11} className="text-white/35" /> {e.nome}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removerEmpresa(u, e)}
+                                                    title={`Tirar o acesso de ${u.nome} a ${e.nome}`}
+                                                    className="p-0.5 rounded text-white/20 hover:text-rose-300 hover:bg-rose-400/10 transition-colors"
+                                                >
+                                                    <X size={11} />
+                                                </button>
+                                            </span>
+                                        ))}
 
                                         <button
                                             type="button"
-                                            onClick={() => excluir(u)}
-                                            title={`Excluir ${u.nome} do portal — definitivo`}
-                                            className="grid place-items-center h-8 w-8 rounded-lg text-white/25 hover:text-rose-300 hover:bg-rose-400/10 transition-colors"
+                                            onClick={() => { formVinculo.reset(); setVincular(u); }}
+                                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/[0.05] text-[12px] transition-colors"
                                         >
-                                            <Trash2 size={14} />
+                                            <Plus size={11} /> empresa
                                         </button>
                                     </div>
+
+                                    <p className="text-white/25 text-[11.5px] mt-3">
+                                        {u.nunca_entrou
+                                            ? `Convidado ${u.convidado_em ? `em ${u.convidado_em}` : ''}${u.convidado_por ? ` por ${u.convidado_por}` : ''} · ainda não entrou`
+                                            : `Último acesso em ${u.ultimo_acesso_em}`}
+                                    </p>
+                                </div>
+
+                                {/* Duas ações com pesos diferentes, e a tela precisa
+                                    mostrar isso: desativar é reversível e preserva o
+                                    histórico ligado à pessoa; excluir é definitivo. Por
+                                    isso a segunda é discreta e fica ao lado, não
+                                    competindo com a primeira. */}
+                                <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => alternarAtivo(u)}
+                                        className={cn(
+                                            'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium transition-colors',
+                                            u.ativo
+                                                ? 'text-white/45 hover:text-amber-300 hover:bg-amber-400/10'
+                                                : 'text-emerald-300 bg-emerald-400/10 hover:bg-emerald-400/15',
+                                        )}
+                                    >
+                                        {u.ativo ? <><ShieldOff size={13} /> Desativar</> : <><ShieldCheck size={13} /> Reativar</>}
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => excluir(u)}
+                                        title={`Excluir ${u.nome} do portal — definitivo`}
+                                        className="grid place-items-center h-8 w-8 rounded-lg text-white/25 hover:text-rose-300 hover:bg-rose-400/10 transition-colors"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* ─── Dar acesso ──────────────────────────────────────────────── */}
             <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
@@ -338,6 +364,6 @@ export default function PortalUsuarios({ usuarios = [], empresas = [], grupos = 
                     </form>
                 </DialogContent>
             </Dialog>
-        </AppLayout>
+        </div>
     );
 }

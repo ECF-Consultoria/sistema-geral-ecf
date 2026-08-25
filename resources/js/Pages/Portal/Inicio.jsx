@@ -3,6 +3,7 @@ import { ArrowRight, ClipboardList, LayoutGrid, ListChecks } from 'lucide-react'
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import LogoEmpresa from '@/Components/Portal/LogoEmpresa';
 import ResponsaveisCliente from '@/Components/Onboarding/Portal/ResponsaveisCliente';
+import MinhaSenha from '@/Components/Portal/MinhaSenha';
 import { cn } from '@/lib/utils';
 
 // ─── Início — o hub do Portal do Cliente ────────────────────────────────────
@@ -174,6 +175,10 @@ export default function Inicio({ empresa, modulos = [], resumo = {}, responsavei
                             titulo="Quem atende você"
                             ajuda="É com estas pessoas que você fala no dia a dia."
                         />
+
+                        {/* Some sozinho no modo por token e em sessão de
+                            equipe — ver o componente. */}
+                        <MinhaSenha />
                     </aside>
                 </div>
             </div>

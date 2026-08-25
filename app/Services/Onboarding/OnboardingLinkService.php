@@ -7,6 +7,7 @@ use App\Models\Onboarding;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
 use App\Support\Onboarding\DefinicaoOnboarding;
+use App\Support\Portal\AtorDoPortal;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -396,11 +397,28 @@ class OnboardingLinkService
      * onboarding tocado (nunca por passo) — destravar dois passos do mesmo
      * onboarding na mesma chamada não deve rodar a reavaliação em duplicata.
      */
-    public function marcarFeitoPorChave(Company $company, string $chave, ?string $ip): int
+    /**
+     * @param  ?AtorDoPortal  $ator  quem está fechando. `null` = modo por token,
+     *                               em que não há identidade — tratado como
+     *                               cliente, que é a suposição segura.
+     */
+    public function marcarFeitoPorChave(Company $company, string $chave, ?string $ip, ?AtorDoPortal $ator = null): int
     {
+        $ehEquipe = $ator?->equipe ?? false;
+
         $passos = OnboardingPasso::query()
             ->where('chave', $chave)
             ->whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id)->emAndamento())
+            // Só os passos do CLIENTE — a menos que quem esteja fechando seja
+            // da ECF.
+            //
+            // Sem esta linha, qualquer um com o token fechava passo INTERNO: a
+            // chave vem do corpo da requisição, e nada aqui conferia de quem
+            // era o passo. Verificado em 21/08/2026 contra a base real —
+            // `adman_preenchimento_interno` (dono `interno`, status
+            // `bloqueado`) foi para `concluido` com um PATCH sem sessão e sem
+            // CSRF, sem deixar marca de que a origem tinha sido o cliente.
+            ->when(! $ehEquipe, fn ($q) => $q->where('dono', OnboardingPasso::DONO_CLIENTE))
             ->with('onboarding')
             ->get();
 
@@ -449,12 +467,19 @@ class OnboardingLinkService
 
             if ($ehDeclaracao) {
                 // Quem olhar depois precisa saber que este "concluído" é
-                // palavra do cliente, não leitura do sistema.
+                // palavra de alguém, não leitura do sistema — e de QUEM.
+                //
+                // `declarado_pelo_cliente` fica falso quando quem fechou foi a
+                // ECF. É o que responde "o cliente confirmou isso ou fomos
+                // nós?" no dia em que ele disser que não confirmou. Sem
+                // separar, um analista orientando por telefone produziria uma
+                // confirmação indistinguível da do próprio cliente.
                 $passo->valor = array_merge($passo->valor ?? [], [
-                    'concluido_manualmente' => true,
-                    'declarado_pelo_cliente' => true,
-                    'declarado_em'          => now()->toISOString(),
-                    'declarado_ip'          => $ip,
+                    'concluido_manualmente'  => true,
+                    'declarado_pelo_cliente' => ! $ehEquipe,
+                    'declarado_por'          => $ator?->descricao(),
+                    'declarado_em'           => now()->toISOString(),
+                    'declarado_ip'           => $ip,
                 ]);
             }
 

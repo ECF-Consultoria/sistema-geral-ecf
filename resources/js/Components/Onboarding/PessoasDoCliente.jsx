@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
 import { Plus, UserPlus } from 'lucide-react';
+import { rotaDoPortal } from '@/lib/rotasDoPortal';
 
 /**
  * Formulário do PORTAL DO CLIENTE para ele informar quem acionamos no dia a
@@ -61,7 +62,7 @@ export default function PessoasDoCliente({ token, papel, pessoas = [], sugestoes
         setEnviando(true);
 
         router.post(
-            route('onboarding.publico.pessoas', token),
+            rotaDoPortal('onboarding.pessoas', token),
             { papel, ...dados },
             {
                 preserveScroll: true,

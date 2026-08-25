@@ -13,6 +13,7 @@ use App\Services\AdmanService;
 use App\Services\EcfDriveService;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\Onboarding\OnboardingSituacaoService;
+use App\Services\Portal\AcessosDoPortalService;
 use App\Models\CompanyManagerHistory;
 use App\Services\Nps\NpsScoreCalculator;
 use App\Support\ImagemUpload;
@@ -80,7 +81,7 @@ class CompanyController extends Controller
      * mostra "Serviço" (badges dos contratos ativos). A lógica de cache foi
      * removida junto pra não deixar código órfão / não despachar jobs sem uso.
      */
-    public function index(Request $request)
+    public function index(Request $request, AcessosDoPortalService $acessosPortal)
     {
         // Phase 18 W5-T4 — Filtro opcional por cust_id_status. Aceita apenas
         // valores do dominio da coluna ENUM; fora disso, ignora silenciosamente
@@ -170,6 +171,12 @@ class CompanyController extends Controller
         //  2. não-admin só vê onboarding das empresas da própria carteira.
         $usuario = $request->user();
         $podeVerOnboarding = $usuario->hasPermission(\App\Support\Permissions::CORE_ONBOARDING);
+        // A sub-aba "Acessos do portal" é admin-only, e não por simetria com
+        // o resto: as ESCRITAS dela (PortalUsuarioController) estão sob
+        // `role:admin`. Mostrar a lista a quem levaria 403 em todo botão
+        // seria exibir nome, e-mail e telefone de cliente sem que a pessoa
+        // pudesse fazer nada com isso.
+        $podeGerirPortal = $usuario->isAdmin();
         $empresasDaCarteira = $usuario->isAdmin()
             ? null
             : $usuario->companies()->pluck('companies.id')->all();
@@ -349,6 +356,20 @@ class CompanyController extends Controller
             // que é cadastrar a empresa/contrato. Sem esta flag o botão
             // apareceria para quem leva 403 ao clicar.
             'pode_cadastrar_empresa' => $usuario->hasPermission(\App\Support\Permissions::COMERCIAL_CADASTRAR_EMPRESA),
+
+            // ─── Acessos do Portal do Cliente ────────────────────────
+            // A tela mora na sub-aba "Acessos do portal" (25/08/2026).
+            //
+            // O total vem SEMPRE (é um COUNT, e o rótulo da sub-aba precisa
+            // dele); a lista vem por `optional`, ou seja, só quando o front
+            // pede em partial reload. Sem essa separação, toda abertura de
+            // /companies pagaria três consultas do portal para 99% das
+            // pessoas que nunca abrem a sub-aba.
+            'pode_gerir_portal'    => $podeGerirPortal,
+            'portal_acessos_total' => $podeGerirPortal ? $acessosPortal->totalAtivos() : 0,
+            'portal_acessos'       => $podeGerirPortal
+                ? Inertia::optional(fn () => $acessosPortal->dados())
+                : null,
         ]);
     }
 

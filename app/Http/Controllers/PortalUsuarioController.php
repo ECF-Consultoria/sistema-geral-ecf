@@ -3,12 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
-use App\Models\CompanyGroup;
 use App\Models\PortalUsuario;
 use App\Services\Portal\PortalAuditoria;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Inertia\Inertia;
 
 /**
  * PortalUsuarioController — quem da EQUIPE gerencia os acessos dos clientes.
@@ -17,6 +15,11 @@ use Inertia\Inertia;
  * Administrativo. É a resposta à decisão de produto de 24/08/2026: a ECF
  * cadastra e convida; não há auto-cadastro. Sem passar por esta tela, ninguém
  * entra no portal.
+ *
+ * A TELA mora na aba Onboarding de `/companies` (sub-aba "Acessos do
+ * portal"), montada por {@see \App\Services\Portal\AcessosDoPortalService}.
+ * Este controller ficou com as ESCRITAS — e com o redirect de quem tem o
+ * endereço antigo guardado.
  *
  * ### O que "remover acesso" faz, e por que há dois botões
  *  - **Desvincular a empresa** tira o acesso ÀQUELA empresa e preserva as
@@ -33,61 +36,19 @@ class PortalUsuarioController extends Controller
     {
     }
 
-    public function index(Request $request)
+    /**
+     * A tela mudou de casa em 25/08/2026: vive dentro da aba Onboarding de
+     * `/companies`. Aqui ficou o redirecionamento porque `/acessos-portal` foi
+     * o endereço dela por um tempo — e porque manter duas telas iguais seria
+     * manter duas fontes de verdade.
+     *
+     * As rotas de ESCRITA continuam aqui: quem mudou foi o lugar de olhar, não
+     * o de agir.
+     */
+    public function index()
     {
-        $usuarios = PortalUsuario::with(['empresas:id,name', 'convidadoPor:id,name'])
-            ->orderBy('nome')
-            ->get()
-            ->map(fn (PortalUsuario $u) => [
-                'id'                 => $u->id,
-                'nome'               => $u->nome,
-                'email'              => $u->email,
-                'telefone'           => $u->telefone,
-                'cargo'              => $u->cargo,
-                'ativo'              => $u->ativo,
-                'empresas'           => $u->empresas->map(fn ($e) => ['id' => $e->id, 'nome' => $e->name])->values(),
-                'convidado_por'      => $u->convidadoPor?->name,
-                'convidado_em'       => $u->convidado_em?->format('d/m/Y'),
-                // O que separa "não entrou ainda" de "não entra desde então".
-                'primeiro_acesso_em' => $u->primeiro_acesso_em?->format('d/m/Y H:i'),
-                'ultimo_acesso_em'   => $u->ultimo_acesso_em?->format('d/m/Y H:i'),
-                'nunca_entrou'       => $u->primeiro_acesso_em === null,
-            ]);
-
-        // As empresas chegam com o grupo a que pertencem, e os grupos vêm
-        // como ALVO próprio: dar acesso a alguém do Camillo Parts costuma
-        // significar as 7 empresas do grupo, não uma. Sem isso, o operador
-        // repetiria a mesma operação sete vezes — e esqueceria a sétima.
-        $empresas = Company::where('active', true)
-            ->with('grupo:id,name')
-            ->orderBy('name')
-            ->get(['id', 'name', 'company_group_id'])
-            ->map(fn (Company $e) => [
-                'id'         => $e->id,
-                'nome'       => $e->name,
-                'grupo_id'   => $e->company_group_id,
-                'grupo_nome' => $e->grupo?->name,
-            ]);
-
-        return Inertia::render('Admin/PortalUsuarios', [
-            'usuarios' => $usuarios,
-            'empresas' => $empresas,
-            // `whereHas`, não `having`: `withCount` gera SUBQUERY, não agregado,
-            // e um HAVING sobre ela quebra ("HAVING clause on a non-aggregate
-            // query"). Grupo sem empresa ativa fica de fora porque seria um alvo
-            // vazio no seletor.
-            'grupos'   => CompanyGroup::withCount(['companies' => fn ($q) => $q->where('active', true)])
-                ->whereHas('companies', fn ($q) => $q->where('active', true))
-                ->orderBy('name')
-                ->get()
-                ->map(fn (CompanyGroup $g) => [
-                    'id'       => $g->id,
-                    'nome'     => $g->name,
-                    'empresas' => $g->companies_count,
-                ]),
-        ]);
+        return redirect()->route('companies.index', ['tab' => 'onboarding', 'sub' => 'acessos']);
     }
-
     public function store(Request $request)
     {
         $dados = $request->validate([

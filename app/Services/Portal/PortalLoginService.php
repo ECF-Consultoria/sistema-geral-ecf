@@ -44,6 +44,16 @@ use Illuminate\Support\Str;
  */
 class PortalLoginService
 {
+    /**
+     * Um hash bcrypt de descarte, para gastar o mesmo tempo quando NÃO há
+     * usuário com quem comparar.
+     *
+     * Não é segredo e não protege nada sozinho: o que ele faz é impedir que
+     * "e-mail não existe" responda mais rápido do que "senha errada". Sem
+     * isso, cronometrar a resposta diria quem é cliente da ECF — o mesmo
+     * vazamento que a resposta única existe para fechar.
+     */
+    private const HASH_DESCARTAVEL = '$2y$10$MM49GIFAnbFEpWdF6pJC.O2AvoLNjyd.pvweaB6mmKycbkeD5ICni';
     public function __construct(private PortalAuditoria $auditoria)
     {
     }
@@ -144,8 +154,77 @@ class PortalLoginService
      * `random_int` e não `rand`: o gerador comum é previsível a partir de
      * algumas saídas, e códigos de acesso previsíveis são códigos adivinháveis.
      */
-    private function gerarCodigo(): string
+    /**
+     * Entrada por SENHA — a porta opcional, para quem definiu uma.
+     *
+     * As mesmas quatro disciplinas do código valem aqui:
+     *
+     *  1. **Nunca revela se o e-mail existe.** Devolve `null` igual para
+     *     e-mail desconhecido, conta sem senha e senha errada.
+     *  2. **Tempo constante.** Quando não há usuário (ou ele não tem senha),
+     *     ainda assim se roda um `Hash::check` contra um hash descartável. Sem
+     *     isso, a resposta seria mensuravelmente mais rápida para e-mail
+     *     inexistente — e a tela viraria um verificador de quem é cliente da
+     *     ECF, que é exatamente o que a regra 1 impede.
+     *  3. **Vínculo obrigatório.** Autenticar não basta: sem empresa
+     *     vinculada, não entra.
+     *  4. **Fica registrado.** Recusa entra na auditoria com o motivo — é o
+     *     que torna visível uma tentativa de força bruta.
+     *
+     * O limite de tentativas é da ROTA (`throttle:portal-validar`), e não
+     * daqui: força bruta se mede por origem, não por conta.
+     */
+    public function validarSenha(string $email, string $senha, ?string $ip = null): ?PortalUsuario
     {
+        $usuario = PortalUsuario::ativos()->where('email', Str::lower(trim($email)))->first();
+
+        // O hash de comparação: o real, quando existe; um descartável, quando
+        // não. O `Hash::check` roda nos dois caminhos e custa o mesmo.
+        $hash = $usuario?->getAuthPassword() ?: self::HASH_DESCARTAVEL;
+
+        $confere = Hash::check($senha, $hash);
+
+        if (! $usuario || ! $usuario->temSenha() || ! $confere) {
+            $this->auditoria->codigoRecusado(
+                $usuario,
+                $email,
+                $usuario ? ($usuario->temSenha() ? 'senha incorreta' : 'conta sem senha definida') : 'usuario inexistente ou inativo',
+                $ip,
+            );
+
+            return null;
+        }
+
+        if ($usuario->empresas()->doesntExist()) {
+            $this->auditoria->codigoRecusado($usuario, $email, 'sem empresa vinculada', $ip);
+
+            return null;
+        }
+
+        $usuario->forceFill([
+            'primeiro_acesso_em' => $usuario->primeiro_acesso_em ?? now(),
+            'ultimo_acesso_em'   => now(),
+        ])->save();
+
+        return $usuario;
+    }
+
+    /**
+     * Define, troca ou remove a senha de quem já está autenticado.
+     *
+     * `null` remove: a pessoa volta a entrar só por código, que é o padrão do
+     * portal. Ter como voltar atrás importa — quem definiu senha num
+     * computador compartilhado precisa poder desfazer.
+     */
+    public function definirSenha(PortalUsuario $usuario, ?string $senha): void
+    {
+        $usuario->forceFill([
+            'password'          => $senha,
+            'senha_definida_em' => $senha ? now() : null,
+        ])->save();
+    }
+
+    private function gerarCodigo(): string    {
         $tamanho = config('portal.codigo.digitos', 6);
 
         return str_pad((string) random_int(0, (10 ** $tamanho) - 1), $tamanho, '0', STR_PAD_LEFT);

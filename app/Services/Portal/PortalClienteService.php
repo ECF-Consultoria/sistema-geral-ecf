@@ -5,6 +5,7 @@ namespace App\Services\Portal;
 use App\Models\Company;
 use App\Models\OnboardingLink;
 use App\Models\PortalUsuario;
+use App\Support\Portal\AtorDoPortal;
 use App\Services\Onboarding\OnboardingLinkService;
 use App\Support\Portal\ModulosPortal;
 use Illuminate\Support\Str;
@@ -76,17 +77,34 @@ class PortalClienteService
      * nome e oferecer "sair" — coisas que o modo por token não tem, porque lá
      * não se sabe QUEM está do outro lado.
      */
-    public function contextoAutenticado(Company $company, string $modulo, PortalUsuario $usuario): array
+    /**
+     * O contexto do portal autenticado — para o cliente OU para alguém da
+     * ECF que entrou para orientar.
+     *
+     * `equipe` vai no payload porque a tela precisa dizer em quem ela está
+     * logada. Um analista que esquece que está numa sessão de equipe é
+     * exatamente como se produz um "o cliente marcou" que o cliente não
+     * marcou.
+     */
+    public function contextoAutenticado(Company $company, string $modulo, AtorDoPortal $ator): array
     {
+        $usuario = $ator->equipe ? null : $ator->modelo;
+
         return [
             ...$this->montarContexto($company, $modulo, null),
             'usuario' => [
-                'nome'  => $usuario->nome,
-                'email' => $usuario->email,
+                'nome'   => $ator->nome,
+                'email'  => $ator->email,
+                'equipe' => $ator->equipe,
+                // Se JÁ definiu senha — muda o texto do bloco de senha de
+                // "defina uma" para "troque ou remova". O hash em si nunca
+                // sai daqui (`$hidden` no model).
+                'tem_senha' => $usuario?->temSenha() ?? false,
             ],
             // Só desenha o seletor quem tem mais de uma. Para a maioria, que
-            // tem uma empresa só, ele não existe.
-            'empresas_disponiveis' => $usuario->empresas()->count() > 1
+            // tem uma empresa só, ele não existe — e para a equipe também
+            // não: ela entrou numa empresa, vinda de /companies.
+            'empresas_disponiveis' => $usuario && $usuario->empresas()->count() > 1
                 ? $usuario->empresas()->orderBy('name')->get(['companies.id', 'companies.name'])
                     ->map(fn ($e) => ['id' => $e->id, 'nome' => $e->name])->values()->all()
                 : [],

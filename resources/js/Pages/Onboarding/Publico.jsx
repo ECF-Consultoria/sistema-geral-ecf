@@ -16,6 +16,7 @@ import ProximaAcaoCliente from '@/Components/Onboarding/Portal/ProximaAcaoClient
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import ResponsaveisCliente from '@/Components/Onboarding/Portal/ResponsaveisCliente';
 import { cn } from '@/lib/utils';
+import { rotaDoPortal } from '@/lib/rotasDoPortal';
 
 // ─── Portal público do cliente por EMPRESA (Fase 135 Plano 11, D-06) ────────
 // A lista agrupa por `chave` (D-10), NUNCA por onboarding_passo/onboarding —
@@ -173,7 +174,7 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
     function marcarComoFeito() {
         if (marcando) return;
         setMarcando(true);
-        router.patch(route('onboarding.publico.passo', token), { chave: passo.chave }, {
+        router.patch(rotaDoPortal('onboarding.passo', token), { chave: passo.chave }, {
             preserveScroll: true,
             onFinish: () => setMarcando(false),
         });
@@ -184,7 +185,7 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
     function desmarcar() {
         if (marcando) return;
         setMarcando(true);
-        router.patch(route('onboarding.publico.passo.desmarcar', token), { chave: passo.chave }, {
+        router.patch(rotaDoPortal('onboarding.passo.desmarcar', token), { chave: passo.chave }, {
             preserveScroll: true,
             onFinish: () => setMarcando(false),
         });
@@ -195,7 +196,7 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
     // callback já com o passo fechado pelo resolver.
     function autorizarAcesso() {
         setConectandoChave(passo.chave);
-        window.location.href = route('onboarding.publico.conectar-ml', token);
+        window.location.href = rotaDoPortal('onboarding.conectar-ml', token);
     }
 
     return (
@@ -942,8 +943,8 @@ export default function Publico({
                                                         contexto="cliente"
                                                         rotulo={mapas.length > 1 ? m.servico : null}
                                                         payloadExtra={{ onboarding_id: m.onboarding_id }}
-                                                        rotaSincronizar={route('onboarding.publico.mapeamento.sincronizar', token)}
-                                                        rotaConfirmar={route('onboarding.publico.mapeamento.confirmar', token)}
+                                                        rotaSincronizar={rotaDoPortal('onboarding.mapeamento.sincronizar', token)}
+                                                        rotaConfirmar={rotaDoPortal('onboarding.mapeamento.confirmar', token)}
                                                     />
                                                 ))}
                                             </section>

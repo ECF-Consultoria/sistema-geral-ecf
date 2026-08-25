@@ -77,12 +77,12 @@ class PortalClienteController extends Controller
     public function inicioAutenticado()
     {
         $empresa = PortalContexto::empresa();
-        $usuario = PortalContexto::usuario();
+        $ator = PortalContexto::ator();
 
         $ppas = $this->ppaService->ppasDaEmpresa($empresa);
 
         return Inertia::render('Portal/Inicio', [
-            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::INICIO, $usuario),
+            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::INICIO, $ator),
             'resumo' => [
                 'ppa' => [
                     'planos_ativos' => $ppas->where('status', '!=', 'completed')->count(),

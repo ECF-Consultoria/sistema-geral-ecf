@@ -19,10 +19,15 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * seletor de responsável). Ver o docblock da migration para o porquê da
  * separação.
  *
- * Implementa `Authenticatable` sem senha: quem autentica é o código de 6
- * dígitos enviado ao e-mail ({@see \App\Services\Portal\PortalLoginService}).
- * `getAuthPassword()` devolve string vazia porque o contrato do Laravel a
- * exige, e nenhum caminho deste guard usa verificação de senha.
+ * ### Duas portas, e uma delas é opcional
+ * O caminho principal é o código de 6 dígitos por e-mail
+ * ({@see \App\Services\Portal\PortalLoginService}). Desde 25/08/2026 a
+ * pessoa também pode DEFINIR uma senha, se quiser entrar sem esperar
+ * e-mail. `password` nulo é o estado normal, não um cadastro incompleto —
+ * a maioria nunca vai definir uma.
+ *
+ * Não há "esqueci minha senha", e não é omissão: pedir um código por
+ * e-mail JÁ é o caminho de recuperação, e já existe.
  */
 class PortalUsuario extends Model implements AuthenticatableContract
 {
@@ -47,10 +52,19 @@ class PortalUsuario extends Model implements AuthenticatableContract
     protected $fillable = [
         'nome', 'email', 'telefone', 'cargo', 'ativo',
         'convidado_por', 'convidado_em', 'primeiro_acesso_em', 'ultimo_acesso_em',
+        'password', 'senha_definida_em',
     ];
+
+    /** O hash nunca sai do servidor — nem por acidente, num `toArray()`. */
+    protected $hidden = ['password'];
 
     protected $casts = [
         'ativo'              => 'boolean',
+        // `hashed` faz o Laravel aplicar bcrypt ao ATRIBUIR. Sem isto,
+        // um `update(['password' => $senha])` distraído gravaria a senha
+        // em claro e nada avisaria.
+        'password'           => 'hashed',
+        'senha_definida_em'  => 'datetime',
         'convidado_em'       => 'datetime',
         'primeiro_acesso_em' => 'datetime',
         'ultimo_acesso_em'   => 'datetime',
@@ -124,10 +138,22 @@ class PortalUsuario extends Model implements AuthenticatableContract
         return $this->getKey();
     }
 
-    /** Sem senha por desenho: quem autentica é o código enviado ao e-mail. */
+    /**
+     * O hash da senha, ou string vazia para quem não definiu nenhuma.
+     *
+     * String vazia — e não `null` — porque `Hash::check()` recusa vazio sem
+     * reclamar, enquanto `null` dispara deprecation em PHP 8.1+. O efeito é
+     * o mesmo: quem não tem senha não entra por senha.
+     */
     public function getAuthPassword(): string
     {
-        return '';
+        return $this->attributes['password'] ?? '';
+    }
+
+    /** Definiu uma senha? É o que decide se a porta de senha existe para ela. */
+    public function temSenha(): bool
+    {
+        return ! empty($this->attributes['password']);
     }
 
     public function getAuthPasswordName(): string

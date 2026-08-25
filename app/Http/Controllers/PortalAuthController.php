@@ -88,6 +88,74 @@ class PortalAuthController extends Controller
                 ->with('portal_codigo_enviado', true);
         }
 
+        return $this->abrirSessao($request, $usuario);
+    }
+
+    /**
+     * POST /entrar/senha — a porta OPCIONAL, para quem definiu uma senha.
+     *
+     * Convive com o código, não o substitui. Quem nunca definiu senha nem vê
+     * diferença; quem definiu entra sem esperar e-mail.
+     */
+    public function entrarComSenha(Request $request)
+    {
+        $dados = $request->validate([
+            'email' => ['required', 'email', 'max:190'],
+            'senha' => ['required', 'string', 'max:200'],
+        ]);
+
+        $usuario = $this->login->validarSenha($dados['email'], $dados['senha'], $request->ip());
+
+        if (! $usuario) {
+            // Mensagem única para todos os motivos — e-mail desconhecido, conta
+            // sem senha, senha errada. Detalhar diria a um estranho quem é
+            // cliente da ECF.
+            //
+            // O texto aponta a outra porta porque o motivo MAIS comum de cair
+            // aqui é justamente não ter senha nenhuma.
+            return back()
+                ->withErrors(['senha' => 'Não conseguimos entrar com esses dados. Se preferir, peça um código por e-mail.'])
+                ->with('portal_email', $dados['email']);
+        }
+
+        return $this->abrirSessao($request, $usuario);
+    }
+
+    /**
+     * PUT /portal/senha — a pessoa define, troca ou remove a própria senha.
+     *
+     * Remover devolve o comportamento padrão do portal (só código), e é
+     * importante que dê para voltar atrás: quem definiu senha num computador
+     * compartilhado precisa poder desfazer.
+     */
+    public function salvarSenha(Request $request)
+    {
+        $usuario = \App\Support\Portal\PortalContexto::usuario();
+
+        // Sessão de equipe não tem senha para mudar — a conta não é dela.
+        abort_if(! $usuario, 403, 'Esta sessão não é de um acesso do portal.');
+
+        $dados = $request->validate([
+            // `nullable` é o caminho de REMOVER. Mínimo de 8 porque abaixo
+            // disso a senha é pior do que o código de 6 dígitos, que ao menos
+            // expira em 10 minutos.
+            'senha' => ['nullable', 'string', 'min:8', 'max:200', 'confirmed'],
+        ]);
+
+        $this->login->definirSenha($usuario, $dados['senha'] ?? null);
+
+        return back()->with('portal_sucesso', ($dados['senha'] ?? null)
+            ? 'Senha salva. Da próxima vez você pode entrar direto com ela.'
+            : 'Senha removida. Você volta a entrar pelo código enviado por e-mail.');
+    }
+
+    /**
+     * Abre a sessão do cliente. Compartilhado pelas duas portas de entrada —
+     * se cada uma montasse a sua, uma delas acabaria esquecendo o
+     * `regenerate()`.
+     */
+    private function abrirSessao(Request $request, \App\Models\PortalUsuario $usuario)
+    {
         $empresa = $usuario->empresaPadrao();
 
         // Regenerar o id ANTES de gravar qualquer coisa na sessão: sem isto, um

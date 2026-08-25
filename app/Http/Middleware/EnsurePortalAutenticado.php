@@ -33,12 +33,21 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EnsurePortalAutenticado
 {
-    public function __construct(private PortalAuditoria $auditoria)
-    {
+    public function __construct(
+        private PortalAuditoria $auditoria,
+        private \App\Services\Portal\PortalEquipeService $equipe,
+    ) {
     }
 
     public function handle(Request $request, Closure $next): Response
     {
+        // Sessão de EQUIPE vem primeiro: ali não há PortalUsuario nenhum, e
+        // cair no caminho do cliente devolveria a pessoa para a tela de
+        // entrar num laço sem fim.
+        if ($membroId = $request->session()->get(\App\Support\Portal\PortalContexto::SESSAO_EQUIPE)) {
+            return $this->equipeOuDerruba($request, $next, (int) $membroId);
+        }
+
         $usuario = Auth::guard('portal')->user();
 
         if (! $usuario) {
@@ -87,6 +96,32 @@ class EnsurePortalAutenticado
             }
 
             $request->session()->put('portal_empresa_id', $padrao->id);
+        }
+
+        return $next($request);
+    }
+
+    /**
+     * A sessão de equipe, revalidada a cada requisição.
+     *
+     * As três perguntas são as mesmas que se faz do cliente, e pela mesma
+     * razão de sempre: o vínculo pode ter mudado desde o login. Quem saiu da
+     * ECF, quem foi desativado e quem perdeu a empresa da carteira deixam de
+     * entrar na requisição SEGUINTE — não daqui a trinta dias.
+     *
+     * A sessão de equipe é derrubada por completo quando qualquer uma falha:
+     * meia-sessão de equipe seria uma sessão sem dono.
+     */
+    private function equipeOuDerruba(Request $request, Closure $next, int $membroId): Response
+    {
+        $membro = \App\Models\User::find($membroId);
+        $empresaId = $request->session()->get('portal_empresa_id');
+        $empresa = $empresaId ? \App\Models\Company::find($empresaId) : null;
+
+        if (! $membro || ! $membro->active || ! $empresa || ! $this->equipe->podeEntrar($membro, $empresa)) {
+            $request->session()->forget([\App\Support\Portal\PortalContexto::SESSAO_EQUIPE, 'portal_empresa_id']);
+
+            return $this->naoAutenticado($request, 'Sua sessão no portal do cliente terminou. Entre de novo pelo sistema.');
         }
 
         return $next($request);

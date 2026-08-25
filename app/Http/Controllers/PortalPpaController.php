@@ -99,7 +99,7 @@ class PortalPpaController extends Controller
         $empresa = PortalContexto::empresa();
 
         return Inertia::render('Portal/Ppa', [
-            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::PPA, PortalContexto::usuario()),
+            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::PPA, PortalContexto::ator()),
             'ppas' => $this->ppaService->ppasDaEmpresa($empresa)
                 ->map(fn ($ppa) => $this->ppaService->visao($ppa))
                 ->values()
@@ -117,7 +117,7 @@ class PortalPpaController extends Controller
     public function moverTarefaAutenticado(Request $request, PpaTask $task)
     {
         $empresa = PortalContexto::empresa();
-        $usuario = PortalContexto::usuario();
+        $ator = PortalContexto::ator();
 
         abort_unless($this->ppaService->podeMexer($empresa, $task), 403);
 
@@ -129,14 +129,17 @@ class PortalPpaController extends Controller
 
         activity('ppa')
             ->performedOn($task)
-            ->causedBy($usuario)
+            ->causedBy($ator->modelo)
             ->withProperties([
-                'origem'     => 'cliente',
+                // `origem` distingue quem moveu: o cliente, ou alguém da ECF
+                // dentro do portal dele. Sem isto, um card movido pela
+                // equipe fica indistinguível de um movido pelo cliente.
+                'origem'     => $ator->equipe ? 'equipe' : 'cliente',
                 'status'     => $data['status'],
                 'company_id' => $empresa->id,
                 'ip'         => $request->ip(),
             ])
-            ->log("Tarefa movida para \"{$data['status']}\" por {$usuario->nome} ({$usuario->email})");
+            ->log("Tarefa movida para \"{$data['status']}\" por {$ator->descricao()}");
 
         return response()->json(['ok' => true, 'status' => $task->status]);
     }

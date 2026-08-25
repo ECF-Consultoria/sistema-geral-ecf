@@ -46,6 +46,7 @@ use App\Http\Controllers\PortalAuthController;
 use App\Http\Controllers\PortalClienteController;
 use App\Http\Controllers\PpaColunaController;
 use App\Http\Controllers\PortalPpaController;
+use App\Http\Controllers\PortalEquipeController;
 use App\Http\Controllers\PortalUsuarioController;
 use App\Http\Controllers\PolosController;
 use App\Http\Controllers\PolosPpaController;
@@ -164,6 +165,28 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     Route::get('/onboarding', [OnboardingPublicoController::class, 'workspaceAutenticado'])->name('portal.auth.onboarding');
     Route::get('/ppa',        [PortalPpaController::class, 'indexAutenticado'])->name('portal.auth.ppa');
 
+    // ── Escritas do Onboarding, autenticadas ─────────────────────────
+    //
+    // Os MESMOS métodos das rotas por token, com `$token` nulo: quando ele
+    // falta, a empresa vem da sessão validada em vez da posse do token.
+    // Duplicar os seis endpoints garantiria que uma das cópias divergisse
+    // na primeira correção feita de um lado só.
+    //
+    // São elas que tornam possível aposentar o token: enquanto a leitura
+    // era autenticada e a escrita não, o portal ainda dependia dele.
+    Route::patch('/onboarding/passo', [OnboardingPublicoController::class, 'marcarFeito'])
+        ->name('portal.auth.onboarding.passo');
+    Route::patch('/onboarding/passo/desmarcar', [OnboardingPublicoController::class, 'desmarcarPasso'])
+        ->name('portal.auth.onboarding.passo.desmarcar');
+    Route::post('/onboarding/mapeamento/sincronizar', [OnboardingPublicoController::class, 'sincronizarMapeamento'])
+        ->name('portal.auth.onboarding.mapeamento.sincronizar');
+    Route::post('/onboarding/mapeamento/confirmar', [OnboardingPublicoController::class, 'confirmarMapeamento'])
+        ->name('portal.auth.onboarding.mapeamento.confirmar');
+    Route::post('/onboarding/pessoas', [OnboardingPublicoController::class, 'salvarPessoa'])
+        ->name('portal.auth.onboarding.pessoas');
+    Route::get('/onboarding/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
+        ->name('portal.auth.onboarding.conectar-ml');
+
     Route::patch('/ppa/tarefas/{task}', [PortalPpaController::class, 'moverTarefaAutenticado'])
         ->middleware('throttle:60,1')
         ->name('portal.auth.ppa.tarefa');
@@ -172,12 +195,30 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     // servidor: mandar company_id de outro cliente aqui dá 403 e vira
     // registro de auditoria.
     Route::post('/empresa', [PortalAuthController::class, 'trocarEmpresa'])->name('portal.auth.empresa');
+
+    // A pessoa define, troca ou remove a própria senha. `PUT` e não `POST`
+    // porque é o mesmo recurso sendo substituído — inclusive por vazio,
+    // que é o caminho de remover.
+    Route::put('/senha', [PortalAuthController::class, 'salvarSenha'])->name('portal.auth.senha');
 });
 
 // Sair fica fora do prefixo — a sessão morre no mesmo lugar em que nasceu.
 Route::post('/sair', [PortalAuthController::class, 'sair'])
     ->middleware('portal.auth')
     ->name('portal.sair');
+
+// ─── A equipe entrando no portal de um cliente ──────────────────────────
+//
+// Fora de qualquer grupo `auth`, e isso é o ponto: quem chega aqui vem do
+// domínio do admin, onde tem sessão, para o do cliente, onde não tem. O que
+// autentica é o ticket de 60 segundos e uso único da query string.
+//
+// `throttle` porque o parâmetro é adivinhável em tese — 64 caracteres
+// aleatórios não são, mas a trava custa nada e fecha a porta a força bruta.
+Route::get('/equipe/entrar', [PortalEquipeController::class, 'entrar'])
+    ->middleware('throttle:20,1')
+    ->name('portal.equipe.entrar');
+Route::post('/equipe/sair', [PortalEquipeController::class, 'sair'])->name('portal.equipe.sair');
 
 // Entrada e login. Fora do grupo autenticado, por motivo óbvio.
 Route::get('/entrar', [PortalAuthController::class, 'entrada'])->name('portal.entrada');
@@ -187,6 +228,13 @@ Route::post('/entrar/codigo', [PortalAuthController::class, 'enviarCodigo'])
 Route::post('/entrar', [PortalAuthController::class, 'validarCodigo'])
     ->middleware('throttle:portal-validar')
     ->name('portal.validar');
+
+// A porta OPCIONAL. Mesmo `throttle` da validação por código, e pela mesma
+// razão: as duas são adivinháveis por tentativa e erro, e o limite se mede
+// por origem, não por conta.
+Route::post('/entrar/senha', [PortalAuthController::class, 'entrarComSenha'])
+    ->middleware('throttle:portal-validar')
+    ->name('portal.senha.entrar');
 
 // ─── Portal do Cliente (`/portal-cliente/{token}`) ──────────────────────────
 //
@@ -969,6 +1017,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // foi assim que `/portal/usuarios` acabou respondendo no domínio do
         // cliente.
         Route::get('/acessos-portal',  [PortalUsuarioController::class, 'index'])->name('portal.usuarios.index');
+
+        // "Ver o portal do cliente" — emite a passagem e manda para o outro
+        // domínio. Não é admin-only: o analista e o estrategista da empresa
+        // precisam entrar para orientar. Quem pode é decidido em
+        // `PortalEquipeService::podeEntrar()`, pela carteira.
+        Route::get('/companies/{company}/portal', [PortalEquipeController::class, 'abrir'])
+            ->middleware('permission:core.onboarding')
+            ->withoutMiddleware('role:admin')
+            ->name('companies.portal.abrir');
         Route::post('/acessos-portal', [PortalUsuarioController::class, 'store'])->name('portal.usuarios.store');
         Route::put('/acessos-portal/{portalUsuario}', [PortalUsuarioController::class, 'update'])->name('portal.usuarios.update');
         Route::post('/acessos-portal/{portalUsuario}/empresas', [PortalUsuarioController::class, 'vincular'])->name('portal.usuarios.vincular');

@@ -1,19 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
 import { Head, useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, ArrowLeft, ArrowRight, Mail, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, KeyRound, Mail, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ─── A porta da frente do Portal do Cliente ─────────────────────────────────
 //
-// Dois passos na MESMA tela: o e-mail, depois os seis dígitos. Sem link de
-// entrada no e-mail, de propósito — é o que faz o e-mail encaminhado não dar
-// acesso a ninguém (o código só vale no navegador que o pediu).
+// Sem link de entrada no e-mail, de propósito — é o que faz o e-mail
+// encaminhado não dar acesso a ninguém (o código só vale no navegador que o
+// pediu).
+//
+// ### Duas portas, e por que a tela mostra as duas juntas
+// O caminho padrão é o código por e-mail. Quem quiser pode definir uma senha
+// depois de entrar, e usá-la nas próximas vezes.
+//
+// A tela NÃO pergunta ao servidor se aquele e-mail tem senha antes de decidir o
+// que mostrar. Perguntar seria construir exatamente o verificador que o resto
+// desta tela existe para impedir: quem quisesse saber se alguém é cliente da
+// ECF bastaria digitar o e-mail e ler a diferença na tela. Então as duas portas
+// aparecem sempre, para todo mundo, e quem não tem senha usa a de baixo.
 //
 // ### Por que a tela não diz se o e-mail existe
 // Depois de pedir o código, a mensagem é a mesma para e-mail cadastrado e não
-// cadastrado. Variar aqui transformaria esta página num verificador de quem é
-// cliente da ECF — bastaria tentar o e-mail do dono de uma empresa e ler a
-// diferença.
+// cadastrado. A senha errada e o e-mail inexistente também dão a mesma resposta.
 //
 // Nada de dado de empresa nesta tela: ela é servida a qualquer visitante da
 // internet, antes de qualquer autenticação.
@@ -21,12 +29,21 @@ import { cn } from '@/lib/utils';
 export default function Entrada({ aviso }) {
     const { flash = {}, errors = {} } = usePage().props;
 
-    // O passo é derivado do flash do servidor, não de estado local: assim um
-    // F5 depois de pedir o código não joga a pessoa de volta ao começo.
-    const [passo, setPasso] = useState(flash.portal_codigo_enviado ? 'codigo' : 'email');
+    // Três passos: o e-mail, a escolha da porta, e os seis dígitos.
+    //
+    // `codigo` é derivado do flash do SERVIDOR, não de estado local: assim um
+    // F5 depois de pedir o código não joga a pessoa de volta ao começo. Já
+    // `escolha` é puramente do navegador — passar por ele não fala com o
+    // servidor, e é isso que impede a tela de virar um verificador de e-mails.
+    const [passo, setPasso] = useState(() => {
+        if (flash.portal_codigo_enviado) return 'codigo';
 
-    const form = useForm({ email: flash.portal_email ?? '', codigo: '' });
+        return flash.portal_email ? 'escolha' : 'email';
+    });
+
+    const form = useForm({ email: flash.portal_email ?? '', codigo: '', senha: '' });
     const campoCodigo = useRef(null);
+    const campoSenha = useRef(null);
 
     useEffect(() => {
         if (flash.portal_codigo_enviado) {
@@ -38,16 +55,31 @@ export default function Entrada({ aviso }) {
 
     useEffect(() => {
         if (passo === 'codigo') campoCodigo.current?.focus();
+        if (passo === 'escolha') campoSenha.current?.focus();
     }, [passo]);
 
-    const pedirCodigo = (e) => {
+    // Só troca de passo. Nada de request: ver o comentário do topo.
+    const continuar = (e) => {
         e.preventDefault();
-        form.post(route('portal.codigo'), { preserveScroll: true });
+        if (form.data.email.trim()) setPasso('escolha');
     };
 
-    const entrar = (e) => {
+    const pedirCodigo = () => form.post(route('portal.codigo'), { preserveScroll: true });
+
+    const entrarComSenha = (e) => {
+        e.preventDefault();
+        form.post(route('portal.senha.entrar'), { preserveScroll: true });
+    };
+
+    const entrarComCodigo = (e) => {
         e.preventDefault();
         form.post(route('portal.validar'), { preserveScroll: true });
+    };
+
+    const voltarParaEmail = () => {
+        setPasso('email');
+        form.setData('codigo', '');
+        form.setData('senha', '');
     };
 
     return (
@@ -71,10 +103,11 @@ export default function Entrada({ aviso }) {
                         </p>
                     )}
 
-                    {passo === 'email' ? (
-                        <form onSubmit={pedirCodigo} className="mt-6 space-y-4">
+                    {/* ─── 1. O e-mail ────────────────────────────────────── */}
+                    {passo === 'email' && (
+                        <form onSubmit={continuar} className="mt-6 space-y-4">
                             <p className="text-white/45 text-[13px] leading-relaxed text-center">
-                                Informe o seu e-mail. Enviamos um código de acesso para ele.
+                                Informe o seu e-mail para começar.
                             </p>
 
                             <div className="space-y-1.5">
@@ -99,14 +132,87 @@ export default function Entrada({ aviso }) {
 
                             <button
                                 type="submit"
-                                disabled={form.processing}
-                                className="w-full h-11 rounded-xl bg-ecf-yellow text-ecf-bg font-semibold text-[14px] flex items-center justify-center gap-2 hover:bg-ecf-yellow/90 transition-colors disabled:opacity-60"
+                                className="w-full h-11 rounded-xl bg-ecf-yellow text-ecf-bg font-semibold text-[14px] flex items-center justify-center gap-2 hover:bg-ecf-yellow/90 transition-colors"
                             >
-                                {form.processing ? 'Enviando…' : <>Receber código <ArrowRight size={15} /></>}
+                                Continuar <ArrowRight size={15} />
                             </button>
                         </form>
-                    ) : (
-                        <form onSubmit={entrar} className="mt-6 space-y-4">
+                    )}
+
+                    {/* ─── 2. As duas portas ──────────────────────────────── */}
+                    {passo === 'escolha' && (
+                        <div className="mt-6 space-y-4">
+                            <p className="text-white/45 text-[12.5px] text-center break-all">
+                                Entrando como <span className="text-white/80 font-medium">{form.data.email}</span>
+                            </p>
+
+                            <form onSubmit={entrarComSenha} className="space-y-3">
+                                <div className="space-y-1.5">
+                                    <label htmlFor="senha" className="block text-white/50 text-[12px] font-medium">
+                                        Senha
+                                    </label>
+                                    <input
+                                        id="senha"
+                                        ref={campoSenha}
+                                        type="password"
+                                        autoComplete="current-password"
+                                        value={form.data.senha}
+                                        onChange={(e) => form.setData('senha', e.target.value)}
+                                        placeholder="Se você já definiu uma"
+                                        className={cn(
+                                            'w-full h-11 rounded-xl bg-white/[0.04] ring-1 ring-inset px-3.5 text-white text-[14px]',
+                                            'placeholder:text-white/25 outline-none transition-shadow',
+                                            errors.senha ? 'ring-rose-400/40' : 'ring-white/[0.08] focus:ring-ecf-yellow/40',
+                                        )}
+                                    />
+                                    {errors.senha && (
+                                        <p className="text-rose-300 text-[12px]">{errors.senha}</p>
+                                    )}
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={form.processing || ! form.data.senha}
+                                    className="w-full h-11 rounded-xl bg-ecf-yellow text-ecf-bg font-semibold text-[14px] flex items-center justify-center gap-2 hover:bg-ecf-yellow/90 transition-colors disabled:opacity-40"
+                                >
+                                    <KeyRound size={15} /> {form.processing ? 'Entrando…' : 'Entrar com a senha'}
+                                </button>
+                            </form>
+
+                            <div className="flex items-center gap-3">
+                                <span className="h-px flex-1 bg-white/[0.08]" />
+                                <span className="text-white/25 text-[11px] uppercase tracking-wider">ou</span>
+                                <span className="h-px flex-1 bg-white/[0.08]" />
+                            </div>
+
+                            {/* A porta padrão. Quem nunca definiu senha entra por
+                                aqui, e é a maioria — daí o texto explicativo
+                                embaixo, e não em cima do campo de senha. */}
+                            <button
+                                type="button"
+                                onClick={pedirCodigo}
+                                disabled={form.processing}
+                                className="w-full h-11 rounded-xl bg-white/[0.05] ring-1 ring-inset ring-white/[0.08] text-white font-medium text-[13.5px] flex items-center justify-center gap-2 hover:bg-white/[0.08] transition-colors disabled:opacity-50"
+                            >
+                                <Mail size={15} /> {form.processing ? 'Enviando…' : 'Receber um código por e-mail'}
+                            </button>
+
+                            <div className="flex items-center justify-between pt-1">
+                                <button
+                                    type="button"
+                                    onClick={voltarParaEmail}
+                                    className="flex items-center gap-1.5 text-white/35 hover:text-white/70 text-[12.5px] transition-colors"
+                                >
+                                    <ArrowLeft size={12} /> Trocar e-mail
+                                </button>
+                                <p className="text-white/25 text-[11.5px]">Sem senha? Use o código.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ─── 3. Os seis dígitos ─────────────────────────────── */}
+                    {passo === 'codigo' && (
+                        <form onSubmit={entrarComCodigo} className="mt-6 space-y-4">
                             <div className="flex items-start gap-2.5 rounded-xl bg-white/[0.03] p-3.5">
                                 <Mail size={15} className="text-ecf-yellow shrink-0 mt-0.5" />
                                 <p className="text-white/50 text-[12.5px] leading-relaxed">
@@ -154,14 +260,14 @@ export default function Entrada({ aviso }) {
                             <div className="flex items-center justify-between pt-1">
                                 <button
                                     type="button"
-                                    onClick={() => { setPasso('email'); form.setData('codigo', ''); }}
+                                    onClick={voltarParaEmail}
                                     className="flex items-center gap-1.5 text-white/35 hover:text-white/70 text-[12.5px] transition-colors"
                                 >
                                     <ArrowLeft size={12} /> Trocar e-mail
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => form.post(route('portal.codigo'), { preserveScroll: true })}
+                                    onClick={pedirCodigo}
                                     disabled={form.processing}
                                     className="text-white/35 hover:text-white/70 text-[12.5px] transition-colors disabled:opacity-40"
                                 >

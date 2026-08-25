@@ -144,6 +144,16 @@ export default function Companies({ companies, users, estrategistas = [], analis
     // contrato, nunca de um botão próprio). Sem esta flag o botão apareceria
     // para quem leva 403 ao clicar.
     const podeCadastrarEmpresa = usePage().props.pode_cadastrar_empresa ?? false;
+    // A sub-aba "Acessos do portal" é admin-only — as escritas dela estão sob
+    // `role:admin`. `?? false` pela mesma razão da flag acima: prop ausente
+    // esconde, nunca mostra.
+    const podeGerirPortal = usePage().props.pode_gerir_portal ?? false;
+    // Lidos AQUI, no corpo do componente, e não lá embaixo no JSX da aba.
+    // `usePage()` é um hook: chamá-lo dentro de `{tab === 'onboarding' && …}`
+    // significa chamá-lo condicionalmente, e o React conta os hooks por
+    // render. Trocar de aba mudava a contagem e derrubava a tela.
+    const portalAcessosTotal = usePage().props.portal_acessos_total ?? 0;
+    const portalAcessos = usePage().props.portal_acessos;
 
     // Lê a aba inicial do query param ?tab (deep-link vindo do menu lateral, ex: Empresas › Pendências).
     // Lazy initializer roda apenas uma vez no mount; valores inválidos/ausentes caem em 'empresas'.
@@ -658,6 +668,9 @@ export default function Companies({ companies, users, estrategistas = [], analis
                         estrategistas={estrategistasOptions}
                         analistas={analistasOptions}
                         podeCadastrarEmpresa={podeCadastrarEmpresa}
+                        podeGerirPortal={podeGerirPortal}
+                        portalAcessosTotal={portalAcessosTotal}
+                        portalAcessos={portalAcessos}
                     />
                 )}
 

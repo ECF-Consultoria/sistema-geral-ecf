@@ -139,9 +139,39 @@ class OnboardingPublicoController extends Controller
      * PATCH /portal-cliente/{token}/onboarding/passo/desmarcar — o cliente desfaz o
      * que marcou. Espelho de {@see self::marcarFeito()}.
      */
-    public function desmarcarPasso(Request $request, string $token)
+    /**
+     * O link do onboarding desta requisição — pelas DUAS portas.
+     *
+     * Com token, é a posse do token que identifica a empresa. Sem token, a
+     * empresa vem da sessão já validada pelo `portal.auth`, e o link é apenas
+     * o registro dela (continua existindo mesmo quando ninguém mais entra por
+     * ele — é onde vive `ultimo_acesso`, entre outros).
+     *
+     * Um método só, e não dois controllers: a REGRA de cada escrita é a mesma
+     * nos dois modos, e duplicá-la garantiria que uma das cópias divergisse na
+     * primeira correção feita só de um lado.
+     */
+    private function linkDaRequisicao(?string $token): OnboardingLink
     {
-        $link = OnboardingLink::where('token', $token)->firstOrFail();
+        if ($token !== null) {
+            return OnboardingLink::where('token', $token)->firstOrFail();
+        }
+
+        return $this->linkService->paraEmpresa(\App\Support\Portal\PortalContexto::empresa());
+    }
+
+    /**
+     * Quem está agindo, ou `null` no modo por token — ali não há identidade
+     * nenhuma, e fingir que há seria pior do que admitir que não há.
+     */
+    private function atorDaRequisicao(?string $token): ?\App\Support\Portal\AtorDoPortal
+    {
+        return $token === null ? \App\Support\Portal\PortalContexto::ator() : null;
+    }
+
+    public function desmarcarPasso(Request $request, ?string $token = null)
+    {
+        $link = $this->linkDaRequisicao($token);
 
         $data = $request->validate(['chave' => ['required', 'string']]);
 
@@ -169,9 +199,9 @@ class OnboardingPublicoController extends Controller
      * passa a mostrar "buscando". Um botão que esperasse a resposta derrubaria
      * a página com 504.
      */
-    public function sincronizarMapeamento(Request $request, string $token, OnboardingMapeamentoService $service)
+    public function sincronizarMapeamento(Request $request, OnboardingMapeamentoService $service, ?string $token = null)
     {
-        $link = OnboardingLink::where('token', $token)->firstOrFail();
+        $link = $this->linkDaRequisicao($token);
 
         $data = $request->validate(['onboarding_id' => ['required', 'integer']]);
         $onboarding = $this->onboardingDoToken($link, $data['onboarding_id']);
@@ -194,9 +224,9 @@ class OnboardingPublicoController extends Controller
      * portal, e inventar um mentiria sobre a origem do dado. Quem responde
      * "quem confirmou?" é o `confirmado_canal`.
      */
-    public function confirmarMapeamento(Request $request, string $token, OnboardingMapeamentoService $service)
+    public function confirmarMapeamento(Request $request, OnboardingMapeamentoService $service, ?string $token = null)
     {
-        $link = OnboardingLink::where('token', $token)->firstOrFail();
+        $link = $this->linkDaRequisicao($token);
 
         $data = $request->validate([
             'onboarding_id'  => ['required', 'integer'],
@@ -250,9 +280,9 @@ class OnboardingPublicoController extends Controller
      * A URL de retorno é montada com `route()` a partir do token já validado —
      * nunca lida do request, senão o callback viraria open redirect.
      */
-    public function conectarMercadoLivre(string $token, MercadoLivreService $ml)
+    public function conectarMercadoLivre(MercadoLivreService $ml, ?string $token = null)
     {
-        $link = OnboardingLink::where('token', $token)->with('company')->firstOrFail();
+        $link = $this->linkDaRequisicao($token)->loadMissing('company');
 
         $url = $ml->buildAuthUrl(
             company: $link->company,
@@ -273,16 +303,21 @@ class OnboardingPublicoController extends Controller
      * repassa a mensagem de domínio crua ao cliente. `throttle:20,1` na rota
      * (T-135-11-06 — endpoint público sem auth).
      */
-    public function marcarFeito(Request $request, string $token)
+    public function marcarFeito(Request $request, ?string $token = null)
     {
-        $link = OnboardingLink::where('token', $token)->firstOrFail();
+        $link = $this->linkDaRequisicao($token);
 
         $data = $request->validate([
             'chave' => ['required', 'string'],
         ]);
 
         try {
-            $this->linkService->marcarFeitoPorChave($link->company, $data['chave'], $request->ip());
+            $this->linkService->marcarFeitoPorChave(
+                $link->company,
+                $data['chave'],
+                $request->ip(),
+                $this->atorDaRequisicao($token),
+            );
         } catch (\DomainException $e) {
             throw ValidationException::withMessages([
                 'chave' => 'Este passo é verificado automaticamente pelo sistema e não pode ser marcado como feito por aqui.',
@@ -312,9 +347,9 @@ class OnboardingPublicoController extends Controller
      * um link sem senha, e dar a ele poder de apagar o cadastro de terceiros
      * seria conceder mais do que "informe quem participa".
      */
-    public function salvarPessoa(Request $request, string $token)
+    public function salvarPessoa(Request $request, ?string $token = null)
     {
-        $link = OnboardingLink::where('token', $token)->firstOrFail();
+        $link = $this->linkDaRequisicao($token);
 
         $data = $request->validate([
             'papel'    => ['required', 'string', Rule::in(OnboardingContato::PAPEIS)],
@@ -466,19 +501,22 @@ class OnboardingPublicoController extends Controller
     public function workspaceAutenticado(OnboardingMapeamentoService $mapeamentos)
     {
         $company = \App\Support\Portal\PortalContexto::empresa();
-        $usuario = \App\Support\Portal\PortalContexto::usuario();
+        $ator = \App\Support\Portal\PortalContexto::ator();
 
         // O link continua existindo: é dele que saem as URLs das ações de
         // escrita, que ainda são por token.
         $link = $this->linkService->paraEmpresa($company);
 
-        $contexto = $this->portal->contextoAutenticado($company, ModulosPortal::ONBOARDING, $usuario);
+        $contexto = $this->portal->contextoAutenticado($company, ModulosPortal::ONBOARDING, $ator);
 
         return Inertia::render('Onboarding/Publico', [
             ...$contexto,
-            // O token das AÇÕES. A leitura já é autenticada; a escrita ainda
-            // usa o token, e a tela precisa dele para montar os formulários.
-            'token'    => $link->token,
+            // Sem token, de propósito. As escritas ganharam rota autenticada
+            // própria (`portal.auth.onboarding.*`) em 25/08/2026, e o JSX
+            // escolhe entre as duas famílias por `rotaDoPortal()`. Mandar o
+            // token aqui manteria a porta antiga aberta para quem já entrou
+            // pela nova.
+            'token'    => null,
             'empresa'  => [
                 ...$contexto['empresa'],
                 ...app(\App\Services\Onboarding\OnboardingAcessosService::class)->paraEmpresa($company),

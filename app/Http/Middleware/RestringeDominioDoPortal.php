@@ -27,10 +27,9 @@ use Symfony\Component\HttpFoundation\Response;
  * seja uma decisão consciente.
  *
  * ### O que este middleware NÃO faz
- * Não é autenticação. O acesso ao Portal continua sendo por posse do token na
- * URL enquanto o login de cliente não existir. Este middleware só garante que o
- * domínio do cliente não sirva o sistema interno — são problemas diferentes, e
- * este resolve um deles.
+ * Não é autenticação. Quem cuida disso é o `portal.auth` (cliente) e o ticket
+ * de equipe. Este middleware só garante que o domínio do cliente não sirva o
+ * sistema interno — são problemas diferentes, e este resolve um deles.
  *
  * ### Desligado quando não configurado
  * Sem `PORTAL_CLIENTE_DOMINIO` no `.env`, o middleware não faz nada. Assim o
@@ -71,13 +70,27 @@ class RestringeDominioDoPortal
         'entrar/*',
         'sair',
 
+        // A equipe da ECF entrando pelo sistema interno. `equipe/entrar` é a
+        // ponta que RECEBE o ticket de 60 segundos — ela precisa existir
+        // neste domínio, senão o redirecionamento vindo do admin cai em 404.
+        // Não expõe nada por si: sem ticket válido, devolve para a entrada.
+        'equipe/entrar',
+        'equipe/sair',
+
         // Uma linha por rota, NUNCA `portal/*`. O curinga deixava passar
         // `/portal/usuarios` — a tela ADMIN de gerenciar acessos, que colide
         // no prefixo. Foi pego em produção, e é a demonstração de por que a
         // allowlist tem de ser específica: um curinga aqui reintroduz
         // exatamente o vazamento que este middleware existe para impedir.
         'portal/inicio',
+        'portal/senha',
         'portal/onboarding',
+        'portal/onboarding/passo',
+        'portal/onboarding/passo/desmarcar',
+        'portal/onboarding/mapeamento/sincronizar',
+        'portal/onboarding/mapeamento/confirmar',
+        'portal/onboarding/pessoas',
+        'portal/onboarding/conectar/ml',
         'portal/ppa',
         'portal/ppa/tarefas/*',
         'portal/empresa',

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, router, useForm } from '@inertiajs/react';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
@@ -11,13 +11,14 @@ import {
 } from '@/Components/ui/dropdown-menu';
 import {
     AlertTriangle, ArrowDown, ArrowUp, Building2, CheckCircle2, ChevronsUpDown, Clock, Download,
-    Eye, Link2, ListChecks, Loader2, MoreHorizontal, Plus, Search, SlidersHorizontal, Users, X,
+    Eye, KeyRound, Link2, ListChecks, Loader2, MoreHorizontal, Plus, Search, SlidersHorizontal, Users, X,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import AvatarUsuario from '@/Components/AvatarUsuario';
 import SituacaoChip from '@/Components/Onboarding/Painel/SituacaoChip';
 import ProgressoBarra from '@/Components/Onboarding/Painel/ProgressoBarra';
 import ProximaAcao from '@/Components/Onboarding/Painel/ProximaAcao';
+import AcessosDoPortal from '@/Components/Onboarding/Portal/AcessosDoPortal';
 import { SEM_VALOR } from '@/Components/Onboarding/sentinelaSemValor';
 
 /**
@@ -326,8 +327,104 @@ function ModalResponsaveis({ aberto, aoFechar, onboarding, empresa, estrategista
     );
 }
 
+/**
+ * A aba Onboarding responde a duas perguntas, e elas são vizinhas: "como estão
+ * os onboardings?" e "esse cliente já consegue entrar no portal?".
+ *
+ * A segunda morava numa página própria (`/acessos-portal`) sem link em lugar
+ * nenhum — só chegava quem sabia a URL. Virou sub-aba daqui em 25/08/2026.
+ *
+ * ### Dois níveis de aba, com pesos visuais diferentes
+ * O nível de cima (Empresas · Pendências · Onboarding) é sublinhado; este é de
+ * pílulas. Se os dois tivessem o mesmo tratamento, a pessoa perderia de vista
+ * em qual aba está.
+ *
+ * ### A lista de acessos NÃO vem na carga da página
+ * Ela é uma prop `optional` do lado do servidor: só é montada quando o front
+ * pede. Quem abre /companies para ver empresas não paga as três consultas do
+ * portal. O preço é este efeito — e o esqueleto que {@see AcessosDoPortal}
+ * mostra enquanto a resposta não chega.
+ */
 export default function AbaOnboarding({
-    companies,
+    podeGerirPortal = false,
+    portalAcessosTotal = 0,
+    portalAcessos,
+    ...props
+}) {
+    const [sub, setSub] = useState(() => {
+        const s = new URLSearchParams(window.location.search).get('sub');
+
+        return s === 'acessos' && podeGerirPortal ? 'acessos' : 'onboardings';
+    });
+
+    // Um contador, não um booleano: `portalAcessos` volta a `undefined` depois
+    // de toda escrita (o `back()` do controller é uma visita nova, e visita
+    // nova não traz prop `optional`). O efeito precisa poder pedir de novo —
+    // mas não infinitamente, se o servidor não mandar.
+    const pedidos = useRef(0);
+
+    useEffect(() => {
+        if (sub !== 'acessos' || !podeGerirPortal) return;
+
+        if (portalAcessos !== undefined) { pedidos.current = 0; return; }
+        if (pedidos.current >= 2) return;
+
+        pedidos.current += 1;
+        router.reload({ only: ['portal_acessos'] });
+    }, [sub, portalAcessos, podeGerirPortal]);
+
+    // A sub-aba entra na URL para que o link seja compartilhável e para que o
+    // `back()` das escritas devolva a pessoa onde ela estava. `replaceState`,
+    // não uma visita: trocar de sub-aba não deve bater no servidor.
+    const trocar = (destino) => {
+        setSub(destino);
+
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', 'onboarding');
+        destino === 'acessos' ? url.searchParams.set('sub', 'acessos') : url.searchParams.delete('sub');
+        window.history.replaceState(window.history.state, '', url);
+    };
+
+    if (!podeGerirPortal) return <CockpitOnboardings {...props} />;
+
+    const SUBS = [
+        { key: 'onboardings', label: 'Onboardings',       icone: ListChecks },
+        { key: 'acessos',     label: 'Acessos do portal', icone: KeyRound, contagem: portalAcessosTotal },
+    ];
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.03] w-fit">
+                {SUBS.map((s) => (
+                    <button
+                        key={s.key}
+                        type="button"
+                        onClick={() => trocar(s.key)}
+                        className={cn(
+                            'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[13px] font-medium transition-colors',
+                            sub === s.key
+                                ? 'bg-white/[0.08] text-white'
+                                : 'text-white/40 hover:text-white/75',
+                        )}
+                    >
+                        <s.icone size={14} />
+                        {s.label}
+                        {s.contagem > 0 && (
+                            <span className="text-[11px] text-white/35 tabular-nums">{s.contagem}</span>
+                        )}
+                    </button>
+                ))}
+            </div>
+
+            {sub === 'acessos'
+                ? <AcessosDoPortal dados={portalAcessos} />
+                : <CockpitOnboardings {...props} />}
+        </div>
+    );
+}
+
+/** O cockpit de todos os onboardings — a leitura original da aba. */
+function CockpitOnboardings({    companies,
     estrategistas,
     analistas,
     podeCadastrarEmpresa = false,
@@ -745,6 +842,15 @@ export default function AbaOnboarding({
                                                         <DropdownMenuItem onClick={() => setModal({ aberto: true, onboarding: l, empresa: l.empresa })}>
                                                             <Users size={13} className="mr-2" />
                                                             {l.status === 'rascunho' ? 'Iniciar onboarding' : 'Responsáveis'}
+                                                        </DropdownMenuItem>
+                                                        {/* Entrar no portal vem ANTES de gerar link, e é
+                                                            de propósito: para orientar o cliente, ver o
+                                                            que ele vê é o caminho — mandar o link para
+                                                            si mesmo era o contorno. */}
+                                                        <DropdownMenuItem asChild>
+                                                            <a href={route('companies.portal.abrir', l.empresa.id)} target="_blank" rel="noopener">
+                                                                <Eye size={13} className="mr-2" /> Ver o portal do cliente
+                                                            </a>
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem onClick={() => copiarLinkDoCliente(l.empresa.id)}>
                                                             <Link2 size={13} className="mr-2" /> Gerar link do cliente

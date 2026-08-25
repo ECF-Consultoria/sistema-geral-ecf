@@ -1,5 +1,5 @@
-import { Link, Head } from '@inertiajs/react';
-import { ClipboardList, Home, LayoutGrid, ListChecks } from 'lucide-react';
+import { Link, Head, router, usePage } from '@inertiajs/react';
+import { ClipboardList, Eye, Home, LayoutGrid, ListChecks, LogOut } from 'lucide-react';
 import LogoEmpresa from '@/Components/Portal/LogoEmpresa';
 import { cn } from '@/lib/utils';
 
@@ -70,10 +70,51 @@ function ItemModulo({ modulo }) {
  * @param {{nome: string, logo_url: ?string, iniciais: string}} empresa
  * @param {Array} modulos  vem pronto de `ModulosPortal::paraEmpresa()`
  */
-export default function PortalClienteLayout({ empresa, modulos = [], titulo, children }) {
+/**
+ * Faixa de sessão de equipe.
+ *
+ * Fica FIXA no topo, cobre a largura toda e usa a cor de alerta — porque o
+ * risco que ela cobre é o analista esquecer onde está e marcar um passo "como
+ * cliente". A faixa não impede nada; ela lembra. O que protege o dado é o
+ * registro no nome de quem agiu, do lado do servidor.
+ */
+function FaixaDeEquipe({ empresa }) {
     return (
-        <div className="min-h-screen bg-ecf-bg lg:flex">
+        <div className="sticky top-0 z-50 bg-amber-400 text-ecf-bg">
+            <div className="flex items-center justify-between gap-3 px-4 py-2">
+                <p className="flex items-center gap-2 text-[12.5px] font-semibold min-w-0">
+                    <Eye size={14} className="shrink-0" />
+                    <span className="truncate">
+                        Você está no portal de {empresa?.nome} como equipe ECF — o que fizer aqui fica no seu nome.
+                    </span>
+                </p>
+
+                <button
+                    type="button"
+                    onClick={() => router.post(route('portal.equipe.sair'))}
+                    className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-ecf-bg/15 hover:bg-ecf-bg/25 text-[12px] font-semibold shrink-0 transition-colors"
+                >
+                    <LogOut size={12} /> Sair do portal
+                </button>
+            </div>
+        </div>
+    );
+}
+
+export default function PortalClienteLayout({ empresa, modulos = [], titulo, children }) {
+    // O ator vem das props da PÁGINA, não de uma prop deste componente. É
+    // deliberado: assim uma tela nova do portal não pode esquecer de repassar
+    // `usuario` e nascer sem a faixa de aviso. No modo por token não há ator, e
+    // `equipe` é falso — que é o certo, já que ali ninguém está autenticado.
+    const equipe = !! usePage().props.usuario?.equipe;
+
+    return (
+        <div className={cn('min-h-screen bg-ecf-bg', !equipe && 'lg:flex')}>
             <Head title={titulo ? `${titulo} · ${empresa?.nome}` : `Portal · ${empresa?.nome}`} />
+
+            {equipe && <FaixaDeEquipe empresa={empresa} />}
+
+            <div className={cn(equipe && 'lg:flex')}>
 
             <aside className="lg:w-[248px] lg:shrink-0 lg:min-h-screen bg-[#0b1220] border-b lg:border-b-0 lg:border-r border-white/[0.06]">
                 <div className="lg:sticky lg:top-0 p-4 lg:p-5">
@@ -140,6 +181,7 @@ export default function PortalClienteLayout({ empresa, modulos = [], titulo, chi
             </aside>
 
             <main className="flex-1 min-w-0">{children}</main>
+            </div>
         </div>
     );
 }
