@@ -847,6 +847,146 @@ class ContratoAdminController extends Controller
     }
 
     /**
+     * Quick 260825-dap — "Refazer contrato": o Administrativo corrige um
+     * contrato com dado errado (e-mail, razão social, endereço, valor) sem
+     * precisar apagar a empresa no banco (era o que o desenvolvedor vinha
+     * fazendo à mão, onze vezes em 24-25/08). Cancela o envelope atual na
+     * Clicksign e gera um novo, pelo MESMO funil de sempre
+     * (`GatilhoContratoAdministrativoService::dispararSeElegivel()`), com os
+     * dados que estão no cadastro AGORA.
+     *
+     * Motivo do incidente: os dados de um contrato ficam CONGELADOS no
+     * envelope assim que ele nasce — a Clicksign não deixa editar
+     * signatário de envelope criado por API (medido em 2026-08-24), e
+     * salvar o cadastro nesta tela não "empurra" nada para lá.
+     *
+     * A sequência, NESTA ordem:
+     * 1. Cancela o envelope na Clicksign (se houver um — rascunho que nunca
+     *    chegou a montar envelope não tem o que cancelar).
+     *    ⚠️ Se `cancelarEnvelope()` devolver `false`, PARA aqui — nenhum
+     *    contrato novo nasce. Um envelope antigo ainda vivo significa que o
+     *    cliente pode assinar o contrato ERRADO: dois contratos válidos da
+     *    mesma empresa circulando ao mesmo tempo. O Administrativo precisa
+     *    cancelar pelo painel da Clicksign antes de tentar de novo.
+     * 2. Fecha o contrato antigo como `cancelado`.
+     * 3. Gera o novo pelo funil único — mesmo caminho do botão "Gerar
+     *    contrato" e do gatilho automático (`gerarContrato()` acima nunca é
+     *    chamado daqui, mas o service por trás é o mesmo).
+     *
+     * ⚠️ CONTRASTE DE PROPÓSITO com `registrarCancelamento()` (leia o
+     * docblock de lá antes de "corrigir" isto — a diferença é intencional,
+     * não incoerência): lá, o cancelamento registrado é só INTENÇÃO — quem
+     * cancela de verdade é um humano no painel da Clicksign, e por isso o
+     * `status` fica intocado até o webhook `cancel` confirmar (ver Fase
+     * 129). AQUI é diferente: nós mesmos chamamos `cancelarEnvelope()` pela
+     * API e SÓ avançamos quando ela confirma (`true`) — a confirmação já
+     * aconteceu de forma síncrona. Fechar o `status` agora, sem esperar o
+     * webhook, é o que libera a trava composta
+     * `ca_empresa_servico_andamento_uniq` para o contrato novo poder nascer
+     * no passo 3 acima — se esperássemos o webhook (como `registrarCancelamento()`
+     * faz), o passo 3 bateria de novo em "já em andamento" e nada seria
+     * gerado. Os dois métodos protegem premissas diferentes: um cancela por
+     * FORA (painel humano, sem confirmação síncrona), o outro cancela por
+     * DENTRO (API, com confirmação síncrona) — por isso um espera o webhook
+     * e o outro não.
+     *
+     * `fill()` + `save()` no model — nunca `updateQuietly()`/query builder,
+     * mesma disciplina de `registrarCancelamento()`: é o hook `saving` de
+     * `ContratoAssinatura` quem alimenta a coluna sombra da trava composta.
+     */
+    public function refazer(
+        Request $request,
+        ContratoAssinatura $contratoAssinatura,
+        ClicksignClient $client,
+        GatilhoContratoAdministrativoService $gatilho,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'motivo' => ['required', 'string', 'min:10', 'max:1000'],
+        ]);
+
+        // ⚠️ Contrato assinado é documento jurídico — NUNCA se refaz. É o
+        // item mais caro de errar deste quick.
+        if ($contratoAssinatura->status === ContratoAssinatura::STATUS_ASSINADO) {
+            return back()->with('error', 'Este contrato já foi assinado. Contrato assinado é documento jurídico — não pode ser refeito.');
+        }
+
+        // Só faz sentido refazer um contrato vivo (em andamento) ou que
+        // falhou tecnicamente ao ser criado (erro). Recusado/expirado/
+        // cancelado ficam de fora — não é o caso que este quick resolve
+        // (o dado errado já não vai virar um contrato válido de qualquer
+        // forma nesses estados; quem precisar de um contrato novo usa
+        // "Gerar contrato"/"Tentar novamente" normalmente).
+        $statusPermiteRefazer = [...ContratoAssinatura::STATUS_EM_ANDAMENTO, ContratoAssinatura::STATUS_ERRO];
+        if (! in_array($contratoAssinatura->status, $statusPermiteRefazer, true)) {
+            return back()->with('error', 'Este contrato não está em andamento nem com erro — não há o que refazer.');
+        }
+
+        $company = $contratoAssinatura->company;
+
+        // 1. Cancela o envelope atual na Clicksign.
+        if (filled($contratoAssinatura->clicksign_envelope_id)) {
+            $cancelou = $client->cancelarEnvelope($contratoAssinatura->clicksign_envelope_id);
+
+            if (! $cancelou) {
+                Log::warning('[Administrativo] Refazer contrato: falha ao cancelar envelope na Clicksign — abortado antes de gerar o novo', [
+                    'contrato_id' => $contratoAssinatura->id,
+                    'company_id'  => $company->id,
+                ]);
+
+                // ⚠️ PARA aqui — nenhum contrato novo nasce, o contrato
+                // antigo continua intacto (nem status nem mais nada foi
+                // alterado). Um envelope antigo ainda vivo permitiria dois
+                // contratos válidos da mesma empresa circulando.
+                return back()->with('error', 'Não deu para cancelar o contrato atual na Clicksign. Para não deixar dois contratos válidos circulando ao mesmo tempo, cancele manualmente pelo painel da Clicksign e tente refazer de novo depois.');
+            }
+        }
+
+        // 2. Fecha o contrato antigo — ver o CONTRASTE explicado no
+        // docblock acima: aqui SIM alteramos o status, de propósito.
+        $contratoAssinatura->fill([
+            'status'                               => ContratoAssinatura::STATUS_CANCELADO,
+            'cancelamento_motivo'                  => $data['motivo'],
+            'cancelamento_solicitado_por_user_id'  => $request->user()->id,
+            'cancelamento_solicitado_em'           => now(),
+        ]);
+        $contratoAssinatura->save();
+
+        // 3. Gera o novo pelo funil único — nunca reimplementar a criação
+        // aqui (é o mesmo `GatilhoContratoAdministrativoService` que
+        // `gerarContrato()` usa e que o Observer automático da Fase 128
+        // dispara).
+        $retorno = $gatilho->dispararSeElegivel($company);
+
+        if ($retorno['status'] === 'disparado' && data_get($retorno, 'resultado.ok') === true) {
+            // Rastro (Tarefa 3) — quem refez, quando, o motivo, e a ligação
+            // entre o contrato antigo e o(s) novo(s). O trait LogsActivity
+            // do model já registra a MUDANÇA de status isolada (passo 2
+            // acima); este registro MANUAL é o único lugar que amarra as
+            // duas pontas — sem ele ninguém reconstrói depois por que
+            // existem dois contratos do mesmo serviço.
+            activity('administrativo')
+                ->causedBy($request->user())
+                ->withProperties([
+                    'empresa'             => $company->name,
+                    'servico_id'          => $contratoAssinatura->servico_id,
+                    'contrato_antigo_id'  => $contratoAssinatura->id,
+                    'contratos_novos_ids' => data_get($retorno, 'resultado.criados', []),
+                    'motivo'              => $data['motivo'],
+                ])
+                ->log('Contrato refeito: "' . $company->name . '"');
+
+            return back()->with('success', 'Contrato refeito. O novo contrato foi gerado com os dados atuais do cadastro — pode levar até um minuto para ficar pronto.');
+        }
+
+        // O contrato antigo já foi cancelado — é irreversível, o envelope
+        // não existe mais na Clicksign. O que resta é explicar que o novo
+        // não nasceu agora, sem prometer nada que a tela normal de "Gerar
+        // contrato" (com os motivos de bloqueio já visíveis acima) não
+        // resolva.
+        return back()->with('error', 'O contrato anterior foi cancelado, mas não deu para gerar o novo agora. Confira a situação da empresa nesta tela e gere manualmente quando estiver tudo certo.');
+    }
+
+    /**
      * D-10 — absorve `ContratoLiberacaoManualController::store()` (Fase 130
      * Plano 04, REDE-03/DADOS-05, D-10/D-11/D-12) como ação da tela de
      * detalhe. O corpo é copiado VERBATIM, incluindo os comentários que

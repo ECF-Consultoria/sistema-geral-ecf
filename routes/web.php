@@ -1371,6 +1371,10 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
         ->name('reenviar');
     Route::post('/{contratoAssinatura}/cancelamento', [ContratoAdminController::class, 'registrarCancelamento'])
         ->name('cancelamento');
+    // Quick 260825-dap — "Refazer contrato": cancela o envelope atual na
+    // Clicksign e gera um novo com os dados que estão no cadastro agora.
+    Route::post('/{contratoAssinatura}/refazer', [ContratoAdminController::class, 'refazer'])
+        ->name('refazer');
     // Plano 131-06 (D-10) — absorve ContratoLiberacaoManualController::store()
     // (Fase 130). Ação disparada de dentro do detalhe da empresa.
     Route::post('/liberacao-manual', [ContratoAdminController::class, 'liberarManual'])->name('liberacao-manual');
