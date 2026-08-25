@@ -24,8 +24,16 @@ export function lerSemComentarios(caminhoRelativoAoRepo) {
     const semBloco = bruto.replace(/\/\*[\s\S]*?\*\//g, '');
 
     // Remove // até o fim da linha — mas não quando precedido de ':' (poupa https://)
+    //
+    // ATENÇÃO ao split: ele PRECISA comer o \r do CRLF. Sem isso o \r sobra no
+    // fim de cada linha e, como `.` não casa terminador de linha e o `$` aqui é
+    // fim-de-STRING (não há flag `m`), o replace abaixo não remove absolutamente
+    // nada em arquivo CRLF — o gate volta a ler comentário e passa pelo motivo
+    // errado, que é exatamente o que este helper existe para impedir. Só apareceu
+    // quando AppLayout.jsx (único CRLF entre os arquivos com gate) ganhou o seu;
+    // os demais são LF e por isso nunca acusaram.
     return semBloco
-        .split('\n')
+        .split(/\r?\n/)
         .map((linha) => linha.replace(/(^|[^:])\/\/.*$/, '$1'))
         .join('\n');
 }

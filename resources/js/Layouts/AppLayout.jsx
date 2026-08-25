@@ -299,6 +299,14 @@ const roleLabel = { admin: 'Admin', consultor: 'Consultor', mentor: 'Mentor' };
 // nav e recolhia os grupos abertos, fazendo a barra "pular pro topo".
 const SIDEBAR_GROUPS_KEY = 'ecf-sidebar-open-groups';
 const SIDEBAR_SCROLL_KEY = 'ecf-sidebar-scroll';
+// Preferencia de sidebar FIXADA aberta (botao do header). Como a barra agora
+// vive minimizada e so expande no hover, essa preferencia atravessa sessoes —
+// por isso localStorage, e nao sessionStorage.
+const SIDEBAR_PINNED_KEY = 'ecf-sidebar-pinned';
+// Expansao TEMPORARIA (hover/toque). Precisa sobreviver ao remount que toda
+// navegacao provoca: sem isso, clicar num item recolhia a barra debaixo do
+// cursor e ela so voltava a abrir depois de sair e entrar de novo.
+const SIDEBAR_HOVER_KEY  = 'ecf-sidebar-hover';
 
 export default function AppLayout({ children, title }) {
     const { auth, flash, asset_url, sugadores_pendentes, alertas_criticos_count } = usePage().props;
@@ -310,9 +318,42 @@ export default function AppLayout({ children, title }) {
     const logoSrc = `${asset_url}/images/logo.png`;
     const user = auth?.user;
 
-    const [collapsed, setCollapsed] = useState(false);
+    // ── Sidebar minimizada por padrao, expandida no hover ────────────────────
+    // `fixado`: preferencia explicita do usuario (botao do header). Ligada, a
+    // barra fica sempre aberta e EMPURRA o conteudo — comportamento classico.
+    // `hoverAberto`: expansao temporaria por cursor/toque. Ela SOBREPOE o
+    // conteudo em vez de empurra-lo, que e o que impede o layout de "pular".
+    const [fixado, setFixado] = useState(() => {
+        try { return localStorage.getItem(SIDEBAR_PINNED_KEY) === '1'; } catch { return false; }
+    });
+    const [hoverAberto, setHoverAberto] = useState(() => {
+        try { return sessionStorage.getItem(SIDEBAR_HOVER_KEY) === '1'; } catch { return false; }
+    });
     const [mobileOpen, setMobileOpen] = useState(false);
     const [toast, setToast] = useState(null);
+
+    // `collapsed` continua sendo a variavel que todo o render consulta —
+    // mudou apenas QUEM a decide.
+    const collapsed = !(fixado || hoverAberto);
+
+    useEffect(() => {
+        try { localStorage.setItem(SIDEBAR_PINNED_KEY, fixado ? '1' : '0'); } catch { /* ignora */ }
+    }, [fixado]);
+    useEffect(() => {
+        try { sessionStorage.setItem(SIDEBAR_HOVER_KEY, hoverAberto ? '1' : '0'); } catch { /* ignora */ }
+    }, [hoverAberto]);
+
+    const asideRef = useRef(null);
+    useEffect(() => {
+        if (fixado || !hoverAberto) return;
+        const fecharSeForaDaBarra = (e) => {
+            // Mouse ja fecha sozinho no pointerleave — aqui so o toque/caneta.
+            if (e.pointerType === 'mouse') return;
+            if (!asideRef.current?.contains(e.target)) setHoverAberto(false);
+        };
+        document.addEventListener('pointerdown', fecharSeForaDaBarra);
+        return () => document.removeEventListener('pointerdown', fecharSeForaDaBarra);
+    }, [fixado, hoverAberto]);
 
     const mainRole    = user?.role;
     const permissions = auth?.permissions ?? [];
@@ -495,21 +536,31 @@ export default function AppLayout({ children, title }) {
     // elemento JSX, o React o trataria como um tipo novo a cada render do
     // AppLayout (a função é recriada toda vez), remontando toda a sidebar e
     // zerando o scroll do nav sempre que um grupo era aberto/fechado.
-    const renderSidebar = ({ mobile = false }) => (
+    const renderSidebar = ({ mobile = false }) => {
+        // No mobile a barra e sempre a versao completa (overlay de 256px) —
+        // toda checagem de "modo icone" passa por `minimizado`.
+        const minimizado = !mobile && collapsed;
+
+        return (
         <div className={cn(
-            'flex flex-col h-full transition-all duration-300',
+            'flex flex-col h-full w-full overflow-hidden',
             'bg-[#0b0c10] border-r border-white/[0.06]',
-            mobile ? 'w-64' : collapsed ? 'w-16' : 'w-64',
         )}>
             {/* Top gradient line */}
             <div className="h-[3px] shrink-0 bg-ecf-grad" />
 
             {/* Logo */}
             <div className={cn(
-                'flex items-center h-[60px] px-4 border-b border-white/[0.06] shrink-0',
-                collapsed && !mobile ? 'justify-center' : 'gap-3'
-            )}>
-                {(!collapsed || mobile) ? (
+                'flex items-center h-[60px] border-b border-white/[0.06] shrink-0',
+                minimizado ? 'justify-center px-2 cursor-pointer' : 'px-4 gap-3'
+            )}
+            // Sem cursor (toque), o cabecalho e o gatilho de expansao. No mouse
+            // este onClick nunca dispara: ao chegar aqui o hover ja expandiu.
+            onClick={minimizado ? () => setHoverAberto(true) : undefined}
+            role={minimizado ? 'button' : undefined}
+            aria-label={minimizado ? 'Expandir menu' : undefined}
+            >
+                {!minimizado ? (
                     <Link href={route('dashboard')} className="inline-flex items-center" aria-label="Ir para a página principal">
                         <img
                             src={logoSrc}
@@ -519,8 +570,20 @@ export default function AppLayout({ children, title }) {
                         />
                     </Link>
                 ) : (
-                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-ecf-yellow shrink-0">
-                        <span className="text-[#252525] font-display font-bold text-sm">E</span>
+                    // Minimizado: em vez de um tile amarelo, o RECORTE do proprio
+                    // logo.png na parte "ECF". Numeros medidos no arquivo (301x52):
+                    // as letras ocupam x=13..127 e a barra de gradiente so comeca
+                    // em x=136 — a janela de 44px com -4px de deslocamento mostra
+                    // x~11..131, ou seja, ECF inteiro e nada da barra.
+                    // A classe `ecf-logo` PRECISA continuar aqui: e ela que o
+                    // modo claro inverte (light.css -> filter: brightness(0)).
+                    <div className="h-[19px] w-[44px] overflow-hidden shrink-0" aria-hidden="true">
+                        <img
+                            src={logoSrc}
+                            alt=""
+                            className="ecf-logo h-[19px] w-auto max-w-none -ml-[4px]"
+                            onError={e => { e.currentTarget.style.display = 'none'; }}
+                        />
                     </div>
                 )}
             </div>
@@ -529,7 +592,7 @@ export default function AppLayout({ children, title }) {
             <nav
                 ref={mobile ? undefined : setNavEl}
                 onScroll={mobile ? undefined : handleNavScroll}
-                className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto"
+                className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto overflow-x-hidden"
             >
                 {filteredTree.map((entry, idx) => {
                     // ── Item de topo (link direto) ───────────────────────────
@@ -539,8 +602,12 @@ export default function AppLayout({ children, title }) {
                             <Link
                                 key={entry.routeName}
                                 href={route(entry.routeName, entry.routeParams ?? {})}
+                                // Modo icone: o nome do item so existe como tooltip.
+                                title={minimizado ? entry.label : undefined}
+                                aria-label={minimizado ? entry.label : undefined}
                                 className={cn(
-                                    'flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] font-medium transition-all duration-150',
+                                    'relative flex items-center rounded-[10px] py-2.5 text-[13px] font-medium transition-all duration-150',
+                                    minimizado ? 'justify-center px-0' : 'gap-3 px-3',
                                     active
                                         ? 'bg-ecf-yellow/[0.12] text-ecf-yellow border border-ecf-yellow/20'
                                         : 'text-white/60 hover:text-white hover:bg-white/[0.05] border border-transparent'
@@ -559,20 +626,27 @@ export default function AppLayout({ children, title }) {
                                 ) : (
                                     <entry.icon className={cn('shrink-0', active ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
                                 )}
-                                {(!collapsed || mobile) && <span className="truncate">{entry.label}</span>}
-                                {entry.showBadge && badgeCounters[entry.showBadge] > 0 && (!collapsed || mobile) && (
+                                {!minimizado && <span className="truncate">{entry.label}</span>}
+                                {minimizado && ((entry.showBadge && badgeCounters[entry.showBadge] > 0) || entry.badgeText) && (
+                                    // Minimizado: contador/selo viram um ponto - sinal sem texto.
+                                    <span className={cn(
+                                        'absolute top-1.5 right-1.5 w-[7px] h-[7px] rounded-full ring-2 ring-[#0b0c10]',
+                                        entry.showBadge ? 'bg-red-400' : 'bg-white/40'
+                                    )} />
+                                )}
+                                {entry.showBadge && badgeCounters[entry.showBadge] > 0 && !minimizado && (
                                     <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 text-[10px] font-bold shrink-0">
                                         {badgeCounters[entry.showBadge] > 99 ? '99+' : badgeCounters[entry.showBadge]}
                                     </span>
                                 )}
-                                {entry.badgeText && !entry.showBadge && (!collapsed || mobile) && (
+                                {entry.badgeText && !entry.showBadge && !minimizado && (
                                     // Phase 56 v13.0: badge estatico (ex: "Em breve") diferente do
                                     // showBadge (contador dinamico). Usado nos stubs Shopee/Amazon.
                                     <span className="ml-auto inline-flex items-center h-5 px-1.5 rounded-full bg-white/[0.08] border border-white/10 text-white/50 text-[10px] font-medium shrink-0">
                                         {entry.badgeText}
                                     </span>
                                 )}
-                                {active && (!collapsed || mobile) && !entry.showBadge && !entry.badgeText && (
+                                {active && !minimizado && !entry.showBadge && !entry.badgeText && (
                                     <span className="ml-auto w-1.5 h-1.5 rounded-full bg-ecf-yellow shrink-0" />
                                 )}
                             </Link>
@@ -584,14 +658,19 @@ export default function AppLayout({ children, title }) {
                     // Grupo marcado como ativo se algum filho corresponde à rota atual.
                     // Dividers nao tem `page` — filtrar antes pra evitar coercao em isActive.
                     const groupActive = entry.children.some(c => c.page && isActive(c.page));
+                    // Minimizado, o grupo esconde os filhos - mas ainda precisa
+                    // avisar que ha pendencia la dentro.
+                    const grupoTemBadge = entry.children.some(c => c.showBadge && badgeCounters[c.showBadge] > 0);
 
                     /**
-                     * Ao clicar num grupo enquanto a sidebar está collapsed (desktop),
-                     * expande a sidebar primeiro e depois abre o grupo.
+                     * Clique num grupo com a barra minimizada (so acontece em
+                     * toque — no mouse o hover ja expandiu): expande primeiro,
+                     * depois abre o grupo.
                      */
                     const handleGroupClick = () => {
-                        if (collapsed && !mobile) {
-                            setCollapsed(false);
+                        if (minimizado) {
+                            // So acontece em toque (no mouse, o hover ja expandiu).
+                            setHoverAberto(true);
                             setOpenGroups(prev => ({ ...prev, [entry.group]: true }));
                         } else {
                             toggleGroup(entry.group);
@@ -603,8 +682,12 @@ export default function AppLayout({ children, title }) {
                             {/* Header do grupo (item principal): mantém o destaque "active" em caixa amarela */}
                             <button
                                 onClick={handleGroupClick}
+                                title={minimizado ? entry.group : undefined}
+                                aria-label={minimizado ? entry.group : undefined}
+                                aria-expanded={minimizado ? undefined : isOpen}
                                 className={cn(
-                                    'w-full flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] font-medium transition-all duration-150',
+                                    'relative w-full flex items-center rounded-[10px] py-2.5 text-[13px] font-medium transition-all duration-150',
+                                    minimizado ? 'justify-center px-0' : 'gap-3 px-3',
                                     groupActive
                                         ? 'bg-ecf-yellow/[0.12] text-ecf-yellow border border-ecf-yellow/20'
                                         : 'text-white/60 hover:text-white hover:bg-white/[0.05] border border-transparent'
@@ -620,8 +703,11 @@ export default function AppLayout({ children, title }) {
                                 ) : (
                                     <entry.icon className={cn('shrink-0', groupActive ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
                                 )}
-                                {(!collapsed || mobile) && <span className="truncate flex-1 text-left">{entry.group}</span>}
-                                {(!collapsed || mobile) && (
+                                {minimizado && grupoTemBadge && (
+                                    <span className="absolute top-1.5 right-1.5 w-[7px] h-[7px] rounded-full bg-red-400 ring-2 ring-[#0b0c10]" />
+                                )}
+                                {!minimizado && <span className="truncate flex-1 text-left">{entry.group}</span>}
+                                {!minimizado && (
                                     <ChevronDown
                                         size={14}
                                         className={cn(
@@ -633,7 +719,7 @@ export default function AppLayout({ children, title }) {
                             </button>
 
                             {/* Filhos do grupo (visíveis somente quando aberto e não collapsed) */}
-                            {isOpen && (!collapsed || mobile) && (
+                            {isOpen && !minimizado && (
                                 <div className="ml-3 border-l border-white/[0.06] pl-2 mt-0.5 space-y-0.5">
                                     {entry.children.map((child, childIdx) => {
                                         // Phase 56 v13.0: entry tipo `divider` renderiza um label
@@ -681,11 +767,14 @@ export default function AppLayout({ children, title }) {
 
             {/* User footer */}
             <div className="border-t border-white/[0.06] p-3 shrink-0">
-                <div className={cn('flex items-center gap-3', collapsed && !mobile ? 'justify-center' : '')}>
-                    <div className="w-8 h-8 rounded-full bg-ecf-yellow/20 border border-ecf-yellow/30 flex items-center justify-center shrink-0">
+                <div className={cn('flex items-center gap-3', minimizado ? 'justify-center' : '')}>
+                    <div
+                        className="w-8 h-8 rounded-full bg-ecf-yellow/20 border border-ecf-yellow/30 flex items-center justify-center shrink-0"
+                        title={minimizado ? user?.name : undefined}
+                    >
                         <span className="text-ecf-yellow text-xs font-bold">{initials}</span>
                     </div>
-                    {(!collapsed || mobile) && (
+                    {!minimizado && (
                         <>
                             <div className="flex-1 min-w-0">
                                 <p className="text-white text-[13px] font-semibold truncate leading-tight">{user?.name}</p>
@@ -710,13 +799,40 @@ export default function AppLayout({ children, title }) {
                 </div>
             </div>
         </div>
-    );
+        );
+    };
 
     return (
         <div className="flex h-screen bg-[#050507] overflow-hidden">
-            {/* Desktop sidebar */}
-            <aside className={cn('hidden md:flex flex-col transition-all duration-300', collapsed ? 'w-16' : 'w-64')}>
-                {renderSidebar({})}
+            {/* Desktop sidebar — minimizada por padrao, expande no hover.
+                O <aside> e so o TRILHO que reserva espaco no fluxo: enquanto a
+                barra nao esta fixada, ele permanece com 64px e a expansao
+                acontece por cima do conteudo (o painel abaixo e absolute).
+                E isso que impede o conteudo principal de "pular" no hover. */}
+            <aside
+                ref={asideRef}
+                className={cn(
+                    'hidden md:block relative shrink-0 transition-[width] duration-200 ease-out',
+                    fixado ? 'w-64' : 'w-16'
+                )}
+                onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHoverAberto(true); }}
+                // Reforco do enter: a cada navegacao o AppLayout remonta, e um
+                // elemento novo debaixo do cursor parado nao dispara enter.
+                onPointerMove={(e) => { if (e.pointerType === 'mouse' && collapsed) setHoverAberto(true); }}
+                onPointerLeave={(e) => { if (e.pointerType === 'mouse') setHoverAberto(false); }}
+                // Teclado: quem navega por Tab tambem precisa ver os rotulos.
+                onFocusCapture={() => setHoverAberto(true)}
+                onBlurCapture={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget)) setHoverAberto(false);
+                }}
+            >
+                <div className={cn(
+                    'absolute inset-y-0 left-0 z-40 transition-[width] duration-200 ease-out',
+                    collapsed ? 'w-16' : 'w-64',
+                    !fixado && !collapsed ? 'shadow-2xl shadow-black/60' : ''
+                )}>
+                    {renderSidebar({})}
+                </div>
             </aside>
 
             {/* Mobile sidebar overlay */}
@@ -746,11 +862,20 @@ export default function AppLayout({ children, title }) {
                         >
                             <Menu size={18} />
                         </button>
+                        {/* O botao deixou de recolher/expandir: agora FIXA a barra
+                            aberta (empurrando o conteudo) ou devolve o modo
+                            minimizado-com-hover, que e o padrao. */}
                         <button
-                            onClick={() => setCollapsed(c => !c)}
-                            className="hidden md:flex text-white/30 hover:text-white/60 p-1.5 rounded-lg hover:bg-white/[0.05] transition-colors"
+                            onClick={() => { setFixado(f => !f); setHoverAberto(false); }}
+                            title={fixado ? 'Soltar menu (minimiza e expande no hover)' : 'Fixar menu aberto'}
+                            aria-label={fixado ? 'Soltar menu' : 'Fixar menu aberto'}
+                            aria-pressed={fixado}
+                            className={cn(
+                                'hidden md:flex p-1.5 rounded-lg hover:bg-white/[0.05] transition-colors',
+                                fixado ? 'text-ecf-yellow/70 hover:text-ecf-yellow' : 'text-white/30 hover:text-white/60'
+                            )}
                         >
-                            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+                            {fixado ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
                         </button>
                         {title && (
                             <h1 className="text-white font-display font-bold text-base tracking-tight">{title}</h1>
