@@ -235,6 +235,15 @@ class ContratoClicksignService
                     // definido no HubSpot ("as demais voltam à faixa").
                     'servicos_snapshot' => $fases->map(fn (ContratoServico $cs) => [
                         'servico'          => $cs->servico->nome,
+                        // Quick 260825-fn0 (Tarefa 2) — plataforma
+                        // (Mercado Livre / Shopee) que ESTE serviço cobre,
+                        // congelada aqui igual ao resto do snapshot (D-04):
+                        // o contrato reflete o que foi contratado, não a
+                        // configuração atual do catálogo. `null` quando o
+                        // serviço não tem plataforma configurada —
+                        // `ContratoPdfService` tolera a ausência e mostra
+                        // `A DEFINIR` (Tarefa 3), nunca quebra aqui.
+                        'plataforma'       => $cs->servico->plataforma,
                         'valor_contratado' => (float) $cs->valor_contratado,
                         'data_contratacao' => optional($cs->data_contratacao)->format('Y-m-d'),
                         'data_vencimento'  => optional($cs->data_vencimento)->format('Y-m-d'),
