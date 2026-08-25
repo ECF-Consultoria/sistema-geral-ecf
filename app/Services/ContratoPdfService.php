@@ -82,6 +82,7 @@ class ContratoPdfService
      *     empresa: array{razao_social: string, cnpj: string, endereco: string, bairro: string, cidade: string, estado: string, cep: string},
      *     contato: array{nome: string, email: string, telefone: string},
      *     servicos: array<int, array{servico: string, valor: float, valor_formatado: string, inicio: string, fim: string}>,
+     *     plataformas: string,
      *     totais: array{valor_mensal_formatado: string},
      *     vigencia: array{inicio: string, fim: string},
      *     pagamento: array{dia_vencimento: string, forma_pagamento: string, data_primeira_parcela: string},
@@ -135,6 +136,13 @@ class ContratoPdfService
                 'telefone' => $this->resolverOuPendente($company->telefone ?? null, 'contato_telefone', $camposPendentes),
             ],
             'servicos' => $servicos,
+            // Quick 260825-fn0 (Tarefa 3) — {{plataformas}} do modelo v5:
+            // as plataformas DISTINTAS cobertas pelos serviços deste
+            // contrato, lidas do snapshot congelado (nunca da tabela ao
+            // vivo, D-04). Ausência (serviço sem plataforma configurada OU
+            // snapshot antigo sem a chave) é VISÍVEL — nunca um espaço em
+            // branco; ver `resolverPlataformas()`.
+            'plataformas' => $this->resolverPlataformas($snapshot, $camposPendentes),
             'totais'   => [
                 'valor_mensal_formatado' => $this->formatarMoeda($this->somarValores($snapshot)),
             ],
@@ -184,6 +192,72 @@ class ContratoPdfService
                 'fim'             => $this->formatarData($item['data_vencimento']),
             ];
         }, $snapshot);
+    }
+
+    /**
+     * Quick 260825-fn0 (Tarefa 3) — texto de `{{plataformas}}`: as
+     * plataformas (Mercado Livre / Shopee) DISTINTAS cobertas pelos
+     * serviços do snapshot congelado (D-04), no estilo de
+     * `ContratoVariaveisModeloService::concatenarServicos()` — vírgula e
+     * " e " antes da última.
+     *
+     * A distinção é pelo VALOR da plataforma, não por serviço: duas fases
+     * do mesmo serviço (pagamento escalonado) têm a mesma plataforma e
+     * colapsam para uma entrada só naturalmente (mesmo valor, `array_unique`
+     * dedupe); dois serviços diferentes na mesma plataforma também colapsam
+     * — é "plataformas distintas", não "uma por serviço".
+     *
+     * ⚠️ Ausência é visível, nunca silenciosa (mesma disciplina de
+     * `resolverOuPendente()`): serviço sem `plataforma` configurada, ou
+     * item de snapshot antigo sem a chave (`?? null`, tolerado sem
+     * exceção), marca `plataformas` em `$camposPendentes` (uma vez só,
+     * mesmo com vários itens ausentes — `array_unique` no fim de
+     * `montarDados()` já cuida disso) e a própria ausência entra como
+     * `A DEFINIR` na concatenação — nunca fica de fora silenciosamente
+     * quando outras plataformas existem.
+     *
+     * @param  array<int, array{plataforma?: ?string}>  $snapshot
+     */
+    private function resolverPlataformas(array $snapshot, array &$camposPendentes): string
+    {
+        $plataformas = [];
+        $temAusente  = false;
+
+        foreach ($snapshot as $item) {
+            $valor = $item['plataforma'] ?? null;
+
+            if (!is_string($valor) || $valor === '') {
+                $temAusente = true;
+
+                continue;
+            }
+
+            $plataformas[] = $valor;
+        }
+
+        $distintas = array_values(array_unique($plataformas));
+
+        if ($temAusente) {
+            $camposPendentes[] = 'plataformas';
+
+            // A ausência entra como mais uma entrada distinta — visível na
+            // concatenação, nunca omitida silenciosamente quando outras
+            // plataformas do mesmo contrato existem.
+            $distintas[] = self::PLACEHOLDER;
+            $distintas   = array_values(array_unique($distintas));
+        }
+
+        if ($distintas === []) {
+            return self::PLACEHOLDER;
+        }
+
+        if (count($distintas) === 1) {
+            return $distintas[0];
+        }
+
+        $ultima = array_pop($distintas);
+
+        return implode(', ', $distintas) . ' e ' . $ultima;
     }
 
     /**

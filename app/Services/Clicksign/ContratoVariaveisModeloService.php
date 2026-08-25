@@ -124,6 +124,12 @@ class ContratoVariaveisModeloService
             'estado'                => fn (array $d) => $d['empresa']['estado'],
             'cep'                   => fn (array $d) => $d['empresa']['cep'],
             'servico_contratado'    => fn (array $d, self $self) => $self->concatenarServicos($d['servicos']),
+            // Quick 260825-fn0 (Tarefa 3) — {{plataformas}} do modelo v5
+            // (substituiu as 11 ocorrências fixas de "Mercado Livre e
+            // Shopee"). Puro por construção (T-126-40): só LÊ a chave já
+            // resolvida por `ContratoPdfService::montarDados()` (concatenação
+            // + placeholder de ausência), não decide nada aqui.
+            'plataformas'           => fn (array $d) => $d['plataformas'],
             'valor_mensal'          => fn (array $d) => $d['totais']['valor_mensal_formatado'],
             'vigencia_inicio'       => fn (array $d) => $d['vigencia']['inicio'],
             'vigencia_fim'          => fn (array $d) => $d['vigencia']['fim'],

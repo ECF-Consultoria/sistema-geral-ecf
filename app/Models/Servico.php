@@ -43,6 +43,11 @@ class Servico extends Model
         // manuscrita posicionada; sem `fillable` o mass assignment da tela
         // administrativa falharia em silêncio.
         'clicksign_assinatura_posicionada',
+        // Quick 260825-fn0 (Tarefa 1) — plataforma (Mercado Livre / Shopee)
+        // que este serviço cobre; alimenta `{{plataformas}}` do contrato
+        // (D-04, congelada no snapshot na criação). Sem `fillable` o mass
+        // assignment da tela administrativa falharia em silêncio.
+        'plataforma',
     ];
 
     protected $casts = [
@@ -149,7 +154,9 @@ class Servico extends Model
             // Quick 260824-ot1 (Tarefa 1) — ligar/desligar a assinatura
             // posicionada é auditável pela mesma razão de
             // clicksign_template_id: decide o que o cliente assina.
-            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor', 'clicksign_template_id', 'exige_contrato', 'clicksign_assinatura_posicionada'])
+            // Quick 260825-fn0 (Tarefa 1) — mudar a plataforma é auditável:
+            // decide o que o contrato assinado diz que a ECF vai gerenciar.
+            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor', 'clicksign_template_id', 'exige_contrato', 'clicksign_assinatura_posicionada', 'plataforma'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match ($eventName) {
