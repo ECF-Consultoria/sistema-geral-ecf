@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { IMaskInput } from 'react-imask';
-import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
+import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, RotateCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
 import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO, MONTAGEM_TRAVADA_AVISO } from '@/lib/contratoStatus';
 
@@ -195,6 +195,28 @@ export default function ContratoDetalhe({
                     window.open(painel_clicksign_url, '_blank', 'noopener');
                 }
             },
+        });
+    }
+
+    // ─── Quick 260825-dap — "Refazer contrato": cancela o envelope atual na
+    // Clicksign e gera um novo com os dados que estão no cadastro AGORA.
+    // Resolve dado errado (e-mail, razão social, endereço, valor) sem
+    // precisar apagar a empresa do banco.
+    const refazerForm = useForm({ motivo: '' });
+    const [refazerContratoId, setRefazerContratoId] = useState(null);
+
+    function abrirRefazer(contratoId) {
+        refazerForm.reset();
+        refazerForm.clearErrors();
+        setAjustarContratoId(null);
+        setRefazerContratoId(contratoId);
+    }
+
+    function confirmarRefazer(e) {
+        e.preventDefault();
+        refazerForm.post(route('admin.contratos.refazer', refazerContratoId), {
+            preserveScroll: true,
+            onSuccess: () => setRefazerContratoId(null),
         });
     }
 
@@ -647,6 +669,12 @@ export default function ContratoDetalhe({
                                         const podeAgir = c.status === 'aguardando_assinaturas';
                                         const podeCancelar = (c.status === 'rascunho' || c.status === 'aguardando_assinaturas')
                                             && !c.cancelamento_solicitado_em;
+                                        // Quick 260825-dap — mesmos estados que o backend aceita em
+                                        // refazer() (STATUS_EM_ANDAMENTO + erro). Contrato assinado
+                                        // NUNCA entra aqui — documento jurídico não se refaz.
+                                        const podeRefazer = c.status === 'rascunho'
+                                            || c.status === 'aguardando_assinaturas'
+                                            || c.status === 'erro';
                                         const signatariosPendentes = podeAgir
                                             ? (c.signatarios || []).filter((s) => s.situacao === 'pendente')
                                             : [];
@@ -723,6 +751,20 @@ export default function ContratoDetalhe({
                                                                 >
                                                                     <RefreshCcw size={11} />
                                                                     {gerarForm.processing ? 'Gerando…' : 'Tentar novamente'}
+                                                                </button>
+                                                            )}
+                                                            {/* Quick 260825-dap — "Refazer contrato": corrige dado
+                                                                errado (e-mail, razão social, endereço, valor) sem
+                                                                precisar apagar a empresa do banco. Nunca aparece
+                                                                para contrato assinado (documento jurídico). */}
+                                                            {podeRefazer && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => abrirRefazer(c.id)}
+                                                                    className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-ecf-yellow/70 hover:text-ecf-yellow hover:bg-ecf-yellow/[0.08] text-[12px] transition-colors"
+                                                                >
+                                                                    <RotateCcw size={11} />
+                                                                    Refazer contrato
                                                                 </button>
                                                             )}
                                                             {/* D-10 — sempre disponível quando ainda não há liberação
@@ -973,6 +1015,47 @@ export default function ContratoDetalhe({
                                 {cancelarForm.processing
                                     ? 'Registrando…'
                                     : (painel_clicksign_url ? 'Registrar e ir para a Clicksign' : 'Registrar cancelamento')}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Quick 260825-dap — Refazer contrato: cancela o envelope atual na
+                Clicksign e cria um novo com os dados que estão no cadastro AGORA. */}
+            <Dialog open={refazerContratoId !== null} onOpenChange={(v) => { if (!v) setRefazerContratoId(null); }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Refazer este contrato?</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={confirmarRefazer} className="space-y-3">
+                        <p className="text-[13px] text-white/60">
+                            Isto cancela o contrato atual na Clicksign e cria um novo com os dados que estão
+                            no cadastro agora. Se o cliente já recebeu o contrato anterior, o link dele deixa
+                            de funcionar.
+                        </p>
+                        <div className="space-y-1.5">
+                            <Label>Motivo</Label>
+                            <Textarea
+                                rows={4}
+                                placeholder="Explique o que estava errado e por que este contrato está sendo refeito."
+                                value={refazerForm.data.motivo}
+                                onChange={(e) => refazerForm.setData('motivo', e.target.value)}
+                            />
+                            {refazerForm.errors.motivo && (
+                                <p className="text-red-400 text-[11px]">{refazerForm.errors.motivo}</p>
+                            )}
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setRefazerContratoId(null)}>
+                                Voltar
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={refazerForm.processing}
+                                className="bg-ecf-yellow text-black hover:bg-ecf-yellow/90"
+                            >
+                                {refazerForm.processing ? 'Refazendo…' : 'Refazer contrato'}
                             </Button>
                         </DialogFooter>
                     </form>
