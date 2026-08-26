@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { UserPlus, KeyRound, Users, MessagesSquare, MapPin, ClipboardList, Hourglass } from 'lucide-react';
+import { UserPlus, KeyRound, Users, MessagesSquare, MapPin, ClipboardList, Hourglass, Target, CalendarClock } from 'lucide-react';
 import HeroKpi from './HeroKpi';
 import { montarCorDoPolo } from './poloCores';
+import { ehReservaProximoMes, somaMetaDoMes, competenciaDe } from '@/lib/polosEntrantes';
 
 /**
  * EntrantesM0Panel — aba "Entrantes (M0)" da lente Metas. Espelha o funil de entrada da
@@ -15,6 +16,11 @@ import { montarCorDoPolo } from './poloCores';
  *
  * O checklist dos 3 itens (Cust ID + Acesso + Grupo WhatsApp) NÃO define mais aceite/entrante:
  * virou só "prontidão de setup" dos M0 (informativo).
+ *
+ * Progresso × meta: o denominador é a META DO MÊS CORRENTE da aba Metas (soma dos polos em
+ * `polos_meta_entrada`), então muda sem deploy. O numerador segue sendo o ACUMULADO de sellers
+ * em fase M0 — decisão do usuário (2026-08-26): as duas bases têm recortes diferentes de
+ * propósito. Sem meta cadastrada para o mês, o card volta a mostrar só o número.
  */
 
 const CARD = 'relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/[0.10] before:to-transparent';
@@ -25,6 +31,10 @@ const MESES_BR = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'J
 // ── Fases do funil de entrada (strings EXATAS do banco / planilha) ──────────────
 const ehAceite = (e) => e.fase === 'Aceite no Projeto';   // aceitou, ainda entrando
 const ehM0     = (e) => e.fase === 'M0';                   // entrou (Entrante)
+
+// Reserva p/ o mês que vem — coluna "Status entrada" da planilha ("Reserva - entrada prox mês").
+// A regra mora em lib/polosEntrantes.js (texto livre vindo do sync; travada em teste).
+const ehReserva = ehReservaProximoMes;
 
 // Os 3 itens de setup — agora só medem "prontidão dos M0", não definem aceite.
 const temCust   = (e) => !!(e.cust_id && String(e.cust_id).trim());
@@ -51,8 +61,11 @@ function BarraTem({ label, icone: Ico, n, total, cor }) {
     );
 }
 
-export default function EntrantesM0Panel({ empresas = [], regioes = [] }) {
-    const mesLabel = useMemo(() => { const d = new Date(); return `${MESES_BR[d.getMonth()]} / ${d.getFullYear()}`; }, []);
+export default function EntrantesM0Panel({ empresas = [], regioes = [], metasEntrada = [] }) {
+    const hoje     = useMemo(() => new Date(), []);
+    const mesNome  = MESES_BR[hoje.getMonth()];
+    const mesLabel = `${mesNome} / ${hoje.getFullYear()}`;
+    const mesAtual = competenciaDe(hoje); // 'YYYY-MM' — mesma chave de polos_meta_entrada.mes
 
     // ── Funil de entrada = Aceite no Projeto ∪ M0 ──
     const aceites   = useMemo(() => empresas.filter(ehAceite), [empresas]);
@@ -62,23 +75,37 @@ export default function EntrantesM0Panel({ empresas = [], regioes = [] }) {
     const coorte     = nAceites + nEntrantes;
     const pctEntrada = pct(nEntrantes, coorte);   // dos que estão no funil, quantos já entraram
 
+    // ── Meta do mês (aba Metas → Entrantes por região; soma dos polos) ──
+    const metaMes  = useMemo(() => somaMetaDoMes(metasEntrada, mesAtual), [metasEntrada, mesAtual]);
+    const temMeta  = metaMes > 0;
+    const pctMeta  = pct(nEntrantes, metaMes);
+    const faltam   = Math.max(0, metaMes - nEntrantes);
+
+    // ── Reserva p/ o próximo mês (coluna "Status entrada" da planilha) ──
+    const nReserva = useMemo(() => empresas.filter(ehReserva).length, [empresas]);
+
     // Prontidão de setup dos M0 (informativo — não é mais a régua de aceite)
     const comCust   = useMemo(() => entrantes.filter(temCust).length, [entrantes]);
     const comAcesso = useMemo(() => entrantes.filter(temAcesso).length, [entrantes]);
     const comGrupo  = useMemo(() => entrantes.filter(temGrupo).length, [entrantes]);
 
     // ── Por polo (aceites × entrantes) ──
+    // Reservas entram na composição do universo: um polo que só tem reserva ainda precisa
+    // aparecer, senão a soma dos cards não fecha com o total do KPI de reserva.
     const polosOrdenados = useMemo(() => {
-        const presentes = [...new Set([...aceites, ...entrantes].map((e) => e.polo).filter(Boolean))];
+        const presentes = [...new Set(
+            [...aceites, ...entrantes, ...empresas.filter(ehReserva)].map((e) => e.polo).filter(Boolean),
+        )];
         const ordem = [...new Set([...regioes, ...presentes])];
         return ordem.filter((p) => presentes.includes(p));
-    }, [aceites, entrantes, regioes]);
+    }, [aceites, entrantes, empresas, regioes]);
     const corDoPolo = useMemo(() => montarCorDoPolo(polosOrdenados.map((p) => ({ polo: p }))), [polosOrdenados]);
     const porPolo = useMemo(() => polosOrdenados.map((polo) => ({
         polo,
         ace: aceites.filter((e) => e.polo === polo).length,
         ent: entrantes.filter((e) => e.polo === polo).length,
-    })), [aceites, entrantes, polosOrdenados]);
+        res: empresas.filter((e) => e.polo === polo && ehReserva(e)).length,
+    })), [aceites, entrantes, empresas, polosOrdenados]);
 
     return (
         <div className="space-y-4">
@@ -97,10 +124,37 @@ export default function EntrantesM0Panel({ empresas = [], regioes = [] }) {
                 <HeroKpi
                     titulo={`Entrantes (M0) — ${mesLabel}`}
                     icone={UserPlus}
-                    valor={String(nEntrantes)}
-                    gauge={coorte > 0 ? pctEntrada : null}
+                    // Com meta cadastrada o número herói vira a fração "realizado/meta".
+                    valor={temMeta ? `${nEntrantes}/${metaMes}` : String(nEntrantes)}
+                    // O arco passa a medir o avanço na meta (capado em 100% quando estoura).
+                    gauge={temMeta ? Math.min(100, pctMeta) : (coorte > 0 ? pctEntrada : null)}
                     glow="yellow"
                     sublabel={<>Sellers que <b className="text-white/70">entraram de fato</b> (fase M0). {pctEntrada}% do funil de entrada.</>}
+                    extra={temMeta ? (
+                        <div>
+                            <div className="mb-1 flex items-center justify-between gap-2 text-[11px]">
+                                <span className="flex items-center gap-1.5 text-white/55">
+                                    <Target size={12} className="text-white/35" /> Meta de {mesNome}: <b className="text-white/80">{metaMes}</b>
+                                </span>
+                                <span className="tabular-nums text-white/45">
+                                    {faltam > 0
+                                        ? <>faltam <b className="text-ecf-yellow">{faltam}</b></>
+                                        : <b className="text-emerald-300">meta batida</b>}
+                                    {' · '}<b className="text-white/80">{pctMeta}%</b>
+                                </span>
+                            </div>
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                                <div
+                                    className="h-full rounded-full transition-all duration-500"
+                                    style={{ width: `${Math.min(100, pctMeta)}%`, background: faltam > 0 ? HEX.yellow : HEX.green }}
+                                />
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-[11px] text-white/35">
+                            Meta de {mesNome} não cadastrada — defina na aba <b className="text-white/55">Visão geral → Meta de entrantes</b>.
+                        </p>
+                    )}
                 />
                 <HeroKpi
                     titulo="Aceite no Projeto"
@@ -108,6 +162,19 @@ export default function EntrantesM0Panel({ empresas = [], regioes = [] }) {
                     valor={String(nAceites)}
                     glow="none"
                     sublabel={<>Aceitaram, ainda <b className="text-fuchsia-300">entrando</b> (pré-M0). Viram Entrante ao concluir a entrada.</>}
+                    extra={(
+                        <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-1.5 text-[11px] text-white/55">
+                                    <CalendarClock size={13} className="text-fuchsia-300/70" /> Reserva — entrada próx. mês
+                                </span>
+                                <span className="font-display text-lg font-extrabold leading-none tabular-nums text-fuchsia-300">{nReserva}</span>
+                            </div>
+                            <p className="mt-1 text-[10px] text-white/30">
+                                Coluna <b className="text-white/45">Status entrada</b> = "Reserva - entrada prox mês".
+                            </p>
+                        </div>
+                    )}
                 />
             </div>
 
@@ -116,7 +183,7 @@ export default function EntrantesM0Panel({ empresas = [], regioes = [] }) {
                 <div className="mb-3 flex items-center gap-1.5">
                     <MapPin size={15} className="text-ecf-yellow" />
                     <h3 className="text-sm font-semibold text-white/80">Funil de entrada por polo</h3>
-                    <span className="ml-auto text-[10px] uppercase tracking-wider text-white/35">entrantes (M0) · aceites</span>
+                    <span className="ml-auto text-[10px] uppercase tracking-wider text-white/35">entrantes (M0) · aceites · reserva</span>
                 </div>
                 {porPolo.length === 0 ? (
                     <p className="py-6 text-center text-[12px] text-white/30">Nenhum seller no funil de entrada.</p>
@@ -140,7 +207,10 @@ export default function EntrantesM0Panel({ empresas = [], regioes = [] }) {
                                     <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
                                         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pc}%`, background: cor }} />
                                     </div>
-                                    <p className="mt-1.5 text-[11px] text-white/40">Aceites: <b className="text-fuchsia-300/90">{p.ace}</b></p>
+                                    <p className="mt-1.5 text-[11px] text-white/40">
+                                        Aceites: <b className="text-fuchsia-300/90">{p.ace}</b>
+                                        {p.res > 0 && <> · Reserva: <b className="text-fuchsia-300/90">{p.res}</b></>}
+                                    </p>
                                 </div>
                             );
                         })}

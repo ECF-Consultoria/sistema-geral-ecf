@@ -1087,7 +1087,11 @@ export default function PolosPainel({
                                         </div>
                                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                                             <div className={CARD}>
-                                                <h3 className="text-white/70 text-sm font-semibold mb-3">Ranking de % da meta</h3>
+                                                <div className="mb-3">
+                                                    <h3 className="text-white/70 text-sm font-semibold">Ranking de % da meta</h3>
+                                                    {/* A barra é a Distribuição de status recortada por região — somando os polos dá o donut acima. */}
+                                                    <p className="text-white/35 text-[11px]">Distribuição de status por região · ordenado por % no alvo</p>
+                                                </div>
                                                 <RankingProgresso polos={polosCk} corDoPolo={corDoPolo} onPolo={(p) => (p?.polo ? af.setOnly('polo', p.polo) : af.clearColumn('polo'))} fechado={fechado} />
                                             </div>
                                             <div className={CARD}>
@@ -1205,7 +1209,7 @@ export default function PolosPainel({
                         </div>
 
                         {metaView === 'entrantes' ? (
-                            <EntrantesM0Panel empresas={empresas} regioes={opcoes.polo ?? []} />
+                            <EntrantesM0Panel empresas={empresas} regioes={opcoes.polo ?? []} metasEntrada={metas} />
                         ) : (
                             <MetasPanel
                                 empresas={empresas}

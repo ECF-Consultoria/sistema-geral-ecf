@@ -2,14 +2,21 @@ import { useEffect, useMemo, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { AlertTriangle, ShieldAlert, MegaphoneOff } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact } from '@/lib/utils';
-import { STATUS_META } from './statusMeta';
+import { STATUS_META, STATUS_ORDEM, distribuirStatus } from './statusMeta';
 import StatusBadge from './StatusBadge';
 
 /**
- * RankingProgresso — ranking denso de "% da meta" por polo (estilo barras de
- * progresso). Substitui a grade de DonutCard/CityGauge: lê mais rápido e ordena
- * por desempenho. Cada linha abre o PoloDrawer (onPolo). A cor da barra é a do
- * STATUS (saúde vs meta), não a do polo — o ponto à esquerda carrega a cor do polo.
+ * RankingProgresso — ranking denso por polo. Cada linha abre o PoloDrawer (onPolo).
+ *
+ * A RÉGUA MUDOU EM 2026-08-26 (pedido do usuário): a barra deixou de ser
+ * faturamento ÷ meta do polo e passou a ser a DISTRIBUIÇÃO DE STATUS daquela região —
+ * o mesmo recorte do donut "Distribuição de status", quebrado por polo. O número da
+ * direita é o "% no alvo" (fatia verde), e somar as contagens de todos os polos devolve
+ * o donut inteiro.
+ *
+ * Por que trocou: faturamento ÷ meta produzia percentuais de 5.668% (um polo com um único
+ * ativo M2 tem meta de R$ 1.000), o que tornava o ranking ilegível e incomparável entre
+ * polos de tamanhos diferentes. O faturamento não sumiu — desceu para a linha de apoio.
  *
  * O badge "Problema" e o contador de alertas (⚠) abrem um popover com AS EMPRESAS
  * do polo que estão com problema (nome + descrição) e as com ADS desligado.
@@ -73,17 +80,31 @@ export default function RankingProgresso({ polos = [], corDoPolo = {}, onPolo, f
         return () => cancelAnimationFrame(id);
     }, []);
 
-    const ord = useMemo(
-        () => [...polos].sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0)),
-        [polos],
-    );
+    // Distribuição de status por polo + ordenação por "% no alvo" (empate: polo maior primeiro,
+    // senão um polo de 1 ativo no alvo empataria em 100% com um de 40).
+    const ord = useMemo(() => polos
+        .map((p) => ({ ...p, dist: distribuirStatus(p.empresas) }))
+        .sort((a, b) => (b.dist.pctNoAlvo - a.dist.pctNoAlvo) || (b.dist.total - a.dist.total)),
+        [polos]);
+
+    // Totais do rodapé — fecham com o donut quando nenhum polo está filtrado fora.
+    const geral = useMemo(() => {
+        const soma = { 'Sim': 0, 'Em progresso': 0, 'Não': 0, 'Problema': 0 };
+        let total = 0;
+        ord.forEach((p) => {
+            STATUS_ORDEM.forEach((k) => { soma[k] += p.dist.contagem[k]; });
+            total += p.dist.total;
+        });
+        return { soma, total, pctNoAlvo: total > 0 ? Math.round((soma['Sim'] / total) * 100) : 0 };
+    }, [ord]);
 
     return (
+        <div className="space-y-2">
         <div className={cn('space-y-0.5', ord.length > 12 && 'max-h-[560px] overflow-y-auto pr-1')}>
             {ord.map((p) => {
-                const cor   = STATUS_META[p.status]?.cor ?? '#94a3b8';
-                const pct   = Number(p.pct) || 0;
-                const width = mounted ? Math.min(pct, 100) : 0;
+                const { contagem, total, noAlvo, pctNoAlvo } = p.dist;
+                const cor   = STATUS_META['Sim'].cor;             // o número é a fatia "No alvo"
+                const pctFat = Number(p.pct) || 0;                // faturamento ÷ meta (linha de apoio)
                 const problemas = fechado ? [] : (p.empresas ?? []).filter((e) => e.problema === true);
                 const adsOff    = fechado ? [] : (p.empresas ?? []).filter((e) => e.ads_desligado === true);
                 const alertas   = fechado ? 0 : problemas.length + adsOff.length;
@@ -96,7 +117,11 @@ export default function RankingProgresso({ polos = [], corDoPolo = {}, onPolo, f
                         tabIndex={0}
                         onClick={() => onPolo?.(p)}
                         onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onPolo?.(p); } }}
-                        title={`${p.polo} — ${formatCurrency(p.faturamento)} / ${formatCurrency(p.meta)} · ${pct.toFixed(0)}%`}
+                        title={
+                            `${p.polo} — ${noAlvo} de ${total} no alvo (${pctNoAlvo}%)\n`
+                            + STATUS_ORDEM.map((k) => `${STATUS_META[k].label}: ${contagem[k]}`).join(' · ')
+                            + `\nFaturamento: ${formatCurrency(p.faturamento)} / ${formatCurrency(p.meta)} (${pctFat.toFixed(0)}%)`
+                        }
                         className="group flex w-full cursor-pointer flex-col gap-1.5 rounded-xl px-3 py-2 text-left transition hover:bg-white/[0.03] focus:outline-none focus:ring-2 focus:ring-ecf-yellow/40"
                     >
                         {/* Linha 1: identidade + alertas + status + % (nome encolhe p/ nunca cortar o badge) */}
@@ -134,26 +159,61 @@ export default function RankingProgresso({ polos = [], corDoPolo = {}, onPolo, f
                             )}
 
                             <span className="w-10 shrink-0 text-right text-sm font-semibold tabular-nums" style={{ color: cor }}>
-                                {pct.toFixed(0)}%
+                                {pctNoAlvo}%
                             </span>
                         </div>
 
-                        {/* Linha 2: barra de progresso + faturado/meta (compacto, exato no hover) */}
+                        {/* Linha 2: barra 100% empilhada com a distribuição de status do polo
+                            (mesmas cores do donut) + "n/N no alvo". */}
                         <div className="flex w-full items-center gap-2 pl-[18px]">
-                            <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
-                                <div
-                                    className="h-full rounded-full transition-[width] duration-700 ease-out"
-                                    style={{ width: `${width}%`, background: `linear-gradient(90deg, ${cor}cc, ${cor})` }}
-                                />
-                                {pct > 100 && <span className="absolute right-0 top-0 h-full w-1 bg-white" />}
+                            <div className="relative flex h-2 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+                                {total > 0 && STATUS_ORDEM.map((k) => {
+                                    const n = contagem[k];
+                                    if (n === 0) return null;
+                                    const w = mounted ? (n / total) * 100 : 0;
+                                    return (
+                                        <span
+                                            key={k}
+                                            title={`${STATUS_META[k].label}: ${n} de ${total}`}
+                                            className="h-full transition-[width] duration-700 ease-out"
+                                            style={{ width: `${w}%`, background: STATUS_META[k].cor }}
+                                        />
+                                    );
+                                })}
                             </div>
                             <span className="shrink-0 text-[11px] tabular-nums text-white/55">
-                                {formatCurrencyCompact(p.faturamento)} <span className="text-white/25">/ {formatCurrencyCompact(p.meta)}</span>
+                                <b className="text-white/85">{noAlvo}</b><span className="text-white/25">/{total}</span> no alvo
                             </span>
+                        </div>
+
+                        {/* Linha 3: faturamento vs meta — deixou de ser a régua da barra, mas
+                            continua visível para não perder a leitura financeira do polo. */}
+                        <div className="flex w-full items-center gap-1.5 pl-[18px] text-[10px] tabular-nums text-white/30">
+                            <span>Faturamento: {formatCurrencyCompact(p.faturamento)} / {formatCurrencyCompact(p.meta)}</span>
+                            <span className="text-white/20">·</span>
+                            <span>{pctFat.toFixed(0)}% da meta</span>
                         </div>
                     </div>
                 );
             })}
+        </div>
+
+        {/* Rodapé: legenda + total consolidado. Fecha com o donut "Distribuição de status"
+            quando todos os polos estão visíveis (em Polos/Index os chips podem filtrar). */}
+        {geral.total > 0 && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-white/[0.06] px-3 pt-2 text-[10px] text-white/40">
+                {STATUS_ORDEM.map((k) => (
+                    <span key={k} className="inline-flex items-center gap-1">
+                        <span className="h-2 w-2 rounded-full" style={{ background: STATUS_META[k].cor }} />
+                        {STATUS_META[k].label}: <b className="tabular-nums text-white/65">{geral.soma[k]}</b>
+                    </span>
+                ))}
+                <span className="ml-auto tabular-nums">
+                    <b className="text-white/70">{geral.soma['Sim']}</b> de <b className="text-white/70">{geral.total}</b> ativos no alvo
+                    {' · '}<b style={{ color: STATUS_META['Sim'].cor }}>{geral.pctNoAlvo}%</b>
+                </span>
+            </div>
+        )}
         </div>
     );
 }

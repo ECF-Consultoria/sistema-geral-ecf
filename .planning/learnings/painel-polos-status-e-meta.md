@@ -96,3 +96,33 @@ export default function PolosPpaIndex(props) { return <PpaIndex {...props} />; }
 Motivo de existir a página delegante: o menu (`AppLayout.isActive`) casa o item ativo por
 **prefixo do nome do componente**. `Polos/Ppa/Index` não colide com o item PPA (`page: 'Ppa'`);
 reusar `Ppa/Index` direto deixaria os dois itens acesos ao mesmo tempo.
+
+## 5. "% da meta" do polo não é comparável entre polos (2026-08-26)
+
+`polo.pct` = `faturamento ÷ meta`, e **a meta do polo é a soma dos limiares dos seus ativos**
+(D-13: M2=1.000, M3=4.000, M4=8.000) — não um alvo fixo. Consequência que só aparece na tela:
+um polo com **um único ativo M2** tem meta de R$ 1.000, então qualquer faturamento real vira
+percentual absurdo. Em produção o "Ranking de % da meta" mostrava **Serra Gaúcha 5.668%**
+(R$ 57K ÷ R$ 1K) acima de Rio Preto 605% (R$ 1,14M ÷ R$ 189K) — o ranking premiava o polo
+menor. Não era bug de cálculo: é a régua fazendo o que foi desenhada para fazer.
+
+Por isso a barra do `RankingProgresso` passou a ser a **Distribuição de status recortada por
+região** (% de empresas no alvo, 0–100), com o faturamento rebaixado a linha de apoio.
+
+**O contrato que sustenta isso, e que não está escrito em lugar nenhum do código:**
+`agregarPorPolo()` e `distribuicaoStatus()` varrem a **mesma** lista de `$ativos`, chamam o
+**mesmo** `calcularStatus($this->desconsideraDaMeta($ativo), ...)`, e cada ativo cai em
+**exatamente um** polo (`localidade` do CSV, com fallback em `MlbEmpresa.polo`). É só por isso
+que somar `empresas[].status` de todos os polos reproduz o `statusDist` do donut. Se algum dia
+`agregarPorPolo()` passar a **descartar** ativo (ex.: exigir presença no CSV), o ranking para de
+fechar com o donut **sem erro nenhum** — `tests/js/polosRankingStatus.test.js` existe para travar
+essa invariante.
+
+Duas armadilhas de leitura que **sobrevivem** à mudança e não são regressão:
+
+- O `StatusBadge` da linha é `statusAgregado()` — o **pior** status do polo (§1). Um polo com
+  90% no alvo continua exibindo badge "Não" se uma única empresa estiver fora. É a régua
+  documentada, não inconsistência da tela nova.
+- Em `Polos/Index` os chips filtram polos, e o donut "independe do filtro de chips". Com chip
+  ativo o rodapé do ranking soma **o subconjunto visível**, não o donut. No Cockpit do
+  `Polos/Painel` os dois sempre batem (`polosCk` = todos os polos).

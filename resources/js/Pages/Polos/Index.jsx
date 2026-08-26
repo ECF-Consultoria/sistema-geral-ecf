@@ -296,6 +296,8 @@ export default function PolosIndex({
                             <div className="flex items-center justify-between mb-3">
                                 <p className="text-white/40 text-xs uppercase tracking-wider">
                                     % da meta por polo
+                                    {/* Barra = Distribuição de status recortada por região (mesmas cores do donut). */}
+                                    <span className="ml-2 normal-case tracking-normal text-white/25">· distribuição de status</span>
                                 </p>
                                 <span className="text-white/25 text-[10px]">clique p/ ver empresas</span>
                             </div>
