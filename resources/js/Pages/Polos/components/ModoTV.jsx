@@ -105,36 +105,68 @@ const RAIO_DONUT_TV = ['58%', '90%'];
 const GAP_LINHA = 10; // gap-y das grades de lista, em px (precisa casar com a classe)
 
 /**
- * Quantos itens cabem na grade SEM corte — medindo a caixa e a altura real de uma linha.
- * Sem isso, `slice(0, 18)` fixo clipa em silêncio: em 1366×768 a última fileira de polos
- * era cortada por 66px e ninguém via que faltava polo na parede (medido com puppeteer).
+ * Escalas da linha de lista. A parede tem altura fixa e a lista tem tamanho VARIÁVEL:
+ * o painel real tem 5 polos, não 18. Com escala única, 5 linhas deixavam metade da tela
+ * vazia ("espaçamento horrível"); com escala adaptativa, poucas linhas ficam grandes e
+ * preenchem a área — mesma informação, sem buraco.
  */
-function useCabemNaGrade(fallback = 6) {
-    const [n, setN] = useState(fallback);
+const ESCALA_LINHA = {
+    md: { nome: 'clamp(1.1rem, 2vw, 2.4rem)',   num: 'clamp(1.4rem, 2.7vw, 3.3rem)', apoio: 'clamp(0.85rem, 1.3vw, 1.6rem)', barra: 'clamp(8px, 0.9vw, 16px)',  altura: 82 },
+    sm: { nome: FT.barraNome,                   num: FT.barraNum,                    apoio: FT.rotulo,                       barra: 'clamp(6px, 0.65vw, 12px)', altura: 62 },
+    xs: { nome: 'clamp(0.9rem, 1.4vw, 1.7rem)', num: 'clamp(1.05rem, 1.8vw, 2.1rem)', apoio: 'clamp(0.7rem, 1vw, 1.2rem)',   barra: 'clamp(5px, 0.5vw, 9px)',   altura: 48 },
+    xxs:{ nome: 'clamp(0.8rem, 1.15vw, 1.4rem)', num: 'clamp(0.9rem, 1.45vw, 1.75rem)', apoio: 'clamp(0.65rem, 0.9vw, 1.05rem)', barra: 'clamp(4px, 0.4vw, 7px)', altura: 38 },
+};
+// Teto em `md` de propósito: na TV o espaçamento com `sm` foi aprovado — o adaptativo
+// existe para DESCER e caber todo mundo, não para inflar a linha quando sobra espaço.
+const ORDEM_ESCALA = ['md', 'sm', 'xs', 'xxs'];
+
+/**
+ * Decide, medindo a caixa: quantos itens cabem e QUÃO GRANDE cada um pode ser.
+ * Sem a medição, `slice` fixo clipava em silêncio (em 1366×768 sumia uma fileira inteira
+ * de polos dentro do overflow-hidden) e a escala fixa deixava o vão gigante da produção.
+ */
+function useGradeAdaptativa(total, fallback = 6) {
+    const [estado, setEstado] = useState({ n: fallback, escala: 'sm' });
     const observador = useRef(null);
-    // Callback ref pelo mesmo motivo do useAlturaMedida: a grade troca de nó quando a
-    // tela muda, e um effect de deps vazias observaria o nó errado (ou nenhum).
+    const elemento = useRef(null);
+    const recalcular = useCallback(() => {
+        const el = elemento.current;
+        if (!el) return;
+        const h = el.clientHeight;
+        if (h < 40) return;
+        // Colunas REAIS do grid ("612px 612px" → 2): replicar o breakpoint em JS erra por
+        // causa da barra de rolagem e apodrece calado se a classe mudar.
+        const cols = Math.max(1, getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length);
+        const itens = Math.max(1, total);
+        const linhasNec = Math.ceil(itens / cols);
+        const porLinha = (h - (linhasNec - 1) * GAP_LINHA) / linhasNec;
+        // Maior escala em que TODOS cabem. O piso (xxs) só é ultrapassado em lista enorme;
+        // aí, e só aí, corta — e o chamador avisa "+N" em vez de sumir com o polo em silêncio.
+        const escala = ORDEM_ESCALA.find((k) => porLinha >= ESCALA_LINHA[k].altura) ?? 'xxs';
+        const piso = ESCALA_LINHA.xxs.altura + GAP_LINHA;
+        const linhasMax = Math.max(1, Math.floor((h + GAP_LINHA) / piso));
+        const n = Math.min(itens, linhasMax * cols);
+        setEstado((atual) => (atual.n === n && atual.escala === escala ? atual : { n, escala }));
+    }, [total]);
+
+    // Callback ref: a grade troca de nó quando a tela muda — effect de deps vazias
+    // observaria o nó errado (ou nenhum) e a medição nunca aconteceria.
     const ref = useCallback((el) => {
         observador.current?.disconnect();
         observador.current = null;
+        elemento.current = el;
         if (!el) return;
-        const recalcular = () => {
-            const passo = (el.firstElementChild?.offsetHeight ?? 60) + GAP_LINHA;
-            // Lê as colunas REAIS do grid ("612px 612px" → 2). Replicar o breakpoint em JS
-            // (window.innerWidth >= 1280) erra por causa da barra de rolagem, e apodrece
-            // calado se a classe mudar de xl: para lg:.
-            const cols = Math.max(1, getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length);
-            const linhas = Math.max(1, Math.floor((el.clientHeight + GAP_LINHA) / passo));
-            const novo = linhas * cols;
-            setN((atual) => (atual === novo ? atual : novo));
-        };
         recalcular();
         if (typeof ResizeObserver === 'undefined') return;
-        const ro = new ResizeObserver(recalcular);
+        const ro = new ResizeObserver(() => recalcular());
         ro.observe(el);
         observador.current = ro;
-    }, []);
-    return [ref, n];
+    }, [recalcular]);
+
+    // O total muda sozinho (recarga automática a cada 5 min) sem o nó mudar.
+    useEffect(() => { recalcular(); }, [recalcular]);
+
+    return [ref, estado.n, ESCALA_LINHA[estado.escala]];
 }
 
 // ── Peças da parede ────────────────────────────────────────────────────────────
@@ -181,19 +213,20 @@ function Kpi({ rotulo, valor, cor = '#ffffff', apoio = null, sec = false }) {
 }
 
 // Linha de polo: nome + número grande + números de apoio + barra do percentual.
-function LinhaPolo({ nome, valor, apoio = null, pct: p, cor = HEX.yellow }) {
+// `escala` vem da grade (useGradeAdaptativa): com poucas linhas, a linha cresce.
+function LinhaPolo({ nome, valor, apoio = null, pct: p, cor = HEX.yellow, escala = ESCALA_LINHA.sm }) {
     return (
-        <div className="min-w-0">
+        <div className="flex min-w-0 flex-col justify-center">
             <div className="flex items-baseline justify-between gap-3">
                 {/* leading-[1.1], não leading-none: com line-height 1 o truncate corta o
                     descender de "ç"/"g" ("Bragança") por 4-6px. */}
-                <span className="truncate font-semibold leading-[1.1] text-white" style={{ fontSize: FT.barraNome }} title={nome}>{nome}</span>
+                <span className="truncate font-semibold leading-[1.1] text-white" style={{ fontSize: escala.nome }} title={nome}>{nome}</span>
                 <span className="shrink-0 whitespace-nowrap leading-none">
-                    <b className="font-display font-extrabold tabular-nums" style={{ fontSize: FT.barraNum, color: cor }}>{valor}</b>
-                    {apoio && <span className="ml-[8px] tabular-nums text-white/35" style={{ fontSize: FT.rotulo }}>{apoio}</span>}
+                    <b className="font-display font-extrabold tabular-nums" style={{ fontSize: escala.num, color: cor }}>{valor}</b>
+                    {apoio && <span className="ml-[8px] tabular-nums text-white/35" style={{ fontSize: escala.apoio }}>{apoio}</span>}
                 </span>
             </div>
-            <div className="mt-[4px] h-[clamp(6px,0.65vw,12px)] w-full overflow-hidden rounded-full bg-white/[0.08]">
+            <div className="mt-[6px] w-full overflow-hidden rounded-full bg-white/[0.08]" style={{ height: escala.barra }}>
                 <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, p))}%`, background: cor }} />
             </div>
         </div>
@@ -319,8 +352,8 @@ export default function ModoTV({
     // Altura real da caixa do donut (canvas precisa de px resolvido) e quantos itens
     // cabem em cada lista sem clipar.
     const [refDonut, alturaDonut] = useAlturaMedida();
-    const [refPolos, cabemPolos]  = useCabemNaGrade(10);
-    const [refRanking, cabemRank] = useCabemNaGrade(8);
+    const [refPolos, cabemPolos, escalaPolos]  = useGradeAdaptativa(porPolo.length, 10);
+    const [refRanking, cabemRank, escalaRank]   = useGradeAdaptativa(ranking.length, 8);
 
     const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const horaAtualizacao = atualizadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -402,12 +435,14 @@ export default function ModoTV({
 
                         {/* Faixa B — funil de entrada por polo (o ganho de densidade mora aqui) */}
                         <div className="flex min-h-0 flex-col">
-                            <Titulo extra="entrantes · aceites · reserva">Funil de entrada por polo</Titulo>
+                            <Titulo extra={porPolo.length > cabemPolos
+                                ? `+${porPolo.length - cabemPolos} fora da tela · entrantes · aceites · reserva`
+                                : 'entrantes · aceites · reserva'}>Funil de entrada por polo</Titulo>
                             <div ref={refPolos} className="grid min-h-0 flex-1 grid-cols-1 content-start gap-x-[24px] gap-y-[10px] overflow-hidden xl:grid-cols-2">
                                 {porPolo.slice(0, cabemPolos).map((p) => (
                                     <LinhaPolo key={p.polo} nome={p.polo} valor={fmtInt(p.ent)}
                                                apoio={`${p.ace} ac${p.res > 0 ? ` · ${p.res} res` : ''} · ${p.pc}%`}
-                                               pct={p.pc} cor={corDoPolo[p.polo] ?? HEX.yellow} />
+                                               pct={p.pc} cor={corDoPolo[p.polo] ?? HEX.yellow} escala={escalaPolos} />
                                 ))}
                                 {porPolo.length === 0 && (
                                     <p className="text-white/35" style={{ fontSize: FT.barraNome }}>Nenhum seller no funil de entrada.</p>
@@ -427,7 +462,7 @@ export default function ModoTV({
                                     {setup.map((s) => (
                                         <LinhaPolo key={s.rotulo} nome={s.rotulo} valor={`${s.n}/${entrantes.length}`}
                                                    apoio={`${pct(s.n, entrantes.length)}%`}
-                                                   pct={pct(s.n, entrantes.length)} cor={s.cor} />
+                                                   pct={pct(s.n, entrantes.length)} cor={s.cor} escala={ESCALA_LINHA.md} />
                                     ))}
                                 </div>
                             )}
@@ -447,10 +482,10 @@ export default function ModoTV({
                             />
                             <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-4">
                                 <Kpi rotulo="Ativas" valor={fmtInt(totalAtiv)} apoio="M2–M4" />
-                                <Kpi rotulo="Média/empresa" valor={formatCurrencyCompact(totalAtiv > 0 ? totalFat / totalAtiv : 0)} />
-                                <Kpi rotulo="ADS investido" valor={formatCurrencyCompact(totalAds)} cor={HEX.sky}
+                                <Kpi rotulo="Média" valor={formatCurrencyCompact(totalAtiv > 0 ? totalFat / totalAtiv : 0)} apoio="por empresa" />
+                                <Kpi rotulo="ADS gasto" valor={formatCurrencyCompact(totalAds)} cor={HEX.sky}
                                      apoio={tetoAds > 0 ? `${pct(totalAds, tetoAds)}% do teto` : null} />
-                                <Kpi rotulo="ADS disponível" valor={formatCurrencyCompact(Math.max(0, tetoAds - totalAds))} apoio="teto × ativas" />
+                                <Kpi rotulo="ADS saldo" valor={formatCurrencyCompact(Math.max(0, tetoAds - totalAds))} apoio="teto × ativas" />
                             </div>
                         </div>
 
@@ -497,7 +532,9 @@ export default function ModoTV({
                             </div>
 
                             <div className="flex min-h-0 flex-col">
-                                <Titulo extra="% da meta · faturamento">Ranking de polos</Titulo>
+                                <Titulo extra={ranking.length > cabemRank
+                                    ? `+${ranking.length - cabemRank} fora da tela · % da meta`
+                                    : '% da meta · faturamento'}>Ranking de polos</Titulo>
                                 {/* content-evenly, não content-start: com 10-12 polos o ranking é mais
                                     baixo que o donut ao lado, e o vão sobrava todo no rodapé. */}
                                 <div ref={refRanking} className="grid min-h-0 flex-1 grid-cols-1 content-evenly gap-x-[28px] gap-y-[10px] overflow-hidden xl:grid-cols-2">
@@ -505,7 +542,8 @@ export default function ModoTV({
                                         <LinhaPolo key={p.polo} nome={p.polo} valor={`${Math.round(Number(p.pct) || 0)}%`}
                                                    apoio={formatCurrencyCompact(p.faturamento)}
                                                    pct={Number(p.pct) || 0}
-                                                   cor={(Number(p.pct) || 0) >= 100 ? HEX.green : (corPoloCk[p.polo] ?? HEX.yellow)} />
+                                                   cor={(Number(p.pct) || 0) >= 100 ? HEX.green : (corPoloCk[p.polo] ?? HEX.yellow)}
+                                                   escala={escalaRank} />
                                     ))}
                                 </div>
                             </div>
