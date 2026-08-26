@@ -198,12 +198,22 @@ class NpsMaterializarNaoRespondidos extends Command
         $inicio = $mes->copy()->startOfMonth();
         $fim    = $mes->copy()->endOfMonth();
 
-        $linhas = NpsImputedAssignment::whereHas('survey', function ($q) use ($inicio, $fim) {
-            $q->where(function ($qq) use ($inicio, $fim) {
-                $qq->whereBetween('month_reference', [$inicio->toDateString(), $fim->toDateString()])
-                    ->orWhere(function ($qqq) use ($inicio, $fim) {
-                        $qqq->whereNull('month_reference')->whereBetween('created_at', [$inicio, $fim]);
-                    });
+        // A âncora é o survey individual OU o link de grupo (2026-08-26).
+        // Buscar só por `survey` deixaria as linhas de grupo para trás em
+        // silêncio — o comando diria "apaguei tudo" e o piso continuaria
+        // pesando na nota da competência que o operador quis desfazer.
+        $linhas = NpsImputedAssignment::where(function ($ancora) use ($inicio, $fim) {
+            $ancora->whereHas('survey', function ($q) use ($inicio, $fim) {
+                $q->where(function ($qq) use ($inicio, $fim) {
+                    $qq->whereBetween('month_reference', [$inicio->toDateString(), $fim->toDateString()])
+                        ->orWhere(function ($qqq) use ($inicio, $fim) {
+                            $qqq->whereNull('month_reference')->whereBetween('created_at', [$inicio, $fim]);
+                        });
+                });
+            })->orWhereHas('groupSurvey', function ($q) use ($inicio, $fim) {
+                // `month_reference` do link de grupo é sempre preenchido —
+                // sem o fallback `created_at` do individual.
+                $q->whereBetween('month_reference', [$inicio->toDateString(), $fim->toDateString()]);
             });
         })->get();
 

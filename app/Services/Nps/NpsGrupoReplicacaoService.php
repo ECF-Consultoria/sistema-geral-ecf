@@ -3,6 +3,7 @@
 namespace App\Services\Nps;
 
 use App\Models\NpsGroupSurvey;
+use App\Models\NpsImputedAssignment;
 use App\Models\NpsResponse;
 use App\Models\NpsResponseAnswer;
 use App\Models\NpsSurvey;
@@ -165,6 +166,17 @@ class NpsGrupoReplicacaoService
                 'respondent_name' => $respondentName,
                 'comment'         => $comment,
             ]);
+
+            // Piso de 1 do link pendente (2026-08-26) sai AQUI, na MESMA
+            // transação que cria os espelhos — os espelhos reais assumem a
+            // partir de agora. Deixar para o cron abriria uma janela em que a
+            // empresa contaria o piso 1 E a nota real na mesma competência.
+            // Linha DEFINITIVO nunca é tocada (D2): se a competência já tinha
+            // fechado, aquele 1 está congelado e uma resposta tardia não
+            // reescreve competência fechada.
+            NpsImputedAssignment::where('group_survey_id', $groupSurvey->id)
+                ->where('status', NpsImputedAssignment::STATUS_PROVISORIO)
+                ->delete();
 
             return [
                 'espelhos'    => count($companyIds),

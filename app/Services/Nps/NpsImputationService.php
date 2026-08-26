@@ -3,6 +3,7 @@
 namespace App\Services\Nps;
 
 use App\Models\Company;
+use App\Models\NpsGroupSurvey;
 use App\Models\NpsImputedAssignment;
 use App\Models\NpsSurvey;
 use App\Models\NpsTemplateQuestion;
@@ -42,6 +43,25 @@ use Illuminate\Support\Facades\Log;
  *  - "Contrato ativo" é avaliado no momento da MATERIALIZAÇÃO, não no
  *    momento do disparo — limitação aceita do backfill retroativo.
  *
+ * ─── Link de GRUPO (2026-08-26) ──────────────────────────────────────────
+ * Uma linha imputada pode ter como âncora um `NpsSurvey` individual OU um
+ * `NpsGroupSurvey` ainda pendente — nunca os dois. O link de grupo só vira
+ * `nps_surveys` quando o cliente RESPONDE
+ * (`NpsGrupoReplicacaoService::replicar()`), então, antes desta mudança, as
+ * empresas cobertas por um link de grupo pendente ficavam sem o piso de 1
+ * que qualquer link individual já produzia no instante do disparo (medido em
+ * produção em 26/08/2026: 4 links pendentes, 9 empresas sem o piso).
+ *
+ *  - quem entra no piso do grupo é decidido por `NpsGrupoCoberturaService`,
+ *    a MESMA fonte que decide quem recebe a nota no envio — nunca uma
+ *    segunda régua de "quem está no link";
+ *  - grupo respondido APAGA suas provisórias: os espelhos reais assumem, e
+ *    manter a linha do grupo faria a empresa contar o piso 1 E a nota real
+ *    na mesma competência;
+ *  - a competência vem de `month_reference`, que no link de grupo é SEMPRE
+ *    preenchido (guard de duplicidade em `NpsGrupoController::generate()`) —
+ *    aqui não existe o fallback `?? created_at` do individual.
+ *
  * @see .planning/phases/116-.../116-01-PLAN.md
  * @see .planning/phases/116-.../116-CONTEXT.md
  * @see app/Services/Nps/NpsSnapshotService.php (analog de resolução de responsável)
@@ -69,8 +89,10 @@ class NpsImputationService
         NpsTemplateQuestion::DIMENSAO_ESTRATEGISTA => 'estrategista',
     ];
 
-    public function __construct(private NpsScoreCalculator $calculator)
-    {
+    public function __construct(
+        private NpsScoreCalculator $calculator,
+        private NpsGrupoCoberturaService $cobertura,
+    ) {
     }
 
     /**
@@ -163,7 +185,7 @@ class NpsImputationService
             if ($dimensao === NpsTemplateQuestion::DIMENSAO_EMPRESA) {
                 // D7 — 1 linha por survey, sem serviço/responsável.
                 $this->materializarLinha(
-                    $survey, $company, $dimensao, null, null, null,
+                    $survey, null, $company, $dimensao, null, null, null,
                     $competencia, $competenciaFechada, $dryRun, $stats,
                 );
 
@@ -196,9 +218,155 @@ class NpsImputationService
 
                 foreach ($responsaveis as $user) {
                     $this->materializarLinha(
-                        $survey, $company, $dimensao, $servico, $role, $user,
+                        $survey, null, $company, $dimensao, $servico, $role, $user,
                         $competencia, $competenciaFechada, $dryRun, $stats,
                     );
+                }
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Materializa (ou limpa) as linhas imputadas de UM link de GRUPO pendente.
+     *
+     * Espelha `materializar()` passo a passo — mesma promoção provisório →
+     * definitivo, mesmas dimensões aplicáveis, mesmo resolvedor de
+     * responsável com fallback consolidado. As duas diferenças são a âncora
+     * (`group_survey_id` no lugar de `survey_id`) e o universo de empresas,
+     * que aqui vem da cobertura do link em vez da empresa única do survey.
+     *
+     * @return array{criados:int, pulos_ja_existentes:int, pulos_sem_responsavel:int, promovidos_definitivo:int, removidos:int, detalhe:array}
+     */
+    public function materializarGrupo(NpsGroupSurvey $groupSurvey, bool $dryRun = false): array
+    {
+        $stats = $this->statsVazio();
+
+        // ─── Grupo respondido: os espelhos REAIS assumem ──────────────────
+        // `replicar()` cria um `nps_surveys` completed por empresa coberta,
+        // cada um com sua resposta e sua atribuição. Se a linha do grupo
+        // sobrevivesse, a empresa contaria o piso 1 E a nota real na mesma
+        // competência. Linha DEFINITIVO nunca é tocada aqui (D2).
+        if ($groupSurvey->status === 'completed') {
+            $provisorias = NpsImputedAssignment::where('group_survey_id', $groupSurvey->id)
+                ->where('status', NpsImputedAssignment::STATUS_PROVISORIO);
+
+            $count = (clone $provisorias)->count();
+
+            if ($count > 0) {
+                if (! $dryRun) {
+                    $provisorias->delete();
+                }
+                $stats['removidos'] += $count;
+            }
+
+            return $stats;
+        }
+
+        if (! $groupSurvey->template_id) {
+            Log::info('[NPS Imputação] link de grupo sem modelo — pulado', ['group_survey_id' => $groupSurvey->id]);
+
+            return $stats;
+        }
+
+        $template = $groupSurvey->template;
+        $grupo    = $groupSurvey->grupo;
+
+        if (! $template || ! $grupo) {
+            Log::warning('[NPS Imputação] link de grupo sem modelo/grupo — pulado', ['group_survey_id' => $groupSurvey->id]);
+
+            return $stats;
+        }
+
+        $competencia = $groupSurvey->month_reference->copy()->startOfMonth();
+
+        // Mesma régua `gt` do individual (ver comentário lá): o link vale até
+        // 23:59:59 do último dia, então `gte` congelaria o 1 com 24h de prazo
+        // ainda correndo.
+        $competenciaFechada = now()->startOfDay()->gt($competencia->copy()->endOfMonth()->startOfDay());
+
+        if ($competenciaFechada) {
+            $paraPromover = NpsImputedAssignment::where('group_survey_id', $groupSurvey->id)
+                ->where('status', NpsImputedAssignment::STATUS_PROVISORIO);
+
+            $countPromover = (clone $paraPromover)->count();
+
+            if ($countPromover > 0) {
+                if (! $dryRun) {
+                    $paraPromover->update([
+                        'status'     => NpsImputedAssignment::STATUS_DEFINITIVO,
+                        'locked_at'  => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+                $stats['promovidos_definitivo'] += $countPromover;
+            }
+        }
+
+        $dimensoesAplicaveis = collect(self::DIMENSOES)
+            ->filter(fn ($dimensao) => $this->calculator->contarPerguntasComPeso($groupSurvey->template_id, $dimensao) > 0);
+
+        if ($dimensoesAplicaveis->isEmpty()) {
+            return $stats;
+        }
+
+        // Fonte ÚNICA de quem está coberto — a mesma que o envio usa. Empresa
+        // que ganhou link individual depois da geração sai por conta própria
+        // (motivo `ja_tem_link`) e passa a ter o piso pelo caminho individual,
+        // sem nenhum código extra aqui.
+        $cobertura = $this->cobertura->calcular($grupo, $template, $competencia);
+
+        foreach ($cobertura['incluidas'] as $incluida) {
+            $company = Company::find($incluida['company_id']);
+
+            if (! $company) {
+                continue;
+            }
+
+            // `servico_ids` da cobertura JÁ é a interseção "contratos ativos ∩
+            // escopo do modelo" — a mesma que o ramo individual refaz à mão.
+            $servicosAplicaveis = Servico::whereIn('id', $incluida['servico_ids'])->get();
+
+            foreach ($dimensoesAplicaveis as $dimensao) {
+                if ($dimensao === NpsTemplateQuestion::DIMENSAO_EMPRESA) {
+                    // D7 — aqui é 1 linha por EMPRESA coberta, não 1 por link:
+                    // o grão da nota continua sendo a empresa.
+                    $this->materializarLinha(
+                        null, $groupSurvey, $company, $dimensao, null, null, null,
+                        $competencia, $competenciaFechada, $dryRun, $stats,
+                    );
+
+                    continue;
+                }
+
+                $role = self::DIMENSAO_ROLE[$dimensao] ?? null;
+                if (! $role) {
+                    continue;
+                }
+
+                foreach ($servicosAplicaveis as $servico) {
+                    $responsaveis = $company->responsavelDoServicoOuConsolidado($role, $servico->id);
+
+                    if ($responsaveis->isEmpty()) {
+                        Log::warning('[NPS Imputação] responsável faltante — nota 1 não gerada', [
+                            'company_id'       => $company->id,
+                            'servico_id'       => $servico->id,
+                            'role'             => $role,
+                            'dimensao'         => $dimensao,
+                            'group_survey_id'  => $groupSurvey->id,
+                        ]);
+                        $stats['pulos_sem_responsavel']++;
+
+                        continue;
+                    }
+
+                    foreach ($responsaveis as $user) {
+                        $this->materializarLinha(
+                            null, $groupSurvey, $company, $dimensao, $servico, $role, $user,
+                            $competencia, $competenciaFechada, $dryRun, $stats,
+                        );
+                    }
                 }
             }
         }
@@ -240,15 +408,46 @@ class NpsImputationService
             foreach ($surveys as $survey) {
                 $resultado = $this->materializar($survey, $dryRun);
 
-                foreach (['criados', 'pulos_ja_existentes', 'pulos_sem_responsavel', 'promovidos_definitivo', 'removidos'] as $chave) {
-                    $stats[$chave] += $resultado[$chave];
-                }
+                $this->somarStats($stats, $resultado);
+            }
+        });
 
-                $stats['detalhe'] = array_merge($stats['detalhe'], $resultado['detalhe']);
+        // Links de GRUPO do mesmo recorte. Ficam no MESMO lote de propósito:
+        // é o que faz o cron diário, o backfill e o `--dry-run` do comando
+        // enxergarem o piso do grupo sem nenhuma mudança nos chamadores.
+        $queryGrupo = NpsGroupSurvey::query()->whereNotNull('template_id')->orderBy('id');
+
+        if ($mes) {
+            // Sem fallback `created_at` aqui: `month_reference` do link de
+            // grupo é sempre preenchido na origem.
+            $queryGrupo->whereBetween('month_reference', [
+                $mes->copy()->startOfMonth()->toDateString(),
+                $mes->copy()->endOfMonth()->toDateString(),
+            ]);
+        }
+
+        $queryGrupo->chunkById(200, function ($links) use (&$stats, $dryRun) {
+            foreach ($links as $link) {
+                $resultado = $this->materializarGrupo($link, $dryRun);
+
+                $this->somarStats($stats, $resultado);
             }
         });
 
         return $stats;
+    }
+
+    /**
+     * @param  array{criados:int, pulos_ja_existentes:int, pulos_sem_responsavel:int, promovidos_definitivo:int, removidos:int, detalhe:array}  $stats
+     * @param  array{criados:int, pulos_ja_existentes:int, pulos_sem_responsavel:int, promovidos_definitivo:int, removidos:int, detalhe:array}  $resultado
+     */
+    private function somarStats(array &$stats, array $resultado): void
+    {
+        foreach (['criados', 'pulos_ja_existentes', 'pulos_sem_responsavel', 'promovidos_definitivo', 'removidos'] as $chave) {
+            $stats[$chave] += $resultado[$chave];
+        }
+
+        $stats['detalhe'] = array_merge($stats['detalhe'], $resultado['detalhe']);
     }
 
     /**
@@ -274,7 +473,10 @@ class NpsImputationService
         }
 
         return $query->get()
-            ->unique(fn (NpsImputedAssignment $linha) => $linha->survey_id . '|' . $linha->role)
+            // `chaveDeDedupe()` em vez de `survey_id` cru: linha de grupo tem
+            // `survey_id` NULL e um link cobre N empresas — a chave antiga
+            // colapsaria o grupo inteiro numa nota só.
+            ->unique(fn (NpsImputedAssignment $linha) => $linha->chaveDeDedupe() . '|' . $linha->role)
             ->values()
             ->map(fn (NpsImputedAssignment $linha) => (object) [
                 'survey_id'       => $linha->survey_id,
@@ -318,11 +520,17 @@ class NpsImputationService
         }
 
         if ($templateIds && $templateIds->isNotEmpty()) {
-            $query->whereHas('survey', fn ($q) => $q->whereIn('template_id', $templateIds->all()));
+            // O modelo mora no survey OU no link de grupo — filtrar só pelo
+            // survey descartaria toda linha de grupo (`survey_id` NULL faz
+            // `whereHas` ser sempre falso).
+            $query->where(function ($q) use ($templateIds) {
+                $q->whereHas('survey', fn ($s) => $s->whereIn('template_id', $templateIds->all()))
+                    ->orWhereHas('groupSurvey', fn ($s) => $s->whereIn('template_id', $templateIds->all()));
+            });
         }
 
         return $query->get()
-            ->unique('survey_id')
+            ->unique(fn (NpsImputedAssignment $linha) => $linha->chaveDeDedupe())
             ->values()
             ->map(fn (NpsImputedAssignment $linha) => (object) [
                 'survey_id'       => $linha->survey_id,
@@ -347,6 +555,10 @@ class NpsImputationService
                 $ate->copy()->endOfMonth()->toDateString(),
             ])
             ->pluck('survey_id')
+            // Linha de grupo não tem survey — o consumidor usa esta lista para
+            // pular surveys, e um NULL na lista não pularia nada além de sujar
+            // o `whereNotIn`.
+            ->filter()
             ->unique()
             ->values();
     }
@@ -357,7 +569,8 @@ class NpsImputationService
      * distintos entre si no unique composto).
      */
     private function materializarLinha(
-        NpsSurvey $survey,
+        ?NpsSurvey $survey,
+        ?NpsGroupSurvey $groupSurvey,
         Company $company,
         string $dimensao,
         ?Servico $servico,
@@ -371,7 +584,16 @@ class NpsImputationService
         $servicoId = $servico?->id;
         $userId    = $user?->id;
 
-        $existe = NpsImputedAssignment::where('survey_id', $survey->id)
+        // Âncoras mutuamente exclusivas — exatamente uma das duas.
+        $existe = NpsImputedAssignment::query()
+            ->when($survey !== null, fn ($q) => $q->where('survey_id', $survey->id))
+            // No grão de grupo o `company_id` é OBRIGATÓRIO no guard: um único
+            // link cobre N empresas, então (grupo, dimensão, papel, pessoa)
+            // sem a empresa casaria a linha de uma empresa com a de outra e
+            // só a primeira do grupo seria criada.
+            ->when($groupSurvey !== null, fn ($q) => $q
+                ->where('group_survey_id', $groupSurvey->id)
+                ->where('company_id', $company->id))
             ->where('dimensao', $dimensao)
             ->where('role', $role)
             ->where('user_id', $userId)
@@ -385,12 +607,13 @@ class NpsImputationService
         }
 
         $stats['detalhe'][] = [
-            'survey_id'  => $survey->id,
-            'company_id' => $company->id,
-            'servico_id' => $servicoId,
-            'dimensao'   => $dimensao,
-            'role'       => $role,
-            'user_id'    => $userId,
+            'survey_id'       => $survey?->id,
+            'group_survey_id' => $groupSurvey?->id,
+            'company_id'      => $company->id,
+            'servico_id'      => $servicoId,
+            'dimensao'        => $dimensao,
+            'role'            => $role,
+            'user_id'         => $userId,
         ];
         $stats['criados']++;
 
@@ -399,7 +622,8 @@ class NpsImputationService
         }
 
         NpsImputedAssignment::create([
-            'survey_id'       => $survey->id,
+            'survey_id'       => $survey?->id,
+            'group_survey_id' => $groupSurvey?->id,
             'company_id'      => $company->id,
             'servico_id'      => $servicoId,
             'service_setor'   => $servico?->setor,

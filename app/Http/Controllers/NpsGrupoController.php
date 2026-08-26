@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\DesempenhoScoreService;
 use App\Services\Nps\NpsGrupoCoberturaService;
 use App\Services\Nps\NpsGrupoReplicacaoService;
+use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsSuspicionService;
 use App\Support\NpsTextRenderer;
 use Illuminate\Database\QueryException;
@@ -129,6 +130,22 @@ class NpsGrupoController extends Controller
             'expires_at'       => now()->endOfMonth(),
             'status'           => 'pending',
         ]);
+
+        // Piso de nota 1 desde o disparo (2026-08-26), espelhando o que o link
+        // individual já fazia em `NpsController::generate()`. Sem isto, as
+        // empresas cobertas ficavam fora da conta do responsável até o cliente
+        // responder — e um link de grupo que ninguém responde nunca produzia
+        // survey nenhum para o cron encontrar. Falha aqui NUNCA pode abortar a
+        // geração do link: o cron diário (`nps:materializar-nao-respondidos`)
+        // corrige depois.
+        try {
+            app(NpsImputationService::class)->materializarGrupo($groupSurvey);
+        } catch (\Throwable $e) {
+            Log::warning('[NPS Imputação] falha ao materializar no disparo do link de grupo', [
+                'group_survey_id' => $groupSurvey->id,
+                'erro'            => $e->getMessage(),
+            ]);
+        }
 
         return back()->with([
             'success'  => 'Link de NPS do grupo gerado com sucesso.',

@@ -24,7 +24,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * o disparo") — é o que faz o snapshot mensal do bônus enxergar o não
  * respondido de um mês ainda em curso.
  *
- * @property int $survey_id
+ * Desde 26/08/2026 a linha pode nascer de um link de NPS de GRUPO ainda
+ * pendente, e não só de um survey individual: `survey_id` e `group_survey_id`
+ * são MUTUAMENTE EXCLUSIVOS (exatamente um dos dois é preenchido). O link de
+ * grupo só vira `nps_surveys` quando o cliente responde, então sem essa
+ * segunda âncora as empresas cobertas ficavam sem o piso de 1 que qualquer
+ * link individual já produzia no instante do disparo.
+ *
+ * @property int|null $survey_id NULL quando a linha vem de um link de GRUPO
+ * @property int|null $group_survey_id NULL quando a linha vem de um survey individual
  * @property int $company_id
  * @property int|null $servico_id
  * @property string|null $service_setor
@@ -47,6 +55,7 @@ class NpsImputedAssignment extends Model
 
     protected $fillable = [
         'survey_id',
+        'group_survey_id',
         'company_id',
         'servico_id',
         'service_setor',
@@ -68,6 +77,24 @@ class NpsImputedAssignment extends Model
     public function survey(): BelongsTo
     {
         return $this->belongsTo(NpsSurvey::class, 'survey_id');
+    }
+
+    public function groupSurvey(): BelongsTo
+    {
+        return $this->belongsTo(NpsGroupSurvey::class, 'group_survey_id');
+    }
+
+    /**
+     * Chave de dedupe da leitura. Para linha de survey individual é o próprio
+     * `survey_id` (1 survey = 1 empresa, régua original da Fase 116). Para
+     * linha de GRUPO o `survey_id` é NULL e um único link cobre N empresas —
+     * usar `survey_id` ali colapsaria todas as empresas do grupo numa nota só.
+     */
+    public function chaveDeDedupe(): string
+    {
+        return $this->survey_id !== null
+            ? 's' . $this->survey_id
+            : 'g' . $this->group_survey_id . '-' . $this->company_id;
     }
 
     public function company(): BelongsTo
@@ -100,8 +127,16 @@ class NpsImputedAssignment extends Model
         return $query->where(function ($q) {
             $q->where('status', self::STATUS_DEFINITIVO)
                 ->orWhere(function ($qq) {
+                    // A âncora provisória é o survey individual OU o link de
+                    // grupo — nunca os dois. Testar só `survey` descartaria
+                    // toda linha de grupo da leitura (ela tem `survey_id`
+                    // NULL, e `whereHas` num NULL é sempre falso), que é
+                    // exatamente o piso que esta régua precisa enxergar.
                     $qq->where('status', self::STATUS_PROVISORIO)
-                        ->whereHas('survey', fn ($s) => $s->where('status', '!=', 'completed'));
+                        ->where(function ($ancora) {
+                            $ancora->whereHas('survey', fn ($s) => $s->where('status', '!=', 'completed'))
+                                ->orWhereHas('groupSurvey', fn ($s) => $s->where('status', '!=', 'completed'));
+                        });
                 });
         });
     }
