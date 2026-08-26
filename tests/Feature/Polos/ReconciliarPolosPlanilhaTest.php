@@ -103,4 +103,27 @@ class ReconciliarPolosPlanilhaTest extends TestCase
         $this->assertNull($e->fresh()->cust_id, 'Escopo é rígido: POLOS apenas.');
         @unlink($file);
     }
+
+    public function test_duas_linhas_para_o_mesmo_registro_so_a_primeira_faz_backfill(): void
+    {
+        // Caso KL Móveis: mesmo nome e mesmo gmail nas duas linhas, custs diferentes.
+        // O token é ambíguo, então quem casa é o fallback nome+gmail — e ele casaria as
+        // DUAS com o mesmo registro. A primeira linha fica com ele; a segunda tem de virar
+        // cadastro novo no sync, e o dry-run precisa dizer isso ANTES do --apply.
+        $e = $this->empresaComFicha('KL Móveis', 'tok'.str_repeat('f', 45), null, 'ecf.179@x.com');
+
+        $file = $this->csv(['Cust ID', 'Loja', 'gmail colaborador'], [
+            ['3615592884', 'KL Móveis', 'ecf.179@x.com'],
+            ['3403152802', 'KL Móveis', 'ecf.179@x.com'],
+        ]);
+
+        $this->artisan('polos:reconciliar-planilha', ['--file' => $file, '--apply' => true])
+            ->expectsOutputToContain('já reivindicado pela linha')
+            ->assertExitCode(0);
+
+        $this->assertSame('3615592884', $e->fresh()->cust_id, 'A primeira linha fica com o registro.');
+        $this->assertSame(1, MlbEmpresa::count(), 'A reconciliação não cria — quem cria é o sync.');
+
+        @unlink($file);
+    }
 }

@@ -45,6 +45,9 @@ class ReconciliarPolosPlanilha extends Command
     /** @var array<int,string> */
     private array $criacoes = [];
 
+    /** id do registro alvo => linha da planilha que já o reivindicou nesta execução. */
+    private array $reservados = [];
+
     public function handle(): int
     {
         $file = (string) $this->option('file');
@@ -146,6 +149,17 @@ class ReconciliarPolosPlanilha extends Command
             return;
         }
 
+        // Duas linhas da planilha apontando para o MESMO registro (caso KL Móveis: mesmo nome,
+        // mesmo gmail, mesmo link, custs diferentes): a PRIMEIRA linha fica com o registro e as
+        // seguintes viram cadastro novo no sync. Sem esta reserva o dry-run prometia backfill
+        // para as duas e o --apply fazia outra coisa (a 2ª caía em divergência por ordenação) —
+        // preview que não bate com a execução é pior que não ter preview.
+        if (isset($this->reservados[$alvo->id])) {
+            $this->ambiguos[] = "L{$linha} {$nome} (cust {$cust}) — registro id={$alvo->id} já reivindicado pela linha {$this->reservados[$alvo->id]}; o sync vai CRIAR cadastro novo";
+
+            return;
+        }
+
         $custAtual = trim((string) $alvo->cust_id);
 
         // Registro antigo JÁ tem cust e é OUTRO: troca de conta ML. Repontar é mais arriscado
@@ -171,6 +185,7 @@ class ReconciliarPolosPlanilha extends Command
             'linha' => $linha, 'nome' => $nome, 'cust' => $cust, 'via' => $via,
             'id' => $alvo->id, 'nome_antigo' => $alvo->nome, 'fase' => (string) $alvo->fase,
         ];
+        $this->reservados[$alvo->id] = $linha;
 
         if ($apply) {
             $alvo->cust_id = $cust;
