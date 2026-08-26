@@ -1213,7 +1213,9 @@ export default function PolosPainel({
                             )}
                         </button>
                         <button type="button" onClick={toggleModoTv}
-                            title="Painel de parede: números grandes, cenas que se revezam sozinhas e recarga automática — para a TV da empresa"
+                            title={lente === 'metas'
+                                ? 'Painel de parede da TV — abre a tela de METAS (entrantes × meta do mês). Setas ← → alternam para Faturamento.'
+                                : 'Painel de parede da TV — abre a tela de FATURAMENTO POLOS. Setas ← → alternam para Metas.'}
                             className={cn('inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition',
                                 modoTv ? 'border-ecf-yellow/40 bg-ecf-yellow/10 text-ecf-yellow'
                                        : 'border-white/[0.1] bg-white/[0.04] text-white/80 hover:border-white/25 hover:bg-white/[0.08]')}>
@@ -1386,6 +1388,7 @@ export default function PolosPainel({
                     metasEntrada={metas}
                     cockpit={cockpit}
                     isAdmin={isAdmin}
+                    lenteInicial={lente}
                     onSair={toggleModoTv}
                     onAtualizar={atualizarDadosTv}
                 />
