@@ -1,7 +1,12 @@
 /**
- * RadialGauge — arco radial fino (gauge 0–100) em SVG, com gradiente amarelo ECF
- * e glow. Embute o DNA radial dos antigos DonutCards de forma sutil, atrás do
- * número de "% Geral da meta" no HeroKpi.
+ * RadialGauge — arco radial fino (gauge 0–100) em SVG com gradiente amarelo ECF.
+ * Embute o DNA radial dos antigos DonutCards de forma sutil, atrás do número de
+ * "% Geral da meta" no HeroKpi.
+ *
+ * SEM glow (feDropShadow), de propósito: o arco encostava na borda do viewport
+ * do SVG, então o halo era recortado em linha reta nos 4 lados e aparecia como um
+ * QUADRADO luminoso em volta do anel. O raio ainda ganha 1px de folga para o
+ * strokeLinecap redondo não raspar na borda.
  *
  * Props:
  *   pct  : percentual (0–100+; clampado em 100 no preenchimento)
@@ -11,24 +16,21 @@
 export default function RadialGauge({ pct = 0, size = 92, cor = '#ffe600' }) {
     const stroke = 7;
     const c      = size / 2;
-    const r      = (size - stroke) / 2;
+    const r      = (size - stroke) / 2 - 1;
     const circ   = 2 * Math.PI * r;
     const p      = Math.max(Math.min(Number(pct) || 0, 100), 0);
     const dash   = (p / 100) * circ;
 
-    // ID único por instância (isola gradiente/filtro entre cards)
+    // ID único por instância (isola o gradiente entre cards)
     const uid    = `rg-${Math.round(c)}-${Math.round(dash)}`;
 
     return (
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
             <defs>
                 <linearGradient id={`${uid}-grad`} x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%"   stopColor="#ffe600" />
-                    <stop offset="100%" stopColor="#f5d400" />
+                    <stop offset="0%"   stopColor={cor} />
+                    <stop offset="100%" stopColor={cor} stopOpacity="0.82" />
                 </linearGradient>
-                <filter id={`${uid}-glow`} x="-40%" y="-40%" width="180%" height="180%">
-                    <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor={cor} floodOpacity="0.55" />
-                </filter>
             </defs>
 
             {/* Trilho (faltante) */}
@@ -41,7 +43,6 @@ export default function RadialGauge({ pct = 0, size = 92, cor = '#ffe600' }) {
                     stroke={`url(#${uid}-grad)`} strokeWidth={stroke} strokeLinecap="round"
                     strokeDasharray={`${dash} ${circ - dash}`}
                     transform={`rotate(-90 ${c} ${c})`}
-                    filter={`url(#${uid}-glow)`}
                 />
             )}
         </svg>

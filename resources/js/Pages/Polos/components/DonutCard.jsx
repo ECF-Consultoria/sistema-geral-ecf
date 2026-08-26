@@ -55,7 +55,6 @@ export default function DonutCard({ polo: dados, cor: corPolo }) {
     const r        = (size - stroke) / 2 - 6;
     const circ     = 2 * Math.PI * r;
     const dash     = (atingido / 100) * circ;
-    const glowId   = `donut-glow-${String(nome).replace(/[^a-zA-Z0-9]/g, '') || 'x'}`;
 
     return (
         <div className="flex flex-col items-center gap-2 px-2 py-3">
@@ -71,11 +70,8 @@ export default function DonutCard({ polo: dados, cor: corPolo }) {
                     <CityGauge nome={nome} pct={pct} cor={cor} height={190} />
                 ) : (
                     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-                        <defs>
-                            <filter id={glowId} x="-40%" y="-40%" width="180%" height="180%">
-                                <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor={cor} floodOpacity="0.55" />
-                            </filter>
-                        </defs>
+                        {/* Sem glow: o halo do feDropShadow era recortado pelo viewport do SVG
+                            e virava um quadrado luminoso em volta do anel. */}
                         <circle cx={c} cy={c} r={r} fill="none" stroke={COR_RESTANTE} strokeWidth={stroke} />
                         {dash > 0 && (
                             <circle
@@ -83,7 +79,6 @@ export default function DonutCard({ polo: dados, cor: corPolo }) {
                                 stroke={cor} strokeWidth={stroke} strokeLinecap="round"
                                 strokeDasharray={`${dash} ${circ - dash}`}
                                 transform={`rotate(-90 ${c} ${c})`}
-                                filter={`url(#${glowId})`}
                             />
                         )}
                         <text x={c} y={c - 2} textAnchor="middle" dominantBaseline="middle"

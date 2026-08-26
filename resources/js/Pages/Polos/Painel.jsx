@@ -6,7 +6,7 @@ import {
     Wallet, Target, Building2, ChevronDown, ChevronRight, Link2, BookUser,
     Sparkles, MegaphoneOff, ShieldAlert, Pencil, Trash2, Check, X,
     Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2,
-    Archive, Filter,
+    Archive, Filter, Tv,
 } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -30,6 +30,7 @@ import { corAds } from './components/adsCor';
 import OperacoesPanel from './components/OperacoesPanel';
 import MetasPanel from './components/MetasPanel';
 import EntrantesM0Panel from './components/EntrantesM0Panel';
+import ModoTV from './components/ModoTV';
 import ImplModal from '@/Pages/Mlb/components/ImplModal';
 
 // ─── Domínio (strings EXATAS — chaves de comparação no banco) ─────────────────────
@@ -593,6 +594,8 @@ export default function PolosPainel({
 
     // Metas de entrantes por região × mês (aba Metas) — seed das props; edição otimista.
     const [metas, setMetas] = useState(metasEntrada);
+    // Re-seed quando a prop volta do servidor (o Modo TV recarrega sozinho a cada N min).
+    useEffect(() => { setMetas(metasEntrada); }, [metasEntrada]);
 
     // ── Filtros: só a busca global fica no topo; o resto vive nos cabeçalhos (AutoFiltro). ──
     // Busca persistida em sessionStorage (Req 13: sobrevive a reload enquanto no módulo).
@@ -614,6 +617,7 @@ export default function PolosPainel({
     const [expandida, setExpandida]   = useState(null);
     const [verModal, setVerModal]     = useState(null);   // empresa aberta no modal "Ver"
     const [telaCheia, setTelaCheia]   = useState(false);  // modo planilha em tela cheia
+    const [modoTv, setModoTv]         = useState(false);  // painel de parede (TV da empresa)
     const [mostrarArquivadas, setMostrarArquivadas] = useState(false); // modal "Arquivados"
     const [editNota, setEditNota]     = useState({});
     const [semanal, setSemanal]       = useState({});
@@ -631,6 +635,8 @@ export default function PolosPainel({
     const [metaFatOverride, setMetaFatOverride] = useState(null);
     const [editandoMeta, setEditandoMeta] = useState(false);
     const [metaInput, setMetaInput] = useState('');
+    // Contador de recarga do financeiro — o Modo TV o incrementa p/ refazer o fetch sem F5.
+    const [finTick, setFinTick] = useState(0);
 
     useEffect(() => {
         if (!isAdmin) return;
@@ -644,7 +650,7 @@ export default function PolosPainel({
             .catch(() => { if (vivo) { setFin({}); setFinErro(true); } })
             .finally(() => { if (vivo) setFinLoading(false); });
         return () => { vivo = false; };
-    }, [isAdmin, mes]);
+    }, [isAdmin, mes, finTick]);
 
     const mesEfetivo = mes ?? cockpit?.mesSelecionado ?? null;
     const parcial    = cockpit?.parcial ?? false;
@@ -965,10 +971,31 @@ export default function PolosPainel({
     }, []);
     // Sai do modo se o usuário sair do fullscreen do browser (Esc/F11).
     useEffect(() => {
-        const onFs = () => { if (!document.fullscreenElement) setTelaCheia(false); };
+        const onFs = () => { if (!document.fullscreenElement) { setTelaCheia(false); setModoTv(false); } };
         document.addEventListener('fullscreenchange', onFs);
         return () => document.removeEventListener('fullscreenchange', onFs);
     }, []);
+
+    // ── MODO TV: painel de parede. Mesma Fullscreen API da tela cheia, mas o conteúdo é
+    // outro (cenas que se revezam), então os dois modos são exclusivos. ──
+    const toggleModoTv = useCallback(() => {
+        setModoTv((v) => {
+            const next = !v;
+            if (next) setTelaCheia(false);
+            try {
+                if (next && !document.fullscreenElement) document.documentElement.requestFullscreen?.();
+                else if (!next && document.fullscreenElement) document.exitFullscreen?.();
+            } catch (_) { /* browser pode bloquear a Fullscreen API — o overlay CSS já resolve */ }
+            return next;
+        });
+    }, []);
+
+    // Recarga automática dos dados enquanto a TV está ligada: `only` mantém o payload
+    // enxuto (empresas + metas), e o finTick refaz o fetch do cockpit financeiro.
+    const atualizarDadosTv = useCallback(() => {
+        router.reload({ only: ['empresas', 'metasEntrada', 'arquivadas'], preserveScroll: true, preserveState: true });
+        if (isAdmin) setFinTick((t) => t + 1);
+    }, [isAdmin]);
     // Esc sai da tela cheia (exceto se um modal estiver aberto — aí o Esc é dele).
     useEffect(() => {
         if (!telaCheia) return;
@@ -1185,6 +1212,13 @@ export default function PolosPainel({
                                 <span className="ml-0.5 rounded-full bg-white/[0.12] px-1.5 py-0.5 text-[10px] tabular-nums text-white/70">{arquivadas.length}</span>
                             )}
                         </button>
+                        <button type="button" onClick={toggleModoTv}
+                            title="Painel de parede: números grandes, cenas que se revezam sozinhas e recarga automática — para a TV da empresa"
+                            className={cn('inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition',
+                                modoTv ? 'border-ecf-yellow/40 bg-ecf-yellow/10 text-ecf-yellow'
+                                       : 'border-white/[0.1] bg-white/[0.04] text-white/80 hover:border-white/25 hover:bg-white/[0.08]')}>
+                            <Tv size={13} /> Modo TV
+                        </button>
                         <button type="button" onClick={toggleTelaCheia}
                             title={telaCheia ? 'Sair da tela cheia (Esc)' : 'Abrir a planilha em tela cheia'}
                             className={cn('inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition',
@@ -1342,6 +1376,18 @@ export default function PolosPainel({
                     arquivadas={arquivadas}
                     onDesarquivar={desarquivar}
                     onClose={() => setMostrarArquivadas(false)}
+                />
+            )}
+
+            {/* Modo TV — overlay de parede. Fica por cima de tudo (inclusive da sidebar). */}
+            {modoTv && (
+                <ModoTV
+                    empresas={empresas}
+                    metasEntrada={metas}
+                    cockpit={cockpit}
+                    isAdmin={isAdmin}
+                    onSair={toggleModoTv}
+                    onAtualizar={atualizarDadosTv}
                 />
             )}
         </AppLayout>
