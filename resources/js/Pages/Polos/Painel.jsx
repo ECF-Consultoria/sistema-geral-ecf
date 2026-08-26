@@ -33,7 +33,7 @@ import EntrantesM0Panel from './components/EntrantesM0Panel';
 import ImplModal from '@/Pages/Mlb/components/ImplModal';
 
 // ─── Domínio (strings EXATAS — chaves de comparação no banco) ─────────────────────
-const ORDEM_FASE = ['Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn'];
+const ORDEM_FASE = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn'];
 const FASES_TERMINAIS = ['Encerrado', 'Churn'];
 
 // Escopo operacional do painel: só quem está EM OPERAÇÃO conta nos filtros/donuts/grade.
@@ -50,7 +50,7 @@ const BLOCO_DE = {
     polo: 'identificacao', fase: 'identificacao', data_solicitacao: 'identificacao',
     status_entrada: 'identificacao', chance_entrada: 'identificacao',
     acesso_colaborador: 'acessos', gmail_colaborador: 'acessos', grupo_whatsapp: 'acessos', link_whatsapp: 'acessos', reuniao_onboarding: 'acessos',
-    planilha_produtos: 'produtos', listagem: 'produtos', publicacao: 'produtos', decola: 'produtos', campanha_criada: 'produtos',
+    planilha_produtos: 'produtos', listagem: 'produtos', publicacao: 'produtos', decola: 'produtos', campanha_criada: 'produtos', central_promocao: 'produtos',
     contextos_logistica: 'logistica', me1: 'logistica', integradora: 'logistica', places: 'logistica', erp: 'logistica',
 };
 // Campos que dão pra salvar SEM ficha (via empresas.update). O resto exige ficha.
@@ -80,7 +80,7 @@ const fmtPct = (n) => `${Number(n ?? 0).toFixed(0)}%`;
 const estagioKey = (e) => (e?.estagio && e.estagio !== '') ? e.estagio : SEM_ESTAGIO;
 
 // Cor do texto por Fase M — hierarquia rápida na grade.
-const COR_FASE = { 'Aceite no Projeto': 'text-fuchsia-300', M0: 'text-violet-300', M1: 'text-sky-300', M2: 'text-amber-200', M3: 'text-amber-300', M4: 'text-emerald-300', Encerrado: 'text-white/40', Churn: 'text-red-300' };
+const COR_FASE = { 'Encaminhar Comercial': 'text-white/45', 'Aceite no Projeto': 'text-fuchsia-300', M0: 'text-violet-300', M1: 'text-sky-300', M2: 'text-amber-200', M3: 'text-amber-300', M4: 'text-emerald-300', Encerrado: 'text-white/40', Churn: 'text-red-300' };
 const corFase = (f) => COR_FASE[f] ?? 'text-white/70';
 
 // Cor do texto por valor de onboarding (verde=ok · âmbar=em progresso · vermelho=bloqueio).
@@ -98,7 +98,7 @@ function corValor(v) {
 
 // Classificadores de "tom" p/ os indicadores acionáveis do OperacoesPanel (reusam as listas acima).
 const toneValor = (v) => (VAL_POS.includes(v) ? 'green' : VAL_PROG.includes(v) ? 'amber' : VAL_NEG.includes(v) ? 'red' : 'neutral');
-const TONE_FASE = { 'Aceite no Projeto': 'violet', M0: 'violet', M1: 'sky', M2: 'amber', M3: 'amber', M4: 'green', Encerrado: 'neutral', Churn: 'red' };
+const TONE_FASE = { 'Encaminhar Comercial': 'neutral', 'Aceite no Projeto': 'violet', M0: 'violet', M1: 'sky', M2: 'amber', M3: 'amber', M4: 'green', Encerrado: 'neutral', Churn: 'red' };
 const toneFase = (f) => TONE_FASE[f] ?? 'neutral';
 
 // Coluna do indicador → lente onde ela é editável (p/ navegar ao clicar). null = visível em todas.
@@ -155,11 +155,11 @@ function fmtDataBR(v) {
 // Campos de select editável cujo valor criado inline vira opção para as demais empresas
 // (alimenta `valoresPresentes`). `fase` entra aqui só para reaproveitar valores legados no
 // dropdown — criar fase nova é bloqueado no EditSelect (ver `criavel`).
-const CAMPOS_CRIAVEIS = ['fase', 'polo', 'status_entrada', 'chance_entrada', 'reuniao_onboarding', 'acesso_colaborador', 'planilha_produtos', 'listagem', 'publicacao', 'decola', 'me1', 'integradora', 'places', 'erp'];
+const CAMPOS_CRIAVEIS = ['fase', 'polo', 'status_entrada', 'chance_entrada', 'reuniao_onboarding', 'acesso_colaborador', 'planilha_produtos', 'listagem', 'publicacao', 'decola', 'central_promocao', 'me1', 'integradora', 'places', 'erp'];
 
 // ─── Edição em MASSA ────────────────────────────────────────────────────────────────
 // Campos que exigem ficha (o backend IGNORA empresas sem ficha p/ estes; fase/polo não).
-const CAMPOS_SO_FICHA = ['responsavel_id', 'status_envio', 'status_entrada', 'chance_entrada', 'reuniao_onboarding', 'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'contextos_logistica', 'me1', 'integradora', 'places', 'erp', 'data_solicitacao'];
+const CAMPOS_SO_FICHA = ['responsavel_id', 'status_envio', 'status_entrada', 'chance_entrada', 'reuniao_onboarding', 'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'contextos_logistica', 'me1', 'integradora', 'places', 'erp', 'data_solicitacao'];
 
 // Caixa de seleção temática (mesmo visual do AutoFiltro). state: 'on' | 'off' | 'ind'.
 function CaixaSel({ state }) {
@@ -696,6 +696,7 @@ export default function PolosPainel({
             publicacao:          { key: 'publicacao', label: 'Publicação', accessor: (e) => e.publicacao },
             decola:              { key: 'decola', label: 'Decola', accessor: (e) => e.decola },
             campanha_criada:     { key: 'campanha_criada', label: 'Campanha', accessor: (e) => (e.campanha_criada === true ? 'Sim' : e.campanha_criada === false ? 'Não' : null) },
+            central_promocao:    { key: 'central_promocao', label: 'Central de Promoção', accessor: (e) => e.central_promocao },
             contextos_logistica: { key: 'contextos_logistica', label: 'Contextos logística', accessor: (e) => e.contextos_logistica },
             me1:                 { key: 'me1', label: 'ME1', accessor: (e) => e.me1 },
             integradora:         { key: 'integradora', label: 'Integradora', accessor: (e) => e.integradora },
@@ -837,6 +838,7 @@ export default function PolosPainel({
         { campo: 'listagem',           label: 'Listagem',           tipo: 'select', opcoes: enumOpc('listagem') },
         { campo: 'publicacao',         label: 'Publicação',         tipo: 'select', opcoes: enumOpc('publicacao') },
         { campo: 'decola',             label: 'Decola',             tipo: 'select', opcoes: enumOpc('decola') },
+        { campo: 'central_promocao',   label: 'Central de Promoção', tipo: 'select', opcoes: enumOpc('central_promocao') },
         { campo: 'me1',                label: 'ME1',                tipo: 'select', opcoes: enumOpc('me1') },
         { campo: 'integradora',        label: 'Integradora',        tipo: 'select', opcoes: enumOpc('integradora') },
         { campo: 'places',             label: 'Places',             tipo: 'select', opcoes: enumOpc('places') },
@@ -1357,13 +1359,13 @@ const COLS_POR_LENTE = {
         'data_cadastro',
         'fase', 'estagio', 'polo', 'responsavel', 'onboarding', 'envio', 'status_entrada', 'chance_entrada',
         'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'data_solicitacao',
-        'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada',
+        'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao',
         'contextos_logistica', 'me1', 'integradora', 'places', 'erp',
         'fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status',
         '__acoes__',
     ],
     acessos:    ['acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'data_solicitacao'],
-    produtos:   ['planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada'],
+    produtos:   ['planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao'],
     logistica:  ['contextos_logistica', 'me1', 'integradora', 'places', 'erp'],
     financeiro: ['fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status'],
 };
@@ -1480,6 +1482,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
         <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="publicacao" opcoes={opcoes.publicacao} presentes={valoresPresentes.publicacao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="decola" opcoes={opcoes.decola} presentes={valoresPresentes.decola} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><EditToggle e={e} campo="campanha_criada" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
+        <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="central_promocao" opcoes={opcoes.central_promocao} presentes={valoresPresentes.central_promocao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
     </>);
 
     const celLogistica = (<>

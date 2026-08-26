@@ -70,6 +70,7 @@ class MlbImplementacaoController extends Controller
                 'listagem'            => $impl->listagem,
                 'publicacao'          => $impl->publicacao,
                 'decola'              => $impl->decola,
+                'central_promocao'    => $impl->central_promocao,
                 // Campos operacionais do bloco Logística
                 'contextos_logistica' => $impl->contextos_logistica,
                 'me1'                 => $impl->me1,
@@ -96,6 +97,7 @@ class MlbImplementacaoController extends Controller
                 'listagem'            => MlbImplementacao::ONB_LISTAGEM_OPCOES,
                 'publicacao'          => MlbImplementacao::ONB_PUBLICACAO_OPCOES,
                 'decola'              => MlbImplementacao::ONB_DECOLA_OPCOES,
+                'central_promocao'    => MlbImplementacao::ONB_CENTRAL_PROMOCAO_OPCOES,
                 'me1'                 => MlbImplementacao::ONB_ME1_OPCOES,
                 'integradora'         => MlbImplementacao::ONB_INTEGRADORA_OPCOES,
                 'places'              => MlbImplementacao::ONB_PLACES_OPCOES,
@@ -777,6 +779,8 @@ class MlbImplementacaoController extends Controller
             'publicacao'        => ['nullable', 'string', 'max:150'],
             // decola: era boolean até 2026-08-03; hoje é texto (Sim/Não/Mensagem Enviada/…)
             'decola'            => ['nullable', 'string', 'max:60'],
+            // central_promocao: adesão à Central de Promoções do ML (planilha V2, 2026-08-26).
+            'central_promocao'  => ['nullable', 'string', 'max:150'],
         ]);
 
         // Extrair campos boolean com $request->boolean() que aceita 'true', '1', true, etc.

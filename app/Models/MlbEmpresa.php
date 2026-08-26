@@ -92,6 +92,10 @@ class MlbEmpresa extends Model
      * canônica — esta constante é fallback apenas.
      */
     public const FASE_PARA_PROJETO = [
+        // Pré-aceite: lead que o time ainda vai repassar ao Comercial (planilha V2, 2026-08-26).
+        // Precisa constar aqui, senão uma empresa nessa fase e SEM `projeto` gravado deixa de
+        // ser reconhecida como POLOS e some do painel sem aviso.
+        'Encaminhar Comercial' => 'POLOS',
         'Aceite no Projeto' => 'POLOS',
         'M0' => 'POLOS', 'M1' => 'POLOS', 'M2' => 'POLOS', 'M3' => 'POLOS', 'M4' => 'POLOS',
         'ASSESSORIA' => 'Assessoria',

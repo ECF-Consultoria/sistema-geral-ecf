@@ -32,6 +32,8 @@ class MlbImplementacao extends Model
         'publicacao',
         'decola',
         'campanha_criada',
+        // Adesão à Central de Promoções do ML (planilha V2, coluna "Central de Promoção").
+        'central_promocao',
         'contextos_logistica',
         'me1',
         // Trava de override manual do ME1 (quick 260722-nwc): quando o consultor
@@ -89,11 +91,12 @@ class MlbImplementacao extends Model
 
     /**
      * Fase do onboarding da empresa no polo.
-     * "Aceite no Projeto" = aceitou, ainda entrando (pré-M0; espelha a planilha) → M0 = entrada
+     * "Encaminhar Comercial" = lead a repassar ao Comercial (pré-aceite; não tem Cust ID ainda)
+     * → "Aceite no Projeto" = aceitou, ainda entrando (pré-M0; espelha a planilha) → M0 = entrada
      * efetiva → M1..M4 → Encerrado/Churn = saída.
      */
     public const ONB_FASE_OPCOES = [
-        'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn',
+        'Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn',
     ];
 
     /** Status de entrada da empresa no projeto (funil — planilha V2, coluna "status de entrada") */
@@ -159,6 +162,15 @@ class MlbImplementacao extends Model
         'Sim',
         'Não',
         'Mensagem Enviada',
+    ];
+
+    /**
+     * Adesão à Central de Promoções do ML (planilha V2, coluna "Central de Promoção").
+     * Como todo select do Painel, é sugestão — o operador pode criar valor novo inline.
+     */
+    public const ONB_CENTRAL_PROMOCAO_OPCOES = [
+        'Sim',
+        'Não',
     ];
 
     /** Status do ME1 (Mercado Envios Full nível 1) */

@@ -34,8 +34,26 @@ class SyncPolosPlanilha extends Command
         // "Aceite no Projeto" = empresa aceita, ainda em entrada. Preservada como fase PRÓPRIA
         // (pré-M0) para espelhar a planilha — antes era fundida em M0 e sumia o número de aceites.
         'ACEITE NO PROJETO' => 'Aceite no Projeto',
+        // "Encaminhar Comercial" = lead pré-aceite, a repassar ao Comercial (planilha 2026-08-26).
+        // Fase PRÓPRIA pelo mesmo motivo de "Aceite no Projeto": fundir num vizinho apagaria a
+        // contagem do funil de entrada.
+        'ENCAMINHAR COMERCIAL' => 'Encaminhar Comercial',
         'CHRUN' => 'Churn', 'CHURN' => 'Churn', 'PROTOCOLO CHURN' => 'Churn',
         'DESISTÊNCIA' => 'Churn', 'DESISTENCIA' => 'Churn', 'ENCERRADO' => 'Encerrado',
+    ];
+
+    /**
+     * Cabeçalhos alternativos aceitos por coluna canônica (aplicados só se o nome canônico
+     * não existir na planilha).
+     *
+     * Existe porque a planilha é editada à mão no Google Sheets e o cabeçalho já foi
+     * sobrescrito por acidente: na versão de 2026-08-26 a coluna 'Fase' apareceu com o
+     * título 'Loja 2' (alguém digitou por cima) com os dados de fase INTACTOS embaixo.
+     * Sem o alias o comando aborta em "Coluna obrigatória ausente" e o sync inteiro para
+     * por causa de um título trocado.
+     */
+    private const COL_ALIASES = [
+        'Fase' => ['Loja 2'],
     ];
 
     // Polo: rename Bento Gonçalves → Serra Gaúcha (confirmado). Demais 1:1.
@@ -139,6 +157,21 @@ class SyncPolosPlanilha extends Command
             $col = trim((string) $h);
             if ($col !== '') {
                 $idx[$this->chaveCol($col)] ??= $i;
+            }
+        }
+        // 3º passe: aliases. Só entram se o cabeçalho canônico NÃO existir — a planilha
+        // manda enquanto estiver correta; o alias é rede de segurança, não precedência.
+        foreach (self::COL_ALIASES as $canon => $alts) {
+            if (isset($idx[$canon]) || isset($idx[$this->chaveCol($canon)])) {
+                continue;
+            }
+            foreach ($alts as $alt) {
+                $i = $idx[$alt] ?? $idx[$this->chaveCol($alt)] ?? null;
+                if ($i !== null) {
+                    $idx[$canon] = $i;
+                    $this->warn("⚠ Coluna '{$canon}' ausente — usando o alias '{$alt}' (cabeçalho trocado na planilha).");
+                    break;
+                }
             }
         }
         foreach (['Loja', 'Cust ID', 'Fase', 'Polo'] as $req) {
@@ -289,6 +322,14 @@ class SyncPolosPlanilha extends Command
         if ($decola !== null) {
             $fichaData['decola'] = $decola;
         }
+        // Central de Promoção (coluna nova na planilha de 2026-08-26). Diferente das colunas
+        // de TEXT_IMPL, que são copiadas verbatim: aqui a caixa é normalizada porque a planilha
+        // mistura "Não" (182) e "NÃO" (60) na MESMA coluna — sem isso o filtro do painel nasce
+        // com dois valores para a mesma resposta. Valor fora do catálogo passa fiel.
+        $central = $this->normSimNao($get('Central de Promoção'));
+        if ($central !== null) {
+            $fichaData['central_promocao'] = $central;
+        }
         $dataSol = $this->parseData($get('Data de Solicitação'));
         if ($dataSol !== null) {
             $fichaData['data_solicitacao'] = $dataSol;
@@ -390,6 +431,24 @@ class SyncPolosPlanilha extends Command
             'NÃO', 'NAO', '0', 'FALSE', 'FALSO'        => 'Não',
             'MENSAGEM ENVIADA', 'MSG ENVIADA'          => 'Mensagem Enviada',
             default                                    => $v,
+        };
+    }
+
+    /**
+     * Normaliza um Sim/Não vindo da planilha só na CAIXA (a planilha mistura "Não"/"NÃO").
+     * Vazio → null (não mexe). Qualquer outro valor passa VERBATIM (trim) — a planilha
+     * continua sendo a verdade e o painel exibe o valor novo como opção criada.
+     */
+    private function normSimNao(string $v): ?string
+    {
+        $v = trim($v);
+        if ($v === '') {
+            return null;
+        }
+        return match (mb_strtoupper($v)) {
+            'SIM', '1', 'TRUE', 'X', 'VERDADEIRO' => 'Sim',
+            'NÃO', 'NAO', '0', 'FALSE', 'FALSO'   => 'Não',
+            default                                => $v,
         };
     }
 

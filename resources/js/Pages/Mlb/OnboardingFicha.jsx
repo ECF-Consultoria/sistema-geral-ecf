@@ -8,12 +8,13 @@ import { cn } from '@/lib/utils';
 
 // ═══ CONSTANTES DE FALLBACK (usadas quando opcoes não chegam via props) ═══
 const ONB_POLO_OPCOES     = ['Arapongas', 'S. J. Rio Preto', 'Bento Gonçalves', 'São Bento do Sul'];
-const ONB_FASE_OPCOES     = ['Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn'];
+const ONB_FASE_OPCOES     = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn'];
 const ONB_ACESSO_COLABORADOR_OPCOES = ['Com acesso', 'Sem acesso'];
 const ONB_PLANILHA_PRODUTOS_OPCOES  = ['Já enviado', 'Não enviado'];
 const ONB_LISTAGEM_OPCOES           = ['Não', 'Pronto para listar', 'Já listado', 'Falta informação'];
 const ONB_PUBLICACAO_OPCOES         = ['Não iniciado', 'Concluído', 'Estágio 2', 'Suspensa'];
 const ONB_DECOLA_OPCOES             = ['Sim', 'Não', 'Mensagem Enviada'];
+const ONB_CENTRAL_PROMOCAO_OPCOES   = ['Sim', 'Não'];
 const ONB_ME1_OPCOES = [
     'Sem itens ainda', 'Não é necessário', 'Ativo', 'Em contratação', 'Precisa de ME1',
     'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora',
@@ -622,6 +623,7 @@ function ModalProdutos({ impl, opcoes, onClose }) {
         listagem:          impl.listagem          ?? '',
         publicacao:        impl.publicacao        ?? '',
         decola:            impl.decola            ?? '',
+        central_promocao:  impl.central_promocao  ?? '',
     });
     const [saving, setSaving] = useState(false);
 
@@ -629,6 +631,7 @@ function ModalProdutos({ impl, opcoes, onClose }) {
     const listagemOpts  = opcoes?.listagem          ?? ONB_LISTAGEM_OPCOES;
     const publicacaoOpts = opcoes?.publicacao       ?? ONB_PUBLICACAO_OPCOES;
     const decolaOpts    = opcoes?.decola            ?? ONB_DECOLA_OPCOES;
+    const centralOpts   = opcoes?.central_promocao  ?? ONB_CENTRAL_PROMOCAO_OPCOES;
 
     function submit(e) {
         e.preventDefault();
@@ -704,6 +707,19 @@ function ModalProdutos({ impl, opcoes, onClose }) {
                             <SelectContent>
                                 <SelectItem value={SEM_VALOR}>—</SelectItem>
                                 {decolaOpts.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div>
+                        <FieldLabel>Central de Promoção</FieldLabel>
+                        <Select value={form.central_promocao} onValueChange={v => setForm(f => ({ ...f, central_promocao: v }))}>
+                            <SelectTrigger className="w-full h-10 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px]">
+                                <SelectValue placeholder="—" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={SEM_VALOR}>—</SelectItem>
+                                {centralOpts.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>
@@ -1023,6 +1039,12 @@ export default function OnboardingFicha({ impl, empresa, opcoes }) {
                                 <StatusBadge valor={impl.decola ?? null} />
                                 {impl.decola !== null && impl.decola !== undefined && (
                                     <span className="text-white/30 text-[11px] ml-1">Decola</span>
+                                )}
+                            </div>
+                            <div>
+                                <StatusBadge valor={impl.central_promocao ?? null} />
+                                {impl.central_promocao !== null && impl.central_promocao !== undefined && (
+                                    <span className="text-white/30 text-[11px] ml-1">Central de Promoção</span>
                                 )}
                             </div>
                         </div>

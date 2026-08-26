@@ -417,6 +417,7 @@ class PolosController extends Controller
                     // decola é texto desde 2026-08-03 (Sim/Não/Mensagem Enviada/valor criado).
                     'decola'                   => $impl?->decola,
                     'campanha_criada'          => $impl ? (bool) $impl->campanha_criada : null,
+                    'central_promocao'         => $impl?->central_promocao,
                     'contextos_logistica'      => $impl?->contextos_logistica,
                     'me1'                      => $impl?->me1,
                     'integradora'              => $impl?->integradora,
@@ -501,6 +502,7 @@ class PolosController extends Controller
                 'listagem'           => MlbImplementacao::ONB_LISTAGEM_OPCOES,
                 'publicacao'         => MlbImplementacao::ONB_PUBLICACAO_OPCOES,
                 'decola'             => MlbImplementacao::ONB_DECOLA_OPCOES,
+                'central_promocao'   => MlbImplementacao::ONB_CENTRAL_PROMOCAO_OPCOES,
                 'me1'                => MlbImplementacao::ONB_ME1_OPCOES,
                 'integradora'        => MlbImplementacao::ONB_INTEGRADORA_OPCOES,
                 'places'             => MlbImplementacao::ONB_PLACES_OPCOES,
@@ -602,7 +604,7 @@ class PolosController extends Controller
         $EMPRESA = ['fase', 'polo'];
         $IMPL    = ['responsavel_id', 'data_solicitacao', 'acesso_colaborador', 'gmail_colaborador',
                     'grupo_whatsapp', 'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada',
-                    'contextos_logistica', 'me1', 'integradora', 'places', 'erp',
+                    'central_promocao', 'contextos_logistica', 'me1', 'integradora', 'places', 'erp',
                     // Restauração literal do envio (só o "Desfazer" envia estes — snapshot bruto).
                     'link_enviado_em', 'link_enviado_por'];
         // decola saiu daqui em 2026-08-03: virou texto (ONB_DECOLA_OPCOES).
