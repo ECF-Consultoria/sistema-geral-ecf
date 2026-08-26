@@ -18,31 +18,53 @@ echarts.use([PieChart, TooltipComponent, CanvasRenderer]);
  *   statusDist : { Sim, 'Em progresso', 'Não', Problema, total }
  *   height     : altura do donut em px (default 280)
  *   compacto   : true = barra 100% empilhada fina (economiza altura)
+ *
+ * Props de PAREDE (Modo TV) — todos os defaults reproduzem o visual antigo, então os
+ * call-sites de tela (Index e Painel) não mudam de aparência:
+ *   fonteCentro : CSS font-size do % central (default 3rem = o antigo text-5xl). A 460px
+ *                 de donut, 48px encolhe visualmente e some a 4 m de distância.
+ *   fonteRotulo : CSS font-size do rótulo "No alvo" (default 11px)
+ *   corFundo    : cor do separador entre fatias (default '#0f1116', a cor do card do
+ *                 painel — na TV o fundo é outro, senão o vinco fica cinza claro)
+ *   borda       : espessura do separador (default 2; num anel de 460px use 5-6)
+ *   raio        : [interno, externo] do anel (default ['62%','88%'])
+ *   interativo  : false desliga tooltip e realce de fatia — na parede não há mouse
  */
-export default function StatusDonut({ statusDist = { total: 0 }, height = 280, compacto = false }) {
+export default function StatusDonut({
+    statusDist = { total: 0 },
+    height = 280,
+    compacto = false,
+    fonteCentro = '3rem',
+    fonteRotulo = '11px',
+    corFundo = '#0f1116',
+    borda = 2,
+    raio = ['62%', '88%'],
+    interativo = true,
+}) {
     const total      = statusDist.total ?? 0;
     const pctNoAlvo  = total > 0 ? Math.round(((statusDist['Sim'] ?? 0) / total) * 100) : 0;
 
     const option = useMemo(() => ({
         backgroundColor: 'transparent',
-        tooltip: {
+        tooltip: interativo ? {
             trigger: 'item',
             backgroundColor: 'rgba(15,17,22,0.95)',
             borderColor: 'rgba(255,255,255,0.10)',
             borderWidth: 1,
             textStyle: { color: '#fff', fontSize: 12 },
             formatter: (p) => `${p.marker} ${p.name}<br/><b>${p.value}</b> ativos &nbsp;·&nbsp; ${p.percent}%`,
-        },
+        } : { show: false },
         series: [{
             name: 'Status',
             type: 'pie',
-            radius: ['62%', '88%'],
+            radius: raio,
             center: ['50%', '50%'],
             avoidLabelOverlap: false,
             label: { show: false },
             labelLine: { show: false },
-            itemStyle: { borderRadius: 6, borderColor: '#0f1116', borderWidth: 2 },
-            emphasis: { scale: true, scaleSize: 6 },
+            itemStyle: { borderRadius: 6, borderColor: corFundo, borderWidth: borda },
+            emphasis: interativo ? { scale: true, scaleSize: 6 } : { scale: false },
+            silent: !interativo,
             data: STATUS_ORDEM
                 .map((k) => ({
                     value: statusDist[k] ?? 0,
@@ -51,7 +73,7 @@ export default function StatusDonut({ statusDist = { total: 0 }, height = 280, c
                 }))
                 .filter((d) => d.value > 0),
         }],
-    }), [statusDist]);
+    }), [statusDist, interativo, raio, corFundo, borda]);
 
     // Variante compacta: barra 100% empilhada fina (sem canvas)
     if (compacto) {
@@ -93,10 +115,12 @@ export default function StatusDonut({ statusDist = { total: 0 }, height = 280, c
             />
             {/* Número central: % de empresas "No alvo" */}
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className="font-display text-5xl font-extrabold tabular-nums text-emerald-400">
+                <span className="font-display font-extrabold leading-none tabular-nums text-emerald-400"
+                      style={{ fontSize: fonteCentro }}>
                     {pctNoAlvo}%
                 </span>
-                <span className="text-[11px] uppercase tracking-wider text-white/40 mt-0.5">No alvo</span>
+                <span className="mt-1 uppercase leading-none tracking-wider text-white/40"
+                      style={{ fontSize: fonteRotulo }}>No alvo</span>
             </div>
         </div>
     );

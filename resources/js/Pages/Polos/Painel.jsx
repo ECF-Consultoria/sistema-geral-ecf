@@ -1386,6 +1386,7 @@ export default function PolosPainel({
                 <ModoTV
                     empresas={empresas}
                     metasEntrada={metas}
+                    regioes={opcoes.polo ?? []}
                     cockpit={cockpit}
                     isAdmin={isAdmin}
                     lenteInicial={lente}
