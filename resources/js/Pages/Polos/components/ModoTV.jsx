@@ -126,13 +126,29 @@ const ESCALA_LINHA = {
  * 2. Regra determinística não tem esse estado: o número de polos é o mesmo em qualquer
  * tela, e a lista renderiza SEMPRE todos os itens — nada de esconder polo.
  */
-function escalaPorContagem(total) {
-    // PIOR CASO = 1 coluna. O grid só vira 2 colunas acima de 1280px, e a TV pode estar
-    // abaixo disso (720p, ou zoom do navegador). Assumir 2 colunas dobrava a altura pedida
-    // e o overflow-hidden comia o resto da lista: com 5 polos a parede mostrava 2.
-    if (total <= 3) return ESCALA_LINHA.md;
-    if (total <= 5) return ESCALA_LINHA.sm;
-    if (total <= 8) return ESCALA_LINHA.xs;
+function gradeExplicita(total) {
+    // Colunas e fileiras vão em `style`, não em classe: media query (`xl:`) depende do
+    // viewport e foi ela que escondeu polo na TV — abaixo de 1280px a lista virava 1
+    // coluna, dobrava o número de fileiras e o excedente era comido pelo overflow.
+    // `minmax(0, 1fr)` nas fileiras garante que TODAS existam dividindo a altura.
+    const colunas = total <= 4 ? 1 : 2;
+    const linhas  = Math.max(1, Math.ceil(total / colunas));
+    return {
+        colunas,
+        linhas,
+        style: {
+            gridTemplateColumns: `repeat(${colunas}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${linhas}, minmax(0, 1fr))`,
+        },
+    };
+}
+
+function escalaPorContagem(linhas) {
+    // Recebe FILEIRAS (já descontadas as colunas), não o total: é a fileira que consome
+    // altura. As fileiras dividem a caixa, então a escala só precisa manter o texto legível.
+    if (linhas <= 3) return ESCALA_LINHA.md;
+    if (linhas <= 5) return ESCALA_LINHA.sm;
+    if (linhas <= 8) return ESCALA_LINHA.xs;
     return ESCALA_LINHA.xxs;
 }
 
@@ -319,8 +335,19 @@ export default function ModoTV({
     // Altura real da caixa do donut (canvas precisa de px resolvido) e quantos itens
     // cabem em cada lista sem clipar.
     const [refDonut, alturaDonut] = useAlturaMedida();
-    const escalaPolos = escalaPorContagem(porPolo.length);
-    const escalaRank  = escalaPorContagem(ranking.length);
+    const gradePolos  = gradeExplicita(porPolo.length);
+    const gradeRank   = gradeExplicita(ranking.length);
+    const escalaPolos = escalaPorContagem(gradePolos.linhas);
+    const escalaRank  = escalaPorContagem(gradeRank.linhas);
+
+    // Viewport real, só para o rótulo de diagnóstico.
+    const [vp, setVp] = useState({ w: 0, h: 0 });
+    useEffect(() => {
+        const medir = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+        medir();
+        window.addEventListener('resize', medir);
+        return () => window.removeEventListener('resize', medir);
+    }, []);
 
     const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const horaAtualizacao = atualizadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -353,6 +380,11 @@ export default function ModoTV({
                         {telaAtiva === 'metas' ? mesCorrente : mesRefFat}{telaAtiva !== 'metas' && parcial ? ' · parcial' : ''}
                     </span>
                     <span className="leading-none text-white/25" style={{ fontSize: FT.rotulo }}>atual. {horaAtualizacao}</span>
+                    {/* Diagnóstico temporário: viewport e grade reais da TV (sem acesso ao
+                        aparelho, é a única forma de ver o que o layout recebeu de verdade). */}
+                    <span className="leading-none text-white/20" style={{ fontSize: FT.rotulo }}>
+                        dbg {vp.w}×{vp.h} · {gradePolos.colunas}c×{gradePolos.linhas}l · {porPolo.length}p
+                    </span>
                     <span className="font-display font-extrabold leading-none tabular-nums text-white" style={{ fontSize: FT.titulo }}>{hora}</span>
                     {/* Controles quase invisíveis: a TV não tem mouse — reaparecem no hover. */}
                     <div className="flex items-center gap-1.5 opacity-10 transition-opacity hover:opacity-100">
@@ -403,10 +435,7 @@ export default function ModoTV({
                         {/* Faixa B — funil de entrada por polo (o ganho de densidade mora aqui) */}
                         <div className="flex min-h-0 flex-col">
                             <Titulo extra="entrantes · aceites · reserva">Funil de entrada por polo</Titulo>
-                            {/* Lista longa força 2 colunas mesmo em tela estreita: em 1 coluna
-                                18 fileiras não cabem em nenhuma altura útil. */}
-                            <div className={cn('grid min-h-0 flex-1 auto-rows-fr gap-x-[24px] gap-y-[10px] overflow-hidden',
-                                porPolo.length > 8 ? 'grid-cols-2' : 'grid-cols-1 xl:grid-cols-2')}>
+                            <div className="grid min-h-0 flex-1 gap-x-[24px] gap-y-[10px] overflow-hidden" style={gradePolos.style}>
                                 {porPolo.map((p) => (
                                     <LinhaPolo key={p.polo} nome={p.polo} valor={fmtInt(p.ent)}
                                                apoio={`${p.ace} ac${p.res > 0 ? ` · ${p.res} res` : ''} · ${p.pc}%`}
@@ -503,8 +532,7 @@ export default function ModoTV({
                                 <Titulo extra="% da meta · faturamento">Ranking de polos</Titulo>
                                 {/* content-evenly, não content-start: com 10-12 polos o ranking é mais
                                     baixo que o donut ao lado, e o vão sobrava todo no rodapé. */}
-                                <div className={cn('grid min-h-0 flex-1 auto-rows-fr gap-x-[28px] gap-y-[10px] overflow-hidden',
-                                    ranking.length > 8 ? 'grid-cols-2' : 'grid-cols-1 xl:grid-cols-2')}>
+                                <div className="grid min-h-0 flex-1 gap-x-[28px] gap-y-[10px] overflow-hidden" style={gradeRank.style}>
                                     {ranking.map((p) => (
                                         <LinhaPolo key={p.polo} nome={p.polo} valor={`${Math.round(Number(p.pct) || 0)}%`}
                                                    apoio={formatCurrencyCompact(p.faturamento)}
