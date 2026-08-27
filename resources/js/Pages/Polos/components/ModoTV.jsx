@@ -184,9 +184,9 @@ function Heroi({ rotulo, valor, apoio = null, pct: p = null, cor = HEX.yellow })
 // quebra em duas linhas e desalinha o card inteiro da tira.
 function Kpi({ rotulo, valor, cor = '#ffffff', apoio = null, sec = false }) {
     const n = String(valor).length;
-    const fonte = sec || n > 8 ? FT.kpiSec : n > 6 ? FT.barraNum : FT.kpi;
+    const fonte = sec || n > 8 ? FT.barraNome : n > 6 ? FT.barraNum : FT.kpi;
     return (
-        <div className="flex min-w-0 flex-col justify-center rounded-xl border border-white/[0.1] bg-white/[0.04] px-[16px] py-[10px]">
+        <div className="flex min-w-0 flex-col justify-center rounded-xl border border-white/[0.1] bg-white/[0.04] px-[12px] py-[10px]">
             <span className="truncate uppercase leading-[1.25] tracking-[0.12em] text-white/50" style={{ fontSize: FT.rotulo }}>{rotulo}</span>
             <span className="mt-[4px] whitespace-nowrap font-display font-extrabold leading-none tabular-nums"
                   style={{ color: cor, fontSize: fonte }}>{valor}</span>
@@ -338,7 +338,7 @@ export default function ModoTV({
     const gradePolos  = gradeExplicita(porPolo.length);
     const gradeRank   = gradeExplicita(ranking.length);
     const escalaPolos = escalaPorContagem(gradePolos.linhas);
-    const escalaRank  = escalaPorContagem(gradeRank.linhas);
+    const escalaRank  = escalaPorContagem(ranking.length);   // auto-fit decide as colunas: escala pelo pior caso
 
     const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const horaAtualizacao = atualizadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -347,7 +347,7 @@ export default function ModoTV({
         <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-ecf-bg text-white">
             {/* Cabeçalho de 64px: logo + tela + mês + relógio (sem rodapé — a área é da parede) */}
             <div className="flex shrink-0 items-center justify-between gap-[16px] border-b border-white/[0.07] px-[24px] pb-[12px] pt-[12px]">
-                <div className="flex min-w-0 items-center gap-[16px]">
+                <div className="flex min-w-0 items-center gap-[16px] overflow-hidden">
                     <img
                         src={`${asset_url ?? ''}/images/logo.png`}
                         alt="ECF Consultoria"
@@ -366,8 +366,8 @@ export default function ModoTV({
                         ))}
                     </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-[16px]">
-                    <span className="uppercase leading-none tracking-[0.16em] text-white/40" style={{ fontSize: FT.rotulo }}>
+                <div className="flex min-w-0 shrink-0 items-center gap-[16px]">
+                    <span className="truncate uppercase leading-none tracking-[0.16em] text-white/40" style={{ fontSize: FT.rotulo }}>
                         {telaAtiva === 'metas' ? mesCorrente : mesRefFat}{telaAtiva !== 'metas' && parcial ? ' · parcial' : ''}
                     </span>
                     <span className="hidden leading-none text-white/25 lg:inline" style={{ fontSize: FT.rotulo }}>atual. {horaAtualizacao}</span>
@@ -394,7 +394,7 @@ export default function ModoTV({
                     /* ── METAS = a aba "Entrantes (M0)" inteira: meta, funil, polos e setup ── */
                     <div className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] gap-[16px]">
                         {/* Faixa A — meta do mês + os 4 números do funil */}
-                        <div className="grid grid-cols-1 gap-[20px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
+                        <div className="grid grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
                             <Heroi
                                 rotulo={`Entrantes (M0) — ${mesNome}/${agora.getFullYear()}`}
                                 valor={metaMes > 0 ? `${entrantes.length}/${metaMes}` : fmtInt(entrantes.length)}
@@ -414,7 +414,7 @@ export default function ModoTV({
                                     aí "ritmo/dia" não existe e o que resta é o que falta. */}
                                 <Kpi rotulo={faltam === 0 ? 'Dias úteis' : diasUteis > 0 ? 'Ritmo/dia' : 'Faltam'}
                                      valor={faltam === 0 ? fmtInt(diasUteis) : diasUteis > 0 ? ritmo.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : fmtInt(faltam)}
-                                     apoio={faltam === 0 ? 'até o fim do mês' : diasUteis > 0 ? `${diasUteis} dias úteis` : 'sem dia útil restante'} />
+                                     apoio={faltam === 0 ? 'no mês' : diasUteis > 0 ? `${diasUteis} dias úteis` : 'sem dia útil'} />
                             </div>
                         </div>
 
@@ -445,7 +445,7 @@ export default function ModoTV({
                                     {setup.map((s) => (
                                         <LinhaPolo key={s.rotulo} nome={s.rotulo} valor={`${s.n}/${entrantes.length}`}
                                                    apoio={`${pct(s.n, entrantes.length)}%`}
-                                                   pct={pct(s.n, entrantes.length)} cor={s.cor} escala={ESCALA_LINHA.md} />
+                                                   pct={pct(s.n, entrantes.length)} cor={s.cor} escala={ESCALA_LINHA.sm} />
                                     ))}
                                 </div>
                             )}
@@ -455,7 +455,7 @@ export default function ModoTV({
                     /* ── FATURAMENTO = distribuição de status (gráfico) + faturamento + ranking ── */
                     <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] gap-[16px]">
                         {/* Faixa A — faturamento × meta + ADS */}
-                        <div className="grid grid-cols-1 gap-[20px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
+                        <div className="grid grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
                             <Heroi
                                 rotulo="Faturamento do mês"
                                 valor={formatCurrencyCompact(totalFat)}
@@ -473,7 +473,7 @@ export default function ModoTV({
                         </div>
 
                         {/* Faixa B — o gráfico de status como protagonista + ranking ao lado */}
-                        <div className="grid min-h-0 grid-cols-1 gap-[24px] lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+                        <div className="grid min-h-0 grid-cols-1 gap-[24px] md:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
                             <div className="flex min-h-0 flex-col rounded-2xl border border-white/[0.1] bg-white/[0.03] px-[20px] py-[14px]">
                                 <Titulo extra={totalStatus > 0 ? `${totalStatus} empresas` : null}>Distribuição de status</Titulo>
                                 {totalStatus === 0 ? (
@@ -481,23 +481,27 @@ export default function ModoTV({
                                        um retângulo mudo na parede, sem dizer que não há dado. */
                                     <p className="m-auto text-white/35" style={{ fontSize: FT.barraNome }}>Sem empresas na meta neste mês</p>
                                 ) : (
-                                <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-[20px]">
+                                <div className="grid min-h-0 flex-1 grid-cols-1 items-center gap-[16px] xl:grid-cols-[minmax(0,1fr)_auto] xl:gap-[20px]">
                                     <div ref={refDonut} className="h-full min-h-0">
-                                        {statusDist && alturaDonut > 40 && (
+                                        {statusDist && alturaDonut > 120 ? (
                                             <StatusDonut
                                                 statusDist={statusDist}
                                                 height={alturaDonut}
-                                                fonteCentro={FT.kpi}
+                                                fonteCentro={alturaDonut >= 200 ? FT.heroi : FT.kpi}
                                                 fonteRotulo={FT.rotulo}
                                                 corFundo="#050507"
-                                                borda={5}
+                                                borda={alturaDonut >= 200 ? 5 : 2}
                                                 raio={RAIO_DONUT_TV}
                                                 interativo={false}
                                             />
+                                        ) : (
+                                            /* Anel abaixo de 120px vira bolinha ilegível — a barra
+                                               100% empilhada lê melhor de longe. */
+                                            statusDist && <div className="py-[8px]"><StatusDonut statusDist={statusDist} compacto /></div>
                                         )}
                                     </div>
                                     {/* Legenda grande: a cor sozinha não se lê de longe — vai número junto */}
-                                    <div className="flex shrink-0 flex-col justify-center gap-[10px]">
+                                    <div className="grid shrink-0 grid-cols-2 gap-x-[16px] gap-y-[8px] xl:grid-cols-1 xl:gap-y-[10px]">
                                         {STATUS_ORDEM.map((k) => (
                                             <div key={k} className="flex items-baseline gap-[10px] whitespace-nowrap leading-none">
                                                 <span className="inline-block shrink-0 rounded-full"
@@ -518,7 +522,8 @@ export default function ModoTV({
                                 <Titulo extra="% da meta · faturamento">Ranking de polos</Titulo>
                                 {/* content-evenly, não content-start: com 10-12 polos o ranking é mais
                                     baixo que o donut ao lado, e o vão sobrava todo no rodapé. */}
-                                <div className="grid min-h-0 flex-1 gap-x-[28px] gap-y-[10px] overflow-hidden" style={gradeRank.style}>
+                                <div className="grid min-h-0 flex-1 gap-x-[28px] gap-y-[10px] overflow-hidden"
+                                     style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gridAutoRows: 'minmax(0, 1fr)' }}>
                                     {ranking.map((p) => (
                                         <LinhaPolo key={p.polo} nome={p.polo} valor={`${Math.round(Number(p.pct) || 0)}%`}
                                                    apoio={formatCurrencyCompact(p.faturamento)}
