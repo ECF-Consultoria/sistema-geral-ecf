@@ -93,10 +93,11 @@ class MlbImplementacao extends Model
      * Fase do onboarding da empresa no polo.
      * "Encaminhar Comercial" = lead a repassar ao Comercial (pré-aceite; não tem Cust ID ainda)
      * → "Aceite no Projeto" = aceitou, ainda entrando (pré-M0; espelha a planilha) → M0 = entrada
-     * efetiva → M1..M4 → Encerrado/Churn = saída.
+     * efetiva → M1..M4 → Encerrado/Churn = saída. "Protocolo Churn" = protocolo de
+     * retenção aberto — a empresa ainda está no polo, mas em processo de saída.
      */
     public const ONB_FASE_OPCOES = [
-        'Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn',
+        'Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Churn',
     ];
 
     /** Status de entrada da empresa no projeto (funil — planilha V2, coluna "status de entrada") */

@@ -12,7 +12,7 @@ const SKUS_QTD   = { 1: 3, 2: 4, 3: 3 };
 
 // Opções padrão (não removíveis pelo usuário)
 const DEFAULT_ESTAGIOS = ['Não Listado','Estágio 1','Estágio 2','Estágio 3','Concluido','Churn','Finalizado','Problema'];
-const DEFAULT_STATUS   = ['M0','M1','M2','M3','M4','Fechamento','Encerrado','Churn'];
+const DEFAULT_STATUS   = ['M0','M1','M2','M3','M4','Fechamento','Encerrado','Protocolo Churn','Churn'];
 const DEFAULT_PROJETOS = ['POLOS','Implantação','Incubadora','Assessoria'];
 const DEFAULT_REGIOES  = []; // Região é totalmente livre — sem padrões
 
@@ -361,7 +361,7 @@ function EmpresaForm({ empresa, publicadores, estagiosDb, fasesDb, polosDb, proj
                         <div>
                             <label className="text-white/50 text-[11px] uppercase tracking-wide font-semibold block mb-1">
                                 Status
-                                <span className="text-white/25 ml-1 normal-case font-normal">— M0..M4, Fechamento, Encerrado, Churn</span>
+                                <span className="text-white/25 ml-1 normal-case font-normal">— M0..M4, Fechamento, Encerrado, Protocolo Churn, Churn</span>
                             </label>
                             <ComboInput
                                 value={data.fase}

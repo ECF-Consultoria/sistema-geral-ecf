@@ -34,8 +34,8 @@ import ModoTV from './components/ModoTV';
 import ImplModal from '@/Pages/Mlb/components/ImplModal';
 
 // ─── Domínio (strings EXATAS — chaves de comparação no banco) ─────────────────────
-const ORDEM_FASE = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn'];
-const FASES_TERMINAIS = ['Encerrado', 'Churn'];
+const ORDEM_FASE = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Churn'];
+const FASES_TERMINAIS = ['Encerrado', 'Protocolo Churn', 'Churn'];
 
 // Escopo operacional do painel: só quem está EM OPERAÇÃO conta nos filtros/donuts/grade.
 // Fora ficam as fases que não são trabalho ativo — Churn, Encerrado, Aceite no Projeto,
@@ -81,14 +81,14 @@ const fmtPct = (n) => `${Number(n ?? 0).toFixed(0)}%`;
 const estagioKey = (e) => (e?.estagio && e.estagio !== '') ? e.estagio : SEM_ESTAGIO;
 
 // Cor do texto por Fase M — hierarquia rápida na grade.
-const COR_FASE = { 'Encaminhar Comercial': 'text-white/45', 'Aceite no Projeto': 'text-fuchsia-300', M0: 'text-violet-300', M1: 'text-sky-300', M2: 'text-amber-200', M3: 'text-amber-300', M4: 'text-emerald-300', Encerrado: 'text-white/40', Churn: 'text-red-300' };
+const COR_FASE = { 'Encaminhar Comercial': 'text-white/45', 'Aceite no Projeto': 'text-fuchsia-300', M0: 'text-violet-300', M1: 'text-sky-300', M2: 'text-amber-200', M3: 'text-amber-300', M4: 'text-emerald-300', Encerrado: 'text-white/40', 'Protocolo Churn': 'text-orange-300', Churn: 'text-red-300' };
 const corFase = (f) => COR_FASE[f] ?? 'text-white/70';
 
 // Cor do texto por valor de onboarding (verde=ok · âmbar=em progresso · vermelho=bloqueio).
 // Espelha a classificação da ficha (corStatus) — só a cor do texto, p/ a grade escaneável.
 const VAL_POS  = ['Com acesso', 'Já enviado', 'Já listado', 'Concluído', 'Concluido', 'Sim', 'Ativo', 'Checklist realizado', 'Feito', 'Alta'];
 const VAL_PROG = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado', 'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora', 'Preenchendo tabela', 'Verificando', 'Agendada', 'em contato', 'Média', 'Reserva - entrada prox mês', 'Mensagem Enviada'];
-const VAL_NEG  = ['Sem acesso', 'Banida', 'Churn', 'Encerrado', 'Não', 'Não enviado', 'Suspensa', 'Falta informação', 'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal', 'Baixo', 'Abandonou o projeto', 'Não compareceu', 'Não responde', 'Não tem CNPJ', 'Não tem conta ML'];
+const VAL_NEG  = ['Sem acesso', 'Banida', 'Protocolo Churn', 'Churn', 'Encerrado', 'Não', 'Não enviado', 'Suspensa', 'Falta informação', 'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal', 'Baixo', 'Abandonou o projeto', 'Não compareceu', 'Não responde', 'Não tem CNPJ', 'Não tem conta ML'];
 function corValor(v) {
     if (!v) return 'text-white/25';
     if (VAL_POS.includes(v)) return 'text-emerald-300';
@@ -99,7 +99,7 @@ function corValor(v) {
 
 // Classificadores de "tom" p/ os indicadores acionáveis do OperacoesPanel (reusam as listas acima).
 const toneValor = (v) => (VAL_POS.includes(v) ? 'green' : VAL_PROG.includes(v) ? 'amber' : VAL_NEG.includes(v) ? 'red' : 'neutral');
-const TONE_FASE = { 'Encaminhar Comercial': 'neutral', 'Aceite no Projeto': 'violet', M0: 'violet', M1: 'sky', M2: 'amber', M3: 'amber', M4: 'green', Encerrado: 'neutral', Churn: 'red' };
+const TONE_FASE = { 'Encaminhar Comercial': 'neutral', 'Aceite no Projeto': 'violet', M0: 'violet', M1: 'sky', M2: 'amber', M3: 'amber', M4: 'green', Encerrado: 'neutral', 'Protocolo Churn': 'red', Churn: 'red' };
 const toneFase = (f) => TONE_FASE[f] ?? 'neutral';
 
 // Coluna do indicador → lente onde ela é editável (p/ navegar ao clicar). null = visível em todas.
@@ -1179,7 +1179,7 @@ export default function PolosPainel({
                     </div>
                     <button type="button" onClick={() => setSoEscopo((v) => !v)}
                         title={soEscopo
-                            ? `Mostrando só M1–M4. ${nForaDoEscopo} empresa(s) fora do escopo (Churn, Encerrado, Aceite no Projeto, M0, Fechamento, sem fase) estão ocultas — clique para incluir.`
+                            ? `Mostrando só M1–M4. ${nForaDoEscopo} empresa(s) fora do escopo (Churn, Protocolo Churn, Encerrado, Aceite no Projeto, M0, Fechamento, sem fase) estão ocultas — clique para incluir.`
                             : 'Mostrando todas as fases, inclusive Churn/Encerrado — clique para voltar ao escopo M1–M4.'}
                         className={cn('inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition shrink-0',
                             soEscopo ? 'border-ecf-yellow/30 bg-ecf-yellow/[0.08] text-ecf-yellow hover:bg-ecf-yellow/15'

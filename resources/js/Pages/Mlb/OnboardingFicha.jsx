@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 
 // ═══ CONSTANTES DE FALLBACK (usadas quando opcoes não chegam via props) ═══
 const ONB_POLO_OPCOES     = ['Arapongas', 'S. J. Rio Preto', 'Bento Gonçalves', 'São Bento do Sul'];
-const ONB_FASE_OPCOES     = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn'];
+const ONB_FASE_OPCOES     = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Churn'];
 const ONB_ACESSO_COLABORADOR_OPCOES = ['Com acesso', 'Sem acesso'];
 const ONB_PLANILHA_PRODUTOS_OPCOES  = ['Já enviado', 'Não enviado'];
 const ONB_LISTAGEM_OPCOES           = ['Não', 'Pronto para listar', 'Já listado', 'Falta informação'];
@@ -44,7 +44,7 @@ function corStatus(valor) {
     const emProgresso = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado',
         'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora',
         'Preenchendo tabela', 'Verificando', 'Mensagem Enviada'];
-    const negativos = ['Sem acesso', 'Banida', 'Churn', 'Encerrado', 'Não', 'Falta informação',
+    const negativos = ['Sem acesso', 'Banida', 'Protocolo Churn', 'Churn', 'Encerrado', 'Não', 'Falta informação',
         'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal'];
     const fasesAtivas = ['M1', 'M2', 'M3', 'M4'];
     if (positivos.includes(valor)) return 'text-emerald-300 bg-emerald-500/10';
