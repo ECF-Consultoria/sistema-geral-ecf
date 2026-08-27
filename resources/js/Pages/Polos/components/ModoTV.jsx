@@ -131,7 +131,10 @@ function gradeExplicita(total) {
     // viewport e foi ela que escondeu polo na TV — abaixo de 1280px a lista virava 1
     // coluna, dobrava o número de fileiras e o excedente era comido pelo overflow.
     // `minmax(0, 1fr)` nas fileiras garante que TODAS existam dividindo a altura.
-    const colunas = total <= 4 ? 1 : 2;
+    // LISTA (1 coluna) enquanto couber: é como o funil por polo se lê melhor na parede —
+    // uma linha por polo, de cima para baixo. Só passa a 2 colunas quando são tantos que
+    // a fileira ficaria fina demais.
+    const colunas = total <= 9 ? 1 : 2;
     const linhas  = Math.max(1, Math.ceil(total / colunas));
     return {
         colunas,
@@ -146,9 +149,9 @@ function gradeExplicita(total) {
 function escalaPorContagem(linhas) {
     // Recebe FILEIRAS (já descontadas as colunas), não o total: é a fileira que consome
     // altura. As fileiras dividem a caixa, então a escala só precisa manter o texto legível.
-    if (linhas <= 3) return ESCALA_LINHA.md;
-    if (linhas <= 5) return ESCALA_LINHA.sm;
-    if (linhas <= 8) return ESCALA_LINHA.xs;
+    if (linhas <= 5) return ESCALA_LINHA.md;
+    if (linhas <= 8) return ESCALA_LINHA.sm;
+    if (linhas <= 12) return ESCALA_LINHA.xs;
     return ESCALA_LINHA.xxs;
 }
 
