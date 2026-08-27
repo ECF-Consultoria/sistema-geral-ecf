@@ -6,7 +6,7 @@ import {
     Wallet, Target, Building2, ChevronDown, ChevronRight, Link2, BookUser,
     Sparkles, MegaphoneOff, ShieldAlert, Pencil, Trash2, Check, X,
     Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2,
-    Archive, Filter, Tv,
+    Archive, Filter, Tv, Download,
 } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -16,6 +16,7 @@ import BulkActionBar from '@/Components/BulkActionBar';
 import { STATUS_META, STATUS_ORDEM } from './components/statusMeta';
 // Célula de Cust ID compartilhada com o Onboarding (/mlb/implementacao).
 import { CustIdCell } from './components/CustIdCell';
+import { NomeEmpresaCell } from './components/NomeEmpresaCell';
 import StatusBadge from './components/StatusBadge';
 import HeroKpi from './components/HeroKpi';
 import FatVsMetaChart from './components/FatVsMetaChart';
@@ -923,6 +924,9 @@ export default function PolosPainel({
     // Salva SÓ o cust_id (endpoint dedicado que não zera os demais campos da empresa).
     const salvarCustId = (e, valor) =>
         router.patch(route('mlb.empresas.cust-id', e.id), { cust_id: String(valor ?? '').trim() }, reloadOpts);
+    // Renomear a empresa (mesmo motivo do cust_id: endpoint de UM campo).
+    const salvarNome = (e, valor) =>
+        router.patch(route('mlb.empresas.nome', e.id), { nome: String(valor ?? '').trim() }, reloadOpts);
     const sincronizar = () =>
         router.post(route('polos.sync'), mesEfetivo ? { mes: mesEfetivo } : {}, {
             preserveScroll: true, preserveState: true,
@@ -964,9 +968,35 @@ export default function PolosPainel({
         window.axios.post(route('mlb.polos-painel.meta-faturamento'), { meta: n }, { headers: { 'X-CSRF-TOKEN': csrf_token } }).catch(() => {});
     }, [metaInput, csrf_token]);
 
-    const handlers = { salvarCampo, trocarResponsavel, toggleProblema, alternarMeta, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal, salvarCustId };
+    const handlers = { salvarCampo, trocarResponsavel, toggleProblema, alternarMeta, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal, salvarCustId, salvarNome };
 
     // ── Modo TELA CHEIA (planilha): overlay que estoura sidebar/max-width + Fullscreen API. ──
+    // ── Baixar planilha (.xlsx) ────────────────────────────────────────────────
+    // Form POST oculto em vez de axios+blob: o navegador faz o download nativo (barra de
+    // progresso, "Salvar como", sem segurar o arquivo em memória) e a lista de ids das
+    // linhas visíveis vai no corpo — numa query string, 500+ ids estourariam o limite.
+    const baixarPlanilha = useCallback(() => {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = route('mlb.polos-painel.exportar');
+        form.style.display = 'none';
+
+        const campo = (nome, valor) => {
+            const i = document.createElement('input');
+            i.type = 'hidden'; i.name = nome; i.value = valor ?? '';
+            form.appendChild(i);
+        };
+
+        campo('_token', csrf_token);
+        if (mesEfetivo) campo('mes', mesEfetivo);
+        // Exporta o que está NA TELA: os funis de coluna e a busca já filtraram esta lista.
+        filtradas.forEach((e) => campo('ids[]', e.id));
+
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+    }, [csrf_token, mesEfetivo, filtradas]);
+
     const toggleTelaCheia = useCallback(() => {
         setTelaCheia((v) => {
             const next = !v;
@@ -1212,6 +1242,12 @@ export default function PolosPainel({
                         ))}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                        <button type="button" onClick={baixarPlanilha}
+                            title="Baixar as linhas visíveis em .xlsx — uma coluna por campo, com filtro já ligado"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08]">
+                            <Download size={13} /> Planilha
+                            <span className="ml-0.5 rounded-full bg-white/[0.12] px-1.5 py-0.5 text-[10px] tabular-nums text-white/70">{filtradas.length}</span>
+                        </button>
                         <button type="button" onClick={() => setMostrarArquivadas(true)}
                             title="Empresas arquivadas (fora do projeto Polos — não contam em nada)"
                             className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08]">
@@ -1584,11 +1620,14 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                         </button>
                         <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                                {e.impl_id ? (
-                                    <button type="button" onClick={() => on.verEmpresa(e)} className="text-left text-white text-[13.5px] font-semibold hover:text-ecf-yellow transition truncate max-w-[220px]" title="Ver (visão rápida do onboarding)">{e.nome}</button>
-                                ) : (
-                                    <span className="text-white text-[13.5px] font-semibold truncate max-w-[220px]">{e.nome}</span>
-                                )}
+                                {/* Nome editável inline (lápis no hover). Com ficha, o nome segue abrindo a visão rápida. */}
+                                <NomeEmpresaCell
+                                    e={e}
+                                    onSalvar={on.salvarNome}
+                                    onAbrir={e.impl_id ? on.verEmpresa : null}
+                                    titulo="Ver (visão rápida do onboarding)"
+                                    className="text-white text-[13.5px] font-semibold truncate max-w-[220px]"
+                                />
                                 <CustIdCell e={e} onSalvar={on.salvarCustId} />
                                 {/* Roxo (cor do status Problema no donut) = problema que tira da meta. */}
                                 {e.problema && (

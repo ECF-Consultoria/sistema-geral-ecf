@@ -1251,6 +1251,9 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::get('/polos-painel/financeiro', [PolosController::class, 'painelFinanceiro'])->name('polos-painel.financeiro');
     // Edição em MASSA do Painel (JSON; mesmo gate operacional de painel()).
     Route::post('/polos-painel/bulk', [PolosController::class, 'painelBulk'])->name('polos-painel.bulk');
+    // Baixar o Painel como planilha .xlsx (colunas + AutoFiltro). POST porque o front
+    // manda os ids das linhas VISÍVEIS — 500+ ids não caberiam numa query string.
+    Route::post('/polos-painel/exportar', [PolosController::class, 'exportarPlanilha'])->name('polos-painel.exportar');
     // Meta de entrantes por região × mês (aba Metas; JSON; mesmo gate operacional).
     Route::post('/polos-painel/meta-entrada', [PolosController::class, 'salvarMetaEntrada'])->name('polos-painel.meta-entrada');
     // Meta ÚNICA de faturamento Polos (card "% Geral da meta"; JSON; admin-only).
@@ -1320,6 +1323,8 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::delete('/opcao-campo',                 [MlbController::class, 'destroyOpcaoCampo'])->name('opcao-campo.destroy');
     Route::patch('/empresas/{empresa}/problema',  [MlbController::class, 'marcarProblemaEmpresa'])->name('empresas.problema');
     Route::patch('/empresas/{empresa}/cust-id',   [MlbController::class, 'updateCustIdEmpresa'])->name('empresas.cust-id');
+    // Renomear empresa inline (Painel Polos + Onboarding). Dedicado: updateEmpresa zera os campos omitidos.
+    Route::patch('/empresas/{empresa}/nome',      [MlbController::class, 'updateNomeEmpresa'])->name('empresas.nome');
     Route::post('/empresas/{empresa}/sync-vendas', [MlbController::class, 'syncVendasAdman'])->name('empresas.sync-vendas');
     Route::get('/empresas/{empresa}/debug-sync',  [MlbController::class, 'debugSyncVendas'])->name('empresas.debug-sync');
     Route::post('/sync-vendas',                   [MlbController::class, 'syncTodasVendasAdman'])->name('sync-vendas');

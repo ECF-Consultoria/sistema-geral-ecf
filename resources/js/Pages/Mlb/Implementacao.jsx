@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { ESTAGIO_COLORS } from '@/Pages/Polos/components/estagioBadge';
 // Célula de Cust ID — MESMO componente do Painel Polos (copiar / criar / editar inline).
 import { CustIdCell } from '@/Pages/Polos/components/CustIdCell';
+import { NomeEmpresaCell } from '@/Pages/Polos/components/NomeEmpresaCell';
 
 // Status do envio do link ao cliente (ONB-ENVIO-LINK)
 const STATUS_ENVIO_LABELS = {
@@ -843,6 +844,13 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
             preserveState: true,
         });
 
+    // Renomear a empresa (mesmo motivo do cust_id: endpoint de UM campo).
+    const salvarNome = (e, valor) =>
+        router.patch(route('mlb.empresas.nome', e.id), { nome: String(valor ?? '').trim() }, {
+            preserveScroll: true,
+            preserveState: true,
+        });
+
     // Busca local (complementar aos filtros de Polo/Fase do backend)
     // Aceita nome OU Cust ID no mesmo campo - o Cust ID casa por trecho, colar o id inteiro tambem funciona
     const termoBusca = busca.trim().toLowerCase();
@@ -1013,7 +1021,8 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                 >
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-white text-[13px] font-medium">{empresa.nome}</span>
+                                            {/* Nome editável inline: lápis no hover, Enter salva, Esc cancela */}
+                                            <NomeEmpresaCell e={empresa} onSalvar={salvarNome} className="text-white text-[13px] font-medium" />
                                             {/* Cust ID inline: copia (chip), cadastra ("+") e corrige (lápis) sem sair da tela */}
                                             <CustIdCell e={empresa} onSalvar={salvarCustId} />
                                             {/* Badge "Fora do prazo" — apenas exibe prop calculada no backend (plano 02) */}

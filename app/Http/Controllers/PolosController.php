@@ -559,6 +559,357 @@ class PolosController extends Controller
 
         return response()->json(['cockpit' => $cockpit, 'financeiro' => $fin]);
     }
+    /**
+     * Colunas da planilha exportada — MESMA ordem e MESMOS rótulos da lente "Geral"
+     * do Painel (`COLS_POR_LENTE.geral` em Polos/Painel.jsx), precedidas da
+     * identidade (Empresa / Cust ID / Situação).
+     *
+     * `tipo` governa a formatação da célula no XLSX:
+     *   texto | data (dd/mm/aaaa) | dinheiro (R$) | percentual (0-100)
+     *
+     * As `fin_*` só entram para admin — o Painel também só as mostra para admin.
+     *
+     * @return array<int,array{key:string,label:string,tipo:string}>
+     */
+    private function colunasExportacao(bool $isAdmin): array
+    {
+        $cols = [
+            ['key' => 'nome',                'label' => 'Empresa',             'tipo' => 'texto'],
+            ['key' => 'cust_id',             'label' => 'Cust ID',             'tipo' => 'texto'],
+            ['key' => 'situacao',            'label' => 'Situação',            'tipo' => 'texto'],
+            ['key' => 'problema_nota',       'label' => 'Nota do problema',    'tipo' => 'texto'],
+            // ── Identidade / andamento (lente Geral) ──
+            ['key' => 'data_cadastro',       'label' => 'Cadastro',            'tipo' => 'data'],
+            ['key' => 'fase',                'label' => 'Fase',                'tipo' => 'texto'],
+            ['key' => 'estagio',             'label' => 'Estágio',             'tipo' => 'texto'],
+            ['key' => 'polo',                'label' => 'Polo',                'tipo' => 'texto'],
+            ['key' => 'responsavel',         'label' => 'Responsável',         'tipo' => 'texto'],
+            ['key' => 'onboarding',          'label' => 'Onboarding',          'tipo' => 'percentual'],
+            ['key' => 'envio',               'label' => 'Envio',               'tipo' => 'texto'],
+            ['key' => 'status_entrada',      'label' => 'Status entrada',      'tipo' => 'texto'],
+            ['key' => 'chance_entrada',      'label' => 'Chance entrada',      'tipo' => 'texto'],
+            // ── Acessos ──
+            ['key' => 'acesso_colaborador',  'label' => 'Acesso colaborador',  'tipo' => 'texto'],
+            ['key' => 'gmail_colaborador',   'label' => 'Gmail colaborador',   'tipo' => 'texto'],
+            ['key' => 'grupo_whatsapp',      'label' => 'Grupo WhatsApp',      'tipo' => 'texto'],
+            ['key' => 'link_whatsapp',       'label' => 'Link do Whats',       'tipo' => 'texto'],
+            ['key' => 'reuniao_onboarding',  'label' => 'Reunião onboarding',  'tipo' => 'texto'],
+            ['key' => 'data_solicitacao',    'label' => 'Data solicitação',    'tipo' => 'data'],
+            // ── Produtos ──
+            ['key' => 'planilha_produtos',   'label' => 'Planilha produtos',   'tipo' => 'texto'],
+            ['key' => 'listagem',            'label' => 'Listagem',            'tipo' => 'texto'],
+            ['key' => 'publicacao',          'label' => 'Publicação',          'tipo' => 'texto'],
+            ['key' => 'decola',              'label' => 'Decola',              'tipo' => 'texto'],
+            ['key' => 'campanha_criada',     'label' => 'Campanha',            'tipo' => 'texto'],
+            ['key' => 'central_promocao',    'label' => 'Central de Promoção', 'tipo' => 'texto'],
+            // ── Logística ──
+            ['key' => 'contextos_logistica', 'label' => 'Contextos logística', 'tipo' => 'texto'],
+            ['key' => 'me1',                 'label' => 'ME1',                 'tipo' => 'texto'],
+            ['key' => 'integradora',         'label' => 'Integradora',         'tipo' => 'texto'],
+            ['key' => 'places',              'label' => 'Places',              'tipo' => 'texto'],
+            ['key' => 'erp',                 'label' => 'ERP',                 'tipo' => 'texto'],
+        ];
+
+        if ($isAdmin) {
+            $cols[] = ['key' => 'fin_faturamento', 'label' => 'Faturamento', 'tipo' => 'dinheiro'];
+            $cols[] = ['key' => 'fin_meta',        'label' => 'Meta',        'tipo' => 'dinheiro'];
+            $cols[] = ['key' => 'fin_pct',         'label' => '% da meta',   'tipo' => 'percentual'];
+            $cols[] = ['key' => 'fin_ads',         'label' => 'ADS',         'tipo' => 'dinheiro'];
+            $cols[] = ['key' => 'fin_status',      'label' => 'Status',      'tipo' => 'texto'];
+        }
+
+        return $cols;
+    }
+
+    /** Rótulos espelhados do Painel (STATUS_ENVIO_LABELS de Polos/Painel.jsx). */
+    private const EXPORT_ENVIO_LABEL = [
+        'falta_enviar' => 'Pendente',
+        'enviado'      => 'Enviado',
+        'concluido'    => 'Concluído',
+    ];
+
+    /** Rótulos espelhados do Painel (SITUACAO_LABEL de Polos/Painel.jsx). */
+    private const EXPORT_SITUACAO_LABEL = [
+        'problema'       => 'Com problema',
+        'fora_meta'      => 'Desconsiderada da meta',
+        'fora_prazo'     => 'Fora do prazo',
+        'pendente_envio' => 'Pendente de envio',
+        'sem_ficha'      => 'Sem ficha',
+        'ads_off'        => 'ADS desligado',
+        'ok'             => 'Sem pendências',
+    ];
+
+    /** Rótulos espelhados do Painel (STATUS_META de Polos/components/statusMeta.js). */
+    private const EXPORT_STATUS_META_LABEL = [
+        'Sim'          => 'No alvo',
+        'Em progresso' => 'Em progresso',
+        'Não'          => 'Não',
+        'Problema'     => 'Problema',
+    ];
+
+    /**
+     * Coluna "Situação" da planilha — espelha `situacaoDe()` de Polos/Painel.jsx.
+     * Uma empresa pode acumular vários flags; sem nenhum, é "Sem pendências".
+     */
+    private function situacaoExport(MlbEmpresa $e, ?MlbImplementacao $impl, ?array $prazo): string
+    {
+        $flags = [];
+        if ($e->problema) {
+            $flags[] = 'problema';
+        }
+        if ($e->problema_desconsidera_meta) {
+            $flags[] = 'fora_meta';
+        }
+        if ($prazo['fora_do_prazo'] ?? false) {
+            $flags[] = 'fora_prazo';
+        }
+        if ($impl && $impl->statusEnvio() === 'falta_enviar') {
+            $flags[] = 'pendente_envio';
+        }
+        if (! $impl) {
+            $flags[] = 'sem_ficha';
+        }
+        if ($e->ads_desligado) {
+            $flags[] = 'ads_off';
+        }
+
+        if (empty($flags)) {
+            $flags[] = 'ok';
+        }
+
+        return implode(', ', array_map(fn ($f) => self::EXPORT_SITUACAO_LABEL[$f] ?? $f, $flags));
+    }
+
+    /**
+     * Baixa o Painel Polos como planilha (.xlsx) — uma coluna por campo, cabeçalho
+     * congelado e AutoFiltro já ligado (abre filtrável no Excel, no LibreOffice e no
+     * Google Sheets ao subir o arquivo pro Drive).
+     *
+     * POST e não GET porque o front manda os `ids` das linhas VISÍVEIS: a planilha sai
+     * com exatamente o que está na tela depois dos funis, e uma lista de 500+ ids não
+     * caberia numa query string. Sem `ids`, exporta o painel inteiro.
+     *
+     * O bloco financeiro (admin) reusa `montarCockpit()` — o MESMO que a camada
+     * financeira da tela já carregou, então o cache costuma estar quente. Se falhar,
+     * a planilha sai sem os números em vez de derrubar o download.
+     */
+    public function exportarPlanilha(Request $request)
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->isAdmin() || $user->hasPermission('mlb.projetos'),
+            403,
+            'Acesso restrito ao módulo de Polos.'
+        );
+
+        $data = $request->validate([
+            'ids'   => ['sometimes', 'array', 'max:5000'],
+            'ids.*' => ['integer'],
+            'mes'   => ['sometimes', 'nullable', 'string', 'max:7'],
+        ]);
+
+        $isAdmin = (bool) $user->isAdmin();
+        $colunas = $this->colunasExportacao($isAdmin);
+
+        // ── Linhas: mesmo escopo do painel (ativas + projeto POLOS), ordem da tela ──
+        $ids = array_values(array_filter(array_map('intval', $data['ids'] ?? [])));
+
+        $query = MlbEmpresa::ativas()
+            ->with(['responsavel:id,name', 'implementacao', 'implementacao.responsavel:id,name'])
+            ->orderBy('nome');
+
+        if (! empty($ids)) {
+            $query->whereIn('id', $ids);
+        }
+
+        $empresas = $query->get()->filter(
+            fn ($e) => (($e->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$e->fase ?? ''] ?? null)) === 'POLOS'
+        )->values();
+
+        // ── Financeiro (admin): cust_norm → números do cockpit ──
+        $fin = [];
+        if ($isAdmin) {
+            try {
+                $cockpit = $this->montarCockpit($data['mes'] ?? null);
+                foreach ($cockpit['polos'] as $p) {
+                    foreach (($p['empresas'] ?? []) as $emp) {
+                        $k = CustId::normaliza((string) ($emp['cust_id'] ?? ''));
+                        if ($k !== '') {
+                            $fin[$k] = $emp;
+                        }
+                    }
+                }
+                foreach (($cockpit['m1']['empresas'] ?? []) as $emp) {
+                    $k = CustId::normaliza((string) ($emp['cust_id'] ?? ''));
+                    if ($k !== '' && ! isset($fin[$k])) {
+                        $fin[$k] = $emp;
+                    }
+                }
+            } catch (\Throwable $ex) {
+                // Planilha sem financeiro > download quebrado: o operacional é o essencial.
+                Log::warning('[Polos] Exportação sem bloco financeiro: ' . $ex->getMessage());
+                $fin = [];
+            }
+        }
+
+        $linhas = $empresas->map(function ($e) use ($fin) {
+            $impl  = $e->implementacao;
+            $prazo = $impl?->infoPrazo();
+            $f     = $fin[CustId::normaliza((string) ($e->cust_id ?? ''))] ?? [];
+
+            // Boolean da ficha vira Sim/Não; null (sem ficha) fica vazio — célula em branco
+            // diz "não se aplica", que é diferente de "respondeu Não".
+            $simNao = fn ($v) => $v === null ? null : ($v ? 'Sim' : 'Não');
+
+            return [
+                'nome'                => $e->nome,
+                'cust_id'             => $e->cust_id,
+                'situacao'            => $this->situacaoExport($e, $impl, $prazo),
+                'problema_nota'       => $e->problema ? $e->problema_nota : null,
+                'data_cadastro'       => $e->created_at?->format('Y-m-d'),
+                'fase'                => $e->fase,
+                'estagio'             => $e->estagio,
+                'polo'                => $e->polo,
+                'responsavel'         => $impl ? $impl->responsavel?->name : $e->responsavel?->name,
+                'onboarding'          => $impl?->progresso()['pct'],
+                'envio'               => $impl ? (self::EXPORT_ENVIO_LABEL[$impl->statusEnvio()] ?? $impl->statusEnvio()) : null,
+                'status_entrada'      => $impl?->status_entrada,
+                'chance_entrada'      => $impl?->chance_entrada,
+                'acesso_colaborador'  => $impl?->acesso_colaborador,
+                'gmail_colaborador'   => $impl?->gmail_colaborador,
+                'grupo_whatsapp'      => $simNao($impl ? (bool) $impl->grupo_whatsapp : null),
+                'link_whatsapp'       => $impl?->link_whatsapp,
+                'reuniao_onboarding'  => $impl?->reuniao_onboarding,
+                'data_solicitacao'    => $impl?->data_solicitacao?->format('Y-m-d'),
+                'planilha_produtos'   => $impl?->planilha_produtos,
+                'listagem'            => $impl?->listagem,
+                'publicacao'          => $impl?->publicacao,
+                'decola'              => $impl?->decola,
+                'campanha_criada'     => $simNao($impl ? (bool) $impl->campanha_criada : null),
+                'central_promocao'    => $impl?->central_promocao,
+                'contextos_logistica' => $impl?->contextos_logistica,
+                'me1'                 => $impl?->me1,
+                'integradora'         => $impl?->integradora,
+                'places'              => $impl?->places,
+                'erp'                 => $impl?->erp,
+                'fin_faturamento'     => $f['faturamento'] ?? null,
+                'fin_meta'            => $f['meta'] ?? null,
+                'fin_pct'             => $f['pct'] ?? null,
+                'fin_ads'             => $f['ads'] ?? null,
+                'fin_status'          => isset($f['status']) ? (self::EXPORT_STATUS_META_LABEL[$f['status']] ?? $f['status']) : null,
+            ];
+        })->all();
+
+        activity('polos')
+            ->causedBy($user)
+            ->withProperties(['linhas' => count($linhas), 'financeiro' => $isAdmin && ! empty($fin)])
+            ->log('[Polos] Painel exportado em planilha (' . count($linhas) . ' empresa(s))');
+
+        return $this->streamXlsx($colunas, $linhas, 'painel-polos-' . now()->format('Y-m-d') . '.xlsx', 'Painel Polos');
+    }
+
+    /**
+     * Escreve o .xlsx e devolve como download em streaming.
+     *
+     * Streaming (e não `save()` num arquivo temporário) porque a planilha do painel passa
+     * de 500 linhas × 35 colunas e não há motivo para encostar no disco.
+     *
+     * @param array<int,array{key:string,label:string,tipo:string}> $colunas
+     * @param array<int,array<string,mixed>>                        $linhas
+     */
+    private function streamXlsx(array $colunas, array $linhas, string $nomeArquivo, string $nomeAba): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $planilha = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $folha    = $planilha->getActiveSheet();
+        $folha->setTitle(mb_substr($nomeAba, 0, 31));
+
+        $letraDe = fn (int $i) => \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i + 1);
+
+        // ── Cabeçalho ──
+        foreach ($colunas as $i => $col) {
+            $folha->setCellValue($letraDe($i) . '1', $col['label']);
+        }
+
+        $ultimaLetra = $letraDe(count($colunas) - 1);
+        $ultimaLinha = count($linhas) + 1;
+
+        $folha->getStyle("A1:{$ultimaLetra}1")->applyFromArray([
+            'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '1F2430']],
+            'alignment' => ['vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER],
+        ]);
+        $folha->getRowDimension(1)->setRowHeight(22);
+
+        // ── Corpo ──
+        foreach ($linhas as $l => $linha) {
+            $r = $l + 2;
+            foreach ($colunas as $i => $col) {
+                $valor = $linha[$col['key']] ?? null;
+                if ($valor === null || $valor === '') {
+                    continue; // célula vazia filtra melhor que um "—" no Excel/Sheets
+                }
+
+                $celula = $letraDe($i) . $r;
+
+                if ($col['tipo'] === 'data') {
+                    // Data como número de série do Excel: só assim o filtro de data e a
+                    // ordenação funcionam. Como texto, "10/01" ordenaria antes de "09/12".
+                    $folha->setCellValue($celula, \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel(\Carbon\Carbon::parse($valor)));
+                } elseif (in_array($col['tipo'], ['dinheiro', 'percentual'], true)) {
+                    $folha->setCellValueExplicit($celula, (float) $valor, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC);
+                } else {
+                    // STRING explícito: cust_id é numérico e viraria 2,42505E+09 sem isto.
+                    $folha->setCellValueExplicit($celula, (string) $valor, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                }
+            }
+        }
+
+        // ── Formato por coluna (faixa inteira, não célula a célula) ──
+        if ($ultimaLinha > 1) {
+            foreach ($colunas as $i => $col) {
+                $faixa = $letraDe($i) . '2:' . $letraDe($i) . $ultimaLinha;
+                if ($col['tipo'] === 'data') {
+                    $folha->getStyle($faixa)->getNumberFormat()->setFormatCode('dd/mm/yyyy');
+                } elseif ($col['tipo'] === 'dinheiro') {
+                    $folha->getStyle($faixa)->getNumberFormat()->setFormatCode('R$ #,##0.00');
+                } elseif ($col['tipo'] === 'percentual') {
+                    // Guardamos 0-100 (é o que o painel mostra), então o "%" é literal — não
+                    // o formato percentual do Excel, que multiplicaria por 100.
+                    $folha->getStyle($faixa)->getNumberFormat()->setFormatCode('0"%"');
+                }
+            }
+        }
+
+        // ── Cabeçalho + coluna Empresa congelados, e AutoFiltro ligado ──
+        $folha->freezePane('B2');
+        $folha->setAutoFilter("A1:{$ultimaLetra}{$ultimaLinha}");
+
+        // Largura fixa por tipo, NÃO setAutoSize: o autosize obriga o writer a medir cada
+        // célula (35 colunas × 500+ empresas) e é de longe a parte mais cara da geração.
+        foreach ($colunas as $i => $col) {
+            $largura = match (true) {
+                $col['key'] === 'nome'                       => 34,
+                $col['key'] === 'situacao'                   => 30,
+                in_array($col['key'], ['problema_nota', 'link_whatsapp'], true) => 32,
+                $col['tipo'] === 'data'                      => 12,
+                $col['tipo'] === 'percentual'                => 12,
+                $col['tipo'] === 'dinheiro'                  => 15,
+                default                                      => 22,
+            };
+            $folha->getColumnDimension($letraDe($i))->setWidth($largura);
+        }
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($planilha);
+
+        return response()->streamDownload(function () use ($writer, $planilha) {
+            $writer->save('php://output');
+            $planilha->disconnectWorksheets(); // libera as ~500×35 células
+        }, $nomeArquivo, [
+            'Content-Type'  => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Cache-Control' => 'no-store, no-cache',
+        ]);
+    }
+
 
     /**
      * Edição em MASSA do Painel Polos — aplica mudanças a N empresas de uma vez.

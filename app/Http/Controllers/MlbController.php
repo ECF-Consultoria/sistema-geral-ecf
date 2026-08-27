@@ -2601,6 +2601,48 @@ class MlbController extends Controller
         return back()->with('success', 'Cust ID atualizado.');
     }
 
+    /**
+     * Renomeia a empresa — escrita de UM campo (nome), chamada pelo Painel Polos
+     * e pelo Onboarding (/mlb/implementacao).
+     *
+     * Endpoint DEDICADO pelo mesmo motivo do cust_id: `updateEmpresa` espalha o
+     * payload validado e ZERA os campos omitidos, então renomear por lá obrigaria
+     * a reenviar a ficha inteira.
+     *
+     * Escopo: só `mlb_empresas.nome`. NÃO toca em `companies.name` — a empresa do
+     * Polos é a MlbEmpresa; quando existe `company_id` os dois nomes são
+     * independentes de propósito (o Polos costuma usar o nickname da conta ML).
+     */
+    public function updateNomeEmpresa(Request $request, MlbEmpresa $empresa)
+    {
+        // Mesmo gate do cust_id: quem tem mlb.implementacao já CRIA MlbEmpresa em
+        // implementacao.criar — negar só o nome deixaria o lápis da listagem de
+        // Onboarding tomando 403.
+        $user = $request->user();
+        if (!$user?->isAdmin() && !$user?->hasPermission('mlb.implementacao')) {
+            $this->checkPubAccess('empresas');
+        }
+
+        $data = $request->validate([
+            'nome' => 'required|string|max:200',
+        ]);
+
+        // Nome é obrigatório: só-espaços não pode virar nome vazio no banco.
+        $nome = trim($data['nome']);
+        if ($nome === '') {
+            return back()->withErrors(['nome' => 'O nome da empresa não pode ficar vazio.']);
+        }
+
+        $antigo = (string) $empresa->nome;
+        if ($nome === $antigo) {
+            return back();
+        }
+
+        $empresa->update(['nome' => $nome]);
+
+        return back()->with('success', "Empresa renomeada: \"{$antigo}\" → \"{$nome}\".");
+    }
+
     public function updateEmpresa(Request $request, MlbEmpresa $empresa)
     {
         $this->checkPubAccess('empresas');
