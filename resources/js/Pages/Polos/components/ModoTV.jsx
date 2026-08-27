@@ -286,7 +286,7 @@ export default function ModoTV({
     // Prontidão de setup dos M0 (informativo — NÃO é a régua de aceite).
     const setup = useMemo(() => ([
         { rotulo: 'Cust ID',            n: entrantes.filter(temCust).length,   cor: HEX.yellow },
-        { rotulo: 'Acesso colaborador', n: entrantes.filter(temAcesso).length, cor: HEX.sky },
+        { rotulo: 'Acesso', n: entrantes.filter(temAcesso).length, cor: HEX.sky },
         { rotulo: 'Grupo WhatsApp',     n: entrantes.filter(temGrupo).length,  cor: HEX.green },
     ]), [entrantes]);
 
@@ -340,22 +340,13 @@ export default function ModoTV({
     const escalaPolos = escalaPorContagem(gradePolos.linhas);
     const escalaRank  = escalaPorContagem(gradeRank.linhas);
 
-    // Viewport real, só para o rótulo de diagnóstico.
-    const [vp, setVp] = useState({ w: 0, h: 0 });
-    useEffect(() => {
-        const medir = () => setVp({ w: window.innerWidth, h: window.innerHeight });
-        medir();
-        window.addEventListener('resize', medir);
-        return () => window.removeEventListener('resize', medir);
-    }, []);
-
     const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const horaAtualizacao = atualizadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     return (
         <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-ecf-bg text-white">
             {/* Cabeçalho de 64px: logo + tela + mês + relógio (sem rodapé — a área é da parede) */}
-            <div className="flex shrink-0 items-center justify-between gap-[20px] px-[24px] pb-[10px] pt-[14px]">
+            <div className="flex shrink-0 items-center justify-between gap-[16px] border-b border-white/[0.07] px-[24px] pb-[12px] pt-[12px]">
                 <div className="flex min-w-0 items-center gap-[16px]">
                     <img
                         src={`${asset_url ?? ''}/images/logo.png`}
@@ -379,12 +370,7 @@ export default function ModoTV({
                     <span className="uppercase leading-none tracking-[0.16em] text-white/40" style={{ fontSize: FT.rotulo }}>
                         {telaAtiva === 'metas' ? mesCorrente : mesRefFat}{telaAtiva !== 'metas' && parcial ? ' · parcial' : ''}
                     </span>
-                    <span className="leading-none text-white/25" style={{ fontSize: FT.rotulo }}>atual. {horaAtualizacao}</span>
-                    {/* Diagnóstico temporário: viewport e grade reais da TV (sem acesso ao
-                        aparelho, é a única forma de ver o que o layout recebeu de verdade). */}
-                    <span className="leading-none text-white/20" style={{ fontSize: FT.rotulo }}>
-                        dbg {vp.w}×{vp.h} · {gradePolos.colunas}c×{gradePolos.linhas}l · {porPolo.length}p
-                    </span>
+                    <span className="hidden leading-none text-white/25 lg:inline" style={{ fontSize: FT.rotulo }}>atual. {horaAtualizacao}</span>
                     <span className="font-display font-extrabold leading-none tabular-nums text-white" style={{ fontSize: FT.titulo }}>{hora}</span>
                     {/* Controles quase invisíveis: a TV não tem mouse — reaparecem no hover. */}
                     <div className="flex items-center gap-1.5 opacity-10 transition-opacity hover:opacity-100">
@@ -403,7 +389,7 @@ export default function ModoTV({
             </div>
 
             {/* Corpo: TELA ÚNICA — tudo visível de uma vez, sem rolagem. */}
-            <div className="min-h-0 flex-1 px-[24px] pb-[20px]">
+            <div className="min-h-0 flex-1 px-[24px] pb-[20px] pt-[14px]">
                 {telaAtiva === 'metas' ? (
                     /* ── METAS = a aba "Entrantes (M0)" inteira: meta, funil, polos e setup ── */
                     <div className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] gap-[16px]">
