@@ -5,6 +5,9 @@ import {
     ehReservaProximoMes,
     somaMetaDoMes,
     competenciaDe,
+    FASES_TERMINAIS,
+    ehFaseTerminal,
+    semTerminais,
 } from '../../resources/js/lib/polosEntrantes.js';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -111,4 +114,63 @@ test('o painel recebe metasEntrada — sem a prop o denominador seria sempre 0',
 test('os icones novos (Target, CalendarClock) estao importados do lucide', () => {
     assert.match(fonte, /import\s*\{[^}]*\bTarget\b[^}]*\}\s*from\s*'lucide-react'/s);
     assert.match(fonte, /import\s*\{[^}]*\bCalendarClock\b[^}]*\}\s*from\s*'lucide-react'/s);
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Fases terminais — meta NÃO conta churn (corrigido em 27/08/2026).
+// A "Visão geral" contava empresa em Churn como entrante do mês: 7 dos 101
+// entrantes de agosto estavam churnados. A régua vive na lib para não voltar
+// a divergir entre as abas.
+// ═══════════════════════════════════════════════════════════════════════
+
+test('FASES_TERMINAIS cobre as três fases de saída, com as strings exatas da planilha', () => {
+    assert.deepEqual(FASES_TERMINAIS, ['Encerrado', 'Protocolo Churn', 'Churn']);
+});
+
+test('ehFaseTerminal reconhece churn, protocolo churn e encerrado', () => {
+    assert.equal(ehFaseTerminal({ fase: 'Churn' }), true);
+    assert.equal(ehFaseTerminal({ fase: 'Protocolo Churn' }), true);
+    assert.equal(ehFaseTerminal({ fase: 'Encerrado' }), true);
+});
+
+test('ehFaseTerminal não derruba fase operacional nem entrada vazia', () => {
+    ['M0', 'M1', 'M2', 'M3', 'M4', 'Aceite no Projeto', 'Encaminhar Comercial'].forEach((fase) => {
+        assert.equal(ehFaseTerminal({ fase }), false, `fase ${fase} não é terminal`);
+    });
+    assert.equal(ehFaseTerminal({}), false);
+    assert.equal(ehFaseTerminal(null), false);
+    assert.equal(ehFaseTerminal({ fase: null }), false);
+});
+
+test('ehFaseTerminal é sensível a caixa — a planilha grava a string exata', () => {
+    assert.equal(ehFaseTerminal({ fase: 'churn' }), false);
+    assert.equal(ehFaseTerminal({ fase: 'CHURN' }), false);
+});
+
+test('semTerminais remove churn/encerrado e preserva a ordem do resto', () => {
+    const lista = [
+        { id: 1, fase: 'M0' },
+        { id: 2, fase: 'Churn' },
+        { id: 3, fase: 'M1' },
+        { id: 4, fase: 'Encerrado' },
+        { id: 5, fase: 'Protocolo Churn' },
+        { id: 6, fase: 'Aceite no Projeto' },
+    ];
+    assert.deepEqual(semTerminais(lista).map((e) => e.id), [1, 3, 6]);
+});
+
+test('semTerminais tolera entrada inválida (nunca quebra a aba de metas)', () => {
+    assert.deepEqual(semTerminais(null), []);
+    assert.deepEqual(semTerminais(undefined), []);
+    assert.deepEqual(semTerminais([]), []);
+});
+
+test('MetasPanel filtra as fases terminais na ENTRADA, antes de qualquer indicador', () => {
+    const fonte = lerSemComentarios('resources/js/Pages/Polos/components/MetasPanel.jsx');
+    assert.match(fonte, /semTerminais/, 'MetasPanel precisa usar semTerminais');
+    assert.match(
+        fonte,
+        /const empresas = useMemo\(\(\) => semTerminais\(empresasProp\)/,
+        'o filtro tem que ser na entrada: derivar de `empresas` já limpo é o que mantém todos os indicadores consistentes',
+    );
 });

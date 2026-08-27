@@ -10,6 +10,7 @@ import HeroKpi from './HeroKpi';
 import DistribuicaoCard from '@/Components/DistribuicaoCard';
 import EvolucaoEntrantesChart from './EvolucaoEntrantesChart';
 import { STATUS_ORDEM } from './statusMeta';
+import { semTerminais } from '@/lib/polosEntrantes';
 import { montarCorDoPolo } from './poloCores';
 
 /**
@@ -213,7 +214,15 @@ function ThMeta({ ck, af, cols, center = false, accent = false }) {
     );
 }
 
-export default function MetasPanel({ empresas = [], regioes: regioesRaw = [], metasEntrada = [], onSalvarMeta, fin = null, finLoaded = false, finErro = false, isAdmin = false }) {
+export default function MetasPanel({ empresas: empresasProp = [], regioes: regioesRaw = [], metasEntrada = [], onSalvarMeta, fin = null, finLoaded = false, finErro = false, isAdmin = false }) {
+    // META NÃO CONTA CHURN. O painel entrega `empresas` com TODAS as fases não-arquivadas
+    // (deliberado: entrantes e metas por região dependem de fases fora do escopo M1–M4),
+    // mas nenhum predicado desta aba olhava `fase` — então empresa em Churn/Protocolo
+    // Churn/Encerrado seguia contando como entrante do mês, aparecia como pendência
+    // acionável no card de gargalos e inflava a série histórica. Filtrar aqui, na entrada,
+    // limpa todos os indicadores derivados de uma vez (medido em 27/08: 7 dos 101
+    // "entrantes" de agosto estavam em Churn).
+    const empresas = useMemo(() => semTerminais(empresasProp), [empresasProp]);
     const [modo, setModo] = useState('dashboard');
     // Dedup defensivo: keys de lista usam o nome do polo; nomes repetidos colidiriam.
     const regioes = useMemo(() => [...new Set(regioesRaw)], [regioesRaw]);

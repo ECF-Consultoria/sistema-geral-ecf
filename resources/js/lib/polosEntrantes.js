@@ -47,3 +47,21 @@ export function somaMetaDoMes(metasEntrada, mes) {
 export function competenciaDe(data = new Date()) {
     return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
 }
+
+/**
+ * Fases TERMINAIS — a empresa saiu da operação. Strings exatas da coluna "Fase" da
+ * planilha. Vive aqui, e não em cada tela, porque cada cópia da régua já custou uma
+ * divergência entre abas: a "Visão geral" contava churn na meta de entrantes enquanto
+ * a aba "Entrantes (M0)" e o Modo TV não contavam.
+ */
+export const FASES_TERMINAIS = ['Encerrado', 'Protocolo Churn', 'Churn'];
+
+/** true quando a empresa está numa fase terminal (churn/encerrado). */
+export function ehFaseTerminal(empresa) {
+    return FASES_TERMINAIS.includes(empresa?.fase);
+}
+
+/** Remove churn/encerrado — recorte padrão de qualquer contagem de META. */
+export function semTerminais(empresas) {
+    return (Array.isArray(empresas) ? empresas : []).filter((e) => !ehFaseTerminal(e));
+}
