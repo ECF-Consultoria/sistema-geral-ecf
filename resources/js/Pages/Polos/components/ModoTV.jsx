@@ -234,6 +234,24 @@ export default function ModoTV({
     const [agora, setAgora]             = useState(() => new Date());
     const [atualizadoEm, setAtualizado] = useState(() => new Date());
 
+    // Ao voltar de um reload o Modo TV é restaurado sem gesto do usuário, e a Fullscreen
+    // API exige gesto — então rearmamos na primeira interação (um clique/tecla qualquer
+    // na TV ou no controle) em vez de deixar a barra do navegador aparecendo para sempre.
+    useEffect(() => {
+        if (typeof document === 'undefined' || document.fullscreenElement) return undefined;
+        const reentrarFullscreen = () => {
+            try { document.documentElement.requestFullscreen?.(); } catch (_) { /* bloqueado */ }
+            window.removeEventListener('pointerdown', reentrarFullscreen);
+            window.removeEventListener('keydown', reentrarFullscreen);
+        };
+        window.addEventListener('pointerdown', reentrarFullscreen);
+        window.addEventListener('keydown', reentrarFullscreen);
+        return () => {
+            window.removeEventListener('pointerdown', reentrarFullscreen);
+            window.removeEventListener('keydown', reentrarFullscreen);
+        };
+    }, []);
+
     // Relógio do cabeçalho (30s bastam — o painel não é cronômetro).
     useEffect(() => {
         const id = setInterval(() => setAgora(new Date()), 30_000);
@@ -318,9 +336,21 @@ export default function ModoTV({
 
     // ── Telas (a lente ativa escolhe a inicial) ──
     const telas = useMemo(() => (temCk ? ['metas', 'faturamento'] : ['metas']), [temCk]);
-    const [tela, setTela] = useState(() => (lenteInicial === 'metas' ? 'metas' : 'faturamento'));
+    // A tela escolhida também sobrevive ao reload — senão a parede volta sozinha para a
+    // aba que a lente do painel indica, e não para a que estava no ar.
+    const [tela, setTela] = useState(() => {
+        try {
+            const salva = window.sessionStorage.getItem('polos-painel-tv-tela');
+            if (salva === 'metas' || salva === 'faturamento') return salva;
+        } catch (_) { /* quota/priv */ }
+        return lenteInicial === 'metas' ? 'metas' : 'faturamento';
+    });
     const telaAtiva = telas.includes(tela) ? tela : 'metas';
     const idx = telas.indexOf(telaAtiva);
+
+    useEffect(() => {
+        try { window.sessionStorage.setItem('polos-painel-tv-tela', telaAtiva); } catch (_) { /* quota/priv */ }
+    }, [telaAtiva]);
 
     const proxima  = useCallback(() => setTela(telas[(idx + 1) % telas.length]), [telas, idx]);
     const anterior = useCallback(() => setTela(telas[(idx - 1 + telas.length) % telas.length]), [telas, idx]);

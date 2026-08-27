@@ -617,7 +617,15 @@ export default function PolosPainel({
     const [expandida, setExpandida]   = useState(null);
     const [verModal, setVerModal]     = useState(null);   // empresa aberta no modal "Ver"
     const [telaCheia, setTelaCheia]   = useState(false);  // modo planilha em tela cheia
-    const [modoTv, setModoTv]         = useState(false);  // painel de parede (TV da empresa)
+    // Persistido em sessionStorage: a recarga automática de dados (5 min) e o reload
+    // completo que o Inertia dispara quando sai versão nova remontam a página — sem isto,
+    // a TV caía sozinha do Modo TV e alguém tinha que reabrir na mão.
+    const [modoTv, setModoTv] = useState(() => {
+        try { return window.sessionStorage.getItem('polos-painel-tv') === '1'; } catch (_) { return false; }
+    });
+    useEffect(() => {
+        try { window.sessionStorage.setItem('polos-painel-tv', modoTv ? '1' : '0'); } catch (_) { /* quota/priv */ }
+    }, [modoTv]);
     const [mostrarArquivadas, setMostrarArquivadas] = useState(false); // modal "Arquivados"
     const [editNota, setEditNota]     = useState({});
     const [semanal, setSemanal]       = useState({});
@@ -971,7 +979,7 @@ export default function PolosPainel({
     }, []);
     // Sai do modo se o usuário sair do fullscreen do browser (Esc/F11).
     useEffect(() => {
-        const onFs = () => { if (!document.fullscreenElement) { setTelaCheia(false); setModoTv(false); } };
+        const onFs = () => { if (!document.fullscreenElement) setTelaCheia(false); };
         document.addEventListener('fullscreenchange', onFs);
         return () => document.removeEventListener('fullscreenchange', onFs);
     }, []);
