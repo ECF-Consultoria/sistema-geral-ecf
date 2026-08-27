@@ -156,3 +156,43 @@ worktree sem `node_modules`, reuse o esbuild do checkout principal —
 `node_modules/.bin/esbuild --loader:.jsx=jsx --outfile=/dev/null <arquivo>`. Valida parse em ~25ms
 (o `--loader=jsx` sem extensão só funciona via stdin). Não substitui `vite build`, mas pega o erro
 de sintaxe **antes** do `git reset --hard` da VPS, que é onde ele custaria caro.
+
+## 9. Duas réguas de "entrante" convivem no painel — e uma delas contava churn
+
+Descoberto em 27/08/2026, com dados de produção.
+
+**Régua CANÔNICA (desde 26/08, commit `74280fc6`)**: entrante = `fase === 'M0'`, string
+exata da coluna "Fase" da planilha. O checklist **Cust ID + Acesso colaborador + Grupo
+WhatsApp deixou de definir entrante** — virou "prontidão de setup", indicador operacional.
+Seguem essa régua: `EntrantesM0Panel.jsx` e `ModoTV.jsx`.
+
+**Régua LEGADA (só `MetasPanel.jsx`, a aba "Visão geral")**: entrante = os 3 itens juntos,
+recortado pelo mês de `data_solicitacao`, **sem olhar `fase`**. A própria mensagem do
+`74280fc6` assume: "MetasPanel intacto — alinhá-lo é follow-up". O follow-up nunca foi feito.
+
+Consequências medidas em agosto/2026 (produção):
+
+| | Visão geral | Entrantes (M0) / Modo TV |
+|---|---|---|
+| Número | **101** | **95** |
+| Composição | 64 M0 + 26 M1 + 2 M2 + 2 M3 + **7 Churn** | 95 em fase M0 |
+| Recorte | mês de `data_solicitacao` | estoque acumulado |
+
+As três telas dividem o **mesmo denominador** (`polos_meta_entrada` do mês) com numeradores
+diferentes: o semáforo da Visão geral pode acender vermelho enquanto a TV mostra meta batida.
+
+**Corrigido em 27/08 (`c04d2d06`)**: `MetasPanel` filtra fases terminais na ENTRADA
+(`semTerminais(empresasProp)`), o que limpa todos os indicadores derivados de uma vez —
+antes o churn também inflava evolução mensal, projeção, ranking por polo, contador de
+alertas e o card de gargalos (empresa churnada virava pendência acionável "sem Cust ID").
+A régua de fase terminal (`Encerrado`, `Protocolo Churn`, `Churn`) foi para
+`resources/js/lib/polosEntrantes.js` **com teste** — cópia de régua espalhada por tela foi
+o que criou a divergência.
+
+**O que continua divergente e é decisão de produto**: a Visão geral ainda usa os 3 itens +
+janela do mês. Alinhá-la à fase M0 muda a série histórica inteira do gráfico de evolução.
+
+**Ao ler "Prontidão de setup" (ex.: Acesso 73/95)**: não é inconsistência com o 95 da meta.
+São 22 empresas que a planilha marcou como M0 e ainda não têm acesso de colaborador —
+backlog operacional visível de propósito. Só `MetasPanel` ainda trata isso como régua.
+
