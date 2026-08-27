@@ -126,3 +126,33 @@ Duas armadilhas de leitura que **sobrevivem** à mudança e não são regressão
 - Em `Polos/Index` os chips filtram polos, e o donut "independe do filtro de chips". Com chip
   ativo o rodapé do ranking soma **o subconjunto visível**, não o donut. No Cockpit do
   `Polos/Painel` os dois sempre batem (`polosCk` = todos os polos).
+
+## 6. Fase nova na coluna Fase: 5 lugares, e o sync da planilha pode desfazer (2026-08-27)
+
+`mlb_empresas.fase` é `string(50)` livre — **não existe enum no banco** e `MlbController::updateEmpresa`
+valida só `nullable|string|max:80`. Então "adicionar um valor de fase" nunca é migration; é sincronizar
+listas espalhadas. Quando "Protocolo Churn" entrou (26/08 → 27/08), foram estes:
+
+1. `MlbImplementacao::ONB_FASE_OPCOES` — **fonte única**. Alimenta o prop `opcoes.fase` do
+   `PolosController@painel` e o `Rule::in` do `MlbImplementacaoController` (bloco `identificacao`).
+   Sem isso o PATCH da ficha devolve 422.
+2. `Polos/Painel.jsx` — `ORDEM_FASE` (ordem do select e da grade), `COR_FASE`, `TONE_FASE`, `VAL_NEG`.
+   Faltar em `COR_FASE`/`TONE_FASE` não quebra (tem `?? 'text-white/70'` / `'neutral'`), só fica sem cor.
+3. `Polos/Painel.jsx` — `FASES_TERMINAIS`. Só liga o `window.confirm` antes de mover. Vale incluir
+   toda fase **fora de `FASES_ESCOPO` (M1–M4)**, porque a empresa desaparece do painel por default
+   e sem o confirm isso parece que a linha sumiu.
+4. `Mlb/OnboardingFicha.jsx` (`ONB_FASE_OPCOES`) e `Mlb/Empresas.jsx` (`DEFAULT_STATUS`) — são
+   **fallback**, mas precisam do valor: select com `value` fora das opções apaga o campo ao salvar.
+5. `MlbEmpresa::FASE_PARA_PROJETO` — **não** recebeu. Coerente: `Churn`/`Encerrado` também não estão
+   lá. Só importa para empresa **sem** `projeto` gravado, e desde a migration `000010` `projeto` é canônico.
+
+**A armadilha que sobra:** `SyncPolosPlanilha::FASE_MAP` mantém `'PROTOCOLO CHURN' => 'Churn'`.
+A fase existe na tela, mas o próximo `polos:sync-planilha --apply` **reverte para "Churn"** toda
+empresa cuja célula na planilha diga "Protocolo Churn". Mudar o mapa é uma decisão de dado
+(reclassifica linhas já gravadas), não de UI — foi deixada fora do commit de propósito.
+
+**Truque que dispensa `npm ci` no worktree de deploy:** para conferir sintaxe de JSX editado num
+worktree sem `node_modules`, reuse o esbuild do checkout principal —
+`node_modules/.bin/esbuild --loader:.jsx=jsx --outfile=/dev/null <arquivo>`. Valida parse em ~25ms
+(o `--loader=jsx` sem extensão só funciona via stdin). Não substitui `vite build`, mas pega o erro
+de sintaxe **antes** do `git reset --hard` da VPS, que é onde ele custaria caro.
