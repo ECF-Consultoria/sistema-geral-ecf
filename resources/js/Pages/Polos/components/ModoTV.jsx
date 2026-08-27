@@ -126,11 +126,13 @@ const ESCALA_LINHA = {
  * 2. Regra determinística não tem esse estado: o número de polos é o mesmo em qualquer
  * tela, e a lista renderiza SEMPRE todos os itens — nada de esconder polo.
  */
-function escalaPorContagem(total, colunasEm2 = true) {
-    const linhas = colunasEm2 ? Math.ceil(total / 2) : total;
-    if (linhas <= 3) return ESCALA_LINHA.md;
-    if (linhas <= 5) return ESCALA_LINHA.sm;
-    if (linhas <= 8) return ESCALA_LINHA.xs;
+function escalaPorContagem(total) {
+    // PIOR CASO = 1 coluna. O grid só vira 2 colunas acima de 1280px, e a TV pode estar
+    // abaixo disso (720p, ou zoom do navegador). Assumir 2 colunas dobrava a altura pedida
+    // e o overflow-hidden comia o resto da lista: com 5 polos a parede mostrava 2.
+    if (total <= 3) return ESCALA_LINHA.md;
+    if (total <= 5) return ESCALA_LINHA.sm;
+    if (total <= 8) return ESCALA_LINHA.xs;
     return ESCALA_LINHA.xxs;
 }
 
@@ -181,7 +183,7 @@ function Kpi({ rotulo, valor, cor = '#ffffff', apoio = null, sec = false }) {
 // `escala` vem de escalaPorContagem(): quanto mais polos, menor a linha.
 function LinhaPolo({ nome, valor, apoio = null, pct: p, cor = HEX.yellow, escala = ESCALA_LINHA.sm }) {
     return (
-        <div className="flex min-w-0 flex-col justify-center">
+        <div className="flex min-w-0 flex-col justify-center overflow-hidden">
             <div className="flex items-baseline justify-between gap-3">
                 {/* leading-[1.1], não leading-none: com line-height 1 o truncate corta o
                     descender de "ç"/"g" ("Bragança") por 4-6px. */}
@@ -401,8 +403,10 @@ export default function ModoTV({
                         {/* Faixa B — funil de entrada por polo (o ganho de densidade mora aqui) */}
                         <div className="flex min-h-0 flex-col">
                             <Titulo extra="entrantes · aceites · reserva">Funil de entrada por polo</Titulo>
-                            <div className={cn('grid min-h-0 flex-1 grid-cols-1 gap-x-[24px] gap-y-[14px] overflow-hidden xl:grid-cols-2',
-                                porPolo.length > 10 ? 'auto-rows-fr' : 'content-start')}>
+                            {/* Lista longa força 2 colunas mesmo em tela estreita: em 1 coluna
+                                18 fileiras não cabem em nenhuma altura útil. */}
+                            <div className={cn('grid min-h-0 flex-1 auto-rows-fr gap-x-[24px] gap-y-[10px] overflow-hidden',
+                                porPolo.length > 8 ? 'grid-cols-2' : 'grid-cols-1 xl:grid-cols-2')}>
                                 {porPolo.map((p) => (
                                     <LinhaPolo key={p.polo} nome={p.polo} valor={fmtInt(p.ent)}
                                                apoio={`${p.ace} ac${p.res > 0 ? ` · ${p.res} res` : ''} · ${p.pc}%`}
@@ -499,8 +503,8 @@ export default function ModoTV({
                                 <Titulo extra="% da meta · faturamento">Ranking de polos</Titulo>
                                 {/* content-evenly, não content-start: com 10-12 polos o ranking é mais
                                     baixo que o donut ao lado, e o vão sobrava todo no rodapé. */}
-                                <div className={cn('grid min-h-0 flex-1 grid-cols-1 gap-x-[28px] gap-y-[14px] overflow-hidden xl:grid-cols-2',
-                                    ranking.length > 10 ? 'auto-rows-fr' : 'content-start')}>
+                                <div className={cn('grid min-h-0 flex-1 auto-rows-fr gap-x-[28px] gap-y-[10px] overflow-hidden',
+                                    ranking.length > 8 ? 'grid-cols-2' : 'grid-cols-1 xl:grid-cols-2')}>
                                     {ranking.map((p) => (
                                         <LinhaPolo key={p.polo} nome={p.polo} valor={`${Math.round(Number(p.pct) || 0)}%`}
                                                    apoio={formatCurrencyCompact(p.faturamento)}
