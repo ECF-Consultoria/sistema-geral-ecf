@@ -134,6 +134,13 @@ Route::patch('/ppa/workspace/{token}/tasks/{task}', [PpaTaskController::class, '
 // Implementação MLB público (sem autenticação) — cliente preenche via token
 Route::get('/implementacao/{token}', [MlbImplementacaoController::class, 'workspace'])->name('implementacao.workspace');
 Route::patch('/implementacao/{token}', [MlbImplementacaoController::class, 'salvarItem'])->name('implementacao.salvar');
+// Porta pública do OAuth do ML para Polos — é ESTE link que vai na mensagem de
+// boas-vindas ({link_oauth}). Não expira porque a URL do Mercado Livre, essa
+// sim com validade de 7 dias, só nasce no clique. O callback é o mesmo
+// `ml.oauth.callback` de sempre; ele ramifica pelo `state`.
+Route::get('/implementacao/{token}/conectar/ml', [MlbImplementacaoController::class, 'conectarMercadoLivre'])
+    ->middleware('throttle:20,1')
+    ->name('implementacao.conectar-ml');
 
 // Visão do publicador (sem autenticação) — leitura + check-in por SKU
 Route::get('/implementacao/{token}/publicador', [MlbImplementacaoController::class, 'publicador'])->name('implementacao.publicador');

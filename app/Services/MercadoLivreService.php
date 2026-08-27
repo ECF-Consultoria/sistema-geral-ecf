@@ -6,6 +6,7 @@ use App\Models\AdmanCampaignMetric;
 use App\Models\AdmanMetric;
 use App\Models\AdmanSyncLog;
 use App\Models\Company;
+use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -48,19 +49,53 @@ class MercadoLivreService
      */
     public function buildAuthUrl(Company $company, ?string $retornoUrl = null): string
     {
+        $url = $this->mintAuthUrl(['company_id' => $company->id], $retornoUrl);
+
+        $company->update([
+            'ml_link_generated_at' => now(),
+            'ml_link_url'          => $url,
+        ]);
+
+        return $url;
+    }
+
+    /**
+     * Mesma URL de autorização, ancorada numa empresa de Polos (`mlb_empresas`).
+     *
+     * Polos não vive em `companies` — 535 das 539 empresas de Polos estavam sem
+     * `company_id` em produção (medido em 27/08/2026) — e `ml_tokens.company_id`
+     * é UNIQUE. Por isso este fluxo NÃO persiste token: ele existe para saber
+     * QUEM autorizou (o Grant por polo é o mesmo link para a região inteira e
+     * não devolve isso) e para capturar o Cust ID da conta autorizada.
+     *
+     * O `state` carrega `mlb_empresa_id` em vez de `company_id`; é por ele que o
+     * callback sabe qual dos dois fluxos seguir.
+     */
+    public function buildAuthUrlPolos(MlbEmpresa $empresa, ?string $retornoUrl = null): string
+    {
+        return $this->mintAuthUrl(['mlb_empresa_id' => $empresa->id], $retornoUrl);
+    }
+
+    /**
+     * Monta a URL de autorização com PKCE e guarda o state no cache.
+     *
+     * `$dono` é o que amarra o callback à entidade certa: `['company_id' => x]`
+     * para Gestão, `['mlb_empresa_id' => x]` para Polos.
+     */
+    private function mintAuthUrl(array $dono, ?string $retornoUrl): string
+    {
         $state = Str::uuid()->toString();
 
         // PKCE: code_verifier aleatório → code_challenge = BASE64URL(SHA256(verifier))
         $codeVerifier  = rtrim(strtr(base64_encode(random_bytes(64)), '+/', '-_'), '=');
         $codeChallenge = rtrim(strtr(base64_encode(hash('sha256', $codeVerifier, true)), '+/', '-_'), '=');
 
-        Cache::put("ml_oauth_state_{$state}", [
-            'company_id'    => $company->id,
+        Cache::put("ml_oauth_state_{$state}", $dono + [
             'code_verifier' => $codeVerifier,
             'retorno_url'   => $retornoUrl,
         ], self::STATE_TTL);
 
-        $url = self::AUTH_URL . '?' . http_build_query([
+        return self::AUTH_URL . '?' . http_build_query([
             'response_type'         => 'code',
             'client_id'             => config('services.mercadolivre.client_id'),
             'redirect_uri'          => config('services.mercadolivre.redirect'),
@@ -70,13 +105,6 @@ class MercadoLivreService
             'code_challenge'        => $codeChallenge,
             'code_challenge_method' => 'S256',
         ]);
-
-        $company->update([
-            'ml_link_generated_at' => now(),
-            'ml_link_url'          => $url,
-        ]);
-
-        return $url;
     }
 
     /**
@@ -537,6 +565,29 @@ class MercadoLivreService
         }
 
         return $this->get($company, "/users/{$token->ml_user_id}");
+    }
+
+    /**
+     * Dados da conta a partir de um access_token cru — sem passar por `ml_tokens`.
+     *
+     * É o que o OAuth de Polos tem: ele não persiste token, então esta é a única
+     * janela para ler o apelido da conta autorizada. Quem chama deve tratar a
+     * exceção — falhar aqui não pode derrubar a autorização, que já aconteceu.
+     *
+     * @throws \RuntimeException
+     */
+    public function fetchUserInfoComToken(string $accessToken, string $mlUserId): array
+    {
+        $response = Http::withToken($accessToken)
+            ->acceptJson()
+            ->timeout(15)
+            ->get(self::API_BASE . "/users/{$mlUserId}");
+
+        if (! $response->successful()) {
+            throw new \RuntimeException('[MercadoLivre] Falha ao ler /users: ' . $response->body());
+        }
+
+        return $response->json();
     }
 
     // ═══ Dados: pedidos (faturamento bruto) ═══════════════════════════════════

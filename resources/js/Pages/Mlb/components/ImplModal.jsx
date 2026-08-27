@@ -351,14 +351,19 @@ function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, global_p
     const grantPolo    = empresa.polo ? (global_padroes.grants_por_polo?.[empresa.polo] ?? null) : null;
     const linkGrant    = grantPolo?.url ?? '';
     const projetoGrant = grantPolo?.nome ?? (empresa.polo ? `Projeto Polos - ${empresa.polo}` : '');
+    // Autorização do app da ECF, por EMPRESA — diferente do Grant, que é um por
+    // polo e não diz quem autorizou. Não expira: quem tem validade é a URL do ML,
+    // gerada só quando o cliente clica nesta rota.
+    const linkOauth    = route('implementacao.conectar-ml', empresa.token);
     const template     = global_padroes.mensagem_boas_vindas ?? '';
     // split/join evita depender de String.prototype.replaceAll e troca todas as ocorrências
     const aplicar = (txt, alvo, valor) => txt.split(alvo).join(valor ?? '');
-    const mensagem = aplicar(aplicar(aplicar(aplicar(
+    const mensagem = aplicar(aplicar(aplicar(aplicar(aplicar(
         template,
         '{link_formulario}', url),
         '{link_grant}',      linkGrant),
         '{projeto_grant}',   projetoGrant),
+        '{link_oauth}',      linkOauth),
         '{empresa}',         empresa.nome ?? '');
     // Aviso quando faltam dados para preencher o Grant na mensagem
     const avisoGrant = !empresa.polo

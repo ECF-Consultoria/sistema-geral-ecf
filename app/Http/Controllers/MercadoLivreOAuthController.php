@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\SyncMlCompanyJob;
 use App\Models\Company;
+use App\Models\MlbEmpresa;
 use App\Services\MercadoLivreService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -96,6 +97,13 @@ class MercadoLivreOAuthController extends Controller
             ]);
         }
 
+        // Polos: o state não aponta para `companies` — a empresa vive em
+        // `mlb_empresas` e o fluxo é outro (identifica e grava o Cust ID, sem
+        // persistir token). Ver MercadoLivreService::buildAuthUrlPolos().
+        if (isset($stateData['mlb_empresa_id'])) {
+            return $this->callbackPolos($stateData, $code);
+        }
+
         $companyId    = $stateData['company_id'];
         $codeVerifier = $stateData['code_verifier'];
 
@@ -160,6 +168,112 @@ class MercadoLivreOAuthController extends Controller
                 'message' => 'Erro ao processar autorização. Tente novamente ou contate o suporte.',
             ]);
         }
+    }
+
+    /**
+     * Ramo do callback para o OAuth de Polos (`{link_oauth}` da mensagem de
+     * boas-vindas). O que ele entrega é identificação, não conexão:
+     *
+     * - QUEM autorizou — o Grant por polo é o mesmo link para a região inteira
+     *   e não devolve isso; aqui o `state` já amarra a empresa.
+     * - O Cust ID — o próprio retorno do /oauth/token traz o `user_id`, que é o
+     *   Seller ID. Some assim o passo manual de pedir o Cust ID ao cliente.
+     *
+     * O token NÃO é persistido: `ml_tokens.company_id` é UNIQUE e a empresa de
+     * Polos não tem `Company` (535 de 539 sem `company_id` em produção). Guardar
+     * o token exigiria criar uma Company por empresa de Polos, e `companies` é o
+     * pivô de Desempenho/carteira/NPS — raio de explosão que a captura do Cust
+     * ID não justifica.
+     */
+    private function callbackPolos(array $stateData, string $code)
+    {
+        $empresa = MlbEmpresa::find($stateData['mlb_empresa_id']);
+
+        if (! $empresa) {
+            return view('oauth.ml-result', [
+                'success' => false,
+                'message' => 'Empresa não encontrada. Entre em contato com o suporte.',
+            ]);
+        }
+
+        try {
+            $tokenData = $this->ml->exchangeCode($code, $stateData['code_verifier'] ?? null);
+
+            $custRecebido = (string) $tokenData['user_id'];
+            $custAnterior = $empresa->cust_id;
+
+            // Apelido é enfeite útil para o admin conferir a conta — nunca pode
+            // derrubar um fluxo que o cliente já concluiu do lado do ML.
+            $nickname = null;
+            try {
+                $nickname = $this->ml->fetchUserInfoComToken($tokenData['access_token'], $custRecebido)['nickname'] ?? null;
+            } catch (\Throwable $e) {
+                Log::warning("[MercadoLivre] Polos: falha ao ler apelido da conta {$custRecebido}: {$e->getMessage()}");
+            }
+
+            // A conta autorizada é a verdade canônica — sobrescreve valor digitado
+            // à mão, mesma regra do fluxo de Company. `cust_id` está no logOnly do
+            // MlbEmpresa, então a troca fica auditada pelo activitylog.
+            $corrigido = $custAnterior && trim((string) $custAnterior) !== $custRecebido;
+
+            $empresa->update(['cust_id' => $custRecebido]);
+
+            $this->carimbarOauthPolos($empresa, $custRecebido, $custAnterior, $nickname);
+
+            if ($corrigido) {
+                Log::warning("[MercadoLivre] Polos: cust_id corrigido empresa {$empresa->id}: '{$custAnterior}' → '{$custRecebido}' (Seller ID do OAuth)");
+            }
+
+            Log::info("[MercadoLivre] Polos: autorização recebida empresa {$empresa->id} ({$empresa->nome})", [
+                'cust_id'  => $custRecebido,
+                'nickname' => $nickname,
+                'corrected' => $corrigido,
+            ]);
+
+            return view('oauth.ml-result', [
+                'success'      => true,
+                'company_name' => $empresa->nome,
+                'corrected'    => $corrigido,
+                'previous_id'  => $custAnterior,
+                'received_id'  => $custRecebido,
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error("[MercadoLivre] Polos: falha no callback empresa {$empresa->id}: {$e->getMessage()}");
+
+            return view('oauth.ml-result', [
+                'success' => false,
+                'message' => 'Erro ao processar autorização. Tente novamente ou contate o suporte.',
+            ]);
+        }
+    }
+
+    /**
+     * Registra a autorização em `mlb_implementacoes.dados['ml_oauth']`.
+     *
+     * Chave TOP-LEVEL em `dados`, nunca dentro de `itens` — o cliente reescreve
+     * aquele bloco inteiro a cada salvamento do formulário (mesmo motivo do
+     * `publicador_checkin`). Sem implementação não há onde carimbar; a empresa
+     * já ficou com o `cust_id` de qualquer forma.
+     */
+    private function carimbarOauthPolos(MlbEmpresa $empresa, string $custRecebido, ?string $custAnterior, ?string $nickname): void
+    {
+        $impl = $empresa->implementacao;
+
+        if (! $impl) {
+            return;
+        }
+
+        $dados = $impl->dados ?? [];
+
+        $dados['ml_oauth'] = [
+            'autorizado_em'    => now()->toISOString(),
+            'cust_id'          => $custRecebido,
+            'cust_id_anterior' => $custAnterior,
+            'nickname'         => $nickname,
+        ];
+
+        $impl->update(['dados' => $dados]);
     }
 
     // ── Sync manual ──────────────────────────────────────────────────────────

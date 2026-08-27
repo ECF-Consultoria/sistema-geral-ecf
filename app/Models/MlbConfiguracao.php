@@ -34,7 +34,8 @@ class MlbConfiguracao extends Model
             // Mensagem de boas-vindas padrão enviada ao cliente no Onboarding.
             // Placeholders substituídos por empresa ao copiar: {link_formulario} (URL do
             // workspace), {link_grant} e {projeto_grant} (resolvidos pelo polo da empresa
-            // via grants_por_polo) e {empresa}.
+            // via grants_por_polo), {link_oauth} (autorização do app da ECF, por empresa —
+            // rota implementacao.conectar-ml, sem validade) e {empresa}.
             'mensagem_boas_vindas' => self::MENSAGEM_BOAS_VINDAS_PADRAO,
             // Grant do Mercado Livre por polo (cada região tem o seu). Keyed pelos valores
             // de MlbImplementacao::ONB_POLO_OPCOES para casar com mlb_empresas.polo sem
@@ -53,6 +54,8 @@ Para iniciarmos corretamente o processo de onboarding e estruturação da sua op
 Além disso, também é necessário realizar o preenchimento do Grant do Projeto Polos. Esse preenchimento é essencial para conectar sua conta ao projeto e validar oficialmente sua entrada junto ao Mercado Livre.
 📍 {projeto_grant}
 🔗 Link Grant: {link_grant}
+Por último, precisamos que você autorize o acesso da ECF à sua conta do Mercado Livre. É o que nos permite acompanhar os números da sua operação e já deixa sua conta identificada no projeto — leva menos de um minuto e é feito na própria tela do Mercado Livre:
+🔐 Link de autorização: {link_oauth}
 Também preparamos um material explicativo com as principais informações sobre o Projeto Polos, incluindo como funciona a jornada, quais são as etapas do projeto, os papéis de cada parte envolvida e os primeiros passos necessários para o início da operação.
 📘 Guia do Projeto Polos: https://drive.google.com/drive/folders/1qwAp4p5Qvk-VadnKGq37aXYjULuuDhjb?usp=sharing
 É muito importante que todos os dados sejam preenchidos com atenção e de forma completa, pois essas informações serão utilizadas pela nossa equipe para dar andamento às próximas etapas do projeto, como análise inicial, organização da conta, publicações, acessos, logística e direcionamentos estratégicos.

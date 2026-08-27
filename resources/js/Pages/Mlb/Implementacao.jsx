@@ -433,7 +433,14 @@ function PadroesModal({ padroes, checklist, polo_opcoes = [], onClose }) {
                             <code className="text-ecf-yellow/80">{'{link_formulario}'}</code>,{' '}
                             <code className="text-ecf-yellow/80">{'{link_grant}'}</code>,{' '}
                             <code className="text-ecf-yellow/80">{'{projeto_grant}'}</code>,{' '}
+                            <code className="text-ecf-yellow/80">{'{link_oauth}'}</code>,{' '}
                             <code className="text-ecf-yellow/80">{'{empresa}'}</code> — substituídos automaticamente por empresa ao copiar.
+                        </p>
+                        <p className="text-white/25 text-[11px] mb-3">
+                            <code className="text-ecf-yellow/80">{'{link_oauth}'}</code> é a autorização do
+                            sistema ECF <strong>por empresa</strong> — não expira, identifica quem autorizou e
+                            preenche o Cust ID sozinho. Não substitui o <code className="text-ecf-yellow/80">{'{link_grant}'}</code>,
+                            que é o programa de Partners do Mercado Livre (um por polo).
                         </p>
                         <textarea
                             value={form.mensagem_boas_vindas}
@@ -607,14 +614,19 @@ function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, global_p
     const grantPolo    = empresa.polo ? (global_padroes.grants_por_polo?.[empresa.polo] ?? null) : null;
     const linkGrant    = grantPolo?.url ?? '';
     const projetoGrant = grantPolo?.nome ?? (empresa.polo ? `Projeto Polos - ${empresa.polo}` : '');
+    // Autorização do app da ECF, por EMPRESA — diferente do Grant, que é um por
+    // polo e não diz quem autorizou. Não expira: quem tem validade é a URL do ML,
+    // gerada só quando o cliente clica nesta rota.
+    const linkOauth    = route('implementacao.conectar-ml', empresa.token);
     const template     = global_padroes.mensagem_boas_vindas ?? '';
     // split/join evita depender de String.prototype.replaceAll e troca todas as ocorrências
     const aplicar = (txt, alvo, valor) => txt.split(alvo).join(valor ?? '');
-    const mensagem = aplicar(aplicar(aplicar(aplicar(
+    const mensagem = aplicar(aplicar(aplicar(aplicar(aplicar(
         template,
         '{link_formulario}', url),
         '{link_grant}',      linkGrant),
         '{projeto_grant}',   projetoGrant),
+        '{link_oauth}',      linkOauth),
         '{empresa}',         empresa.nome ?? '');
     // Aviso quando faltam dados para preencher o Grant na mensagem
     const avisoGrant = !empresa.polo

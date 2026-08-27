@@ -968,6 +968,36 @@ class MlbImplementacaoController extends Controller
         return response()->json(['ok' => true, 'total' => count($checkin)]);
     }
 
+    /**
+     * GET /implementacao/{token}/conectar/ml — porta pública do OAuth do Mercado
+     * Livre para o cliente de Polos, aberta pelo link da mensagem de boas-vindas.
+     *
+     * POR QUE O LINK NÃO EXPIRA: o que vai no WhatsApp é ESTA rota, com o token
+     * da implementação (`Str::random(48)`, unique, sem validade). A URL do ML —
+     * cujo `state` vive 7 dias no cache — só é gerada no clique. Mesmo padrão de
+     * `onboarding.publico.conectar-ml` (Gestão), que resolveu isso primeiro.
+     *
+     * Não confundir com o `{link_grant}` da mesma mensagem: aquele é o programa
+     * de Partners do Mercado Livre, um por polo, igual para a região inteira —
+     * por isso não diz quem autorizou. Este identifica a empresa e captura o
+     * Cust ID. Os dois convivem.
+     */
+    public function conectarMercadoLivre(string $token, \App\Services\MercadoLivreService $ml)
+    {
+        $impl = MlbImplementacao::where('token', $token)->with('empresa')->firstOrFail();
+
+        // Implementação órfã (empresa removida) não tem a quem vincular a conta.
+        abort_if(! $impl->empresa, 404);
+
+        $url = $ml->buildAuthUrlPolos($impl->empresa);
+
+        activity('mlb')
+            ->performedOn($impl->empresa)
+            ->log('Cliente iniciou a autorização do Mercado Livre pelo link do Onboarding');
+
+        return redirect()->away($url);
+    }
+
     public function workspace(string $token)
     {
         $impl = MlbImplementacao::where('token', $token)->with('empresa')->firstOrFail();
