@@ -200,7 +200,7 @@ class MercadoLivreOAuthController extends Controller
             $tokenData = $this->ml->exchangeCode($code, $stateData['code_verifier'] ?? null);
 
             $custRecebido = (string) $tokenData['user_id'];
-            $custAnterior = $empresa->cust_id;
+            $custAnterior = trim((string) $empresa->cust_id);
 
             // Apelido é enfeite útil para o admin conferir a conta — nunca pode
             // derrubar um fluxo que o cliente já concluiu do lado do ML.
@@ -211,29 +211,37 @@ class MercadoLivreOAuthController extends Controller
                 Log::warning("[MercadoLivre] Polos: falha ao ler apelido da conta {$custRecebido}: {$e->getMessage()}");
             }
 
-            // A conta autorizada é a verdade canônica — sobrescreve valor digitado
-            // à mão, mesma regra do fluxo de Company. `cust_id` está no logOnly do
-            // MlbEmpresa, então a troca fica auditada pelo activitylog.
-            $corrigido = $custAnterior && trim((string) $custAnterior) !== $custRecebido;
+            // DIVERGÊNCIA NÃO SOBRESCREVE. O fluxo de Company pode confiar na conta
+            // autorizada porque lá o admin dispara o link; aqui o link é público e
+            // o Mercado Livre NÃO mostra tela de autorização quando o navegador já
+            // tem sessão ativa com o app autorizado — devolve o code direto. Foi
+            // assim que um clique interno da ECF carimbou a própria conta
+            // (MGSTOREL/1555596317) sobre a Masitto Home Decor em 27/08. Não há
+            // parâmetro de `prompt` na API do ML para forçar a tela, então a única
+            // defesa é esta: só gravamos quando não há o que destruir.
+            $divergente = $custAnterior !== '' && $custAnterior !== $custRecebido;
 
-            $empresa->update(['cust_id' => $custRecebido]);
-
-            $this->carimbarOauthPolos($empresa, $custRecebido, $custAnterior, $nickname);
-
-            if ($corrigido) {
-                Log::warning("[MercadoLivre] Polos: cust_id corrigido empresa {$empresa->id}: '{$custAnterior}' → '{$custRecebido}' (Seller ID do OAuth)");
+            if (! $divergente) {
+                $empresa->update(['cust_id' => $custRecebido]);
             }
 
-            Log::info("[MercadoLivre] Polos: autorização recebida empresa {$empresa->id} ({$empresa->nome})", [
-                'cust_id'  => $custRecebido,
-                'nickname' => $nickname,
-                'corrected' => $corrigido,
-            ]);
+            $this->carimbarOauthPolos($empresa, $custRecebido, $custAnterior, $nickname, $divergente);
+
+            if ($divergente) {
+                Log::warning("[MercadoLivre] Polos: conta divergente empresa {$empresa->id} ({$empresa->nome}) — cadastrado '{$custAnterior}', autorizado '{$custRecebido}' ({$nickname}). NADA gravado.");
+            } else {
+                Log::info("[MercadoLivre] Polos: autorização recebida empresa {$empresa->id} ({$empresa->nome})", [
+                    'cust_id'  => $custRecebido,
+                    'nickname' => $nickname,
+                ]);
+            }
 
             return view('oauth.ml-result', [
-                'success'      => true,
+                'success'      => ! $divergente,
+                'divergente'   => $divergente,
                 'company_name' => $empresa->nome,
-                'corrected'    => $corrigido,
+                'corrected'    => false,
+                'nickname'     => $nickname,
                 'previous_id'  => $custAnterior,
                 'received_id'  => $custRecebido,
             ]);
@@ -253,10 +261,13 @@ class MercadoLivreOAuthController extends Controller
      *
      * Chave TOP-LEVEL em `dados`, nunca dentro de `itens` — o cliente reescreve
      * aquele bloco inteiro a cada salvamento do formulário (mesmo motivo do
-     * `publicador_checkin`). Sem implementação não há onde carimbar; a empresa
-     * já ficou com o `cust_id` de qualquer forma.
+     * `publicador_checkin`). Sem implementação não há onde carimbar.
+     *
+     * Quando `$divergente`, este carimbo é o ÚNICO registro do que aconteceu: o
+     * `cust_id` da empresa não foi tocado, e é por aqui que a ECF decide se a
+     * conta autorizada é a certa.
      */
-    private function carimbarOauthPolos(MlbEmpresa $empresa, string $custRecebido, ?string $custAnterior, ?string $nickname): void
+    private function carimbarOauthPolos(MlbEmpresa $empresa, string $custRecebido, ?string $custAnterior, ?string $nickname, bool $divergente = false): void
     {
         $impl = $empresa->implementacao;
 
@@ -271,6 +282,8 @@ class MercadoLivreOAuthController extends Controller
             'cust_id'          => $custRecebido,
             'cust_id_anterior' => $custAnterior,
             'nickname'         => $nickname,
+            // true = nada foi gravado na empresa; pende conferência da ECF.
+            'divergente'       => $divergente,
         ];
 
         $impl->update(['dados' => $dados]);

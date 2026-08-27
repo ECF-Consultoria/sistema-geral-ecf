@@ -119,9 +119,42 @@ class PolosOauthLinkTest extends TestCase
         $this->assertNotEmpty($carimbo['autorizado_em']);
     }
 
-    public function test_a_conta_autorizada_sobrescreve_o_cust_id_digitado_errado(): void
+    public function test_conta_divergente_nao_sobrescreve_o_cust_id_cadastrado(): void
     {
+        // O ML não mostra tela de autorização para quem já tem sessão ativa com o
+        // app autorizado — devolve o code direto. Foi assim que um clique interno
+        // da ECF carimbou a própria conta sobre a Masitto Home Decor em 27/08. Não
+        // há `prompt` na API do ML para forçar a tela; a defesa é não gravar.
         $impl = $this->implementacao(['cust_id' => '111111111']);
+
+        Http::fake([
+            'api.mercadolibre.com/oauth/token' => Http::response([
+                'access_token' => 'APP_USR-token', 'refresh_token' => 'TG-refresh',
+                'user_id' => 987654321, 'expires_in' => 21600, 'token_type' => 'bearer',
+            ]),
+            'api.mercadolibre.com/users/*' => Http::response(['id' => 987654321, 'nickname' => 'OUTRA.CONTA']),
+        ]);
+
+        $state = $this->stateDoRedirect($this->get(route('implementacao.conectar-ml', $impl->token))->headers->get('Location'));
+
+        $resposta = $this->get(route('ml.oauth.callback', ['code' => 'AUTH-CODE', 'state' => $state]));
+
+        $resposta->assertOk()->assertSee('Conta diferente da cadastrada', false);
+
+        // O cadastrado sobrevive intacto.
+        $this->assertSame('111111111', $impl->empresa->fresh()->cust_id);
+
+        // E a tentativa fica registrada para a ECF conferir.
+        $carimbo = $impl->fresh()->dados['ml_oauth'];
+        $this->assertTrue($carimbo['divergente']);
+        $this->assertSame('987654321', $carimbo['cust_id']);
+        $this->assertSame('111111111', $carimbo['cust_id_anterior']);
+        $this->assertSame('OUTRA.CONTA', $carimbo['nickname']);
+    }
+
+    public function test_reautorizar_com_a_mesma_conta_nao_e_divergencia(): void
+    {
+        $impl = $this->implementacao(['cust_id' => '987654321']);
 
         Http::fake([
             'api.mercadolibre.com/oauth/token' => Http::response([
@@ -133,10 +166,33 @@ class PolosOauthLinkTest extends TestCase
 
         $state = $this->stateDoRedirect($this->get(route('implementacao.conectar-ml', $impl->token))->headers->get('Location'));
 
-        $this->get(route('ml.oauth.callback', ['code' => 'AUTH-CODE', 'state' => $state]))->assertOk();
+        $this->get(route('ml.oauth.callback', ['code' => 'AUTH-CODE', 'state' => $state]))
+            ->assertOk()
+            ->assertSee('sucesso', false);
 
         $this->assertSame('987654321', $impl->empresa->fresh()->cust_id);
-        $this->assertSame('111111111', $impl->fresh()->dados['ml_oauth']['cust_id_anterior']);
+        $this->assertFalse($impl->fresh()->dados['ml_oauth']['divergente']);
+    }
+
+    public function test_a_tela_mostra_sempre_a_conta_autorizada(): void
+    {
+        // Sem tela do ML, o apelido no retorno é a única chance do cliente
+        // perceber que autorizou com a conta errada.
+        $impl = $this->implementacao();
+
+        Http::fake([
+            'api.mercadolibre.com/oauth/token' => Http::response([
+                'access_token' => 'APP_USR-token', 'refresh_token' => 'TG-refresh',
+                'user_id' => 987654321, 'expires_in' => 21600, 'token_type' => 'bearer',
+            ]),
+            'api.mercadolibre.com/users/*' => Http::response(['id' => 987654321, 'nickname' => 'LOJA.TESTE']),
+        ]);
+
+        $state = $this->stateDoRedirect($this->get(route('implementacao.conectar-ml', $impl->token))->headers->get('Location'));
+
+        $this->get(route('ml.oauth.callback', ['code' => 'AUTH-CODE', 'state' => $state]))
+            ->assertOk()
+            ->assertSee('LOJA.TESTE', false);
     }
 
     public function test_apelido_indisponivel_nao_derruba_a_autorizacao(): void

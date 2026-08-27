@@ -47,10 +47,41 @@
 </head>
 <body>
     <div class="card">
-        @if($success)
+        {{-- Polos: a conta autorizada não bate com a cadastrada. Nada foi gravado —
+             quem resolve é a ECF. Acontece quando o navegador já está logado no
+             Mercado Livre com outra conta: o ML pula a tela de autorização e
+             devolve o code sem perguntar nada. --}}
+        @if($divergente ?? false)
+            <div class="icon">⚠️</div>
+            <h1>Conta diferente da cadastrada</h1>
+            <p>
+                Você autorizou com a conta <strong>{{ $nickname ?? 'sem apelido' }}</strong>
+                (<code>{{ $received_id }}</code>), mas a empresa
+                <strong>{{ $company_name }}</strong> está cadastrada com a conta
+                <code>{{ $previous_id }}</code>.
+            </p>
+            <div class="warn">
+                ⚠️ <strong>Nada foi alterado.</strong> Se você tem mais de uma conta no
+                Mercado Livre, saia da conta atual em
+                <code>mercadolivre.com.br</code>, entre com a conta da loja e abra o
+                link de novo. Se acredita que a conta está certa, fale com a equipe da
+                ECF — já registramos esta tentativa para conferência.
+            </div>
+        @elseif($success)
             <div class="icon">✅</div>
             <h1>Conexão realizada com sucesso!</h1>
             <p>A conta do Mercado Livre foi vinculada com sucesso ao sistema <strong>ECF Consultoria</strong>.</p>
+
+            {{-- Polos: sem token persistido, então o texto não promete vínculo — e o
+                 apelido aparece SEMPRE, para o cliente perceber na hora se autorizou
+                 com a conta errada (o ML não mostra tela quando já há sessão ativa). --}}
+            @if($nickname ?? false)
+                <div class="warn">
+                    ℹ️ Conta identificada: <strong>{{ $nickname }}</strong>
+                    (<code>{{ $received_id }}</code>). Se esta não é a conta da sua loja,
+                    avise a equipe da ECF.
+                </div>
+            @endif
 
             @if($corrected ?? false)
                 <div class="warn">
