@@ -926,6 +926,18 @@ class NpsController extends Controller
             $notas = collect($responses->map(fn($r) => $notaDe($r, $dimensao))->all())
                 ->filter(fn($n) => $n !== null);
 
+            // 2026-08-18 — `respondidas` é contado ANTES do merge das
+            // imputadas e devolvido explicitamente. Antes o front derivava o
+            // número por subtração (`total - nao_respondidos`), o que só
+            // funcionava enquanto as imputadas SEMPRE entravam no `total`.
+            // Com `$contaNaoRespondido` (mudança de 2026-08-14), na janela
+            // ABERTA o `total` deixou de somá-las mas `nao_respondidos`
+            // continuou sendo devolvido — e a subtração passou a mentir: em
+            // 2026-08 o rodapé exibia "120 respondidas" onde havia 126.
+            // Quem sabe quantas respostas reais existem é este closure, não
+            // a UI.
+            $respondidas = $notas->count();
+
             // Cada linha imputada vale nota 1.0 (D4, piso da escala real
             // 1-5). `nao_respondidos` é a contagem exposta ao payload para a
             // UI (Plan 05) explicar a regra sem jargão.
@@ -937,6 +949,7 @@ class NpsController extends Controller
             return [
                 'media'           => $notas->isEmpty() ? 0 : round((float) $notas->avg(), 2),
                 'total'           => $notas->count(),
+                'respondidas'     => $respondidas,
                 'nao_respondidos' => $totalImputadas,
             ];
         };

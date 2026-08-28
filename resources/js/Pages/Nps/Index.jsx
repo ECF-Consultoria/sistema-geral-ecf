@@ -521,7 +521,7 @@ function SearchableGlassSelect({ icon: Icon, active, value, onValueChange, place
 // Ícone + label + "NPS MÉDIO"; pill de delta (↗/↘ +0.00) com "vs. mês anterior";
 // nota grande branca /5; barra de progresso colorida pela dimensão (0..5, SEM
 // meta); rodapé "X respondidas · Y pendentes" com ícones. Sem ranking.
-function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta, naoRespondidos = 0, janelaFechada = true }) {
+function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta, naoRespondidos = 0, janelaFechada = true, respondidas: respondidasProp = null }) {
     const val = formatNota(valor);
     const temNota = total > 0 && valor != null && Number(valor) > 0;
     const pct = temNota ? Math.max(3, Math.min(100, (Number(valor) / 5) * 100)) : 0;
@@ -532,9 +532,20 @@ function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta, n
 
     // Fase 116 · desde o Plan 116-03 `total` soma respostas reais + notas de
     // NPS não respondido (que contam 1 na média). O rodapé "respondidas"
-    // mentia ao mostrar o `total` cheio — o número de respondidas de verdade
-    // é total menos as que vieram do não respondido.
-    const respondidas = Math.max(0, (total ?? 0) - (naoRespondidos ?? 0));
+    // mentia ao mostrar o `total` cheio.
+    //
+    // 2026-08-18 · a subtração `total - naoRespondidos` deixou de valer: com
+    // a janela de coleta ABERTA, o backend não soma mais as imputadas ao
+    // `total` (mudança de 2026-08-14), mas segue devolvendo
+    // `nao_respondidos`. A conta então descontava algo que nunca foi somado
+    // — em 2026-08 exibia "5 respondidas" onde havia 45. O servidor agora
+    // manda `respondidas` pronto — inclusive para o card sintético
+    // "EST + ANA", que recebe `contadores.respondidos` (contagem de surveys
+    // respondidos): descontar dele as imputadas de DUAS dimensões nunca fez
+    // sentido e podia dar negativo. A subtração sobrou só como fallback.
+    const respondidas = respondidasProp != null
+        ? Math.max(0, respondidasProp)
+        : Math.max(0, (total ?? 0) - (janelaFechada ? (naoRespondidos ?? 0) : 0));
 
     return (
         <div style={{
@@ -2060,6 +2071,7 @@ export default function NpsIndex({
                                             pendentes={pendentesTotal}
                                             delta={deltaEst}
                                             naoRespondidos={cards.estrategista?.nao_respondidos ?? 0}
+                                            respondidas={cards.estrategista?.respondidas ?? null}
                                             janelaFechada={janela_fechada}
                                         />
                                     )}
@@ -2073,6 +2085,7 @@ export default function NpsIndex({
                                             pendentes={pendentesTotal}
                                             delta={deltaAna}
                                             naoRespondidos={cards.analista?.nao_respondidos ?? 0}
+                                            respondidas={cards.analista?.respondidas ?? null}
                                             janelaFechada={janela_fechada}
                                         />
                                     )}
@@ -2086,6 +2099,7 @@ export default function NpsIndex({
                                             pendentes={pendentesTotal}
                                             delta={deltaMedia}
                                             naoRespondidos={(cards.estrategista?.nao_respondidos ?? 0) + (cards.analista?.nao_respondidos ?? 0)}
+                                            respondidas={contadores.respondidos ?? 0}
                                             janelaFechada={janela_fechada}
                                         />
                                     )}
@@ -2102,6 +2116,7 @@ export default function NpsIndex({
                                     pendentes={pendentesTotal}
                                     delta={deltaEst}
                                     naoRespondidos={cards.estrategista?.nao_respondidos ?? 0}
+                                    respondidas={cards.estrategista?.respondidas ?? null}
                                     janelaFechada={janela_fechada}
                                 />
                                 <StatCard
@@ -2113,6 +2128,7 @@ export default function NpsIndex({
                                     pendentes={pendentesTotal}
                                     delta={deltaAna}
                                     naoRespondidos={cards.analista?.nao_respondidos ?? 0}
+                                    respondidas={cards.analista?.respondidas ?? null}
                                     janelaFechada={janela_fechada}
                                 />
                                 <StatCard
@@ -2124,6 +2140,7 @@ export default function NpsIndex({
                                     pendentes={pendentesTotal}
                                     delta={deltaEmp}
                                     naoRespondidos={cards.empresa?.nao_respondidos ?? 0}
+                                    respondidas={cards.empresa?.respondidas ?? null}
                                     janelaFechada={janela_fechada}
                                 />
                             </div>

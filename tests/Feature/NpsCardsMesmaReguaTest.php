@@ -224,4 +224,66 @@ class NpsCardsMesmaReguaTest extends TestCase
             'coleta encerrada: (5 + 1) / 2 = 3,0 — a régua da Fase 116 segue valendo.'
         );
     }
+
+    /**
+     * 2026-08-18 — o rodapé do card mentia sobre QUANTAS pessoas responderam.
+     *
+     * Relatado em 28/08 com a coleta de agosto aberta: o chip "Respondidos"
+     * dizia 126 e os cards diziam 120 / 117 / 119. A causa não era o cálculo
+     * da nota, e sim a UI derivando o número por subtração
+     * (`total - nao_respondidos`). Essa conta só valia enquanto as imputadas
+     * SEMPRE entravam no `total` — desde 2026-08-14 elas não entram com a
+     * janela aberta, então a subtração descontava algo que nunca foi somado
+     * (em produção: 126 − 6 = 120).
+     *
+     * `respondidas` passa a vir pronto do servidor, contado ANTES do merge.
+     */
+    #[Test]
+    public function test_respondidas_conta_respostas_reais_e_nao_desconta_o_nao_respondido(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-14 10:00:00'));
+
+        $admin       = User::factory()->create(['role' => 'admin', 'active' => true]);
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+
+        $template = $this->criarTemplatePrincipal(
+            [
+                NpsTemplateQuestion::DIMENSAO_ESTRATEGISTA,
+                NpsTemplateQuestion::DIMENSAO_ANALISTA,
+                NpsTemplateQuestion::DIMENSAO_EMPRESA,
+            ],
+            [$servicoPerf]
+        );
+
+        // 2 responderam...
+        foreach ([1, 2] as $i) {
+            $respondeu = Company::factory()->create(['active' => true]);
+            $this->criarContrato($respondeu->id, $servicoPerf, true);
+            $this->responder($respondeu, $template, 5, Carbon::parse('2026-08-01'));
+        }
+
+        // ...e 1 ainda não respondeu (dentro do prazo).
+        $calou = Company::factory()->create(['active' => true]);
+        $this->criarContrato($calou->id, $servicoPerf, true);
+        $this->surveyNaoRespondido($calou, $template, Carbon::parse('2026-08-01'));
+        app(NpsImputationService::class)->materializarLote(Carbon::parse('2026-08-01'));
+
+        $props = $this->cards($admin, ['mes' => '2026-08']);
+
+        $this->assertFalse($props['janela_fechada'], 'agosto ainda está em coleta no dia 14.');
+
+        foreach (['estrategista', 'analista', 'empresa'] as $dim) {
+            $this->assertSame(
+                2,
+                $props['cards'][$dim]['respondidas'],
+                "card {$dim}: quem respondeu foram 2 — a subtração antiga dava 1."
+            );
+        }
+
+        // O card não pode contradizer o chip "Respondidos" da lista abaixo.
+        $this->assertSame(2, $props['contadores']['respondidos']);
+
+        // E o aviso de prazo continua na tela (some da média, não da tela).
+        $this->assertGreaterThan(0, $props['cards']['empresa']['nao_respondidos']);
+    }
 }
