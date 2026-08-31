@@ -6,15 +6,17 @@ import {
     Users, Target, CheckCircle2, Crown, Award, ShoppingCart, Percent,
     ArrowUp, ArrowDown, Minus, Flame, Clock, Megaphone, BarChart3,
     Gauge, Activity, Tv, TrendingDown, Rocket, Sparkles, Info, BookOpen,
-    UserX, ChevronsUp, Settings,
+    UserX, ChevronsUp, Settings, FlaskConical,
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { cn, formatPercent as fmtPctUtil, formatCurrency } from '@/lib/utils';
 import { CONTA_NOTA_TOOLTIP } from '@/lib/desempenhoLabels';
 // Spec 2026-08-14 (item 1) — régua ÚNICA de referência mensal do sistema.
-import { rotuloMesReferencia } from '@/lib/referenciaMensal';
+import { rotuloMesReferencia, rotuloMesReferenciaCurto } from '@/lib/referenciaMensal';
 import HeroKpi from '@/Pages/Polos/components/HeroKpi';
 import RadialGauge from '@/Pages/Polos/components/RadialGauge';
+// Modo simulador (2026-08-31) — ranking editável, view-only, nada é salvo.
+import SimuladorRanking from '@/Pages/Performance/components/SimuladorRanking';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Phase 74 (D-18/D-19/D-20) — Ranking de Desempenho v2
@@ -208,6 +210,11 @@ export default function PerformanceIndex({
     // Fase 106 (SC2) — true enquanto o warm sob-demanda do cache de desempenho
     // roda em background (mês fechado com ≥1 profissional ainda frio).
     aquecendo = false,
+    // Simulador (2026-08-31) — régua ATIVA de bonificação, usada para
+    // reclassificar a faixa a cada ponto editado. Sem ela o simulador cairia
+    // no fallback hardcoded do lib e mostraria faixa errada quando o admin
+    // tivesse mexido nos cortes em /desempenho/configuracao.
+    faixas_bonus = [],
 }) {
     const isPolos = setor === 'polos';
 
@@ -331,6 +338,22 @@ export default function PerformanceIndex({
     // Como calculamos? — collapsible
     const [howOpen, setHowOpen] = useState(false);
 
+    // ── Modo simulador (2026-08-31) ──────────────────────────────────────
+    // Troca a tabela do ranking por uma versão editável. É estado LOCAL de
+    // tela: não vai pra URL nem pro servidor, e trocar de mês/cargo recarrega
+    // a página, o que naturalmente descarta a simulação — comportamento
+    // desejado, já que os pontos editados pertencem ao mês que estava aberto.
+    const [simuladorAberto, setSimuladorAberto] = useState(false);
+
+    // ESC fecha o simulador (mesma convenção do drawer de evolução). Só age
+    // quando não há drawer aberto por cima, pra uma tecla não fechar os dois.
+    useEffect(() => {
+        if (!simuladorAberto || userSelecionado) return undefined;
+        const onKey = (e) => { if (e.key === 'Escape') setSimuladorAberto(false); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [simuladorAberto, userSelecionado]);
+
     // Publicações — dashboard executivo de TV (rota separada).
     if (isPolos) {
         return <PolosDashboard ranking={ranking} mes={mes} meses={meses} />;
@@ -421,6 +444,23 @@ export default function PerformanceIndex({
                                 <option key={o.value} value={o.value}>{o.label}</option>
                             ))}
                         </select>
+                        {/* Modo simulador — ranking editável para responder
+                            "que nota daria com estes pontos?". View-only:
+                            nenhuma edição sai do navegador. */}
+                        <button
+                            type="button"
+                            onClick={() => setSimuladorAberto(v => !v)}
+                            title="Simulador: editar os pontos e ver a nota final, a faixa de bônus e a posição resultantes. Nada é salvo."
+                            className={cn(
+                                'flex items-center gap-1.5 h-9 px-3 rounded-xl border transition-colors text-[13px]',
+                                simuladorAberto
+                                    ? 'border-ecf-yellow/40 bg-ecf-yellow/[0.12] text-ecf-yellow'
+                                    : 'border-white/[0.08] text-white/60 hover:text-white hover:border-white/25 hover:bg-white/[0.03]',
+                            )}
+                        >
+                            <FlaskConical size={14} />
+                            <span className="hidden sm:inline">Simulador</span>
+                        </button>
                         {/* Botão admin-only: acesso à configuração das faixas de bônus. */}
                         {isAdmin && (
                             <Link
@@ -535,6 +575,17 @@ export default function PerformanceIndex({
                             Nenhum profissional com dados de desempenho para o período.
                         </p>
                     </div>
+                ) : simuladorAberto ? (
+                    /* O simulador recebe o MESMO recorte que a tabela real
+                       mostra (filtros de contexto/cargo já aplicados) — senão
+                       a simulação responderia por um grupo diferente do que
+                       está na tela. */
+                    <SimuladorRanking
+                        ranking={rankingFiltrado}
+                        faixas={faixas_bonus}
+                        onSair={() => setSimuladorAberto(false)}
+                        mesLabel={mes_selecionado ? rotuloMesReferenciaCurto(mes_selecionado) : null}
+                    />
                 ) : (
                     <RankingConsultoria ranking={rankingFiltrado} onSelectUser={setUserSelecionado} mesDetalhe={mesDetalhe} />
                 )}

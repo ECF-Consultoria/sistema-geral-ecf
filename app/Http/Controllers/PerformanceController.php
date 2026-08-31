@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AdmanMetric;
+use App\Models\BonusFaixa;
 use App\Models\BonusInvalidacao;
 use App\Models\Company;
 use App\Models\DesempenhoScoreSnapshot;
@@ -139,7 +140,26 @@ class PerformanceController extends Controller
         // sob-demanda uma única vez, com lock anti-empilhamento (Task 2).
         $usuariosFrios = [];
 
-        $rankingRaw = $users->map(function ($u) use ($cargosPorUser, $snapshotsMensal, $mesReferencia, $ehMesEmCurso, $periodoResolvido, &$usuariosFrios) {
+        // ── Simulador (2026-08-31) — insumo da regra DESEMP-08 no navegador ──
+        // O simulador de nota (`resources/js/lib/simuladorDesempenho.js`)
+        // reclassifica a faixa quando o admin edita os pontos, e a promoção
+        // "2 meses consecutivos em Intermediário → Máximo" depende do snapshot
+        // mensal do mês ANTERIOR — histórico que o front não tem como deduzir.
+        // Uma query por página resolve: quem fechou M-1 em `intermediario`
+        // sobe a flag e o simulador aplica a mesma promoção que o
+        // `promoverPor2MesesConsecutivos()` aplicaria.
+        //
+        // VIEW-ONLY: nada aqui entra no cálculo da nota oficial — é passthrough
+        // de metadado, no mesmo espírito dos 6 campos de elegibilidade da
+        // Fase 92.
+        $promovivelPorUser = DesempenhoScoreSnapshot::mensal()
+            ->whereIn('user_id', $users->pluck('id'))
+            ->whereDate('mes_referencia', $mesReferencia->copy()->subMonth()->startOfMonth()->toDateString())
+            ->where('classificacao', 'intermediario')
+            ->pluck('user_id')
+            ->flip();
+
+        $rankingRaw = $users->map(function ($u) use ($cargosPorUser, $snapshotsMensal, $mesReferencia, $ehMesEmCurso, $periodoResolvido, $promovivelPorUser, &$usuariosFrios) {
             $cargoSlug = $cargosPorUser->get($u->id)?->slug ?? ($u->isMentor() ? 'estrategista' : 'analista');
 
             // Gate SC2/SC3 — profissional sem cache pronto NÃO é computado ao
@@ -183,6 +203,9 @@ class PerformanceController extends Controller
                     'score_status'                   => 'calculando',
                     'componentes_disponiveis'        => null,
                     'calculando'                     => true,
+                    // Simulador — linha fria não é simulável (não há pontos),
+                    // mas a flag vai igual pra não existir shape divergente.
+                    'promovivel_historico'           => $promovivelPorUser->has($u->id),
                 ];
             }
 
@@ -236,6 +259,9 @@ class PerformanceController extends Controller
                 'score_status'                   => (string) ($resultado['score_status'] ?? 'blocked'),
                 'componentes_disponiveis'        => $resultado['componentes_disponiveis'] ?? null,
                 'calculando'                     => false,
+                // Simulador (2026-08-31) — mês anterior fechado em
+                // `intermediario`, insumo da promoção DESEMP-08 simulada.
+                'promovivel_historico'           => $promovivelPorUser->has($u->id),
             ];
         });
 
@@ -372,6 +398,19 @@ class PerformanceController extends Controller
             // Fase 106 Plan 02 (SC2) — true quando ≥1 profissional está frio
             // (calculando em background); front usa pra exibir aviso/poll.
             'aquecendo'          => $aquecendo,
+            // ── Simulador (2026-08-31) — régua ATIVA de bonificação ───────────
+            // O simulador reclassifica a faixa a cada ponto editado; sem a
+            // régua real ele cairia no fallback hardcoded do JS e mostraria
+            // faixa errada assim que um admin editasse os cortes em
+            // /desempenho/configuracao. Só leitura — o simulador nunca grava
+            // em `bonus_faixas`.
+            'faixas_bonus'       => BonusFaixa::ativas()->ordenadas()->get()->map(fn ($f) => [
+                'slug'     => $f->slug,
+                'nome'     => $f->nome,
+                'nota_min' => (float) $f->nota_min,
+                'nota_max' => (float) $f->nota_max,
+                'ordem'    => (int) $f->ordem,
+            ])->values(),
         ]);
     }
 
