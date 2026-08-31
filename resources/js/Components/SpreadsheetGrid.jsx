@@ -28,26 +28,40 @@ function fmtVal(col, value) {
 }
 
 // ── Popup de textarea (para células com texto longo) ──────────────────────────
-function TextareaPopup({ label, value, onChange, onSave, onClose }) {
+// FECHAR SALVA. O padrão anterior (clicar fora / X = descartar) fazia o texto
+// digitado sumir sem nenhum aviso, e as ÚNICAS colunas afetadas eram as de texto
+// longo — todas as outras comitam sozinhas no Enter/Tab/blur. Foi assim que a
+// Planilha de Produtos do Onboarding ficou com "Espec. Técnicas" e "Descrição"
+// vazias enquanto todo o resto salvava: o cliente escrevia e clicava fora.
+// Só o "Cancelar" explícito (botão ou Esc) descarta.
+function TextareaPopup({ label, value, onChange, onSave, onCancel }) {
     return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onSave}>
             <div className="w-full max-w-lg bg-[#0b0c14] border border-white/[0.1] rounded-2xl shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.07]">
                     <p className="text-white/60 text-[12px] font-semibold uppercase tracking-wider">{label}</p>
-                    <button onClick={onClose} className="p-1 text-white/30 hover:text-white/70 transition-colors"><X size={14} /></button>
+                    <button onClick={onSave} title="Salvar e fechar" className="p-1 text-white/30 hover:text-white/70 transition-colors"><X size={14} /></button>
                 </div>
                 <textarea
                     autoFocus
                     value={value}
                     onChange={e => onChange(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Escape') onClose(); e.stopPropagation(); }}
+                    onKeyDown={e => {
+                        if (e.key === 'Escape') onCancel();
+                        // Ctrl+Enter salva; Enter sozinho continua quebrando linha.
+                        else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSave(); }
+                        e.stopPropagation();
+                    }}
                     rows={8}
                     placeholder="Cole ou escreva o texto aqui..."
                     className="w-full px-5 py-4 bg-transparent text-white/90 text-[13px] leading-relaxed resize-none focus:outline-none placeholder:text-white/20"
                 />
-                <div className="flex justify-end gap-2 px-5 py-3 border-t border-white/[0.07]">
-                    <button onClick={onClose} className="px-4 py-1.5 text-[12px] text-white/40 hover:text-white transition-colors">Cancelar</button>
-                    <button onClick={onSave} className="px-4 py-1.5 rounded-lg bg-ecf-yellow text-[#252525] font-semibold text-[12px] hover:brightness-110 transition-all">Salvar</button>
+                <div className="flex items-center justify-between gap-2 px-5 py-3 border-t border-white/[0.07]">
+                    <p className="text-white/25 text-[11px]">Ctrl+Enter salva · Esc cancela</p>
+                    <div className="flex gap-2">
+                        <button onClick={onCancel} className="px-4 py-1.5 text-[12px] text-white/40 hover:text-white transition-colors">Cancelar</button>
+                        <button onClick={onSave} className="px-4 py-1.5 rounded-lg bg-ecf-yellow text-[#252525] font-semibold text-[12px] hover:brightness-110 transition-all">Salvar</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -397,7 +411,10 @@ export function SpreadsheetGrid({
             return;
         }
         if (col.type === 'textarea') {
-            setTextareaPopup({ r, c, value: String(getVal(r, c) ?? '') });
+            // Digitar direto na célula começa o texto do zero, igual às demais colunas
+            // (antes o caractere digitado era engolido e o popup abria com o valor antigo).
+            const atual = String(getVal(r, c) ?? '');
+            setTextareaPopup({ r, c, value: initChar !== null ? initChar : atual, orig: atual });
             return;
         }
         pendingChar.current = initChar;
@@ -576,7 +593,7 @@ export function SpreadsheetGrid({
             case 'Tab':   { const nc = clamp(c+(e.shiftKey?-1:1),0,C-1); setSelA({ r, c: nc }); setSelB({ r, c: nc }); e.preventDefault(); break; }
             case 'Enter': {
                 const col = columns[c];
-                if (col?.type === 'select' || col?.type === 'tags') { startEdit(r, c); }
+                if (col?.type === 'select' || col?.type === 'tags' || col?.type === 'textarea') { startEdit(r, c); }
                 else { const nr = nextR(r, 1); setSelA({ r: nr, c }); setSelB({ r: nr, c }); }
                 e.preventDefault(); break;
             }
@@ -1034,11 +1051,15 @@ export function SpreadsheetGrid({
                     value={textareaPopup.value}
                     onChange={v => setTextareaPopup(p => ({ ...p, value: v }))}
                     onSave={() => {
-                        applyMulti([{ r: textareaPopup.r, c: textareaPopup.c, value: textareaPopup.value }]);
+                        // Só grava se mudou — abrir e fechar sem editar não suja o histórico
+                        // nem dispara o autosave do formulário do cliente.
+                        if (textareaPopup.value !== textareaPopup.orig) {
+                            applyMulti([{ r: textareaPopup.r, c: textareaPopup.c, value: textareaPopup.value }]);
+                        }
                         setTextareaPopup(null);
                         requestAnimationFrame(() => gridRef.current?.focus());
                     }}
-                    onClose={() => { setTextareaPopup(null); requestAnimationFrame(() => gridRef.current?.focus()); }}
+                    onCancel={() => { setTextareaPopup(null); requestAnimationFrame(() => gridRef.current?.focus()); }}
                 />
             )}
 
