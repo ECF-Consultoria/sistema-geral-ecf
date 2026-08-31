@@ -157,40 +157,101 @@ class MetricaManualTravaConsolidacaoTest extends TestCase
         $this->assertArrayHasKey('metrica', $validator->errors()->toArray());
     }
 
+    /**
+     * A FAIXA de `valor` saiu de `rules()` em 2026-08-31 e foi para
+     * `withValidator()`, porque passou a depender do `tipo`: percentual aceita
+     * negativo (queda), ponto vai de 0 a 5, valor cheio segue 0..99.999.999,99.
+     * Um `min:0` fixo na regra primária barraria "-12,5%", que é entrada
+     * legítima. Estes testes exercitam o FormRequest inteiro, não só `rules()`.
+     *
+     * @param array<string, mixed> $payload
+     */
+    private function validarCompleto(array $payload): \Illuminate\Validation\Validator
+    {
+        $request   = StoreMetricaManualRequest::create('/desempenho/metricas-manuais', 'POST', $payload);
+        $validator = ValidatorFacade::make($request->all(), $request->rules());
+        $request->withValidator($validator);
+        $validator->fails();
+
+        return $validator;
+    }
+
     #[Test]
-    public function rules_recusa_valor_negativo(): void
+    public function recusa_valor_negativo_quando_o_tipo_e_valor_cheio(): void
     {
         $company = Company::factory()->create();
 
-        $validator = ValidatorFacade::make([
+        $validator = $this->validarCompleto([
             'company_id'     => $company->id,
             'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => '2026-08',
             'metrica'        => DesempenhoMetricaManual::METRICA_FATURAMENTO,
+            'tipo'           => DesempenhoMetricaManual::TIPO_VALOR,
             'valor'          => -1,
             'ativo'          => true,
-        ], $this->rules());
+        ]);
 
-        $this->assertTrue($validator->fails());
         $this->assertArrayHasKey('valor', $validator->errors()->toArray());
     }
 
     #[Test]
-    public function rules_recusa_valor_acima_do_teto(): void
+    public function recusa_valor_acima_do_teto_quando_o_tipo_e_valor_cheio(): void
     {
         $company = Company::factory()->create();
 
-        $validator = ValidatorFacade::make([
+        $validator = $this->validarCompleto([
             'company_id'     => $company->id,
             'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
             'mes_referencia' => '2026-08',
             'metrica'        => DesempenhoMetricaManual::METRICA_FATURAMENTO,
+            'tipo'           => DesempenhoMetricaManual::TIPO_VALOR,
             'valor'          => 100000000,
             'ativo'          => true,
-        ], $this->rules());
+        ]);
 
-        $this->assertTrue($validator->fails());
         $this->assertArrayHasKey('valor', $validator->errors()->toArray());
+    }
+
+    #[Test]
+    public function percentual_negativo_e_aceito_porque_queda_e_dado_valido(): void
+    {
+        $company = Company::factory()->create();
+
+        $validator = $this->validarCompleto([
+            'company_id'     => $company->id,
+            'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
+            'mes_referencia' => '2026-08',
+            'metrica'        => DesempenhoMetricaManual::METRICA_FATURAMENTO,
+            'tipo'           => DesempenhoMetricaManual::TIPO_PERCENTUAL,
+            'valor'          => -12.5,
+            'ativo'          => true,
+        ]);
+
+        $this->assertArrayNotHasKey('valor', $validator->errors()->toArray());
+    }
+
+    #[Test]
+    public function ponto_fora_da_faixa_0_a_5_e_recusado(): void
+    {
+        $company = Company::factory()->create();
+
+        foreach ([-0.5, 5.1, 50] as $foraDaFaixa) {
+            $validator = $this->validarCompleto([
+                'company_id'     => $company->id,
+                'fonte'          => DesempenhoMetricaManual::FONTE_SHOPEE,
+                'mes_referencia' => '2026-08',
+                'metrica'        => DesempenhoMetricaManual::METRICA_FATURAMENTO,
+                'tipo'           => DesempenhoMetricaManual::TIPO_PONTO,
+                'valor'          => $foraDaFaixa,
+                'ativo'          => true,
+            ]);
+
+            $this->assertArrayHasKey(
+                'valor',
+                $validator->errors()->toArray(),
+                "ponto {$foraDaFaixa} tinha que ser recusado — sem teto, um dedo escorregado vira média da carteira inteira",
+            );
+        }
     }
 
     #[Test]

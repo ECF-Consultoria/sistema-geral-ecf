@@ -4,6 +4,7 @@ namespace App\Services\Desempenho;
 
 use App\Models\BonusInvalidacao;
 use App\Models\Company;
+use App\Models\DesempenhoMetricaManual;
 use App\Models\User;
 use App\Services\Metrics\FinancialSourceResolver;
 use App\Services\Metrics\ManualMetricOverrideService;
@@ -334,6 +335,28 @@ class CompanyScoreService
                 default                                          => $this->reguaMargem($margemVarPp),
             };
 
+            // Lançamento do tipo `ponto` (2026-08-31) — substitui a saída da
+            // régua, e por isso é aplicado AQUI e não no override de métrica.
+            // Vale inclusive onde a régua devolveu null: é exatamente o caso
+            // que o usuário quer resolver à mão (loja sem baseline, Shopee sem
+            // CMV). Quando entra, a célula conta como componente presente.
+            $faturamentoPontoManual = $this->manualOverride->pontoManual(
+                $company->id, $mes, $fonteFinanceira, DesempenhoMetricaManual::METRICA_FATURAMENTO, $lancamentosManuais
+            );
+            if ($faturamentoPontoManual !== null) {
+                $faturamentoPontos = $faturamentoPontoManual;
+                $resultado['quality']['faturamento_fonte'] = 'manual';
+            }
+
+            $margemPontoManual = $this->manualOverride->pontoManual(
+                $company->id, $mes, $fonteFinanceira, DesempenhoMetricaManual::METRICA_MARGEM_CMV, $lancamentosManuais
+            );
+            if ($margemPontoManual !== null) {
+                $margemPontos = $margemPontoManual;
+                $resultado['quality']['margem_fonte'] = 'manual';
+                $margemManual = true;
+            }
+
             $motivos = [];
             if ($faturamentoPontos === null) {
                 $motivos[] = 'faturamento_sem_baseline';
@@ -344,7 +367,12 @@ class CompanyScoreService
             // A exceção é exclusiva de célula `manual` — Shopee sem CMV
             // lançado continua reportando `margem_nao_fornecida_shopee`
             // abaixo, nunca este motivo.
-            if (($fonteFinanceira === 'adman' || $margemManual) && $margemVarPp === null) {
+            // `$margemPontos !== null` desde 2026-08-31: com PONTO lançado à
+            // mão não falta nada para pontuar margem, mesmo sem `diff_pp` —
+            // o ponto é justamente o atalho para a loja que não tem baseline.
+            // Sem esta condição a célula pontuaria e ainda assim reportaria
+            // indisponibilidade, contradizendo a própria linha.
+            if (($fonteFinanceira === 'adman' || $margemManual) && $margemVarPp === null && $margemPontos === null) {
                 $motivos[] = 'margem_pp_indisponivel';
             }
             // Regra de 2026-08-05 intacta para quem NÃO tem CMV manual —

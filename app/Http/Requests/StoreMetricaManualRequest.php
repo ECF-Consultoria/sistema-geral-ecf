@@ -58,7 +58,12 @@ class StoreMetricaManualRequest extends FormRequest
             'fonte'          => ['required', Rule::in(DesempenhoMetricaManual::FONTES)],
             'mes_referencia' => ['required', 'regex:/^\d{4}-\d{2}$/'],
             'metrica'        => ['required', Rule::in(DesempenhoMetricaManual::METRICAS)],
-            'valor'          => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],
+            'tipo'           => ['nullable', Rule::in(DesempenhoMetricaManual::TIPOS)],
+            // A FAIXA de `valor` depende de `tipo` e por isso vive em
+            // `withValidator()`. Aqui só o que vale para os três: ser número.
+            // `min:0` NÃO pode estar nesta linha — queda de faturamento é um
+            // percentual negativo perfeitamente válido.
+            'valor'          => ['nullable', 'numeric'],
             'ativo'          => ['required', 'boolean'],
         ];
     }
@@ -84,6 +89,34 @@ class StoreMetricaManualRequest extends FormRequest
 
             if ($ativo && ($valor === null || $valor === '')) {
                 $v->errors()->add('valor', 'O valor é obrigatório quando a métrica está marcada como manual.');
+            }
+
+            // Faixa por TIPO (2026-08-31). Só checa quando há número: a
+            // reversão para auto (`ativo=false`) submete sem valor, e o erro
+            // de obrigatoriedade acima já cobre o caso de ativo sem número.
+            if ($ativo && is_numeric($valor)) {
+                $numero = (float) $valor;
+
+                match ($this->tipoLancamento()) {
+                    // Ponto é nota de 0 a 5 — a mesma escala da régua. Sem o
+                    // teto, um "50" digitado por engano viraria média 50 na
+                    // carteira inteira do profissional.
+                    DesempenhoMetricaManual::TIPO_PONTO => $numero < 0 || $numero > DesempenhoMetricaManual::PONTO_MAXIMO
+                        ? $v->errors()->add('valor', 'O ponto precisa estar entre 0 e ' . (int) DesempenhoMetricaManual::PONTO_MAXIMO . '.')
+                        : null,
+
+                    // Percentual aceita NEGATIVO (queda) — é metade do sentido
+                    // de existir. O teto largo só barra o dedo escorregado:
+                    // variação de 100.000% não é dado, é acidente.
+                    DesempenhoMetricaManual::TIPO_PERCENTUAL => abs($numero) > 100000
+                        ? $v->errors()->add('valor', 'O percentual informado está fora de qualquer faixa plausível.')
+                        : null,
+
+                    // Valor cheio em R$ — mesma faixa da Fase 136.
+                    default => $numero < 0 || $numero > 99999999.99
+                        ? $v->errors()->add('valor', 'O valor deve ser um número entre 0 e 99.999.999,99.')
+                        : null,
+                };
             }
 
             $companyId = $this->input('company_id');
@@ -150,8 +183,7 @@ class StoreMetricaManualRequest extends FormRequest
             'metrica.required'        => 'A métrica é obrigatória.',
             'metrica.in'              => 'Métrica fora da whitelist permitida.',
             'valor.numeric'           => 'O valor deve ser um número decimal.',
-            'valor.min'               => 'O valor não pode ser negativo.',
-            'valor.max'               => 'O valor excede o teto permitido para esta coluna.',
+            'tipo.in'                 => 'Tipo de lançamento inválido — use valor, percentual ou ponto.',
             'ativo.required'          => 'É obrigatório informar se o lançamento está ativo.',
             'ativo.boolean'           => 'O campo ativo deve ser verdadeiro ou falso.',
         ];
@@ -165,5 +197,20 @@ class StoreMetricaManualRequest extends FormRequest
     public function mesReferencia(): Carbon
     {
         return Carbon::createFromFormat('Y-m-d', $this->input('mes_referencia') . '-01')->startOfMonth();
+    }
+
+    /**
+     * Tipo do lançamento, com `valor` como default. Ausência do campo é o
+     * caminho da tela antiga e de qualquer integração que não conheça os
+     * modos novos — ela precisa continuar significando "valor cheio", que é
+     * o que essas chamadas sempre quiseram dizer.
+     */
+    public function tipoLancamento(): string
+    {
+        $tipo = $this->input('tipo');
+
+        return in_array($tipo, DesempenhoMetricaManual::TIPOS, true)
+            ? $tipo
+            : DesempenhoMetricaManual::TIPO_VALOR;
     }
 }

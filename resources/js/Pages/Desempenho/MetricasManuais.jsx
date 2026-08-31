@@ -62,12 +62,20 @@ function paraNumero(texto) {
     const limpo = String(texto ?? '').trim();
     if (limpo === '') return null;
 
+    // O sinal é lido ANTES da limpeza e reaplicado depois: o filtro de
+    // caracteres abaixo remove o '-', e sem isto "-12,5%" (queda de
+    // faturamento, entrada perfeitamente válida no modo percentual) viraria
+    // +12,5% — um crescimento inventado a partir de uma perda.
+    const negativo = limpo.startsWith('-');
+
     const normalizado = limpo.includes(',')
         ? limpo.replace(/\./g, '').replace(',', '.')
         : limpo;
 
     const n = Number(normalizado.replace(/[^0-9.]/g, ''));
-    return Number.isFinite(n) ? n : null;
+    if (!Number.isFinite(n)) return null;
+
+    return negativo ? -n : n;
 }
 
 /** Número → texto editável (vírgula decimal, sem símbolo de moeda). */
@@ -77,6 +85,51 @@ function paraTextoEditavel(valor) {
 }
 
 const numeroOuNulo = (v) => (v == null || v === '' ? null : Number(v));
+
+// ─── Modos de lançamento (espelho de DesempenhoMetricaManual::TIPOS) ────────
+// Três andares diferentes do mesmo cálculo, e é por isso que são três modos e
+// não três formatações: `valor` vira faturamento/CMV e o motor deriva a
+// variação; `percentual` JÁ é a variação; `ponto` JÁ é a saída da régua.
+const TIPO_VALOR      = 'valor';
+const TIPO_PERCENTUAL = 'percentual';
+const TIPO_PONTO      = 'ponto';
+
+const MODOS = [
+    { tipo: TIPO_VALOR,      chip: 'R$', rotulo: 'Valor cheio em reais' },
+    { tipo: TIPO_PERCENTUAL, chip: '%',  rotulo: 'Quanto cresceu' },
+    { tipo: TIPO_PONTO,      chip: 'pt', rotulo: 'O ponto direto, de 0 a 5' },
+];
+
+/** Ajuda longa por modo, exibida no input aberto. */
+const AJUDA_MODO = {
+    [TIPO_VALOR]: 'Valor do mês cheio, em reais.',
+    [TIPO_PERCENTUAL]: {
+        faturamento: 'Quanto o faturamento cresceu, em % (aceita negativo para queda). Ex: 12,5',
+        margem_cmv:  'Quanto a margem cresceu, em PONTOS PERCENTUAIS (aceita negativo). Ex: 3,2 significa que a margem subiu 3,2 p.p.',
+    },
+    [TIPO_PONTO]: 'A nota desta loja neste indicador, de 0 a 5. Não passa pela régua — entra direto na média da carteira.',
+};
+
+const ajudaDoModo = (tipo, metrica) => {
+    const ajuda = AJUDA_MODO[tipo];
+    return typeof ajuda === 'string' ? ajuda : (ajuda?.[metrica] ?? '');
+};
+
+/** Formata o número conforme o modo em que a célula foi lançada. */
+function formatarPorTipo(valor, tipo) {
+    if (valor == null) return '—';
+
+    if (tipo === TIPO_PONTO) {
+        return `${Number(valor).toFixed(2).replace('.', ',')} pt`;
+    }
+
+    if (tipo === TIPO_PERCENTUAL) {
+        const sinal = Number(valor) > 0 ? '+' : '';
+        return `${sinal}${Number(valor).toFixed(2).replace('.', ',')}%`;
+    }
+
+    return formatCurrency(valor);
+}
 
 // O canal entra na chave: a mesma empresa pode aparecer em duas linhas (uma
 // por marketplace), e sem a fonte as duas compartilhariam estado de edição,
@@ -95,12 +148,26 @@ function CelulaMetrica({ metrica, celula, enviando, erros, onEnviar }) {
     const valor       = numeroOuNulo(celula?.valor);
     const apiValor    = numeroOuNulo(celula?.api_valor);
     const apiAquecida = celula?.api_aquecida === true;
+    const tipoSalvo   = celula?.tipo ?? TIPO_VALOR;
 
-    const divergente = ativo && valor != null && apiAquecida && apiValor != null
-        && Math.abs(apiValor - valor) >= 0.01;
+    // Modo em edição. Nasce do que está salvo, mas é estado próprio: trocar de
+    // modo é uma decisão que precede o número, não uma consequência dele.
+    const [modo, setModo] = useState(tipoSalvo);
 
-    const abrirEdicao = () => {
-        setTexto(paraTextoEditavel(valor));
+    // A comparação com a API só existe em reais. O backend já devolve
+    // `api_valor = null` fora do modo valor; a checagem aqui evita depender
+    // disso para não exibir "divergente" comparando 4,5 pontos com R$ 30 mil.
+    const divergente = ativo && tipoSalvo === TIPO_VALOR && valor != null
+        && apiAquecida && apiValor != null && Math.abs(apiValor - valor) >= 0.01;
+
+    const abrirEdicao = (novoModo = null) => {
+        const modoAlvo = novoModo ?? tipoSalvo;
+        setModo(modoAlvo);
+        // Reaproveitar o número só faz sentido no MESMO modo — 4,5 pontos
+        // reaproveitados como reais viram R$ 4,50, e R$ 30.000 reaproveitados
+        // como ponto seriam recusados pelo teto de 5. Trocar de modo abre
+        // vazio, de propósito.
+        setTexto(modoAlvo === tipoSalvo ? paraTextoEditavel(valor) : '');
         setEditando(true);
     };
 
@@ -108,23 +175,25 @@ function CelulaMetrica({ metrica, celula, enviando, erros, onEnviar }) {
         setEditando(false);
         const novo = paraNumero(texto);
 
-        if (novo == null) return;                                        // campo em branco → nada a gravar
-        if (ativo && valor != null && Math.abs(novo - valor) < 0.005) return; // não mudou → não gasta request
+        if (novo == null) return; // campo em branco → nada a gravar
+        // Só é "não mudou" quando o MODO também é o mesmo: o número 3 significa
+        // coisas diferentes em cada modo, então 3 pt sobre 3 R$ é uma mudança.
+        if (ativo && modo === tipoSalvo && valor != null && Math.abs(novo - valor) < 0.005) return;
 
-        onEnviar({ ativo: true, valor: novo });
+        onEnviar({ ativo: true, valor: novo, tipo: modo });
     };
 
     const alternar = (paraManual) => {
         if (!paraManual) {
             if (!ativo) return;
-            onEnviar({ ativo: false, valor: null });
+            onEnviar({ ativo: false, valor: null, tipo: tipoSalvo });
             return;
         }
 
         if (ativo) return;
         // Religar aproveita o valor preservado; sem valor guardado, o backend
         // exige um número — então abrimos o input em vez de mandar vazio.
-        if (valor != null) onEnviar({ ativo: true, valor });
+        if (valor != null) onEnviar({ ativo: true, valor, tipo: tipoSalvo });
         else abrirEdicao();
     };
 
@@ -143,9 +212,13 @@ function CelulaMetrica({ metrica, celula, enviando, erros, onEnviar }) {
                             if (ev.key === 'Enter') salvar();
                             if (ev.key === 'Escape') setEditando(false);
                         }}
-                        placeholder="0,00"
+                        placeholder={modo === TIPO_PONTO ? '0,00 a 5,00' : '0,00'}
+                        title={ajudaDoModo(modo, metrica)}
                         className="h-7 w-32 rounded-md border border-white/15 bg-white/[0.05] px-2 text-right font-mono text-xs tabular-nums text-white outline-none focus:border-ecf-yellow/40"
                     />
+                    <span className="shrink-0 text-[10px] font-semibold text-white/40">
+                        {MODOS.find((m) => m.tipo === modo)?.chip}
+                    </span>
                     <button
                         type="button"
                         onMouseDown={(ev) => ev.preventDefault()}
@@ -178,7 +251,7 @@ function CelulaMetrica({ metrica, celula, enviando, erros, onEnviar }) {
                     >
                         <span>
                             {ativo && valor != null
-                                ? formatCurrency(valor)
+                                ? formatarPorTipo(valor, tipoSalvo)
                                 : (apiAquecida && apiValor != null ? formatCurrency(apiValor) : '—')}
                         </span>
                         {divergente && (
@@ -191,17 +264,25 @@ function CelulaMetrica({ metrica, celula, enviando, erros, onEnviar }) {
                         o que a API diz. `api_aquecida = false` NUNCA vira zero. */}
                     <div className="text-[10px] leading-tight text-white/35">
                         {ativo ? (
-                            apiAquecida
-                                ? (apiValor != null
-                                    ? <span title={divergente ? TITULO_DIVERGENCIA : undefined}>API: {formatCurrency(apiValor)}</span>
-                                    : <span title={TITULO_API_SEM_VALOR}>API sem valor para esta métrica</span>)
-                                : <span title={TITULO_API_FRIA}>API: {TEXTO_API_FRIA}</span>
+                            // Fora do modo valor não existe comparação com a
+                            // API: ela não devolve "o ponto desta loja", e o
+                            // faturamento em reais embaixo de "4,50 pt" leria
+                            // como divergência onde não há o que comparar.
+                            tipoSalvo !== TIPO_VALOR
+                                ? <span title={ajudaDoModo(tipoSalvo, metrica)}>
+                                    {tipoSalvo === TIPO_PONTO ? 'ponto lançado à mão' : 'variação lançada à mão'}
+                                </span>
+                                : (apiAquecida
+                                    ? (apiValor != null
+                                        ? <span title={divergente ? TITULO_DIVERGENCIA : undefined}>API: {formatCurrency(apiValor)}</span>
+                                        : <span title={TITULO_API_SEM_VALOR}>API sem valor para esta métrica</span>)
+                                    : <span title={TITULO_API_FRIA}>API: {TEXTO_API_FRIA}</span>)
                         ) : (
                             <span>
                                 automático
                                 {valor != null && (
                                     <span className="text-white/25" title={TITULO_VALOR_PRESERVADO}>
-                                        {' '}· último manual {formatCurrency(valor)}
+                                        {' '}· último manual {formatarPorTipo(valor, tipoSalvo)}
                                     </span>
                                 )}
                             </span>
@@ -236,6 +317,29 @@ function CelulaMetrica({ metrica, celula, enviando, erros, onEnviar }) {
                 >
                     manual
                 </button>
+            </div>
+
+            {/* Como o número desta célula deve ser lido. Clicar num modo abre o
+                input já naquele modo — o valor não é reaproveitado entre modos
+                porque 3 significa coisas diferentes em cada um. */}
+            <div className="mt-1 inline-flex overflow-hidden rounded-md border border-white/[0.08]">
+                {MODOS.map((m) => (
+                    <button
+                        key={m.tipo}
+                        type="button"
+                        onClick={() => abrirEdicao(m.tipo)}
+                        disabled={enviando}
+                        title={`${m.rotulo} — ${ajudaDoModo(m.tipo, metrica)}`}
+                        className={cn(
+                            'px-1.5 py-0.5 text-[10px] font-medium transition disabled:opacity-40',
+                            (editando ? modo : tipoSalvo) === m.tipo && ativo
+                                ? 'bg-ecf-yellow/15 text-ecf-yellow'
+                                : 'text-white/30 hover:text-white/70',
+                        )}
+                    >
+                        {m.chip}
+                    </button>
+                ))}
             </div>
 
             {enviando && <div className="mt-1 text-[10px] text-white/30">salvando…</div>}
@@ -302,7 +406,7 @@ export default function MetricasManuais({
         );
     };
 
-    const enviarCelula = (empresa, metrica, { ativo, valor }) => {
+    const enviarCelula = (empresa, metrica, { ativo, valor, tipo }) => {
         const chave = chaveCelula(empresa.company_id, empresa.fonte, metrica);
         setEnviandoChave(chave);
         setErrosPorCelula((atual) => ({ ...atual, [chave]: null }));
@@ -316,6 +420,10 @@ export default function MetricasManuais({
                 fonte:          empresa.fonte,
                 mes_referencia: mes,
                 metrica,
+                // COMO o número deve ser lido. Vai sempre, inclusive na
+                // reversão: sem ele o backend cairia no default `valor` e o
+                // ponto preservado seria relido como reais ao religar.
+                tipo:           tipo ?? TIPO_VALOR,
                 valor:          ativo ? valor : null,
                 ativo,
             },

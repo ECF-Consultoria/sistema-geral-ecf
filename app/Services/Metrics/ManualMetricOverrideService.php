@@ -154,6 +154,19 @@ class ManualMetricOverrideService
         $faturamentoAnteriorManual = $lancamentos->get($chaveAntFat);
         $cmvAnteriorManual         = $lancamentos->get($chaveAntCmv);
 
+        // Lançamento do tipo `ponto` NÃO é assunto deste serviço: ele
+        // substitui a saída da RÉGUA, que só existe depois, no
+        // `CompanyScoreService`. Tratá-lo aqui como se fosse um valor de
+        // faturamento (0 a 5 reais) envenenaria a variação. Sai da jogada
+        // desde já para que todo o resto do método continue falando só de
+        // grandezas de métrica. Quem o aplica é `pontoManual()`.
+        if ($faturamentoAtualManual?->tipo === DesempenhoMetricaManual::TIPO_PONTO) {
+            $faturamentoAtualManual = null;
+        }
+        if ($cmvAtualManual?->tipo === DesempenhoMetricaManual::TIPO_PONTO) {
+            $cmvAtualManual = null;
+        }
+
         // Caminho rápido — nenhum lançamento na célula: devolve o resultado
         // do dispatcher intocado, com o sinal de quality em 'auto' nos dois
         // eixos, e SEM nenhuma chamada a resolve()/compute() extra.
@@ -165,7 +178,20 @@ class ManualMetricOverrideService
         }
 
         // ─── Eixo faturamento (D-01/D-02/D-07) ─────────────────────────────
-        if ($faturamentoAtualManual !== null) {
+        if ($faturamentoAtualManual?->tipo === DesempenhoMetricaManual::TIPO_PERCENTUAL) {
+            // A variação JÁ É o número digitado — não há valor absoluto para
+            // exibir, e inventar um (a partir de qual base?) seria pior que a
+            // ausência: a tela mostraria um faturamento que ninguém informou.
+            // `value`/`prev_value` ficam null de propósito; a régua consome
+            // `diff_pct`, que é o que interessa.
+            $resultado['metrics']['revenue'] = [
+                'value'       => null,
+                'prev_value'  => null,
+                'diff_pct'    => round((float) $faturamentoAtualManual->valor, 2),
+                'diff_source' => 'manual_percentual',
+            ];
+            $resultado['quality']['faturamento_fonte'] = 'manual';
+        } elseif ($faturamentoAtualManual !== null) {
             $value     = (float) $faturamentoAtualManual->valor;
             $prevValue = $faturamentoAnteriorManual !== null
                 ? (float) $faturamentoAnteriorManual->valor
@@ -186,7 +212,26 @@ class ManualMetricOverrideService
         }
 
         // ─── Eixo margem (D-05/D-08) ────────────────────────────────────────
-        if ($cmvAtualManual !== null) {
+        if ($cmvAtualManual?->tipo === DesempenhoMetricaManual::TIPO_PERCENTUAL) {
+            // Margem em PONTOS PERCENTUAIS (`diff_pp`), nunca `diff_pct`: é a
+            // grandeza que `reguaMargem()` consome (EMPS-03). Tratar o número
+            // digitado como variação relativa daria erro médio de 16,66 contra
+            // o valor certo — medido em learnings §0.4.
+            $resultado['metrics']['contribution_margin_pct'] = [
+                'value'       => null,
+                'prev_value'  => null,
+                'diff_pct'    => null,
+                'diff_pp'     => round((float) $cmvAtualManual->valor, 2),
+                'diff_source' => 'manual_percentual',
+            ];
+            $resultado['metrics']['contribution_margin_value'] = [
+                'value'       => null,
+                'prev_value'  => null,
+                'diff_pct'    => null,
+                'diff_source' => 'manual_percentual',
+            ];
+            $resultado['quality']['margem_fonte'] = 'manual';
+        } elseif ($cmvAtualManual !== null) {
             // Faturamento efetivo da célula, SEMPRE em mês cheio (D-08): o
             // valor manual do eixo faturamento se ele estiver marcado
             // manual; senão o total do mês calendário inteiro pela API.
@@ -262,6 +307,39 @@ class ManualMetricOverrideService
         }
 
         return $resultado;
+    }
+
+    /**
+     * Ponto lançado à mão para a célula, ou `null` quando ela não tem
+     * lançamento do tipo `ponto`.
+     *
+     * Vive aqui, e não no `CompanyScoreService`, para a leitura da coleção
+     * pré-carregada (a mesma chave "{company}:{fonte}:{metrica}:{Y-m}") ficar
+     * num arquivo só — mas é CHAMADO depois da régua, porque é a saída dela
+     * que este valor substitui. `aplicar()` ignora `tipo = ponto` de
+     * propósito; os dois métodos são as duas metades de uma decisão só.
+     *
+     * O clamp em 0..5 é a última linha de defesa: o `StoreMetricaManualRequest`
+     * já recusa fora da faixa, mas uma linha gravada antes de uma mudança de
+     * regra não pode virar nota 900 na média da carteira.
+     *
+     * @param  Collection<string, DesempenhoMetricaManual>  $lancamentos  Pré-carregada por `carregarLancamentos()`.
+     */
+    public function pontoManual(
+        int $companyId,
+        Carbon $mes,
+        string $fonte,
+        string $metrica,
+        Collection $lancamentos,
+    ): ?float {
+        $chave     = "{$companyId}:{$fonte}:{$metrica}:{$mes->copy()->startOfMonth()->format('Y-m')}";
+        $lancamento = $lancamentos->get($chave);
+
+        if ($lancamento === null || $lancamento->tipo !== DesempenhoMetricaManual::TIPO_PONTO) {
+            return null;
+        }
+
+        return max(0.0, min(DesempenhoMetricaManual::PONTO_MAXIMO, (float) $lancamento->valor));
     }
 
     /**

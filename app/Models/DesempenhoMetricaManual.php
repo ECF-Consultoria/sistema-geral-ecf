@@ -70,16 +70,52 @@ class DesempenhoMetricaManual extends Model
         self::FONTE_SHOPEE,
     ];
 
+    /**
+     * COMO o número da célula deve ser lido. Adicionado em 2026-08-31 — até
+     * então toda linha era valor cheio, e o backfill da migration garante que
+     * as antigas continuem sendo.
+     *
+     * - `valor`      · R$ do mês cheio. É o único tipo que passa pela cascata
+     *   de baseline do mês anterior (D-06) e pela derivação de margem a partir
+     *   do CMV (D-08).
+     * - `percentual` · a VARIAÇÃO já pronta, substituindo o que o motor
+     *   calcularia. Faturamento em % relativa (`diff_pct`); margem em PONTOS
+     *   PERCENTUAIS (`diff_pp`) — grandezas diferentes de propósito, porque
+     *   são exatamente as que cada régua consome. Aceita negativo: queda é
+     *   informação válida.
+     * - `ponto`      · o ponto da empresa naquele indicador, 0 a 5. Não passa
+     *   pela régua: entra direto na média da carteira. É o único tipo que o
+     *   `ManualMetricOverrideService` NÃO aplica — quem aplica é o
+     *   `CompanyScoreService`, depois da régua (ver `pontoManual()`).
+     */
+    public const TIPO_VALOR      = 'valor';
+    public const TIPO_PERCENTUAL = 'percentual';
+    public const TIPO_PONTO      = 'ponto';
+
+    public const TIPOS = [
+        self::TIPO_VALOR,
+        self::TIPO_PERCENTUAL,
+        self::TIPO_PONTO,
+    ];
+
+    /** Teto da régua — o ponto lançado à mão nunca pode ultrapassar o calculado. */
+    public const PONTO_MAXIMO = 5.0;
+
     protected $fillable = [
         'company_id',
         'fonte',
         'mes_referencia',
         'metrica',
+        'tipo',
         'valor',
         'valor_anterior',
         'ativo',
         'lancado_por',
         'lancado_em',
+    ];
+
+    protected $attributes = [
+        'tipo' => self::TIPO_VALOR,
     ];
 
     protected $casts = [
@@ -93,7 +129,7 @@ class DesempenhoMetricaManual extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['company_id', 'fonte', 'mes_referencia', 'metrica', 'valor', 'valor_anterior', 'ativo', 'lancado_por'])
+            ->logOnly(['company_id', 'fonte', 'mes_referencia', 'metrica', 'tipo', 'valor', 'valor_anterior', 'ativo', 'lancado_por'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn (string $event) => match ($event) {

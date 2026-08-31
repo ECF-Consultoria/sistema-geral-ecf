@@ -124,9 +124,10 @@ class DesempenhoMetricasManuaisController extends Controller
             'consolidada' => $consolidada,
             'busca'       => $busca,
             'empresas'    => $empresas,
-            // Espelho JS da whitelist canônica — a tela não redigita as
-            // strings de métrica (o model é a única fonte).
+            // Espelho JS das whitelists canônicas — a tela não redigita as
+            // strings de métrica nem de tipo (o model é a única fonte).
             'metricas'    => DesempenhoMetricaManual::METRICAS,
+            'tipos'       => DesempenhoMetricaManual::TIPOS,
         ]);
     }
 
@@ -152,8 +153,9 @@ class DesempenhoMetricasManuaisController extends Controller
         $metrica   = (string) $request->input('metrica');
         $ativo     = $request->boolean('ativo');
         $valor     = $request->input('valor');
+        $tipo      = $request->tipoLancamento();
 
-        $acao = DB::transaction(function () use ($mes, $mesStr, $companyId, $fonte, $metrica, $ativo, $valor, $request) {
+        $acao = DB::transaction(function () use ($mes, $mesStr, $companyId, $fonte, $metrica, $tipo, $ativo, $valor, $request) {
             // A trava de "competência consolidada" foi REMOVIDA a pedido do
             // negócio (2026-08-31): o admin lança métrica manual em QUALQUER
             // competência, congelada ou não — e a nota congelada é reescrita
@@ -183,6 +185,7 @@ class DesempenhoMetricasManuaisController extends Controller
             if ($ativo) {
                 $acao       = $linha === null ? 'lancado' : 'editado';
                 $atributos  = [
+                    'tipo'           => $tipo,
                     'valor'          => (float) $valor,
                     'valor_anterior' => $valorAnterior,
                     'ativo'          => true,
@@ -191,7 +194,10 @@ class DesempenhoMetricasManuaisController extends Controller
                 $acao      = 'revertido';
                 $atributos = [
                     // D-02/D-12: o valor lançado sobrevive à reversão — quem
-                    // religar a célula vê o que estava lá antes.
+                    // religar a célula vê o que estava lá antes. O `tipo` vai
+                    // junto: valor preservado sem o tipo que o interpreta
+                    // seria lido como R$ ao religar, e 4,5 pontos virariam
+                    // R$ 4,50 de faturamento.
                     'valor'          => $valorAnterior,
                     'valor_anterior' => $valorAnterior,
                     'ativo'          => false,
@@ -207,6 +213,7 @@ class DesempenhoMetricasManuaisController extends Controller
                     'fonte'          => $fonte,
                     'mes_referencia' => $mesStr,
                     'metrica'        => $metrica,
+                    'tipo'           => $tipo,
                 ]);
             } else {
                 $linha->fill($atributos)->save();
@@ -405,15 +412,26 @@ class DesempenhoMetricasManuaisController extends Controller
         $porMetrica = $celulas->map(function (?DesempenhoMetricaManual $linha, string $metrica) use ($apiValores, $apiAquecida) {
             $celulaTemLancamento = $linha !== null && ($linha->ativo || $linha->valor !== null);
 
+            $tipo = $linha?->tipo ?? DesempenhoMetricaManual::TIPO_VALOR;
+
             return [
                 'ativo'          => (bool) ($linha?->ativo ?? false),
+                'tipo'           => $tipo,
                 'valor'          => $linha?->valor,
                 'valor_anterior' => $linha?->valor_anterior,
                 // D-02: o valor da API aparece ao lado do manual só
                 // para célula COM lançamento — nunca para a base
                 // inteira (T-136-17).
-                'api_valor'      => $celulaTemLancamento ? $apiValores[$metrica] : null,
-                'api_aquecida'   => $celulaTemLancamento && $apiAquecida,
+                //
+                // Só faz sentido comparar com a API o que está na MESMA
+                // grandeza: R$ contra R$. Célula lançada em % ou em ponto não
+                // tem contraparte na API (a API não devolve "o ponto desta
+                // loja"), e exibir o faturamento em reais embaixo de um "4,5
+                // pontos" leria como divergência onde não há comparação.
+                'api_valor'      => $celulaTemLancamento && $tipo === DesempenhoMetricaManual::TIPO_VALOR
+                    ? $apiValores[$metrica]
+                    : null,
+                'api_aquecida'   => $celulaTemLancamento && $apiAquecida && $tipo === DesempenhoMetricaManual::TIPO_VALOR,
             ];
         });
 
