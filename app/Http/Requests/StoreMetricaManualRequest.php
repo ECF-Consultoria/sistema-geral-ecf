@@ -5,7 +5,6 @@ namespace App\Http\Requests;
 use App\Models\Company;
 use App\Models\DesempenhoMetricaManual;
 use App\Models\Servico;
-use App\Services\Desempenho\CompanyScoreSnapshotWriter;
 use Carbon\Carbon;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -23,8 +22,14 @@ use Illuminate\Validation\Rule;
  *
  * Molde: `App\Http\Requests\UpdateBonusFaixaRequest`.
  *
+ * ### Não há mais recusa por competência consolidada (D-09 revogado 2026-08-31)
+ * A checagem `CompanyScoreSnapshotWriter::competenciaConsolidada()` que ficava
+ * em `withValidator()` foi removida a pedido do negócio: lançamento manual é
+ * permitido em qualquer competência, congelada ou não. Não recolocar aqui sem
+ * derrubar também o read-only da tela — guarda só no servidor devolveria erro
+ * numa célula que a grade deixou digitar.
+ *
  * @see App\Models\DesempenhoMetricaManual::METRICAS
- * @see App\Services\Desempenho\CompanyScoreSnapshotWriter::competenciaConsolidada()
  */
 class StoreMetricaManualRequest extends FormRequest
 {
@@ -61,10 +66,7 @@ class StoreMetricaManualRequest extends FormRequest
     /**
      * Regras compostas:
      *  1. `valor` obrigatório quando `ativo=true`.
-     *  2. D-09 — competência já consolidada é read-only para o lançamento
-     *     manual; reaproveita o MESMO sinal de `CompanyScoreSnapshotWriter`,
-     *     sem flag paralela.
-     *  3. T-136-06 — empresa precisa estar `active=true`. A ferramenta é
+     *  2. T-136-06 — empresa precisa estar `active=true`. A ferramenta é
      *     admin-global por desenho, então não há filtro por carteira; mas
      *     empresa inativa não é alvo válido de lançamento.
      */
@@ -82,18 +84,6 @@ class StoreMetricaManualRequest extends FormRequest
 
             if ($ativo && ($valor === null || $valor === '')) {
                 $v->errors()->add('valor', 'O valor é obrigatório quando a métrica está marcada como manual.');
-            }
-
-            $mesReferencia = $this->input('mes_referencia');
-            if (is_string($mesReferencia) && preg_match('/^\d{4}-\d{2}$/', $mesReferencia)) {
-                $mes = $this->mesReferencia();
-
-                if (CompanyScoreSnapshotWriter::competenciaConsolidada($mes)) {
-                    $v->errors()->add(
-                        'mes_referencia',
-                        'Competência já consolidada: o lançamento manual só vale enquanto o mês não foi congelado.'
-                    );
-                }
             }
 
             $companyId = $this->input('company_id');

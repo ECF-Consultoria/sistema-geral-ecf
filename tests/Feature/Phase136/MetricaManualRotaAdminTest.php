@@ -237,10 +237,10 @@ class MetricaManualRotaAdminTest extends TestCase
             ->assertInertia(fn (AssertableInertia $page) => $page->has('empresas', 1)->etc());
     }
 
-    // ═══ D-09: competência consolidada listada, marcada e read-only ════════
+    // ═══ D-09 revogado (2026-08-31): consolidada é MARCADA, mas editável ═══
 
     #[Test]
-    public function competencia_consolidada_continua_listada_e_vem_marcada_como_read_only(): void
+    public function competencia_consolidada_continua_listada_e_vem_marcada(): void
     {
         $this->empresaComVinculoShopee();
         $this->congelarCompetencia(self::MES);
@@ -256,19 +256,30 @@ class MetricaManualRotaAdminTest extends TestCase
             );
     }
 
+    /**
+     * O oposto do que a Fase 136 entregou: desde 2026-08-31 o lançamento em
+     * competência congelada é ACEITO. A garantia que sobrou — e que este teste
+     * existe para vigiar — é que gravar não encosta no snapshot já
+     * consolidado: `bustarCacheDaEmpresa()` só apaga `snapshot_diario` e
+     * `warm_cache`, então a nota fechada continua de pé.
+     */
     #[Test]
-    public function post_em_competencia_consolidada_devolve_422_e_nao_grava_nada(): void
+    public function post_em_competencia_consolidada_grava_e_preserva_o_snapshot_congelado(): void
     {
         $empresa = $this->empresaComVinculoShopee();
         $this->congelarCompetencia(self::MES);
 
         $this->actingAs($this->admin())
             ->postJson(route('desempenho.metricas-manuais.lancar'), $this->payload($empresa->id))
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['mes_referencia']);
+            ->assertRedirect();
 
-        // Reconsulta ao banco — a recusa é o produto, não a mensagem.
-        $this->assertSame(0, DesempenhoMetricaManual::count());
+        // Reconsulta ao banco — gravou é o produto, não a mensagem de sucesso.
+        $this->assertSame(1, DesempenhoMetricaManual::count());
+        $this->assertSame(
+            1,
+            DesempenhoCompanyScoreSnapshot::where('origem', CompanyScoreSnapshotWriter::ORIGEM_CONSOLIDAR_MES)->count(),
+            'o snapshot de consolidar_mes não pode ser apagado pelo lançamento manual',
+        );
     }
 
     // ═══ T-136-04/05/06: entrada não confiável ═════════════════════════════

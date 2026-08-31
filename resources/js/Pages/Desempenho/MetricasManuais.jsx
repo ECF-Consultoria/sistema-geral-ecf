@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
-    SlidersHorizontal, Lock, Search, TriangleAlert, Check, X,
+    SlidersHorizontal, Search, TriangleAlert, Check, X,
     Info, CheckCircle2, Building2, Pencil,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
@@ -19,8 +19,9 @@ import { marketplaceLabel } from '@/lib/desempenhoLabels';
 // O que esta tela NÃO faz, de propósito:
 //  · não decide autorização — quem recusa é o servidor (`role:admin` na rota
 //    + `StoreMetricaManualRequest::authorize()`);
-//  · não trava a competência consolidada — o read-only daqui é conveniência,
-//    a recusa real é a validação com lock do controller (D-09);
+//  · não trava a competência consolidada — desde 2026-08-31 NINGUÉM trava: o
+//    read-only foi removido aqui, no FormRequest e no controller. O mês
+//    consolidado só ganha um aviso amarelo, e segue editável;
 //  · não exibe QUEM lançou. O autor existe no banco e no activity_log para
 //    auditoria (D-12), nunca na tela (D-04) — as props nem carregam o dado.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -38,7 +39,7 @@ const METRICA_AJUDA = {
 };
 
 const AVISO_CONSOLIDADA =
-    'Competência consolidada — esta grade está somente em leitura. O mês foi congelado no fechamento de bônus, e mudar um número agora reescreveria uma competência que pode já ter sido paga. Os valores continuam visíveis para auditoria.';
+    'Esta competência já passou pelo fechamento de bônus. A edição continua LIBERADA (decisão de 2026-08-31), mas lançar um valor aqui não altera sozinho nenhuma nota já congelada: o número só entra no cálculo se a competência for consolidada de novo. Todo lançamento fica registrado com autor e horário para auditoria.';
 
 const TEXTO_API_FRIA = 'ainda não aquecido';
 
@@ -86,7 +87,7 @@ const chaveCelula = (companyId, fonte, metrica) => `${companyId}:${fonte}:${metr
 // Ciclo de edição idêntico ao do `CustIdCell` do Painel Polos (exibição →
 // clique vira input → Enter salva, Escape cancela, blur salva), com os mesmos
 // dois guards que evitam request inútil.
-function CelulaMetrica({ metrica, celula, consolidada, enviando, erros, onEnviar }) {
+function CelulaMetrica({ metrica, celula, enviando, erros, onEnviar }) {
     const [editando, setEditando] = useState(false);
     const [texto, setTexto] = useState('');
 
@@ -99,7 +100,6 @@ function CelulaMetrica({ metrica, celula, consolidada, enviando, erros, onEnviar
         && Math.abs(apiValor - valor) >= 0.01;
 
     const abrirEdicao = () => {
-        if (consolidada) return;
         setTexto(paraTextoEditavel(valor));
         setEditando(true);
     };
@@ -115,8 +115,6 @@ function CelulaMetrica({ metrica, celula, consolidada, enviando, erros, onEnviar
     };
 
     const alternar = (paraManual) => {
-        if (consolidada) return;
-
         if (!paraManual) {
             if (!ativo) return;
             onEnviar({ ativo: false, valor: null });
@@ -172,11 +170,9 @@ function CelulaMetrica({ metrica, celula, consolidada, enviando, erros, onEnviar
                     <button
                         type="button"
                         onClick={abrirEdicao}
-                        disabled={consolidada}
-                        title={consolidada ? AVISO_CONSOLIDADA : 'Clique para lançar/editar o valor manual'}
+                        title="Clique para lançar/editar o valor manual"
                         className={cn(
-                            'group/val inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left tabular-nums transition',
-                            consolidada ? 'cursor-default' : 'hover:bg-white/[0.05]',
+                            'group/val inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left tabular-nums transition hover:bg-white/[0.05]',
                             ativo ? 'font-semibold text-ecf-yellow' : 'text-white/70',
                         )}
                     >
@@ -188,9 +184,7 @@ function CelulaMetrica({ metrica, celula, consolidada, enviando, erros, onEnviar
                         {divergente && (
                             <TriangleAlert size={12} className="shrink-0 text-amber-300" aria-label="Valor da API diverge do manual" />
                         )}
-                        {!consolidada && (
-                            <Pencil size={10} className="shrink-0 text-white/20 opacity-0 transition group-hover/val:opacity-100" />
-                        )}
+                        <Pencil size={10} className="shrink-0 text-white/20 opacity-0 transition group-hover/val:opacity-100" />
                     </button>
 
                     {/* Contexto: de onde veio o número que está sendo exibido, e
@@ -221,7 +215,7 @@ function CelulaMetrica({ metrica, celula, consolidada, enviando, erros, onEnviar
                 <button
                     type="button"
                     onClick={() => alternar(false)}
-                    disabled={consolidada || enviando}
+                    disabled={enviando}
                     title="Usar o valor da API (automático)"
                     className={cn(
                         'px-1.5 py-0.5 text-[10px] font-medium transition disabled:opacity-40',
@@ -233,7 +227,7 @@ function CelulaMetrica({ metrica, celula, consolidada, enviando, erros, onEnviar
                 <button
                     type="button"
                     onClick={() => alternar(true)}
-                    disabled={consolidada || enviando}
+                    disabled={enviando}
                     title="Usar o valor lançado à mão nesta competência"
                     className={cn(
                         'px-1.5 py-0.5 text-[10px] font-medium transition disabled:opacity-40',
@@ -246,9 +240,9 @@ function CelulaMetrica({ metrica, celula, consolidada, enviando, erros, onEnviar
 
             {enviando && <div className="mt-1 text-[10px] text-white/30">salvando…</div>}
 
-            {/* O erro do backend precisa aparecer NA TELA — a recusa por
-                competência consolidada é justamente a que não pode passar
-                despercebida. */}
+            {/* O erro do backend precisa aparecer NA TELA — empresa inativa ou
+                canal que a empresa não atende ainda são recusados, e a recusa
+                não pode passar despercebida. */}
             {Array.isArray(erros) && erros.length > 0 && (
                 <div className="mt-1 max-w-[220px] text-[10px] leading-tight text-rose-300">
                     {erros.map((msg, i) => <div key={`${metrica}-erro-${i}`}>{msg}</div>)}
@@ -389,14 +383,16 @@ export default function MetricasManuais({
                     </div>
                 )}
 
-                {/* ─── Aviso de competência consolidada (D-09) ───────────────
-                    Os valores continuam visíveis: quem audita precisa vê-los. */}
+                {/* ─── Aviso de competência já consolidada ───────────────────
+                    Informativo apenas: desde 2026-08-31 a grade NÃO trava mais
+                    o mês consolidado — o aviso existe para o admin saber que
+                    está mexendo num mês que já passou pelo fechamento. */}
                 {consolidada && (
                     <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
-                        <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
                         <div>
                             <div className="text-sm font-semibold text-amber-200">
-                                {mes_label} está congelada — somente leitura
+                                {mes_label} já foi consolidada — edição liberada
                             </div>
                             <div className="mt-1 text-xs leading-relaxed text-amber-200/70">
                                 {AVISO_CONSOLIDADA}
@@ -499,7 +495,6 @@ export default function MetricasManuais({
                                                         key={chave}
                                                         metrica={metrica}
                                                         celula={empresa[metrica]}
-                                                        consolidada={consolidada}
                                                         enviando={enviandoChave === chave}
                                                         erros={errosPorCelula[chave]}
                                                         onEnviar={(payload) => enviarCelula(empresa, metrica, payload)}

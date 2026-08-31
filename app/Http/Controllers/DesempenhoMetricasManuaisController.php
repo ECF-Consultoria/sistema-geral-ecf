@@ -41,18 +41,18 @@ use Inertia\Inertia;
  * aparecer aqui. A guarda contra `company_id` arbitrário é `active = true`
  * (T-136-06), aplicada no FormRequest, não um filtro por vínculo.
  *
- * ### A trava de D-09 é a MESMA da consolidação — nunca uma flag paralela
- * "Competência consolidada" é sempre
- * `CompanyScoreSnapshotWriter::competenciaConsolidada()`, isto é, a existência
- * de pelo menos uma linha `origem='consolidar_mes'` naquele `mes_referencia`.
- * Mês consolidado continua LISTADO e legível — a tela só o deixa read-only;
- * mês nunca consolidado, por antigo que seja, permanece editável (se nunca foi
- * consolidado, nada foi pago sobre ele). O `StoreMetricaManualRequest` já
- * valida a mesma condição antes do submit; `lancar()` a revalida **com lock,
- * como primeira operação dentro da transação**, porque
- * `desempenho:consolidar-mes` pode correr ENTRE o carregamento da tela e o
- * envio do formulário (T-136-02/T-136-03). Perder essa corrida devolve erro
- * de validação visível — jamais um `return` silencioso.
+ * ### D-09 REVOGADO em 2026-08-31 — competência consolidada TAMBÉM é editável
+ * A trava original deixava o mês read-only assim que existisse pelo menos uma
+ * linha `origem='consolidar_mes'` naquele `mes_referencia`. O negócio pediu o
+ * contrário: o admin edita métrica manual em qualquer competência, sem
+ * bloqueio. As três camadas da trava caíram juntas (front, FormRequest e a
+ * revalidação com lock de `lancar()`) — não sobrou guarda parcial que
+ * recusasse depois de a tela ter deixado digitar.
+ * `CompanyScoreSnapshotWriter::competenciaConsolidada()` continua sendo
+ * consultada em `mesesDoSeletor()`, agora só como RÓTULO informativo: o mês
+ * consolidado aparece marcado no seletor e num aviso na tela, e o lançamento
+ * segue permitido. Lançar aqui não reescreve snapshot — o valor só entra numa
+ * nota se `desempenho:consolidar-mes` rodar de novo naquela competência.
  *
  * ### Custo de API contido: quem não tem lançamento não paga HTTP (T-136-17)
  * `AdmanMetricDiffService::compute()` faz HTTP síncrono à Adman no cache miss
@@ -95,9 +95,8 @@ class DesempenhoMetricasManuaisController extends Controller
      * Grade empresa × métrica da competência selecionada.
      *
      * A grade abre no MÊS CORRENTE; os demais meses são alcançáveis pelo
-     * parâmetro `mes` (D-09 — "em curso e não consolidada" é aplicado como
-     * "não consolidada", nunca como "só o mês corrente": julho fechado e sem
-     * NPS é precisamente o caso que a fase precisa atender).
+     * parâmetro `mes` — e TODOS são editáveis, consolidados ou não (ver a nota
+     * "D-09 REVOGADO" no docblock da classe).
      */
     public function index(Request $request)
     {
@@ -154,26 +153,18 @@ class DesempenhoMetricasManuaisController extends Controller
         $valor     = $request->input('valor');
 
         $acao = DB::transaction(function () use ($mes, $mesStr, $companyId, $fonte, $metrica, $ativo, $valor, $request) {
-            // PRIMEIRA operação da transação (T-136-02/T-136-03): a mesma
-            // trava da consolidação, agora com `lockForUpdate()` para
-            // serializar contra um `desempenho:consolidar-mes` concorrente.
-            // O FormRequest já checou isto antes do submit; esta segunda
-            // checagem existe porque a consolidação pode ter começado ENTRE
-            // o carregamento da tela e o envio.
-            if (CompanyScoreSnapshotWriter::competenciaConsolidada($mes, comLock: true)) {
-                throw ValidationException::withMessages([
-                    'mes_referencia' => 'A competência ' . $this->mesExtenso($mes)
-                        . ' foi consolidada entre a abertura da tela e o envio. O lançamento NÃO foi gravado — '
-                        . 'competência congelada é somente leitura.',
-                ]);
-            }
+            // A trava de "competência consolidada" foi REMOVIDA a pedido do
+            // negócio (2026-08-31): o admin lança métrica manual em QUALQUER
+            // competência, congelada ou não. Gravar aqui não reescreve nenhum
+            // snapshot — o número só chega a uma nota se
+            // `desempenho:consolidar-mes` rodar de novo naquela competência.
 
             // Busca por `whereDate` (nunca igualdade crua em `mes_referencia`):
             // o cast `date` do model grava 'YYYY-MM-DD 00:00:00' no SQLite dos
             // testes e 'YYYY-MM-DD' no MariaDB de produção — um
             // `updateOrCreate` chaveado por igualdade não casaria no SQLite e
             // criaria linha duplicada. `lockForUpdate()` mantém a leitura e a
-            // escrita da célula dentro da mesma serialização da trava acima.
+            // escrita da célula dentro da mesma transação.
             // `fonte` faz parte da identidade da célula: a mesma empresa pode
             // ter lançamento nos dois canais, atendidos por times diferentes.
             // Sem este filtro, lançar Shopee sobrescreveria a linha do
@@ -239,8 +230,8 @@ class DesempenhoMetricasManuaisController extends Controller
     /**
      * Os meses oferecidos no seletor: o corrente e os 11 anteriores, cada um
      * com o booleano `consolidada`. O mês selecionado SEMPRE entra na lista,
-     * mesmo fora da janela — competência consolidada nunca some do seletor
-     * (D-09), só fica read-only.
+     * mesmo fora da janela. `consolidada` é hoje só um RÓTULO ("· consolidada"
+     * no seletor + aviso amarelo na tela); não trava mais nada.
      *
      * @return \Illuminate\Support\Collection<int, array{valor: string, label: string, consolidada: bool}>
      */
@@ -257,7 +248,7 @@ class DesempenhoMetricasManuaisController extends Controller
         return $valores->map(fn (Carbon $m) => [
             'valor'       => $m->format('Y-m'),
             'label'       => $this->mesExtenso($m),
-            // Mesmo sinal da trava de congelamento (D-09) — sem flag paralela.
+            // Rótulo informativo (não trava a edição desde 2026-08-31).
             'consolidada' => CompanyScoreSnapshotWriter::competenciaConsolidada($m),
         ])->values();
     }
@@ -473,8 +464,11 @@ class DesempenhoMetricasManuaisController extends Controller
      *  - o escopo é `(empresa, competência)`, sem o ramo por `user_id`: aqui
      *    nada foi invalidado para a carteira inteira, só uma célula mudou;
      *  - só as linhas de origem `snapshot_diario`/`warm_cache` são apagadas.
-     *    Linha de `consolidar_mes` NUNCA é tocada — e a trava de D-09 já
-     *    impede que exista alguma nesta competência.
+     *    Linha de `consolidar_mes` NUNCA é tocada. Desde que a trava de D-09
+     *    caiu (2026-08-31) esta competência PODE ter uma — é exatamente o
+     *    caso de julho/2026 — e o filtro por `origem` virou a única coisa que
+     *    segura a nota já fechada. Não trocar por um `delete()` sem `whereIn`:
+     *    isso apagaria o snapshot pago junto com o cache.
      *
      * **Limpeza global de cache pelo Artisan é PROIBIDA aqui** (o comando de
      * limpar cache derrubou o site inteiro em 30/07/2026: apaga o cache

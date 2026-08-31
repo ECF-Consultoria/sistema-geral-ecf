@@ -253,8 +253,13 @@ class MetricaManualTravaConsolidacaoTest extends TestCase
 
     // ─── withValidator(): D-09 competência consolidada ──────────────────────
 
+    /**
+     * D-09 revogado em 2026-08-31: competência consolidada NÃO é mais recusada.
+     * O teste ficou invertido de propósito — ele é a trava contra recolocar a
+     * validação por engano num refactor futuro.
+     */
     #[Test]
-    public function withvalidator_recusa_competencia_ja_consolidada(): void
+    public function withvalidator_aceita_competencia_ja_consolidada(): void
     {
         $user    = User::factory()->create(['role' => 'admin']);
         $company = Company::factory()->create(['active' => true]);
@@ -273,8 +278,15 @@ class MetricaManualTravaConsolidacaoTest extends TestCase
         $validator = ValidatorFacade::make($request->all(), $request->rules());
         $request->withValidator($validator);
 
-        $this->assertTrue($validator->fails());
-        $this->assertArrayHasKey('mes_referencia', $validator->errors()->toArray());
+        $validator->fails();
+
+        // Asserção deliberadamente estreita: as empresas desta suíte não têm
+        // vínculo de serviço, então o guard de canal ("empresa não atendida
+        // neste marketplace") ainda reprova o payload — e isso não tem nada a
+        // ver com congelamento. O que importa aqui é que `mes_referencia`
+        // deixou de ser motivo de recusa. O caminho verde ponta a ponta está
+        // em MetricaManualRotaAdminTest.
+        $this->assertArrayNotHasKey('mes_referencia', $validator->errors()->toArray());
     }
 
     #[Test]
