@@ -184,6 +184,54 @@ teto de poll do front é de 2 min (`Show.jsx`, 20 × 6s) mas o lock do warm é d
 pessoa não chega a ser enfileirado e ela queima o poll inteiro esperando algo
 que nunca foi agendado — trava mesmo com worker saudável. Ainda sem fase.
 
+## 0.042. Duas requisições ao /performance no mesmo teste fazem a linha SUMIR
+
+Descoberto em 2026-08-31, ao escrever o teste do modo simulador. Custou uma
+rodada vermelha inteira, e a mensagem de falha aponta para o lugar errado
+("analista sumiu do ranking", como se o cenário estivesse mal montado).
+
+O gate quente/frio da Fase 106 dispara o warm sob-demanda, e **sob o driver
+`sync` dos testes ele roda INLINE** — o `Artisan::queue` do §0.041 não
+enfileira nada, executa na hora. O efeito é que a MESMA requisição, repetida,
+devolve coisas diferentes:
+
+| request | cache | linha no ranking |
+|---|---|---|
+| 1ª | frio | placeholder `calculando:true` — **aparece** |
+| 2ª | quente (warm rodou inline) | compute real diz `sem_carteira` → **DESEMP-10 remove** |
+
+O `sem_carteira` da 2ª não é bug: o cenário típico de teste dá ao profissional
+uma empresa só pela pivot `company_users`, sem contrato de serviço, e é isso
+que o `CarteiraContextService` mede. O que engana é a linha existir na
+primeira leitura.
+
+**Receita: uma requisição por teste, com `?mes=` explícito.** Nunca `GET` para
+descobrir o mês e um segundo `GET` para medir — que é exatamente o padrão
+natural de quem não sabe que a tela abre na última competência FECHADA e não
+no mês corrente (§0.043). Ver o helper `linhaNaCompetencia()` em
+`tests/Feature/PerformanceSimuladorPropsTest.php`.
+
+## 0.043. A régua de bônus tem um BURACO entre 3,99 e 4,00
+
+`sem_bonus` termina em 3,99 e `basico` começa em 4,00, mas a nota **não é
+arredondada antes de classificar** — nem em `classificarFaixa()`, nem em
+`BonusFaixa::classificar()`. Uma nota de 3,995 (perfeitamente possível: desde
+2026-08-05 os pontos são médias de N lojas, quase nunca redondas) **não cai em
+faixa nenhuma** e sai com `faixa_bonus = null`.
+
+Hoje isso passa despercebido porque a tela mostra `faixa_bonus ?? 'sem_bonus'`
+— o buraco é mascarado pelo fallback de exibição, que por acaso acerta o lado
+de baixo. Duas consequências para quem mexer aqui:
+
+- **Não "conserte" a lacuna sem decisão de produto.** Fechar o intervalo
+  (`nota_max = 3.999...` ou arredondar antes de classificar) muda quem recebe
+  bônus na fronteira, e a fronteira dura de 4,00 já tirou bônus de alguém por
+  0,24 p.p. sem mudança de código (§2).
+- **Quem replicar a classificação fora do PHP tem que replicar o buraco.** O
+  simulador de /performance (`resources/js/lib/simuladorDesempenho.js`)
+  devolve `null` no mesmo ponto de propósito, com teste travando isso: se
+  "arrumasse", mostraria Básico para quem o sistema oficial deixa sem faixa.
+
 ## 0. A nota mudou de MÉTODO em 2026-08-05 — leia antes de tudo
 
 A nota final deixou de aplicar a régua **uma vez sobre a % agregada da
