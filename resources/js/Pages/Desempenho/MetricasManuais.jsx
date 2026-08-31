@@ -39,7 +39,7 @@ const METRICA_AJUDA = {
 };
 
 const AVISO_CONSOLIDADA =
-    'Esta competência já passou pelo fechamento de bônus. A edição continua LIBERADA (decisão de 2026-08-31), mas lançar um valor aqui não altera sozinho nenhuma nota já congelada: o número só entra no cálculo se a competência for consolidada de novo. Todo lançamento fica registrado com autor e horário para auditoria.';
+    'Esta competência já passou pelo fechamento de bônus, e o que você lançar aqui MUDA a nota de quem atende a empresa — o recálculo roda em segundo plano e leva alguns instantes. Recarregue a tela de Desempenho para ver o valor novo. Todo lançamento fica registrado com autor e horário para auditoria.';
 
 const TEXTO_API_FRIA = 'ainda não aquecido';
 
@@ -392,7 +392,7 @@ export default function MetricasManuais({
                         <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
                         <div>
                             <div className="text-sm font-semibold text-amber-200">
-                                {mes_label} já foi consolidada — edição liberada
+                                {mes_label} já foi consolidada — editar aqui altera a nota
                             </div>
                             <div className="mt-1 text-xs leading-relaxed text-amber-200/70">
                                 {AVISO_CONSOLIDADA}

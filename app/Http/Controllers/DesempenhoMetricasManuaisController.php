@@ -52,8 +52,8 @@ use Inertia\Inertia;
  * `CompanyScoreSnapshotWriter::competenciaConsolidada()` continua sendo
  * consultada em `mesesDoSeletor()`, agora só como RÓTULO informativo: o mês
  * consolidado aparece marcado no seletor e num aviso na tela, e o lançamento
- * segue permitido. Lançar aqui não reescreve snapshot — o valor só entra numa
- * nota se `desempenho:consolidar-mes` rodar de novo naquela competência.
+ * segue permitido — e desde 2026-08-31 lançar aqui REESCREVE a nota congelada
+ * de quem atende a empresa, via `AtualizarNotaAposMetricaManualJob`.
  *
  * ### Custo de API contido: quem não tem lançamento não paga HTTP (T-136-17)
  * `AdmanMetricDiffService::compute()` faz HTTP síncrono à Adman no cache miss
@@ -156,9 +156,9 @@ class DesempenhoMetricasManuaisController extends Controller
         $acao = DB::transaction(function () use ($mes, $mesStr, $companyId, $fonte, $metrica, $ativo, $valor, $request) {
             // A trava de "competência consolidada" foi REMOVIDA a pedido do
             // negócio (2026-08-31): o admin lança métrica manual em QUALQUER
-            // competência, congelada ou não. Gravar aqui não reescreve nenhum
-            // snapshot — o número só chega a uma nota se
-            // `desempenho:consolidar-mes` rodar de novo naquela competência.
+            // competência, congelada ou não — e a nota congelada é reescrita
+            // logo depois pelo `AtualizarNotaAposMetricaManualJob`, despachado
+            // FORA desta transação (ver o dispatch no fim do método).
 
             // Busca por `whereDate` (nunca igualdade crua em `mes_referencia`):
             // o cast `date` do model grava 'YYYY-MM-DD 00:00:00' no SQLite dos
