@@ -329,17 +329,78 @@ class PolosOauthLinkTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('impl.ml_oauth.conectado', true));
     }
 
-    public function test_cust_id_trocado_pela_autorizacao_fica_sinalizado(): void
+    public function test_carimbo_legado_que_reescreveu_o_cust_id_fica_sinalizado(): void
     {
-        // Quem olha a ficha precisa saber que o Cust ID mudou — o valor digitado
-        // à mão pode ter sido usado em conferência antes da correção.
+        // Carimbo das primeiras horas de 27/08, ANTES da guarda de divergência:
+        // ali a autorização sobrescrevia o Cust ID cadastrado de verdade. Quem
+        // olha a ficha hoje precisa saber que aquele valor mudou — o antigo pode
+        // ter sido usado em conferência. Carimbo novo nunca cai aqui: com a
+        // guarda, Cust ID diferente vira `divergente` e não reescreve nada.
+        $impl = $this->implementacao(['cust_id' => '987654321']);
+
+        $dados = $impl->dados;
+        $dados['ml_oauth'] = [
+            'autorizado_em'    => now()->toISOString(),
+            'cust_id'          => '987654321',
+            'cust_id_anterior' => '111111111',
+            'nickname'         => 'LOJA.TESTE',
+            // sem a chave `divergente` — é o formato legado
+        ];
+        $impl->update(['dados' => $dados]);
+
+        $oauth = $impl->fresh()->oauthMl();
+
+        $this->assertTrue($oauth['conectado']);
+        $this->assertFalse($oauth['divergente']);
+        $this->assertTrue($oauth['cust_id_corrigido']);
+        $this->assertSame('111111111', $oauth['cust_id_anterior']);
+        $this->assertSame('987654321', $oauth['cust_id']);
+    }
+
+    public function test_empresa_que_chegou_sem_cust_id_nao_conta_como_correcao(): void
+    {
+        // Preenchimento inicial não é troca. Avisar "era —, virou X" manda a
+        // equipe conferir uma divergência que nunca existiu. Visto em produção:
+        // das 4 primeiras autorizações, 1 tinha o campo vazio.
+        $impl = $this->implementacao(['cust_id' => '']);
+        $this->autorizar($impl);
+
+        $oauth = $impl->fresh()->oauthMl();
+
+        $this->assertTrue($oauth['conectado']);
+        $this->assertFalse($oauth['cust_id_corrigido']);
+        $this->assertSame('987654321', $oauth['cust_id']);
+    }
+
+    public function test_conta_divergente_nao_conta_como_autorizada(): void
+    {
+        // O ML devolve o code sem mostrar tela quando o navegador já tem sessão
+        // ativa com o app: um clique interno da ECF carimbou a própria conta
+        // sobre a Masitto Home Decor em 27/08. Mostrar isso como "cliente
+        // autorizou" é pior do que não mostrar nada — a empresa nunca autorizou.
         $impl = $this->implementacao(['cust_id' => '111111111']);
         $this->autorizar($impl);
 
         $oauth = $impl->fresh()->oauthMl();
 
-        $this->assertTrue($oauth['cust_id_corrigido']);
-        $this->assertSame('111111111', $oauth['cust_id_anterior']);
-        $this->assertSame('987654321', $oauth['cust_id']);
+        $this->assertTrue($oauth['divergente'], 'cust_id cadastrado difere do autorizado ⇒ divergente');
+        $this->assertFalse($oauth['conectado']);
+        // Nada foi reescrito: o controller recusa a gravação quando diverge.
+        $this->assertFalse($oauth['cust_id_corrigido']);
+        $this->assertSame('111111111', $impl->empresa->fresh()->cust_id);
+    }
+
+    public function test_divergente_continua_na_lista_de_quem_falta_autorizar(): void
+    {
+        $impl = $this->implementacao(['cust_id' => '111111111']);
+        $this->autorizar($impl);
+
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->get(route('mlb.implementacao.index', ['sem_oauth' => '1']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('empresas', 1)
+                ->where('empresas.0.ml_oauth.divergente', true)
+                ->where('empresas.0.ml_oauth.conectado', false)
+            );
     }
 }

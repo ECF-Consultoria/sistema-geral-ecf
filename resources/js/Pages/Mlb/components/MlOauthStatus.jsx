@@ -14,34 +14,40 @@ import { cn } from '@/lib/utils';
  * deixou registro.
  */
 
-/** Pill compacto para tabela/card. */
+/** Pill compacto para tabela/card. Três estados — divergente NÃO é autorizado. */
 export function MlOauthBadge({ oauth, className }) {
-    const conectado = !!oauth?.conectado;
+    const divergente = !!oauth?.divergente;
+    const conectado  = !!oauth?.conectado && !divergente;
+
+    const titulo = divergente
+        ? `Alguém clicou no link em ${oauth.autorizado_em}, mas autorizou com a conta ${oauth.nickname || oauth.cust_id} — que não é a desta empresa. O Cust ID cadastrado não foi alterado.`
+        : conectado
+            ? `Cliente autorizou o Mercado Livre em ${oauth.autorizado_em}`
+            : 'O cliente ainda não abriu o link de autorização do Mercado Livre';
 
     return (
         <span
-            title={
-                conectado
-                    ? `Cliente autorizou o Mercado Livre em ${oauth.autorizado_em}`
-                    : 'O cliente ainda não abriu o link de autorização do Mercado Livre'
-            }
+            title={titulo}
             className={cn(
                 'inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap',
-                conectado
-                    ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
-                    : 'text-white/40 bg-white/[0.04] border-white/[0.08]',
+                divergente
+                    ? 'text-amber-300 bg-amber-500/10 border-amber-500/20'
+                    : conectado
+                        ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
+                        : 'text-white/40 bg-white/[0.04] border-white/[0.08]',
                 className
             )}
         >
             {conectado ? <ShieldCheck size={11} /> : <ShieldAlert size={11} />}
-            {conectado ? 'ML autorizado' : 'Não autorizou'}
+            {divergente ? 'Conta divergente' : conectado ? 'ML autorizado' : 'Não autorizou'}
         </span>
     );
 }
 
 /** Bloco completo para o modal / ficha — badge + quando, qual conta, e o aviso de Cust ID trocado. */
 export function MlOauthBloco({ oauth, className }) {
-    const conectado = !!oauth?.conectado;
+    const divergente = !!oauth?.divergente;
+    const conectado  = !!oauth?.conectado && !divergente;
 
     return (
         <div className={cn('p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3', className)}>
@@ -62,6 +68,15 @@ export function MlOauthBloco({ oauth, className }) {
                                 <p>Cust ID <span className="text-white/60">{oauth.cust_id}</span></p>
                             )}
                         </div>
+                    ) : divergente ? (
+                        <div className="text-white/30 text-[11px] mt-1.5 space-y-0.5">
+                            <p>Clique em <span className="text-white/60">{oauth.autorizado_em}</span></p>
+                            <p>
+                                Autorizou com a conta{' '}
+                                <span className="text-white/60">{oauth.nickname || oauth.cust_id}</span>
+                                {oauth.nickname && oauth.cust_id ? ` (${oauth.cust_id})` : ''}
+                            </p>
+                        </div>
                     ) : (
                         <p className="text-white/30 text-[11px] mt-1.5 leading-relaxed">
                             O cliente ainda não abriu o link de autorização. Ele vai na mensagem de
@@ -70,6 +85,21 @@ export function MlOauthBloco({ oauth, className }) {
                     )}
                 </div>
             </div>
+
+            {/* Divergência é pendência de conferência, não erro do cliente: o ML devolve
+                o code sem tela quando o navegador já tem sessão ativa com o app, então
+                um clique interno da ECF carimba a conta errada. Nada foi gravado. */}
+            {divergente && (
+                <p className="flex items-start gap-1.5 text-amber-300 text-[11px] bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                    <AlertTriangle size={13} className="shrink-0 mt-px" />
+                    <span>
+                        Essa conta não é a cadastrada nesta empresa — o Cust ID{' '}
+                        <strong className="font-semibold">não foi alterado</strong>. Confira com o
+                        cliente e peça que ele abra o link deslogado do Mercado Livre (ou em aba
+                        anônima), senão o ML devolve a conta já logada no navegador.
+                    </span>
+                </p>
+            )}
 
             {/* A conta autorizada é a verdade canônica: quando ela discorda do que estava
                 cadastrado, o cadastro é corrigido — e quem olha a ficha precisa saber. */}

@@ -460,13 +460,24 @@ class MlbImplementacao extends Model
      * à mão em muitas empresas, e o link só passou a existir em 27/08/2026 —
      * quem autorizou antes disso simplesmente não tem carimbo.
      *
+     * SÃO TRÊS ESTADOS, não dois. O carimbo `divergente` (gravado por
+     * {@see \App\Http\Controllers\MercadoLivreOAuthController::carimbarOauthPolos()})
+     * marca clique cuja conta autorizada NÃO era a cadastrada — o `cust_id` da
+     * empresa não foi tocado e a conta pende conferência. Ler isso como
+     * "conectado" é pior que não mostrar nada: em 27/08 um clique interno da ECF
+     * carimbou a própria conta (MGSTOREL) sobre a Masitto Home Decor, porque o
+     * Mercado Livre devolve o code direto quando o navegador já tem sessão ativa
+     * com o app. A tela diria "cliente autorizou" para uma empresa que nunca
+     * autorizou.
+     *
      * @return array{
-     *   conectado: bool,
+     *   conectado: bool,              autorização VÁLIDA (divergente nunca conta)
+     *   divergente: bool,             clicou, mas com outra conta — nada foi gravado
      *   autorizado_em: ?string,       d/m/Y H:i
      *   autorizado_em_iso: ?string,
      *   cust_id: ?string,             Seller ID devolvido pelo próprio /oauth/token
      *   nickname: ?string,            apelido da conta ML (pode faltar — é enfeite)
-     *   cust_id_corrigido: bool,      o OAuth achou Cust ID diferente do cadastrado
+     *   cust_id_corrigido: bool,      a autorização REESCREVEU o Cust ID cadastrado
      *   cust_id_anterior: ?string
      * }
      */
@@ -477,6 +488,7 @@ class MlbImplementacao extends Model
         if (! is_array($carimbo) || empty($carimbo['autorizado_em'])) {
             return [
                 'conectado'         => false,
+                'divergente'        => false,
                 'autorizado_em'     => null,
                 'autorizado_em_iso' => null,
                 'cust_id'           => null,
@@ -486,11 +498,20 @@ class MlbImplementacao extends Model
             ];
         }
 
-        $anterior = $carimbo['cust_id_anterior'] ?? null;
-        $atual    = $carimbo['cust_id'] ?? null;
+        $anterior   = $carimbo['cust_id_anterior'] ?? null;
+        $atual      = $carimbo['cust_id'] ?? null;
+        $divergente = (bool) ($carimbo['divergente'] ?? false);
+
+        // Empresa que chegou SEM Cust ID não teve correção, teve preenchimento —
+        // avisar "era —, virou X" manda a equipe conferir uma troca que nunca
+        // houve. Visto em produção: das 4 autorizações, 1 era campo vazio.
+        $tinhaAnterior = $anterior !== null && trim((string) $anterior) !== '';
 
         return [
-            'conectado'         => true,
+            // Divergente NÃO é conectado: o cliente desta empresa não autorizou
+            // nada, quem autorizou foi outra conta.
+            'conectado'         => ! $divergente,
+            'divergente'        => $divergente,
             // O carimbo é gravado com now()->toISOString(), que sai em UTC. Sem o
             // timezone() a tela mostraria 3 horas a mais e ninguém desconfiaria —
             // "autorizou 17:55" para uma autorização das 14:55.
@@ -500,7 +521,8 @@ class MlbImplementacao extends Model
             'autorizado_em_iso' => $carimbo['autorizado_em'],
             'cust_id'           => $atual,
             'nickname'          => $carimbo['nickname'] ?? null,
-            'cust_id_corrigido' => $anterior !== null && trim((string) $anterior) !== (string) $atual,
+            // Divergente não reescreveu nada — o controller recusa de propósito.
+            'cust_id_corrigido' => ! $divergente && $tinhaAnterior && trim((string) $anterior) !== (string) $atual,
             'cust_id_anterior'  => $anterior,
         ];
     }
