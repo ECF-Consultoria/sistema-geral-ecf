@@ -391,6 +391,8 @@ class PolosController extends Controller
                     'dados'                    => $impl?->dados,
                     'ultimo_acesso'            => $impl?->ultimo_acesso?->diffForHumans(),
                     'status_envio'             => $impl?->statusEnvio(),
+                    // Autorização do ML pelo link do Onboarding ({link_oauth}).
+                    'ml_oauth'                 => $impl?->oauthMl(),
                     'link_enviado_em'          => $impl?->link_enviado_em?->format('d/m/Y'),
                     'link_enviado_por'         => $impl?->linkEnviadoPor?->name,
                     'responsavel_id'           => $impl?->responsavel_id,

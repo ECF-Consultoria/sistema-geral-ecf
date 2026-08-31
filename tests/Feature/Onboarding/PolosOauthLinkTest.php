@@ -4,9 +4,11 @@ namespace Tests\Feature\Onboarding;
 
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 /**
@@ -237,5 +239,107 @@ class PolosOauthLinkTest extends TestCase
         $this->get(route('ml.oauth.callback', ['code' => 'AUTH-CODE', 'state' => $state]))->assertOk();
 
         $this->assertDatabaseCount('ml_tokens', 0);
+    }
+
+    // ─── Visibilidade: dá para ver quem autorizou e quem não ────────────────
+    //
+    // O carimbo já era gravado, mas não saía em nenhuma tela: quem cobrava o
+    // cliente não tinha como saber se ele tinha clicado no link.
+
+    /** Autoriza a empresa da implementação, do redirect ao callback. */
+    private function autorizar(MlbImplementacao $impl, int $userId = 987654321, ?string $nickname = 'LOJA.TESTE'): void
+    {
+        Http::fake([
+            'api.mercadolibre.com/oauth/token' => Http::response([
+                'access_token' => 'APP_USR-token', 'refresh_token' => 'TG-refresh',
+                'user_id' => $userId, 'expires_in' => 21600, 'token_type' => 'bearer',
+            ]),
+            'api.mercadolibre.com/users/*' => Http::response(['id' => $userId, 'nickname' => $nickname]),
+        ]);
+
+        $state = $this->stateDoRedirect($this->get(route('implementacao.conectar-ml', $impl->token))->headers->get('Location'));
+
+        $this->get(route('ml.oauth.callback', ['code' => 'AUTH-CODE', 'state' => $state]))->assertOk();
+    }
+
+    public function test_empresa_sem_carimbo_aparece_como_nao_autorizada(): void
+    {
+        // Cust ID preenchido à mão NÃO conta como autorização: o link só passou a
+        // existir em 27/08/2026 e o cadastro manual nunca gerou carimbo.
+        $impl = $this->implementacao(['cust_id' => '111111111']);
+
+        $oauth = $impl->oauthMl();
+
+        $this->assertFalse($oauth['conectado']);
+        $this->assertNull($oauth['autorizado_em']);
+    }
+
+    public function test_a_listagem_de_onboarding_mostra_quem_autorizou(): void
+    {
+        $impl = $this->implementacao();
+        $this->autorizar($impl);
+
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->get(route('mlb.implementacao.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('empresas.0.ml_oauth.conectado', true)
+                ->where('empresas.0.ml_oauth.cust_id', '987654321')
+                ->where('empresas.0.ml_oauth.nickname', 'LOJA.TESTE')
+                ->where('empresas.0.ml_oauth.autorizado_em', now()->format('d/m/Y H:i'))
+            );
+    }
+
+    public function test_a_listagem_marca_quem_ainda_nao_autorizou(): void
+    {
+        $this->implementacao();
+
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->get(route('mlb.implementacao.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('empresas.0.ml_oauth.conectado', false));
+    }
+
+    public function test_filtro_sem_oauth_deixa_so_quem_falta_autorizar(): void
+    {
+        $autorizada = $this->implementacao(['nome' => 'Ja Autorizou']);
+        $autorizada->update(['token' => 'tokA' . str_repeat('a', 44)]);
+        $this->autorizar($autorizada);
+
+        $pendente = MlbImplementacao::create([
+            'empresa_id' => MlbEmpresa::create(['nome' => 'Falta Autorizar'])->id,
+            'token'      => 'tokB' . str_repeat('b', 44),
+            'dados'      => MlbImplementacao::dadosPadrao(),
+        ]);
+
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->get(route('mlb.implementacao.index', ['sem_oauth' => '1']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('empresas', 1)
+                ->where('empresas.0.id', $pendente->empresa_id)
+                ->where('filtros.sem_oauth', true)
+            );
+    }
+
+    public function test_a_ficha_expoe_a_autorizacao(): void
+    {
+        $impl = $this->implementacao();
+        $this->autorizar($impl);
+
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->get(route('mlb.implementacao.ficha', $impl->id))
+            ->assertInertia(fn (Assert $page) => $page->where('impl.ml_oauth.conectado', true));
+    }
+
+    public function test_cust_id_trocado_pela_autorizacao_fica_sinalizado(): void
+    {
+        // Quem olha a ficha precisa saber que o Cust ID mudou — o valor digitado
+        // à mão pode ter sido usado em conferência antes da correção.
+        $impl = $this->implementacao(['cust_id' => '111111111']);
+        $this->autorizar($impl);
+
+        $oauth = $impl->fresh()->oauthMl();
+
+        $this->assertTrue($oauth['cust_id_corrigido']);
+        $this->assertSame('111111111', $oauth['cust_id_anterior']);
+        $this->assertSame('987654321', $oauth['cust_id']);
     }
 }

@@ -79,6 +79,8 @@ class MlbImplementacaoController extends Controller
                 'erp'                 => $impl->erp,
                 // Data do bloco Identificação (vive na implementação)
                 'data_solicitacao'    => $impl->data_solicitacao?->format('Y-m-d'),
+                // Autorização do ML pelo link do Onboarding ({link_oauth})
+                'ml_oauth'            => $impl->oauthMl(),
             ],
             'empresa' => [
                 'id'               => $e->id,
@@ -420,6 +422,8 @@ class MlbImplementacaoController extends Controller
         $filtroForaDoPrazo = $request->boolean('fora_do_prazo');
         // Filtro de envio do link (ONB-ENVIO-LINK): boolean — mostra só quem ainda falta enviar
         $filtroFaltaEnviar = $request->boolean('falta_enviar');
+        // Filtro de autorização do ML: mostra só quem ainda NÃO abriu o {link_oauth}.
+        $filtroSemOauth    = $request->boolean('sem_oauth');
 
         $query = MlbImplementacao::with(['empresa', 'responsavel', 'linkEnviadoPor'])
             ->orderBy('created_at', 'desc');
@@ -457,6 +461,9 @@ class MlbImplementacaoController extends Controller
                     'dias_restantes' => $prazo['dias_restantes'],
                     'dias_decorridos'=> $prazo['dias_decorridos'],
                     // Rastreio de envio do link (ONB-ENVIO-LINK)
+                    // Autorização do ML pelo link do Onboarding ({link_oauth}) —
+                    // é o que responde "o cliente conectou a conta ou não?".
+                    'ml_oauth'         => $impl->oauthMl(),
                     'status_envio'     => $impl->statusEnvio(),
                     'link_enviado_em'  => $impl->link_enviado_em?->format('d/m/Y'),
                     'link_enviado_por' => $impl->linkEnviadoPor?->name,
@@ -469,6 +476,9 @@ class MlbImplementacaoController extends Controller
             ->when($filtroForaDoPrazo, fn($col) => $col->filter(fn($e) => $e['fora_do_prazo']))
             // Filtro "falta enviar link" em Collection — depende de statusEnvio() calculado acima
             ->when($filtroFaltaEnviar, fn($col) => $col->filter(fn($e) => $e['status_envio'] === 'falta_enviar'))
+            // Filtro "sem autorização ML" — o carimbo mora em dados['ml_oauth'] (JSON), mesma
+            // razão de fora_do_prazo/falta_enviar para filtrar aqui e não em SQL.
+            ->when($filtroSemOauth, fn($col) => $col->filter(fn($e) => ! $e['ml_oauth']['conectado']))
             ->values();
 
         return Inertia::render('Mlb/Implementacao', [
@@ -483,6 +493,7 @@ class MlbImplementacaoController extends Controller
                 'fase'          => $filtroFase,
                 'fora_do_prazo' => $filtroForaDoPrazo,
                 'falta_enviar'  => $filtroFaltaEnviar,
+                'sem_oauth'     => $filtroSemOauth,
             ],
             'polo_opcoes'       => MlbImplementacao::ONB_POLO_OPCOES,
             'fase_opcoes'       => MlbImplementacao::ONB_FASE_OPCOES,

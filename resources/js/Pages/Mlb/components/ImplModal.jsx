@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { router } from '@inertiajs/react';
 import { Link2, Copy, Check, ExternalLink, RefreshCw, X, ArrowRightLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
+// Autorização do ML pelo link do Onboarding ({link_oauth}) — quem conectou e quando.
+import { MlOauthBloco } from '@/Pages/Mlb/components/MlOauthStatus';
 
 // Status do envio do link ao cliente (ONB-ENVIO-LINK)
 const STATUS_ENVIO_LABELS = {
@@ -461,6 +463,9 @@ function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, global_p
                                     </div>
                                 </div>
                             )}
+                            {/* Autorização do ML ({link_oauth}) — o carimbo só existe a partir
+                                de 27/08/2026, então ausência não prova que a conta não está no ML. */}
+                            <MlOauthBloco oauth={empresa.ml_oauth} />
                             {empresa.ultimo_acesso && (
                                 <p className="text-white/30 text-[12px]">Último acesso do cliente: <span className="text-white/60">{empresa.ultimo_acesso}</span></p>
                             )}

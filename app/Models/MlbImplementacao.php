@@ -447,6 +447,65 @@ class MlbImplementacao extends Model
     }
 
     /**
+     * Estado da autorização do Mercado Livre pelo link do Onboarding —
+     * o `{link_oauth}` da mensagem de boas-vindas.
+     *
+     * O carimbo é gravado por MercadoLivreOAuthController::carimbarOauthPolos()
+     * em `dados['ml_oauth']`, chave TOP-LEVEL fora de `itens` (o cliente
+     * reescreve `itens` inteiro a cada salvamento do formulário).
+     *
+     * "Conectado" aqui significa ESTE cliente autorizou o app da ECF por ESTA
+     * empresa — não confundir com o Grant, que é um link por polo e não diz
+     * quem autorizou. E não se deduz de `cust_id` preenchido: o Cust ID entra
+     * à mão em muitas empresas, e o link só passou a existir em 27/08/2026 —
+     * quem autorizou antes disso simplesmente não tem carimbo.
+     *
+     * @return array{
+     *   conectado: bool,
+     *   autorizado_em: ?string,       d/m/Y H:i
+     *   autorizado_em_iso: ?string,
+     *   cust_id: ?string,             Seller ID devolvido pelo próprio /oauth/token
+     *   nickname: ?string,            apelido da conta ML (pode faltar — é enfeite)
+     *   cust_id_corrigido: bool,      o OAuth achou Cust ID diferente do cadastrado
+     *   cust_id_anterior: ?string
+     * }
+     */
+    public function oauthMl(): array
+    {
+        $carimbo = $this->dados['ml_oauth'] ?? null;
+
+        if (! is_array($carimbo) || empty($carimbo['autorizado_em'])) {
+            return [
+                'conectado'         => false,
+                'autorizado_em'     => null,
+                'autorizado_em_iso' => null,
+                'cust_id'           => null,
+                'nickname'          => null,
+                'cust_id_corrigido' => false,
+                'cust_id_anterior'  => null,
+            ];
+        }
+
+        $anterior = $carimbo['cust_id_anterior'] ?? null;
+        $atual    = $carimbo['cust_id'] ?? null;
+
+        return [
+            'conectado'         => true,
+            // O carimbo é gravado com now()->toISOString(), que sai em UTC. Sem o
+            // timezone() a tela mostraria 3 horas a mais e ninguém desconfiaria —
+            // "autorizou 17:55" para uma autorização das 14:55.
+            'autorizado_em'     => \Carbon\Carbon::parse($carimbo['autorizado_em'])
+                ->timezone(config('app.timezone'))
+                ->format('d/m/Y H:i'),
+            'autorizado_em_iso' => $carimbo['autorizado_em'],
+            'cust_id'           => $atual,
+            'nickname'          => $carimbo['nickname'] ?? null,
+            'cust_id_corrigido' => $anterior !== null && trim((string) $anterior) !== (string) $atual,
+            'cust_id_anterior'  => $anterior,
+        ];
+    }
+
+    /**
      * Verdadeiro se o cliente já preencheu o mínimo necessário para poder marcar
      * o item como "feito". Só itens onde o cliente DIGITA/SELECIONA/MONTA algo
      * exigem conteúdo; itens de ação pura (acessar link, dar acesso, declarar)

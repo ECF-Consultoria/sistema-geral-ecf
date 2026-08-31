@@ -5,6 +5,8 @@ import { Link } from '@inertiajs/react';
 import { ArrowLeft, Pencil, X, ExternalLink, Settings2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { cn } from '@/lib/utils';
+// Autorização do ML pelo link do Onboarding ({link_oauth}) — quem conectou e quando.
+import { MlOauthBadge } from '@/Pages/Mlb/components/MlOauthStatus';
 
 // ═══ CONSTANTES DE FALLBACK (usadas quando opcoes não chegam via props) ═══
 const ONB_POLO_OPCOES     = ['Arapongas', 'S. J. Rio Preto', 'Bento Gonçalves', 'São Bento do Sul'];
@@ -928,6 +930,9 @@ export default function OnboardingFicha({ impl, empresa, opcoes }) {
                             ) : (
                                 <span className="text-white/30 text-[11px]">sem Cust ID</span>
                             )}
+                            {/* O Cust ID acima pode ter sido digitado à mão; este badge diz se o
+                                CLIENTE autorizou o app da ECF pelo link do Onboarding. */}
+                            <MlOauthBadge oauth={impl.ml_oauth} />
                             {savingId && (
                                 <span className="text-white/30 text-[11px] italic">Salvando Identificação…</span>
                             )}

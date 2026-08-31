@@ -10,6 +10,8 @@ import { ESTAGIO_COLORS } from '@/Pages/Polos/components/estagioBadge';
 // Célula de Cust ID — MESMO componente do Painel Polos (copiar / criar / editar inline).
 import { CustIdCell } from '@/Pages/Polos/components/CustIdCell';
 import { NomeEmpresaCell } from '@/Pages/Polos/components/NomeEmpresaCell';
+// Autorização do ML pelo link do Onboarding ({link_oauth}) — quem conectou e quando.
+import { MlOauthBadge, MlOauthBloco } from '@/Pages/Mlb/components/MlOauthStatus';
 
 // Status do envio do link ao cliente (ONB-ENVIO-LINK)
 const STATUS_ENVIO_LABELS = {
@@ -724,6 +726,9 @@ function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, global_p
                                     </div>
                                 </div>
                             )}
+                            {/* Autorização do ML ({link_oauth}) — o carimbo só existe a partir
+                                de 27/08/2026, então ausência não prova que a conta não está no ML. */}
+                            <MlOauthBloco oauth={empresa.ml_oauth} />
                             {empresa.ultimo_acesso && (
                                 <p className="text-white/30 text-[12px]">Último acesso do cliente: <span className="text-white/60">{empresa.ultimo_acesso}</span></p>
                             )}
@@ -837,6 +842,7 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
             fase:          filtros?.fase ?? '',
             fora_do_prazo: filtros?.fora_do_prazo ? '1' : '',
             falta_enviar:  filtros?.falta_enviar  ? '1' : '',
+            sem_oauth:     filtros?.sem_oauth     ? '1' : '',
             [campo]: valor === '__todos__' ? '' : valor,
         };
         router.get(route('mlb.implementacao.index'), params, {
@@ -848,6 +854,10 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
 
     // Contador de empresas que ainda faltam ter o link enviado
     const faltamEnviar = empresas.filter(e => e.status_envio === 'falta_enviar').length;
+
+    // Quantas já autorizaram o ML pelo link do Onboarding. Conta sobre a lista que
+    // o backend devolveu — com filtro de Polo/Fase ativo, o número é daquele recorte.
+    const autorizaramMl = empresas.filter(e => e.ml_oauth?.conectado).length;
 
     // Salva SÓ o cust_id (endpoint dedicado que não zera os demais campos da empresa).
     const salvarCustId = (e, valor) =>
@@ -884,6 +894,20 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                             {faltamEnviar > 0 && (
                                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-red-300 bg-red-500/10 border border-red-500/20 whitespace-nowrap">
                                     {faltamEnviar} pendente{faltamEnviar !== 1 ? 's' : ''} de envio
+                                </span>
+                            )}
+                            {empresas.length > 0 && (
+                                <span
+                                    title="Clientes que abriram o link de autorização do Mercado Livre e concluíram no ML"
+                                    className={cn(
+                                        'text-[11px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap',
+                                        // Zero não pode sair em verde: o chip é placar, não decoração.
+                                        autorizaramMl > 0
+                                            ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
+                                            : 'text-white/40 bg-white/[0.04] border-white/[0.08]'
+                                    )}
+                                >
+                                    {autorizaramMl}/{empresas.length} autorizaram o ML
                                 </span>
                             )}
                         </div>
@@ -980,8 +1004,21 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                             Pendente de envio
                         </button>
 
+                        {/* Toggle "Sem autorização ML" — quem ainda não abriu o {link_oauth} */}
+                        <button
+                            onClick={() => aplicarFiltro('sem_oauth', filtros?.sem_oauth ? '' : '1')}
+                            className={cn(
+                                'flex items-center gap-1.5 h-9 px-3 rounded-xl border text-[13px] transition-all',
+                                filtros?.sem_oauth
+                                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                                    : 'border-white/[0.08] bg-white/[0.03] text-white/40 hover:text-white/70 hover:border-white/20'
+                            )}
+                        >
+                            Sem autorização ML
+                        </button>
+
                         {/* Limpar filtros — aparece quando qualquer filtro está ativo */}
-                        {(filtros?.polo || filtros?.fase || filtros?.fora_do_prazo || filtros?.falta_enviar) && (
+                        {(filtros?.polo || filtros?.fase || filtros?.fora_do_prazo || filtros?.falta_enviar || filtros?.sem_oauth) && (
                             <button
                                 onClick={() => router.get(route('mlb.implementacao.index'), {}, { replace: true })}
                                 className="text-white/30 hover:text-white text-[12px] transition-colors"
@@ -1002,6 +1039,7 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell">Fase</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden sm:table-cell">Estágio</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden md:table-cell">Status do envio</th>
+                                <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden md:table-cell">Autorização ML</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell">Responsável</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider">Progresso</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden md:table-cell">Último Acesso</th>
@@ -1011,8 +1049,8 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                         <tbody>
                             {filtradas.length === 0 && (
                                 <tr>
-                                    <td colSpan={9} className="px-4 py-12 text-center">
-                                        {busca || filtros?.polo || filtros?.fase || filtros?.fora_do_prazo || filtros?.falta_enviar ? (
+                                    <td colSpan={10} className="px-4 py-12 text-center">
+                                        {busca || filtros?.polo || filtros?.fase || filtros?.fora_do_prazo || filtros?.falta_enviar || filtros?.sem_oauth ? (
                                             <div className="space-y-1">
                                                 <p className="text-white/40 text-[13px] font-semibold">Nenhum resultado</p>
                                                 <p className="text-white/20 text-[12px]">Nenhuma empresa corresponde aos filtros selecionados. Limpe os filtros para ver todas.</p>
@@ -1087,6 +1125,18 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                         ) : (
                                             <span className="text-white/20 text-[12px]">—</span>
                                         )}
+                                    </td>
+                                    {/* Coluna Autorização ML — o cliente abriu o {link_oauth} e concluiu no ML? */}
+                                    <td className="px-4 py-3 hidden md:table-cell">
+                                        <div className="flex flex-col items-start gap-1">
+                                            <MlOauthBadge oauth={empresa.ml_oauth} />
+                                            {empresa.ml_oauth?.conectado && (
+                                                <p className="text-white/30 text-[10px] leading-tight">
+                                                    {empresa.ml_oauth.autorizado_em}
+                                                    {empresa.ml_oauth.nickname ? ` · ${empresa.ml_oauth.nickname}` : ''}
+                                                </p>
+                                            )}
+                                        </div>
                                     </td>
                                     {/* Coluna Responsável (ONB-RESPONSAVEL) */}
                                     <td className="px-4 py-3 hidden lg:table-cell">
