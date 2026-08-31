@@ -529,6 +529,68 @@ Várias sessões de Claude Code e mais de um dev editam a **mesma** árvore. Sem
 
 `.planning/REQUIREMENTS.md` na raiz parou na v17.0; os IDs das milestones novas só existem em `REQUIREMENTS-vNN.md`, e o `phase.complete` não os alcança — marque os checkboxes à mão ao fechar fase.
 
+## 10.1. Julho/2026 passou 2 meses SEM FECHAR por um índice que sobreviveu
+
+Descoberto em 2026-08-31, investigando "lancei a margem à mão e a nota não
+muda". A resposta não estava no lançamento manual — estava no fechamento.
+
+`desempenho:consolidar-mes --mes=2026-07` estourava
+`SQLSTATE[23000] 1062 Duplicate entry '<user>-2026-07-01'` para **11 dos 12
+profissionais**, em TODA rodada (27/08, 28/08 e 31/08 estão no
+`laravel.log`). Estado de julho no dia da descoberta: **1 profissional com
+snapshot mensal, contra 11 em junho**; `desempenho_company_score_snapshots`
+com 14 linhas `consolidar_mes` (de 1 user) e 246 `warm_cache` (de 9).
+
+**Causa.** A migration `2026_07_09_140001` (Fase 74, D-03) trocava o unique
+`(user_id, ref_date)` pelo `(user_id, ref_date, mes_referencia)` — mas dropava
+o antigo ANTES de criar o novo. Naquele instante o legado era o único índice
+prefixado por `user_id`, e a FK `..._user_id_foreign` exige um: MariaDB
+recusou com **1553**, e o `try/catch (\Throwable)` de idempotência engoliu a
+recusa. A migration consta como rodada (batch 73) com os **dois** uniques
+vivos. É a armadilha nº 3 do §6 acima, acontecida de verdade.
+
+Como o legado ignora `mes_referencia`, a linha DIÁRIA de 01/07 (gravada pelo
+`snapshot-scores` em 2026-07-01 13:30) ocupa `(user, 2026-07-01)`; o
+`updateOrCreate(['user_id','mes_referencia'])` do comando não casa com ela
+(`mes_referencia` NULL), tenta INSERT e colide. Junho escapou por acaso — a
+diária de 01/06 já tinha saído pela retenção (a mais antiga viva é 30/06).
+
+**Consequências que enganam quem investiga:**
+
+- Mês fechado **sem** snapshot mensal não fica vazio: `PerformanceController`
+  cai no `computeCached()` ao vivo (linha ~216, `if (! $ehMesEmCurso && $snap)`).
+  Ou seja, 10 dos 11 viam nota de julho normalmente — **calculada ao vivo**, e
+  reagindo a lançamento manual. Só quem TEM snapshot mensal ficava congelado.
+  "A nota não reflete" e "a nota reflete" conviviam na mesma competência, por
+  motivos opostos. É o que
+  `App\Jobs\AtualizarNotaAposMetricaManualJob` passou a resolver do lado
+  congelado.
+- O comando devolve **exit code 0** mesmo falhando para 11 de 12: as falhas
+  viram `Log::error` e `$fail++`, nunca exit code. Conferir por reconsulta
+  (`count` de `desempenho_score_snapshots` mensal por competência), nunca pelo
+  sucesso do comando — mesma lição do §4.
+
+**Correção escrita, AINDA NÃO DEPLOYADA** (2026-08-31): a migration
+`2026_08_31_150000_drop_unique_legado_desempenho_score_snapshots` cria o
+substituto antes de dropar (ordem invertida em relação à 140001), com teste
+verde em `tests/Feature/Desempenho/ConsolidarMesComSnapshotDiarioTest.php`.
+Ficou de fora do deploy do dia por decisão de escopo — o pedido em mesa era
+outro. Enquanto ela não subir, **julho/2026 segue sem fechar e toda rodada do
+cron continua falhando para 11 de 12**.
+
+**A suíte não protege contra a repetição, e não tem como.** Os testes rodam em
+SQLite, que não exige índice de apoio para FK — lá o drop da 140001 sempre deu
+certo e o legado nunca existiu. O teste acima trava o estado do schema e a
+coexistência diária+mensal, mas o 1553 é invisível para ele por construção.
+**A verificação que vale é `SHOW INDEX FROM desempenho_score_snapshots` no
+MariaDB de produção.**
+
+Detalhe de fixture que custa tempo: um teste de `consolidar-mes` com carteira
+**Adman** reprova no gate FIXMARG-03 (cobertura 0,0) quando a Adman está
+fakeada com 404 — o `calculated_fallback` local foi revogado pelo hotfix de
+2026-07-24, então não sobra margem. Carteira **Shopee** passa: sem CMV,
+`n_elegivel = 0` e o gate não avalia.
+
 ## 11. Checkpoint visual com dado real de bônus — nunca versionar resultado individual
 
 Autorização para trazer dado de compensação (score/bônus por profissional) para o **banco local**, a fim de conferir tela com dado real, **não é** autorização para **versionar** esse resultado individual no histórico do git — são duas decisões diferentes, e a segunda exige consentimento à parte, mesmo com a primeira já dada. Aconteceu na Fase 123 (checkpoint 123-06): um commit gravou, num arquivo versionado, tabela nominal pareando profissional com faixa de bônus e nota final; foi corrigido por amend antes de ir mais longe no histórico.

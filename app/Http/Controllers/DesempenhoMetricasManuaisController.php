@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreMetricaManualRequest;
+use App\Jobs\AtualizarNotaAposMetricaManualJob;
 use App\Models\Company;
 use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoMetricaManual;
@@ -216,9 +217,18 @@ class DesempenhoMetricasManuaisController extends Controller
             return $acao;
         });
 
+        // FORA da transação, de propósito: enfileirar dentro dela faria o
+        // worker pegar o job antes do COMMIT e recomputar com o valor VELHO.
+        //
+        // Competência sem nota congelada não precisa disto — ela é calculada ao
+        // vivo e o busting de cache acima já basta. O job sai vazio nesse caso;
+        // quem decide é ele, não este controller, para a regra viver num lugar
+        // só. Ver o docblock do job.
+        AtualizarNotaAposMetricaManualJob::dispatch($companyId, $mesStr);
+
         $mensagens = [
-            'lancado'   => 'Valor manual lançado para esta competência.',
-            'editado'   => 'Valor manual atualizado para esta competência.',
+            'lancado'   => 'Valor manual lançado. A nota de Desempenho será atualizada em instantes.',
+            'editado'   => 'Valor manual atualizado. A nota de Desempenho será atualizada em instantes.',
             'revertido' => 'Métrica revertida para o valor automático — o lançamento anterior foi preservado no histórico.',
         ];
 
