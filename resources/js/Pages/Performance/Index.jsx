@@ -585,6 +585,8 @@ export default function PerformanceIndex({
                         faixas={faixas_bonus}
                         onSair={() => setSimuladorAberto(false)}
                         mesLabel={mes_selecionado ? rotuloMesReferenciaCurto(mes_selecionado) : null}
+                        mes={mes_selecionado}
+                        mesEmCurso={mes_em_curso}
                     />
                 ) : (
                     <RankingConsultoria ranking={rankingFiltrado} onSelectUser={setUserSelecionado} mesDetalhe={mesDetalhe} />

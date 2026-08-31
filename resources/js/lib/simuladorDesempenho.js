@@ -198,6 +198,158 @@ export function simularLinha(linha, edicao = {}, faixas = FAIXAS_FALLBACK) {
     return { linha, pontos, nota, faixa: promocao.faixa, promovida: promocao.promovida, calculando };
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// NÍVEL EMPRESA — simulador detalhado (2026-08-31)
+//
+// A régua de 1 a 5 é aplicada LOJA A LOJA pelo `CompanyScoreService`; o que
+// o `DesempenhoScoreService` faz depois é só promediar. O simulador detalhado
+// entra justamente nessa camada de baixo: edita o ponto da loja e deixa a
+// média subir sozinha para o colaborador.
+//
+// A carteira por empresa vem do SNAPSHOT congelado da competência, então só
+// existe em mês FECHADO — que é onde o bônus é decidido, e portanto onde a
+// simulação importa. No mês em curso não há linhas para editar.
+// ═══════════════════════════════════════════════════════════════════════
+
+/** Nomes dos campos de ponto na linha por empresa (diferem do nível carteira). */
+const CAMPO_EMPRESA = {
+    nps:         'nps_pontos',
+    faturamento: 'faturamento_pontos',
+    margem:      'margem_pontos',
+};
+
+/**
+ * Quantos componentes esta loja DEVE ter para fechar nota própria.
+ *
+ * Réplica de `CompanyScoreService`: Shopee sem margem espera 2 (a plataforma
+ * não fornece CMV, e cobrar dela um componente inexistente rebaixaria o
+ * profissional sem culpa); com margem presente — inclusive a lançada
+ * manualmente — espera 3, como qualquer outra fonte.
+ *
+ * Derivado, e não lido do `componentes_esperados` da linha, porque o
+ * simulador PODE preencher a margem de uma loja Shopee: nesse caso ela passa
+ * a esperar 3, exatamente como a margem manual faz no motor. Usar o campo
+ * congelado deixaria a loja com 3 presentes contra 2 esperados e ela cairia
+ * em `partial` por um preenchimento que deveria completá-la.
+ */
+export function componentesEsperados(linha, pontos) {
+    const fonte = linha?.fonte_financeira ?? null;
+    return fonte === 'shopee' && ehVazio(pontos?.margem) ? 2 : 3;
+}
+
+/** Pontos efetivos de UMA loja: o editado quando editado, senão o do snapshot. */
+export function pontosEfetivosEmpresa(linha, edicao = {}) {
+    const ed = edicao ?? {};
+    const out = {};
+    for (const k of INDICADORES) {
+        const base = linha?.[CAMPO_EMPRESA[k]];
+        out[k] = Object.prototype.hasOwnProperty.call(ed, k)
+            ? ed[k]
+            : (ehVazio(base) ? null : Number(base));
+    }
+    return out;
+}
+
+/**
+ * Simula UMA loja: pontos, nota estrita, nota parcial e status.
+ *
+ * Réplica de `CompanyScoreService` (D-01): `nota_empresa` é ESTRITA — só
+ * existe quando todos os componentes esperados estão presentes. A parcial é
+ * a média dos presentes e serve de leitura auxiliar, nunca de nota.
+ */
+export function simularEmpresa(linha, edicao = {}) {
+    const pontos = pontosEfetivosEmpresa(linha, edicao);
+    const presentes = INDICADORES.map((k) => pontos[k]).filter((v) => !ehVazio(v));
+    const esperados = componentesEsperados(linha, pontos);
+
+    const parcial = presentes.length === 0
+        ? null
+        : presentes.reduce((s, v) => s + Number(v), 0) / presentes.length;
+
+    const status = presentes.length === esperados
+        ? 'complete'
+        : (presentes.length === 0 ? 'sem_dados' : 'partial');
+
+    return {
+        ...linha,
+        pontos_simulados: pontos,
+        componentes_presentes: presentes.length,
+        componentes_esperados: esperados,
+        nota_empresa_simulada: presentes.length === esperados ? parcial : null,
+        nota_empresa_parcial_simulada: parcial,
+        status_simulado: status,
+        editada: INDICADORES.some((k) => {
+            const ed = edicao ?? {};
+            if (!Object.prototype.hasOwnProperty.call(ed, k)) return false;
+            const base = linha?.[CAMPO_EMPRESA[k]];
+            return ed[k] !== (ehVazio(base) ? null : Number(base));
+        }),
+    };
+}
+
+/**
+ * Média por indicador sobre as lojas — réplica de
+ * `computeNotaFinalPorIndicador()`.
+ *
+ * DENOMINADOR INDEPENDENTE por indicador, como o `AVERAGE` do Excel ignora
+ * célula vazia: loja sem margem continua contando no faturamento e no NPS,
+ * em vez de sair da conta inteira. Não confundir com
+ * `computeNotaFinalPorEmpresa()`, que exige a loja `complete` e descarta a
+ * linha toda — são métodos diferentes, e o oficial desde 2026-08-05 é este.
+ *
+ * Entram TODAS as lojas incluídas, inclusive `partial` e `sem_fonte`: quem
+ * decide participação por indicador é a presença do valor, não o status.
+ */
+export function mediasPorIndicador(empresasSimuladas = []) {
+    const medias = {};
+    for (const k of INDICADORES) {
+        const presentes = (empresasSimuladas ?? [])
+            .map((e) => e.pontos_simulados?.[k])
+            .filter((v) => !ehVazio(v))
+            .map(Number);
+        medias[k] = presentes.length === 0
+            ? null
+            : presentes.reduce((s, v) => s + v, 0) / presentes.length;
+    }
+    return medias;
+}
+
+/**
+ * Simula a carteira inteira de um profissional.
+ *
+ * `excluidas` remove a loja das médias — simula o efeito de uma
+ * `BonusInvalidacao` na competência, sem gravar nada. A loja continua na
+ * tela, riscada, para não sumir da conferência.
+ *
+ * @param  {Array}  empresas  linhas do snapshot por empresa
+ * @param  {object} edicoes   `{ [companyId]: {nps?, faturamento?, margem?} }`
+ * @param  {Array}  excluidas ids de empresa fora da conta
+ */
+export function simularCarteira(empresas = [], edicoes = {}, excluidas = []) {
+    const fora = new Set((excluidas ?? []).map(Number));
+
+    const linhas = (empresas ?? []).map((e) => {
+        const sim = simularEmpresa(e, edicoes?.[e.company_id] ?? {});
+        return { ...sim, incluida: !fora.has(Number(e.company_id)) };
+    });
+
+    const incluidas = linhas.filter((l) => l.incluida);
+    const medias = mediasPorIndicador(incluidas);
+
+    return {
+        linhas,
+        medias,
+        nota: notaSimulada(medias),
+        qtd_incluidas: incluidas.length,
+        qtd_excluidas: linhas.length - incluidas.length,
+        // "Tocada" = algum ponto editado OU alguma loja fora da conta. É o que
+        // decide se os pontos do colaborador passam a vir daqui (ver
+        // `simularRanking`) — sem isso, abrir o detalhe já sequestraria o
+        // número de cima sem o usuário ter mudado nada.
+        tocada: linhas.some((l) => l.editada) || fora.size > 0,
+    };
+}
+
 /**
  * Roda a simulação no ranking inteiro e reordena.
  *
@@ -206,14 +358,53 @@ export function simularLinha(linha, edicao = {}, faixas = FAIXAS_FALLBACK) {
  * tela (ordenação estável). `posicao_simulada` é 1-based; `delta_posicao` é
  * positivo quando a pessoa SOBE no ranking simulado.
  *
- * @param  {Array}  ranking  já filtrado pela tela (contexto/cargo)
- * @param  {object} edicoes  `{ [userId]: {nps?, faturamento?, margem?} }`
- * @param  {Array}  faixas   régua ativa vinda do backend
+ * ─── Precedência entre os dois níveis de edição ───────────────────────────
+ * Quando a carteira do profissional foi TOCADA no detalhe (ponto de loja
+ * editado ou loja tirada da conta), os três pontos dele passam a ser as
+ * médias das lojas, e a edição direta de cima é ignorada. É proposital: dois
+ * donos para o mesmo número produziria uma tela em que o valor exibido não
+ * corresponde a nenhuma das duas edições. A UI desabilita os campos de cima
+ * nesse estado e diz de onde o número está vindo.
+ *
+ * Abrir o detalhe sem mexer em nada NÃO muda nada — `tocada` só vira true
+ * com edição de fato.
+ *
+ * @param  {Array}  ranking    já filtrado pela tela (contexto/cargo)
+ * @param  {object} edicoes    `{ [userId]: {nps?, faturamento?, margem?} }`
+ * @param  {Array}  faixas     régua ativa vinda do backend
+ * @param  {object} carteiras  `{ [userId]: {empresas, edicoes, excluidas} }`
+ *                             detalhe por empresa já carregado do servidor
  */
-export function simularRanking(ranking = [], edicoes = {}, faixas = FAIXAS_FALLBACK) {
+export function simularRanking(ranking = [], edicoes = {}, faixas = FAIXAS_FALLBACK, carteiras = {}) {
     const simuladas = (ranking ?? []).map((linha, idx) => {
         const edicao = edicoes?.[linha.id] ?? {};
-        const sim = simularLinha(linha, edicao, faixas);
+        const carteiraBruta = carteiras?.[linha.id] ?? null;
+
+        const carteira = carteiraBruta
+            ? simularCarteira(carteiraBruta.empresas, carteiraBruta.edicoes, carteiraBruta.excluidas)
+            : null;
+
+        // O detalhe só assume o comando depois de tocado (ver bloco acima).
+        const derivado = !!carteira?.tocada;
+
+        const sim = derivado
+            ? (() => {
+                const nota = carteira.nota;
+                const promocao = aplicarPromocao(
+                    classificarFaixa(nota, faixas),
+                    nota,
+                    linha?.promovivel_historico === true,
+                );
+                return {
+                    pontos: carteira.medias,
+                    nota,
+                    faixa: promocao.faixa,
+                    promovida: promocao.promovida,
+                    calculando: linha?.calculando === true,
+                };
+            })()
+            : simularLinha(linha, edicao, faixas);
+
         const notaReal = ehVazio(linha.nota_final) ? null : Number(linha.nota_final);
 
         return {
@@ -227,8 +418,11 @@ export function simularRanking(ranking = [], edicoes = {}, faixas = FAIXAS_FALLB
             faixa_simulada: sim.faixa,
             faixa_promovida_simulada: sim.promovida,
             faixa_mudou: (sim.faixa ?? null) !== (linha.faixa_bonus ?? null),
-            editada: linhaEditada(linha, edicao),
+            editada: derivado || linhaEditada(linha, edicao),
             calculando: sim.calculando,
+            // Nível empresa — `null` quando o detalhe não foi carregado.
+            carteira,
+            derivado_das_lojas: derivado,
         };
     });
 

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\BonusFaixa;
 use App\Models\Company;
+use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -268,6 +269,113 @@ class PerformanceSimuladorPropsTest extends TestCase
 
         $this->assertNotNull($linha, 'analista sumiu do ranking');
         $this->assertFalse($linha['promovivel_historico']);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Endpoint do simulador DETALHADO — carteira por empresa
+    // ═════════════════════════════════════════════════════════════════════
+
+    /**
+     * Linha de snapshot por empresa, como o fechamento da competência grava.
+     * A empresa é criada de verdade — a tabela tem FK para `companies`.
+     */
+    private function snapshotEmpresa(User $user, string $nome, \Carbon\Carbon $mes, array $pontos = []): int
+    {
+        $companyId = Company::factory()->create(['name' => $nome])->id;
+
+        DesempenhoCompanyScoreSnapshot::create([
+            'user_id'               => $user->id,
+            'company_id'            => $companyId,
+            'mes_referencia'        => $mes->toDateString(),
+            'company_name'          => $nome,
+            'fonte_financeira'      => $pontos['fonte'] ?? 'adman',
+            'status'                => $pontos['status'] ?? 'complete',
+            'nps_pontos'            => $pontos['nps'] ?? 5.0,
+            'faturamento_pontos'    => $pontos['fat'] ?? 4.0,
+            'margem_pontos'         => $pontos['margem'] ?? 3.0,
+            'componentes_presentes' => 3,
+            'nota_empresa'          => 4.0,
+            'nota_empresa_parcial'  => 4.0,
+            'origem'                => 'teste',
+            'gerado_em'             => now(),
+        ]);
+
+        return $companyId;
+    }
+
+    public function test_endpoint_devolve_a_carteira_por_empresa_do_profissional(): void
+    {
+        $this->actingAsAdmin();
+        $analista = $this->criarAnalista();
+
+        $competencia = now()->subMonths(2)->startOfMonth();
+        $alfaId = $this->snapshotEmpresa($analista, 'Loja Alfa', $competencia, ['nps' => 5.0, 'fat' => 4.0, 'margem' => 3.0]);
+        $this->snapshotEmpresa($analista, 'Loja Beta', $competencia, ['nps' => 3.0, 'fat' => 2.0, 'margem' => 1.0]);
+
+        $payload = $this->getJson('/api/performance/simulador-empresas?mes=' . $competencia->format('Y-m'))
+            ->assertOk()
+            ->json();
+
+        $this->assertSame($competencia->format('Y-m'), $payload['mes']);
+
+        $carteira = $payload['empresas_por_user'][$analista->id] ?? null;
+        $this->assertNotNull($carteira, 'carteira do analista ausente do payload');
+        $this->assertCount(2, $carteira);
+
+        // Projeção: os campos que o simulador edita/exibe precisam estar lá.
+        $alfa = collect($carteira)->firstWhere('company_id', $alfaId);
+        $this->assertSame('Loja Alfa', $alfa['company_name']);
+        $this->assertSame('adman', $alfa['fonte_financeira']);
+
+        // `assertEquals` e não `assertSame`: o JSON serializa 5.0 como `5`, e
+        // do outro lado é JavaScript, onde 5 e 5.0 são o mesmo número. Cobrar
+        // o tipo aqui testaria a serialização do PHP, não o contrato.
+        $this->assertEquals(5.0, $alfa['nps_pontos']);
+        $this->assertEquals(4.0, $alfa['faturamento_pontos']);
+        $this->assertEquals(3.0, $alfa['margem_pontos']);
+    }
+
+    public function test_endpoint_e_admin_only(): void
+    {
+        // O ranking completo é exclusivo de admin desde 2026-07-21 — o líder
+        // de Performance é redirecionado para o próprio desempenho na tela.
+        // Sem este gate, ele leria a carteira de todo mundo por outra porta.
+        $lider = User::create([
+            'name'     => 'Lider Perf ' . uniqid(),
+            'email'    => 'lider.' . uniqid() . '@ecf.test',
+            'password' => bcrypt('senha'),
+            'role'     => 'consultor',
+            'active'   => true,
+        ]);
+        $this->actingAs($lider);
+
+        // 403 tanto pelo gate de permissão quanto pelo `abort_unless` interno:
+        // o que importa é que NÃO devolve a carteira.
+        $this->getJson('/api/performance/simulador-empresas')->assertForbidden();
+    }
+
+    public function test_competencia_sem_snapshot_devolve_vazio_e_nao_erro(): void
+    {
+        // Mês em curso não tem detalhe por empresa (o snapshot nasce no
+        // fechamento). Ausência de dado não é falha — a tela mostra o aviso.
+        $this->actingAsAdmin();
+        $this->criarAnalista();
+
+        $payload = $this->getJson('/api/performance/simulador-empresas?mes=' . now()->format('Y-m'))
+            ->assertOk()
+            ->json();
+
+        $this->assertSame([], $payload['empresas_por_user']);
+    }
+
+    public function test_mes_invalido_nao_derruba_a_rota(): void
+    {
+        // WR-01: a regex frouxa aceitava mês 00-99 e o overflow silencioso do
+        // Carbon devolvia 500. Aqui o valor inválido cai no default.
+        $this->actingAsAdmin();
+
+        $this->getJson('/api/performance/simulador-empresas?mes=9999-99')->assertOk();
+        $this->getJson('/api/performance/simulador-empresas?mes=lixo')->assertOk();
     }
 
     public function test_flag_acompanha_o_mes_selecionado(): void

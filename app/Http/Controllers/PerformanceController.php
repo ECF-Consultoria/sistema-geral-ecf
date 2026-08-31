@@ -1011,6 +1011,79 @@ class PerformanceController extends Controller
      *
      * Série ordenada ASC por date — Recharts consome direto.
      */
+    /**
+     * Carteira por EMPRESA de todos os profissionais do ranking, numa
+     * competência — insumo do simulador detalhado (2026-08-31).
+     *
+     * ADMIN-ONLY, mesmo gate efetivo de `index()`: o ranking completo é
+     * exclusivo de admin desde 2026-07-21, e este endpoint devolve a carteira
+     * de TODO MUNDO. Deixá-lo só com `permission:core.performance` daria ao
+     * líder de Performance, que é redirecionado para o próprio desempenho na
+     * tela, a lista completa por outra porta.
+     *
+     * SÓ LEITURA de snapshot congelado — `CompanyScoreSnapshotReader` e nada
+     * mais. Nenhum compute ao vivo: o fan-out HTTP por empresa é justamente o
+     * que a Fase 106 tirou do caminho do request, e reintroduzi-lo aqui
+     * travaria a tela por minutos.
+     *
+     * Consequência que a UI precisa comunicar: o detalhe por empresa só
+     * existe em competência FECHADA (é o snapshot do fechamento). Mês em
+     * curso devolve `empresas_por_user` vazio — não é erro, é ausência de
+     * dado, e a tela diz isso em vez de prometer cálculo que não vem.
+     *
+     * Uma query para todos os profissionais (`paraUsuarios`), não N queries
+     * dentro de um laço.
+     */
+    public function simuladorEmpresas(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->isAdmin(), 403, 'Simulador detalhado é exclusivo de administradores.');
+
+        // Mesmo regex de `resolveContextoPeriodo()` (WR-01): a versão frouxa
+        // `\d{4}-\d{2}` aceitava mês 00-99 e o overflow silencioso do Carbon
+        // derrubava a rota com 500.
+        $mesQuery = $request->query('mes');
+        $mes = ($mesQuery && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $mesQuery))
+            ? Carbon::createFromFormat('Y-m-d', $mesQuery . '-01')->startOfMonth()
+            : Carbon::now()->startOfMonth();
+
+        // MESMA seleção de profissionais do ranking (analistas e
+        // estrategistas ativos, cargo via user_setores → cargos). Se divergir,
+        // o simulador abre carteira de gente que não está na tela.
+        $userIds = User::where('active', true)
+            ->whereExists(function ($q) {
+                $q->from('user_setores as us')
+                  ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+                  ->whereColumn('us.user_id', 'users.id')
+                  ->whereIn('c.slug', ['analista', 'estrategista']);
+            })
+            ->pluck('id')
+            ->all();
+
+        $porUsuario = $this->companyScoreReader->paraUsuarios($userIds, $mes);
+
+        // Projeção enxuta: só o que o simulador edita ou exibe. As linhas
+        // completas trazem dezenas de campos de auditoria (quality.*, valores
+        // absolutos de faturamento, fontes de diff) que inchariam o payload
+        // sem uso — são centenas de lojas somadas.
+        $empresas = $porUsuario->map(fn ($linhas) => collect($linhas)->map(fn ($l) => [
+            'company_id'            => $l['company_id'] ?? null,
+            'company_name'          => $l['company_name'] ?? null,
+            'fonte_financeira'      => $l['fonte_financeira'] ?? null,
+            'nps_pontos'            => $l['nps_pontos'] ?? null,
+            'faturamento_pontos'    => $l['faturamento_pontos'] ?? null,
+            'margem_pontos'         => $l['margem_pontos'] ?? null,
+            'faturamento_var_pct'   => $l['faturamento_var_pct'] ?? null,
+            'margem_var_pp'         => $l['margem_var_pp'] ?? null,
+            'nota_empresa'          => $l['nota_empresa'] ?? null,
+            'status'                => $l['status'] ?? null,
+        ])->values());
+
+        return response()->json([
+            'mes'               => $mes->format('Y-m'),
+            'empresas_por_user' => $empresas,
+        ]);
+    }
+
     public function evolucao(Request $request, User $user): JsonResponse
     {
         // CR-01 (123-07): mesma regra de autorização de show() — sem isto,

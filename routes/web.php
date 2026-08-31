@@ -791,6 +791,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('permission:core.performance')
         ->name('performance.evolucao');
 
+    // Simulador detalhado (2026-08-31) — carteira por EMPRESA de todos os
+    // profissionais do ranking numa competência, lida do snapshot congelado.
+    // O gate de admin é feito DENTRO do método (o ranking completo é
+    // admin-only desde 2026-07-21; `core.performance` sozinho abriria a
+    // carteira de todo mundo para o líder de Performance).
+    Route::get('/api/performance/simulador-empresas', [PerformanceController::class, 'simuladorEmpresas'])
+        ->middleware('permission:core.performance')
+        ->name('performance.simulador.empresas');
+
     // Auditoria de pagamento de bônus (item 3/4 · 2026-07-21) — admin-only.
     // Invalida o resultado de uma empresa para bônus numa competência (empresa
     // sem custo preenchido infla margem injustamente). Ver BonusAuditoriaController.
