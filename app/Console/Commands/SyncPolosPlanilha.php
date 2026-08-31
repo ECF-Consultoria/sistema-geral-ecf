@@ -56,6 +56,9 @@ class SyncPolosPlanilha extends Command
         'Fase' => ['Loja 2'],
     ];
 
+    /** Janela da trava de faturamento em arquivarAusentes() — meses para trás. */
+    private const MESES_FATURAMENTO = 3;
+
     // Polo: rename Bento Gonçalves → Serra Gaúcha (confirmado). Demais 1:1.
     private const POLO_MAP = [
         'BENTO GONÇALVES' => 'Serra Gaúcha', 'BENTO GONCALVES' => 'Serra Gaúcha',
@@ -103,6 +106,7 @@ class SyncPolosPlanilha extends Command
     private array $rel = [
         'update_empresa' => 0, 'create_empresa' => 0, 'update_ficha' => 0, 'create_ficha' => 0,
         'skip_publicador' => 0, 'skip_erro' => 0, 'linhas' => 0, 'arquivadas' => 0,
+        'protegidas' => 0,
     ];
     private array $skipPublicador = [];
     private array $fasesDesconhecidas = [];
@@ -115,6 +119,7 @@ class SyncPolosPlanilha extends Command
     private array $v2Custs = [];
     private array $v2Nomes = [];
     private array $aArquivar = []; // amostra p/ o relatório
+    private array $aProtegidas = []; // ausentes que FATURAM — não arquivadas (ver arquivarAusentes)
 
     public function handle(): int
     {
@@ -566,6 +571,13 @@ class SyncPolosPlanilha extends Command
      * ATENÇÃO (de-para de contas): se um seller trocou de conta ML, o cust_id do sistema
      * pode diferir do da planilha. O fallback por NOME cobre a maioria; o resto aparece na
      * lista do relatório para revisão humana ANTES do --apply.
+     *
+     * TRAVA DE FATURAMENTO (incidente Spinella Decor, 2026-07-18): a planilha é editada à
+     * mão e uma linha apagada por engano fazia este método arquivar uma empresa ATIVA —
+     * a Spinella sumiu do painel faturando ~R$ 900 mil/mês e só foi notada 6 semanas
+     * depois, quando o /polos passou a divergir da planilha em R$ 445 mil. Ausência da
+     * planilha NÃO é evidência suficiente para arquivar: quem tem faturamento recente em
+     * `polos_faturamento_snapshots` é PULADA e reportada para revisão humana.
      */
     private function arquivarAusentes(bool $gravar): void
     {
@@ -585,6 +597,15 @@ class SyncPolosPlanilha extends Command
                 continue;
             }
 
+            // TRAVA: empresa que faturou recentemente NÃO é arquivada por ausência na
+            // planilha — some do painel sem ninguém perceber (ver docblock). Só relatada.
+            if (($fat = $this->faturamentoRecente($custNum)) !== null) {
+                $this->rel['protegidas']++;
+                $this->aProtegidas[] = "{$e->nome} (cust {$custNum}, fase " . ($e->fase ?? '?')
+                    . ') — faturou R$ ' . number_format($fat['valor'], 0, ',', '.') . " em {$fat['mes']}";
+                continue;
+            }
+
             $this->rel['arquivadas']++;
             $this->aArquivar[] = "{$e->nome} (cust " . ($cust ?: 'sem id') . ', fase ' . ($e->fase ?? '?') . ')';
 
@@ -596,6 +617,34 @@ class SyncPolosPlanilha extends Command
                 ]);
             }
         }
+    }
+
+    /**
+     * Maior faturamento registrado para o cust_id nos últimos MESES_FATURAMENTO meses.
+     * Devolve null quando não há sinal de atividade — só nesse caso a empresa pode ser
+     * arquivada por ausência na planilha.
+     *
+     * Olha `faturamento` (gross da conta), NÃO `faturamento_moveis`: a trava é sobre
+     * "esta empresa está viva?", e um polo que vende fora de Casa/Móveis continua vivo.
+     *
+     * @return array{mes:string,valor:float}|null
+     */
+    private function faturamentoRecente(?string $custNum): ?array
+    {
+        if ($custNum === null) {
+            return null; // sem cust_id não há como consultar snapshot
+        }
+
+        $desde = now()->subMonthsNoOverflow(self::MESES_FATURAMENTO)->format('Ym');
+
+        $snap = DB::table('polos_faturamento_snapshots')
+            ->where('cust_id', $custNum)
+            ->where('mes', '>=', $desde)
+            ->where('faturamento', '>', 0)
+            ->orderByDesc('faturamento')
+            ->first(['mes', 'faturamento']);
+
+        return $snap ? ['mes' => (string) $snap->mes, 'valor' => (float) $snap->faturamento] : null;
     }
 
     private function relatorio(bool $apply, bool $arquivar = false): void
@@ -611,6 +660,7 @@ class SyncPolosPlanilha extends Command
             ['PULADAS (registro publicador)', $this->rel['skip_publicador']],
             ['Puladas (erro/sem nome)',       $this->rel['skip_erro']],
             [($apply && $arquivar ? 'Empresas ARQUIVADAS' : 'Ausentes (a arquivar)'), $this->rel['arquivadas']],
+            ['PROTEGIDAS (ausentes mas faturando)', $this->rel['protegidas']],
         ]);
 
         if ($this->campoChanges) {
@@ -666,6 +716,20 @@ class SyncPolosPlanilha extends Command
             if (! ($apply && $arquivar)) {
                 $this->comment('   (nenhuma foi arquivada — passe --apply --arquivar-ausentes para arquivar de fato)');
             }
+        }
+
+        // Protegidas pela trava de faturamento: ausência na planilha + faturamento recente
+        // quase sempre significa linha apagada por engano, não cliente que saiu.
+        if ($this->aProtegidas) {
+            $this->warn("
+🛡 NÃO arquivadas — ausentes da planilha mas COM faturamento recente:");
+            foreach (array_slice($this->aProtegidas, 0, 60) as $a) {
+                $this->line("   ● {$a}");
+            }
+            if (count($this->aProtegidas) > 60) {
+                $this->line('   ... +'.(count($this->aProtegidas) - 60).' outras');
+            }
+            $this->comment('   Confira se a linha sumiu da planilha por engano. Para arquivar mesmo assim, use o painel.');
         }
 
         $this->newLine();
