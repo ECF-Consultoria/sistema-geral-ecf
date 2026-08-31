@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePage } from '@inertiajs/react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { cn, formatCurrencyCompact } from '@/lib/utils';
-import { ehReservaProximoMes, somaMetaDoMes, competenciaDe } from '@/lib/polosEntrantes';
+import { ehReservaProximoMes, somaMetaDoMes, competenciaDe, janelaDaCompetencia } from '@/lib/polosEntrantes';
 import { STATUS_META, STATUS_ORDEM } from './statusMeta';
 import { montarCorDoPolo } from './poloCores';
 import StatusDonut from './StatusDonut';
@@ -65,10 +65,15 @@ const FT = {
     rotulo:    'clamp(0.8rem, 1.25vw, 1.5rem)',   // 24px
 };
 
-// Dias úteis (seg–sex) que ainda restam no mês, contando hoje. Sem calendário de
-// feriados de propósito: o número serve de ritmo ("quantos por dia"), não de prazo.
-function diasUteisRestantes(hoje) {
-    const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+// Dias úteis (seg–sex) que ainda restam na COMPETÊNCIA de entrantes, contando hoje.
+// A janela fecha no dia 27, não no fim do mês do calendário: em 28/08 restam os ~31 dias
+// da competência de setembro, e não os 3 que sobravam de agosto — com a conta antiga a
+// parede exigiria um ritmo/dia dez vezes maior do que o real. Sem calendário de feriados
+// de propósito: o número serve de ritmo ("quantos por dia"), não de prazo.
+function diasUteisRestantes(hoje, ym) {
+    const janela = janelaDaCompetencia(ym);
+    if (!janela) return 0;
+    const fim = janela.fim;
     let n = 0;
     for (let d = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()); d <= fim; d.setDate(d.getDate() + 1)) {
         const dia = d.getDay();
@@ -265,8 +270,13 @@ export default function ModoTV({
         return () => clearInterval(id);
     }, [onAtualizar, minutosParaAtualizar]);
 
-    const mesNome  = MESES_BR[agora.getMonth()];
+    // Dois rótulos de mês, de propósito: a tela de METAS fala em competência de entrantes
+    // (fecha dia 27) e a de FATURAMENTO segue o mês do calendário. Fundir os dois faria a
+    // parede anunciar "Agosto" enquanto cobra a meta de setembro.
     const mesAtual = competenciaDe(agora);
+    const [anoComp, numComp] = mesAtual.split('-');
+    const mesNome           = MESES_BR[(Number(numComp) || 1) - 1];   // competência (corte 27)
+    const mesNomeCalendario = MESES_BR[agora.getMonth()];             // mês corrido — só faturamento
 
     // ── Aba Metas → Entrantes (M0): os mesmos números de EntrantesM0Panel ──
     const entrantes = useMemo(() => empresas.filter(ehM0), [empresas]);
@@ -277,7 +287,7 @@ export default function ModoTV({
     const metaMes   = useMemo(() => somaMetaDoMes(metasEntrada, mesAtual), [metasEntrada, mesAtual]);
     const pctMeta   = pct(entrantes.length, metaMes);
     const faltam    = Math.max(0, metaMes - entrantes.length);
-    const diasUteis = useMemo(() => diasUteisRestantes(agora), [agora]);
+    const diasUteis = useMemo(() => diasUteisRestantes(agora, mesAtual), [agora, mesAtual]);
     const ritmo     = faltam > 0 && diasUteis > 0 ? (faltam / diasUteis) : 0;
 
     // Funil por polo: entrantes · aceites · reserva, com o % de conversão do PRÓPRIO polo
@@ -330,8 +340,10 @@ export default function ModoTV({
     // Mês do cabeçalho POR TELA: metas são sempre do mês corrente, mas `mesRefLabel` é o mês
     // SELECIONADO no cockpit financeiro (o seletor do painel) — exibi-lo na tela de metas
     // rotularia números de agosto como "Julho/2026" se alguém tivesse trocado o mês.
-    const mesCorrente = `${mesNome}/${agora.getFullYear()}`;
-    const mesRefFat   = cockpit?.mesRefLabel ?? mesCorrente;
+    const mesCorrente = `${mesNome}/${anoComp}`;
+    // Fallback do faturamento é o mês do CALENDÁRIO — usar `mesCorrente` aqui vazaria a
+    // competência de entrantes para uma tela que não segue o corte do dia 27.
+    const mesRefFat   = cockpit?.mesRefLabel ?? `${mesNomeCalendario}/${agora.getFullYear()}`;
     const parcial     = !!cockpit?.parcial;   // mês corrente ainda em curso (Adman ao vivo)
 
     // ── Telas (a lente ativa escolhe a inicial) ──
@@ -429,7 +441,7 @@ export default function ModoTV({
                         {/* Faixa A — meta do mês + os 4 números do funil */}
                         <div className="grid grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
                             <Heroi
-                                rotulo={`Entrantes (M0) — ${mesNome}/${agora.getFullYear()}`}
+                                rotulo={`Entrantes (M0) — ${mesNome}/${anoComp}`}
                                 valor={metaMes > 0 ? `${entrantes.length}/${metaMes}` : fmtInt(entrantes.length)}
                                 apoio={metaMes > 0
                                     ? (faltam > 0 ? `meta ${metaMes} · faltam ${faltam} · ${pctMeta}%` : `meta ${metaMes} · batida · ${pctMeta}%`)

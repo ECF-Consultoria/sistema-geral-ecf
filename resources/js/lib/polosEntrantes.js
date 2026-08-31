@@ -43,9 +43,89 @@ export function somaMetaDoMes(metasEntrada, mes) {
         .reduce((soma, m) => soma + (Number(m.meta) || 0), 0);
 }
 
-/** 'YYYY-MM' de uma data (default: hoje) — mesma chave usada em `polos_meta_entrada.mes`. */
+/**
+ * Dia em que a META DE ENTRANTES FECHA — o dia 27 é o ÚLTIMO da competência.
+ *
+ * Regra do time (2026-08-28), e a única coisa aqui que não é dedutível do código:
+ * o ciclo de entrantes não é o mês do calendário. A competência de agosto vai de
+ * **28/07 a 27/08**; quem entra do dia 28 em diante já é do mês seguinte. Só a meta
+ * de entrantes segue essa régua — faturamento e M1 continuam no mês do calendário.
+ *
+ * Mudar este número reescreve a competência de TODO o histórico (o gráfico de
+ * evolução recalcula os meses passados), porque a atribuição é derivada de
+ * `data_solicitacao` na hora de renderizar — não há snapshot congelado.
+ */
+export const DIA_CORTE_ENTRANTES = 27;
+
+/** Núcleo do corte: (ano, mês 1-12, dia) → 'YYYY-MM' da competência. */
+function competencia(ano, mes, dia) {
+    if (dia > DIA_CORTE_ENTRANTES) {
+        mes += 1;
+        if (mes > 12) { mes = 1; ano += 1; }
+    }
+    return `${ano}-${String(mes).padStart(2, '0')}`;
+}
+
+/**
+ * Competência de entrantes de uma data (default: hoje) — mesma chave de
+ * `polos_meta_entrada.mes`. Aplica o corte do dia 27: em 27/08 devolve '2026-08';
+ * em 28/08 já devolve '2026-09'.
+ */
 export function competenciaDe(data = new Date()) {
-    return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+    return competencia(data.getFullYear(), data.getMonth() + 1, data.getDate());
+}
+
+/**
+ * Mesma competência, mas a partir da string 'YYYY-MM-DD' que vem do backend
+ * (`data_solicitacao`). Lê os dígitos direto em vez de construir um `Date`:
+ * `new Date('2026-08-28')` é meia-noite **UTC**, que no fuso de Brasília volta
+ * para o dia 27 e jogaria a empresa na competência errada exatamente na virada.
+ *
+ * @param {string|null|undefined} dataISO
+ * @returns {string} 'YYYY-MM', ou '' quando não há data
+ */
+export function competenciaDeISO(dataISO) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dataISO ?? '').trim());
+    if (!m) return '';
+    return competencia(Number(m[1]), Number(m[2]), Number(m[3]));
+}
+
+/**
+ * Janela de datas de uma competência: de 28 do mês anterior a 27 do próprio mês.
+ *
+ * @param {string} ym 'YYYY-MM'
+ * @returns {{inicio: Date, fim: Date, dias: number}|null}
+ */
+export function janelaDaCompetencia(ym) {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(ym ?? '').trim());
+    if (!m) return null;
+    const ano = Number(m[1]);
+    const mes = Number(m[2]);
+    // `mes - 2` com mes = 1 vira índice -1: o próprio Date rola para dezembro do ano anterior.
+    const inicio = new Date(ano, mes - 2, DIA_CORTE_ENTRANTES + 1);
+    const fim    = new Date(ano, mes - 1, DIA_CORTE_ENTRANTES);
+    const dias   = Math.round((fim - inicio) / 86400000) + 1;
+    return { inicio, fim, dias };
+}
+
+const diaMes = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+/** Rótulo curto da janela — "28/07 a 27/08". Vazio se o ym for inválido. */
+export function rotuloJanelaCompetencia(ym) {
+    const j = janelaDaCompetencia(ym);
+    return j ? `${diaMes(j.inicio)} a ${diaMes(j.fim)}` : '';
+}
+
+/**
+ * Quantos dias da competência já correram até `hoje` (1..dias).
+ * Devolve `null` quando hoje está fora da janela — aí não há ritmo a projetar.
+ */
+export function diasCorridosNaCompetencia(ym, hoje = new Date()) {
+    const j = janelaDaCompetencia(ym);
+    if (!j) return null;
+    const h = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    if (h < j.inicio || h > j.fim) return null;
+    return Math.round((h - j.inicio) / 86400000) + 1;
 }
 
 /**

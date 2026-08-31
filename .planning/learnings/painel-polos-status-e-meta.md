@@ -196,3 +196,44 @@ janela do mês. Alinhá-la à fase M0 muda a série histórica inteira do gráfi
 São 22 empresas que a planilha marcou como M0 e ainda não têm acesso de colaborador —
 backlog operacional visível de propósito. Só `MetasPanel` ainda trata isso como régua.
 
+
+## 10. A meta de entrantes FECHA DIA 27 — competência ≠ mês do calendário (2026-08-28)
+
+Regra do time, dita em 28/08/2026 e **não dedutível de lugar nenhum do código ou da planilha**:
+o ciclo de entrantes não é o mês corrido. **A competência de agosto vai de 28/07 a 27/08.**
+Quem entra do dia 28 em diante já é do mês seguinte.
+
+Até então `MetasPanel` atribuía a empresa ao mês por `data_solicitacao.slice(0, 7)` — mês do
+calendário puro. Hoje a régua está em **`resources/js/lib/polosEntrantes.js`**
+(`DIA_CORTE_ENTRANTES = 27`, `competenciaDe`, `competenciaDeISO`, `janelaDaCompetencia`,
+`diasCorridosNaCompetencia`), travada em `tests/js/polosEntrantes.test.js`.
+
+O que **não** é óbvio:
+
+- **Só vale para entrantes.** M1 e faturamento continuam no mês do calendário. No `ModoTV` isso
+  virou código: existem **dois** rótulos de mês (`mesNome`, da competência, e
+  `mesNomeCalendario`, do mês corrido) e o fallback de faturamento usa o segundo. Fundir os dois
+  faz a parede anunciar "Agosto" enquanto cobra a meta de setembro.
+- **Três telas dividem `competenciaDe`**: `MetasPanel`, `EntrantesM0Panel` e `ModoTV`. Mudar a
+  semântica da função sem acertar o **rótulo** de cada uma é o pior tipo de erro — a tela fica
+  internamente consistente e mente para quem lê. Duas delas tiravam o nome do mês de
+  `getMonth()`. Há teste de fiação para isso; ele existe por causa desse risco, não por zelo.
+- **É retroativo e não tem snapshot.** A atribuição é derivada de `data_solicitacao` a cada
+  render; não existe tabela de fechamento. Mudar `DIA_CORTE_ENTRANTES` reescreve o histórico
+  inteiro do gráfico "Evolução de entrantes". O lado bom: entrada lançada com a régua velha
+  migra sozinha ao subir o código. O lado ruim: se algum dia isso virar base de pagamento,
+  precisa de snapshot **antes**.
+- **Virado o dia 27, é a meta do MÊS SEGUINTE que tem de estar cadastrada.** Em 28/08 o painel
+  abre em setembro; sem `polos_meta_entrada` para `2026-09` o card perde a fração "32/90" e cai
+  no número seco, e o semáforo vira "Sem dados". Não é bug — é o fallback existente batendo numa
+  meta que ninguém lançou ainda.
+- **Nunca derive a competência de `new Date('YYYY-MM-DD')`.** Isso é meia-noite **UTC** — em
+  Brasília volta para o dia anterior e joga toda empresa do dia 28 na competência errada
+  exatamente na virada. Por isso existe `competenciaDeISO()`, que lê os dígitos da string.
+- **Ritmo e projeção medem dentro da janela 28..27.** Em 28/08 a competência de setembro está no
+  dia **1** de 31, não no dia 28 de 31. Com a conta antiga a projeção do `MetasPanel` multiplicava
+  o realizado por ~1,1 em vez de ~31, e o "Ritmo/dia" do `ModoTV` contava só os dias úteis que
+  sobravam de agosto — exigindo da parede um ritmo dez vezes maior que o real.
+
+Relacionado: §9 (as duas réguas de "entrante" e o filtro de fases terminais) — o corte de
+competência é **ortogonal** a ela: `semTerminais()` decide QUEM conta, o corte decide EM QUAL MÊS.

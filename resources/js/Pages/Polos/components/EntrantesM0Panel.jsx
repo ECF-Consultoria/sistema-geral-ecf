@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { UserPlus, KeyRound, Users, MessagesSquare, MapPin, ClipboardList, Hourglass, Target, CalendarClock } from 'lucide-react';
 import HeroKpi from './HeroKpi';
 import { montarCorDoPolo } from './poloCores';
-import { ehReservaProximoMes, somaMetaDoMes, competenciaDe } from '@/lib/polosEntrantes';
+import { ehReservaProximoMes, somaMetaDoMes, competenciaDe, rotuloJanelaCompetencia, DIA_CORTE_ENTRANTES } from '@/lib/polosEntrantes';
 
 /**
  * EntrantesM0Panel — aba "Entrantes (M0)" da lente Metas. Espelha o funil de entrada da
@@ -21,6 +21,11 @@ import { ehReservaProximoMes, somaMetaDoMes, competenciaDe } from '@/lib/polosEn
  * `polos_meta_entrada`), então muda sem deploy. O numerador segue sendo o ACUMULADO de sellers
  * em fase M0 — decisão do usuário (2026-08-26): as duas bases têm recortes diferentes de
  * propósito. Sem meta cadastrada para o mês, o card volta a mostrar só o número.
+ *
+ * COMPETÊNCIA ≠ MÊS DO CALENDÁRIO: a meta de entrantes fecha no dia 27 (2026-08-28), então
+ * agosto vai de 28/07 a 27/08 e a partir de 28/08 o card já cobra a meta de setembro. Régua em
+ * lib/polosEntrantes.js. Consequência prática: virado o dia 27, é a meta do MÊS SEGUINTE que
+ * precisa estar cadastrada — sem ela o card perde a fração e volta ao número seco.
  */
 
 const CARD = 'relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/[0.10] before:to-transparent';
@@ -63,9 +68,13 @@ function BarraTem({ label, icone: Ico, n, total, cor }) {
 
 export default function EntrantesM0Panel({ empresas = [], regioes = [], metasEntrada = [] }) {
     const hoje     = useMemo(() => new Date(), []);
-    const mesNome  = MESES_BR[hoje.getMonth()];
-    const mesLabel = `${mesNome} / ${hoje.getFullYear()}`;
+    // Competência corrente = a do CORTE DO DIA 27, não o mês do calendário: em 28/08 já é setembro.
+    // O rótulo tem de sair daqui (e não de `hoje.getMonth()`), senão o card diz "Agosto" e cobra a meta de setembro.
     const mesAtual = competenciaDe(hoje); // 'YYYY-MM' — mesma chave de polos_meta_entrada.mes
+    const [anoComp, numComp] = mesAtual.split('-');
+    const mesNome  = MESES_BR[(Number(numComp) || 1) - 1];
+    const mesLabel = `${mesNome} / ${anoComp}`;
+    const janela   = rotuloJanelaCompetencia(mesAtual);
 
     // ── Funil de entrada = Aceite no Projeto ∪ M0 ──
     const aceites   = useMemo(() => empresas.filter(ehAceite), [empresas]);
@@ -135,6 +144,7 @@ export default function EntrantesM0Panel({ empresas = [], regioes = [], metasEnt
                             <div className="mb-1 flex items-center justify-between gap-2 text-[11px]">
                                 <span className="flex items-center gap-1.5 text-white/55">
                                     <Target size={12} className="text-white/35" /> Meta de {mesNome}: <b className="text-white/80">{metaMes}</b>
+                                    <span className="text-white/30">· {janela}</span>
                                 </span>
                                 <span className="tabular-nums text-white/45">
                                     {faltam > 0
@@ -152,7 +162,8 @@ export default function EntrantesM0Panel({ empresas = [], regioes = [], metasEnt
                         </div>
                     ) : (
                         <p className="text-[11px] text-white/35">
-                            Meta de {mesNome} não cadastrada — defina na aba <b className="text-white/55">Visão geral → Meta de entrantes</b>.
+                            Meta de {mesNome} ({janela}) não cadastrada — defina na aba <b className="text-white/55">Visão geral → Meta de entrantes</b>.
+                            {' '}A competência fecha dia <b className="text-white/55">{DIA_CORTE_ENTRANTES}</b>: quem entra a partir do dia {DIA_CORTE_ENTRANTES + 1} já é do mês seguinte.
                         </p>
                     )}
                 />

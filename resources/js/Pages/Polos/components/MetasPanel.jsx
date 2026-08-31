@@ -10,7 +10,10 @@ import HeroKpi from './HeroKpi';
 import DistribuicaoCard from '@/Components/DistribuicaoCard';
 import EvolucaoEntrantesChart from './EvolucaoEntrantesChart';
 import { STATUS_ORDEM } from './statusMeta';
-import { semTerminais } from '@/lib/polosEntrantes';
+import {
+    semTerminais, DIA_CORTE_ENTRANTES, competenciaDe, competenciaDeISO,
+    janelaDaCompetencia, rotuloJanelaCompetencia, diasCorridosNaCompetencia,
+} from '@/lib/polosEntrantes';
 import { montarCorDoPolo } from './poloCores';
 
 /**
@@ -25,6 +28,8 @@ import { montarCorDoPolo } from './poloCores';
  * cai na Planilha já filtrada.
  *
  * Regras de negócio (intactas):
+ *  · COMPETÊNCIA de entrantes FECHA DIA 27 — a competência de agosto é 28/07..27/08.
+ *    Vale só aqui: M1 e faturamento seguem o mês do calendário. Ver lib/polosEntrantes.js.
  *  · ENTRANTE (M0) = Cust ID + Acesso colaborador ('Com acesso') + Grupo WhatsApp.
  *  · M1 completo   = Decola ativo · Anúncio publicado (estágio ≥ 1) · Campanha criada.
  *  · FATURAMENTO (admin) = distribuição de fin.status (No alvo / Em progresso / Não / Problema).
@@ -47,7 +52,9 @@ const temDecola    = (e) => e.decola === 'Sim';
 const temPublicado = (e) => PUBLICADO_ESTAGIOS.includes(e.estagio);
 const temCampanha  = (e) => e.campanha_criada === true;
 const m1Completo   = (e) => temDecola(e) && temPublicado(e) && temCampanha(e);
-const mesDe        = (e) => (e.data_solicitacao || '').slice(0, 7); // 'YYYY-MM'
+// Competência de entrantes: NÃO é o mês do calendário — fecha no dia 27 (28/07..27/08 = agosto).
+// A régua mora em lib/polosEntrantes.js e vale só para entrantes; M1 e faturamento seguem o mês cheio.
+const mesDe        = (e) => competenciaDeISO(e.data_solicitacao); // 'YYYY-MM'
 
 const MESES_BR = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 const rotuloMes = (ym) => {
@@ -228,7 +235,9 @@ export default function MetasPanel({ empresas: empresasProp = [], regioes: regio
     const regioes = useMemo(() => [...new Set(regioesRaw)], [regioesRaw]);
 
     // Meses presentes (por data_solicitacao) ∪ mês atual, desc.
-    const mesAtual = useMemo(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }, []);
+    // `mesAtual` é a competência de HOJE, com o corte do dia 27: em 28/08 o painel já
+    // abre em setembro, porque o que entra hoje conta para o mês que vem.
+    const mesAtual = useMemo(() => competenciaDe(new Date()), []);
     const mesesOpc = useMemo(() => {
         const set = new Set(empresas.map(mesDe).filter(Boolean));
         set.add(mesAtual);
@@ -341,12 +350,13 @@ export default function MetasPanel({ empresas: empresasProp = [], regioes: regio
     const projecao = useMemo(() => {
         const linha = evolucao.find((l) => l.ym === mesAtual);
         if (!linha) return null;
-        const d = new Date();
-        const diaCorrente = d.getDate();
-        const diasNoMes = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-        // diaCorrente é sempre 1..31 (getDate) → sem divisão por zero; só suprime se ainda não houve entrante.
+        // Ritmo medido DENTRO da janela da competência (28..27), não do mês do calendário:
+        // em 28/08 a competência de setembro está no dia 1 de 31, não no dia 28 de 31.
+        const corridos = diasCorridosNaCompetencia(mesAtual);
+        const janela = janelaDaCompetencia(mesAtual);
+        if (!corridos || !janela) return null;
         if (linha.realizadoMes === 0) return null;
-        const projMes = Math.round((linha.realizadoMes / diaCorrente) * diasNoMes);
+        const projMes = Math.round((linha.realizadoMes / corridos) * janela.dias);
         return { ym: mesAtual, projAcum: (linha.acumReal - linha.realizadoMes) + projMes };
     }, [evolucao, mesAtual]);
 
@@ -397,7 +407,7 @@ export default function MetasPanel({ empresas: empresasProp = [], regioes: regio
         const cols = {
             polo:      { key: 'polo',      label: 'Região',    accessor: (e) => e.polo },
             fase:      { key: 'fase',      label: 'Fase',      accessor: (e) => e.fase },
-            entrouEm:  { key: 'entrouEm',  label: 'Entrou em', type: 'date', accessor: (e) => mesDe(e) || null, format: (v) => (v === VAZIO ? '(Sem data)' : rotuloMes(v)) },
+            entrouEm:  { key: 'entrouEm',  label: 'Competência', type: 'date', accessor: (e) => mesDe(e) || null, format: (v) => (v === VAZIO ? '(Sem data)' : `${rotuloMes(v)} (${rotuloJanelaCompetencia(v)})`) },
             cust:      { key: 'cust',      label: 'Cust ID',   accessor: bool(temCust) },
             acesso:    { key: 'acesso',    label: 'Acesso',    accessor: bool(temAcesso) },
             grupo:     { key: 'grupo',     label: 'Grupo',     accessor: bool(temGrupo) },
@@ -509,11 +519,18 @@ export default function MetasPanel({ empresas: empresasProp = [], regioes: regio
                         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                             <h3 className="flex items-center gap-1.5 text-sm font-semibold text-white/80"><UserPlus size={15} className="text-ecf-yellow" /> Meta de entrantes — {rotuloMes(mes)}</h3>
                             <div className="flex items-center gap-2">
+                                <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px] tabular-nums tracking-wider text-white/45"
+                                    title={`A competência de entrantes fecha no dia ${DIA_CORTE_ENTRANTES}`}>
+                                    {rotuloJanelaCompetencia(mes)}
+                                </span>
                                 <NivelBadge nivel={nvEntrantes} />
                                 <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/40">a principal</span>
                             </div>
                         </div>
-                        <p className="mb-3 text-[11px] text-white/40">Conta como entrante quem já tem <b className="text-white/70">Cust ID + Acesso colaborador + Grupo WhatsApp</b>. Ordenado por atingimento.</p>
+                        <p className="mb-3 text-[11px] text-white/40">
+                            Conta como entrante quem já tem <b className="text-white/70">Cust ID + Acesso colaborador + Grupo WhatsApp</b>. Ordenado por atingimento.
+                            {' '}A competência <b className="text-white/70">fecha dia {DIA_CORTE_ENTRANTES}</b>: quem entra do dia {DIA_CORTE_ENTRANTES + 1} em diante já conta para o mês seguinte.
+                        </p>
 
                         <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
                             <Placar n={totalRealizado} total={totalMeta} sufixo="entrantes na meta do mês" />
@@ -730,7 +747,10 @@ export default function MetasPanel({ empresas: empresasProp = [], regioes: regio
                                             <td className="px-3 py-2 text-[13px] text-white/85 truncate max-w-[220px]">{e.nome}</td>
                                             <td className="px-2.5 py-2 text-[12px] text-white/55">{e.polo || '—'}</td>
                                             <td className="px-2.5 py-2 text-[12px] text-white/55">{e.fase || '—'}</td>
-                                            <td className="px-2.5 py-2 text-[12px] text-white/45 tabular-nums">{mesDe(e) ? rotuloMes(mesDe(e)) : '—'}</td>
+                                            <td className="px-2.5 py-2 text-[12px] text-white/45 tabular-nums"
+                                                title={mesDe(e) ? `Competência ${rotuloJanelaCompetencia(mesDe(e))} · solicitação em ${e.data_solicitacao}` : 'Sem data de solicitação'}>
+                                                {mesDe(e) ? rotuloMes(mesDe(e)) : '—'}
+                                            </td>
                                             <td className={tdc}><Pastilha ok={temCust(e)} /></td>
                                             <td className={tdc}><Pastilha ok={temAcesso(e)} /></td>
                                             <td className={tdc}><Pastilha ok={temGrupo(e)} /></td>
