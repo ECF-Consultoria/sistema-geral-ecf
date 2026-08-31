@@ -237,3 +237,80 @@ O que **não** é óbvio:
 
 Relacionado: §9 (as duas réguas de "entrante" e o filtro de fases terminais) — o corte de
 competência é **ortogonal** a ela: `semTerminais()` decide QUEM conta, o corte decide EM QUAL MÊS.
+
+---
+
+## 11. Arquivamento automático já apagou R$ 900 mil/mês do painel (2026-08-31)
+
+O `/polos` divergia da "Planilha de Evolução V4" em **R$ 1,07 milhão** em agosto/2026.
+A reconciliação empresa-a-empresa fecha na unha e decompõe assim (ativos M2–M4):
+
+| Ponte planilha → painel | R$ |
+|---|---:|
+| Planilha M2–M4 (132 custs) | 4.906.830 |
+| − filtro de categoria Móveis (**por design**) | −581.752 |
+| − Spinella Decor arquivada em 18/07 | −445.381 |
+| − defasagem de timing planilha × Adman (131 empresas) | −67.216 |
+| − Mabile (M2) sem snapshot do mês | −9.624 |
+| + 2 ativas no sistema ausentes da planilha | +34.052 |
+| **= painel (faturamento_moveis)** | **3.836.909** |
+
+Três coisas aqui **não** são dedutíveis do código.
+
+### 11.1 O `--arquivar-ausentes` confiava numa planilha editada à mão
+
+`polos:sync-planilha --apply --arquivar-ausentes` arquivou 12 empresas em 18/07 com motivo
+"Ausente na planilha V2". Uma delas, **Spinella Decor** (`id=60`, cust `3223656591`),
+faturava R$ 898 mil em junho e R$ 604 mil em julho. Sumiu do painel e **ninguém percebeu por
+6 semanas** — arquivada não entra no roster do warm, então nem snapshot novo ela gerava; o
+rastro era só a divergência com a planilha.
+
+Ausência de uma planilha que a equipe edita à mão **não é evidência de churn**. Corrigido em
+`5b2268ce`: a trava `faturamentoRecente()` pula (e reporta) quem tem `faturamento > 0` em
+`polos_faturamento_snapshots` nos últimos 3 meses. A trava olha `faturamento` (gross) e não
+`faturamento_moveis` de propósito — o critério é "está viva?", e polo que vende fora de
+Casa/Móveis continua vivo.
+
+Ao investigar "empresa sumiu do painel", consultar sempre:
+`SELECT nome, fase, arquivado_em, arquivado_motivo FROM mlb_empresas WHERE arquivado_em IS NOT NULL`.
+
+### 11.2 O painel mostra só Móveis, mas a UI diz "Faturamento total"
+
+Desde 260707 o painel serve `faturamento_moveis` (net dos itens de raiz `MLB1574`), não o
+`grossBilling`. **O rótulo nunca foi trocado** — `Polos/Index.jsx:220` e `Polos/Painel.jsx:1078`
+seguem dizendo "Faturamento total". É a maior fonte de "o sistema está errado": o número mudou
+de definição e o nome não. Ordem de grandeza: **~13% abaixo do gross** (86,8% em agosto/2026).
+
+O filtro em si é sadio — 90 dos 103 ativos com faturamento têm ≥70% em Móveis. Os outliers são
+reais, não bug: JHOLP MIX MAGAZINE é 99% **Pet Shop** e Primus Haus é 83% **Acessórios para
+Veículos**. Antes de acusar o filtro, resolver as categorias ao vivo com
+`MlCategoriaService::raizId()` — em agosto/2026 resolveu 100%.
+
+**Fragilidade latente:** `raizId()` devolve `null` em qualquer falha da API pública do ML
+(timeout/HTTP≠200) → `ehCasaMoveisDecoracao` vira false → o netBilling do item é **descartado
+calado** e congela assim no snapshot até o próximo warm. Não há contador de "categoria não
+resolvida". Ao investigar subcontagem, ler o log `[MlCategoria]` da janela do warm.
+
+### 11.3 A planilha também erra — não a trate como verdade absoluta
+
+A col. H da aba do mês é `=SUM(K,M,O,Q)` com `VLOOKUP` **por NOME** nas abas semanais
+`Agosto-S1..S4` (que têm `CustId` na col. B, ignorado pela fórmula). Em agosto o VLOOKUP não
+falhou (H bateu exato com a soma por cust), mas **a Spinella tinha S2=S3=S4 idênticos**
+(82.068 colado três vezes): a planilha marcava R$ 445.381 quando a Adman dava **R$ 892.093**.
+A planilha subnotificava a própria empresa em R$ 447 mil.
+
+Outras armadilhas da planilha, todas por edição manual: colunas **D e E trocadas** em algumas
+linhas (loja no lugar do cust — detectar por "cust é numérico de 6+ dígitos"), cust corrompido
+para texto (`Renna Decor` veio com cust `ethan`, resgatável pelo nome nas abas semanais), e
+nomes embaralhados na col. A (`gfhadbec bcadeghf`).
+
+### 11.4 Receita de auditoria
+
+Ler o .xlsx com `getOldCalculatedValue()` (lê o cache de fórmula sem recalcular). Cruzar por
+cust_id normalizado contra `polos_faturamento_snapshots` (`mes='YYYYMM'`) + `mlb_empresas`
+POLOS não-arquivadas. Existe `php artisan polos:audit-faturamento` (read-only).
+
+**O banco local está meses atrás** (só snapshot 202606) — auditar sempre contra a VPS. E o
+`polos:warm` tem **orçamento de 1500s** a ~7s/empresa: quem não couber fica sem snapshot e
+conta **R$ 0 sem erro visível**. Conferir cobertura antes de concluir qualquer coisa:
+`roster M1–M4` vs `COUNT(*) de polos_faturamento_snapshots WHERE mes=...`.
