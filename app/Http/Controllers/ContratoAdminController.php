@@ -105,17 +105,73 @@ class ContratoAdminController extends Controller
         // pessoa preenche as datas de cada uma.
         $linhas = collect();
         foreach ($companies as $company) {
-            $gruposPorServico = $company->contratosServico
-                ->filter(fn (ContratoServico $cs) => $cs->servico?->exigeContrato())
-                ->groupBy('servico_id');
+            // Quick 260901-gj7 (Tarefa 3) — mesma regra de dono da Tarefa 2
+            // (`ContratoClicksignService::iniciarParaEmpresa()`): sem isto, o
+            // par (empresa, Shopee) aparece aqui como uma linha
+            // "aguardando_administrativo" ETERNA — um contrato que nunca vai
+            // nascer, porque `iniciarParaEmpresa()` o absorve no contrato do
+            // dono (Gestão). Agrupado ANTES do filtro de `exigeContrato()`
+            // (que agora é decidido pelo DONO do grupo, não por cada item),
+            // para que "serviço isento dentro de um grupo" continue de fora
+            // pela MESMA razão de sempre — sem depender de ele próprio nunca
+            // ser dono de ninguém.
+            //
+            // `$company->contratosServico` já vem filtrado por `ativo=true`
+            // pelo eager load do passo (1) — é o mesmo universo que
+            // `iniciarParaEmpresa()` usa para decidir se o dono está
+            // "presente" (Shopee sozinho, sem o dono ativo, continua com
+            // GRUPO PRÓPRIO — regressão que este passo não pode causar).
+            $porServicoOriginal = $company->contratosServico->groupBy('servico_id');
+            $servicoIdsAtivos = $company->contratosServico->pluck('servico_id')->unique();
 
-            foreach ($gruposPorServico as $servicoId => $grupoContratosServico) {
-                $contratoServico = $grupoContratosServico->first();
-                // Término do SERVIÇO (não da fase): o maior `data_vencimento`
-                // não-nulo do grupo — o serviço termina quando a última fase
-                // termina. Todas nulas (ou grupo de uma fase só, sem prazo)
-                // → null, o mesmo "Sem prazo" legítimo de sempre.
-                $dataVencimentoGrupo = $grupoContratosServico->pluck('data_vencimento')->filter()->max();
+            $grupoDoServico = function (int $servicoId) use ($porServicoOriginal, $servicoIdsAtivos): int {
+                $servico = $porServicoOriginal[$servicoId]->first()->servico;
+                $donoId = optional($servico)->contrato_junto_com_servico_id;
+
+                if ($donoId !== null && $servicoIdsAtivos->contains($donoId)) {
+                    return (int) $donoId;
+                }
+
+                return $servicoId;
+            };
+
+            $gruposPorServico = collect();
+            foreach ($porServicoOriginal->keys() as $servicoIdOriginal) {
+                $servicoIdOriginal = (int) $servicoIdOriginal;
+                $chaveGrupo = $grupoDoServico($servicoIdOriginal);
+
+                if (! $gruposPorServico->has($chaveGrupo)) {
+                    $gruposPorServico[$chaveGrupo] = collect();
+                }
+
+                $gruposPorServico[$chaveGrupo]->push($servicoIdOriginal);
+            }
+
+            foreach ($gruposPorServico as $servicoId => $membrosDoGrupo) {
+                // Representante do GRUPO: o serviço DONO (a chave do grupo é
+                // sempre um `servico_id` presente em `$porServicoOriginal` —
+                // ou o próprio serviço, sem combinação, ou o dono, que só
+                // vira chave quando ele mesmo está ativo na empresa).
+                $contratoServico = $porServicoOriginal[$servicoId]->first();
+
+                // Isenção (D-09) decidida pelo DONO do grupo — mesma
+                // disciplina de `iniciarParaEmpresa()`: serviço isento
+                // (Polos) continua fora, mesmo dentro de um grupo, porque
+                // ele nunca é dono de ninguém (não aparece como chave de
+                // grupo de outro serviço) e este `exigeContrato()` é sobre
+                // ELE MESMO no caso não combinado.
+                if (! $contratoServico->servico?->exigeContrato()) {
+                    continue;
+                }
+
+                // Término do GRUPO (não de uma fase, nem de um único
+                // serviço): o maior `data_vencimento` não-nulo entre TODAS
+                // as fases de TODOS os serviços membros — um contrato
+                // combinado termina quando a última fase de qualquer um dos
+                // serviços que ele cobre termina. Todas nulas → null, o
+                // mesmo "Sem prazo" legítimo de sempre.
+                $todosItensDoGrupo = $membrosDoGrupo->flatMap(fn (int $sid) => $porServicoOriginal[$sid]);
+                $dataVencimentoGrupo = $todosItensDoGrupo->pluck('data_vencimento')->filter()->max();
 
                 $chave = $company->id.':'.$servicoId;
                 $contrato = $contratosPorPar->get($chave);

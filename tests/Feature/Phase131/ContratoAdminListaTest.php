@@ -40,16 +40,16 @@ class ContratoAdminListaTest extends TestCase
         return User::factory()->create(['role' => 'admin']);
     }
 
-    private function servicoComContrato(string $nome = 'Gestão de Tráfego (lista admin)'): Servico
+    private function servicoComContrato(string $nome = 'Gestão de Tráfego (lista admin)', array $overrides = []): Servico
     {
-        return Servico::create([
+        return Servico::create(array_merge([
             'nome'           => $nome,
             'valor_padrao'   => 100,
             'tipo_cobranca'  => Servico::TIPO_MENSAL,
             'ativo'          => true,
             'setor'          => Servico::SETOR_PERFORMANCE,
             'exige_contrato' => true,
-        ]);
+        ], $overrides));
     }
 
     private function empresa(array $overrides = []): Company
@@ -678,5 +678,148 @@ class ContratoAdminListaTest extends TestCase
             collect([$servicoUm->id, $servicoDois->id])->sort()->values()->all(),
             $linhasDaEmpresa->pluck('servico_id')->sort()->values()->all()
         );
+    }
+
+    // ─── Quick 260901-gj7 (Tarefa 3): a lista para de mostrar um contrato ──
+    // fantasma quando dois serviços passam a compartilhar UM contrato.
+
+    /**
+     * Sem contrato ainda: o par (empresa, Shopee) NÃO pode virar uma linha
+     * "aguardando_administrativo" própria — ela é absorvida na linha do
+     * dono (Gestão), a mesma decisão de `ContratoClicksignService::iniciarParaEmpresa()`.
+     */
+    public function test_gestao_e_shopee_combinados_sem_contrato_geram_uma_unica_linha_do_dono(): void
+    {
+        $gestao = $this->servicoComContrato('Gestão de Ads (combinado)');
+        $shopee = $this->servicoComContrato('Gestão de Ads Shopee (combinado)', [
+            'contrato_junto_com_servico_id' => $gestao->id,
+        ]);
+
+        $empresa = $this->empresa(['name' => 'Empresa Combinada Sem Contrato']);
+        $this->vincularServico($empresa, $gestao);
+        $this->vincularServico($empresa, $shopee);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index'));
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $linhasDaEmpresa = collect($props['linhas']['data'])->where('company_id', $empresa->id)->values();
+
+        $this->assertCount(1, $linhasDaEmpresa, 'Gestão + Shopee combinados devem gerar UMA linha, não duas.');
+        $this->assertSame($gestao->id, $linhasDaEmpresa[0]['servico_id']);
+        $this->assertNull($linhasDaEmpresa[0]['contrato_id']);
+        $this->assertSame(1, $props['sem_contrato_count'], 'a empresa combinada não pode ser contada duas vezes no resumo.');
+    }
+
+    /** Mesma dedução, agora com um ContratoAssinatura já criado para o dono. */
+    public function test_gestao_e_shopee_combinados_com_contrato_geram_uma_unica_linha_do_dono(): void
+    {
+        $gestao = $this->servicoComContrato('Gestão de Ads (combinado com contrato)');
+        $shopee = $this->servicoComContrato('Gestão de Ads Shopee (combinado com contrato)', [
+            'contrato_junto_com_servico_id' => $gestao->id,
+        ]);
+
+        $empresa = $this->empresa(['name' => 'Empresa Combinada Com Contrato']);
+        $this->vincularServico($empresa, $gestao);
+        $this->vincularServico($empresa, $shopee);
+
+        $contrato = ContratoAssinatura::factory()->create([
+            'company_id' => $empresa->id,
+            'servico_id' => $gestao->id,
+            'status'     => ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS,
+            'enviado_em' => now()->subDay(),
+        ]);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index'));
+        $response->assertOk();
+        $linhasDaEmpresa = collect($response->viewData('page')['props']['linhas']['data'])
+            ->where('company_id', $empresa->id)
+            ->values();
+
+        $this->assertCount(1, $linhasDaEmpresa);
+        $this->assertSame($contrato->id, $linhasDaEmpresa[0]['contrato_id']);
+        $this->assertSame($gestao->id, $linhasDaEmpresa[0]['servico_id']);
+        $this->assertSame(ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS, $linhasDaEmpresa[0]['status']);
+    }
+
+    /**
+     * ⚠️ REGRESSÃO MAIS IMPORTANTE: Shopee sozinho (dono Gestão NÃO ativo
+     * nesta empresa) continua com linha PRÓPRIA — nunca absorvido em
+     * nenhum outro serviço.
+     */
+    public function test_shopee_sozinho_sem_o_dono_ativo_continua_com_linha_propria(): void
+    {
+        $gestao = $this->servicoComContrato('Gestão de Ads (dono ausente)');
+        $shopee = $this->servicoComContrato('Gestão de Ads Shopee (dono ausente)', [
+            'contrato_junto_com_servico_id' => $gestao->id,
+        ]);
+
+        $empresa = $this->empresa(['name' => 'Empresa So Shopee']);
+        $this->vincularServico($empresa, $shopee);
+        // Gestão NÃO é vinculada a esta empresa — dono ausente do universo ativo.
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index'));
+        $response->assertOk();
+        $linhasDaEmpresa = collect($response->viewData('page')['props']['linhas']['data'])
+            ->where('company_id', $empresa->id)
+            ->values();
+
+        $this->assertCount(1, $linhasDaEmpresa);
+        $this->assertSame($shopee->id, $linhasDaEmpresa[0]['servico_id']);
+    }
+
+    /**
+     * Serviço isento (Polos) continua de fora da lista mesmo quando a
+     * mesma empresa também tem um grupo combinado (Gestão + Shopee) — o
+     * agrupamento por dono não muda nada para quem nunca é dono de ninguém.
+     */
+    public function test_servico_isento_continua_fora_mesmo_com_grupo_combinado_na_mesma_empresa(): void
+    {
+        $gestao = $this->servicoComContrato('Gestão de Ads (isento ao lado)');
+        $shopee = $this->servicoComContrato('Gestão de Ads Shopee (isento ao lado)', [
+            'contrato_junto_com_servico_id' => $gestao->id,
+        ]);
+        $polos = $this->servicoComContrato('Polos (isento ao lado)', ['exige_contrato' => false]);
+
+        $empresa = $this->empresa(['name' => 'Empresa Combinada Mais Polos']);
+        $this->vincularServico($empresa, $gestao);
+        $this->vincularServico($empresa, $shopee);
+        $this->vincularServico($empresa, $polos);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index'));
+        $response->assertOk();
+        $linhasDaEmpresa = collect($response->viewData('page')['props']['linhas']['data'])
+            ->where('company_id', $empresa->id)
+            ->values();
+
+        $this->assertCount(1, $linhasDaEmpresa, 'só a linha combinada — Polos nunca aparece.');
+        $this->assertSame($gestao->id, $linhasDaEmpresa[0]['servico_id']);
+    }
+
+    /**
+     * `data_vencimento` da linha combinada é o MAIOR não-nulo entre TODAS
+     * as fases de TODOS os serviços membros (Gestão e Shopee), não só do
+     * dono — o contrato combinado termina quando a última fase de
+     * qualquer um dos dois serviços termina.
+     */
+    public function test_data_vencimento_da_linha_combinada_e_o_maior_entre_os_dois_servicos(): void
+    {
+        $gestao = $this->servicoComContrato('Gestão de Ads (vencimento combinado)');
+        $shopee = $this->servicoComContrato('Gestão de Ads Shopee (vencimento combinado)', [
+            'contrato_junto_com_servico_id' => $gestao->id,
+        ]);
+
+        $empresa = $this->empresa(['name' => 'Empresa Vencimento Combinado']);
+        $this->vincularServico($empresa, $gestao)->update(['data_vencimento' => '2026-12-31']);
+        $this->vincularServico($empresa, $shopee)->update(['data_vencimento' => '2027-06-30']);
+
+        $response = $this->actingAs($this->admin())->get(route('admin.contratos.index'));
+        $response->assertOk();
+        $linhasDaEmpresa = collect($response->viewData('page')['props']['linhas']['data'])
+            ->where('company_id', $empresa->id)
+            ->values();
+
+        $this->assertCount(1, $linhasDaEmpresa);
+        $this->assertSame('2027-06-30', $linhasDaEmpresa[0]['data_vencimento']);
     }
 }
