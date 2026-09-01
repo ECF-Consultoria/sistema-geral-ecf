@@ -115,6 +115,22 @@ function PendenciaBadges({ pendencias }) {
     );
 }
 
+// ─── Fase 137 Plano 07 (ETAPA-05) — rótulos das 9 etapas do fluxo de entrada
+// (§10 do PDF v23.0). Fonte de verdade é `Company::ETAPAS`
+// (app/Models/Company.php) — não há enum compartilhado entre PHP e JS no
+// projeto, a sincronia é manual. Ordem espelha a ordem canônica do model.
+const ETAPA_LABELS = {
+    aguardando_administrativo: 'Aguardando Administrativo',
+    administrativo_andamento:  'Administrativo em Andamento',
+    aguardando_assinatura:     'Aguardando Assinatura',
+    administrativo_concluido:  'Administrativo Concluído',
+    aguardando_distribuicao:   'Aguardando Distribuição',
+    aguardando_onboarding:     'Aguardando Onboarding',
+    onboarding_andamento:      'Onboarding em Andamento',
+    onboarding_concluido:      'Onboarding Concluído',
+    em_operacao:               'Em Operação',
+};
+
 // ─── Badge do Grupo (cor custom do grupo) ───────────────────────────────────
 function GrupoBadge({ grupo }) {
     if (!grupo) return null;
@@ -173,6 +189,11 @@ export default function Companies({ companies, users, estrategistas = [], analis
     // Phase 35 Plan 35-01 (D-02) — sort por created_at na aba Pendencias.
     // Backend so honra valores 'nova_recente'|'nova_antiga'; '' (default) cai no orderBy('name').
     const sortFilter = filters.sort || '';
+    // Fase 137 Plano 07 (ETAPA-05) — dois filtros novos, independentes entre
+    // si e dos demais (D-23). Lidos da mesma prop `filters` que o backend já
+    // devolve para cust_id_status/sort.
+    const etapaFilter = filters.etapa || '';
+    const comPendenciaFilter = !!filters.com_pendencia;
 
     const aplicarCustIdFilter = (valor) => {
         router.get(route('companies.index'), valor ? { cust_id_status: valor } : {}, { preserveState: true, preserveScroll: true });
@@ -184,6 +205,25 @@ export default function Companies({ companies, users, estrategistas = [], analis
         if (custIdStatusFilter) params.cust_id_status = custIdStatusFilter;
         if (valor) params.sort = valor;
         params.tab = 'pendencias';
+        router.get(route('companies.index'), params, { preserveState: true, preserveScroll: true });
+    };
+
+    // Fase 137 Plano 07 (ETAPA-05, D-21) — filtros server-side por query
+    // param, nunca `Array.filter` de cliente (o contra-exemplo é `em_operacao`
+    // logo abaixo, que continua derivado e filtrado no cliente só porque a
+    // Fase 142 é quem troca essa fonte, não esta). Cada handler PRESERVA o
+    // outro filtro já ativo — um não pode apagar o outro (D-23).
+    const aplicarEtapaFilter = (valor) => {
+        const params = {};
+        if (valor) params.etapa = valor;
+        if (comPendenciaFilter) params.com_pendencia = 1;
+        router.get(route('companies.index'), params, { preserveState: true, preserveScroll: true });
+    };
+
+    const aplicarComPendenciaFilter = (ativo) => {
+        const params = {};
+        if (etapaFilter) params.etapa = etapaFilter;
+        if (ativo) params.com_pendencia = 1;
         router.get(route('companies.index'), params, { preserveState: true, preserveScroll: true });
     };
 
@@ -415,6 +455,33 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                 <option value="">Todas as empresas</option>
                                 <option value="invalido">Apenas Cust ID Inválido</option>
                             </select>
+                            {/* Fase 137 Plano 07 (ETAPA-05, D-21/D-22) — filtro server-side por
+                                etapa. "Sem etapa (legado)" é a SEGUNDA opção, de propósito: depois
+                                do backfill (plano 137-05) é ela quem devolve a maioria das empresas
+                                — enterrá-la no fim faria o filtro parecer quebrado. */}
+                            <select
+                                value={etapaFilter}
+                                onChange={e => aplicarEtapaFilter(e.target.value)}
+                                className="h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 cursor-pointer"
+                                title="Filtrar por etapa do fluxo de entrada"
+                            >
+                                <option value="">Todas as etapas</option>
+                                <option value="sem_etapa">Sem etapa (legado)</option>
+                                {Object.entries(ETAPA_LABELS).map(([valor, label]) => (
+                                    <option key={valor} value={valor}>{label}</option>
+                                ))}
+                            </select>
+                            {/* Fase 137 Plano 07 (ETAPA-05, D-23) — pendência é eixo INDEPENDENTE
+                                da etapa, nunca um item dentro do seletor acima. */}
+                            <button
+                                type="button"
+                                onClick={() => aplicarComPendenciaFilter(!comPendenciaFilter)}
+                                title="Filtrar por empresas com pendência aberta"
+                                className={cn('inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] border transition-colors',
+                                    comPendenciaFilter ? 'bg-ecf-yellow/15 border-ecf-yellow/40 text-ecf-yellow' : 'bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white/90')}
+                            >
+                                Com pendência
+                            </button>
                         </div>
 
                         {/* Chips de filtro por serviço com contagem total */}
