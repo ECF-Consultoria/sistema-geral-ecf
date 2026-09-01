@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { cn, formatCurrencyCompact } from '@/lib/utils';
+import { Building2, ChevronLeft, ChevronRight, Wallet, X } from 'lucide-react';
+import { cn, formatCurrency, formatCurrencyCompact } from '@/lib/utils';
 import { ehReservaProximoMes, somaMetaDoMes, competenciaDe, janelaDaCompetencia } from '@/lib/polosEntrantes';
 import { STATUS_META, STATUS_ORDEM } from './statusMeta';
 import { montarCorDoPolo } from './poloCores';
+import FatVsMetaChart, { origemFaturamento } from './FatVsMetaChart';
 import StatusDonut from './StatusDonut';
 
 /**
@@ -13,8 +14,9 @@ import StatusDonut from './StatusDonut';
  * Duas telas, uma por aba do painel (a lente ativa decide qual abre):
  *  · METAS       → a aba "Metas → Entrantes (M0)" INTEIRA: meta do mês, aceites, reserva,
  *                  funil de entrada por polo e prontidão de setup dos M0.
- *  · FATURAMENTO → distribuição de status (o gráfico, protagonista), faturamento × meta,
- *                  ADS e ranking de polos.
+ *  · FATURAMENTO → faturamento total e empresas ativas, faturamento × meta POR POLO
+ *                  (barras, no lugar da antiga lista de ranking) e distribuição de
+ *                  status — o anel, protagonista, ocupando a coluna direita inteira.
  * As setas ← → alternam. Nada gira sozinho: cada tela mostra tudo de uma vez.
  *
  * ── Régua da parede (TV 50–55" a 1920×1080 ≈ 0,63 mm/px; cap-height ≈ 0,72×font-size;
@@ -102,6 +104,24 @@ function useAlturaMedida() {
     }, []);
     return [ref, h];
 }
+
+// Largura do VIEWPORT em px. As fontes do canvas (ECharts) só aceitam px, e a régua
+// tipográfica desta tela é toda em `vw` — quem quiser um "1,75vw" DENTRO do gráfico
+// precisa da largura resolvida. Viewport, não caixa medida: é determinístico e não
+// depende de o layout já ter estabilizado dentro do fullscreen.
+function useLarguraJanela() {
+    const [largura, setLargura] = useState(() => (typeof window === 'undefined' ? 1920 : window.innerWidth));
+    useEffect(() => {
+        const aoRedimensionar = () => setLargura(window.innerWidth);
+        window.addEventListener('resize', aoRedimensionar);
+        return () => window.removeEventListener('resize', aoRedimensionar);
+    }, []);
+    return largura;
+}
+
+// clamp() do CSS resolvido em JS — mesma conta (px mínimo · vw · px máximo), para levar
+// a régua da parede para dentro do canvas sem inventar uma segunda escala.
+const clampPx = (min, vw, max, largura) => Math.round(Math.min(Math.max(min, (vw / 100) * largura), max));
 
 // Literal estavel: recriado a cada render, ele entra nas deps do useMemo do StatusDonut e,
 // com notMerge, o donut refaz a animacao de entrada a cada tique do relogio (30s).
@@ -199,6 +219,44 @@ function Kpi({ rotulo, valor, cor = '#ffffff', apoio = null, sec = false }) {
             <span className="mt-[4px] whitespace-nowrap font-display font-extrabold leading-none tabular-nums"
                   style={{ color: cor, fontSize: fonte }}>{valor}</span>
             {apoio && <span className="mt-[4px] truncate leading-none text-white/35" style={{ fontSize: FT.rotulo }}>{apoio}</span>}
+        </div>
+    );
+}
+
+// Fonte do número do card de comando por COMPRIMENTO da string. "R$ 4.807.978,51" tem 15
+// caracteres: na fonte do herói ele sairia da caixa e quebraria o card em duas linhas — e
+// número quebrado na parede é pior que número um degrau menor. Todo degrau segue acima do
+// piso de 28px da régua (o menor, 48px, lê a 4,4 m).
+const FONTE_NUMERO_CARD = [
+    { ate: 4,  fonte: 'clamp(2.2rem, 5vw, 6rem)' },          // 96px · 8,7 m — "134"
+    { ate: 8,  fonte: 'clamp(1.9rem, 4.2vw, 5rem)' },        // 80px · 7,3 m
+    { ate: 12, fonte: 'clamp(1.5rem, 3.4vw, 4rem)' },        // 65px · 5,9 m
+    { ate: 15, fonte: 'clamp(1.25rem, 2.9vw, 3.5rem)' },     // 56px · 5,1 m — "R$ 4.807.978,51"
+    { ate: Infinity, fonte: 'clamp(1.1rem, 2.5vw, 3rem)' },  // 48px · 4,4 m — piso
+];
+const fonteDoNumero = (valor) => FONTE_NUMERO_CARD.find((f) => String(valor).length <= f.ate).fonte;
+
+/**
+ * CardTV — card de comando da parede: rótulo + ícone, número grande e linha de apoio.
+ * É o `HeroKpi` do painel relido com a tipografia de parede; o ícone escala junto com o
+ * rótulo (`1.3em`) para não virar um selo de 16px numa TV de 55".
+ */
+function CardTV({ titulo, valor, icone: Icone, sublabel = null, cor = '#ffffff' }) {
+    return (
+        <div className="flex min-w-0 flex-col justify-center rounded-2xl border border-white/[0.1] bg-white/[0.04] px-[20px] py-[14px]">
+            <div className="flex items-start justify-between gap-[10px]">
+                <span className="truncate uppercase leading-[1.2] tracking-[0.1em] text-white/45" style={{ fontSize: FT.rotulo }}>{titulo}</span>
+                {Icone && (
+                    <span className="shrink-0 rounded-xl bg-white/[0.05] p-[6px] leading-none text-white/40" style={{ fontSize: FT.rotulo }}>
+                        <Icone size="1.3em" />
+                    </span>
+                )}
+            </div>
+            <span className="mt-[10px] whitespace-nowrap font-display font-extrabold leading-none tabular-nums"
+                  style={{ color: cor, fontSize: fonteDoNumero(valor) }}>{valor}</span>
+            {sublabel && (
+                <span className="mt-[10px] truncate leading-[1.2] text-white/40" style={{ fontSize: FT.rotulo }}>{sublabel}</span>
+            )}
         </div>
     );
 }
@@ -326,14 +384,8 @@ export default function ModoTV({
     const temCk     = isAdmin && polosCk.length > 0 && !cockpit?.erro;
     const totalFat  = useMemo(() => polosCk.reduce((s, p) => s + (Number(p.faturamento) || 0), 0), [polosCk]);
     const totalAtiv = useMemo(() => polosCk.reduce((s, p) => s + (Number(p.ativos) || 0), 0), [polosCk]);
-    const totalAds  = useMemo(
-        () => polosCk.reduce((s, p) => s + (p.empresas ?? []).reduce((x, e) => x + (Number(e.ads) || 0), 0), 0),
-        [polosCk],
-    );
     const metaFat    = Number(cockpit?.metaFaturamento) || 0;
     const pctFat     = metaFat > 0 ? Math.round((totalFat / metaFat) * 100) : 0;
-    const tetoAds    = (Number(cockpit?.adsLimites?.teto) || 0) * totalAtiv;
-    const ranking    = useMemo(() => [...polosCk].sort((a, b) => (Number(b.pct) || 0) - (Number(a.pct) || 0)), [polosCk]);
     const corPoloCk  = useMemo(() => montarCorDoPolo(polosCk), [polosCk]);
     const statusDist = cockpit?.statusDist ?? null;
     const totalStatus = Number(statusDist?.total) || 0;
@@ -364,6 +416,11 @@ export default function ModoTV({
         try { window.sessionStorage.setItem('polos-painel-tv-tela', telaAtiva); } catch (_) { /* quota/priv */ }
     }, [telaAtiva]);
 
+    // Métrica do gráfico de polos. Mora aqui, e não dentro do FatVsMetaChart, porque na
+    // parede o toggle vive no cabeçalho do card — assim o canvas fica sozinho na faixa e
+    // a altura medida é dele, não dele mais um cabeçalho.
+    const [modoFat, setModoFat] = useState('faturamento');
+
     const proxima  = useCallback(() => setTela(telas[(idx + 1) % telas.length]), [telas, idx]);
     const anterior = useCallback(() => setTela(telas[(idx - 1 + telas.length) % telas.length]), [telas, idx]);
 
@@ -377,13 +434,20 @@ export default function ModoTV({
         return () => window.removeEventListener('keydown', onKey);
     }, [proxima, anterior, onSair]);
 
-    // Altura real da caixa do donut (canvas precisa de px resolvido) e quantos itens
-    // cabem em cada lista sem clipar.
-    const [refDonut, alturaDonut] = useAlturaMedida();
+    // Altura real das caixas de canvas — donut e gráfico de barras só desenham com px
+    // resolvido. Medir para DIMENSIONAR canvas é legítimo; o que nunca se decide por
+    // medição é QUANTOS itens aparecem (foi isso que já escondeu polo na parede).
+    const [refDonut, alturaDonut]     = useAlturaMedida();
+    const [refGrafico, alturaGrafico] = useAlturaMedida();
+    const larguraJanela               = useLarguraJanela();
+    // Teto de fonte do gráfico pela altura da FILEIRA: com muitos polos a tipografia de
+    // parede se sobreporia. O piso de 11px existe para o nome nunca sumir — com
+    // interval:0 o ECharts desenha todos, e nome apertado é melhor que polo anônimo.
+    const tetoFonteGrafico = alturaGrafico > 0 && polosCk.length > 0
+        ? Math.max(11, Math.floor((alturaGrafico / polosCk.length) * 0.42))
+        : 999;
     const gradePolos  = gradeExplicita(porPolo.length);
-    const gradeRank   = gradeExplicita(ranking.length);
     const escalaPolos = escalaPorContagem(gradePolos.linhas);
-    const escalaRank  = escalaPorContagem(ranking.length);   // auto-fit decide as colunas: escala pelo pior caso
 
     const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const horaAtualizacao = atualizadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -497,37 +561,41 @@ export default function ModoTV({
                         </div>
                     </div>
                 ) : (
-                    /* ── FATURAMENTO = distribuição de status (gráfico) + faturamento + ranking ── */
-                    <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] gap-[16px]">
-                        {/* Faixa A — faturamento × meta + ADS */}
-                        <div className="grid grid-cols-1 gap-[20px] md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
-                            <Heroi
-                                rotulo="Faturamento do mês"
-                                valor={formatCurrencyCompact(totalFat)}
-                                apoio={metaFat > 0 ? `meta ${formatCurrencyCompact(metaFat)} · ${pctFat}%` : null}
-                                pct={metaFat > 0 ? Math.min(100, pctFat) : null}
-                                cor={pctFat >= 100 ? HEX.green : HEX.yellow}
-                            />
-                            <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-4">
-                                <Kpi rotulo="Ativas" valor={fmtInt(totalAtiv)} apoio="M2–M4" />
-                                <Kpi rotulo="Média" valor={formatCurrencyCompact(totalAtiv > 0 ? totalFat / totalAtiv : 0)} apoio="por empresa" />
-                                <Kpi rotulo="ADS gasto" valor={formatCurrencyCompact(totalAds)} cor={HEX.sky}
-                                     apoio={tetoAds > 0 ? `${pct(totalAds, tetoAds)}% do teto` : null} />
-                                <Kpi rotulo="ADS saldo" valor={formatCurrencyCompact(Math.max(0, tetoAds - totalAds))} apoio="teto × ativas" />
-                            </div>
+                    /* ── FATURAMENTO = dois números de comando + faturamento × meta por polo
+                       + distribuição de status (o anel) ocupando a coluna direita inteira.
+                       Colunas e fileiras vão em `style`, nunca em `lg:`/`xl:`: a TV roda a
+                       960×600 CSS px (zoom do aparelho) e esses breakpoints NÃO disparam
+                       lá — foi o que empilhou o donut em 110px de diâmetro. */
+                    <div className="grid h-full gap-[16px]"
+                         style={{ gridTemplateColumns: 'minmax(0, 1.45fr) minmax(0, 1fr)', gridTemplateRows: 'auto minmax(0, 1fr)' }}>
+                        {/* Faixa A — os dois números que a parede responde de longe */}
+                        <div className="grid gap-[16px]"
+                             style={{ gridColumn: 1, gridRow: 1, gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 1fr)' }}>
+                            {/* O mês e o "parcial" já estão no cabeçalho: a linha de apoio deste
+                                card rende mais carregando a META, que sumiria da tela junto com
+                                a barra do herói antigo. */}
+                            <CardTV titulo="Faturamento total" icone={Wallet}
+                                    cor={metaFat > 0 && pctFat >= 100 ? HEX.green : HEX.yellow}
+                                    valor={formatCurrency(totalFat)}
+                                    sublabel={metaFat > 0
+                                        ? `meta ${formatCurrencyCompact(metaFat)} · ${pctFat}%`
+                                        : `${mesRefFat} · ${parcial ? 'parcial' : 'fechado'}`} />
+                            <CardTV titulo="Empresas ativas" icone={Building2}
+                                    valor={fmtInt(totalAtiv)}
+                                    sublabel={`${polosCk.length} ${polosCk.length === 1 ? 'polo' : 'polos'}`} />
                         </div>
 
-                        {/* Faixa B — o gráfico de status como protagonista + ranking ao lado */}
-                        <div className="grid min-h-0 grid-cols-1 gap-[24px] md:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-                            <div className="flex min-h-0 flex-col rounded-2xl border border-white/[0.1] bg-white/[0.03] px-[20px] py-[14px]">
-                                <Titulo extra={totalStatus > 0 ? `${totalStatus} empresas` : null}>Distribuição de status</Titulo>
-                                {totalStatus === 0 ? (
-                                    /* cockpitVazio devolve statusDist zerado: sem isto o card ficaria
-                                       um retângulo mudo na parede, sem dizer que não há dado. */
-                                    <p className="m-auto text-white/35" style={{ fontSize: FT.barraNome }}>Sem empresas na meta neste mês</p>
-                                ) : (
-                                <div className="grid min-h-0 flex-1 grid-cols-1 items-center gap-[16px] xl:grid-cols-[minmax(0,1fr)_auto] xl:gap-[20px]">
-                                    <div ref={refDonut} className="h-full min-h-0">
+                        {/* Distribuição de status — coluna inteira à direita, o anel protagonista */}
+                        <div className="flex min-h-0 flex-col rounded-2xl border border-emerald-500/30 bg-white/[0.03] px-[20px] py-[14px]"
+                             style={{ gridColumn: 2, gridRow: '1 / span 2' }}>
+                            <Titulo extra={totalStatus > 0 ? `${totalStatus} empresas` : null}>Distribuição de status</Titulo>
+                            {totalStatus === 0 ? (
+                                /* cockpitVazio devolve statusDist zerado: sem isto o card ficaria
+                                   um retângulo mudo na parede, sem dizer que não há dado. */
+                                <p className="m-auto text-white/35" style={{ fontSize: FT.barraNome }}>Sem empresas na meta neste mês</p>
+                            ) : (
+                                <>
+                                    <div ref={refDonut} className="min-h-0 flex-1">
                                         {statusDist && alturaDonut > 120 ? (
                                             <StatusDonut
                                                 statusDist={statusDist}
@@ -545,38 +613,70 @@ export default function ModoTV({
                                             statusDist && <div className="py-[8px]"><StatusDonut statusDist={statusDist} compacto /></div>
                                         )}
                                     </div>
-                                    {/* Legenda grande: a cor sozinha não se lê de longe — vai número junto */}
-                                    <div className="grid shrink-0 grid-cols-2 gap-x-[16px] gap-y-[8px] xl:grid-cols-1 xl:gap-y-[10px]">
+                                    {/* 2×2 fixo, não uma fileira de 4: em 4 colunas o rótulo
+                                        "Em progresso" quebraria dentro de ~70px de largura. */}
+                                    <div className="mt-[12px] grid shrink-0 grid-cols-2 gap-x-[16px] gap-y-[12px]">
                                         {STATUS_ORDEM.map((k) => (
-                                            <div key={k} className="flex items-baseline gap-[10px] whitespace-nowrap leading-none">
-                                                <span className="inline-block shrink-0 rounded-full"
-                                                      style={{ width: '0.7em', height: '0.7em', background: STATUS_META[k].cor, fontSize: FT.kpiSec }} />
-                                                <b className="font-display font-extrabold tabular-nums"
-                                                   style={{ fontSize: FT.kpiSec, color: STATUS_META[k].cor }}>{fmtInt(statusDist?.[k] ?? 0)}</b>
-                                                <span className="text-white/45" style={{ fontSize: FT.rotulo }}>
-                                                    {STATUS_META[k].label} · {pct(statusDist?.[k] ?? 0, totalStatus)}%
-                                                </span>
+                                            <div key={k} className="min-w-0">
+                                                <div className="font-display font-extrabold leading-none tabular-nums"
+                                                     style={{ fontSize: FT.kpi, color: STATUS_META[k].cor }}>
+                                                    {fmtInt(statusDist?.[k] ?? 0)}
+                                                </div>
+                                                <div className="mt-[6px] truncate uppercase leading-[1.2] tracking-[0.1em] text-white/45"
+                                                     style={{ fontSize: FT.rotulo }}>{STATUS_META[k].label}</div>
+                                                <div className="mt-[4px] leading-none tabular-nums text-white/35"
+                                                     style={{ fontSize: FT.rotulo }}>{pct(statusDist?.[k] ?? 0, totalStatus)}%</div>
                                             </div>
                                         ))}
                                     </div>
-                                </div>
-                                )}
-                            </div>
+                                </>
+                            )}
+                        </div>
 
-                            <div className="flex min-h-0 flex-col">
-                                <Titulo extra="% da meta · faturamento">Ranking de polos</Titulo>
-                                {/* content-evenly, não content-start: com 10-12 polos o ranking é mais
-                                    baixo que o donut ao lado, e o vão sobrava todo no rodapé. */}
-                                <div className="grid min-h-0 flex-1 gap-x-[28px] gap-y-[10px] overflow-hidden"
-                                     style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gridAutoRows: 'minmax(0, 1fr)' }}>
-                                    {ranking.map((p) => (
-                                        <LinhaPolo key={p.polo} nome={p.polo} valor={`${Math.round(Number(p.pct) || 0)}%`}
-                                                   apoio={formatCurrencyCompact(p.faturamento)}
-                                                   pct={Number(p.pct) || 0}
-                                                   cor={(Number(p.pct) || 0) >= 100 ? HEX.green : (corPoloCk[p.polo] ?? HEX.yellow)}
-                                                   escala={escalaRank} />
-                                    ))}
-                                </div>
+                        {/* Faixa B — faturamento × meta POR POLO. Substitui a lista de
+                            ranking: a barra já ordena por % da meta e ainda mostra, no
+                            trilho descoberto, o quanto falta — coisa que a lista não dizia. */}
+                        <div className="flex min-h-0 flex-col rounded-2xl border border-white/[0.1] bg-white/[0.03] px-[20px] py-[14px]"
+                             style={{ gridColumn: 1, gridRow: 2 }}>
+                            <div className="flex shrink-0 items-baseline justify-between gap-[12px]">
+                                <h2 className="uppercase leading-none tracking-[0.14em] text-white/45" style={{ fontSize: FT.rotulo }}>Faturamento vs meta</h2>
+                                <span className="truncate leading-[1.2] text-white/30" style={{ fontSize: FT.rotulo }}>
+                                    {origemFaturamento(cockpit?.fonteFaturamento, parcial)}
+                                </span>
+                            </div>
+                            {/* Toggle no cabeçalho do CARD, não dentro do gráfico: assim o canvas
+                                fica sozinho na faixa e a altura medida é só dele. */}
+                            <div className="mt-[10px] flex shrink-0 items-center gap-[8px]">
+                                {[
+                                    { key: 'faturamento', label: 'Faturamento' },
+                                    { key: 'cobertura',   label: 'Cobertura da meta' },
+                                ].map((t) => (
+                                    <button key={t.key} type="button" onClick={() => setModoFat(t.key)}
+                                            className={cn('rounded-lg px-[12px] py-[5px] uppercase leading-none tracking-[0.12em] transition-colors',
+                                                modoFat === t.key ? 'bg-ecf-yellow font-semibold text-black' : 'border border-white/[0.1] text-white/40 hover:text-white/70')}
+                                            style={{ fontSize: FT.rotulo }}>
+                                        {t.label}
+                                    </button>
+                                ))}
+                            </div>
+                            {/* Medir a caixa aqui é legítimo — canvas precisa de px resolvido.
+                                O que NÃO se decide por medição é quantos polos aparecem: a
+                                lista vai inteira para o ECharts, que divide a altura entre
+                                todos. Nenhum polo some porque a faixa ficou baixa. */}
+                            <div ref={refGrafico} className="mt-[10px] min-h-0 flex-1">
+                                {alturaGrafico > 80 && (
+                                    <FatVsMetaChart
+                                        polos={polosCk}
+                                        corDoPolo={corPoloCk}
+                                        parede
+                                        modo={modoFat}
+                                        altura={alturaGrafico}
+                                        fonteCategoria={Math.min(clampPx(14, 1.75, 34, larguraJanela), tetoFonteGrafico)}
+                                        fonteEixo={clampPx(11, 1.1, 21, larguraJanela)}
+                                        fonteValor={Math.min(clampPx(14, 1.6, 31, larguraJanela), tetoFonteGrafico)}
+                                        interativo={false}
+                                    />
+                                )}
                             </div>
                         </div>
                     </div>

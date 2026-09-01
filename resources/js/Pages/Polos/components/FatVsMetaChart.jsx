@@ -22,6 +22,16 @@ const COR_RESTANTE = '#2a2d36';   // faltante p/ meta (mesmo cinza do DonutCard 
 const ALTURA_LINHA = 38;          // px por polo
 
 /**
+ * Frase de origem do número. Exportada porque o Modo TV mostra o MESMO rótulo no
+ * cabeçalho do card (lá o gráfico é controlado e não desenha cabeçalho próprio) —
+ * duplicar a string faria as duas telas divergirem na primeira troca de fonte.
+ */
+export function origemFaturamento(fonteFaturamento, parcial) {
+    if (fonteFaturamento === 'csv') return 'fonte: TGMV oficial (CSV)';
+    return parcial ? 'valores parciais — Adman ao vivo' : 'fonte: Adman';
+}
+
+/**
  * FatVsMetaChart — gráfico focal de "Faturamento vs Meta por polo".
  *
  * Dois modos (toggle interno):
@@ -35,9 +45,38 @@ const ALTURA_LINHA = 38;          // px por polo
  *   corDoPolo        : mapa polo → cor (POLO_PALETTE)
  *   fonteFaturamento : 'adman' | 'csv' (subtítulo de origem)
  *   parcial          : mês corrente parcial?
+ *
+ * Props de PAREDE (Modo TV) — todos os defaults reproduzem o visual de tela, então o
+ * call-site do Painel não muda de aparência:
+ *   parede         : contraste de parede no nome do polo (lido a 4-5 m, não a 60 cm)
+ *   modo           : 'faturamento' | 'cobertura' CONTROLADO. Com ele o cabeçalho interno
+ *                    (toggle + origem) não é renderizado — na parede o toggle mora no
+ *                    cabeçalho do card, e o gráfico recebe a altura inteira da faixa.
+ *   altura         : altura do canvas em px JÁ RESOLVIDOS. Sem isto ela sai da contagem
+ *                    de polos e a caixa rola — e canvas não aceita % que chega como 0 no
+ *                    primeiro layout do fullscreen.
+ *   fonteCategoria : px do nome do polo no eixo Y
+ *   fonteEixo      : px da escala de valores no eixo X
+ *   fonteValor     : px do rótulo no fim da barra; null = sem rótulo, que é o visual de
+ *                    tela (lá o valor vive no tooltip — e a parede não tem mouse)
+ *   interativo     : false desliga tooltip e realce de barra
  */
-export default function FatVsMetaChart({ polos = [], corDoPolo = {}, fonteFaturamento = null, parcial = false }) {
-    const [modo, setModo] = useState('faturamento');   // 'faturamento' | 'cobertura'
+export default function FatVsMetaChart({
+    polos = [],
+    corDoPolo = {},
+    fonteFaturamento = null,
+    parcial = false,
+    parede = false,
+    modo = null,
+    altura = null,
+    fonteCategoria = 11,
+    fonteEixo = 10,
+    fonteValor = null,
+    interativo = true,
+}) {
+    // `modo` controlado vence o estado local: quem controla (a parede) some com o toggle.
+    const [modoLocal, setModoLocal] = useState('faturamento');
+    const modoAtivo = modo ?? modoLocal;
 
     // Maior % no topo (inverse no eixo de categorias coloca o 1º item em cima)
     const ord = useMemo(
@@ -48,7 +87,7 @@ export default function FatVsMetaChart({ polos = [], corDoPolo = {}, fonteFatura
     const option = useMemo(() => {
         const nomes = ord.map((p) => p.polo);
 
-        const baseTooltip = {
+        const baseTooltip = interativo ? {
             trigger: 'axis',
             axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(255,255,255,0.04)' } },
             backgroundColor: 'rgba(15,17,22,0.95)',
@@ -70,19 +109,34 @@ export default function FatVsMetaChart({ polos = [], corDoPolo = {}, fonteFatura
                     gapLinha,
                 ].join('<br/>');
             },
-        };
+        } : { show: false };
 
-        const baseGrid = { left: 8, right: 26, top: 6, bottom: 4, containLabel: true };
+        // Com rótulo no fim da barra a margem direita deixa de ser decorativa: é ali que o
+        // número é desenhado, e containLabel só reserva espaço para rótulo de EIXO.
+        const baseGrid = { left: 8, right: fonteValor ? 60 : 26, top: 6, bottom: 4, containLabel: true };
         const baseYAxis = {
             type: 'category',
             data: nomes,
             inverse: true,
             axisTick: { show: false },
             axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
-            axisLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11 },
+            axisLabel: {
+                color: parede ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.7)',
+                fontSize: fonteCategoria,
+                fontWeight: parede ? 600 : 'normal',
+                // O default 'auto' OMITE rótulo que se sobrepõe — na parede isso é corte
+                // de dado calado: a barra do polo fica lá, sem nome. Quem se ajusta é a
+                // fonte (o call-site dá o teto pela altura da fileira), nunca a contagem.
+                ...(parede ? { interval: 0 } : {}),
+            },
+        };
+        const baseSerie = {
+            barWidth: '58%',
+            emphasis: interativo ? undefined : { disabled: true },
+            silent: !interativo,
         };
 
-        if (modo === 'cobertura') {
+        if (modoAtivo === 'cobertura') {
             const atingido = ord.map((p) => Math.min(Math.max(p.pct ?? 0, 0), 100));
             const restante = atingido.map((v) => Math.max(100 - v, 0));
             return {
@@ -91,14 +145,15 @@ export default function FatVsMetaChart({ polos = [], corDoPolo = {}, fonteFatura
                 grid: baseGrid,
                 xAxis: {
                     type: 'value', max: 100,
-                    axisLabel: { formatter: '{value}%', color: 'rgba(255,255,255,0.4)', fontSize: 10 },
+                    axisLabel: { formatter: '{value}%', color: 'rgba(255,255,255,0.4)', fontSize: fonteEixo },
                     splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
                     axisLine: { show: false },
                 },
                 yAxis: baseYAxis,
                 series: [
                     {
-                        name: 'Atingido', type: 'bar', stack: 'cob', barWidth: '58%',
+                        ...baseSerie,
+                        name: 'Atingido', type: 'bar', stack: 'cob',
                         data: ord.map((p) => ({
                             value: Math.min(Math.max(p.pct ?? 0, 0), 100),
                             itemStyle: {
@@ -108,13 +163,28 @@ export default function FatVsMetaChart({ polos = [], corDoPolo = {}, fonteFatura
                         })),
                     },
                     {
-                        name: 'Restante', type: 'bar', stack: 'cob', barWidth: '58%',
-                        data: restante,
+                        ...baseSerie,
+                        name: 'Restante', type: 'bar', stack: 'cob',
+                        // O rótulo do % vai na ponta do RESTANTE (x = 100), não na do
+                        // atingido: assim os números saem numa coluna alinhada em vez de
+                        // escadinha, e um polo em 8% não perde o número dentro da barra.
+                        data: restante.map((v, i) => ({
+                            value: v,
+                            label: fonteValor ? { color: STATUS_META[ord[i].status]?.cor ?? '#ffe600' } : undefined,
+                        })),
                         itemStyle: { color: COR_RESTANTE, borderRadius: [0, 4, 4, 0] },
+                        label: fonteValor ? {
+                            show: true, position: 'right', distance: 10,
+                            fontSize: fonteValor, fontWeight: 800,
+                            formatter: (p) => `${Math.round(ord[p.dataIndex]?.pct ?? 0)}%`,
+                        } : { show: false },
                         markLine: {
                             symbol: 'none', silent: true,
                             lineStyle: { type: 'dashed', color: '#ffe600', width: 1.5, opacity: 0.7 },
-                            label: { formatter: 'Meta', color: '#ffe600', fontSize: 10, position: 'end' },
+                            // Na parede o rótulo "Meta" cairia em cima do % de quem bate 100%.
+                            label: fonteValor
+                                ? { show: false }
+                                : { formatter: 'Meta', color: '#ffe600', fontSize: 10, position: 'end' },
                             data: [{ xAxis: 100 }],
                         },
                     },
@@ -131,8 +201,10 @@ export default function FatVsMetaChart({ polos = [], corDoPolo = {}, fonteFatura
             tooltip: baseTooltip,
             grid: baseGrid,
             xAxis: {
-                type: 'value', max: maxVal * 1.04,
-                axisLabel: { formatter: fmtCompacto, color: 'rgba(255,255,255,0.4)', fontSize: 10 },
+                // Folga extra à direita quando há rótulo: sem ela o número da maior barra
+                // (justamente a que interessa) sai desenhado meio fora do canvas.
+                type: 'value', max: maxVal * (fonteValor ? 1.12 : 1.04),
+                axisLabel: { formatter: fmtCompacto, color: 'rgba(255,255,255,0.4)', fontSize: fonteEixo },
                 splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
                 axisLine: { show: false },
             },
@@ -140,13 +212,15 @@ export default function FatVsMetaChart({ polos = [], corDoPolo = {}, fonteFatura
             series: [
                 // Trilho da meta (faint) — o que sobra do trilho é o gap p/ a meta
                 {
-                    name: 'Meta', type: 'bar', barWidth: '58%', barGap: '-100%', z: 1, silent: true,
+                    ...baseSerie,
+                    name: 'Meta', type: 'bar', barGap: '-100%', z: 1, silent: true,
                     data: ord.map((p) => p.meta ?? 0),
                     itemStyle: { color: 'rgba(255,255,255,0.05)', borderRadius: [0, 6, 6, 0] },
                 },
                 // Faturamento sobre o trilho (gradiente na cor do polo)
                 {
-                    name: 'Faturamento', type: 'bar', barWidth: '58%', barGap: '-100%', z: 2,
+                    ...baseSerie,
+                    name: 'Faturamento', type: 'bar', barGap: '-100%', z: 2,
                     data: ord.map((p) => {
                         const cor = corDoPolo[p.polo] ?? '#ffe600';
                         return {
@@ -158,54 +232,61 @@ export default function FatVsMetaChart({ polos = [], corDoPolo = {}, fonteFatura
                                     { offset: 1, color: cor },
                                 ]),
                             },
+                            label: fonteValor ? { color: cor } : undefined,
                         };
                     }),
+                    label: fonteValor ? {
+                        show: true, position: 'right', distance: 10,
+                        fontSize: fonteValor, fontWeight: 800,
+                        formatter: (p) => fmtCompacto(p.value),
+                    } : { show: false },
                 },
             ],
             animationEasing: 'cubicOut',
             animationDuration: 600,
         };
-    }, [ord, corDoPolo, modo]);
+    }, [ord, corDoPolo, modoAtivo, parede, fonteCategoria, fonteEixo, fonteValor, interativo]);
 
-    const alturaChart = Math.max(260, ord.length * ALTURA_LINHA);
+    // Na parede a altura vem MEDIDA de fora (a faixa é fixa e todos os polos cabem nela);
+    // na tela ela cresce com a lista e a caixa rola.
+    const alturaChart = altura ?? Math.max(260, ord.length * ALTURA_LINHA);
 
-    const origem = fonteFaturamento === 'csv'
-        ? 'fonte: TGMV oficial (CSV)'
-        : parcial
-            ? 'valores parciais — Adman ao vivo'
-            : 'fonte: Adman';
+    const origem = origemFaturamento(fonteFaturamento, parcial);
 
     return (
-        <div>
-            {/* Toggle de métrica + origem */}
-            <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="inline-flex rounded-lg border border-white/[0.08] bg-white/[0.02] p-0.5">
-                    {[
-                        { key: 'faturamento', label: 'Faturamento' },
-                        { key: 'cobertura',   label: 'Cobertura da meta' },
-                    ].map((t) => (
-                        <button
-                            key={t.key}
-                            type="button"
-                            onClick={() => setModo(t.key)}
-                            className={cn(
-                                'rounded-md px-3 py-1 text-xs font-semibold transition-colors',
-                                modo === t.key ? 'bg-ecf-yellow text-black' : 'text-white/55 hover:text-white/80',
-                            )}
-                        >
-                            {t.label}
-                        </button>
-                    ))}
+        <div className={cn(modo && 'flex h-full min-h-0 flex-col')}>
+            {/* Toggle de métrica + origem — só no modo NÃO controlado (tela) */}
+            {!modo && (
+                <div className="mb-4 flex items-center justify-between gap-3">
+                    <div className="inline-flex rounded-lg border border-white/[0.08] bg-white/[0.02] p-0.5">
+                        {[
+                            { key: 'faturamento', label: 'Faturamento' },
+                            { key: 'cobertura',   label: 'Cobertura da meta' },
+                        ].map((t) => (
+                            <button
+                                key={t.key}
+                                type="button"
+                                onClick={() => setModoLocal(t.key)}
+                                className={cn(
+                                    'rounded-md px-3 py-1 text-xs font-semibold transition-colors',
+                                    modoAtivo === t.key ? 'bg-ecf-yellow text-black' : 'text-white/55 hover:text-white/80',
+                                )}
+                            >
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
+                    <span className="text-white/30 text-[11px]">{origem}</span>
                 </div>
-                <span className="text-white/30 text-[11px]">{origem}</span>
-            </div>
+            )}
 
             {ord.length === 0 ? (
-                <div className="flex items-center justify-center text-white/35 text-sm" style={{ height: 280 }}>
+                <div className="flex flex-1 items-center justify-center text-white/35"
+                     style={{ height: altura ?? 280, fontSize: parede ? fonteCategoria : 14 }}>
                     Sem faturamento no mês selecionado
                 </div>
             ) : (
-                <div className="max-h-[600px] overflow-y-auto pr-1">
+                <div className={cn(altura ? 'min-h-0 flex-1' : 'max-h-[600px] overflow-y-auto pr-1')}>
                     <ReactEChartsCore
                         echarts={echarts}
                         option={option}
