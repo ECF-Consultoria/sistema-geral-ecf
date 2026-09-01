@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v23.0
-milestone_name: — Fluxo de Entrada de Novas Empresas
+milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 137-01-PLAN.md
-last_updated: "2026-09-01T19:06:50.020Z"
-last_activity: 2026-09-01 -- Phase 137 Plan 01 concluído (commits `96e62ed9`, `4429af7e`, `a7b7c272`)
+stopped_at: Completed 137-02-PLAN.md
+last_updated: "2026-09-01T19:18:39.669Z"
+last_activity: 2026-09-01 -- Phase 137 Plan 02 concluído (commits `8fbc3589`, `d9f1472d`, `6bb67ef6`, `5a32332d`)
 progress:
-  total_phases: 73
-  completed_phases: 56
-  total_plans: 287
-  completed_plans: 270
-  percent: 77
+  total_phases: 7
+  completed_phases: 0
+  total_plans: 7
+  completed_plans: 2
+  percent: 29
 ---
 
 # Project State
@@ -33,10 +33,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — EXECUTING
-Plan: 2 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
-em `137-BASELINE-TESTES.md`); 137-02 (migration `companies.etapa`) é o próximo
+Plan: 3 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
+no model `Company`, ETAPA-01 fechado); 137-03 (serviço único de transição + histórico) é o próximo
 Status: Ready to execute
-Last activity: 2026-09-01 -- Phase 137 Plan 01 concluído (commits `96e62ed9`, `4429af7e`, `a7b7c272`)
+Last activity: 2026-09-01 -- Phase 137 Plan 02 concluído (commits `8fbc3589`, `d9f1472d`, `6bb67ef6`, `5a32332d`)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
@@ -603,6 +604,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 133 P02 | ~40min | 3 tasks | 3 files |
 | Phase 133 P03 | ~30min | 2 tasks | 3 files |
 | Phase 137 P01 | 40min | 2 tasks | 1 files |
+| Phase 137 P02 | 25min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1367,8 +1369,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-09-01T19:06:49.988Z
-Stopped at: Completed 137-01-PLAN.md
+Last session: 2026-09-01T19:18:39.629Z
+Stopped at: Completed 137-02-PLAN.md
 Last session: 2026-08-18T21:34:08.162Z
 Stopped at: Completed 133-03-PLAN.md
 Last session: 2026-08-10T21:59:33.127Z
