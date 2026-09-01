@@ -17,6 +17,54 @@ class Company extends Model
 {
     use HasFactory, LogsActivity;
 
+    // ─── Fase 137 (plano 02, D-01) — os 9 status da máquina de estados do
+    // fluxo de entrada de novas empresas (§10 do PDF v23.0). Primeiro grupo
+    // de constantes de domínio deste model — não copiar padrão de outro
+    // model, este é o precedente. As Fases 138-143 consomem estas mesmas
+    // constantes; não redeclarar os valores em outro lugar.
+    //
+    // O valor da etapa 9 é DELIBERADAMENTE igual à chave `em_operacao` que
+    // `CompanyController` já expõe hoje (payload calculado, linha ~227) — a
+    // Fase 142 troca a FONTE (derivado → esta coluna) sem trocar o NOME, o
+    // que evita quebrar quem já lê `em_operacao` no front.
+    public const ETAPA_AGUARDANDO_ADMINISTRATIVO = 'aguardando_administrativo';
+    public const ETAPA_ADMINISTRATIVO_ANDAMENTO  = 'administrativo_andamento';
+    public const ETAPA_AGUARDANDO_ASSINATURA     = 'aguardando_assinatura';
+    public const ETAPA_ADMINISTRATIVO_CONCLUIDO  = 'administrativo_concluido';
+    public const ETAPA_AGUARDANDO_DISTRIBUICAO   = 'aguardando_distribuicao';
+    public const ETAPA_AGUARDANDO_ONBOARDING     = 'aguardando_onboarding';
+    public const ETAPA_ONBOARDING_ANDAMENTO      = 'onboarding_andamento';
+    public const ETAPA_ONBOARDING_CONCLUIDO      = 'onboarding_concluido';
+    public const ETAPA_EM_OPERACAO               = 'em_operacao';
+
+    /**
+     * Ordem canônica do §10 — índice 0 = etapa 1, índice 8 = etapa 9. Fonte
+     * única das opções de filtro (Fase 137-07) e da tabela de transições
+     * permitidas do serviço único (Fase 137-03, D-12/D-14).
+     */
+    public const ETAPAS = [
+        self::ETAPA_AGUARDANDO_ADMINISTRATIVO,
+        self::ETAPA_ADMINISTRATIVO_ANDAMENTO,
+        self::ETAPA_AGUARDANDO_ASSINATURA,
+        self::ETAPA_ADMINISTRATIVO_CONCLUIDO,
+        self::ETAPA_AGUARDANDO_DISTRIBUICAO,
+        self::ETAPA_AGUARDANDO_ONBOARDING,
+        self::ETAPA_ONBOARDING_ANDAMENTO,
+        self::ETAPA_ONBOARDING_CONCLUIDO,
+        self::ETAPA_EM_OPERACAO,
+    ];
+
+    // ─── `status` × `etapa` (Fase 137, D-02) — duas colunas de nome
+    // parecido, propósitos diferentes. Sem esta nota a próxima sessão
+    // escolhe a coluna errada:
+    // - `status`: contrato ativo/inativo, string livre, escrita por
+    //   `ComercialController`. NÃO é etapa do fluxo de entrada. Medido na
+    //   base local: 128 `ativo` / 52 `pendente` — o `pendente` vem de
+    //   `ComercialController.php:594`, não de contrato inativo.
+    // - `etapa`: etapa do fluxo de entrada (§10 do PDF v23.0, Fase 137),
+    //   escrita SÓ pelo serviço de transição (`EtapaTransicaoService`,
+    //   Fase 137-03/D-12) — nunca via controller/update em massa.
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
@@ -35,6 +83,13 @@ class Company extends Model
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
         'cust_id_status', 'marketplace',
         'segment', 'active', 'status', 'notes', 'email_cliente', 'telefone',
+        // Fase 137 (plano 02, ETAPA-01) — precisa estar em $fillable para o
+        // `EtapaTransicaoService` (Fase 137-03) gravar via Eloquent. A ÚNICA
+        // classe autorizada a gravar este campo é aquele serviço (D-12) —
+        // estar aqui é a superfície de mass assignment que o teste de
+        // regressão do plano 137-06 fecha (nenhum controller pode gravar
+        // `etapa` por update em massa).
+        'etapa',
         // Quick 260819-guy — razão social (nome jurídico, distinto de `name`
         // que é o nome fantasia) e endereço, completados pelo Administrativo
         // na tela de contrato (ADM-01). Alimentam variáveis do modelo `.docx`
