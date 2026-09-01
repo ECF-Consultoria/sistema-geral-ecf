@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 137-05-PLAN.md
-last_updated: "2026-09-01T19:55:00Z"
-last_activity: 2026-09-01 -- Phase 137 Plan 05 concluído (commits `5acda646`, `af2fc7ed`, `76800cc0`)
+stopped_at: Completed 137-06-PLAN.md
+last_updated: "2026-09-01T20:05:00Z"
+last_activity: 2026-09-01 -- Phase 137 Plan 06 concluído (commits `8c7c0482`, `1676b65a`, `2b9ce803`)
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 7
-  completed_plans: 5
-  percent: 71
+  completed_plans: 6
+  percent: 86
 ---
 
 # Project State
@@ -33,7 +33,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — EXECUTING
-Plan: 6 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+Plan: 7 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
 em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
 no model `Company`, ETAPA-01 fechado); 137-03 concluído (`EtapaTransicaoService` — único ponto de
 escrita de `companies.etapa`, tabela `company_etapa_transicoes` de histórico append-only, ETAPA-03
@@ -44,10 +44,18 @@ por teste que marcar/desmarcar pendência nunca move `etapa`); 137-05 concluído
 `etapa:backfill` em dois baldes — D-04 — dry-run por padrão, ETAPA-02 fechado; executado DE
 VERDADE contra o MariaDB local: 180 empresas, 1 no balde 1 (`em_operacao`), 179 em `NULL`,
 conferido por reconsulta SQL direta em `137-BACKFILL-CONTAGENS.md`; payload de `GET /companies`
-provado idêntico antes/depois por teste — Success Criteria nº 1 preservado); 137-06 (fecha a
-superfície de escrita — varredura estática de `app/`) é o próximo
+provado idêntico antes/depois por teste — Success Criteria nº 1 preservado); 137-06 concluído
+(`EtapaPontoUnicoTest` — `PUT /companies/{company}` provado incapaz de mover `etapa`/`pendencia_*`
+por mass assignment, T-137-01/T-137-14 fechados; varredura estática de `app/` escopada por corpo
+de função — não por linha nem arquivo inteiro — provada ativa por injeção temporária de violação;
+aviso-guarda deixado em `CompanyController::update()`; Success Criteria nº 2 da fase fechado.
+Deviation Rule 1: o padrão cru `'etapa' =>` do plano falso-positivava contra ~10 usos legítimos de
+`OnboardingPasso::etapa`, coluna homônima sem relação com `companies.etapa` — redesenhado para
+escopo por corpo de função, ver `137-06-SUMMARY.md`); 137-07 (filtro server-side de etapa na
+listagem `/companies`, ETAPA-05, autonomous: false — checkpoint humano) é o próximo e ÚLTIMO plano
+da fase
 Status: Ready to execute
-Last activity: 2026-09-01 -- Phase 137 Plan 05 concluído (commits `5acda646`, `af2fc7ed`, `76800cc0`)
+Last activity: 2026-09-01 -- Phase 137 Plan 06 concluído (commits `8c7c0482`, `1676b65a`, `2b9ce803`)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
@@ -1379,6 +1387,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-01T20:05:00Z
+Stopped at: Completed 137-06-PLAN.md
 Last session: 2026-09-01T19:55:00Z
 Stopped at: Completed 137-05-PLAN.md
 Last session: 2026-09-01T19:37:49Z
@@ -1484,3 +1494,5 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 137]: 137-05: `etapa:backfill` sem `--limite`/`--servico` (diferente do molde `OnboardingBackfillContratos`) — os dois baldes de D-04 não admitem execução parcial, um filtro parcial criaria a chance de deixar metade da base carimbada
 - [Phase 137]: 137-05: amostra do dry-run limitada a 20 linhas na tabela impressa, com aviso quando o balde 1 for maior — evita estourar o terminal quando produção tiver ~500 empresas
 - [Phase 137]: 137-05: backfill executado DE VERDADE contra o MariaDB local (não só documentado) — 180 empresas, 1 no balde 1 (id 55, `em_operacao`), 179 em `NULL`; contagens em `137-BACKFILL-CONTAGENS.md` vieram de `DB::table(...)` num tinker separado da execução do comando (D-08), nunca do stdout do próprio `etapa:backfill`
+- [Phase 137]: 137-06 (Rule 1 — bug no desenho do plano): o padrão de varredura estática descrito literalmente no plano (`'etapa' =>` cru em qualquer `.php` de `app/`, exceto 3 arquivos nomeados) falso-positiva contra ~10 usos legítimos de `OnboardingPasso::etapa` — coluna homônima, sem relação com `companies.etapa`, em 5 arquivos de `app/Console/Commands` e `app/Services/Onboarding` e `app/Http/Controllers/OnboardingController.php`; implementado ao pé da letra o teste nasceria vermelho no repositório atual, contradizendo o próprio acceptance criteria do plano. Redesenhado para escopo por CORPO DE FUNÇÃO (via `token_get_all()` + balanceamento de chaves): `'etapa' =>` só conta como violação quando o mesmo corpo também contém uma chamada de escrita reconhecida no model `Company`; `$company->etapa =` continua sinalizando sozinho. Ver `137-06-SUMMARY.md`
+- [Phase 137]: 137-06: gate estático provado ativo por injeção temporária de uma violação real (`'etapa' => 'nullable|string'` em `CompanyController::update()`), não só por leitura de código — confirmado que a suíte falha nomeando arquivo:linha, revertido antes do commit de produção (disciplina "comprove desfazendo e refazendo" do próprio plano)
