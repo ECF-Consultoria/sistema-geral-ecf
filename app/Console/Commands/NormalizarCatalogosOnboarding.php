@@ -46,13 +46,26 @@ class NormalizarCatalogosOnboarding extends Command
 
         $me1         = $this->normalizarColuna('me1', fn ($v) => MlbImplementacao::normalizarMe1($v));
         $integradora = $this->normalizarColuna('integradora', fn ($v) => MlbImplementacao::normalizarIntegradora($v));
-        $hub         = $this->migrarHub();
+        // Só a GRAFIA: o time digita 'Falta aceitar' à mão e a coluna acaba com duas
+        // variantes do mesmo estado no dropdown. Valor fora do catálogo passa intocado —
+        // 'E-mail enviado', 'Pedir novo acesso' e afins são informação real de operação.
+        $acesso = $this->normalizarColuna(
+            'acesso_colaborador',
+            fn ($v) => MlbImplementacao::normalizarParaCatalogo($v, MlbImplementacao::ONB_ACESSO_COLABORADOR_OPCOES)
+        );
+        $decola = $this->normalizarColuna(
+            'decola',
+            fn ($v) => MlbImplementacao::normalizarParaCatalogo($v, MlbImplementacao::ONB_DECOLA_OPCOES)
+        );
+        $hub = $this->migrarHub();
 
         $this->relatorio('ME1', $me1);
         $this->relatorio('Integradora', $integradora);
+        $this->relatorio('Acesso Colaborador (grafia)', $acesso);
+        $this->relatorio('Decola (grafia)', $decola);
         $this->relatorio('HUB (dados.itens.hub)', $hub);
 
-        $total = count($me1) + count($integradora) + count($hub);
+        $total = count($me1) + count($integradora) + count($acesso) + count($decola) + count($hub);
 
         if (! $apply) {
             $this->newLine();
@@ -61,7 +74,7 @@ class NormalizarCatalogosOnboarding extends Command
             return self::SUCCESS;
         }
 
-        $this->gravar($me1, $integradora, $hub);
+        $this->gravar($me1, $integradora, $acesso, $decola, $hub);
 
         $this->newLine();
         $this->info("{$total} alterações aplicadas.");
@@ -177,11 +190,14 @@ class NormalizarCatalogosOnboarding extends Command
     /**
      * @param array<int, array{id:int, para:?string}> $me1
      * @param array<int, array{id:int, para:?string}> $integradora
+     * @param array<int, array{id:int, para:?string}> $acesso
+     * @param array<int, array{id:int, para:?string}> $decola
      * @param array<int, array{id:int, para:?string}> $hub
      */
-    private function gravar(array $me1, array $integradora, array $hub): void
+    private function gravar(array $me1, array $integradora, array $acesso, array $decola, array $hub): void
     {
-        foreach ([['me1', $me1], ['integradora', $integradora]] as [$coluna, $mudancas]) {
+        foreach ([['me1', $me1], ['integradora', $integradora],
+                  ['acesso_colaborador', $acesso], ['decola', $decola]] as [$coluna, $mudancas]) {
             foreach ($mudancas as $m) {
                 // update() direto na coluna: não mexe em me1_manual, então a trava do
                 // consultor e a regra automática das medidas continuam valendo.

@@ -145,6 +145,46 @@ class NormalizarCatalogosCommandTest extends TestCase
         $this->assertSame('Bling', $hub['acesso']);
     }
 
+    public function test_apply_alinha_a_grafia_do_acesso_colaborador(): void
+    {
+        // Produção tinha 8 fichas com 'Falta aceitar' (a minúsculo) digitado à mão ANTES do
+        // valor virar catálogo. Sem alinhar, o dropdown do Painel mostra as duas grafias e a
+        // de caixa errada não é reconhecida pelas SENTINELAS_DO_CLIENTE do sync.
+        $a = $this->ficha(['acesso_colaborador' => 'Falta aceitar']);
+        $b = $this->ficha(['acesso_colaborador' => 'COM ACESSO']);
+
+        $this->artisan('onboarding:normalizar-catalogos', ['--apply' => true])->assertExitCode(0);
+
+        $this->assertSame('Falta Aceitar', $a->refresh()->acesso_colaborador);
+        $this->assertSame('Com acesso', $b->refresh()->acesso_colaborador);
+    }
+
+    public function test_apply_nao_inventa_status_de_acesso_fora_do_catalogo(): void
+    {
+        // 'E-mail enviado' e 'Pedir novo acesso' são informação real de operação que a
+        // equipe digitou — não têm destino no catálogo e ficam intocados.
+        $a = $this->ficha(['acesso_colaborador' => 'E-mail enviado']);
+        $b = $this->ficha(['acesso_colaborador' => 'Pedir novo acesso']);
+        $c = $this->ficha(['decola' => 'Solicitado']);
+
+        $this->artisan('onboarding:normalizar-catalogos', ['--apply' => true])->assertExitCode(0);
+
+        $this->assertSame('E-mail enviado', $a->refresh()->acesso_colaborador);
+        $this->assertSame('Pedir novo acesso', $b->refresh()->acesso_colaborador);
+        $this->assertSame('Solicitado', $c->refresh()->decola);
+    }
+
+    public function test_apply_alinha_a_grafia_do_decola(): void
+    {
+        $a = $this->ficha(['decola' => 'mensagem enviada']);
+        $b = $this->ficha(['decola' => 'VERIFICAR']);
+
+        $this->artisan('onboarding:normalizar-catalogos', ['--apply' => true])->assertExitCode(0);
+
+        $this->assertSame('Mensagem Enviada', $a->refresh()->decola);
+        $this->assertSame('Verificar', $b->refresh()->decola);
+    }
+
     public function test_apply_e_idempotente(): void
     {
         $this->ficha(['me1' => 'NÃO', 'integradora' => 'Any']);

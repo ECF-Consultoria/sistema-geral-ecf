@@ -800,6 +800,38 @@ class MlbImplementacao extends Model
     }
 
     /**
+     * Alinha um valor à GRAFIA do catálogo (só caixa e acento). Desconhecido passa verbatim.
+     *
+     * Existe porque o time digita esses valores à mão, no Painel e na planilha, muito antes
+     * de virarem catálogo: em 01/09/2026 a produção já tinha 8 fichas com 'Falta aceitar'
+     * (a minúsculo) enquanto ONB_ACESSO_COLABORADOR_OPCOES define 'Falta Aceitar'. Sem
+     * alinhar, as duas grafias convivem como opções distintas no dropdown do Painel
+     * (valoresPresentes reinjeta todo valor do banco) e a de caixa errada não é reconhecida
+     * pelas SENTINELAS_DO_CLIENTE do sync nem pelas cores de VAL_PROG/corStatus.
+     *
+     * NÃO é usado na ingestão do sync de propósito: a planilha não deve poder fabricar uma
+     * sentinela do cliente só escrevendo o texto certo na coluna.
+     *
+     * @param array<int, string> $catalogo
+     */
+    public static function normalizarParaCatalogo(?string $v, array $catalogo): ?string
+    {
+        $v = trim((string) $v);
+        if ($v === '') {
+            return null;
+        }
+
+        $chave = self::chaveCatalogo($v);
+        foreach ($catalogo as $opcao) {
+            if (self::chaveCatalogo($opcao) === $chave) {
+                return $opcao;
+            }
+        }
+
+        return $v;
+    }
+
+    /**
      * Garante em `dados['itens']` todas as chaves do CHECKLIST atual, sem perder o que já
      * foi salvo (o valor gravado SEMPRE vence o padrão).
      *
