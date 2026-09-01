@@ -156,4 +156,122 @@ class EtapaTransicaoService
             'requisito_faltante' => null,
         ];
     }
+
+    /**
+     * ÚNICA escrita de `companies.etapa` no sistema (D-12). Chama
+     * `podeTransicionar()` primeiro — nunca condicional só na UI — e
+     * propaga o `requisito_faltante` sem inventar mensagem nova quando a
+     * transição é recusada.
+     *
+     * D-13: recebe o `User` que agiu e o registra como ator da linha de
+     * histórico. ⚠️ Segurança (T-137-02): o parâmetro é tipado `User`, NÃO
+     * `int` — todo chamador futuro deve passar `$request->user()` /
+     * `auth()->user()`, NUNCA um `user_id` cru vindo do corpo da
+     * requisição.
+     *
+     * D-15: se `podeTransicionar()` marcar retrocesso e `$motivo` vier
+     * vazio (ou só espaço), a transição é recusada aqui — retrocesso nunca
+     * é automático.
+     *
+     * Escrita da coluna + criação do histórico dentro de UMA transação
+     * (T-137-11): não existe etapa gravada sem linha de histórico.
+     *
+     * @return array{status: string, de: ?string, para: string, requisito_faltante: ?string, erro: ?string}
+     */
+    public function transicionar(Company $company, string $etapaDestino, User $por, ?string $motivo = null): array
+    {
+        $avaliacao = $this->podeTransicionar($company, $etapaDestino);
+
+        if (! $avaliacao['permitido']) {
+            return [
+                'status' => 'recusado',
+                'de' => $company->etapa,
+                'para' => $etapaDestino,
+                'requisito_faltante' => $avaliacao['requisito_faltante'],
+                'erro' => null,
+            ];
+        }
+
+        // D-15: retrocesso não faz parte do fluxo normal e nunca é
+        // automático — exige motivo não vazio, checado aqui porque
+        // `podeTransicionar()` é puro e não recebe motivo.
+        if ($avaliacao['retrocesso'] && trim((string) $motivo) === '') {
+            return [
+                'status' => 'recusado',
+                'de' => $company->etapa,
+                'para' => $etapaDestino,
+                'requisito_faltante' => 'Retrocesso exige motivo obrigatório (D-15) — nenhum motivo foi informado.',
+                'erro' => null,
+            ];
+        }
+
+        $etapaAnterior = $company->etapa;
+
+        try {
+            DB::transaction(function () use ($company, $etapaDestino, $por, $motivo, $avaliacao, $etapaAnterior) {
+                // Pitfall 6 (137-RESEARCH.md): grava SÓ `etapa` neste
+                // update(). `Company` tem
+                // #[ObservedBy(CompanyGatilhoContratoObserver::class)], que
+                // reage a `wasChanged(CAMPOS_GATILHO)` com
+                // CAMPOS_GATILHO = ['email_cliente', 'cnpj', 'nome_contato'].
+                // `etapa` não está nessa lista, então gravar só `etapa` é
+                // seguro — o gate administrativo não dispara de carona. Se
+                // algum dia a transição precisar gravar outro campo (ex.:
+                // dados de onboarding na Fase 142), isso vai num `save()`
+                // SEPARADO, nunca neste mesmo update().
+                $company->update(['etapa' => $etapaDestino]);
+
+                CompanyEtapaTransicao::create([
+                    'company_id' => $company->id,
+                    'etapa_anterior' => $etapaAnterior,
+                    'etapa_nova' => $etapaDestino,
+                    'user_id' => $por->id,
+                    'motivo' => $motivo,
+                    'retrocesso' => $avaliacao['retrocesso'],
+                ]);
+            });
+
+            return [
+                'status' => 'transicionado',
+                'de' => $etapaAnterior,
+                'para' => $etapaDestino,
+                'requisito_faltante' => null,
+                'erro' => null,
+            ];
+        } catch (\Throwable $e) {
+            Log::error("[EtapaTransicao] falha ao transicionar empresa {$company->id} ({$company->name}) de '{$etapaAnterior}' para '{$etapaDestino}': {$e->getMessage()}");
+
+            return [
+                'status' => 'erro',
+                'de' => $etapaAnterior,
+                'para' => $etapaDestino,
+                'requisito_faltante' => null,
+                'erro' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Escrita em MASSA de `Company::ETAPA_EM_OPERACAO`, exclusiva do
+     * backfill legado do plano 137-05 (ETAPA-02). Existe por um motivo
+     * específico: o Success Criteria 2 desta fase exige que não haja outro
+     * ponto do código gravando `companies.etapa` — e o backfill precisa
+     * escrever em massa. A escrita mora AQUI, nesta mesma classe; o
+     * comando do plano 137-05 só decide QUAIS ids (balde 1 do D-04).
+     *
+     * ⚠️ Deliberadamente NÃO gera histórico em `company_etapa_transicoes`.
+     * Backfill não é transição do fluxo — carimbar centenas de linhas de
+     * histórico com data de hoje criaria duração fictícia no painel de
+     * gargalo da Fase 143 (mesmo raciocínio de D-05). Este método é
+     * exclusivo do backfill legado; nenhuma fase futura deve chamá-lo para
+     * transição normal — use `transicionar()`.
+     */
+    public function carimbarBackfill(array $companyIds): int
+    {
+        if ($companyIds === []) {
+            return 0;
+        }
+
+        return Company::whereIn('id', $companyIds)->update(['etapa' => Company::ETAPA_EM_OPERACAO]);
+    }
 }

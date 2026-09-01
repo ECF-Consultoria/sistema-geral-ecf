@@ -3,14 +3,16 @@
 namespace Tests\Unit\Phase137;
 
 use App\Models\Company;
+use App\Models\CompanyEtapaTransicao;
+use App\Models\User;
 use App\Services\FluxoEntrada\EtapaTransicaoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Fase 137 (plano 03) — prova da régua pura `podeTransicionar()` (ETAPA-06)
- * nesta task; `transicionar()`/`carimbarBackfill()` (ETAPA-03) são
- * estendidos na Task 3 do mesmo plano.
+ * Fase 137 (plano 03) — prova da régua pura `podeTransicionar()` (ETAPA-06,
+ * Task 2) e do único ponto de escrita `transicionar()`/`carimbarBackfill()`
+ * (ETAPA-03, Task 3).
  */
 class EtapaTransicaoServiceTest extends TestCase
 {
@@ -98,5 +100,76 @@ class EtapaTransicaoServiceTest extends TestCase
 
         $this->assertTrue($resultado['permitido']);
         $this->assertTrue($resultado['retrocesso']);
+    }
+
+    // ─── Task 3: transicionar() — o único ponto de escrita ───
+
+    public function test_transicao_valida_grava_etapa_e_cria_uma_linha_de_historico_com_o_ator(): void
+    {
+        $empresa = $this->empresaNaEtapa(Company::ETAPA_AGUARDANDO_ADMINISTRATIVO);
+        $user = User::factory()->create();
+
+        $resultado = $this->service->transicionar($empresa, Company::ETAPA_ADMINISTRATIVO_ANDAMENTO, $user);
+
+        $this->assertSame('transicionado', $resultado['status']);
+        $this->assertSame(Company::ETAPA_ADMINISTRATIVO_ANDAMENTO, $empresa->fresh()->etapa);
+
+        $this->assertSame(1, CompanyEtapaTransicao::where('company_id', $empresa->id)->count());
+
+        $linha = CompanyEtapaTransicao::where('company_id', $empresa->id)->first();
+        $this->assertSame(Company::ETAPA_AGUARDANDO_ADMINISTRATIVO, $linha->etapa_anterior);
+        $this->assertSame(Company::ETAPA_ADMINISTRATIVO_ANDAMENTO, $linha->etapa_nova);
+        $this->assertSame($user->id, $linha->user_id);
+        $this->assertFalse($linha->retrocesso);
+    }
+
+    public function test_transicao_recusada_nao_grava_etapa_nem_cria_historico(): void
+    {
+        $empresa = $this->empresaNaEtapa(Company::ETAPA_AGUARDANDO_ADMINISTRATIVO);
+        $user = User::factory()->create();
+
+        $resultado = $this->service->transicionar($empresa, Company::ETAPA_EM_OPERACAO, $user);
+
+        $this->assertSame('recusado', $resultado['status']);
+        $this->assertSame(Company::ETAPA_AGUARDANDO_ADMINISTRATIVO, $empresa->fresh()->etapa);
+        $this->assertSame(0, CompanyEtapaTransicao::where('company_id', $empresa->id)->count());
+    }
+
+    public function test_retrocesso_sem_motivo_e_recusado(): void
+    {
+        $empresa = $this->empresaNaEtapa(Company::ETAPA_AGUARDANDO_DISTRIBUICAO);
+        $user = User::factory()->create();
+
+        $resultado = $this->service->transicionar($empresa, Company::ETAPA_ADMINISTRATIVO_ANDAMENTO, $user, null);
+
+        $this->assertSame('recusado', $resultado['status']);
+        $this->assertSame(Company::ETAPA_AGUARDANDO_DISTRIBUICAO, $empresa->fresh()->etapa);
+        $this->assertSame(0, CompanyEtapaTransicao::where('company_id', $empresa->id)->count());
+    }
+
+    public function test_retrocesso_com_motivo_grava_com_retrocesso_true_e_motivo_persistido(): void
+    {
+        $empresa = $this->empresaNaEtapa(Company::ETAPA_AGUARDANDO_DISTRIBUICAO);
+        $user = User::factory()->create();
+
+        $resultado = $this->service->transicionar($empresa, Company::ETAPA_ADMINISTRATIVO_ANDAMENTO, $user, 'erro de clique');
+
+        $this->assertSame('transicionado', $resultado['status']);
+        $this->assertSame(Company::ETAPA_ADMINISTRATIVO_ANDAMENTO, $empresa->fresh()->etapa);
+
+        $linha = CompanyEtapaTransicao::where('company_id', $empresa->id)->first();
+        $this->assertTrue($linha->retrocesso);
+        $this->assertSame('erro de clique', $linha->motivo);
+    }
+
+    public function test_carimbar_backfill_grava_etapa_9_sem_criar_historico(): void
+    {
+        $empresa = $this->empresaNaEtapa(null);
+
+        $afetadas = $this->service->carimbarBackfill([$empresa->id]);
+
+        $this->assertSame(1, $afetadas);
+        $this->assertSame(Company::ETAPA_EM_OPERACAO, $empresa->fresh()->etapa);
+        $this->assertSame(0, CompanyEtapaTransicao::where('company_id', $empresa->id)->count());
     }
 }
