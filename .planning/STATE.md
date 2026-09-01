@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
-status: planning
-stopped_at: "Milestone v23.0 aberta em 2026-09-01 — definindo requirements. v22.0 NÃO fechada (133-05 pendente)."
-last_updated: "2026-09-01T00:00:00.000Z"
-last_activity: 2026-09-01
+status: Definindo requirements da milestone v23.0 — Fluxo de Entrada de Novas Empresas
+stopped_at: Phase 137 context gathered
+last_updated: "2026-09-01T17:19:08.916Z"
+last_activity: 2026-09-01 — Milestone v23.0 aberta
 progress:
   total_phases: 7
   completed_phases: 0
@@ -1365,8 +1365,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-19T12:05:00.000Z
-Stopped at: 133-04 corrigido (ligar-agora) — chave administrativo_bloqueio_ativo LIGADA em produção; 133-05 desbloqueado
+Last session: 2026-09-01T17:19:08.887Z
+Stopped at: Phase 137 context gathered
 Last session: 2026-08-18T21:34:08.162Z
 Stopped at: Completed 133-03-PLAN.md
 Last session: 2026-08-10T21:59:33.127Z
