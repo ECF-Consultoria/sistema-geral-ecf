@@ -7,7 +7,7 @@ stopped_at: "Milestone v23.0 aberta em 2026-09-01 — definindo requirements. v2
 last_updated: "2026-09-01T00:00:00.000Z"
 last_activity: 2026-09-01
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0

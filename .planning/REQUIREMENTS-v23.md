@@ -156,8 +156,38 @@ Reconhecidos, fora desta milestone:
 
 ## Traceability
 
-<!-- Preenchido pelo roadmapper: REQ-ID → Fase -->
-
 | REQ-ID | Fase |
 |--------|------|
-| _(a preencher)_ | |
+| ETAPA-01 | Fase 137 |
+| ETAPA-02 | Fase 137 |
+| ETAPA-03 | Fase 137 |
+| ETAPA-04 | Fase 137 |
+| ETAPA-05 | Fase 137 |
+| ETAPA-06 | Fase 137 |
+| COMERC-01 | Fase 138 |
+| COMERC-02 | Fase 138 |
+| COMERC-03 | Fase 138 |
+| ADMIN-01 | Fase 139 |
+| ADMIN-02 | Fase 139 |
+| ADMIN-03 | Fase 139 |
+| ADMIN-04 | Fase 139 |
+| ADMIN-05 | Fase 139 |
+| ADMIN-06 | Fase 139 |
+| COMUNIC-01 | Fase 140 |
+| COMUNIC-02 | Fase 140 |
+| COMUNIC-03 | Fase 140 |
+| DISTRIB-01 | Fase 141 |
+| DISTRIB-02 | Fase 141 |
+| DISTRIB-03 | Fase 141 |
+| DISTRIB-04 | Fase 141 |
+| RESP-01 | Fase 141 |
+| RESP-02 | Fase 141 |
+| ONBRD-01 | Fase 142 |
+| ONBRD-02 | Fase 142 |
+| ONBRD-03 | Fase 142 |
+| ONBRD-04 | Fase 142 |
+| HIST-01 | Fase 143 |
+| HIST-02 | Fase 143 |
+| HIST-03 | Fase 143 |
+
+**Cobertura:** 31/31 requirements mapeados. Nenhum órfão, nenhuma duplicidade — cada REQ-ID em exatamente uma fase.
