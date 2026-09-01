@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v23.0
-milestone_name: Fluxo de Entrada de Novas Empresas
+milestone_name: — Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Phase 137 context gathered
-last_updated: "2026-09-01T18:17:19.403Z"
-last_activity: 2026-09-01 -- Phase 137 planning complete
+stopped_at: Completed 137-01-PLAN.md
+last_updated: "2026-09-01T19:06:50.020Z"
+last_activity: 2026-09-01 -- Phase 137 Plan 01 concluído (commits `96e62ed9`, `4429af7e`, `a7b7c272`)
 progress:
-  total_phases: 7
-  completed_phases: 0
-  total_plans: 7
-  completed_plans: 0
-  percent: 0
+  total_phases: 73
+  completed_phases: 56
+  total_plans: 287
+  completed_plans: 270
+  percent: 77
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 133 — liga-o-bloqueio-ativa-o-real-v22-0
+**Current focus:** Phase 137 — m-quina-de-estados-os-9-status-de-companies-etapa-v23-0
 
 > ⚠️ **Não é a 134.** O `phase.complete` apontou 134 ao fechar a 132, mas isso é artefato da
 > ferramenta: a **Fase 133 tem `Plans: TBD`** e nenhum diretório, então foi pulada na busca pela
@@ -32,10 +32,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — PLANNED
-Plan: 0 of 7 — planejamento concluído, execução não iniciada
+Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — EXECUTING
+Plan: 2 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+em `137-BASELINE-TESTES.md`); 137-02 (migration `companies.etapa`) é o próximo
 Status: Ready to execute
-Last activity: 2026-09-01 -- Phase 137 planning complete
+Last activity: 2026-09-01 -- Phase 137 Plan 01 concluído (commits `96e62ed9`, `4429af7e`, `a7b7c272`)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
@@ -601,6 +602,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 133 P01 | 35min | 2 tasks | 3 files |
 | Phase 133 P02 | ~40min | 3 tasks | 3 files |
 | Phase 133 P03 | ~30min | 2 tasks | 3 files |
+| Phase 137 P01 | 40min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1365,8 +1367,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-09-01T17:19:08.887Z
-Stopped at: Phase 137 context gathered
+Last session: 2026-09-01T19:06:49.988Z
+Stopped at: Completed 137-01-PLAN.md
 Last session: 2026-08-18T21:34:08.162Z
 Stopped at: Completed 133-03-PLAN.md
 Last session: 2026-08-10T21:59:33.127Z
@@ -1450,3 +1452,8 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 ## Operator Next Steps
 
 - Start the next milestone with /gsd-new-milestone
+
+## Decisions
+
+- [Phase 137]: 137-01: caminho npm-build usado em vez do atalho public/hot para destravar o ambiente de teste Inertia deste worktree; ambiente fica destravado de forma persistente para os planos 137-02..07 (node_modules/ e public/build/ ficam no worktree, gitignored)
+- [Phase 137]: 137-01: suíte completa (`php artisan test`) dividida em Unit (capturado por inteiro) + Feature (não capturável neste ambiente — trava numa cascata de timeout de rede real via Guzzle após ~300s); baseline registrada em `137-BASELINE-TESTES.md` com a recomendação de nunca depender do `artisan test` completo nos planos seguintes

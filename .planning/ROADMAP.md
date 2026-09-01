@@ -2103,12 +2103,12 @@ Plans:
   4. Pelo menos uma listagem existente pode ser filtrada por etapa e, separadamente, por "com pendência" (ETAPA-05)
   5. Tentar avançar uma etapa sem os requisitos cumpridos é recusado com uma mensagem que nomeia o requisito faltante (ex.: "contrato não assinado"), nunca um erro genérico (ETAPA-06)
 
-**Plans:** 7 plans
+**Plans:** 1/7 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 137-01-PLAN.md — Ambiente de teste Inertia + baseline verde registrada antes da migration [wave 0]
+- [x] 137-01-PLAN.md — Ambiente de teste Inertia + baseline verde registrada antes da migration [wave 0]
 - [ ] 137-02-PLAN.md — ETAPA-01: coluna `companies.etapa` (nullable, sem default) + as 9 constantes no model `Company` [wave 1]
 
 **Wave 2** *(blocked on Wave 1 completion)*
