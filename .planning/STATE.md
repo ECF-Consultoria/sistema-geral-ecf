@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 137-04-PLAN.md
-last_updated: "2026-09-01T19:37:49Z"
-last_activity: 2026-09-01 -- Phase 137 Plan 04 concluído (commits `010deee5`, `93623bd1`, `52c901d5`)
+stopped_at: Completed 137-05-PLAN.md
+last_updated: "2026-09-01T19:55:00Z"
+last_activity: 2026-09-01 -- Phase 137 Plan 05 concluído (commits `5acda646`, `af2fc7ed`, `76800cc0`)
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 7
-  completed_plans: 4
-  percent: 57
+  completed_plans: 5
+  percent: 71
 ---
 
 # Project State
@@ -33,17 +33,21 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — EXECUTING
-Plan: 5 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+Plan: 6 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
 em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
 no model `Company`, ETAPA-01 fechado); 137-03 concluído (`EtapaTransicaoService` — único ponto de
 escrita de `companies.etapa`, tabela `company_etapa_transicoes` de histórico append-only, ETAPA-03
 e ETAPA-06 fechados; serviço ainda SEM chamador de produção, de propósito); 137-04 concluído
 (4 colunas de pendência paralela em `companies` + `Company::pendenciaAberta()`/
 `scopeComPendenciaAberta()`/`declararPendencia()`/`resolverPendencia()`, ETAPA-04 fechado, provado
-por teste que marcar/desmarcar pendência nunca move `etapa`); 137-05 (backfill em dois baldes,
-ETAPA-02) é o próximo
+por teste que marcar/desmarcar pendência nunca move `etapa`); 137-05 concluído (comando
+`etapa:backfill` em dois baldes — D-04 — dry-run por padrão, ETAPA-02 fechado; executado DE
+VERDADE contra o MariaDB local: 180 empresas, 1 no balde 1 (`em_operacao`), 179 em `NULL`,
+conferido por reconsulta SQL direta em `137-BACKFILL-CONTAGENS.md`; payload de `GET /companies`
+provado idêntico antes/depois por teste — Success Criteria nº 1 preservado); 137-06 (fecha a
+superfície de escrita — varredura estática de `app/`) é o próximo
 Status: Ready to execute
-Last activity: 2026-09-01 -- Phase 137 Plan 04 concluído (commits `010deee5`, `93623bd1`, `52c901d5`)
+Last activity: 2026-09-01 -- Phase 137 Plan 05 concluído (commits `5acda646`, `af2fc7ed`, `76800cc0`)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
@@ -1375,6 +1379,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-01T19:55:00Z
+Stopped at: Completed 137-05-PLAN.md
 Last session: 2026-09-01T19:37:49Z
 Stopped at: Completed 137-04-PLAN.md
 Last session: 2026-09-01T19:27:04Z
@@ -1475,3 +1481,6 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 137]: 137-04: D-18 implementado como 4 colunas em `companies` (não tabela própria) — sem necessidade de histórico de pendências passadas nesta fase, e o filtro server-side da ETAPA-05 vira um `where` sem join
 - [Phase 137]: 137-04: gate de D-19 (nenhuma leitura direta de `pendencia_aberta` fora de `Company.php`) implementado como teste Feature (`File::allFiles()` + `assertEmpty`), não como regra de análise estática externa — mantém a prova na mesma suíte PHPUnit já rodada a cada task
 - [Phase 137]: 137-04: comparação de path no gate estático usa `realpath()`, não igualdade de string direta — `File::allFiles()` (Symfony Finder) e `base_path()` não colidem por string simples neste ambiente Windows
+- [Phase 137]: 137-05: `etapa:backfill` sem `--limite`/`--servico` (diferente do molde `OnboardingBackfillContratos`) — os dois baldes de D-04 não admitem execução parcial, um filtro parcial criaria a chance de deixar metade da base carimbada
+- [Phase 137]: 137-05: amostra do dry-run limitada a 20 linhas na tabela impressa, com aviso quando o balde 1 for maior — evita estourar o terminal quando produção tiver ~500 empresas
+- [Phase 137]: 137-05: backfill executado DE VERDADE contra o MariaDB local (não só documentado) — 180 empresas, 1 no balde 1 (id 55, `em_operacao`), 179 em `NULL`; contagens em `137-BACKFILL-CONTAGENS.md` vieram de `DB::table(...)` num tinker separado da execução do comando (D-08), nunca do stdout do próprio `etapa:backfill`

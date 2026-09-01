@@ -2103,7 +2103,7 @@ Plans:
   4. Pelo menos uma listagem existente pode ser filtrada por etapa e, separadamente, por "com pendência" (ETAPA-05)
   5. Tentar avançar uma etapa sem os requisitos cumpridos é recusado com uma mensagem que nomeia o requisito faltante (ex.: "contrato não assinado"), nunca um erro genérico (ETAPA-06)
 
-**Plans:** 4/7 plans executed
+**Plans:** 5/7 plans executed
 
 Plans:
 **Wave 1**
@@ -2118,7 +2118,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 137-05-PLAN.md — ETAPA-02: comando `etapa:backfill` em dois baldes + contagens por reconsulta ao banco [wave 3]
+- [x] 137-05-PLAN.md — ETAPA-02: comando `etapa:backfill` em dois baldes + contagens por reconsulta ao banco [wave 3]
 - [ ] 137-06-PLAN.md — ETAPA-03: regressão de segurança do ponto único de escrita + varredura estática de `app/` [wave 3]
 
 **Wave 4** *(blocked on Wave 3 completion)*
