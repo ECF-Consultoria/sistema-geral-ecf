@@ -65,7 +65,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 - [x] **ETAPA-02**: Empresas já existentes recebem etapa no backfill — as em operação entram na etapa 9 (D2), preservando o comportamento atual das telas que ainda leem o derivado
 - [x] **ETAPA-03**: Um serviço único decide se uma transição de etapa é válida; nenhum controller muda etapa na mão
 - [x] **ETAPA-04**: Pendência é campo paralelo à etapa — uma empresa pode estar em qualquer etapa **e** ter pendência declarada, sem que a pendência mude a etapa (D6)
-- [ ] **ETAPA-05**: Usuário pode filtrar as listagens por etapa e por existência de pendência
+- [x] **ETAPA-05**: Usuário pode filtrar as listagens por etapa e por existência de pendência
 - [x] **ETAPA-06**: Tentativa de transição inválida é recusada com mensagem que diz **qual** requisito falta, não um 403 genérico
 
 ### COMERC — Área Comercial, entrada da empresa (§1, §2)

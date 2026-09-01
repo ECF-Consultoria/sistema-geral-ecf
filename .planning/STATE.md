@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 137-06-PLAN.md
-last_updated: "2026-09-01T20:05:00Z"
-last_activity: 2026-09-01 -- Phase 137 Plan 06 concluído (commits `8c7c0482`, `1676b65a`, `2b9ce803`)
+stopped_at: Completed 137-07-PLAN.md
+last_updated: "2026-09-01T20:51:36Z"
+last_activity: 2026-09-01 -- Phase 137 Plan 07 concluído, FASE 137 COMPLETA (commits `7e21aa92`, `4c89cc6d`)
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — EXECUTING
+Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — **COMPLETA (7/7 planos)**
 Plan: 7 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
 em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
 no model `Company`, ETAPA-01 fechado); 137-03 concluído (`EtapaTransicaoService` — único ponto de
@@ -51,11 +51,17 @@ de função — não por linha nem arquivo inteiro — provada ativa por injeç�
 aviso-guarda deixado em `CompanyController::update()`; Success Criteria nº 2 da fase fechado.
 Deviation Rule 1: o padrão cru `'etapa' =>` do plano falso-positivava contra ~10 usos legítimos de
 `OnboardingPasso::etapa`, coluna homônima sem relação com `companies.etapa` — redesenhado para
-escopo por corpo de função, ver `137-06-SUMMARY.md`); 137-07 (filtro server-side de etapa na
-listagem `/companies`, ETAPA-05, autonomous: false — checkpoint humano) é o próximo e ÚLTIMO plano
-da fase
-Status: Ready to execute
-Last activity: 2026-09-01 -- Phase 137 Plan 06 concluído (commits `8c7c0482`, `1676b65a`, `2b9ce803`)
+escopo por corpo de função, ver `137-06-SUMMARY.md`); **137-07 concluído** (dois filtros
+server-side independentes em `/companies` — `?etapa=` allow-list + sentinela `sem_etapa` de
+primeira classe, e `?com_pendencia=` via `comPendenciaAberta()` — ETAPA-05 fechado; verificação
+humana real aprovada pelo usuário na tela; payload usa `tem_pendencia` em vez de `pendencia_aberta`
+para não colidir com o gate estático D-19 do 137-04; ver `137-07-SUMMARY.md` para os dois achados
+da verificação — `.env` do worktree apontava pro build de `ecf_admin` e a suíte Feature completa
+segue não-terminável neste ambiente, ambos documentados como dívida explícita, não regressão desta
+fase). **As 6 Success Criteria e os 6 requirements (ETAPA-01..06) da Fase 137 estão fechados.**
+Status: Fase 137 completa. Próxima fase (138 — Área Comercial conectada à etapa) ainda **não foi
+planejada** (`Plans: TBD` no ROADMAP) — requer `/gsd-plan-phase 138` antes de qualquer execução.
+Last activity: 2026-09-01 -- Phase 137 Plan 07 concluído, FASE 137 COMPLETA (commits `7e21aa92`, `4c89cc6d`)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
@@ -1387,6 +1393,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-01T20:51:36Z
+Stopped at: Completed 137-07-PLAN.md — FASE 137 COMPLETA (7/7 planos)
 Last session: 2026-09-01T20:05:00Z
 Stopped at: Completed 137-06-PLAN.md
 Last session: 2026-09-01T19:55:00Z
@@ -1496,3 +1504,7 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 137]: 137-05: backfill executado DE VERDADE contra o MariaDB local (não só documentado) — 180 empresas, 1 no balde 1 (id 55, `em_operacao`), 179 em `NULL`; contagens em `137-BACKFILL-CONTAGENS.md` vieram de `DB::table(...)` num tinker separado da execução do comando (D-08), nunca do stdout do próprio `etapa:backfill`
 - [Phase 137]: 137-06 (Rule 1 — bug no desenho do plano): o padrão de varredura estática descrito literalmente no plano (`'etapa' =>` cru em qualquer `.php` de `app/`, exceto 3 arquivos nomeados) falso-positiva contra ~10 usos legítimos de `OnboardingPasso::etapa` — coluna homônima, sem relação com `companies.etapa`, em 5 arquivos de `app/Console/Commands` e `app/Services/Onboarding` e `app/Http/Controllers/OnboardingController.php`; implementado ao pé da letra o teste nasceria vermelho no repositório atual, contradizendo o próprio acceptance criteria do plano. Redesenhado para escopo por CORPO DE FUNÇÃO (via `token_get_all()` + balanceamento de chaves): `'etapa' =>` só conta como violação quando o mesmo corpo também contém uma chamada de escrita reconhecida no model `Company`; `$company->etapa =` continua sinalizando sozinho. Ver `137-06-SUMMARY.md`
 - [Phase 137]: 137-06: gate estático provado ativo por injeção temporária de uma violação real (`'etapa' => 'nullable|string'` em `CompanyController::update()`), não só por leitura de código — confirmado que a suíte falha nomeando arquivo:linha, revertido antes do commit de produção (disciplina "comprove desfazendo e refazendo" do próprio plano)
+- [Phase 137]: 137-07 (Rule 1 — bug de nomenclatura): payload de `/companies` expõe `tem_pendencia`, não `pendencia_aberta` — o nome óbvio colidiria com o gate estático de `EtapaPendenciaParaleloTest.php` (137-04, D-19), que recusa a string crua da coluna fora de `Company.php`; leitura continua exclusivamente por `Company::comPendenciaAberta()`/`pendenciaAberta()`
+- [Phase 137]: 137-07: Task 3 (`<action>` pedia `php artisan test` completo contra a baseline) rodou o subset seguro (`tests/Unit/Phase137 tests/Feature/Phase137` + as duas suítes baseline de `/companies`, 70/70 verde) em vez da suíte completa — `137-BASELINE-TESTES.md` (137-01, ANTES de qualquer código desta fase) já havia medido que `--testsuite=Feature` não termina neste worktree (trava em timeout de rede de 300s); nesta sessão 4 suítes candidatas foram sondadas à parte e passaram limpas (28/28), mas o teste exato que trava não foi isolado — dívida explícita registrada em `137-07-SUMMARY.md` para sobreviver ao `/gsd:verify-work`
+- [Phase 137]: 137-07: verificação humana real (Task 3) encontrou e o orquestrador corrigiu um `.env` de worktree com `APP_URL`/`ASSET_URL` apontando para `/ecf_admin/public` (copiado de outro checkout) — causava tela branca em toda navegação por servir HTML do manifest do Vite deste worktree mas apontar o navegador pro build do OUTRO; corrigido para `/ecf_fluxo_entrada/public`, `.env` não é versionado, correção não commitada e não deve ser revertida
+- [Phase 137]: **FASE 137 COMPLETA** — 137-07 fecha ETAPA-05, o último dos 6 requirements (`ETAPA-01`..`ETAPA-06`); as 6 Success Criteria do ROADMAP para a Fase 137 estão todas satisfeitas. Próxima fase da milestone v23.0 (138 — Área Comercial conectada à etapa) ainda não foi planejada
