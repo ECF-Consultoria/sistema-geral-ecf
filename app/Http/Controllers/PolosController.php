@@ -425,6 +425,11 @@ class PolosController extends Controller
                     'integradora'              => $impl?->integradora,
                     'places'                   => $impl?->places,
                     'erp'                      => $impl?->erp,
+                    // ── Respostas do CLIENTE no link do Onboarding (moram no JSON, não em
+                    // coluna). Somente leitura no Painel: quem responde é o cliente, a
+                    // equipe só vê e filtra. Ver MlbImplementacao::respostaChecklist().
+                    'produtos_perfil'          => $impl?->respostaChecklist('produtos_perfil'),
+                    'canais_faturamento'       => $impl?->respostaChecklist('canais_faturamento'),
                     'data_solicitacao'         => $impl?->data_solicitacao?->format('Y-m-d'),
                     // Data de cadastro/entrada da empresa no sistema (automática; existe sem ficha).
                     'data_cadastro'            => $e->created_at?->format('Y-m-d'),
@@ -596,6 +601,8 @@ class PolosController extends Controller
             ['key' => 'grupo_whatsapp',      'label' => 'Grupo WhatsApp',      'tipo' => 'texto'],
             ['key' => 'link_whatsapp',       'label' => 'Link do Whats',       'tipo' => 'texto'],
             ['key' => 'reuniao_onboarding',  'label' => 'Reunião onboarding',  'tipo' => 'texto'],
+            // Resposta do cliente no link do Onboarding (JSON, não coluna).
+            ['key' => 'canais_faturamento',  'label' => 'Outros canais',       'tipo' => 'texto'],
             ['key' => 'data_solicitacao',    'label' => 'Data solicitação',    'tipo' => 'data'],
             // ── Produtos ──
             ['key' => 'planilha_produtos',   'label' => 'Planilha produtos',   'tipo' => 'texto'],
@@ -608,6 +615,8 @@ class PolosController extends Controller
             ['key' => 'contextos_logistica', 'label' => 'Contextos logística', 'tipo' => 'texto'],
             ['key' => 'me1',                 'label' => 'ME1',                 'tipo' => 'texto'],
             ['key' => 'integradora',         'label' => 'Integradora',         'tipo' => 'texto'],
+            // Resposta do cliente no link do Onboarding — é o que decide o ME1.
+            ['key' => 'produtos_perfil',     'label' => 'Perfil produtos',     'tipo' => 'texto'],
             ['key' => 'places',              'label' => 'Places',              'tipo' => 'texto'],
             ['key' => 'erp',                 'label' => 'ERP',                 'tipo' => 'texto'],
         ];
@@ -782,6 +791,7 @@ class PolosController extends Controller
                 'grupo_whatsapp'      => $simNao($impl ? (bool) $impl->grupo_whatsapp : null),
                 'link_whatsapp'       => $impl?->link_whatsapp,
                 'reuniao_onboarding'  => $impl?->reuniao_onboarding,
+                'canais_faturamento'  => $impl?->respostaChecklist('canais_faturamento'),
                 'data_solicitacao'    => $impl?->data_solicitacao?->format('Y-m-d'),
                 'planilha_produtos'   => $impl?->planilha_produtos,
                 'listagem'            => $impl?->listagem,
@@ -792,6 +802,7 @@ class PolosController extends Controller
                 'contextos_logistica' => $impl?->contextos_logistica,
                 'me1'                 => $impl?->me1,
                 'integradora'         => $impl?->integradora,
+                'produtos_perfil'     => $impl?->respostaChecklist('produtos_perfil'),
                 'places'              => $impl?->places,
                 'erp'                 => $impl?->erp,
                 'fin_faturamento'     => $f['faturamento'] ?? null,

@@ -864,6 +864,26 @@ class MlbImplementacao extends Model
         return $dados;
     }
 
+    /**
+     * Resposta do cliente a um item `select`/`select_opcoes` do CHECKLIST.
+     *
+     * Existe para o Painel Polos exibir e FILTRAR respostas que moram no JSON
+     * (`dados.itens.<id>.valor`) lado a lado com as colunas de `mlb_implementacoes`, sem
+     * que a tela precise saber dessa diferença de origem.
+     *
+     * Lê direto do JSON, sem passar por mesclarItensPadrao(): chave ausente e chave no
+     * padrão dão o MESMO resultado (null), e o merge reconstrói dadosPadrao() a cada
+     * chamada — caro no Painel, que chama isto 2x por empresa em ~500 linhas.
+     *
+     * @return string|null null para não respondido e para a sentinela '---' dos selects.
+     */
+    public function respostaChecklist(string $id): ?string
+    {
+        $valor = trim((string) ($this->dados['itens'][$id]['valor'] ?? ''));
+
+        return ($valor === '' || $valor === '---') ? null : $valor;
+    }
+
     public function progresso(): array
     {
         // Conta sobre o CHECKLIST atual (via merge), não sobre o JSON congelado da ficha:

@@ -58,6 +58,19 @@ const BLOCO_DE = {
 // Campos que dão pra salvar SEM ficha (via empresas.update). O resto exige ficha.
 const SEM_FICHA_OK = ['fase', 'polo'];
 
+// Rótulos curtos das respostas que o CLIENTE dá no link do Onboarding. A resposta crua vai
+// inteira no payload (é a identidade do filtro e o que sai no .xlsx); estes rótulos só
+// encurtam a exibição — a frase mais longa tem 92 caracteres e estoura a célula e o funil.
+// Chave = valor exato de MlbImplementacao::CHECKLIST; se divergir, cai no valor cru.
+const PERFIL_PRODUTOS_CURTO = {
+    'Produtos pequenos, leves e monovolumes que podem ser enviados normalmente pelo Mercado Envios': 'Pequeno / monovolume',
+    'Produtos grandes, volumosos, multivolumes e/ou com mais de 50 kg': 'Grande / multivolume',
+    'Ainda não sei qual será a melhor opção de envio': 'Ainda não sabe',
+};
+const CANAIS_CURTO = {
+    'Não vendo em outros canais': 'Não vende',
+};
+
 const STATUS_ENVIO_LABELS = { falta_enviar: 'Pendente', enviado: 'Enviado', concluido: 'Concluído' };
 const STATUS_ENVIO_BADGE = {
     falta_enviar: 'text-red-300 bg-red-500/10 border-red-500/20',
@@ -715,6 +728,12 @@ export default function PolosPainel({
             contextos_logistica: { key: 'contextos_logistica', label: 'Contextos logística', accessor: (e) => e.contextos_logistica },
             me1:                 { key: 'me1', label: 'ME1', accessor: (e) => e.me1 },
             integradora:         { key: 'integradora', label: 'Integradora', accessor: (e) => e.integradora },
+            // ── Respostas do CLIENTE no link do Onboarding (somente leitura) ──
+            // O accessor devolve a resposta CRUA (é a identidade do filtro); `format` encurta
+            // para a grade e para o funil, que também aplica format. As frases do checklist
+            // têm até 92 caracteres e estourariam a célula e o dropdown.
+            produtos_perfil:     { key: 'produtos_perfil', label: 'Perfil produtos', accessor: (e) => e.produtos_perfil, format: (v) => (v === VAZIO ? '(Sem resposta)' : (PERFIL_PRODUTOS_CURTO[v] ?? v)) },
+            canais_faturamento:  { key: 'canais_faturamento', label: 'Outros canais', accessor: (e) => e.canais_faturamento, format: (v) => (v === VAZIO ? '(Sem resposta)' : (CANAIS_CURTO[v] ?? v)) },
             places:              { key: 'places', label: 'Places', accessor: (e) => e.places },
             erp:                 { key: 'erp', label: 'ERP', accessor: (e) => e.erp },
         };
@@ -1452,15 +1471,16 @@ const COLS_POR_LENTE = {
     geral: [
         'data_cadastro',
         'fase', 'estagio', 'polo', 'responsavel', 'onboarding', 'envio', 'status_entrada', 'chance_entrada',
-        'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'data_solicitacao',
+        'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao',
         'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao',
-        'contextos_logistica', 'me1', 'integradora', 'places', 'erp',
+        'contextos_logistica', 'me1', 'integradora', 'produtos_perfil', 'places', 'erp',
         'fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status',
         '__acoes__',
     ],
-    acessos:    ['acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'data_solicitacao'],
+    acessos:    ['acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao'],
     produtos:   ['planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao'],
-    logistica:  ['contextos_logistica', 'me1', 'integradora', 'places', 'erp'],
+    // 'produtos_perfil' vive aqui, ao lado do ME1: é a resposta do cliente que decide o ME1.
+    logistica:  ['contextos_logistica', 'me1', 'integradora', 'produtos_perfil', 'places', 'erp'],
     financeiro: ['fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status'],
 };
 
@@ -1473,6 +1493,19 @@ function colsDaLente(lente, isAdmin) {
     const keys = COLS_POR_LENTE[lente] ?? [];
     if (lente === 'geral' && !isAdmin) return keys.filter((k) => !k.startsWith('fin_'));
     return keys;
+}
+
+// Resposta que o CLIENTE deu no link do Onboarding. SÓ LEITURA de propósito: o valor mora
+// em dados.itens.<id>.valor (JSON da ficha) e o Painel não tem caminho de escrita pra lá —
+// os blocos de BLOCO_DE gravam colunas de mlb_implementacoes. Quem responde é o cliente.
+// A grade mostra o rótulo curto; a frase inteira fica no title (hover).
+function CelResposta({ valor, curto }) {
+    if (!valor) return <span className="text-white/20 text-[12px]">—</span>;
+    return (
+        <div className="max-w-[190px] truncate text-[12px] text-white/70" title={valor}>
+            {curto[valor] ?? valor}
+        </div>
+    );
 }
 
 // <th> com funil de filtro/ordenação. `alignRight` p/ colunas numéricas do financeiro.
@@ -1554,6 +1587,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
         <td className={td}><EditToggle e={e} campo="grupo_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
         <td className={td}><EditLink e={e} campo="link_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
         <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="reuniao_onboarding" opcoes={opcoes.reuniao_onboarding} presentes={valoresPresentes.reuniao_onboarding} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
+        <td className={td}><CelResposta valor={e.canais_faturamento} curto={CANAIS_CURTO} /></td>
         <td className={td}><div className="min-w-[140px]"><EditDate e={e} campo="data_solicitacao" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>
     </>);
 
@@ -1583,6 +1617,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
         <td className={td}><div className="min-w-[240px]"><EditText e={e} campo="contextos_logistica" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="anotação…" wide /></div></td>
         <td className={td}><div className="min-w-[160px]"><EditSelect e={e} campo="me1" opcoes={opcoes.me1} presentes={valoresPresentes.me1} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="integradora" opcoes={opcoes.integradora} presentes={valoresPresentes.integradora} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
+        <td className={td}><CelResposta valor={e.produtos_perfil} curto={PERFIL_PRODUTOS_CURTO} /></td>
         <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="places" opcoes={opcoes.places} presentes={valoresPresentes.places} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="erp" opcoes={opcoes.erp} presentes={valoresPresentes.erp} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
     </>);
