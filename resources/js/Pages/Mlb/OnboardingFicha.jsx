@@ -11,18 +11,15 @@ import { MlOauthBadge } from '@/Pages/Mlb/components/MlOauthStatus';
 // ═══ CONSTANTES DE FALLBACK (usadas quando opcoes não chegam via props) ═══
 const ONB_POLO_OPCOES     = ['Arapongas', 'S. J. Rio Preto', 'Bento Gonçalves', 'São Bento do Sul'];
 const ONB_FASE_OPCOES     = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Churn'];
-const ONB_ACESSO_COLABORADOR_OPCOES = ['Com acesso', 'Sem acesso'];
+const ONB_ACESSO_COLABORADOR_OPCOES = ['Com acesso', 'Falta Aceitar', 'Sem acesso'];
 const ONB_PLANILHA_PRODUTOS_OPCOES  = ['Já enviado', 'Não enviado'];
 const ONB_LISTAGEM_OPCOES           = ['Não', 'Pronto para listar', 'Já listado', 'Falta informação'];
 const ONB_PUBLICACAO_OPCOES         = ['Não iniciado', 'Concluído', 'Estágio 2', 'Suspensa'];
-const ONB_DECOLA_OPCOES             = ['Sim', 'Não', 'Mensagem Enviada'];
+const ONB_DECOLA_OPCOES             = ['Sim', 'Não', 'Mensagem Enviada', 'Verificar'];
 const ONB_CENTRAL_PROMOCAO_OPCOES   = ['Sim', 'Não'];
-const ONB_ME1_OPCOES = [
-    'Sem itens ainda', 'Não é necessário', 'Ativo', 'Em contratação', 'Precisa de ME1',
-    'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora',
-    'Preenchendo tabela', 'Verificando',
-];
-const ONB_INTEGRADORA_OPCOES = ['Nenhuma', 'Frenet', 'Sisfrete', 'Intelispost', 'Frete Gestão', 'Em contratação', 'Any'];
+// Enxugado de 10 para 5 em 2026-09-01 (espelha ONB_ME1_OPCOES do Model).
+const ONB_ME1_OPCOES = ['Não é necessário', 'Precisa de ME1', 'Em contratação', 'Ativo', 'Não'];
+const ONB_INTEGRADORA_OPCOES = ['Nenhuma', 'Frenet', 'Sisfrete', 'Intelipost', 'Frete Gestão', 'Em contratação', 'Anymarket'];
 const ONB_PLACES_OPCOES = [
     'Ativo', 'Solicitado', 'Falta emissor fiscal', 'Falta certificado A1',
     'Falta endereço fiscal', 'Checklist realizado', 'Realizando checklist', 'Não',
@@ -43,9 +40,11 @@ const limparSemValor = (obj) =>
 function corStatus(valor) {
     if (!valor) return 'text-white/30 bg-white/[0.04]';
     const positivos = ['Com acesso', 'Já enviado', 'Já listado', 'Concluído', 'Sim', 'Ativo', 'Checklist realizado'];
+    // 'Falta Aceitar' e 'Verificar' são gravados pelo CLIENTE no link público: ele declarou,
+    // a ECF ainda precisa confirmar. Estado intermediário, nunca positivo.
     const emProgresso = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado',
         'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora',
-        'Preenchendo tabela', 'Verificando', 'Mensagem Enviada'];
+        'Preenchendo tabela', 'Verificando', 'Mensagem Enviada', 'Falta Aceitar', 'Verificar'];
     const negativos = ['Sem acesso', 'Banida', 'Protocolo Churn', 'Churn', 'Encerrado', 'Não', 'Falta informação',
         'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal'];
     const fasesAtivas = ['M1', 'M2', 'M3', 'M4'];

@@ -126,9 +126,18 @@ class MlbImplementacao extends Model
         'Não compareceu',
     ];
 
-    /** Status do acesso colaborador dado pela empresa ao colaborador ECF */
+    /**
+     * Status do acesso colaborador dado pela empresa ao colaborador ECF.
+     *
+     * "Falta Aceitar" NÃO é preenchido pela equipe: quem grava é o próprio cliente, ao
+     * marcar o item "Acesso Colaborador" como feito no link público (salvarItem). Significa
+     * "o cliente diz que convidou, falta alguém da ECF aceitar" — é fila de trabalho, não
+     * conclusão. Por isso NÃO conta como entrante na meta (EntrantesM0Panel/MetasPanel
+     * exigem exatamente 'Com acesso') e nunca sobrescreve um 'Com acesso' já registrado.
+     */
     public const ONB_ACESSO_COLABORADOR_OPCOES = [
         'Com acesso',
+        'Falta Aceitar',
         'Sem acesso',
     ];
 
@@ -163,6 +172,9 @@ class MlbImplementacao extends Model
         'Sim',
         'Não',
         'Mensagem Enviada',
+        // Gravado pelo CLIENTE ao marcar "Programa Decola" no link público: ele diz que
+        // aderiu, a ECF ainda precisa conferir na conta. Não rebaixa um 'Sim' já registrado.
+        'Verificar',
     ];
 
     /**
@@ -174,18 +186,24 @@ class MlbImplementacao extends Model
         'Não',
     ];
 
-    /** Status do ME1 (Mercado Envios Full nível 1) */
+    /**
+     * Status do ME1 (Mercado Envios nível 1). Enxugado de 10 para 5 valores em 2026-09-01.
+     *
+     * Encurtar a constante NÃO limpa a coluna: o Painel Polos reinjeta no dropdown todo
+     * valor presente no banco (valoresPresentes), e o sync da planilha copiava a coluna
+     * verbatim — o banco tinha 12 variantes, com caixa e acento divergentes do catálogo.
+     * A limpeza é feita por `onboarding:normalizar-catalogos` e a re-sujeira é barrada por
+     * SyncPolosPlanilha::normMe1(), que normaliza na INGESTÃO.
+     *
+     * 'Precisa de ME1' continua sendo gravado automaticamente pelas medidas da embalagem
+     * (planilhaExcedeMercadoEnvios) enquanto me1_manual for falso.
+     */
     public const ONB_ME1_OPCOES = [
-        'Sem itens ainda',
         'Não é necessário',
-        'Ativo',
-        'Em contratação',
         'Precisa de ME1',
-        'Aguardando contato',
-        'Conversando com cliente',
-        'Pendente com integradora',
-        'Preenchendo tabela',
-        'Verificando',
+        'Em contratação',
+        'Ativo',
+        'Não',
     ];
 
     /** Integradora logística contratada (Frente 3 — diferente de INTEGRADOR_OPCOES do checklist) */
@@ -193,10 +211,10 @@ class MlbImplementacao extends Model
         'Nenhuma',
         'Frenet',
         'Sisfrete',
-        'Intelispost',
+        'Intelipost',
         'Frete Gestão',
         'Em contratação',
-        'Any',
+        'Anymarket',
     ];
 
     /** Status do Places (endereço de retirada ML) */
@@ -256,6 +274,8 @@ class MlbImplementacao extends Model
             'id'          => 'erp',
             'titulo'      => 'ERP',
             'tipo'        => 'select',
+            'opcoes'      => self::ERP_OPCOES,
+            'tem_acesso'  => true,
             'tem_tutorial'=> false,
             'descricao'   => 'Qual ERP a empresa utiliza? Informe também o acesso',
         ],
@@ -263,15 +283,48 @@ class MlbImplementacao extends Model
             'id'          => 'integrador_logistico',
             'titulo'      => 'Integrador Logístico',
             'tipo'        => 'select',
+            'opcoes'      => self::INTEGRADOR_OPCOES,
             'tem_tutorial'=> false,
             'descricao'   => 'Qual integrador logístico a empresa utiliza?',
         ],
         [
+            'id'          => 'produtos_perfil',
+            'titulo'      => 'Perfil dos Produtos',
+            'tipo'        => 'select_opcoes',
+            'opcoes'      => [
+                'Produtos pequenos, leves e monovolumes que podem ser enviados normalmente pelo Mercado Envios',
+                'Produtos grandes, volumosos, multivolumes e/ou com mais de 50 kg',
+                'Ainda não sei qual será a melhor opção de envio',
+            ],
+            'tem_tutorial'=> false,
+            'descricao'   => 'Como são os produtos que você pretende vender no Mercado Livre?',
+        ],
+        [
+            'id'          => 'canais_faturamento',
+            'titulo'      => 'Outros Canais de Venda',
+            'tipo'        => 'select_opcoes',
+            'opcoes'      => [
+                'Até 50k',
+                'De 50 a 100k',
+                'De 100 a 500k',
+                'Acima de 500k',
+                'Não vendo em outros canais',
+            ],
+            'tem_tutorial'=> false,
+            'descricao'   => 'Você já vende em outros canais? Se sim, qual a faixa de faturamento?',
+        ],
+        [
             'id'          => 'hub',
             'titulo'      => 'HUB',
-            'tipo'        => 'texto',
+            // Era 'texto' (textarea livre) até 2026-09-01. Virou 'select' — e não
+            // 'select_opcoes' — de propósito: 'select' mantém a trava anti-check-vazio
+            // (itemTemConteudo exige valor ≠ '---'), enquanto 'select_opcoes' marca o item
+            // como feito sozinho. O campo de texto continua embaixo, como no ERP.
+            'tipo'        => 'select',
+            'opcoes'      => self::HUB_OPCOES,
+            'tem_acesso'  => true,
             'tem_tutorial'=> false,
-            'descricao'   => 'Informe o acesso ao HUB (se aplicável)',
+            'descricao'   => 'Qual HUB de integração a empresa utiliza? Informe também o acesso',
         ],
         [
             'id'          => 'publicar_em_massa',
@@ -352,11 +405,32 @@ class MlbImplementacao extends Model
         'Em Contratação', 'Tiny ERP', 'Bling', 'SAP', 'Netsuite', 'TOTVS', 'Omie', 'Outro',
     ];
 
+    /**
+     * Integrador logístico do CHECKLIST público (≠ ONB_INTEGRADORA_OPCOES, que é a coluna
+     * "Integradora" do Painel Polos). Revisto em 2026-09-01: saíram Melhor Envio, DirectLog,
+     * Jadlog, Correios e "Trabalhar apenas com Mercado Envios" (nenhuma ficha usava);
+     * 'Em Contratação' (9 fichas) e 'Outro' (1) ficaram porque tirá-los deixaria o valor
+     * órfão — o select renderiza vazio e itemTemConteudo trava o check.
+     */
     public const INTEGRADOR_OPCOES = [
-        'Em Contratação', 'Melhor Envio', 'Frenet', 'DirectLog', 'Jadlog', 'Correios',
+        'Em Contratação',
+        'Frenet',
+        'Sisfrete',
+        'Intelipost',
+        'Anymarket',
         // Empresa que não usa integrador — despacha tudo pelo Mercado Envios (quick 260804)
-        'Trabalhar apenas com Mercado Envios',
+        'Enviarei Apenas pelo Mercado Envios',
         'Outro',
+    ];
+
+    /** HUB de integração usado pelo cliente (item "HUB" do checklist público). */
+    public const HUB_OPCOES = [
+        'Anymarket',
+        'Tray',
+        'Magis5',
+        'Ideris',
+        'Shopping de Preços',
+        'Não utilizo',
     ];
 
     public static function dadosPadrao(): array
@@ -385,7 +459,11 @@ class MlbImplementacao extends Model
                 'app_ecf'              => ['feito' => false],
                 'erp'                  => ['valor' => '---', 'outro' => '', 'acesso' => '', 'feito' => false],
                 'integrador_logistico' => ['valor' => '---', 'outro' => '', 'feito' => false],
-                'hub'                  => ['acesso' => '', 'feito' => false],
+                'produtos_perfil'      => ['valor' => '', 'feito' => false],
+                'canais_faturamento'   => ['valor' => '', 'feito' => false],
+                // 'acesso' preservado: o HUB era textarea livre até 2026-09-01 e 3 fichas
+                // têm texto salvo ali.
+                'hub'                  => ['valor' => '---', 'outro' => '', 'acesso' => '', 'feito' => false],
                 'publicar_em_massa'    => ['valor' => '', 'feito' => false],
                 'planilha_produtos'    => ['produtos' => [], 'feito' => false],
                 'drive_imagens'        => ['feito' => false],
@@ -542,11 +620,11 @@ class MlbImplementacao extends Model
     public static function itemTemConteudo(string $tipo, array $dado): bool
     {
         switch ($tipo) {
-            case 'select': // ERP / Integrador — escolher qualquer opção real (≠ '---') libera
+            case 'select': // ERP / Integrador / HUB — escolher opção real (≠ '---') libera
                 $valor = trim((string) ($dado['valor'] ?? ''));
                 return $valor !== '' && $valor !== '---';
 
-            case 'texto': // HUB
+            case 'texto': // legado — o HUB virou 'select' em 2026-09-01; nenhum item usa hoje
                 return trim((string) ($dado['acesso'] ?? '')) !== '';
 
             case 'link': // URL digitada pelo cliente
@@ -646,9 +724,120 @@ class MlbImplementacao extends Model
         return (float) str_replace(',', '.', $s);
     }
 
+    /**
+     * De-para das variantes de ME1 encontradas no banco para os 5 valores de ONB_ME1_OPCOES.
+     *
+     * A chave é o valor JÁ NORMALIZADO (maiúsculas, sem acento) — a planilha mistura caixa
+     * e acento na mesma coluna ('NÃO' 91 × 'Não é Necessario' 41 × 'EM CONTRATAÇÃO' 16) e
+     * comparar fiel deixaria variante escapando.
+     *
+     * Os 6 estados intermediários que existiam no catálogo antigo colapsam assim (decisão do
+     * usuário em 01/09/2026): 'Sem itens ainda' → vazio, porque a empresa ainda não mandou
+     * produto e não há status de ME1 a afirmar; os demais são negociação em curso e viram
+     * 'Em contratação'. `null` no valor = LIMPAR a coluna.
+     */
+    public const ME1_DE_PARA = [
+        'NAO'                      => 'Não',
+        'NAO E NECESSARIO'         => 'Não é necessário',
+        'ATIVO'                    => 'Ativo',
+        'EM CONTRATACAO'           => 'Em contratação',
+        'PRECISA DE ME1'           => 'Precisa de ME1',
+        'SEM ITENS AINDA'          => null,
+        'AGUARDANDO CONTATO'       => 'Em contratação',
+        'CONVERSANDO COM CLIENTE'  => 'Em contratação',
+        'PENDENTE COM INTEGRADORA' => 'Em contratação',
+        'VERIFICANDO'              => 'Em contratação',
+        'PREENCHENDO TABELA'       => 'Em contratação',
+    ];
+
+    /** Grafias divergentes da coluna "Integradora" (o Painel usava 'Intelispost' e 'Any'). */
+    public const INTEGRADORA_DE_PARA = [
+        'INTELISPOST' => 'Intelipost',
+        'INTELIPOST'  => 'Intelipost',
+        'ANY'         => 'Anymarket',
+        'ANYMARKET'   => 'Anymarket',
+    ];
+
+    /** Maiúsculas sem acento — chave de comparação dos de-para acima. */
+    public static function chaveCatalogo(string $v): string
+    {
+        $sem = strtr(trim($v), [
+            'á'=>'a','à'=>'a','ã'=>'a','â'=>'a','ä'=>'a','é'=>'e','ê'=>'e','è'=>'e',
+            'í'=>'i','î'=>'i','ó'=>'o','ô'=>'o','õ'=>'o','ö'=>'o','ú'=>'u','û'=>'u','ü'=>'u','ç'=>'c',
+            'Á'=>'A','À'=>'A','Ã'=>'A','Â'=>'A','Ä'=>'A','É'=>'E','Ê'=>'E','È'=>'E',
+            'Í'=>'I','Î'=>'I','Ó'=>'O','Ô'=>'O','Õ'=>'O','Ö'=>'O','Ú'=>'U','Û'=>'U','Ü'=>'U','Ç'=>'C',
+        ]);
+
+        return mb_strtoupper($sem);
+    }
+
+    /**
+     * Normaliza um valor de ME1 para ONB_ME1_OPCOES.
+     * Retorna null quando o valor deve LIMPAR a coluna ('Sem itens ainda' e vazio).
+     * Valor desconhecido passa VERBATIM — não inventamos status de operação.
+     */
+    public static function normalizarMe1(?string $v): ?string
+    {
+        $v = trim((string) $v);
+        if ($v === '') {
+            return null;
+        }
+
+        $chave = self::chaveCatalogo($v);
+
+        return array_key_exists($chave, self::ME1_DE_PARA) ? self::ME1_DE_PARA[$chave] : $v;
+    }
+
+    /** Normaliza a grafia da coluna "Integradora". Desconhecido passa verbatim. */
+    public static function normalizarIntegradora(?string $v): ?string
+    {
+        $v = trim((string) $v);
+        if ($v === '') {
+            return null;
+        }
+
+        return self::INTEGRADORA_DE_PARA[self::chaveCatalogo($v)] ?? $v;
+    }
+
+    /**
+     * Garante em `dados['itens']` todas as chaves do CHECKLIST atual, sem perder o que já
+     * foi salvo (o valor gravado SEMPRE vence o padrão).
+     *
+     * Por que isto existe: o JSON de `dados` é escrito uma vez e nunca mais ganha chave.
+     * Quem salvou a ficha quando o checklist tinha 15 itens continua com 15 no banco para
+     * sempre. Sem o merge, uma pergunta acrescentada ao CHECKLIST é pior do que invisível
+     * nessas fichas — `salvarItem()` faz `abort_unless(isset($dados['itens'][$id]), 422)`,
+     * então o cliente escolhe a opção, o autosave leva 422 e nada é gravado.
+     *
+     * Fichas com `dados` NULL (259 das 269 em 01/09/2026) nunca tiveram esse problema:
+     * renderizam de dadosPadrao() fresco. O merge é o que dá o mesmo tratamento às 10 que
+     * já têm JSON salvo — sem migration e sem backfill, se curando na primeira leitura.
+     *
+     * @param array $dados Conteúdo de `dados` (ou dadosPadrao() quando NULL).
+     */
+    public static function mesclarItensPadrao(array $dados): array
+    {
+        $padrao = self::dadosPadrao()['itens'];
+        $itens  = is_array($dados['itens'] ?? null) ? $dados['itens'] : [];
+
+        foreach ($padrao as $id => $default) {
+            $salvo = is_array($itens[$id] ?? null) ? $itens[$id] : [];
+            // array_merge com o salvo em SEGUNDO: o que o cliente gravou prevalece, e
+            // sub-chaves novas (ex.: hub.valor) entram sem apagar as antigas (hub.acesso).
+            $itens[$id] = array_merge($default, $salvo);
+        }
+
+        $dados['itens'] = $itens;
+
+        return $dados;
+    }
+
     public function progresso(): array
     {
-        $itens = $this->dados['itens'] ?? [];
+        // Conta sobre o CHECKLIST atual (via merge), não sobre o JSON congelado da ficha:
+        // sem isso, ficha antiga fica presa no denominador do checklist de quando foi salva
+        // e uma pergunta nova nunca a tira de 100%.
+        $itens = self::mesclarItensPadrao($this->dados ?? [])['itens'];
         $total = count($itens);
         $feitos = count(array_filter($itens, fn($v) => $v['feito'] ?? false));
         return [

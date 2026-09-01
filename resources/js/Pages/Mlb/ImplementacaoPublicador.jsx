@@ -161,7 +161,9 @@ function SectionCard({ title, children, accent }) {
 }
 
 function InfoRow({ label, value, link }) {
-    if (!value || value === '—' || value === false) return null;
+    // '---' é a sentinela "não escolhido" dos selects do checklist (ERP, Integrador, HUB) —
+    // linha em branco é mais honesta do que exibir o sentinela.
+    if (!value || value === '—' || value === '---' || value === false) return null;
     return (
         <div className="flex items-start gap-3 py-2 border-b border-white/[0.04] last:border-0">
             <span className="text-white/40 text-[12px] w-44 shrink-0">{label}</span>
@@ -575,7 +577,10 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                             <InfoRow label="ERP" value={erp.valor === 'Outro' ? `Outro: ${erp.outro}` : erp.valor} />
                             <InfoRow label="Acesso ERP" value={erp.acesso} />
                             <InfoRow label="Integrador Logístico" value={integ.valor === 'Outro' ? `Outro: ${integ.outro}` : integ.valor} />
-                            <InfoRow label="HUB" value={hub.acesso} />
+                            {/* HUB virou dropdown em 2026-09-01 (era textarea livre): o valor
+                                mora em .valor e o texto opcional continua em .acesso. */}
+                            <InfoRow label="HUB" value={hub.valor === 'Outro' ? `Outro: ${hub.outro}` : hub.valor} />
+                            <InfoRow label="Acesso HUB" value={hub.acesso} />
                             <InfoRow label="Publicar em Massa" value={pmass.valor} />
                         </div>
                         <div>

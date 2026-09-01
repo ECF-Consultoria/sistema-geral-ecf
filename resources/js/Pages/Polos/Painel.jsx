@@ -88,7 +88,7 @@ const corFase = (f) => COR_FASE[f] ?? 'text-white/70';
 // Cor do texto por valor de onboarding (verde=ok · âmbar=em progresso · vermelho=bloqueio).
 // Espelha a classificação da ficha (corStatus) — só a cor do texto, p/ a grade escaneável.
 const VAL_POS  = ['Com acesso', 'Já enviado', 'Já listado', 'Concluído', 'Concluido', 'Sim', 'Ativo', 'Checklist realizado', 'Feito', 'Alta'];
-const VAL_PROG = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado', 'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora', 'Preenchendo tabela', 'Verificando', 'Agendada', 'em contato', 'Média', 'Reserva - entrada prox mês', 'Mensagem Enviada'];
+const VAL_PROG = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado', 'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora', 'Preenchendo tabela', 'Verificando', 'Agendada', 'em contato', 'Média', 'Reserva - entrada prox mês', 'Mensagem Enviada', 'Falta Aceitar', 'Verificar'];
 const VAL_NEG  = ['Sem acesso', 'Banida', 'Protocolo Churn', 'Churn', 'Encerrado', 'Não', 'Não enviado', 'Suspensa', 'Falta informação', 'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal', 'Baixo', 'Abandonou o projeto', 'Não compareceu', 'Não responde', 'Não tem CNPJ', 'Não tem conta ML'];
 function corValor(v) {
     if (!v) return 'text-white/25';

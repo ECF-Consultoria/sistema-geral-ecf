@@ -85,8 +85,9 @@ class SyncPolosPlanilha extends Command
         'Listagem'            => 'listagem',
         'Publicação'          => 'publicacao',
         'Contextos logistica' => 'contextos_logistica',
-        'ME1'                 => 'me1',
-        'Integradora'         => 'integradora',
+        // 'ME1' e 'Integradora' saíram do copy verbatim em 2026-09-01 — são normalizados
+        // por normMe1()/normIntegradora(). Copiá-los fiel é o que encheu a coluna ME1 de 12
+        // variantes de caixa e acento, que o Painel reinjeta no dropdown (valoresPresentes).
         'Places'              => 'places',
         'ERP'                 => 'erp',
         // ── Colunas novas da V2 (confirmadas com o usuário) ──
@@ -103,10 +104,20 @@ class SyncPolosPlanilha extends Command
         'Campanha Criada'=> 'campanha_criada',
     ];
 
+    /**
+     * Valores que só o CLIENTE grava (pelo link público do Onboarding) e que a planilha não
+     * pode desfazer. A planilha é copiada por cima a cada --apply; sem esta proteção o
+     * próximo sync devolvia a ficha ao valor antigo e o clique do cliente sumia sem rastro.
+     */
+    private const SENTINELAS_DO_CLIENTE = [
+        'acesso_colaborador' => 'Falta Aceitar',
+        'decola'             => 'Verificar',
+    ];
+
     private array $rel = [
         'update_empresa' => 0, 'create_empresa' => 0, 'update_ficha' => 0, 'create_ficha' => 0,
         'skip_publicador' => 0, 'skip_erro' => 0, 'linhas' => 0, 'arquivadas' => 0,
-        'protegidas' => 0,
+        'protegidas' => 0, 'sentinelas_preservadas' => 0,
     ];
     private array $skipPublicador = [];
     private array $fasesDesconhecidas = [];
@@ -327,6 +338,17 @@ class SyncPolosPlanilha extends Command
         if ($decola !== null) {
             $fichaData['decola'] = $decola;
         }
+        // ME1 e Integradora: normalizados na INGESTÃO, não copiados fiel. Sem isto, o
+        // comando onboarding:normalizar-catalogos vira um one-shot — limpa hoje e o
+        // próximo --apply re-suja a coluna com a caixa/acento da planilha.
+        $me1 = $this->normMe1($get('ME1'));
+        if ($me1 !== null) {
+            $fichaData['me1'] = $me1;
+        }
+        $integradora = $this->normIntegradora($get('Integradora'));
+        if ($integradora !== null) {
+            $fichaData['integradora'] = $integradora;
+        }
         // Central de Promoção (coluna nova na planilha de 2026-08-26). Diferente das colunas
         // de TEXT_IMPL, que são copiadas verbatim: aqui a caixa é normalizada porque a planilha
         // mistura "Não" (182) e "NÃO" (60) na MESMA coluna — sem isso o filtro do painel nasce
@@ -350,6 +372,20 @@ class SyncPolosPlanilha extends Command
             $ficha = MlbImplementacao::where('empresa_id', $empresa->id)->first();
         }
         $criandoFicha = $ficha === null;
+
+        // Blindagem do que o cliente gravou: 'Falta Aceitar' / 'Verificar' vencem a planilha.
+        if ($ficha !== null) {
+            foreach (self::SENTINELAS_DO_CLIENTE as $campo => $sentinela) {
+                if (array_key_exists($campo, $fichaData) && $ficha->{$campo} === $sentinela) {
+                    unset($fichaData[$campo]);
+                    $this->rel['sentinelas_preservadas']++;
+                }
+            }
+        }
+
+        if (empty($fichaData)) {
+            return;
+        }
 
         if ($apply) {
             if ($criandoFicha) {
@@ -418,6 +454,36 @@ class SyncPolosPlanilha extends Command
         }
         // Não, Solicitado, Agendada, etc. → false (não concluído)
         return false;
+    }
+
+    /**
+     * Normaliza a coluna "ME1" da planilha para os 5 valores de ONB_ME1_OPCOES.
+     * Vazio → null (não mexe). O de-para é o MESMO de onboarding:normalizar-catalogos —
+     * se divergirem, o banco volta a ter valor fora do catálogo no próximo --apply.
+     */
+    private function normMe1(string $v): ?string
+    {
+        $v = trim($v);
+        if ($v === '') {
+            return null;
+        }
+
+        return MlbImplementacao::normalizarMe1($v);
+    }
+
+    /**
+     * Normaliza a coluna "Integradora" só na grafia (Intelispost → Intelipost, Any →
+     * Anymarket) e na caixa. Valor desconhecido passa VERBATIM — a planilha continua sendo
+     * a verdade e o Painel exibe o valor novo como opção criada.
+     */
+    private function normIntegradora(string $v): ?string
+    {
+        $v = trim($v);
+        if ($v === '') {
+            return null;
+        }
+
+        return MlbImplementacao::normalizarIntegradora($v);
     }
 
     /**

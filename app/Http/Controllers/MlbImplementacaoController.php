@@ -1014,7 +1014,10 @@ class MlbImplementacaoController extends Controller
         $impl = MlbImplementacao::where('token', $token)->with('empresa')->firstOrFail();
         $impl->update(['ultimo_acesso' => now()]);
 
-        $dados = $impl->dados ?? MlbImplementacao::dadosPadrao();
+        // Merge com o padrão: garante as chaves de perguntas acrescentadas ao CHECKLIST
+        // depois que esta ficha foi salva. Sem isso o cliente vê a pergunta nova e o
+        // autosave devolve 422 (ver MlbImplementacao::mesclarItensPadrao).
+        $dados = MlbImplementacao::mesclarItensPadrao($impl->dados ?? MlbImplementacao::dadosPadrao());
 
         // O gmail capturado no cadastro (Comercial) ou na ficha de Onboarding fica na
         // COLUNA gmail_colaborador. O passo "Acesso Colaborador" do Onboarding lê de
@@ -1066,7 +1069,9 @@ class MlbImplementacaoController extends Controller
         $campo = $request->string('campo')->toString();
         $valor = $request->input('valor');
 
-        $dados = $impl->dados ?? MlbImplementacao::dadosPadrao();
+        // Mesmo merge do render: sem ele, item acrescentado ao CHECKLIST depois desta ficha
+        // ter sido salva cai no abort 422 abaixo e o cliente não consegue responder.
+        $dados = MlbImplementacao::mesclarItensPadrao($impl->dados ?? MlbImplementacao::dadosPadrao());
         abort_unless(isset($dados['itens'][$id]), 422);
 
         $dados['itens'][$id][$campo] = $valor;
@@ -1113,6 +1118,34 @@ class MlbImplementacaoController extends Controller
                         ->log('[Onboarding] ME1 automático limpo — medidas da embalagem voltaram a caber no Mercado Envios na implementação de "' . $impl->empresa->nome . '" (cliente)');
                 }
             }
+        }
+
+        // ONB-ACESSO: marcar "Acesso Colaborador" no link é o CLIENTE dizendo que mandou o
+        // convite — não que a ECF já aceitou. Vira "Falta Aceitar" no Painel Polos para
+        // virar fila de trabalho visível, em vez de morrer dentro do JSON da ficha.
+        // NÃO rebaixa: 'Com acesso' é fato consumado registrado pela equipe e o clique do
+        // cliente não pode desfazê-lo. Qualquer outro valor (vazio, 'Sem acesso', ou os 70
+        // 'Mensagem enviada' herdados da planilha) é informação mais velha e cede.
+        // Não conta como entrante: a meta exige 'Com acesso' — e como nunca rebaixamos,
+        // nenhuma empresa que já contava deixa de contar.
+        if ($id === 'acesso_colaborador' && $campo === 'feito' && $valor
+            && ! in_array($impl->acesso_colaborador, ['Com acesso', 'Falta Aceitar'], true)) {
+            $anterior = $impl->acesso_colaborador; // capturar ANTES: update() ressincroniza o original
+            $impl->update(['acesso_colaborador' => 'Falta Aceitar']);
+            activity('implementacao')
+                ->withProperties(['empresa' => $impl->empresa->nome, 'anterior' => $anterior])
+                ->log('[Onboarding] Acesso Colaborador marcado como "Falta Aceitar" — o cliente declarou que deu o acesso na implementação de "' . $impl->empresa->nome . '" (cliente)');
+        }
+
+        // ONB-DECOLA: mesma regra do acesso colaborador. O cliente marcar "Programa Decola"
+        // significa que ele aderiu; falta a ECF conferir na conta. 'Sim' não é rebaixado.
+        if ($id === 'programa_decola' && $campo === 'feito' && $valor
+            && ! in_array($impl->decola, ['Sim', 'Verificar'], true)) {
+            $anterior = $impl->decola; // capturar ANTES: update() ressincroniza o original
+            $impl->update(['decola' => 'Verificar']);
+            activity('implementacao')
+                ->withProperties(['empresa' => $impl->empresa->nome, 'anterior' => $anterior])
+                ->log('[Onboarding] Programa Decola marcado como "Verificar" — o cliente declarou adesão na implementação de "' . $impl->empresa->nome . '" (cliente)');
         }
 
         // Log público (cliente preenchendo o checklist) — sem usuário autenticado

@@ -1720,11 +1720,14 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
         );
     }
 
-    // ERP / Integrador
+    // ERP / Integrador Logístico / HUB
     if (tipo === 'select') {
-        // '---' = sentinela "não escolhido" (default) → mantém o check travado até o cliente selecionar uma opção real.
-        // Espelha ERP_OPCOES / INTEGRADOR_OPCOES de App\Models\MlbImplementacao — manter em sincronia manualmente.
-        const opcoes = item.id === 'erp' ? ['---','Em Contratação','Tiny ERP','Bling','SAP','Netsuite','TOTVS','Omie','Outro'] : ['---','Em Contratação','Melhor Envio','Frenet','DirectLog','Jadlog','Correios','Trabalhar apenas com Mercado Envios','Outro'];
+        // '---' = sentinela "não escolhido" (default) → mantém o check travado até o cliente
+        // selecionar uma opção real (itemTemConteudo exige valor ≠ '---').
+        // As opções vêm do CHECKLIST do servidor (item.opcoes). Antes eram duas listas
+        // hardcoded aqui, que divergiam em silêncio das constantes do Model — o componente
+        // já recebia a prop integrador_opcoes e simplesmente não a lia.
+        const opcoes = ['---', ...(item.opcoes ?? [])];
         const valor = dado?.valor ?? '---';
         return (
             <div className="mt-3 space-y-3">
@@ -1749,15 +1752,15 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
                         />
                     </div>
                 )}
-                {item.id === 'erp' && (
+                {item.tem_acesso && (
                     <div>
-                        <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">Acesso ao ERP</label>
+                        <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">Acesso / Informações</label>
                         <textarea
                             value={dado?.acesso ?? ''}
                             onChange={e => handleText('acesso', e.target.value)}
                             onBlur={e => onChange(item.id, 'acesso', e.target.value, true)}
                             rows={2}
-                            placeholder="Login, senha ou link de acesso ao ERP..."
+                            placeholder="Login, senha ou link de acesso..."
                             className="w-full px-3 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 resize-none"
                         />
                     </div>
@@ -1827,11 +1830,11 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
 // Reativo: dado vem do estado local, então recalcula a cada tecla digitada.
 function itemTemConteudo(item, dado = {}) {
     switch (item.tipo) {
-        case 'select': { // ERP / Integrador — escolher qualquer opção real (≠ '---') libera
+        case 'select': { // ERP / Integrador / HUB — escolher opção real (≠ '---') libera
             const valor = String(dado.valor ?? '').trim();
             return valor !== '' && valor !== '---';
         }
-        case 'texto': // HUB
+        case 'texto': // legado — o HUB virou 'select' em 2026-09-01; nenhum item usa hoje
             return String(dado.acesso ?? '').trim() !== '';
         case 'link':  // URL digitada pelo cliente
             return String(dado.link ?? '').trim() !== '';
