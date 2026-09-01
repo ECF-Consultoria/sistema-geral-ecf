@@ -590,4 +590,286 @@ class ContratoClicksignServiceTest extends TestCase
         $contrato = ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $servico->id)->firstOrFail();
         $this->assertCount(2, $contrato->servicos_snapshot);
     }
+
+    // ─── Quick 260901-gj7 — venda combinada Mercado Livre + Shopee vira UM contrato só ───
+
+    /**
+     * Helper: serviço Shopee configurado para compartilhar contrato com o
+     * serviço `$dono` — o mecanismo genérico da quick 260901-gj7 (Tarefa 1),
+     * nunca preenchido em produção por esta suíte (a migration não
+     * preenche nada).
+     */
+    private function servicoJuntoCom(Servico $dono, array $overrides = []): Servico
+    {
+        return $this->servicoDeTeste(array_merge([
+            'contrato_junto_com_servico_id' => $dono->id,
+        ], $overrides));
+    }
+
+    #[Test]
+    public function gestao_e_shopee_combinados_geram_um_unico_contrato_com_servico_id_do_dono_e_snapshot_dos_dois(): void
+    {
+        $company = $this->companyCompleta();
+        $gestao = $this->servicoDeTeste(['nome' => 'Gestão de Ads']);
+        $shopee = $this->servicoJuntoCom($gestao, ['nome' => 'Gestão de Ads Shopee']);
+
+        $this->contratoServicoAtivo($company, $gestao, ['valor_contratado' => 100]);
+        $this->contratoServicoAtivo($company, $shopee, ['valor_contratado' => 200]);
+
+        $resultado = $this->service->iniciarParaEmpresa($company);
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertCount(1, $resultado['criados']);
+        $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $shopee->id)->count());
+
+        $contrato = ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $gestao->id)->firstOrFail();
+
+        $this->assertCount(2, $contrato->servicos_snapshot);
+        $nomesNoSnapshot = collect($contrato->servicos_snapshot)->pluck('servico')->all();
+        $this->assertContains($gestao->nome, $nomesNoSnapshot);
+        $this->assertContains($shopee->nome, $nomesNoSnapshot);
+
+        Queue::assertPushed(GerarContratoAssinaturaJob::class, 1);
+    }
+
+    /**
+     * O contrato combinado usa o MODELO DO DONO (D-21) — provado aqui pelo
+     * `servico_id` gravado (é dele que `GerarContratoAssinaturaJob` resolve
+     * `clicksignTemplateId()`, Fase 126/127-04), não do serviço combinado.
+     */
+    #[Test]
+    public function contrato_combinado_usa_o_servico_id_e_o_modelo_do_dono(): void
+    {
+        $company = $this->companyCompleta();
+        $gestao = $this->servicoDeTeste(['nome' => 'Gestão de Ads', 'clicksign_template_id' => 'modelo-gestao-uuid']);
+        $shopee = $this->servicoJuntoCom($gestao, ['nome' => 'Gestão de Ads Shopee', 'clicksign_template_id' => 'modelo-shopee-uuid']);
+
+        $this->contratoServicoAtivo($company, $gestao);
+        $this->contratoServicoAtivo($company, $shopee);
+
+        $this->service->iniciarParaEmpresa($company);
+
+        $contrato = ContratoAssinatura::where('company_id', $company->id)->firstOrFail();
+
+        $this->assertSame($gestao->id, $contrato->servico_id);
+        $this->assertSame('modelo-gestao-uuid', $contrato->servico->clicksignTemplateId());
+    }
+
+    /**
+     * ⚠️ REGRESSÃO MAIS IMPORTANTE deste quick: Shopee SOZINHO (o dono
+     * configurado NÃO está entre os serviços ativos desta empresa) continua
+     * com contrato PRÓPRIO, usando o modelo de Shopee — é o caso que acabou
+     * de entrar em produção (servico 9, modelo 5c2d8ad4) e não pode
+     * regredir. O redirecionamento para o dono só vale quando o dono também
+     * está ativo.
+     */
+    #[Test]
+    public function shopee_sozinho_sem_o_dono_ativo_continua_com_contrato_proprio_e_modelo_proprio(): void
+    {
+        $company = $this->companyCompleta();
+        $gestao = $this->servicoDeTeste(['nome' => 'Gestão de Ads', 'clicksign_template_id' => 'modelo-gestao-uuid']);
+        $shopee = $this->servicoJuntoCom($gestao, ['nome' => 'Gestão de Ads Shopee', 'clicksign_template_id' => 'modelo-shopee-uuid']);
+
+        // Só Shopee ativo — Gestão (o dono configurado) NÃO tem
+        // ContratoServico ativo nesta empresa.
+        $this->contratoServicoAtivo($company, $shopee);
+
+        $resultado = $this->service->iniciarParaEmpresa($company);
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertCount(1, $resultado['criados']);
+
+        $contrato = ContratoAssinatura::where('company_id', $company->id)->firstOrFail();
+
+        $this->assertSame($shopee->id, $contrato->servico_id);
+        $this->assertSame('modelo-shopee-uuid', $contrato->servico->clicksignTemplateId());
+        $this->assertCount(1, $contrato->servicos_snapshot);
+        $this->assertSame($shopee->nome, $contrato->servicos_snapshot[0]['servico']);
+    }
+
+    /** Gestão sozinha (sem Shopee ativo) — igual a hoje, sem qualquer efeito da configuração de combinação. */
+    #[Test]
+    public function gestao_sozinha_sem_shopee_ativo_gera_contrato_normal_igual_a_hoje(): void
+    {
+        $company = $this->companyCompleta();
+        $gestao = $this->servicoDeTeste(['nome' => 'Gestão de Ads']);
+        // Shopee existe no catálogo, configurado para juntar com Gestão, mas
+        // não tem NENHUM ContratoServico ativo nesta empresa.
+        $this->servicoJuntoCom($gestao, ['nome' => 'Gestão de Ads Shopee']);
+
+        $this->contratoServicoAtivo($company, $gestao);
+
+        $resultado = $this->service->iniciarParaEmpresa($company);
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertCount(1, $resultado['criados']);
+
+        $contrato = ContratoAssinatura::where('company_id', $company->id)->firstOrFail();
+        $this->assertSame($gestao->id, $contrato->servico_id);
+        $this->assertCount(1, $contrato->servicos_snapshot);
+    }
+
+    /**
+     * Gestão + Shopee (combinados) + Mentoria (serviço avulso, sem relação
+     * de combinação nenhuma) → 2 contratos: o combinado (Gestão+Shopee) e o
+     * de Mentoria, sozinho.
+     */
+    #[Test]
+    public function gestao_shopee_e_mentoria_geram_dois_contratos_o_combinado_e_o_avulso(): void
+    {
+        $company = $this->companyCompleta();
+        $gestao = $this->servicoDeTeste(['nome' => 'Gestão de Ads']);
+        $shopee = $this->servicoJuntoCom($gestao, ['nome' => 'Gestão de Ads Shopee']);
+        $mentoria = $this->servicoDeTeste(['nome' => 'Mentoria']);
+
+        $this->contratoServicoAtivo($company, $gestao);
+        $this->contratoServicoAtivo($company, $shopee);
+        $this->contratoServicoAtivo($company, $mentoria);
+
+        $resultado = $this->service->iniciarParaEmpresa($company);
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertCount(2, $resultado['criados']);
+        $this->assertSame(2, ContratoAssinatura::where('company_id', $company->id)->count());
+
+        $contratoCombinado = ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $gestao->id)->firstOrFail();
+        $this->assertCount(2, $contratoCombinado->servicos_snapshot);
+
+        $contratoMentoria = ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $mentoria->id)->firstOrFail();
+        $this->assertCount(1, $contratoMentoria->servicos_snapshot);
+
+        $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $shopee->id)->count());
+    }
+
+    /**
+     * Se QUALQUER serviço do grupo combinado tiver ordem de fases ambígua,
+     * o GRUPO INTEIRO é barrado — gerar metade de um contrato combinado
+     * (só Mercado Livre, sem Shopee, ou vice-versa) é pior que não gerar.
+     */
+    #[Test]
+    public function fase_ambigua_em_qualquer_servico_do_grupo_combinado_barra_o_grupo_inteiro(): void
+    {
+        $company = $this->companyCompleta();
+        $gestao = $this->servicoDeTeste(['nome' => 'Gestão de Ads']);
+        $shopee = $this->servicoJuntoCom($gestao, ['nome' => 'Gestão de Ads Shopee']);
+
+        // Gestão: duas fases AMBÍGUAS (sem data de início nas duas).
+        $this->contratoServicoAtivo($company, $gestao, ['valor_contratado' => 100, 'hubspot_line_item_id' => 'g-1']);
+        $this->contratoServicoAtivo($company, $gestao, ['valor_contratado' => 150, 'hubspot_line_item_id' => 'g-2']);
+
+        // Shopee: uma fase só, SEM ambiguidade nenhuma.
+        $this->contratoServicoAtivo($company, $shopee, ['valor_contratado' => 200]);
+
+        $resultado = $this->service->iniciarParaEmpresa($company);
+
+        $this->assertFalse($resultado['ok']);
+        $this->assertSame([], $resultado['criados']);
+        $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->count());
+
+        $puladosPorServico = collect($resultado['pulados'])->groupBy('servico_id');
+        // As duas fases ambíguas de Gestão.
+        $this->assertCount(2, $puladosPorServico->get($gestao->id, collect()));
+        // Shopee também é barrado, mesmo sem ambiguidade própria — é membro do grupo.
+        $this->assertCount(1, $puladosPorServico->get($shopee->id, collect()));
+        foreach ($resultado['pulados'] as $pulado) {
+            $this->assertSame('servicos_duplicados', $pulado['motivo']);
+        }
+    }
+
+    /**
+     * Pagamento escalonado DENTRO do combinado: as fases são ordenadas
+     * POR SERVIÇO, nunca misturadas numa ordenação só entre Gestão e
+     * Shopee. Prova concreta: a fase de Gestão sem data de início e a fase
+     * de Shopee sem data de início SERIAM ambíguas entre si se fossem
+     * ordenadas juntas (duas chaves nulas) — como a ordenação é por
+     * serviço, nenhuma delas colide com a outra.
+     */
+    #[Test]
+    public function pagamento_escalonado_dentro_do_combinado_ordena_fases_por_servico_sem_misturar(): void
+    {
+        $company = $this->companyCompleta();
+        $gestao = $this->servicoDeTeste(['nome' => 'Gestão de Ads']);
+        $shopee = $this->servicoJuntoCom($gestao, ['nome' => 'Gestão de Ads Shopee']);
+
+        // Gestão: 2 fases — a primeira sem data (já em vigor), a segunda com data futura.
+        $this->contratoServicoAtivo($company, $gestao, [
+            'valor_contratado'       => 100,
+            'hubspot_line_item_id'   => 'g-1',
+            'hubspot_billing_period' => 'P2M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '']],
+        ]);
+        $this->contratoServicoAtivo($company, $gestao, [
+            'valor_contratado'       => 150,
+            'hubspot_line_item_id'   => 'g-2',
+            'hubspot_billing_period' => 'P4M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '2026-12-01']],
+        ]);
+
+        // Shopee: 2 fases — MESMA estrutura (uma sem data, outra com data
+        // futura DIFERENTE) — se a ordenação misturasse os dois serviços
+        // numa passada só, as duas fases "sem data" (Gestão g-1 e Shopee
+        // s-1) colidiriam e o grupo inteiro cairia em ordem ambígua.
+        $this->contratoServicoAtivo($company, $shopee, [
+            'valor_contratado'       => 50,
+            'hubspot_line_item_id'   => 's-1',
+            'hubspot_billing_period' => 'P3M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '']],
+        ]);
+        $this->contratoServicoAtivo($company, $shopee, [
+            'valor_contratado'       => 80,
+            'hubspot_line_item_id'   => 's-2',
+            'hubspot_billing_period' => 'P6M',
+            'hubspot_snapshot'       => ['line_item' => ['hs_recurring_billing_start_date' => '2027-01-01']],
+        ]);
+
+        $resultado = $this->service->iniciarParaEmpresa($company);
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertCount(1, $resultado['criados']);
+
+        $contrato = ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $gestao->id)->firstOrFail();
+        $snapshot = $contrato->servicos_snapshot;
+
+        $this->assertCount(4, $snapshot);
+
+        // As fases de Gestão (o dono) vêm PRIMEIRO, na ordem correta.
+        $this->assertSame($gestao->nome, $snapshot[0]['servico']);
+        $this->assertEqualsWithDelta(100.0, $snapshot[0]['valor_contratado'], 0.001);
+        $this->assertSame($gestao->nome, $snapshot[1]['servico']);
+        $this->assertEqualsWithDelta(150.0, $snapshot[1]['valor_contratado'], 0.001);
+
+        // Depois, as fases de Shopee, também na ordem correta.
+        $this->assertSame($shopee->nome, $snapshot[2]['servico']);
+        $this->assertEqualsWithDelta(50.0, $snapshot[2]['valor_contratado'], 0.001);
+        $this->assertSame($shopee->nome, $snapshot[3]['servico']);
+        $this->assertEqualsWithDelta(80.0, $snapshot[3]['valor_contratado'], 0.001);
+    }
+
+    /**
+     * Serviço isento (Polos, `exige_contrato = false`) continua FORA, mesmo
+     * quando outro grupo combinado (Gestão + Shopee) existe na mesma
+     * empresa — Polos nunca é dono de ninguém, então o agrupamento por
+     * dono não muda nada para ele.
+     */
+    #[Test]
+    public function servico_isento_continua_fora_mesmo_com_um_grupo_combinado_na_mesma_empresa(): void
+    {
+        $company = $this->companyCompleta();
+        $gestao = $this->servicoDeTeste(['nome' => 'Gestão de Ads']);
+        $shopee = $this->servicoJuntoCom($gestao, ['nome' => 'Gestão de Ads Shopee']);
+        $polos = $this->servicoDeTeste(['nome' => 'Polos', 'exige_contrato' => false]);
+
+        $this->contratoServicoAtivo($company, $gestao);
+        $this->contratoServicoAtivo($company, $shopee);
+        $this->contratoServicoAtivo($company, $polos);
+
+        $resultado = $this->service->iniciarParaEmpresa($company);
+
+        $this->assertTrue($resultado['ok']);
+        $this->assertCount(1, $resultado['criados']);
+        $this->assertSame(0, ContratoAssinatura::where('company_id', $company->id)->where('servico_id', $polos->id)->count());
+
+        $pulados = collect($resultado['pulados']);
+        $this->assertTrue($pulados->contains(fn (array $p) => $p['servico_id'] === $polos->id && $p['motivo'] === 'servico_isento'));
+    }
 }

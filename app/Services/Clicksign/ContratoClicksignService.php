@@ -114,17 +114,28 @@ class ContratoClicksignService
         // Agrupado ANTES do laço principal (não dentro dele) pela mesma
         // razão de sempre: o PRIMEIRO item de um grupo também precisa cair
         // na mesma decisão (junta ou barra) que os demais do grupo.
-        $porServico = $contratosServico->groupBy('servico_id');
+        //
+        // Renomeado para `$porServicoOriginal` (quick 260901-gj7, Tarefa 2):
+        // continua agrupado pelo `servico_id` CRU de cada `ContratoServico` —
+        // é sobre ESTE agrupamento que a ordenação de fases do pagamento
+        // escalonado (abaixo) e a detecção de ordem ambígua sempre operaram,
+        // e continuam operando, mesmo depois que dois serviços passam a
+        // compartilhar UM contrato. O agrupamento pelo serviço DONO
+        // (`$porGrupo`, montado logo abaixo) é uma camada por CIMA deste,
+        // usada só para decidir quantos `ContratoAssinatura` nascem e com
+        // qual `servico_id`.
+        $porServicoOriginal = $contratosServico->groupBy('servico_id');
 
-        // Fases resolvidas: servico_id => Collection de ContratoServico
-        // ORDENADA (2+ itens do mesmo serviço com ordem derivável —
-        // pagamento escalonado legítimo).
+        // Fases resolvidas: servico_id ORIGINAL => Collection de
+        // ContratoServico ORDENADA (2+ itens do mesmo serviço com ordem
+        // derivável — pagamento escalonado legítimo).
         $fasesPorServico = collect();
-        // Ambíguos: servico_id => Collection de itens (ordem NÃO derivável)
-        // — mantém a recusa original (260821-l8n), agora restrita a este caso.
+        // Ambíguos: servico_id ORIGINAL => Collection de itens (ordem NÃO
+        // derivável) — mantém a recusa original (260821-l8n), agora
+        // restrita a este caso.
         $servicosAmbiguos = collect();
 
-        foreach ($porServico as $servicoIdGrupo => $itensDoServico) {
+        foreach ($porServicoOriginal as $servicoIdGrupo => $itensDoServico) {
             if ($itensDoServico->count() <= 1) {
                 continue;
             }
@@ -149,14 +160,72 @@ class ContratoClicksignService
             ]);
         }
 
+        // Quick 260901-gj7 (Tarefa 2) — venda combinada Mercado Livre +
+        // Shopee vira UM contrato só. A chave do agrupamento do LAÇO
+        // PRINCIPAL deixa de ser o `servico_id` cru e passa a ser o
+        // **serviço DONO**: se um serviço tem `contrato_junto_com_servico_id`
+        // preenchido E o dono TAMBÉM está entre os serviços ativos desta
+        // empresa, o item cai no grupo do dono — que é quem define o modelo
+        // Clicksign (D-21) e o `servico_id` gravado no `ContratoAssinatura`.
+        //
+        // ⚠️ Shopee sozinho (dono ausente da lista de ativos) continua com
+        // GRUPO PRÓPRIO, com o modelo de Shopee — é o caso que acabou de
+        // entrar em produção e não pode regredir. Sem o dono ativo, a
+        // condição abaixo é falsa e o item cai no seu próprio `servico_id`,
+        // idêntico ao comportamento de sempre.
+        $servicoIdsAtivos = $contratosServico->pluck('servico_id')->unique();
+
+        $grupoDoServico = function (int $servicoId) use ($porServicoOriginal, $servicoIdsAtivos): int {
+            $servico = $porServicoOriginal[$servicoId]->first()->servico;
+            $donoId = optional($servico)->contrato_junto_com_servico_id;
+
+            if ($donoId !== null && $servicoIdsAtivos->contains($donoId)) {
+                return (int) $donoId;
+            }
+
+            return $servicoId;
+        };
+
+        // servico_id do GRUPO (dono, ou o próprio serviço quando não
+        // combinado) => Collection de servico_id ORIGINAIS membros do
+        // grupo, na ordem: o dono primeiro (quando ele próprio é membro —
+        // sempre é, pela condição acima), depois os demais em ordem
+        // crescente de servico_id — determinístico, não depende da ordem
+        // de leitura do banco.
+        $porGrupo = collect();
+        foreach ($porServicoOriginal->keys() as $servicoIdOriginal) {
+            $servicoIdOriginal = (int) $servicoIdOriginal;
+            $chaveGrupo = $grupoDoServico($servicoIdOriginal);
+
+            if (! $porGrupo->has($chaveGrupo)) {
+                $porGrupo[$chaveGrupo] = collect();
+            }
+
+            $porGrupo[$chaveGrupo]->push($servicoIdOriginal);
+        }
+
+        $porGrupo = $porGrupo->map(fn (Collection $membros, int $chaveGrupo) => $membros
+            ->sort(fn (int $a, int $b) => match (true) {
+                $a === $chaveGrupo => -1,
+                $b === $chaveGrupo => 1,
+                default            => $a <=> $b,
+            })
+            ->values());
+
         $criados = [];
         $pulados = [];
         $indiceDelay = 0;
 
-        // 3. Um contrato por serviço — 1 fase (caso simples) ou N fases
-        // ordenadas (pagamento escalonado, quick 260824-bte).
-        foreach ($porServico as $servicoId => $itensDoServico) {
-            $representante = $itensDoServico->first();
+        // 3. Um contrato por GRUPO (um serviço sozinho, ou o dono + o(s)
+        // serviço(s) combinado(s) com ele) — 1 fase (caso simples) ou N
+        // fases ordenadas (pagamento escalonado, quick 260824-bte), POR
+        // serviço membro, concatenadas na ordem do grupo (quick 260901-gj7).
+        foreach ($porGrupo as $servicoId => $membrosDoGrupo) {
+            // Representante do GRUPO: o serviço DONO (primeiro membro, ver
+            // ordenação acima) — sempre existe em `$porServicoOriginal`
+            // porque o dono só vira chave de grupo quando ele próprio está
+            // entre os serviços ativos (condição de `$grupoDoServico`).
+            $representante = $porServicoOriginal[$servicoId]->first();
 
             // Guard de UX (D-05): só mensagem amigável — a garantia REAL é a
             // constraint composta (empresa+serviço) capturada abaixo pelo
@@ -169,10 +238,14 @@ class ContratoClicksignService
             // uma empresa com Gestão + Polos geraria um `ContratoAssinatura`
             // também para Polos — violação direta do SC0.
             //
-            // `servico === null` (dado órfão) NÃO pula — default seguro do
-            // plano 128-01 vale aqui também: nunca isentar por ausência de dado.
+            // Decidida pelo serviço DONO do grupo (quick 260901-gj7): é dele
+            // o modelo Clicksign e o `servico_id` gravado. `servico === null`
+            // (dado órfão) NÃO pula — default seguro do plano 128-01 vale
+            // aqui também: nunca isentar por ausência de dado.
             if (optional($representante->servico)?->exigeContrato() === false) {
-                $pulados[] = ['servico_id' => $servicoId, 'motivo' => 'servico_isento'];
+                foreach ($membrosDoGrupo as $servicoIdMembro) {
+                    $pulados[] = ['servico_id' => $servicoIdMembro, 'motivo' => 'servico_isento'];
+                }
 
                 continue;
             }
@@ -183,27 +256,44 @@ class ContratoClicksignService
             // só enxerga contrato que JÁ existe, então o primeiro item de um
             // grupo ambíguo passaria por ele sem barreira nenhuma.
             //
-            // Um `pulado` POR ITEM do grupo (não um só por serviço) — mesma
+            // Quick 260901-gj7 (Tarefa 2) — SE QUALQUER serviço MEMBRO do
+            // grupo tiver ordem ambígua, o GRUPO INTEIRO é barrado: gerar
+            // metade de um contrato combinado (Mercado Livre sem Shopee, ou
+            // vice-versa) é pior que não gerar. Um `pulado` POR ITEM de
+            // CADA membro do grupo (não um só por serviço) — mesma
             // granularidade de antes do quick 260824-bte, preservada para
             // não quebrar quem já lê `pulados` contando linha por linha.
-            if ($servicosAmbiguos->has($servicoId)) {
-                for ($n = 0; $n < $itensDoServico->count(); $n++) {
-                    $pulados[] = ['servico_id' => $servicoId, 'motivo' => 'servicos_duplicados'];
+            $grupoTemMembroAmbiguo = $membrosDoGrupo->contains(fn (int $sid) => $servicosAmbiguos->has($sid));
+            if ($grupoTemMembroAmbiguo) {
+                foreach ($membrosDoGrupo as $servicoIdMembro) {
+                    $qtdItensDoMembro = $porServicoOriginal[$servicoIdMembro]->count();
+                    for ($n = 0; $n < $qtdItensDoMembro; $n++) {
+                        $pulados[] = ['servico_id' => $servicoIdMembro, 'motivo' => 'servicos_duplicados'];
+                    }
                 }
 
                 continue;
             }
 
             if (ContratoAssinatura::emAndamentoDoServico($company->id, $servicoId)) {
-                $pulados[] = ['servico_id' => $servicoId, 'motivo' => 'ja_em_andamento'];
+                foreach ($membrosDoGrupo as $servicoIdMembro) {
+                    $pulados[] = ['servico_id' => $servicoIdMembro, 'motivo' => 'ja_em_andamento'];
+                }
 
                 continue;
             }
 
-            // Fases ordenadas deste serviço — um item só (caso simples) ou N
-            // fases (pagamento escalonado), sempre a mesma FORMA que
+            // Fases do GRUPO: concatenação das fases JÁ ORDENADAS de cada
+            // serviço MEMBRO, uma faixa por vez — nunca misturadas numa
+            // ordenação só entre serviços diferentes (quick 260901-gj7,
+            // Tarefa 2): a ordenação por data (`ordenarFasesOuNull()`) só
+            // faz sentido DENTRO do mesmo serviço (pagamento escalonado); um
+            // contrato combinado carrega as fases de dois serviços que não
+            // têm relação de parcelamento entre si. Mesma FORMA que
             // `ContratoPdfService::montarDados()` já espera: array de itens.
-            $fases = $fasesPorServico->get($servicoId, collect([$representante]));
+            $fases = $membrosDoGrupo->flatMap(
+                fn (int $servicoIdMembro) => $fasesPorServico->get($servicoIdMembro, collect([$porServicoOriginal[$servicoIdMembro]->first()]))
+            );
 
             try {
                 $contrato = ContratoAssinatura::create([
@@ -263,7 +353,13 @@ class ContratoClicksignService
                 // MariaDB e SQLite — `errorInfo[1] === 1062` é específico do
                 // MySQL/MariaDB e se comportaria diferente nos testes.
                 if ((string) $e->getCode() === '23000') {
-                    $pulados[] = ['servico_id' => $servicoId, 'motivo' => 'ja_em_andamento'];
+                    // Quick 260901-gj7 — mesma granularidade do guard
+                    // proativo acima (um pulado por serviço MEMBRO do
+                    // grupo), para o raro caso de corrida entre dois
+                    // workers que o guard não pegou a tempo.
+                    foreach ($membrosDoGrupo as $servicoIdMembro) {
+                        $pulados[] = ['servico_id' => $servicoIdMembro, 'motivo' => 'ja_em_andamento'];
+                    }
 
                     continue;
                 }
@@ -295,7 +391,8 @@ class ContratoClicksignService
             //
             // Quick 260824-bte — `$indiceDelay` conta só os contratos
             // EFETIVAMENTE criados (não a posição no laço original): com o
-            // laço agora por SERVIÇO (não por item), um grupo ambíguo ou um
+            // laço agora por GRUPO (quick 260901-gj7 — um serviço sozinho ou
+            // o dono + combinados, nunca por item), um grupo ambíguo ou um
             // serviço isento não deve "gastar" um slot de delay que nenhum
             // job vai usar.
             GerarContratoAssinaturaJob::dispatch($contrato)
