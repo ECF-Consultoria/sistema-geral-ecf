@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 137-02-PLAN.md
-last_updated: "2026-09-01T19:18:39.669Z"
-last_activity: 2026-09-01 -- Phase 137 Plan 02 concluído (commits `8fbc3589`, `d9f1472d`, `6bb67ef6`, `5a32332d`)
+stopped_at: Completed 137-03-PLAN.md
+last_updated: "2026-09-01T19:27:04Z"
+last_activity: 2026-09-01 -- Phase 137 Plan 03 concluído (commits `94889df7`, `fbc62ec8`, `bfd89263`, `bb86b497`)
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 7
-  completed_plans: 2
-  percent: 29
+  completed_plans: 3
+  percent: 43
 ---
 
 # Project State
@@ -33,11 +33,14 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — EXECUTING
-Plan: 3 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+Plan: 4 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
 em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
-no model `Company`, ETAPA-01 fechado); 137-03 (serviço único de transição + histórico) é o próximo
+no model `Company`, ETAPA-01 fechado); 137-03 concluído (`EtapaTransicaoService` — único ponto de
+escrita de `companies.etapa`, tabela `company_etapa_transicoes` de histórico append-only, ETAPA-03
+e ETAPA-06 fechados; serviço ainda SEM chamador de produção, de propósito); 137-04 (pendência
+paralela, ETAPA-04) é o próximo
 Status: Ready to execute
-Last activity: 2026-09-01 -- Phase 137 Plan 02 concluído (commits `8fbc3589`, `d9f1472d`, `6bb67ef6`, `5a32332d`)
+Last activity: 2026-09-01 -- Phase 137 Plan 03 concluído (commits `94889df7`, `fbc62ec8`, `bfd89263`, `bb86b497`)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
@@ -1369,6 +1372,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-01T19:27:04Z
+Stopped at: Completed 137-03-PLAN.md
 Last session: 2026-09-01T19:18:39.629Z
 Stopped at: Completed 137-02-PLAN.md
 Last session: 2026-08-18T21:34:08.162Z
@@ -1459,3 +1464,6 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 
 - [Phase 137]: 137-01: caminho npm-build usado em vez do atalho public/hot para destravar o ambiente de teste Inertia deste worktree; ambiente fica destravado de forma persistente para os planos 137-02..07 (node_modules/ e public/build/ ficam no worktree, gitignored)
 - [Phase 137]: 137-01: suíte completa (`php artisan test`) dividida em Unit (capturado por inteiro) + Feature (não capturável neste ambiente — trava numa cascata de timeout de rede real via Guzzle após ~300s); baseline registrada em `137-BASELINE-TESTES.md` com a recomendação de nunca depender do `artisan test` completo nos planos seguintes
+- [Phase 137]: 137-03: D-16 implementado como tabela dedicada `company_etapa_transicoes` (não `spatie/laravel-activitylog`) — o pacote tem `delete_records_older_than_days=365`, risco desalinhado com o insumo de SLA que a Fase 143 vai consumir
+- [Phase 137]: 137-03: chave `null` de origem em `EtapaTransicaoService::TRANSICOES_PERMITIDAS` é escrita explicitamente como `''` no código-fonte (PHP funde chave `null` de array em string vazia) — documentado em comentário para não depender de cast implícito
+- [Phase 137]: 137-03: checagem de retrocesso em `podeTransicionar()` é posicional (compara índices em `Company::ETAPAS`) e roda ANTES da tabela explícita de avanços — cobre qualquer retrocesso, não só os pares listados na tabela
