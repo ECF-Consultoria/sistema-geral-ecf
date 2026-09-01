@@ -107,3 +107,7 @@ Nenhum bloqueio. Timestamps `120000`/`130000` seguem livres para as migrations d
 ---
 *Phase: 137-m-quina-de-estados-os-9-status-de-companies-etapa-v23-0*
 *Completed: 2026-09-01*
+
+## Self-Check: PASSED
+
+Todos os arquivos criados/modificados confirmados no disco (`database/migrations/2026_09_01_110000_add_etapa_to_companies_table.php`, `tests/Unit/Phase137/CompanyEtapaConstantesTest.php`, `app/Models/Company.php`) e todos os commits confirmados em `git log` (`8fbc3589`, `d9f1472d`, `6bb67ef6`).
