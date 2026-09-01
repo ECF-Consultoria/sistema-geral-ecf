@@ -99,6 +99,30 @@ class CompanyController extends Controller
             $sort = null;
         }
 
+        // Fase 137 Plano 07 (ETAPA-05, D-21) — filtro server-side por etapa,
+        // mesmo padrão de allow-list com fallback null silencioso já usado
+        // acima para cust_id_status: valor fora do domínio vira null e o
+        // when() correspondente vira no-op, preservando o comportamento
+        // anterior (D-22 exige que a visão SEM filtro continue idêntica).
+        //
+        // `sem_etapa` é o sentinela de primeira classe (D-22): depois do
+        // backfill do plano 137-05 a maioria das linhas legadas fica com
+        // `etapa` NULL, e sem esta opção o filtro por etapa concreta
+        // devolveria quase nada — parecendo bug em vez de comportamento
+        // esperado do legado.
+        $etapaFilter = $request->input('etapa');
+        if (!in_array($etapaFilter, [...Company::ETAPAS, 'sem_etapa'], true)) {
+            $etapaFilter = null;
+        }
+
+        // Fase 137 Plano 07 (ETAPA-05, D-23) — filtro de pendência,
+        // INDEPENDENTE do filtro de etapa (nunca um item dentro da lista de
+        // etapas — misturar os dois reintroduziria pendência como status
+        // principal, contra a D6 do ROADMAP). $request->boolean() coage
+        // qualquer entrada para bool, então nenhuma string arbitrária chega
+        // ao builder (T-137-19).
+        $comPendenciaFilter = $request->boolean('com_pendencia');
+
         // Phase 35 Plan 35-01 (D-03) — exclui empresas com MlbEmpresa associada
         // para evitar dupla contagem com /mlb/empresas (Polos/Publicacao/etc).
         // Aplicado como query base — tanto lista quanto contadores (`pendCounts`)
@@ -148,6 +172,15 @@ class CompanyController extends Controller
                   )
             )
             ->when($custIdStatusFilter, fn($q) => $q->where('cust_id_status', $custIdStatusFilter))
+            // Fase 137 Plano 07 (ETAPA-05) — depois do when($custIdStatusFilter)
+            // e depois do whereDoesntHave/whereHas acima: preservar a tela
+            // (Success Criteria nº 1) é preservar o recorte inteiro, não só
+            // o filtro final. `sem_etapa` vira whereNull; etapa concreta vira
+            // where('etapa', ...); pendência passa pelo scope do model — D-19
+            // proíbe ler a coluna de pendência direto no controller.
+            ->when($etapaFilter === 'sem_etapa', fn($q) => $q->whereNull('etapa'))
+            ->when($etapaFilter !== null && $etapaFilter !== 'sem_etapa', fn($q) => $q->where('etapa', $etapaFilter))
+            ->when($comPendenciaFilter, fn($q) => $q->comPendenciaAberta())
             ->when($sort, function ($q) use ($sort) {
                 // Quando sort por created_at solicitado, prioriza essa ordenacao.
                 // Sem sort, mantem alfabetico por nome (comportamento legado).
@@ -225,6 +258,19 @@ class CompanyController extends Controller
                 // Mesma regua que NpsController ja aplica ("sem estrategista
                 // atribuido, a empresa ainda nao entrou na operacao").
                 'em_operacao'      => ! ($c->analistaPerformance->isEmpty() && $c->estrategistaPerformance->isEmpty()),
+                // Fase 137 Plano 07 (ETAPA-05) — expõe a etapa da máquina de
+                // estados (§10) e a pendência paralela (plano 137-04) para o
+                // filtro server-side desta tela. `em_operacao` acima CONTINUA
+                // sendo o derivado atual — esta fase acrescenta, não
+                // substitui; a troca de fonte é da Fase 142.
+                //
+                // Chave `tem_pendencia`, e NÃO o nome cru da coluna (que o
+                // gate estático D-19 em EtapaPendenciaParaleloTest.php, plano
+                // 137-04, proíbe fora de Company.php — mesmo como chave de
+                // array que só lê via pendenciaAberta(), o ponto único
+                // autorizado) DE PROPÓSITO.
+                'etapa'          => $c->etapa,
+                'tem_pendencia'  => $c->pendenciaAberta(),
                 // Contratos ativos: payload mínimo para a coluna Serviço (badges + tooltip)
                 'contratos_servico' => $c->contratosServico->map(fn($ct) => [
                     'id'               => $ct->id,
@@ -346,6 +392,10 @@ class CompanyController extends Controller
             'filters'        => [
                 'cust_id_status' => $custIdStatusFilter,
                 'sort'           => $sort,
+                // Fase 137 Plano 07 (ETAPA-05) — ecoa o estado dos dois
+                // filtros novos para o <select>/toggle da tela sincronizar.
+                'etapa'          => $etapaFilter,
+                'com_pendencia'  => $comPendenciaFilter,
             ],
             // A aba Onboarding só existe para quem tem a permission dedicada —
             // esconder no front é cosmético; o que protege é o bloco vazio
