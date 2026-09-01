@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -48,6 +49,12 @@ class Servico extends Model
         // (D-04, congelada no snapshot na criação). Sem `fillable` o mass
         // assignment da tela administrativa falharia em silêncio.
         'plataforma',
+        // Quick 260901-gj7 (Tarefa 1) — serviço "dono" do contrato combinado:
+        // quando ESTE serviço aparece junto com o dono na mesma empresa, os
+        // dois compartilham UM contrato só, que pertence ao dono. Sem
+        // `fillable` o mass assignment da tela administrativa (Módulo
+        // Serviços) falharia em silêncio.
+        'contrato_junto_com_servico_id',
     ];
 
     protected $casts = [
@@ -156,7 +163,10 @@ class Servico extends Model
             // clicksign_template_id: decide o que o cliente assina.
             // Quick 260825-fn0 (Tarefa 1) — mudar a plataforma é auditável:
             // decide o que o contrato assinado diz que a ECF vai gerenciar.
-            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor', 'clicksign_template_id', 'exige_contrato', 'clicksign_assinatura_posicionada', 'plataforma'])
+            // Quick 260901-gj7 (Tarefa 1) — mudar o dono do contrato
+            // combinado é auditável: decide se este serviço passa a
+            // compartilhar contrato com outro, e qual modelo Clicksign vale.
+            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor', 'clicksign_template_id', 'exige_contrato', 'clicksign_assinatura_posicionada', 'plataforma', 'contrato_junto_com_servico_id'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match ($eventName) {
@@ -173,6 +183,20 @@ class Servico extends Model
     public function contratos(): HasMany
     {
         return $this->hasMany(ContratoServico::class);
+    }
+
+    /**
+     * Quick 260901-gj7 (Tarefa 1) — o serviço "dono" do contrato combinado:
+     * quando preenchido, contratos deste serviço são absorvidos pelo
+     * contrato do serviço apontado aqui (é ele quem define o modelo
+     * Clicksign e o `servico_id` gravado), DESDE QUE o dono também esteja
+     * entre os serviços ativos da mesma empresa —
+     * `ContratoClicksignService::iniciarParaEmpresa()` é quem aplica essa
+     * condição; esta relação só expõe o dado cru.
+     */
+    public function servicoDono(): BelongsTo
+    {
+        return $this->belongsTo(Servico::class, 'contrato_junto_com_servico_id');
     }
 
     /**
