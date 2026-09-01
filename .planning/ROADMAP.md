@@ -2103,7 +2103,7 @@ Plans:
   4. Pelo menos uma listagem existente pode ser filtrada por etapa e, separadamente, por "com pendência" (ETAPA-05)
   5. Tentar avançar uma etapa sem os requisitos cumpridos é recusado com uma mensagem que nomeia o requisito faltante (ex.: "contrato não assinado"), nunca um erro genérico (ETAPA-06)
 
-**Plans:** 3/7 plans executed
+**Plans:** 4/7 plans executed
 
 Plans:
 **Wave 1**
@@ -2114,7 +2114,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 137-03-PLAN.md — ETAPA-06 + ETAPA-03: `EtapaTransicaoService` (par puro/efeito) + tabela `company_etapa_transicoes` (D-16 = tabela dedicada) [wave 2]
-- [ ] 137-04-PLAN.md — ETAPA-04: pendência paralela declarada em 4 colunas de `companies` (D-18 = colunas) + ponto único de leitura [wave 2]
+- [x] 137-04-PLAN.md — ETAPA-04: pendência paralela declarada em 4 colunas de `companies` (D-18 = colunas) + ponto único de leitura [wave 2]
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

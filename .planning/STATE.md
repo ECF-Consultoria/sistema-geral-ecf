@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 137-03-PLAN.md
-last_updated: "2026-09-01T19:27:04Z"
-last_activity: 2026-09-01 -- Phase 137 Plan 03 concluído (commits `94889df7`, `fbc62ec8`, `bfd89263`, `bb86b497`)
+stopped_at: Completed 137-04-PLAN.md
+last_updated: "2026-09-01T19:37:49Z"
+last_activity: 2026-09-01 -- Phase 137 Plan 04 concluído (commits `010deee5`, `93623bd1`, `52c901d5`)
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 7
-  completed_plans: 3
-  percent: 43
+  completed_plans: 4
+  percent: 57
 ---
 
 # Project State
@@ -33,14 +33,17 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — EXECUTING
-Plan: 4 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+Plan: 5 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
 em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
 no model `Company`, ETAPA-01 fechado); 137-03 concluído (`EtapaTransicaoService` — único ponto de
 escrita de `companies.etapa`, tabela `company_etapa_transicoes` de histórico append-only, ETAPA-03
-e ETAPA-06 fechados; serviço ainda SEM chamador de produção, de propósito); 137-04 (pendência
-paralela, ETAPA-04) é o próximo
+e ETAPA-06 fechados; serviço ainda SEM chamador de produção, de propósito); 137-04 concluído
+(4 colunas de pendência paralela em `companies` + `Company::pendenciaAberta()`/
+`scopeComPendenciaAberta()`/`declararPendencia()`/`resolverPendencia()`, ETAPA-04 fechado, provado
+por teste que marcar/desmarcar pendência nunca move `etapa`); 137-05 (backfill em dois baldes,
+ETAPA-02) é o próximo
 Status: Ready to execute
-Last activity: 2026-09-01 -- Phase 137 Plan 03 concluído (commits `94889df7`, `fbc62ec8`, `bfd89263`, `bb86b497`)
+Last activity: 2026-09-01 -- Phase 137 Plan 04 concluído (commits `010deee5`, `93623bd1`, `52c901d5`)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
@@ -1372,6 +1375,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-01T19:37:49Z
+Stopped at: Completed 137-04-PLAN.md
 Last session: 2026-09-01T19:27:04Z
 Stopped at: Completed 137-03-PLAN.md
 Last session: 2026-09-01T19:18:39.629Z
@@ -1467,3 +1472,6 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 137]: 137-03: D-16 implementado como tabela dedicada `company_etapa_transicoes` (não `spatie/laravel-activitylog`) — o pacote tem `delete_records_older_than_days=365`, risco desalinhado com o insumo de SLA que a Fase 143 vai consumir
 - [Phase 137]: 137-03: chave `null` de origem em `EtapaTransicaoService::TRANSICOES_PERMITIDAS` é escrita explicitamente como `''` no código-fonte (PHP funde chave `null` de array em string vazia) — documentado em comentário para não depender de cast implícito
 - [Phase 137]: 137-03: checagem de retrocesso em `podeTransicionar()` é posicional (compara índices em `Company::ETAPAS`) e roda ANTES da tabela explícita de avanços — cobre qualquer retrocesso, não só os pares listados na tabela
+- [Phase 137]: 137-04: D-18 implementado como 4 colunas em `companies` (não tabela própria) — sem necessidade de histórico de pendências passadas nesta fase, e o filtro server-side da ETAPA-05 vira um `where` sem join
+- [Phase 137]: 137-04: gate de D-19 (nenhuma leitura direta de `pendencia_aberta` fora de `Company.php`) implementado como teste Feature (`File::allFiles()` + `assertEmpty`), não como regra de análise estática externa — mantém a prova na mesma suíte PHPUnit já rodada a cada task
+- [Phase 137]: 137-04: comparação de path no gate estático usa `realpath()`, não igualdade de string direta — `File::allFiles()` (Symfony Finder) e `base_path()` não colidem por string simples neste ambiente Windows
