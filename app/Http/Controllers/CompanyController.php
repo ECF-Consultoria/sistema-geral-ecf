@@ -828,6 +828,22 @@ class CompanyController extends Controller
 
     public function update(Request $request, Company $company)
     {
+        // Fase 137 (plano 06, ETAPA-03 / D-12) — NÃO acrescente `etapa` nem
+        // nenhuma chave `pendencia_*` a esta lista. `companies.etapa` é
+        // gravado EXCLUSIVAMENTE por `App\Services\FluxoEntrada\EtapaTransicaoService`
+        // (ETAPA-03/D-12); pendência é gravada por `Company::declararPendencia()`
+        // / `Company::resolverPendencia()` (ETAPA-04/D-19).
+        //
+        // Por que o aviso existe: as duas colunas estão em `$fillable`
+        // (necessário para o serviço/model gravarem via Eloquent), então
+        // acrescentar a chave aqui bastaria para furar o ponto único de
+        // escrita — sem erro, sem log, toda edição manual de empresa
+        // passaria a poder pular etapas do fluxo.
+        //
+        // Quem cobra: `tests/Feature/Phase137/EtapaPontoUnicoTest.php`
+        // quebra se isso acontecer — a varredura estática nomeia o arquivo
+        // e a linha. Um PR que acrescente chave nova a esta validação
+        // precisa passar por lá antes de mergear.
         $data = $request->validate([
             'name'             => 'required|string|max:255',
             'cnpj'             => 'nullable|string|max:18',
