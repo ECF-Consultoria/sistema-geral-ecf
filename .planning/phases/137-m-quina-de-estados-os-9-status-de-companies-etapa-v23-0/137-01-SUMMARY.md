@@ -148,3 +148,10 @@ None — nenhuma configuração de serviço externo necessária.
 ---
 *Phase: 137-m-quina-de-estados-os-9-status-de-companies-etapa-v23-0*
 *Completed: 2026-09-01*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/137-m-quina-de-estados-os-9-status-de-companies-etapa-v23-0/137-BASELINE-TESTES.md`
+- FOUND: `.planning/phases/137-m-quina-de-estados-os-9-status-de-companies-etapa-v23-0/137-01-SUMMARY.md`
+- FOUND commit: `96e62ed9` (docs(137-01): registra baseline de testes antes da migration da fase)
+- FOUND commit: `4429af7e` (docs(137-01): SUMMARY do plano 01)
