@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v22.0
-milestone_name: Administrativo + Clicksign
-status: executing
-stopped_at: "133-04: checkpoint corrigido para 'ligar-agora' — chave administrativo_bloqueio_ativo LIGADA em produção (2026-08-19, ~09:05 BRT); 133-05 desbloqueado e pendente (verificação 48h + primeiro cadastro real de Polos)"
-last_updated: "2026-08-19T12:05:00.000Z"
-last_activity: 2026-08-19
+milestone: v23.0
+milestone_name: Fluxo de Entrada de Novas Empresas
+status: planning
+stopped_at: "Milestone v23.0 aberta em 2026-09-01 — definindo requirements. v22.0 NÃO fechada (133-05 pendente)."
+last_updated: "2026-09-01T00:00:00.000Z"
+last_activity: 2026-09-01
 progress:
-  total_phases: 13
-  completed_phases: 10
-  total_plans: 92
-  completed_plans: 89
-  percent: 77
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -31,6 +31,24 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 > já foram executadas em paralelo por outra sessão.
 
 ## Current Position
+
+Phase: Not started (definindo requirements)
+Plan: —
+Status: Definindo requirements da milestone v23.0 — Fluxo de Entrada de Novas Empresas
+Last activity: 2026-09-01 — Milestone v23.0 aberta
+
+> ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
+> reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
+> humano aberto (Fases 133, 135 e 136). Elas estão preservadas nos blocos "Posição paralela"
+> abaixo. Pelo mesmo motivo, `phases.clear` **não foi executado** — as 72 pastas em
+> `.planning/phases/` seguem intactas, incluindo as 124-136.
+>
+> A numeração de fases da v23.0 **continua a partir da 137**.
+
+## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
+
+**Preservado em 2026-09-01 na abertura da v23.0.** Este bloco era o "Current Position" até aqui.
+A v22.0 tem **10 de 13 fases** concluídas e **não** passou por `/gsd:complete-milestone`.
 
 Phase: 133 (liga-o-bloqueio-ativa-o-real-v22-0) — EXECUTING (chave LIGADA, aguardando prova do 133-05)
 Plan: 4 of 5 — 133-04 concluído com decisão **`ligar-agora`** no checkpoint da Task 2 (a resposta
