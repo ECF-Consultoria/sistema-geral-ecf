@@ -2106,12 +2106,23 @@ Plans:
 **Plans:** 7 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 137-01-PLAN.md — Ambiente de teste Inertia + baseline verde registrada antes da migration [wave 0]
 - [ ] 137-02-PLAN.md — ETAPA-01: coluna `companies.etapa` (nullable, sem default) + as 9 constantes no model `Company` [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 137-03-PLAN.md — ETAPA-06 + ETAPA-03: `EtapaTransicaoService` (par puro/efeito) + tabela `company_etapa_transicoes` (D-16 = tabela dedicada) [wave 2]
 - [ ] 137-04-PLAN.md — ETAPA-04: pendência paralela declarada em 4 colunas de `companies` (D-18 = colunas) + ponto único de leitura [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 137-05-PLAN.md — ETAPA-02: comando `etapa:backfill` em dois baldes + contagens por reconsulta ao banco [wave 3]
 - [ ] 137-06-PLAN.md — ETAPA-03: regressão de segurança do ponto único de escrita + varredura estática de `app/` [wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 137-07-PLAN.md — ETAPA-05: filtros server-side por etapa e por pendência em `/companies` + checkpoint humano [wave 4]
 
 ### Phase 138: Área Comercial conectada à etapa (v23.0)

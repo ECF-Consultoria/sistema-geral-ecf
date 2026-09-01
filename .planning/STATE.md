@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
-status: Definindo requirements da milestone v23.0 — Fluxo de Entrada de Novas Empresas
+status: executing
 stopped_at: Phase 137 context gathered
-last_updated: "2026-09-01T17:19:08.916Z"
-last_activity: 2026-09-01 — Milestone v23.0 aberta
+last_updated: "2026-09-01T18:17:19.403Z"
+last_activity: 2026-09-01 -- Phase 137 planning complete
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 0
+  total_plans: 7
   completed_plans: 0
   percent: 0
 ---
@@ -32,10 +32,10 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: Not started (definindo requirements)
-Plan: —
-Status: Definindo requirements da milestone v23.0 — Fluxo de Entrada de Novas Empresas
-Last activity: 2026-09-01 — Milestone v23.0 aberta
+Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — PLANNED
+Plan: 0 of 7 — planejamento concluído, execução não iniciada
+Status: Ready to execute
+Last activity: 2026-09-01 -- Phase 137 planning complete
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate

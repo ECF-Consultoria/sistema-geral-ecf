@@ -757,9 +757,13 @@ contagens locais, resultado da suíte de teste) foram todas `[VERIFIED]` por lei
 código deste worktree ou execução real de comando nesta sessão — não há claim de biblioteca
 externa não verificada, porque a fase não introduz nenhuma.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **A migration deve indexar `companies.etapa`?**
+> As duas perguntas foram decididas no planejamento da fase. Mantidas aqui com o raciocínio
+> original porque o *motivo* da escolha continua útil — mas **não reabrir**: a decisão está
+> travada nos planos citados.
+
+1. **A migration deve indexar `companies.etapa`?** — **RESOLVED: sim, indexa. Ver `137-02-PLAN.md`.**
    - What we know: o filtro ETAPA-05 vai fazer `WHERE etapa = ?` com frequência na tela mais
      usada do admin (`/companies`). A tabela tem ~500 linhas em produção — volume pequeno.
    - What's unclear: se vale a pena um índice numa tabela desse tamanho, ou se é
@@ -771,7 +775,10 @@ externa não verificada, porque a fase não introduz nenhuma.
      nome curto da tabela/coluna).
 
 2. **`pendencia_aberta`/`pendencia_motivo`/`pendencia_por`/`pendencia_em` como colunas de
-   `companies`, ou tabela própria (D-18)?**
+   `companies`, ou tabela própria (D-18)?** — **RESOLVED: 4 colunas em `companies`. Ver
+   `137-04-PLAN.md`.** (O §10 do PDF não pede histórico de pendência, então tabela própria não
+   se justificou. Histórico de **etapa** é outra coisa — D-16, resolvido como tabela dedicada
+   `company_etapa_transicoes` no `137-03-PLAN.md`.)
    - What we know: cardinalidade travada em "uma pendência aberta por vez" — o formato mais
      simples é 4 colunas nullable em `companies` (booleano + motivo + FK de autor + timestamp),
      exatamente como o precedente `problema`/`problema_desconsidera_meta` em `mlb_empresas`.
