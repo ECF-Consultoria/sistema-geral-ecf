@@ -61,7 +61,10 @@ const NAV_TREE = [
         defaultOpen: true,
         children: [
             { label: 'Carteira',   routeName: 'portfolio.own',     page: 'Portfolio', icon: Briefcase, permission: 'core.carteira' },
-            { label: 'Desempenho', routeName: 'performance.index', page: ['Performance/Index', 'Performance/Show', 'Desempenho/Configuracao'], icon: Trophy, permission: 'core.performance' },
+            // matchUrl: /publicacao/desempenho renderiza a MESMA page 'Performance/Index'
+            // (indexPublicacao -> indexPolos), entao o casamento por componente acendia
+            // este item junto com o 'Desempenho' do grupo Publicacao. Desempate por path.
+            { label: 'Desempenho', routeName: 'performance.index', page: ['Performance/Index', 'Performance/Show', 'Desempenho/Configuracao'], matchUrl: ({ path }) => path === '/performance' || path.startsWith('/performance/') || path.startsWith('/performance?') || path.startsWith('/desempenho/configuracao'), icon: Trophy, permission: 'core.performance' },
             { label: 'Metas',      routeName: 'goals.index',       page: 'Goals',     icon: Target,    permission: 'core.metas' },
             // Auditoria de bônus (item 3/4 · 2026-07-21) — admin-only. Gate por
             // excludeRoles (mesmo padrão da Configuração NPS): esconde de todos
@@ -220,14 +223,16 @@ const NAV_TREE = [
             // com filtros snake_case empilháveis + 5 cards de pendência (apenas origem
             // HubSpot, REQ-37-10) + aba de Grupos integrada. Adicionado como PRIMEIRO
             // sub-item por ser a porta de entrada operacional do Comercial.
-            { label: 'Cadastro de Empresas', routeName: 'comercial.empresas.listagem', page: 'Comercial/EmpresasListagem', icon: Building2, permission: 'comercial.cadastrar_empresa' },
+            // matchUrl: 'Grupos' aponta pra ESTA mesma page com ?tab=grupos — sem o
+            // desempate por query os dois itens acendiam juntos.
+            { label: 'Cadastro de Empresas', routeName: 'comercial.empresas.listagem', page: 'Comercial/EmpresasListagem', matchUrl: ({ path, query }) => path.startsWith('/comercial/empresas/listagem') && query.get('tab') !== 'grupos', icon: Building2, permission: 'comercial.cadastrar_empresa' },
             // 'Cadastrar empresa' removido do dropdown: o cadastro já é acessível pelo
             // botão dentro da aba 'Cadastro de Empresas'. A rota
             // 'comercial.empresas.novo' segue ativa (usada pelo botão da listagem).
             // Phase 37 Plan 37-07 — Grupos aponta para a mesma listagem unificada
             // com `?tab=grupos` (o helper de menu acima usa routeParams pra alimentar
             // Ziggy; segments fora do path viram query string automaticamente).
-            { label: 'Grupos', routeName: 'comercial.empresas.listagem', routeParams: { tab: 'grupos' }, page: 'Comercial/EmpresasListagem', icon: ListChecks, permission: 'comercial.cadastrar_empresa' },
+            { label: 'Grupos', routeName: 'comercial.empresas.listagem', routeParams: { tab: 'grupos' }, page: 'Comercial/EmpresasListagem', matchUrl: ({ path, query }) => path.startsWith('/comercial/empresas/listagem') && query.get('tab') === 'grupos', icon: ListChecks, permission: 'comercial.cadastrar_empresa' },
             // Fase 135 Plano 12 — painel operacional do onboarding geral por
             // serviço. Gate DEDICADO `core.onboarding` (Plano 09) — NÃO
             // reutiliza a permission do item "Onboarding" de Polos (grupo
@@ -259,7 +264,8 @@ const NAV_TREE = [
         icon: BarChart2,
         children: [
             { label: 'Pub · Dashboard', routeName: 'mlb.dashboard',    page: 'Mlb/Dashboard',    icon: BarChart2,      permission: 'mlb.dashboard' },
-            { label: 'Desempenho',      routeName: 'publicacao.desempenho.index', page: 'Performance', icon: Trophy, permission: 'mlb.meu_painel' },
+            // matchUrl: ver nota no 'Desempenho' do grupo Gestao ECF — mesma page component.
+            { label: 'Desempenho',      routeName: 'publicacao.desempenho.index', page: 'Performance/Index', matchUrl: ({ path }) => path.startsWith('/publicacao/desempenho'), icon: Trophy, permission: 'mlb.meu_painel' },
             { label: 'Treinamentos',    routeName: 'mlb.treinamentos', page: 'Mlb/Treinamentos', icon: BookOpen,       permission: 'mlb.treinamento' },
             // Admin/Gestor/Líder usam esta tela em modo supervisão (seletor de publicador via ?pub=ID); publicador/analista veem o próprio painel.
             { label: 'Meu Painel',      routeName: 'mlb.meu-painel',   page: 'Mlb/MeuPainel',    icon: LayoutList,     permission: 'mlb.meu_painel' },
@@ -308,13 +314,47 @@ const SIDEBAR_PINNED_KEY = 'ecf-sidebar-pinned';
 // cursor e ela so voltava a abrir depois de sair e entrar de novo.
 const SIDEBAR_HOVER_KEY  = 'ecf-sidebar-hover';
 
+/**
+ * Casa um item do NAV com a rota atual.
+ *
+ * `matchUrl` (opcional no item) desempata entradas que renderizam a MESMA page
+ * component mas moram em rotas/abas diferentes — casos em que o casamento por
+ * prefixo de componente acendia (e auto-abria) dois itens ao mesmo tempo:
+ *   · 'Desempenho' de Gestao ECF e o de Publicacao sao ambos 'Performance/Index'
+ *     (indexPublicacao delega pra indexPolos: mesma page, so muda o setor);
+ *   · 'Cadastro de Empresas' e 'Grupos' sao ambos 'Comercial/EmpresasListagem',
+ *     separados so pelo ?tab=grupos.
+ * Quando o item define `matchUrl`, ele MANDA: se a URL nao bate, o item nao
+ * acende mesmo que a page component case. Recebe { path, query } ja parseados
+ * da URL atual do Inertia e devolve boolean.
+ *
+ * Sem `matchUrl`, mantem o comportamento classico: prefixo do nome do
+ * componente, aceitando string ou array (mesma "area" renderizando paginas
+ * diferentes por role).
+ */
+const navMatches = (entry, pageComponent, pageUrl) => {
+    if (entry.matchUrl) {
+        const raw = pageUrl || '';
+        const qs  = raw.indexOf('?');
+        return !!entry.matchUrl({
+            path:  qs === -1 ? raw : raw.slice(0, qs),
+            query: new URLSearchParams(qs === -1 ? '' : raw.slice(qs + 1)),
+        });
+    }
+    const page = entry.page;
+    if (!page) return false;
+    const current = pageComponent || '';
+    if (Array.isArray(page)) return page.some((p) => current.startsWith(p));
+    return current.startsWith(page);
+};
+
 export default function AppLayout({ children, title }) {
     const { auth, flash, asset_url, sugadores_pendentes, alertas_criticos_count } = usePage().props;
     const badgeCounters = {
         sugadores_pendentes:    sugadores_pendentes    ?? 0,
         alertas_criticos_count: alertas_criticos_count ?? 0,  // null vira 0 → badge some
     };
-    const { component: pageComponent } = usePage();
+    const { component: pageComponent, url: pageUrl } = usePage();
     const logoSrc = `${asset_url}/images/logo.png`;
     const user = auth?.user;
 
@@ -466,7 +506,7 @@ export default function AppLayout({ children, title }) {
         NAV_TREE.forEach(entry => {
             if (entry.group) {
                 // Auto-abrir grupo cuja rota atual esta ativa (comportamento historico).
-                if (entry.children.some(c => c.page && (pageComponent || '').startsWith(c.page))) {
+                if (entry.children.some(c => c.page && navMatches(c, pageComponent, pageUrl))) {
                     saved[entry.group] = true;
                 }
                 // Phase 56 v13.0: `defaultOpen: true` mantem grupo aberto na PRIMEIRA
@@ -520,12 +560,7 @@ export default function AppLayout({ children, title }) {
     // itens do NAV que representam a mesma "área" mas renderizam páginas
     // diferentes por role (ex: Dashboard admin vs Performance/Dashboard
     // do analista/estrategista — ambos ativam o mesmo item Dashboard).
-    const isActive = (page) => {
-        if (!page) return false;
-        const current = pageComponent || '';
-        if (Array.isArray(page)) return page.some((p) => current.startsWith(p));
-        return current.startsWith(page);
-    };
+    const isActive = (entry) => navMatches(entry, pageComponent, pageUrl);
 
     const initials = user?.name
         ? user.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
@@ -597,7 +632,7 @@ export default function AppLayout({ children, title }) {
                 {filteredTree.map((entry, idx) => {
                     // ── Item de topo (link direto) ───────────────────────────
                     if (!entry.group) {
-                        const active = isActive(entry.page);
+                        const active = isActive(entry);
                         return (
                             <Link
                                 key={entry.routeName}
@@ -657,7 +692,7 @@ export default function AppLayout({ children, title }) {
                     const isOpen     = !!openGroups[entry.group];
                     // Grupo marcado como ativo se algum filho corresponde à rota atual.
                     // Dividers nao tem `page` — filtrar antes pra evitar coercao em isActive.
-                    const groupActive = entry.children.some(c => c.page && isActive(c.page));
+                    const groupActive = entry.children.some(c => c.page && isActive(c));
                     // Minimizado, o grupo esconde os filhos - mas ainda precisa
                     // avisar que ha pendencia la dentro.
                     const grupoTemBadge = entry.children.some(c => c.showBadge && badgeCounters[c.showBadge] > 0);
@@ -735,7 +770,7 @@ export default function AppLayout({ children, title }) {
                                                 </div>
                                             );
                                         }
-                                        const childActive = isActive(child.page);
+                                        const childActive = isActive(child);
                                         return (
                                             <Link
                                                 key={child.routeName + JSON.stringify(child.routeParams ?? {})}
