@@ -3,24 +3,24 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 137-10-PLAN.md (gap closure G4+G5+G6)
-last_updated: "2026-09-02T13:00:30Z"
-last_activity: 2026-09-02 -- Phase 137 Plan 10 concluído (gap closure G4/WR-01 + G5/WR-02 + G6 do 137-REVIEW.md, commits `0a120abf`, `f8558fb5`, `9eaa4fac`)
+stopped_at: Completed 137-11-PLAN.md (gap closure G3 — filtros de /companies deixam de se apagar entre si)
+last_updated: "2026-09-02T13:20:35Z"
+last_activity: 2026-09-02 -- Phase 137 Plan 11 concluído (gap closure G3/WR-03 do 137-REVIEW.md, commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA, 11/11 planos
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 11
-  completed_plans: 10
-  percent: 91
+  completed_plans: 11
+  percent: 100
 ---
 
-> ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10), ver `<process_note>`
+> ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
 > do executor:** `state.advance-plan` do `gsd-tools.cjs` zera `progress.percent`,
 > recomputa contra totais GLOBAIS do projeto (não desta fase) e corrompe
 > `milestone_name` com um em-dash espúrio. `total_plans`/`completed_plans`
 > acima contam os 7 planos originais da Fase 137 + os 4 planos de gap
-> closure (137-08..137-11) — 10/11 concluídos após este plano. Não rodar
-> `state.advance-plan` sem reconferir o resultado à mão.
+> closure (137-08..137-11) — **11/11 concluídos**, fase 137 fechada por
+> completo. Não rodar `state.advance-plan` sem reconferir o resultado à mão.
 
 # Project State
 
@@ -41,8 +41,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — **7/7 planos originais
-completos + 3/4 planos de gap closure (137-08, 137-09, 137-10) concluídos; 137-11 pendente**
-Plan: 10 of 11 (7 originais + 137-08 + 137-09 + 137-10) — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+completos + 4/4 planos de gap closure concluídos — FASE 137 COMPLETA (11/11)**
+Plan: 11 of 11 (7 originais + 137-08 + 137-09 + 137-10 + 137-11) — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
 em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
 no model `Company`, ETAPA-01 fechado); 137-03 concluído (`EtapaTransicaoService` — único ponto de
 escrita de `companies.etapa`, tabela `company_etapa_transicoes` de histórico append-only, ETAPA-03
@@ -121,10 +121,30 @@ testes novos FALHARAM como esperado, reversão desfeita. Suíte da fase 55/55 ve
 (50 anteriores + 4 do serviço + 1 do backfill), baseline 24/24 verde, gate estático
 `EtapaPontoUnicoTest.php` 4/4 verde — evidência em `137-10-SUMMARY.md`. Falta 1 plano de gap
 closure: 137-11 (G3).
-Status: Fase 137 — G1+G2+G4+G5+G6 fechados; 1 gap de gap-closure restante (G3, 137-11).
+**137-11 concluído** (gap closure G3 WARNING do `137-REVIEW.md` WR-03: os quatro handlers de
+filtro de `/companies` — `aplicarCustIdFilter`, `aplicarSort`, `aplicarEtapaFilter`,
+`aplicarComPendenciaFilter` — montavam a query do zero e cada um esquecia os outros; escolher
+etapa apagava `cust_id_status` em silêncio, escolher Cust ID apagava etapa/pendência, trocar a
+ordenação na aba Pendências apagava etapa e pendência. O backend já suportava os três
+combinados desde 137-07 — a limitação era inteiramente do cliente. Corrigido com um único
+montador `aplicarFiltros(overrides)`: parte dos filtros ATIVOS, aplica `overrides` por cima,
+remove chaves vazias, e é o ÚNICO ponto do arquivo que chama `router.get(route('companies.index'))`
+— os quatro handlers viraram invólucros finos, mesma assinatura pública. `aplicarSort` deixou de
+fixar `tab: 'pendencias'` na marra e passa a herdar a aba corrente (melhoria deliberada, mesmo
+resultado hoje). Combinação tripla provada no backend (2 testes novos de interseção
+`cust_id_status`+`etapa`+`com_pendencia`) e a centralização travada por gate estático que já foi
+visto FALHANDO por prova dirigida (handler revertido temporariamente para montar `router.get`
+por conta própria). Suíte da fase 58/58 verde, baseline 24/24 verde. **Verificação humana
+aprovada** — o usuário combinou os três filtros na tela real e produziu a URL
+`?cust_id_status=invalido&etapa=sem_etapa&tab=empresas` como evidência do passo que falhava
+antes; ver `137-11-SUMMARY.md`.
+Status: Fase 137 — TODOS os 6 gaps fechados (G1+G2+G3+G4+G5+G6). **FASE 137 COMPLETA — 11/11
+planos (7 originais + 4 de gap closure).** As 6 Success Criteria e os 6 requirements
+(ETAPA-01..06) seguem fechados desde 137-07; os 4 gap closure endureceram garantias que já
+tinham sido reivindicadas, sem reabrir requirement nenhum.
 Próxima fase da milestone (138 — Área Comercial conectada à etapa) ainda **não foi planejada**
 (`Plans: TBD` no ROADMAP) — requer `/gsd-plan-phase 138` antes de qualquer execução.
-Last activity: 2026-09-02 -- Phase 137 Plan 10 concluído, G4+G5+G6 fechados (commits `0a120abf`, `f8558fb5`, `9eaa4fac`)
+Last activity: 2026-09-02 -- Phase 137 Plan 11 concluído, G3/WR-03 fechado (commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA (11/11)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
@@ -1456,6 +1476,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-02T13:20:35Z
+Stopped at: Completed 137-11-PLAN.md — gap closure G3 (WARNING) fechado, checkpoint humano aprovado (commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA (11/11 planos)
 Last session: 2026-09-02T12:34:59Z
 Stopped at: Completed 137-08-PLAN.md — gap closure G1 (CRITICAL) fechado (commits `2a1aa606`, `ff5e2ee1`); 137-09/10/11 pendentes
 Last session: 2026-09-01T20:51:36Z
