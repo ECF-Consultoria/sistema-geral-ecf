@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
-status: planned
-stopped_at: "Phase 138 PLANEJADA — 9 planos em 5 waves, prontos para /gsd-execute-phase 138"
-last_updated: "2026-09-02T16:52:39.169Z"
-last_activity: 2026-09-02 -- FASE 138 PLANEJADA: 9 planos, 5 waves, 23 tasks. Pre-requisito bloqueante FECHADO antes de planejar (commit `2a9562af` — COMERC-02/03 e ADMIN-01 reescritos, blocos das Fases 138/139/140 do ROADMAP corrigidos, a 140 SOBREVIVE INTEIRA). Pesquisa + VALIDATION + PATTERNS + D-17 (`3654b006`, `57a31c65`). `gsd-plan-checker`: 0 blockers, 5 warnings — todos fechados, inclusive a tensao D-06 x SC#4 (decisao do usuario: a listagem Contrato NAO tem corte por etapa). Cobertura de decisoes 17/17, COMERC-01/02/03 cobertos. Antes disso: Phase 137 COMPLETA, 11/11 planos
+status: executing
+stopped_at: "Plano 138-01 concluido (baseline de testes pre-migration). Proximo: 138-02 (checkpoint:human-verify HubSpot)"
+last_updated: "2026-09-02T18:54:49.848Z"
+last_activity: 2026-09-02
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 20
-  completed_plans: 11
+  completed_plans: 12
   percent: 14
 ---
 
@@ -29,7 +29,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 138 — área comercial conectada à etapa (v23.0)
+**Current focus:** Phase 138 — rea-comercial-conectada-etapa-v23-0
 
 > ⚠️ **Não é a 134.** O `phase.complete` apontou 134 ao fechar a 132, mas isso é artefato da
 > ferramenta: a **Fase 133 tem `Plans: TBD`** e nenhum diretório, então foi pulada na busca pela
@@ -40,9 +40,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 138 (rea-comercial-conectada-etapa-v23-0) — **PLANEJADA: 9 planos em 5 waves, 23 tasks,
+Phase: 138 (rea-comercial-conectada-etapa-v23-0) — EXECUTING
 0 executados**
-Plan: 0 of 9 — nada executado. Wave 0 = 138-01 (baseline de testes ANTES da migration, gate do
+Plan: 2 of 9
 `CLAUDE.md`) e 138-02 (`checkpoint:human-verify` BLOQUEANTE: medir o nome interno da property de
 owner na conta HubSpot real por `hubspot:inspect-properties --objects=deals`, e confirmar o escopo
 `crm.objects.owners.read`). Wave 1 = 138-03. Wave 2 = 138-04/05/06. Wave 3 = 138-07/08.
@@ -107,7 +107,9 @@ Faltam 3 planos de gap closure planejados e não executados: 137-09 (G2), 137-10
 `UserController::forceDestroy()` faz hard delete real; a divergência apagava em cascata o
 histórico de TODAS as empresas que o usuário removido já tinha movimentado, não só as dele.
 Corrigida a migration ORIGINAL (`2026_09_01_120000_...`) in-place — `user_id` agora `nullable()`
+
 + `nullOnDelete()` — via ciclo local `migrate:rollback --step=2` + `migrate` no MariaDB
+
 compartilhado `ecf_admin`, protegido por asserção SQL do nome exato das 2 migrations nos 2 maiores
 batches (antes e depois, T-137-30). Schema real reconferido por `SHOW CREATE TABLE`: `user_id`
 `DEFAULT NULL` + `ON DELETE SET NULL`; `company_id` preservado em `CASCADE`. Backfill intacto:
@@ -156,7 +158,7 @@ por conta própria). Suíte da fase 58/58 verde, baseline 24/24 verde. **Verific
 aprovada** — o usuário combinou os três filtros na tela real e produziu a URL
 `?cust_id_status=invalido&etapa=sem_etapa&tab=empresas` como evidência do passo que falhava
 antes; ver `137-11-SUMMARY.md`.
-Status: **Ready to execute — `/gsd-execute-phase 138`.** Os 9 planos passaram no
+Status: Ready to execute
 `gsd-plan-checker` com 0 blockers; os 5 warnings foram fechados (arestas `depends_on` de 138-06
 e 138-07, Open Questions do RESEARCH marcadas resolvidas, frontmatter do VALIDATION aprovado, e a
 tensão D-06 × SC#4 escalada e decidida pelo usuário). Cobertura de decisões **17/17**
@@ -200,7 +202,7 @@ prova; FLUXO-09 já é `Done` desde o 133-02. **A milestone v22.0 NÃO está fec
 `.planning/todos/pending/260818-ficha-operacional-nao-criada-na-liberacao.md` — na prova do gate
 #10 a `ContratoLiberacao` nasceu mas a ficha operacional (`MlbEmpresa`) não foi criada. Provável
 que seja esperado (empresa fictícia sem loja ML), mas **não confirmado**.
-Last activity: 2026-08-19 — chave `administrativo_bloqueio_ativo` LIGADA em produção; 133-05 desbloqueado
+Last activity: 2026-09-02
 
 ## Posição paralela — Fase 136 (Métricas manuais por empresa/mês) — AGUARDANDO GATE HUMANO
 
@@ -738,6 +740,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 133 P03 | ~30min | 2 tasks | 3 files |
 | Phase 137 P01 | 40min | 2 tasks | 1 files |
 | Phase 137 P02 | 25min | 2 tasks | 3 files |
+| Phase 138 P01 | 6min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1502,8 +1505,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-09-02T16:52:39.130Z
-Stopped at: Phase 138 context gathered — BLOQUEADA: corrigir ADMIN-01/COMERC-02/ROADMAP antes de planejar
+Last session: 2026-09-02T18:54:49.809Z
+Stopped at: Plano 138-01 concluido (baseline de testes pre-migration). Proximo: 138-02 (checkpoint:human-verify HubSpot)
 Last session: 2026-09-02T13:20:35Z
 Stopped at: Completed 137-11-PLAN.md — gap closure G3 (WARNING) fechado, checkpoint humano aprovado (commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA (11/11 planos)
 Last session: 2026-09-02T12:34:59Z
@@ -1624,3 +1627,4 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 137]: 137-07: verificação humana real (Task 3) encontrou e o orquestrador corrigiu um `.env` de worktree com `APP_URL`/`ASSET_URL` apontando para `/ecf_admin/public` (copiado de outro checkout) — causava tela branca em toda navegação por servir HTML do manifest do Vite deste worktree mas apontar o navegador pro build do OUTRO; corrigido para `/ecf_fluxo_entrada/public`, `.env` não é versionado, correção não commitada e não deve ser revertida
 - [Phase 137]: **FASE 137 COMPLETA** — 137-07 fecha ETAPA-05, o último dos 6 requirements (`ETAPA-01`..`ETAPA-06`); as 6 Success Criteria do ROADMAP para a Fase 137 estão todas satisfeitas. Próxima fase da milestone v23.0 (138 — Área Comercial conectada à etapa) ainda não foi planejada
 - [Phase 137]: 137-08 (gap closure G1, CRITICAL): gate estático `EtapaPontoUnicoTest.php` Grupo 2 reescrito — Regra A (atribuição direta `->etapa = ...`) deixou de exigir o nome literal `$company` e passou a rodar sobre o ARQUIVO inteiro (não por corpo de função); Regra B nova cobre `$var['etapa'] = ...` montado indiretamente; detector de escrita em `Company` ganhou `DB::table('companies')` e um guard avaliado por ARQUIVO (não por corpo — `corposDeFuncao()` descarta a assinatura da função, então um parâmetro `Company $empresa` some do texto varrido); comentários (`T_COMMENT`/`T_DOC_COMMENT`) neutralizados antes de qualquer regex rodar; escopo estendido a `database/migrations/`. As 3 sondas de bypass do `137-VERIFICATION.md` + 1 sonda de regressão + 1 sonda de falso positivo de comentário foram injetadas de verdade (uma por vez, sempre removendo a anterior) e produziram exatamente o veredito esperado; árvore confirmada limpa ao final. `EXCECOES_REGRA_A` nasce vazia — zero falsos positivos medidos na árvore atual, incluindo o pior caso (`CompanyController::index()`, ~354 linhas). Suíte da fase 46/46 verde, baseline `/companies` 24/24 verde. Nenhum deviation — plano executado exatamente como escrito. Restam 137-09 (G2), 137-10 (G4+G5+G6) e 137-11 (G3), planejados e não executados
+- [Phase 138-01]: Baseline de testes escrita antes da migration de 3 colunas em companies (138-03); crescimento 285->307 na suite Unit atribuido ao crescimento organico da Fase 137, nao regressao

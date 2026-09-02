@@ -2163,12 +2163,12 @@ Plans:
 > produção. **Contrato é ferramenta administrativa contínua: o critério de saída dela é o estado do
 > contrato, não a etapa.** O corte da etapa 5 (D-07/COMERC-03) vale só para a listagem **Entrada**.
 
-**Plans:** 9 plans
+**Plans:** 1/9 plans executed
 
 Plans:
 **Wave 0** *(medições antes de qualquer código — gate do `CLAUDE.md`)*
 
-- [ ] 138-01-PLAN.md — Baseline de testes registrada antes da migration das 3 colunas (D-09) [wave 0]
+- [x] 138-01-PLAN.md — Baseline de testes registrada antes da migration das 3 colunas (D-09) [wave 0]
 - [ ] 138-02-PLAN.md — Checkpoint humano: nome interno da property de owner medido na conta HubSpot real + escopo `crm.objects.owners.read` (D-08) [wave 0]
 
 **Wave 1** *(blocked on Wave 0 completion)*
