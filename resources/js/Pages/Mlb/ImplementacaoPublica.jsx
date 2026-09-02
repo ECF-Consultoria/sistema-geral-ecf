@@ -1776,7 +1776,50 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
         );
     }
 
-    // Select com opções livres (Publicar em Massa)
+    // Observações sobre publicação — textarea livre e OPCIONAL. Escrever já marca o item
+    // como feito; o checkbox continua visível (ver ChecklistItem) para quem não tem
+    // observação nenhuma poder concluir na mão.
+    if (tipo === 'observacao') {
+        // Persiste o texto e, só então, o 'feito'. Encadeado pelo mesmo motivo do
+        // select_opcoes: cada PATCH relê e reescreve o item, e em paralelo o texto
+        // poderia chegar depois do 'feito' e sobrescrevê-lo.
+        const persistir = valor => {
+            clearTimeout(debRef.current.observacao);
+            const salvou = onChange(item.id, 'observacao', valor, true);
+            const temTexto = String(valor ?? '').trim() !== '';
+            return temTexto && !dado?.feito
+                ? salvou.then(() => onChange(item.id, 'feito', true, true))
+                : salvou;
+        };
+
+        // Debounce próprio (não o handleText genérico): o autosave por inatividade também
+        // precisa marcar o item, senão quem digita e fecha a aba sem tirar o foco salva o
+        // texto e deixa o item pendente.
+        const digitar = valor => {
+            onChange(item.id, 'observacao', valor, false);
+            clearTimeout(debRef.current.observacao);
+            debRef.current.observacao = setTimeout(() => persistir(valor), 800);
+        };
+
+        return (
+            <div className="mt-3">
+                <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">Observação</label>
+                <textarea
+                    value={dado?.observacao ?? ''}
+                    onChange={e => digitar(e.target.value)}
+                    onBlur={e => persistir(e.target.value)}
+                    rows={4}
+                    placeholder="Ex.: produtos que não devem ser anunciados, prioridade de publicação, prazos, detalhes de estoque..."
+                    className="w-full px-3 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 transition-colors resize-none"
+                />
+                <p className="mt-1.5 text-white/25 text-[11px]">
+                    Opcional. Ao escrever, o item é concluído automaticamente.
+                </p>
+            </div>
+        );
+    }
+
+    // Select com opções livres (Perfil dos Produtos)
     if (tipo === 'select_opcoes') {
         return (
             <div className="mt-3">
@@ -1984,6 +2027,7 @@ function itemTemConteudo(item, dado = {}) {
             return (dado.produtos ?? []).some(p => String(p.custo ?? '').trim() !== '');
         default:
             // ação pura (link/gmail/instruções/checkbox/select_opcoes): nada a preencher.
+            // 'observacao' também cai aqui — é OPCIONAL, ver MlbImplementacao::itemTemConteudo.
             return true;
     }
 }
@@ -2068,7 +2112,9 @@ function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, 
             )}
 
             {/* Checkbox de feito — oculto onde a própria resposta marca o item
-                (select_opcoes e canais_venda). */}
+                (select_opcoes e canais_venda). `observacao` também se marca sozinha ao
+                escrever, mas MANTÉM o checkbox: o campo é opcional e quem não tem nada a
+                observar precisa de um jeito de concluir o item. */}
             {item.tipo !== 'select_opcoes' && item.tipo !== 'canais_venda' && (
                 <div className="mt-4 pt-3 border-t border-white/[0.06]">
                     <label className={cn('flex items-center gap-2.5 group w-fit', podeMarcar ? 'cursor-pointer' : 'cursor-not-allowed')}>
@@ -2084,9 +2130,10 @@ function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, 
                         </div>
                         <span className={cn('text-[13px] font-medium transition-colors',
                             feito ? 'text-emerald-300' : podeMarcar ? 'text-white/40 group-hover:text-white/60' : 'text-white/25')}>
-                            {item.id === 'certificado_a1'    ? 'Sim, possuo Certificado A1'
-                             : item.id === 'publicar_em_massa' ? 'Confirmar'
-                             : 'Marcar como feito'}
+                            {item.id === 'certificado_a1' ? 'Sim, possuo Certificado A1'
+                             : (item.tipo === 'observacao' && String(dado?.observacao ?? '').trim() === '')
+                                ? 'Não tenho observações'
+                                : 'Marcar como feito'}
                         </span>
                     </label>
                     {/* Aviso enquanto o item não tem o conteúdo mínimo preenchido */}

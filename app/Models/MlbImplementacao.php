@@ -72,6 +72,7 @@ class MlbImplementacao extends Model
     //   select_opcoes   — dropdown com opções definidas em item.opcoes
     //   canais_venda    — duas perguntas no mesmo item: canal que mais vende (item.opcoes_canal)
     //                     + faixa de faturamento (item.opcoes), esta só se vende em algum
+    //   observacao      — textarea livre e OPCIONAL; escrever já marca o item como feito
     //   produtos        — tabela inline de produtos
     //   instrucoes      — texto de instrução + checkbox
     //   instrucoes_link — texto de instrução + botão de link fixo + checkbox
@@ -327,17 +328,18 @@ class MlbImplementacao extends Model
             'descricao'   => 'Qual HUB de integração a empresa utiliza? Informe também o acesso',
         ],
         [
+            // O `id` continua `publicar_em_massa` DE PROPÓSITO. A pergunta era
+            // "Publicar em Massa?" (select de 4 opções) até 02/09/2026 e virou um campo
+            // livre de observações. Trocar o id criaria uma chave órfã em `dados.itens`
+            // das fichas já salvas — e `progresso()` conta `count($itens)`, então a órfã
+            // entraria no denominador e nenhuma dessas fichas voltaria a fechar 100%.
+            // O texto novo mora em `observacao`; o `valor` do select antigo fica no JSON,
+            // intocado e sem ser renderizado em lugar nenhum.
             'id'          => 'publicar_em_massa',
-            'titulo'      => 'Publicar em Massa?',
-            'tipo'        => 'select_opcoes',
-            'opcoes'      => [
-                'Sim',
-                'Não',
-                'Todos os meus produtos já estão publicados',
-                'Meu HUB / ERP ainda não está completo para publicar em massa',
-            ],
+            'titulo'      => 'Observações sobre publicação',
+            'tipo'        => 'observacao',
             'tem_tutorial'=> false,
-            'descricao'   => 'A empresa deseja publicar anúncios em massa',
+            'descricao'   => 'Alguma observação sobre a publicação dos seus anúncios? (opcional)',
         ],
         [
             'id'          => 'planilha_produtos',
@@ -517,7 +519,10 @@ class MlbImplementacao extends Model
                 // 'acesso' preservado: o HUB era textarea livre até 2026-09-01 e 3 fichas
                 // têm texto salvo ali.
                 'hub'                  => ['valor' => '---', 'outro' => '', 'acesso' => '', 'feito' => false],
-                'publicar_em_massa'    => ['valor' => '', 'feito' => false],
+                // 'valor' = resposta do antigo select "Publicar em Massa?" (chave original,
+                // preservada e não renderizada); 'observacao' é o campo livre que o
+                // substituiu em 02/09/2026 e é o que o publicador lê.
+                'publicar_em_massa'    => ['valor' => '', 'observacao' => '', 'feito' => false],
                 'planilha_produtos'    => ['produtos' => [], 'feito' => false],
                 'drive_imagens'        => ['feito' => false],
                 'precificacao' => [
@@ -716,6 +721,11 @@ class MlbImplementacao extends Model
             default:
                 // link_fixo, link_admin, gmail, instrucoes, instrucoes_link,
                 // checkbox, select_opcoes — ação pura, nada a preencher.
+                //
+                // `observacao` cai aqui de propósito: o campo é OPCIONAL. Escrever marca o
+                // item sozinho, mas quem não tem observação nenhuma precisa poder marcar na
+                // mão — travar o check aqui deixaria toda ficha sem observação presa abaixo
+                // de 100% para sempre.
                 return true;
         }
     }

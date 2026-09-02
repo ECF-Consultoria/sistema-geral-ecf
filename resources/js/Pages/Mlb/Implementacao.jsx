@@ -268,6 +268,10 @@ function DadosView({ impl, checklist, erp_opcoes, integrador_opcoes }) {
         if (tipo === 'texto') {
             return <span className="text-white/50 text-[11px]">{dado.acesso || '—'}</span>;
         }
+        if (tipo === 'observacao') {
+            // Campo opcional: sem texto o item pode estar feito assim mesmo.
+            return <span className="text-white/50 text-[11px] whitespace-pre-line">{dado.observacao || '—'}</span>;
+        }
         if (tipo === 'link_admin') {
             const url = linksAdmin[id];
             return url ? <a href={url} target="_blank" rel="noreferrer" className="text-ecf-yellow text-[11px] flex items-center gap-1 hover:underline truncate max-w-[300px]"><ExternalLink size={10}/>{url}</a>
