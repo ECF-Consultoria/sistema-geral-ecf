@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
     SlidersHorizontal, Search, TriangleAlert, Check, X,
-    Info, CheckCircle2, Building2, Pencil,
+    Info, CheckCircle2, Building2, Pencil, Store, Users, FilterX,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -24,6 +24,12 @@ import { marketplaceLabel } from '@/lib/desempenhoLabels';
 //    consolidado só ganha um aviso amarelo, e segue editável;
 //  · não exibe QUEM lançou. O autor existe no banco e no activity_log para
 //    auditoria (D-12), nunca na tela (D-04) — as props nem carregam o dado.
+//
+// Os filtros de marketplace e de colaborador (2026-09-02) são RECORTE DE
+// VISTA, não permissão: eles escondem linha, e o que o admin pode lançar
+// continua sendo decidido no servidor. Filtrar por colaborador mostra a
+// carteira dele — e, em conta atendida nos dois marketplaces por pessoas
+// diferentes, só a linha do canal que é dele.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Rótulo de coluna por métrica. As chaves vêm da whitelist do backend. */
@@ -362,6 +368,10 @@ export default function MetricasManuais({
     meses = [],
     consolidada = false,
     busca = '',
+    fonte = null,
+    colaborador = null,
+    fontes = [],
+    colaboradores = [],
     empresas = [],
     metricas = [],
 }) {
@@ -369,9 +379,25 @@ export default function MetricasManuais({
     const flash = props?.flash;
 
     const [textoBusca, setTextoBusca] = useState(busca ?? '');
+    // Filtros como estado local, e não lidos direto da prop, para o select
+    // reagir no clique em vez de esperar a resposta do servidor. Os dois
+    // effects abaixo religam estado e prop quando a navegação vem de fora
+    // (voltar do navegador, link colado).
+    const [fonteSel, setFonteSel] = useState(fonte ?? '');
+    const [colaboradorSel, setColaboradorSel] = useState(colaborador != null ? String(colaborador) : '');
     const [enviandoChave, setEnviandoChave] = useState(null);
     const [errosPorCelula, setErrosPorCelula] = useState({});
     const [avisoGlobal, setAvisoGlobal] = useState(null);
+
+    useEffect(() => { setFonteSel(fonte ?? ''); }, [fonte]);
+    useEffect(() => { setColaboradorSel(colaborador != null ? String(colaborador) : ''); }, [colaborador]);
+
+    const colaboradorAtual = useMemo(
+        () => colaboradores.find((c) => String(c.id) === colaboradorSel) ?? null,
+        [colaboradores, colaboradorSel],
+    );
+
+    const temFiltro = textoBusca !== '' || fonteSel !== '' || colaboradorSel !== '';
 
     // Contas distintas por trás das linhas — ver a nota no cabeçalho.
     const totalEmpresasDistintas = useMemo(
@@ -379,31 +405,76 @@ export default function MetricasManuais({
         [empresas],
     );
 
+    // UMA porta de saída para todo filtro — competência, busca, marketplace e
+    // colaborador vão juntos em toda navegação. Montar a query em cada
+    // handler foi o que fez a busca zerar o filtro na primeira versão desta
+    // tela: quem esquecia um parâmetro apagava o recorte do outro.
+    // Parâmetro vazio é REMOVIDO: URL limpa, e o servidor não recebe string
+    // vazia onde a regra é `nullable`.
+    const consultar = (sobrescrever = {}, opcoes = {}) => {
+        const params = {
+            mes,
+            busca:       textoBusca,
+            fonte:       fonteSel,
+            colaborador: colaboradorSel,
+            ...sobrescrever,
+        };
+
+        Object.keys(params).forEach((chave) => {
+            if (params[chave] === '' || params[chave] == null) delete params[chave];
+        });
+
+        router.get(route('desempenho.metricas-manuais.index'), params, {
+            preserveState:  true,
+            preserveScroll: true,
+            ...opcoes,
+        });
+    };
+
+    // Erro e aviso são de CÉLULA: trocar o recorte troca as células da tela,
+    // e a mensagem da anterior não pode sobrar pendurada na nova.
+    const limparEstadoDeCelula = () => {
+        setErrosPorCelula({});
+        setAvisoGlobal(null);
+    };
+
     // Busca com debounce simples — o input devolve a prop `busca` para o texto
     // não se perder na volta do servidor.
+    //
+    // `fonteSel`/`colaboradorSel` nas dependências não é zelo: sem eles,
+    // trocar de filtro DENTRO da janela de 400ms deixa o timer antigo vivo, e
+    // ele dispara com o closure velho — a navegação atrasada apagaria o
+    // marketplace que o usuário acabou de escolher. Com eles, o cleanup mata o
+    // timer obsoleto e reagenda já com o valor novo.
     useEffect(() => {
         const atual = busca ?? '';
         if (textoBusca === atual) return undefined;
 
-        const t = setTimeout(() => {
-            router.get(
-                route('desempenho.metricas-manuais.index'),
-                { mes, busca: textoBusca },
-                { preserveState: true, preserveScroll: true, replace: true },
-            );
-        }, 400);
+        const t = setTimeout(() => consultar({ busca: textoBusca }, { replace: true }), 400);
 
         return () => clearTimeout(t);
-    }, [textoBusca, busca, mes]);
+    }, [textoBusca, busca, mes, fonteSel, colaboradorSel]);
 
     const trocarCompetencia = (valor) => {
-        setErrosPorCelula({});
-        setAvisoGlobal(null);
-        router.get(
-            route('desempenho.metricas-manuais.index'),
-            { mes: valor, busca: textoBusca },
-            { preserveState: true, preserveScroll: true },
-        );
+        limparEstadoDeCelula();
+        consultar({ mes: valor });
+    };
+
+    // O valor novo vai por `sobrescrever` porque `setState` não é síncrono —
+    // ler o estado aqui mandaria o filtro ANTERIOR para o servidor.
+    const trocarFiltro = (campo, valor) => {
+        limparEstadoDeCelula();
+        if (campo === 'fonte') setFonteSel(valor);
+        else setColaboradorSel(valor);
+        consultar({ [campo]: valor });
+    };
+
+    const limparFiltros = () => {
+        limparEstadoDeCelula();
+        setTextoBusca('');
+        setFonteSel('');
+        setColaboradorSel('');
+        consultar({ busca: '', fonte: '', colaborador: '' });
     };
 
     const enviarCelula = (empresa, metrica, { ativo, valor, tipo }) => {
@@ -509,7 +580,7 @@ export default function MetricasManuais({
                     </div>
                 )}
 
-                {/* ─── Busca ─────────────────────────────────────────────── */}
+                {/* ─── Busca e filtros ───────────────────────────────────── */}
                 <div className="mb-4 flex flex-wrap items-center gap-3">
                     <div className="relative">
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
@@ -522,6 +593,63 @@ export default function MetricasManuais({
                             className="w-64 rounded-lg border border-white/[0.08] bg-ecf-card py-2 pl-8 pr-3 text-sm text-white/90 placeholder:text-white/25 focus:border-ecf-yellow/40 focus:outline-none"
                         />
                     </div>
+
+                    {/* Marketplace — recorta a LINHA, não a empresa: conta
+                        atendida nos dois canais continua na grade, só que com
+                        a linha do canal escolhido. */}
+                    <div className="relative">
+                        <Store className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
+                        <select
+                            value={fonteSel}
+                            onChange={(e) => trocarFiltro('fonte', e.target.value)}
+                            title="Mostrar apenas as linhas de um marketplace"
+                            className={cn(
+                                'appearance-none rounded-lg border bg-ecf-card py-2 pl-8 pr-3 text-sm focus:border-ecf-yellow/40 focus:outline-none',
+                                fonteSel ? 'border-ecf-yellow/30 text-white' : 'border-white/[0.08] text-white/90',
+                            )}
+                        >
+                            <option value="">Todos os marketplaces</option>
+                            {fontes.map((f) => (
+                                <option key={f.valor} value={f.valor}>{f.label}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Colaborador — mostra as empresas da carteira dele. O
+                        número entre parênteses é a carteira financeira inteira
+                        do profissional, independente da competência: vínculo
+                        não muda de mês para mês, lançamento sim. */}
+                    <div className="relative">
+                        <Users className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
+                        <select
+                            value={colaboradorSel}
+                            onChange={(e) => trocarFiltro('colaborador', e.target.value)}
+                            title="Mostrar apenas as empresas da carteira de um colaborador"
+                            className={cn(
+                                'max-w-[260px] appearance-none rounded-lg border bg-ecf-card py-2 pl-8 pr-3 text-sm focus:border-ecf-yellow/40 focus:outline-none',
+                                colaboradorSel ? 'border-ecf-yellow/30 text-white' : 'border-white/[0.08] text-white/90',
+                            )}
+                        >
+                            <option value="">Todos os colaboradores</option>
+                            {colaboradores.map((c) => (
+                                <option key={c.id} value={String(c.id)}>
+                                    {c.nome}{c.ativo ? '' : ' · inativo'} ({c.total_empresas})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {temFiltro && (
+                        <button
+                            type="button"
+                            onClick={limparFiltros}
+                            title="Voltar à grade inteira desta competência"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-2.5 py-2 text-xs text-white/50 transition hover:border-white/20 hover:text-white/80"
+                        >
+                            <FilterX size={13} /> limpar filtros
+                        </button>
+                    )}
+
                     <span className="text-xs text-white/40">
                         {/* `empresas` são LINHAS (empresa × canal). Contar o
                             array direto diria "46 empresas" onde há 26 — conta
@@ -529,6 +657,9 @@ export default function MetricasManuais({
                         {totalEmpresasDistintas} empresa{totalEmpresasDistintas === 1 ? '' : 's'} em {mes_label}
                         {empresas.length !== totalEmpresasDistintas && (
                             <span className="text-white/25"> · {empresas.length} linhas por marketplace</span>
+                        )}
+                        {colaboradorAtual && (
+                            <span className="text-white/25"> · carteira de {colaboradorAtual.nome}</span>
                         )}
                     </span>
                 </div>
@@ -540,9 +671,22 @@ export default function MetricasManuais({
                             <Info className="mt-0.5 h-4 w-4 shrink-0 text-white/40" />
                             <div className="text-sm text-white/50">
                                 Nenhuma empresa nesta competência
-                                {textoBusca ? <> para a busca <strong className="text-white/70">“{textoBusca}”</strong></> : null}.
+                                {textoBusca ? <> para a busca <strong className="text-white/70">“{textoBusca}”</strong></> : null}
+                                {fonteSel ? <> no marketplace <strong className="text-white/70">
+                                    {fontes.find((f) => f.valor === fonteSel)?.label ?? fonteSel}
+                                </strong></> : null}
+                                {colaboradorAtual ? <> na carteira de <strong className="text-white/70">{colaboradorAtual.nome}</strong></> : null}.
                                 A grade lista apenas empresas ativas com vínculo em serviço de Performance ou Shopee —
                                 as demais nunca produzem linha de Desempenho.
+                                {temFiltro && (
+                                    <button
+                                        type="button"
+                                        onClick={limparFiltros}
+                                        className="ml-1 text-ecf-yellow/80 underline underline-offset-2 transition hover:text-ecf-yellow"
+                                    >
+                                        Limpar os filtros
+                                    </button>
+                                )}
                             </div>
                         </div>
                     ) : (
