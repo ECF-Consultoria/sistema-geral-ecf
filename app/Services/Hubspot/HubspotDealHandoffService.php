@@ -209,8 +209,15 @@ class HubspotDealHandoffService
      * em meia-noite UTC viraria 21h do dia ANTERIOR se parseada no fuso local
      * — e **dia errado aqui vira dia de vencimento errado num contrato
      * assinado**, que é caro de desfazer.
+     *
+     * Fase 138 Plano 04 (COMERC-02, D-09) — visibilidade elevada para `public`
+     * porque `HubspotWebhookController::criarEmpresa()` e o comando
+     * `hubspot:backfill-owner-venda` reusam esta MESMA rotina para converter
+     * `closedate` em `companies.data_venda`, em vez de um `Carbon::parse` novo
+     * e paralelo (regra explícita do plano — nenhum ramo de conversão de data
+     * do HubSpot fora daqui).
      */
-    private function parseDataHubspot(mixed $valor): ?Carbon
+    public function parseDataHubspot(mixed $valor): ?Carbon
     {
         if ($valor === null || $valor === '') {
             return null;
