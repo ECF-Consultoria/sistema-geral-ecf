@@ -95,3 +95,11 @@ None - nenhuma configuração de serviço externo é necessária para ESTE plano
 ---
 *Phase: 138-rea-comercial-conectada-etapa-v23-0*
 *Completed: 2026-09-02*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/138-rea-comercial-conectada-etapa-v23-0/138-HUBSPOT-MEDICOES.md`
+- FOUND: `.planning/phases/138-rea-comercial-conectada-etapa-v23-0/138-02-SUMMARY.md`
+- FOUND commit: `e888f06b` (Task 1)
+- FOUND commit: `51fc94e8` (Task 2 + Task 3)
+- FOUND commit: `8acc80fa` (SUMMARY.md)
