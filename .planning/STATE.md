@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: "Plano 138-01 concluido (baseline de testes pre-migration). Proximo: 138-02 (checkpoint:human-verify HubSpot)"
-last_updated: "2026-09-02T18:54:49.848Z"
+stopped_at: "Completed 138-02-PLAN.md — nome da property de owner ASSUMIDO (hubspot_owner_id), escopo owners.read NAO CONFIRMADO; ambas pendentes de medicao real na VPS via plano 138-09. Proximo: 138-03 (wave 1)"
+last_updated: "2026-09-02T19:09:09.320Z"
 last_activity: 2026-09-02
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 20
-  completed_plans: 12
+  completed_plans: 13
   percent: 14
 ---
 
@@ -42,7 +42,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 138 (rea-comercial-conectada-etapa-v23-0) — EXECUTING
 0 executados**
-Plan: 2 of 9
+Plan: 3 of 9
 `CLAUDE.md`) e 138-02 (`checkpoint:human-verify` BLOQUEANTE: medir o nome interno da property de
 owner na conta HubSpot real por `hubspot:inspect-properties --objects=deals`, e confirmar o escopo
 `crm.objects.owners.read`). Wave 1 = 138-03. Wave 2 = 138-04/05/06. Wave 3 = 138-07/08.
@@ -741,6 +741,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 137 P01 | 40min | 2 tasks | 1 files |
 | Phase 137 P02 | 25min | 2 tasks | 3 files |
 | Phase 138 P01 | 6min | 2 tasks | 1 files |
+| Phase 138 P02 | 6min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1505,8 +1506,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-09-02T18:54:49.809Z
-Stopped at: Plano 138-01 concluido (baseline de testes pre-migration). Proximo: 138-02 (checkpoint:human-verify HubSpot)
+Last session: 2026-09-02T19:09:09.278Z
+Stopped at: Completed 138-02-PLAN.md — nome da property de owner ASSUMIDO (hubspot_owner_id), escopo owners.read NAO CONFIRMADO; ambas pendentes de medicao real na VPS via plano 138-09. Proximo: 138-03 (wave 1)
 Last session: 2026-09-02T13:20:35Z
 Stopped at: Completed 137-11-PLAN.md — gap closure G3 (WARNING) fechado, checkpoint humano aprovado (commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA (11/11 planos)
 Last session: 2026-09-02T12:34:59Z
@@ -1628,3 +1629,5 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 137]: **FASE 137 COMPLETA** — 137-07 fecha ETAPA-05, o último dos 6 requirements (`ETAPA-01`..`ETAPA-06`); as 6 Success Criteria do ROADMAP para a Fase 137 estão todas satisfeitas. Próxima fase da milestone v23.0 (138 — Área Comercial conectada à etapa) ainda não foi planejada
 - [Phase 137]: 137-08 (gap closure G1, CRITICAL): gate estático `EtapaPontoUnicoTest.php` Grupo 2 reescrito — Regra A (atribuição direta `->etapa = ...`) deixou de exigir o nome literal `$company` e passou a rodar sobre o ARQUIVO inteiro (não por corpo de função); Regra B nova cobre `$var['etapa'] = ...` montado indiretamente; detector de escrita em `Company` ganhou `DB::table('companies')` e um guard avaliado por ARQUIVO (não por corpo — `corposDeFuncao()` descarta a assinatura da função, então um parâmetro `Company $empresa` some do texto varrido); comentários (`T_COMMENT`/`T_DOC_COMMENT`) neutralizados antes de qualquer regex rodar; escopo estendido a `database/migrations/`. As 3 sondas de bypass do `137-VERIFICATION.md` + 1 sonda de regressão + 1 sonda de falso positivo de comentário foram injetadas de verdade (uma por vez, sempre removendo a anterior) e produziram exatamente o veredito esperado; árvore confirmada limpa ao final. `EXCECOES_REGRA_A` nasce vazia — zero falsos positivos medidos na árvore atual, incluindo o pior caso (`CompanyController::index()`, ~354 linhas). Suíte da fase 46/46 verde, baseline `/companies` 24/24 verde. Nenhum deviation — plano executado exatamente como escrito. Restam 137-09 (G2), 137-10 (G4+G5+G6) e 137-11 (G3), planejados e não executados
 - [Phase 138-01]: Baseline de testes escrita antes da migration de 3 colunas em companies (138-03); crescimento 285->307 na suite Unit atribuido ao crescimento organico da Fase 137, nao regressao
+- [Phase 138-02]: property_owner_nome_interno assumida como hubspot_owner_id (nao medida) com autorizacao explicita do usuario; medicao real fica pendencia obrigatoria do plano 138-09 na VPS
+- [Phase 138-02]: escopo OAuth crm.objects.owners.read fica NAO CONFIRMADO (usuario sem acesso ao painel HubSpot); verificacao carregada para o plano 138-09 pos-primeiro-deploy

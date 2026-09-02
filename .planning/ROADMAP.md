@@ -2163,13 +2163,13 @@ Plans:
 > produção. **Contrato é ferramenta administrativa contínua: o critério de saída dela é o estado do
 > contrato, não a etapa.** O corte da etapa 5 (D-07/COMERC-03) vale só para a listagem **Entrada**.
 
-**Plans:** 1/9 plans executed
+**Plans:** 2/9 plans executed
 
 Plans:
 **Wave 0** *(medições antes de qualquer código — gate do `CLAUDE.md`)*
 
 - [x] 138-01-PLAN.md — Baseline de testes registrada antes da migration das 3 colunas (D-09) [wave 0]
-- [ ] 138-02-PLAN.md — Checkpoint humano: nome interno da property de owner medido na conta HubSpot real + escopo `crm.objects.owners.read` (D-08) [wave 0]
+- [x] 138-02-PLAN.md — Checkpoint humano: nome interno da property de owner medido na conta HubSpot real + escopo `crm.objects.owners.read` (D-08) [wave 0] — **⚠️ NÃO medido de fato**: credencial ausente no `.env` local (401) impediu a medição real; `hubspot_owner_id` foi ASSUMIDO com autorização explícita do usuário, e o escopo `crm.objects.owners.read` ficou `NÃO CONFIRMADO`. Ambas viram pendência obrigatória do plano 138-09, a medir na VPS. Ver `138-HUBSPOT-MEDICOES.md` e `138-02-SUMMARY.md`
 
 **Wave 1** *(blocked on Wave 0 completion)*
 
