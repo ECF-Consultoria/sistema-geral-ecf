@@ -2087,21 +2087,20 @@ Quatro coisas precisam mudar em relação ao que existe hoje em `/financeiro` (`
 
 4. **Cadastro manual da tabela por empresa.** A geração de contrato pelo sistema é recente; a maioria das empresas já existentes está em contrato de tabela progressiva sem que o sistema saiba disso. Precisa haver um jeito de lançar as faixas de uma empresa "como se estivesse fazendo contrato, mas só para o sistema saber as faixas" — incluindo empresas com tabela antiga ou fora do padrão, que existem e são legítimas.
 
-**Requirements**: D-01 a D-13 (decisões travadas em `137-CONTEXT.md` — a fase não tem REQ-IDs no `REQUIREMENTS.md` raiz, que parou na v17.0; a unidade de rastreabilidade é o D-ID, mesma convenção da Fase 136).
+**Requirements**: D-01, D-02, D-02b, D-04 a D-13 (decisões travadas em `137-CONTEXT.md` — a fase não tem REQ-IDs no `REQUIREMENTS.md` raiz, que parou na v17.0; a unidade de rastreabilidade é o D-ID, mesma convenção da Fase 136). D-03 saiu do escopo: ficou obsoleto com a correção de D-02.
 **Depends on:** Phase 136 (nenhuma dependência de código conhecida; ordem de fila)
-**Plans:** 10 plans em 6 waves
+**Plans:** 9 plans em 6 waves (a numeração pula o `04`: aquele plano era o observer de D-03, removido em 2026-09-02 quando D-02 foi corrigido e D-03 ficou obsoleto — a divergência R$ 3.500 x R$ 3.000 não existia. Numeração preservada de propósito para não invalidar as referências cruzadas entre os planos.)
 
 Plans:
-- [ ] 137-01-PLAN.md — Schema e models das faixas de faturamento (por serviço e por empresa) + seed da tabela de Gestão vigente
+- [ ] 137-01-PLAN.md — Schema e models das faixas de faturamento (por serviço e por empresa) + seed das três tabelas medidas (D-02b)
 - [ ] 137-02-PLAN.md — Schema e models do snapshot congelado por competência + auditoria de reconsolidação
 - [ ] 137-03-PLAN.md — FechamentoFaixaResolver (herança serviço→empresa) e FechamentoRollupService (ML+Shopee em mês-calendário)
-- [ ] 137-04-PLAN.md — Observer que faz a exceção de faixas nascer junto do contrato (D-03)
 - [ ] 137-05-PLAN.md — Writer idempotente + comandos `fechamento:consolidar-mes` e `fechamento:verificar-consolidacao`
 - [ ] 137-06-PLAN.md — FechamentoController: cadastro manual das faixas e ações de fechar/refazer competência
 - [ ] 137-07-PLAN.md — `AdminController::fechamento()` migrado: mês-calendário, grupos do Comercial e leitura do congelado
 - [ ] 137-08-PLAN.md — Relatórios PDF e email mensal na fonte central; constante `FAIXAS` apagada das duas cópias
 - [ ] 137-09-PLAN.md — UI: tabela de faixas por empresa, estados de ausência visível e composição ML+Shopee
-- [ ] 137-10-PLAN.md — UI: status/fechar/refazer competência, fim do acumulado e checkpoint humano com dado real
+- [ ] 137-10-PLAN.md — UI: status/fechar/refazer competência, fim do acumulado e checkpoint humano conferindo as três tabelas contra o contrato
 
 > **Estado atual medido (2026-09-02, antes de qualquer plano):** a tela é a rota `/financeiro`, `AdminController::fechamento()` (~linha 126). Existem também `EnviarRelatorioFechamentoJob`, `RelatorioFechamentoMail` e o model `FechamentoRecebido` — precisam ser mapeados antes de qualquer mudança, porque a fase mexe no que eles produzem.
 >
