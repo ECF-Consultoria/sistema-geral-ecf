@@ -7,6 +7,7 @@ use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
@@ -277,5 +278,106 @@ class EtapaFiltroListagemTest extends TestCase
 
         $this->assertNull($filters['etapa'],
             'Etapa fora do domínio deve virar null também na prop filters (fallback silencioso).');
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // 8. Combinação TRIPLA — cust_id_status + etapa + com_pendencia (gap
+    //    closure WR-03, plano 137-11). O backend já suportava os três
+    //    combinados desde o 137-07; esta é a prova que faltava com
+    //    cust_id_status na mistura, o filtro que os quatro handlers do
+    //    cliente apagavam em silêncio antes desta correção.
+    // ═════════════════════════════════════════════════════════════════════════
+
+    public function test_filtros_triplos_combinados_intersectam_cust_id_etapa_e_pendencia(): void
+    {
+        $admin = $this->actingAsAdmin();
+
+        // Satisfaz os três critérios — único que deve sobrar.
+        $alvo = $this->criarEmpresaVisivel(['etapa' => null, 'cust_id_status' => 'invalido']);
+        $alvo->declararPendencia('Contrato não assinado', $admin);
+
+        // Cust ID e pendência batem, mas a etapa NÃO é sem_etapa.
+        $forceadaEtapaErrada = $this->criarEmpresaVisivel(['etapa' => Company::ETAPA_EM_OPERACAO, 'cust_id_status' => 'invalido']);
+        $forceadaEtapaErrada->declararPendencia('Falta grant', $admin);
+
+        // Etapa e pendência batem, mas cust_id_status é outro valor do domínio.
+        $custIdDivergente = $this->criarEmpresaVisivel(['etapa' => null, 'cust_id_status' => 'ok']);
+        $custIdDivergente->declararPendencia('Falta documento', $admin);
+
+        // Cust ID e etapa batem, mas SEM pendência.
+        $semPendencia = $this->criarEmpresaVisivel(['etapa' => null, 'cust_id_status' => 'invalido']);
+
+        $response = $this->get('/companies?cust_id_status=invalido&etapa=sem_etapa&com_pendencia=1');
+        $ids = $this->payloadCompanies($response)->pluck('id')->all();
+
+        $this->assertContains($alvo->id, $ids);
+        $this->assertNotContains($forceadaEtapaErrada->id, $ids,
+            'Filtro triplo deveria excluir empresa com etapa fora de sem_etapa mesmo com cust_id_status/pendência batendo.');
+        $this->assertNotContains($custIdDivergente->id, $ids,
+            'Filtro triplo deveria excluir empresa com cust_id_status divergente mesmo com etapa/pendência batendo.');
+        $this->assertNotContains($semPendencia->id, $ids,
+            'Filtro triplo deveria excluir empresa sem pendência mesmo com cust_id_status/etapa batendo.');
+    }
+
+    public function test_prop_filters_reflete_os_tres_valores_aplicados_simultaneamente(): void
+    {
+        $this->actingAsAdmin();
+
+        $response = $this->get('/companies?cust_id_status=invalido&etapa=sem_etapa&com_pendencia=1');
+        $filters = $this->filtersProp($response);
+
+        $this->assertSame('invalido', $filters['cust_id_status']);
+        $this->assertSame('sem_etapa', $filters['etapa']);
+        $this->assertTrue($filters['com_pendencia']);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // 9. Gate estático (gap closure WR-03, plano 137-11) — trava a
+    //    centralização do cliente contra reintrodução. Este gate prova a
+    //    FORMA do arquivo (que existe um único montador de query e que os
+    //    quatro handlers delegam a ele), não o comportamento no navegador —
+    //    esse é o checkpoint humano da Task 3. Ele existe porque o
+    //    comentário do próprio código-fonte já tinha afirmado a preservação
+    //    entre filtros (D-23) e estava errado para o par etapa/cust_id_status
+    //    e para aplicarSort — este gate é a versão executável dessa
+    //    afirmação, para que ela nunca mais divirja do código sem que a
+    //    suíte perceba.
+    // ═════════════════════════════════════════════════════════════════════════
+
+    public function test_gate_index_jsx_tem_um_unico_montador_de_query_e_os_quatro_handlers_delegam_a_ele(): void
+    {
+        $caminho = base_path('resources/js/Pages/Companies/Index.jsx');
+        $conteudo = File::get($caminho);
+
+        // (a) No máximo um único ponto no arquivo chama router.get contra a
+        // rota companies.index — hoje eram 4 (um por handler), WR-03.
+        $chamadasRouterGet = preg_match_all("/router\.get\(route\('companies\.index'\)/", $conteudo);
+        $this->assertLessThanOrEqual(1, $chamadasRouterGet,
+            "WR-03 reintroduzido: {$chamadasRouterGet} handler(s) de Index.jsx voltaram a chamar router.get(route('companies.index')) "
+                . 'por conta própria — escolher um filtro vai apagar os outros em silêncio outra vez. '
+                . "Centralize num único montador (ex: 'aplicarFiltros') e faça os handlers delegarem a ele.");
+
+        // (b) Cada um dos quatro handlers de filtro precisa delegar ao
+        // montador único — nenhum pode voltar a montar `params` por conta
+        // própria dentro do próprio corpo.
+        $handlers = ['aplicarCustIdFilter', 'aplicarSort', 'aplicarEtapaFilter', 'aplicarComPendenciaFilter'];
+        foreach ($handlers as $handler) {
+            $inicio = strpos($conteudo, "const {$handler} = ");
+            $this->assertNotFalse($inicio, "WR-03: handler '{$handler}' não foi encontrado em Index.jsx.");
+
+            // Corpo do handler: da declaração até o próximo `const ` no mesmo
+            // nível de indentação (molde simplificado, suficiente para um
+            // arrow function de poucas linhas como estes quatro).
+            $fimDoCorpo = strpos($conteudo, "\n    const ", $inicio + 10);
+            $corpo = $fimDoCorpo !== false
+                ? substr($conteudo, $inicio, $fimDoCorpo - $inicio)
+                : substr($conteudo, $inicio, 400);
+
+            $this->assertStringContainsString('aplicarFiltros(', $corpo,
+                "WR-03 reintroduzido: '{$handler}' deixou de delegar a 'aplicarFiltros()' e voltou a montar "
+                    . 'params por conta própria — escolher esse filtro vai apagar os outros em silêncio.');
+            $this->assertStringNotContainsString("router.get(", $corpo,
+                "WR-03 reintroduzido: '{$handler}' chama router.get() diretamente em vez de delegar ao montador único.");
+        }
     }
 }
