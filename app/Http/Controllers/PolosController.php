@@ -18,6 +18,7 @@ use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\PoloFaturamentoSnapshot;
 use App\Models\PoloMetaEntrada;
+use App\Models\PoloRosterSnapshot;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
@@ -1658,7 +1659,16 @@ class PolosController extends Controller
                 ->toArray();
         }
 
-        // Mês fechado: reconstrói o roster histórico a partir do CSV daquele mês.
+        // Mês fechado: o roster CONGELADO é a fonte preferencial — é o único que descreve
+        // o mês em vez de inferi-lo. Gravado por `polos:congelar-roster` (diário no mês
+        // corrente; --do-log no backfill). Mês sem snapshot cai na reconstrução do CSV
+        // abaixo, que continua valendo para o histórico antigo.
+        $congelado = PoloRosterSnapshot::where('mes', $mesSel)->get();
+        if ($congelado->isNotEmpty()) {
+            return $congelado->map(fn ($r) => $r->paraAtivo())->all();
+        }
+
+        // Fallback: reconstrói o roster histórico a partir do CSV daquele mês.
         $faseDeMeses = static fn (int $m): ?string => match ($m) {
             1       => 'M2',
             2       => 'M3',
