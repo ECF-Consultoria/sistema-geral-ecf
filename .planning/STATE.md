@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: executing
-stopped_at: "133-04: checkpoint corrigido para 'ligar-agora' — chave administrativo_bloqueio_ativo LIGADA em produção (2026-08-19, ~09:05 BRT); 133-05 desbloqueado e pendente (verificação 48h + primeiro cadastro real de Polos)"
-last_updated: "2026-08-19T12:05:00.000Z"
-last_activity: 2026-08-19
+status: verifying
+stopped_at: Phase 137 context gathered
+last_updated: "2026-09-02T18:34:53.394Z"
+last_activity: 2026-08-19 — chave `administrativo_bloqueio_ativo` LIGADA em produção; 133-05 desbloqueado
 progress:
-  total_phases: 13
+  total_phases: 14
   completed_phases: 10
   total_plans: 92
   completed_plans: 89
-  percent: 77
+  percent: 71
 ---
 
 # Project State
@@ -1347,8 +1347,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-08-19T12:05:00.000Z
-Stopped at: 133-04 corrigido (ligar-agora) — chave administrativo_bloqueio_ativo LIGADA em produção; 133-05 desbloqueado
+Last session: 2026-09-02T18:34:53.366Z
+Stopped at: Phase 137 context gathered
 Last session: 2026-08-18T21:34:08.162Z
 Stopped at: Completed 133-03-PLAN.md
 Last session: 2026-08-10T21:59:33.127Z
