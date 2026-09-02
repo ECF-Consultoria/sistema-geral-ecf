@@ -176,39 +176,88 @@ class EtapaTransicaoService
      * Escrita da coluna + criação do histórico dentro de UMA transação
      * (T-137-11): não existe etapa gravada sem linha de histórico.
      *
+     * ⚠️ WR-01 (`137-REVIEW.md`) / T-137-31/T-137-32 (plano 137-10):
+     * `podeTransicionar()` é reavaliado DUAS vezes — uma vez cedo, sobre o
+     * `$company` que o chamador passou (só para devolver a recusa rápida
+     * sem abrir transação quando o caso é óbvio), e de novo AQUI DENTRO,
+     * sobre a linha relida com `lockForUpdate()`. É a segunda avaliação que
+     * decide o que é gravado. O motivo: duas chamadas concorrentes para a
+     * MESMA empresa — o webhook do Clicksign reentregue por timeout (Fase
+     * 138) e o duplo-clique em "Finalizar" antes do primeiro round-trip
+     * terminar (Fase 139) são os dois cenários concretos citados no
+     * `137-REVIEW.md` — podiam ler o mesmo `etapa` "antigo" em memória,
+     * ambas passar na régua, e ambas escrever, quebrando o invariante do
+     * docblock da classe ("não existe etapa mudada sem linha de
+     * histórico" pressupõe uma única escrita por vez). A correção segue os
+     * dois precedentes já em produção no projeto:
+     * `App\Services\Desempenho\CompanyScoreSnapshotWriter::sync()`
+     * (docblock D-122-08) e
+     * `App\Http\Controllers\DesempenhoMetricasManuaisController::salvar()`
+     * (linhas 175-181) — ambos releem com `lockForUpdate()` DENTRO da
+     * mesma transação da escrita, em vez de decidir sobre o objeto que o
+     * chamador tinha em memória.
+     *
+     * ⚠️ `lockForUpdate()` é **no-op no SQLite** — o driver que a suíte de
+     * testes usa (mesma ressalva do D-122-08 citado acima). Em SQLite ele
+     * não serializa nada; quem faz a trava valer sob concorrência real é o
+     * MariaDB de produção. O que a suíte desta classe prova, portanto, NÃO
+     * é serialização entre duas requisições simultâneas (SQLite não
+     * consegue provar isso) — é que a decisão usa a RE-LEITURA da linha, e
+     * não o objeto obsoleto em memória (teste de divergência
+     * memória-vs-banco, `EtapaTransicaoServiceTest`). Não ler o teste verde
+     * como prova de concorrência.
+     *
      * @return array{status: string, de: ?string, para: string, requisito_faltante: ?string, erro: ?string}
      */
     public function transicionar(Company $company, string $etapaDestino, User $por, ?string $motivo = null): array
     {
-        $avaliacao = $this->podeTransicionar($company, $etapaDestino);
-
-        if (! $avaliacao['permitido']) {
-            return [
-                'status' => 'recusado',
-                'de' => $company->etapa,
-                'para' => $etapaDestino,
-                'requisito_faltante' => $avaliacao['requisito_faltante'],
-                'erro' => null,
-            ];
-        }
-
-        // D-15: retrocesso não faz parte do fluxo normal e nunca é
-        // automático — exige motivo não vazio, checado aqui porque
-        // `podeTransicionar()` é puro e não recebe motivo.
-        if ($avaliacao['retrocesso'] && trim((string) $motivo) === '') {
-            return [
-                'status' => 'recusado',
-                'de' => $company->etapa,
-                'para' => $etapaDestino,
-                'requisito_faltante' => 'Retrocesso exige motivo obrigatório (D-15) — nenhum motivo foi informado.',
-                'erro' => null,
-            ];
-        }
-
-        $etapaAnterior = $company->etapa;
-
         try {
-            DB::transaction(function () use ($company, $etapaDestino, $por, $motivo, $avaliacao, $etapaAnterior) {
+            return DB::transaction(function () use ($company, $etapaDestino, $por, $motivo) {
+                // Relê e trava a linha DENTRO da transação (T-137-31) — a
+                // decisão abaixo nunca usa o `$company` recebido por
+                // parâmetro, só esta instância travada.
+                $travada = Company::whereKey($company->id)->lockForUpdate()->first();
+
+                if ($travada === null) {
+                    // Empresa removida entre a chamada e o lock. Não deixar
+                    // exceção vazar — devolver `erro` como os demais casos
+                    // de falha deste método.
+                    return [
+                        'status' => 'erro',
+                        'de' => $company->etapa,
+                        'para' => $etapaDestino,
+                        'requisito_faltante' => null,
+                        'erro' => "Empresa {$company->id} não encontrada — removida antes da transição ser aplicada.",
+                    ];
+                }
+
+                $avaliacao = $this->podeTransicionar($travada, $etapaDestino);
+
+                if (! $avaliacao['permitido']) {
+                    return [
+                        'status' => 'recusado',
+                        'de' => $travada->etapa,
+                        'para' => $etapaDestino,
+                        'requisito_faltante' => $avaliacao['requisito_faltante'],
+                        'erro' => null,
+                    ];
+                }
+
+                // D-15: retrocesso não faz parte do fluxo normal e nunca é
+                // automático — exige motivo não vazio, checado aqui porque
+                // `podeTransicionar()` é puro e não recebe motivo.
+                if ($avaliacao['retrocesso'] && trim((string) $motivo) === '') {
+                    return [
+                        'status' => 'recusado',
+                        'de' => $travada->etapa,
+                        'para' => $etapaDestino,
+                        'requisito_faltante' => 'Retrocesso exige motivo obrigatório (D-15) — nenhum motivo foi informado.',
+                        'erro' => null,
+                    ];
+                }
+
+                $etapaAnterior = $travada->etapa;
+
                 // Pitfall 6 (137-RESEARCH.md): grava SÓ `etapa` neste
                 // update(). `Company` tem
                 // #[ObservedBy(CompanyGatilhoContratoObserver::class)], que
@@ -219,31 +268,38 @@ class EtapaTransicaoService
                 // algum dia a transição precisar gravar outro campo (ex.:
                 // dados de onboarding na Fase 142), isso vai num `save()`
                 // SEPARADO, nunca neste mesmo update().
-                $company->update(['etapa' => $etapaDestino]);
+                $travada->update(['etapa' => $etapaDestino]);
 
                 CompanyEtapaTransicao::create([
-                    'company_id' => $company->id,
+                    'company_id' => $travada->id,
                     'etapa_anterior' => $etapaAnterior,
                     'etapa_nova' => $etapaDestino,
                     'user_id' => $por->id,
                     'motivo' => $motivo,
                     'retrocesso' => $avaliacao['retrocesso'],
                 ]);
-            });
 
-            return [
-                'status' => 'transicionado',
-                'de' => $etapaAnterior,
-                'para' => $etapaDestino,
-                'requisito_faltante' => null,
-                'erro' => null,
-            ];
+                // Sincroniza o objeto que o CHAMADOR passou — as Fases
+                // 138-142 vão usar o retorno e o objeto logo em seguida;
+                // deixar `$company` obsoleto em memória trocaria um bug por
+                // outro.
+                $company->setAttribute('etapa', $etapaDestino);
+                $company->syncOriginalAttribute('etapa');
+
+                return [
+                    'status' => 'transicionado',
+                    'de' => $etapaAnterior,
+                    'para' => $etapaDestino,
+                    'requisito_faltante' => null,
+                    'erro' => null,
+                ];
+            });
         } catch (\Throwable $e) {
-            Log::error("[EtapaTransicao] falha ao transicionar empresa {$company->id} ({$company->name}) de '{$etapaAnterior}' para '{$etapaDestino}': {$e->getMessage()}");
+            Log::error("[EtapaTransicao] falha ao transicionar empresa {$company->id} ({$company->name}) para '{$etapaDestino}': {$e->getMessage()}");
 
             return [
                 'status' => 'erro',
-                'de' => $etapaAnterior,
+                'de' => $company->etapa,
                 'para' => $etapaDestino,
                 'requisito_faltante' => null,
                 'erro' => $e->getMessage(),
