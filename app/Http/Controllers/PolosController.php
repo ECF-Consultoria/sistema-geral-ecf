@@ -627,6 +627,9 @@ class PolosController extends Controller
             $cols[] = ['key' => 'fin_meta',        'label' => 'Meta',        'tipo' => 'dinheiro'];
             $cols[] = ['key' => 'fin_pct',         'label' => '% da meta',   'tipo' => 'percentual'];
             $cols[] = ['key' => 'fin_ads',         'label' => 'ADS',         'tipo' => 'dinheiro'];
+            // Fatia de Casa/Móveis no gross — sinaliza quem não vende móvel num polo
+            // moveleiro. NÃO entra em meta/status: é insumo de curadoria de roster.
+            $cols[] = ['key' => 'fin_pct_moveis', 'label' => '% móveis',    'tipo' => 'percentual'];
             $cols[] = ['key' => 'fin_status',      'label' => 'Status',      'tipo' => 'texto'];
         }
 
@@ -740,6 +743,11 @@ class PolosController extends Controller
 
         // ── Financeiro (admin): cust_norm → números do cockpit ──
         $fin = [];
+        // cust_norm → fatia de Casa/Móveis (MLB1574) sobre o gross, em %. O painel mede
+        // gross (ver faturamentoAdmanDoMes), então esta é a única visão de "essa empresa
+        // vende móvel mesmo?" — a pergunta é de ROSTER, e é aqui na planilha que o time
+        // decide quem fica no programa. JHOLP MIX MAGAZINE sai com 0,8% (99% Pet Shop).
+        $pctMoveis = [];
         if ($isAdmin) {
             try {
                 $cockpit = $this->montarCockpit($data['mes'] ?? null);
@@ -757,14 +765,27 @@ class PolosController extends Controller
                         $fin[$k] = $emp;
                     }
                 }
+
+                $mesFin = (string) ($cockpit['mesSelecionado'] ?? '');
+                if ($mesFin !== '' && $fin !== []) {
+                    $ativosFin = array_map(fn ($k) => ['cust_id' => $k], array_keys($fin));
+                    $moveis    = $this->faturamentoMoveisDoMes($ativosFin, $mesFin);
+                    foreach ($fin as $k => $emp) {
+                        $gross = (float) ($emp['faturamento'] ?? 0);
+                        // Sem gross não há fração possível — coluna vazia em vez de 0%,
+                        // que se leria como "não vende móvel".
+                        $pctMoveis[$k] = $gross > 0 ? round(100 * ((float) ($moveis[$k] ?? 0)) / $gross, 1) : null;
+                    }
+                }
             } catch (\Throwable $ex) {
                 // Planilha sem financeiro > download quebrado: o operacional é o essencial.
                 Log::warning('[Polos] Exportação sem bloco financeiro: ' . $ex->getMessage());
-                $fin = [];
+                $fin       = [];
+                $pctMoveis = [];
             }
         }
 
-        $linhas = $empresas->map(function ($e) use ($fin) {
+        $linhas = $empresas->map(function ($e) use ($fin, $pctMoveis) {
             $impl  = $e->implementacao;
             $prazo = $impl?->infoPrazo();
             $f     = $fin[CustId::normaliza((string) ($e->cust_id ?? ''))] ?? [];
@@ -810,6 +831,7 @@ class PolosController extends Controller
                 'fin_meta'            => $f['meta'] ?? null,
                 'fin_pct'             => $f['pct'] ?? null,
                 'fin_ads'             => $f['ads'] ?? null,
+                'fin_pct_moveis'      => $pctMoveis[CustId::normaliza((string) ($e->cust_id ?? ''))] ?? null,
                 'fin_status'          => isset($f['status']) ? (self::EXPORT_STATUS_META_LABEL[$f['status']] ?? $f['status']) : null,
             ];
         })->all();
@@ -1493,22 +1515,61 @@ class PolosController extends Controller
     }
 
     /**
-     * Faturamento POR CATEGORIA "Casa, Móveis e Decoração" (raiz ML MLB1574) do mês,
-     * por cust_id normalizado. SUBSTITUI o gross total da conta — o /polos passa a
-     * contar SÓ Móveis em todo o painel.
+     * Faturamento GROSS da conta (todas as categorias) do mês, por cust_id normalizado.
      *
-     * Fonte: coluna `faturamento_moveis` do PoloFaturamentoSnapshot, computada pelo
-     * SyncPolosFaturamentoJob a partir do netBilling por item do /performance (Adman
-     * entrega o categoryId; a raiz vem da API pública do ML). Diferente do gross, o
-     * valor por categoria NÃO tem cache ao vivo — a frescura é a do último warm (cron
-     * 13:00 + botão "Sincronizar"), igual ao ADS. Cust_id sem snapshot → ausência no
-     * mapa (o chamador trata como R$0). NUNCA quebra o /polos.
+     * Entre 260707 e 260902 o painel servia `faturamento_moveis` — só a raiz MLB1574,
+     * em netBilling por item. A intenção era não dar meta batida a quem não vende móvel
+     * (JHOLP MIX MAGAZINE é 99% Pet Shop; Primus Haus, 83% Acessórios para Veículos).
+     * Foi revertido por três motivos medidos:
+     *
+     *  1. Os limiares M2=1.000 / M3=4.000 / M4=8.000 vêm da planilha, que sempre usou
+     *     gross ("defaults da planilha", D-07). Ninguém os recalibrou quando o insumo
+     *     virou Móveis-net — a meta ficou ~13% mais difícil sem decisão de produto.
+     *  2. Fatiar por categoria obrigou a trocar de métrica junto: a Adman só entrega
+     *     netBilling POR ITEM (o gross existe só no total da conta). Dos ~13% de queda,
+     *     ~11 pontos são gross→net e só ~3 são categoria — a Lutz Home Decor é 100%
+     *     móvel e mesmo assim aparecia R$ 74 mil menor.
+     *  3. A planilha de Evolução, referência do time, NÃO filtra categoria: traz a JHOLP
+     *     com R$ 50.818 (a conta inteira), não com os R$ 396 de móveis dela.
+     *
+     * Com gross o painel reproduz a planilha com 0,1% de resíduo. O caso "vende ração num
+     * polo moveleiro" continua real, mas é decisão de ROSTER (quem entra no programa) e
+     * não de métrica — por isso `faturamento_moveis` segue sendo calculado e gravado pelo
+     * job, exposto como "% móveis" na exportação do painel.
+     *
+     * Fonte: coluna `faturamento` do PoloFaturamentoSnapshot. Cust_id sem snapshot →
+     * ausência no mapa (o chamador trata como R$0). NUNCA quebra o /polos.
      *
      * @param  array<array<string,mixed>>  $ativos  Ativos (toArray)
      * @param  string  $mesSel  TIM_MONTH_ID 'YYYYMM' do mês exibido
-     * @return array<string,float>  [cust_id normalizado => faturamento Móveis (net)]
+     * @return array<string,float>  [cust_id normalizado => faturamento gross da conta]
      */
     private function faturamentoAdmanDoMes(array $ativos, string $mesSel): array
+    {
+        return $this->colunaDoSnapshot($ativos, $mesSel, 'faturamento');
+    }
+
+    /**
+     * Faturamento só da raiz "Casa, Móveis e Decoração" (MLB1574), em netBilling por item.
+     * NÃO alimenta meta nem status — serve para expor "% móveis" e sinalizar empresa que
+     * não vende móvel num polo moveleiro (decisão de roster). Ver faturamentoAdmanDoMes().
+     *
+     * @param  array<array<string,mixed>>  $ativos
+     * @return array<string,float>  [cust_id normalizado => faturamento Móveis (net)]
+     */
+    private function faturamentoMoveisDoMes(array $ativos, string $mesSel): array
+    {
+        return $this->colunaDoSnapshot($ativos, $mesSel, 'faturamento_moveis');
+    }
+
+    /**
+     * Lê uma coluna de valor do PoloFaturamentoSnapshot para os ativos do mês.
+     * Defensiva: falha de leitura devolve [] em vez de quebrar o /polos.
+     *
+     * @param  array<array<string,mixed>>  $ativos
+     * @return array<string,float>
+     */
+    private function colunaDoSnapshot(array $ativos, string $mesSel, string $coluna): array
     {
         try {
             $custIds = collect($ativos)
@@ -1522,10 +1583,9 @@ class PolosController extends Controller
                 return [];
             }
 
-            // Faturamento de Móveis vive SÓ no snapshot (sem cache ao vivo por categoria).
             $snaps = PoloFaturamentoSnapshot::where('mes', $mesSel)
                 ->whereIn('cust_id', $custIds)
-                ->pluck('faturamento_moveis', 'cust_id');
+                ->pluck($coluna, 'cust_id');
 
             $out = [];
             foreach ($custIds as $id) {
@@ -1536,8 +1596,8 @@ class PolosController extends Controller
 
             return $out;
         } catch (\Throwable $e) {
-            // Defensiva: falha de leitura NÃO quebra /polos.
-            Log::warning('[Polos] Falha ao ler faturamento (Móveis) do snapshot: ' . $e->getMessage());
+            Log::warning("[Polos] Falha ao ler '{$coluna}' do snapshot: " . $e->getMessage());
+
             return [];
         }
     }
