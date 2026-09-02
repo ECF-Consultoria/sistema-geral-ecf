@@ -401,8 +401,26 @@ class MlbImplementacao extends Model
         ],
     ];
 
+    /**
+     * ERP do CHECKLIST público (≠ ONB_ERP_OPCOES, que é a coluna do Painel Polos).
+     * Lista revista pelo comercial em 2026-09-02: saíram SAP, Netsuite, TOTVS e Omie
+     * (nenhuma ficha em 509 usava) e entraram Anymarket, Tray, LojaHub e Shopping de
+     * Preços. 'Tiny ERP' virou 'Tiny' — as 10 fichas com o texto antigo foram migradas
+     * no mesmo deploy: o <select> do link do cliente é nativo e controlado, então um
+     * valor fora da lista aparece EM BRANCO para o cliente (o 'feito' continua marcado,
+     * porque itemTemConteudo só exige valor ≠ '---' — o cliente é que perde a resposta
+     * ao encostar no campo). 'Outro' ficou (47 fichas) porque é ele que abre o campo
+     * de texto livre.
+     */
     public const ERP_OPCOES = [
-        'Em Contratação', 'Tiny ERP', 'Bling', 'SAP', 'Netsuite', 'TOTVS', 'Omie', 'Outro',
+        'Bling',
+        'Tiny',
+        'Anymarket',
+        'Tray',
+        'LojaHub',
+        'Shopping de Preços',
+        'Em Contratação',
+        'Outro',
     ];
 
     /**
