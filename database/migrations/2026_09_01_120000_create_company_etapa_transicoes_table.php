@@ -18,6 +18,24 @@ use Illuminate\Support\Facades\Schema;
  * `etapa_anterior` é NULLABLE de propósito: a primeira transição de uma
  * empresa legada parte de `NULL` (D-03 — o backfill nunca carimba etapa
  * intermediária). Log imutável: só `created_at`, sem `updated_at`.
+ *
+ * Fase 137 (plano 09, gap closure G2 / CR-02 do `137-REVIEW.md`) — `user_id`
+ * é o AUTOR da transição, não o dono do registro: um único colaborador pode
+ * ter movimentado dezenas de empresas. `UserController::forceDestroy()`
+ * (linha 436) já é rota admin ativa e faz `$user->forceDelete()` — hard
+ * delete real, não soft (`User` usa `SoftDeletes`, mas essa rota o
+ * contorna). Uma FK em CASCATA aqui apagaria a linha de histórico
+ * de TODAS as empresas que esse ator movimentou — não só as dele —,
+ * reintroduzindo por outra porta exatamente a perda de retenção que o
+ * parágrafo acima usa para justificar não ter escolhido
+ * `spatie/laravel-activitylog`. Por isso `user_id` é `nullable()` com
+ * `nullOnDelete()`: a linha inteira (`etapa_anterior`, `etapa_nova`,
+ * `motivo`, `retrocesso`, `created_at`) sobrevive, só a referência ao ator
+ * se perde — mesmo tratamento do precedente irmão `companies.pendencia_por`
+ * (`..._130000_add_pendencia_to_companies_table`, criado na MESMA fase para
+ * o mesmo conceito). `restrictOnDelete()` foi descartado: bloquearia
+ * `forceDestroy()` de qualquer usuário que já tenha movimentado uma etapa,
+ * trocando perda silenciosa por um impasse administrativo sem saída.
  */
 return new class extends Migration
 {
@@ -28,7 +46,7 @@ return new class extends Migration
             $table->foreignId('company_id')->constrained()->cascadeOnDelete();
             $table->string('etapa_anterior', 40)->nullable();
             $table->string('etapa_nova', 40);
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->text('motivo')->nullable();
             $table->boolean('retrocesso')->default(false);
             $table->timestamp('created_at')->nullable();

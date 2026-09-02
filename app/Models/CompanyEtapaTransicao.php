@@ -42,6 +42,14 @@ class CompanyEtapaTransicao extends Model
         return $this->belongsTo(Company::class);
     }
 
+    /**
+     * Fase 137 (plano 09, gap closure G2) — pode devolver `null`. A FK de
+     * `user_id` é `nullOnDelete()`: quando o ator é removido permanentemente
+     * (`UserController::forceDestroy()`), a linha de histórico sobrevive e só
+     * a referência ao ator se perde. `null` aqui é estado ESPERADO, não
+     * corrupção de dado — quem consumir (Fase 143) deve renderizar algo como
+     * "usuário removido", nunca assumir objeto.
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
