@@ -2163,7 +2163,7 @@ Plans:
 > produção. **Contrato é ferramenta administrativa contínua: o critério de saída dela é o estado do
 > contrato, não a etapa.** O corte da etapa 5 (D-07/COMERC-03) vale só para a listagem **Entrada**.
 
-**Plans:** 2/9 plans executed
+**Plans:** 3/9 plans executed
 
 Plans:
 **Wave 0** *(medições antes de qualquer código — gate do `CLAUDE.md`)*
@@ -2173,7 +2173,7 @@ Plans:
 
 **Wave 1** *(blocked on Wave 0 completion)*
 
-- [ ] 138-03-PLAN.md — COMERC-02: colunas `hubspot_owner_id`/`hubspot_owner_nome`/`data_venda` + property no config + `fetchOwner()` + `HubspotOwnerResolver` (D-08/D-09/D-12) [wave 1]
+- [x] 138-03-PLAN.md — COMERC-02: colunas `hubspot_owner_id`/`hubspot_owner_nome`/`data_venda` + property no config + `fetchOwner()` + `HubspotOwnerResolver` (D-08/D-09/D-12) [wave 1]
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

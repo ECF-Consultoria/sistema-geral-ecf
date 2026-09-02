@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: "Completed 138-02-PLAN.md — nome da property de owner ASSUMIDO (hubspot_owner_id), escopo owners.read NAO CONFIRMADO; ambas pendentes de medicao real na VPS via plano 138-09. Proximo: 138-03 (wave 1)"
-last_updated: "2026-09-02T19:09:09.320Z"
+stopped_at: "Completed 138-03-PLAN.md — 3 colunas aditivas em companies (hubspot_owner_id, hubspot_owner_nome, data_venda) + config-driven owner_id + fetchOwner()/HubspotOwnerResolver com cache 7d. 12/12 testes verdes, regressao 62/62 verde. Proximo: 138-04 (wave 2)"
+last_updated: "2026-09-02T19:25:28.513Z"
 last_activity: 2026-09-02
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 20
-  completed_plans: 13
+  completed_plans: 14
   percent: 14
 ---
 
@@ -42,7 +42,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 138 (rea-comercial-conectada-etapa-v23-0) — EXECUTING
 0 executados**
-Plan: 3 of 9
+Plan: 4 of 9
 `CLAUDE.md`) e 138-02 (`checkpoint:human-verify` BLOQUEANTE: medir o nome interno da property de
 owner na conta HubSpot real por `hubspot:inspect-properties --objects=deals`, e confirmar o escopo
 `crm.objects.owners.read`). Wave 1 = 138-03. Wave 2 = 138-04/05/06. Wave 3 = 138-07/08.
@@ -742,6 +742,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 137 P02 | 25min | 2 tasks | 3 files |
 | Phase 138 P01 | 6min | 2 tasks | 1 files |
 | Phase 138 P02 | 6min | 3 tasks | 1 files |
+| Phase 138 P03 | 20min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -1506,8 +1507,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-09-02T19:09:09.278Z
-Stopped at: Completed 138-02-PLAN.md — nome da property de owner ASSUMIDO (hubspot_owner_id), escopo owners.read NAO CONFIRMADO; ambas pendentes de medicao real na VPS via plano 138-09. Proximo: 138-03 (wave 1)
+Last session: 2026-09-02T19:25:28.472Z
+Stopped at: Completed 138-03-PLAN.md — 3 colunas aditivas em companies (hubspot_owner_id, hubspot_owner_nome, data_venda) + config-driven owner_id + fetchOwner()/HubspotOwnerResolver com cache 7d. 12/12 testes verdes, regressao 62/62 verde. Proximo: 138-04 (wave 2)
 Last session: 2026-09-02T13:20:35Z
 Stopped at: Completed 137-11-PLAN.md — gap closure G3 (WARNING) fechado, checkpoint humano aprovado (commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA (11/11 planos)
 Last session: 2026-09-02T12:34:59Z
@@ -1631,3 +1632,4 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 138-01]: Baseline de testes escrita antes da migration de 3 colunas em companies (138-03); crescimento 285->307 na suite Unit atribuido ao crescimento organico da Fase 137, nao regressao
 - [Phase 138-02]: property_owner_nome_interno assumida como hubspot_owner_id (nao medida) com autorizacao explicita do usuario; medicao real fica pendencia obrigatoria do plano 138-09 na VPS
 - [Phase 138-02]: escopo OAuth crm.objects.owners.read fica NAO CONFIRMADO (usuario sem acesso ao painel HubSpot); verificacao carregada para o plano 138-09 pos-primeiro-deploy
+- [Phase 138]: 138-03: 3 colunas aditivas em companies (hubspot_owner_id, hubspot_owner_nome, data_venda) + HubspotOwnerResolver com cache de 7 dias — Property de owner assumida (nao medida) com autorizacao do usuario 260902; medicao real fica pendente do plano 138-09 na VPS
