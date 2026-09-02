@@ -72,7 +72,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 - [ ] **COMERC-01**: Empresa criada pelo webhook de venda ganha nasce na etapa `Aguardando Administrativo` sem cadastro manual
 - [ ] **COMERC-02**: As listagens **Contrato** e **Entrada** da Área Comercial exibem, cada uma, os 8 campos mínimos do §2 (nome, serviço contratado, setor/segmento, origem da venda, responsável comercial e data da venda, informações principais do cliente, status do contrato e pendências, demais dados comerciais do HubSpot). São **duas** listas separadas por processo pendente, não por etapa — a mesma empresa pode aparecer nas duas (Fase 138, D-04/D-05)
-- [ ] **COMERC-03**: A empresa permanece visível na Área Comercial até entrar na etapa `Aguardando Distribuição` — continua aparecendo enquanto está em `Administrativo Concluído`, para não ficar órfã entre o Comercial e a Coordenação (Fase 138, D-07)
+- [ ] **COMERC-03**: A empresa permanece visível na listagem **Entrada** até entrar na etapa `Aguardando Distribuição` — continua aparecendo enquanto está em `Administrativo Concluído`, para não ficar órfã entre o Comercial e a Coordenação (Fase 138, D-07). ⚠️ **A listagem Contrato não tem corte por etapa** (decisão do usuário, 2026-09-02): o universo dela é estado de contrato, não etapa — cortá-la na etapa 5 esconderia empresa em operação com contrato ativo. Ver a nota do bloco da Fase 138 no `ROADMAP.md`
 
 ### ADMIN — Checklist administrativo e trava de finalização (§3, §5)
 

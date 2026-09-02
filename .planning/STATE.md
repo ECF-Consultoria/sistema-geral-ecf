@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
-status: planning
-stopped_at: "Phase 138 — pre-requisito de reescrita FECHADO, planejamento em curso"
+status: planned
+stopped_at: "Phase 138 PLANEJADA — 9 planos em 5 waves, prontos para /gsd-execute-phase 138"
 last_updated: "2026-09-02T16:52:39.169Z"
-last_activity: 2026-09-02 -- Pre-requisito bloqueante da Phase 138 FECHADO: COMERC-02, COMERC-03 e ADMIN-01 reescritos em REQUIREMENTS-v23.md; blocos das Fases 138/139/140 do ROADMAP.md reescritos (a 138 ganhou nota de escopo da reorganizacao + 5 SCs; a 139 ganhou a nota da contagem 12x9 em aberto; a 140 SOBREVIVE INTEIRA por decisao do usuario). Antes disso: Phase 137 COMPLETA, 11/11 planos (gap closure G1-G6 fechada, commits `add870ca`, `afbe85e0`)
+last_activity: 2026-09-02 -- FASE 138 PLANEJADA: 9 planos, 5 waves, 23 tasks. Pre-requisito bloqueante FECHADO antes de planejar (commit `2a9562af` — COMERC-02/03 e ADMIN-01 reescritos, blocos das Fases 138/139/140 do ROADMAP corrigidos, a 140 SOBREVIVE INTEIRA). Pesquisa + VALIDATION + PATTERNS + D-17 (`3654b006`, `57a31c65`). `gsd-plan-checker`: 0 blockers, 5 warnings — todos fechados, inclusive a tensao D-06 x SC#4 (decisao do usuario: a listagem Contrato NAO tem corte por etapa). Cobertura de decisoes 17/17, COMERC-01/02/03 cobertos. Antes disso: Phase 137 COMPLETA, 11/11 planos
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 11
+  total_plans: 20
   completed_plans: 11
   percent: 14
 ---
@@ -40,9 +40,27 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 138
+Phase: 138 (rea-comercial-conectada-etapa-v23-0) — **PLANEJADA: 9 planos em 5 waves, 23 tasks,
+0 executados**
+Plan: 0 of 9 — nada executado. Wave 0 = 138-01 (baseline de testes ANTES da migration, gate do
+`CLAUDE.md`) e 138-02 (`checkpoint:human-verify` BLOQUEANTE: medir o nome interno da property de
+owner na conta HubSpot real por `hubspot:inspect-properties --objects=deals`, e confirmar o escopo
+`crm.objects.owners.read`). Wave 1 = 138-03. Wave 2 = 138-04/05/06. Wave 3 = 138-07/08.
+Wave 4 = 138-09 (checkpoints finais, `autonomous: false`).
+
+> ⚠️ **O bloco da Fase 137 abaixo foi restaurado à mão em 2026-09-02.** O commit `cea0be5f`
+> (`phase.complete`/`state.record-session`) truncou o **início** de três linhas longas e deixou
+> as caudas órfãs — as frases "completos + 4/4 planos…", "em `137-BASELINE-TESTES.md`);…" e
+> "planos (7 originais + 4 de gap closure).**" ficaram penduradas sem cabeça, e o `last_activity`
+> foi achatado para só a data. Texto recuperado de `git show a7fe1376:.planning/STATE.md`. São os
+> danos nº 1 e nº 2 do `.planning/learnings/gates-do-gsd-em-projeto-pt-br.md` §4 — **não rodar
+> `state.*` sem ler o diff inteiro antes de commitar.**
+
+### Fase 137 — COMPLETA (11/11) · histórico restaurado
+
+Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — **7/7 planos originais
 completos + 4/4 planos de gap closure concluídos — FASE 137 COMPLETA (11/11)**
-Plan: Not started
+Plan: 11 of 11 (7 originais + 137-08 + 137-09 + 137-10 + 137-11) — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
 em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
 no model `Company`, ETAPA-01 fechado); 137-03 concluído (`EtapaTransicaoService` — único ponto de
 escrita de `companies.etapa`, tabela `company_etapa_transicoes` de histórico append-only, ETAPA-03
@@ -138,13 +156,20 @@ por conta própria). Suíte da fase 58/58 verde, baseline 24/24 verde. **Verific
 aprovada** — o usuário combinou os três filtros na tela real e produziu a URL
 `?cust_id_status=invalido&etapa=sem_etapa&tab=empresas` como evidência do passo que falhava
 antes; ver `137-11-SUMMARY.md`.
-Status: Ready to plan
-planos (7 originais + 4 de gap closure).** As 6 Success Criteria e os 6 requirements
+Status: **Ready to execute — `/gsd-execute-phase 138`.** Os 9 planos passaram no
+`gsd-plan-checker` com 0 blockers; os 5 warnings foram fechados (arestas `depends_on` de 138-06
+e 138-07, Open Questions do RESEARCH marcadas resolvidas, frontmatter do VALIDATION aprovado, e a
+tensão D-06 × SC#4 escalada e decidida pelo usuário). Cobertura de decisões **17/17**
+(`check.decision-coverage-plan`), requirements COMERC-01/02/03 cobertos.
+
+**Histórico da 137 (restaurado):** Fase 137 — TODOS os 6 gaps fechados (G1+G2+G3+G4+G5+G6).
+**FASE 137 COMPLETA — 11/11 planos (7 originais + 4 de gap closure).** As 6 Success Criteria e os 6 requirements
 (ETAPA-01..06) seguem fechados desde 137-07; os 4 gap closure endureceram garantias que já
 tinham sido reivindicadas, sem reabrir requirement nenhum.
-Próxima fase da milestone (138 — Área Comercial conectada à etapa) ainda **não foi planejada**
-(`Plans: TBD` no ROADMAP) — requer `/gsd-plan-phase 138` antes de qualquer execução.
-Last activity: 2026-09-02
+~~Próxima fase da milestone (138 — Área Comercial conectada à etapa) ainda **não foi planejada**
+(`Plans: TBD` no ROADMAP) — requer `/gsd-plan-phase 138` antes de qualquer execução.~~
+**FEITO em 2026-09-02 — a Fase 138 está planejada, 9 planos no ROADMAP.**
+Last activity (137, restaurado): 2026-09-02 -- Phase 137 Plan 11 concluído, G3/WR-03 fechado (commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA (11/11)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate

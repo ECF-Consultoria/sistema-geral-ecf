@@ -2150,9 +2150,18 @@ Plans:
 
   1. Uma venda marcada GANHA no HubSpot chega na Área Comercial já na etapa "Aguardando Administrativo", sem nenhum cadastro manual adicional — e o cadastro manual do próprio Comercial (`ComercialController::store`) nasce na mesma etapa, pelo mesmo `EtapaTransicaoService` (COMERC-01, D-13)
   2. As listagens **Contrato** e **Entrada** mostram, cada uma, por empresa, os 8 campos mínimos do §2 — nome, serviço contratado, setor/segmento (setor ECF, D-12), origem da venda, responsável comercial e data da venda (buscados no HubSpot, D-08/D-09), informações principais do cliente, status do contrato e existência de pendências, demais dados comerciais do HubSpot (COMERC-02)
-  3. Pendência do fluxo (a declarada na Fase 137) e pendências do cadastro (as 8 do `PendenciasComerciaisService`) aparecem em colunas separadas e nomeadas — nunca somadas num número só (COMERC-02, D-11)
-  4. Uma empresa some das listagens do Comercial só no instante em que entra na etapa "Aguardando Distribuição" — continua visível enquanto está em "Administrativo Concluído" (COMERC-03, D-07)
+  3. Pendência do fluxo (a declarada na Fase 137) e pendências do cadastro (as **7** de `PendenciasComerciaisService`, contadas no serviço real em 2026-09-02 — o "8" do §2 estava errado) aparecem em colunas separadas e nomeadas — nunca somadas num número só (COMERC-02, D-11)
+  4. Uma empresa some da listagem **Entrada** só no instante em que entra na etapa "Aguardando Distribuição" — continua visível enquanto está em "Administrativo Concluído" (COMERC-03, D-07). **A listagem Contrato não tem corte por etapa** — ver a nota abaixo
   5. `Administrativo › Contratos` vira o módulo **Contrato** dentro do Comercial preservando a permission própria `admin.contratos` (o `ContratoAdminPermissaoTest` da Fase 131 segue verde), `Administrativo › Empresas` sai do menu sem que rota/controller sejam apagados, e o módulo **Entrada** existe como casca com chave de permissão própria no catálogo (D-15, D-16)
+
+> ⚠️ **A listagem Contrato NÃO tem corte por etapa — divergência deliberada do SC#4** (decisão do
+> usuário em 2026-09-02, tensão levantada pelo `gsd-plan-checker`). O universo da tela da Fase 131
+> é `active = true` **E** ter `ContratoServico` ativo cujo serviço exige contrato
+> (`ContratoAdminController::index()`, linhas 66-70) — `companies.etapa` **não entra na query**.
+> Aplicar ali o corte da etapa 5 removeria da visão do Administrativo toda empresa já em operação
+> com contrato ativo (renovação, recontratação, cancelamento), quebrando uma tela que já está em
+> produção. **Contrato é ferramenta administrativa contínua: o critério de saída dela é o estado do
+> contrato, não a etapa.** O corte da etapa 5 (D-07/COMERC-03) vale só para a listagem **Entrada**.
 
 **Plans:** 9 plans
 

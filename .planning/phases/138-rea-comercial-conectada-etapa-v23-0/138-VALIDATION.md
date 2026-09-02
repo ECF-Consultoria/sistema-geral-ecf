@@ -1,8 +1,8 @@
 ---
 phase: 138
 slug: rea-comercial-conectada-etapa-v23-0
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-09-02
 ---
@@ -123,4 +123,7 @@ máquina de estados. Não é preciso recapturar a suíte inteira da 137.
 - [ ] Latência de feedback < 90 s
 - [ ] `nyquist_compliant: true` no frontmatter
 
-**Aprovação:** pendente
+**Aprovação:** aprovada 2026-09-02 — conferida à mão pelo `gsd-plan-checker` contra os 9 planos:
+toda task tem verify automatizado, nenhuma flag de watch mode, nenhum uso de `php artisan test` nem
+de `--testsuite=Feature`, e nenhuma referência pendente a arquivo de teste inexistente.
+`wave_0_complete` segue `false` — a wave 0 ainda não foi executada.

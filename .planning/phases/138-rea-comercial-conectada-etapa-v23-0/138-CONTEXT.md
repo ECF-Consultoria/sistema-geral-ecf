@@ -102,7 +102,17 @@ de `/gsd-plan-phase 138`.
   - **Entrada** nasce como **casca**: lista as empresas em fluxo de entrada com as colunas do
     §2, e os 8 itens de checklist chegam na Fase 139. Nada finge estar pronto.
 
-- **D-07:** **Corte de saída = entrar na etapa 5 (`aguardando_distribuicao`).** A empresa
+- **D-07:** **Corte de saída = entrar na etapa 5 (`aguardando_distribuicao`) — na listagem `Entrada`.**
+
+  ⚠️ **Refinada em 2026-09-02** (decisão do usuário, tensão levantada pelo `gsd-plan-checker`): o
+  corte vale para a listagem **Entrada**. A listagem **Contrato** não tem corte por etapa — o
+  universo dela é `active = true` E ter `ContratoServico` ativo que exige contrato
+  (`ContratoAdminController::index()` linhas 66-70), e a D-06 manda essa query não mudar. Cortar
+  ali na etapa 5 esconderia do Administrativo toda empresa em operação com contrato ativo
+  (renovação, recontratação, cancelamento), quebrando uma tela já em produção. Contrato é
+  ferramenta administrativa **contínua**: o critério de saída dela é o estado do contrato, não a
+  etapa.
+ A empresa
   continua visível no Comercial enquanto está em `administrativo_concluido` (4). Motivo: a
   Coordenação só a enxerga a partir da 5 — sair na 4 deixaria a empresa órfã entre as duas
   telas, sem ninguém capaz de agir sobre ela. Casa com ADMIN-06.
@@ -130,7 +140,9 @@ de `/gsd-plan-phase 138`.
   por reconsulta ao banco, nunca por stdout**. Diferente do carimbo de etapa (D-14): aqui não
   se afirma histórico nenhum, só se lê um dado que sempre existiu no HubSpot.
 
-- **D-11:** **Duas pendências, em colunas separadas e nomeadas — nunca somadas.**
+- **D-11:** **Duas pendências, em colunas separadas e nomeadas — nunca somadas.** *(A contagem
+  real de `PendenciasComerciaisService` é **7**, medida no serviço em 2026-09-02 — o "8" do §2
+  estava errado. Os planos usam 7 e não inventam uma oitava.)*
   - **Pendência do fluxo** = a da Fase 137 (declarada à mão, uma por vez, com motivo/autor/
     data). É a do §10 e a que o §2 pede.
   - **Pendências do cadastro** = as 8 comerciais derivadas de `PendenciasComerciaisService`

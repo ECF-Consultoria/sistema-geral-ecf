@@ -692,9 +692,16 @@ leitura direta do código deste worktree nesta sessão. Os itens acima são as �
 dependem de algo fora do repositório (conta real do HubSpot) ou de uma decisão de arquitetura nova
 sem precedente direto no código.
 
-## Open Questions
+## Open Questions (TODAS RESOLVIDAS — 2026-09-02)
 
-1. **Qual das duas opções do Pitfall 1 resolve o "ator de sistema"?**
+> **Q1 RESOLVIDA** pela D-17 do `138-CONTEXT.md` (decisão do usuário): conta dedicada
+> "Sistema HubSpot", não-logável — a Opção 1 recomendada abaixo. Implementada no plano 138-07.
+> **Q2 RESOLVIDA por adiamento deliberado**: virou o `checkpoint:human-verify` bloqueante do
+> plano 138-02, exatamente como a recomendação abaixo pedia.
+> **Q3 RESOLVIDA** pelo planner no plano 138-05: `Permissions::COMERCIAL_ENTRADA = 'comercial.entrada'`,
+> `ComercialEntradaController`, rota `comercial.entrada.index`, página `Comercial/Entrada`.
+
+1. **~~Qual das duas opções do Pitfall 1 resolve o "ator de sistema"?~~ RESOLVIDA — Opção 1 (D-17).**
    - What we know: `transicionar()` exige `User` não-nulo; nem webhook nem comando de reprocessamento
      têm sessão; a coluna `user_id` de `company_etapa_transicoes` já é nullable no schema (pensada
      para outro motivo — ator removido depois, não ausência desde o início).
@@ -705,7 +712,7 @@ sem precedente direto no código.
      reabre nem retesta o serviço da Fase 137, e falha de forma segura (log + `etapa` continua NULL)
      se mal configurada, em vez de `TypeError`.
 
-2. **O escopo OAuth `crm.objects.owners.read` está concedido ao Private App da ECF?**
+2. **~~O escopo OAuth `crm.objects.owners.read` está concedido ao Private App da ECF?~~ RESOLVIDA — checkpoint bloqueante no plano 138-02.**
    - What we know: os outros GETs (`deals`, `companies`, `contacts`, `notes`, `line_items`) já
      funcionam em produção — o token existe e tem MUITOS escopos concedidos.
    - What's unclear: se o escopo específico de Owners foi incluído. Não há como confirmar sem acesso à
@@ -713,8 +720,8 @@ sem precedente direto no código.
    - Recommendation: primeira chamada real a `fetchOwner()` em produção (ou sandbox com o token real)
      vira checkpoint humano — se 403, reconfigurar o Private App no painel HubSpot antes de prosseguir.
 
-3. **O nome da classe do controller/serviço novo do módulo Entrada, e a chave literal da permission
-   nova** — explicitamente delegado ao planner pelo CONTEXT ("Claude's Discretion"). Esta pesquisa
+3. **~~O nome da classe do controller/serviço novo do módulo Entrada, e a chave literal da permission
+   nova~~ RESOLVIDA no plano 138-05** — explicitamente delegado ao planner pelo CONTEXT ("Claude's Discretion"). Esta pesquisa
    sugere `ComercialEntradaController` / `Permissions::COMERCIAL_ENTRADA = 'comercial.entrada'`
    (seguindo o padrão `COMERCIAL_CADASTRAR_EMPRESA = 'comercial.cadastrar_empresa'` já existente), mas
    não é uma decisão travada.
