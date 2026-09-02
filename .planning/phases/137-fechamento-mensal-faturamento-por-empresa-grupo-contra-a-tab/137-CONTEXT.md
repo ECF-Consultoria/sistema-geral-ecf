@@ -85,9 +85,17 @@ de desempenho/bônus.
   Mesmo padrão do snapshot de desempenho que o projeto já usa, e permite auditar o que foi cobrado
   e por quê.
 
-- **D-12:** ⚠️ O usuário **não** escolheu a variante "congela mas dá para refazer". Não há, nesta
-  fase, caminho para reabrir uma competência quando a Adman corrige um dado depois do fechamento.
-  Ver `<deferred>`.
+- **D-12:** ~~Não há caminho para reabrir uma competência.~~ **REVISADO em 2026-09-02, após a
+  pesquisa.** A pesquisa mostrou que o molde de consolidação que esta fase copia (o do Desempenho)
+  permite rerun de propósito, e que o caso real existe — a Adman corrige faturamento depois do
+  fechamento. Decisão do usuário: **permitir reconsolidar uma competência já congelada, com
+  registro** de quem fez, quando e por quê, preservando o valor anterior no histórico. O comando
+  **não** recusa tecnicamente; a auditoria é que segura.
+
+- **D-13:** A **exceção por empresa é all-or-nothing** (decisão do Claude, questão aberta #2 da
+  pesquisa): se a empresa tem faixas próprias cadastradas, elas substituem **a tabela inteira** do
+  serviço — nunca linha a linha. Exceção parcial criaria a pergunta "qual faixa vale para o valor
+  X?" sem resposta óbvia, e o valor da faixa entra em contrato: precisa ser lido de um lugar só.
 
 ### Claude's Discretion
 
@@ -198,10 +206,16 @@ de desempenho/bônus.
 <deferred>
 ## Deferred Ideas
 
-- **Reabrir/refazer uma competência já congelada** — foi apresentado como terceira opção em D-11 e
-  **não** foi escolhido. O caso real existe (a Adman corrige dado depois do fechamento; há memória
-  do projeto sobre gap de sync distorcendo baseline). Fica registrado: hoje não há caminho de
-  correção pós-fechamento. Candidato a fase própria.
+- ~~Reabrir/refazer uma competência já congelada~~ — **deixou de ser deferido.** Virou escopo desta
+  fase por D-12 revisado (2026-09-02), depois de a pesquisa mostrar que o molde do Desempenho já
+  permite rerun e que o caso é real.
+
+- ⚠️ **`company_monthly_revenues` fica obsoleta** (achado da pesquisa, não estava no CONTEXT
+  original): `adman:sync-faturamento` roda diariamente com `--mes=mês corrente` e **ninguém
+  re-sincroniza o mês depois que ele fecha** — o valor gravado é o rolling de 30 dias do momento em
+  que o mês virou. **Não usar essa tabela como fonte do congelamento.** A pesquisa recomenda somar
+  `adman_metrics` na janela de mês-calendário, como `AdminController::fechamento()` já faz para
+  meses passados. Consertar o sync em si é assunto de outra fase.
 - **Descobrir quais empresas estão na tabela antiga vs. nova** — D-02 mantém R$ 3.000 como padrão,
   então em tese ninguém precisa mudar agora. Mas ninguém sabe, hoje, quais empresas de fato pagam
   qual tabela. Um levantamento seria necessário antes de confiar plenamente no valor calculado.
