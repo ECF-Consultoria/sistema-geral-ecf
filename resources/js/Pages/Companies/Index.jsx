@@ -195,36 +195,61 @@ export default function Companies({ companies, users, estrategistas = [], analis
     const etapaFilter = filters.etapa || '';
     const comPendenciaFilter = !!filters.com_pendencia;
 
-    const aplicarCustIdFilter = (valor) => {
-        router.get(route('companies.index'), valor ? { cust_id_status: valor } : {}, { preserveState: true, preserveScroll: true });
-    };
-
-    // Phase 35 Plan 35-01 (D-02) — aplica/limpa ?sort= preservando o tab=pendencias na URL.
-    const aplicarSort = (valor) => {
-        const params = {};
-        if (custIdStatusFilter) params.cust_id_status = custIdStatusFilter;
-        if (valor) params.sort = valor;
-        params.tab = 'pendencias';
-        router.get(route('companies.index'), params, { preserveState: true, preserveScroll: true });
-    };
-
     // Fase 137 Plano 07 (ETAPA-05, D-21) — filtros server-side por query
     // param, nunca `Array.filter` de cliente (o contra-exemplo é `em_operacao`
     // logo abaixo, que continua derivado e filtrado no cliente só porque a
-    // Fase 142 é quem troca essa fonte, não esta). Cada handler PRESERVA o
-    // outro filtro já ativo — um não pode apagar o outro (D-23).
-    const aplicarEtapaFilter = (valor) => {
-        const params = {};
-        if (valor) params.etapa = valor;
-        if (comPendenciaFilter) params.com_pendencia = 1;
+    // Fase 142 é quem troca essa fonte, não esta).
+    //
+    // Fase 137 Plano 11 (gap closure WR-03) — montador ÚNICO de query.
+    // Antes, cada um dos quatro handlers montava `params` do zero e só
+    // reenviava o(s) filtro(s) que ele próprio conhecia — o comentário que
+    // ficava aqui ("cada handler PRESERVA o outro filtro já ativo") era
+    // verdade só para o par etapa/pendência; escolher um Cust ID apagava
+    // etapa/pendência, escolher etapa apagava Cust ID, e trocar a ordenação
+    // na aba Pendências apagava etapa E pendência. `aplicarFiltros()` é o
+    // ÚNICO ponto do arquivo que chama `router.get(...)` contra a rota
+    // `companies.index` (ver gate estático em EtapaFiltroListagemTest): ele parte dos
+    // filtros ATUALMENTE ativos, aplica por cima o `overrides` de quem
+    // chamou, remove chaves vazias/desligadas e reenvia tudo. Os quatro
+    // handlers abaixo viraram invólucros finos — mesma assinatura pública,
+    // sem montar nada por conta própria.
+    const aplicarFiltros = (overrides) => {
+        const params = {
+            ...(custIdStatusFilter ? { cust_id_status: custIdStatusFilter } : {}),
+            ...(etapaFilter ? { etapa: etapaFilter } : {}),
+            ...(comPendenciaFilter ? { com_pendencia: 1 } : {}),
+            ...(sortFilter ? { sort: sortFilter } : {}),
+            ...(tab ? { tab } : {}),
+            ...overrides,
+        };
+        Object.keys(params).forEach(key => {
+            if (params[key] === undefined || params[key] === '' || params[key] === false) {
+                delete params[key];
+            }
+        });
         router.get(route('companies.index'), params, { preserveState: true, preserveScroll: true });
     };
 
+    const aplicarCustIdFilter = (valor) => {
+        aplicarFiltros({ cust_id_status: valor || undefined });
+    };
+
+    // Phase 35 Plan 35-01 (D-02) — aplica/limpa ?sort=. Antes fixava
+    // `tab: 'pendencias'` na marra; agora herda a aba CORRENTE do montador
+    // único — mesmo resultado hoje (o controle só renderiza dentro da aba
+    // Pendências), e passa a sobreviver a um refresh vindo dos outros três
+    // controles sem precisar do literal. Melhoria deliberada (WR-03), não
+    // efeito colateral.
+    const aplicarSort = (valor) => {
+        aplicarFiltros({ sort: valor || undefined });
+    };
+
+    const aplicarEtapaFilter = (valor) => {
+        aplicarFiltros({ etapa: valor || undefined });
+    };
+
     const aplicarComPendenciaFilter = (ativo) => {
-        const params = {};
-        if (etapaFilter) params.etapa = etapaFilter;
-        if (ativo) params.com_pendencia = 1;
-        router.get(route('companies.index'), params, { preserveState: true, preserveScroll: true });
+        aplicarFiltros({ com_pendencia: ativo ? 1 : undefined });
     };
 
     const [open, setOpen] = useState(false);
