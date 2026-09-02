@@ -19,11 +19,14 @@ created: 2026-09-02
 |----------|-------|
 | **Framework** | PHPUnit 11.x (phpunit.xml na raiz) |
 | **Config file** | phpunit.xml |
-| **Quick run command** | `C:
-mpp\php\php.exe vendor/bin/phpunit --filter="Phase137"` |
-| **Full suite command** | `C:
-mpp\php\php.exe vendor/bin/phpunit --filter="Phase122|Phase136|Phase137"` |
-| **Estimated runtime** | ~137 seconds |
+| **Quick run command** | `C:\xampp\php\php.exe vendor/bin/phpunit --filter="Phase137"` |
+| **Full suite command** | `C:\xampp\php\php.exe vendor/bin/phpunit --filter="Phase122\|Phase136\|Phase137"` |
+| **Estimated runtime** | ~90 segundos (gate filtrado) |
+
+> ⚠️ A suíte COMPLETA (`vendor/bin/phpunit` sem filtro) **não termina neste ambiente**: morre em
+> `MercadoLivreAdsService` por limite de 300s do PHP, e as ~12 falhas de Polos são anteriores a
+> qualquer trabalho desta fase (documentadas em `.planning/learnings/`). O gate da fase é o
+> filtrado acima — não use "suíte completa verde" como critério, porque ele é inalcançável aqui.
 
 ---
 
@@ -31,8 +34,9 @@ mpp\php\php.exe vendor/bin/phpunit --filter="Phase122|Phase136|Phase137"` |
 
 - **After every task commit:** Rodar o gate filtrado da fase
 - **After every plan wave:** Rodar o gate filtrado + as fases vizinhas que compartilham codigo
-- **Before `/gsd:verify-work`:** Full suite must be green
-- **Max feedback latency:** 137 seconds
+- **Before `/gsd:verify-work`:** o gate filtrado da fase verde (ver aviso acima — a suíte sem
+  filtro não termina neste ambiente)
+- **Max feedback latency:** ~120 segundos
 
 ---
 

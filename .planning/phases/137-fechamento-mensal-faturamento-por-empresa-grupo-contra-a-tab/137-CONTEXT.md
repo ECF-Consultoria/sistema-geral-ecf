@@ -32,15 +32,42 @@ de desempenho/bônus.
   fechamento) e "só por serviço" (não representa as empresas fora do padrão, que existem e são
   legítimas).
 
-- **D-02:** A tabela padrão do serviço **Gestão** é a que o sistema usa **hoje** — a que começa em
-  **R$ 3.000** na primeira faixa (a constante `FAIXAS` de `AdminController`), **não** a do contrato
-  atual (R$ 3.500). Decisão do usuário para não mexer no que já está sendo cobrado.
+- **D-02:** ⚠️ **CORRIGIDO em 2026-09-02 — a divergência que originou esta decisão NÃO EXISTE.**
+  Eu havia reportado "o contrato de Gestão diz R$ 3.500, o sistema diz R$ 3.000" e o usuário
+  decidiu manter R$ 3.000. Ao extrair as faixas do modelo **publicado na Clicksign** (fonte
+  autoritativa, baixada em 2026-09-02) para semear a tabela, o valor real é **R$ 3.000** — igual
+  ao do sistema.
 
-- **D-03:** ⚠️ **Consequência aceita, e ela cresce:** todo contrato de Gestão gerado pelo sistema
-  hoje sai com R$ 3.500. Com D-02, **cada empresa nova precisa de uma exceção** para ficar certa —
-  ou seja, o "padrão" passa a ser o caso minoritário com o tempo. O planner deve avaliar se a
-  exceção pode nascer junto do contrato (o serviço e o valor já são conhecidos na geração) em vez
-  de depender de cadastro manual a cada cliente novo.
+  Rastreio: o contrato KIVE original e os `.docx` que gerei (v2, v5) dizem R$ 3.500; o modelo
+  **publicado** diz R$ 3.000. Alguém editou o modelo na Clicksign depois do upload. O usuário
+  confirmou em 2026-09-02: **R$ 3.000 é o valor comercial correto e a edição foi deliberada.**
+
+  **Efeito:** contrato e sistema já concordam. A tabela do serviço Gestão é a do contrato
+  publicado, e ela é a mesma constante `FAIXAS` que já existe. Uma fonte só, sem conflito.
+
+- **D-03:** ⚠️ **OBSOLETO — a premissa era falsa.** Esta decisão existia para resolver "todo
+  contrato novo sai com R$ 3.500, logo cada empresa nova precisa de exceção". Com D-02 corrigido,
+  **não há contratos novos saindo com valor diferente do padrão** e nenhuma exceção automática é
+  necessária.
+
+  **Consequência para os planos:** o mecanismo de copiar a tabela do contrato para a empresa no
+  momento do ganho (observer) e a distinção de `contexto` (`fechamento` x `contrato`) **saem do
+  escopo**. As exceções por empresa (D-01) continuam existindo para as empresas com tabela antiga
+  ou fora do padrão — isso é outro caso, cadastrado à mão, e segue valendo.
+
+- **D-02b — as três tabelas, MEDIDAS nos modelos publicados na Clicksign (2026-09-02):**
+
+  | serviço | faixas | 1ª | última |
+  |---|---|---|---|
+  | Gestão (6) | 7 | Até R$ 500.000 → **R$ 3.000** | Acima de R$ 5.000.000 → a partir de R$ 12.000 |
+  | Brigada (10) | 7 | Até R$ 500.000 → **R$ 3.000** | Acima de R$ 5.000.000 → a partir de R$ 12.000 |
+  | Gestão de ADS Shopee (9) | 8 | Até R$ 50.000 → **R$ 1.500** | Até R$ 3.000.000 → R$ 5.000 |
+
+  ⚠️ **Gestão e Brigada têm a MESMA tabela.** A de Shopee é a única diferente — e é a única com
+  todas as faixas em "Até", sem "A partir de".
+
+  ⚠️ A última faixa de Gestão/Brigada é **"a partir de R$ 12.000"** — piso, não valor fechado. O
+  dado precisa carregar essa distinção, senão o sistema cobra R$ 12.000 de quem deveria pagar mais.
 
 - **D-04:** O cadastro manual da tabela por empresa é requisito explícito do usuário: "um jeito de
   cadastrar a tabela progressiva pelo sistema, como se estivesse fazendo contrato, mas só para o
