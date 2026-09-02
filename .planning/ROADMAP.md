@@ -2087,13 +2087,25 @@ Quatro coisas precisam mudar em relação ao que existe hoje em `/financeiro` (`
 
 4. **Cadastro manual da tabela por empresa.** A geração de contrato pelo sistema é recente; a maioria das empresas já existentes está em contrato de tabela progressiva sem que o sistema saiba disso. Precisa haver um jeito de lançar as faixas de uma empresa "como se estivesse fazendo contrato, mas só para o sistema saber as faixas" — incluindo empresas com tabela antiga ou fora do padrão, que existem e são legítimas.
 
-**Requirements**: TBD — a definir no discuss-phase.
+**Requirements**: D-01 a D-13 (decisões travadas em `137-CONTEXT.md` — a fase não tem REQ-IDs no `REQUIREMENTS.md` raiz, que parou na v17.0; a unidade de rastreabilidade é o D-ID, mesma convenção da Fase 136).
 **Depends on:** Phase 136 (nenhuma dependência de código conhecida; ordem de fila)
-**Plans:** não planejada
+**Plans:** 10 plans em 6 waves
+
+Plans:
+- [ ] 137-01-PLAN.md — Schema e models das faixas de faturamento (por serviço e por empresa) + seed da tabela de Gestão vigente
+- [ ] 137-02-PLAN.md — Schema e models do snapshot congelado por competência + auditoria de reconsolidação
+- [ ] 137-03-PLAN.md — FechamentoFaixaResolver (herança serviço→empresa) e FechamentoRollupService (ML+Shopee em mês-calendário)
+- [ ] 137-04-PLAN.md — Observer que faz a exceção de faixas nascer junto do contrato (D-03)
+- [ ] 137-05-PLAN.md — Writer idempotente + comandos `fechamento:consolidar-mes` e `fechamento:verificar-consolidacao`
+- [ ] 137-06-PLAN.md — FechamentoController: cadastro manual das faixas e ações de fechar/refazer competência
+- [ ] 137-07-PLAN.md — `AdminController::fechamento()` migrado: mês-calendário, grupos do Comercial e leitura do congelado
+- [ ] 137-08-PLAN.md — Relatórios PDF e email mensal na fonte central; constante `FAIXAS` apagada das duas cópias
+- [ ] 137-09-PLAN.md — UI: tabela de faixas por empresa, estados de ausência visível e composição ML+Shopee
+- [ ] 137-10-PLAN.md — UI: status/fechar/refazer competência, fim do acumulado e checkpoint humano com dado real
 
 > **Estado atual medido (2026-09-02, antes de qualquer plano):** a tela é a rota `/financeiro`, `AdminController::fechamento()` (~linha 126). Existem também `EnviarRelatorioFechamentoJob`, `RelatorioFechamentoMail` e o model `FechamentoRecebido` — precisam ser mapeados antes de qualquer mudança, porque a fase mexe no que eles produzem.
 >
-> **Perguntas que o discuss-phase precisa fechar, não decididas:** de onde sai o faturamento de cada plataforma (as fontes ML e Shopee já existem, mas o recorte de "mês fechado" precisa ser o mesmo dos dois); onde mora a tabela progressiva (por serviço, por empresa, ou por serviço com override por empresa — o caso "fora do padrão" e o caso "grupo" empurram para override); o que acontece com empresa cujo faturamento existe mas cuja tabela não foi cadastrada; e se o resultado do fechamento é só leitura ou vira registro congelado por competência, como o snapshot de desempenho.
+> **Perguntas do discuss-phase — todas fechadas em 2026-09-02** (`137-CONTEXT.md`, D-01 a D-13): o faturamento sai de `adman_metrics` + `shopee_metrics` somados na mesma janela de mês-calendário (D-05/D-06/D-07); a tabela mora por serviço com exceção por empresa, all-or-nothing (D-01/D-13); empresa sem tabela aparece como `A DEFINIR` com CTA de cadastro, nunca R$ 0 (D-04); e o fechamento vira registro congelado por competência, com reconsolidação permitida mediante motivo registrado (D-11/D-12).
 
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
