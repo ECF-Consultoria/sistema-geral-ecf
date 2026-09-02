@@ -136,39 +136,112 @@ class EtapaPontoUnicoTest extends TestCase
 
     // ═════════════════════════════════════════════════════════════════════
     // Grupo 2 — varredura estática: nenhum outro escritor de companies.etapa
-    // (ETAPA-03, T-137-03, T-137-17)
+    // (ETAPA-03, T-137-03, T-137-17, T-137-21..T-137-24 — endurecido pelo
+    // plano 137-08 depois de o gate anterior ser provado contornável por
+    // injeção real de código, ver 137-VERIFICATION.md § "Achado: gate
+    // estático da ETAPA-03 é contornável")
     //
-    // Padrões procurados, por CORPO DE FUNÇÃO/MÉTODO (não por arquivo
-    // inteiro nem por linha solta):
-    //   1. `$company->etapa = ` (atribuição direta, exclui `==`/`===`) —
-    //      sinaliza violação sozinha, não precisa de mais nada perto.
-    //   2. `'etapa' => ` / `"etapa" => ` (chave de array) — só conta como
-    //      violação quando o MESMO corpo de função também contém uma
-    //      chamada de escrita no model Company (`Company::create(`,
-    //      `Company::updateOrCreate(`, `Company::firstOrCreate(`,
-    //      `Company::forceCreate(`, `$company->update(`, `$company->fill(`,
-    //      `$company->forceFill(`, ou `Company::` combinado com `->update(`
-    //      no mesmo corpo — cobre o `Company::whereIn(...)->update([...])`
-    //      que `EtapaTransicaoService::carimbarBackfill()` já usa).
+    // Fecha as 3 formas de bypass comprovadas:
     //
-    // Por que a chave crua `'etapa' =>` sozinha NÃO é o padrão (deviation
-    // documentada em 137-06-SUMMARY.md, Rule 1): `OnboardingPasso` também
-    // tem uma coluna `etapa`, sem nenhuma relação com `companies.etapa`, e
-    // é gravada/lida por `'etapa' => ...` em ~10 lugares de
-    // app/Console/Commands/Onboarding*.php,
-    // app/Services/Onboarding/OnboardingEngineService.php,
-    // app/Services/Onboarding/OnboardingLinkService.php,
-    // app/Http/Controllers/OnboardingController.php e
-    // app/Support/Onboarding/DefinicaoOnboarding.php. Um grep cru de
-    // `'etapa' =>` OU falha hoje, no repositório atual e sem violação
-    // nenhuma (falso positivo em massa), ou exigiria uma lista de exceções
-    // por arquivo que cresce a cada novo uso legítimo de
-    // `OnboardingPasso::etapa` — o oposto de um gate que "fica verdadeiro
-    // para sempre" sem manutenção. Escopar por corpo de função, exigindo
-    // coocorrência com uma chamada de escrita em `Company`, resolve os dois
-    // falsos positivos confirmados (OnboardingPasso::etapa e arrays de
-    // resposta que só LEEM `$passo->etapa`) sem abrir exceção nenhuma.
+    //   Regra A — atribuição direta `->etapa = ...` (exclui `==`/`===`),
+    //   avaliada sobre o ARQUIVO INTEIRO já sem comentário (não por corpo
+    //   de função) — pega também atribuição de propriedade de classe ou
+    //   fora de método. Deixou de exigir o nome literal `$company`: fecha
+    //   o Bypass 1 (`$empresa->etapa = ...`). Sem nenhuma ocorrência
+    //   legítima hoje em app/ nem database/migrations/ (137-08-PLAN.md,
+    //   <measured_facts>), o custo de um falso positivo eventual é aceito
+    //   e tratado por EXCECOES_REGRA_A — lista que nasce VAZIA;
+    //   acrescentar ali é ato deliberado e revisado, nunca conveniência
+    //   para destravar a suíte.
+    //
+    //   Regra B — escrita em OFFSET de array (`$var['etapa'] = ...`),
+    //   avaliada por CORPO DE FUNÇÃO, só conta como violação quando o
+    //   mesmo corpo também grava no model Company (detector abaixo).
+    //   Fecha o Bypass 2 (`$dados['etapa'] = ...; $company->update($dados);`).
+    //
+    //   Regra C — chave literal de array (`'etapa' => `/`"etapa" => `),
+    //   mantida por CORPO DE FUNÇÃO + mesmo detector — herdada do plano
+    //   137-06, protege contra o falso positivo de `OnboardingPasso::etapa`
+    //   (coluna homônima, sem relação com `companies.etapa`, usada em
+    //   ~10 lugares de app/Console/Commands/Onboarding*.php,
+    //   app/Services/Onboarding/*.php,
+    //   app/Http/Controllers/OnboardingController.php e
+    //   app/Support/Onboarding/DefinicaoOnboarding.php). Um grep cru de
+    //   `'etapa' =>` sozinho nasceria vermelho contra o repositório atual
+    //   sem violação nenhuma — por isso NUNCA vira `str_contains` puro,
+    //   ao contrário do gate irmão de `pendencia_aberta`
+    //   (EtapaPendenciaParaleloTest.php), que pode usar substring porque
+    //   aquele nome é único no repositório.
+    //
+    // Detector de escrita no model Company ($escreveNaCompany — método
+    // escreveNaCompany() abaixo), ampliado para as regras B e C:
+    //   (a) `Company::(create|updateOrCreate|firstOrCreate|forceCreate)(`;
+    //   (b) `DB::table('companies')` — fecha o Bypass 3
+    //       (`DB::table('companies')->where(...)->update([...])`, idioma
+    //       real de app/Console/Commands/DiagnoseCustId.php:206 e
+    //       app/Console/Commands/ImportMarketplaceFromCsv.php:145, hoje
+    //       sem a chave 'etapa' em nenhum dos dois);
+    //   (c) o ARQUIVO (não o corpo) cita `\bCompany\b` E o CORPO casa
+    //       `->(update|fill|forceFill|save)(` — remove o hardcode do nome
+    //       `$company`. Avaliado no ARQUIVO de propósito: corposDeFuncao()
+    //       descarta a assinatura da função ao extrair o corpo, então um
+    //       parâmetro `Company $empresa` some do texto varrido — um guard
+    //       escopado ao corpo deixaria escapar exatamente
+    //       `$dados['etapa'] = ...; $empresa->update($dados);`;
+    //   (d) `Company::\w+(` + `->update(` no mesmo corpo — regra original
+    //       do plano 137-06, mantida (cobre
+    //       `Company::whereIn(...)->update([...])` de
+    //       `EtapaTransicaoService::carimbarBackfill()`).
+    //
+    // Comentários (`T_COMMENT`/`T_DOC_COMMENT`) são neutralizados ANTES de
+    // qualquer regra rodar (removerComentarios()): o próprio verificador
+    // teve um falso positivo causado por um comentário contendo o texto
+    // `$company->etapa = ` — e o comentário-guarda de 16 linhas em
+    // CompanyController::update() é exatamente esse tipo de texto vivendo
+    // em app/. O texto do comentário é trocado só pelas quebras de linha
+    // que ele continha, para não deslocar a numeração usada em
+    // linhaDoPrimeiroMatch().
+    //
+    // Escopo: app/ E database/migrations/ (migration corretiva é o idioma
+    // natural de `DB::table('companies')->update(...)` e não passa pelo
+    // serviço). tests/ continua FORA de propósito — este próprio arquivo e
+    // o 137-10 precisam escrever companies.etapa fora do serviço dentro de
+    // testes, para simular violação e estado obsoleto.
+    //
+    // Quase-colisões conhecidas que PASSAM hoje, e por quê
+    // (137-08-PLAN.md, <measured_facts>) — se algum destes corpos ganhar
+    // um `->update()`/`->save()` no futuro, o gate fica vermelho por falso
+    // positivo; a saída correta é EXCECOES_REGRA_A ou um ajuste do
+    // detector, NUNCA afrouxar a regra:
+    //   - app/Services/Onboarding/OnboardingEngineService.php:368 e
+    //     app/Services/Onboarding/OnboardingLinkService.php:96 têm
+    //     'etapa' => de OnboardingPasso — passam porque o corpo não
+    //     contém escrita reconhecida em Company;
+    //   - app/Http/Controllers/OnboardingController.php:948 (Regra B,
+    //     `$payload['etapa'] = $trava->etapa;`) e :1135 (Regra C) — passam
+    //     pelo mesmo motivo, mesmo o ARQUIVO citando Company em outros
+    //     métodos (ex.: `gerarLink(Request $request, Company $company)`);
+    //   - database/migrations/2026_08_17_120000_add_etapa_to_onboarding_passos_table.php:69
+    //     tem `->update(['etapa' => $etapa])` — passa porque o arquivo NÃO
+    //     cita Company (0 ocorrências) e a tabela é onboarding_passos, não
+    //     companies.
     // ═════════════════════════════════════════════════════════════════════
+
+    /**
+     * Exceções nomeadas à Regra A — nasce VAZIA de propósito. Hoje não
+     * existe nenhuma ocorrência legítima de `->etapa = ` fora do serviço em
+     * app/ nem em database/migrations/ (137-08-PLAN.md, <measured_facts>).
+     * Acrescentar um caminho aqui é ato deliberado e revisado — nunca
+     * conveniência para destravar a suíte depois de um vermelho. Caminho
+     * relativo a `base_path()`, com barra `/`.
+     *
+     * @var list<string>
+     */
+    private const EXCECOES_REGRA_A = [];
+
+    private const REGEX_ATRIBUICAO_DIRETA = '/->etapa\s*=(?!=)/';
+    private const REGEX_ARRAY_OFFSET      = '/\[\s*([\'"])etapa\1\s*\]\s*=(?!=)/';
+    private const REGEX_CHAVE_ARRAY       = '/([\'"])etapa\1\s*=>/';
 
     public function test_gate_nenhum_arquivo_de_app_escreve_companies_etapa_fora_do_servico(): void
     {
@@ -177,7 +250,12 @@ class EtapaPontoUnicoTest extends TestCase
 
         $ofensores = [];
 
-        foreach (File::allFiles(base_path('app')) as $arquivo) {
+        $arquivos = array_merge(
+            File::allFiles(base_path('app')),
+            File::allFiles(base_path('database/migrations'))
+        );
+
+        foreach ($arquivos as $arquivo) {
             $caminho = $arquivo->getPathname();
 
             if (! str_ends_with($caminho, '.php')) {
@@ -188,13 +266,25 @@ class EtapaPontoUnicoTest extends TestCase
                 continue;
             }
 
-            $conteudo = File::get($caminho);
+            $conteudo = $this->removerComentarios(File::get($caminho));
+
+            // Regra A — arquivo inteiro, sem exigir nome de variável
+            // (137-08-PLAN.md, item 3).
+            if (preg_match(self::REGEX_ATRIBUICAO_DIRETA, $conteudo) === 1
+                && ! in_array($this->caminhoRelativo($caminho), self::EXCECOES_REGRA_A, true)
+            ) {
+                $linha       = $this->linhaDoPrimeiroMatch($conteudo, self::REGEX_ATRIBUICAO_DIRETA);
+                $ofensores[] = "{$caminho}" . ($linha !== null ? ":{$linha}" : '')
+                    . ' — [Regra A] atribuição direta ->etapa = ... fora de EtapaTransicaoService';
+            }
+
+            $arquivoCitaCompany = preg_match('/\bCompany\b/', $conteudo) === 1;
 
             foreach ($this->corposDeFuncao($conteudo) as $corpo) {
-                $violacao = $this->descreveViolacao($corpo);
+                $violacao = $this->descreveViolacaoNoCorpo($corpo, $arquivoCitaCompany);
 
                 if ($violacao !== null) {
-                    $linha        = $this->linhaDoPrimeiroMatch($conteudo, $violacao['regex']);
+                    $linha       = $this->linhaDoPrimeiroMatch($conteudo, $violacao['regex']);
                     $ofensores[] = "{$caminho}" . ($linha !== null ? ":{$linha}" : '') . " — {$violacao['motivo']}";
                 }
             }
@@ -210,10 +300,37 @@ class EtapaPontoUnicoTest extends TestCase
     }
 
     /**
+     * Neutraliza comentários (`T_COMMENT`/`T_DOC_COMMENT`) ANTES de
+     * qualquer regra rodar (137-08-PLAN.md, item 1): o texto do comentário
+     * some, trocado só pelas quebras de linha que ele continha, para que a
+     * numeração de linha usada em linhaDoPrimeiroMatch() não se desloque.
+     * Fecha o falso positivo que o próprio 137-VERIFICATION.md relatou
+     * (comentário contendo `$company->etapa = ` como texto explicativo).
+     */
+    private function removerComentarios(string $codigo): string
+    {
+        $tokens = token_get_all($codigo);
+        $limpo  = '';
+
+        foreach ($tokens as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                $limpo .= str_repeat("\n", substr_count($token[1], "\n"));
+
+                continue;
+            }
+
+            $limpo .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $limpo;
+    }
+
+    /**
      * Extrai o texto de todo corpo de função/método (inclui closures) de um
      * arquivo PHP via `token_get_all()` + balanceamento de chaves — imune a
      * `{`/`}` dentro de strings ou comentários, o que uma extração por
-     * regex não garantiria.
+     * regex não garantiria. Recebe o código já limpo de comentários
+     * (removerComentarios()) — corpo NUNCA contém texto de comentário.
      *
      * @return list<string>
      */
@@ -265,38 +382,85 @@ class EtapaPontoUnicoTest extends TestCase
     }
 
     /**
+     * Regras B e C (137-08-PLAN.md, itens 4-5) — avaliadas por CORPO DE
+     * FUNÇÃO, cada uma só conta como violação quando o mesmo corpo também
+     * satisfaz escreveNaCompany().
+     *
      * @return array{regex: string, motivo: string}|null
      */
-    private function descreveViolacao(string $corpo): ?array
+    private function descreveViolacaoNoCorpo(string $corpo, bool $arquivoCitaCompany): ?array
     {
-        // 1. Atribuição direta a $company->etapa (exclui == / ===).
-        if (preg_match('/\$company->etapa\s*=(?!=)/', $corpo)) {
+        // Regra B — escrita em offset de array: $dados['etapa'] = ...
+        if (preg_match(self::REGEX_ARRAY_OFFSET, $corpo) === 1
+            && $this->escreveNaCompany($corpo, $arquivoCitaCompany)
+        ) {
             return [
-                'regex'  => '/\$company->etapa\s*=(?!=)/',
-                'motivo' => 'atribuição direta $company->etapa = ...',
+                'regex'  => self::REGEX_ARRAY_OFFSET,
+                'motivo' => "[Regra B] escrita por offset \$var['etapa'] = ... dentro de um corpo que também grava no model Company",
             ];
         }
 
-        // 2. Chave 'etapa' => / "etapa" => dentro de um corpo que também
-        // grava no model Company.
-        $temChaveEtapa = preg_match('/([\'"])etapa\1\s*=>/', $corpo) === 1;
-        if (! $temChaveEtapa) {
-            return null;
-        }
-
-        $escreveNaCompany =
-            preg_match('/Company::(create|updateOrCreate|firstOrCreate|forceCreate)\s*\(/', $corpo) === 1
-            || preg_match('/\$company->(update|fill|forceFill)\s*\(/', $corpo) === 1
-            || (preg_match('/Company::\w+\s*\(/', $corpo) === 1 && preg_match('/->update\s*\(/', $corpo) === 1);
-
-        if ($escreveNaCompany) {
+        // Regra C — chave literal de array: 'etapa' => / "etapa" => ...
+        if (preg_match(self::REGEX_CHAVE_ARRAY, $corpo) === 1
+            && $this->escreveNaCompany($corpo, $arquivoCitaCompany)
+        ) {
             return [
-                'regex'  => '/([\'"])etapa\1\s*=>/',
-                'motivo' => "chave 'etapa' => dentro de uma escrita no model Company",
+                'regex'  => self::REGEX_CHAVE_ARRAY,
+                'motivo' => "[Regra C] chave 'etapa' => dentro de uma escrita no model Company",
             ];
         }
 
         return null;
+    }
+
+    /**
+     * Detector ampliado (137-08-PLAN.md, item 6) — verdadeiro quando
+     * QUALQUER uma das 4 formas de escrita no model Company aparece.
+     * O guard (c) é avaliado no ARQUIVO, não no corpo — ver docblock do
+     * Grupo 2 para o motivo (corposDeFuncao() descarta a assinatura da
+     * função, então o nome/tipo do parâmetro `Company $x` some do corpo).
+     */
+    private function escreveNaCompany(string $corpo, bool $arquivoCitaCompany): bool
+    {
+        // (a) Escrita estática de criação.
+        if (preg_match('/Company::(create|updateOrCreate|firstOrCreate|forceCreate)\s*\(/', $corpo) === 1) {
+            return true;
+        }
+
+        // (b) DB::table('companies')->...->update([...]) — Bypass 3, sem
+        // passar pelo Eloquent e sem nome de variável de instância nenhum.
+        if (preg_match('/DB::table\(\s*([\'"])companies\1\s*\)/', $corpo) === 1) {
+            return true;
+        }
+
+        // (c) Corpo grava por ->update/->fill/->forceFill/->save E o
+        // ARQUIVO (não o corpo) cita Company — sem nome de variável
+        // hardcoded, fecha o Bypass 1 combinado com Regra B/C.
+        if ($arquivoCitaCompany && preg_match('/->(update|fill|forceFill|save)\s*\(/', $corpo) === 1) {
+            return true;
+        }
+
+        // (d) Company::algumMetodo(...)->update(...) — regra original do
+        // plano 137-06, mantida (cobre
+        // EtapaTransicaoService::carimbarBackfill()).
+        if (preg_match('/Company::\w+\s*\(/', $corpo) === 1 && preg_match('/->update\s*\(/', $corpo) === 1) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Caminho relativo a base_path(), sempre com barra `/` — usado para
+     * checar EXCECOES_REGRA_A independente do separador do SO (este
+     * worktree roda em Windows).
+     */
+    private function caminhoRelativo(string $caminhoAbsoluto): string
+    {
+        $base = rtrim(str_replace('\\', '/', base_path()), '/') . '/';
+        $abs  = str_replace('\\', '/', $caminhoAbsoluto);
+
+        return str_starts_with($abs, $base) ? substr($abs, strlen($base)) : $abs;
     }
 
     private function linhaDoPrimeiroMatch(string $conteudo, string $regex): ?int
