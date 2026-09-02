@@ -69,19 +69,36 @@ class EtapaBackfill extends Command
         // 137-RESEARCH.md): o papel de analista na pivot `company_users` é
         // `consultor`, NUNCA o slug do cargo. Reescrever esta query à mão
         // filtrando pelo slug do cargo devolveria zero linhas silenciosamente.
+        //
+        // ⚠️ WR-02 (`137-REVIEW.md`) / T-137-33 (plano 137-10): `companies.name`
+        // NÃO tem `unique()` no schema. A versão antiga deste `pluck()` usava
+        // `name` como segundo argumento — CHAVE do array retornado — e duas
+        // empresas homônimas no balde 1 colapsavam numa só: a primeira
+        // desaparecia em silêncio do lote (a segunda sobrescrevia a primeira
+        // na Collection). Localmente invisível (só 1 de 180 empresas caía no
+        // balde 1), mas produção tem ~500 e nada no schema impede colisão de
+        // nome lá. Chaveado só por `id` — que É único — a decisão de quem é
+        // carimbado não depende mais do nome.
         $idsBalde1 = Company::query()
             ->where(function ($q) {
                 $q->whereHas('analistaPerformance')
                     ->orWhereHas('estrategistaPerformance');
             })
-            ->pluck('id', 'name');
+            ->pluck('id');
 
         if (! $apply) {
-            $amostra = $idsBalde1->take(20);
+            // Amostra do dry-run é buscada SEPARADAMENTE, só para
+            // apresentação — não decide mais quem é carimbado. `id`/`name`
+            // juntos aqui não colidem entre si porque a tabela exibe uma
+            // linha por `id`, não por `name`.
+            $amostraIds = $idsBalde1->take(20);
+            $amostra = Company::query()
+                ->whereIn('id', $amostraIds)
+                ->get(['id', 'name']);
 
             $this->table(
                 ['id', 'name'],
-                $amostra->map(fn ($id, $name) => [$id, $name])->values()->all()
+                $amostra->map(fn ($empresa) => [$empresa->id, $empresa->name])->all()
             );
 
             $this->warn(sprintf(

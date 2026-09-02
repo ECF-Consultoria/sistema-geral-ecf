@@ -245,6 +245,56 @@ class EtapaBackfillTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // Plano 137-10 (G5/WR-02) — nome duplicado não descarta empresa do balde 1
+    // ═══════════════════════════════════════════════════════════════════
+
+    public function test_balde1_duas_empresas_com_mesmo_name_recebem_ambas_em_operacao(): void
+    {
+        $servico = $this->criarServico('Gestao', Servico::SETOR_PERFORMANCE);
+
+        // Mesmo `name` nas duas — `companies.name` não tem `unique()`
+        // (WR-02). A versão antiga do comando chaveava o balde 1 por
+        // `name`, e a segunda empresa sobrescrevia a primeira na
+        // Collection, descartando-a do lote em silêncio.
+        $nomeCompartilhado = 'Empresa Homônima ' . uniqid();
+
+        $primeira = $this->criarEmpresa(['name' => $nomeCompartilhado]);
+        $this->criarContrato($primeira, $servico, true);
+        $this->tornarAnalista($primeira, User::factory()->create(), $servico->id);
+
+        $segunda = $this->criarEmpresa(['name' => $nomeCompartilhado]);
+        $this->criarContrato($segunda, $servico, true);
+        $this->tornarEstrategista($segunda, User::factory()->create(), $servico->id);
+
+        Artisan::call('etapa:backfill', ['--apply' => true]);
+
+        // Reconsulta direta ao banco (D-08) — nunca confiar no stdout do
+        // comando.
+        $primeira->refresh();
+        $segunda->refresh();
+
+        $this->assertSame(
+            Company::ETAPA_EM_OPERACAO,
+            $primeira->etapa,
+            'A PRIMEIRA empresa homônima do balde 1 não pode desaparecer em silêncio do lote'
+        );
+        $this->assertSame(
+            Company::ETAPA_EM_OPERACAO,
+            $segunda->etapa,
+            'A SEGUNDA empresa homônima do balde 1 também recebe em_operacao'
+        );
+
+        $this->assertSame(
+            2,
+            Company::query()
+                ->whereIn('id', [$primeira->id, $segunda->id])
+                ->where('etapa', Company::ETAPA_EM_OPERACAO)
+                ->count(),
+            'Contador de carimbadas do balde 1 reflete as DUAS empresas, não 1'
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // Dry-run não escreve nada
     // ═══════════════════════════════════════════════════════════════════
 
