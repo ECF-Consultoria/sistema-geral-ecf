@@ -2154,7 +2154,32 @@ Plans:
   4. Uma empresa some das listagens do Comercial só no instante em que entra na etapa "Aguardando Distribuição" — continua visível enquanto está em "Administrativo Concluído" (COMERC-03, D-07)
   5. `Administrativo › Contratos` vira o módulo **Contrato** dentro do Comercial preservando a permission própria `admin.contratos` (o `ContratoAdminPermissaoTest` da Fase 131 segue verde), `Administrativo › Empresas` sai do menu sem que rota/controller sejam apagados, e o módulo **Entrada** existe como casca com chave de permissão própria no catálogo (D-15, D-16)
 
-**Plans:** TBD
+**Plans:** 9 plans
+
+Plans:
+**Wave 0** *(medições antes de qualquer código — gate do `CLAUDE.md`)*
+
+- [ ] 138-01-PLAN.md — Baseline de testes registrada antes da migration das 3 colunas (D-09) [wave 0]
+- [ ] 138-02-PLAN.md — Checkpoint humano: nome interno da property de owner medido na conta HubSpot real + escopo `crm.objects.owners.read` (D-08) [wave 0]
+
+**Wave 1** *(blocked on Wave 0 completion)*
+
+- [ ] 138-03-PLAN.md — COMERC-02: colunas `hubspot_owner_id`/`hubspot_owner_nome`/`data_venda` + property no config + `fetchOwner()` + `HubspotOwnerResolver` (D-08/D-09/D-12) [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 138-04-PLAN.md — COMERC-02: webhook persiste owner e data da venda nos dois ramos + comando de retroativo com dry-run (D-10/D-14) [wave 2]
+- [ ] 138-05-PLAN.md — COMERC-02 + COMERC-03: módulo Entrada — permission própria, módulo, rota, `ComercialEntradaController` com os 8 campos e as duas pendências separadas (D-02/D-04/D-05/D-06/D-07/D-11/D-12/D-15) [wave 2]
+- [ ] 138-06-PLAN.md — COMERC-02: listagem Contrato ganha os 8 campos do §2 e a etapa, sem mudar a query do universo (D-03/D-06/D-11) [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 138-07-PLAN.md — COMERC-01: ator de sistema "Sistema HubSpot" (D-17) + nascimento na etapa 1 nas duas portas, webhook e cadastro manual (D-13/D-14) [wave 3]
+- [ ] 138-08-PLAN.md — COMERC-02: navegação reorganizada — `Entrada.jsx`, Contrato movido para o Comercial e `admin.empresas` fora do menu (D-01/D-02/D-15/D-16) [wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 138-09-PLAN.md — Checkpoints humanos finais: conta de sistema não-logável em local e VPS, render das duas listagens, regressão contra a baseline (D-01/D-15/D-16/D-17) [wave 4]
 
 ### Phase 139: Checklist administrativo + trava de finalização (v23.0)
 
