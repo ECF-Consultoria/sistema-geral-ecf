@@ -1666,6 +1666,23 @@ class PolosController extends Controller
             default => null, // 0 = M1 (excluído); >=4 = já saiu do programa
         };
 
+        // O CSV da Comercial lista TODO seller da base, não só quem entrou no programa —
+        // o roster de Polos é curado à mão no MlbEmpresa (Kanban). Sem este cruzamento a
+        // reconstrução inventava ativos: agosto/2026 vinha com 185 empresas contra as 133
+        // da planilha, e as 40 excedentes (apelidos crus do ML, tipo 'PISA20240413123113')
+        // nunca tiveram snapshot — entravam no gráfico como "Não vendeu" e derrubavam o
+        // "no alvo" de 57,7% para 43,8%. Elas não venderam zero: nunca foram medidas.
+        //
+        // Inclui arquivadas de propósito: arquivar é evento de HOJE e não apaga o fato de
+        // a empresa ter sido ativa no mês consultado (a Spinella Decor foi arquivada por
+        // engano em 18/07 faturando ~R$ 900 mil/mês — filtrar por arquivado_em aqui
+        // reintroduziria o mesmo buraco no histórico).
+        $curadas = MlbEmpresa::where('projeto', 'POLOS')
+            ->pluck('cust_id')
+            ->map(fn ($c) => CustId::normaliza((string) $c))
+            ->filter(fn ($c) => $c !== '')
+            ->flip();
+
         $ativos = [];
         foreach ($linhasMes as $row) {
             $meses = (int) ($row['MESES_NO_PROGRAMA'] ?? $row['meses_no_programa'] ?? -1);
@@ -1677,6 +1694,10 @@ class PolosController extends Controller
             $id = CustId::normaliza((string) ($row['CUS_CUST_ID_SEL'] ?? $row['cus_cust_id_sel'] ?? ''));
             if ($id === '' || isset($ativos[$id])) {
                 continue; // ignora linha sem cust_id e deduplica por empresa
+            }
+
+            if (! $curadas->has($id)) {
+                continue; // seller da base da Comercial que nunca entrou no programa
             }
 
             $nome = trim((string) ($row['CUS_NICKNAME'] ?? $row['cus_nickname'] ?? ''));
