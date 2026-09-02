@@ -2135,18 +2135,24 @@ Plans:
 - [x] 137-10-PLAN.md — G4 + G5 + G6: `transicionar()` decide sobre a linha travada · backfill chaveado por id · frontmatter de 137-01 [wave 6]
 - [x] 137-11-PLAN.md — G3: filtros de `/companies` deixam de se apagar entre si + checkpoint humano [wave 6]
 
-### Phase 138: Área Comercial conectada à etapa (v23.0)
+### Phase 138: Área Comercial conectada à etapa + reorganização em Contrato e Entrada (v23.0)
 
-**Goal:** A venda marcada GANHA no HubSpot já chega em Área Comercial → Empresas Ganhas na etapa certa, sem cadastro manual, com o mínimo de campos que o §2 pede — e a empresa só sai dali quando o Administrativo realmente terminar.
+**Goal:** A venda marcada GANHA no HubSpot chega na Área Comercial já na etapa "Aguardando Administrativo", sem cadastro manual, e o Comercial passa a ser a única casa da gestão de entrada — com as listagens **Contrato** e **Entrada** exibindo os 8 campos mínimos do §2, e a empresa saindo de lá só quando entra em "Aguardando Distribuição".
 **Requirements**: COMERC-01, COMERC-02, COMERC-03
 **Depends on:** Fase 137
 **UI hint:** yes
 
+> 🔁 **Reorganização decidida em 2026-09-02, depois deste ROADMAP escrito.** O Administrativo é absorvido pela Área Comercial em dois módulos, **Contrato** e **Entrada**. Enunciado na letra, mapa arquivo-a-arquivo e armadilhas medidas em `.planning/seeds/138-140-admin-no-comercial-dois-modulos-260902.md`; decisões travadas em `138-CONTEXT.md`. Esta fase entrega **a casca** — navegação, as duas listagens e o nascimento na etapa 1; os itens de checklist dentro dos módulos são a Fase 139.
+>
+> ⚠️ **Não existe aba "Empresas Ganhas".** Contrato e Entrada **são** as listagens (D-04), separadas por **processo pendente, não por etapa** (D-05): a mesma empresa pode estar nas duas ao mesmo tempo, e por isso separar as duas listas por `companies.etapa` está **proibido**.
+
 **Success Criteria** (o que deve ser VERDADE):
 
-  1. Uma venda marcada GANHA no HubSpot chega em Área Comercial → Empresas Ganhas já na etapa "Aguardando Administrativo", sem nenhum cadastro manual adicional (COMERC-01)
-  2. A listagem de Empresas Ganhas mostra, por empresa, os 8 campos mínimos do §2 — nome, serviço contratado, setor/segmento, origem da venda, responsável comercial e data da venda, informações principais do cliente, status do contrato e existência de pendências, demais dados comerciais do HubSpot (COMERC-02)
-  3. Uma empresa some da listagem de Empresas Ganhas só no instante em que o processo administrativo é concluído — nunca antes disso (COMERC-03)
+  1. Uma venda marcada GANHA no HubSpot chega na Área Comercial já na etapa "Aguardando Administrativo", sem nenhum cadastro manual adicional — e o cadastro manual do próprio Comercial (`ComercialController::store`) nasce na mesma etapa, pelo mesmo `EtapaTransicaoService` (COMERC-01, D-13)
+  2. As listagens **Contrato** e **Entrada** mostram, cada uma, por empresa, os 8 campos mínimos do §2 — nome, serviço contratado, setor/segmento (setor ECF, D-12), origem da venda, responsável comercial e data da venda (buscados no HubSpot, D-08/D-09), informações principais do cliente, status do contrato e existência de pendências, demais dados comerciais do HubSpot (COMERC-02)
+  3. Pendência do fluxo (a declarada na Fase 137) e pendências do cadastro (as 8 do `PendenciasComerciaisService`) aparecem em colunas separadas e nomeadas — nunca somadas num número só (COMERC-02, D-11)
+  4. Uma empresa some das listagens do Comercial só no instante em que entra na etapa "Aguardando Distribuição" — continua visível enquanto está em "Administrativo Concluído" (COMERC-03, D-07)
+  5. `Administrativo › Contratos` vira o módulo **Contrato** dentro do Comercial preservando a permission própria `admin.contratos` (o `ContratoAdminPermissaoTest` da Fase 131 segue verde), `Administrativo › Empresas` sai do menu sem que rota/controller sejam apagados, e o módulo **Entrada** existe como casca com chave de permissão própria no catálogo (D-15, D-16)
 
 **Plans:** TBD
 
@@ -2159,9 +2165,11 @@ Plans:
 
 > 🔒 **D5 — nada aqui reconstrói assinatura.** O grupo Contrato **lê** o estado do envelope Clicksign entregue pelas Fases 126/127/129/132 (`ContratoClicksignService`, `ClicksignWebhookController`) e pela tela da Fase 131. Nenhum plano desta fase cria cliente HTTP de assinatura, webhook de contrato novo, ou lógica paralela de "contrato assinado" — só leitura do estado que já existe.
 
+> ⚠️ **Contagem em aberto — decidir explicitamente, não deduzir.** O §3 lista **12** atividades (4 de Contrato + 8 de Entrada, depois da fusão da D-02 da Fase 138); o §5 controla **9** com Pendente/Concluído, e é o §5 que trava o botão FINALIZAR (ADMIN-05). Qual das duas listas vale é decisão **desta** fase.
+
 **Success Criteria** (o que deve ser VERDADE):
 
-  1. O cadastro da empresa mostra os 9 itens do checklist agrupados em Contrato / Estrutura / Comunicação, cada um com estado Pendente/Concluído — os 4 itens de Contrato mudam sozinhos conforme o envelope Clicksign avança (revisado → enviado → assinado), sem nenhuma marcação manual nesse grupo (ADMIN-01, ADMIN-02)
+  1. Os módulos **Contrato** e **Entrada** da Área Comercial mostram o checklist da empresa, cada item com estado Pendente/Concluído — os 4 itens de Contrato mudam sozinhos conforme o envelope Clicksign avança (revisado → enviado → assinado), sem nenhuma marcação manual nesse grupo (ADMIN-01, ADMIN-02)
   2. Clicar para gerar o link ADMA, a conexão com o sistema ECF ou o Grant da consultoria dispara a geração real pelos serviços já existentes (`ml_link_url`, `OnboardingLinkService::paraEmpresa`, `SyncGrantsFromSftp`) e marca o item sozinho quando termina (ADMIN-03)
   3. Marcar manualmente "Grupo de WhatsApp criado", "E-mail colaborador criado" ou "Boas-vindas enviada" registra quem marcou e quando, visível ao reabrir o item (ADMIN-04)
   4. O botão FINALIZAR ENTRADA ADMINISTRATIVA fica desabilitado enquanto qualquer item obrigatório está pendente ou o contrato não está assinado, e habilita no instante em que o último requisito é cumprido — nunca antes (ADMIN-05)
@@ -2171,10 +2179,12 @@ Plans:
 
 ### Phase 140: Mensagem de boas-vindas generalizada (v23.0)
 
-**Goal:** O item "Boas-vindas" do checklist administrativo tem uma mensagem pronta, preenchida com os dados reais da empresa, para qualquer serviço contratado — não só Polos — editável direto no painel sem depender de deploy.
+**Goal:** O item "Gerar mensagem de boas-vindas" do módulo **Entrada** tem uma mensagem pronta, preenchida com os dados reais da empresa, para qualquer serviço contratado — não só Polos — editável direto no painel sem depender de deploy.
 **Requirements**: COMUNIC-01, COMUNIC-02, COMUNIC-03
 **Depends on:** Fase 139
 **UI hint:** yes
+
+> 🔁 **Sobrevive inteira à reorganização da Fase 138** (decisão do usuário, 2026-09-02). "Gerar mensagem de boas-vindas" é um dos 8 itens do módulo **Entrada**, e a Fase 139 entrega o *item de checklist*; esta fase continua dona do **motor** da mensagem — os 6 blocos do §4, funcionar para qualquer serviço, e o texto padrão editável sem deploy. Mesma separação de risco da D-01 da Fase 138: checklist + trava do FINALIZAR é um risco, motor de template é outro.
 
 **Success Criteria** (o que deve ser VERDADE):
 

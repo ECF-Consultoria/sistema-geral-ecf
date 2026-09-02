@@ -71,12 +71,12 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 ### COMERC — Área Comercial, entrada da empresa (§1, §2)
 
 - [ ] **COMERC-01**: Empresa criada pelo webhook de venda ganha nasce na etapa `Aguardando Administrativo` sem cadastro manual
-- [ ] **COMERC-02**: A listagem de Empresas Ganhas exibe os 8 campos mínimos do §2 (nome, serviço contratado, setor/segmento, origem da venda, responsável comercial e data da venda, informações principais do cliente, status do contrato e pendências, demais dados comerciais do HubSpot)
-- [ ] **COMERC-03**: A empresa permanece visível na Área Comercial até o processo administrativo concluir
+- [ ] **COMERC-02**: As listagens **Contrato** e **Entrada** da Área Comercial exibem, cada uma, os 8 campos mínimos do §2 (nome, serviço contratado, setor/segmento, origem da venda, responsável comercial e data da venda, informações principais do cliente, status do contrato e pendências, demais dados comerciais do HubSpot). São **duas** listas separadas por processo pendente, não por etapa — a mesma empresa pode aparecer nas duas (Fase 138, D-04/D-05)
+- [ ] **COMERC-03**: A empresa permanece visível na Área Comercial até entrar na etapa `Aguardando Distribuição` — continua aparecendo enquanto está em `Administrativo Concluído`, para não ficar órfã entre o Comercial e a Coordenação (Fase 138, D-07)
 
 ### ADMIN — Checklist administrativo e trava de finalização (§3, §5)
 
-- [ ] **ADMIN-01**: Dentro do cadastro da empresa existe checklist visual com os 9 itens obrigatórios do §5, agrupados em Contrato / Estrutura / Comunicação
+- [ ] **ADMIN-01**: Dentro do cadastro da empresa existe checklist visual com os itens obrigatórios, agrupados nos dois módulos da Área Comercial — **Contrato** e **Entrada** (a fusão Estrutura+Comunicação decidida na Fase 138, D-02). ⚠️ Quantos itens o checklist controla — os **12** do §3 ou os **9** do §5 — é decisão explícita da Fase 139, não dedução
 - [ ] **ADMIN-02**: Os quatro itens do grupo Contrato refletem o estado real do envelope Clicksign entregue na v22.0 — sem marcação manual paralela e sem reimplementar assinatura (D5)
 - [ ] **ADMIN-03**: Link ADMA, link de conexão com o sistema ECF e Grant da consultoria são gerados pelo próprio checklist, que marca o item ao gerar (D3)
 - [ ] **ADMIN-04**: Grupo de WhatsApp, e-mail colaborador e envio da mensagem são marcados manualmente, registrando quem marcou e quando (D3)

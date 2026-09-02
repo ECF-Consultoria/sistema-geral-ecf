@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: planning
-stopped_at: "Phase 138 context gathered — BLOQUEADA: corrigir ADMIN-01/COMERC-02/ROADMAP antes de planejar"
+stopped_at: "Phase 138 — pre-requisito de reescrita FECHADO, planejamento em curso"
 last_updated: "2026-09-02T16:52:39.169Z"
-last_activity: 2026-09-02 -- Phase 138 CONTEXT.md gravado (commit `049e35c4`). Reorganizacao decidida: o Administrativo e absorvido pela Area Comercial em dois modulos, Contrato e Entrada. **BLOQUEADA** — ADMIN-01, COMERC-02 e o ROADMAP das fases 139/140 contradizem o CONTEXT e precisam ser reescritos ANTES de /gsd-plan-phase 138. Antes disso: Phase 137 COMPLETA, 11/11 planos (gap closure G1-G6 fechada, commits `add870ca`, `afbe85e0`)
+last_activity: 2026-09-02 -- Pre-requisito bloqueante da Phase 138 FECHADO: COMERC-02, COMERC-03 e ADMIN-01 reescritos em REQUIREMENTS-v23.md; blocos das Fases 138/139/140 do ROADMAP.md reescritos (a 138 ganhou nota de escopo da reorganizacao + 5 SCs; a 139 ganhou a nota da contagem 12x9 em aberto; a 140 SOBREVIVE INTEIRA por decisao do usuario). Antes disso: Phase 137 COMPLETA, 11/11 planos (gap closure G1-G6 fechada, commits `add870ca`, `afbe85e0`)
 progress:
   total_phases: 7
   completed_phases: 1
