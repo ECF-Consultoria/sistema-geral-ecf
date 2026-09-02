@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
-status: executing
-stopped_at: Completed 137-11-PLAN.md (gap closure G3 — filtros de /companies deixam de se apagar entre si)
-last_updated: "2026-09-02T13:20:35Z"
+status: ready_to_plan
+stopped_at: Phase 137 complete (11/11) — ready to discuss Phase 138
+last_updated: 2026-09-02T13:38:21.833Z
 last_activity: 2026-09-02 -- Phase 137 Plan 11 concluído (gap closure G3/WR-03 do 137-REVIEW.md, commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA, 11/11 planos
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 11
   completed_plans: 11
-  percent: 100
+  percent: 14
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -29,7 +29,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 137 — m-quina-de-estados-os-9-status-de-companies-etapa-v23-0
+**Current focus:** Phase 138 — área comercial conectada à etapa (v23.0)
 
 > ⚠️ **Não é a 134.** O `phase.complete` apontou 134 ao fechar a 132, mas isso é artefato da
 > ferramenta: a **Fase 133 tem `Plans: TBD`** e nenhum diretório, então foi pulada na busca pela
@@ -40,9 +40,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — **7/7 planos originais
+Phase: 138
 completos + 4/4 planos de gap closure concluídos — FASE 137 COMPLETA (11/11)**
-Plan: 11 of 11 (7 originais + 137-08 + 137-09 + 137-10 + 137-11) — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+Plan: Not started
 em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
 no model `Company`, ETAPA-01 fechado); 137-03 concluído (`EtapaTransicaoService` — único ponto de
 escrita de `companies.etapa`, tabela `company_etapa_transicoes` de histórico append-only, ETAPA-03
@@ -138,13 +138,13 @@ por conta própria). Suíte da fase 58/58 verde, baseline 24/24 verde. **Verific
 aprovada** — o usuário combinou os três filtros na tela real e produziu a URL
 `?cust_id_status=invalido&etapa=sem_etapa&tab=empresas` como evidência do passo que falhava
 antes; ver `137-11-SUMMARY.md`.
-Status: Fase 137 — TODOS os 6 gaps fechados (G1+G2+G3+G4+G5+G6). **FASE 137 COMPLETA — 11/11
+Status: Ready to plan
 planos (7 originais + 4 de gap closure).** As 6 Success Criteria e os 6 requirements
 (ETAPA-01..06) seguem fechados desde 137-07; os 4 gap closure endureceram garantias que já
 tinham sido reivindicadas, sem reabrir requirement nenhum.
 Próxima fase da milestone (138 — Área Comercial conectada à etapa) ainda **não foi planejada**
 (`Plans: TBD` no ROADMAP) — requer `/gsd-plan-phase 138` antes de qualquer execução.
-Last activity: 2026-09-02 -- Phase 137 Plan 11 concluído, G3/WR-03 fechado (commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA (11/11)
+Last activity: 2026-09-02
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
@@ -458,7 +458,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 
 **Velocity:**
 
-- Total plans completed: 99
+- Total plans completed: 110
 - Average duration: ~15 min/plan
 - Total execution time: ~1.5 hours
 
@@ -491,6 +491,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | 126 | 12 | - | - |
 | 127 | 7 | - | - |
 | 132 | 4 | - | - |
+| 137 | 11 | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |

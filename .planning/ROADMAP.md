@@ -2103,7 +2103,7 @@ Plans:
   4. Pelo menos uma listagem existente pode ser filtrada por etapa e, separadamente, por "com pendência" (ETAPA-05)
   5. Tentar avançar uma etapa sem os requisitos cumpridos é recusado com uma mensagem que nomeia o requisito faltante (ex.: "contrato não assinado"), nunca um erro genérico (ETAPA-06)
 
-**Plans:** 7/7 planos originais executados · **4/4 planos de gap closure executados (137-08 — G1 CRITICAL fechado; 137-09 — G2 CRITICAL fechado; 137-10 — G4/G5 WARNING + G6 docs fechados; 137-11 — G3 WARNING fechado, checkpoint humano aprovado) — FASE COMPLETA**
+**Plans:** 11/11 plans complete
 
 Plans:
 **Wave 1**
