@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 138-04-PLAN.md
-last_updated: "2026-09-02T19:46:22.146Z"
+stopped_at: Completed 138-05-PLAN.md
+last_updated: "2026-09-02T20:14:25.407Z"
 last_activity: 2026-09-02
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 20
-  completed_plans: 15
+  completed_plans: 16
   percent: 14
 ---
 
@@ -42,7 +42,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 138 (rea-comercial-conectada-etapa-v23-0) — EXECUTING
 0 executados**
-Plan: 5 of 9
+Plan: 6 of 9
 `CLAUDE.md`) e 138-02 (`checkpoint:human-verify` BLOQUEANTE: medir o nome interno da property de
 owner na conta HubSpot real por `hubspot:inspect-properties --objects=deals`, e confirmar o escopo
 `crm.objects.owners.read`). Wave 1 = 138-03. Wave 2 = 138-04/05/06. Wave 3 = 138-07/08.
@@ -744,6 +744,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 138 P02 | 6min | 3 tasks | 1 files |
 | Phase 138 P03 | 20min | 2 tasks | 8 files |
 | Phase 138 P04 | ~50min | 2 tasks | 6 files |
+| Phase 138 P05 | 35min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -1508,8 +1509,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-09-02T19:46:22.105Z
-Stopped at: Completed 138-04-PLAN.md
+Last session: 2026-09-02T20:14:25.367Z
+Stopped at: Completed 138-05-PLAN.md
 Last session: 2026-09-02T13:20:35Z
 Stopped at: Completed 137-11-PLAN.md — gap closure G3 (WARNING) fechado, checkpoint humano aprovado (commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA (11/11 planos)
 Last session: 2026-09-02T12:34:59Z
@@ -1636,3 +1637,5 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 138]: 138-03: 3 colunas aditivas em companies (hubspot_owner_id, hubspot_owner_nome, data_venda) + HubspotOwnerResolver com cache de 7 dias — Property de owner assumida (nao medida) com autorizacao do usuario 260902; medicao real fica pendente do plano 138-09 na VPS
 - [Phase 138]: 138-04: parseDataHubspot() elevado de private para public em HubspotDealHandoffService — webhook e comando de backfill reusam a mesma rotina de conversao de data do HubSpot
 - [Phase 138]: 138-04: hubspot:backfill-owner-venda em dry-run nao dispara fetchDeal na passagem de owner (custo de API por natureza) — so a passagem de data_venda (sem custo) itera de verdade em dry-run
+- [Phase 138]: COMERC-02 parcial: Entrada fechada (138-05), Contrato pendente (138-06) — COMERC-02 exige as DUAS listagens com os 8 campos; só COMERC-03 foi marcado como fechado por este plano
+- [Phase 138]: Entrada.jsx criado já no plano 138-05 como página real, não re-export — sem página existente a rota nunca responde 200 (manifest do Vite); 138-08 estende com filtros/acoes
