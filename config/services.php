@@ -179,6 +179,11 @@ return [
                 // Por isso VENCE os dois na cadeia do `email_cliente`
                 // (Api/HubspotWebhookController, resolução de `$emailFinal`).
                 'email_envio_contrato' => env('HUBSPOT_PROP_DEAL_EMAIL_ENVIO_CONTRATO', 'email_para_envio_do_contrato'),
+                // Fase 138 (plano 03, D-08) — id do owner do deal. Property PADRÃO
+                // do HubSpot, mas o valor abaixo foi ASSUMIDO, NÃO MEDIDO (401 sem
+                // token local, autorizado pelo usuário em 2026-09-02; medição real
+                // pendente do plano 138-09 na VPS — ver 138-HUBSPOT-MEDICOES.md).
+                'owner_id'           => env('HUBSPOT_PROP_DEAL_OWNER_ID', 'hubspot_owner_id'),
             ],
             'company' => [
                 'name'          => env('HUBSPOT_PROP_COMPANY_NAME', 'name'),
