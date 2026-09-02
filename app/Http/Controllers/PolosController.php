@@ -430,7 +430,9 @@ class PolosController extends Controller
                     // coluna). Somente leitura no Painel: quem responde é o cliente, a
                     // equipe só vê e filtra. Ver MlbImplementacao::respostaChecklist().
                     'produtos_perfil'          => $impl?->respostaChecklist('produtos_perfil'),
-                    'canais_faturamento'       => $impl?->respostaChecklist('canais_faturamento'),
+                    // Canal + faixa: o item virou duas perguntas em 02/09/2026 e
+                    // respostaChecklist() só devolveria a faixa.
+                    'canais_faturamento'       => $impl?->respostaCanaisVenda(),
                     'data_solicitacao'         => $impl?->data_solicitacao?->format('Y-m-d'),
                     // Data de cadastro/entrada da empresa no sistema (automática; existe sem ficha).
                     'data_cadastro'            => $e->created_at?->format('Y-m-d'),
@@ -813,7 +815,7 @@ class PolosController extends Controller
                 'grupo_whatsapp'      => $simNao($impl ? (bool) $impl->grupo_whatsapp : null),
                 'link_whatsapp'       => $impl?->link_whatsapp,
                 'reuniao_onboarding'  => $impl?->reuniao_onboarding,
-                'canais_faturamento'  => $impl?->respostaChecklist('canais_faturamento'),
+                'canais_faturamento'  => $impl?->respostaCanaisVenda(),
                 'data_solicitacao'    => $impl?->data_solicitacao?->format('Y-m-d'),
                 'planilha_produtos'   => $impl?->planilha_produtos,
                 'listagem'            => $impl?->listagem,

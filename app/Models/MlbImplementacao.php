@@ -70,6 +70,8 @@ class MlbImplementacao extends Model
     //   texto           — textarea
     //   select          — ERP / Integrador (opções fixas com "Outro")
     //   select_opcoes   — dropdown com opções definidas em item.opcoes
+    //   canais_venda    — duas perguntas no mesmo item: canal que mais vende (item.opcoes_canal)
+    //                     + faixa de faturamento (item.opcoes), esta só se vende em algum
     //   produtos        — tabela inline de produtos
     //   instrucoes      — texto de instrução + checkbox
     //   instrucoes_link — texto de instrução + botão de link fixo + checkbox
@@ -300,18 +302,16 @@ class MlbImplementacao extends Model
             'descricao'   => 'Como são os produtos que você pretende vender no Mercado Livre?',
         ],
         [
-            'id'          => 'canais_faturamento',
-            'titulo'      => 'Outros Canais de Venda',
-            'tipo'        => 'select_opcoes',
-            'opcoes'      => [
-                'Até 50k',
-                'De 50 a 100k',
-                'De 100 a 500k',
-                'Acima de 500k',
-                'Não vendo em outros canais',
-            ],
-            'tem_tutorial'=> false,
-            'descricao'   => 'Você já vende em outros canais? Se sim, qual a faixa de faturamento?',
+            'id'           => 'canais_faturamento',
+            'titulo'       => 'Outros Canais de Venda',
+            // Duas perguntas no mesmo item (pedido de 02/09/2026): QUAL canal vende mais e,
+            // só para quem vende em algum, a faixa de faturamento. Era 'select_opcoes' com a
+            // faixa sozinha — a faixa continua em `valor` para não quebrar quem já lê o campo.
+            'tipo'         => 'canais_venda',
+            'opcoes_canal' => self::CANAL_VENDA_OPCOES,
+            'opcoes'       => self::CANAL_FAIXA_OPCOES,
+            'tem_tutorial' => false,
+            'descricao'    => 'Você já vende em outros canais? Se sim, qual deles você mais vende e qual a faixa de faturamento?',
         ],
         [
             'id'          => 'hub',
@@ -423,6 +423,36 @@ class MlbImplementacao extends Model
         'Outro',
     ];
 
+    /**
+     * Sentinela do item "Outros Canais de Venda": quem escolhe isto não vende fora do
+     * Mercado Livre, então a pergunta da faixa de faturamento deixa de existir para ele.
+     * Era uma opção da FAIXA até 02/09/2026 — mudou de pergunta, não sumiu.
+     */
+    public const CANAL_NENHUM = 'Não vendo em outros canais';
+
+    /**
+     * Canal em que o cliente MAIS vende, fora o Mercado Livre (pedido de 02/09/2026).
+     * A lista é a do time comercial; 'Outro' abre campo de texto (mesmo padrão do ERP)
+     * para não obrigar quem vende em Shein/Netshoes a escolher um canal errado.
+     */
+    public const CANAL_VENDA_OPCOES = [
+        self::CANAL_NENHUM,
+        'Shopee',
+        'Amazon',
+        'Madeira Madeira',
+        'Magalu',
+        'Web Continental',
+        'Outro',
+    ];
+
+    /** Faixa de faturamento nos outros canais — só perguntada a quem vende em algum. */
+    public const CANAL_FAIXA_OPCOES = [
+        'Até 50k',
+        'De 50 a 100k',
+        'De 100 a 500k',
+        'Acima de 500k',
+    ];
+
     /** HUB de integração usado pelo cliente (item "HUB" do checklist público). */
     public const HUB_OPCOES = [
         'Anymarket',
@@ -460,7 +490,9 @@ class MlbImplementacao extends Model
                 'erp'                  => ['valor' => '---', 'outro' => '', 'acesso' => '', 'feito' => false],
                 'integrador_logistico' => ['valor' => '---', 'outro' => '', 'feito' => false],
                 'produtos_perfil'      => ['valor' => '', 'feito' => false],
-                'canais_faturamento'   => ['valor' => '', 'feito' => false],
+                // 'valor' = faixa de faturamento (chave original, preservada); 'canal' e
+                // 'outro' são a pergunta acrescentada em 02/09/2026.
+                'canais_faturamento'   => ['canal' => '', 'outro' => '', 'valor' => '', 'feito' => false],
                 // 'acesso' preservado: o HUB era textarea livre até 2026-09-01 e 3 fichas
                 // têm texto salvo ali.
                 'hub'                  => ['valor' => '---', 'outro' => '', 'acesso' => '', 'feito' => false],
@@ -629,6 +661,20 @@ class MlbImplementacao extends Model
 
             case 'link': // URL digitada pelo cliente
                 return trim((string) ($dado['link'] ?? '')) !== '';
+
+            case 'canais_venda': // Outros Canais de Venda — canal + (se vende) faixa
+                $canal = trim((string) ($dado['canal'] ?? ''));
+                if ($canal === '') {
+                    return false;
+                }
+                // Quem não vende em outro canal já respondeu tudo o que havia para responder.
+                if ($canal === self::CANAL_NENHUM) {
+                    return true;
+                }
+                if ($canal === 'Outro' && trim((string) ($dado['outro'] ?? '')) === '') {
+                    return false;
+                }
+                return trim((string) ($dado['valor'] ?? '')) !== '';
 
             case 'produtos': // Planilha de Produtos — ao menos 1 produto com SKU ou nome
                 foreach (($dado['produtos'] ?? []) as $p) {
@@ -882,6 +928,33 @@ class MlbImplementacao extends Model
         $valor = trim((string) ($this->dados['itens'][$id]['valor'] ?? ''));
 
         return ($valor === '' || $valor === '---') ? null : $valor;
+    }
+
+    /**
+     * Resposta do item "Outros Canais de Venda" para a coluna homônima do Painel Polos.
+     *
+     * O item passou a ter DUAS respostas em 02/09/2026 (canal + faixa) e
+     * `respostaChecklist()` só enxerga `valor` — a coluna "Outros canais" mostraria a
+     * faixa e nunca o canal, que é justamente o que o time pediu para ver.
+     *
+     * Formato: "Shopee · De 50 a 100k" · "Outro: Shein · Até 50k" ·
+     * "Não vendo em outros canais" (sozinho — quem não vende não tem faixa) · null.
+     * Ficha antiga, que respondeu quando só havia a faixa, devolve só a faixa.
+     */
+    public function respostaCanaisVenda(): ?string
+    {
+        $item  = $this->dados['itens']['canais_faturamento'] ?? [];
+        $canal = trim((string) ($item['canal'] ?? ''));
+        $faixa = trim((string) ($item['valor'] ?? ''));
+
+        if ($canal === 'Outro') {
+            $outro = trim((string) ($item['outro'] ?? ''));
+            $canal = $outro === '' ? 'Outro' : 'Outro: ' . $outro;
+        }
+
+        $partes = array_filter([$canal, $canal === self::CANAL_NENHUM ? '' : $faixa]);
+
+        return $partes === [] ? null : implode(' · ', $partes);
     }
 
     public function progresso(): array

@@ -19,6 +19,13 @@ import {
     llEfetivo as llEfetivoLib,
 } from '@/lib/precificacaoProdutos';
 
+// Placeholder dos dropdowns do checklist — vale como "ainda não respondeu".
+const SELECIONE = 'Selecione uma opção...';
+
+// Espelha MlbImplementacao::CANAL_NENHUM. Não há enum compartilhado entre PHP e JS
+// neste projeto: as duas pontas são mantidas em sincronia à mão.
+const CANAL_NENHUM = 'Não vendo em outros canais';
+
 // ─── CustomSelect — dropdown cross-browser sem seta dupla ────────────────────
 
 function CustomSelect({ value, onChange, opcoes, className = '', small = false }) {
@@ -1776,12 +1783,103 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
                 <CustomSelect
                     value={dado?.valor ?? ''}
                     onChange={v => {
-                        const selecionado = v !== '' && v !== 'Selecione uma opção...';
-                        onChange(item.id, 'valor', v, true);
-                        onChange(item.id, 'feito', selecionado, true);
+                        const selecionado = v !== '' && v !== SELECIONE;
+                        // Encadeado: os dois PATCH reescrevem o JSON inteiro de `dados`,
+                        // então em paralelo o 'feito' poderia gravar por cima do 'valor'.
+                        onChange(item.id, 'valor', v, true)
+                            .then(() => onChange(item.id, 'feito', selecionado, true));
                     }}
-                    opcoes={['Selecione uma opção...', ...item.opcoes]}
+                    opcoes={[SELECIONE, ...item.opcoes]}
                 />
+            </div>
+        );
+    }
+
+    // Outros Canais de Venda — duas perguntas no mesmo item: em QUAL canal mais vende e,
+    // só para quem vende em algum, a faixa de faturamento. Sem checkbox (igual a
+    // select_opcoes): o item se marca sozinho quando as respostas necessárias estão dadas.
+    if (tipo === 'canais_venda') {
+        const canal = dado?.canal ?? '';
+        const faixa = dado?.valor ?? '';
+        const outro = dado?.outro ?? '';
+
+        const limpar = v => (v === SELECIONE ? '' : v);
+
+        // Espelha MlbImplementacao::itemTemConteudo('canais_venda') — mantê-los em sincronia.
+        const completo = (c, f, o) => {
+            if (c === '') return false;
+            if (c === CANAL_NENHUM) return true;
+            if (c === 'Outro' && String(o ?? '').trim() === '') return false;
+            return f !== '';
+        };
+
+        function setCanal(v) {
+            const c = limpar(v);
+            // Faixa e "outro" só existem para quem os respondeu: trocar de resposta apaga o
+            // que deixou de fazer sentido, senão a ficha guarda "não vendo em outros canais"
+            // com uma faixa antiga do lado.
+            const f = c === CANAL_NENHUM ? '' : faixa;
+            const o = c === 'Outro' ? outro : '';
+
+            let p = onChange(item.id, 'canal', c, true);
+            if (o !== outro) p = p.then(() => onChange(item.id, 'outro', o, true));
+            if (f !== faixa) p = p.then(() => onChange(item.id, 'valor', f, true));
+            p.then(() => onChange(item.id, 'feito', completo(c, f, o), true));
+        }
+
+        function setFaixa(v) {
+            const f = limpar(v);
+            onChange(item.id, 'valor', f, true)
+                .then(() => onChange(item.id, 'feito', completo(canal, f, outro), true));
+        }
+
+        function setOutro(v) {
+            onChange(item.id, 'outro', v, true)
+                .then(() => onChange(item.id, 'feito', completo(canal, faixa, v), true));
+        }
+
+        return (
+            <div className="mt-3 space-y-3">
+                <div>
+                    <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">
+                        Canal em que mais vende
+                    </label>
+                    <CustomSelect
+                        value={canal}
+                        onChange={setCanal}
+                        opcoes={[SELECIONE, ...(item.opcoes_canal ?? [])]}
+                    />
+                </div>
+
+                {canal === 'Outro' && (
+                    <div>
+                        <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">
+                            Qual canal?
+                        </label>
+                        <input
+                            type="text"
+                            value={outro}
+                            onChange={e => onChange(item.id, 'outro', e.target.value, false)}
+                            onBlur={e => setOutro(e.target.value)}
+                            placeholder="Nome do canal..."
+                            className="w-full h-10 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
+                        />
+                    </div>
+                )}
+
+                {/* Quem não vende fora do Mercado Livre não tem faturamento a informar. */}
+                {canal !== '' && canal !== CANAL_NENHUM && (
+                    <div>
+                        <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">
+                            Faixa de faturamento nesses canais
+                        </label>
+                        <CustomSelect
+                            value={faixa}
+                            onChange={setFaixa}
+                            opcoes={[SELECIONE, ...(item.opcoes ?? [])]}
+                        />
+                    </div>
+                )}
             </div>
         );
     }
@@ -1838,6 +1936,13 @@ function itemTemConteudo(item, dado = {}) {
             return String(dado.acesso ?? '').trim() !== '';
         case 'link':  // URL digitada pelo cliente
             return String(dado.link ?? '').trim() !== '';
+        case 'canais_venda': { // Outros Canais de Venda — canal + (se vende) faixa
+            const canal = String(dado.canal ?? '').trim();
+            if (canal === '') return false;
+            if (canal === CANAL_NENHUM) return true;
+            if (canal === 'Outro' && String(dado.outro ?? '').trim() === '') return false;
+            return String(dado.valor ?? '').trim() !== '';
+        }
         case 'produtos': // ≥ 1 produto com SKU ou nome
             return (dado.produtos ?? []).some(
                 p => String(p.sku ?? '').trim() !== '' || String(p.produto ?? '').trim() !== ''
@@ -1929,8 +2034,9 @@ function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, 
                 <ItemInput item={item} dado={dado} linksAdmin={linksAdmin} onChange={onChange} />
             )}
 
-            {/* Checkbox de feito — oculto para select_opcoes (feito se selecionou algo) */}
-            {item.tipo !== 'select_opcoes' && (
+            {/* Checkbox de feito — oculto onde a própria resposta marca o item
+                (select_opcoes e canais_venda). */}
+            {item.tipo !== 'select_opcoes' && item.tipo !== 'canais_venda' && (
                 <div className="mt-4 pt-3 border-t border-white/[0.06]">
                     <label className={cn('flex items-center gap-2.5 group w-fit', podeMarcar ? 'cursor-pointer' : 'cursor-not-allowed')}>
                         <div
@@ -2008,16 +2114,19 @@ export default function ImplementacaoPublica({ impl, checklist, prazo_data = '',
         saveTimer.current = setTimeout(() => setSaveStatus('idle'), 2000);
     }
 
+    // Devolve SEMPRE uma promise para que o chamador possa encadear duas gravações do
+    // mesmo item (ex.: 'canal' e depois 'feito'). Cada PATCH lê e reescreve o JSON de
+    // `dados` INTEIRO — dois em paralelo e o último a gravar apaga o campo do outro.
     const onChange = useCallback((id, campo, valor, doSave) => {
         setDadosLocais(prev => ({
             ...prev,
             itens: { ...prev.itens, [id]: { ...prev.itens[id], [campo]: valor } },
         }));
 
-        if (!doSave) return;
+        if (!doSave) return Promise.resolve();
 
         setSaveStatus('saving');
-        axios.patch(route('implementacao.salvar', impl.token), { id, campo, valor })
+        return axios.patch(route('implementacao.salvar', impl.token), { id, campo, valor })
             .then(res => { setProgresso(res.data.progresso); showSaved(); })
             .catch(() => {
                 setSaveStatus('error');
