@@ -6,6 +6,7 @@ use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\EcfWebhookController;
 use App\Http\Controllers\ComercialController;
+use App\Http\Controllers\ComercialEntradaController;
 use App\Http\Controllers\ConcentracaoController;
 use App\Http\Controllers\EmpresaAnaliseEcfController;
 use App\Http\Controllers\Admin\CargoController;
@@ -1459,6 +1460,19 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     // Plano 131-06 (D-10) — absorve ContratoLiberacaoManualController::store()
     // (Fase 130). Ação disparada de dentro do detalhe da empresa.
     Route::post('/liberacao-manual', [ContratoAdminController::class, 'liberarManual'])->name('liberacao-manual');
+});
+
+// ─── Comercial · Entrada (Fase 138, COMERC-01/02/03, D-15) ───────────────────
+// Grupo NOVO, irmão do de `admin.contratos.*` acima — não entrou no grupo
+// `comercial.*` (routes/web.php:684-687, `permission:comercial.cadastrar_empresa`)
+// porque herdaria a permissão de CADASTRO, contra a D-15 (Entrada precisa de
+// chave própria, liberável por setor sem deploy, independente do cadastro).
+// Também não entrou em `role:admin` pelo MESMO motivo documentado acima para
+// `admin.contratos` (linhas 1434-1441): se a rota ficasse sob `role:admin`,
+// um usuário que recebesse `comercial.entrada` via setor continuaria batendo
+// 403 — a D-15 viraria letra morta (ComercEntradaPermissaoRotaTest cobre isso).
+Route::middleware(['auth', 'verified', 'permission:comercial.entrada'])->prefix('comercial/entrada')->name('comercial.entrada.')->group(function () {
+    Route::get('/', [ComercialEntradaController::class, 'index'])->name('index');
 });
 
 // ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────

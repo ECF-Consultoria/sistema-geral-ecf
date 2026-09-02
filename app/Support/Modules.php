@@ -138,6 +138,8 @@ class Modules
     // ═══ Comercial ═══
     public const COMERCIAL_CADASTRAR_EMPRESA  = 'comercial.cadastrar_empresa';
     public const COMERCIAL_HUBSPOT_LINE_ITEMS = 'comercial.hubspot_line_items';
+    /** Fase 138 (COMERC-01/02/03, D-15) — módulo Entrada, casca da listagem de empresas em fluxo de entrada. */
+    public const COMERCIAL_ENTRADA            = 'comercial.entrada';
 
     // ═══ Liderança ═══
     public const LIDERANCA_DASHBOARD_SETOR   = 'lideranca.dashboard_setor';
@@ -220,6 +222,7 @@ class Modules
             'Comercial' => [
                 ['key' => self::COMERCIAL_CADASTRAR_EMPRESA,  'name' => 'Comercial · Empresas', 'grupo' => 'Comercial', 'route_prefix' => 'comercial.empresas.listagem',      'permission_key' => Permissions::COMERCIAL_CADASTRAR_EMPRESA, 'stage' => 'producao'],
                 ['key' => self::COMERCIAL_HUBSPOT_LINE_ITEMS, 'name' => 'HubSpot Line Items',   'grupo' => 'Comercial', 'route_prefix' => 'sistema.hubspot-line-items.index', 'permission_key' => null,                                      'stage' => 'producao'],
+                ['key' => self::COMERCIAL_ENTRADA,            'name' => 'Comercial · Entrada',  'grupo' => 'Comercial', 'route_prefix' => 'comercial.entrada.index',          'permission_key' => Permissions::COMERCIAL_ENTRADA,           'stage' => 'producao'],
             ],
             'Liderança' => [
                 ['key' => self::LIDERANCA_DASHBOARD_SETOR, 'name' => 'Meu Setor', 'grupo' => 'Liderança', 'route_prefix' => 'lideranca.index', 'permission_key' => Permissions::LIDERANCA_DASHBOARD_SETOR, 'stage' => 'producao'],
