@@ -109,3 +109,66 @@ diff inteiro** antes de commitar. Conferir os três pontos acima e corrigir à m
 reconstruir o texto perdido. Nunca commitar a saída do `record-session` sem olhar — o
 número de linhas mudadas não bate com o tamanho da mudança pretendida, e esse é o
 sintoma barato.
+
+---
+
+## 5. Como RECUPERAR um `STATE.md` que o `state.*` truncou (medido 2026-09-02, Fase 138)
+
+O §4 diz para fazer backup antes de rodar. Quando ninguém fez, ainda dá para recuperar — e sem
+adivinhar uma linha sequer.
+
+**A assinatura do dano é específica:** a ferramenta **não** apaga a linha inteira. Ela substitui o
+**início** de uma linha longa e deixa a cauda pendurada como linha órfã, sem cabeça, no meio do
+arquivo. Na Fase 138 encontramos três órfãs de uma vez:
+
+```
+Phase: 138                                                    <- cabeça nova
+completos + 4/4 planos de gap closure concluídos — ...**      <- cauda órfã da linha antiga
+Plan: Not started                                             <- cabeça nova
+em `137-BASELINE-TESTES.md`); 137-02 concluído (...          <- cauda órfã da linha antiga
+```
+
+**Como achar:** procure linha que comece em minúscula, ou por `)`/`**`, logo depois de uma linha
+`Phase:`/`Plan:`/`Status:` curta demais. `grep -n "^## Current Position" -A 12` já mostra.
+
+**Como recuperar — do git, não da cabeça:**
+
+```bash
+git log --oneline -8 -- .planning/STATE.md
+# achar o último commit ANTES do que rodou state.*/phase.complete
+git show <sha-bom>:.planning/STATE.md | sed -n '/^## Current Position/,+6p'
+```
+
+Na Fase 138 o commit ruim foi `cea0be5f` (`phase.complete` ao fechar a 137) e o bom, `a7fe1376`.
+As três linhas voltaram na letra. **Reconstruir de memória é pior que não reconstruir** — o texto
+perdido é justamente o registro do que foi feito, e um resumo aproximado apaga o original de vez.
+
+**Ao restaurar, deixe a nota no próprio arquivo** dizendo que o bloco foi restaurado à mão, de qual
+sha, e por quê. A próxima sessão precisa saber que aquele parágrafo é reconstrução verificada e não
+estado corrente.
+
+## 6. O `check.decision-coverage-plan` funciona — se você passar os DOIS caminhos
+
+O §1 descreve o campo de visão estreito do matcher, e continua valendo: os `D-NN` precisam estar
+dentro de `must_haves.truths` no frontmatter.
+
+O que **não** é verdade é que o gate esteja quebrado neste worktree. Na Fase 138 o planner reportou
+que ele devolvia `total: 0` / `"CONTEXT.md missing"`, e concluiu que a resolução de caminho estava
+quebrada. Não estava — ele foi invocado sem o segundo argumento. Com os dois caminhos explícitos:
+
+```bash
+gsd-sdk query check.decision-coverage-plan \
+  ".planning/phases/138-.../" \
+  ".planning/phases/138-.../138-CONTEXT.md"
+# => {"passed": true, "total": 17, "covered": 17, "uncovered": []}
+```
+
+Moral que vale além deste gate: **"a ferramenta está quebrada" é uma conclusão cara.** Antes de
+aceitá-la de um subagente, rode o comando você mesmo com os argumentos completos.
+
+## 7. O `gap-analysis` do passo 13e segue medindo a milestone errada (reconfirmado 2026-09-02)
+
+Rodado na Fase 138, devolveu **"22 of 22 items not covered"** — os mesmos `CART-*`, `CTX-*`,
+`DESEMP-*`, `MENU-01` da v17 que o §2 já descrevia, nenhum deles desta fase. Não-bloqueante, mas
+**não use a saída dele como sinal**: confira a cobertura à mão contra o `REQUIREMENTS-v<milestone>.md`
+certo, ou pelo `check.decision-coverage-plan` do §6.
