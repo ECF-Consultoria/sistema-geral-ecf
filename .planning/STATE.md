@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
-status: ready_to_plan
-stopped_at: Phase 137 complete (11/11) — ready to discuss Phase 138
-last_updated: 2026-09-02T13:38:21.833Z
-last_activity: 2026-09-02 -- Phase 137 Plan 11 concluído (gap closure G3/WR-03 do 137-REVIEW.md, commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA, 11/11 planos
+status: planning
+stopped_at: "Phase 138 context gathered — BLOQUEADA: corrigir ADMIN-01/COMERC-02/ROADMAP antes de planejar"
+last_updated: "2026-09-02T16:52:39.169Z"
+last_activity: 2026-09-02 -- Phase 138 CONTEXT.md gravado (commit `049e35c4`). Reorganizacao decidida: o Administrativo e absorvido pela Area Comercial em dois modulos, Contrato e Entrada. **BLOQUEADA** — ADMIN-01, COMERC-02 e o ROADMAP das fases 139/140 contradizem o CONTEXT e precisam ser reescritos ANTES de /gsd-plan-phase 138. Antes disso: Phase 137 COMPLETA, 11/11 planos (gap closure G1-G6 fechada, commits `add870ca`, `afbe85e0`)
 progress:
   total_phases: 7
   completed_phases: 1
@@ -1477,6 +1477,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-02T16:52:39.130Z
+Stopped at: Phase 138 context gathered — BLOQUEADA: corrigir ADMIN-01/COMERC-02/ROADMAP antes de planejar
 Last session: 2026-09-02T13:20:35Z
 Stopped at: Completed 137-11-PLAN.md — gap closure G3 (WARNING) fechado, checkpoint humano aprovado (commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA (11/11 planos)
 Last session: 2026-09-02T12:34:59Z
