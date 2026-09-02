@@ -1,7 +1,7 @@
 # Phase 138: Área Comercial conectada à etapa (v23.0) - Context
 
 **Gathered:** 2026-09-02
-**Status:** Ready for planning — **BLOQUEADO por pré-requisito**, ver `<domain>`
+**Status:** Ready for planning — pré-requisito **FECHADO** em 2026-09-02 (commit `2a9562af`)
 
 <domain>
 ## Phase Boundary
@@ -37,7 +37,13 @@ da gestão de entrada — absorvendo do Administrativo o que hoje mora em `/admi
 - Tela de distribuição da Coordenação (141), onboarding nas etapas 7/8/9 (142), timeline/SLA (143).
 - Apagar de vez rota/controller/página de `admin.empresas` (trabalho próprio, ver D-16).
 
-## ⚠️ Pré-requisito bloqueante — corrigir antes de planejar
+## ✅ Pré-requisito bloqueante — RESOLVIDO em 2026-09-02 (commit `2a9562af`)
+
+> As três contradições abaixo foram **reescritas** em `REQUIREMENTS-v23.md` e `ROADMAP.md`, mais
+> uma quarta que este bloco não listava: o Goal e os 3 Success Criteria da própria Fase 138 no
+> ROADMAP diziam "Empresas Ganhas", que a D-04 proíbe — hoje são 5 SC e o escopo da reorganização
+> está declarado. A Fase 140 **sobrevive inteira** (decisão do usuário): a 139 entrega o item de
+> checklist, a 140 segue dona do motor da mensagem. O registro histórico do bloqueio fica abaixo.
 
 A reorganização foi decidida **depois** de `REQUIREMENTS-v23.md` e `ROADMAP.md` estarem
 escritos. Três textos hoje contradizem o que está decidido aqui e precisam ser **reescritos,
@@ -173,6 +179,31 @@ de `/gsd-plan-phase 138`.
   campo o que aquela tela edita (hierarquia pai/filhas, serviços contratados) contra o que a
   listagem do Comercial já edita.
 
+### Ator do webhook na transição de nascimento
+
+- **D-17:** **O webhook se identifica como uma conta dedicada "Sistema HubSpot".** Decisão do
+  usuário em 2026-09-02, resolvendo a Open Question 1 do `138-RESEARCH.md`.
+  `config('services.hubspot.webhook_user_id')` (env `HUBSPOT_WEBHOOK_USER_ID`) aponta para um
+  `User` criado **só para isso**, com senha inutilizável (nenhum login possível) e sem cargo nem
+  permissão. Segue o precedente já existente de ator default por config
+  (`config('digisac.default_user_id')`, `NpsDigisacDispatchService.php:161-168`).
+
+  **Por que não tornar `$por` nullable:** mexeria em `EtapaTransicaoService`, que a Fase 137
+  fechou, testou e verificou — exigiria re-baseline de um serviço já em produção.
+
+  **Por que não apontar para um admin existente:** a timeline da Fase 143 atribuiria a uma pessoa
+  real transições que ela não fez. É o mesmo histórico falso que a D-14 desta fase e a D-05 da
+  Fase 137 proíbem.
+
+  **Obrigações que a decisão cria, e que os planos precisam carregar:**
+  - Tarefa de setup própria: criar a conta no ambiente local **e** na VPS antes do primeiro deploy.
+  - `checkpoint:human-verify` antes do deploy, conferindo que a conta não é logável.
+  - Registrar a conta onde ela não vire login esquecido — precedente direto: o usuário de review
+    da Shopee (`users.id=30` em produção) continua ativo desde 2026-07-16 porque ninguém anotou
+    que precisava sair.
+  - Ator não configurado ou não encontrado **nunca** pode virar `TypeError`/500: logar e **não**
+    transicionar, deixando `etapa` NULL — mesmo efeito do fallback legado (D-14).
+
 ### Claude's Discretion
 
 - **D-09 (onde gravar owner/data da venda)** — o usuário respondeu "você decide". Decidido:
@@ -183,7 +214,8 @@ de `/gsd-plan-phase 138`.
 
 **Travado — mudar exige voltar ao usuário:** o nome `Entrada` (D-02); separação por processo e
 não por etapa (D-05); corte de saída na etapa 5 (D-07); as duas pendências nunca somadas
-(D-11); as duas portas nascendo na etapa 1 (D-13); permissões preservadas (D-15).
+(D-11); as duas portas nascendo na etapa 1 (D-13); permissões preservadas (D-15); o ator do
+webhook ser conta dedicada não-logável, nunca um admin real (D-17).
 
 </decisions>
 
