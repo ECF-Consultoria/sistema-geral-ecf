@@ -1795,63 +1795,94 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
         );
     }
 
-    // Outros Canais de Venda — duas perguntas no mesmo item: em QUAL canal mais vende e,
-    // só para quem vende em algum, a faixa de faturamento. Sem checkbox (igual a
-    // select_opcoes): o item se marca sozinho quando as respostas necessárias estão dadas.
+    // Outros Canais de Venda — duas perguntas no mesmo item: em QUAIS canais vende
+    // (múltipla escolha) e, só para quem vende em algum, a faixa de faturamento. Sem
+    // checkbox (igual a select_opcoes): o item se marca sozinho quando as respostas
+    // necessárias estão dadas.
     if (tipo === 'canais_venda') {
-        const canal = dado?.canal ?? '';
+        // `canal` (string) é o formato da manhã de 02/09, quando a pergunta era de
+        // escolha única — ficha já respondida não pode perder a resposta.
+        const canais = Array.isArray(dado?.canais)
+            ? dado.canais
+            : (dado?.canal ? [dado.canal] : []);
         const faixa = dado?.valor ?? '';
         const outro = dado?.outro ?? '';
-
-        const limpar = v => (v === SELECIONE ? '' : v);
+        const naoVende = canais.includes(CANAL_NENHUM);
 
         // Espelha MlbImplementacao::itemTemConteudo('canais_venda') — mantê-los em sincronia.
-        const completo = (c, f, o) => {
-            if (c === '') return false;
-            if (c === CANAL_NENHUM) return true;
-            if (c === 'Outro' && String(o ?? '').trim() === '') return false;
+        const completo = (cs, f, o) => {
+            if (cs.length === 0) return false;
+            if (cs.includes(CANAL_NENHUM)) return true;
+            if (cs.includes('Outro') && String(o ?? '').trim() === '') return false;
             return f !== '';
         };
 
-        function setCanal(v) {
-            const c = limpar(v);
-            // Faixa e "outro" só existem para quem os respondeu: trocar de resposta apaga o
-            // que deixou de fazer sentido, senão a ficha guarda "não vendo em outros canais"
-            // com uma faixa antiga do lado.
-            const f = c === CANAL_NENHUM ? '' : faixa;
-            const o = c === 'Outro' ? outro : '';
+        function alternarCanal(op) {
+            // "Não vendo em outros canais" é exclusivo — não convive com canal marcado.
+            const cs = op === CANAL_NENHUM
+                ? (naoVende ? [] : [CANAL_NENHUM])
+                : (canais.includes(op)
+                    ? canais.filter(c => c !== op)
+                    : [...canais.filter(c => c !== CANAL_NENHUM), op]);
 
-            let p = onChange(item.id, 'canal', c, true);
+            // Faixa e "outro" só existem para quem os respondeu: desmarcar apaga o que
+            // deixou de fazer sentido, senão a ficha guarda "não vendo em outros canais"
+            // com uma faixa antiga do lado.
+            const f = (cs.length === 0 || cs.includes(CANAL_NENHUM)) ? '' : faixa;
+            const o = cs.includes('Outro') ? outro : '';
+
+            let p = onChange(item.id, 'canais', cs, true);
             if (o !== outro) p = p.then(() => onChange(item.id, 'outro', o, true));
             if (f !== faixa) p = p.then(() => onChange(item.id, 'valor', f, true));
-            p.then(() => onChange(item.id, 'feito', completo(c, f, o), true));
+            p.then(() => onChange(item.id, 'feito', completo(cs, f, o), true));
         }
 
         function setFaixa(v) {
-            const f = limpar(v);
+            const f = v === SELECIONE ? '' : v;
             onChange(item.id, 'valor', f, true)
-                .then(() => onChange(item.id, 'feito', completo(canal, f, outro), true));
+                .then(() => onChange(item.id, 'feito', completo(canais, f, outro), true));
         }
 
         function setOutro(v) {
             onChange(item.id, 'outro', v, true)
-                .then(() => onChange(item.id, 'feito', completo(canal, faixa, v), true));
+                .then(() => onChange(item.id, 'feito', completo(canais, faixa, v), true));
         }
 
         return (
             <div className="mt-3 space-y-3">
                 <div>
                     <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">
-                        Canal em que mais vende
+                        Canais em que vende <span className="text-white/25 normal-case tracking-normal">(pode marcar mais de um)</span>
                     </label>
-                    <CustomSelect
-                        value={canal}
-                        onChange={setCanal}
-                        opcoes={[SELECIONE, ...(item.opcoes_canal ?? [])]}
-                    />
+                    <div className="flex flex-wrap gap-2">
+                        {(item.opcoes_canal ?? []).map(op => {
+                            const marcado = canais.includes(op);
+                            return (
+                                <button
+                                    key={op}
+                                    type="button"
+                                    onClick={() => alternarCanal(op)}
+                                    className={cn(
+                                        'flex items-center gap-2 px-3 py-2 rounded-xl border text-[13px] transition-all',
+                                        marcado
+                                            ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200'
+                                            : 'border-white/[0.08] bg-white/[0.03] text-white/60 hover:border-white/20'
+                                    )}
+                                >
+                                    <span className={cn(
+                                        'w-4 h-4 rounded border-2 flex items-center justify-center shrink-0',
+                                        marcado ? 'border-emerald-400 bg-emerald-400' : 'border-white/25'
+                                    )}>
+                                        {marcado && <Check size={10} className="text-white" />}
+                                    </span>
+                                    {op}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
 
-                {canal === 'Outro' && (
+                {canais.includes('Outro') && (
                     <div>
                         <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">
                             Qual canal?
@@ -1868,7 +1899,7 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
                 )}
 
                 {/* Quem não vende fora do Mercado Livre não tem faturamento a informar. */}
-                {canal !== '' && canal !== CANAL_NENHUM && (
+                {canais.length > 0 && !naoVende && (
                     <div>
                         <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">
                             Faixa de faturamento nesses canais
@@ -1936,11 +1967,13 @@ function itemTemConteudo(item, dado = {}) {
             return String(dado.acesso ?? '').trim() !== '';
         case 'link':  // URL digitada pelo cliente
             return String(dado.link ?? '').trim() !== '';
-        case 'canais_venda': { // Outros Canais de Venda — canal + (se vende) faixa
-            const canal = String(dado.canal ?? '').trim();
-            if (canal === '') return false;
-            if (canal === CANAL_NENHUM) return true;
-            if (canal === 'Outro' && String(dado.outro ?? '').trim() === '') return false;
+        case 'canais_venda': { // Outros Canais de Venda — canais + (se vende) faixa
+            const canais = Array.isArray(dado.canais)
+                ? dado.canais
+                : (dado.canal ? [dado.canal] : []); // formato de escolha única (02/09 cedo)
+            if (canais.length === 0) return false;
+            if (canais.includes(CANAL_NENHUM)) return true;
+            if (canais.includes('Outro') && String(dado.outro ?? '').trim() === '') return false;
             return String(dado.valor ?? '').trim() !== '';
         }
         case 'produtos': // ≥ 1 produto com SKU ou nome

@@ -311,7 +311,7 @@ class MlbImplementacao extends Model
             'opcoes_canal' => self::CANAL_VENDA_OPCOES,
             'opcoes'       => self::CANAL_FAIXA_OPCOES,
             'tem_tutorial' => false,
-            'descricao'    => 'Você já vende em outros canais? Se sim, qual deles você mais vende e qual a faixa de faturamento?',
+            'descricao'    => 'Você já vende em outros canais? Se sim, em quais e qual a faixa de faturamento?',
         ],
         [
             'id'          => 'hub',
@@ -431,7 +431,8 @@ class MlbImplementacao extends Model
     public const CANAL_NENHUM = 'Não vendo em outros canais';
 
     /**
-     * Canal em que o cliente MAIS vende, fora o Mercado Livre (pedido de 02/09/2026).
+     * Canais em que o cliente vende, fora o Mercado Livre (pedido de 02/09/2026).
+     * Múltipla escolha: quem vende em Shopee e Amazon marca os dois.
      * A lista é a do time comercial; 'Outro' abre campo de texto (mesmo padrão do ERP)
      * para não obrigar quem vende em Shein/Netshoes a escolher um canal errado.
      */
@@ -490,9 +491,11 @@ class MlbImplementacao extends Model
                 'erp'                  => ['valor' => '---', 'outro' => '', 'acesso' => '', 'feito' => false],
                 'integrador_logistico' => ['valor' => '---', 'outro' => '', 'feito' => false],
                 'produtos_perfil'      => ['valor' => '', 'feito' => false],
-                // 'valor' = faixa de faturamento (chave original, preservada); 'canal' e
-                // 'outro' são a pergunta acrescentada em 02/09/2026.
-                'canais_faturamento'   => ['canal' => '', 'outro' => '', 'valor' => '', 'feito' => false],
+                // 'valor' = faixa de faturamento (chave original, preservada); 'canais' e
+                // 'outro' são a pergunta acrescentada em 02/09/2026. Ficha respondida
+                // enquanto a pergunta era de escolha única guarda 'canal' (string) —
+                // canaisSelecionados() lê as duas formas.
+                'canais_faturamento'   => ['canais' => [], 'outro' => '', 'valor' => '', 'feito' => false],
                 // 'acesso' preservado: o HUB era textarea livre até 2026-09-01 e 3 fichas
                 // têm texto salvo ali.
                 'hub'                  => ['valor' => '---', 'outro' => '', 'acesso' => '', 'feito' => false],
@@ -662,16 +665,16 @@ class MlbImplementacao extends Model
             case 'link': // URL digitada pelo cliente
                 return trim((string) ($dado['link'] ?? '')) !== '';
 
-            case 'canais_venda': // Outros Canais de Venda — canal + (se vende) faixa
-                $canal = trim((string) ($dado['canal'] ?? ''));
-                if ($canal === '') {
+            case 'canais_venda': // Outros Canais de Venda — canais + (se vende) faixa
+                $canais = self::canaisSelecionados($dado);
+                if ($canais === []) {
                     return false;
                 }
                 // Quem não vende em outro canal já respondeu tudo o que havia para responder.
-                if ($canal === self::CANAL_NENHUM) {
+                if (in_array(self::CANAL_NENHUM, $canais, true)) {
                     return true;
                 }
-                if ($canal === 'Outro' && trim((string) ($dado['outro'] ?? '')) === '') {
+                if (in_array('Outro', $canais, true) && trim((string) ($dado['outro'] ?? '')) === '') {
                     return false;
                 }
                 return trim((string) ($dado['valor'] ?? '')) !== '';
@@ -931,28 +934,59 @@ class MlbImplementacao extends Model
     }
 
     /**
+     * Canais marcados no item "Outros Canais de Venda", normalizados para lista.
+     *
+     * Aceita o formato ANTIGO (`canal`, string única): a pergunta nasceu de escolha
+     * única em 02/09/2026 e virou múltipla escolha no mesmo dia, com ficha de cliente
+     * já respondida no banco. Ignorar a chave antiga apagaria a resposta da tela.
+     *
+     * @param array $dado dados.itens.canais_faturamento
+     * @return string[]
+     */
+    public static function canaisSelecionados(array $dado): array
+    {
+        $canais = is_array($dado['canais'] ?? null) ? $dado['canais'] : [];
+
+        $canais = array_values(array_filter(
+            array_map(fn ($c) => trim((string) $c), $canais),
+            fn ($c) => $c !== ''
+        ));
+
+        if ($canais !== []) {
+            return $canais;
+        }
+
+        $legado = trim((string) ($dado['canal'] ?? ''));
+
+        return $legado === '' ? [] : [$legado];
+    }
+
+    /**
      * Resposta do item "Outros Canais de Venda" para a coluna homônima do Painel Polos.
      *
-     * O item passou a ter DUAS respostas em 02/09/2026 (canal + faixa) e
+     * O item passou a ter DUAS respostas em 02/09/2026 (canais + faixa) e
      * `respostaChecklist()` só enxerga `valor` — a coluna "Outros canais" mostraria a
-     * faixa e nunca o canal, que é justamente o que o time pediu para ver.
+     * faixa e nunca os canais, que é justamente o que o time pediu para ver.
      *
-     * Formato: "Shopee · De 50 a 100k" · "Outro: Shein · Até 50k" ·
+     * Formato: "Shopee, Amazon · De 50 a 100k" · "Outro: Shein · Até 50k" ·
      * "Não vendo em outros canais" (sozinho — quem não vende não tem faixa) · null.
      * Ficha antiga, que respondeu quando só havia a faixa, devolve só a faixa.
      */
     public function respostaCanaisVenda(): ?string
     {
-        $item  = $this->dados['itens']['canais_faturamento'] ?? [];
-        $canal = trim((string) ($item['canal'] ?? ''));
-        $faixa = trim((string) ($item['valor'] ?? ''));
+        $item   = $this->dados['itens']['canais_faturamento'] ?? [];
+        $item   = is_array($item) ? $item : [];
+        $faixa  = trim((string) ($item['valor'] ?? ''));
+        $canais = self::canaisSelecionados($item);
 
-        if ($canal === 'Outro') {
-            $outro = trim((string) ($item['outro'] ?? ''));
-            $canal = $outro === '' ? 'Outro' : 'Outro: ' . $outro;
-        }
+        $outro  = trim((string) ($item['outro'] ?? ''));
+        $canais = array_map(
+            fn ($c) => $c === 'Outro' ? ($outro === '' ? 'Outro' : 'Outro: ' . $outro) : $c,
+            $canais
+        );
 
-        $partes = array_filter([$canal, $canal === self::CANAL_NENHUM ? '' : $faixa]);
+        $naoVende = in_array(self::CANAL_NENHUM, $canais, true);
+        $partes   = array_filter([implode(', ', $canais), $naoVende ? '' : $faixa]);
 
         return $partes === [] ? null : implode(' · ', $partes);
     }
