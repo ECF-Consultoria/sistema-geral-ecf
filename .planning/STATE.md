@@ -3,23 +3,23 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 137-08-PLAN.md (gap closure G1)
-last_updated: "2026-09-02T12:34:59Z"
-last_activity: 2026-09-02 -- Phase 137 Plan 08 concluído (gap closure G1 do 137-VERIFICATION.md/137-REVIEW.md CR-01, commits `2a1aa606`, `ff5e2ee1`)
+stopped_at: Completed 137-09-PLAN.md (gap closure G2)
+last_updated: "2026-09-02T12:47:15Z"
+last_activity: 2026-09-02 -- Phase 137 Plan 09 concluído (gap closure G2 do 137-VERIFICATION.md/137-REVIEW.md CR-02, commits `c08d836d`, `a0001044`)
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 11
-  completed_plans: 8
-  percent: 73
+  completed_plans: 9
+  percent: 82
 ---
 
-> ⚠️ **Correção manual do frontmatter acima (137-08), ver `<process_note>` do
-> executor:** `state.advance-plan` do `gsd-tools.cjs` zera `progress.percent`,
+> ⚠️ **Correção manual do frontmatter acima (137-08/137-09), ver `<process_note>`
+> do executor:** `state.advance-plan` do `gsd-tools.cjs` zera `progress.percent`,
 > recomputa contra totais GLOBAIS do projeto (não desta fase) e corrompe
 > `milestone_name` com um em-dash espúrio. `total_plans`/`completed_plans`
 > acima contam os 7 planos originais da Fase 137 + os 4 planos de gap
-> closure (137-08..137-11) — 8/11 concluídos após este plano. Não rodar
+> closure (137-08..137-11) — 9/11 concluídos após este plano. Não rodar
 > `state.advance-plan` sem reconferir o resultado à mão.
 
 # Project State
@@ -41,8 +41,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — **7/7 planos originais
-completos + 1/4 planos de gap closure (137-08) concluído; 137-09/10/11 pendentes**
-Plan: 8 of 11 (7 originais + 137-08) — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+completos + 2/4 planos de gap closure (137-08, 137-09) concluídos; 137-10/11 pendentes**
+Plan: 9 of 11 (7 originais + 137-08 + 137-09) — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
 em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
 no model `Company`, ETAPA-01 fechado); 137-03 concluído (`EtapaTransicaoService` — único ponto de
 escrita de `companies.etapa`, tabela `company_etapa_transicoes` de histórico append-only, ETAPA-03
@@ -83,10 +83,25 @@ de verdade, uma de cada vez, e produziram exatamente o veredito esperado — evi
 cada sonda removida. `EXCECOES_REGRA_A` nasce vazia — zero falsos positivos na árvore atual.
 Faltam 3 planos de gap closure planejados e não executados: 137-09 (G2), 137-10 (G4+G5+G6),
 137-11 (G3) — ver `ROADMAP.md` Wave 5-6).
-Status: Fase 137 — G1 fechado; 3 gaps de gap-closure restantes (não bloqueiam entre si). Próxima
-fase da milestone (138 — Área Comercial conectada à etapa) ainda **não foi planejada**
+**137-09 concluído** (gap closure G2 CRITICAL do `137-VERIFICATION.md`/`137-REVIEW.md` CR-02: a FK
+`company_etapa_transicoes.user_id` estava `cascadeOnDelete()`, enquanto a FK irmã
+`companies.pendencia_por` — mesma fase, mesmo conceito de ator — já usava `nullOnDelete()`.
+`UserController::forceDestroy()` faz hard delete real; a divergência apagava em cascata o
+histórico de TODAS as empresas que o usuário removido já tinha movimentado, não só as dele.
+Corrigida a migration ORIGINAL (`2026_09_01_120000_...`) in-place — `user_id` agora `nullable()`
++ `nullOnDelete()` — via ciclo local `migrate:rollback --step=2` + `migrate` no MariaDB
+compartilhado `ecf_admin`, protegido por asserção SQL do nome exato das 2 migrations nos 2 maiores
+batches (antes e depois, T-137-30). Schema real reconferido por `SHOW CREATE TABLE`: `user_id`
+`DEFAULT NULL` + `ON DELETE SET NULL`; `company_id` preservado em `CASCADE`. Backfill intacto:
+180/1/179, idêntico a `137-BACKFILL-CONTAGENS.md`. Prova comportamental nova
+(`EtapaHistoricoAtorTest`, 4 testes) com prova por regressão dirigida — revertida a migration para
+`cascadeOnDelete()` sem `nullable()`, 2 dos 4 testes falharam como esperado; reversão desfeita e
+conferida byte-idêntica ao commit. Suíte da fase 50/50 verde, baseline 24/24 verde — evidência em
+`137-09-SUMMARY.md`. Faltam 2 planos de gap closure: 137-10 (G4+G5+G6), 137-11 (G3).
+Status: Fase 137 — G1+G2 fechados; 2 gaps de gap-closure restantes (não bloqueiam entre si).
+Próxima fase da milestone (138 — Área Comercial conectada à etapa) ainda **não foi planejada**
 (`Plans: TBD` no ROADMAP) — requer `/gsd-plan-phase 138` antes de qualquer execução.
-Last activity: 2026-09-02 -- Phase 137 Plan 08 concluído, G1 (CRITICAL) fechado (commits `2a1aa606`, `ff5e2ee1`)
+Last activity: 2026-09-02 -- Phase 137 Plan 09 concluído, G2 (CRITICAL) fechado (commits `c08d836d`, `a0001044`)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate

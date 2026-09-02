@@ -2087,7 +2087,7 @@ Plans:
 
 **Ordem de construção:** a máquina de estados (137) é fundação — nada mais tem onde gravar etapa sem ela. Comercial (138) é o primeiro ponto de entrada real na etapa. Administrativo (139) depende de haver empresa chegando em `Aguardando Administrativo` (138) e do grupo Contrato já entregue pela v22.0 (D5). Comunicação (140) monta a mensagem com dado que o checklist administrativo já gera (139). Distribuição+Responsáveis (141) só existe depois do Administrativo concluir e mover a empresa (139). Onboarding (142) depende dos responsáveis estarem definidos (141). Histórico (143) fecha por último porque precisa que todo evento das fases 137-142 já esteja acontecendo para ter o que listar na timeline.
 
-### Phase 137: Máquina de estados — os 9 status de `companies.etapa` (v23.0) — ⚠ GAP CLOSURE PARCIAL (1/4 — G1 fechado, G2/G3/G4/G5/G6 pendentes)
+### Phase 137: Máquina de estados — os 9 status de `companies.etapa` (v23.0) — ⚠ GAP CLOSURE PARCIAL (2/4 — G1+G2 fechados, G3/G4/G5/G6 pendentes)
 
 **Goal:** Cada empresa carrega uma etapa própria entre os 9 status do §10, gravada e transicionada por um único serviço central, com pendência declarável em paralelo sem nunca sobrescrever a etapa — e as ~500 empresas já cadastradas migram sem quebrar o que a tela "Empresas" de `/companies` mostra hoje.
 **Requirements**: ETAPA-01, ETAPA-02, ETAPA-03, ETAPA-04, ETAPA-05, ETAPA-06
@@ -2103,7 +2103,7 @@ Plans:
   4. Pelo menos uma listagem existente pode ser filtrada por etapa e, separadamente, por "com pendência" (ETAPA-05)
   5. Tentar avançar uma etapa sem os requisitos cumpridos é recusado com uma mensagem que nomeia o requisito faltante (ex.: "contrato não assinado"), nunca um erro genérico (ETAPA-06)
 
-**Plans:** 7/7 planos originais executados · **1/4 planos de gap closure executado (137-08 — G1 CRITICAL fechado); 137-09/10/11 planejados, não executados**
+**Plans:** 7/7 planos originais executados · **2/4 planos de gap closure executados (137-08 — G1 CRITICAL fechado; 137-09 — G2 CRITICAL fechado); 137-10/11 planejados, não executados**
 
 Plans:
 **Wave 1**
@@ -2128,7 +2128,7 @@ Plans:
 **Wave 5 — gap closure** *(achados CRITICAL de `137-VERIFICATION.md` e `137-REVIEW.md`)*
 
 - [x] 137-08-PLAN.md — G1: fecha os 3 bypasses do gate estático do ponto único de escrita de `companies.etapa` [wave 5]
-- [ ] 137-09-PLAN.md — G2: histórico de etapa sobrevive à exclusão permanente do ator (`ON DELETE SET NULL`) [wave 5]
+- [x] 137-09-PLAN.md — G2: histórico de etapa sobrevive à exclusão permanente do ator (`ON DELETE SET NULL`) [wave 5]
 
 **Wave 6 — gap closure** *(blocked on Wave 5 completion)*
 
