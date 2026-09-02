@@ -1551,15 +1551,30 @@ class PolosController extends Controller
      */
     private function listarMeses(array $linhas): array
     {
-        $mapa = []; // value(YYYYMM) => parcial(bool)
+        // Um mês é FECHADO assim que aparece QUALQUER linha 'FECHADO' dele — nunca pelo
+        // inverso. Na virada do mês a origem publica o mês recém-encerrado DUAS vezes: as
+        // linhas definitivas 'FECHADO' e as antigas 'PARCIAL' convivem no mesmo CSV
+        // (agosto/2026 chegou com 547 de cada). A regra anterior era `|| $parcial`, então
+        // uma única linha parcial vencia todas as fechadas e o mês seguia "corrente".
+        //
+        // Isso não é cosmético: `montarAtivosDoMes()` usa o roster AO VIVO quando o mês é
+        // parcial, e o time avança todas as fases na virada (M0→M1→…→M4→Encerrado, 324
+        // mudanças em 01/09/2026). Agosto passou a ser somado com as fases de setembro e
+        // as 43 empresas que eram M4 sumiram do total — R$ 4,73 mi viraram R$ 2,74 mi.
+        // O mês corrente continua parcial pela injeção logo abaixo, que é o caso legítimo.
+        $temFechado = []; // value(YYYYMM) => viu ao menos uma linha FECHADO
         foreach ($linhas as $row) {
             $mes = trim((string) ($row['TIM_MONTH_ID'] ?? $row['tim_month_id'] ?? ''));
             if ($mes === '') {
                 continue;
             }
-            $comp    = strtoupper(trim((string) ($row['COMPARATIVO'] ?? $row['comparativo'] ?? '')));
-            $parcial = $comp !== '' && $comp !== 'FECHADO';
-            $mapa[$mes] = ($mapa[$mes] ?? false) || $parcial;
+            $comp = strtoupper(trim((string) ($row['COMPARATIVO'] ?? $row['comparativo'] ?? '')));
+            $temFechado[$mes] = ($temFechado[$mes] ?? false) || $comp === 'FECHADO';
+        }
+
+        $mapa = []; // value(YYYYMM) => parcial(bool)
+        foreach ($temFechado as $mes => $fechado) {
+            $mapa[$mes] = ! $fechado;
         }
 
         // O eixo de meses NÃO deve depender do CSV para o mês corrente. A Comercial
