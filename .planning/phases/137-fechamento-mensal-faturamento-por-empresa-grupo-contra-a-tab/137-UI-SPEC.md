@@ -32,7 +32,7 @@ created: 2026-09-02
 
 ## Spacing Scale
 
-Escala de 8 pontos confirmada (já em uso em toda a tela):
+Escala de 8 pontos confirmada (apenas múltiplos de 4):
 
 | Token | Value | Usage |
 |-------|-------|-------|
@@ -42,29 +42,40 @@ Escala de 8 pontos confirmada (já em uso em toda a tela):
 | lg | 24px | Padding de seções maiores |
 | xl | 32px | Gaps de layout entre blocos |
 
-**Exceções já estabelecidas na tela (preservar, não "corrigir"):**
-- `py-2.5` (10px) no padding vertical de células de tabela (`ProgressaoModal`, cabeçalhos) — convenção existente de densidade de tabela.
-- `py-0.5` (2px) em badges/pills (`ServiceBadge`, `IntegrationBadge`, badge "Grupo · N") — necessário para o tamanho reduzido do componente.
-- Toque de 24px (`w-6 h-6`) no botão `RecebidoToggle` — abaixo do 44px recomendado para touch, mas é padrão desktop-only já em produção; não expandir sem pedido explícito.
+Exceções: nenhuma. Todo elemento novo desta fase (badge "Fechado/Aberto", form de faixas, aviso
+de grupo com serviços divergentes, dialog de "Refazer") usa somente esta escala.
 
-Novos elementos desta fase devem usar a escala de 4/8/16/24/32 sem exceção adicional.
+> **Débito de espaçamento conhecido — fora do escopo desta fase (nota não-normativa, não faz
+> parte da escala acima):** a tela já tem `py-2.5` (10px, células de tabela do `ProgressaoModal`
+> e seus cabeçalhos) e `py-0.5` (2px, badges/pills como `ServiceBadge`/`IntegrationBadge`/badge
+> "Grupo · N"), que não são múltiplos de 4. O botão `RecebidoToggle` também usa alvo de toque de
+> 24px (`w-6 h-6`), abaixo do mínimo de 44px recomendado para touch — padrão desktop-only já em
+> produção. Nenhum desses três pontos é tocado por esta fase; registrados aqui apenas para não
+> serem confundidos com a escala válida declarada acima.
 
 ---
 
 ## Typography
 
-Tamanhos e pesos realmente em uso na tela hoje (extraídos do código, não inventados):
+Tamanhos e pesos desta fase — **2 pesos no máximo**, mesma disciplina já travada na Fase 131
+(mesma tela de admin, mesmo design system: "4 tamanhos e 2 pesos, não introduzir um terceiro
+peso"):
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Label / micro | 11px | semibold (600) | 1.2 — uso em badges, rótulos uppercase (`tracking-wider`/`tracking-widest`) |
 | Body | 13px | regular (400) | 1.5 — texto de linha, células de tabela, nome de empresa em contexto secundário |
 | Heading | 15px | semibold (600) | 1.2 — nome da empresa na linha principal, título de modal |
-| Display | 20px | bold (700), `font-display` | 1.2 — valores monetários de destaque (KPIs do "Total consolidado") |
+| Display | 20px | semibold (600), `font-display` | 1.2 — valores monetários de destaque (KPIs do "Total consolidado") |
 
-**Exceção herdada (não introduzir em elementos novos):** cabeçalhos de tabela em 10px (`ProgressaoModal`, `ContratosSection`) já existem na tela — mantidos por serem cabeçalho técnico de tabela densa, não replicar o tamanho 10px em copy nova desta fase (usar 11px).
+A diferenciação do valor de destaque (Display) vem do **tamanho** (20px) + `font-display`
+(Manrope), não de um terceiro peso — `bold (700)` não é usado por esta fase.
 
-Elementos novos desta fase (badge "Fechado/Aberto", form de faixas, aviso de grupo com serviços divergentes, dialog de "Refazer") devem usar **apenas** os 4 tamanhos acima.
+**Exceção herdada (não introduzir em elementos novos):** cabeçalhos de tabela em 10px
+(`ProgressaoModal`, `ContratosSection`) já existem na tela — mantidos por serem cabeçalho técnico
+de tabela densa, não replicar o tamanho 10px em copy nova desta fase (usar 11px).
+
+Elementos novos desta fase devem usar **apenas** os 4 tamanhos e os 2 pesos acima.
 
 ---
 
@@ -96,6 +107,18 @@ Não usar destructive para "empresa sem tabela" ou "sem faturamento" — esses s
 
 ---
 
+## Foco Visual
+
+Ponto focal ao entrar na tela: o olho lê primeiro o **nome da empresa** (15px semibold, `FechamentoRow`)
+e, colado a ele, o **ícone de evolução** (`EvolucaoBadge` — verde/vermelho/cinza), porque é a única
+cor semântica na linha crua antes de expandir. Em seguida o olho é puxado pela **mensalidade em
+destaque** à direita da linha (`font-mono`, `emerald-400`). O accent amarelo (`ecf-yellow`) fica
+deliberadamente fora da leitura linha-a-linha — concentrado no cabeçalho da página (badge de status
+da competência + botão "Fechar") — para não competir com a varredura vertical da lista, que é a
+tarefa principal desta tela.
+
+---
+
 ## Copywriting Contract
 
 ⚠️ Regra sistêmica do projeto: nenhum termo técnico interno cru na tela — nada de "snapshot",
@@ -112,10 +135,13 @@ tela já usa (**"fechamento"**, **"faixa"**, **"mês"**) e nada além disso.
 | Dialog "Refazer fechamento" — corpo | `Os valores já cobrados ficam registrados no histórico. Ao confirmar, os números exibidos nesta tela passam a refletir o novo cálculo.` |
 | Dialog "Refazer fechamento" — campo obrigatório | Label: `Motivo do reprocessamento` · placeholder: `Ex.: correção de faturamento na Adman após o fechamento.` · Botão de confirmar desabilitado até o campo ter conteúdo. |
 | Confirmação "Fechar" (primeira vez, `confirm()` nativo — mesmo padrão já usado no arquivo para ações de contrato) | `Fechar {mês}/{ano}? Depois de fechado, os valores desta competência ficam registrados e não mudam sozinhos — use "Refazer fechamento" se precisar corrigir depois.` |
+| Erro ao fechar a competência | `Não foi possível fechar {mês}/{ano}. Nada foi alterado — tente novamente ou avise o time técnico.` |
+| Erro ao refazer a competência | `Não foi possível refazer o fechamento de {mês}/{ano}. O registro anterior continua valendo.` |
 | Empresa sem tabela cadastrada e sem serviço com tabela | Placeholder: `Tabela de faixas: A DEFINIR` (reaproveita literalmente o placeholder `A DEFINIR` já usado em `ContratoPdfService::PLACEHOLDER` para o mesmo conceito de ausência visível) + subtexto: `Cadastre a tabela de faturamento desta empresa para ela entrar no fechamento.` + botão `Cadastrar tabela de faixas`. |
 | Empresa sem faturamento no mês | `Sem faturamento neste mês` — nunca branco/traço silencioso; não desenha a barra de progresso de faixa quando não há faturamento. |
 | Empresa com tabela herdada do serviço | `Tabela do serviço {nome do serviço}` (cor neutra, sem badge de alerta — é o caminho padrão). |
 | Empresa com tabela própria (exceção) | `Tabela própria desta empresa` (badge neutro, não accent — accent é reservado para ação/status, não para metadado informativo) + subtexto: `Substitui completamente a tabela do serviço "{nome}".` |
+| Erro ao salvar faixa (limites sobrepostos) | `Essa faixa se sobrepõe à faixa {ordem}. Ajuste o limite antes de salvar.` |
 | Grupo com empresas de serviços diferentes | Banner de aviso (não erro): `Este grupo tem empresas com tabelas diferentes` + lista "empresa → tabela aplicada" por linha. Cor âmbar (`amber-400`, mesma família já usada em `IntegrationBadge`), não destructive. |
 | Faturamento combinado ML + Shopee | Linha de detalhe abaixo do valor total: `Mercado Livre {valor} + Shopee {valor} = {total}` — nunca soma silenciosa sem abrir a composição. |
 | Modal "Ver progressão" — subtítulo | `Progressão de faixa` (mantém título já existente) — remove a coluna "Acumulado" e a palavra "acumulado" de toda a UI; renomeia a coluna restante de "Fat. do mês" para apenas `Faturamento do mês` (já não há ambiguidade sem a coluna acumulada ao lado). |
@@ -153,11 +179,11 @@ Novo bloco dentro do accordion da empresa (não uma rota separada — mantém a 
 - **Empresa sem exceção (usa a do serviço):** lista somente leitura das faixas do serviço, com rótulo `Tabela do serviço {nome}` e um botão secundário `Criar tabela própria` (que abre o form vazio).
 - **Empresa com exceção própria:** lista editável (linhas: ordem, limite superior, valor), rótulo `Tabela própria desta empresa`, aviso fixo "Substitui completamente a tabela do serviço" (D-13, sempre visível quando há exceção — nunca só na hora de salvar), botão `Adicionar faixa`, e por linha: editar/remover. Botão `Voltar a usar a tabela do serviço` (ação que apaga a exceção — precisa de `confirm()` porque remove dado).
 - **Empresa sem tabela nenhuma (nem própria, nem serviço tem tabela):** estado `A DEFINIR` (ver Copywriting) com CTA único `Cadastrar tabela de faixas`.
-- Form de faixa (linha): campos `Ordem` (número), `Faturamento até` (moeda, vazio = "sem teto" — rotular como `Sem limite superior`, nunca deixar o campo mudo sem explicação), `Valor da mensalidade` (moeda). Usa `Dialog` + `Input`/`Label` já existentes (mesmo padrão do modal de contrato já presente no arquivo).
+- Form de faixa (linha): campos `Ordem` (número), `Faturamento até` (moeda, vazio = "sem teto" — rotular como `Sem limite superior`, nunca deixar o campo mudo sem explicação), `Valor da mensalidade` (moeda). Usa `Dialog` + `Input`/`Label` já existentes (mesmo padrão do modal de contrato já presente no arquivo). Erro de validação: ver "Erro ao salvar faixa" em Copywriting.
 
 ### 5. Fechar / Refazer competência
-- Botão `Fechar {mês}/{ano}` — accent, só aparece quando o mês está aberto. Ação: `confirm()` nativo (copy acima) → POST.
-- Após fechado: botão muda para `Refazer fechamento` — tratamento destructive (borda/texto vermelho, não preenchido — mesmo peso visual do botão "Desativar contrato" já existente, não um botão vermelho sólido chamativo). Ação abre `Dialog` com campo obrigatório de motivo (não usa `confirm()` porque precisa capturar texto).
+- Botão `Fechar {mês}/{ano}` — accent, só aparece quando o mês está aberto. Ação: `confirm()` nativo (copy acima) → POST. Falha: ver "Erro ao fechar a competência" em Copywriting.
+- Após fechado: botão muda para `Refazer fechamento` — tratamento destructive (borda/texto vermelho, não preenchido — mesmo peso visual do botão "Desativar contrato" já existente, não um botão vermelho sólido chamativo). Ação abre `Dialog` com campo obrigatório de motivo (não usa `confirm()` porque precisa capturar texto). Falha: ver "Erro ao refazer a competência" em Copywriting.
 - Nenhum botão de fechar/refazer aparece por linha de empresa — é uma ação de competência inteira, no cabeçalho da página.
 
 ---
