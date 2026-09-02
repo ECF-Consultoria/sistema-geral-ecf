@@ -217,6 +217,11 @@ class Company extends Model
         // Quick task 260805-eqk — Notes do deal (espelho do HubSpot) + origem
         // do lead vinda do contato principal.
         'hubspot_notas', 'origem_lead',
+        // Fase 138 (plano 03, COMERC-02, D-09) — responsável comercial e data
+        // da venda. `hubspot_owner_id`/`hubspot_owner_nome` são espelho do
+        // HubSpot (reescritos a cada processamento, como `hubspot_notas`/
+        // `hubspot_observacao`); `data_venda` é a data de fechamento do deal.
+        'hubspot_owner_id', 'hubspot_owner_nome', 'data_venda',
     ];
 
     protected $casts = [
@@ -239,6 +244,8 @@ class Company extends Model
         'hubspot_snapshot' => 'array',
         // Quick task 260805-eqk — lista de Notes do deal [{id, body, timestamp}].
         'hubspot_notas'    => 'array',
+        // Fase 138 (plano 03, COMERC-02, D-09) — data de fechamento do deal.
+        'data_venda' => 'date',
     ];
 
     /**
