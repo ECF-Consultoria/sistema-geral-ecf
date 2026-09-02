@@ -225,6 +225,30 @@ class EtapaPontoUnicoTest extends TestCase
     //     tem `->update(['etapa' => $etapa])` — passa porque o arquivo NÃO
     //     cita Company (0 ocorrências) e a tabela é onboarding_passos, não
     //     companies.
+    //
+    // Prova por injeção real (137-08-PLAN.md, Task 2), datada 2026-09-02 —
+    // cada sonda criada isoladamente em app/Http/Controllers/, gate rodado,
+    // sonda removida antes da próxima; árvore confirmada limpa ao final
+    // (`git status --short` sem `??` em app/):
+    //   Sonda 1 (nome de variável diferente — $empresa->etapa = ...):
+    //     `phpunit tests/Feature/Phase137/EtapaPontoUnicoTest.php --filter
+    //     test_gate_nenhum_arquivo_de_app_escreve_companies_etapa_fora_do_servico`
+    //     → FALHA, nomeando SondaGate137_08Temp.php:15, [Regra A].
+    //   Sonda 2 (array indireto, sem token Company no corpo — $dados['etapa']
+    //     = 'em_operacao'; $company->update($dados);): mesmo comando → FALHA,
+    //     nomeando SondaGate137_08Temp.php:19, [Regra B].
+    //   Sonda 3 (DB::table('companies')->where(...)->update(['etapa' =>
+    //     ...])): mesmo comando → FALHA, nomeando SondaGate137_08Temp.php:18,
+    //     [Regra C] (disparada pelo detector DB::table('companies')).
+    //   Sonda 4 (regressão — $company->etapa = ..., nome original já coberto
+    //     pelo 137-06): mesmo comando → FALHA, nomeando
+    //     SondaGate137_08Temp.php:16, [Regra A]. Confirma que a ampliação não
+    //     perdeu o que já funcionava.
+    //   Sonda 5 (falso positivo de comentário — único conteúdo relevante é um
+    //     comentário contendo `$company->etapa = Company::ETAPA_EM_OPERACAO;`
+    //     como texto, sem código de escrita real): mesmo comando → `OK (1
+    //     test, 2 assertions)`, provando a neutralização de comentários.
+    // Evidência completa (saída real do phpunit) em 137-08-SUMMARY.md.
     // ═════════════════════════════════════════════════════════════════════
 
     /**
