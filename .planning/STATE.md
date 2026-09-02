@@ -3,16 +3,24 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 137-07-PLAN.md
-last_updated: "2026-09-01T20:51:36Z"
-last_activity: 2026-09-01 -- Phase 137 Plan 07 concluído, FASE 137 COMPLETA (commits `7e21aa92`, `4c89cc6d`)
+stopped_at: Completed 137-08-PLAN.md (gap closure G1)
+last_updated: "2026-09-02T12:34:59Z"
+last_activity: 2026-09-02 -- Phase 137 Plan 08 concluído (gap closure G1 do 137-VERIFICATION.md/137-REVIEW.md CR-01, commits `2a1aa606`, `ff5e2ee1`)
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_plans: 11
+  completed_plans: 8
+  percent: 73
 ---
+
+> ⚠️ **Correção manual do frontmatter acima (137-08), ver `<process_note>` do
+> executor:** `state.advance-plan` do `gsd-tools.cjs` zera `progress.percent`,
+> recomputa contra totais GLOBAIS do projeto (não desta fase) e corrompe
+> `milestone_name` com um em-dash espúrio. `total_plans`/`completed_plans`
+> acima contam os 7 planos originais da Fase 137 + os 4 planos de gap
+> closure (137-08..137-11) — 8/11 concluídos após este plano. Não rodar
+> `state.advance-plan` sem reconferir o resultado à mão.
 
 # Project State
 
@@ -32,8 +40,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — **COMPLETA (7/7 planos)**
-Plan: 7 of 7 — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — **7/7 planos originais
+completos + 1/4 planos de gap closure (137-08) concluído; 137-09/10/11 pendentes**
+Plan: 8 of 11 (7 originais + 137-08) — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
 em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
 no model `Company`, ETAPA-01 fechado); 137-03 concluído (`EtapaTransicaoService` — único ponto de
 escrita de `companies.etapa`, tabela `company_etapa_transicoes` de histórico append-only, ETAPA-03
@@ -59,9 +68,25 @@ para não colidir com o gate estático D-19 do 137-04; ver `137-07-SUMMARY.md` p
 da verificação — `.env` do worktree apontava pro build de `ecf_admin` e a suíte Feature completa
 segue não-terminável neste ambiente, ambos documentados como dívida explícita, não regressão desta
 fase). **As 6 Success Criteria e os 6 requirements (ETAPA-01..06) da Fase 137 estão fechados.**
-Status: Fase 137 completa. Próxima fase (138 — Área Comercial conectada à etapa) ainda **não foi
-planejada** (`Plans: TBD` no ROADMAP) — requer `/gsd-plan-phase 138` antes de qualquer execução.
-Last activity: 2026-09-01 -- Phase 137 Plan 07 concluído, FASE 137 COMPLETA (commits `7e21aa92`, `4c89cc6d`)
+**137-08 concluído** (gap closure G1 CRITICAL do `137-VERIFICATION.md`/`137-REVIEW.md` CR-01: o
+gate estático `EtapaPontoUnicoTest.php` Grupo 2, que o próprio verificador provou contornável por
+injeção real de código em 3 formas — nome de variável diferente de `$company`, array de update
+montado indiretamente, `DB::table('companies')->update()` — foi reescrito com 3 regras avaliadas
+sobre código já limpo de comentário: Regra A roda no ARQUIVO inteiro sem exigir o nome literal
+`$company`; Regra B cobre `$var['etapa'] = ...` combinada a um detector de escrita em `Company`
+ampliado com `DB::table('companies')` e um guard por ARQUIVO (não por corpo, porque
+`corposDeFuncao()` descarta a assinatura da função); Regra C mantém a proteção contra o falso
+positivo de `OnboardingPasso::etapa` do 137-06. Escopo estendido a `database/migrations/`. As 3
+sondas de bypass + 1 sonda de regressão + 1 sonda de falso positivo de comentário foram injetadas
+de verdade, uma de cada vez, e produziram exatamente o veredito esperado — evidência em
+`137-08-SUMMARY.md`. Suíte da fase 46/46 verde, baseline 24/24 verde, árvore confirmada limpa após
+cada sonda removida. `EXCECOES_REGRA_A` nasce vazia — zero falsos positivos na árvore atual.
+Faltam 3 planos de gap closure planejados e não executados: 137-09 (G2), 137-10 (G4+G5+G6),
+137-11 (G3) — ver `ROADMAP.md` Wave 5-6).
+Status: Fase 137 — G1 fechado; 3 gaps de gap-closure restantes (não bloqueiam entre si). Próxima
+fase da milestone (138 — Área Comercial conectada à etapa) ainda **não foi planejada**
+(`Plans: TBD` no ROADMAP) — requer `/gsd-plan-phase 138` antes de qualquer execução.
+Last activity: 2026-09-02 -- Phase 137 Plan 08 concluído, G1 (CRITICAL) fechado (commits `2a1aa606`, `ff5e2ee1`)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
@@ -1393,6 +1418,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-02T12:34:59Z
+Stopped at: Completed 137-08-PLAN.md — gap closure G1 (CRITICAL) fechado (commits `2a1aa606`, `ff5e2ee1`); 137-09/10/11 pendentes
 Last session: 2026-09-01T20:51:36Z
 Stopped at: Completed 137-07-PLAN.md — FASE 137 COMPLETA (7/7 planos)
 Last session: 2026-09-01T20:05:00Z
@@ -1508,3 +1535,4 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 137]: 137-07: Task 3 (`<action>` pedia `php artisan test` completo contra a baseline) rodou o subset seguro (`tests/Unit/Phase137 tests/Feature/Phase137` + as duas suítes baseline de `/companies`, 70/70 verde) em vez da suíte completa — `137-BASELINE-TESTES.md` (137-01, ANTES de qualquer código desta fase) já havia medido que `--testsuite=Feature` não termina neste worktree (trava em timeout de rede de 300s); nesta sessão 4 suítes candidatas foram sondadas à parte e passaram limpas (28/28), mas o teste exato que trava não foi isolado — dívida explícita registrada em `137-07-SUMMARY.md` para sobreviver ao `/gsd:verify-work`
 - [Phase 137]: 137-07: verificação humana real (Task 3) encontrou e o orquestrador corrigiu um `.env` de worktree com `APP_URL`/`ASSET_URL` apontando para `/ecf_admin/public` (copiado de outro checkout) — causava tela branca em toda navegação por servir HTML do manifest do Vite deste worktree mas apontar o navegador pro build do OUTRO; corrigido para `/ecf_fluxo_entrada/public`, `.env` não é versionado, correção não commitada e não deve ser revertida
 - [Phase 137]: **FASE 137 COMPLETA** — 137-07 fecha ETAPA-05, o último dos 6 requirements (`ETAPA-01`..`ETAPA-06`); as 6 Success Criteria do ROADMAP para a Fase 137 estão todas satisfeitas. Próxima fase da milestone v23.0 (138 — Área Comercial conectada à etapa) ainda não foi planejada
+- [Phase 137]: 137-08 (gap closure G1, CRITICAL): gate estático `EtapaPontoUnicoTest.php` Grupo 2 reescrito — Regra A (atribuição direta `->etapa = ...`) deixou de exigir o nome literal `$company` e passou a rodar sobre o ARQUIVO inteiro (não por corpo de função); Regra B nova cobre `$var['etapa'] = ...` montado indiretamente; detector de escrita em `Company` ganhou `DB::table('companies')` e um guard avaliado por ARQUIVO (não por corpo — `corposDeFuncao()` descarta a assinatura da função, então um parâmetro `Company $empresa` some do texto varrido); comentários (`T_COMMENT`/`T_DOC_COMMENT`) neutralizados antes de qualquer regex rodar; escopo estendido a `database/migrations/`. As 3 sondas de bypass do `137-VERIFICATION.md` + 1 sonda de regressão + 1 sonda de falso positivo de comentário foram injetadas de verdade (uma por vez, sempre removendo a anterior) e produziram exatamente o veredito esperado; árvore confirmada limpa ao final. `EXCECOES_REGRA_A` nasce vazia — zero falsos positivos medidos na árvore atual, incluindo o pior caso (`CompanyController::index()`, ~354 linhas). Suíte da fase 46/46 verde, baseline `/companies` 24/24 verde. Nenhum deviation — plano executado exatamente como escrito. Restam 137-09 (G2), 137-10 (G4+G5+G6) e 137-11 (G3), planejados e não executados
