@@ -79,3 +79,33 @@ carrega por fase. A 138 tem; a 137 não.
 **Regra prática para a próxima fase:** confie no `gsd-plan-checker` e nos números
 conferidos à mão; trate os dois gates automáticos como suspeitos até provar o contrário.
 Os três problemas acima são do ferramental, não do plano.
+
+---
+
+## 4. `state.record-session` corrompe o `STATE.md` de três jeitos (medido 2026-09-02)
+
+O `STATE.md` já carregava um aviso escrito sobre `state.advance-plan`. O
+`state.record-session` — usado pelo passo `update_state` do `discuss-phase` — tem
+problemas próprios. Medidos rodando uma vez, na sessão de contexto da Fase 138:
+
+1. **Achata o `last_activity` para só a data.** A linha descritiva anterior
+   (`2026-09-02 -- Phase 137 Plan 11 concluído ... FASE 137 COMPLETA, 11/11 planos`)
+   virou `last_activity: 2026-09-02`. O registro do que foi feito **se perde**, e é
+   justamente o campo que a próxima sessão lê para saber onde parou.
+
+2. **Insere linhas em branco espúrias no corpo do arquivo.** Duas linhas em branco
+   apareceram no meio de um parágrafo de prosa da seção `Current Position`, a ~700
+   linhas do que estava sendo editado, partindo a frase no meio. O diff acusou
+   `8 inserções / 6 deleções` para uma atualização que deveria ser de 3 linhas.
+
+3. **Sobrescreve o topo da pilha do `Session Continuity` em vez de empilhar.** A
+   entrada mais recente (137-11) foi **substituída** pela nova, em vez de a nova
+   entrar acima dela. As entradas mais antigas ficaram intactas — ou seja, o histórico
+   perde exatamente o registro anterior, sempre.
+
+**Como trabalhar:** rodar o comando, depois `git diff -- .planning/STATE.md` e **ler o
+diff inteiro** antes de commitar. Conferir os três pontos acima e corrigir à mão. Um
+`cp .planning/STATE.md /tmp/STATE.md.bak-<fase>` antes de rodar poupa o trabalho de
+reconstruir o texto perdido. Nunca commitar a saída do `record-session` sem olhar — o
+número de linhas mudadas não bate com o tamanho da mudança pretendida, e esse é o
+sintoma barato.
