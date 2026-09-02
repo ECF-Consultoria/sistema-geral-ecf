@@ -1019,6 +1019,22 @@ class MlbImplementacao extends Model
         return $partes === [] ? null : implode(' · ', $partes);
     }
 
+    /**
+     * Observação que o cliente escreveu no item "Observações sobre publicação".
+     *
+     * Método próprio (e não `respostaChecklist('publicar_em_massa')`) porque o texto mora
+     * em `observacao`, não em `valor` — `valor` guarda a resposta do select "Publicar em
+     * Massa?" que o item era até 02/09/2026 e que NÃO deve reaparecer em tela nenhuma.
+     *
+     * @return string|null null quando não há observação (o Painel mostra "—").
+     */
+    public function observacaoPublicacao(): ?string
+    {
+        $texto = trim((string) ($this->dados['itens']['publicar_em_massa']['observacao'] ?? ''));
+
+        return $texto === '' ? null : $texto;
+    }
+
     public function progresso(): array
     {
         // Conta sobre o CHECKLIST atual (via merge), não sobre o JSON congelado da ficha:

@@ -161,6 +161,13 @@ function encurtaLink(v) {
     return s.length > 34 ? `${s.slice(0, 18)}…${s.slice(-12)}` : s;
 }
 
+// Texto livre (observação do cliente) → uma linha curta para caber no funil do filtro.
+// As quebras de linha viram espaço: o dropdown é de uma linha só.
+function encurtaTexto(v, max = 60) {
+    const s = String(v ?? '').replace(/\s+/g, ' ').trim();
+    return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
 // Data ISO (Y-m-d) → rótulo BR nas opções do filtro (sem fuso: string pura).
 function fmtDataBR(v) {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
@@ -734,6 +741,9 @@ export default function PolosPainel({
             // têm até 92 caracteres e estourariam a célula e o dropdown.
             produtos_perfil:     { key: 'produtos_perfil', label: 'Perfil produtos', accessor: (e) => e.produtos_perfil, format: (v) => (v === VAZIO ? '(Sem resposta)' : (PERFIL_PRODUTOS_CURTO[v] ?? v)) },
             canais_faturamento:  { key: 'canais_faturamento', label: 'Outros canais', accessor: (e) => e.canais_faturamento, format: (v) => (v === VAZIO ? '(Sem resposta)' : (CANAIS_CURTO[v] ?? v)) },
+            // Texto livre — não há dicionário de rótulo curto. Filtrável pelo mesmo motivo
+            // do link_whatsapp: o uso real é isolar "(Sem observação)" e ler quem escreveu.
+            obs_publicacao:      { key: 'obs_publicacao', label: 'Obs. publicação', accessor: (e) => e.obs_publicacao, format: (v) => (v === VAZIO ? '(Sem observação)' : encurtaTexto(v)) },
             places:              { key: 'places', label: 'Places', accessor: (e) => e.places },
             erp:                 { key: 'erp', label: 'ERP', accessor: (e) => e.erp },
         };
@@ -1472,13 +1482,15 @@ const COLS_POR_LENTE = {
         'data_cadastro',
         'fase', 'estagio', 'polo', 'responsavel', 'onboarding', 'envio', 'status_entrada', 'chance_entrada',
         'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao',
-        'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao',
+        'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'obs_publicacao',
         'contextos_logistica', 'me1', 'integradora', 'produtos_perfil', 'places', 'erp',
         'fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status',
         '__acoes__',
     ],
     acessos:    ['acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao'],
-    produtos:   ['planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao'],
+    // 'obs_publicacao' fecha o bloco: é a resposta do CLIENTE sobre a publicação, ao lado
+    // das colunas que a equipe preenche sobre o mesmo assunto.
+    produtos:   ['planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'obs_publicacao'],
     // 'produtos_perfil' vive aqui, ao lado do ME1: é a resposta do cliente que decide o ME1.
     logistica:  ['contextos_logistica', 'me1', 'integradora', 'produtos_perfil', 'places', 'erp'],
     financeiro: ['fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status'],
@@ -1499,10 +1511,13 @@ function colsDaLente(lente, isAdmin) {
 // em dados.itens.<id>.valor (JSON da ficha) e o Painel não tem caminho de escrita pra lá —
 // os blocos de BLOCO_DE gravam colunas de mlb_implementacoes. Quem responde é o cliente.
 // A grade mostra o rótulo curto; a frase inteira fica no title (hover).
-function CelResposta({ valor, curto }) {
+// `curto` é opcional: a observação de publicação é texto livre e não tem dicionário de
+// rótulo — cai no próprio valor. `maxW` porque uma frase escrita pelo cliente precisa de
+// mais largura do que uma opção de select.
+function CelResposta({ valor, curto = {}, maxW = 'max-w-[190px]' }) {
     if (!valor) return <span className="text-white/20 text-[12px]">—</span>;
     return (
-        <div className="max-w-[190px] truncate text-[12px] text-white/70" title={valor}>
+        <div className={cn(maxW, 'truncate text-[12px] text-white/70')} title={valor}>
             {curto[valor] ?? valor}
         </div>
     );
@@ -1611,6 +1626,10 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
         <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="decola" opcoes={opcoes.decola} presentes={valoresPresentes.decola} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><EditToggle e={e} campo="campanha_criada" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
         <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="central_promocao" opcoes={opcoes.central_promocao} presentes={valoresPresentes.central_promocao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
+        {/* Observação escrita pelo CLIENTE no link do Onboarding — somente leitura, como
+            as demais respostas dele. A frase inteira (com as quebras de linha) fica no
+            title; a célula mostra a primeira linha truncada. */}
+        <td className={td}><CelResposta valor={e.obs_publicacao} maxW="max-w-[260px]" /></td>
     </>);
 
     const celLogistica = (<>

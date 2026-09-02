@@ -133,4 +133,63 @@ class PainelRespostasChecklistTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($p) => $p->where('empresas.0.produtos_perfil', self::PERFIL_GRANDE));
     }
+
+    // ─── Obs. publicação (item 09, texto livre) ──────────────────────────────
+
+    public function test_observacao_de_publicacao_le_observacao_e_nunca_o_select_antigo(): void
+    {
+        // Ficha respondida quando o item 09 ainda era o select "Publicar em Massa?": tem
+        // 'valor', não tem 'observacao'. A coluna precisa ficar VAZIA — mostrar "Sim" ali
+        // seria exibir a resposta de outra pergunta.
+        $dados = MlbImplementacao::dadosPadrao();
+        $dados['itens']['publicar_em_massa'] = ['valor' => 'Sim', 'feito' => true];
+
+        $this->assertNull($this->empresaComFicha($dados)->observacaoPublicacao());
+
+        // Só espaço em branco também é "sem observação".
+        $dados['itens']['publicar_em_massa']['observacao'] = '   ';
+        $this->assertNull($this->empresaComFicha($dados)->observacaoPublicacao());
+
+        $dados['itens']['publicar_em_massa']['observacao'] = 'Não anunciar a linha infantil.';
+        $this->assertSame(
+            'Não anunciar a linha infantil.',
+            $this->empresaComFicha($dados)->observacaoPublicacao()
+        );
+    }
+
+    public function test_observacao_do_cliente_pelo_link_chega_ao_painel(): void
+    {
+        // Ponta a ponta: o cliente escreve no link público e a equipe vê a coluna no Painel
+        // (lentes Geral e Produtos & Publicação).
+        $impl  = $this->empresaComFicha(MlbImplementacao::dadosPadrao());
+        $texto = "Não anunciar a linha infantil.\nPrioridade: SKUs 100-120.";
+
+        $this->patch(route('implementacao.salvar', $impl->token), [
+            'id'    => 'publicar_em_massa',
+            'campo' => 'observacao',
+            'valor' => $texto,
+        ])->assertOk();
+
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->get(route('mlb.polos-painel'))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->where('empresas.0.obs_publicacao', $texto));
+    }
+
+    public function test_empresa_sem_ficha_manda_obs_publicacao_null(): void
+    {
+        MlbEmpresa::create([
+            'nome' => 'Loja Sem Ficha Obs', 'tipo' => 'POLO', 'projeto' => 'POLOS',
+            'fase' => 'M2', 'polo' => 'Arapongas',
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->get(route('mlb.polos-painel'))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->where('empresas.0.obs_publicacao', null));
+    }
 }

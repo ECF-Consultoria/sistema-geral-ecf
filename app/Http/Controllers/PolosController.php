@@ -433,6 +433,9 @@ class PolosController extends Controller
                     // Canal + faixa: o item virou duas perguntas em 02/09/2026 e
                     // respostaChecklist() só devolveria a faixa.
                     'canais_faturamento'       => $impl?->respostaCanaisVenda(),
+                    // Texto livre do item "Observações sobre publicação" (mora em
+                    // `observacao`, não em `valor` — ver observacaoPublicacao()).
+                    'obs_publicacao'           => $impl?->observacaoPublicacao(),
                     'data_solicitacao'         => $impl?->data_solicitacao?->format('Y-m-d'),
                     // Data de cadastro/entrada da empresa no sistema (automática; existe sem ficha).
                     'data_cadastro'            => $e->created_at?->format('Y-m-d'),
@@ -614,6 +617,8 @@ class PolosController extends Controller
             ['key' => 'decola',              'label' => 'Decola',              'tipo' => 'texto'],
             ['key' => 'campanha_criada',     'label' => 'Campanha',            'tipo' => 'texto'],
             ['key' => 'central_promocao',    'label' => 'Central de Promoção', 'tipo' => 'texto'],
+            // Resposta do cliente no link do Onboarding (JSON, não coluna).
+            ['key' => 'obs_publicacao',      'label' => 'Obs. publicação',     'tipo' => 'texto'],
             // ── Logística ──
             ['key' => 'contextos_logistica', 'label' => 'Contextos logística', 'tipo' => 'texto'],
             ['key' => 'me1',                 'label' => 'ME1',                 'tipo' => 'texto'],
@@ -823,6 +828,7 @@ class PolosController extends Controller
                 'decola'              => $impl?->decola,
                 'campanha_criada'     => $simNao($impl ? (bool) $impl->campanha_criada : null),
                 'central_promocao'    => $impl?->central_promocao,
+                'obs_publicacao'      => $impl?->observacaoPublicacao(),
                 'contextos_logistica' => $impl?->contextos_logistica,
                 'me1'                 => $impl?->me1,
                 'integradora'         => $impl?->integradora,
