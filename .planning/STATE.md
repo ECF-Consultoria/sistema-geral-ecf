@@ -3,23 +3,23 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 137-09-PLAN.md (gap closure G2)
-last_updated: "2026-09-02T12:47:15Z"
-last_activity: 2026-09-02 -- Phase 137 Plan 09 concluído (gap closure G2 do 137-VERIFICATION.md/137-REVIEW.md CR-02, commits `c08d836d`, `a0001044`)
+stopped_at: Completed 137-10-PLAN.md (gap closure G4+G5+G6)
+last_updated: "2026-09-02T13:00:30Z"
+last_activity: 2026-09-02 -- Phase 137 Plan 10 concluído (gap closure G4/WR-01 + G5/WR-02 + G6 do 137-REVIEW.md, commits `0a120abf`, `f8558fb5`, `9eaa4fac`)
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 11
-  completed_plans: 9
-  percent: 82
+  completed_plans: 10
+  percent: 91
 ---
 
-> ⚠️ **Correção manual do frontmatter acima (137-08/137-09), ver `<process_note>`
+> ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10), ver `<process_note>`
 > do executor:** `state.advance-plan` do `gsd-tools.cjs` zera `progress.percent`,
 > recomputa contra totais GLOBAIS do projeto (não desta fase) e corrompe
 > `milestone_name` com um em-dash espúrio. `total_plans`/`completed_plans`
 > acima contam os 7 planos originais da Fase 137 + os 4 planos de gap
-> closure (137-08..137-11) — 9/11 concluídos após este plano. Não rodar
+> closure (137-08..137-11) — 10/11 concluídos após este plano. Não rodar
 > `state.advance-plan` sem reconferir o resultado à mão.
 
 # Project State
@@ -41,8 +41,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 137 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — **7/7 planos originais
-completos + 2/4 planos de gap closure (137-08, 137-09) concluídos; 137-10/11 pendentes**
-Plan: 9 of 11 (7 originais + 137-08 + 137-09) — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+completos + 3/4 planos de gap closure (137-08, 137-09, 137-10) concluídos; 137-11 pendente**
+Plan: 10 of 11 (7 originais + 137-08 + 137-09 + 137-10) — 137-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
 em `137-BASELINE-TESTES.md`); 137-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
 no model `Company`, ETAPA-01 fechado); 137-03 concluído (`EtapaTransicaoService` — único ponto de
 escrita de `companies.etapa`, tabela `company_etapa_transicoes` de histórico append-only, ETAPA-03
@@ -97,11 +97,34 @@ batches (antes e depois, T-137-30). Schema real reconferido por `SHOW CREATE TAB
 (`EtapaHistoricoAtorTest`, 4 testes) com prova por regressão dirigida — revertida a migration para
 `cascadeOnDelete()` sem `nullable()`, 2 dos 4 testes falharam como esperado; reversão desfeita e
 conferida byte-idêntica ao commit. Suíte da fase 50/50 verde, baseline 24/24 verde — evidência em
-`137-09-SUMMARY.md`. Faltam 2 planos de gap closure: 137-10 (G4+G5+G6), 137-11 (G3).
-Status: Fase 137 — G1+G2 fechados; 2 gaps de gap-closure restantes (não bloqueiam entre si).
+`137-09-SUMMARY.md`. Faltava 1 plano de gap closure: 137-10 (G4+G5+G6).
+**137-10 concluído** (gap closure G4 WARNING + G5 WARNING + G6 docs do `137-REVIEW.md`: G4/WR-01 —
+`EtapaTransicaoService::transicionar()` decidia sobre `$company` em memória ANTES de
+`DB::transaction()` abrir, sem `lockForUpdate()` nem re-leitura — TOCTOU latente hoje, mas a Fase
+138 pluga um webhook (reentrega/retry concorrente) como primeiro chamador real. Corrigido seguindo
+os dois precedentes do projeto (`CompanyScoreSnapshotWriter::sync()` D-122-08 e
+`DesempenhoMetricasManuaisController::salvar()`): a avaliação antiga fora da transação foi REMOVIDA
+por completo, e `podeTransicionar()` passa a decidir sobre `Company::whereKey($id)->lockForUpdate()
+->first()`, relido DENTRO da closure. Empresa removida entre a chamada e o lock devolve `erro` sem
+exceção vazar; o objeto `Company` do chamador é sincronizado após sucesso. Docblock documenta que
+`lockForUpdate()` é no-op no SQLite dos testes — a suíte prova re-leitura de estado divergente
+memória-vs-banco, não serialização de concorrência real (só o MariaDB de produção prova isso). G5/
+WR-02 — `EtapaBackfill` usava `pluck('id', 'name')` sobre `companies.name`, que não tem
+`unique()`; colisão de nome colapsava duas empresas do balde 1 numa só, descartando a primeira em
+silêncio (invisível localmente: só 1/180 cai no balde 1; produção tem ~500). Trocado para
+`pluck('id')`; amostra do dry-run passou a ser consulta separada. G6 — `137-01-PLAN.md` declarava
+`requirements: [ETAPA-01, ETAPA-02]` sem ter tocado `app/`/`database/`; zerado para `requirements: []`
+com comentário de justificativa — `ETAPA-01` segue coberto por 137-02, `ETAPA-02` por 137-05/137-10,
+nenhum dos 6 IDs órfão (conferido por grep). Prova dirigida para os dois fixes de código: revertida
+cada correção via cópia de arquivo (nunca `git checkout`/`stash`, proibidos neste worktree), os
+testes novos FALHARAM como esperado, reversão desfeita. Suíte da fase 55/55 verde
+(50 anteriores + 4 do serviço + 1 do backfill), baseline 24/24 verde, gate estático
+`EtapaPontoUnicoTest.php` 4/4 verde — evidência em `137-10-SUMMARY.md`. Falta 1 plano de gap
+closure: 137-11 (G3).
+Status: Fase 137 — G1+G2+G4+G5+G6 fechados; 1 gap de gap-closure restante (G3, 137-11).
 Próxima fase da milestone (138 — Área Comercial conectada à etapa) ainda **não foi planejada**
 (`Plans: TBD` no ROADMAP) — requer `/gsd-plan-phase 138` antes de qualquer execução.
-Last activity: 2026-09-02 -- Phase 137 Plan 09 concluído, G2 (CRITICAL) fechado (commits `c08d836d`, `a0001044`)
+Last activity: 2026-09-02 -- Phase 137 Plan 10 concluído, G4+G5+G6 fechados (commits `0a120abf`, `f8558fb5`, `9eaa4fac`)
 
 > ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
 > reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate

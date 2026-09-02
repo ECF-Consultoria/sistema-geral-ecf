@@ -2103,7 +2103,7 @@ Plans:
   4. Pelo menos uma listagem existente pode ser filtrada por etapa e, separadamente, por "com pendência" (ETAPA-05)
   5. Tentar avançar uma etapa sem os requisitos cumpridos é recusado com uma mensagem que nomeia o requisito faltante (ex.: "contrato não assinado"), nunca um erro genérico (ETAPA-06)
 
-**Plans:** 7/7 planos originais executados · **2/4 planos de gap closure executados (137-08 — G1 CRITICAL fechado; 137-09 — G2 CRITICAL fechado); 137-10/11 planejados, não executados**
+**Plans:** 7/7 planos originais executados · **3/4 planos de gap closure executados (137-08 — G1 CRITICAL fechado; 137-09 — G2 CRITICAL fechado; 137-10 — G4/G5 WARNING + G6 docs fechados); 137-11 planejado, não executado**
 
 Plans:
 **Wave 1**
@@ -2132,7 +2132,7 @@ Plans:
 
 **Wave 6 — gap closure** *(blocked on Wave 5 completion)*
 
-- [ ] 137-10-PLAN.md — G4 + G5 + G6: `transicionar()` decide sobre a linha travada · backfill chaveado por id · frontmatter de 137-01 [wave 6]
+- [x] 137-10-PLAN.md — G4 + G5 + G6: `transicionar()` decide sobre a linha travada · backfill chaveado por id · frontmatter de 137-01 [wave 6]
 - [ ] 137-11-PLAN.md — G3: filtros de `/companies` deixam de se apagar entre si + checkpoint humano [wave 6]
 
 ### Phase 138: Área Comercial conectada à etapa (v23.0)
