@@ -3,33 +3,61 @@
 namespace App\Services\Fechamento;
 
 use App\Models\Company;
+use App\Models\CompanyGroup;
 use App\Models\ContratoServico;
 use App\Models\EmpresaFaixaFaturamento;
+use App\Models\GrupoFaixaFaturamento;
 use App\Models\Servico;
 use App\Models\ServicoFaixaFaturamento;
 use Illuminate\Support\Collection;
 
 /**
  * FechamentoFaixaResolver — responde duas perguntas do fechamento mensal
- * (Fase 137): "qual tabela de faixas vale para esta empresa?" (D-01, D-05,
- * D-13) e "em que faixa um faturamento cai?" (D-02b, faixa-piso).
+ * (Fase 137/138): "qual tabela de faixas vale para esta empresa (ou para o
+ * grupo dela)?" (D-01, D-05, D-13) e "em que faixa um faturamento cai?"
+ * (D-02b, faixa-piso).
  *
  * Serviço PURO de leitura: não grava nada, não decide faturamento — só
  * tabela e classificação. Quem soma ML+Shopee é o `FechamentoRollupService`
- * (mesmo plano, tarefa 2); quem congela o resultado é o writer do plano 04.
+ * (Fase 137); quem congela o resultado é o writer da Fase 137.
  *
- * ### paraEmpresa() — ordem de resolução (D-01/D-05/D-13)
- * 1. Exceção por empresa (`EmpresaFaixaFaturamento`) — se existir QUALQUER
+ * ### Shape único de retorno (`paraEmpresa()` e `paraGrupo()`)
+ * As 8 chaves abaixo estão SEMPRE presentes — `null` quando não se aplica —
+ * para o consumidor nunca precisar de coalesce:
+ * `origem` ('grupo'|'propria'|'servico'), `servico_id`, `servico_nome`,
+ * `grupo_id`, `grupo_nome`, `herdada_de_company_id`,
+ * `herdada_de_company_name`, `faixas`.
+ *
+ * ### paraEmpresa() — ordem de resolução (D-01/D-05/D-13, Fase 138)
+ * 1. **Tabela do GRUPO** (`GrupoFaixaFaturamento`, Fase 138, D-01) — se a
+ *    empresa pertence a um grupo (`company_group_id`) e existe QUALQUER
+ *    linha de faixa para esse grupo, ela vence sobre a exceção da própria
+ *    empresa e sobre a do serviço. Uma empresa-membro de um grupo com
+ *    tabela própria é classificada por essa tabela mesmo que ela própria
+ *    tenha uma exceção cadastrada — se o grupo negociou uma tabela, é essa
+ *    que vale para todo mundo dentro dele.
+ * 2. Exceção por empresa (`EmpresaFaixaFaturamento`) — se existir QUALQUER
  *    linha, ela substitui a tabela INTEIRA do serviço (D-13, all-or-nothing).
- * 2. Serviço candidato entre os contratos ativos da empresa — candidato é
+ * 3. Serviço candidato entre os contratos ativos da empresa — candidato é
  *    quem tem `plataforma` preenchida OU `setor` financeiro
  *    (`Servico::SETORES_FINANCEIROS`), critério em OU por robustez (ver
  *    comentário em `escolherServicoCandidato()`).
- * 3. Contrato combinado (D-05): se o candidato tem `contrato_junto_com_servico_id`
+ * 4. Contrato combinado (D-05): se o candidato tem `contrato_junto_com_servico_id`
  *    apontando para outro candidato ativo da mesma empresa, o DONO vence —
  *    mesma regra de `ContratoClicksignService::iniciarParaEmpresa()`.
- * 4. `ServicoFaixaFaturamento` do serviço escolhido — vazio vira `null`
+ * 5. `ServicoFaixaFaturamento` do serviço escolhido — vazio vira `null`
  *    (estado "A DEFINIR", nunca faixa aproximada).
+ *
+ * ### paraGrupo() — tabela aplicável ao GRUPO (Fase 138, D-01)
+ * 1. Tabela do próprio grupo, quando houver — `herdada_de_*` fica `null`.
+ * 2. Sem tabela de grupo: delega para `paraEmpresa($ancora)` e anexa
+ *    `herdada_de_company_id`/`herdada_de_company_name` da âncora —
+ *    `herdada_de_*` só é preenchido nesse caso, nunca quando a tabela do
+ *    grupo existe. É essa informação que evita a herança invisível: a tela
+ *    precisa dizer de qual empresa a tabela foi herdada.
+ * 3. Sem tabela de grupo e sem âncora informada (ou âncora sem nenhuma
+ *    tabela resolvida): `null` — estado "A DEFINIR", nunca faixa
+ *    aproximada.
  *
  * ### classificar() — regra de corte (D-02b)
  * Primeira faixa (em ordem crescente) cujo `limite_superior` seja nulo
@@ -39,12 +67,24 @@ use Illuminate\Support\Collection;
 class FechamentoFaixaResolver
 {
     /**
-     * Resolve a tabela de faixas aplicável a uma empresa.
+     * Resolve a tabela de faixas aplicável a uma empresa (grupo → própria →
+     * serviço, D-01).
      *
-     * @return array{origem: string, servico_id: int|null, servico_nome: string|null, faixas: Collection}|null
+     * @return array{origem: string, servico_id: int|null, servico_nome: string|null, grupo_id: int|null, grupo_nome: string|null, herdada_de_company_id: int|null, herdada_de_company_name: string|null, faixas: Collection}|null
      */
     public function paraEmpresa(Company $company): ?array
     {
+        // Fase 138, D-01: tabela do GRUPO vence tudo abaixo dela.
+        if ($company->company_group_id !== null) {
+            $faixasDoGrupo = GrupoFaixaFaturamento::where('company_group_id', $company->company_group_id)
+                ->ordenadas()
+                ->get();
+
+            if ($faixasDoGrupo->isNotEmpty()) {
+                return $this->shapeGrupo($company->grupo, $faixasDoGrupo);
+            }
+        }
+
         $excecaoPropria = EmpresaFaixaFaturamento::where('company_id', $company->id)
             ->ordenadas()
             ->get();
@@ -52,12 +92,7 @@ class FechamentoFaixaResolver
         // D-13: a existência de QUALQUER linha própria substitui a tabela
         // inteira do serviço — nunca linha a linha.
         if ($excecaoPropria->isNotEmpty()) {
-            return [
-                'origem'       => 'propria',
-                'servico_id'   => null,
-                'servico_nome' => null,
-                'faixas'       => $excecaoPropria,
-            ];
+            return $this->shape('propria', faixas: $excecaoPropria);
         }
 
         $servicoEscolhido = $this->escolherServicoCandidato($company);
@@ -76,11 +111,85 @@ class FechamentoFaixaResolver
             return null;
         }
 
+        return $this->shape(
+            'servico',
+            servicoId: $servicoEscolhido->id,
+            servicoNome: $servicoEscolhido->nome,
+            faixas: $faixasDoServico,
+        );
+    }
+
+    /**
+     * Resolve a tabela de faixas aplicável a um GRUPO (Fase 138, D-01):
+     * tabela própria do grupo quando houver, senão a tabela da empresa
+     * âncora com a herança marcada explicitamente.
+     *
+     * @return array{origem: string, servico_id: int|null, servico_nome: string|null, grupo_id: int|null, grupo_nome: string|null, herdada_de_company_id: int|null, herdada_de_company_name: string|null, faixas: Collection}|null
+     */
+    public function paraGrupo(CompanyGroup $grupo, ?Company $ancora): ?array
+    {
+        $faixasDoGrupo = GrupoFaixaFaturamento::where('company_group_id', $grupo->id)
+            ->ordenadas()
+            ->get();
+
+        if ($faixasDoGrupo->isNotEmpty()) {
+            return $this->shapeGrupo($grupo, $faixasDoGrupo);
+        }
+
+        if ($ancora === null) {
+            return null;
+        }
+
+        $resultadoAncora = $this->paraEmpresa($ancora);
+
+        if ($resultadoAncora === null) {
+            return null;
+        }
+
+        // Herança invisível é o defeito que D-01 veio corrigir: quem lê
+        // precisa saber de qual empresa a tabela foi herdada.
+        $resultadoAncora['herdada_de_company_id']   = $ancora->id;
+        $resultadoAncora['herdada_de_company_name'] = $ancora->name;
+
+        return $resultadoAncora;
+    }
+
+    /**
+     * Monta o shape de retorno com origem 'grupo' — usado por
+     * `paraEmpresa()` (degrau novo) e `paraGrupo()` (tabela própria).
+     */
+    private function shapeGrupo(?CompanyGroup $grupo, Collection $faixas): array
+    {
+        return $this->shape(
+            'grupo',
+            grupoId: $grupo?->id,
+            grupoNome: $grupo?->name,
+            faixas: $faixas,
+        );
+    }
+
+    /**
+     * Monta o shape único de retorno com as 8 chaves sempre presentes.
+     */
+    private function shape(
+        string $origem,
+        ?int $servicoId = null,
+        ?string $servicoNome = null,
+        ?int $grupoId = null,
+        ?string $grupoNome = null,
+        ?int $herdadaDeCompanyId = null,
+        ?string $herdadaDeCompanyName = null,
+        Collection $faixas = new Collection(),
+    ): array {
         return [
-            'origem'       => 'servico',
-            'servico_id'   => $servicoEscolhido->id,
-            'servico_nome' => $servicoEscolhido->nome,
-            'faixas'       => $faixasDoServico,
+            'origem'                   => $origem,
+            'servico_id'               => $servicoId,
+            'servico_nome'             => $servicoNome,
+            'grupo_id'                 => $grupoId,
+            'grupo_nome'               => $grupoNome,
+            'herdada_de_company_id'    => $herdadaDeCompanyId,
+            'herdada_de_company_name'  => $herdadaDeCompanyName,
+            'faixas'                   => $faixas,
         ];
     }
 
