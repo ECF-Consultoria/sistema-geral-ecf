@@ -508,4 +508,86 @@ class Phase137ConsolidarMesTest extends TestCase
         $this->assertSame($antesCount, DB::table('fechamento_snapshots')->count());
         $this->assertEqualsWithDelta($antesValor, (float) DB::table('fechamento_snapshots')->where('company_id', $company->id)->value('faturamento_total'), 0.01);
     }
+
+    // ─── valor_faixa_e_piso — cobertura pedida pelo coordenador ─────────
+    //
+    // O dado atravessa Resolver -> classificar() -> linha do comando, mas
+    // nenhum teste conferia que ele CHEGA gravado no snapshot. A wave 5 lê
+    // valor_faixa_e_piso direto do congelado para decidir "a partir de
+    // R$ 12.000" vs "R$ 12.000" seco no PDF/email — se o campo gravar
+    // sempre false, o sistema cobra a menos de quem está na faixa-piso, em
+    // silêncio. Os dois testes abaixo cobrem o caso positivo (piso) E o
+    // contraponto (faixa normal), para que um bug que gravasse `true` para
+    // todo mundo não passasse escondido atrás do primeiro teste sozinho.
+
+    #[Test]
+    public function empresa_na_ultima_faixa_de_gestao_grava_valor_faixa_e_piso_true(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-02'));
+
+        $gestao  = $this->criarServicoGestao();
+        $company = $this->criarEmpresaComContrato($gestao);
+
+        // Acima de R$ 5.000.000 — cai na 7ª faixa de Gestão ("a partir de
+        // R$ 12.000", limite_superior nulo, valor_e_piso=true na semeadura
+        // da migration 2026_09_02_100003).
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 6_000_000.00]);
+
+        $this->artisan('fechamento:consolidar-mes', ['--mes' => '2026-08'])->assertExitCode(0);
+
+        $gravado = DB::table('fechamento_snapshots')->where('company_id', $company->id)->first();
+
+        $this->assertNotNull($gravado);
+        $this->assertTrue((bool) $gravado->valor_faixa_e_piso, 'A última faixa de Gestão é piso ("a partir de R$ 12.000") — o snapshot precisa registrar isso, senão a wave 5 (PDF/email) cobra fechado onde o contrato prevê piso.');
+        $this->assertEqualsWithDelta(12_000.00, (float) $gravado->valor_faixa, 0.001);
+    }
+
+    #[Test]
+    public function empresa_em_faixa_normal_de_gestao_grava_valor_faixa_e_piso_false(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-02'));
+
+        $gestao  = $this->criarServicoGestao();
+        $company = $this->criarEmpresaComContrato($gestao);
+
+        // R$ 450.000 — cai na 1ª faixa de Gestão, valor fechado (não piso).
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 450_000.00]);
+
+        $this->artisan('fechamento:consolidar-mes', ['--mes' => '2026-08'])->assertExitCode(0);
+
+        $gravado = DB::table('fechamento_snapshots')->where('company_id', $company->id)->first();
+
+        $this->assertNotNull($gravado);
+        $this->assertFalse((bool) $gravado->valor_faixa_e_piso, 'Faixa normal (fechada) não pode gravar true — contraponto que pegaria um bug que marcasse piso para todo mundo.');
+        $this->assertEqualsWithDelta(3_000.00, (float) $gravado->valor_faixa, 0.001);
+    }
+
+    #[Test]
+    public function grupo_cuja_soma_cai_na_faixa_piso_tambem_grava_valor_faixa_e_piso_true(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-02'));
+
+        // fechamento_grupo_snapshots TEM a coluna valor_faixa_e_piso
+        // (migration 2026_09_02_100005) e ConsolidarMesFechamento a
+        // preenche a partir de $classificacaoGrupo['valor_e_piso'] — mesma
+        // classificação aplicada à SOMA das empresas-membro (D-10). Este
+        // teste prova que o grupo também não fica para trás.
+        $gestao = $this->criarServicoGestao();
+        $grupo  = CompanyGroup::create(['name' => 'Grupo Piso', 'color' => '#000']);
+
+        $membroA = $this->criarEmpresaComContrato($gestao, ['company_group_id' => $grupo->id]);
+        $membroB = $this->criarEmpresaComContrato($gestao, ['company_group_id' => $grupo->id]);
+
+        // Soma 5.500.000 — acima de R$ 5.000.000, cai na faixa-piso do grupo.
+        AdmanMetric::create(['company_id' => $membroA->id, 'reference_date' => '2026-08-10', 'revenue' => 3_000_000.00]);
+        AdmanMetric::create(['company_id' => $membroB->id, 'reference_date' => '2026-08-10', 'revenue' => 2_500_000.00]);
+
+        $this->artisan('fechamento:consolidar-mes', ['--mes' => '2026-08'])->assertExitCode(0);
+
+        $grupoGravado = DB::table('fechamento_grupo_snapshots')->where('company_group_id', $grupo->id)->first();
+
+        $this->assertNotNull($grupoGravado);
+        $this->assertTrue((bool) $grupoGravado->valor_faixa_e_piso, 'A soma do grupo caiu na faixa-piso de Gestão — o snapshot de grupo precisa registrar isso igual ao de empresa.');
+        $this->assertEqualsWithDelta(12_000.00, (float) $grupoGravado->valor_faixa, 0.001);
+    }
 }
