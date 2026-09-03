@@ -121,6 +121,16 @@ return [
         'client_secret'          => env('HUBSPOT_CLIENT_SECRET'),
         'access_token'           => env('HUBSPOT_ACCESS_TOKEN'),
         'stage_fechado_ganho_id' => env('HUBSPOT_STAGE_FECHADO_GANHO_ID', 'closedwon'),
+        // Fase 138 (COMERC-01/D-17) — o `User` que o webhook usa como ATOR da
+        // transição de nascimento em `EtapaTransicaoService::transicionar()`.
+        // O webhook não roda sob sessão autenticada (não há `$request->user()`
+        // ali), então o ator precisa vir de config, resolvido por
+        // `User::find(...)` — nunca de payload. SEM DEFAULT de propósito:
+        // chave ausente é caso TRATADO (log + empresa fica sem etapa), nunca
+        // erro. Aponta pra conta dedicada "Sistema HubSpot" criada por
+        // `hubspot:criar-usuario-sistema --apply` — nunca um admin real (D-17
+        // proíbe: geraria histórico falso na timeline da Fase 143).
+        'webhook_user_id'        => env('HUBSPOT_WEBHOOK_USER_ID'),
         'props' => [
             // Phase 111 Plan 111-01 (HUB-API-01) — deal/company/contact ganham
             // props ampliadas do handoff Comercial v20.0 (só ADICIONA chaves;
