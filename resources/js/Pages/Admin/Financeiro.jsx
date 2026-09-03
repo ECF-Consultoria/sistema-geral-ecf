@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, router } from '@inertiajs/react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer, Send, Settings, RefreshCw, X, BarChart2, Plus, Pencil, PowerOff, Briefcase, AlertTriangle } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
@@ -217,6 +217,42 @@ function EvolucaoBadge({ evolucao }) {
 // Ação de competência inteira — vive só no cabeçalho, nunca por linha de
 // empresa (Color Contract do UI-SPEC).
 
+// Confirmação de sucesso das ações de competência (fechar/refazer). Incidente
+// 260903-la4: as duas ações SALVAM certinho, mas terminavam sem nenhum sinal
+// na tela — a pessoa clicava de novo achando que tinha falhado, e cada clique
+// gravava uma linha na trilha de auditoria à toa. `router.reload()` preserva
+// o estado do componente (Inertia usa preserveState por padrão em reload()),
+// então guardar a mensagem num estado local ANTES do reload é suficiente —
+// ela sobrevive e fica visível quando a tela terminar de atualizar.
+function useConfirmacaoTemporaria() {
+    const [mensagem, setMensagem] = useState(null);
+
+    // Some sozinha depois de um tempo — mesma janela do toast global do
+    // AppLayout (4,5s), para manter o mesmo ritmo de feedback da tela.
+    useEffect(() => {
+        if (!mensagem) return;
+        const t = setTimeout(() => setMensagem(null), 4500);
+        return () => clearTimeout(t);
+    }, [mensagem]);
+
+    return [mensagem, setMensagem];
+}
+
+// Mesmo visual do toast global do AppLayout (verde, canto do próprio botão
+// em vez de canto da tela) — não reaproveita o componente porque o toast do
+// AppLayout só lê `flash.*` do Inertia, e estas ações respondem via axios.
+function ConfirmacaoInline({ mensagem, onFechar }) {
+    if (!mensagem) return null;
+    return (
+        <div className="absolute right-0 top-full mt-2 z-20 flex items-start gap-2 rounded-xl border border-green-500/30 bg-green-950/90 backdrop-blur-md px-3 py-2 text-[12px] font-semibold text-green-300 shadow-2xl w-64">
+            <span className="flex-1">{mensagem}</span>
+            <button type="button" onClick={onFechar} className="opacity-60 hover:opacity-100 transition-opacity shrink-0">
+                <X size={12} />
+            </button>
+        </div>
+    );
+}
+
 // Mês por extenso + ano, ex.: "agosto/2026" — copy literal do botão/dialog
 // nunca usa a abreviação de `fmtMes`.
 function mesExtensoAno(anoMes) {
@@ -248,6 +284,7 @@ function StatusCompetenciaBadge({ fechada, fechadaEm }) {
 
 function FecharCompetenciaButton({ mes }) {
     const [loading, setLoading] = useState(false);
+    const [confirmacao, setConfirmacao] = useConfirmacaoTemporaria();
     const mesLabel = mesExtensoAno(mes);
 
     function handleFechar() {
@@ -258,7 +295,12 @@ function FecharCompetenciaButton({ mes }) {
 
         setLoading(true);
         axios.post(route('admin.financeiro.competencia.fechar'), { mes })
-            .then(() => router.reload())
+            .then((r) => {
+                // Usa a mensagem que o próprio backend devolve no 200 — não
+                // inventar copy nova (260903-la4).
+                setConfirmacao(r.data?.message ?? `Competência ${mesLabel} fechada com sucesso.`);
+                router.reload();
+            })
             .catch((e) => {
                 alert(e.response?.data?.message
                     ?? `Não foi possível fechar ${mesLabel}. Nada foi alterado — tente novamente ou avise o time técnico.`);
@@ -267,14 +309,17 @@ function FecharCompetenciaButton({ mes }) {
     }
 
     return (
-        <button
-            type="button"
-            onClick={handleFechar}
-            disabled={loading}
-            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-ecf-yellow/20 hover:bg-ecf-yellow/30 border border-ecf-yellow/30 text-[13px] font-semibold text-ecf-yellow transition-colors disabled:opacity-50 disabled:cursor-wait shrink-0"
-        >
-            {loading ? 'Fechando...' : `Fechar ${mesLabel}`}
-        </button>
+        <div className="relative shrink-0">
+            <button
+                type="button"
+                onClick={handleFechar}
+                disabled={loading}
+                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-ecf-yellow/20 hover:bg-ecf-yellow/30 border border-ecf-yellow/30 text-[13px] font-semibold text-ecf-yellow transition-colors disabled:opacity-50 disabled:cursor-wait shrink-0"
+            >
+                {loading ? 'Fechando...' : `Fechar ${mesLabel}`}
+            </button>
+            <ConfirmacaoInline mensagem={confirmacao} onFechar={() => setConfirmacao(null)} />
+        </div>
     );
 }
 
@@ -283,6 +328,7 @@ function RefazerFechamentoDialog({ mes }) {
     const [motivo, setMotivo]     = useState('');
     const [enviando, setEnviando] = useState(false);
     const [erro, setErro]         = useState(null);
+    const [confirmacao, setConfirmacao] = useConfirmacaoTemporaria();
     const mesLabel = mesExtensoAno(mes);
 
     function handleOpenChange(next) {
@@ -298,7 +344,16 @@ function RefazerFechamentoDialog({ mes }) {
         setEnviando(true);
         setErro(null);
         axios.post(route('admin.financeiro.competencia.refazer'), { mes, motivo })
-            .then(() => router.reload())
+            .then((r) => {
+                // Fecha o diálogo e limpa o motivo no sucesso — deixar tudo
+                // como estava (bug 260903-la4) fazia a pessoa achar que não
+                // salvou e clicar de novo, gravando linha repetida na
+                // auditoria. A mensagem é a que o backend já devolve.
+                setOpen(false);
+                setMotivo('');
+                setConfirmacao(r.data?.message ?? `Fechamento de ${mesLabel} refeito com sucesso.`);
+                router.reload();
+            })
             .catch((e) => {
                 setErro(e.response?.data?.message
                     ?? `Não foi possível refazer o fechamento de ${mesLabel}. O registro anterior continua valendo.`);
@@ -307,7 +362,7 @@ function RefazerFechamentoDialog({ mes }) {
     }
 
     return (
-        <>
+        <div className="relative shrink-0">
             <button
                 type="button"
                 onClick={() => handleOpenChange(true)}
@@ -348,7 +403,9 @@ function RefazerFechamentoDialog({ mes }) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </>
+
+            <ConfirmacaoInline mensagem={confirmacao} onFechar={() => setConfirmacao(null)} />
+        </div>
     );
 }
 
