@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, router } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
-import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer, Send, Settings, RefreshCw, X, BarChart2, Plus, Pencil, PowerOff, Briefcase } from 'lucide-react';
+import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer, Send, Settings, RefreshCw, X, BarChart2, Plus, Pencil, PowerOff, Briefcase, AlertTriangle } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
@@ -10,21 +10,6 @@ import { Label } from '@/Components/ui/label';
 import { Textarea } from '@/Components/ui/textarea';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
 import axios from 'axios';
-
-const FAIXAS_LIMITES = {
-    faixa_1: { min: 0,           proximo: 500_000,   nome: 'Faixa 1' },
-    faixa_2: { min: 500_000,     proximo: 1_000_000, nome: 'Faixa 2' },
-    faixa_3: { min: 1_000_000,   proximo: 2_000_000, nome: 'Faixa 3' },
-    faixa_4: { min: 2_000_000,   proximo: 3_000_000, nome: 'Faixa 4' },
-    faixa_5: { min: 3_000_000,   proximo: 4_000_000, nome: 'Faixa 5' },
-    faixa_6: { min: 4_000_000,   proximo: 5_000_000, nome: 'Faixa 6' },
-};
-
-const FAIXA_NOMES = {
-    faixa_1: 'Faixa 1', faixa_2: 'Faixa 2', faixa_3: 'Faixa 3',
-    faixa_4: 'Faixa 4', faixa_5: 'Faixa 5', faixa_6: 'Faixa 6',
-    maxima: 'Máxima',
-};
 
 const fmtMes = (anoMes) => {
     const [y, m] = anoMes.split('-');
@@ -35,6 +20,23 @@ const fmtMes = (anoMes) => {
 const fmtBRL = (n) => n == null ? '—'
     : Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL',
         minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+// Deriva o rótulo humano da faixa a partir da chave crua vinda do backend
+// (`faixa_N` ou `maxima`) — sem mapa hardcoded de limites/nomes (Fase 137
+// Plano 09: a tabela de faixas agora é dinâmica por serviço/empresa, um
+// mapa fixo de 6 faixas ficaria errado).
+function faixaNome(faixaKey) {
+    if (!faixaKey) return '—';
+    if (faixaKey === 'maxima') return 'Faixa máxima';
+    const m = /^faixa_(\d+)$/.exec(faixaKey);
+    return m ? `Faixa ${m[1]}` : faixaKey;
+}
+
+// Prefixa "a partir de" quando a faixa aplicada é piso (última faixa de
+// Gestão/Brigada) — mostrar o valor seco faria o Administrativo cobrar a
+// menos (D-04, UI-SPEC "Copywriting Contract").
+const fmtValorFaixa = (valor, isPiso) => valor == null ? null
+    : (isPiso ? `a partir de ${fmtBRL(valor)}` : fmtBRL(valor));
 
 function ServiceBadge({ servicos_contratados }) {
     if (Array.isArray(servicos_contratados) && servicos_contratados.length > 0) {
@@ -209,6 +211,85 @@ function EvolucaoBadge({ evolucao }) {
     return <Icon size={14} className={cn('shrink-0', cls)} title={title} />;
 }
 
+// ─── Estados de ausência de dado (Fase 137, D-04/D-05) ───────────────────
+// Ausência de tabela e ausência de faturamento nunca podem virar R$ 0 nem
+// traço mudo — precisam ser nomeadas. Paleta neutra/âmbar: accent amarelo é
+// reservado a ação/status (Color Contract do UI-SPEC), por isso nenhum
+// destes quatro componentes usa ecf-yellow.
+
+function AusenciaTabelaPendencia({ variant = 'compact', onCadastrar }) {
+    if (variant === 'compact') {
+        return (
+            <span className="inline-flex items-center gap-1.5 text-amber-400 text-[13px] font-semibold shrink-0">
+                <AlertTriangle size={13} className="shrink-0" />
+                Tabela de faixas: A DEFINIR
+            </span>
+        );
+    }
+
+    return (
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-3 mb-3">
+            <p className="text-amber-400 text-[13px] font-semibold flex items-center gap-1.5">
+                <AlertTriangle size={13} className="shrink-0" />
+                Tabela de faixas: A DEFINIR
+            </p>
+            <p className="text-white/40 text-[11px] mt-1">
+                Cadastre a tabela de faturamento desta empresa para ela entrar no fechamento.
+            </p>
+            {onCadastrar && (
+                <button
+                    type="button"
+                    onClick={onCadastrar}
+                    className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/70 bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 px-3 h-7 rounded-lg transition-colors"
+                >
+                    Cadastrar tabela de faixas
+                </button>
+            )}
+        </div>
+    );
+}
+
+function AusenciaFaturamentoBadge() {
+    return (
+        <span className="text-white/40 text-[13px] mt-0.5 block">
+            Sem faturamento neste mês
+        </span>
+    );
+}
+
+function FaturamentoCombinadoBreakdown({ faturamentoMl, faturamentoShopee, faturamentoTotal }) {
+    // Só abre a composição quando as duas plataformas têm dado — nunca soma
+    // silenciosa (D-05).
+    if (faturamentoMl == null || faturamentoShopee == null) return null;
+
+    return (
+        <p className="text-white/40 text-[11px] mb-2">
+            Mercado Livre {fmtBRL(faturamentoMl)} + Shopee {fmtBRL(faturamentoShopee)} = {fmtBRL(faturamentoTotal)}
+        </p>
+    );
+}
+
+function GrupoServicosDivergentesBanner({ empresa }) {
+    if (!empresa.tabelas_divergentes) return null;
+
+    const membros = [empresa, ...(empresa.filhas || [])];
+
+    return (
+        <div className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2.5">
+            <p className="text-amber-400 text-[13px] font-semibold">Este grupo tem empresas com tabelas diferentes</p>
+            <ul className="mt-1.5 space-y-1">
+                {membros.map(m => (
+                    <li key={m.id} className="text-white/50 text-[11px]">
+                        {m.name} → {m.tabela_origem === 'propria'
+                            ? 'Tabela própria'
+                            : (m.tabela_servico_nome ? `Tabela do serviço ${m.tabela_servico_nome}` : 'A DEFINIR')}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
 function RecebidoToggle({ empresa, mesSelecionado }) {
     const [loading, setLoading] = useState(false);
 
@@ -293,31 +374,33 @@ function TotalConsolidado({ empresas }) {
     );
 }
 
-function FaixaProgresso({ faturamento, faixa }) {
+function FaixaProgresso({ faturamento, faixa, limiteInferior, limiteSuperior, faixaLabel }) {
+    // Faixa aberta (sem teto) — backend já resolve isso como 'maxima' em
+    // FechamentoFaixaResolver::classificar(); nunca calcular percentual
+    // aqui, só mostrar o piso de onde ela começa.
     if (faixa === 'maxima') {
         return (
             <div className="flex items-center gap-2 py-3">
                 <TrendingUp size={14} className="text-ecf-yellow shrink-0" />
                 <span className="text-ecf-yellow text-[13px] font-semibold">Faixa máxima</span>
-                <span className="text-white/30 text-[12px]">acima de R$ 5.000.000</span>
+                {limiteInferior != null && (
+                    <span className="text-white/30 text-[12px]">acima de {fmtBRL(limiteInferior)}</span>
+                )}
             </div>
         );
     }
 
-    if (!faixa || faturamento == null) return null;
-
-    const faixaData = FAIXAS_LIMITES[faixa];
-    if (!faixaData) return null;
+    if (!faixa || faturamento == null || limiteInferior == null || limiteSuperior == null) return null;
 
     const pct   = Math.min(100, Math.max(0,
-        ((Number(faturamento) - faixaData.min) / (faixaData.proximo - faixaData.min)) * 100
+        ((Number(faturamento) - limiteInferior) / (limiteSuperior - limiteInferior)) * 100
     ));
-    const falta = Math.max(0, faixaData.proximo - Number(faturamento));
+    const falta = Math.max(0, limiteSuperior - Number(faturamento));
 
     return (
         <div className="py-3">
             <div className="flex items-center justify-between mb-1.5">
-                <span className="text-white/60 text-[12px] font-semibold">{faixaData.nome}</span>
+                <span className="text-white/60 text-[12px] font-semibold">{faixaNome(faixaLabel ?? faixa)}</span>
                 <span className="text-white/50 text-[11px]">{Math.round(pct)}%</span>
             </div>
             <div className="h-1.5 bg-ecf-yellow/30 rounded-full overflow-hidden">
@@ -400,7 +483,7 @@ function ProgressaoModal({ empresa, onClose }) {
                                                     ? 'bg-ecf-yellow/20 text-ecf-yellow'
                                                     : 'bg-white/[0.05] text-white/50'
                                             )}>
-                                                {FAIXA_NOMES[p.faixa] ?? p.faixa}
+                                                {faixaNome(p.faixa_label ?? p.faixa)}
                                             </span>
                                         </td>
                                         <td className="px-4 py-2.5 text-right font-mono text-emerald-400/80">
@@ -471,14 +554,17 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
                         {empresa.synced_at ? ` · dados até ${empresa.synced_at}` : ''}
                     </span>
                 )}
+                {empresa.estado === 'sem_faturamento' && <AusenciaFaturamentoBadge />}
             </div>
             <EvolucaoBadge evolucao={empresa.evolucao} />
             <ServiceBadge servicos_contratados={empresa.servicos_contratados} />
             {!empresa.has_adman && <IntegrationBadge />}
-            {(empresa.cobranca_mensal_grupo ?? empresa.cobranca_mensal) != null && (
+            {empresa.estado === 'sem_tabela' ? (
+                <AusenciaTabelaPendencia variant="compact" />
+            ) : (empresa.cobranca_mensal_grupo ?? empresa.cobranca_mensal) != null && (
                 <span className={cn('text-[13px] font-semibold font-mono shrink-0',
                     empresa.is_filha ? 'text-white/25' : 'text-emerald-400')}>
-                    {fmtBRL(empresa.cobranca_mensal_grupo ?? empresa.cobranca_mensal)}
+                    {fmtValorFaixa(empresa.cobranca_mensal_grupo ?? empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}
                     <span className="text-white/30 font-normal text-[11px]">/mês</span>
                 </span>
             )}
@@ -591,16 +677,40 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarCont
     const temGrupo = empresa.filhas?.length > 0;
     const [modalAberto, setModalAberto] = useState(false);
 
+    // CTA de "A DEFINIR" leva até a seção de cadastro da tabela, mais
+    // abaixo neste mesmo accordion (Tarefa 2, TabelaFaixasSection).
+    function irParaTabelaFaixas() {
+        document.getElementById(`tabela-faixas-${empresa.id}`)
+            ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
     return (
         <div className="px-4 py-4 bg-black/30 border-t border-white/[0.04]">
             {modalAberto && (
                 <ProgressaoModal empresa={empresa} onClose={() => setModalAberto(false)} />
             )}
+
+            <FaturamentoCombinadoBreakdown
+                faturamentoMl={empresa.faturamento_ml}
+                faturamentoShopee={empresa.faturamento_shopee}
+                faturamentoTotal={empresa.faturamento}
+            />
+
+            {empresa.estado === 'sem_tabela' && (
+                <AusenciaTabelaPendencia variant="full" onCadastrar={irParaTabelaFaixas} />
+            )}
+
             {empresa.estado === 'ok' && (
                 <>
                     <div className="flex items-center justify-between mb-1">
                         <div className="flex-1">
-                            <FaixaProgresso faturamento={empresa.faturamento} faixa={empresa.faixa} />
+                            <FaixaProgresso
+                                faturamento={empresa.faturamento}
+                                faixa={empresa.faixa}
+                                limiteInferior={empresa.faixa_limite_inferior}
+                                limiteSuperior={empresa.faixa_limite_superior}
+                                faixaLabel={empresa.faixa_label}
+                            />
                         </div>
                         {(empresa.progressao?.length > 0) && (
                             <button
@@ -615,25 +725,33 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarCont
 
                     {/* Breakdown de grupo (pai + filhas) */}
                     {temGrupo && (
-                        <div className="mb-3 rounded-lg border border-white/[0.06] overflow-hidden">
-                            <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04]">
-                                <span className="text-[11px] uppercase tracking-wider text-white/40">Composição do grupo</span>
-                            </div>
-                            {[empresa, ...empresa.filhas].map((e, i) => (
-                                <div key={e.id} className={cn('flex items-center justify-between px-3 py-2', i > 0 && 'border-t border-white/[0.03]')}>
-                                    <span className="text-white/60 text-[12px]">
-                                        {i === 0 ? `${e.name} (este)` : `↳ ${e.name}`}
-                                    </span>
-                                    <span className="text-white/50 text-[12px] font-mono">
-                                        {e.cobranca_mensal != null ? fmtBRL(e.cobranca_mensal) : '—'}
-                                    </span>
+                        <>
+                            <GrupoServicosDivergentesBanner empresa={empresa} />
+                            <div className="mb-3 rounded-lg border border-white/[0.06] overflow-hidden">
+                                <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04]">
+                                    <span className="text-[11px] uppercase tracking-wider text-white/40">Composição do grupo</span>
                                 </div>
-                            ))}
-                            <div className="flex items-center justify-between px-3 py-2 border-t border-white/[0.06] bg-white/[0.02]">
-                                <span className="text-[11px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
-                                <span className="text-emerald-400 text-[13px] font-bold font-mono">{fmtBRL(empresa.cobranca_mensal_grupo)}</span>
+                                {[empresa, ...empresa.filhas].map((e, i) => (
+                                    <div key={e.id} className={cn('flex items-center justify-between px-3 py-2', i > 0 && 'border-t border-white/[0.03]')}>
+                                        <span className="text-white/60 text-[12px]">
+                                            {i === 0 ? `${e.name} (este)` : `↳ ${e.name}`}
+                                            {e.tabela_origem && (
+                                                <span className="text-white/30 text-[11px] ml-1.5">
+                                                    ({e.tabela_origem === 'propria' ? 'tabela própria' : (e.tabela_servico_nome ?? 'tabela do serviço')})
+                                                </span>
+                                            )}
+                                        </span>
+                                        <span className="text-white/50 text-[12px] font-mono">
+                                            {e.cobranca_mensal != null ? fmtValorFaixa(e.cobranca_mensal, e.valor_faixa_e_piso) : '—'}
+                                        </span>
+                                    </div>
+                                ))}
+                                <div className="flex items-center justify-between px-3 py-2 border-t border-white/[0.06] bg-white/[0.02]">
+                                    <span className="text-[11px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
+                                    <span className="text-emerald-400 text-[13px] font-bold font-mono">{fmtValorFaixa(empresa.cobranca_mensal_grupo, empresa.valor_faixa_e_piso)}</span>
+                                </div>
                             </div>
-                        </div>
+                        </>
                     )}
 
                     {/* Mensalidade individual ou grupo */}
@@ -641,7 +759,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarCont
                         <div className="flex items-center justify-between py-2 mb-2 border-b border-white/[0.04]">
                             <span className="text-[11px] uppercase tracking-wider text-white/40">Mensalidade a cobrar</span>
                             <span className="text-emerald-400 text-[15px] font-bold font-mono">
-                                {fmtBRL(empresa.cobranca_mensal)}
+                                {fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}
                             </span>
                         </div>
                     )}
