@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\FechamentoSnapshot;
 use App\Models\Servico;
 use App\Models\ShopeeMetric;
+use App\Services\Fechamento\FechamentoFaixaNotifier;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Fechamento\FechamentoRollupService;
 use App\Services\Fechamento\FechamentoSnapshotWriter;
@@ -52,6 +53,15 @@ use Illuminate\Support\Facades\Log;
  * empresas com integração financeira NÃO grava nada e retorna exit code 1 —
  * nunca sobrescreve um snapshot bom por um degradado.
  *
+ * Fase 138 (D-02 + D-03) — Passo 8, logo após o congelamento do Passo 7:
+ * avisa os admins quando uma empresa ou grupo mudou de faixa nesta
+ * competência (`FechamentoFaixaNotifier`, subida E queda). Idempotente por
+ * `notificado_em`/`notificado_faixa_ordem` — um "Refazer" que não muda nada
+ * não gera aviso de novo; um "Refazer" que corrige um erro real e move a
+ * empresa de faixa gera. Rodada isolada em `try/catch`: falha ao avisar
+ * NUNCA altera o exit code deste comando (ver comentário no Passo 8).
+ *
+
  * O exit code reflete a falha real — qualquer empresa que estoure exceção
  * individual conta como falha e o comando termina com 1, mesmo tendo
  * gravado as demais. O texto impresso (`$this->info()`/`$this->error()`) é
@@ -81,6 +91,7 @@ class ConsolidarMesFechamento extends Command
         private FechamentoRollupService $rollupService,
         private FechamentoFaixaResolver $faixaResolver,
         private FechamentoSnapshotWriter $writer,
+        private FechamentoFaixaNotifier $faixaNotifier,
     ) {
         parent::__construct();
     }
@@ -434,19 +445,42 @@ class ConsolidarMesFechamento extends Command
             return self::FAILURE;
         }
 
+        // ── Passo 8 (Fase 138, D-02/D-03) — aviso de mudança de faixa ─────
+        // Isolado em try/catch: falha ao avisar NUNCA pode virar falha de
+        // fechamento. O exit code deste comando é o que o
+        // `FechamentoController` usa pra devolver 409 na tela — transformar
+        // uma falha de notificação em falha de fechamento faria o
+        // Administrativo achar que o VALOR não foi gravado, quando na
+        // verdade só o aviso é que não saiu. A idempotência (não avisar de
+        // novo quando nada mudou) vive nas colunas `notificado_em`/
+        // `notificado_faixa_ordem`, checadas pelo próprio notificador.
+        $resumoAviso = ['empresas' => 0, 'grupos' => 0, 'notificacoes' => 0];
+
+        try {
+            $resumoAviso = $this->faixaNotifier->notificar($mes);
+        } catch (\Throwable $e) {
+            Log::error("[Fechamento] Falha ao avisar mudança de faixa da competência {$mesLabel}: {$e->getMessage()}");
+        }
+
         $this->info(sprintf(
-            '[Fechamento] Competência %s — empresas: %d linhas (podadas: %d) · grupos: %d linhas (podados: %d)%s',
+            '[Fechamento] Competência %s — empresas: %d linhas (podadas: %d) · grupos: %d linhas (podados: %d)%s · aviso de faixa: %d empresa(s)/%d grupo(s)/%d notificação(ões)',
             $mesLabel,
             $resultado['empresas_upserted'],
             $resultado['empresas_pruned'],
             $resultado['grupos_upserted'],
             $resultado['grupos_pruned'],
-            $resultado['reconsolidado'] ? ' · RECONSOLIDADO' : ''
+            $resultado['reconsolidado'] ? ' · RECONSOLIDADO' : '',
+            $resumoAviso['empresas'],
+            $resumoAviso['grupos'],
+            $resumoAviso['notificacoes'],
         ));
 
         // O exit code precisa refletir a falha real: qualquer empresa que
         // estourou exceção individual conta como falha, mesmo tendo
-        // gravado as demais.
+        // gravado as demais. O aviso de faixa (Passo 8) NUNCA entra nesse
+        // cálculo — ver comentário acima. O texto impresso é conveniência
+        // operacional, NUNCA critério de verificação — a conferência
+        // oficial continua sendo a reconsulta às tabelas de snapshot.
         return $houveExcecao ? self::FAILURE : self::SUCCESS;
     }
 }
