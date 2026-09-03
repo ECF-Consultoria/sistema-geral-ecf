@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\CongelamentoEmissaoService;
 use App\Services\Clicksign\ContratoClicksignService;
+use App\Services\Comercial\PendenciasComerciaisService;
 use App\Services\Contratos\ContratoDadosMinimosService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
@@ -56,18 +57,32 @@ class ContratoAdminController extends Controller
      * contrato dentro do limiar), com resumo de 7 contagens, filtro por
      * situação e busca por empresa.
      */
-    public function index(Request $request, ContratosPresosService $presos, EmpresaOperacionalRouter $router): \Inertia\Response
-    {
+    public function index(
+        Request $request,
+        ContratosPresosService $presos,
+        EmpresaOperacionalRouter $router,
+        PendenciasComerciaisService $pendencias,
+    ): \Inertia\Response {
         // (1) Universo (D9 — isenção, ver Servico::exigeContrato()): empresas
         // ATIVAS com ao menos um ContratoServico ATIVO cujo serviço exige
         // contrato. Filtrado NO BACKEND, antes de paginar — nunca escondido
         // no client. Empresa cujo único serviço é isento (Polos) nunca
         // entra aqui.
+        //
+        // Plano 138-06 (COMERC-02) — o `->with('hubspotEventos')` e o
+        // `->withExists('hubspotEventoOrigem')` abaixo são eager load NOVO
+        // para os 8 campos do §2 (evitar N+1 dentro do foreach, T-138-23) —
+        // não mudam o UNIVERSO da query: o filtro por contratosServico ativo
+        // logo abaixo é o mesmo de sempre, mesma contagem de linhas.
         $companiesQuery = Company::query()
             ->where('active', true)
             ->whereHas('contratosServico', fn ($q) => $q->where('ativo', true)
                 ->whereHas('servico', fn ($s) => $s->where('exige_contrato', true)))
-            ->with(['contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico')]);
+            ->with([
+                'contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico'),
+                'hubspotEventos'   => fn ($q) => $q->orderByDesc('id')->limit(3),
+            ])
+            ->withExists(['hubspotEventoOrigem']);
 
         // (2) Busca por empresa — SQL, com binding (nunca concatenado).
         $q = $request->input('q');
@@ -79,6 +94,27 @@ class ContratoAdminController extends Controller
         }
 
         $companies = $companiesQuery->get();
+
+        // (2b) Plano 138-06 (COMERC-02, D-11) — duas pendências, NUNCA
+        // somadas, calculadas uma vez por EMPRESA antes do loop de linhas e
+        // guardadas num mapa indexado por company_id (nunca como atributo
+        // dinâmico homônimo à chave do payload, pra não confundir grep de
+        // auditoria com o ponto de leitura real). Mesma disciplina de
+        // ComercialController::listagem()/ComercialEntradaController::index():
+        // calcular() devolve [] para empresa que não é de origem HubSpot
+        // (REQ-37-10, guarda no topo do próprio serviço) — sem este `if`,
+        // cadastro manual apareceria sempre com pendências de cadastro
+        // vazias, por desenho do serviço, não porque está tudo certo.
+        // calcularUniversais() cobre o mesmo universo de qualquer origem
+        // (Fase 128, D-01).
+        $companies->each(function (Company $c) {
+            $c->is_origem_hubspot = (bool) ($c->hubspot_evento_origem_exists ?? false);
+        });
+        $pendenciasDeCadastroPorEmpresa = $companies->mapWithKeys(
+            fn (Company $c) => [$c->id => $c->is_origem_hubspot
+                ? $pendencias->calcular($c)
+                : $pendencias->calcularUniversais($c)]
+        );
 
         // (3) Contratos de TODAS as empresas do universo, numa única query,
         // indexados por "company_id:servico_id", pegando o de maior id
@@ -105,6 +141,18 @@ class ContratoAdminController extends Controller
         // pessoa preenche as datas de cada uma.
         $linhas = collect();
         foreach ($companies as $company) {
+            // Plano 138-06 (D-12) — setor ECF da empresa, mesma derivação de
+            // ComercialController::listagem()/ComercialEntradaController::index():
+            // primeiro `servico->setor` não nulo entre os contratosServico
+            // ATIVOS. Calculado uma vez por EMPRESA (não por linha/grupo) —
+            // não depende do serviço-dono do grupo abaixo, e sim do conjunto
+            // inteiro de serviços ativos da empresa. O `industry` do HubSpot
+            // fica onde já está (hubspot_snapshot.company), nunca aqui.
+            $setorDominanteDaEmpresa = $company->contratosServico
+                ->map(fn ($ct) => optional($ct->servico)->setor)
+                ->filter()
+                ->first();
+
             // Quick 260901-gj7 (Tarefa 3) — mesma regra de dono da Tarefa 2
             // (`ContratoClicksignService::iniciarParaEmpresa()`): sem isto, o
             // par (empresa, Shopee) aparece aqui como uma linha
@@ -181,8 +229,33 @@ class ContratoAdminController extends Controller
                         'contrato_id'                => $contrato->id,
                         'company_id'                 => $company->id,
                         'company_nome'                => $company->name,
+                        // Plano 138-06 (COMERC-02) — os 8 campos mínimos do
+                        // §2 + etapa, mesmo vocabulário de chave que
+                        // ComercialEntradaController::index() usa, para o
+                        // front não precisar de dois vocabulários.
+                        'company_cnpj'                => $company->cnpj,
                         'servico_id'                  => $contratoServico->servico_id,
                         'servico_nome'                => $contratoServico->servico?->nome,
+                        'setor_dominante'              => $setorDominanteDaEmpresa,
+                        'origem'                       => $company->is_origem_hubspot ? 'hubspot' : 'manual',
+                        // Responsável comercial (D-08) — null é NORMAL para
+                        // cadastro manual: nunca teve deal, nunca terá owner.
+                        'hubspot_owner_nome'           => $company->hubspot_owner_nome,
+                        'data_venda'                   => optional($company->data_venda)->format('Y-m-d'),
+                        'email_cliente'                => $company->email_cliente,
+                        'telefone'                     => $company->telefone,
+                        'nome_contato'                 => $company->nome_contato,
+                        // D-11 — duas pendências, chaves separadas e NUNCA
+                        // somadas. A pendência do fluxo é lida SÓ pelo ponto
+                        // único pendenciaAberta() (D-19 da Fase 137) — nunca
+                        // ler o atributo bruto do model direto aqui.
+                        'pendencia_fluxo' => [
+                            'aberta' => $company->pendenciaAberta(),
+                            'motivo' => $company->pendencia_motivo,
+                            'em'     => optional($company->pendencia_em)->toIso8601String(),
+                        ],
+                        'pendencias_cadastro'          => $pendenciasDeCadastroPorEmpresa[$company->id],
+                        'etapa'                        => $company->etapa,
                         'status'                       => $contrato->status,
                         'dias_parado'                  => $presos->diasParado($contrato),
                         'causa'                        => $presos->causa($contrato),
@@ -217,8 +290,26 @@ class ContratoAdminController extends Controller
                         'contrato_id'                => null,
                         'company_id'                 => $company->id,
                         'company_nome'                => $company->name,
+                        // Plano 138-06 (COMERC-02) — mesmas chaves novas do
+                        // ramo com contrato acima; nenhuma pode faltar aqui,
+                        // senão o front recebe `undefined` neste ramo.
+                        'company_cnpj'                => $company->cnpj,
                         'servico_id'                  => $contratoServico->servico_id,
                         'servico_nome'                => $contratoServico->servico?->nome,
+                        'setor_dominante'              => $setorDominanteDaEmpresa,
+                        'origem'                       => $company->is_origem_hubspot ? 'hubspot' : 'manual',
+                        'hubspot_owner_nome'           => $company->hubspot_owner_nome,
+                        'data_venda'                   => optional($company->data_venda)->format('Y-m-d'),
+                        'email_cliente'                => $company->email_cliente,
+                        'telefone'                     => $company->telefone,
+                        'nome_contato'                 => $company->nome_contato,
+                        'pendencia_fluxo' => [
+                            'aberta' => $company->pendenciaAberta(),
+                            'motivo' => $company->pendencia_motivo,
+                            'em'     => optional($company->pendencia_em)->toIso8601String(),
+                        ],
+                        'pendencias_cadastro'          => $pendenciasDeCadastroPorEmpresa[$company->id],
+                        'etapa'                        => $company->etapa,
                         'status'                       => self::SEM_CONTRATO,
                         'dias_parado'                  => (int) $company->created_at->diffInDays(now()),
                         'causa'                        => null,
