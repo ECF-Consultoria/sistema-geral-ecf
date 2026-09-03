@@ -2089,13 +2089,13 @@ Quatro coisas precisam mudar em relação ao que existe hoje em `/financeiro` (`
 
 **Requirements**: D-01, D-02, D-02b, D-04 a D-13 (decisões travadas em `137-CONTEXT.md` — a fase não tem REQ-IDs no `REQUIREMENTS.md` raiz, que parou na v17.0; a unidade de rastreabilidade é o D-ID, mesma convenção da Fase 136). D-03 saiu do escopo: ficou obsoleto com a correção de D-02.
 **Depends on:** Phase 136 (nenhuma dependência de código conhecida; ordem de fila)
-**Plans:** 2/9 plans executed
+**Plans:** 4/9 plans executed
 
 Plans:
 - [x] 137-01-PLAN.md — Schema e models das faixas de faturamento (por serviço e por empresa) + seed das três tabelas medidas (D-02b)
 - [x] 137-02-PLAN.md — Schema e models do snapshot congelado por competência + auditoria de reconsolidação
 - [x] 137-03-PLAN.md — FechamentoFaixaResolver (herança serviço→empresa) e FechamentoRollupService (ML+Shopee em mês-calendário)
-- [ ] 137-05-PLAN.md — Writer idempotente + comandos `fechamento:consolidar-mes` e `fechamento:verificar-consolidacao`
+- [x] 137-05-PLAN.md — Writer idempotente + comandos `fechamento:consolidar-mes` e `fechamento:verificar-consolidacao`
 - [ ] 137-06-PLAN.md — FechamentoController: cadastro manual das faixas e ações de fechar/refazer competência
 - [ ] 137-07-PLAN.md — `AdminController::fechamento()` migrado: mês-calendário, grupos do Comercial e leitura do congelado
 - [ ] 137-08-PLAN.md — Relatórios PDF e email mensal na fonte central; constante `FAIXAS` apagada das duas cópias

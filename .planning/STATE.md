@@ -117,13 +117,25 @@ prod antes do gate humano. Deploy só depois do gate, e com autorização explí
 Phase: 137 (fechamento-mensal-faturamento-por-empresa-grupo-contra-a-tab) — EXECUTING
 Plan: 01 de 10 executado (137-01 — schema de faixas). 137-02 (schema de snapshots) executado em
 paralelo por outra sessão no mesmo intervalo — ver `137-02-SUMMARY.md`. Wave 2: 137-03 (resolver de
-faixas + rollup ML/Shopee) executado sozinho por esta sessão — ver `137-03-SUMMARY.md`.
+faixas + rollup ML/Shopee) executado sozinho por esta sessão — ver `137-03-SUMMARY.md`. Wave 3:
+137-05 (writer + os dois comandos Artisan) executado sozinho por esta sessão — ver
+`137-05-SUMMARY.md`.
 Status: 137-01 concluído — migrations `servico_faixas_faturamento`/`empresa_faixas_faturamento` +
 seed das 3 tabelas medidas (Gestão/Brigada/Gestão de ADS Shopee, D-02b) + models auditáveis.
 137-03 concluído — `FechamentoFaixaResolver` (D-01/D-05/D-13) e `FechamentoRollupService`
 (D-06/D-07) criados em `app/Services/Fechamento/`, TDD, gate `Phase122|Phase136|Phase137` em
 156 testes / 836 asserções / 0 falhas (era 138/787 antes deste plano).
-Last activity: 2026-09-02 — 137-03 executado (commits `704db2d4`/`7aa141f3`/`88810f23`/`5794d008`).
+137-05 concluído — `FechamentoSnapshotWriter` (upsert+prune em transação, trava de congelamento
+que EXIGE `--motivo=` para reconsolidar, D-12 revisado — divergência deliberada do molde do
+Desempenho, que ignora a trava em silêncio) + comando `fechamento:consolidar-mes` (empresa e
+grupo do Comercial via `CompanyGroup`, faixa da SOMA para o grupo, `parent_company_id` fora de
+qualquer agregação — D-08/D-09/D-10 — gate de cobertura mínima 0,7 antes de persistir) + comando
+read-only `fechamento:verificar-consolidacao --json` (5 classes de inconsistência, veredito só
+pelo exit code). Gate `Phase122|Phase136|Phase137`: **181 testes / 914 asserções / 0 falhas**
+(era 156/836 antes deste plano — as 25 diferenças são os testes novos deste plano, TDD RED→GREEN
+em todas as 3 tarefas). `AdminFechamentoControllerTest`: 5/16 falhando, pré-existente e
+documentado (endpoint ainda não migrado para o novo schema — fora do escopo deste plano).
+Last activity: 2026-09-03 — 137-05 executado (writer + 2 comandos Artisan, wave 3 sozinha).
 
 Achados fora de escopo (não corrigidos, registrados em `137-.../deferred-items.md`):
 `AdminFechamentoControllerTest` tem 5/16 falhas pré-existentes (endpoint gutted na Fase 14 +
