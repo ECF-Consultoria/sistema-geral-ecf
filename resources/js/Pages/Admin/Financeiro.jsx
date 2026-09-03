@@ -212,6 +212,146 @@ function EvolucaoBadge({ evolucao }) {
     return <Icon size={14} className={cn('shrink-0', cls)} title={title} />;
 }
 
+// ─── Estado da competência: badge, fechar e refazer (Fase 137 Plano 10,
+// D-11/D-12) ────────────────────────────────────────────────────────────
+// Ação de competência inteira — vive só no cabeçalho, nunca por linha de
+// empresa (Color Contract do UI-SPEC).
+
+// Mês por extenso + ano, ex.: "agosto/2026" — copy literal do botão/dialog
+// nunca usa a abreviação de `fmtMes`.
+function mesExtensoAno(anoMes) {
+    const [y, m] = anoMes.split('-');
+    const mes = new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('pt-BR', { month: 'long' });
+    return `${mes}/${y}`;
+}
+
+function StatusCompetenciaBadge({ fechada, fechadaEm }) {
+    if (!fechada) {
+        return (
+            <span className="inline-flex items-center gap-1.5 text-white/50 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-white/[0.08] bg-white/[0.03] shrink-0">
+                Em aberto
+            </span>
+        );
+    }
+
+    return (
+        <div className="flex flex-col items-start gap-0.5 shrink-0">
+            <span className="inline-flex items-center gap-1.5 text-ecf-yellow text-[11px] font-semibold px-2.5 py-1 rounded-full bg-ecf-yellow/20">
+                Fechado
+            </span>
+            <span className="text-white/30 text-[11px] whitespace-nowrap">
+                Fechado em {formatDate(fechadaEm)}. Os valores não mudam sozinhos.
+            </span>
+        </div>
+    );
+}
+
+function FecharCompetenciaButton({ mes }) {
+    const [loading, setLoading] = useState(false);
+    const mesLabel = mesExtensoAno(mes);
+
+    function handleFechar() {
+        const confirmado = confirm(
+            `Fechar ${mesLabel}? Depois de fechado, os valores desta competência ficam registrados e não mudam sozinhos — use "Refazer fechamento" se precisar corrigir depois.`
+        );
+        if (!confirmado) return;
+
+        setLoading(true);
+        axios.post(route('admin.financeiro.competencia.fechar'), { mes })
+            .then(() => router.reload())
+            .catch((e) => {
+                alert(e.response?.data?.message
+                    ?? `Não foi possível fechar ${mesLabel}. Nada foi alterado — tente novamente ou avise o time técnico.`);
+            })
+            .finally(() => setLoading(false));
+    }
+
+    return (
+        <button
+            type="button"
+            onClick={handleFechar}
+            disabled={loading}
+            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-ecf-yellow/20 hover:bg-ecf-yellow/30 border border-ecf-yellow/30 text-[13px] font-semibold text-ecf-yellow transition-colors disabled:opacity-50 disabled:cursor-wait shrink-0"
+        >
+            {loading ? 'Fechando...' : `Fechar ${mesLabel}`}
+        </button>
+    );
+}
+
+function RefazerFechamentoDialog({ mes }) {
+    const [open, setOpen]         = useState(false);
+    const [motivo, setMotivo]     = useState('');
+    const [enviando, setEnviando] = useState(false);
+    const [erro, setErro]         = useState(null);
+    const mesLabel = mesExtensoAno(mes);
+
+    function handleOpenChange(next) {
+        setOpen(next);
+        if (next) {
+            setMotivo('');
+            setErro(null);
+        }
+    }
+
+    function confirmar() {
+        if (!motivo.trim()) return;
+        setEnviando(true);
+        setErro(null);
+        axios.post(route('admin.financeiro.competencia.refazer'), { mes, motivo })
+            .then(() => router.reload())
+            .catch((e) => {
+                setErro(e.response?.data?.message
+                    ?? `Não foi possível refazer o fechamento de ${mesLabel}. O registro anterior continua valendo.`);
+            })
+            .finally(() => setEnviando(false));
+    }
+
+    return (
+        <>
+            <button
+                type="button"
+                onClick={() => handleOpenChange(true)}
+                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-[13px] font-semibold transition-colors shrink-0"
+            >
+                Refazer fechamento
+            </button>
+
+            <Dialog open={open} onOpenChange={handleOpenChange}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Refazer fechamento de {mesLabel}</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-white/60 text-[13px]">
+                        Os valores já cobrados ficam registrados no histórico. Ao confirmar, os números exibidos nesta tela passam a refletir o novo cálculo.
+                    </p>
+                    <div className="space-y-1.5">
+                        <Label>Motivo do reprocessamento *</Label>
+                        <Textarea
+                            rows={3}
+                            value={motivo}
+                            onChange={e => setMotivo(e.target.value)}
+                            placeholder="Ex.: correção de faturamento na Adman após o fechamento."
+                        />
+                    </div>
+                    {erro && <p className="text-red-400 text-[12px]">{erro}</p>}
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={confirmar}
+                            disabled={enviando || !motivo.trim()}
+                        >
+                            {enviando ? 'Refazendo...' : 'Confirmar'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+}
+
 // ─── Estados de ausência de dado (Fase 137, D-04/D-05) ───────────────────
 // Ausência de tabela e ausência de faturamento nunca podem virar R$ 0 nem
 // traço mudo — precisam ser nomeadas. Paleta neutra/âmbar: accent amarelo é
@@ -986,10 +1126,11 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
     );
 }
 
-function SyncFaturamentoBtn({ mesSelecionado }) {
+function SyncFaturamentoBtn({ mesSelecionado, competenciaFechada = false }) {
     const [loading, setLoading] = useState(false);
 
     async function handleSync() {
+        if (competenciaFechada) return;
         setLoading(true);
         try {
             await window.axios.post(route('admin.financeiro.sync'), { mes: mesSelecionado });
@@ -1001,12 +1142,20 @@ function SyncFaturamentoBtn({ mesSelecionado }) {
         }
     }
 
+    // Competência fechada: sincronizar não altera um mês já congelado (D-11) —
+    // o botão fica visualmente atenuado e desabilitado para não prometer um
+    // efeito que não existe (T-137-39).
     return (
         <button
             onClick={handleSync}
-            disabled={loading}
-            title="Sincronizar faturamento bruto do mês via Adman"
-            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-[13px] text-white/60 hover:text-white/90 transition-colors disabled:opacity-40 disabled:cursor-wait"
+            disabled={loading || competenciaFechada}
+            title={competenciaFechada
+                ? 'Este mês está fechado — sincronizar não altera os valores já congelados.'
+                : 'Sincronizar faturamento bruto do mês via Adman'}
+            className={cn(
+                'inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/60 transition-colors disabled:cursor-not-allowed',
+                competenciaFechada ? 'opacity-40' : 'hover:bg-white/[0.06] hover:text-white/90 disabled:opacity-40 disabled:cursor-wait'
+            )}
         >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             {loading ? 'Sincronizando...' : 'Sincronizar faturamento'}
@@ -1064,7 +1213,7 @@ function FiltroBarra({ filtros, onChange, total, filtrado, servicosNomes }) {
     );
 }
 
-export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], competencia_fechada = false }) {
+export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], competencia_fechada = false, competencia_fechada_em = null }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
     // Phase 14 (Frente B): nomes únicos de serviços DERIVADOS do dataset
@@ -1195,7 +1344,11 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                             <p className="text-[13px] text-white/40">Faturamento do período, progressão de faixa e contratos ativos por empresa.</p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                            <SyncFaturamentoBtn mesSelecionado={mes_selecionado} />
+                            <StatusCompetenciaBadge fechada={competencia_fechada} fechadaEm={competencia_fechada_em} />
+                            {competencia_fechada
+                                ? <RefazerFechamentoDialog mes={mes_selecionado} />
+                                : <FecharCompetenciaButton mes={mes_selecionado} />}
+                            <SyncFaturamentoBtn mesSelecionado={mes_selecionado} competenciaFechada={competencia_fechada} />
                             <GerarRelatoriosBtn mesSelecionado={mes_selecionado} companies={companies} />
                             <MesSeletor mesSelecionado={mes_selecionado} />
                         </div>
