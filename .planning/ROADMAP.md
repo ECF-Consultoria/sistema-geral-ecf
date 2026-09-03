@@ -2096,15 +2096,56 @@ Plans:
 - [x] 137-02-PLAN.md — Schema e models do snapshot congelado por competência + auditoria de reconsolidação
 - [x] 137-03-PLAN.md — FechamentoFaixaResolver (herança serviço→empresa) e FechamentoRollupService (ML+Shopee em mês-calendário)
 - [x] 137-05-PLAN.md — Writer idempotente + comandos `fechamento:consolidar-mes` e `fechamento:verificar-consolidacao`
-- [ ] 137-06-PLAN.md — FechamentoController: cadastro manual das faixas e ações de fechar/refazer competência
-- [ ] 137-07-PLAN.md — `AdminController::fechamento()` migrado: mês-calendário, grupos do Comercial e leitura do congelado
-- [ ] 137-08-PLAN.md — Relatórios PDF e email mensal na fonte central; constante `FAIXAS` apagada das duas cópias
-- [ ] 137-09-PLAN.md — UI: tabela de faixas por empresa, estados de ausência visível e composição ML+Shopee
-- [ ] 137-10-PLAN.md — UI: status/fechar/refazer competência, fim do acumulado e checkpoint humano conferindo as três tabelas contra o contrato
+- [x] 137-06-PLAN.md — FechamentoController: cadastro manual das faixas e ações de fechar/refazer competência
+- [x] 137-07-PLAN.md — `AdminController::fechamento()` migrado: mês-calendário, grupos do Comercial e leitura do congelado
+- [x] 137-08-PLAN.md — Relatórios PDF e email mensal na fonte central; constante `FAIXAS` apagada das duas cópias
+- [x] 137-09-PLAN.md — UI: tabela de faixas por empresa, estados de ausência visível e composição ML+Shopee
+- [x] 137-10-PLAN.md — UI: status/fechar/refazer competência, fim do acumulado e checkpoint humano conferindo as três tabelas contra o contrato
 
 > **Estado atual medido (2026-09-02, antes de qualquer plano):** a tela é a rota `/financeiro`, `AdminController::fechamento()` (~linha 126). Existem também `EnviarRelatorioFechamentoJob`, `RelatorioFechamentoMail` e o model `FechamentoRecebido` — precisam ser mapeados antes de qualquer mudança, porque a fase mexe no que eles produzem.
 >
 > **Perguntas do discuss-phase — todas fechadas em 2026-09-02** (`137-CONTEXT.md`, D-01 a D-13): o faturamento sai de `adman_metrics` + `shopee_metrics` somados na mesma janela de mês-calendário (D-05/D-06/D-07); a tabela mora por serviço com exceção por empresa, all-or-nothing (D-01/D-13); empresa sem tabela aparece como `A DEFINIR` com CTA de cadastro, nunca R$ 0 (D-04); e o fechamento vira registro congelado por competência, com reconsolidação permitida mediante motivo registrado (D-11/D-12).
+
+### Phase 138: Tabela do grupo e aviso de mudança de faixa
+
+**Goal:** Fechar as duas lacunas que o uso real do fechamento revelou no primeiro dia (2026-09-03),
+depois que agosto foi fechado em produção com 201 empresas e 15 grupos.
+
+**1. Grupo passa a ter tabela própria.** Hoje o grupo NÃO tem tabela: ele é classificado pela tabela
+da empresa-âncora — o membro que mais faturou no mês, com desempate por menor id
+(`ConsolidarMesFechamento`, ~linha 271). Funciona enquanto as irmãs compartilham a mesma tabela, mas
+tem dois defeitos: um grupo que negociou tabela própria não tem onde registrá-la, e se as irmãs têm
+tabelas diferentes **quem manda muda de mês para mês**, silenciosamente, conforme quem faturou mais.
+
+Decisão do usuário (2026-09-03): criar tabela de grupo cadastrável pela tela, com precedência:
+
+```
+1. tabela própria do GRUPO      <- nova
+2. tabela própria da EMPRESA    <- já existe (empresa_faixas_faturamento)
+3. tabela do SERVIÇO (padrão)   <- já existe (servico_faixas_faturamento)
+```
+
+**2. Aviso de mudança de faixa para os admins.** Pedido do usuário. O dado já é calculado: o
+snapshot grava `evolucao` comparando a competência com a anterior — falta só notificar a partir dele.
+
+Decisão do usuário (2026-09-03): avisar **nos dois sentidos, subida e queda**. Queda de faixa
+significa cobrar menos, e é exatamente o tipo de mudança que ninguém percebe sozinha. Entrar/sair de
+`A DEFINIR` fica de fora por ora — com 74 empresas hoje sem faixa, viraria ruído.
+
+**Origem:** uso real do fechamento de agosto/2026, no mesmo dia do deploy da Fase 137.
+
+**Estado medido em produção (2026-09-03, agosto fechado):** 201 empresas no snapshot — 127 `ok`,
+69 `sem_integracao`, 4 `sem_tabela`, 1 `sem_faturamento`. 15 grupos, todos conferidos por `SELECT`
+(0 divergências entre a soma das empresas e o snapshot do grupo). Apenas 1 empresa cai na faixa
+aberta.
+
+**Dependências:** Fase 137 completa e em produção. Reusa `FechamentoFaixaResolver`,
+`FechamentoRollupService`, `FechamentoSnapshotWriter` e o `FechamentoController` — nenhum deles é
+reescrito.
+
+Plans: a planejar
+
+---
 
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
@@ -2116,3 +2157,5 @@ Plans:
 *Roadmap atualizado: 2026-08-07 — Milestone v22.0 (Administrativo + Clicksign) anexada: 10 fases (124-133) cobrindo os 39 REQ-IDs (FLUXO/DADOS/CLICK/PDF/REDE/UI) do REQUIREMENTS-v22.md, derivadas do plano canonico `plano-administrativo-clicksign.md` e corrigidas pela pesquisa (STACK/FEATURES/ARCHITECTURE/PITFALLS). Ordem de construcao dita pelo PITFALLS.md: extracao pura de services + kill switch inerte (124) -> schema (125) -> client+PDF (126) -> service de orquestracao com REDE-05 na mesma fase que gera o envelope (127) -> gatilhos em modo observacao/REDE-06 (128) -> webhook com GATE A1 bloqueante do HMAC (129) -> rede de seguranca REDE-02/03/04 (130) -> tela administrativa (131) -> cutover checkpoint humano dedicado (132) -> liga o bloqueio com checkpoint humano (133). Bloqueio nasce atras da flag `Configuracao.administrativo_bloqueio_ativo` desligada por padrao desde a Fase 124 ate a Fase 133 — nenhuma fase intermediaria muda o roteamento operacional observavel. Decisoes em aberto A1-A4 atribuidas as fases 129 (A1 bloqueante, A3) e 127 (A2) e 128 (A4). Fases 1-123 preservadas.*
 
 *Roadmap atualizado: 2026-09-02 — **Fase 137 (Fechamento mensal)** anexada. Origem: brief do usuario em 02/09, logo apos declarar a parte de contratos concluida. E a contrapartida operacional das Fases 124-133: o contrato define a tabela progressiva, o fechamento a aplica. Quatro mudancas pedidas sobre a tela `/financeiro` existente: (1) acabar com o acumulativo — hoje o mes corrente usa janela MOVEL de 30 dias e so meses passados usam mes-calendario; (2) parar de manter grupos proprios e reusar os grupos de empresas do Comercial, ja cadastrados; (3) transformar a tabela progressiva em DADO estruturado (hoje so existe como texto nos .docx da Clicksign, e sao tabelas diferentes por servico: Gestao/ML, Shopee e Brigada); (4) permitir cadastrar a tabela de uma empresa a mao, porque a geracao de contrato pelo sistema e recente e a maioria das empresas existentes esta em tabela progressiva sem o sistema saber — incluindo tabelas antigas/fora do padrao, que sao legitimas. Fase NAO planejada: as decisoes de modelagem (onde mora a tabela, override por empresa, se o fechamento vira registro congelado por competencia) ficaram explicitamente para o discuss-phase. Fases 1-136 preservadas.*
+
+*Roadmap atualizado: 2026-09-03 — **Fase 138 (Tabela do grupo e aviso de mudanca de faixa)** anexada. Origem: uso real do fechamento no mesmo dia em que a Fase 137 foi para producao e agosto/2026 foi fechado. Duas lacunas que so o uso revelou: (1) grupo nao tem tabela propria — e classificado pela tabela da empresa que mais faturou no mes, entao grupo com tabela negociada nao tem onde registra-la e, se as irmas divergem, o criterio muda de mes para mes sem aviso; (2) nao ha notificacao quando uma empresa muda de faixa, embora o snapshot ja calcule `evolucao`. Decisoes do usuario em 2026-09-03: tabela de grupo com precedencia sobre a da empresa, e aviso nos DOIS sentidos (subida e queda — queda significa cobrar menos). Entrar/sair de `A DEFINIR` fica fora por ora, para nao virar ruido com as 74 empresas hoje sem faixa. Fases 1-137 preservadas.*
