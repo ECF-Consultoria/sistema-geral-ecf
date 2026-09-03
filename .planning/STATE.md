@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 138-07-PLAN.md
-last_updated: "2026-09-03T21:17:01.000Z"
+stopped_at: Completed 138-08-PLAN.md
+last_updated: "2026-09-03T22:01:48.291Z"
 last_activity: 2026-09-03
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 20
-  completed_plans: 18
-  percent: 90
+  completed_plans: 19
+  percent: 95
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -21,6 +21,10 @@ progress:
 > acima contam os 7 planos originais da Fase 137 + os 4 planos de gap
 > closure (137-08..137-11) — **11/11 concluídos**, fase 137 fechada por
 > completo. Não rodar `state.advance-plan` sem reconferir o resultado à mão.
+> **Reincidiu no fechamento do 138-08** (mesma sessão, 2026-09-03): o comando
+> zerou `progress.percent` para `14` (cálculo global, não desta fase/milestone)
+> depois de `completed_plans` ir de 18 para 19 — corrigido à mão de volta para
+> `95` (`round(19/20*100)`) antes de commitar.
 
 # Project State
 
@@ -41,14 +45,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 138 (rea-comercial-conectada-etapa-v23-0) — EXECUTING
-0 executados**
-Plan: 8 of 9 (138-07 concluído — `EtapaTransicaoService` ligado aos dois call sites de produção
-do webhook (`processar()`/`reprocessarEvento()`) e ao cadastro manual (`ComercialController::
-store()`), com ator de sistema "Sistema HubSpot" (D-17); COMERC-01 fechado por completo)
-`CLAUDE.md`) e 138-02 (`checkpoint:human-verify` BLOQUEANTE: medir o nome interno da property de
-owner na conta HubSpot real por `hubspot:inspect-properties --objects=deals`, e confirmar o escopo
-`crm.objects.owners.read`). Wave 1 = 138-03. Wave 2 = 138-04/05/06. Wave 3 = 138-07/08.
-Wave 4 = 138-09 (checkpoints finais, `autonomous: false`).
+Plan: 9 of 9 (138-08 concluído — `Comercial/Entrada.jsx` virou componente React completo com os
+8 campos do §2, `NAV_TREE` reorganizado (Contrato e Entrada dentro do Comercial, `admin.empresas`
+fora do menu), e regressão de D-15/D-16 travada por teste; COMERC-02 já estava fechado desde os
+planos 138-05/138-06, este plano só entrega a navegação). Falta só 138-09 (checkpoints finais,
+`autonomous: false`) — wave 4, última do plano da fase.
 
 > ⚠️ **O bloco da Fase 137 abaixo foi restaurado à mão em 2026-09-02.** O commit `cea0be5f`
 > (`phase.complete`/`state.record-session`) truncou o **início** de três linhas longas e deixou
@@ -204,7 +205,7 @@ prova; FLUXO-09 já é `Done` desde o 133-02. **A milestone v22.0 NÃO está fec
 `.planning/todos/pending/260818-ficha-operacional-nao-criada-na-liberacao.md` — na prova do gate
 #10 a `ContratoLiberacao` nasceu mas a ficha operacional (`MlbEmpresa`) não foi criada. Provável
 que seja esperado (empresa fictícia sem loja ML), mas **não confirmado**.
-Last activity: 2026-09-02
+Last activity: 2026-09-03
 
 ## Posição paralela — Fase 136 (Métricas manuais por empresa/mês) — AGUARDANDO GATE HUMANO
 
@@ -747,6 +748,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 138 P03 | 20min | 2 tasks | 8 files |
 | Phase 138 P04 | ~50min | 2 tasks | 6 files |
 | Phase 138 P05 | 35min | 3 tasks | 8 files |
+| Phase 138 P08 | 35min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1511,8 +1513,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-09-03T21:17:01.000Z
-Stopped at: Completed 138-07-PLAN.md — EtapaTransicaoService ligado aos dois call sites de produção do webhook e ao cadastro manual, ator de sistema "Sistema HubSpot" (D-17), COMERC-01 fechado por completo (commits `43475202`, `370b739`, `b18bd1fd`)
+Last session: 2026-09-03T22:01:48.248Z
+Stopped at: Completed 138-08-PLAN.md
 Last session: 2026-09-03T21:17:01.000Z
 Stopped at: Completed 138-06-PLAN.md — listagem Contrato ganha os 8 campos do §2, COMERC-02 fechado por completo (commits `551117d0`, `f8e4044b`); fechamento (SUMMARY/STATE/ROADMAP/REQUIREMENTS) feito por agente de closeout porque o executor original morreu por erro de stream da API após commitar as duas tasks
 Last session: 2026-09-02T20:14:25.367Z
@@ -1648,3 +1650,4 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 138]: 138-06 fechado por um agente de CLOSEOUT, não pelo executor original — o executor commitou as duas tasks (551117d0, f8e4044b) e morreu por erro de stream da API antes de escrever o SUMMARY/atualizar STATE/ROADMAP/REQUIREMENTS. Todo critério de aceite foi reconferido do zero contra o disco (grep, diff dos commits, suíte re-executada: 171 testes/678 assertions OK) antes de fechar — ver `138-06-SUMMARY.md`
 - [Phase 138]: 138-07: COMERC-01 fechado por completo — conta de sistema "Sistema HubSpot" criada por `hubspot:criar-usuario-sistema --apply` (id local 49; senha aleatória de 64 caracteres descartada na criação é o que de fato bloqueia login, não `active=false` — o login deste projeto não checa `users.active`), resolvida por `config('services.hubspot.webhook_user_id')` (sem default). `HubspotWebhookController::nascerNaEtapa1()` chamado nos DOIS call sites de produção (`processar()` e `reprocessarEvento()` — este último não chamava o gate administrativo e ficaria sem etapa em replay). `ComercialController::store()` chama o mesmo serviço com `$request->user()` como ator. Ator ausente/inexistente: log + empresa sem etapa, nunca TypeError/500. `EtapaTransicaoService` não foi tocado (D-17). 17 testes novos (Phase138), suíte completa `tests/Feature/Phase138` 57/57 verde, `tests/Unit/Phase137`+`tests/Feature/Phase137`+`Phase34HubspotWebhookTest`+`ContratoAdminPermissaoTest` 68/68 verde
 - [Phase 138]: 138-07: `HUBSPOT_WEBHOOK_USER_ID=49` setado no `.env` LOCAL deste worktree (não versionado); a mesma conta precisa ser criada na VPS e `id_vps:` preenchido em `138-CONTA-SISTEMA-HUBSPOT.md` antes do primeiro deploy da Fase 138 (pendência explícita do plano 138-09)
+- [Phase 138]: 138-08: Coluna 'Pendencias' unica na tabela Entrada (nao duas colunas), seguindo o padrao ja em producao de Admin/Contratos.jsx
