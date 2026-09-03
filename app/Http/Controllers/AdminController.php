@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\EnviarRelatorioFechamentoJob;
-use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Models\Configuracao;
 use App\Models\FechamentoGrupoSnapshot;
@@ -30,15 +29,6 @@ class AdminController extends Controller
         private FechamentoRollupService $rollupService,
         private FechamentoFaixaResolver $faixaResolver,
     ) {}
-
-    private const FAIXAS = [
-        ['limite' => 499_999.99,   'label' => 'faixa_1', 'valor' => 3_000.00],
-        ['limite' => 999_999.99,   'label' => 'faixa_2', 'valor' => 4_500.00],
-        ['limite' => 1_999_999.99, 'label' => 'faixa_3', 'valor' => 6_000.00],
-        ['limite' => 2_999_999.99, 'label' => 'faixa_4', 'valor' => 7_500.00],
-        ['limite' => 3_999_999.99, 'label' => 'faixa_5', 'valor' => 9_000.00],
-        ['limite' => 4_999_999.99, 'label' => 'faixa_6', 'valor' => 10_500.00],
-    ];
 
     public function empresas()
     {
@@ -723,6 +713,92 @@ class AdminController extends Controller
             ])->values()->all();
     }
 
+    /**
+     * Fase 137 (D-11) — a competência já foi fechada por
+     * `fechamento:consolidar-mes`? Mesmo teste usado por `fechamento()`.
+     * `gerarRelatorio()`/`gerarRelatorioGeral()` precisam do mesmo teste pra
+     * bifurcar entre ao-vivo e congelado.
+     */
+    private function relatorioCompetenciaFechada(string $mesReferenciaStr): bool
+    {
+        return FechamentoSnapshot::query()
+            ->whereDate('mes_referencia', $mesReferenciaStr)
+            ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+            ->exists();
+    }
+
+    /**
+     * Fase 137 (D-08/D-09) — empresas-irmãs do mesmo `CompanyGroup` de
+     * `$company`, excluindo ela própria. `parent_company_id` NUNCA participa
+     * (D-08) — quem manda é `company_group_id`, mantido pelo Comercial.
+     */
+    private function relatorioVinculadasDoGrupo(Company $company): Collection
+    {
+        if ($company->company_group_id === null) {
+            return collect();
+        }
+
+        return Company::where('company_group_id', $company->company_group_id)
+            ->where('id', '!=', $company->id)
+            ->where('active', true)
+            ->with(['contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico')])
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * Fase 137 (D-02b) — rótulo legível de faixa a partir dos campos que
+     * `fechamentoDadosPorEmpresaAoVivo()`/`fechamentoDadosPorEmpresaCongelados()`/
+     * `fechamentoAgregarGrupos*()` já calculam (`faixa_ordem`,
+     * `faixa_limite_inferior`, `faixa_limite_superior`) — nunca reclassifica.
+     * Usado pelos três relatórios (PDF por empresa, relatório geral, e-mail).
+     */
+    private function relatorioFaixaLabel(?int $ordem, ?float $limiteInferior, ?float $limiteSuperior): ?string
+    {
+        if ($ordem === null) {
+            return null;
+        }
+
+        if ($limiteSuperior === null) {
+            return 'Faixa máxima (acima de R$ ' . number_format($limiteInferior ?? 0, 0, ',', '.') . ')';
+        }
+
+        return 'Faixa ' . $ordem . ' (R$ ' . number_format($limiteInferior ?? 0, 0, ',', '.')
+            . ' – R$ ' . number_format($limiteSuperior, 0, ',', '.') . ')';
+    }
+
+    /**
+     * Fase 137 — payload de uma linha (empresa própria, âncora de grupo ou
+     * vinculada) para os relatórios PDF/e-mail, a partir do array já
+     * calculado por `fechamentoDadosPorEmpresaAoVivo()`/`Congelados()`/
+     * `fechamentoAgregarGrupos*()` — NUNCA recalcula faixa ou cobrança, só
+     * reformata pro Blade (D-01/D-02b/D-05/D-06/D-08 já resolvidos lá).
+     *
+     * @param  array<string, mixed>  $d  entrada de `$dadosPorId` para esta empresa/grupo
+     */
+    private function relatorioLinhaEmpresa(Company $c, array $d, string $periodoInicioFmt, string $periodoFimFmt): array
+    {
+        $faturamento = $d['faturamento'] ?? null;
+
+        return [
+            'id'                   => $c->id,
+            'name'                 => $c->name,
+            'cnpj'                 => $c->cnpj,
+            'adman_account_id'     => $c->cust_id,
+            'adman_store_id'       => $c->adman_store_id ?? null,
+            'ml_store_id'          => $c->ml_store_id,
+            'segment'              => $c->segment,
+            'servicos_contratados' => $c->contratosServico->where('ativo', true)->pluck('servico.nome')->filter()->implode(', '),
+            'faturamento'          => $faturamento,
+            'periodo_inicio'       => $faturamento !== null ? $periodoInicioFmt : null,
+            'periodo_fim'          => $faturamento !== null ? $periodoFimFmt    : null,
+            'faixa_label'          => $this->relatorioFaixaLabel($d['faixa_ordem'] ?? null, $d['faixa_limite_inferior'] ?? null, $d['faixa_limite_superior'] ?? null),
+            'valor_mensal'         => $d['valor_mensal'] ?? null,
+            'valor_e_piso'         => (bool) ($d['valor_faixa_e_piso'] ?? false),
+            'cobranca_mensal'      => $d['cobranca_mensal'] ?? null,
+        ];
+    }
+
     public function syncFaturamento(Request $request, AdmanService $adman)
     {
         $mes = $request->filled('mes')
@@ -801,119 +877,70 @@ class AdminController extends Controller
             $ref = Carbon::now();
         }
 
-        $mesSelecionado = $ref->format('Y-m');
+        $mesSelecionado   = $ref->format('Y-m');
+        $mesReferenciaStr = $ref->copy()->startOfMonth()->toDateString();
 
-        // Mesma regra de fechamento(): mês atual usa 30d rolling, mês passado
-        // preserva mês calendário. Label muda pra refletir a janela real.
-        $isMesAtual = $ref->isSameMonth(Carbon::now());
-        if ($isMesAtual) {
-            $inicio   = Carbon::now()->subDays(30)->startOfDay();
-            $fim      = Carbon::now()->endOfDay();
-            $mesLabel = 'Últimos 30 dias (até ' . $fim->format('d/m/Y') . ')';
-        } else {
-            $inicio   = $ref->copy()->startOfMonth();
-            $fim      = $ref->copy()->endOfMonth();
-            $mesLabel = ucfirst($ref->translatedFormat('F Y'));
-        }
+        // D-06 — acaba a janela móvel de 30 dias: toda competência é
+        // mês-calendário fechado, via a ÚNICA implementação (mesma de
+        // fechamento()/gerarRelatorioGeral()).
+        $janela   = $this->rollupService->janela($mesSelecionado);
+        $inicio   = $janela['inicio'];
+        $fim      = $janela['fim'];
+        $mesLabel = ucfirst($ref->translatedFormat('F Y'));
 
-        // Carrega empresa principal com vinculadas ativas + contratos ativos.
         // Phase 14 (Frente B): contratosServico.servico eager-loaded para evitar
         // N+1 ao calcular cobrança_mensal via CobrancaCalculator::novo.
         $company->load([
-            'filhas' => fn($q) => $q->where('active', true)->orderBy('name'),
-            'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
-            'filhas.contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+            'contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico'),
+            'grupo:id,name,color',
         ]);
 
-        // Mês atual = Adman direto; mês passado = DB agregado.
-        // Resolução de custId via accessor cust_id (adman_account_id ?: ml_store_id) —
-        // coerente com cache e sync.
-        $todasEmpresas = collect([$company])->merge($company->filhas);
+        // D-08 — o "grupo" do relatório é o CompanyGroup, nunca a
+        // hierarquia legada de pai/filha (D-09).
+        $vinculadasCompanies = $this->relatorioVinculadasDoGrupo($company);
+        $titulo              = $company->grupo->name ?? $company->name;
 
-        if ($isMesAtual) {
-            $custIds = $todasEmpresas->pluck('cust_id')->filter()->values()->all();
-            $billing = $this->adman->fetchGrossBillingsBatch($custIds, $inicio->toDateString(), $fim->toDateString());
+        $todasEmpresas = collect([$company])->merge($vinculadasCompanies);
 
-            $faturamentoOf = fn(Company $emp): ?float => $emp->cust_id
-                ? ($billing[$emp->cust_id] ?? null)
-                : null;
-        } else {
-            $todosIds = $todasEmpresas->pluck('id');
-            $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
-                ->whereNotNull('revenue')
-                ->whereIn('company_id', $todosIds)
-                ->selectRaw('company_id, SUM(revenue) as faturamento')
-                ->groupBy('company_id')
-                ->get()
-                ->keyBy('company_id');
+        $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
+            ->pluck('recebido_em', 'company_id');
 
-            $faturamentoOf = function (Company $emp) use ($metricas): ?float {
-                $m = $metricas->get($emp->id);
-                return $m ? (float) $m->faturamento : null;
-            };
-        }
+        // D-11 — mesma bifurcação de fechamento(): competência congelada lê
+        // fechamento_snapshots, nunca recalcula (D-05: ML+Shopee já somados
+        // e classificados pelas mesmas fontes centrais).
+        $dadosPorId = $this->relatorioCompetenciaFechada($mesReferenciaStr)
+            ? $this->fechamentoDadosPorEmpresaCongelados($todasEmpresas, $mesReferenciaStr, $inicio, $fim, $recebidos)
+            : $this->fechamentoDadosPorEmpresaAoVivo($todasEmpresas, $mesSelecionado, $inicio, $fim, $recebidos);
 
         $periodoInicioFmt = $inicio->format('d/m/Y');
         $periodoFimFmt    = $fim->format('d/m/Y');
 
-        // Verifica se foi marcado como recebido
-        $recebido = FechamentoRecebido::where('company_id', $company->id)
-            ->where('mes', $mesSelecionado)
-            ->exists();
+        $recebido = isset($recebidos[$company->id]);
 
-        // Monta dados da empresa principal
-        $faturamentoPai = $faturamentoOf($company);
-        $faixaPai       = $faturamentoPai !== null ? $this->calcularFaixa($faturamentoPai) : null;
+        $linhaPai = $this->relatorioLinhaEmpresa($company, $dadosPorId[$company->id], $periodoInicioFmt, $periodoFimFmt);
 
-        // Monta dados das vinculadas
-        // Phase 14 (Frente B): cobranca_mensal via CobrancaCalculator::novo + chave
-        // nova `servicos_contratados` (string formatada para a Blade). Chaves legacy
-        $vinculadas = $company->filhas->map(function (Company $f) use ($faturamentoOf, $periodoInicioFmt, $periodoFimFmt) {
-            $fat         = $faturamentoOf($f);
-            $fx          = $fat !== null ? $this->calcularFaixa($fat) : null;
-            $valorMensal = $fx ? $fx['valor'] : null;
-            $cobrancaMensalFilha = CobrancaCalculator::novo($fx, $f->contratosServico) ?: null;
-            return [
-                'id'                       => $f->id,
-                'name'                     => $f->name,
-                'cnpj'                     => $f->cnpj,
-                // Phase 59 fix — usa o accessor cust_id (adman_account_id ?: ml_store_id)
-                // em vez de replicar a resolução manualmente com ordem invertida;
-                // unifica com gerarRelatorioGeral() (ver 59-AUDIT.md item AdminController.php:545).
-                'adman_account_id'         => $f->cust_id,
-                'adman_store_id'           => $f->adman_store_id ?? null,
-                'ml_store_id'              => $f->ml_store_id,
-                // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
-                // ─── Chave nova (string formatada para a Blade) ─────────
-                'servicos_contratados'     => $f->contratosServico->where('ativo', true)->pluck('servico.nome')->filter()->implode(', '),
-                'faturamento'              => $fat,
-                'periodo_inicio'           => $fat !== null ? $periodoInicioFmt : null,
-                'periodo_fim'              => $fat !== null ? $periodoFimFmt    : null,
-                'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
-                'valor_mensal'             => $valorMensal,
-                'cobranca_mensal'          => $cobrancaMensalFilha,
-            ];
-        })->values()->toArray();
-
-        $valorMensalPai  = $faixaPai ? $faixaPai['valor'] : null;
-        // Phase 14 (Frente B): cálculo do pai também via CobrancaCalculator::novo.
-        $cobrancaMensal  = CobrancaCalculator::novo($faixaPai, $company->contratosServico) ?: null;
+        $vinculadas = $vinculadasCompanies
+            ->map(fn (Company $f) => $this->relatorioLinhaEmpresa($f, $dadosPorId[$f->id], $periodoInicioFmt, $periodoFimFmt))
+            ->values()
+            ->toArray();
 
         // Totais do grupo
-        $totalFaturamento = ($faturamentoPai ?? 0) + collect($vinculadas)->sum('faturamento');
-        $totalMensalidade = ($cobrancaMensal ?? 0) + collect($vinculadas)->sum('cobranca_mensal');
+        $totalFaturamento = ($linhaPai['faturamento'] ?? 0) + collect($vinculadas)->sum('faturamento');
+        $totalMensalidade = ($linhaPai['cobranca_mensal'] ?? 0) + collect($vinculadas)->sum('cobranca_mensal');
 
         return view('admin.relatorio-fechamento', [
             'company'          => $company,
+            'titulo'           => $titulo,
             'mes_label'        => $mesLabel,
             'mes_selecionado'  => $mesSelecionado,
             'metrica'          => null, // legacy — preservado vazio pra compat com a view
-            'faturamento'      => $faturamentoPai,
-            'periodo_inicio'   => $faturamentoPai !== null ? $periodoInicioFmt : null,
-            'periodo_fim'      => $faturamentoPai !== null ? $periodoFimFmt    : null,
-            'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
-            'valor_mensal'     => $valorMensalPai,
-            'cobranca_mensal'  => $cobrancaMensal,
+            'faturamento'      => $linhaPai['faturamento'],
+            'periodo_inicio'   => $linhaPai['periodo_inicio'],
+            'periodo_fim'      => $linhaPai['periodo_fim'],
+            'faixa_label'      => $linhaPai['faixa_label'],
+            'valor_mensal'     => $linhaPai['valor_mensal'],
+            'valor_e_piso'     => $linhaPai['valor_e_piso'],
+            'cobranca_mensal'  => $linhaPai['cobranca_mensal'],
             // Phase 14 (Frente B): label de serviços derivado do modelo N:N para
             // a Blade view consumir gradualmente. O label legacy
             'servicos_contratados_pai' => $company->contratosServico->where('ativo', true)->pluck('servico.nome')->filter()->implode(', '),
@@ -939,152 +966,106 @@ class AdminController extends Controller
             $ref = Carbon::now();
         }
 
-        $mesSelecionado = $ref->format('Y-m');
+        $mesSelecionado   = $ref->format('Y-m');
+        $mesReferenciaStr = $ref->copy()->startOfMonth()->toDateString();
 
-        // Mesma regra de fechamento()/gerarRelatorio(): 30d rolling no mês atual,
-        // mês calendário em meses passados (relatórios históricos).
-        $isMesAtual = $ref->isSameMonth(Carbon::now());
-        if ($isMesAtual) {
-            $inicio   = Carbon::now()->subDays(30)->startOfDay();
-            $fim      = Carbon::now()->endOfDay();
-            $mesLabel = 'Últimos 30 dias (até ' . $fim->format('d/m/Y') . ')';
-        } else {
-            $inicio   = $ref->copy()->startOfMonth();
-            $fim      = $ref->copy()->endOfMonth();
-            $mesLabel = ucfirst($ref->translatedFormat('F Y'));
-        }
+        // D-06 — mesma implementação única de janela/label de
+        // fechamento()/gerarRelatorio() (sem 30d rolling).
+        $janela   = $this->rollupService->janela($mesSelecionado);
+        $inicio   = $janela['inicio'];
+        $fim      = $janela['fim'];
+        $mesLabel = ucfirst($ref->translatedFormat('F Y'));
 
-        // Carrega todas as empresas principais ativas (não filhas)
-        // Phase 14 (Frente B): eager loading de contratosServico.servico (pai + filhas)
-        // evita N+1 ao calcular cobrança_mensal via CobrancaCalculator::novo.
+        // D-08 — carrega TODAS as empresas ativas (não mais só as sem
+        // hierarquia de pai, filtro antigo); a agregação por CompanyGroup
+        // logo abaixo decide quem vira âncora de cada linha do relatório.
         $query = Company::where('active', true)
-            ->whereNull('parent_company_id')
             ->with([
-                'filhas' => fn($q) => $q->where('active', true)->orderBy('name'),
-                'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
-                'filhas.contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+                'contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico'),
+                'grupo:id,name,color',
             ])
             ->orderBy('name');
 
         if ($request->filled('servico_nome')) {
             $nomeServico = $request->input('servico_nome');
-            $query->whereHas('contratosServico', fn($q) =>
+            $query->whereHas('contratosServico', fn ($q) =>
                 $q->where('ativo', true)
-                  ->whereHas('servico', fn($qs) => $qs->where('nome', $nomeServico))
+                  ->whereHas('servico', fn ($qs) => $qs->where('nome', $nomeServico))
             );
         }
 
         $rawCompanies = $query->get();
 
-        // Mês atual: cache (Adman pre-aquecido) + fallback SUM DB
-        // Mês passado: sempre SUM DB (histórico congelado)
-        $todasEmpresas = $rawCompanies->flatMap(
-            fn($c) => collect([$c])->merge($c->filhas)
-        );
-        $todosIds = $todasEmpresas->pluck('id')->unique();
-        $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
-            ->whereNotNull('revenue')
-            ->whereIn('company_id', $todosIds)
-            ->selectRaw('company_id, SUM(revenue) as faturamento')
-            ->groupBy('company_id')
-            ->get()
-            ->keyBy('company_id');
+        $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
+            ->pluck('recebido_em', 'company_id');
 
-        $dateFromStr  = $inicio->toDateString();
-        $dateToStr    = $fim->toDateString();
-        $missingCache = false;
+        $competenciaFechada = $this->relatorioCompetenciaFechada($mesReferenciaStr);
 
-        // Batch read do cache pra todas as empresas do relatório de uma vez.
-        // cust_id (adman_account_id ?: ml_store_id) bate com a chave do writer.
-        $cacheBatch = [];
-        if ($isMesAtual) {
-            $custIdsAll = $todasEmpresas->pluck('cust_id')->filter()->unique()->values()->all();
-            $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIdsAll, $dateFromStr, $dateToStr);
-        }
+        // Mesmo pipeline de fechamento(): números por empresa (congelado ou
+        // ao vivo, D-05/D-11) e depois agregação por CompanyGroup
+        // (D-08/D-09/D-10) — nunca a hierarquia legada de pai/filha.
+        $dadosPorId = $competenciaFechada
+            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $recebidos)
+            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $recebidos);
 
-        $faturamentoOf = function (Company $emp) use ($metricas, $isMesAtual, $cacheBatch, &$missingCache): ?float {
-            $custId = $emp->cust_id;
-            if ($isMesAtual && $custId) {
-                $entry = $cacheBatch[$custId] ?? ['value' => null, 'hasEntry' => false];
-                if ($entry['value'] !== null) return $entry['value'];
-                if (!$entry['hasEntry']) $missingCache = true;
-            }
-            // Fallback: SUM do DB
-            $m = $metricas->get($emp->id);
-            return $m ? (float) $m->faturamento : null;
-        };
+        $dadosPorId = $competenciaFechada
+            ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr)
+            : $this->fechamentoAgregarGruposAoVivo($dadosPorId, $rawCompanies, $mesReferenciaStr);
 
         $periodoInicioFmt = $inicio->format('d/m/Y');
         $periodoFimFmt    = $fim->format('d/m/Y');
 
-        // Recebidos do mês (indexado por company_id)
-        $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
-            ->pluck('company_id')
-            ->flip();
-
         $filtroRecebido = $request->input('recebido'); // 'sim', 'nao', ou null
 
         $relatorios = [];
-        foreach ($rawCompanies as $company) {
-            $recebido = isset($recebidos[$company->id]);
+        foreach ($dadosPorId as $ancoraId => $linha) {
+            $ancora = $rawCompanies->firstWhere('id', $ancoraId);
+            if ($ancora === null) {
+                continue;
+            }
 
-            if ($filtroRecebido === 'sim' && !$recebido) continue;
+            $recebido = (bool) ($linha['recebido'] ?? false);
+
+            if ($filtroRecebido === 'sim' && ! $recebido) continue;
             if ($filtroRecebido === 'nao' && $recebido)  continue;
 
-            $faturamentoPai = $faturamentoOf($company);
-            $faixaPai       = $faturamentoPai !== null ? $this->calcularFaixa($faturamentoPai) : null;
+            $linhaPrincipal = $this->relatorioLinhaEmpresa($ancora, $linha, $periodoInicioFmt, $periodoFimFmt);
 
-            $vinculadas = $company->filhas->map(function (Company $f) use ($faturamentoOf, $periodoInicioFmt, $periodoFimFmt) {
-                $fat         = $faturamentoOf($f);
-                $fx          = $fat !== null ? $this->calcularFaixa($fat) : null;
-                $valorMensal = $fx ? $fx['valor'] : null;
-                // Phase 14 (Frente B): cobrança via CobrancaCalculator::novo.
-                $cobrancaMensalFilha = CobrancaCalculator::novo($fx, $f->contratosServico) ?: null;
-                return [
-                    'id'                       => $f->id,
-                    'name'                     => $f->name,
-                    'cnpj'                     => $f->cnpj,
-                    // Phase 59 fix — usa o accessor cust_id, unificando com fechamento()
-                    // (ver 59-AUDIT.md item AdminController.php:545).
-                    'adman_account_id'         => $f->cust_id,
-                    'adman_store_id'           => $f->adman_store_id,
-                    'ml_store_id'              => $f->ml_store_id,
-                    'segment'                  => $f->segment,
-                    // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
-                    // ─── Chave nova (string formatada para a Blade) ─────────
-                    'servicos_contratados'     => $f->contratosServico->where('ativo', true)->pluck('servico.nome')->filter()->implode(', '),
-                    'faturamento'              => $fat,
-                    'periodo_inicio'           => $fat !== null ? $periodoInicioFmt : null,
-                    'periodo_fim'              => $fat !== null ? $periodoFimFmt    : null,
-                    'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
-                    'valor_mensal'             => $valorMensal,
-                    'cobranca_mensal'          => $cobrancaMensalFilha,
-                ];
-            })->values()->toArray();
+            // "Vinculadas" = demais membros do grupo (D-08). Empresa
+            // standalone vem com 'filhas' => [] de fechamentoAgregarGrupos*().
+            $vinculadas = collect($linha['filhas'] ?? [])
+                ->map(function (array $lm) use ($rawCompanies, $periodoInicioFmt, $periodoFimFmt) {
+                    $c = $rawCompanies->firstWhere('id', $lm['id']);
+                    return $c !== null ? $this->relatorioLinhaEmpresa($c, $lm, $periodoInicioFmt, $periodoFimFmt) : null;
+                })
+                ->filter()
+                ->values()
+                ->toArray();
 
-            $valorMensalPai  = $faixaPai ? $faixaPai['valor'] : null;
-            // Phase 14 (Frente B): cálculo do pai via CobrancaCalculator::novo.
-            $cobrancaMensal  = CobrancaCalculator::novo($faixaPai, $company->contratosServico) ?: null;
-
-            $totalMensalidade = ($cobrancaMensal ?? 0) + collect($vinculadas)->sum('cobranca_mensal');
+            $titulo = ($linha['tipo'] ?? 'empresa') === 'grupo'
+                ? ($linha['grupo']['name'] ?? $ancora->name)
+                : $ancora->name;
 
             $relatorios[] = [
-                'company'          => $company,
-                'recebido'         => $recebido,
-                'faturamento'      => $faturamentoPai,
-                'periodo_inicio'   => $faturamentoPai !== null ? $periodoInicioFmt : null,
-                'periodo_fim'      => $faturamentoPai !== null ? $periodoFimFmt    : null,
-                'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
-                'valor_mensal'     => $valorMensalPai,
-                'cobranca_mensal'  => $cobrancaMensal,
-                'vinculadas'       => $vinculadas,
-                'total_mensalidade'=> $totalMensalidade,
+                'company'           => $ancora,
+                'titulo'            => $titulo,
+                'recebido'          => $recebido,
+                'faturamento'       => $linhaPrincipal['faturamento'],
+                'periodo_inicio'    => $linhaPrincipal['periodo_inicio'],
+                'periodo_fim'       => $linhaPrincipal['periodo_fim'],
+                'faixa_label'       => $linhaPrincipal['faixa_label'],
+                'valor_mensal'      => $linhaPrincipal['valor_mensal'],
+                'valor_e_piso'      => $linhaPrincipal['valor_e_piso'],
+                'cobranca_mensal'   => $linhaPrincipal['cobranca_mensal'],
+                'vinculadas'        => $vinculadas,
+                'total_mensalidade' => ($linhaPrincipal['cobranca_mensal'] ?? 0) + collect($vinculadas)->sum('cobranca_mensal'),
             ];
         }
 
-        if ($missingCache) {
-            \App\Jobs\RefreshGrossBillingCacheJob::dispatchIfQueued();
-        }
+        // A chave de agregação por grupo (id da âncora) não preserva a ordem
+        // alfabética da query original — reordena por título pra manter a
+        // apresentação estável.
+        usort($relatorios, fn ($a, $b) => strcmp($a['titulo'], $b['titulo']));
 
         return view('admin.relatorio-geral', [
             'relatorios'      => $relatorios,
@@ -1161,47 +1142,5 @@ class AdminController extends Controller
     public function inventario()
     {
         return Inertia::render('Admin/Inventario');
-    }
-
-    /**
-     * Retorna a faixa de investimento para um faturamento mensal.
-     * Tabela de progressão definida em faturamento_adm.md.
-     *
-     * @return array{faixa: string, valor: float}
-     */
-    private function calcularFaixa(float $faturamento): array
-    {
-        foreach (self::FAIXAS as $faixa) {
-            if ($faturamento <= $faixa['limite']) {
-                return ['faixa' => $faixa['label'], 'valor' => (float) $faixa['valor']];
-            }
-        }
-        return ['faixa' => 'maxima', 'valor' => 12_000.00];
-    }
-
-    private function faixaNumero(string $faixa): int
-    {
-        return match ($faixa) {
-            'faixa_1' => 1,
-            'faixa_2' => 2,
-            'faixa_3' => 3,
-            'faixa_4' => 4,
-            'faixa_5' => 5,
-            'faixa_6' => 6,
-            default   => 7,
-        };
-    }
-
-    private function faixaLabel(string $faixa): string
-    {
-        return match ($faixa) {
-            'faixa_1' => 'Faixa 1 (até R$ 499.999)',
-            'faixa_2' => 'Faixa 2 (R$ 500k – R$ 999k)',
-            'faixa_3' => 'Faixa 3 (R$ 1M – R$ 1,9M)',
-            'faixa_4' => 'Faixa 4 (R$ 2M – R$ 2,9M)',
-            'faixa_5' => 'Faixa 5 (R$ 3M – R$ 3,9M)',
-            'faixa_6' => 'Faixa 6 (R$ 4M – R$ 4,9M)',
-            default   => 'Faixa Máxima (acima de R$ 5M)',
-        };
     }
 }

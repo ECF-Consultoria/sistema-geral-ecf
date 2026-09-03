@@ -228,6 +228,15 @@
 </head>
 <body>
 
+@php
+    // Fase 137 (D-02b) — a última faixa de Gestão/Brigada é PISO ("a partir
+    // de"), não valor fechado; sem o prefixo o Administrativo cobraria a
+    // menos de quem faturou mais que o teto da tabela.
+    $fmtPiso = fn ($valor, $piso) => $valor
+        ? (($piso ? 'a partir de ' : '') . 'R$ ' . number_format($valor, 0, ',', '.'))
+        : '—';
+@endphp
+
 <div class="header-dark">
     <div class="logo-pill"><img src="{{ asset('images/logo.png') }}" alt="ECF Consultoria"></div>
     <div class="header-meta">
@@ -251,7 +260,7 @@
     <div class="fields-grid">
         <div class="field" style="grid-column: span 3">
             <label>Nome</label>
-            <span style="font-size:16px; font-weight:800">{{ $company->name }}</span>
+            <span style="font-size:16px; font-weight:800">{{ $titulo ?? $company->name }}</span>
         </div>
         <div class="field">
             <label>CNPJ</label>
@@ -305,7 +314,7 @@
             <tbody>
                 <tr>
                     <td>
-                        <strong>{{ $company->name }}</strong>
+                        <strong>{{ $titulo ?? $company->name }}</strong>
                         @if ($company->cnpj)<span class="cnpj-sub">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $company->cnpj)) }}</span>@endif
                     </td>
                     <td>@if ($faturamento !== null) {{ 'R$ '.number_format($faturamento,0,',','.') }} @else <span class="sem-dados">Sem dados</span> @endif</td>
@@ -315,7 +324,7 @@
                              ativos via CobrancaCalculator::novo). Bloco legacy de
                              additional_service / additional_service_price removido — info
                              já consta na seção "Contratos ativos" acima. --}}
-                        @if ($cobranca_mensal)R$ {{ number_format($cobranca_mensal,0,',','.') }}@else —@endif
+                        {{ $fmtPiso($cobranca_mensal, $valor_e_piso ?? false) }}
                     </td>
                 </tr>
                 @foreach ($vinculadas as $v)
@@ -328,7 +337,7 @@
                     <td>@if ($v['faixa_label']) <span class="faixa-badge">{{ $v['faixa_label'] }}</span> @else — @endif</td>
                     <td class="right">
                         {{-- Phase 14 (Frente B): cobranca_mensal já agrega faixa + contratos da filha. --}}
-                        @if (!empty($v['cobranca_mensal']))R$ {{ number_format($v['cobranca_mensal'],0,',','.') }}@else —@endif
+                        {{ $fmtPiso($v['cobranca_mensal'] ?? null, $v['valor_e_piso'] ?? false) }}
                     </td>
                 </tr>
                 @endforeach
@@ -352,7 +361,7 @@
                 <tr>
                     <td>{{ 'R$ '.number_format($faturamento,0,',','.') }}</td>
                     <td>@if ($faixa_label) <span class="faixa-badge">{{ $faixa_label }}</span> @else — @endif</td>
-                    <td class="right"><span class="valor-destaque">{{ $cobranca_mensal ? 'R$ '.number_format($cobranca_mensal,0,',','.') : '—' }}</span></td>
+                    <td class="right"><span class="valor-destaque">{{ $fmtPiso($cobranca_mensal, $valor_e_piso ?? false) }}</span></td>
                 </tr>
             </tbody>
         </table>
@@ -363,7 +372,7 @@
              contratos ativos mensais via CobrancaCalculator::novo. --}}
         <div class="total-box">
             <span class="label">Mensalidade a cobrar</span>
-            <span class="value">R$ {{ number_format($cobranca_mensal,0,',','.') }}</span>
+            <span class="value">{{ $fmtPiso($cobranca_mensal, $valor_e_piso ?? false) }}</span>
         </div>
         @endif
     @else

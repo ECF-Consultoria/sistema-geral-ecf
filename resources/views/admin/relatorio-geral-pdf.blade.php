@@ -173,6 +173,15 @@
 </head>
 <body>
 
+@php
+    // Fase 137 (D-02b) — a última faixa de Gestão/Brigada é PISO ("a partir
+    // de"), não valor fechado; sem o prefixo o Administrativo cobraria a
+    // menos de quem faturou mais que o teto da tabela.
+    $fmtPiso = fn ($valor, $piso) => $valor
+        ? (($piso ? 'a partir de ' : '') . 'R$ ' . number_format($valor, 0, ',', '.'))
+        : '—';
+@endphp
+
 @if (count($relatorios) === 0)
     <div class="header-dark">
         <table class="header-table"><tr>
@@ -286,7 +295,7 @@
                 <tr>
                     <td colspan="3">
                         <label>Nome</label>
-                        <span style="font-size:16px; font-weight:800">{{ $company->name }}</span>
+                        <span style="font-size:16px; font-weight:800">{{ $r['titulo'] ?? $company->name }}</span>
                     </td>
                 </tr>
                 <tr>
@@ -344,12 +353,12 @@
                     <tbody>
                         <tr>
                             <td>
-                                <strong>{{ $company->name }}</strong>
+                                <strong>{{ $r['titulo'] ?? $company->name }}</strong>
                                 @if ($company->cnpj)<span class="cnpj-sub">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $company->cnpj)) }}</span>@endif
                             </td>
                             <td>@if ($r['faturamento'] !== null) {{ 'R$ '.number_format($r['faturamento'],0,',','.') }} @else <span class="sem-dados">Sem dados</span> @endif</td>
                             <td>@if ($r['faixa_label']) <span class="faixa-badge">{{ $r['faixa_label'] }}</span> @else — @endif</td>
-                            <td class="right">{{ $r['valor_mensal'] ? 'R$ '.number_format($r['valor_mensal'],0,',','.') : '—' }}</td>
+                            <td class="right">{{ $fmtPiso($r['valor_mensal'] ?? null, $r['valor_e_piso'] ?? false) }}</td>
                         </tr>
                         @foreach ($r['vinculadas'] as $v)
                         <tr class="vinculada">
@@ -359,7 +368,7 @@
                             </td>
                             <td>@if ($v['faturamento'] !== null) {{ 'R$ '.number_format($v['faturamento'],0,',','.') }} @else <span class="sem-dados">Sem dados</span> @endif</td>
                             <td>@if ($v['faixa_label']) <span class="faixa-badge">{{ $v['faixa_label'] }}</span> @else — @endif</td>
-                            <td class="right">{{ $v['valor_mensal'] ? 'R$ '.number_format($v['valor_mensal'],0,',','.') : '—' }}</td>
+                            <td class="right">{{ $fmtPiso($v['valor_mensal'] ?? null, $v['valor_e_piso'] ?? false) }}</td>
                         </tr>
                         @endforeach
                         <tr class="total">
@@ -382,7 +391,7 @@
                         <tr>
                             <td>{{ 'R$ '.number_format($r['faturamento'],0,',','.') }}</td>
                             <td>@if ($r['faixa_label']) <span class="faixa-badge">{{ $r['faixa_label'] }}</span> @else — @endif</td>
-                            <td class="right"><span class="valor-destaque">{{ $r['valor_mensal'] ? 'R$ '.number_format($r['valor_mensal'],0,',','.') : '—' }}</span></td>
+                            <td class="right"><span class="valor-destaque">{{ $fmtPiso($r['valor_mensal'] ?? null, $r['valor_e_piso'] ?? false) }}</span></td>
                         </tr>
                     </tbody>
                 </table>
@@ -390,7 +399,7 @@
                 <div class="total-box">
                     <table class="total-box-table"><tr>
                         <td><span class="label">Mensalidade a cobrar</span></td>
-                        <td style="text-align:right"><span class="value">{{ 'R$ '.number_format($r['valor_mensal'],0,',','.') }}</span></td>
+                        <td style="text-align:right"><span class="value">{{ $fmtPiso($r['valor_mensal'] ?? null, $r['valor_e_piso'] ?? false) }}</span></td>
                     </tr></table>
                 </div>
                 @endif
