@@ -245,6 +245,48 @@ asserções deste plano = 233/1177, bate exato). `AdminFechamentoControllerTest`
 falhas pré-existentes, inalterado. Last activity: 2026-09-03 — 137-08 executado (relatórios PDF/
 e-mail migrados pra fonte central, wave 5).
 
+## Posição paralela — Fase 138 (Tabela do grupo e aviso de mudança de faixa) — EM EXECUÇÃO
+
+**Mesma disciplina dos blocos 135/136/137 acima:** Fase 138 fora de milestone, rodando em
+paralelo — duas sessões simultâneas na MESMA árvore, uma no plano 138-01 e outra no 138-02, sem
+sobreposição de `files_modified` (138-01: migration+model+resolver da tabela do grupo; 138-02:
+colunas de `fechamento_snapshots`, enum `Categoria`, Notification nova, `Notificacoes/Index.jsx`).
+`## Current Position` (Fase 132/133) não foi tocado.
+
+138-01 concluído — migration `grupo_faixas_faturamento` (índice `gff_grupo_ordem_unq`,
+idempotente, molde literal de `empresa_faixas_faturamento`), model `GrupoFaixaFaturamento` com
+`LogsActivity`/`logFillable()` conferido, e `FechamentoFaixaResolver` ampliado: degrau de grupo
+como PRIMEIRO passo em `paraEmpresa()` (grupo vence exceção própria e tabela de serviço) +
+`paraGrupo(CompanyGroup $grupo, ?Company $ancora)` novo (tabela própria do grupo, ou delega pra
+`paraEmpresa($ancora)` e marca `herdada_de_company_id`/`herdada_de_company_name` — mata a herança
+invisível de D-01). Shape de retorno ganhou 4 chaves novas (`grupo_id`, `grupo_nome`,
+`herdada_de_company_id`, `herdada_de_company_name`) sempre presentes, mantendo as 4 antigas com o
+mesmo significado — `ConsolidarMesFechamento`/`AdminController` (consumidores da Fase 137)
+continuam válidos sem alteração. Ciclo TDD: RED (`4bdf4776`) → GREEN (`277fb7f9`). Precedência
+final D-01: **grupo → empresa → serviço**. Gate `Phase122|Phase136|Phase137|Phase138`: **248
+testes / 1289 asserções / 0 falhas** (era 241/1220 antes deste plano — +7 testes/+69 asserções,
+todos novos, sem regressão). 3 commits (`171f378a` migration+model, `4bdf4776` teste RED,
+`277fb7f9` implementação GREEN). Last activity: 2026-09-03 — 138-01 executado (fundação de
+leitura/escrita da tabela de grupo). Consumo pelo comando de fechamento, writer e tela fica para
+os planos 03/04/06.
+
+138-02 concluído — colunas `notificado_em`/`notificado_faixa_ordem` em `fechamento_snapshots` e
+`fechamento_grupo_snapshots` (migration `2026_09_03_120002`, idempotente, sem FK/índice novo),
+`Categoria::FAIXA_ALTERADA` no enum, `FaixaAlteradaNotification` (molde de
+`MetaAtingidaNotification`: automática, `autorUserId: null`, `url: null`) e rótulo "Mudança de
+faixa" (ícone `ArrowUpDown`, `text-amber-400`) em `Notificacoes/Index.jsx`. Este plano NÃO dispara
+nada — só a infraestrutura; quem decide e dispara é o plano 05. Premissa de D-03 travada por
+teste: `FechamentoSnapshotWriter::sync()` com `motivo` (reconsolidação) preserva as duas colunas
+porque `$dados` (payload do comando) nunca as inclui — prova de que "Refazer fechamento" não apaga
+a marca de "já avisei". Teste próprio: `Phase138AvisoFaixaSchemaTest`, **4 testes / 15 asserções**.
+Gate combinado `Phase122|Phase136|Phase137|Phase138`: **252 testes / 1304 asserções / 0 falhas**
+(era 248/1289 antes deste plano — +4 testes/+15 asserções, todos novos). Gate original
+`Phase122|Phase136|Phase137` reconferido isoladamente: **241/1220/0 falhas, inalterado**. `npm run
+build` sem erro. 3 commits (`d248b9d5` migration+models, `f581e620` categoria+notification+jsx,
+`c3e5f59f` teste). Last activity: 2026-09-03 — 138-02 executado (infraestrutura do aviso de
+mudança de faixa + trava de idempotência). Decisão de disparo (subida/queda, destinatários,
+condição de re-aviso) fica para o plano 05.
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
