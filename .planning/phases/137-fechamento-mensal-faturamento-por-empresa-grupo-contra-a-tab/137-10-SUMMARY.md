@@ -79,6 +79,50 @@ linhas e XML validado antes da gravação. **Ainda não foi publicado na Clicksi
 
 ---
 
+## Verificação em produção (2026-09-03)
+
+Deploy feito (`a2306ad5..7092e499`, 60 commits). As 7 migrations rodaram no MariaDB sem erro —
+nenhuma das armadilhas conhecidas (nome de índice > 64, FK `nullOnDelete` sem `nullable`, enum)
+se manifestou.
+
+**Antes do deploy**, conferiu-se que nada se perderia: a VPS estava exatamente em `origin/main`
+(`a2306ad5`), ancestral do HEAD local, com 0 commits locais próprios e 0 migrations pendentes.
+
+### Resultados, todos por reconsulta ao banco
+
+| item | resultado |
+|---|---|
+| `fechamento:consolidar-mes --mes=2026-08` | **exit code 0** — 201 empresas, 15 grupos, 0 podados |
+| `fechamento:verificar-consolidacao --json` | **exit code 0**, `inconsistencias: []`, `ok: true` |
+| Grupo **Lyam** (2 empresas) | soma R$ 1.619.976,88 = snapshot do grupo, faixa R$ 6.000 ✅ |
+| **Os 15 grupos** | soma das empresas = snapshot do grupo em todos — **0 divergências** |
+
+O exit code foi capturado antes de qualquer pipe, e a igualdade dos grupos foi conferida por
+`SELECT` comparando `fechamento_snapshots` (somados por `company_group_id`) contra
+`fechamento_grupo_snapshots` — nunca pela tela.
+
+### Retrato do fechamento de agosto/2026
+
+| estado | empresas |
+|---|---|
+| `ok` | 127 |
+| `sem_integracao` | 69 |
+| `sem_tabela` | 4 |
+| `sem_faturamento` | 1 |
+| **total** | **201** |
+
+Com valor de faixa: 127. Sem faixa (exibidas como `A DEFINIR`): 74. Na faixa aberta: 1.
+
+### D-09 na prática — o que a decisão produziu
+
+`MOVELOVEOFICIAL` (id 7) era "pai" de três empresas pelo mecanismo legado. Medido em produção:
+`RELOJOARIA WENUS` e `MPozenato` **já têm grupo próprio no Comercial** (Wenus e MPozenato), então
+seguem agrupadas. Apenas **`DESK DESIGN` (id 5) ficou sem grupo nenhum** — perdeu o agrupamento
+antigo e não ganhou um novo. Se ela deve somar com alguém, a ação é criar/ajustar o grupo no
+Comercial.
+
+---
+
 ## Pendente — exige produção
 
 O roteiro do checkpoint assumia que os comandos Artisan rodariam localmente. **O ambiente local não
@@ -89,15 +133,16 @@ grupo Lyam para somar.
 
 Continuam em aberto, e **só produção fecha**:
 
-- [ ] `fechamento:consolidar-mes` + `fechamento:verificar-consolidacao --json` com exit code 0
-- [ ] Grupo **Lyam** como uma linha só, com a soma das duas empresas, conferido por `SELECT` em
-      `fechamento_grupo_snapshots` contra `fechamento_snapshots` — nunca pela tela
-- [ ] Faixa-piso exibida como `a partir de R$ 12.000`, nunca `R$ 12.000` seco
-- [ ] `Refazer fechamento` com motivo, e a linha correspondente em `fechamento_reconsolidacoes`
-      com `snapshot_anterior` preenchido
+- [x] `fechamento:consolidar-mes` + `fechamento:verificar-consolidacao --json` com exit code 0
+- [x] Grupo **Lyam** conferido por `SELECT`, junto com os outros 14 grupos
+- [ ] Faixa-piso exibida como `a partir de R$ 12.000` — conferência visual, só 1 empresa cai nela
+- [ ] `Refazer fechamento` com motivo, e a linha em `fechamento_reconsolidacoes` com
+      `snapshot_anterior` preenchido — **deliberadamente não testado em produção**: gravar uma
+      reconsolidação com motivo fictício sujaria a trilha de auditoria de cobrança de agosto. O
+      mecanismo tem cobertura automatizada; a conferência real cabe na primeira correção legítima
 - [ ] Publicação do `modelo-contrato-shopee-v2-FAIXAS-ALTAS.docx` na Clicksign
 
-O deploy ainda **não foi autorizado** — nenhum comando de produção foi executado nesta sessão.
+Deploy autorizado e executado em 2026-09-03. Agosto/2026 está **fechado** em produção.
 
 > Disciplina de privacidade respeitada: este SUMMARY registra decisões, contagens e nomes
 > estruturais, e **não pareia nome de empresa com valor de mensalidade**.
