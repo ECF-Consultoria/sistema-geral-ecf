@@ -131,11 +131,16 @@ Desempenho, que ignora a trava em silêncio) + comando `fechamento:consolidar-me
 grupo do Comercial via `CompanyGroup`, faixa da SOMA para o grupo, `parent_company_id` fora de
 qualquer agregação — D-08/D-09/D-10 — gate de cobertura mínima 0,7 antes de persistir) + comando
 read-only `fechamento:verificar-consolidacao --json` (5 classes de inconsistência, veredito só
-pelo exit code). Gate `Phase122|Phase136|Phase137`: **181 testes / 914 asserções / 0 falhas**
-(era 156/836 antes deste plano — as 25 diferenças são os testes novos deste plano, TDD RED→GREEN
-em todas as 3 tarefas). `AdminFechamentoControllerTest`: 5/16 falhando, pré-existente e
+pelo exit code). Gate `Phase122|Phase136|Phase137`: **184 testes / 926 asserções / 0 falhas**
+(era 156/836 antes deste plano). `AdminFechamentoControllerTest`: 5/16 falhando, pré-existente e
 documentado (endpoint ainda não migrado para o novo schema — fora do escopo deste plano).
-Last activity: 2026-09-03 — 137-05 executado (writer + 2 comandos Artisan, wave 3 sozinha).
+⚠️ Coordenador apontou lacuna de cobertura pós-execução (2026-09-03): `valor_faixa_e_piso` era
+usado só como fixture, nunca reconsultado no snapshot gravado — risco real, porque a wave 5
+(PDF/email) lê esse campo pra decidir "a partir de R$ 12.000" vs valor fechado. 3 testes
+adicionados (empresa na faixa-piso, contraponto em faixa normal, grupo cuja soma cai no piso);
+nenhum bug encontrado no código de produção, só lacuna de teste — commit `120410e6`.
+Last activity: 2026-09-03 — 137-05 executado (writer + 2 comandos Artisan, wave 3 sozinha) +
+cobertura de valor_faixa_e_piso adicionada a pedido do coordenador.
 
 Achados fora de escopo (não corrigidos, registrados em `137-.../deferred-items.md`):
 `AdminFechamentoControllerTest` tem 5/16 falhas pré-existentes (endpoint gutted na Fase 14 +

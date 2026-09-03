@@ -75,6 +75,8 @@ Cada tarefa seguiu RED→GREEN (TDD), confirmado por remoção temporária do ar
 3. **Tarefa 3: Comando read-only fechamento:verificar-consolidacao**
    - `353cf6ec` test(137-05): adiciona teste falho do comando fechamento:verificar-consolidacao (RED)
    - `defae9af` feat(137-05): implementa comando read-only fechamento:verificar-consolidacao (GREEN)
+4. **Pós-revisão do coordenador: cobertura de `valor_faixa_e_piso` persistido**
+   - `120410e6` test(137-05): cobre valor_faixa_e_piso persistido no snapshot (empresa e grupo)
 
 **Plan metadata:** (este commit — docs: complete plan)
 
@@ -97,6 +99,24 @@ Cada tarefa seguiu RED→GREEN (TDD), confirmado por remoção temporária do ar
 ## Deviations from Plan
 
 None — plano executado como escrito. As únicas adaptações foram de eficiência de implementação (checagem antecipada de `--se-ausente`, rollup do mês anterior computado uma única vez), documentadas acima como decisões, sem mudar nenhum comportamento observável especificado no `<behavior>` das tarefas.
+
+### Pós-revisão do coordenador (2026-09-03)
+
+**Lacuna de cobertura, não bug de produção.** O coordenador apontou que `valor_faixa_e_piso` era
+usado só como valor de fixture nos testes existentes, mas nenhum teste reconsultava o snapshot
+gravado para confirmar que o campo chega lá — risco real porque a wave 5 (PDF/email por empresa)
+lê esse campo direto do congelado para decidir "a partir de R$ 12.000" vs valor fechado; se o
+comando gravasse sempre `false`, o sistema cobraria a menos de quem está na faixa-piso, em
+silêncio. Adicionados 3 testes a `Phase137ConsolidarMesTest.php` (commit `120410e6`): empresa na
+última faixa de Gestão (piso, `valor_faixa_e_piso=true`, `valor_faixa=12000.00`), contraponto em
+faixa normal (`valor_faixa_e_piso=false`, para pegar um bug que marcasse piso pra todo mundo), e
+grupo cuja soma cai na faixa-piso (`fechamento_grupo_snapshots.valor_faixa_e_piso=true`). Todos os
+3 passaram de primeira contra o código já commitado — **nenhum bug foi encontrado**, o campo já
+estava sendo persistido corretamente em `ConsolidarMesFechamento::handle()` desde a implementação
+original; a lacuna era exclusivamente de teste.
+
+Gate atualizado: `Phase122|Phase136|Phase137` foi de **181/914** para **184/926** (3 testes, 12
+asserções novas), 0 falhas.
 
 ## Issues Encountered
 
