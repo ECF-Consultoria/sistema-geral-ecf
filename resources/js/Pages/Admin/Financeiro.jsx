@@ -869,7 +869,7 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
     );
 }
 
-function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, competenciaFechada, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixasPorGrupo, competenciaFechada, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const temGrupo = empresa.filhas?.length > 0;
     const [modalAberto, setModalAberto] = useState(false);
 
@@ -922,7 +922,9 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, compet
                                             {i === 0 ? `${e.name} (este)` : `↳ ${e.name}`}
                                             {e.tabela_origem && (
                                                 <span className="text-white/30 text-[11px] ml-1.5">
-                                                    ({e.tabela_origem === 'propria' ? 'tabela própria' : (e.tabela_servico_nome ?? 'tabela do serviço')})
+                                                    ({e.tabela_origem === 'grupo'
+                                                        ? 'tabela do grupo'
+                                                        : (e.tabela_origem === 'propria' ? 'tabela própria' : (e.tabela_servico_nome ?? 'tabela do serviço'))})
                                                 </span>
                                             )}
                                         </span>
@@ -958,6 +960,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, compet
                     <TabelaFaixasSection
                         empresa={empresa}
                         faixasPorServico={faixasPorServico}
+                        faixasPorGrupo={faixasPorGrupo}
                         competenciaFechada={competenciaFechada}
                     />
                 </div>
@@ -988,7 +991,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, compet
     );
 }
 
-function FechamentoList({ empresas, mesSelecionado, faixasPorServico, competenciaFechada, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+function FechamentoList({ empresas, mesSelecionado, faixasPorServico, faixasPorGrupo, competenciaFechada, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const [aberta, setAberta] = useState(null);
 
     function toggleEmpresa(id) {
@@ -1020,6 +1023,7 @@ function FechamentoList({ empresas, mesSelecionado, faixasPorServico, competenci
                             empresa={empresa}
                             mesSelecionado={mesSelecionado}
                             faixasPorServico={faixasPorServico}
+                            faixasPorGrupo={faixasPorGrupo}
                             competenciaFechada={competenciaFechada}
                             onClose={() => setAberta(null)}
                             onAdicionarContrato={onAdicionarContrato}
@@ -1268,7 +1272,7 @@ function FiltroBarra({ filtros, onChange, total, filtrado, servicosNomes }) {
     );
 }
 
-export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], competencia_fechada = false, competencia_fechada_em = null }) {
+export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
     // Phase 14 (Frente B): nomes únicos de serviços DERIVADOS do dataset
@@ -1428,6 +1432,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                             empresas={filtradas}
                             mesSelecionado={mes_selecionado}
                             faixasPorServico={faixas_por_servico}
+                            faixasPorGrupo={faixas_por_grupo}
                             competenciaFechada={competencia_fechada}
                             onAdicionarContrato={abrirAdicionarContrato}
                             onEditarContrato={abrirEditarContrato}

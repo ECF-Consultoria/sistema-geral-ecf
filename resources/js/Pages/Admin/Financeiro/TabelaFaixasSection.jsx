@@ -20,6 +20,17 @@ import { Plus, Trash2, Lock, Table2 } from 'lucide-react';
  *  - null: nem exceção própria, nem serviço candidato com tabela — estado
  *    "A DEFINIR" (nunca R$ 0, nunca faixa aproximada).
  *
+ * Fase 138 (D-01) acrescenta um quarto bloco, exclusivo das linhas de
+ * GRUPO (`empresa.tipo === 'grupo'`), renderizado ANTES dos três estados
+ * acima — que continuam servindo, sem alteração, para editar a tabela da
+ * empresa/serviço da empresa do grupo que mais faturou no mês (termo
+ * interno do backend, nunca escrito na tela):
+ *  - grupo COM tabela própria (`tabela_origem === 'grupo'`): selo "Tabela
+ *    deste grupo" + lista somente leitura vinda de `faixasPorGrupo`.
+ *  - grupo SEM tabela própria: frase nomeando de qual empresa a tabela foi
+ *    herdada (`tabela_herdada_de_nome`) — herança que era invisível antes
+ *    desta fase.
+ *
  * ⚠️ Limitação conhecida documentada em 137-09-SUMMARY.md: o backend
  * (`AdminController::fechamento()`) não expõe hoje as LINHAS da tabela
  * própria de uma empresa (só a origem/nome do serviço substituído) — este
@@ -189,14 +200,20 @@ function FaixaFormDialog({ open, title, aviso, faixasIniciais, onClose, onSalvar
     );
 }
 
-export default function TabelaFaixasSection({ empresa, faixasPorServico = [], competenciaFechada = false }) {
-    // 'criar-propria' | 'editar-propria' | 'editar-servico' | null
+export default function TabelaFaixasSection({ empresa, faixasPorServico = [], faixasPorGrupo = [], competenciaFechada = false }) {
+    // 'criar-propria' | 'editar-propria' | 'editar-servico' | 'criar-grupo' | 'editar-grupo' | null
     const [dialog, setDialog] = useState(null);
     const [salvando, setSalvando] = useState(false);
     const [erro, setErro] = useState(null);
 
     const servicoAplicado = empresa.tabela_origem === 'servico'
         ? faixasPorServico.find(s => s.nome === empresa.tabela_servico_nome)
+        : null;
+
+    // Fase 138 (D-01) — tabela própria do grupo, só existe quando a linha é
+    // de grupo e a origem já resolveu para 'grupo'.
+    const grupoAplicado = (empresa.tipo === 'grupo' && empresa.tabela_origem === 'grupo')
+        ? faixasPorGrupo.find(g => g.id === empresa.company_group_id)
         : null;
 
     // Melhor esforço para nomear o serviço substituído quando a empresa já
@@ -253,6 +270,23 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], co
         router.delete(route('admin.financeiro.faixas.empresa.remover', empresa.id), { preserveScroll: true });
     }
 
+    // Fase 138 (D-01) — tabela própria do grupo.
+    function salvarGrupo(payload) {
+        setSalvando(true);
+        setErro(null);
+        router.post(route('admin.financeiro.faixas.grupo', empresa.company_group_id), payload, {
+            preserveScroll: true,
+            onSuccess: () => fecharDialog(),
+            onError: (errors) => setErro(extrairErro(errors)),
+            onFinish: () => setSalvando(false),
+        });
+    }
+
+    function voltarParaEmpresaDoGrupo() {
+        if (!confirm('Voltar a usar a tabela da empresa? A tabela própria deste grupo será removida.')) return;
+        router.delete(route('admin.financeiro.faixas.grupo.remover', empresa.company_group_id), { preserveScroll: true });
+    }
+
     const bloqueado = !!competenciaFechada;
     const btnNeutro = 'inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/70 bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 px-3 h-7 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
     // Accent reservado ao botão de cadastrar/editar tabela — item 5 da
@@ -272,6 +306,69 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], co
                         <Lock size={11} className="shrink-0" />
                         Competência fechada — a tabela não pode ser alterada para este mês.
                     </p>
+                )}
+
+                {/* Fase 138 (D-01) — bloco exclusivo de linha de grupo, sempre
+                    ANTES dos três estados abaixo. Não substitui os botões de
+                    empresa/serviço que seguem — só acrescenta a camada de
+                    grupo por cima. */}
+                {empresa.tipo === 'grupo' && (
+                    <div className="space-y-2 pb-3 border-b border-white/[0.06]">
+                        {grupoAplicado ? (
+                            <>
+                                <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20">
+                                    Tabela deste grupo
+                                </span>
+                                <div className="overflow-x-auto rounded-lg border border-white/[0.06]">
+                                    <table className="w-full text-[11px]">
+                                        <thead>
+                                            <tr className="text-white/30 border-b border-white/[0.06] bg-white/[0.02]">
+                                                <th className="text-left py-1.5 px-2.5 font-semibold">Ordem</th>
+                                                <th className="text-right py-1.5 px-2.5 font-semibold">Faturamento até</th>
+                                                <th className="text-right py-1.5 px-2.5 font-semibold">Mensalidade</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {grupoAplicado.faixas.map(f => (
+                                                <tr key={f.ordem} className="text-white/70 border-b border-white/[0.03] last:border-0">
+                                                    <td className="py-1.5 px-2.5">{f.ordem}ª</td>
+                                                    <td className="py-1.5 px-2.5 text-right font-mono">
+                                                        {f.limite_superior != null ? fmtBRL(f.limite_superior) : 'Sem limite superior'}
+                                                    </td>
+                                                    <td className="py-1.5 px-2.5 text-right font-mono text-emerald-400/80">
+                                                        {fmtValorFaixa(f.valor, f.valor_e_piso)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button type="button" disabled={bloqueado} onClick={() => setDialog('editar-grupo')} className={btnAccent}>
+                                        Substituir tabela do grupo
+                                    </button>
+                                    <button type="button" disabled={bloqueado} onClick={voltarParaEmpresaDoGrupo} className={btnNeutro}>
+                                        Voltar a usar a tabela da empresa
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <p className="text-white/60 text-[12px]">
+                                    {empresa.tabela_herdada_de_nome
+                                        ? <>Este grupo está usando a tabela da empresa <span className="font-semibold text-white/80">{empresa.tabela_herdada_de_nome}</span>.</>
+                                        : 'Este grupo está usando a tabela de uma das empresas dele.'}
+                                </p>
+                                <p className="text-white/30 text-[11px]">
+                                    Quem manda é a empresa do grupo que mais faturou no mês — se outra empresa passar
+                                    na frente, a tabela muda junto.
+                                </p>
+                                <button type="button" disabled={bloqueado} onClick={() => setDialog('criar-grupo')} className={btnAccent}>
+                                    Criar tabela do grupo
+                                </button>
+                            </>
+                        )}
+                    </div>
                 )}
 
                 {/* Estado 1 — herda a tabela do serviço */}
@@ -394,6 +491,33 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], co
                     erro={erro}
                 />
             )}
+
+            {/* Fase 138 (D-01) — tabela própria do grupo. "Criar" parte da
+                tabela aplicada hoje (a do serviço, quando é o caso — mesma
+                limitação de dado do "criar-propria": quando a tabela herdada
+                é própria da empresa que mais faturou no mês, o backend não
+                expõe as linhas dela, então o form abre em branco). */}
+            <FaixaFormDialog
+                open={dialog === 'criar-grupo'}
+                title={`Tabela do grupo — ${empresa.name}`}
+                aviso="Substitui completamente a tabela da empresa para todo o grupo."
+                faixasIniciais={servicoAplicado?.faixas ?? []}
+                onClose={fecharDialog}
+                onSalvar={salvarGrupo}
+                salvando={salvando}
+                erro={erro}
+            />
+
+            <FaixaFormDialog
+                open={dialog === 'editar-grupo'}
+                title={`Substituir tabela do grupo — ${empresa.name}`}
+                aviso="Os valores atuais não são carregados aqui — preencha a tabela completa antes de salvar (substitui tudo)."
+                faixasIniciais={[]}
+                onClose={fecharDialog}
+                onSalvar={salvarGrupo}
+                salvando={salvando}
+                erro={erro}
+            />
         </div>
     );
 }
