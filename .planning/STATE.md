@@ -116,10 +116,14 @@ prod antes do gate humano. Deploy só depois do gate, e com autorização explí
 
 Phase: 137 (fechamento-mensal-faturamento-por-empresa-grupo-contra-a-tab) — EXECUTING
 Plan: 01 de 10 executado (137-01 — schema de faixas). 137-02 (schema de snapshots) executado em
-paralelo por outra sessão no mesmo intervalo — ver `137-02-SUMMARY.md`.
+paralelo por outra sessão no mesmo intervalo — ver `137-02-SUMMARY.md`. Wave 2: 137-03 (resolver de
+faixas + rollup ML/Shopee) executado sozinho por esta sessão — ver `137-03-SUMMARY.md`.
 Status: 137-01 concluído — migrations `servico_faixas_faturamento`/`empresa_faixas_faturamento` +
 seed das 3 tabelas medidas (Gestão/Brigada/Gestão de ADS Shopee, D-02b) + models auditáveis.
-Last activity: 2026-09-03 — 137-01 executado (commits `2ebfcb60`/`22f13f60`/`9fa947e7`/`9d625657`).
+137-03 concluído — `FechamentoFaixaResolver` (D-01/D-05/D-13) e `FechamentoRollupService`
+(D-06/D-07) criados em `app/Services/Fechamento/`, TDD, gate `Phase122|Phase136|Phase137` em
+156 testes / 836 asserções / 0 falhas (era 138/787 antes deste plano).
+Last activity: 2026-09-02 — 137-03 executado (commits `704db2d4`/`7aa141f3`/`88810f23`/`5794d008`).
 
 Achados fora de escopo (não corrigidos, registrados em `137-.../deferred-items.md`):
 `AdminFechamentoControllerTest` tem 5/16 falhas pré-existentes (endpoint gutted na Fase 14 +

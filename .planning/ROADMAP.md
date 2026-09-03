@@ -2094,7 +2094,7 @@ Quatro coisas precisam mudar em relação ao que existe hoje em `/financeiro` (`
 Plans:
 - [x] 137-01-PLAN.md — Schema e models das faixas de faturamento (por serviço e por empresa) + seed das três tabelas medidas (D-02b)
 - [x] 137-02-PLAN.md — Schema e models do snapshot congelado por competência + auditoria de reconsolidação
-- [ ] 137-03-PLAN.md — FechamentoFaixaResolver (herança serviço→empresa) e FechamentoRollupService (ML+Shopee em mês-calendário)
+- [x] 137-03-PLAN.md — FechamentoFaixaResolver (herança serviço→empresa) e FechamentoRollupService (ML+Shopee em mês-calendário)
 - [ ] 137-05-PLAN.md — Writer idempotente + comandos `fechamento:consolidar-mes` e `fechamento:verificar-consolidacao`
 - [ ] 137-06-PLAN.md — FechamentoController: cadastro manual das faixas e ações de fechar/refazer competência
 - [ ] 137-07-PLAN.md — `AdminController::fechamento()` migrado: mês-calendário, grupos do Comercial e leitura do congelado
