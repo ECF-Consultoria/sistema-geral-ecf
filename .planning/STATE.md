@@ -287,6 +287,27 @@ build` sem erro. 3 commits (`d248b9d5` migration+models, `f581e620` categoria+no
 mudança de faixa + trava de idempotência). Decisão de disparo (subida/queda, destinatários,
 condição de re-aviso) fica para o plano 05.
 
+138-03 concluído — `ConsolidarMesFechamento` (Passo 5, grupos) passa a resolver a tabela do grupo
+explicitamente via `FechamentoFaixaResolver::paraGrupo($ancora->grupo, $ancora)`, com fallback
+defensivo para `$faixaPorEmpresa[$ancora->id]` só se `$ancora->grupo` vier nulo. Decisão declarada
+(nota do plan-checker, opção **a**): manter `paraGrupo()` explícito por legibilidade — embora
+`paraEmpresa()` já embuta o degrau de grupo e por isso `$faixaPorEmpresa[$ancora->id]` já
+traz `origem='grupo'` quando a tabela do grupo existe (mesmo resultado, uma query a mais por
+grupo, 15 grupos hoje) — e travar a concordância entre os dois caminhos com teste, para que uma
+mudança de precedência num deles nunca divirja em silêncio do outro. `empresa_ancora_id` continua
+SEMPRE preenchido (identidade da linha, usada por
+`AdminController::fechamentoAgregarGruposCongelados`); "herdada de quem" é derivado de
+`tabela_origem`, não coluna nova. `tabelas_divergentes` não precisou de tratamento especial — como
+todo membro de um grupo com tabela própria já resolve `origem='grupo'` (Fase 138-01), o conjunto de
+pares colapsa sozinho. Teste novo: `Phase138ConsolidarGrupoTabelaTest` (2 testes: grupo sem tabela
+mantém comportamento de âncora; grupo com tabela vence, zera divergência entre membros e propaga
+`origem='grupo'` também às linhas de empresa-membro), **2 testes / 23 asserções**. Gate combinado
+`Phase122|Phase136|Phase137|Phase138`: **254 testes / 1327 asserções / 0 falhas** (era 252/1304
+antes deste plano — +2 testes/+23 asserções, todos novos, sem regressão). 2 commits (`ec723916`
+Passo 5 + docblock, `cc4d94e4` teste). Last activity: 2026-09-03 — 138-03 executado (comando de
+fechamento honra a tabela do grupo). Não tocou `AdminController.php` (fora do escopo — plano 138-04
+roda em paralelo nesse arquivo).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
