@@ -591,8 +591,7 @@ function ProgressaoModal({ empresa, onClose }) {
                         <thead className="sticky top-0 bg-ecf-card border-b border-white/[0.06]">
                             <tr>
                                 <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-white/30">Mês</th>
-                                <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-white/30">Fat. do mês</th>
-                                <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-white/30">Acumulado</th>
+                                <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-white/30">Faturamento do mês</th>
                                 <th className="px-4 py-2.5 text-center text-[10px] font-semibold uppercase tracking-wider text-white/30">Faixa</th>
                                 <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-white/30">Mensalidade</th>
                                 <th className="px-4 py-2.5 text-center text-[10px] font-semibold uppercase tracking-wider text-white/30">Evolução</th>
@@ -616,7 +615,6 @@ function ProgressaoModal({ empresa, onClose }) {
                                             )}
                                         </td>
                                         <td className="px-4 py-2.5 text-right text-white/45 font-mono">{fmtBRL(p.mensal)}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono font-semibold text-white/80">{fmtBRL(p.acumulado)}</td>
                                         <td className="px-4 py-2.5 text-center">
                                             <span className={cn(
                                                 'text-[11px] font-semibold px-2 py-0.5 rounded-full',
