@@ -108,6 +108,25 @@ prod antes do gate humano. Deploy só depois do gate, e com autorização explí
 **Current focus:** Phase 127 — service administrativo de contrato — orquestração (v22.0)
 **Current focus:** Phase 132 — cutover-sandbox-produ-o-checkpoint-humano-v22-0
 
+## Posição paralela — Fase 137 (Fechamento mensal — faturamento por empresa/grupo) — EM EXECUÇÃO
+
+**Mesma disciplina dos blocos 135/136 acima:** Fase 137 fora de milestone (v22.0 segue sendo a
+136-133), rodando em paralelo — inclusive duas sessões simultâneas na MESMA árvore, uma no plano
+137-01 e outra no 137-02. `## Current Position` acima pertence à Fase 133 e não foi tocado.
+
+Phase: 137 (fechamento-mensal-faturamento-por-empresa-grupo-contra-a-tab) — EXECUTING
+Plan: 01 de 10 executado (137-01 — schema de faixas). 137-02 (schema de snapshots) executado em
+paralelo por outra sessão no mesmo intervalo — ver `137-02-SUMMARY.md`.
+Status: 137-01 concluído — migrations `servico_faixas_faturamento`/`empresa_faixas_faturamento` +
+seed das 3 tabelas medidas (Gestão/Brigada/Gestão de ADS Shopee, D-02b) + models auditáveis.
+Last activity: 2026-09-03 — 137-01 executado (commits `2ebfcb60`/`22f13f60`/`9fa947e7`/`9d625657`).
+
+Achados fora de escopo (não corrigidos, registrados em `137-.../deferred-items.md`):
+`AdminFechamentoControllerTest` tem 5/16 falhas pré-existentes (endpoint gutted na Fase 14 +
+janela móvel de 30 dias do D-06, ainda não substituída); `App\Models\BonusFaixa` (Fase 74) nunca
+grava `activity_log` por faltar `->logFillable()` em `LogOptions::defaults()` — mesmo bug que foi
+corrigido nos 2 models novos deste plano.
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
