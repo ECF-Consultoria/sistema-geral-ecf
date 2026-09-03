@@ -228,6 +228,21 @@ const NAV_TREE = [
             // com `?tab=grupos` (o helper de menu acima usa routeParams pra alimentar
             // Ziggy; segments fora do path viram query string automaticamente).
             { label: 'Grupos', routeName: 'comercial.empresas.listagem', routeParams: { tab: 'grupos' }, page: 'Comercial/EmpresasListagem', icon: ListChecks, permission: 'comercial.cadastrar_empresa' },
+            // Fase 138 Plano 08 (D-15/reorganização) — item 'Contrato' MOVIDO
+            // do grupo Administrativo para cá. routeName/page/permission
+            // IDÊNTICOS ao que já existia — só o label mudou de 'Contratos'
+            // para 'Contrato' (D-02/D-03) e o grupo de menu mudou. Rota,
+            // `ContratoAdminController` e `Pages/Admin/Contratos.jsx` NÃO
+            // mudaram de lugar nem de conteúdo. A permission admin.contratos
+            // foi preservada de propósito (D-15) — trocar por
+            // 'comercial.cadastrar_empresa' ou reempacotar sob `role:admin`
+            // deixaria `ContratoAdminPermissaoTest` vermelho.
+            { label: 'Contrato', routeName: 'admin.contratos.index', page: 'Admin/Contratos', icon: FileSignature, permission: 'admin.contratos' },
+            // Fase 138 Plano 08 (COMERC-02, D-01/D-02) — módulo NOVO Entrada:
+            // casca da listagem de empresas em fluxo de entrada (etapas 1-4
+            // do §10). Permission própria `comercial.entrada` (D-15) — não
+            // reusa `comercial.cadastrar_empresa`. Checklist chega na Fase 139.
+            { label: 'Entrada', routeName: 'comercial.entrada.index', page: 'Comercial/Entrada', icon: ListChecks, permission: 'comercial.entrada' },
             // Fase 135 Plano 12 — painel operacional do onboarding geral por
             // serviço. Gate DEDICADO `core.onboarding` (Plano 09) — NÃO
             // reutiliza a permission do item "Onboarding" de Polos (grupo
@@ -279,8 +294,19 @@ const NAV_TREE = [
         group: 'Administrativo',
         icon: Shield,
         children: [
-            { label: 'Empresas',   routeName: 'admin.empresas',   page: 'Admin/Empresas',   icon: Building2,    permission: 'admin.empresas' },
-            { label: 'Contratos',  routeName: 'admin.contratos.index', page: 'Admin/Contratos', icon: FileSignature, permission: 'admin.contratos' },
+            // Fase 138 Plano 08 (D-16) — item 'Empresas' SAIU do menu nesta
+            // fase. Rota `admin.empresas`, `AdminController::empresas()`/
+            // `updateEmpresa()` e `Pages/Admin/Empresas.jsx` continuam vivos
+            // e acessíveis por URL direta — `updateEmpresa()` zera campos
+            // omitidos no payload, o mesmo modo de falha que já apagou a
+            // coluna "Link do Whats" no Painel Polos, então apagar a tela
+            // junto com a mudança de navegação misturaria dois riscos. A
+            // remoção real é trabalho próprio (ver 138-CONTEXT.md D-16).
+            //
+            // Fase 138 Plano 08 (D-15) — item 'Contratos' MOVIDO para o
+            // grupo Comercial (label agora 'Contrato', D-02/D-03). Ver o
+            // comentário no grupo Comercial acima — rota/controller/página
+            // não mudaram de lugar.
             { label: 'Relatório',  routeName: 'admin.relatorio',  page: 'Admin/Relatorio',  icon: FileBarChart, permission: 'admin.relatorio' },
             { label: 'Fechamento', routeName: 'admin.financeiro', page: 'Admin/Financeiro', icon: Banknote,     permission: 'admin.financeiro' },
             { label: 'Inventário', routeName: 'admin.inventario', page: 'Admin/Inventario', icon: Package2,     permission: 'admin.inventario' },
