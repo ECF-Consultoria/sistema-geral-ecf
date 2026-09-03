@@ -61,6 +61,7 @@ class EmpresaFaixaFaturamento extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
+            ->logFillable()
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->useLogName('faixa_faturamento')
