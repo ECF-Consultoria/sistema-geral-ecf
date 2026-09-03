@@ -2143,7 +2143,16 @@ aberta.
 `FechamentoRollupService`, `FechamentoSnapshotWriter` e o `FechamentoController` — nenhum deles é
 reescrito.
 
-Plans: a planejar
+**Plans:** 6 plans em 3 waves (wave 1: 01 e 02 em paralelo · wave 2: 03 e 04 em paralelo · wave 3:
+05 e 06 em paralelo)
+
+Plans:
+- [ ] 138-01-PLAN.md — Tabela do grupo: migration, model e precedência no `FechamentoFaixaResolver`
+- [ ] 138-02-PLAN.md — Idempotência do aviso (`notificado_em`/`notificado_faixa_ordem`), categoria `faixa_alterada` e rótulo na tela de notificações
+- [ ] 138-03-PLAN.md — `fechamento:consolidar-mes` classifica o grupo pela tabela do grupo, com âncora como fallback rastreável
+- [ ] 138-04-PLAN.md — Props da tela de fechamento: tabela do grupo e herança visível nos ramos aberto e fechado
+- [ ] 138-05-PLAN.md — `FechamentoFaixaNotifier`: aviso agregado de subida e queda de faixa, com trava contra o "Refazer"
+- [ ] 138-06-PLAN.md — CRUD e tela da tabela do grupo (checkpoint humano de conferência visual)
 
 ---
 
