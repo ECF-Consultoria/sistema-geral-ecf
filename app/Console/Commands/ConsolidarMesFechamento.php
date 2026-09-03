@@ -37,6 +37,16 @@ use Illuminate\Support\Facades\Log;
  *    calendário fechado, D-06) — nunca `company_monthly_revenues` (fica com
  *    valor rolling-30-dias obsoleto após o mês virar).
  *
+ * Fase 138 (D-01) — precedência de tabela do GRUPO: o Passo 5 classifica a
+ * soma do grupo pela tabela resolvida por `FechamentoFaixaResolver::paraGrupo()`
+ * (grupo → empresa-âncora → serviço), não mais só pela tabela da âncora.
+ * `tabela_origem` da linha de grupo passa a poder valer `'grupo'` — nesse
+ * caso não houve herança; em qualquer outro valor a tabela veio da empresa
+ * `empresa_ancora_id`, que CONTINUA sempre preenchida (é a identidade da
+ * linha, usada por `AdminController::fechamentoAgregarGruposCongelados` para
+ * reencontrá-la no ramo congelado). "Herdada de quem" é derivado de
+ * `tabela_origem`, nunca uma coluna nova.
+ *
  * Gate de qualidade (Passo 6, mesmo espírito do FIXMARG-03 do Desempenho):
  * cobertura de faturamento abaixo de `COBERTURA_MINIMA_FATURAMENTO` entre as
  * empresas com integração financeira NÃO grava nada e retorna exit code 1 —
@@ -279,15 +289,30 @@ class ConsolidarMesFechamento extends Command
                 return $fatB <=> $fatA;
             })->first();
 
-            $faixaAncora = $faixaPorEmpresa[$ancora->id] ?? null;
+            // Fase 138 (D-01): resolve a tabela do GRUPO explicitamente via
+            // paraGrupo(), em vez de reaproveitar $faixaPorEmpresa[$ancora->id].
+            // Decisão registrada no SUMMARY do plano 138-03: como o degrau de
+            // grupo já vive dentro de paraEmpresa(), o valor em
+            // $faixaPorEmpresa[$ancora->id] JÁ traz origem='grupo' quando a
+            // tabela do grupo existe — os dois caminhos PRECISAM concordar.
+            // Mantemos a chamada explícita a paraGrupo() por legibilidade (o
+            // Passo 5 lê "resolvo a tabela do grupo", não "reaproveito um
+            // efeito colateral do Passo 3"), e um teste trava a concordância
+            // entre os dois caminhos (Phase138ConsolidarGrupoTabelaTest) para
+            // que uma mudança de precedência num dos dois nunca divirja em
+            // silêncio do outro — divergência silenciosa em tabela de
+            // cobrança só aparece na fatura do cliente.
+            $faixaGrupo = $ancora->grupo !== null
+                ? $this->faixaResolver->paraGrupo($ancora->grupo, $ancora)
+                : ($faixaPorEmpresa[$ancora->id] ?? null); // defensivo: nunca deixar de gravar a linha
 
-            $classificacaoGrupo = ($faixaAncora !== null && $faturamentoTotal !== null)
-                ? $this->faixaResolver->classificar($faturamentoTotal, $faixaAncora['faixas'])
+            $classificacaoGrupo = ($faixaGrupo !== null && $faturamentoTotal !== null)
+                ? $this->faixaResolver->classificar($faturamentoTotal, $faixaGrupo['faixas'])
                 : null;
 
             if ($faturamentoTotal === null) {
                 $estadoGrupo = FechamentoSnapshot::ESTADO_SEM_FATURAMENTO;
-            } elseif ($faixaAncora === null || $classificacaoGrupo === null) {
+            } elseif ($faixaGrupo === null || $classificacaoGrupo === null) {
                 $estadoGrupo = FechamentoSnapshot::ESTADO_SEM_TABELA;
             } else {
                 $estadoGrupo = FechamentoSnapshot::ESTADO_OK;
@@ -340,8 +365,8 @@ class ConsolidarMesFechamento extends Command
                 'faturamento_ml'        => $faturamentoMl,
                 'faturamento_shopee'    => $faturamentoShopee,
                 'faturamento_total'     => $faturamentoTotal,
-                'servico_id'            => $faixaAncora['servico_id'] ?? null,
-                'tabela_origem'         => $faixaAncora['origem'] ?? null,
+                'servico_id'            => $faixaGrupo['servico_id'] ?? null,
+                'tabela_origem'         => $faixaGrupo['origem'] ?? null,
                 'faixa_ordem'           => $classificacaoGrupo['ordem'] ?? null,
                 'faixa_aplicada'        => $classificacaoGrupo['label'] ?? null,
                 'valor_faixa'           => $classificacaoGrupo['valor'] ?? null,
