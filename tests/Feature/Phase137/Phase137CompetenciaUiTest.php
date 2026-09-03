@@ -138,6 +138,42 @@ class Phase137CompetenciaUiTest extends TestCase
         $this->assertStringContainsString('Motivo do reprocessamento', $conteudo);
     }
 
+    // ─── (d) INCIDENTE 260903-la4 — refazer/fechar sem aviso ───────────────
+    // Produção: "Refazer fechamento" funcionou 3x seguidas (3x HTTP 200, 3
+    // linhas em fechamento_reconsolidacoes) mas a tela não deu sinal nenhum
+    // — a pessoa clicou de novo achando que tinha falhado. Trava de texto
+    // (mesmo motivo do bloco (b): não há test runner de JS no projeto).
+
+    #[Test]
+    public function refazer_fechamento_fecha_o_dialogo_limpa_o_motivo_e_guarda_confirmacao_no_sucesso(): void
+    {
+        $conteudo = file_get_contents(resource_path('js/Pages/Admin/Financeiro.jsx'));
+
+        $inicio = strpos($conteudo, 'function RefazerFechamentoDialog');
+        $this->assertNotFalse($inicio, 'RefazerFechamentoDialog precisa continuar existindo — UI-SPEC marca como reaproveitar.');
+
+        $fimDaFuncao = strpos($conteudo, "\nfunction ", $inicio + 1);
+        $bloco = substr($conteudo, $inicio, ($fimDaFuncao !== false ? $fimDaFuncao : strlen($conteudo)) - $inicio);
+
+        $this->assertStringContainsString('setOpen(false)', $bloco, 'O sucesso do refazer precisa fechar o diálogo — clique repetido sem sinal foi o que gravou 3 linhas de auditoria em produção (260903-la4).');
+        $this->assertStringContainsString("setMotivo('')", $bloco, 'Reabrir o diálogo depois com o motivo antigo preenchido é confuso — precisa limpar no sucesso.');
+        $this->assertMatchesRegularExpression('/setConfirmacao\(/', $bloco, 'O handler de sucesso precisa guardar a mensagem do backend em algum estado visível — sem isso o usuário continua sem sinal (260903-la4).');
+    }
+
+    #[Test]
+    public function fechar_competencia_tambem_guarda_confirmacao_no_sucesso(): void
+    {
+        $conteudo = file_get_contents(resource_path('js/Pages/Admin/Financeiro.jsx'));
+
+        $inicio = strpos($conteudo, 'function FecharCompetenciaButton');
+        $this->assertNotFalse($inicio, 'FecharCompetenciaButton precisa continuar existindo.');
+
+        $fimDaFuncao = strpos($conteudo, "\nfunction ", $inicio + 1);
+        $bloco = substr($conteudo, $inicio, ($fimDaFuncao !== false ? $fimDaFuncao : strlen($conteudo)) - $inicio);
+
+        $this->assertMatchesRegularExpression('/setConfirmacao\(/', $bloco, 'Fechar competência tinha o mesmo formato sem feedback do refazer — precisa do mesmo tratamento (260903-la4).');
+    }
+
     // ─── (c) REAPROVEITAMENTO ─────────────────────────────────────────────
 
     #[Test]
