@@ -64,11 +64,18 @@ class Phase137FaixasSchemaTest extends TestCase
         $this->rodarSeed();
     }
 
-    /** Invoca up() da migration de seed manualmente (idempotente). */
+    /**
+     * Invoca up() das duas migrations de seed manualmente (idempotente).
+     * A 100000 (checkpoint 2026-09-03) ajusta as faixas de Shopee — precisa
+     * rodar DEPOIS da 100003 porque atualiza linhas que ela cria.
+     */
     private function rodarSeed(): void
     {
         $m = require database_path('migrations/2026_09_02_100003_seed_faixas_faturamento_iniciais.php');
         $m->up();
+
+        $m2 = require database_path('migrations/2026_09_03_100000_ajustar_faixas_shopee.php');
+        $m2->up();
     }
 
     private function servicoId(string $nome): int
@@ -153,28 +160,34 @@ class Phase137FaixasSchemaTest extends TestCase
         }
     }
 
-    // ─── (d) Shopee com 8 faixas, todas FECHADAS — sem faixa aberta ─────────
+    // ─── (d) Shopee com 11 faixas, a última ABERTA (checkpoint 2026-09-03) ──
 
     #[Test]
-    public function shopee_tem_8_faixas_todas_fechadas(): void
+    public function shopee_tem_11_faixas_com_a_ultima_aberta(): void
     {
         $faixas = DB::table('servico_faixas_faturamento')
             ->where('servico_id', $this->servicoId('Gestão de ADS Shopee'))
             ->orderBy('ordem')
             ->get();
 
-        $this->assertCount(8, $faixas);
+        $this->assertCount(11, $faixas);
 
         $this->assertSame(1, (int) $faixas[0]->ordem);
         $this->assertEqualsWithDelta(1500.00, (float) $faixas[0]->valor, 0.001);
+        $this->assertEqualsWithDelta(49_999.99, (float) $faixas[0]->limite_superior, 0.001, 'Ordem 1 de Shopee usa a convenção ",99" desde o checkpoint 2026-09-03.');
 
-        $ultima = $faixas[7];
-        $this->assertSame(8, (int) $ultima->ordem);
-        $this->assertEqualsWithDelta(5000.00, (float) $ultima->valor, 0.001);
+        $ultima = $faixas[10];
+        $this->assertSame(11, (int) $ultima->ordem);
+        $this->assertNull($ultima->limite_superior, 'A última faixa de Shopee passou a ser aberta (checkpoint 2026-09-03) — antes o dado real não tinha faixa aberta.');
+        $this->assertEqualsWithDelta(6500.00, (float) $ultima->valor, 0.001);
+        $this->assertSame(1, (int) $ultima->valor_e_piso, 'Ordem 11 de Shopee deve ser marcada como piso.');
 
         foreach ($faixas as $faixa) {
-            $this->assertNotNull($faixa->limite_superior, 'Nenhuma faixa de Shopee deve ter limite_superior nulo — o dado real não tem faixa aberta.');
-            $this->assertSame(0, (int) $faixa->valor_e_piso, 'Nenhuma faixa de Shopee deve ser marcada como piso.');
+            if ((int) $faixa->ordem === 11) {
+                continue;
+            }
+            $this->assertNotNull($faixa->limite_superior, "Ordem {$faixa->ordem} de Shopee só a 11 deve ser aberta.");
+            $this->assertSame(0, (int) $faixa->valor_e_piso, "Ordem {$faixa->ordem} de Shopee não deve ser marcada como piso.");
         }
     }
 
@@ -256,7 +269,7 @@ class Phase137FaixasSchemaTest extends TestCase
         $this->assertContains('updated', $logs->pluck('event')->all());
     }
 
-    // ─── (g) rodar o seed duas vezes mantém as contagens em 7, 7 e 8 ────────
+    // ─── (g) rodar o seed duas vezes mantém as contagens em 7, 7 e 11 ───────
 
     #[Test]
     public function rodar_o_seed_duas_vezes_mantem_as_contagens(): void
@@ -272,11 +285,62 @@ class Phase137FaixasSchemaTest extends TestCase
 
         $this->assertSame(7, $antes['gestao']);
         $this->assertSame(7, $antes['brigada']);
-        $this->assertSame(8, $antes['shopee']);
-        $this->assertSame(22, $antes['total']);
+        $this->assertSame(11, $antes['shopee']);
+        $this->assertSame(25, $antes['total']);
 
         $this->rodarSeed();
 
         $this->assertSame($antes, $contagens(), 'Rodar o seed duas vezes não pode alterar contagens.');
+    }
+
+    // ─── (h) checkpoint 2026-09-03: faixa aberta resolve empresa acima do antigo teto ─
+
+    #[Test]
+    public function shopee_acima_de_3_milhoes_resolve_para_a_faixa_aberta_em_vez_de_null(): void
+    {
+        $servicoId = $this->servicoId('Gestão de ADS Shopee');
+
+        $faixas = ServicoFaixaFaturamento::where('servico_id', $servicoId)->ordenadas()->get();
+
+        $resolver = app(\App\Services\Fechamento\FechamentoFaixaResolver::class);
+        $classificacao = $resolver->classificar(9_000_000.00, $faixas);
+
+        $this->assertNotNull($classificacao, 'Desde o checkpoint 2026-09-03 a Shopee tem faixa aberta — não pode mais devolver null acima de R$ 3.000.000.');
+        $this->assertSame(11, $classificacao['ordem']);
+        $this->assertEqualsWithDelta(6500.00, $classificacao['valor'], 0.001);
+        $this->assertNull($classificacao['limite_superior']);
+        $this->assertTrue($classificacao['valor_e_piso']);
+
+        // Reconsulta direta ao banco — a faixa 11 tem que existir e ser a única aberta.
+        $faixaAberta = DB::table('servico_faixas_faturamento')
+            ->where('servico_id', $servicoId)
+            ->whereNull('limite_superior')
+            ->get();
+        $this->assertCount(1, $faixaAberta, 'Só a ordem 11 pode ter limite_superior nulo.');
+        $this->assertSame(11, (int) $faixaAberta->first()->ordem);
+    }
+
+    // ─── (i) checkpoint 2026-09-03: teto ",99" — R$ 50.000,00 exatos caem na faixa 2 ─
+
+    #[Test]
+    public function shopee_50_mil_exatos_cai_na_faixa_2_pela_convencao_99(): void
+    {
+        $servicoId = $this->servicoId('Gestão de ADS Shopee');
+
+        // Reconsulta ao banco: a ordem 1 tem que ter virado 49.999,99.
+        $ordem1 = DB::table('servico_faixas_faturamento')
+            ->where('servico_id', $servicoId)
+            ->where('ordem', 1)
+            ->first();
+        $this->assertEqualsWithDelta(49_999.99, (float) $ordem1->limite_superior, 0.001, 'Ordem 1 de Shopee tem que estar na convenção ",99" desde o checkpoint 2026-09-03.');
+
+        $faixas = ServicoFaixaFaturamento::where('servico_id', $servicoId)->ordenadas()->get();
+
+        $resolver = app(\App\Services\Fechamento\FechamentoFaixaResolver::class);
+        $classificacao = $resolver->classificar(50_000.00, $faixas);
+
+        $this->assertNotNull($classificacao);
+        $this->assertSame(2, $classificacao['ordem'], 'R$ 50.000,00 exatos é MAIOR que o novo teto 49.999,99 da faixa 1 — cai na faixa 2, mudança de cobrança consciente.');
+        $this->assertEqualsWithDelta(2000.00, $classificacao['valor'], 0.001);
     }
 }
