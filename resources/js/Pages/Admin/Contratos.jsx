@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect } from 'react';
 import { FileSignature, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Badge } from '@/Components/ui/badge';
 import { cn, formatDate } from '@/lib/utils';
 import {
     CONTRATO_STATUS_LABELS,
@@ -18,6 +19,36 @@ import {
     PREPARANDO_TITULO,
     MONTAGEM_TRAVADA_TITULO,
 } from '@/lib/contratoStatus';
+
+// ─── Plano 138-06 (COMERC-02, D-12) — rótulos das 7 pendências comerciais.
+// Mesmo bloco de Comercial/EmpresasListagem.jsx (não há enum compartilhado
+// entre PHP e JS no projeto — a sincronia é manual, por convenção). São 7
+// chaves, não 8 (Pitfall 5 do RESEARCH da Fase 138).
+const PENDENCIAS_LABELS = {
+    sem_servico:             'Sem serviço',
+    sem_valor:               'Sem valor',
+    servico_nao_reconhecido: 'Serviço não reconhecido',
+    sem_setor:               'Sem setor (catálogo)',
+    sem_contato:             'Sem contato',
+    valor_revisar:           'Revisar valor',
+    possivel_duplicidade:    'Possível duplicidade',
+};
+
+// ─── Fase 137 Plano 07 (ETAPA-05) — rótulos das 9 etapas do fluxo de entrada
+// (§10 do PDF v23.0). Fonte de verdade é `Company::ETAPAS`
+// (app/Models/Company.php) — mesmo bloco de Pages/Companies/Index.jsx, para
+// as duas telas não divergirem no vocabulário.
+const ETAPA_LABELS = {
+    aguardando_administrativo: 'Aguardando Administrativo',
+    administrativo_andamento:  'Administrativo em Andamento',
+    aguardando_assinatura:     'Aguardando Assinatura',
+    administrativo_concluido:  'Administrativo Concluído',
+    aguardando_distribuicao:   'Aguardando Distribuição',
+    aguardando_onboarding:     'Aguardando Onboarding',
+    onboarding_andamento:      'Onboarding em Andamento',
+    onboarding_concluido:      'Onboarding Concluído',
+    em_operacao:               'Em Operação',
+};
 
 /**
  * Admin/Contratos.jsx — Fase 131 Plano 03 (UI-01, D-01, D-04, D-09).
@@ -172,6 +203,14 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Empresa</TableHead>
+                                        {/* Plano 138-06 (COMERC-02) — 6 colunas novas dos 8 campos
+                                            mínimos do §2 (2 já existiam: Empresa e Serviço). */}
+                                        <TableHead className="text-[11px] uppercase tracking-wide">CNPJ</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Setor</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Responsável comercial</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Data da venda</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Etapa</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Pendências</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Serviço</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Situação</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Parado há</TableHead>
@@ -182,7 +221,7 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                 <TableBody>
                                     {linhasData.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="text-center py-10">
+                                            <TableCell colSpan={12} className="text-center py-10">
                                                 {/* O vazio precisa dizer QUAL recorte esvaziou a lista —
                                                     antes citava só a busca, e quem tinha esvaziado pelo
                                                     filtro de serviço lia uma explicação que não era a dele. */}
@@ -211,6 +250,41 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                             className="cursor-pointer hover:bg-white/[0.03]"
                                         >
                                             <TableCell className="text-[13px] font-medium text-white/85">{linha.company_nome}</TableCell>
+                                            <TableCell className="text-[13px] text-white/60">{linha.company_cnpj ?? '—'}</TableCell>
+                                            <TableCell className="text-[13px] text-white/60">{linha.setor_dominante ?? '—'}</TableCell>
+                                            {/* hubspot_owner_nome nulo é NORMAL: cadastro manual nunca
+                                                teve deal no HubSpot, então nunca tem responsável
+                                                comercial — travessão, nunca estado de erro. */}
+                                            <TableCell className="text-[13px] text-white/60">{linha.hubspot_owner_nome ?? '—'}</TableCell>
+                                            <TableCell className="text-[13px] text-white/60">
+                                                {linha.data_venda ? formatDate(linha.data_venda) : '—'}
+                                            </TableCell>
+                                            <TableCell className="text-[13px] text-white/60">
+                                                {linha.etapa ? (ETAPA_LABELS[linha.etapa] ?? linha.etapa) : 'Sem etapa (legado)'}
+                                            </TableCell>
+                                            {/* D-11 — pendência do fluxo e pendências do cadastro são
+                                                DUAS COISAS visualmente distintas na mesma célula, nunca
+                                                um número só somado. */}
+                                            <TableCell onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
+                                                    {linha.pendencia_fluxo?.aberta && (
+                                                        <Badge
+                                                            variant="destructive"
+                                                            title={linha.pendencia_fluxo.motivo ?? undefined}
+                                                        >
+                                                            Pendência
+                                                        </Badge>
+                                                    )}
+                                                    {(linha.pendencias_cadastro ?? []).map((slug) => (
+                                                        <Badge key={slug} variant="warning">
+                                                            {PENDENCIAS_LABELS[slug] ?? slug}
+                                                        </Badge>
+                                                    ))}
+                                                    {!linha.pendencia_fluxo?.aberta && (linha.pendencias_cadastro ?? []).length === 0 && (
+                                                        <span className="text-white/30">—</span>
+                                                    )}
+                                                </div>
+                                            </TableCell>
                                             <TableCell className="text-[13px] text-white/60">{linha.servico_nome}</TableCell>
                                             <TableCell>
                                                 <span
