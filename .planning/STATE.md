@@ -192,6 +192,31 @@ nela — é exatamente a correção de D-06 se manifestando. `AdminFechamentoCon
 `contract_end` (Fase 14 Plano 14-06 — fora do escopo). Last activity: 2026-09-03 — 137-07 executado
 (controller de fechamento + 3 suítes, wave 4).
 
+137-09 concluído (wave 5; **outro executor rodou o 137-08 EM PARALELO na mesma janela**, sem
+sobreposição de arquivos — 137-08 mexeu em `AdminController.php`/`EnviarRelatorioFechamentoJob.php`/
+blades, este plano não encostou em nenhum dos três). `Financeiro.jsx`: `FAIXAS_LIMITES`/
+`FAIXA_NOMES` (espelho hardcoded da constante `FAIXAS` apagada no 137-08) saíram; `FaixaProgresso`
+passa a ler `faixa_limite_inferior/superior`/`faixa_label` do backend; `faixaNome()` deriva o rótulo
+por regex a partir da chave crua (`faixa_N`/`maxima`) em vez de mapa fixo — a tabela agora é dinâmica
+por serviço/empresa. 4 componentes novos de estado de ausência
+(`AusenciaTabelaPendencia`/`AusenciaFaturamentoBadge`/`FaturamentoCombinadoBreakdown`/
+`GrupoServicosDivergentesBanner`) — nenhum usa `ecf-yellow` (accent reservado a ação/status,
+ausência de dado não é nenhum dos dois). `fmtValorFaixa()` prefixa "a partir de" onde
+`valor_faixa_e_piso` é verdadeiro (linha, accordion, listagem da tabela) — sem isso a última faixa
+de Gestão/Brigada apareceria como preço fechado. Novo `resources/js/Pages/Admin/Financeiro/
+TabelaFaixasSection.jsx`: cadastro manual da tabela por empresa/serviço (D-04), sempre all-or-nothing
+(`{ faixas: [...] }`, D-13), 3 estados (herda do serviço / exceção própria / A DEFINIR) + edição
+bloqueada com `competencia_fechada`. **Gap documentado, não contornado**: `AdminController::
+fechamento()` não expõe as LINHAS da exceção própria de uma empresa nem a contagem de empresas por
+serviço — corrigir exigiria tocar `AdminController.php`, fora do `files_modified` deste plano e em
+edição paralela pelo 137-08; "Substituir tabela própria" abre formulário em branco com aviso
+explícito em vez de fingir mostrar valores desatualizados (risco real: sobrescrever tabela real com
+números plausíveis-mas-errados). 3 commits (`d33e07c8` Tarefa 1, `e4557be3` Tarefa 2, `729af224`
+Tarefa 3). Gate `Phase122|Phase136|Phase137`: **226 testes / 1115 asserções / 0 falhas** (era
+219/1068 antes deste plano — +7 testes/+47 asserções, todos novos, sem regressão). `npm run build`
+verde nas 3 tarefas. Last activity: 2026-09-03 — 137-09 executado (estados de ausência + cadastro
+manual de faixas, wave 5).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
