@@ -71,3 +71,35 @@ de `->update([...])` deixa a contagem de `activity_log` inalterada; o mesmo test
 mexer nele é decisão de escopo de outra fase (a régua de bônus é sensível: qualquer PR nela
 merece atenção própria, não um side-effect de descoberta). Fica registrado aqui para quem for
 mexer em auditoria de bônus depois.
+
+## `test_empresa_ok_recebe_periodo_coberto` — a falha sensível à janela móvel MUDOU de comportamento (esperado, D-06)
+
+**Encontrado durante:** Plano 137-07, Tarefa 3 (baseline medida em stash antes de tocar nos testes,
+conforme instruído).
+
+O item acima ("5 falhas pré-existentes") já registrava que esta era a falha "sensível à janela
+móvel de 30 dias" e que "outra tarefa/plano desta fase corrige" a causa raiz. O plano 137-07 É essa
+correção: `fechamento()` agora usa `FechamentoRollupService::janela()` (mês-calendário fechado,
+D-06) em vez de `Carbon::now()->subDays(30)`. Com a janela corrigida, `periodo_inicio` do mês
+corrente passa a ser o dia 1 do mês — exatamente o que o teste sempre esperou — e o teste **passou
+a verde sem eu tocar nele**.
+
+Baseline medida (HEAD, antes das mudanças deste plano, restaurando temporariamente o arquivo via
+`git show HEAD:...` e rodando de novo — nunca `git stash`, ver `destructive_git_prohibition`):
+`AdminFechamentoControllerTest` — 5 falhas / 15 passou (215 asserções). Depois das mudanças deste
+plano: 4 falhas / 12 passou (159 asserções) isolado, ou 4 falhas / 26 passou (281 asserções) rodando
+junto com `Phase14FechamentoUiTest` + `Phase137FinanceiroPropsTest`. As 4 falhas remanescentes são
+exatamente as 4 de `updateFechamento()`/`service_type`/`contract_start`/`contract_end` já descritas
+acima — não tocadas, não fazem parte do filtro de gate da fase.
+
+## `App\Models\ContratoServico` — dois observers rodam em cada `create()` de fixture de teste
+
+**Encontrado durante:** Plano 137-07, Tarefa 3 (fixtures novas de `AdminFechamentoControllerTest` e
+`Phase137FinanceiroPropsTest` que criam `ContratoServico` para dar à empresa um serviço "dono de
+tabela", D-01).
+
+`ContratoServico` tem `#[ObservedBy([ContratoServicoObserver::class, ContratoServicoGatilhoObserver::class])]`
+(Fases 128/135) que criam onboarding em rascunho e reavaliam o gate administrativo a cada
+`ContratoServico::create()`. Não observei nenhuma falha ou efeito colateral nos testes novos/
+atualizados desta tarefa — registrado apenas porque é uma dependência implícita que qualquer
+fixture nova de `ContratoServico` carrega, caso apareça lentidão ou side-effect inesperado depois.

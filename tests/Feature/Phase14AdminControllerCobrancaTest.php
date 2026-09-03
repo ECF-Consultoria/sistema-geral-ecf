@@ -69,6 +69,32 @@ class Phase14AdminControllerCobrancaTest extends TestCase
     }
 
     /**
+     * Fase 137 (D-01) — a faixa deixou de vir da constante `FAIXAS` e passou
+     * a depender de a empresa ter contrato ativo com um serviço "dono de
+     * tabela" (setor financeiro OU plataforma preenchida). A migration
+     * `2026_09_02_100003_seed_faixas_faturamento_iniciais` já semeia as 7
+     * faixas de "Gestão" (criada pelo catálogo base da Fase 14) — este
+     * helper só ajusta `plataforma`/`setor` para o serviço virar candidato
+     * no resolver, mesmo padrão de `Phase137FaixaResolverTest`.
+     */
+    private function vincularGestao(Company $company): ContratoServico
+    {
+        $servico = Servico::firstOrCreate(
+            ['nome' => 'Gestão'],
+            ['valor_padrao' => 0, 'tipo_cobranca' => Servico::TIPO_MENSAL, 'ativo' => true]
+        );
+        $servico->update(['plataforma' => 'Mercado Livre', 'setor' => Servico::SETOR_PERFORMANCE]);
+
+        return ContratoServico::create([
+            'company_id'       => $company->id,
+            'servico_id'       => $servico->id,
+            'valor_contratado' => 0,
+            'data_contratacao' => Carbon::now()->toDateString(),
+            'ativo'            => true,
+        ]);
+    }
+
+    /**
      * TEST 1 — Golden: cobranca_mensal calculada pelo refator bate com a fórmula legacy.
      *
      * Cenário: empresa com additional_service_price=200 (legacy) + 1 contrato mensal
@@ -106,6 +132,10 @@ class Phase14AdminControllerCobrancaTest extends TestCase
         ]);
         $this->criarContrato($empresa, 'Polos', 0.0);
         $this->criarContrato($empresa, 'Treinamento', 200.00);
+        // Fase 137 (D-01): nem Polos nem Treinamento são "dono de tabela"
+        // (nem plataforma nem setor financeiro) — sem isso a empresa cai em
+        // 'sem_tabela' e a faixa (4.500) nunca entra na soma.
+        $this->vincularGestao($empresa);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
