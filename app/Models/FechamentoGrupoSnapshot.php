@@ -40,11 +40,18 @@ class FechamentoGrupoSnapshot extends Model
         'tabelas_divergentes',
         'origem',
         'gerado_em',
+        // Fase 138 (D-02 + D-03) — escritas SÓ pelo notificador do plano 05,
+        // nunca por `ConsolidarMesFechamento`/`FechamentoSnapshotWriter`. É
+        // por NÃO estarem no `$dados` montado pelo comando que sobrevivem ao
+        // `fill()` de uma reconsolidação — essa é a trava de "já avisei".
+        'notificado_em',
+        'notificado_faixa_ordem',
     ];
 
     protected $casts = [
         'mes_referencia'        => 'date',
         'gerado_em'             => 'datetime',
+        'notificado_em'         => 'datetime',
         'faturamento_ml'        => 'decimal:2',
         'faturamento_shopee'    => 'decimal:2',
         'faturamento_total'     => 'decimal:2',
