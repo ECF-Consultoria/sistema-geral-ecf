@@ -217,6 +217,34 @@ Tarefa 3). Gate `Phase122|Phase136|Phase137`: **226 testes / 1115 asserções / 
 verde nas 3 tarefas. Last activity: 2026-09-03 — 137-09 executado (estados de ausência + cadastro
 manual de faixas, wave 5).
 
+137-08 concluído (wave 5; rodou EM PARALELO com o 137-09 na mesma janela, sem sobreposição de
+arquivos — 137-08 mexeu em `AdminController.php`/`EnviarRelatorioFechamentoJob.php`/3 blades de
+relatório, 137-09 mexeu só em `Financeiro.jsx`/JSX novo). Migrou os TRÊS últimos consumidores do
+fechamento — `gerarRelatorio()`, `gerarRelatorioGeral()`, `EnviarRelatorioFechamentoJob` — pra
+ler a mesma fonte central que `fechamento()` (plano 07) já usa: reusa
+`fechamentoDadosPorEmpresaAoVivo()`/`Congelados()` e `fechamentoAgregarGruposAoVivo()`/`Congelados()`
+em vez de recalcular, então a paridade numérica com `/financeiro` é garantida por construção.
+Apagou as DUAS cópias da constante `FAIXAS` (`AdminController` e `EnviarRelatorioFechamentoJob`) —
+`grep -c "FAIXAS"` retorna 0 nos dois arquivos. Fechou o gap pré-existente D-05: o job somava SÓ
+`adman_metrics` e nunca incluiu Shopee — agora usa `FechamentoRollupService::porEmpresa()` (ML+Shopee)
+tanto ao vivo quanto no congelado. `parent_company_id` não agrupa mais em nenhum dos três
+(`gerarRelatorio()` usa `CompanyGroup`-irmãs como vinculadas; `gerarRelatorioGeral()`/job usam a
+MESMA regra de âncora de `fechamento()` — maior faturamento, empate pelo menor id). `valor_e_piso`
+chegou às três superfícies com o prefixo "a partir de" (D-02b) — implementado em TODOS os pontos de
+exibição de mensalidade em cada view (não só o mínimo), porque a faixa-piso também precisa aparecer
+certa quando a empresa está dentro de um grupo. **Achado fora de escopo, não corrigido**:
+`app/Console/Commands/Phase14VerificarCobranca.php` é código morto da Fase 14 (já concluída) com
+sua PRÓPRIA cópia de `FAIXAS`/`calcularFaixa()` — não está nos `files_modified` deste plano nem nos
+"três consumidores restantes" que o objetivo lista; candidato a remoção numa limpeza futura. Rule 1:
+`Phase14BladeRefactorTest` TEST 2 (fixture pai+filha só com `parent_company_id`) ganhou um
+`CompanyGroup` pra preservar a intenção original do teste sob D-08 (senão a filha some do relatório,
+quebrando o teste não por bug mas por incompatibilidade estrutural com a fase). 3 commits (`41af03cc`
+Tarefa 1, `29261bc4` Tarefa 2, `bc49c176` Tarefa 3). Gate `Phase122|Phase136|Phase137`: **233 testes
+/ 1177 asserções / 0 falhas** (medido depois do 137-09 já mesclado — 226/1115 + os 7 testes/62
+asserções deste plano = 233/1177, bate exato). `AdminFechamentoControllerTest` continua 4/16
+falhas pré-existentes, inalterado. Last activity: 2026-09-03 — 137-08 executado (relatórios PDF/
+e-mail migrados pra fonte central, wave 5).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
