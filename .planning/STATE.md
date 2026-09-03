@@ -162,6 +162,36 @@ falhas** (era 184/926 antes deste plano — +25 testes/+83 asserções, todos no
 `AdminController.php` é do 137-07). Last activity: 2026-09-03 — 137-06 executado (FormRequest +
 controller + rotas, wave 4).
 
+137-07 concluído (mesma wave 4, sem sobreposição de arquivos com o 137-06) — **é o plano que mata
+o acumulativo**, o pedido original do usuário. `AdminController::fechamento()` reescrito: janela
+móvel de 30 dias (`Carbon::now()->subDays(30)`) trocada por `FechamentoRollupService::janela()`
+(mês-calendário fechado, D-06); bifurcação explícita competência-fechada (lê
+`fechamento_snapshots`/`fechamento_grupo_snapshots`, nunca recalcula) x competência-aberta (rollup
++ `FechamentoFaixaResolver` ao vivo, mesma precedência de estado do comando
+`fechamento:consolidar-mes`); agregação de grupo migrada de `parent_company_id` para
+`CompanyGroup` (D-08/D-09/D-10 — soma das membros define a faixa); progressão sem coluna
+acumulada (D-06), lida do histórico congelado; props novas: `faturamento_ml/shopee`,
+`faixa_ordem/label/limite_inferior/superior`, `tabela_origem/servico_nome`,
+`valor_faixa_e_piso`, `competencia_fechada(_em)`, `faixas_por_servico`. `self::FAIXAS` e os 3
+helpers antigos (`calcularFaixa`/`faixaNumero`/`faixaLabel`) permanecem no arquivo só para
+`gerarRelatorio()`/`gerarRelatorioGeral()` (migram no plano 08) — `fechamento()` não os referencia
+mais. 3 commits (`bc7deaaa` controller, `5da32cde` suítes + `Phase137FinanceiroPropsTest` nova,
+`e6035976` fix de regressão + deferred-items). Gate `Phase122|Phase136|Phase137`: **219 testes /
+1068 asserções / 0 falhas** (era 209/1009 antes deste plano — +10 testes/+59 asserções, todos
+novos, sem regressão).
+
+Achado durante execução (Rule 1, fora dos `files_modified` do plano):
+`Phase14AdminControllerCobrancaTest::test_cobranca_mensal_legacy_e_novo_modelo_batem_para_empresa_com_additional_service`
+regrediu (empresa fixture só tinha contratos Polos/Treinamento, nenhum "dono de tabela" sob D-01)
+— corrigido com um contrato Gestão, mesmo padrão usado nas 2 suítes do `files_modified`. Baseline
+medida por `git show HEAD:...` temporário (nunca `git stash`, ver disciplina de árvore
+compartilhada): a falha pré-existente `AdminFechamentoControllerTest::test_empresa_ok_recebe_periodo_coberto`
+(documentada como "sensível à janela móvel" em `deferred-items.md`) **virou verde** sem eu tocar
+nela — é exatamente a correção de D-06 se manifestando. `AdminFechamentoControllerTest` agora tem
+4/16 falhas pré-existentes (era 5/16), as 4 restantes ligadas a `service_type`/`contract_start`/
+`contract_end` (Fase 14 Plano 14-06 — fora do escopo). Last activity: 2026-09-03 — 137-07 executado
+(controller de fechamento + 3 suítes, wave 4).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
