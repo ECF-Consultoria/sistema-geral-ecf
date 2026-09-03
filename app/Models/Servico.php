@@ -200,6 +200,17 @@ class Servico extends Model
     }
 
     /**
+     * Fase 137 (D-01) — tabela progressiva de faturamento deste serviço.
+     * Uma empresa herda esta tabela por padrão; se ela tiver linhas em
+     * `EmpresaFaixaFaturamento` (D-13), essa exceção substitui a tabela
+     * inteira do serviço, nunca linha a linha.
+     */
+    public function faixasFaturamento(): HasMany
+    {
+        return $this->hasMany(ServicoFaixaFaturamento::class);
+    }
+
+    /**
      * Scope: apenas serviços ativos.
      */
     public function scopeActive($query)

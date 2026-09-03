@@ -424,6 +424,18 @@ class Company extends Model
         return $this->hasMany(ContratoServico::class);
     }
 
+    /**
+     * Fase 137 (D-01, D-04, D-13) — exceção de tabela progressiva de
+     * faturamento desta empresa. A existência de QUALQUER linha aqui
+     * substitui a tabela inteira do serviço (D-13, all-or-nothing) — nunca
+     * linha a linha. Empresa sem exceção herda a tabela do serviço via
+     * `Servico::faixasFaturamento()`.
+     */
+    public function faixasFaturamento()
+    {
+        return $this->hasMany(EmpresaFaixaFaturamento::class);
+    }
+
     /** Onboardings da empresa — um por serviço contratado (D-01). */
     public function onboardings()
     {
