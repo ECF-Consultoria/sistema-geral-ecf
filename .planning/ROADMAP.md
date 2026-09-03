@@ -2163,7 +2163,7 @@ Plans:
 > produção. **Contrato é ferramenta administrativa contínua: o critério de saída dela é o estado do
 > contrato, não a etapa.** O corte da etapa 5 (D-07/COMERC-03) vale só para a listagem **Entrada**.
 
-**Plans:** 6/9 plans executed
+**Plans:** 7/9 plans executed
 
 Plans:
 **Wave 0** *(medições antes de qualquer código — gate do `CLAUDE.md`)*
@@ -2183,7 +2183,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 138-07-PLAN.md — COMERC-01: ator de sistema "Sistema HubSpot" (D-17) + nascimento na etapa 1 nas duas portas, webhook e cadastro manual (D-13/D-14) [wave 3]
+- [x] 138-07-PLAN.md — COMERC-01: ator de sistema "Sistema HubSpot" (D-17) + nascimento na etapa 1 nas duas portas, webhook e cadastro manual (D-13/D-14) [wave 3]
 - [ ] 138-08-PLAN.md — COMERC-02: navegação reorganizada — `Entrada.jsx`, Contrato movido para o Comercial e `admin.empresas` fora do menu (D-01/D-02/D-15/D-16) [wave 3]
 
 **Wave 4** *(blocked on Wave 3 completion)*

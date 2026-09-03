@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 138-06-PLAN.md
+stopped_at: Completed 138-07-PLAN.md
 last_updated: "2026-09-03T21:17:01.000Z"
 last_activity: 2026-09-03
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 20
-  completed_plans: 17
-  percent: 85
+  completed_plans: 18
+  percent: 90
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -42,7 +42,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 138 (rea-comercial-conectada-etapa-v23-0) — EXECUTING
 0 executados**
-Plan: 7 of 9 (138-06 concluído — listagem Contrato ganha os 8 campos do §2; COMERC-02 fechado por completo)
+Plan: 8 of 9 (138-07 concluído — `EtapaTransicaoService` ligado aos dois call sites de produção
+do webhook (`processar()`/`reprocessarEvento()`) e ao cadastro manual (`ComercialController::
+store()`), com ator de sistema "Sistema HubSpot" (D-17); COMERC-01 fechado por completo)
 `CLAUDE.md`) e 138-02 (`checkpoint:human-verify` BLOQUEANTE: medir o nome interno da property de
 owner na conta HubSpot real por `hubspot:inspect-properties --objects=deals`, e confirmar o escopo
 `crm.objects.owners.read`). Wave 1 = 138-03. Wave 2 = 138-04/05/06. Wave 3 = 138-07/08.
@@ -1510,6 +1512,8 @@ None.
 ## Session Continuity
 
 Last session: 2026-09-03T21:17:01.000Z
+Stopped at: Completed 138-07-PLAN.md — EtapaTransicaoService ligado aos dois call sites de produção do webhook e ao cadastro manual, ator de sistema "Sistema HubSpot" (D-17), COMERC-01 fechado por completo (commits `43475202`, `370b739`, `b18bd1fd`)
+Last session: 2026-09-03T21:17:01.000Z
 Stopped at: Completed 138-06-PLAN.md — listagem Contrato ganha os 8 campos do §2, COMERC-02 fechado por completo (commits `551117d0`, `f8e4044b`); fechamento (SUMMARY/STATE/ROADMAP/REQUIREMENTS) feito por agente de closeout porque o executor original morreu por erro de stream da API após commitar as duas tasks
 Last session: 2026-09-02T20:14:25.367Z
 Stopped at: Completed 138-05-PLAN.md
@@ -1642,3 +1646,5 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 138]: COMERC-02 fechado por completo no plano 138-06: `ContratoAdminController::index()` ganhou os 8 campos do §2 + etapa nos dois ramos (com contrato e SEM_CONTRATO), com o mesmo vocabulário de chave da listagem Entrada (138-05) — as DUAS listagens agora expõem os 8 campos. Query do universo do Contrato não mudou (whereHas('contratosServico' idêntico antes/depois) e NÃO ganhou corte por etapa (D-06/D-07 preservadas)
 - [Phase 138]: Entrada.jsx criado já no plano 138-05 como página real, não re-export — sem página existente a rota nunca responde 200 (manifest do Vite); 138-08 estende com filtros/acoes
 - [Phase 138]: 138-06 fechado por um agente de CLOSEOUT, não pelo executor original — o executor commitou as duas tasks (551117d0, f8e4044b) e morreu por erro de stream da API antes de escrever o SUMMARY/atualizar STATE/ROADMAP/REQUIREMENTS. Todo critério de aceite foi reconferido do zero contra o disco (grep, diff dos commits, suíte re-executada: 171 testes/678 assertions OK) antes de fechar — ver `138-06-SUMMARY.md`
+- [Phase 138]: 138-07: COMERC-01 fechado por completo — conta de sistema "Sistema HubSpot" criada por `hubspot:criar-usuario-sistema --apply` (id local 49; senha aleatória de 64 caracteres descartada na criação é o que de fato bloqueia login, não `active=false` — o login deste projeto não checa `users.active`), resolvida por `config('services.hubspot.webhook_user_id')` (sem default). `HubspotWebhookController::nascerNaEtapa1()` chamado nos DOIS call sites de produção (`processar()` e `reprocessarEvento()` — este último não chamava o gate administrativo e ficaria sem etapa em replay). `ComercialController::store()` chama o mesmo serviço com `$request->user()` como ator. Ator ausente/inexistente: log + empresa sem etapa, nunca TypeError/500. `EtapaTransicaoService` não foi tocado (D-17). 17 testes novos (Phase138), suíte completa `tests/Feature/Phase138` 57/57 verde, `tests/Unit/Phase137`+`tests/Feature/Phase137`+`Phase34HubspotWebhookTest`+`ContratoAdminPermissaoTest` 68/68 verde
+- [Phase 138]: 138-07: `HUBSPOT_WEBHOOK_USER_ID=49` setado no `.env` LOCAL deste worktree (não versionado); a mesma conta precisa ser criada na VPS e `id_vps:` preenchido em `138-CONTA-SISTEMA-HUBSPOT.md` antes do primeiro deploy da Fase 138 (pendência explícita do plano 138-09)
