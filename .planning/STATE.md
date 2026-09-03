@@ -333,6 +333,29 @@ activity: 2026-09-03 — 138-04 executado (props de grupo do fechamento, nos doi
 `ConsolidarMesFechamento.php` (fora do escopo — plano 138-03 rodou em paralelo nesse arquivo).
 Consumo pela tela (`TabelaFaixasSection.jsx`/cadastro) fica para o plano 06.
 
+138-05 concluído — `FechamentoFaixaNotifier` (novo) + chamada dele no Passo 8 de
+`fechamento:consolidar-mes`, logo após o `writer->sync()`. Avisa os admins quando empresa/grupo
+muda de faixa (D-02, subida E queda), com seleção idempotente por
+`notificado_em`/`notificado_faixa_ordem` (D-03) e envio agregado (uma notificação por rodada, nunca
+uma por empresa — 127 empresas `ok` em produção). **Correção obrigatória do plan-checker**: a trava
+de idempotência só cobre execução sequencial; duas execuções de verdade em paralelo podiam ambas
+selecionar antes de qualquer uma carimbar. Fechada com `Cache::lock('fechamento:notificar:{mes}',
+60)` NÃO-bloqueante, guardando seleção + leitura da competência anterior + envio + carimbo como
+bloco único — escolhida em vez de `lockForUpdate()` nas linhas porque a seleção também lê a
+competência ANTERIOR (fora do escopo de um lock de linha) para montar a copy "3ª → 4ª faixa".
+Chamada no comando isolada em `try/catch (\Throwable)`: falha ao avisar loga `[Fechamento]` e NUNCA
+altera o exit code (é ele que `FechamentoController` usa pra devolver 409 na tela). Teste novo
+`Phase138AvisoMudancaFaixaTest`: **9 testes / 46 asserções**, cobrindo os 8 casos do `<behavior>`
+mais o teste obrigatório de concorrência (lock ocupado → 0 processamento; lock liberado → processa
+normal). Gate combinado `Phase122|Phase136|Phase137|Phase138`: **276 testes / 1452 asserções / 0
+falhas** (o número de testes "antes deste plano" no momento da medição já incluía o trabalho
+paralelo do plano 138-06, que rodou concorrentemente em `FechamentoController.php`/
+`TabelaFaixasSection.jsx`/`Financeiro.jsx` — sem sobreposição de arquivos com este plano). 2 commits
+(`dd019204` serviço + teste, `f6d64438` chamada no comando). Last activity: 2026-09-03 — 138-05
+executado (o aviso de mudança de faixa passa a existir de ponta a ponta, com trava de concorrência).
+Consumo/verificação visual da tela de notificações não faz parte deste plano (rótulo já entregue
+pelo 138-02).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
