@@ -308,6 +308,31 @@ Passo 5 + docblock, `cc4d94e4` teste). Last activity: 2026-09-03 — 138-03 exec
 fechamento honra a tabela do grupo). Não tocou `AdminController.php` (fora do escopo — plano 138-04
 roda em paralelo nesse arquivo).
 
+138-04 concluído — `AdminController::fechamento()` alinhado à precedência final D-01 nos DOIS
+ramos, mais a herança visível pedida pela Fase 138 (herança invisível era metade do defeito
+original). Ramo AO VIVO (`fechamentoAgregarGruposAoVivo`): troca `paraEmpresa($ancora)` por
+`paraGrupo($ancora->grupo, $ancora)` (fallback defensivo pra `paraEmpresa` só se `$ancora->grupo`
+vier nulo); `tabelas_divergentes` não precisou de caso especial pelo mesmo motivo do 138-03 (o
+degrau de grupo do 138-01 já colapsa o conjunto de pares sozinho). Ramo CONGELADO
+(`fechamentoAgregarGruposCongelados`): NÃO recalcula — deriva as chaves novas de `$s->tabela_origem`
+e `$s->empresa_ancora_id`, buscando o nome entre os `$membros` já carregados (sem query nova), mesma
+disciplina D-11. Duas chaves novas, sempre presentes nos dois ramos: `tabela_grupo_nome` (nome do
+grupo, só quando `tabela_origem === 'grupo'`) e `tabela_herdada_de_nome` (nome da empresa de quem a
+tabela foi herdada, só quando NÃO é `'grupo'` — nunca as duas preenchidas juntas). Catálogo novo
+`fechamentoFaixasPorGrupo()` (2 queries fixas — uma pra faixas, uma pra nomes de grupo — nunca uma
+por grupo, T-138-11) exposto como prop `faixas_por_grupo` ao lado de `faixas_por_servico`. Teste
+novo `Phase138FinanceiroGrupoPropsTest`: **6 testes / 50 asserções**, cobrindo os 5 casos do plano
+— (a) mês aberto sem tabela de grupo → herança visível; (b) mês aberto com tabela de grupo → sem
+herança, faixa aplicada é a do grupo; (c) mês fechado, duas variantes (com/sem tabela de grupo),
+incluindo a prova de que cadastrar tabela de grupo DEPOIS do fechamento não muda a origem já
+congelada; (d) `faixas_por_grupo` lista só grupo com tabela própria; (e) não-regressão das chaves
+da Fase 137. Gate combinado `Phase122|Phase136|Phase137|Phase138`: **260 testes / 1377 asserções /
+0 falhas** (era 254/1327 antes deste plano — +6 testes/+50 asserções, todos novos, sem regressão).
+3 commits (`614df90b` ramo ao vivo, `bdfec959` ramo congelado + catálogo, `7c21737c` teste). Last
+activity: 2026-09-03 — 138-04 executado (props de grupo do fechamento, nos dois ramos). Não tocou
+`ConsolidarMesFechamento.php` (fora do escopo — plano 138-03 rodou em paralelo nesse arquivo).
+Consumo pela tela (`TabelaFaixasSection.jsx`/cadastro) fica para o plano 06.
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
