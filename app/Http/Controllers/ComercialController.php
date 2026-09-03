@@ -15,9 +15,11 @@ use App\Notifications\EmpresaCadastradaNotification;
 use App\Services\Comercial\PendenciasComerciaisService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
+use App\Services\FluxoEntrada\EtapaTransicaoService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -666,6 +668,27 @@ class ComercialController extends Controller
         // refresh() garante que o gate leia os ContratoServico recém-criados
         // dentro da transaction, não a coleção em memória.
         $company->refresh();
+
+        // (7) Fase 138 (COMERC-01/D-13) — nascimento na etapa 1, MESMO fora da
+        // transaction e pelo MESMO motivo do gate acima. COMERC-01 cita só o
+        // webhook, mas o cadastro manual é a OUTRA única porta que cria
+        // `Company` — se ela não nascer na etapa 1, a empresa nunca entra no
+        // fluxo, o Administrativo nunca a vê, e o cadastro único do PDF
+        // (D-13) quebra. Ator é o objeto `User` da sessão — NUNCA
+        // `$request->user()->id` nem qualquer `user_id` vindo do corpo da
+        // requisição (T-137-02/D-17). O serviço nunca lança; para
+        // empresa recém-criada a etapa nasce NULL, então 'transicionado' é o
+        // ÚNICO desfecho esperado aqui — qualquer outro precisa aparecer no
+        // log, não passar calado.
+        $resultado = app(EtapaTransicaoService::class)->transicionar(
+            $company,
+            Company::ETAPA_AGUARDANDO_ADMINISTRATIVO,
+            $request->user(),
+        );
+        if ($resultado['status'] !== 'transicionado') {
+            Log::warning('[Comercial] transição de nascimento inesperada', ['company_id' => $company->id, 'resultado' => $resultado]);
+        }
+
         app(GatilhoContratoAdministrativoService::class)->dispararSeElegivel($company);
 
         return back()->with('success', 'Empresa "' . $company->name . '" cadastrada com sucesso.');
