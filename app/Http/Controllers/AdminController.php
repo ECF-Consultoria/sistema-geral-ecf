@@ -241,6 +241,7 @@ class AdminController extends Controller
             'competencia_fechada'    => $competenciaFechada,
             'competencia_fechada_em' => $competenciaFechadaEm,
             'faixas_por_servico'     => $this->fechamentoFaixasPorServico(),
+            'faixas_por_grupo'       => $this->fechamentoFaixasPorGrupo(),
         ]);
     }
 
@@ -664,6 +665,18 @@ class AdminController extends Controller
             $ancoraId   = $s?->empresa_ancora_id ?? $membros->first()->id;
             $grupoModel = $membros->first()->grupo;
 
+            // Fase 138 (D-01): as duas chaves derivadas do snapshot, sem
+            // recálculo (D-11) — `tabela_origem` já diz se a tabela é do
+            // próprio grupo ou herdada; `empresa_ancora_id` continua sempre
+            // preenchido (usado por `fechamentoAgregarGruposCongelados` pra
+            // reencontrar a linha), a herança nasce de `tabela_origem`.
+            $tabelaGrupoNome = ($s?->tabela_origem === 'grupo')
+                ? ($s?->grupo_name ?? $grupoModel?->name)
+                : null;
+            $tabelaHerdadaDeNome = ($s !== null && $s->tabela_origem !== 'grupo' && $s->empresa_ancora_id !== null)
+                ? $membros->firstWhere('id', $s->empresa_ancora_id)?->name
+                : null;
+
             $servicosContratadosUniao = $membros
                 ->flatMap(fn (Company $c) => $dadosPorId[$c->id]['servicos_contratados'])
                 ->unique('id')
@@ -694,6 +707,8 @@ class AdminController extends Controller
                 'valor_faixa_e_piso'    => (bool) ($s?->valor_faixa_e_piso ?? false),
                 'tabela_origem'         => $s?->tabela_origem,
                 'tabela_servico_nome'   => $s?->servico?->nome,
+                'tabela_grupo_nome'      => $tabelaGrupoNome,
+                'tabela_herdada_de_nome' => $tabelaHerdadaDeNome,
                 'tabelas_divergentes'   => (bool) ($s?->tabelas_divergentes ?? false),
                 'cobranca_mensal'       => $s?->cobranca_mensal !== null ? (float) $s->cobranca_mensal : null,
                 'recebido'              => $dadosPorId[$ancoraId]['recebido'] ?? false,
@@ -727,6 +742,37 @@ class AdminController extends Controller
                     ->ordenadas()
                     ->get(['ordem', 'limite_superior', 'valor', 'valor_e_piso'])
                     ->map(fn (ServicoFaixaFaturamento $f) => [
+                        'ordem'           => $f->ordem,
+                        'limite_superior' => $f->limite_superior !== null ? (float) $f->limite_superior : null,
+                        'valor'           => (float) $f->valor,
+                        'valor_e_piso'    => (bool) $f->valor_e_piso,
+                    ])->values()->all(),
+            ])->values()->all();
+    }
+
+    /**
+     * Fase 138 (D-01) — catálogo dos grupos que têm tabela própria
+     * cadastrada, com suas faixas, para a seção de cadastro de tabela do
+     * grupo do plano 06. Uma consulta pra faixas + uma pra nomes de grupo —
+     * nunca uma query por grupo (T-138-11).
+     */
+    private function fechamentoFaixasPorGrupo(): array
+    {
+        $faixasPorGrupoId = GrupoFaixaFaturamento::query()
+            ->ordenadas()
+            ->get(['company_group_id', 'ordem', 'limite_superior', 'valor', 'valor_e_piso'])
+            ->groupBy('company_group_id');
+
+        return CompanyGroup::query()
+            ->whereIn('id', $faixasPorGrupoId->keys())
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (CompanyGroup $grupo) => [
+                'id'     => $grupo->id,
+                'nome'   => $grupo->name,
+                'faixas' => $faixasPorGrupoId->get($grupo->id, collect())
+                    ->sortBy('ordem')
+                    ->map(fn (GrupoFaixaFaturamento $f) => [
                         'ordem'           => $f->ordem,
                         'limite_superior' => $f->limite_superior !== null ? (float) $f->limite_superior : null,
                         'valor'           => (float) $f->valor,
