@@ -18,6 +18,7 @@ use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanyGroupController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DesempenhoMetricasManuaisController;
+use App\Http\Controllers\FechamentoController;
 use App\Http\Controllers\Dev\SugadoresMlOnboardingController;
 use App\Http\Controllers\DevController;
 use App\Http\Controllers\DevModulosController;
@@ -1403,6 +1404,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     Route::get('/financeiro/relatorio-geral',         [AdminController::class, 'gerarRelatorioGeral'])->name('financeiro.relatorio.geral');
     Route::post('/financeiro/relatorio-geral/enviar', [AdminController::class, 'enviarRelatorioGeral'])->name('financeiro.relatorio.enviar');
     Route::post('/financeiro/sync-faturamento',       [AdminController::class, 'syncFaturamento'])->name('financeiro.sync');
+    // ─── Fechamento mensal (Fase 137, D-04/D-11/D-12) — ANTES de
+    // /financeiro/{company} pelo mesmo motivo do comentário acima: rota
+    // específica precisa vir antes do parâmetro dinâmico.
+    Route::post('/financeiro/competencia/fechar',     [FechamentoController::class, 'fecharCompetencia'])->name('financeiro.competencia.fechar');
+    Route::post('/financeiro/competencia/refazer',    [FechamentoController::class, 'refazerCompetencia'])->name('financeiro.competencia.refazer');
+    Route::post('/financeiro/faixas/servico/{servico}',        [FechamentoController::class, 'salvarFaixasServico'])->name('financeiro.faixas.servico');
+    Route::post('/financeiro/faixas/empresa/{company}',        [FechamentoController::class, 'salvarFaixasEmpresa'])->name('financeiro.faixas.empresa');
+    Route::delete('/financeiro/faixas/empresa/{company}',      [FechamentoController::class, 'removerFaixasEmpresa'])->name('financeiro.faixas.empresa.remover');
     Route::patch('/financeiro/{company}',             [AdminController::class, 'updateFechamento'])->name('financeiro.update');
     Route::post('/financeiro/{company}/recebido',     [AdminController::class, 'toggleRecebido'])->name('financeiro.recebido');
     Route::get('/financeiro/{company}/relatorio',     [AdminController::class, 'gerarRelatorio'])->name('financeiro.relatorio');

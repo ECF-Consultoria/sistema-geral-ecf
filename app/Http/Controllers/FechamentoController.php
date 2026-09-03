@@ -8,7 +8,10 @@ use App\Models\EmpresaFaixaFaturamento;
 use App\Models\Servico;
 use App\Models\ServicoFaixaFaturamento;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * FechamentoController — superfície HTTP do fechamento mensal (Fase 137
@@ -110,4 +113,108 @@ class FechamentoController extends Controller
         return back()->with('success', 'Empresa voltou a usar a tabela do serviço.');
     }
 
+    // ═══ Fechar / refazer competência (D-11/D-12) ════════════════════════
+
+    /**
+     * POST /administrativo/financeiro/competencia/fechar — congela a
+     * competência informada, delegando o cálculo para
+     * `fechamento:consolidar-mes` (mesmo comando do cron).
+     *
+     * O veredito HTTP vem do EXIT CODE do comando (`Artisan::call()`
+     * devolve o exit code diretamente) — nunca da saída de texto. Exit
+     * diferente de 0 cobre tanto falha real (exceção) quanto a trava de
+     * "já fechado sem motivo" do writer, e sempre devolve 409 com a copy
+     * literal do UI-SPEC.
+     */
+    public function fecharCompetencia(Request $request)
+    {
+        abort_unless($request->user()?->isAdmin() === true, 403);
+
+        $validated = $request->validate([
+            'mes' => ['required', 'string', 'regex:/^\d{4}-\d{2}$/'],
+        ]);
+
+        try {
+            // Âncora no dia 01 explícito — sem isso o Carbon preenche com
+            // o dia de hoje e pode estourar pro mês seguinte (mesmo
+            // cuidado de ConsolidarMesFechamento::handle()).
+            $mes = Carbon::createFromFormat('Y-m-d', $validated['mes'].'-01')->startOfMonth();
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Formato de mês inválido — use AAAA-MM.'], 422);
+        }
+
+        if ($mes->gt(Carbon::now()->startOfMonth())) {
+            return response()->json(['message' => 'Não é possível fechar uma competência futura.'], 422);
+        }
+
+        $mesLabel = ucfirst($mes->locale('pt_BR')->translatedFormat('F Y'));
+
+        // Consolidação percorre ~190 empresas — mesmo precedente de
+        // AdminController::syncFaturamento.
+        set_time_limit(0);
+
+        $exitCode = Artisan::call('fechamento:consolidar-mes', [
+            '--mes' => $validated['mes'],
+            '--por' => $request->user()->id,
+        ]);
+
+        if ($exitCode !== 0) {
+            Log::error("[Fechamento] Falha ao fechar a competência {$validated['mes']} (exit {$exitCode}).", [
+                'saida' => Artisan::output(),
+            ]);
+
+            return response()->json([
+                'message' => "Não foi possível fechar {$mesLabel}. Nada foi alterado — tente novamente ou avise o time técnico.",
+            ], 409);
+        }
+
+        return response()->json([
+            'message' => "Competência {$mesLabel} fechada com sucesso.",
+        ]);
+    }
+
+    /**
+     * POST /administrativo/financeiro/competencia/refazer — reconsolida uma
+     * competência já fechada (D-12 revisado). `motivo` é obrigatório — o
+     * comando/writer recusam sem ele.
+     */
+    public function refazerCompetencia(Request $request)
+    {
+        abort_unless($request->user()?->isAdmin() === true, 403);
+
+        $validated = $request->validate([
+            'mes'    => ['required', 'string', 'regex:/^\d{4}-\d{2}$/'],
+            'motivo' => ['required', 'string', 'min:10', 'max:1000'],
+        ]);
+
+        try {
+            $mes = Carbon::createFromFormat('Y-m-d', $validated['mes'].'-01')->startOfMonth();
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Formato de mês inválido — use AAAA-MM.'], 422);
+        }
+
+        $mesLabel = ucfirst($mes->locale('pt_BR')->translatedFormat('F Y'));
+
+        set_time_limit(0);
+
+        $exitCode = Artisan::call('fechamento:consolidar-mes', [
+            '--mes'    => $validated['mes'],
+            '--motivo' => $validated['motivo'],
+            '--por'    => $request->user()->id,
+        ]);
+
+        if ($exitCode !== 0) {
+            Log::error("[Fechamento] Falha ao refazer a competência {$validated['mes']} (exit {$exitCode}).", [
+                'saida' => Artisan::output(),
+            ]);
+
+            return response()->json([
+                'message' => "Não foi possível refazer o fechamento de {$mesLabel}. O registro anterior continua valendo.",
+            ], 409);
+        }
+
+        return response()->json([
+            'message' => "Fechamento de {$mesLabel} refeito com sucesso.",
+        ]);
+    }
 }
