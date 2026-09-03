@@ -2163,7 +2163,7 @@ Plans:
 > produção. **Contrato é ferramenta administrativa contínua: o critério de saída dela é o estado do
 > contrato, não a etapa.** O corte da etapa 5 (D-07/COMERC-03) vale só para a listagem **Entrada**.
 
-**Plans:** 5/9 plans executed
+**Plans:** 6/9 plans executed
 
 Plans:
 **Wave 0** *(medições antes de qualquer código — gate do `CLAUDE.md`)*
@@ -2179,7 +2179,7 @@ Plans:
 
 - [x] 138-04-PLAN.md — COMERC-02: webhook persiste owner e data da venda nos dois ramos + comando de retroativo com dry-run (D-10/D-14) [wave 2]
 - [x] 138-05-PLAN.md — COMERC-02 + COMERC-03: módulo Entrada — permission própria, módulo, rota, `ComercialEntradaController` com os 8 campos e as duas pendências separadas (D-02/D-04/D-05/D-06/D-07/D-11/D-12/D-15) [wave 2]
-- [ ] 138-06-PLAN.md — COMERC-02: listagem Contrato ganha os 8 campos do §2 e a etapa, sem mudar a query do universo (D-03/D-06/D-11) [wave 2]
+- [x] 138-06-PLAN.md — COMERC-02: listagem Contrato ganha os 8 campos do §2 e a etapa, sem mudar a query do universo (D-03/D-06/D-11) [wave 2]
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
