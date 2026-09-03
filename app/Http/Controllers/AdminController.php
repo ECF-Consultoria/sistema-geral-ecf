@@ -5,20 +5,31 @@ namespace App\Http\Controllers;
 use App\Jobs\EnviarRelatorioFechamentoJob;
 use App\Models\AdmanMetric;
 use App\Models\Company;
-use App\Models\CompanyMonthlyRevenue;
 use App\Models\Configuracao;
+use App\Models\FechamentoGrupoSnapshot;
 use App\Models\FechamentoRecebido;
+use App\Models\FechamentoSnapshot;
+use App\Models\Servico;
+use App\Models\ServicoFaixaFaturamento;
+use App\Models\ShopeeMetric;
 use App\Services\AdmanService;
+use App\Services\Fechamento\FechamentoFaixaResolver;
+use App\Services\Fechamento\FechamentoRollupService;
 use App\Support\CobrancaCalculator;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class AdminController extends Controller
 {
-    public function __construct(private AdmanService $adman) {}
+    public function __construct(
+        private AdmanService $adman,
+        private FechamentoRollupService $rollupService,
+        private FechamentoFaixaResolver $faixaResolver,
+    ) {}
 
     private const FAIXAS = [
         ['limite' => 499_999.99,   'label' => 'faixa_1', 'valor' => 3_000.00],
@@ -125,7 +136,8 @@ class AdminController extends Controller
 
     public function fechamento(Request $request)
     {
-        // Determina o mês de referência — padrão: mês corrente
+        // Determina o mês de referência — padrão: mês corrente (mesma
+        // validação de sempre: mês futuro é recusado e cai no corrente).
         try {
             $ref = $request->filled('mes')
                 ? Carbon::createFromFormat('Y-m', $request->input('mes'))->startOfMonth()
@@ -138,254 +150,577 @@ class AdminController extends Controller
             $ref = Carbon::now();
         }
 
-        $mesSelecionado = $ref->format('Y-m');
+        $mesSelecionado   = $ref->format('Y-m');
+        $mesReferenciaStr = $ref->copy()->startOfMonth()->toDateString();
 
-        // Mês atual = janela 30d rolling (alinhada com Empresas e Dashboard
-        // que mostram "últimos 30 dias"). Mês passado preserva mês calendário —
-        // relatórios históricos não devem mudar retroativamente.
-        $isMesAtual = $ref->isSameMonth(Carbon::now());
-        if ($isMesAtual) {
-            $inicio         = Carbon::now()->subDays(30)->startOfDay();
-            $fim            = Carbon::now()->endOfDay();
-            $inicioAnterior = Carbon::now()->subDays(60)->startOfDay();
-            $fimAnterior    = Carbon::now()->subDays(30)->endOfDay();
-        } else {
-            $inicio         = $ref->copy()->startOfMonth();
-            $fim            = $ref->copy()->endOfMonth();
-            $inicioAnterior = $ref->copy()->subMonth()->startOfMonth();
-            $fimAnterior    = $ref->copy()->subMonth()->endOfMonth();
+        // D-06 — acaba o acumulativo E a janela móvel de 30 dias: toda
+        // competência é mês-calendário fechado, via a ÚNICA implementação
+        // (FechamentoRollupService::janela(), que delega ao MetricPeriodResolver).
+        $janela = $this->rollupService->janela($mesSelecionado);
+        $inicio = $janela['inicio'];
+        $fim    = $janela['fim'];
+
+        // D-11 — bifurcação fechada x aberta. Competência já congelada por
+        // `fechamento:consolidar-mes` NUNCA recalcula ao vivo — mesma
+        // disciplina do módulo de Desempenho.
+        $competenciaFechada = FechamentoSnapshot::query()
+            ->whereDate('mes_referencia', $mesReferenciaStr)
+            ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+            ->exists();
+
+        $competenciaFechadaEm = null;
+        if ($competenciaFechada) {
+            $maxGeradoEm = FechamentoSnapshot::query()
+                ->whereDate('mes_referencia', $mesReferenciaStr)
+                ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+                ->max('gerado_em');
+            $competenciaFechadaEm = $maxGeradoEm ? Carbon::parse($maxGeradoEm)->toIso8601String() : null;
         }
-
-        // Progressão mensal para o modal de histórico (company_monthly_revenues)
-        $mensalPorEmpresa = CompanyMonthlyRevenue::where('year_month', '<=', $mesSelecionado)
-            ->whereNotNull('gross_revenue')
-            ->orderBy('year_month')
-            ->get(['company_id', 'year_month', 'gross_revenue'])
-            ->groupBy('company_id');
 
         // Passo 1 — carrega empresas ativas com relações de grupo + contratos ativos
         // Phase 14 (Frente B): eager loading de contratosServico.servico evita N+1
         // ao calcular cobrança_mensal via CobrancaCalculator::novo (Pitfall 2 RESEARCH).
         $rawCompanies = Company::where('active', true)
             ->with([
-                'filhas' => fn($q) => $q->where('active', true)->select('id', 'name', 'parent_company_id'),
-                'pai'    => fn($q) => $q->select('id', 'name'),
-                'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+                'contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico'),
+                'grupo:id,name,color',
             ])
             ->orderBy('name')
             ->get();
 
-        // Fallback SUM(adman_metrics.revenue) caso cache cold.
-        $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
-            ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as faturamento, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
-            ->groupBy('company_id')
-            ->get()
-            ->keyBy('company_id');
-        $metricasAnterior = AdmanMetric::whereBetween('reference_date', [$inicioAnterior, $fimAnterior])
-            ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as faturamento')
-            ->groupBy('company_id')
-            ->get()
-            ->keyBy('company_id');
-
         $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
             ->pluck('recebido_em', 'company_id');
 
-        // Cache do faturamento da Adman pre-aquecido pelo Job. Mês atual usa
-        // cache; mês passado sempre vem do DB (histórico). Batch read pra
-        // todas custIds em 1 round-trip Redis.
-        //
-        // Importante: o cache key é Company::cust_id (adman_account_id ?: ml_store_id) —
-        // mesma resolução usada por RefreshGrossBillingCacheJob (writer) e
-        // AdmanService::syncCompany. Antes plucávamos 'adman_account_id' aqui mas o
-        // lookup linha 200 usava ml_store_id ?: adman_account_id, causando cache
-        // miss perpétuo para empresas com ml_store_id set.
-        $dateFromStr  = $inicio->toDateString();
-        $dateToStr    = $fim->toDateString();
-        $missingCache = false;
+        // Passo 2 — números por empresa: congelado (snapshot) ou ao vivo (rollup + resolver).
+        $dadosPorId = $competenciaFechada
+            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $recebidos)
+            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $recebidos);
 
-        $cacheBatch = [];
-        if ($isMesAtual) {
-            $custIds = $rawCompanies->pluck('cust_id')->filter()->values()->all();
-            $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIds, $dateFromStr, $dateToStr);
+        // Passo 3 — agregação por CompanyGroup (D-08/D-09/D-10). parent_company_id
+        // NUNCA participa da soma, faixa ou conta_no_total a partir daqui.
+        $dadosPorId = $competenciaFechada
+            ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr)
+            : $this->fechamentoAgregarGruposAoVivo($dadosPorId, $rawCompanies, $mesReferenciaStr);
+
+        // Passo 4 — progressão SEM acumulado (D-06), sempre a partir do
+        // histórico congelado (fechamento_snapshots/fechamento_grupo_snapshots),
+        // nunca de company_monthly_revenues.
+        $progressaoPorEmpresa = FechamentoSnapshot::query()
+            ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+            ->whereDate('mes_referencia', '<=', $mesReferenciaStr)
+            ->orderBy('mes_referencia')
+            ->get()
+            ->groupBy('company_id');
+
+        $progressaoPorGrupo = FechamentoGrupoSnapshot::query()
+            ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+            ->whereDate('mes_referencia', '<=', $mesReferenciaStr)
+            ->orderBy('mes_referencia')
+            ->get()
+            ->groupBy('company_group_id');
+
+        foreach ($dadosPorId as &$linha) {
+            $historico = (($linha['tipo'] ?? 'empresa') === 'grupo')
+                ? $progressaoPorGrupo->get($linha['company_group_id'] ?? null, collect())
+                : $progressaoPorEmpresa->get($linha['id'], collect());
+
+            $linha['progressao'] = $historico->map(fn ($s) => [
+                'mes'         => Carbon::parse($s->mes_referencia)->format('Y-m'),
+                'mensal'      => $s->faturamento_total !== null ? (float) $s->faturamento_total : null,
+                'faixa'       => $s->faixa_aplicada,
+                'faixa_label' => $s->faixa_aplicada,
+                'valor_faixa' => $s->valor_faixa !== null ? (float) $s->valor_faixa : null,
+                'evolucao'    => $s->evolucao,
+            ])->values()->all();
         }
-
-        // Passo 2 — monta array indexado por company_id
-        $dadosPorId = [];
-
-        foreach ($rawCompanies as $c) {
-            $custId   = $c->cust_id;
-            $hasAdman = (bool) $custId;
-
-            $m           = $metricas->get($c->id);
-            $mAnt        = $metricasAnterior->get($c->id);
-            $fatAtual    = $m    ? (float) $m->faturamento    : null;
-            $fatAnterior = $mAnt ? (float) $mAnt->faturamento : null;
-
-            // Substitui pelo cache da Adman se disponível (só mês atual).
-            if ($isMesAtual && $hasAdman) {
-                $entry = $cacheBatch[$custId] ?? ['value' => null, 'hasEntry' => false];
-                if ($entry['value'] !== null) {
-                    $fatAtual = $entry['value'];
-                } elseif (!$entry['hasEntry']) {
-                    $missingCache = true;
-                }
-            }
-
-            $estado = match (true) {
-                !$hasAdman          => 'sem_integracao',
-                $fatAtual === null  => 'sem_dados',
-                default             => 'ok',
-            };
-
-            $faixaData = ($estado === 'ok')
-                ? $this->calcularFaixa((float) $fatAtual)
-                : null;
-
-            $faixaAnteriorData = ($hasAdman && $fatAnterior !== null)
-                ? $this->calcularFaixa((float) $fatAnterior)
-                : null;
-
-            $evolucao = null;
-            if ($faixaData && $faixaAnteriorData) {
-                $numAtual = $this->faixaNumero($faixaData['faixa']);
-                $numAnt   = $this->faixaNumero($faixaAnteriorData['faixa']);
-                $evolucao = match (true) {
-                    $numAtual > $numAnt => 'subiu',
-                    $numAtual < $numAnt => 'desceu',
-                    default            => 'manteve',
-                };
-            }
-
-            // Progressão mensal: cada registro de company_monthly_revenues → acumulado → faixa no mês
-            $mesesDaEmpresa  = $mensalPorEmpresa->get($c->id, collect());
-            $progressao      = [];
-            $acumProg        = 0.0;
-            $faixaAntProg    = null;
-
-            foreach ($mesesDaEmpresa as $m) {
-                $acumProg += (float) $m->gross_revenue;
-                $fdProg    = $this->calcularFaixa($acumProg);
-                $evoProg   = null;
-
-                if ($faixaAntProg !== null) {
-                    $na      = $this->faixaNumero($fdProg['faixa']);
-                    $np      = $this->faixaNumero($faixaAntProg);
-                    $evoProg = match (true) {
-                        $na > $np => 'subiu',
-                        $na < $np => 'desceu',
-                        default   => 'manteve',
-                    };
-                }
-
-                $progressao[]  = [
-                    'mes'         => $m->year_month,
-                    'mensal'      => (float) $m->gross_revenue,
-                    'acumulado'   => $acumProg,
-                    'faixa'       => $fdProg['faixa'],
-                    'valor_faixa' => $fdProg['valor'],
-                    'evolucao'    => $evoProg,
-                ];
-                $faixaAntProg = $fdProg['faixa'];
-            }
-
-            $filhaIds = $c->filhas->pluck('id')->toArray();
-
-            // Phase 14 (Frente B): cobranca_mensal agora calculada via CobrancaCalculator::novo
-            // (faixa + SUM contratos ativos mensais). Preserva semântica "null quando vazio"
-            // via `?: null` no caller. Per CONTEXT.md D-03.
-            $temContratoMensal = $c->contratosServico->where('ativo', true)
-                ->contains(fn($ct) => $ct->servico && $ct->servico->tipo_cobranca === \App\Models\Servico::TIPO_MENSAL);
-            $cobrancaMensal = ($faixaData !== null || $temContratoMensal)
-                ? (CobrancaCalculator::novo($faixaData, $c->contratosServico) ?: null)
-                : null;
-
-            $dadosPorId[$c->id] = [
-                'id'                 => $c->id,
-                'name'               => $c->name,
-                'parent_company_id'  => $c->parent_company_id,
-                'nome_pai'           => $c->pai?->name,
-                'filha_ids'          => $filhaIds,
-                'is_filha'           => $c->parent_company_id !== null,
-                // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
-                // ─── Chave nova (modelo N:N de contratos) ────────────────
-                'servicos_contratados' => $c->contratosServico->where('ativo', true)->map(fn($ct) => [
-                    'id'               => $ct->id,
-                    'servico_id'       => $ct->servico_id,
-                    'servico_nome'     => $ct->servico?->nome,
-                    'valor_contratado' => (float) $ct->valor_contratado,
-                    'tipo_cobranca'    => $ct->servico?->tipo_cobranca,
-                    'data_contratacao' => $ct->data_contratacao?->toDateString(),
-                    'data_vencimento'  => $ct->data_vencimento?->toDateString(),
-                    'ativo'            => true,
-                ])->values()->toArray(),
-                'has_adman'          => $hasAdman,
-                'estado'             => $estado,
-                'faturamento'        => $fatAtual,
-                'periodo_inicio'     => $estado === 'ok' ? $inicio->format('d/m') : null,
-                'periodo_fim'        => $estado === 'ok' ? $fim->format('d/m')    : null,
-                'progressao'         => $progressao,
-                'faixa'              => $faixaData['faixa'] ?? null,
-                'valor_mensal'       => $faixaData['valor'] ?? null,
-                'cobranca_mensal'    => $cobrancaMensal,
-                'recebido'           => isset($recebidos[$c->id]),
-                'evolucao'           => $evolucao,
-            ];
-        }
-
-        // Passo 3 — agrega totais de grupo e define conta_no_total
-        foreach ($dadosPorId as $id => &$dados) {
-            $filhaIds = $dados['filha_ids'];
-
-            if (!empty($filhaIds)) {
-                $grupoValor    = (float) ($dados['valor_mensal']    ?? 0);
-                $grupoCobranca = (float) ($dados['cobranca_mensal'] ?? 0);
-                $grupoFat      = (float) ($dados['faturamento']     ?? 0);
-                $filhasArray   = [];
-
-                foreach ($filhaIds as $filhaId) {
-                    if (isset($dadosPorId[$filhaId])) {
-                        $grupoValor    += (float) ($dadosPorId[$filhaId]['valor_mensal']    ?? 0);
-                        $grupoCobranca += (float) ($dadosPorId[$filhaId]['cobranca_mensal'] ?? 0);
-                        $grupoFat      += (float) ($dadosPorId[$filhaId]['faturamento']     ?? 0);
-                        $filhasArray[]  = $dadosPorId[$filhaId];
-                    }
-                }
-
-                $dados['valor_mensal_grupo']   = $grupoValor    ?: null;
-                $dados['cobranca_mensal_grupo'] = $grupoCobranca ?: null;
-                $dados['faturamento_grupo']     = $grupoFat      ?: null;
-                $dados['filhas']               = $filhasArray;
-            } else {
-                $dados['valor_mensal_grupo']   = $dados['valor_mensal'];
-                $dados['cobranca_mensal_grupo'] = $dados['cobranca_mensal'];
-                $dados['faturamento_grupo']     = $dados['faturamento'];
-                $dados['filhas']               = [];
-            }
-
-            $dados['conta_no_total'] = $dados['parent_company_id'] === null;
-        }
-        unset($dados);
-
-        // Cache cold pra alguma empresa? Dispara o job pra preencher na
-        // próxima request. ShouldBeUnique evita dispatches em paralelo.
-        if ($missingCache) {
-            \App\Jobs\RefreshGrossBillingCacheJob::dispatchIfQueued();
-        }
+        unset($linha);
 
         // Phase 14 (Frente B): catálogo de serviços ativos para popular o select
         // do modal "Adicionar contrato" na UI do Fechamento — mesmo padrão de
         // CompanyController::show().
-        $servicosDisponiveis = \App\Models\Servico::active()
+        $servicosDisponiveis = Servico::active()
             ->orderBy('nome')
             ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
 
         return Inertia::render('Admin/Financeiro', [
-            'companies'            => array_values($dadosPorId),
-            'mes_selecionado'      => $mesSelecionado,
-            'servicos_disponiveis' => $servicosDisponiveis,
+            'companies'              => array_values($dadosPorId),
+            'mes_selecionado'        => $mesSelecionado,
+            'servicos_disponiveis'   => $servicosDisponiveis,
+            'competencia_fechada'    => $competenciaFechada,
+            'competencia_fechada_em' => $competenciaFechadaEm,
+            'faixas_por_servico'     => $this->fechamentoFaixasPorServico(),
         ]);
+    }
+
+    /**
+     * `servicos_contratados` no shape que a tela consome — extraído para
+     * reuso entre o ramo ao vivo e o congelado do fechamento (Fase 137).
+     */
+    private function fechamentoServicosContratados(Company $c): array
+    {
+        return $c->contratosServico->where('ativo', true)->map(fn ($ct) => [
+            'id'               => $ct->id,
+            'servico_id'       => $ct->servico_id,
+            'servico_nome'     => $ct->servico?->nome,
+            'valor_contratado' => (float) $ct->valor_contratado,
+            'tipo_cobranca'    => $ct->servico?->tipo_cobranca,
+            'data_contratacao' => $ct->data_contratacao?->toDateString(),
+            'data_vencimento'  => $ct->data_vencimento?->toDateString(),
+            'ativo'            => true,
+        ])->values()->toArray();
+    }
+
+    /**
+     * Fase 137 (D-01/D-02b/D-05/D-06/D-07) — números por empresa AO VIVO,
+     * quando a competência ainda está aberta. Mesma precedência de estado e
+     * mesma lógica de evolução do comando `fechamento:consolidar-mes`
+     * (App\Console\Commands\ConsolidarMesFechamento), só que sem gravar
+     * nada.
+     */
+    private function fechamentoDadosPorEmpresaAoVivo(Collection $rawCompanies, string $mesSelecionado, Carbon $inicio, Carbon $fim, Collection $recebidos): array
+    {
+        $rollupAtual = $this->rollupService->porEmpresa($mesSelecionado, $rawCompanies);
+
+        $mesAnterior    = Carbon::createFromFormat('Y-m-d', $mesSelecionado.'-01')->startOfMonth()->subMonthNoOverflow();
+        $rollupAnterior = $this->rollupService->porEmpresa($mesAnterior->format('Y-m'), $rawCompanies);
+
+        $companyIdsComShopee = ShopeeMetric::query()->distinct()->pluck('company_id')->flip();
+
+        $snapshotsAnterioresPorEmpresa = FechamentoSnapshot::query()
+            ->whereDate('mes_referencia', $mesAnterior->toDateString())
+            ->get()
+            ->keyBy('company_id');
+
+        $dadosPorId = [];
+
+        foreach ($rawCompanies as $c) {
+            $fatAtual = $rollupAtual[$c->id] ?? ['faturamento_ml' => null, 'faturamento_shopee' => null, 'faturamento_total' => null];
+
+            $hasAdman      = $c->cust_id !== null;
+            $temIntegracao = $hasAdman || $companyIdsComShopee->has($c->id);
+
+            $faixaData     = $this->faixaResolver->paraEmpresa($c);
+            $classificacao = ($faixaData !== null && $fatAtual['faturamento_total'] !== null)
+                ? $this->faixaResolver->classificar((float) $fatAtual['faturamento_total'], $faixaData['faixas'])
+                : null;
+
+            $estado = match (true) {
+                ! $temIntegracao                                 => FechamentoSnapshot::ESTADO_SEM_INTEGRACAO,
+                $fatAtual['faturamento_total'] === null          => FechamentoSnapshot::ESTADO_SEM_FATURAMENTO,
+                $faixaData === null || $classificacao === null   => FechamentoSnapshot::ESTADO_SEM_TABELA,
+                default                                          => FechamentoSnapshot::ESTADO_OK,
+            };
+
+            // Evolução: compara com o snapshot congelado do mês anterior
+            // quando existe; senão calcula o rollup do mês anterior ao vivo
+            // e classifica com a MESMA tabela desta empresa — nunca comparar
+            // réguas diferentes.
+            $ordemAnterior = null;
+            $snapAnterior  = $snapshotsAnterioresPorEmpresa->get($c->id);
+
+            if ($snapAnterior !== null && $snapAnterior->faixa_ordem !== null) {
+                $ordemAnterior = (int) $snapAnterior->faixa_ordem;
+            } elseif ($faixaData !== null) {
+                $fatAnterior = $rollupAnterior[$c->id]['faturamento_total'] ?? null;
+
+                if ($fatAnterior !== null) {
+                    $classifAnterior = $this->faixaResolver->classificar((float) $fatAnterior, $faixaData['faixas']);
+                    $ordemAnterior   = $classifAnterior['ordem'] ?? null;
+                }
+            }
+
+            $evolucao = null;
+            if ($ordemAnterior !== null && $classificacao !== null) {
+                $evolucao = match (true) {
+                    $classificacao['ordem'] > $ordemAnterior => 'subiu',
+                    $classificacao['ordem'] < $ordemAnterior => 'desceu',
+                    default                                   => 'manteve',
+                };
+            }
+
+            $temContratoMensal = $c->contratosServico->contains(
+                fn ($ct) => $ct->ativo === true && $ct->servico !== null && $ct->servico->tipo_cobranca === Servico::TIPO_MENSAL
+            );
+            $cobrancaMensal = ($classificacao !== null || $temContratoMensal)
+                ? (CobrancaCalculator::novo($classificacao, $c->contratosServico) ?: null)
+                : null;
+
+            $dadosPorId[$c->id] = [
+                'id'                    => $c->id,
+                'name'                  => $c->name,
+                'parent_company_id'     => $c->parent_company_id,
+                'company_group_id'      => $c->company_group_id,
+                'servicos_contratados'  => $this->fechamentoServicosContratados($c),
+                'has_adman'             => $hasAdman,
+                'estado'                => $estado,
+                'faturamento'           => $fatAtual['faturamento_total'],
+                'faturamento_ml'        => $fatAtual['faturamento_ml'],
+                'faturamento_shopee'    => $fatAtual['faturamento_shopee'],
+                'periodo_inicio'        => $estado === FechamentoSnapshot::ESTADO_OK ? $inicio->format('d/m') : null,
+                'periodo_fim'           => $estado === FechamentoSnapshot::ESTADO_OK ? $fim->format('d/m')    : null,
+                'faixa'                 => $classificacao['label'] ?? null,
+                'faixa_label'           => $classificacao['label'] ?? null,
+                'faixa_ordem'           => $classificacao['ordem'] ?? null,
+                'faixa_limite_inferior' => $classificacao['limite_inferior'] ?? null,
+                'faixa_limite_superior' => $classificacao['limite_superior'] ?? null,
+                'valor_mensal'          => $classificacao['valor'] ?? null,
+                'valor_faixa_e_piso'    => $classificacao['valor_e_piso'] ?? false,
+                'tabela_origem'         => $faixaData['origem'] ?? null,
+                'tabela_servico_nome'   => $faixaData['servico_nome'] ?? null,
+                'cobranca_mensal'       => $cobrancaMensal,
+                'recebido'              => isset($recebidos[$c->id]),
+                'evolucao'              => $evolucao,
+            ];
+        }
+
+        return $dadosPorId;
+    }
+
+    /**
+     * Fase 137 (D-11) — números por empresa lidos do CONGELADO
+     * (`fechamento_snapshots`), quando a competência já foi fechada por
+     * `fechamento:consolidar-mes`. Nunca recalcula — corrigir `adman_metrics`
+     * depois do fechamento não muda o que já foi cobrado.
+     */
+    private function fechamentoDadosPorEmpresaCongelados(Collection $rawCompanies, string $mesReferenciaStr, Carbon $inicio, Carbon $fim, Collection $recebidos): array
+    {
+        $snapshots = FechamentoSnapshot::query()
+            ->whereDate('mes_referencia', $mesReferenciaStr)
+            ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+            ->with('servico:id,nome')
+            ->get()
+            ->keyBy('company_id');
+
+        $dadosPorId = [];
+
+        foreach ($rawCompanies as $c) {
+            $s = $snapshots->get($c->id);
+
+            // Empresa ativa sem linha nesta competência (ex.: entrou na
+            // carteira depois do fechamento) — nunca inventa número, fica
+            // visivelmente "sem faturamento" nesta competência congelada.
+            if ($s === null) {
+                $dadosPorId[$c->id] = [
+                    'id'                    => $c->id,
+                    'name'                  => $c->name,
+                    'parent_company_id'     => $c->parent_company_id,
+                    'company_group_id'      => $c->company_group_id,
+                    'servicos_contratados'  => $this->fechamentoServicosContratados($c),
+                    'has_adman'             => $c->cust_id !== null,
+                    'estado'                => FechamentoSnapshot::ESTADO_SEM_FATURAMENTO,
+                    'faturamento'           => null,
+                    'faturamento_ml'        => null,
+                    'faturamento_shopee'    => null,
+                    'periodo_inicio'        => null,
+                    'periodo_fim'           => null,
+                    'faixa'                 => null,
+                    'faixa_label'           => null,
+                    'faixa_ordem'           => null,
+                    'faixa_limite_inferior' => null,
+                    'faixa_limite_superior' => null,
+                    'valor_mensal'          => null,
+                    'valor_faixa_e_piso'    => false,
+                    'tabela_origem'         => null,
+                    'tabela_servico_nome'   => null,
+                    'cobranca_mensal'       => null,
+                    'recebido'              => isset($recebidos[$c->id]),
+                    'evolucao'              => null,
+                ];
+
+                continue;
+            }
+
+            $dadosPorId[$c->id] = [
+                'id'                    => $c->id,
+                'name'                  => $s->company_name,
+                'parent_company_id'     => $c->parent_company_id,
+                'company_group_id'      => $s->company_group_id,
+                'servicos_contratados'  => $this->fechamentoServicosContratados($c),
+                'has_adman'             => $c->cust_id !== null,
+                'estado'                => $s->estado,
+                'faturamento'           => $s->faturamento_total !== null ? (float) $s->faturamento_total : null,
+                'faturamento_ml'        => $s->faturamento_ml !== null ? (float) $s->faturamento_ml : null,
+                'faturamento_shopee'    => $s->faturamento_shopee !== null ? (float) $s->faturamento_shopee : null,
+                'periodo_inicio'        => $s->estado === FechamentoSnapshot::ESTADO_OK ? $inicio->format('d/m') : null,
+                'periodo_fim'           => $s->estado === FechamentoSnapshot::ESTADO_OK ? $fim->format('d/m')    : null,
+                'faixa'                 => $s->faixa_aplicada,
+                'faixa_label'           => $s->faixa_aplicada,
+                'faixa_ordem'           => $s->faixa_ordem,
+                'faixa_limite_inferior' => $s->faixa_limite_inferior !== null ? (float) $s->faixa_limite_inferior : null,
+                'faixa_limite_superior' => $s->faixa_limite_superior !== null ? (float) $s->faixa_limite_superior : null,
+                'valor_mensal'          => $s->valor_faixa !== null ? (float) $s->valor_faixa : null,
+                'valor_faixa_e_piso'    => (bool) $s->valor_faixa_e_piso,
+                'tabela_origem'         => $s->tabela_origem,
+                'tabela_servico_nome'   => $s->servico?->nome,
+                'cobranca_mensal'       => $s->cobranca_mensal !== null ? (float) $s->cobranca_mensal : null,
+                'recebido'              => isset($recebidos[$c->id]),
+                'evolucao'              => $s->evolucao,
+            ];
+        }
+
+        return $dadosPorId;
+    }
+
+    /**
+     * Fase 137 (D-08/D-09/D-10) — agrega `$dadosPorId` por `CompanyGroup` AO
+     * VIVO: soma das empresas-membro, faixa classificada sobre a soma
+     * (tabela da empresa-âncora), `tabelas_divergentes` quando as membros
+     * resolvem tabelas diferentes. `parent_company_id` NUNCA participa.
+     */
+    private function fechamentoAgregarGruposAoVivo(array $dadosPorId, Collection $rawCompanies, string $mesReferenciaStr): array
+    {
+        $linhasFinais = [];
+
+        foreach ($dadosPorId as $id => $linha) {
+            $c = $rawCompanies->firstWhere('id', $id);
+            if ($c === null || $c->company_group_id === null) {
+                $linha['tipo']           = 'empresa';
+                $linha['conta_no_total'] = true;
+                $linha['filhas']         = [];
+                $linhasFinais[$id]       = $linha;
+            }
+        }
+
+        $porGrupo = $rawCompanies
+            ->filter(fn (Company $c) => $c->company_group_id !== null && isset($dadosPorId[$c->id]))
+            ->groupBy('company_group_id');
+
+        $mesAnteriorStr = Carbon::createFromFormat('Y-m-d', $mesReferenciaStr)->subMonthNoOverflow()->toDateString();
+
+        foreach ($porGrupo as $groupId => $membros) {
+            $linhasMembros = $membros->map(function (Company $c) use ($dadosPorId) {
+                $lm                    = $dadosPorId[$c->id];
+                $lm['conta_no_total']  = false;
+
+                return $lm;
+            })->values();
+
+            $faturamentoMl = null;
+            $faturamentoShopee = null;
+            $faturamentoTotal = null;
+
+            foreach ($linhasMembros as $lm) {
+                if ($lm['faturamento_ml'] !== null) {
+                    $faturamentoMl = ($faturamentoMl ?? 0.0) + (float) $lm['faturamento_ml'];
+                }
+                if ($lm['faturamento_shopee'] !== null) {
+                    $faturamentoShopee = ($faturamentoShopee ?? 0.0) + (float) $lm['faturamento_shopee'];
+                }
+                if ($lm['faturamento'] !== null) {
+                    $faturamentoTotal = ($faturamentoTotal ?? 0.0) + (float) $lm['faturamento'];
+                }
+            }
+
+            // Âncora: empresa-membro de maior faturamento_total (empate pelo
+            // menor id) — é a tabela DELA que classifica a soma.
+            $ancora = $membros->sort(function (Company $a, Company $b) use ($dadosPorId) {
+                $fatA = (float) ($dadosPorId[$a->id]['faturamento'] ?? -INF);
+                $fatB = (float) ($dadosPorId[$b->id]['faturamento'] ?? -INF);
+
+                if ($fatA === $fatB) {
+                    return $a->id <=> $b->id;
+                }
+
+                return $fatB <=> $fatA;
+            })->first();
+
+            $faixaAncora = $this->faixaResolver->paraEmpresa($ancora);
+
+            $classificacaoGrupo = ($faixaAncora !== null && $faturamentoTotal !== null)
+                ? $this->faixaResolver->classificar($faturamentoTotal, $faixaAncora['faixas'])
+                : null;
+
+            $estadoGrupo = match (true) {
+                $faturamentoTotal === null                            => FechamentoSnapshot::ESTADO_SEM_FATURAMENTO,
+                $faixaAncora === null || $classificacaoGrupo === null => FechamentoSnapshot::ESTADO_SEM_TABELA,
+                default                                                => FechamentoSnapshot::ESTADO_OK,
+            };
+
+            $paresTabela = $membros
+                ->map(fn (Company $c) => $this->faixaResolver->paraEmpresa($c))
+                ->map(fn ($f) => $f === null ? 'null' : ($f['origem'].'|'.($f['servico_id'] ?? 'null')))
+                ->unique();
+            $tabelasDivergentes = $paresTabela->count() > 1;
+
+            // Evolução do grupo: só compara contra o snapshot de grupo do
+            // mês anterior (sem fallback ao vivo) — mesma régua do comando.
+            $snapGrupoAnterior = FechamentoGrupoSnapshot::query()
+                ->where('company_group_id', $groupId)
+                ->whereDate('mes_referencia', $mesAnteriorStr)
+                ->first();
+
+            $evolucaoGrupo = null;
+            if ($snapGrupoAnterior !== null && $snapGrupoAnterior->faixa_ordem !== null && $classificacaoGrupo !== null) {
+                $evolucaoGrupo = match (true) {
+                    $classificacaoGrupo['ordem'] > $snapGrupoAnterior->faixa_ordem => 'subiu',
+                    $classificacaoGrupo['ordem'] < $snapGrupoAnterior->faixa_ordem => 'desceu',
+                    default                                                        => 'manteve',
+                };
+            }
+
+            $todosContratosDoGrupo  = $membros->flatMap(fn (Company $c) => $c->contratosServico);
+            $temContratoMensalGrupo = $todosContratosDoGrupo->contains(
+                fn ($ct) => $ct->ativo === true && $ct->servico !== null && $ct->servico->tipo_cobranca === Servico::TIPO_MENSAL
+            );
+            $cobrancaMensalGrupo = ($classificacaoGrupo !== null || $temContratoMensalGrupo)
+                ? (CobrancaCalculator::novo($classificacaoGrupo, $todosContratosDoGrupo) ?: null)
+                : null;
+
+            $servicosContratadosUniao = $membros
+                ->flatMap(fn (Company $c) => $dadosPorId[$c->id]['servicos_contratados'])
+                ->unique('id')
+                ->values()
+                ->all();
+
+            $grupo = $ancora->grupo;
+
+            $linhasFinais[$ancora->id] = [
+                'id'                    => $ancora->id,
+                'tipo'                  => 'grupo',
+                'name'                  => $grupo?->name,
+                'company_group_id'      => $groupId,
+                'grupo'                 => $grupo ? ['id' => $grupo->id, 'name' => $grupo->name, 'color' => $grupo->color] : null,
+                'filhas'                => $linhasMembros->all(),
+                'servicos_contratados'  => $servicosContratadosUniao,
+                'has_adman'             => $membros->contains(fn (Company $c) => $c->cust_id !== null),
+                'estado'                => $estadoGrupo,
+                'faturamento'           => $faturamentoTotal,
+                'faturamento_ml'        => $faturamentoMl,
+                'faturamento_shopee'    => $faturamentoShopee,
+                'periodo_inicio'        => $dadosPorId[$ancora->id]['periodo_inicio'] ?? null,
+                'periodo_fim'           => $dadosPorId[$ancora->id]['periodo_fim'] ?? null,
+                'faixa'                 => $classificacaoGrupo['label'] ?? null,
+                'faixa_label'           => $classificacaoGrupo['label'] ?? null,
+                'faixa_ordem'           => $classificacaoGrupo['ordem'] ?? null,
+                'faixa_limite_inferior' => $classificacaoGrupo['limite_inferior'] ?? null,
+                'faixa_limite_superior' => $classificacaoGrupo['limite_superior'] ?? null,
+                'valor_mensal'          => $classificacaoGrupo['valor'] ?? null,
+                'valor_faixa_e_piso'    => $classificacaoGrupo['valor_e_piso'] ?? false,
+                'tabela_origem'         => $faixaAncora['origem'] ?? null,
+                'tabela_servico_nome'   => $faixaAncora['servico_nome'] ?? null,
+                'tabelas_divergentes'   => $tabelasDivergentes,
+                'cobranca_mensal'       => $cobrancaMensalGrupo,
+                'recebido'              => $dadosPorId[$ancora->id]['recebido'] ?? false,
+                'evolucao'              => $evolucaoGrupo,
+                'conta_no_total'        => true,
+            ];
+        }
+
+        return $linhasFinais;
+    }
+
+    /**
+     * Fase 137 (D-08/D-09/D-10/D-11) — agrega `$dadosPorId` por
+     * `CompanyGroup` lendo `fechamento_grupo_snapshots`, quando a
+     * competência já foi fechada. Nunca recalcula a soma.
+     */
+    private function fechamentoAgregarGruposCongelados(array $dadosPorId, Collection $rawCompanies, string $mesReferenciaStr): array
+    {
+        $linhasFinais = [];
+
+        foreach ($dadosPorId as $id => $linha) {
+            $c = $rawCompanies->firstWhere('id', $id);
+            if ($c === null || $c->company_group_id === null) {
+                $linha['tipo']           = 'empresa';
+                $linha['conta_no_total'] = true;
+                $linha['filhas']         = [];
+                $linhasFinais[$id]       = $linha;
+            }
+        }
+
+        $porGrupo = $rawCompanies
+            ->filter(fn (Company $c) => $c->company_group_id !== null && isset($dadosPorId[$c->id]))
+            ->groupBy('company_group_id');
+
+        $snapshotsGrupo = FechamentoGrupoSnapshot::query()
+            ->whereDate('mes_referencia', $mesReferenciaStr)
+            ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+            ->with('servico:id,nome')
+            ->get()
+            ->keyBy('company_group_id');
+
+        foreach ($porGrupo as $groupId => $membros) {
+            $s = $snapshotsGrupo->get($groupId);
+
+            $linhasMembros = $membros->map(function (Company $c) use ($dadosPorId) {
+                $lm                   = $dadosPorId[$c->id];
+                $lm['conta_no_total'] = false;
+
+                return $lm;
+            })->values()->all();
+
+            $ancoraId   = $s?->empresa_ancora_id ?? $membros->first()->id;
+            $grupoModel = $membros->first()->grupo;
+
+            $servicosContratadosUniao = $membros
+                ->flatMap(fn (Company $c) => $dadosPorId[$c->id]['servicos_contratados'])
+                ->unique('id')
+                ->values()
+                ->all();
+
+            $linhasFinais[$ancoraId] = [
+                'id'                    => $ancoraId,
+                'tipo'                  => 'grupo',
+                'name'                  => $s?->grupo_name ?? $grupoModel?->name,
+                'company_group_id'      => $groupId,
+                'grupo'                 => $grupoModel ? ['id' => $grupoModel->id, 'name' => $grupoModel->name, 'color' => $grupoModel->color] : null,
+                'filhas'                => $linhasMembros,
+                'servicos_contratados'  => $servicosContratadosUniao,
+                'has_adman'             => $membros->contains(fn (Company $c) => $c->cust_id !== null),
+                'estado'                => $s?->estado ?? FechamentoSnapshot::ESTADO_SEM_FATURAMENTO,
+                'faturamento'           => $s?->faturamento_total !== null ? (float) $s->faturamento_total : null,
+                'faturamento_ml'        => $s?->faturamento_ml !== null ? (float) $s->faturamento_ml : null,
+                'faturamento_shopee'    => $s?->faturamento_shopee !== null ? (float) $s->faturamento_shopee : null,
+                'periodo_inicio'        => $dadosPorId[$ancoraId]['periodo_inicio'] ?? null,
+                'periodo_fim'           => $dadosPorId[$ancoraId]['periodo_fim'] ?? null,
+                'faixa'                 => $s?->faixa_aplicada,
+                'faixa_label'           => $s?->faixa_aplicada,
+                'faixa_ordem'           => $s?->faixa_ordem,
+                'faixa_limite_inferior' => $s?->faixa_limite_inferior !== null ? (float) $s->faixa_limite_inferior : null,
+                'faixa_limite_superior' => $s?->faixa_limite_superior !== null ? (float) $s->faixa_limite_superior : null,
+                'valor_mensal'          => $s?->valor_faixa !== null ? (float) $s->valor_faixa : null,
+                'valor_faixa_e_piso'    => (bool) ($s?->valor_faixa_e_piso ?? false),
+                'tabela_origem'         => $s?->tabela_origem,
+                'tabela_servico_nome'   => $s?->servico?->nome,
+                'tabelas_divergentes'   => (bool) ($s?->tabelas_divergentes ?? false),
+                'cobranca_mensal'       => $s?->cobranca_mensal !== null ? (float) $s->cobranca_mensal : null,
+                'recebido'              => $dadosPorId[$ancoraId]['recebido'] ?? false,
+                'evolucao'              => $s?->evolucao,
+                'conta_no_total'        => true,
+            ];
+        }
+
+        return $linhasFinais;
+    }
+
+    /**
+     * Fase 137 — catálogo de serviços candidatos a "dono de tabela" (D-01)
+     * com suas faixas, para a seção de cadastro de tabela do plano 09.
+     */
+    private function fechamentoFaixasPorServico(): array
+    {
+        return Servico::query()
+            ->where('ativo', true)
+            ->where(function ($q) {
+                $q->whereIn('setor', Servico::SETORES_FINANCEIROS)
+                    ->orWhereNotNull('plataforma');
+            })
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'plataforma', 'setor'])
+            ->map(fn (Servico $servico) => [
+                'id'         => $servico->id,
+                'nome'       => $servico->nome,
+                'plataforma' => $servico->plataforma,
+                'faixas'     => ServicoFaixaFaturamento::where('servico_id', $servico->id)
+                    ->ordenadas()
+                    ->get(['ordem', 'limite_superior', 'valor', 'valor_e_piso'])
+                    ->map(fn (ServicoFaixaFaturamento $f) => [
+                        'ordem'           => $f->ordem,
+                        'limite_superior' => $f->limite_superior !== null ? (float) $f->limite_superior : null,
+                        'valor'           => (float) $f->valor,
+                        'valor_e_piso'    => (bool) $f->valor_e_piso,
+                    ])->values()->all(),
+            ])->values()->all();
     }
 
     public function syncFaturamento(Request $request, AdmanService $adman)
