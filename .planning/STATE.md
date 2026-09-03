@@ -148,6 +148,20 @@ janela móvel de 30 dias do D-06, ainda não substituída); `App\Models\BonusFai
 grava `activity_log` por faltar `->logFillable()` em `LogOptions::defaults()` — mesmo bug que foi
 corrigido nos 2 models novos deste plano.
 
+137-06 concluído (executor em paralelo com o 137-07 na mesma wave 4, sem sobreposição de
+arquivos) — `SalvarFaixasFaturamentoRequest` (validação da régua inteira: ordens únicas, no
+máximo uma faixa sem teto e ela precisa ser a última, `valor_e_piso` restrito à faixa sem teto,
+limites estritamente crescentes com a mensagem literal de sobreposição do UI-SPEC) +
+`FechamentoController` com CRUD all-or-nothing das faixas por serviço/empresa (D-04/D-13) e
+`fecharCompetencia`/`refazerCompetencia` delegando para `fechamento:consolidar-mes` pelo EXIT
+CODE (D-11/D-12) + 5 rotas novas dentro do grupo `administrativo` existente (12 rotas
+`admin.financeiro.*` no total, nenhuma das 7 antigas alterada). 2 commits (`2b7f6945` Tarefas
+1+2, `eb5fc3fc` Tarefa 3). Gate `Phase122|Phase136|Phase137`: **209 testes / 1009 asserções / 0
+falhas** (era 184/926 antes deste plano — +25 testes/+83 asserções, todos novos, sem regressão).
+`AdminFechamentoControllerTest` seguiu 5/16 falhando (pré-existente, não tocado por este plano —
+`AdminController.php` é do 137-07). Last activity: 2026-09-03 — 137-06 executado (FormRequest +
+controller + rotas, wave 4).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
