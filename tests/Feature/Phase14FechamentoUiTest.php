@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AdmanMetric;
 use App\Models\Company;
+use App\Models\CompanyGroup;
 use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Models\User;
@@ -44,6 +45,18 @@ class Phase14FechamentoUiTest extends TestCase
                 ['valor_padrao' => 0, 'tipo_cobranca' => Servico::TIPO_MENSAL, 'ativo' => true],
             );
         }
+
+        // Fase 137 (D-01) — "Gestão" precisa ser candidata a "dona de
+        // tabela" (setor financeiro + plataforma) para o
+        // FechamentoFaixaResolver conseguir resolver uma faixa; a migration
+        // `2026_09_02_100003_seed_faixas_faturamento_iniciais` já semeia as
+        // 7 faixas para o serviço "Gestão" do catálogo base acima, então
+        // basta ajustar plataforma/setor (mesmo padrão de
+        // Phase137FaixaResolverTest).
+        Servico::where('nome', 'Gestão')->update([
+            'plataforma' => 'Mercado Livre',
+            'setor'      => Servico::SETOR_PERFORMANCE,
+        ]);
     }
 
     private function criarAdmin(): User
@@ -155,21 +168,45 @@ class Phase14FechamentoUiTest extends TestCase
         $this->criarContrato($c, 'Assessoria', 0.0);
         $this->criarContrato($c, 'Gestão', 0.0);
 
+        // Fase 137 (Plano 07, Tarefa 3): pelo menos uma empresa em grupo do
+        // Comercial — prova que a linha de grupo TAMBÉM traz
+        // `servicos_contratados` (a suíte exige a chave em TODA linha).
+        $grupo = CompanyGroup::create(['name' => 'Grupo Lyam', 'color' => '#000']);
+        $d     = Company::create([
+            'name'             => 'Grupo Membro D',
+            'cnpj'             => '10101010000010',
+            'active'           => true,
+            'adman_account_id' => 'ACC-GD',
+            'company_group_id' => $grupo->id,
+            'service_type'     => [],
+        ]);
+        $e = Company::create([
+            'name'             => 'Grupo Membro E',
+            'cnpj'             => '20202020000020',
+            'active'           => true,
+            'adman_account_id' => 'ACC-GE',
+            'company_group_id' => $grupo->id,
+            'service_type'     => [],
+        ]);
+        $this->criarContrato($d, 'Gestão', 0.0);
+        $this->criarContrato($e, 'Polos', 0.0);
+
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
         $response->assertOk();
         $companies = $response->viewData('page')['props']['companies'];
-        $this->assertCount(3, $companies);
+        // 3 empresas soltas + 1 linha de grupo (D + E agregadas) = 4.
+        $this->assertCount(4, $companies);
 
         foreach ($companies as $i => $emp) {
             $this->assertArrayHasKey(
                 'servicos_contratados',
                 $emp,
-                "Empresa #{$i} deve ter a chave servicos_contratados (mesmo quando vazia).",
+                "Empresa/grupo #{$i} deve ter a chave servicos_contratados (mesmo quando vazia).",
             );
             $this->assertIsArray(
                 $emp['servicos_contratados'],
-                "servicos_contratados da empresa #{$i} deve ser array (não null).",
+                "servicos_contratados da empresa/grupo #{$i} deve ser array (não null).",
             );
         }
 
@@ -178,6 +215,14 @@ class Phase14FechamentoUiTest extends TestCase
         $this->assertCount(0, $byName['Sem Contratos']['servicos_contratados']);
         $this->assertCount(1, $byName['Um Contrato']['servicos_contratados']);
         $this->assertCount(3, $byName['Tres Contratos']['servicos_contratados']);
+
+        // A linha de grupo não aparece por nome de empresa — aparece pelo
+        // nome do CompanyGroup (D-08) — e soma a união dos serviços das
+        // duas membros (Gestão + Polos).
+        $linhaGrupo = collect($companies)->firstWhere('tipo', 'grupo');
+        $this->assertNotNull($linhaGrupo, 'Deve existir uma linha tipo=grupo para o Grupo Lyam.');
+        $this->assertSame('grupo', $linhaGrupo['tipo']);
+        $this->assertCount(2, $linhaGrupo['servicos_contratados'], 'A linha de grupo soma os serviços das 2 membros (união).');
     }
 
     /**
@@ -200,6 +245,10 @@ class Phase14FechamentoUiTest extends TestCase
         ]);
         $this->registrarFaturamento($empresa, 600_000.00);
         $this->criarContrato($empresa, 'Polos', 200.00);
+        // Fase 137 (D-01): sem contrato com um serviço "dono de tabela" a
+        // empresa fica 'sem_tabela' e a faixa não entra na cobrança — Polos
+        // não é candidato (nem plataforma nem setor financeiro).
+        $this->criarContrato($empresa, 'Gestão', 0.0);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
