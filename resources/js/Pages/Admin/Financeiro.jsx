@@ -10,6 +10,7 @@ import { Label } from '@/Components/ui/label';
 import { Textarea } from '@/Components/ui/textarea';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
 import axios from 'axios';
+import TabelaFaixasSection from './Financeiro/TabelaFaixasSection';
 
 const fmtMes = (anoMes) => {
     const [y, m] = anoMes.split('-');
@@ -673,16 +674,9 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
     );
 }
 
-function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, competenciaFechada, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const temGrupo = empresa.filhas?.length > 0;
     const [modalAberto, setModalAberto] = useState(false);
-
-    // CTA de "A DEFINIR" leva até a seção de cadastro da tabela, mais
-    // abaixo neste mesmo accordion (Tarefa 2, TabelaFaixasSection).
-    function irParaTabelaFaixas() {
-        document.getElementById(`tabela-faixas-${empresa.id}`)
-            ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
 
     return (
         <div className="px-4 py-4 bg-black/30 border-t border-white/[0.04]">
@@ -695,10 +689,6 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarCont
                 faturamentoShopee={empresa.faturamento_shopee}
                 faturamentoTotal={empresa.faturamento}
             />
-
-            {empresa.estado === 'sem_tabela' && (
-                <AusenciaTabelaPendencia variant="full" onCadastrar={irParaTabelaFaixas} />
-            )}
 
             {empresa.estado === 'ok' && (
                 <>
@@ -765,6 +755,18 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarCont
                     )}
                 </>
             )}
+            {/* Cadastro manual da tabela de faixas (Fase 137 Plano 09, D-04) —
+                não desenhada para empresa-filha: a tabela aplicável a um
+                grupo é sempre a da empresa-âncora (linha do grupo). */}
+            {!empresa.is_filha && (
+                <div className="mb-3">
+                    <TabelaFaixasSection
+                        empresa={empresa}
+                        faixasPorServico={faixasPorServico}
+                        competenciaFechada={competenciaFechada}
+                    />
+                </div>
+            )}
             {!empresa.is_filha && (
                 <div className="flex justify-end mb-3">
                     <a
@@ -791,7 +793,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarCont
     );
 }
 
-function FechamentoList({ empresas, mesSelecionado, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+function FechamentoList({ empresas, mesSelecionado, faixasPorServico, competenciaFechada, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const [aberta, setAberta] = useState(null);
 
     function toggleEmpresa(id) {
@@ -822,6 +824,8 @@ function FechamentoList({ empresas, mesSelecionado, onAdicionarContrato, onEdita
                         <FechamentoAccordion
                             empresa={empresa}
                             mesSelecionado={mesSelecionado}
+                            faixasPorServico={faixasPorServico}
+                            competenciaFechada={competenciaFechada}
                             onClose={() => setAberta(null)}
                             onAdicionarContrato={onAdicionarContrato}
                             onEditarContrato={onEditarContrato}
@@ -1060,7 +1064,7 @@ function FiltroBarra({ filtros, onChange, total, filtrado, servicosNomes }) {
     );
 }
 
-export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [] }) {
+export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], competencia_fechada = false }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
     // Phase 14 (Frente B): nomes únicos de serviços DERIVADOS do dataset
@@ -1215,6 +1219,8 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                         <FechamentoList
                             empresas={filtradas}
                             mesSelecionado={mes_selecionado}
+                            faixasPorServico={faixas_por_servico}
+                            competenciaFechada={competencia_fechada}
                             onAdicionarContrato={abrirAdicionarContrato}
                             onEditarContrato={abrirEditarContrato}
                             onDesativarContrato={desativarContrato}
