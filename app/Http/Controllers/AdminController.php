@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Jobs\EnviarRelatorioFechamentoJob;
 use App\Models\Company;
+use App\Models\CompanyGroup;
 use App\Models\Configuracao;
 use App\Models\FechamentoGrupoSnapshot;
 use App\Models\FechamentoRecebido;
 use App\Models\FechamentoSnapshot;
+use App\Models\GrupoFaixaFaturamento;
 use App\Models\Servico;
 use App\Models\ServicoFaixaFaturamento;
 use App\Models\ShopeeMetric;
@@ -514,7 +516,16 @@ class AdminController extends Controller
                 return $fatB <=> $fatA;
             })->first();
 
-            $faixaAncora = $this->faixaResolver->paraEmpresa($ancora);
+            // Fase 138 (D-01): tabela do GRUPO tem precedência sobre a
+            // tabela da âncora. `paraGrupo()` já devolve a herança marcada
+            // (`herdada_de_company_name`) quando o grupo não tem tabela
+            // própria — fallback defensivo pra `paraEmpresa()` só se o
+            // relacionamento de grupo vier nulo (não deveria acontecer aqui,
+            // já estamos dentro do laço `$porGrupo`).
+            $grupo = $ancora->grupo;
+            $faixaAncora = $grupo !== null
+                ? $this->faixaResolver->paraGrupo($grupo, $ancora)
+                : $this->faixaResolver->paraEmpresa($ancora);
 
             $classificacaoGrupo = ($faixaAncora !== null && $faturamentoTotal !== null)
                 ? $this->faixaResolver->classificar($faturamentoTotal, $faixaAncora['faixas'])
@@ -526,6 +537,12 @@ class AdminController extends Controller
                 default                                                => FechamentoSnapshot::ESTADO_OK,
             };
 
+            // Fase 138: nenhum caso especial aqui pra tabela de grupo — desde
+            // que `paraEmpresa()` (Plano 01) passou a devolver origem
+            // 'grupo' pra TODA empresa-membro de um grupo com tabela
+            // própria, o conjunto de pares já colapsa sozinho (todo membro
+            // aponta pra 'grupo|null'), sem precisar tratar o degrau novo
+            // separadamente.
             $paresTabela = $membros
                 ->map(fn (Company $c) => $this->faixaResolver->paraEmpresa($c))
                 ->map(fn ($f) => $f === null ? 'null' : ($f['origem'].'|'.($f['servico_id'] ?? 'null')))
@@ -562,8 +579,6 @@ class AdminController extends Controller
                 ->values()
                 ->all();
 
-            $grupo = $ancora->grupo;
-
             $linhasFinais[$ancora->id] = [
                 'id'                    => $ancora->id,
                 'tipo'                  => 'grupo',
@@ -588,6 +603,13 @@ class AdminController extends Controller
                 'valor_faixa_e_piso'    => $classificacaoGrupo['valor_e_piso'] ?? false,
                 'tabela_origem'         => $faixaAncora['origem'] ?? null,
                 'tabela_servico_nome'   => $faixaAncora['servico_nome'] ?? null,
+                // Fase 138 (D-01): as duas chaves que matam a herança
+                // invisível. `tabela_grupo_nome` só quando a tabela é do
+                // PRÓPRIO grupo ("Tabela deste grupo"); `tabela_herdada_de_nome`
+                // só quando não é — nome da empresa de quem a tabela foi
+                // herdada.
+                'tabela_grupo_nome'       => ($faixaAncora['origem'] ?? null) === 'grupo' ? ($faixaAncora['grupo_nome'] ?? null) : null,
+                'tabela_herdada_de_nome'  => ($faixaAncora !== null && $faixaAncora['origem'] !== 'grupo') ? ($faixaAncora['herdada_de_company_name'] ?? null) : null,
                 'tabelas_divergentes'   => $tabelasDivergentes,
                 'cobranca_mensal'       => $cobrancaMensalGrupo,
                 'recebido'              => $dadosPorId[$ancora->id]['recebido'] ?? false,
