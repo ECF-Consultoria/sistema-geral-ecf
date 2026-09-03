@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\SalvarFaixasFaturamentoRequest;
 use App\Models\Company;
+use App\Models\CompanyGroup;
 use App\Models\EmpresaFaixaFaturamento;
+use App\Models\GrupoFaixaFaturamento;
 use App\Models\Servico;
 use App\Models\ServicoFaixaFaturamento;
 use Illuminate\Http\Request;
@@ -22,9 +24,11 @@ use Illuminate\Support\Facades\Log;
  * rotas (`routes/web.php:1393`) + checagem própria (`authorize()` no
  * FormRequest ou `abort_unless` inline nos métodos sem FormRequest):
  *
- *  1. Cadastro manual da tabela de faixas (D-04), por serviço ou por
- *     empresa. Sempre ALL-OR-NOTHING — a tabela inteira é substituída,
- *     nunca uma linha isolada (D-13). Molde:
+ *  1. Cadastro manual da tabela de faixas (D-04), por serviço, por
+ *     empresa ou por GRUPO de empresas (Fase 138, D-01 — o grupo é o
+ *     terceiro caso do mesmo padrão, com precedência sobre a tabela da
+ *     empresa-âncora e a do serviço). Sempre ALL-OR-NOTHING — a tabela
+ *     inteira é substituída, nunca uma linha isolada (D-13). Molde:
  *     `App\Http\Controllers\DesempenhoConfigController`.
  *  2. Fechar/refazer uma competência (D-11/D-12) — delega o cálculo
  *     inteiro para `php artisan fechamento:consolidar-mes` (mesmo comando
@@ -111,6 +115,51 @@ class FechamentoController extends Controller
         EmpresaFaixaFaturamento::where('company_id', $company->id)->delete();
 
         return back()->with('success', 'Empresa voltou a usar a tabela do serviço.');
+    }
+
+    /**
+     * POST /administrativo/financeiro/faixas/grupo/{grupo} — substitui a
+     * tabela INTEIRA de faixas próprias de UM GRUPO de empresas (Fase 138,
+     * D-01 — terceiro caso do padrão, com precedência sobre a tabela da
+     * empresa-âncora e a do serviço).
+     *
+     * Mesma disciplina all-or-nothing: a existência de qualquer linha aqui
+     * já basta para `FechamentoFaixaResolver::paraGrupo()` devolver
+     * `origem = 'grupo'` e ignorar tanto a tabela da empresa-âncora quanto
+     * a do serviço.
+     */
+    public function salvarFaixasGrupo(SalvarFaixasFaturamentoRequest $request, CompanyGroup $grupo)
+    {
+        DB::transaction(function () use ($request, $grupo) {
+            GrupoFaixaFaturamento::where('company_group_id', $grupo->id)->delete();
+
+            foreach ($request->validated('faixas') as $faixa) {
+                GrupoFaixaFaturamento::create([
+                    'company_group_id' => $grupo->id,
+                    'ordem'             => $faixa['ordem'],
+                    'limite_superior'   => $faixa['limite_superior'] ?? null,
+                    'valor'             => $faixa['valor'],
+                    'valor_e_piso'      => $faixa['valor_e_piso'] ?? false,
+                ]);
+            }
+        });
+
+        return back()->with('success', 'Tabela do grupo salva.');
+    }
+
+    /**
+     * DELETE /administrativo/financeiro/faixas/grupo/{grupo} — apaga a
+     * tabela própria do grupo ("Voltar a usar a tabela da empresa" do UI).
+     * Sem FormRequest (não há payload a validar) — guard próprio via
+     * `abort_unless`, mesma forma de `removerFaixasEmpresa`.
+     */
+    public function removerFaixasGrupo(Request $request, CompanyGroup $grupo)
+    {
+        abort_unless($request->user()?->isAdmin() === true, 403);
+
+        GrupoFaixaFaturamento::where('company_group_id', $grupo->id)->delete();
+
+        return back()->with('success', 'Grupo voltou a usar a tabela da empresa.');
     }
 
     // ═══ Fechar / refazer competência (D-11/D-12) ════════════════════════
