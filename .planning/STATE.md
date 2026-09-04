@@ -387,7 +387,7 @@ operacional deixada no SUMMARY: os 201 snapshots de agosto/2026 em produção es
 para agosto vai comparar contra julho e disparar o aviso inicial para todo mundo que mudou de
 faixa; efeito de primeira carga esperado, não bug.
 
-## Posição paralela — Fase 139 (Redesenho da tela de fechamento) — EM EXECUÇÃO (3/7 planos)
+## Posição paralela — Fase 139 (Redesenho da tela de fechamento) — EM EXECUÇÃO (4/7 planos)
 
 **Mesma disciplina dos blocos 135/136/137/138 acima:** Fase 139 fora de milestone, rodando em
 paralelo. `## Current Position` (Fase 132/133) não foi tocado.
@@ -472,6 +472,30 @@ confirmado no CSS compilado. Gate `Phase122|Phase136|Phase137|Phase138|Phase139`
 Subiram de faixa + Serviços contratados). Last activity: 2026-09-04 — 139-03 executado. Sem
 deploy — próximos planos (04-07) seguem na reescrita da tela: filtros em chip, lista de
 empresas em 4 colunas e área expandida.
+
+139-04 concluído — lista de empresas reescrita: cabeçalho de colunas, `FechamentoRow` em grid
+de 4 colunas (empresa / faturamento do mês / faixa aplicada com barra de progresso /
+mensalidade), chips de filtro (`Todas as empresas` / `Subiram de faixa` / `Sem integração` /
+`Maiores mensalidades`) consumindo `filtroChip`/`empresaFocada` elevados no 139-03, busca
+combinada, e dois estados vazios distintos ("nenhuma empresa cadastrada" vs. "filtro sem
+resultado"). `empresaFocada` passou a ser objeto novo a cada clique (`{ id }`, não o id cru) —
+clicar duas vezes seguidas no mesmo atalho do widget de upgrades reabre a linha em vez de ser
+ignorado. `FaixaProgresso` evoluída pro formato compacto de linha (mesmo nome, reaproveitada
+também na área expandida). `ServiceBadge` perdeu a pintura `ecf-yellow` (Color Contract — accent
+reservado a ação/status). 2 desvios auto-corrigidos (ambos Rule 1): "Total do grupo" na área
+expandida lia a mesma prop fantasma `cobranca_mensal_grupo` da `FechamentoRow` (sempre
+renderizava vazio) — trocada por `cobranca_mensal`, que já é o total do grupo na linha-âncora
+(`AdminController::fechamento()` ~linha 801); e dois comentários explicativos meus citavam
+literalmente as strings proibidas pelos testes de contrato (`cobranca_mensal_grupo`, `"Fat. do
+mês"`) — os testes fazem busca crua no arquivo inteiro, sem diferenciar comentário de copy
+renderizada, reescritos sem a substring. Responsivo abaixo de ~820px (breakpoint arbitrário,
+não padrão do Tailwind) confirmado no CSS compilado. Gate `Phase122|Phase136|Phase137|Phase138|
+Phase139`: **302 testes / 1584 asserções / 0 falhas** — idêntico ao baseline (nenhuma
+regressão); 1 teste flaky pré-existente identificado (`Phase138AvisoMudancaFaixaTest`, colisão
+de nome via Faker na suíte cheia, não relacionado — nenhum arquivo PHP tocado). 2 commits
+(`3f8e708c` chips/busca/foco, `0493f7cf` cabeçalho/linha/estado vazio). Last activity:
+2026-09-04 — 139-04 executado. Sem deploy — `RecebidoToggle` segue definido sem chamador
+(migra para a área expandida no plano 05); planos 05-07 seguem com a área expandida.
 
 ## Current Position
 
