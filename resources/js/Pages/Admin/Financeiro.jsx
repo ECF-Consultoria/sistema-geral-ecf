@@ -72,6 +72,24 @@ function IntegrationBadge() {
     );
 }
 
+// Quick 260904-kwz — a tabela de faixas foi presumida a partir do serviço
+// contratado (sem contrato assinado nem cadastro manual da tabela real).
+// Tom neutro, discreto, DE PROPÓSITO diferente do amber usado por
+// `IntegrationBadge`/`AusenciaTabelaPendencia`: aquelas são pendências que
+// bloqueiam alguma coisa; esta não é erro nem bloqueio — é só ausência de
+// confirmação, e a maioria dessas empresas tem mesmo contrato de tabela
+// progressiva no mundo real (o sistema é que não sabe ainda).
+function TabelaPresumidaBadge() {
+    return (
+        <span
+            className="inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium bg-white/[0.03] text-white/40 border-white/[0.08]"
+            title="A tabela de faixas foi presumida a partir do serviço contratado — ainda sem confirmação por contrato assinado ou cadastro manual."
+        >
+            Tabela presumida
+        </span>
+    );
+}
+
 // Cor estavel por nome para preservar a paleta entre renders.
 const SERVICO_PALETTE = ['#3b82f6', '#a855f7', '#10b981', '#f97316', '#06b6d4', '#ec4899', '#f59e0b', '#8b5cf6'];
 
@@ -660,6 +678,7 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
                             </span>
                         )}
                         {!empresa.has_adman && <IntegrationBadge />}
+                        {empresa.tabela_confirmada === false && <TabelaPresumidaBadge />}
                         {empresa.filhas?.length > 0 && (
                             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20">
                                 Grupo · {empresa.filhas.length + 1}
@@ -914,6 +933,19 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                             {intervaloFaixa && (
                                 <span className="text-[12px] text-white/40">{intervaloFaixa}</span>
                             )}
+                            {/* Quick 260904-kwz — discreto, nunca alarmante: a
+                                tabela do serviço foi presumida, não confirmada
+                                por contrato assinado nem cadastro manual. O
+                                link pula pra seção de cadastro que já existe
+                                mais abaixo no mesmo accordion. */}
+                            {empresa.tabela_confirmada === false && (
+                                <a
+                                    href={`#tabela-faixas-${empresa.id}`}
+                                    className="mt-1 text-[11px] text-white/40 hover:text-white/70 underline underline-offset-2 w-fit"
+                                >
+                                    Tabela presumida a partir do serviço contratado — cadastrar a tabela real
+                                </a>
+                            )}
                         </div>
                     )}
 
@@ -947,6 +979,9 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                                                     ? 'tabela do grupo'
                                                     : (e.tabela_origem === 'propria' ? 'tabela própria' : (e.tabela_servico_nome ?? 'tabela do serviço'))})
                                             </span>
+                                        )}
+                                        {e.tabela_confirmada === false && (
+                                            <span className="text-white/25 text-[10px] ml-1">· presumida</span>
                                         )}
                                     </span>
                                     <span className="text-white/50 text-[12px] font-mono">
@@ -1265,10 +1300,13 @@ const FILTROS_INICIAL = { busca: '', servico_nome: '' };
 // Mutuamente exclusivos. "topo" não filtra a lista — só reordena por
 // mensalidade desc (ver `filtradas` no componente de página).
 const CHIPS_FILTRO = [
-    { key: 'todos',          label: 'Todas as empresas'    },
-    { key: 'subiu',          label: 'Subiram de faixa'     },
-    { key: 'sem_integracao', label: 'Sem integração'       },
-    { key: 'topo',           label: 'Maiores mensalidades' },
+    { key: 'todos',            label: 'Todas as empresas'      },
+    { key: 'subiu',            label: 'Subiram de faixa'       },
+    { key: 'sem_integracao',   label: 'Sem integração'         },
+    { key: 'topo',             label: 'Maiores mensalidades'   },
+    // Quick 260904-kwz — tabela presumida a partir do serviço, sem
+    // confirmação por contrato assinado nem cadastro manual.
+    { key: 'tabela_presumida', label: 'Tabela sem confirmação' },
 ];
 
 // ─── Widget "Total a receber" (Fase 139, D-01) ───────────────────────────
@@ -1410,6 +1448,31 @@ function SubiramDeFaixaCard({ totais, companies, onFocarEmpresa }) {
     );
 }
 
+// ─── Aviso "Tabela presumida" (Quick 260904-kwz) ──────────────────────────
+// Contador do topo da tela, discreto DE PROPÓSITO (mesmo raciocínio de
+// `TabelaPresumidaBadge`): não é erro, é ausência de confirmação — a
+// maioria dessas empresas tem mesmo um contrato de tabela progressiva no
+// mundo real, só que o sistema ainda não sabe disso. "Ver quais" liga o
+// chip de filtro; o cadastro em si já existe em cada empresa (accordion).
+function TabelaPresumidaAviso({ quantidade, onVerQuais }) {
+    if (!quantidade) return null;
+
+    return (
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-white/50 text-[13px]">
+                {quantidade} {quantidade === 1 ? 'empresa está' : 'empresas estão'} com a tabela de faixas presumida a partir do serviço contratado — sem confirmação por contrato assinado ou cadastro manual.
+            </p>
+            <button
+                type="button"
+                onClick={onVerQuais}
+                className="text-[12px] font-semibold text-white/70 hover:text-white border border-white/15 hover:border-white/30 px-3 h-8 rounded-lg transition-colors shrink-0 whitespace-nowrap"
+            >
+                Ver quais
+            </button>
+        </div>
+    );
+}
+
 function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLimpar, total, filtrado, servicosNomes }) {
     const sel = 'h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/60 focus:outline-none focus:border-ecf-yellow/40';
     const ativo = filtroChip !== 'todos' || filtros.busca !== '' || filtros.servico_nome !== '';
@@ -1492,6 +1555,15 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
         setEmpresaFocada({ id });
     }
 
+    // Quick 260904-kwz — "caminho para resolver" do aviso do topo: liga o
+    // chip que filtra só as tabelas sem confirmação, sem focar uma empresa
+    // específica (pode ser várias) — a pessoa abre cada uma e usa o cadastro
+    // que já existe no accordion (`TabelaFaixasSection`).
+    function verTabelasPresumidas() {
+        setFiltros(f => ({ ...f, busca: '' }));
+        setFiltroChip('tabela_presumida');
+    }
+
     function limparFiltros() {
         setFiltros(FILTROS_INICIAL);
         setFiltroChip('todos');
@@ -1519,6 +1591,8 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
             lista = lista.filter(e => e.subiu_de_faixa === true);
         } else if (filtroChip === 'sem_integracao') {
             lista = lista.filter(e => e.has_adman === false || e.estado === 'sem_integracao');
+        } else if (filtroChip === 'tabela_presumida') {
+            lista = lista.filter(e => e.tabela_confirmada === false);
         }
 
         // Filtro por NOME do serviço — derivado do contrato (Phase 14)
@@ -1655,6 +1729,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                         <SubiramDeFaixaCard totais={totais} companies={companies} onFocarEmpresa={focarEmpresaSubiuFaixa} />
                         <ServicosContratadosBar companies={companies} />
                     </div>
+                    <TabelaPresumidaAviso quantidade={totais.tabelas_assumidas} onVerQuais={verTabelasPresumidas} />
                     <div className="flex flex-col gap-4">
                         <FiltroBarra
                             filtros={filtros}
