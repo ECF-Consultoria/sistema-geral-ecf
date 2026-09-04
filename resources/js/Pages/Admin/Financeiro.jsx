@@ -254,7 +254,7 @@ function FecharCompetenciaButton({ mes }) {
 
     function handleFechar() {
         const confirmado = confirm(
-            `Fechar ${mesLabel}? Depois de fechado, os valores desta competência ficam registrados e não mudam sozinhos — use "Refazer fechamento" se precisar corrigir depois.`
+            `Fechar ${mesLabel}? Depois de fechado, os valores deste mês ficam registrados e não mudam sozinhos — use "Refazer fechamento" se precisar corrigir depois.`
         );
         if (!confirmado) return;
 
@@ -262,8 +262,9 @@ function FecharCompetenciaButton({ mes }) {
         axios.post(route('admin.financeiro.competencia.fechar'), { mes })
             .then((r) => {
                 // Usa a mensagem que o próprio backend devolve no 200 — não
-                // inventar copy nova (260903-la4).
-                setConfirmacao(r.data?.message ?? `Competência ${mesLabel} fechada com sucesso.`);
+                // inventar copy nova (260903-la4). Copy sem jargão (Fase 139):
+                // nunca a palavra "competência" em texto visível.
+                setConfirmacao(r.data?.message ?? `${mesLabel} fechado com sucesso.`);
                 router.reload();
             })
             .catch((e) => {
@@ -380,7 +381,7 @@ function RefazerFechamentoDialog({ mes }) {
 // reservado a ação/status (Color Contract do UI-SPEC), por isso nenhum
 // destes quatro componentes usa ecf-yellow.
 
-function AusenciaTabelaPendencia({ variant = 'compact', onCadastrar }) {
+function AusenciaTabelaPendencia({ variant = 'compact', href }) {
     if (variant === 'compact') {
         return (
             <span className="inline-flex items-center gap-1.5 text-amber-400 text-[13px] font-semibold shrink-0">
@@ -390,23 +391,27 @@ function AusenciaTabelaPendencia({ variant = 'compact', onCadastrar }) {
         );
     }
 
+    // variant="full" (Fase 139, passo 2 da área expandida) — ocupa o card
+    // inteiro no lugar de "Faixa do contrato" quando a empresa ainda não tem
+    // tabela nenhuma. O botão é um link interno (href="#...") que pula
+    // direto para a seção de cadastro que `TabelaFaixasSection` já expõe
+    // mais abaixo no mesmo accordion.
     return (
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-3 mb-3">
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-[18px] py-4 flex flex-col gap-1.5">
             <p className="text-amber-400 text-[13px] font-semibold flex items-center gap-1.5">
                 <AlertTriangle size={13} className="shrink-0" />
                 Tabela de faixas: A DEFINIR
             </p>
-            <p className="text-white/40 text-[11px] mt-1">
+            <p className="text-white/40 text-[11px]">
                 Cadastre a tabela de faturamento desta empresa para ela entrar no fechamento.
             </p>
-            {onCadastrar && (
-                <button
-                    type="button"
-                    onClick={onCadastrar}
-                    className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/70 bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 px-3 h-7 rounded-lg transition-colors"
+            {href && (
+                <a
+                    href={href}
+                    className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/70 bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 px-3 h-7 rounded-lg transition-colors w-fit"
                 >
                     Cadastrar tabela de faixas
-                </button>
+                </a>
             )}
         </div>
     );
@@ -453,6 +458,9 @@ function GrupoServicosDivergentesBanner({ empresa }) {
     );
 }
 
+// Fase 139 §5 item 4: desce da linha para a barra de ações da área expandida
+// — ganha rótulo ao lado ("Marcar como recebido" / "Recebido") em vez do
+// círculo sem texto que tinha antes (só o título no hover explicava o quê).
 function RecebidoToggle({ empresa, mesSelecionado }) {
     const [loading, setLoading] = useState(false);
 
@@ -473,15 +481,15 @@ function RecebidoToggle({ empresa, mesSelecionado }) {
         <button
             onClick={toggle}
             disabled={loading}
-            title={empresa.recebido ? 'Desmarcar recebido' : 'Marcar como recebido'}
             className={cn(
-                'shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all',
+                'inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 h-8 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-wait',
                 empresa.recebido
-                    ? 'border-emerald-400 bg-emerald-400/20 text-emerald-400'
-                    : 'border-white/20 text-transparent hover:border-white/40 hover:text-white/20'
+                    ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-400'
+                    : 'border-white/[0.08] text-white/50 hover:border-white/20 hover:text-white/80',
             )}
         >
-            <Check size={11} />
+            {empresa.recebido && <Check size={12} className="shrink-0" />}
+            {loading ? 'Salvando...' : (empresa.recebido ? 'Recebido' : 'Marcar como recebido')}
         </button>
     );
 }
@@ -852,122 +860,190 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
     );
 }
 
+// Passo 2 do accordion ("Faixa do contrato") — intervalo de faturamento da
+// faixa aplicada, nos dois formatos que a faixa pode ter: com teto ("R$ X a
+// R$ Y") ou faixa aberta/piso ("Acima de R$ X"). `null` quando não há
+// classificação nenhuma (fora do gate de estado === 'sem_tabela', que vira
+// o card de pendência inteiro — cobre os outros estados sem dado).
+function faixaContratoIntervalo(empresa) {
+    const isMaxima = empresa.faixa === 'maxima';
+    if (isMaxima && empresa.faixa_limite_inferior != null) {
+        return `Acima de ${fmtBRL(empresa.faixa_limite_inferior)}`;
+    }
+    if (!isMaxima && empresa.faixa_limite_inferior != null && empresa.faixa_limite_superior != null) {
+        return `${fmtBRL(empresa.faixa_limite_inferior)} a ${fmtBRL(empresa.faixa_limite_superior)}`;
+    }
+    return null;
+}
+
+// Passo 3 do accordion ("Mensalidade a cobrar") — de onde a empresa veio
+// quando mudou de faixa (Fase 139, D-04). Nunca "Era R$ X no mês passado":
+// `valor_faixa_anterior` é o valor DA FAIXA, e a mensalidade cobrada pode
+// incluir contrato de valor fixo — essa frase seria falsa nesses casos.
+function subLinhaMensalidade(empresa) {
+    if (empresa.subiu_de_faixa && empresa.valor_faixa_anterior != null) {
+        return (
+            <>
+                Na faixa anterior, eram {fmtBRL(empresa.valor_faixa_anterior)}
+                {empresa.ganho_faixa != null && (
+                    <span className="text-emerald-400"> (+{fmtBRL(empresa.ganho_faixa)})</span>
+                )}
+            </>
+        );
+    }
+    if (empresa.subiu_de_faixa) {
+        return 'Subiu de faixa neste mês';
+    }
+    if (empresa.evolucao === 'desceu' && empresa.valor_faixa_anterior != null) {
+        return <span className="text-amber-300">Desceu de faixa — antes eram {fmtBRL(empresa.valor_faixa_anterior)}</span>;
+    }
+    if (empresa.evolucao === 'desceu') {
+        return <span className="text-amber-300">Desceu de faixa neste mês</span>;
+    }
+    if (empresa.evolucao === 'manteve') {
+        return 'Mesma faixa do mês passado';
+    }
+    return null;
+}
+
 function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixasPorGrupo, competenciaFechada, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const temGrupo = empresa.filhas?.length > 0;
     const [modalAberto, setModalAberto] = useState(false);
 
+    const intervaloFaixa = faixaContratoIntervalo(empresa);
+    const subLinha3       = subLinhaMensalidade(empresa);
+
     return (
-        <div className="px-4 py-4 bg-black/30 border-t border-white/[0.04]">
+        <div className="bg-black/30 border-t border-white/[0.04]">
             {modalAberto && (
                 <ProgressaoModal empresa={empresa} onClose={() => setModalAberto(false)} />
             )}
 
-            <FaturamentoCombinadoBreakdown
-                faturamentoMl={empresa.faturamento_ml}
-                faturamentoShopee={empresa.faturamento_shopee}
-                faturamentoTotal={empresa.faturamento}
-            />
-
-            {empresa.estado === 'ok' && (
-                <>
-                    <div className="flex items-center justify-between mb-1">
-                        <div className="flex-1">
-                            <FaixaProgresso
-                                faturamento={empresa.faturamento}
-                                faixa={empresa.faixa}
-                                limiteInferior={empresa.faixa_limite_inferior}
-                                limiteSuperior={empresa.faixa_limite_superior}
-                                faixaLabel={empresa.faixa_label}
-                                subiuDeFaixa={empresa.subiu_de_faixa}
-                            />
-                        </div>
-                        {(empresa.progressao?.length > 0) && (
-                            <button
-                                onClick={() => setModalAberto(true)}
-                                className="shrink-0 inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-7 rounded-lg transition-colors ml-3"
-                            >
-                                <BarChart2 size={12} />
-                                Ver progressão
-                            </button>
+            {/* Os três passos da conta (Fase 139 §5): quanto faturou, em que
+                faixa caiu, quanto vai cobrar — a pergunta que o fechamento
+                precisa responder, na ordem em que ela nasce. */}
+            <div className="px-5 pt-1 pb-6 flex flex-col gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="bg-black/30 border border-white/[0.06] rounded-xl px-[18px] py-4 flex flex-col gap-1.5">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-white/30">1 · Faturou no mês</span>
+                        {empresa.faturamento == null ? (
+                            <AusenciaFaturamentoBadge />
+                        ) : (
+                            <span className="text-[22px] font-semibold font-mono tabular-nums text-white">{fmtBRL(empresa.faturamento)}</span>
                         )}
+                        <FaturamentoCombinadoBreakdown
+                            faturamentoMl={empresa.faturamento_ml}
+                            faturamentoShopee={empresa.faturamento_shopee}
+                            faturamentoTotal={empresa.faturamento}
+                        />
                     </div>
 
-                    {/* Breakdown de grupo (pai + filhas) */}
-                    {temGrupo && (
-                        <>
-                            <GrupoServicosDivergentesBanner empresa={empresa} />
-                            <div className="mb-3 rounded-lg border border-white/[0.06] overflow-hidden">
-                                <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04]">
-                                    <span className="text-[11px] uppercase tracking-wider text-white/40">Composição do grupo</span>
-                                </div>
-                                {[empresa, ...empresa.filhas].map((e, i) => (
-                                    <div key={e.id} className={cn('flex items-center justify-between px-3 py-2', i > 0 && 'border-t border-white/[0.03]')}>
-                                        <span className="text-white/60 text-[12px]">
-                                            {i === 0 ? `${e.name} (este)` : `↳ ${e.name}`}
-                                            {e.tabela_origem && (
-                                                <span className="text-white/30 text-[11px] ml-1.5">
-                                                    ({e.tabela_origem === 'grupo'
-                                                        ? 'tabela do grupo'
-                                                        : (e.tabela_origem === 'propria' ? 'tabela própria' : (e.tabela_servico_nome ?? 'tabela do serviço'))})
-                                                </span>
-                                            )}
-                                        </span>
-                                        <span className="text-white/50 text-[12px] font-mono">
-                                            {e.cobranca_mensal != null ? fmtValorFaixa(e.cobranca_mensal, e.valor_faixa_e_piso) : '—'}
-                                        </span>
-                                    </div>
-                                ))}
-                                <div className="flex items-center justify-between px-3 py-2 border-t border-white/[0.06] bg-white/[0.02]">
-                                    <span className="text-[11px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
-                                    {/* `empresa` aqui É a linha do grupo (tipo 'grupo') — o backend já
-                                        grava o total do grupo no `cobranca_mensal` da própria linha-mãe
-                                        (AdminController ~linha 801). A chave com sufixo "_grupo" nunca
-                                        existiu separada (mesma prop fantasma que existia na FechamentoRow). */}
-                                    <span className="text-emerald-400 text-[13px] font-bold font-mono">{fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}</span>
-                                </div>
-                            </div>
-                        </>
-                    )}
-
-                    {/* Mensalidade individual ou grupo */}
-                    {!temGrupo && empresa.cobranca_mensal != null && (
-                        <div className="flex items-center justify-between py-2 mb-2 border-b border-white/[0.04]">
-                            <span className="text-[11px] uppercase tracking-wider text-white/40">Mensalidade a cobrar</span>
-                            <span className="text-emerald-400 text-[15px] font-bold font-mono">
-                                {fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}
-                            </span>
+                    {empresa.estado === 'sem_tabela' ? (
+                        <AusenciaTabelaPendencia variant="full" href={`#tabela-faixas-${empresa.id}`} />
+                    ) : (
+                        <div className="bg-black/30 border border-white/[0.06] rounded-xl px-[18px] py-4 flex flex-col gap-1.5">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-white/30">2 · Faixa do contrato</span>
+                            <span className="text-[22px] font-semibold font-mono text-white">{faixaNome(empresa.faixa_label ?? empresa.faixa)}</span>
+                            {intervaloFaixa && (
+                                <span className="text-[12px] text-white/40">{intervaloFaixa}</span>
+                            )}
                         </div>
                     )}
-                </>
-            )}
-            {/* Cadastro manual da tabela de faixas (Fase 137 Plano 09, D-04) —
-                não desenhada para empresa-filha: a tabela aplicável a um
-                grupo é sempre a da empresa-âncora (linha do grupo). */}
-            {!empresa.is_filha && (
-                <div className="mb-3">
+
+                    <div className="bg-emerald-500/[0.07] border border-emerald-400/30 rounded-xl px-[18px] py-4 flex flex-col gap-1.5">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-emerald-400">3 · Mensalidade a cobrar</span>
+                        <span className="text-[22px] font-bold font-mono text-emerald-400">
+                            {empresa.cobranca_mensal != null ? fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso) : '—'}
+                        </span>
+                        {subLinha3 && (
+                            <span className="text-[12px] text-white/40">{subLinha3}</span>
+                        )}
+                    </div>
+                </div>
+
+                {/* Composição do grupo (pai + filhas + total) — Fase 138,
+                    preservada, agora depois dos três passos. */}
+                {temGrupo && (
+                    <>
+                        <GrupoServicosDivergentesBanner empresa={empresa} />
+                        <div className="rounded-lg border border-white/[0.06] overflow-hidden">
+                            <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04]">
+                                <span className="text-[11px] uppercase tracking-wider text-white/40">Composição do grupo</span>
+                            </div>
+                            {[empresa, ...empresa.filhas].map((e, i) => (
+                                <div key={e.id} className={cn('flex items-center justify-between px-3 py-2', i > 0 && 'border-t border-white/[0.03]')}>
+                                    <span className="text-white/60 text-[12px]">
+                                        {i === 0 ? `${e.name} (este)` : `↳ ${e.name}`}
+                                        {e.tabela_origem && (
+                                            <span className="text-white/30 text-[11px] ml-1.5">
+                                                ({e.tabela_origem === 'grupo'
+                                                    ? 'tabela do grupo'
+                                                    : (e.tabela_origem === 'propria' ? 'tabela própria' : (e.tabela_servico_nome ?? 'tabela do serviço'))})
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="text-white/50 text-[12px] font-mono">
+                                        {e.cobranca_mensal != null ? fmtValorFaixa(e.cobranca_mensal, e.valor_faixa_e_piso) : '—'}
+                                    </span>
+                                </div>
+                            ))}
+                            <div className="flex items-center justify-between px-3 py-2 border-t border-white/[0.06] bg-white/[0.02]">
+                                <span className="text-[11px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
+                                {/* `empresa` aqui É a linha do grupo (tipo 'grupo') — o backend já
+                                    grava o total do grupo no `cobranca_mensal` da própria linha-mãe
+                                    (AdminController ~linha 801). A chave com sufixo "_grupo" nunca
+                                    existiu separada (mesma prop fantasma que existia na FechamentoRow). */}
+                                <span className="text-emerald-400 text-[13px] font-bold font-mono">{fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}</span>
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {/* Tabela progressiva com a faixa atual destacada + cadastro
+                    manual da tabela de faixas (Fase 137 Plano 09 / Fase 139
+                    Tarefa 2) — não desenhada para empresa-filha: a tabela
+                    aplicável a um grupo é sempre a da empresa que consolida
+                    o grupo (linha do grupo). */}
+                {!empresa.is_filha && (
                     <TabelaFaixasSection
                         empresa={empresa}
                         faixasPorServico={faixasPorServico}
                         faixasPorGrupo={faixasPorGrupo}
                         competenciaFechada={competenciaFechada}
+                        faixaOrdemAtual={empresa.faixa_ordem}
                     />
+                )}
+
+                {/* Barra de ações da empresa (Fase 139 §5 item 4): progressão,
+                    PDF e marcar recebido — este último desce da linha para
+                    cá, agora com rótulo ao lado. */}
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    {(empresa.progressao?.length > 0) && (
+                        <button
+                            onClick={() => setModalAberto(true)}
+                            className="inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-8 rounded-lg transition-colors"
+                        >
+                            <BarChart2 size={12} />
+                            Ver progressão
+                        </button>
+                    )}
+                    {!empresa.is_filha && (
+                        <a
+                            href={route('admin.financeiro.relatorio', { company: empresa.id, mes: mesSelecionado })}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-8 rounded-lg transition-colors"
+                        >
+                            <FileText size={13} />
+                            Gerar relatório PDF
+                        </a>
+                    )}
+                    <RecebidoToggle empresa={empresa} mesSelecionado={mesSelecionado} />
                 </div>
-            )}
-            {!empresa.is_filha && (
-                <div className="flex justify-end mb-3">
-                    <a
-                        href={route('admin.financeiro.relatorio', { company: empresa.id, mes: mesSelecionado })}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-8 rounded-lg transition-colors"
-                    >
-                        <FileText size={13} />
-                        Gerar relatório PDF
-                    </a>
-                </div>
-            )}
+            </div>
+
             {/* Contratos de servico gerenciados pelo modal da pagina. */}
-            <div className="border-t border-white/[0.04] pt-4">
+            <div className="px-5 pb-5 border-t border-white/[0.04] pt-4">
                 <ContratosSection
                     empresa={empresa}
                     onAdicionar={onAdicionarContrato}
