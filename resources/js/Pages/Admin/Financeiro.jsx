@@ -1135,7 +1135,18 @@ function SyncFaturamentoBtn({ mesSelecionado, competenciaFechada = false }) {
 }
 
 // Filtro de servico derivado dinamicamente dos contratos ativos do dataset.
-const FILTROS_INICIAL = { busca: '', servico_nome: '', estado: '', recebido: '' };
+// Sem `estado` — os chips (Fase 139, §3) cobrem o que o select de Estado fazia.
+const FILTROS_INICIAL = { busca: '', servico_nome: '', recebido: '' };
+
+// ─── Chips de filtro (Fase 139, §3) ───────────────────────────────────────
+// Mutuamente exclusivos. "topo" não filtra a lista — só reordena por
+// mensalidade desc (ver `filtradas` no componente de página).
+const CHIPS_FILTRO = [
+    { key: 'todos',          label: 'Todas as empresas'    },
+    { key: 'subiu',          label: 'Subiram de faixa'     },
+    { key: 'sem_integracao', label: 'Sem integração'       },
+    { key: 'topo',           label: 'Maiores mensalidades' },
+];
 
 // ─── Widget "Total a receber" (Fase 139, D-01) ───────────────────────────
 // Todos os números vêm prontos de `totais` (Fase 139 Plano 02) — proibido
@@ -1276,49 +1287,67 @@ function SubiramDeFaixaCard({ totais, companies, onFocarEmpresa }) {
     );
 }
 
-function FiltroBarra({ filtros, onChange, total, filtrado, servicosNomes }) {
-    const sel = 'h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/70 focus:outline-none focus:border-ecf-yellow/40';
-    const ativo = Object.values(filtros).some(v => v !== '');
+function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLimpar, total, filtrado, servicosNomes }) {
+    const sel = 'h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/60 focus:outline-none focus:border-ecf-yellow/40';
+    const ativo = filtroChip !== 'todos' || filtros.busca !== '' || filtros.servico_nome !== '' || filtros.recebido !== '';
 
     return (
-        <div className="flex flex-wrap items-center gap-2">
-            <input
-                type="text"
-                value={filtros.busca}
-                onChange={e => onChange({ ...filtros, busca: e.target.value })}
-                placeholder="Buscar empresa..."
-                className="h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/70 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 w-44"
-            />
-            <select value={filtros.servico_nome} onChange={e => onChange({ ...filtros, servico_nome: e.target.value })} className={sel}>
-                <option value="">Serviço</option>
-                {servicosNomes.map(nome => (
-                    <option key={nome} value={nome}>{nome}</option>
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+            <div className="flex flex-wrap gap-2">
+                {CHIPS_FILTRO.map(chip => (
+                    <button
+                        key={chip.key}
+                        type="button"
+                        onClick={() => onChangeChip(chip.key)}
+                        className={cn(
+                            'px-3.5 py-2 rounded-full text-[13px] font-medium border transition-colors',
+                            filtroChip === chip.key
+                                ? 'bg-ecf-yellow border-ecf-yellow text-black'
+                                : 'bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white/80',
+                        )}
+                    >
+                        {chip.label}
+                    </button>
                 ))}
-            </select>
-            <select value={filtros.estado} onChange={e => onChange({ ...filtros, estado: e.target.value })} className={sel}>
-                <option value="">Estado</option>
-                <option value="ok">Com dados</option>
-                <option value="sem_dados">Sem dados</option>
-                <option value="sem_integracao">Sem integração</option>
-            </select>
-            <select value={filtros.recebido} onChange={e => onChange({ ...filtros, recebido: e.target.value })} className={sel}>
-                <option value="">Pagamento</option>
-                <option value="sim">Recebido</option>
-                <option value="nao">Pendente</option>
-            </select>
-            {ativo && (
-                <button
-                    onClick={() => onChange(FILTROS_INICIAL)}
-                    className="h-8 px-2.5 rounded-lg text-[12px] text-white/40 hover:text-white/70 border border-white/[0.06] hover:border-white/20 transition-colors"
-                >
-                    Limpar
-                </button>
-            )}
-            {ativo && (
-                <span className="text-white/30 text-[12px] ml-auto">
-                    {filtrado} de {total}
-                </span>
-            )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+                {/* Filtros secundários (Fases 14/137) — discretos, à esquerda da
+                    busca. Não estão no handoff, mas são capacidade já entregue
+                    e verificada (D-05) — perdê-los não é o objetivo do redesenho. */}
+                <select value={filtros.servico_nome} onChange={e => onChangeFiltros({ ...filtros, servico_nome: e.target.value })} className={sel}>
+                    <option value="">Serviço</option>
+                    {servicosNomes.map(nome => (
+                        <option key={nome} value={nome}>{nome}</option>
+                    ))}
+                </select>
+                <select value={filtros.recebido} onChange={e => onChangeFiltros({ ...filtros, recebido: e.target.value })} className={sel}>
+                    <option value="">Pagamento</option>
+                    <option value="sim">Recebido</option>
+                    <option value="nao">Pendente</option>
+                </select>
+                {ativo && (
+                    <button
+                        type="button"
+                        onClick={onLimpar}
+                        className="h-8 px-2.5 rounded-lg text-[12px] text-white/40 hover:text-white/70 border border-white/[0.06] hover:border-white/20 transition-colors"
+                    >
+                        Limpar
+                    </button>
+                )}
+                {ativo && (
+                    <span className="text-white/30 text-[12px] whitespace-nowrap">
+                        {filtrado} de {total}
+                    </span>
+                )}
+                <input
+                    type="text"
+                    value={filtros.busca}
+                    onChange={e => onChangeFiltros({ ...filtros, busca: e.target.value })}
+                    placeholder="Buscar empresa"
+                    className="w-[280px] px-3.5 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] text-[14px] text-white placeholder:text-white/30 focus:outline-none focus:border-ecf-yellow/40"
+                />
+            </div>
         </div>
     );
 }
@@ -1326,16 +1355,28 @@ function FiltroBarra({ filtros, onChange, total, filtrado, servicosNomes }) {
 export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, totais }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
-    // Atalho do widget "Subiram de faixa este mês" (Fase 139): liga o filtro
-    // e marca a empresa focada. O chip em si e a abertura automática da
-    // linha entram no Plano 04 — aqui só elevamos o estado ao componente de
-    // página para o callback já ter onde escrever.
+    // Atalho do widget "Subiram de faixa este mês" (Fase 139): liga o chip
+    // "Subiram de faixa", limpa a busca (senão o texto digitado pode
+    // esconder a empresa que acabou de ser focada) e marca a empresa focada
+    // para `FechamentoList` abrir a linha automaticamente.
     const [filtroChip, setFiltroChip] = useState('todos');
+    // `empresaFocada` é sempre um objeto NOVO a cada clique (`{ id }`), nunca
+    // reaproveitado — clicar duas vezes seguidas no mesmo atalho precisa
+    // REABRIR a linha (mesmo que a pessoa tenha fechado manualmente entre um
+    // clique e outro). Se guardássemos só o id cru, o segundo clique com o
+    // mesmo valor não dispararia o `useEffect` de `FechamentoList` (React
+    // não re-renderiza em `setState` para um valor idêntico por `Object.is`).
     const [empresaFocada, setEmpresaFocada] = useState(null);
 
     function focarEmpresaSubiuFaixa(id) {
+        setFiltros(f => ({ ...f, busca: '' }));
         setFiltroChip('subiu');
-        setEmpresaFocada(id);
+        setEmpresaFocada({ id });
+    }
+
+    function limparFiltros() {
+        setFiltros(FILTROS_INICIAL);
+        setFiltroChip('todos');
     }
 
     // Phase 14 (Frente B): nomes únicos de serviços DERIVADOS do dataset
@@ -1347,18 +1388,34 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
         [companies],
     );
 
-    const filtradas = useMemo(() => companies.filter(e => {
-        if (filtros.busca && !e.name.toLowerCase().includes(filtros.busca.toLowerCase())) return false;
-        // Filtro por NOME do serviço — derivado do contrato (Phase 14)
-        if (filtros.servico_nome
-            && !(e.servicos_contratados || []).some(s => s.servico_nome === filtros.servico_nome)) {
-            return false;
+    // Ordem: busca → chip → serviço → pagamento → ordenação (Fase 139, §3).
+    // "topo" não filtra — só reordena por mensalidade desc no final; os
+    // demais chips preservam a ordem alfabética que já vem do backend.
+    const filtradas = useMemo(() => {
+        let lista = companies.filter(e => {
+            if (filtros.busca && !e.name.toLowerCase().includes(filtros.busca.toLowerCase())) return false;
+            return true;
+        });
+
+        if (filtroChip === 'subiu') {
+            lista = lista.filter(e => e.subiu_de_faixa === true);
+        } else if (filtroChip === 'sem_integracao') {
+            lista = lista.filter(e => e.has_adman === false || e.estado === 'sem_integracao');
         }
-        if (filtros.estado && e.estado !== filtros.estado) return false;
-        if (filtros.recebido === 'sim' && !e.recebido) return false;
-        if (filtros.recebido === 'nao' && e.recebido) return false;
-        return true;
-    }), [companies, filtros]);
+
+        // Filtro por NOME do serviço — derivado do contrato (Phase 14)
+        if (filtros.servico_nome) {
+            lista = lista.filter(e => (e.servicos_contratados || []).some(s => s.servico_nome === filtros.servico_nome));
+        }
+        if (filtros.recebido === 'sim') lista = lista.filter(e => e.recebido);
+        if (filtros.recebido === 'nao') lista = lista.filter(e => !e.recebido);
+
+        if (filtroChip === 'topo') {
+            lista = [...lista].sort((a, b) => (b.cobranca_mensal ?? -Infinity) - (a.cobranca_mensal ?? -Infinity));
+        }
+
+        return lista;
+    }, [companies, filtros, filtroChip]);
 
     // ─── Modal de contrato (Add/Edit) — Phase 14 / Plan 14-05 ────────────────
     // State global da página: armazena empresa + contrato (ou null para novo).
@@ -1487,7 +1544,10 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                         <div className="px-4 py-3 border-b border-white/[0.04]">
                             <FiltroBarra
                                 filtros={filtros}
-                                onChange={setFiltros}
+                                onChangeFiltros={setFiltros}
+                                filtroChip={filtroChip}
+                                onChangeChip={setFiltroChip}
+                                onLimpar={limparFiltros}
                                 total={companies.length}
                                 filtrado={filtradas.length}
                                 servicosNomes={servicosNomes}
