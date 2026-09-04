@@ -2217,7 +2217,7 @@ inexistente é o pior ponto de partida possível.
 
 Plans:
 - [x] 139-01-PLAN.md — Faixa anterior e ganho do upgrade nos quatro caminhos de montagem de linha (`FechamentoComparativoService`)
-- [ ] 139-02-PLAN.md — Prop `totais`: total a receber, mês passado, variação, faturamento gerado e os números dos upgrades
+- [x] 139-02-PLAN.md — Prop `totais`: total a receber, mês passado, variação, faturamento gerado e os números dos upgrades
 - [ ] 139-03-PLAN.md — Cabeçalho e os três widgets do topo (Total a receber, Subiram de faixa, Serviços contratados)
 - [ ] 139-04-PLAN.md — Lista em quatro colunas com barra de progresso, filtros em chips e estado vazio
 - [ ] 139-05-PLAN.md — Área expandida em três passos e tabela progressiva com a faixa atual destacada
