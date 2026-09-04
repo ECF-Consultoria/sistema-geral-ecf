@@ -2149,10 +2149,20 @@ reescrito.
 Plans:
 - [x] 138-01-PLAN.md — Tabela do grupo: migration, model e precedência no `FechamentoFaixaResolver`
 - [x] 138-02-PLAN.md — Idempotência do aviso (`notificado_em`/`notificado_faixa_ordem`), categoria `faixa_alterada` e rótulo na tela de notificações
-- [ ] 138-03-PLAN.md — `fechamento:consolidar-mes` classifica o grupo pela tabela do grupo, com âncora como fallback rastreável
-- [ ] 138-04-PLAN.md — Props da tela de fechamento: tabela do grupo e herança visível nos ramos aberto e fechado
-- [ ] 138-05-PLAN.md — `FechamentoFaixaNotifier`: aviso agregado de subida e queda de faixa, com trava contra o "Refazer"
-- [ ] 138-06-PLAN.md — CRUD e tela da tabela do grupo (checkpoint humano de conferência visual)
+- [x] 138-03-PLAN.md — `fechamento:consolidar-mes` classifica o grupo pela tabela do grupo, com âncora como fallback rastreável
+- [x] 138-04-PLAN.md — Props da tela de fechamento: tabela do grupo e herança visível nos ramos aberto e fechado
+- [x] 138-05-PLAN.md — `FechamentoFaixaNotifier`: aviso agregado de subida e queda de faixa, com trava contra o "Refazer"
+- [x] 138-06-PLAN.md — CRUD e tela da tabela do grupo (checkpoint humano de conferência visual)
+
+**Fase 138 concluída em 2026-09-04** — 6/6 planos entregues, checkpoint humano do plano 06 aprovado
+pelo usuário ("Aprovado") após conferência em produção (deploy feito pelo orquestrador; o ambiente
+local tem 0 grupos cadastrados e não permitiria abrir o accordion de grupo). D-01 fechado: grupo pode
+ter tabela própria cadastrável pela tela, com precedência grupo → empresa → serviço, e a herança da
+tabela da empresa que mais faturou no mês agora é visível na tela (antes era silenciosa). D-02/D-03
+fechados: aviso de mudança de faixa (subida e queda) com trava de idempotência sequencial + lock de
+concorrência. Gate final `Phase122|Phase136|Phase137|Phase138`: 276 testes / 1452 asserções / 0
+falhas. Ver `138-06-SUMMARY.md` para a observação operacional sobre o primeiro "Refazer" de
+agosto/2026 disparar o aviso inicial (efeito de primeira carga, esperado).
 
 ---
 

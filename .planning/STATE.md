@@ -245,7 +245,7 @@ asserções deste plano = 233/1177, bate exato). `AdminFechamentoControllerTest`
 falhas pré-existentes, inalterado. Last activity: 2026-09-03 — 137-08 executado (relatórios PDF/
 e-mail migrados pra fonte central, wave 5).
 
-## Posição paralela — Fase 138 (Tabela do grupo e aviso de mudança de faixa) — EM EXECUÇÃO
+## Posição paralela — Fase 138 (Tabela do grupo e aviso de mudança de faixa) — FASE CONCLUÍDA (6/6 planos)
 
 **Mesma disciplina dos blocos 135/136/137 acima:** Fase 138 fora de milestone, rodando em
 paralelo — duas sessões simultâneas na MESMA árvore, uma no plano 138-01 e outra no 138-02, sem
@@ -355,6 +355,37 @@ paralelo do plano 138-06, que rodou concorrentemente em `FechamentoController.ph
 executado (o aviso de mudança de faixa passa a existir de ponta a ponta, com trava de concorrência).
 Consumo/verificação visual da tela de notificações não faz parte deste plano (rótulo já entregue
 pelo 138-02).
+
+138-06 concluído — CRUD completo da tabela de faixas de um grupo pela tela (`/administrativo/financeiro`):
+duas rotas novas (`POST`/`DELETE /financeiro/faixas/grupo/{grupo}`, `admin.financeiro.faixas.grupo`
+/ `.remover`) sob `role:admin`, e `FechamentoController::salvarFaixasGrupo()`/`removerFaixasGrupo()`
+espelhando exatamente a forma dos métodos de empresa (all-or-nothing, `SalvarFaixasFaturamentoRequest`
+reaproveitado sem FormRequest novo). `TabelaFaixasSection.jsx` ganhou o 4º bloco, exclusivo de linha
+de grupo (`empresa.tipo === 'grupo'`), renderizado ANTES dos três estados por empresa que já
+existiam (que continuam intactos, editando a tabela da empresa que mais faturou quando o grupo
+herda): (A) grupo com tabela própria — selo "Tabela deste grupo" + lista somente leitura +
+"Substituir"/"Voltar a usar a tabela da empresa"; (B) grupo sem tabela própria — frase nomeando a
+empresa de quem a tabela foi herdada (`tabela_herdada_de_nome`) + explicação sem jargão de por que
+isso muda sozinho + "Criar tabela do grupo". `Financeiro.jsx` encadeia `faixas_por_grupo` por dois
+níveis (`FechamentoList` → `FechamentoAccordion` → `TabelaFaixasSection`, mesmo molde de
+`faixas_por_servico`) e o rótulo de "Composição do grupo" ganhou o terceiro caso ("tabela do
+grupo"). Nem a tela nem os comentários pt-BR do próprio JSX usam "âncora" — trocado por "a empresa
+do grupo que mais faturou no mês" também no código, travado por teste. `Phase138FaixasGrupoCrudTest`:
+**7 testes / 29 asserções**. Gate combinado `Phase122|Phase136|Phase137|Phase138`: **276 testes /
+1452 asserções / 0 falhas** (mesma contagem do 138-05 — sem sobreposição de arquivos entre os dois
+planos paralelos). 3 commits de código (`745aec1b` rotas+CRUD, `41ef6c91` tela, `a01cc390` teste).
+Checkpoint humano bloqueante (Tarefa 4): ambiente local tem 0 grupos cadastrados, então a
+conferência visual foi feita em PRODUÇÃO pelo orquestrador após o deploy da Fase 138 inteira —
+migrations 138-01/138-02 rodaram no MariaDB sem erro (`grupo_faixas_faturamento` criada com 0
+linhas; colunas `notificado_em`/`notificado_faixa_ordem` presentes em `fechamento_snapshots` [201
+linhas] e `fechamento_grupo_snapshots` [15 linhas]; 0 notificações de faixa disparadas até a
+conferência), copy sem jargão confirmada por leitura do JSX. **Aprovado pelo usuário em 2026-09-04**
+("Aprovado"). Last activity: 2026-09-04 — 138-06 executado e aprovado, fechando D-01 pela ponta da
+UI. **Com este plano, os 6 planos da Fase 138 estão concluídos — fase encerrada.** Observação
+operacional deixada no SUMMARY: os 201 snapshots de agosto/2026 em produção estão com
+`notificado_em` NULL (gravados antes de o aviso existir) — o primeiro "Refazer fechamento" rodado
+para agosto vai comparar contra julho e disparar o aviso inicial para todo mundo que mudou de
+faixa; efeito de primeira carga esperado, não bug.
 
 ## Current Position
 
@@ -831,6 +862,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 133 P01 | 35min | 2 tasks | 3 files |
 | Phase 133 P02 | ~40min | 3 tasks | 3 files |
 | Phase 133 P03 | ~30min | 2 tasks | 3 files |
+| Phase 138-tabela-do-grupo-e-aviso-de-mudanca-de-faixa P06 | ~90min | 4 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -1596,6 +1628,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-04T00:00:00.000Z
+Stopped at: Completed 138-06-PLAN.md (checkpoint humano aprovado — "Aprovado" — fase 138 concluída, 6/6 planos)
 Last session: 2026-09-02T18:34:53.366Z
 Stopped at: Phase 137 context gathered
 Last session: 2026-08-18T21:34:08.162Z
