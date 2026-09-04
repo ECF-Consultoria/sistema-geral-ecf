@@ -196,6 +196,12 @@ class AdminController extends Controller
             ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr)
             : $this->fechamentoAgregarGruposAoVivo($dadosPorId, $rawCompanies, $mesReferenciaStr);
 
+        // Fase 139 (D-01/D-04, item 3) — números do topo da tela ("Total a
+        // receber" + widget de upgrades). Somado sobre as MESMAS linhas que
+        // a tela lista ($dadosPorId já agregado por grupo), nunca por uma
+        // consulta paralela — T-139-05 do threat model desta fase.
+        $totais = $this->fechamentoTotais($dadosPorId, $mesReferenciaStr);
+
         // Passo 4 — progressão SEM acumulado (D-06), sempre a partir do
         // histórico congelado (fechamento_snapshots/fechamento_grupo_snapshots),
         // nunca de company_monthly_revenues.
@@ -244,6 +250,8 @@ class AdminController extends Controller
             'competencia_fechada_em' => $competenciaFechadaEm,
             'faixas_por_servico'     => $this->fechamentoFaixasPorServico(),
             'faixas_por_grupo'       => $this->fechamentoFaixasPorGrupo(),
+            // Fase 139 (D-01/D-04, item 3): números do topo da tela.
+            'totais'                 => $totais,
         ]);
     }
 
@@ -289,6 +297,109 @@ class AdminController extends Controller
             : null;
 
         return ['subiu_de_faixa' => $subiu, 'ganho_faixa' => $ganho];
+    }
+
+    /**
+     * Fase 139 (D-01/D-04, item 3) — números do topo da tela ("Total a
+     * receber" + widget "Subiram de faixa"), somados sobre as MESMAS linhas
+     * de `$dadosPorId` já agregadas por grupo (Passo 3 de `fechamento()`) —
+     * nunca uma consulta paralela ao banco. Divergência entre o topo e a
+     * lista abaixo seria invisível e minaria a confiança no fechamento
+     * (T-139-05 do threat model desta fase).
+     *
+     * ⚠️ A chave morta (mensalidade "de grupo" que a tela antiga esperava e
+     * o backend nunca emitiu) não é ressuscitada aqui — a linha de grupo já
+     * carrega o valor somado em `cobranca_mensal` (ver `<interfaces>` do
+     * plano 02).
+     *
+     * @param  array<int|string, array<string, mixed>>  $dadosPorId  linhas já agregadas por grupo, ANTES da progressão (Passo 4)
+     * @return array{total_a_receber: float, total_e_piso: bool, empresas_com_cobranca: int, empresas_sem_valor_definido: int, faturamento_gerado: float|null, mes_anterior_fechado: bool, mes_anterior_total: float|null, variacao: float|null, upgrades_quantidade: int, upgrades_ganho_total: float, upgrades_ganho_parcial: bool}
+     */
+    private function fechamentoTotais(array $dadosPorId, string $mesReferenciaStr): array
+    {
+        $totalAReceber            = 0.0;
+        $totalEPiso               = false;
+        $empresasComCobranca      = 0;
+        $empresasSemValorDefinido = 0;
+        $faturamentoGerado        = null;
+        $upgradesQuantidade       = 0;
+        $upgradesGanhoTotal       = 0.0;
+        $upgradesGanhoParcial     = false;
+
+        foreach ($dadosPorId as $linha) {
+            // Empresa-membro de um grupo já está contada na linha do grupo
+            // — somar as duas contaria a mesma cobrança duas vezes (mesma
+            // disciplina de `conta_no_total` que a tela usa pra listar).
+            if (($linha['conta_no_total'] ?? true) === false) {
+                continue;
+            }
+
+            // `cobranca_mensal` null NÃO entra na soma como zero — a linha
+            // some da soma silenciosamente, deixando o total menor que a
+            // realidade sem ninguém perceber (a mesma classe de erro que o
+            // D-05 proíbe). Ela é nomeada em `empresas_sem_valor_definido`
+            // quando o estado é `sem_tabela`.
+            if ($linha['cobranca_mensal'] !== null) {
+                $cobrancaLinha = (float) $linha['cobranca_mensal'];
+                $totalAReceber += $cobrancaLinha;
+
+                if ($cobrancaLinha > 0) {
+                    $empresasComCobranca++;
+                }
+            }
+
+            // Uma única linha em faixa-piso torna o TOTAL inteiro um piso —
+            // a tela precisa escrever "a partir de R$ X", nunca o valor
+            // seco (mesma disciplina de `fmtValorFaixa` já vigente).
+            if (($linha['valor_faixa_e_piso'] ?? false) === true) {
+                $totalEPiso = true;
+            }
+
+            if (($linha['estado'] ?? null) === FechamentoSnapshot::ESTADO_SEM_TABELA) {
+                $empresasSemValorDefinido++;
+            }
+
+            // Faturamento gerado é a soma do FATURAMENTO das empresas — não
+            // se confunde com a soma das mensalidades (`total_a_receber`).
+            if (($linha['faturamento'] ?? null) !== null) {
+                $faturamentoGerado = ($faturamentoGerado ?? 0.0) + (float) $linha['faturamento'];
+            }
+
+            if (($linha['subiu_de_faixa'] ?? false) === true) {
+                $upgradesQuantidade++;
+
+                if (($linha['ganho_faixa'] ?? null) !== null) {
+                    $upgradesGanhoTotal += (float) $linha['ganho_faixa'];
+                } else {
+                    // Subiu de faixa mas não temos o valor da faixa anterior
+                    // — o "+R$ X/mês" do widget está incompleto; a tela
+                    // precisa mostrar "no mínimo", nunca esconder a lacuna.
+                    $upgradesGanhoParcial = true;
+                }
+            }
+        }
+
+        $comparativo = $this->comparativoService->totalCobrancaDoMesAnterior($mesReferenciaStr);
+
+        // Mês anterior não fechado → variação null. A tela diz isso com
+        // palavra, nunca com R$ 0 (D-05).
+        $variacao = $comparativo['total'] !== null
+            ? $totalAReceber - $comparativo['total']
+            : null;
+
+        return [
+            'total_a_receber'             => $totalAReceber,
+            'total_e_piso'                => $totalEPiso,
+            'empresas_com_cobranca'       => $empresasComCobranca,
+            'empresas_sem_valor_definido' => $empresasSemValorDefinido,
+            'faturamento_gerado'          => $faturamentoGerado,
+            'mes_anterior_fechado'        => $comparativo['fechado'],
+            'mes_anterior_total'          => $comparativo['total'],
+            'variacao'                    => $variacao,
+            'upgrades_quantidade'         => $upgradesQuantidade,
+            'upgrades_ganho_total'        => $upgradesGanhoTotal,
+            'upgrades_ganho_parcial'      => $upgradesGanhoParcial,
+        ];
     }
 
     /**
