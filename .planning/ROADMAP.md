@@ -2166,6 +2166,49 @@ agosto/2026 disparar o aviso inicial (efeito de primeira carga, esperado).
 
 ---
 
+### Phase 139: Redesenho da tela de Fechamento
+
+**Goal:** Tornar a tela de fechamento simples e intuitiva. O usuário usou o resultado das Fases 137 e
+138 em produção e disse: "as coisas estão funcionando, mas a UI/UX está difícil de entender — tem
+que ser mais simples e intuitivo". Ele produziu um handoff de design completo
+(`design_handoff_fechamento/`) e pediu que fosse desenvolvido.
+
+O redesenho reduz a tela a três perguntas: **quanto vamos receber**, **quem subiu de faixa**, e
+**como esse valor foi calculado** para cada empresa.
+
+**Decisões do usuário (2026-09-04), detalhadas em `139-CONTEXT.md`:**
+
+| widget | decisão |
+|---|---|
+| Serviços contratados | manter (barra empilhada no lugar do donut) |
+| Tipo de cobrança | remover |
+| Distribuição de faixas | remover |
+| Total consolidado | reduzir a "Total a receber" |
+| Subiram de faixa | criar, em destaque |
+
+O Total consolidado encolhe porque o sistema **não sabe se o cliente pagou**: na captura de
+produção, "Recebido", "Inadimplente" e "A receber" estão os três vazios ("0 pagadores com dados") —
+um terço da tela ocupado por informação que não existe.
+
+**Fidelidade visual (D-02):** estrutura, hierarquia, widgets e comportamento seguem o design com
+fidelidade; **cores e tipografia continuam as do ECF Admin** (tokens `ecf-*`). A paleta do handoff é
+próxima mas não idêntica à do projeto, e adotá-la faria esta tela destoar de todas as outras. A
+fonte mono para números foi oferecida ao usuário e recusada.
+
+**O risco da fase (D-04):** quatro dados que o design pede **não existem hoje** — `faixa_ordem_anterior`
+exposta como prop, a mensalidade da faixa anterior (base do ganho do upgrade), os totais do widget
+"Total a receber" (incluindo mês anterior, variação e faturamento gerado), e a reconstrução da ordem
+anterior no ramo congelado, onde o snapshot guarda só `evolucao`.
+
+**Regressão zero (D-05):** `Financeiro.jsx` tem ~1300 linhas e concentra trabalho das Fases 137/138
+verificado em produção — estados de ausência distintos, composição ML+Shopee, "a partir de" na faixa
+sem teto, a tabela de grupo com a frase de herança, o estado da competência com fechar/refazer e a
+confirmação de sucesso, e a trava que impede a palavra "acumulado" de voltar.
+
+Plans: a planejar
+
+---
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
@@ -2178,3 +2221,5 @@ agosto/2026 disparar o aviso inicial (efeito de primeira carga, esperado).
 *Roadmap atualizado: 2026-09-02 — **Fase 137 (Fechamento mensal)** anexada. Origem: brief do usuario em 02/09, logo apos declarar a parte de contratos concluida. E a contrapartida operacional das Fases 124-133: o contrato define a tabela progressiva, o fechamento a aplica. Quatro mudancas pedidas sobre a tela `/financeiro` existente: (1) acabar com o acumulativo — hoje o mes corrente usa janela MOVEL de 30 dias e so meses passados usam mes-calendario; (2) parar de manter grupos proprios e reusar os grupos de empresas do Comercial, ja cadastrados; (3) transformar a tabela progressiva em DADO estruturado (hoje so existe como texto nos .docx da Clicksign, e sao tabelas diferentes por servico: Gestao/ML, Shopee e Brigada); (4) permitir cadastrar a tabela de uma empresa a mao, porque a geracao de contrato pelo sistema e recente e a maioria das empresas existentes esta em tabela progressiva sem o sistema saber — incluindo tabelas antigas/fora do padrao, que sao legitimas. Fase NAO planejada: as decisoes de modelagem (onde mora a tabela, override por empresa, se o fechamento vira registro congelado por competencia) ficaram explicitamente para o discuss-phase. Fases 1-136 preservadas.*
 
 *Roadmap atualizado: 2026-09-03 — **Fase 138 (Tabela do grupo e aviso de mudanca de faixa)** anexada. Origem: uso real do fechamento no mesmo dia em que a Fase 137 foi para producao e agosto/2026 foi fechado. Duas lacunas que so o uso revelou: (1) grupo nao tem tabela propria — e classificado pela tabela da empresa que mais faturou no mes, entao grupo com tabela negociada nao tem onde registra-la e, se as irmas divergem, o criterio muda de mes para mes sem aviso; (2) nao ha notificacao quando uma empresa muda de faixa, embora o snapshot ja calcule `evolucao`. Decisoes do usuario em 2026-09-03: tabela de grupo com precedencia sobre a da empresa, e aviso nos DOIS sentidos (subida e queda — queda significa cobrar menos). Entrar/sair de `A DEFINIR` fica fora por ora, para nao virar ruido com as 74 empresas hoje sem faixa. Fases 1-137 preservadas.*
+
+*Roadmap atualizado: 2026-09-04 - **Fase 139 (Redesenho da tela de Fechamento)** anexada. Origem: o usuario usou a tela em producao depois das Fases 137 e 138 e disse que a UI/UX estava dificil de entender. Ele produziu um handoff de design completo em `design_handoff_fechamento/` (README com tokens e comportamento, prototipo HTML e captura da tela atual) e pediu que fosse desenvolvido. Cinco decisoes de widget dele: manter Servicos contratados, remover Tipo de cobranca e Distribuicao de faixas, reduzir o Total consolidado a 'Total a receber' (o sistema nao sabe se o cliente pagou) e criar um widget em destaque para as empresas que subiram de faixa. Decisao de fidelidade tomada em 2026-09-04: estrutura e comportamento do design com fidelidade, cores e tipografia do ECF Admin — a paleta do handoff e proxima mas nao identica a do projeto e faria a tela destoar das outras. Fases 1-138 preservadas.*
