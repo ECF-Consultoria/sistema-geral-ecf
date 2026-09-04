@@ -886,8 +886,10 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
 
             {/* Os três passos da conta (Fase 139 §5): quanto faturou, em que
                 faixa caiu, quanto vai cobrar — a pergunta que o fechamento
-                precisa responder, na ordem em que ela nasce. */}
-            <div className="px-5 pt-1 pb-6 flex flex-col gap-5">
+                precisa responder, na ordem em que ela nasce. Padding fiel à
+                referência (4px 22px 24px) — correção 260904-jpn, estava com
+                20px de respiro lateral em vez de 22px. */}
+            <div className="px-[22px] pt-1 pb-6 flex flex-col gap-5">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="bg-black/30 border border-white/[0.06] rounded-xl px-[18px] py-4 flex flex-col gap-1.5">
                         <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-white/30">1 · Faturou no mês</span>
