@@ -418,6 +418,33 @@ unitário, `7b4112cb` controller, `53463172` teste HTTP). Last activity: 2026-09
 executado (o risco número 1 da fase, D-04, resolvido e travado por teste). Sem deploy — próximos
 planos (02-07) consomem estas chaves na reescrita da tela (`Financeiro.jsx`).
 
+139-02 concluído — prop `totais` (D-01/D-04 item 3) chega na resposta de
+`AdminController::fechamento()`, nos DOIS ramos (ao vivo e congelado). Novo
+`FechamentoComparativoService::totalCobrancaDoMesAnterior()` soma `cobranca_mensal` das linhas
+de GRUPO + linhas de EMPRESA sem grupo do mês anterior (sem dobrar quem está em grupo); devolve
+`fechado=false, total=null` quando o mês anterior nunca fechou (nunca `0.0`), e `fechado=true,
+total=0.0` quando fechou só com `cobranca_mensal` null — no máximo 2 consultas (`SUM(CASE WHEN
+company_group_id IS NULL THEN cobranca_mensal ELSE 0 END)` resolve existência + soma na mesma
+query). Novo `AdminController::fechamentoTotais()` (privado) monta as 11 chaves somando sobre as
+MESMAS linhas de `$dadosPorId` já agregadas por grupo (nunca consulta paralela — T-139-05):
+`total_a_receber`, `total_e_piso`, `empresas_com_cobranca`, `empresas_sem_valor_definido`,
+`faturamento_gerado`, `mes_anterior_fechado`, `mes_anterior_total`, `variacao`,
+`upgrades_quantidade`, `upgrades_ganho_total`, `upgrades_ganho_parcial`. `cobranca_mensal`/
+`faturamento` null NUNCA vira zero na soma (D-05) — linha `sem_tabela` some da soma mas conta em
+`empresas_sem_valor_definido`. `total_e_piso` é OR de todas as linhas somadas. A chave morta
+`cobranca_mensal_grupo` continua não existindo em `app/` (grep confirma 0 ocorrências) — o total
+novo nunca a usa. Teste novo `Phase139TotaisFechamentoTest`: **14 testes / 56 asserções** — 5
+unitários do serviço (soma sem dobrar grupo, não-fechado→null, fechado-em-zero, ≤2 queries,
+virada de ano) + 9 via HTTP (11 chaves presentes; soma exata de 3 empresas; grupo conta 1 vez;
+`sem_tabela` fora da soma mas nomeado; faixa-piso marca `total_e_piso`; mês anterior nunca
+fechado→variação null; mês anterior fechado→variação exata; competência corrente fechada bate
+com o ramo aberto; upgrades batem com as linhas que subiram). Gate `Phase122|Phase136|Phase137|
+Phase138|Phase139`: **302 testes / 1584 asserções / 0 falhas** (era 288/1528 antes deste plano —
++14 testes/+56 asserções, todos novos, sem regressão). 3 commits (`e3a87cb1` serviço + teste
+unitário, `b24e52cb` controller, `58b0b9e1` teste HTTP). Last activity: 2026-09-04 — 139-02
+executado. Sem deploy — próximos planos (03-06) consomem `totais` na reescrita da tela
+(`Financeiro.jsx`).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
