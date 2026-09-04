@@ -2205,7 +2205,23 @@ verificado em produção — estados de ausência distintos, composição ML+Sho
 sem teto, a tabela de grupo com a frase de herança, o estado da competência com fechar/refazer e a
 confirmação de sucesso, e a trava que impede a palavra "acumulado" de voltar.
 
-Plans: a planejar
+**Achado do planejamento (2026-09-04):** `TotalConsolidado` filtra por `cobranca_mensal_grupo`, prop
+que o backend **nunca emitiu** — é por isso que o widget mostra "0 pagadores com dados" e os três
+valores vazios na captura de produção. O total novo é somado no backend, sobre as mesmas linhas que a
+tela lista.
+
+**Plans:** 6 planos em 6 waves (sequenciais: os dois primeiros mexem em `AdminController.php`, os
+três seguintes em `Financeiro.jsx` — sem sobreposição de arquivo entre planos de waves diferentes não
+haveria como paralelizar sem conflito). Backend primeiro: uma tela redesenhada esperando dado
+inexistente é o pior ponto de partida possível.
+
+Plans:
+- [ ] 139-01-PLAN.md — Faixa anterior e ganho do upgrade nos quatro caminhos de montagem de linha (`FechamentoComparativoService`)
+- [ ] 139-02-PLAN.md — Prop `totais`: total a receber, mês passado, variação, faturamento gerado e os números dos upgrades
+- [ ] 139-03-PLAN.md — Cabeçalho e os três widgets do topo (Total a receber, Subiram de faixa, Serviços contratados)
+- [ ] 139-04-PLAN.md — Lista em quatro colunas com barra de progresso, filtros em chips e estado vazio
+- [ ] 139-05-PLAN.md — Área expandida em três passos e tabela progressiva com a faixa atual destacada
+- [ ] 139-06-PLAN.md — Trava de contrato da UI, build, gate e conferência humana em produção (checkpoint)
 
 ---
 
