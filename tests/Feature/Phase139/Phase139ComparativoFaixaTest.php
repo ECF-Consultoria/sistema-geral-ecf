@@ -216,4 +216,173 @@ class Phase139ComparativoFaixaTest extends TestCase
         $this->assertCount(1, $logEmpresa, 'anterioresPorEmpresa() precisa fazer exatamente 1 consulta, nunca uma por empresa (o problema que este serviço substitui).');
         $this->assertCount(1, $logGrupo, 'anterioresPorGrupo() precisa fazer exatamente 1 consulta, nunca uma por grupo.');
     }
+
+    // ─── (b) Tarefa 3 — os quatro caminhos via HTTP ───────────────────────
+
+    #[Test]
+    public function toda_linha_de_companies_traz_as_quatro_chaves_do_comparativo_de_faixa(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-15'));
+
+        $admin  = $this->criarAdmin();
+        $gestao = $this->criarServicoGestao();
+        $c1     = $this->criarEmpresaComContrato($gestao);
+        $c2     = $this->criarEmpresaComContrato($gestao);
+
+        AdmanMetric::create(['company_id' => $c1->id, 'reference_date' => '2026-09-05', 'revenue' => 100_000.00]);
+        // $c2 fica sem nenhum faturamento no mês — precisa ter as chaves do
+        // mesmo jeito, com valores null.
+
+        $response = $this->actingAs($admin)->get('/administrativo/financeiro');
+        $response->assertOk();
+
+        $companies = $response->viewData('page')['props']['companies'];
+        $this->assertNotEmpty($companies, 'Precisa ter pelo menos uma linha pra esta asserção fazer sentido.');
+
+        foreach ($companies as $linha) {
+            foreach (['faixa_ordem_anterior', 'valor_faixa_anterior', 'subiu_de_faixa', 'ganho_faixa'] as $chave) {
+                $this->assertArrayHasKey($chave, $linha, "Sem a chave '{$chave}' em toda linha, a tela não sabe se mostra ou esconde o widget de upgrade pra essa empresa ('{$linha['name']}').");
+            }
+        }
+    }
+
+    #[Test]
+    public function empresa_que_subiu_de_faixa_mostra_os_mesmos_valores_ao_vivo_e_congelado(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-15'));
+
+        $admin   = $this->criarAdmin();
+        $gestao  = $this->criarServicoGestao();
+        $company = $this->criarEmpresaComContrato($gestao);
+
+        // Agosto: R$300k → faixa 1 (até R$499.999,99), mensalidade R$3.000.
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 300_000.00]);
+        $this->artisan('fechamento:consolidar-mes', ['--mes' => '2026-08'])->assertExitCode(0);
+
+        // Setembro: R$600k → faixa 2 (até R$999.999,99), mensalidade R$4.500.
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-09-10', 'revenue' => 600_000.00]);
+
+        // ─── AO VIVO (setembro ainda aberto) ───
+        $respAoVivo   = $this->actingAs($admin)->get('/administrativo/financeiro');
+        $respAoVivo->assertOk();
+        $linhaAoVivo = collect($respAoVivo->viewData('page')['props']['companies'])->firstWhere('id', $company->id);
+
+        $this->assertNotNull($linhaAoVivo);
+        $this->assertSame(1, $linhaAoVivo['faixa_ordem_anterior'], 'Agosto fechou na faixa 1 (R$300k) — sem isso o widget não sabe "Faixa 1 → 2".');
+        $this->assertEqualsWithDelta(3_000.00, (float) $linhaAoVivo['valor_faixa_anterior'], 0.01);
+        $this->assertTrue($linhaAoVivo['subiu_de_faixa']);
+        $this->assertEqualsWithDelta(1_500.00, (float) $linhaAoVivo['ganho_faixa'], 0.01, 'Faixa 2 (R$4.500) − faixa 1 (R$3.000) = R$1.500 de ganho.');
+
+        // ─── CONGELADO (fecha setembro e reconsulta) ───
+        $this->artisan('fechamento:consolidar-mes', ['--mes' => '2026-09'])->assertExitCode(0);
+
+        $respCongelado = $this->actingAs($admin)->get('/administrativo/financeiro');
+        $respCongelado->assertOk();
+        $linhaCongelada = collect($respCongelado->viewData('page')['props']['companies'])->firstWhere('id', $company->id);
+
+        $this->assertNotNull($linhaCongelada);
+        $this->assertSame($linhaAoVivo['faixa_ordem_anterior'], $linhaCongelada['faixa_ordem_anterior'], 'sem faixa_ordem_anterior no ramo congelado o widget de upgrades some ao fechar o mês.');
+        $this->assertEqualsWithDelta((float) $linhaAoVivo['valor_faixa_anterior'], (float) $linhaCongelada['valor_faixa_anterior'], 0.01);
+        $this->assertSame($linhaAoVivo['subiu_de_faixa'], $linhaCongelada['subiu_de_faixa']);
+        $this->assertEqualsWithDelta((float) $linhaAoVivo['ganho_faixa'], (float) $linhaCongelada['ganho_faixa'], 0.01, 'O congelado reconstrói pelo mês anterior — não pode zerar o ganho que o ao vivo já mostrava.');
+    }
+
+    #[Test]
+    public function empresa_que_desceu_de_faixa_nao_conta_como_ganho(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-15'));
+
+        $admin   = $this->criarAdmin();
+        $gestao  = $this->criarServicoGestao();
+        $company = $this->criarEmpresaComContrato($gestao);
+
+        // Agosto: R$600k → faixa 2. Setembro: R$300k → faixa 1 (desceu).
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 600_000.00]);
+        $this->artisan('fechamento:consolidar-mes', ['--mes' => '2026-08'])->assertExitCode(0);
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-09-10', 'revenue' => 300_000.00]);
+
+        $response = $this->actingAs($admin)->get('/administrativo/financeiro');
+        $response->assertOk();
+        $linha = collect($response->viewData('page')['props']['companies'])->firstWhere('id', $company->id);
+
+        $this->assertNotNull($linha);
+        $this->assertSame(2, $linha['faixa_ordem_anterior']);
+        $this->assertFalse($linha['subiu_de_faixa'], 'Desceu de faixa 2 pra 1 — não pode contar como upgrade.');
+        $this->assertNull($linha['ganho_faixa'], 'Queda não pode virar ganho na tela — nunca inferir de evolução, e nunca 0.');
+    }
+
+    #[Test]
+    public function empresa_sem_fechamento_no_mes_anterior_tem_valores_null_e_ganho_nunca_zero(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-15'));
+
+        $admin   = $this->criarAdmin();
+        $gestao  = $this->criarServicoGestao();
+        $company = $this->criarEmpresaComContrato($gestao);
+
+        // Sem nenhum AdmanMetric em agosto e sem fechamento algum — empresa
+        // pode ter entrado na carteira agora.
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-09-05', 'revenue' => 300_000.00]);
+
+        $response = $this->actingAs($admin)->get('/administrativo/financeiro');
+        $response->assertOk();
+        $linha = collect($response->viewData('page')['props']['companies'])->firstWhere('id', $company->id);
+
+        $this->assertNotNull($linha);
+        $this->assertNull($linha['faixa_ordem_anterior']);
+        $this->assertNull($linha['valor_faixa_anterior']);
+        $this->assertFalse($linha['subiu_de_faixa']);
+        $this->assertNull($linha['ganho_faixa'], 'Sem fechamento anterior é "não sabemos", nunca 0 — zero significa "subiu e não mudou de preço".');
+    }
+
+    #[Test]
+    public function linha_de_grupo_ao_vivo_e_congelada_trazem_os_mesmos_valores_do_comparativo(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-15'));
+
+        $admin   = $this->criarAdmin();
+        $gestao  = $this->criarServicoGestao();
+        $grupo   = CompanyGroup::create(['name' => 'Grupo Upgrade '.uniqid(), 'color' => '#000']);
+        $membroA = $this->criarEmpresaComContrato($gestao, ['company_group_id' => $grupo->id]);
+        $membroB = $this->criarEmpresaComContrato($gestao, ['company_group_id' => $grupo->id]);
+
+        // Agosto: soma R$300k (200k + 100k) → faixa 1, mensalidade R$3.000.
+        AdmanMetric::create(['company_id' => $membroA->id, 'reference_date' => '2026-08-05', 'revenue' => 200_000.00]);
+        AdmanMetric::create(['company_id' => $membroB->id, 'reference_date' => '2026-08-05', 'revenue' => 100_000.00]);
+        $this->artisan('fechamento:consolidar-mes', ['--mes' => '2026-08'])->assertExitCode(0);
+
+        // Setembro: soma R$700k (400k + 300k) → faixa 2, mensalidade R$4.500.
+        AdmanMetric::create(['company_id' => $membroA->id, 'reference_date' => '2026-09-05', 'revenue' => 400_000.00]);
+        AdmanMetric::create(['company_id' => $membroB->id, 'reference_date' => '2026-09-05', 'revenue' => 300_000.00]);
+
+        // ─── AO VIVO ───
+        $respAoVivo = $this->actingAs($admin)->get('/administrativo/financeiro');
+        $respAoVivo->assertOk();
+        $linhaAoVivo = collect($respAoVivo->viewData('page')['props']['companies'])->firstWhere('tipo', 'grupo');
+
+        $this->assertNotNull($linhaAoVivo, 'Grupo ao vivo precisa aparecer nas linhas de companies.');
+        foreach (['faixa_ordem_anterior', 'valor_faixa_anterior', 'subiu_de_faixa', 'ganho_faixa'] as $chave) {
+            $this->assertArrayHasKey($chave, $linhaAoVivo, "Linha de grupo AO VIVO sem a chave '{$chave}'.");
+        }
+        $this->assertSame(1, $linhaAoVivo['faixa_ordem_anterior']);
+        $this->assertTrue($linhaAoVivo['subiu_de_faixa']);
+        $this->assertEqualsWithDelta(1_500.00, (float) $linhaAoVivo['ganho_faixa'], 0.01);
+
+        // ─── CONGELADO ───
+        $this->artisan('fechamento:consolidar-mes', ['--mes' => '2026-09'])->assertExitCode(0);
+
+        $respCongelado = $this->actingAs($admin)->get('/administrativo/financeiro');
+        $respCongelado->assertOk();
+        $linhaCongelada = collect($respCongelado->viewData('page')['props']['companies'])->firstWhere('tipo', 'grupo');
+
+        $this->assertNotNull($linhaCongelada, 'Grupo congelado precisa aparecer nas linhas de companies.');
+        foreach (['faixa_ordem_anterior', 'valor_faixa_anterior', 'subiu_de_faixa', 'ganho_faixa'] as $chave) {
+            $this->assertArrayHasKey($chave, $linhaCongelada, "Linha de grupo CONGELADA sem a chave '{$chave}' — o dado morreu no último trecho.");
+        }
+        $this->assertSame($linhaAoVivo['faixa_ordem_anterior'], $linhaCongelada['faixa_ordem_anterior']);
+        $this->assertEqualsWithDelta((float) $linhaAoVivo['valor_faixa_anterior'], (float) $linhaCongelada['valor_faixa_anterior'], 0.01);
+        $this->assertSame($linhaAoVivo['subiu_de_faixa'], $linhaCongelada['subiu_de_faixa']);
+        $this->assertEqualsWithDelta((float) $linhaAoVivo['ganho_faixa'], (float) $linhaCongelada['ganho_faixa'], 0.01);
+    }
 }
