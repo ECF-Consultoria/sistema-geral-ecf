@@ -79,9 +79,14 @@ function corPorNome(nome) {
     return SERVICO_PALETTE[h % SERVICO_PALETTE.length];
 }
 
-function GraficoServico({ empresas }) {
+// ─── Widget "Serviços contratados" (Fase 139, D-01) ──────────────────────
+// Barra horizontal empilhada + legenda, substituindo o donut antigo. A
+// agregação (um voto por contrato ativo; empresa sem contrato cai no balde
+// "Sem contratos") é a mesma do componente de gráfico que este substitui —
+// só a renderização mudou.
+function ServicosContratadosBar({ companies }) {
     const cnt = {};
-    empresas.forEach(e => {
+    companies.forEach(e => {
         const contratos = e.servicos_contratados || [];
         if (contratos.length === 0) {
             cnt['__sem__'] = (cnt['__sem__'] || 0) + 1;
@@ -102,7 +107,47 @@ function GraficoServico({ empresas }) {
         .filter(d => d.value > 0)
         .sort((a, b) => b.value - a.value);
 
-    return <ChartCard titulo="Serviços contratados"><MiniPie data={data} /></ChartCard>;
+    // Denominador da barra inclui o balde "Sem contratos" (as larguras dos
+    // segmentos somam 100%). O rótulo "N contratos ativos" do topo, não —
+    // uma empresa sem contrato não é um contrato.
+    const totalVotos     = data.reduce((s, d) => s + d.value, 0);
+    const totalContratos = data.filter(d => d.key !== '__sem__').reduce((s, d) => s + d.value, 0);
+
+    return (
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] px-6 py-[22px] flex flex-col gap-4 xl:col-span-2">
+            <div className="flex items-center justify-between gap-3">
+                <span className="text-white/40 text-[13px]">Serviços contratados</span>
+                <span className="text-white/30 text-[12px] shrink-0">
+                    {totalContratos} contrato{totalContratos !== 1 ? 's' : ''} ativo{totalContratos !== 1 ? 's' : ''}
+                </span>
+            </div>
+
+            {totalContratos === 0 ? (
+                <p className="text-white/30 text-[13px]">Nenhum contrato ativo.</p>
+            ) : (
+                <>
+                    <div className="flex h-2.5 rounded-full overflow-hidden gap-[2px]">
+                        {data.map(d => (
+                            <div
+                                key={d.key}
+                                title={`${d.name}: ${d.value}`}
+                                style={{ width: `${(d.value / totalVotos) * 100}%`, background: d.color }}
+                            />
+                        ))}
+                    </div>
+                    <div className="flex flex-wrap gap-x-6 gap-y-2.5">
+                        {data.map(d => (
+                            <div key={d.key} className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: d.color }} />
+                                <span className="text-white/75 text-[13px]">{d.name}</span>
+                                <span className="text-white text-[13px] font-semibold font-mono">{d.value}</span>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    );
 }
 
 function EvolucaoBadge({ evolucao }) {
@@ -232,7 +277,7 @@ function FecharCompetenciaButton({ mes }) {
                 type="button"
                 onClick={handleFechar}
                 disabled={loading}
-                className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-[10px] bg-ecf-yellow hover:bg-ecf-yellow/80 text-[14px] font-semibold text-black transition-colors disabled:opacity-50 disabled:cursor-wait shrink-0"
+                className="inline-flex items-center gap-2 px-[18px] py-2.5 rounded-[10px] bg-ecf-yellow hover:bg-ecf-yellow/80 text-[14px] font-semibold text-black transition-colors disabled:opacity-50 disabled:cursor-wait shrink-0"
             >
                 {loading ? 'Fechando...' : `Fechar ${mesLabel}`}
             </button>
@@ -284,7 +329,7 @@ function RefazerFechamentoDialog({ mes }) {
             <button
                 type="button"
                 onClick={() => handleOpenChange(true)}
-                className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-[10px] border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-[14px] font-semibold transition-colors shrink-0"
+                className="inline-flex items-center gap-2 px-[18px] py-2.5 rounded-[10px] border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-[14px] font-semibold transition-colors shrink-0"
             >
                 Refazer fechamento
             </button>
@@ -1117,7 +1162,7 @@ function TotalAReceberCard({ totais }) {
         : 'mês passado ainda não foi fechado';
 
     return (
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] px-6 py-6 flex flex-col gap-4.5">
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] px-6 py-6 flex flex-col gap-[18px]">
             <div>
                 <div className="flex items-center justify-between gap-3">
                     <span className="text-white/40 text-[13px]">Total a receber neste fechamento</span>
@@ -1170,6 +1215,63 @@ function TotalAReceberCard({ totais }) {
                     </p>
                 </div>
             </div>
+        </div>
+    );
+}
+
+// ─── Widget "Subiram de faixa este mês" (Fase 139, D-01) ─────────────────
+// Card em destaque — a pergunta que o fechamento respondia e a tela não
+// mostrava: onde geramos mais resultado. Números vêm de `totais`; a lista
+// de atalhos deriva de `companies` (T-139-07: nada é recalculado aqui).
+function SubiramDeFaixaCard({ totais, companies, onFocarEmpresa }) {
+    const { upgrades_quantidade, upgrades_ganho_total, upgrades_ganho_parcial } = totais;
+
+    const empresasQueSubiram = useMemo(() => companies
+        .filter(c => c.subiu_de_faixa)
+        .sort((a, b) => {
+            if (a.ganho_faixa == null && b.ganho_faixa == null) return 0;
+            if (a.ganho_faixa == null) return 1; // sem ganho conhecido vai por último
+            if (b.ganho_faixa == null) return -1;
+            return b.ganho_faixa - a.ganho_faixa;
+        }), [companies]);
+
+    return (
+        <div className="rounded-2xl border border-ecf-yellow/35 bg-gradient-to-b from-ecf-yellow/10 to-ecf-yellow/[0.02] px-6 py-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-3">
+                <span className="text-ecf-yellow text-[13px] font-semibold">Subiram de faixa este mês</span>
+                <span className="text-white/40 text-[12px] font-mono shrink-0 whitespace-nowrap">
+                    {upgrades_ganho_parcial ? 'no mínimo ' : ''}+{fmtBRL(upgrades_ganho_total)}/mês
+                </span>
+            </div>
+
+            <div className="flex items-baseline gap-2">
+                <span className="text-white text-[52px] font-bold font-mono tabular-nums leading-none">
+                    {upgrades_quantidade}
+                </span>
+                <span className="text-white/40 text-[15px]">empresa{upgrades_quantidade === 1 ? '' : 's'}</span>
+            </div>
+
+            {upgrades_quantidade === 0 ? (
+                <p className="text-white/40 text-[13px]">Nenhuma empresa mudou de faixa neste mês.</p>
+            ) : (
+                <div className="flex flex-col gap-2">
+                    {empresasQueSubiram.map(c => (
+                        <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => onFocarEmpresa(c.id)}
+                            className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-[9px] border border-ecf-yellow/20 bg-black/40 text-left hover:border-ecf-yellow/50 hover:bg-black/70 transition-colors"
+                        >
+                            <span className="text-white text-[13px] font-medium truncate">{c.name}</span>
+                            <span className="text-ecf-yellow text-[12px] font-mono shrink-0">
+                                {c.faixa_ordem_anterior != null
+                                    ? `Faixa ${c.faixa_ordem_anterior} → ${c.faixa_ordem}`
+                                    : `subiu para a faixa ${c.faixa_ordem}`}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -1378,6 +1480,8 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                     </div>
                     <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_1fr] gap-4">
                         <TotalAReceberCard totais={totais} />
+                        <SubiramDeFaixaCard totais={totais} companies={companies} onFocarEmpresa={focarEmpresaSubiuFaixa} />
+                        <ServicosContratadosBar companies={companies} />
                     </div>
                     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
                         <div className="px-4 py-3 border-b border-white/[0.04]">
