@@ -5,6 +5,7 @@ import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Plus, Trash2, Lock, Table2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 /**
  * TabelaFaixasSection — bloco de cadastro manual da tabela de faixas
@@ -200,7 +201,7 @@ function FaixaFormDialog({ open, title, aviso, faixasIniciais, onClose, onSalvar
     );
 }
 
-export default function TabelaFaixasSection({ empresa, faixasPorServico = [], faixasPorGrupo = [], competenciaFechada = false }) {
+export default function TabelaFaixasSection({ empresa, faixasPorServico = [], faixasPorGrupo = [], competenciaFechada = false, faixaOrdemAtual = null }) {
     // 'criar-propria' | 'editar-propria' | 'editar-servico' | 'criar-grupo' | 'editar-grupo' | null
     const [dialog, setDialog] = useState(null);
     const [salvando, setSalvando] = useState(false);
@@ -293,18 +294,28 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
     // lista fechada do Color Contract (UI-SPEC).
     const btnAccent  = 'inline-flex items-center gap-1.5 text-[11px] font-semibold text-ecf-yellow bg-ecf-yellow/10 hover:bg-ecf-yellow/20 border border-ecf-yellow/20 px-3 h-7 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
 
+    // Fase 139 Tarefa 2 — título do bloco no formato do handoff ("TABELA
+    // PROGRESSIVA · <serviço/grupo>"), nomeando de onde a tabela vem quando
+    // isso é conhecido. Sem nome (exceção própria ou "A DEFINIR") o título
+    // fica sem sufixo — não há serviço/grupo dono para citar.
+    const nomeTabela = empresa.tabela_grupo_nome
+        ? empresa.tabela_grupo_nome
+        : (empresa.tabela_origem === 'servico' ? empresa.tabela_servico_nome : null);
+
     return (
         <div id={`tabela-faixas-${empresa.id}`} className="rounded-lg border border-white/[0.06] overflow-hidden">
             <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04] flex items-center gap-1.5">
                 <Table2 size={12} className="text-white/40 shrink-0" />
-                <span className="text-[11px] uppercase tracking-wider text-white/40">Tabela de faixas aplicada</span>
+                <span className="text-[11px] uppercase tracking-wider text-white/40">
+                    Tabela progressiva{nomeTabela ? ` · ${nomeTabela}` : ''}
+                </span>
             </div>
 
             <div className="p-3 space-y-3">
                 {bloqueado && (
                     <p className="text-white/30 text-[11px] flex items-center gap-1.5">
                         <Lock size={11} className="shrink-0" />
-                        Competência fechada — a tabela não pode ser alterada para este mês.
+                        Este mês está fechado — a tabela não pode ser alterada.
                     </p>
                 )}
 
@@ -322,24 +333,30 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                                 <div className="overflow-x-auto rounded-lg border border-white/[0.06]">
                                     <table className="w-full text-[11px]">
                                         <thead>
-                                            <tr className="text-white/30 border-b border-white/[0.06] bg-white/[0.02]">
-                                                <th className="text-left py-1.5 px-2.5 font-semibold">Ordem</th>
+                                            <tr className="text-white/30 uppercase tracking-[0.05em] border-b border-white/[0.06] bg-white/[0.02]">
+                                                <th className="text-left py-1.5 px-2.5 font-semibold">Faixa</th>
                                                 <th className="text-right py-1.5 px-2.5 font-semibold">Faturamento até</th>
                                                 <th className="text-right py-1.5 px-2.5 font-semibold">Mensalidade</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {grupoAplicado.faixas.map(f => (
-                                                <tr key={f.ordem} className="text-white/70 border-b border-white/[0.03] last:border-0">
-                                                    <td className="py-1.5 px-2.5">{f.ordem}ª</td>
-                                                    <td className="py-1.5 px-2.5 text-right font-mono">
-                                                        {f.limite_superior != null ? fmtBRL(f.limite_superior) : 'Sem limite superior'}
-                                                    </td>
-                                                    <td className="py-1.5 px-2.5 text-right font-mono text-emerald-400/80">
-                                                        {fmtValorFaixa(f.valor, f.valor_e_piso)}
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                            {grupoAplicado.faixas.map(f => {
+                                                const atual = faixaOrdemAtual != null && f.ordem === faixaOrdemAtual;
+                                                return (
+                                                    <tr
+                                                        key={f.ordem}
+                                                        className={cn('border-b border-white/[0.03] last:border-0', atual ? 'bg-ecf-yellow/10' : null)}
+                                                    >
+                                                        <td className={cn('py-1.5 px-2.5', atual ? 'text-ecf-yellow font-semibold' : 'text-white/70')}>{f.ordem}ª</td>
+                                                        <td className={cn('py-1.5 px-2.5 text-right font-mono', atual ? 'text-ecf-yellow' : 'text-white/70')}>
+                                                            {f.limite_superior != null ? fmtBRL(f.limite_superior) : 'acima'}
+                                                        </td>
+                                                        <td className={cn('py-1.5 px-2.5 text-right font-mono', atual ? 'text-ecf-yellow font-semibold' : 'text-emerald-400/80')}>
+                                                            {fmtValorFaixa(f.valor, f.valor_e_piso)}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
@@ -382,24 +399,30 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                             <div className="overflow-x-auto rounded-lg border border-white/[0.06]">
                                 <table className="w-full text-[11px]">
                                     <thead>
-                                        <tr className="text-white/30 border-b border-white/[0.06] bg-white/[0.02]">
-                                            <th className="text-left py-1.5 px-2.5 font-semibold">Ordem</th>
+                                        <tr className="text-white/30 uppercase tracking-[0.05em] border-b border-white/[0.06] bg-white/[0.02]">
+                                            <th className="text-left py-1.5 px-2.5 font-semibold">Faixa</th>
                                             <th className="text-right py-1.5 px-2.5 font-semibold">Faturamento até</th>
                                             <th className="text-right py-1.5 px-2.5 font-semibold">Mensalidade</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {servicoAplicado.faixas.map(f => (
-                                            <tr key={f.ordem} className="text-white/70 border-b border-white/[0.03] last:border-0">
-                                                <td className="py-1.5 px-2.5">{f.ordem}ª</td>
-                                                <td className="py-1.5 px-2.5 text-right font-mono">
-                                                    {f.limite_superior != null ? fmtBRL(f.limite_superior) : 'Sem limite superior'}
-                                                </td>
-                                                <td className="py-1.5 px-2.5 text-right font-mono text-emerald-400/80">
-                                                    {fmtValorFaixa(f.valor, f.valor_e_piso)}
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {servicoAplicado.faixas.map(f => {
+                                            const atual = faixaOrdemAtual != null && f.ordem === faixaOrdemAtual;
+                                            return (
+                                                <tr
+                                                    key={f.ordem}
+                                                    className={cn('border-b border-white/[0.03] last:border-0', atual ? 'bg-ecf-yellow/10' : null)}
+                                                >
+                                                    <td className={cn('py-1.5 px-2.5', atual ? 'text-ecf-yellow font-semibold' : 'text-white/70')}>{f.ordem}ª</td>
+                                                    <td className={cn('py-1.5 px-2.5 text-right font-mono', atual ? 'text-ecf-yellow' : 'text-white/70')}>
+                                                        {f.limite_superior != null ? fmtBRL(f.limite_superior) : 'acima'}
+                                                    </td>
+                                                    <td className={cn('py-1.5 px-2.5 text-right font-mono', atual ? 'text-ecf-yellow font-semibold' : 'text-emerald-400/80')}>
+                                                        {fmtValorFaixa(f.valor, f.valor_e_piso)}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
