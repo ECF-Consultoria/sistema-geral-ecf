@@ -201,6 +201,51 @@ function FaixaFormDialog({ open, title, aviso, faixasIniciais, onClose, onSalvar
     );
 }
 
+// ─── Tabela progressiva (Fase 139 Plano 06, correção 260904-jpn) ─────────
+// Densidade fiel a `design_handoff_fechamento/Fechamento.dc.html`: grade
+// `80px 1fr 160px` com gap 16px (não `<table>` de larguras automáticas),
+// linhas 12px/18px de padding a 13px de texto, cabeçalho 10px/18px sobre a
+// superfície interna (`ecf-card-2`), caixa com raio 12px. Antes desta
+// correção esse markup existia em DUAS cópias divergentes (bloco do grupo
+// e bloco do serviço) — agora é uma subcomponente só, usada nos dois
+// lugares. Fonte e paleta continuam as do projeto (font-mono do Tailwind,
+// tokens ecf-*) — decisão do usuário, não a JetBrains Mono do handoff.
+function TabelaProgressivaFaixas({ faixas, faixaOrdemAtual }) {
+    const colunas = 'grid grid-cols-[80px_1fr_160px] gap-4';
+
+    return (
+        <div className="rounded-xl border border-white/[0.06] overflow-hidden">
+            <div className={cn(colunas, 'px-[18px] py-2.5 bg-ecf-card-2 text-white/40 text-[11px] font-semibold uppercase tracking-[0.05em]')}>
+                <span>Faixa</span>
+                <span>Faturamento até</span>
+                <span className="text-right">Mensalidade</span>
+            </div>
+            {faixas.map((f, i) => {
+                const atual = faixaOrdemAtual != null && f.ordem === faixaOrdemAtual;
+                return (
+                    <div
+                        key={f.ordem}
+                        className={cn(
+                            colunas,
+                            'items-center px-[18px] py-3 font-mono text-[13px]',
+                            i > 0 && 'border-t border-white/[0.03]',
+                            atual && 'bg-ecf-yellow/10',
+                        )}
+                    >
+                        <span className={cn('font-semibold', atual ? 'text-ecf-yellow' : 'text-white/70')}>{f.ordem}ª</span>
+                        <span className={atual ? 'text-ecf-yellow' : 'text-white/70'}>
+                            {f.limite_superior != null ? fmtBRL(f.limite_superior) : 'acima'}
+                        </span>
+                        <span className={cn('text-right font-semibold', atual ? 'text-ecf-yellow' : 'text-emerald-400/80')}>
+                            {fmtValorFaixa(f.valor, f.valor_e_piso)}
+                        </span>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 export default function TabelaFaixasSection({ empresa, faixasPorServico = [], faixasPorGrupo = [], competenciaFechada = false, faixaOrdemAtual = null }) {
     // 'criar-propria' | 'editar-propria' | 'editar-servico' | 'criar-grupo' | 'editar-grupo' | null
     const [dialog, setDialog] = useState(null);
@@ -306,7 +351,7 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
         <div id={`tabela-faixas-${empresa.id}`} className="rounded-lg border border-white/[0.06] overflow-hidden">
             <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04] flex items-center gap-1.5">
                 <Table2 size={12} className="text-white/40 shrink-0" />
-                <span className="text-[11px] uppercase tracking-wider text-white/40">
+                <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-white/40">
                     Tabela progressiva{nomeTabela ? ` · ${nomeTabela}` : ''}
                 </span>
             </div>
@@ -330,36 +375,7 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                                 <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20">
                                     Tabela deste grupo
                                 </span>
-                                <div className="overflow-x-auto rounded-lg border border-white/[0.06]">
-                                    <table className="w-full text-[11px]">
-                                        <thead>
-                                            <tr className="text-white/30 uppercase tracking-[0.05em] border-b border-white/[0.06] bg-white/[0.02]">
-                                                <th className="text-left py-1.5 px-2.5 font-semibold">Faixa</th>
-                                                <th className="text-right py-1.5 px-2.5 font-semibold">Faturamento até</th>
-                                                <th className="text-right py-1.5 px-2.5 font-semibold">Mensalidade</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {grupoAplicado.faixas.map(f => {
-                                                const atual = faixaOrdemAtual != null && f.ordem === faixaOrdemAtual;
-                                                return (
-                                                    <tr
-                                                        key={f.ordem}
-                                                        className={cn('border-b border-white/[0.03] last:border-0', atual ? 'bg-ecf-yellow/10' : null)}
-                                                    >
-                                                        <td className={cn('py-1.5 px-2.5', atual ? 'text-ecf-yellow font-semibold' : 'text-white/70')}>{f.ordem}ª</td>
-                                                        <td className={cn('py-1.5 px-2.5 text-right font-mono', atual ? 'text-ecf-yellow' : 'text-white/70')}>
-                                                            {f.limite_superior != null ? fmtBRL(f.limite_superior) : 'acima'}
-                                                        </td>
-                                                        <td className={cn('py-1.5 px-2.5 text-right font-mono', atual ? 'text-ecf-yellow font-semibold' : 'text-emerald-400/80')}>
-                                                            {fmtValorFaixa(f.valor, f.valor_e_piso)}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <TabelaProgressivaFaixas faixas={grupoAplicado.faixas} faixaOrdemAtual={faixaOrdemAtual} />
                                 <div className="flex flex-wrap gap-2">
                                     <button type="button" disabled={bloqueado} onClick={() => setDialog('editar-grupo')} className={btnAccent}>
                                         Substituir tabela do grupo
@@ -396,36 +412,7 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                         </p>
 
                         {servicoAplicado && (
-                            <div className="overflow-x-auto rounded-lg border border-white/[0.06]">
-                                <table className="w-full text-[11px]">
-                                    <thead>
-                                        <tr className="text-white/30 uppercase tracking-[0.05em] border-b border-white/[0.06] bg-white/[0.02]">
-                                            <th className="text-left py-1.5 px-2.5 font-semibold">Faixa</th>
-                                            <th className="text-right py-1.5 px-2.5 font-semibold">Faturamento até</th>
-                                            <th className="text-right py-1.5 px-2.5 font-semibold">Mensalidade</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {servicoAplicado.faixas.map(f => {
-                                            const atual = faixaOrdemAtual != null && f.ordem === faixaOrdemAtual;
-                                            return (
-                                                <tr
-                                                    key={f.ordem}
-                                                    className={cn('border-b border-white/[0.03] last:border-0', atual ? 'bg-ecf-yellow/10' : null)}
-                                                >
-                                                    <td className={cn('py-1.5 px-2.5', atual ? 'text-ecf-yellow font-semibold' : 'text-white/70')}>{f.ordem}ª</td>
-                                                    <td className={cn('py-1.5 px-2.5 text-right font-mono', atual ? 'text-ecf-yellow' : 'text-white/70')}>
-                                                        {f.limite_superior != null ? fmtBRL(f.limite_superior) : 'acima'}
-                                                    </td>
-                                                    <td className={cn('py-1.5 px-2.5 text-right font-mono', atual ? 'text-ecf-yellow font-semibold' : 'text-emerald-400/80')}>
-                                                        {fmtValorFaixa(f.valor, f.valor_e_piso)}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
+                            <TabelaProgressivaFaixas faixas={servicoAplicado.faixas} faixaOrdemAtual={faixaOrdemAtual} />
                         )}
 
                         <div className="flex flex-wrap gap-2">
