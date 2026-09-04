@@ -387,6 +387,37 @@ operacional deixada no SUMMARY: os 201 snapshots de agosto/2026 em produção es
 para agosto vai comparar contra julho e disparar o aviso inicial para todo mundo que mudou de
 faixa; efeito de primeira carga esperado, não bug.
 
+## Posição paralela — Fase 139 (Redesenho da tela de fechamento) — EM EXECUÇÃO (1/7 planos)
+
+**Mesma disciplina dos blocos 135/136/137/138 acima:** Fase 139 fora de milestone, rodando em
+paralelo. `## Current Position` (Fase 132/133) não foi tocado.
+
+139-01 concluído — `FechamentoComparativoService` (novo, `App\Services\Fechamento`) lê o
+fechamento congelado do MÊS ANTERIOR em 1 consulta por granularidade
+(`anterioresPorEmpresa()`/`anterioresPorGrupo()`, filtro `origem = consolidar_mes`), sem N+1.
+As quatro chaves que o design pede (D-04) — `faixa_ordem_anterior`, `valor_faixa_anterior`,
+`subiu_de_faixa`, `ganho_faixa` — passaram a existir nos **cinco** array literais de linha de
+`AdminController::fechamento()` (empresa ao vivo; empresa congelada, dois literais —
+snapshot ausente/presente; grupo ao vivo; grupo congelado). Ramo AO VIVO mantém o fallback
+antigo (rollup do mês anterior classificado na MESMA tabela) só quando não há snapshot; ramo
+CONGELADO nunca recalcula (D-11) — sem linha no mês anterior os dois ficam `null` e
+`subiu_de_faixa` é `false`. A consulta de `FechamentoGrupoSnapshot::query()` que rodava DENTRO
+do `foreach ($porGrupo` de `fechamentoAgregarGruposAoVivo` virou 1 leitura antes do laço (mesmo
+N+1 que o serviço elimina). `subiu_de_faixa`/`ganho_faixa` centralizados em
+`fechamentoDerivarUpgrade()` (privado) pra nunca divergir entre os cinco literais — histórico da
+fase é "dado morreu no último trecho" 3 vezes antes desta. `ganho_faixa` nunca é `0` no lugar de
+`null` (zero = "subiu e não mudou de preço", diferente de "não sabemos"). Teste novo
+`Phase139ComparativoFaixaTest`: **12 testes / 76 asserções** — 7 unitários do serviço isolado
+(virada de ano, origem != consolidar_mes, faixa_ordem null, exatamente 1 query por método) + 5
+via HTTP (presença das 4 chaves em toda linha; empresa que sobe de faixa com os MESMOS valores
+ao vivo × congelado; desceu de faixa nunca vira ganho; sem fechamento anterior é null/null/
+false/null; linha de grupo ao vivo × congelada). Gate `Phase122|Phase136|Phase137|Phase138|
+Phase139`: **288 testes / 1528 asserções / 0 falhas** (era 276/1452 antes deste plano —
++12 testes/+76 asserções, todos novos, sem regressão). 3 commits (`bd1fca7b` serviço + teste
+unitário, `7b4112cb` controller, `53463172` teste HTTP). Last activity: 2026-09-04 — 139-01
+executado (o risco número 1 da fase, D-04, resolvido e travado por teste). Sem deploy — próximos
+planos (02-07) consomem estas chaves na reescrita da tela (`Financeiro.jsx`).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
