@@ -81,26 +81,6 @@
             vertical-align: middle;
         }
         .empresa-nome { font-weight: 600; color: #ffffff; }
-        .status-recebido {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 9999px;
-            font-size: 11px;
-            font-weight: 600;
-            background: rgba(16,185,129,0.12);
-            color: #34d399;
-            border: 1px solid rgba(16,185,129,0.2);
-        }
-        .status-pendente {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 9999px;
-            font-size: 11px;
-            font-weight: 600;
-            background: rgba(245,158,11,0.12);
-            color: #fbbf24;
-            border: 1px solid rgba(245,158,11,0.2);
-        }
         /* ── Totais ───────────────────────────────────────── */
         .totais-grid {
             display: table;
@@ -117,7 +97,6 @@
             padding: 16px 20px;
             border-right: 1px solid rgba(255,255,255,0.06);
             vertical-align: top;
-            width: 33.33%;
         }
         .totais-cell:last-child { border-right: none; }
         .totais-label {
@@ -163,7 +142,6 @@
                         <th>Faturamento</th>
                         <th>Faixa</th>
                         <th>Mensalidade</th>
-                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -188,13 +166,6 @@
                                     <span style="color: rgba(255,255,255,0.3);">—</span>
                                 @endif
                             </td>
-                            <td>
-                                @if ($r['recebido'])
-                                    <span class="status-recebido">Recebido</span>
-                                @else
-                                    <span class="status-pendente">Pendente</span>
-                                @endif
-                            </td>
                         </tr>
                         {{-- Linhas das empresas filhas (se houver) --}}
                         @foreach ($r['vinculadas'] ?? [] as $v)
@@ -217,7 +188,6 @@
                                     <span style="color: rgba(255,255,255,0.2);">—</span>
                                 @endif
                             </td>
-                            <td></td>
                         </tr>
                         @endforeach
                         {{-- Linha de total do grupo (quando há filhas) --}}
@@ -227,12 +197,11 @@
                             <td style="font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.80);">
                                 R$ {{ number_format($r['total_mensalidade'] ?? 0, 2, ',', '.') }}
                             </td>
-                            <td></td>
                         </tr>
                         @endif
                     @empty
                         <tr>
-                            <td colspan="5" style="text-align:center; color: rgba(255,255,255,0.3); padding: 24px;">
+                            <td colspan="4" style="text-align:center; color: rgba(255,255,255,0.3); padding: 24px;">
                                 Nenhum registro encontrado para este mês.
                             </td>
                         </tr>
@@ -248,14 +217,6 @@
                     <div class="totais-cell">
                         <p class="totais-label">Total Mensalidade</p>
                         <p class="totais-valor">R$ {{ number_format($dados['totais']['total_mensalidade'] ?? 0, 2, ',', '.') }}</p>
-                    </div>
-                    <div class="totais-cell">
-                        <p class="totais-label">Total Recebido</p>
-                        <p class="totais-valor verde">R$ {{ number_format($dados['totais']['total_recebido'] ?? 0, 2, ',', '.') }}</p>
-                    </div>
-                    <div class="totais-cell">
-                        <p class="totais-label">Total Pendente</p>
-                        <p class="totais-valor amber">R$ {{ number_format($dados['totais']['total_pendente'] ?? 0, 2, ',', '.') }}</p>
                     </div>
                 </div>
             </div>

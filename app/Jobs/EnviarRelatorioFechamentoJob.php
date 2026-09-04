@@ -6,7 +6,6 @@ use App\Mail\RelatorioFechamentoMail;
 use App\Models\Company;
 use App\Models\Configuracao;
 use App\Models\FechamentoGrupoSnapshot;
-use App\Models\FechamentoRecebido;
 use App\Models\FechamentoSnapshot;
 use App\Models\Servico;
 use App\Services\Fechamento\FechamentoFaixaResolver;
@@ -107,9 +106,6 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
             ->orderBy('name')
             ->get();
 
-        $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
-            ->pluck('recebido_em', 'company_id');
-
         $competenciaFechada = FechamentoSnapshot::query()
             ->whereDate('mes_referencia', $mesReferenciaStr)
             ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
@@ -117,8 +113,8 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
 
         // ── 4. Números por empresa: congelado (D-11) ou ao vivo (D-05) ────────
         $dadosPorId = $competenciaFechada
-            ? $this->porEmpresaCongelados($mesReferenciaStr, $rawCompanies, $recebidos)
-            : $this->porEmpresaAoVivo($rollupService, $faixaResolver, $mesSelecionado, $rawCompanies, $recebidos);
+            ? $this->porEmpresaCongelados($mesReferenciaStr, $rawCompanies)
+            : $this->porEmpresaAoVivo($rollupService, $faixaResolver, $mesSelecionado, $rawCompanies);
 
         // ── 5. Agregação por CompanyGroup (D-08/D-09/D-10) ────────────────────
         $entidades = $competenciaFechada
@@ -133,8 +129,6 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
         foreach ($entidades as $entidade) {
             $ancora = $entidade['ancora'];
             $linha  = $entidade['linha'];
-
-            $recebido = isset($recebidos[$ancora->id]);
 
             $linhaPrincipal = $this->linhaEmpresa($ancora, $linha, $periodoInicioFmt, $periodoFimFmt);
 
@@ -151,7 +145,6 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
             $relatorios[] = [
                 'company'           => $ancora,
                 'titulo'            => $titulo,
-                'recebido'          => $recebido,
                 'faturamento'       => $linhaPrincipal['faturamento'],
                 'periodo_inicio'    => $linhaPrincipal['periodo_inicio'],
                 'periodo_fim'       => $linhaPrincipal['periodo_fim'],
@@ -167,19 +160,13 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
         usort($relatorios, fn ($a, $b) => strcmp($a['titulo'], $b['titulo']));
 
         // ── 7. Calcula totais agregados ────────────────────────────────────────
+        // Fase 139 Plano 07: total_recebido/total_pendente saíram — ninguém
+        // alimentava a informação de pagamento (marcador usado uma única vez
+        // em produção); o email não pode mais afirmar isso.
         $totalMensalidade = array_sum(array_column($relatorios, 'total_mensalidade'));
-        $totalRecebido    = array_sum(
-            array_map(
-                fn ($r) => $r['recebido'] ? ($r['total_mensalidade'] ?? 0) : 0,
-                $relatorios
-            )
-        );
-        $totalPendente = $totalMensalidade - $totalRecebido;
 
         $totais = [
             'total_mensalidade' => $totalMensalidade,
-            'total_recebido'    => $totalRecebido,
-            'total_pendente'    => $totalPendente,
         ];
 
         // ── 8. Envia email para todos os destinatários ────────────────────────
@@ -213,7 +200,6 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
         FechamentoFaixaResolver $faixaResolver,
         string $mesSelecionado,
         Collection $rawCompanies,
-        Collection $recebidos,
     ): array {
         $rollup = $rollupService->porEmpresa($mesSelecionado, $rawCompanies);
 
@@ -237,7 +223,7 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
      * D-11 — lê `fechamento_snapshots`, nunca recalcula. Corrigir
      * `adman_metrics` depois do fechamento não muda o que já foi cobrado.
      */
-    private function porEmpresaCongelados(string $mesReferenciaStr, Collection $rawCompanies, Collection $recebidos): array
+    private function porEmpresaCongelados(string $mesReferenciaStr, Collection $rawCompanies): array
     {
         $snapshots = FechamentoSnapshot::query()
             ->whereDate('mes_referencia', $mesReferenciaStr)

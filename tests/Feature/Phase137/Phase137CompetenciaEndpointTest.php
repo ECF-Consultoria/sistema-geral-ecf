@@ -276,17 +276,25 @@ class Phase137CompetenciaEndpointTest extends TestCase
             $this->assertContains($nomeEsperado, $rotas, "Rota '{$nomeEsperado}' não foi registrada.");
         }
 
-        // As 7 rotas antigas continuam presentes (nada foi removido).
+        // As rotas antigas continuam presentes (nada foi removido), exceto
+        // 'admin.financeiro.recebido' — o marcador de "recebido" saiu da
+        // tela, do backend e da rota na Fase 139 Plano 07 (decisão do
+        // usuário: usado uma única vez em produção, ninguém o alimentava).
         foreach ([
             'admin.financeiro',
             'admin.financeiro.relatorio.geral',
             'admin.financeiro.relatorio.enviar',
             'admin.financeiro.sync',
             'admin.financeiro.update',
-            'admin.financeiro.recebido',
             'admin.financeiro.relatorio',
         ] as $nomeAntigo) {
             $this->assertContains($nomeAntigo, $rotas, "Rota antiga '{$nomeAntigo}' foi removida ou renomeada.");
         }
+
+        $this->assertNotContains(
+            'admin.financeiro.recebido',
+            $rotas,
+            "Rota 'admin.financeiro.recebido' deveria ter sido removida na Fase 139 Plano 07."
+        );
     }
 }

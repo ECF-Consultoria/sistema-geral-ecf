@@ -3,9 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Relatório de Fechamento — {{ $mes_label }}
-        @if ($filtro_recebido === 'sim') — Recebidos @elseif ($filtro_recebido === 'nao') — Pendentes @endif
-    </title>
+    <title>Relatório de Fechamento — {{ $mes_label }}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -92,31 +90,12 @@
             justify-content: space-between;
             align-items: center;
         }
-        .badge-rec { font-size: 9px; font-weight: 700; color: #065f46; background: #d1fae5; border: 1px solid #6ee7b7; padding: 1px 6px; border-radius: 8px; }
-        .badge-pen { font-size: 9px; font-weight: 700; color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; padding: 1px 6px; border-radius: 8px; }
-
         /* ── Bloco por empresa ───────────────────────────── */
         .company-block {
             page-break-before: always;
             page-break-inside: avoid;
         }
         .company-content { padding: 18px 28px 28px; }
-
-        /* ── Status badge ────────────────────────────────── */
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            padding: 3px 9px;
-            border-radius: 20px;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 14px;
-        }
-        .status-recebido { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
-        .status-pendente  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 
         /* ── Seções ──────────────────────────────────────── */
         .section { margin-bottom: 14px; }
@@ -283,17 +262,10 @@
 
 <div class="cover-content">
     @php
-        $totalRecebidos    = collect($relatorios)->where('recebido', true)->count();
-        $totalPendentes    = collect($relatorios)->where('recebido', false)->count();
         $totalMensalidades = collect($relatorios)->sum('total_mensalidade');
     @endphp
 
-    <h2 class="cover-title">
-        @if ($filtro_recebido === 'sim') Empresas Recebidas
-        @elseif ($filtro_recebido === 'nao') Empresas Pendentes
-        @else Fechamento — Todas as Empresas
-        @endif
-    </h2>
+    <h2 class="cover-title">Fechamento — Todas as Empresas</h2>
     <p class="cover-sub">{{ $mes_label }} · {{ count($relatorios) }} empresa{{ count($relatorios) !== 1 ? 's' : '' }}</p>
 
     <div class="cover-stats">
@@ -301,16 +273,6 @@
             <div class="num">{{ count($relatorios) }}</div>
             <div class="lbl">Neste relatório</div>
         </div>
-        @if (!$filtro_recebido)
-        <div class="cover-stat green">
-            <div class="num">{{ $totalRecebidos }}</div>
-            <div class="lbl">Recebidas</div>
-        </div>
-        <div class="cover-stat amber">
-            <div class="num">{{ $totalPendentes }}</div>
-            <div class="lbl">Pendentes</div>
-        </div>
-        @endif
         <div class="cover-stat">
             <div class="num">R$ {{ number_format($totalMensalidades, 0, ',', '.') }}</div>
             <div class="lbl">Total mensalidades</div>
@@ -322,11 +284,6 @@
         @foreach ($relatorios as $r)
         <div class="indice-row">
             <span>{{ $r['company']->name }}</span>
-            @if ($r['recebido'])
-                <span class="badge-rec">✓ Recebido</span>
-            @else
-                <span class="badge-pen">⏳ Pendente</span>
-            @endif
         </div>
         @endforeach
     </div>
@@ -347,12 +304,6 @@
     <div class="ecf-gradient-bar"></div>
 
     <div class="company-content">
-
-        @if ($r['recebido'])
-            <div class="status-badge status-recebido">✓ Pagamento recebido</div>
-        @else
-            <div class="status-badge status-pendente">⏳ Pagamento pendente</div>
-        @endif
 
         {{-- Dados da empresa --}}
         <div class="section">

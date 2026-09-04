@@ -126,7 +126,6 @@ class Phase137RelatoriosFechamentoTest extends TestCase
             'mes_label'       => $dados['mesLabel'] ?? '',
             'mes_selecionado' => '',
             'gerado_em'       => now()->format('d/m/Y'),
-            'filtro_recebido' => '',
         ])->render();
     }
 

@@ -83,24 +83,9 @@
             vertical-align: middle;
             width: 50%;
         }
-        .badge-rec { font-size: 9px; font-weight: 700; color: #065f46; background: #d1fae5; border: 1px solid #6ee7b7; padding: 1px 6px; border-radius: 8px; }
-        .badge-pen { font-size: 9px; font-weight: 700; color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; padding: 1px 6px; border-radius: 8px; }
-
         /* ── Bloco por empresa ───────────────────────────────── */
         .company-block { page-break-before: always; }
         .company-content { padding: 18px 28px 28px; }
-
-        /* ── Status badge ────────────────────────────────────── */
-        .status-badge {
-            display: inline-block;
-            padding: 3px 9px;
-            border-radius: 20px;
-            font-size: 10px; font-weight: 700;
-            text-transform: uppercase; letter-spacing: 0.5px;
-            margin-bottom: 14px;
-        }
-        .status-recebido { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
-        .status-pendente  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 
         /* ── Dados da empresa (grid 3 cols → table) ──────────── */
         .fields-table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
@@ -207,17 +192,10 @@
 
 <div class="cover-content">
     @php
-        $totalRecebidos    = collect($relatorios)->where('recebido', true)->count();
-        $totalPendentes    = collect($relatorios)->where('recebido', false)->count();
         $totalMensalidades = collect($relatorios)->sum('total_mensalidade');
     @endphp
 
-    <h2 class="cover-title">
-        @if ($filtro_recebido === 'sim') Empresas Recebidas
-        @elseif ($filtro_recebido === 'nao') Empresas Pendentes
-        @else Fechamento — Todas as Empresas
-        @endif
-    </h2>
+    <h2 class="cover-title">Fechamento — Todas as Empresas</h2>
     <p class="cover-sub">{{ $mes_label }} · {{ count($relatorios) }} empresa{{ count($relatorios) !== 1 ? 's' : '' }}</p>
 
     {{-- Stats da capa (flex → tabela) --}}
@@ -227,16 +205,6 @@
                 <div class="num">{{ count($relatorios) }}</div>
                 <div class="lbl">Neste relatório</div>
             </td>
-            @if (!$filtro_recebido)
-            <td class="cover-stat-cell green">
-                <div class="num">{{ $totalRecebidos }}</div>
-                <div class="lbl">Recebidas</div>
-            </td>
-            <td class="cover-stat-cell amber">
-                <div class="num">{{ $totalPendentes }}</div>
-                <div class="lbl">Pendentes</div>
-            </td>
-            @endif
             <td class="cover-stat-cell">
                 <div class="num">R$ {{ number_format($totalMensalidades, 0, ',', '.') }}</div>
                 <div class="lbl">Total mensalidades</div>
@@ -253,12 +221,6 @@
             @foreach ($pair as $r)
             <td>
                 {{ is_object($r['company']) ? $r['company']->name : ($r['company']['name'] ?? '') }}
-                &nbsp;
-                @if ($r['recebido'])
-                    <span class="badge-rec">✓ Recebido</span>
-                @else
-                    <span class="badge-pen">⏳ Pendente</span>
-                @endif
             </td>
             @endforeach
             @if (count($pair) === 1)<td></td>@endif
@@ -281,12 +243,6 @@
     <div class="ecf-gradient-bar"></div>
 
     <div class="company-content">
-
-        @if ($r['recebido'])
-            <div class="status-badge status-recebido">✓ Pagamento recebido</div>
-        @else
-            <div class="status-badge status-pendente">⏳ Pagamento pendente</div>
-        @endif
 
         {{-- Dados da empresa (grid 3 cols → tabela) --}}
         <div class="section">

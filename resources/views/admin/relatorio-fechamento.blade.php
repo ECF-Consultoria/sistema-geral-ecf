@@ -52,22 +52,6 @@
 
         .content { padding: 18px 28px 28px; }
 
-        /* ── Status badge ────────────────────────────────── */
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            padding: 3px 9px;
-            border-radius: 20px;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 14px;
-        }
-        .status-recebido { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
-        .status-pendente  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
-
         /* ── Seções ──────────────────────────────────────── */
         .section { margin-bottom: 16px; }
         .section-title {
@@ -247,12 +231,6 @@
 <div class="ecf-gradient-bar"></div>
 
 <div class="content">
-
-@if ($recebido)
-    <div class="status-badge status-recebido">✓ Pagamento recebido</div>
-@else
-    <div class="status-badge status-pendente">⏳ Pagamento pendente</div>
-@endif
 
 {{-- ── DADOS DA EMPRESA PRINCIPAL ──────────────────────── --}}
 <div class="section">
