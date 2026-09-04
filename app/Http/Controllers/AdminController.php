@@ -14,6 +14,7 @@ use App\Models\Servico;
 use App\Models\ServicoFaixaFaturamento;
 use App\Models\ShopeeMetric;
 use App\Services\AdmanService;
+use App\Services\Fechamento\FechamentoComparativoService;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Fechamento\FechamentoRollupService;
 use App\Support\CobrancaCalculator;
@@ -30,6 +31,7 @@ class AdminController extends Controller
         private AdmanService $adman,
         private FechamentoRollupService $rollupService,
         private FechamentoFaixaResolver $faixaResolver,
+        private FechamentoComparativoService $comparativoService,
     ) {}
 
     public function empresas()
@@ -264,6 +266,32 @@ class AdminController extends Controller
     }
 
     /**
+     * Fase 139 (D-04) — deriva `subiu_de_faixa` e `ganho_faixa` a partir da
+     * ordem/valor ATUAL e ANTERIOR. Extraído para os cinco array literais de
+     * linha (empresa e grupo, ao vivo e congelado) nunca divergirem entre si
+     * — é exatamente esse tipo de divergência que já fez um dado morrer no
+     * último trecho três vezes nesta linha de trabalho.
+     *
+     * `subiu_de_faixa` só é `true` quando as duas ordens existem e a atual é
+     * maior — nunca inferido de `evolucao` (string, pode existir sem ordem).
+     * `ganho_faixa` só é calculado quando subiu E os dois valores existem;
+     * nos demais casos fica `null` — nunca `0.0` (zero é "subiu e a
+     * mensalidade não mudou", informação diferente de "não sabemos").
+     *
+     * @return array{subiu_de_faixa: bool, ganho_faixa: float|null}
+     */
+    private function fechamentoDerivarUpgrade(?int $faixaOrdemAtual, ?float $valorMensalAtual, ?int $faixaOrdemAnterior, ?float $valorFaixaAnterior): array
+    {
+        $subiu = $faixaOrdemAtual !== null && $faixaOrdemAnterior !== null && $faixaOrdemAtual > $faixaOrdemAnterior;
+
+        $ganho = ($subiu && $valorMensalAtual !== null && $valorFaixaAnterior !== null)
+            ? $valorMensalAtual - $valorFaixaAnterior
+            : null;
+
+        return ['subiu_de_faixa' => $subiu, 'ganho_faixa' => $ganho];
+    }
+
+    /**
      * Fase 137 (D-01/D-02b/D-05/D-06/D-07) — números por empresa AO VIVO,
      * quando a competência ainda está aberta. Mesma precedência de estado e
      * mesma lógica de evolução do comando `fechamento:consolidar-mes`
@@ -279,10 +307,10 @@ class AdminController extends Controller
 
         $companyIdsComShopee = ShopeeMetric::query()->distinct()->pluck('company_id')->flip();
 
-        $snapshotsAnterioresPorEmpresa = FechamentoSnapshot::query()
-            ->whereDate('mes_referencia', $mesAnterior->toDateString())
-            ->get()
-            ->keyBy('company_id');
+        // Fase 139 (D-04): leitura única do fechamento congelado do mês
+        // anterior — substitui a consulta local antiga (que não filtrava por
+        // origem) e é a fonte primária de faixa_ordem_anterior/valor_faixa_anterior.
+        $anterioresPorEmpresa = $this->comparativoService->anterioresPorEmpresa($mesSelecionado.'-01');
 
         $dadosPorId = [];
 
@@ -308,17 +336,31 @@ class AdminController extends Controller
             // quando existe; senão calcula o rollup do mês anterior ao vivo
             // e classifica com a MESMA tabela desta empresa — nunca comparar
             // réguas diferentes.
-            $ordemAnterior = null;
-            $snapAnterior  = $snapshotsAnterioresPorEmpresa->get($c->id);
+            //
+            // Fase 139 (D-04): a mesma variável $ordemAnterior agora também
+            // alimenta faixa_ordem_anterior/valor_faixa_anterior — só no
+            // ramo AO VIVO existe o fallback pelo rollup; quando o valor vem
+            // do fallback (não havia snapshot), o valor da faixa é buscado
+            // na MESMA tabela desta empresa, nunca comparando réguas
+            // diferentes.
+            $ordemAnterior      = null;
+            $valorFaixaAnterior = null;
+            $anteriorInfo       = $anterioresPorEmpresa[$c->id] ?? null;
 
-            if ($snapAnterior !== null && $snapAnterior->faixa_ordem !== null) {
-                $ordemAnterior = (int) $snapAnterior->faixa_ordem;
+            if ($anteriorInfo !== null && $anteriorInfo['faixa_ordem'] !== null) {
+                $ordemAnterior      = $anteriorInfo['faixa_ordem'];
+                $valorFaixaAnterior = $anteriorInfo['valor_faixa'];
             } elseif ($faixaData !== null) {
                 $fatAnterior = $rollupAnterior[$c->id]['faturamento_total'] ?? null;
 
                 if ($fatAnterior !== null) {
                     $classifAnterior = $this->faixaResolver->classificar((float) $fatAnterior, $faixaData['faixas']);
                     $ordemAnterior   = $classifAnterior['ordem'] ?? null;
+
+                    if ($ordemAnterior !== null) {
+                        $faixaAnteriorNaTabela = $faixaData['faixas']->firstWhere('ordem', $ordemAnterior);
+                        $valorFaixaAnterior    = $faixaAnteriorNaTabela?->valor !== null ? (float) $faixaAnteriorNaTabela->valor : null;
+                    }
                 }
             }
 
@@ -330,6 +372,8 @@ class AdminController extends Controller
                     default                                   => 'manteve',
                 };
             }
+
+            $upgrade = $this->fechamentoDerivarUpgrade($classificacao['ordem'] ?? null, $classificacao['valor'] ?? null, $ordemAnterior, $valorFaixaAnterior);
 
             $temContratoMensal = $c->contratosServico->contains(
                 fn ($ct) => $ct->ativo === true && $ct->servico !== null && $ct->servico->tipo_cobranca === Servico::TIPO_MENSAL
@@ -363,6 +407,12 @@ class AdminController extends Controller
                 'cobranca_mensal'       => $cobrancaMensal,
                 'recebido'              => isset($recebidos[$c->id]),
                 'evolucao'              => $evolucao,
+                // Fase 139 (D-04): de qual faixa a empresa veio e quanto
+                // aquela faixa cobrava — base do widget "Subiram de faixa".
+                'faixa_ordem_anterior'  => $ordemAnterior,
+                'valor_faixa_anterior'  => $valorFaixaAnterior,
+                'subiu_de_faixa'        => $upgrade['subiu_de_faixa'],
+                'ganho_faixa'           => $upgrade['ganho_faixa'],
             ];
         }
 
@@ -383,6 +433,10 @@ class AdminController extends Controller
             ->with('servico:id,nome')
             ->get()
             ->keyBy('company_id');
+
+        // Fase 139 (D-04): ramo CONGELADO não tem fallback ao vivo — sem
+        // linha no mês anterior, os dois ficam null (D-11, nunca recalcula).
+        $anterioresPorEmpresa = $this->comparativoService->anterioresPorEmpresa($mesReferenciaStr);
 
         $dadosPorId = [];
 
@@ -418,10 +472,21 @@ class AdminController extends Controller
                     'cobranca_mensal'       => null,
                     'recebido'              => isset($recebidos[$c->id]),
                     'evolucao'              => null,
+                    // Fase 139 (D-04): sem linha nesta competência, também
+                    // não há como comparar com o mês anterior.
+                    'faixa_ordem_anterior'  => null,
+                    'valor_faixa_anterior'  => null,
+                    'subiu_de_faixa'        => false,
+                    'ganho_faixa'           => null,
                 ];
 
                 continue;
             }
+
+            $ordemAnterior      = $anterioresPorEmpresa[$c->id]['faixa_ordem'] ?? null;
+            $valorFaixaAnterior = $anterioresPorEmpresa[$c->id]['valor_faixa'] ?? null;
+            $valorMensalAtual   = $s->valor_faixa !== null ? (float) $s->valor_faixa : null;
+            $upgrade            = $this->fechamentoDerivarUpgrade($s->faixa_ordem, $valorMensalAtual, $ordemAnterior, $valorFaixaAnterior);
 
             $dadosPorId[$c->id] = [
                 'id'                    => $c->id,
@@ -441,13 +506,19 @@ class AdminController extends Controller
                 'faixa_ordem'           => $s->faixa_ordem,
                 'faixa_limite_inferior' => $s->faixa_limite_inferior !== null ? (float) $s->faixa_limite_inferior : null,
                 'faixa_limite_superior' => $s->faixa_limite_superior !== null ? (float) $s->faixa_limite_superior : null,
-                'valor_mensal'          => $s->valor_faixa !== null ? (float) $s->valor_faixa : null,
+                'valor_mensal'          => $valorMensalAtual,
                 'valor_faixa_e_piso'    => (bool) $s->valor_faixa_e_piso,
                 'tabela_origem'         => $s->tabela_origem,
                 'tabela_servico_nome'   => $s->servico?->nome,
                 'cobranca_mensal'       => $s->cobranca_mensal !== null ? (float) $s->cobranca_mensal : null,
                 'recebido'              => isset($recebidos[$c->id]),
                 'evolucao'              => $s->evolucao,
+                // Fase 139 (D-04): reconstruído do snapshot do mês anterior
+                // — nunca recalcula (D-11).
+                'faixa_ordem_anterior'  => $ordemAnterior,
+                'valor_faixa_anterior'  => $valorFaixaAnterior,
+                'subiu_de_faixa'        => $upgrade['subiu_de_faixa'],
+                'ganho_faixa'           => $upgrade['ganho_faixa'],
             ];
         }
 
@@ -478,7 +549,11 @@ class AdminController extends Controller
             ->filter(fn (Company $c) => $c->company_group_id !== null && isset($dadosPorId[$c->id]))
             ->groupBy('company_group_id');
 
-        $mesAnteriorStr = Carbon::createFromFormat('Y-m-d', $mesReferenciaStr)->subMonthNoOverflow()->toDateString();
+        // Fase 139 (D-04): leitura única ANTES do laço — substitui a consulta
+        // de `FechamentoGrupoSnapshot::query()` que hoje roda uma vez por
+        // grupo dentro do laço (o N+1 que este serviço elimina). A evolução
+        // do grupo passa a ler do mesmo array, sem mudar o resultado.
+        $anterioresPorGrupo = $this->comparativoService->anterioresPorGrupo($mesReferenciaStr);
 
         foreach ($porGrupo as $groupId => $membros) {
             $linhasMembros = $membros->map(function (Company $c) use ($dadosPorId) {
@@ -552,19 +627,19 @@ class AdminController extends Controller
 
             // Evolução do grupo: só compara contra o snapshot de grupo do
             // mês anterior (sem fallback ao vivo) — mesma régua do comando.
-            $snapGrupoAnterior = FechamentoGrupoSnapshot::query()
-                ->where('company_group_id', $groupId)
-                ->whereDate('mes_referencia', $mesAnteriorStr)
-                ->first();
+            $ordemAnteriorGrupo = $anterioresPorGrupo[$groupId]['faixa_ordem'] ?? null;
+            $valorFaixaAnteriorGrupo = $anterioresPorGrupo[$groupId]['valor_faixa'] ?? null;
 
             $evolucaoGrupo = null;
-            if ($snapGrupoAnterior !== null && $snapGrupoAnterior->faixa_ordem !== null && $classificacaoGrupo !== null) {
+            if ($ordemAnteriorGrupo !== null && $classificacaoGrupo !== null) {
                 $evolucaoGrupo = match (true) {
-                    $classificacaoGrupo['ordem'] > $snapGrupoAnterior->faixa_ordem => 'subiu',
-                    $classificacaoGrupo['ordem'] < $snapGrupoAnterior->faixa_ordem => 'desceu',
-                    default                                                        => 'manteve',
+                    $classificacaoGrupo['ordem'] > $ordemAnteriorGrupo => 'subiu',
+                    $classificacaoGrupo['ordem'] < $ordemAnteriorGrupo => 'desceu',
+                    default                                             => 'manteve',
                 };
             }
+
+            $upgradeGrupo = $this->fechamentoDerivarUpgrade($classificacaoGrupo['ordem'] ?? null, $classificacaoGrupo['valor'] ?? null, $ordemAnteriorGrupo, $valorFaixaAnteriorGrupo);
 
             $todosContratosDoGrupo  = $membros->flatMap(fn (Company $c) => $c->contratosServico);
             $temContratoMensalGrupo = $todosContratosDoGrupo->contains(
@@ -616,6 +691,12 @@ class AdminController extends Controller
                 'recebido'              => $dadosPorId[$ancora->id]['recebido'] ?? false,
                 'evolucao'              => $evolucaoGrupo,
                 'conta_no_total'        => true,
+                // Fase 139 (D-04): grupo continua sem fallback ao vivo —
+                // vem só do fechamento congelado do grupo no mês anterior.
+                'faixa_ordem_anterior'  => $ordemAnteriorGrupo,
+                'valor_faixa_anterior'  => $valorFaixaAnteriorGrupo,
+                'subiu_de_faixa'        => $upgradeGrupo['subiu_de_faixa'],
+                'ganho_faixa'           => $upgradeGrupo['ganho_faixa'],
             ];
         }
 
@@ -652,6 +733,10 @@ class AdminController extends Controller
             ->get()
             ->keyBy('company_group_id');
 
+        // Fase 139 (D-04): ramo CONGELADO não tem fallback ao vivo — sem
+        // linha no mês anterior, os dois ficam null (D-11, nunca recalcula).
+        $anterioresPorGrupo = $this->comparativoService->anterioresPorGrupo($mesReferenciaStr);
+
         foreach ($porGrupo as $groupId => $membros) {
             $s = $snapshotsGrupo->get($groupId);
 
@@ -683,6 +768,11 @@ class AdminController extends Controller
                 ->values()
                 ->all();
 
+            $ordemAnteriorGrupo      = $anterioresPorGrupo[$groupId]['faixa_ordem'] ?? null;
+            $valorFaixaAnteriorGrupo = $anterioresPorGrupo[$groupId]['valor_faixa'] ?? null;
+            $valorMensalAtualGrupo   = $s?->valor_faixa !== null ? (float) $s->valor_faixa : null;
+            $upgradeGrupo            = $this->fechamentoDerivarUpgrade($s?->faixa_ordem, $valorMensalAtualGrupo, $ordemAnteriorGrupo, $valorFaixaAnteriorGrupo);
+
             $linhasFinais[$ancoraId] = [
                 'id'                    => $ancoraId,
                 'tipo'                  => 'grupo',
@@ -703,7 +793,7 @@ class AdminController extends Controller
                 'faixa_ordem'           => $s?->faixa_ordem,
                 'faixa_limite_inferior' => $s?->faixa_limite_inferior !== null ? (float) $s->faixa_limite_inferior : null,
                 'faixa_limite_superior' => $s?->faixa_limite_superior !== null ? (float) $s->faixa_limite_superior : null,
-                'valor_mensal'          => $s?->valor_faixa !== null ? (float) $s->valor_faixa : null,
+                'valor_mensal'          => $valorMensalAtualGrupo,
                 'valor_faixa_e_piso'    => (bool) ($s?->valor_faixa_e_piso ?? false),
                 'tabela_origem'         => $s?->tabela_origem,
                 'tabela_servico_nome'   => $s?->servico?->nome,
@@ -714,6 +804,12 @@ class AdminController extends Controller
                 'recebido'              => $dadosPorId[$ancoraId]['recebido'] ?? false,
                 'evolucao'              => $s?->evolucao,
                 'conta_no_total'        => true,
+                // Fase 139 (D-04): reconstruído do snapshot de grupo do mês
+                // anterior — nunca recalcula (D-11).
+                'faixa_ordem_anterior'  => $ordemAnteriorGrupo,
+                'valor_faixa_anterior'  => $valorFaixaAnteriorGrupo,
+                'subiu_de_faixa'        => $upgradeGrupo['subiu_de_faixa'],
+                'ganho_faixa'           => $upgradeGrupo['ganho_faixa'],
             ];
         }
 
