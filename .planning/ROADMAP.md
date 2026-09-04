@@ -2222,6 +2222,7 @@ Plans:
 - [x] 139-04-PLAN.md — Lista em quatro colunas com barra de progresso, filtros em chips e estado vazio
 - [x] 139-05-PLAN.md — Área expandida em três passos e tabela progressiva com a faixa atual destacada
 - [ ] 139-06-PLAN.md — Trava de contrato da UI, build, gate e conferência humana em produção (checkpoint)
+- [x] 139-07-PLAN.md — Remove o marcador de "recebido" dos seis pontos onde vivia (tela, controller, rota, e-mail mensal, dois PDFs) — plano emergente, decisão do usuário em 2026-09-04 após medição em produção (usado 1 vez, nunca mais)
 
 ---
 

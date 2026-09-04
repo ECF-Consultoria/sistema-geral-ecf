@@ -387,7 +387,7 @@ operacional deixada no SUMMARY: os 201 snapshots de agosto/2026 em produção es
 para agosto vai comparar contra julho e disparar o aviso inicial para todo mundo que mudou de
 faixa; efeito de primeira carga esperado, não bug.
 
-## Posição paralela — Fase 139 (Redesenho da tela de fechamento) — EM EXECUÇÃO (5/7 planos)
+## Posição paralela — Fase 139 (Redesenho da tela de fechamento) — EM EXECUÇÃO (6/7 planos — falta 139-06)
 
 **Mesma disciplina dos blocos 135/136/137/138 acima:** Fase 139 fora de milestone, rodando em
 paralelo. `## Current Position` (Fase 132/133) não foi tocado.
@@ -521,6 +521,33 @@ asserções / 0 falhas** — idêntico ao baseline (nenhuma regressão). 2 commi
 passos + RecebidoToggle + copy sem "competência", `b000dd84` destaque da faixa atual na tabela
 progressiva). Last activity: 2026-09-04 — 139-05 executado. Sem deploy — planos 06-07 seguem
 (gate de contrato adicional e fechamento da fase).
+
+139-07 concluído — marcador de "recebido" removido dos seis pontos onde vivia: tela
+(`RecebidoToggle` — que TINHA chamador ativo na área expandida desde o 139-05, ao contrário do
+que o prompt de execução indicava —, filtro "Pagamento", contagens Recebidas/Pendentes),
+`AdminController` (`toggleRecebido()`, leitura de `FechamentoRecebido`, 5 emissões da chave
+`'recebido'` nas 2 fontes de dados + 2 agregações de grupo, filtro `?recebido=` do relatório
+geral), rota `POST /financeiro/{company}/recebido`, job de e-mail
+(`EnviarRelatorioFechamentoJob` — leitura, chave, totais `total_recebido`/`total_pendente`) e
+quatro blades. Decisão do usuário (2026-09-04, dado medido): marcador usado 1 vez em produção
+(abril/2026) e nunca mais — sai de tudo, não só da tela, senão o e-mail/PDFs ficam informando
+"tudo pendente" pra sempre. `fechamento_recebidos`/`FechamentoRecebido` preservados — linha
+histórica intacta, sem migration de drop. 2 desvios auto-corrigidos (ambos Rule 1/2): o mapa de
+interfaces do plano listava `relatorio-geral-pdf.blade.php` como um dos "dois PDFs", mas esse
+arquivo está ÓRFÃO (nenhum `view()` aponta pra ele) — a view REAL usada pelo dropdown "Gerar
+relatórios" E pelo anexo PDF do e-mail (via Browsershot) é `admin/relatorio-geral.blade.php`, e
+o corpo do e-mail é `emails/relatorio-fechamento.blade.php` — nenhum dos dois estava mapeado;
+ambos limpos junto (senão o e-mail real de produção continuaria com o defeito que motivou a
+fase); e `Phase137CompetenciaEndpointTest` afirmava explicitamente que a rota removida "continua
+presente" — assert invertido com o motivo documentado. Trava nova `Phase139SemMarcadorRecebidoTest`:
+**10 testes / 30 asserções** — por comportamento visível/emitido (rotas, chaves de prop, HTML
+renderizado), nunca pela string solta, porque a tabela/model devem continuar existindo. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139`: **312 testes / 1614 asserções / 0 falhas** (era
+302/1584 antes deste plano — +10 testes/+30 asserções, todos novos, sem regressão).
+`Phase138AvisoMudancaFaixaTest` (flaky pré-existente) confirmado passando isolado — não é
+regressão. 3 commits (`f2811636` tela+controller+rota, `5ed80d1e` job+mail+quatro blades,
+`bdbb6127` trava de teste). Last activity: 2026-09-04 — 139-07 executado (6/7 planos concluídos;
+139-06 segue pendente, fora da dependência deste plano — `depends_on: ["139-05"]`). Sem deploy.
 
 ## Current Position
 
@@ -1763,6 +1790,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-04T12:42:05-03:00
+Stopped at: Completed 139-07-PLAN.md (marcador de recebido removido dos seis pontos; trava de teste criada; 139-06 segue pendente, fora da dependência deste plano)
 Last session: 2026-09-04T00:00:00.000Z
 Stopped at: Completed 138-06-PLAN.md (checkpoint humano aprovado — "Aprovado" — fase 138 concluída, 6/6 planos)
 Last session: 2026-09-02T18:34:53.366Z
