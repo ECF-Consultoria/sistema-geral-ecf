@@ -6,6 +6,7 @@ use App\Jobs\EnviarRelatorioFechamentoJob;
 use App\Models\Company;
 use App\Models\CompanyGroup;
 use App\Models\Configuracao;
+use App\Models\ContratoAssinatura;
 use App\Models\FechamentoGrupoSnapshot;
 use App\Models\FechamentoSnapshot;
 use App\Models\GrupoFaixaFaturamento;
@@ -181,16 +182,24 @@ class AdminController extends Controller
             ->orderBy('name')
             ->get();
 
+        // Quick 260904-kwz — quais empresas têm contrato assinado no
+        // sistema, uma consulta em massa ANTES do laço (mesmo padrão de
+        // `FechamentoComparativoService`, T-138-11): é o segundo caminho de
+        // confirmação da tabela aplicada (o primeiro é o cadastro manual,
+        // já visível em `tabela_origem`). Sem contrato assinado NEM cadastro
+        // manual, a tabela do serviço foi só presumida.
+        $companyIdsComContratoAssinado = $this->fechamentoCompanyIdsComContratoAssinado();
+
         // Passo 2 — números por empresa: congelado (snapshot) ou ao vivo (rollup + resolver).
         $dadosPorId = $competenciaFechada
-            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim)
-            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim);
+            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $companyIdsComContratoAssinado)
+            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $companyIdsComContratoAssinado);
 
         // Passo 3 — agregação por CompanyGroup (D-08/D-09/D-10). parent_company_id
         // NUNCA participa da soma, faixa ou conta_no_total a partir daqui.
         $dadosPorId = $competenciaFechada
-            ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr)
-            : $this->fechamentoAgregarGruposAoVivo($dadosPorId, $rawCompanies, $mesReferenciaStr);
+            ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado)
+            : $this->fechamentoAgregarGruposAoVivo($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado);
 
         // Fase 139 (D-01/D-04, item 3) — números do topo da tela ("Total a
         // receber" + widget de upgrades). Somado sobre as MESMAS linhas que
@@ -296,6 +305,61 @@ class AdminController extends Controller
     }
 
     /**
+     * Quick 260904-kwz — a tabela aplicada tem confirmação (cadastro manual
+     * OU contrato assinado no sistema) ou foi só presumida a partir do
+     * serviço? Extraído para os CINCO literais de linha (empresa e grupo,
+     * ao vivo e congelado) nunca divergirem entre si — é a mesma classe de
+     * defeito que `fechamentoDerivarUpgrade()` já existe para evitar.
+     *
+     * Dois caminhos de confirmação (medido em produção em 2026-09-04: 127
+     * de 167 empresas com tabela vinda do serviço não tinham nenhum dos
+     * dois, R$ 460.500/mês sem confirmação):
+     *  1. Cadastro manual — `$tabelaOrigem` é 'propria' (exceção da própria
+     *     empresa) ou 'grupo' (tabela do grupo, Fase 138). Confirmado sem
+     *     precisar olhar contrato nenhum.
+     *  2. `$tabelaOrigem` é 'servico' (herdada do contrato de serviço,
+     *     nunca cadastrada à mão) — só confirmado se a empresa DONA da
+     *     tabela (a própria empresa nas linhas de empresa; a âncora nas
+     *     linhas de grupo sem tabela própria) tiver um `ContratoAssinatura`
+     *     com `status = 'assinado'` no sistema — é a tabela escrita nesse
+     *     contrato que legitima a do serviço.
+     *
+     * `null` quando `$tabelaOrigem` é null — não existe tabela nenhuma
+     * (estado "A DEFINIR"), a pergunta "está confirmada?" não se aplica e
+     * não pode virar `false` (isso pintaria uma pendência que já é outra,
+     * distinta, mais grave).
+     */
+    /**
+     * Quick 260904-kwz — consulta em massa (uma só, nunca uma por linha,
+     * T-138-11) de quais empresas têm `ContratoAssinatura` com
+     * `status = 'assinado'` no sistema. Compartilhada pelos três endpoints
+     * que montam linhas de fechamento (`fechamento()`, `gerarRelatorio()`,
+     * `gerarRelatorioGeral()`) para os três nunca divergirem na mesma
+     * pergunta.
+     */
+    private function fechamentoCompanyIdsComContratoAssinado(): Collection
+    {
+        return ContratoAssinatura::query()
+            ->where('status', ContratoAssinatura::STATUS_ASSINADO)
+            ->distinct()
+            ->pluck('company_id')
+            ->flip();
+    }
+
+    private function fechamentoTabelaConfirmada(?string $tabelaOrigem, ?int $companyIdDaTabela, Collection $companyIdsComContratoAssinado): ?bool
+    {
+        if ($tabelaOrigem === null) {
+            return null;
+        }
+
+        if (in_array($tabelaOrigem, ['propria', 'grupo'], true)) {
+            return true;
+        }
+
+        return $companyIdDaTabela !== null && $companyIdsComContratoAssinado->has($companyIdDaTabela);
+    }
+
+    /**
      * Fase 139 (D-01/D-04, item 3) — números do topo da tela ("Total a
      * receber" + widget "Subiram de faixa"), somados sobre as MESMAS linhas
      * de `$dadosPorId` já agregadas por grupo (Passo 3 de `fechamento()`) —
@@ -309,7 +373,7 @@ class AdminController extends Controller
      * plano 02).
      *
      * @param  array<int|string, array<string, mixed>>  $dadosPorId  linhas já agregadas por grupo, ANTES da progressão (Passo 4)
-     * @return array{total_a_receber: float, total_e_piso: bool, empresas_com_cobranca: int, empresas_sem_valor_definido: int, faturamento_gerado: float|null, mes_anterior_fechado: bool, mes_anterior_total: float|null, variacao: float|null, upgrades_quantidade: int, upgrades_ganho_total: float, upgrades_ganho_parcial: bool}
+     * @return array{total_a_receber: float, total_e_piso: bool, empresas_com_cobranca: int, empresas_sem_valor_definido: int, faturamento_gerado: float|null, mes_anterior_fechado: bool, mes_anterior_total: float|null, variacao: float|null, upgrades_quantidade: int, upgrades_ganho_total: float, upgrades_ganho_parcial: bool, tabelas_assumidas: int}
      */
     private function fechamentoTotais(array $dadosPorId, string $mesReferenciaStr): array
     {
@@ -321,6 +385,12 @@ class AdminController extends Controller
         $upgradesQuantidade       = 0;
         $upgradesGanhoTotal       = 0.0;
         $upgradesGanhoParcial     = false;
+        // Quick 260904-kwz — contador do topo da tela: quantas linhas estão
+        // com tabela presumida do serviço, sem cadastro manual nem contrato
+        // assinado. Mesma disciplina de `conta_no_total` das outras somas
+        // desta função — empresa-membro de grupo já está contada na linha
+        // do grupo.
+        $tabelasAssumidas         = 0;
 
         foreach ($dadosPorId as $linha) {
             // Empresa-membro de um grupo já está contada na linha do grupo
@@ -353,6 +423,10 @@ class AdminController extends Controller
 
             if (($linha['estado'] ?? null) === FechamentoSnapshot::ESTADO_SEM_TABELA) {
                 $empresasSemValorDefinido++;
+            }
+
+            if (($linha['tabela_confirmada'] ?? null) === false) {
+                $tabelasAssumidas++;
             }
 
             // Faturamento gerado é a soma do FATURAMENTO das empresas — não
@@ -395,6 +469,7 @@ class AdminController extends Controller
             'upgrades_quantidade'         => $upgradesQuantidade,
             'upgrades_ganho_total'        => $upgradesGanhoTotal,
             'upgrades_ganho_parcial'      => $upgradesGanhoParcial,
+            'tabelas_assumidas'           => $tabelasAssumidas,
         ];
     }
 
@@ -405,7 +480,7 @@ class AdminController extends Controller
      * (App\Console\Commands\ConsolidarMesFechamento), só que sem gravar
      * nada.
      */
-    private function fechamentoDadosPorEmpresaAoVivo(Collection $rawCompanies, string $mesSelecionado, Carbon $inicio, Carbon $fim): array
+    private function fechamentoDadosPorEmpresaAoVivo(Collection $rawCompanies, string $mesSelecionado, Carbon $inicio, Carbon $fim, Collection $companyIdsComContratoAssinado): array
     {
         $rollupAtual = $this->rollupService->porEmpresa($mesSelecionado, $rawCompanies);
 
@@ -511,6 +586,9 @@ class AdminController extends Controller
                 'valor_faixa_e_piso'    => $classificacao['valor_e_piso'] ?? false,
                 'tabela_origem'         => $faixaData['origem'] ?? null,
                 'tabela_servico_nome'   => $faixaData['servico_nome'] ?? null,
+                // Quick 260904-kwz — confirmada (cadastro manual ou contrato
+                // assinado) ou só presumida a partir do serviço.
+                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($faixaData['origem'] ?? null, $c->id, $companyIdsComContratoAssinado),
                 'cobranca_mensal'       => $cobrancaMensal,
                 'evolucao'              => $evolucao,
                 // Fase 139 (D-04): de qual faixa a empresa veio e quanto
@@ -531,7 +609,7 @@ class AdminController extends Controller
      * `fechamento:consolidar-mes`. Nunca recalcula — corrigir `adman_metrics`
      * depois do fechamento não muda o que já foi cobrado.
      */
-    private function fechamentoDadosPorEmpresaCongelados(Collection $rawCompanies, string $mesReferenciaStr, Carbon $inicio, Carbon $fim): array
+    private function fechamentoDadosPorEmpresaCongelados(Collection $rawCompanies, string $mesReferenciaStr, Carbon $inicio, Carbon $fim, Collection $companyIdsComContratoAssinado): array
     {
         $snapshots = FechamentoSnapshot::query()
             ->whereDate('mes_referencia', $mesReferenciaStr)
@@ -575,6 +653,9 @@ class AdminController extends Controller
                     'valor_faixa_e_piso'    => false,
                     'tabela_origem'         => null,
                     'tabela_servico_nome'   => null,
+                    // Quick 260904-kwz — sem linha nesta competência, não há
+                    // tabela nenhuma pra perguntar se está confirmada.
+                    'tabela_confirmada'     => null,
                     'cobranca_mensal'       => null,
                     'evolucao'              => null,
                     // Fase 139 (D-04): sem linha nesta competência, também
@@ -615,6 +696,15 @@ class AdminController extends Controller
                 'valor_faixa_e_piso'    => (bool) $s->valor_faixa_e_piso,
                 'tabela_origem'         => $s->tabela_origem,
                 'tabela_servico_nome'   => $s->servico?->nome,
+                // Quick 260904-kwz — confirmada (cadastro manual ou contrato
+                // assinado) ou só presumida a partir do serviço. Lê o
+                // contrato assinado ATUAL (não congela junto do snapshot) —
+                // um contrato assinado depois do fechamento passa a
+                // confirmar a tabela de competências passadas também,
+                // porque a pergunta é "existe confirmação HOJE", não
+                // "existia confirmação naquele mês" (D-11 é sobre números,
+                // nunca recalcula faturamento/faixa/mensalidade).
+                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($s->tabela_origem, $c->id, $companyIdsComContratoAssinado),
                 'cobranca_mensal'       => $s->cobranca_mensal !== null ? (float) $s->cobranca_mensal : null,
                 'evolucao'              => $s->evolucao,
                 // Fase 139 (D-04): reconstruído do snapshot do mês anterior
@@ -635,7 +725,7 @@ class AdminController extends Controller
      * (tabela da empresa-âncora), `tabelas_divergentes` quando as membros
      * resolvem tabelas diferentes. `parent_company_id` NUNCA participa.
      */
-    private function fechamentoAgregarGruposAoVivo(array $dadosPorId, Collection $rawCompanies, string $mesReferenciaStr): array
+    private function fechamentoAgregarGruposAoVivo(array $dadosPorId, Collection $rawCompanies, string $mesReferenciaStr, Collection $companyIdsComContratoAssinado): array
     {
         $linhasFinais = [];
 
@@ -790,6 +880,13 @@ class AdminController extends Controller
                 // herdada.
                 'tabela_grupo_nome'       => ($faixaAncora['origem'] ?? null) === 'grupo' ? ($faixaAncora['grupo_nome'] ?? null) : null,
                 'tabela_herdada_de_nome'  => ($faixaAncora !== null && $faixaAncora['origem'] !== 'grupo') ? ($faixaAncora['herdada_de_company_name'] ?? null) : null,
+                // Quick 260904-kwz — confirmada (cadastro manual do GRUPO ou
+                // da empresa-âncora, ou contrato assinado da âncora) ou só
+                // presumida a partir do serviço. `origem` 'grupo' já é
+                // manual por si só; 'propria'/'servico' vêm da âncora
+                // (`paraGrupo()` delega em `paraEmpresa($ancora)`), então o
+                // contrato a checar é o DELA.
+                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($faixaAncora['origem'] ?? null, $ancora->id, $companyIdsComContratoAssinado),
                 'tabelas_divergentes'   => $tabelasDivergentes,
                 'cobranca_mensal'       => $cobrancaMensalGrupo,
                 'evolucao'              => $evolucaoGrupo,
@@ -811,7 +908,7 @@ class AdminController extends Controller
      * `CompanyGroup` lendo `fechamento_grupo_snapshots`, quando a
      * competência já foi fechada. Nunca recalcula a soma.
      */
-    private function fechamentoAgregarGruposCongelados(array $dadosPorId, Collection $rawCompanies, string $mesReferenciaStr): array
+    private function fechamentoAgregarGruposCongelados(array $dadosPorId, Collection $rawCompanies, string $mesReferenciaStr, Collection $companyIdsComContratoAssinado): array
     {
         $linhasFinais = [];
 
@@ -902,6 +999,10 @@ class AdminController extends Controller
                 'tabela_servico_nome'   => $s?->servico?->nome,
                 'tabela_grupo_nome'      => $tabelaGrupoNome,
                 'tabela_herdada_de_nome' => $tabelaHerdadaDeNome,
+                // Quick 260904-kwz — mesma regra do ramo ao vivo: origem
+                // 'grupo' é manual por si só; 'propria'/'servico' checam o
+                // contrato assinado da empresa-âncora deste snapshot.
+                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($s?->tabela_origem, $s?->empresa_ancora_id, $companyIdsComContratoAssinado),
                 'tabelas_divergentes'   => (bool) ($s?->tabelas_divergentes ?? false),
                 'cobranca_mensal'       => $s?->cobranca_mensal !== null ? (float) $s->cobranca_mensal : null,
                 'evolucao'              => $s?->evolucao,
@@ -1147,12 +1248,15 @@ class AdminController extends Controller
 
         $todasEmpresas = collect([$company])->merge($vinculadasCompanies);
 
+        // Quick 260904-kwz — mesma consulta em massa de fechamento().
+        $companyIdsComContratoAssinado = $this->fechamentoCompanyIdsComContratoAssinado();
+
         // D-11 — mesma bifurcação de fechamento(): competência congelada lê
         // fechamento_snapshots, nunca recalcula (D-05: ML+Shopee já somados
         // e classificados pelas mesmas fontes centrais).
         $dadosPorId = $this->relatorioCompetenciaFechada($mesReferenciaStr)
-            ? $this->fechamentoDadosPorEmpresaCongelados($todasEmpresas, $mesReferenciaStr, $inicio, $fim)
-            : $this->fechamentoDadosPorEmpresaAoVivo($todasEmpresas, $mesSelecionado, $inicio, $fim);
+            ? $this->fechamentoDadosPorEmpresaCongelados($todasEmpresas, $mesReferenciaStr, $inicio, $fim, $companyIdsComContratoAssinado)
+            : $this->fechamentoDadosPorEmpresaAoVivo($todasEmpresas, $mesSelecionado, $inicio, $fim, $companyIdsComContratoAssinado);
 
         $periodoInicioFmt = $inicio->format('d/m/Y');
         $periodoFimFmt    = $fim->format('d/m/Y');
@@ -1237,16 +1341,19 @@ class AdminController extends Controller
 
         $competenciaFechada = $this->relatorioCompetenciaFechada($mesReferenciaStr);
 
+        // Quick 260904-kwz — mesma consulta em massa de fechamento().
+        $companyIdsComContratoAssinado = $this->fechamentoCompanyIdsComContratoAssinado();
+
         // Mesmo pipeline de fechamento(): números por empresa (congelado ou
         // ao vivo, D-05/D-11) e depois agregação por CompanyGroup
         // (D-08/D-09/D-10) — nunca a hierarquia legada de pai/filha.
         $dadosPorId = $competenciaFechada
-            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim)
-            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim);
+            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $companyIdsComContratoAssinado)
+            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $companyIdsComContratoAssinado);
 
         $dadosPorId = $competenciaFechada
-            ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr)
-            : $this->fechamentoAgregarGruposAoVivo($dadosPorId, $rawCompanies, $mesReferenciaStr);
+            ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado)
+            : $this->fechamentoAgregarGruposAoVivo($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado);
 
         $periodoInicioFmt = $inicio->format('d/m/Y');
         $periodoFimFmt    = $fim->format('d/m/Y');

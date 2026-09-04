@@ -146,7 +146,7 @@ class Phase139FechamentoUiContratoTest extends TestCase
     // ─── Frente 1: PROPS ──────────────────────────────────────────────────
 
     #[Test]
-    public function resposta_traz_totais_com_as_onze_chaves_do_plano_02(): void
+    public function resposta_traz_totais_com_as_doze_chaves_do_plano_02_e_do_quick_260904_kwz(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-15'));
 
@@ -173,6 +173,9 @@ class Phase139FechamentoUiContratoTest extends TestCase
                 ->has('upgrades_quantidade')
                 ->has('upgrades_ganho_total')
                 ->has('upgrades_ganho_parcial')
+                // Quick 260904-kwz — contador de tabelas presumidas do
+                // serviço, sem cadastro manual nem contrato assinado.
+                ->has('tabelas_assumidas')
             )
         );
     }
