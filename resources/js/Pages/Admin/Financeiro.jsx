@@ -2,7 +2,6 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Link, router } from '@inertiajs/react';
 import { useState, useMemo, useEffect } from 'react';
 import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer, Send, Settings, RefreshCw, X, BarChart2, Plus, Pencil, PowerOff, Briefcase, AlertTriangle } from 'lucide-react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -71,53 +70,6 @@ function IntegrationBadge() {
     );
 }
 
-const TOOLTIP_STYLE = {
-    background: '#0f1116',
-    border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: 8,
-    fontSize: 12,
-    color: '#fff',
-};
-
-function ChartCard({ titulo, children }) {
-    return (
-        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
-            <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase mb-3">{titulo}</p>
-            {children}
-        </div>
-    );
-}
-
-function MiniPie({ data }) {
-    if (data.length === 0) {
-        return <p className="text-white/25 text-[12px] text-center py-5">Sem dados</p>;
-    }
-    return (
-        <div>
-            <ResponsiveContainer width="100%" height={90}>
-                <PieChart>
-                    <Pie data={data} cx="50%" cy="50%" innerRadius={24} outerRadius={40}
-                        dataKey="value" strokeWidth={0}>
-                        {data.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={TOOLTIP_STYLE}
-                        formatter={(val, name) => [`${val} empresa${val !== 1 ? 's' : ''}`, name]} />
-                </PieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
-                {data.map((d, i) => (
-                    <div key={i} className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />
-                        <span className="text-white/45 text-[11px]">
-                            {d.name} <span className="text-white/70 font-semibold">{d.value}</span>
-                        </span>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
-
 // Cor estavel por nome para preservar a paleta entre renders.
 const SERVICO_PALETTE = ['#3b82f6', '#a855f7', '#10b981', '#f97316', '#06b6d4', '#ec4899', '#f59e0b', '#8b5cf6'];
 
@@ -151,53 +103,6 @@ function GraficoServico({ empresas }) {
         .sort((a, b) => b.value - a.value);
 
     return <ChartCard titulo="Serviços contratados"><MiniPie data={data} /></ChartCard>;
-}
-
-// Grafico de tipo de cobranca derivado dos contratos ativos.
-function GraficoCobranca({ empresas }) {
-    const cnt = { mensal: 0, unica: 0 };
-    empresas.forEach(e => {
-        (e.servicos_contratados || []).forEach(c => {
-            const tipo = c.tipo_cobranca === 'unica' ? 'unica' : 'mensal';
-            cnt[tipo] += 1;
-        });
-    });
-    const data = [
-        { name: 'Mensal', key: 'mensal', color: '#ffe600' },
-        { name: 'Única',  key: 'unica',  color: '#6366f1' },
-    ].map(d => ({ ...d, value: cnt[d.key] || 0 })).filter(d => d.value > 0);
-    return <ChartCard titulo="Tipo de cobrança"><MiniPie data={data} /></ChartCard>;
-}
-
-function GraficoFaixas({ empresas }) {
-    const cnt = {};
-    empresas.filter(e => e.estado === 'ok' && e.faixa)
-            .forEach(e => { cnt[e.faixa] = (cnt[e.faixa] || 0) + 1; });
-
-    const data = ['faixa_1','faixa_2','faixa_3','faixa_4','faixa_5','faixa_6','maxima']
-        .map((k, i) => ({ name: k === 'maxima' ? 'Máx' : `F${i + 1}`, full: k === 'maxima' ? 'Máx' : `Faixa ${i + 1}`, value: cnt[k] || 0 }))
-        .filter(d => d.value > 0);
-
-    return (
-        <ChartCard titulo="Distribuição de faixas">
-            {data.length === 0
-                ? <p className="text-white/25 text-[12px] text-center py-5">Sem dados</p>
-                : (
-                    <ResponsiveContainer width="100%" height={110}>
-                        <BarChart data={data} barSize={18} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-                            <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 11 }}
-                                axisLine={false} tickLine={false} />
-                            <YAxis allowDecimals={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }}
-                                axisLine={false} tickLine={false} />
-                            <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-                                formatter={(val, _, props) => [`${val} empresa${val !== 1 ? 's' : ''}`, props.payload.full]} />
-                            <Bar dataKey="value" fill="#ffe600" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                )
-            }
-        </ChartCard>
-    );
 }
 
 function EvolucaoBadge({ evolucao }) {
@@ -518,57 +423,6 @@ function RecebidoToggle({ empresa, mesSelecionado }) {
         >
             <Check size={11} />
         </button>
-    );
-}
-
-function TotalConsolidado({ empresas }) {
-    // Filhas não entram no total — valor já está no pai via cobranca_mensal_grupo
-    const contam        = empresas.filter(e => e.conta_no_total !== false && (e.cobranca_mensal_grupo ?? 0) > 0);
-    const recebidas     = contam.filter(e => e.recebido);
-    const inadimplentes = contam.filter(e => !e.recebido);
-    const totalAReceber = contam.reduce((s, e) => s + Number(e.cobranca_mensal_grupo ?? e.cobranca_mensal ?? 0), 0);
-    const totalRecebido = recebidas.reduce((s, e) => s + Number(e.cobranca_mensal_grupo ?? e.cobranca_mensal ?? 0), 0);
-    const totalPendente = inadimplentes.reduce((s, e) => s + Number(e.cobranca_mensal_grupo ?? e.cobranca_mensal ?? 0), 0);
-    const temDados      = contam.length > 0;
-
-    return (
-        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
-            <div className="flex items-center gap-2 mb-3">
-                <Banknote size={15} className="text-ecf-yellow/60 shrink-0" />
-                <span className="text-white/50 text-[11px] font-semibold tracking-widest uppercase">
-                    Total consolidado · {contam.length} pagador{contam.length !== 1 ? 'es' : ''} com dados
-                </span>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3">
-                    <p className="text-white/40 text-[11px] mb-1">Recebido (mês)</p>
-                    <p className="font-display font-bold text-xl text-emerald-400">
-                        {temDados ? fmtBRL(totalRecebido) : '—'}
-                    </p>
-                    <p className="text-white/30 text-[11px] mt-0.5">
-                        {recebidas.length} empresa{recebidas.length !== 1 ? 's' : ''}
-                    </p>
-                </div>
-                <div className="rounded-xl bg-white/[0.03] border border-red-500/[0.15] p-3">
-                    <p className="text-white/40 text-[11px] mb-1">Inadimplente</p>
-                    <p className="font-display font-bold text-xl text-red-400">
-                        {temDados ? fmtBRL(totalPendente) : '—'}
-                    </p>
-                    <p className="text-white/30 text-[11px] mt-0.5">
-                        {inadimplentes.length} empresa{inadimplentes.length !== 1 ? 's' : ''}
-                    </p>
-                </div>
-                <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3">
-                    <p className="text-white/40 text-[11px] mb-1">A receber</p>
-                    <p className="font-display font-bold text-xl text-ecf-yellow">
-                        {temDados ? fmtBRL(totalAReceber) : '—'}
-                    </p>
-                    <p className="text-white/30 text-[11px] mt-0.5">
-                        {contam.length} empresa{contam.length !== 1 ? 's' : ''}
-                    </p>
-                </div>
-            </div>
-        </div>
     );
 }
 
@@ -1412,12 +1266,6 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                             <MesSeletor mesSelecionado={mes_selecionado} />
                         </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-4">
-                        <GraficoServico empresas={companies} />
-                        <GraficoCobranca empresas={companies} />
-                        <GraficoFaixas empresas={companies} />
-                    </div>
-                    <TotalConsolidado empresas={companies} />
                     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
                         <div className="px-4 py-3 border-b border-white/[0.04]">
                             <FiltroBarra
