@@ -387,7 +387,7 @@ operacional deixada no SUMMARY: os 201 snapshots de agosto/2026 em produção es
 para agosto vai comparar contra julho e disparar o aviso inicial para todo mundo que mudou de
 faixa; efeito de primeira carga esperado, não bug.
 
-## Posição paralela — Fase 139 (Redesenho da tela de fechamento) — EM EXECUÇÃO (4/7 planos)
+## Posição paralela — Fase 139 (Redesenho da tela de fechamento) — EM EXECUÇÃO (5/7 planos)
 
 **Mesma disciplina dos blocos 135/136/137/138 acima:** Fase 139 fora de milestone, rodando em
 paralelo. `## Current Position` (Fase 132/133) não foi tocado.
@@ -496,6 +496,31 @@ de nome via Faker na suíte cheia, não relacionado — nenhum arquivo PHP tocad
 (`3f8e708c` chips/busca/foco, `0493f7cf` cabeçalho/linha/estado vazio). Last activity:
 2026-09-04 — 139-04 executado. Sem deploy — `RecebidoToggle` segue definido sem chamador
 (migra para a área expandida no plano 05); planos 05-07 seguem com a área expandida.
+
+139-05 concluído — área expandida da empresa (`FechamentoAccordion`) reescrita em três passos:
+"1 · Faturou no mês" (valor ou `AusenciaFaturamentoBadge`, breakdown Mercado Livre + Shopee só
+quando as duas plataformas têm dado), "2 · Faixa do contrato" (faixa + intervalo, ou
+`AusenciaTabelaPendencia variant="full"` com link para `#tabela-faixas-{id}` quando
+`estado === 'sem_tabela'`) e "3 · Mensalidade a cobrar" (valor + sub-linha dizendo de onde a
+empresa veio quando mudou de faixa — "Na faixa anterior, eram R$ X" [+ganho em verde], "Subiu de
+faixa neste mês", "Desceu de faixa — antes eram R$ X" em âmbar, "Mesma faixa do mês passado", ou
+nada). Composição do grupo, `TabelaFaixasSection` e `ContratosSection` preservados na ordem do
+plano; nova barra de ações reúne "Ver progressão", "Gerar relatório PDF" e `RecebidoToggle`
+(agora com rótulo "Marcar como recebido"/"Recebido" em vez do círculo sem texto — migrou da
+linha pra cá, como o 139-04 já previa). `TabelaFaixasSection` ganhou a prop `faixaOrdemAtual`
+(int|null): a linha cuja `ordem` bate, nas duas listas somente leitura que já existiam (serviço e
+grupo), ganha `bg-ecf-yellow/10` — sem criar uma segunda tabela. Cabeçalho das colunas e rótulo
+do bloco ("Tabela progressiva · {nome}") no formato do handoff; última faixa mostra "acima" em
+vez de "Sem limite superior". 1 desvio auto-corrigido (Rule 2): o aviso de bloqueio do
+`TabelaFaixasSection` ("Competência fechada — ...") ainda tinha a palavra proibida pelo CONTEXT —
+as duas correções obrigatórias do plan-checker só citavam `FecharCompetenciaButton`, mas é a
+mesma regra; reescrito para "Este mês está fechado — a tabela não pode ser alterada.". Prop
+fantasma `cobranca_mensal_grupo` (corrigida no 139-04) confirmada em 0 ocorrências, não
+reintroduzida. Gate `Phase122|Phase136|Phase137|Phase138|Phase139`: **302 testes / 1584
+asserções / 0 falhas** — idêntico ao baseline (nenhuma regressão). 2 commits (`0d595c48` os três
+passos + RecebidoToggle + copy sem "competência", `b000dd84` destaque da faixa atual na tabela
+progressiva). Last activity: 2026-09-04 — 139-05 executado. Sem deploy — planos 06-07 seguem
+(gate de contrato adicional e fechamento da fase).
 
 ## Current Position
 
