@@ -38,14 +38,16 @@ function faixaNome(faixaKey) {
 const fmtValorFaixa = (valor, isPiso) => valor == null ? null
     : (isPiso ? `a partir de ${fmtBRL(valor)}` : fmtBRL(valor));
 
+// Estilo neutro do handoff (Fase 139 §5) — antes pintava de ecf-yellow, o que
+// competia com o acento reservado a ação/status (Color Contract do UI-SPEC).
 function ServiceBadge({ servicos_contratados }) {
     if (Array.isArray(servicos_contratados) && servicos_contratados.length > 0) {
         return (
-            <span className="inline-flex items-center gap-1 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 flex-wrap">
                 {servicos_contratados.map(c => (
                     <span
                         key={c.id}
-                        className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-ecf-yellow/10 text-ecf-yellow border-ecf-yellow/20"
+                        className="text-[11px] px-2 py-0.5 rounded-md bg-white/[0.06] text-white/60"
                     >
                         {c.servico_nome}
                     </span>
@@ -55,7 +57,7 @@ function ServiceBadge({ servicos_contratados }) {
     }
 
     return (
-        <span className="bg-white/[0.05] text-white/40 border-white/[0.08] text-[11px] font-semibold px-2 py-0.5 rounded-full border">
+        <span className="text-[11px] px-2 py-0.5 rounded-md bg-white/[0.06] text-white/40">
             Sem serviços
         </span>
     );
@@ -412,7 +414,7 @@ function AusenciaTabelaPendencia({ variant = 'compact', onCadastrar }) {
 
 function AusenciaFaturamentoBadge() {
     return (
-        <span className="text-white/40 text-[13px] mt-0.5 block">
+        <span className="text-white/40 text-[13px]">
             Sem faturamento neste mês
         </span>
     );
@@ -484,44 +486,46 @@ function RecebidoToggle({ empresa, mesSelecionado }) {
     );
 }
 
-function FaixaProgresso({ faturamento, faixa, limiteInferior, limiteSuperior, faixaLabel }) {
-    // Faixa aberta (sem teto) — backend já resolve isso como 'maxima' em
-    // FechamentoFaixaResolver::classificar(); nunca calcular percentual
-    // aqui, só mostrar o piso de onde ela começa.
-    if (faixa === 'maxima') {
-        return (
-            <div className="flex items-center gap-2 py-3">
-                <TrendingUp size={14} className="text-ecf-yellow shrink-0" />
-                <span className="text-ecf-yellow text-[13px] font-semibold">Faixa máxima</span>
-                {limiteInferior != null && (
-                    <span className="text-white/30 text-[12px]">acima de {fmtBRL(limiteInferior)}</span>
-                )}
-            </div>
-        );
+// Formato compacto de linha (Fase 139 §5) — reaproveitado tanto na coluna
+// "Faixa aplicada" da lista quanto na área expandida (mesmo componente,
+// UI-SPEC manda evoluir em vez de duplicar). Faixa aberta (sem teto) — o
+// backend já resolve isso como 'maxima' em FechamentoFaixaResolver::classificar();
+// nunca calcular percentual aqui, só mostrar o piso de onde ela começa.
+function FaixaProgresso({ faturamento, faixa, limiteInferior, limiteSuperior, faixaLabel, subiuDeFaixa }) {
+    if (!faixa || faturamento == null) return null;
+
+    const isMaxima = faixa === 'maxima';
+    const pct = isMaxima
+        ? 100
+        : (limiteInferior == null || limiteSuperior == null)
+            ? null
+            : Math.min(100, Math.max(3,
+                ((Number(faturamento) - limiteInferior) / (limiteSuperior - limiteInferior)) * 100,
+              ));
+
+    let textoDireita;
+    if (isMaxima) {
+        textoDireita = limiteInferior != null ? `faixa máxima · acima de ${fmtBRL(limiteInferior)}` : 'faixa máxima';
+    } else if (limiteSuperior != null) {
+        textoDireita = `falta ${fmtBRL(Math.max(0, limiteSuperior - Number(faturamento)))}`;
+    } else {
+        textoDireita = '—';
     }
 
-    if (!faixa || faturamento == null || limiteInferior == null || limiteSuperior == null) return null;
-
-    const pct   = Math.min(100, Math.max(0,
-        ((Number(faturamento) - limiteInferior) / (limiteSuperior - limiteInferior)) * 100
-    ));
-    const falta = Math.max(0, limiteSuperior - Number(faturamento));
-
     return (
-        <div className="py-3">
-            <div className="flex items-center justify-between mb-1.5">
-                <span className="text-white/60 text-[12px] font-semibold">{faixaNome(faixaLabel ?? faixa)}</span>
-                <span className="text-white/50 text-[11px]">{Math.round(pct)}%</span>
+        <div className="flex flex-col gap-1.5 w-full">
+            <div className="flex items-center justify-between gap-2">
+                <span className="text-white text-[13px] font-semibold truncate">{faixaNome(faixaLabel ?? faixa)}</span>
+                <span className="text-white/30 text-[11px] shrink-0 whitespace-nowrap">{textoDireita}</span>
             </div>
-            <div className="h-1.5 bg-ecf-yellow/30 rounded-full overflow-hidden">
-                <div
-                    className="h-full rounded-full transition-all"
-                    style={{ width: `${pct}%`, background: '#ffe600' }}
-                />
-            </div>
-            <p className="text-white/40 text-[12px] mt-1.5">
-                Falta {fmtBRL(falta)} para a próxima faixa
-            </p>
+            {pct != null && (
+                <div className="h-[5px] rounded-full bg-white/[0.08] overflow-hidden">
+                    <div
+                        className={cn('h-full rounded-full transition-all', subiuDeFaixa ? 'bg-ecf-yellow' : 'bg-emerald-400')}
+                        style={{ width: `${pct}%` }}
+                    />
+                </div>
+            )}
         </div>
     );
 }
@@ -623,62 +627,129 @@ function ProgressaoModal({ empresa, onClose }) {
     );
 }
 
-function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
-    // Resumo derivado dos contratos ativos.
-    const totalContratos = (empresa.servicos_contratados || []).length;
-    const resumoContratos = totalContratos === 0
-        ? 'Sem contratos'
-        : `${totalContratos} contrato${totalContratos === 1 ? '' : 's'} ativo${totalContratos === 1 ? '' : 's'}`;
+// Mesma grid-template em cabeçalho e linha (Fase 139 §4/§5), pra as colunas
+// alinharem. Escrita como classe LITERAL nos dois lugares (não concatenada em
+// variável) — o Tailwind JIT só gera CSS pra classes que aparecem por
+// extenso no código-fonte, não pra strings montadas em runtime.
 
+// Cabeçalho de colunas acima da lista. "Faturamento do mês" é copy travada
+// por teste (Phase137CompetenciaUiTest) — a forma abreviada é proibida.
+function CabecalhoColunas() {
     return (
-        <div
+        <div className="hidden min-[820px]:grid min-[820px]:grid-cols-[minmax(0,1.5fr)_1fr_1.3fr_0.9fr_28px] gap-5 px-5 text-[11px] font-semibold uppercase tracking-[0.06em] text-white/30">
+            <span>Empresa</span>
+            <span>Faturamento do mês</span>
+            <span>Faixa aplicada</span>
+            <span className="text-right">Mensalidade</span>
+            <span />
+        </div>
+    );
+}
+
+// Coluna "Faturamento do mês" — os três estados nunca podem virar R$ 0 nem
+// traço mudo (D-05): sem tabela ainda mostra o valor apurado (o problema é
+// não saber a faixa, não o faturamento em si); sem faturamento e sem
+// integração são estados nomeados e distintos entre si.
+function ColunaFaturamento({ empresa }) {
+    if (empresa.estado === 'sem_faturamento') {
+        return <AusenciaFaturamentoBadge />;
+    }
+    if (empresa.estado === 'sem_integracao') {
+        return <span className="text-white/30 text-[15px]">sem dados</span>;
+    }
+    return (
+        <span className="font-mono tabular-nums text-[15px] text-white/75">
+            {fmtBRL(empresa.faturamento)}
+        </span>
+    );
+}
+
+function FechamentoRow({ empresa, expandida, onToggle }) {
+    return (
+        <button
+            type="button"
             onClick={onToggle}
             className={cn(
-                'flex items-center gap-4 px-4 py-3 cursor-pointer transition-colors',
-                expandida ? 'bg-white/[0.05]' : 'hover:bg-white/[0.03]'
+                'w-full text-left transition-colors hover:bg-white/[0.04] px-5 py-[18px]',
+                'flex flex-col gap-3',
+                'min-[820px]:grid min-[820px]:grid-cols-[minmax(0,1.5fr)_1fr_1.3fr_0.9fr_28px] min-[820px]:gap-5 min-[820px]:items-center',
             )}
         >
-            <ChevronDown
-                size={14}
-                className={cn('transition-transform duration-200 shrink-0', expandida ? 'rotate-180 text-ecf-yellow' : 'text-white/40')}
-            />
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                    <span className="text-white font-semibold text-[13px] truncate">{empresa.name}</span>
-                    {empresa.filhas?.length > 0 && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20 shrink-0">
-                            Grupo · {empresa.filhas.length + 1}
-                        </span>
+            {/* Empresa */}
+            <div className="min-w-0 flex items-start justify-between gap-3 min-[820px]:block">
+                <div className="min-w-0">
+                    <p className="text-white text-[16px] font-semibold tracking-[-0.01em] truncate">{empresa.name}</p>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                        <ServiceBadge servicos_contratados={empresa.servicos_contratados} />
+                        {empresa.subiu_de_faixa && (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-ecf-yellow/15 text-ecf-yellow">
+                                ↑ subiu de faixa
+                            </span>
+                        )}
+                        {!empresa.has_adman && <IntegrationBadge />}
+                        {empresa.filhas?.length > 0 && (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20">
+                                Grupo · {empresa.filhas.length + 1}
+                            </span>
+                        )}
+                        {empresa.is_filha && (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-white/[0.05] text-white/40 border border-white/[0.08]">
+                                Vinculada · {empresa.nome_pai}
+                            </span>
+                        )}
+                        {/* "subiu" já vira a tag amarela acima — o design só previu
+                            subida; "desceu"/"manteve" continuam visíveis aqui para
+                            a queda não sumir da tela (D-05). */}
+                        {empresa.evolucao !== 'subiu' && <EvolucaoBadge evolucao={empresa.evolucao} />}
+                    </div>
+                </div>
+                <ChevronDown
+                    size={14}
+                    className={cn('shrink-0 text-white/30 transition-transform duration-200 min-[820px]:hidden', expandida && 'rotate-180')}
+                />
+            </div>
+
+            {/* Faturamento / Faixa aplicada / Mensalidade — duas colunas no
+                mobile, viram células do grid a partir de ~820px. */}
+            <div className="grid grid-cols-2 gap-3 min-[820px]:contents">
+                <div className="min-[820px]:flex min-[820px]:items-center">
+                    <ColunaFaturamento empresa={empresa} />
+                </div>
+                <div className="min-[820px]:flex min-[820px]:items-center">
+                    {empresa.estado === 'sem_tabela' ? (
+                        <AusenciaTabelaPendencia variant="compact" />
+                    ) : (
+                        <FaixaProgresso
+                            faturamento={empresa.faturamento}
+                            faixa={empresa.faixa}
+                            limiteInferior={empresa.faixa_limite_inferior}
+                            limiteSuperior={empresa.faixa_limite_superior}
+                            faixaLabel={empresa.faixa_label}
+                            subiuDeFaixa={empresa.subiu_de_faixa}
+                        />
                     )}
-                    {empresa.is_filha && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/[0.05] text-white/40 border border-white/[0.08] shrink-0">
-                            Vinculada · {empresa.nome_pai}
+                </div>
+                <div className="col-span-2 min-[820px]:col-span-1 flex justify-end min-[820px]:items-center">
+                    {/* cobranca_mensal null → nada aqui, o motivo já está dito na
+                        coluna da faixa (A DEFINIR / sem dados). Nunca ler a chave
+                        de grupo com sufixo "_grupo" — o backend não a emite. */}
+                    {empresa.cobranca_mensal != null && (
+                        <span className={cn('font-mono tabular-nums text-[18px] font-bold text-right whitespace-nowrap',
+                            empresa.is_filha ? 'text-white/25' : 'text-emerald-400')}>
+                            {fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}
+                            <span className="text-white/30 font-normal text-[11px] ml-1">/mês</span>
                         </span>
                     )}
                 </div>
-                {empresa.estado === 'ok' && (
-                    <span className="text-white/40 text-[12px] mt-0.5 block">
-                        {fmtBRL(empresa.faturamento)}
-                        {empresa.synced_at ? ` · dados até ${empresa.synced_at}` : ''}
-                    </span>
-                )}
-                {empresa.estado === 'sem_faturamento' && <AusenciaFaturamentoBadge />}
             </div>
-            <EvolucaoBadge evolucao={empresa.evolucao} />
-            <ServiceBadge servicos_contratados={empresa.servicos_contratados} />
-            {!empresa.has_adman && <IntegrationBadge />}
-            {empresa.estado === 'sem_tabela' ? (
-                <AusenciaTabelaPendencia variant="compact" />
-            ) : (empresa.cobranca_mensal_grupo ?? empresa.cobranca_mensal) != null && (
-                <span className={cn('text-[13px] font-semibold font-mono shrink-0',
-                    empresa.is_filha ? 'text-white/25' : 'text-emerald-400')}>
-                    {fmtValorFaixa(empresa.cobranca_mensal_grupo ?? empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}
-                    <span className="text-white/30 font-normal text-[11px]">/mês</span>
-                </span>
-            )}
-            <RecebidoToggle empresa={empresa} mesSelecionado={mesSelecionado} />
-            <span className="text-white/40 text-[12px] shrink-0">{resumoContratos}</span>
-        </div>
+
+            {/* Chevron — só a partir de ~820px; no mobile ele já aparece ao
+                lado do nome (acima). */}
+            <ChevronDown
+                size={14}
+                className={cn('hidden min-[820px]:block text-white/30 transition-transform duration-200 justify-self-end', expandida && 'rotate-180')}
+            />
+        </button>
     );
 }
 
@@ -807,6 +878,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                                 limiteInferior={empresa.faixa_limite_inferior}
                                 limiteSuperior={empresa.faixa_limite_superior}
                                 faixaLabel={empresa.faixa_label}
+                                subiuDeFaixa={empresa.subiu_de_faixa}
                             />
                         </div>
                         {(empresa.progressao?.length > 0) && (
@@ -847,7 +919,11 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                                 ))}
                                 <div className="flex items-center justify-between px-3 py-2 border-t border-white/[0.06] bg-white/[0.02]">
                                     <span className="text-[11px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
-                                    <span className="text-emerald-400 text-[13px] font-bold font-mono">{fmtValorFaixa(empresa.cobranca_mensal_grupo, empresa.valor_faixa_e_piso)}</span>
+                                    {/* `empresa` aqui É a linha do grupo (tipo 'grupo') — o backend já
+                                        grava o total do grupo no `cobranca_mensal` da própria linha-mãe
+                                        (AdminController ~linha 801). A chave com sufixo "_grupo" nunca
+                                        existiu separada (mesma prop fantasma que existia na FechamentoRow). */}
+                                    <span className="text-emerald-400 text-[13px] font-bold font-mono">{fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}</span>
                                 </div>
                             </div>
                         </>
@@ -903,14 +979,27 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
     );
 }
 
-function FechamentoList({ empresas, mesSelecionado, faixasPorServico, faixasPorGrupo, competenciaFechada, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+function FechamentoList({ empresas, totalGeral, mesSelecionado, faixasPorServico, faixasPorGrupo, competenciaFechada, empresaFocada, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const [aberta, setAberta] = useState(null);
+
+    // Atalho do widget "Subiram de faixa" (Fase 139 §2b): `empresaFocada` é
+    // sempre um objeto NOVO a cada clique — reage por referência, não por
+    // valor, então clicar duas vezes seguidas no mesmo atalho REABRE a linha
+    // em vez de não fazer nada (mesmo se a pessoa tiver fechado manualmente
+    // entre um clique e outro).
+    useEffect(() => {
+        if (empresaFocada?.id != null) setAberta(empresaFocada.id);
+    }, [empresaFocada]);
 
     function toggleEmpresa(id) {
         setAberta(prev => prev === id ? null : id);
     }
 
-    if (empresas.length === 0) {
+    // "Nenhuma empresa ativa cadastrada" — não há empresa nenhuma no
+    // dataset, filtro nenhum aplicado. Diferente de "filtrado a zero"
+    // (abaixo): uma é ausência de dado, a outra é combinação de filtros que
+    // não bateu com nada (D-05, são coisas diferentes).
+    if (totalGeral === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <Building2 size={24} className="text-white/20" />
@@ -920,31 +1009,47 @@ function FechamentoList({ empresas, mesSelecionado, faixasPorServico, faixasPorG
         );
     }
 
+    if (empresas.length === 0) {
+        return (
+            <div className="p-12 text-center text-[14px] text-white/30 border border-dashed border-white/[0.08] rounded-[14px]">
+                Nenhuma empresa encontrada com esses filtros.
+            </div>
+        );
+    }
+
     return (
-        <div className="divide-y divide-white/[0.04]">
-            {empresas.map(empresa => (
-                <div key={empresa.id}>
-                    <FechamentoRow
-                        empresa={empresa}
-                        expandida={aberta === empresa.id}
-                        onToggle={() => toggleEmpresa(empresa.id)}
-                        mesSelecionado={mesSelecionado}
-                    />
-                    {aberta === empresa.id && (
-                        <FechamentoAccordion
+        <div className="flex flex-col gap-2">
+            {empresas.map(empresa => {
+                const expandida = aberta === empresa.id;
+                return (
+                    <div
+                        key={empresa.id}
+                        className={cn(
+                            'rounded-[14px] border bg-white/[0.02] overflow-hidden transition-colors',
+                            expandida ? 'border-white/20' : 'border-white/[0.08]',
+                        )}
+                    >
+                        <FechamentoRow
                             empresa={empresa}
-                            mesSelecionado={mesSelecionado}
-                            faixasPorServico={faixasPorServico}
-                            faixasPorGrupo={faixasPorGrupo}
-                            competenciaFechada={competenciaFechada}
-                            onClose={() => setAberta(null)}
-                            onAdicionarContrato={onAdicionarContrato}
-                            onEditarContrato={onEditarContrato}
-                            onDesativarContrato={onDesativarContrato}
+                            expandida={expandida}
+                            onToggle={() => toggleEmpresa(empresa.id)}
                         />
-                    )}
-                </div>
-            ))}
+                        {expandida && (
+                            <FechamentoAccordion
+                                empresa={empresa}
+                                mesSelecionado={mesSelecionado}
+                                faixasPorServico={faixasPorServico}
+                                faixasPorGrupo={faixasPorGrupo}
+                                competenciaFechada={competenciaFechada}
+                                onClose={() => setAberta(null)}
+                                onAdicionarContrato={onAdicionarContrato}
+                                onEditarContrato={onEditarContrato}
+                                onDesativarContrato={onDesativarContrato}
+                            />
+                        )}
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -1540,25 +1645,26 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                         <SubiramDeFaixaCard totais={totais} companies={companies} onFocarEmpresa={focarEmpresaSubiuFaixa} />
                         <ServicosContratadosBar companies={companies} />
                     </div>
-                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
-                        <div className="px-4 py-3 border-b border-white/[0.04]">
-                            <FiltroBarra
-                                filtros={filtros}
-                                onChangeFiltros={setFiltros}
-                                filtroChip={filtroChip}
-                                onChangeChip={setFiltroChip}
-                                onLimpar={limparFiltros}
-                                total={companies.length}
-                                filtrado={filtradas.length}
-                                servicosNomes={servicosNomes}
-                            />
-                        </div>
+                    <div className="flex flex-col gap-4">
+                        <FiltroBarra
+                            filtros={filtros}
+                            onChangeFiltros={setFiltros}
+                            filtroChip={filtroChip}
+                            onChangeChip={setFiltroChip}
+                            onLimpar={limparFiltros}
+                            total={companies.length}
+                            filtrado={filtradas.length}
+                            servicosNomes={servicosNomes}
+                        />
+                        <CabecalhoColunas />
                         <FechamentoList
                             empresas={filtradas}
+                            totalGeral={companies.length}
                             mesSelecionado={mes_selecionado}
                             faixasPorServico={faixas_por_servico}
                             faixasPorGrupo={faixas_por_grupo}
                             competenciaFechada={competencia_fechada}
+                            empresaFocada={empresaFocada}
                             onAdicionarContrato={abrirAdicionarContrato}
                             onEditarContrato={abrirEditarContrato}
                             onDesativarContrato={desativarContrato}
