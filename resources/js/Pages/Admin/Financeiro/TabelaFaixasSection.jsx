@@ -203,13 +203,13 @@ function FaixaFormDialog({ open, title, aviso, faixasIniciais, onClose, onSalvar
 
 // ─── Tabela progressiva (Fase 139 Plano 06, correção 260904-jpn) ─────────
 // Densidade fiel a `design_handoff_fechamento/Fechamento.dc.html`: grade
-// `80px 1fr 160px` com gap 16px (não `<table>` de larguras automáticas),
+// `80px 1fr 160px` com gap 16px (não tabela HTML de larguras automáticas),
 // linhas 12px/18px de padding a 13px de texto, cabeçalho 10px/18px sobre a
 // superfície interna (`ecf-card-2`), caixa com raio 12px. Antes desta
 // correção esse markup existia em DUAS cópias divergentes (bloco do grupo
 // e bloco do serviço) — agora é uma subcomponente só, usada nos dois
 // lugares. Fonte e paleta continuam as do projeto (font-mono do Tailwind,
-// tokens ecf-*) — decisão do usuário, não a JetBrains Mono do handoff.
+// tokens ecf-*) — decisão do usuário, não a fonte mono do handoff.
 function TabelaProgressivaFaixas({ faixas, faixaOrdemAtual }) {
     const colunas = 'grid grid-cols-[80px_1fr_160px] gap-4';
 
