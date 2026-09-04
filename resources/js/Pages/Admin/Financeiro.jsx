@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, router } from '@inertiajs/react';
 import { useState, useMemo, useEffect } from 'react';
-import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer, Send, Settings, RefreshCw, X, BarChart2, Plus, Pencil, PowerOff, Briefcase, AlertTriangle } from 'lucide-react';
+import { ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer, Send, Settings, RefreshCw, X, BarChart2, Plus, Pencil, PowerOff, Briefcase, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -166,18 +166,31 @@ function mesExtensoAno(anoMes) {
     return `${mes}/${y}`;
 }
 
+// Título do cabeçalho (Fase 139, §1 do handoff): só o mês quando o ano é o
+// corrente, mês + ano quando não é — evita "Fechamento de agosto" ficar
+// ambíguo ao consultar competências de anos anteriores.
+function tituloDoMes(anoMes) {
+    const [y, m] = anoMes.split('-');
+    const mesNome = new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('pt-BR', { month: 'long' });
+    return Number(y) === new Date().getFullYear() ? mesNome : `${mesNome} de ${y}`;
+}
+
+// Pill do handoff (§1): pontinho de 6px + texto, âmbar em "Em aberto" e
+// esmeralda em "Fechado" — as palavras e a data de fechamento não mudam.
 function StatusCompetenciaBadge({ fechada, fechadaEm }) {
     if (!fechada) {
         return (
-            <span className="inline-flex items-center gap-1.5 text-white/50 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-white/[0.08] bg-white/[0.03] shrink-0">
+            <span className="inline-flex items-center gap-1.5 text-ecf-yellow text-[12px] font-semibold px-[11px] py-[5px] rounded-full border border-ecf-yellow/35 bg-ecf-yellow/10 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-ecf-yellow shrink-0" />
                 Em aberto
             </span>
         );
     }
 
     return (
-        <div className="flex flex-col items-start gap-0.5 shrink-0">
-            <span className="inline-flex items-center gap-1.5 text-ecf-yellow text-[11px] font-semibold px-2.5 py-1 rounded-full bg-ecf-yellow/20">
+        <div className="flex flex-col items-start gap-1 shrink-0">
+            <span className="inline-flex items-center gap-1.5 text-emerald-400 text-[12px] font-semibold px-[11px] py-[5px] rounded-full border border-emerald-400/35 bg-emerald-400/10">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                 Fechado
             </span>
             <span className="text-white/30 text-[11px] whitespace-nowrap">
@@ -219,7 +232,7 @@ function FecharCompetenciaButton({ mes }) {
                 type="button"
                 onClick={handleFechar}
                 disabled={loading}
-                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-ecf-yellow/20 hover:bg-ecf-yellow/30 border border-ecf-yellow/30 text-[13px] font-semibold text-ecf-yellow transition-colors disabled:opacity-50 disabled:cursor-wait shrink-0"
+                className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-[10px] bg-ecf-yellow hover:bg-ecf-yellow/80 text-[14px] font-semibold text-black transition-colors disabled:opacity-50 disabled:cursor-wait shrink-0"
             >
                 {loading ? 'Fechando...' : `Fechar ${mesLabel}`}
             </button>
@@ -271,7 +284,7 @@ function RefazerFechamentoDialog({ mes }) {
             <button
                 type="button"
                 onClick={() => handleOpenChange(true)}
-                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-[13px] font-semibold transition-colors shrink-0"
+                className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-[10px] border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-[14px] font-semibold transition-colors shrink-0"
             >
                 Refazer fechamento
             </button>
@@ -912,7 +925,7 @@ function MesSeletor({ mesSelecionado }) {
         <select
             value={mesSelecionado}
             onChange={handleChange}
-            className="h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-ecf-card text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 shrink-0"
+            className="pl-3.5 pr-8 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] text-[14px] text-white/75 hover:bg-white/[0.06] hover:text-white focus:outline-none focus:border-ecf-yellow/40 transition-colors shrink-0"
         >
             {meses.map(m => (
                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -952,7 +965,7 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
         <div className="relative">
             <button
                 onClick={() => setAberto(v => !v)}
-                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-[13px] text-white/60 hover:text-white/90 transition-colors"
+                className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-[14px] text-white/75 hover:text-white transition-colors"
             >
                 <Printer size={14} />
                 Gerar relatórios
@@ -1066,8 +1079,8 @@ function SyncFaturamentoBtn({ mesSelecionado, competenciaFechada = false }) {
                 ? 'Este mês está fechado — sincronizar não altera os valores já congelados.'
                 : 'Sincronizar faturamento bruto do mês via Adman'}
             className={cn(
-                'inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/60 transition-colors disabled:cursor-not-allowed',
-                competenciaFechada ? 'opacity-40' : 'hover:bg-white/[0.06] hover:text-white/90 disabled:opacity-40 disabled:cursor-wait'
+                'inline-flex items-center gap-2 px-3.5 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] text-[14px] text-white/75 transition-colors disabled:cursor-not-allowed',
+                competenciaFechada ? 'opacity-40' : 'hover:bg-white/[0.06] hover:text-white disabled:opacity-40 disabled:cursor-wait'
             )}
         >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -1078,6 +1091,88 @@ function SyncFaturamentoBtn({ mesSelecionado, competenciaFechada = false }) {
 
 // Filtro de servico derivado dinamicamente dos contratos ativos do dataset.
 const FILTROS_INICIAL = { busca: '', servico_nome: '', estado: '', recebido: '' };
+
+// ─── Widget "Total a receber" (Fase 139, D-01) ───────────────────────────
+// Todos os números vêm prontos de `totais` (Fase 139 Plano 02) — proibido
+// recalcular aqui (T-139-07): foi somando no front, por uma chave que o
+// backend nunca emitiu, que o widget antigo passou a mostrar zero em
+// produção.
+function TotalAReceberCard({ totais }) {
+    const {
+        total_a_receber,
+        total_e_piso,
+        empresas_com_cobranca,
+        empresas_sem_valor_definido,
+        faturamento_gerado,
+        mes_anterior_fechado,
+        mes_anterior_total,
+        variacao,
+    } = totais;
+
+    const numeroHero = Number(total_a_receber ?? 0)
+        .toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+    const mesPassadoTexto = mes_anterior_fechado
+        ? fmtBRL(mes_anterior_total)
+        : 'mês passado ainda não foi fechado';
+
+    return (
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] px-6 py-6 flex flex-col gap-4.5">
+            <div>
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-white/40 text-[13px]">Total a receber neste fechamento</span>
+                    <span className="text-white/30 text-[12px] shrink-0 whitespace-nowrap">
+                        {empresas_com_cobranca} empresa{empresas_com_cobranca !== 1 ? 's' : ''} com cobrança
+                    </span>
+                </div>
+                {empresas_sem_valor_definido > 0 && (
+                    <p className="text-amber-300 text-[12px] mt-1">
+                        {empresas_sem_valor_definido} sem valor definido — não entram nesta soma
+                    </p>
+                )}
+            </div>
+
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+                {total_e_piso && (
+                    <span className="text-white/40 text-[15px]">a partir de</span>
+                )}
+                <span className="text-emerald-400 text-[22px] font-medium font-mono">R$</span>
+                <span className="text-emerald-400 text-[52px] font-bold font-mono tabular-nums tracking-[-0.03em] leading-none">
+                    {numeroHero}
+                </span>
+                <span className="text-white/30 text-[15px]">/mês</span>
+            </div>
+
+            <div className="border-t border-white/[0.06] pt-4 flex flex-wrap gap-7">
+                <div>
+                    <p className="text-white/30 text-[12px] mb-1">Mês passado</p>
+                    <p className={cn('text-[16px] font-mono tabular-nums', mes_anterior_fechado ? 'text-white/75' : 'text-white/30 font-sans')}>
+                        {mesPassadoTexto}
+                    </p>
+                </div>
+                <div>
+                    <p className="text-white/30 text-[12px] mb-1">Variação</p>
+                    {variacao == null ? (
+                        <p className="text-white/30 text-[16px]">{mesPassadoTexto}</p>
+                    ) : (
+                        <p className={cn(
+                            'text-[16px] font-mono tabular-nums',
+                            variacao > 0 ? 'text-emerald-400' : variacao < 0 ? 'text-red-400' : 'text-white/60',
+                        )}>
+                            {variacao > 0 ? '+' : variacao < 0 ? '−' : ''}{fmtBRL(Math.abs(variacao))}
+                        </p>
+                    )}
+                </div>
+                <div>
+                    <p className="text-white/30 text-[12px] mb-1">Faturamento gerado</p>
+                    <p className={cn('text-[16px] font-mono tabular-nums', faturamento_gerado == null ? 'text-white/30 font-sans' : 'text-white/75')}>
+                        {faturamento_gerado == null ? 'sem faturamento apurado neste mês' : fmtBRL(faturamento_gerado)}
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 function FiltroBarra({ filtros, onChange, total, filtrado, servicosNomes }) {
     const sel = 'h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/70 focus:outline-none focus:border-ecf-yellow/40';
@@ -1126,8 +1221,20 @@ function FiltroBarra({ filtros, onChange, total, filtrado, servicosNomes }) {
     );
 }
 
-export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null }) {
+export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, totais }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
+
+    // Atalho do widget "Subiram de faixa este mês" (Fase 139): liga o filtro
+    // e marca a empresa focada. O chip em si e a abertura automática da
+    // linha entram no Plano 04 — aqui só elevamos o estado ao componente de
+    // página para o callback já ter onde escrever.
+    const [filtroChip, setFiltroChip] = useState('todos');
+    const [empresaFocada, setEmpresaFocada] = useState(null);
+
+    function focarEmpresaSubiuFaixa(id) {
+        setFiltroChip('subiu');
+        setEmpresaFocada(id);
+    }
 
     // Phase 14 (Frente B): nomes únicos de serviços DERIVADOS do dataset
     // de contratos ativos para popular o dropdown do filtro.
@@ -1240,31 +1347,37 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
         <AppLayout title="Fechamento">
             <main className="p-6">
                 <div className="space-y-6">
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-wrap gap-5 items-end justify-between mb-1">
                         <div>
-                            <div className="flex items-center gap-2 mb-2">
-                                <Banknote size={20} className="text-ecf-yellow" />
-                                <h1 className="text-xl font-semibold font-display text-white">Fechamento</h1>
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                                <h1 className="text-white text-[30px] font-semibold tracking-[-0.02em] font-display capitalize">
+                                    Fechamento de {tituloDoMes(mes_selecionado)}
+                                </h1>
+                                <StatusCompetenciaBadge fechada={competencia_fechada} fechadaEm={competencia_fechada_em} />
+                            </div>
+                            <p className="text-white/40 text-[14px] mt-2">
+                                Faturamento do mês, faixa aplicada e mensalidade a cobrar de cada empresa.{' '}
                                 {/* Disclaimer D-1 da Adman (Phase 16 SC-7): números de
                                     investimento/TACOS vêm da API Adman, que publica D-1. */}
                                 <span
-                                    className="text-white/40 text-xs"
+                                    className="text-white/30"
                                     title="Dados defasados em 1 dia — a API Adman publica D-1 ao redor das 10h BRT."
                                 >
-                                    Dados D-1 da Adman
+                                    Dados D-1 da Adman.
                                 </span>
-                            </div>
-                            <p className="text-[13px] text-white/40">Faturamento do período, progressão de faixa e contratos ativos por empresa.</p>
+                            </p>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                            <StatusCompetenciaBadge fechada={competencia_fechada} fechadaEm={competencia_fechada_em} />
+                        <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+                            <MesSeletor mesSelecionado={mes_selecionado} />
+                            <SyncFaturamentoBtn mesSelecionado={mes_selecionado} competenciaFechada={competencia_fechada} />
+                            <GerarRelatoriosBtn mesSelecionado={mes_selecionado} companies={companies} />
                             {competencia_fechada
                                 ? <RefazerFechamentoDialog mes={mes_selecionado} />
                                 : <FecharCompetenciaButton mes={mes_selecionado} />}
-                            <SyncFaturamentoBtn mesSelecionado={mes_selecionado} competenciaFechada={competencia_fechada} />
-                            <GerarRelatoriosBtn mesSelecionado={mes_selecionado} companies={companies} />
-                            <MesSeletor mesSelecionado={mes_selecionado} />
                         </div>
+                    </div>
+                    <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_1fr] gap-4">
+                        <TotalAReceberCard totais={totais} />
                     </div>
                     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
                         <div className="px-4 py-3 border-b border-white/[0.04]">
