@@ -73,6 +73,55 @@ class FechamentoComparativoService
     }
 
     /**
+     * Fase 139 (D-04/item 3) — total de `cobranca_mensal` fechado no mês
+     * anterior, para o rodapé do widget "Total a receber" ("mês passado" +
+     * variação). Soma as linhas de GRUPO inteiras + as linhas de EMPRESA
+     * sem grupo (`company_group_id` null) — empresa dentro de grupo já
+     * está contada na linha do grupo; somar as duas contaria a mesma
+     * cobrança duas vezes (mesma disciplina de `conta_no_total` que a tela
+     * usa para o mês corrente).
+     *
+     * `fechado = false` (e `total = null`) quando o mês anterior nunca foi
+     * fechado — "não fechamos agosto" é uma informação diferente de "agosto
+     * fechou em R$ 0", e a tela precisa dizer isso com palavra, não com
+     * R$ 0.
+     *
+     * @return array{fechado: bool, total: float|null}
+     */
+    public function totalCobrancaDoMesAnterior(string $mesReferenciaStr): array
+    {
+        $mesAnteriorStr = $this->mesAnterior($mesReferenciaStr);
+
+        // 1ª consulta: linhas de EMPRESA do mês anterior — a CONTAGEM decide
+        // se o mês foi fechado (mesma trava de `origem = consolidar_mes` que
+        // o resto do serviço usa) e a SOMA condicional já traz só as
+        // empresas SEM grupo, sem precisar de uma 2ª leitura desta tabela.
+        $agregadoEmpresas = FechamentoSnapshot::query()
+            ->whereDate('mes_referencia', $mesAnteriorStr)
+            ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+            ->selectRaw('COUNT(*) as total_linhas')
+            ->selectRaw('SUM(CASE WHEN company_group_id IS NULL THEN cobranca_mensal ELSE 0 END) as soma_sem_grupo')
+            ->first();
+
+        $fechado = ((int) ($agregadoEmpresas->total_linhas ?? 0)) > 0;
+
+        if (! $fechado) {
+            return ['fechado' => false, 'total' => null];
+        }
+
+        // 2ª consulta: soma das linhas de GRUPO do mesmo mês — cada grupo
+        // já carrega a cobrança agregada dos seus membros numa única linha.
+        $somaGrupos = (float) FechamentoGrupoSnapshot::query()
+            ->whereDate('mes_referencia', $mesAnteriorStr)
+            ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+            ->sum('cobranca_mensal');
+
+        $somaSemGrupo = (float) ($agregadoEmpresas->soma_sem_grupo ?? 0);
+
+        return ['fechado' => true, 'total' => $somaSemGrupo + $somaGrupos];
+    }
+
+    /**
      * Deriva o mês anterior a partir da string `Y-m-d` do primeiro dia da
      * competência corrente — mesma disciplina de `subMonthNoOverflow()` já
      * usada no resto do controller (vira de ano sem estourar: 2026-01-01
