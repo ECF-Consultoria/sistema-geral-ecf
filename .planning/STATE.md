@@ -387,7 +387,7 @@ operacional deixada no SUMMARY: os 201 snapshots de agosto/2026 em produção es
 para agosto vai comparar contra julho e disparar o aviso inicial para todo mundo que mudou de
 faixa; efeito de primeira carga esperado, não bug.
 
-## Posição paralela — Fase 139 (Redesenho da tela de fechamento) — EM EXECUÇÃO (1/7 planos)
+## Posição paralela — Fase 139 (Redesenho da tela de fechamento) — EM EXECUÇÃO (3/7 planos)
 
 **Mesma disciplina dos blocos 135/136/137/138 acima:** Fase 139 fora de milestone, rodando em
 paralelo. `## Current Position` (Fase 132/133) não foi tocado.
@@ -444,6 +444,34 @@ Phase138|Phase139`: **302 testes / 1584 asserções / 0 falhas** (era 288/1528 a
 unitário, `b24e52cb` controller, `58b0b9e1` teste HTTP). Last activity: 2026-09-04 — 139-02
 executado. Sem deploy — próximos planos (03-06) consomem `totais` na reescrita da tela
 (`Financeiro.jsx`).
+
+139-03 concluído — cabeçalho e os três widgets do topo de `Financeiro.jsx` reescritos.
+Removidos `GraficoCobranca`, `GraficoFaixas`, `MiniPie`, `ChartCard`, `TOOLTIP_STYLE`,
+`TotalConsolidado` e o import do `recharts` (nenhum componente do arquivo usa mais a
+biblioteca). `StatusCompetenciaBadge` virou pill com pontinho de 6px (âmbar em "Em aberto",
+esmeralda em "Fechado" — palavras e data de fechamento não mudaram); ações reordenadas
+(seletor de mês, sincronizar, gerar relatórios, ação primária por último) no formato
+secundário/primário do handoff — `RefazerFechamentoDialog` manteve a cor vermelha/destrutiva
+de propósito (ação corretiva sobre mês fechado, semanticamente distinta de "Fechar o mês"), só
+padding/radius foram alinhados. Três widgets novos, todos lendo só a prop `totais` (T-139-07,
+nada recalculado no front): `TotalAReceberCard` (métrica herói `font-mono tabular-nums`,
+prefixo "a partir de" quando `total_e_piso`, os três estados de ausência do rodapé escritos por
+extenso); `SubiramDeFaixaCard` (card em destaque, lista de atalhos ordenada por `ganho_faixa`
+desc, "no mínimo" quando `upgrades_ganho_parcial`, card nunca some mesmo com 0 upgrades);
+`ServicosContratadosBar` (substitui `GraficoServico`/donut — barra empilhada + legenda
+reaproveitando a MESMA agregação por `servico_nome` e o balde "Sem contratos"; denominador da
+barra inclui o balde, mas o rótulo "N contratos ativos" do topo exclui — empresa sem contrato
+não é contrato). `filtroChip`/`empresaFocada` elevados ao componente de página com o handler
+`focarEmpresaSubiuFaixa` já ligado ao widget de upgrades, prontos pro Plano 04 consumir nos
+chips de filtro e na abertura automática da linha. 1 desvio auto-corrigido (Rule 1): 4 classes
+Tailwind fora da escala padrão (`px-4.5`, `gap-4.5`, `py-5.5`) não geravam CSS nenhum em
+silêncio — trocadas por valores arbitrários em px (`px-[18px]`, `gap-[18px]`, `py-[22px]`),
+confirmado no CSS compilado. Gate `Phase122|Phase136|Phase137|Phase138|Phase139`: **302 testes
+/ 1584 asserções / 0 falhas** — idêntico ao baseline do 139-02 (nenhuma regressão). 3 commits
+(`71604c6c` remoção dos widgets antigos, `e81dc8a5` cabeçalho + Total a receber, `cbad2b49`
+Subiram de faixa + Serviços contratados). Last activity: 2026-09-04 — 139-03 executado. Sem
+deploy — próximos planos (04-07) seguem na reescrita da tela: filtros em chip, lista de
+empresas em 4 colunas e área expandida.
 
 ## Current Position
 
