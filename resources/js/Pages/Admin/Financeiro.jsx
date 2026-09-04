@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, router } from '@inertiajs/react';
 import { useState, useMemo, useEffect } from 'react';
-import { ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer, Send, Settings, RefreshCw, X, BarChart2, Plus, Pencil, PowerOff, Briefcase, AlertTriangle } from 'lucide-react';
+import { ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, FileText, Printer, Send, Settings, RefreshCw, X, BarChart2, Plus, Pencil, PowerOff, Briefcase, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -458,41 +458,6 @@ function GrupoServicosDivergentesBanner({ empresa }) {
     );
 }
 
-// Fase 139 §5 item 4: desce da linha para a barra de ações da área expandida
-// — ganha rótulo ao lado ("Marcar como recebido" / "Recebido") em vez do
-// círculo sem texto que tinha antes (só o título no hover explicava o quê).
-function RecebidoToggle({ empresa, mesSelecionado }) {
-    const [loading, setLoading] = useState(false);
-
-    // Filhas não têm toggle individual — pagamento é feito pelo pai
-    if (empresa.estado !== 'ok' || empresa.is_filha) return null;
-
-    function toggle(e) {
-        e.stopPropagation();
-        setLoading(true);
-        router.post(
-            route('admin.financeiro.recebido', empresa.id),
-            { mes: mesSelecionado },
-            { preserveScroll: true, onFinish: () => setLoading(false) }
-        );
-    }
-
-    return (
-        <button
-            onClick={toggle}
-            disabled={loading}
-            className={cn(
-                'inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 h-8 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-wait',
-                empresa.recebido
-                    ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-400'
-                    : 'border-white/[0.08] text-white/50 hover:border-white/20 hover:text-white/80',
-            )}
-        >
-            {empresa.recebido && <Check size={12} className="shrink-0" />}
-            {loading ? 'Salvando...' : (empresa.recebido ? 'Recebido' : 'Marcar como recebido')}
-        </button>
-    );
-}
 
 // Formato compacto de linha (Fase 139 §5) — reaproveitado tanto na coluna
 // "Faixa aplicada" da lista quanto na área expandida (mesmo componente,
@@ -1014,9 +979,9 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                     />
                 )}
 
-                {/* Barra de ações da empresa (Fase 139 §5 item 4): progressão,
-                    PDF e marcar recebido — este último desce da linha para
-                    cá, agora com rótulo ao lado. */}
+                {/* Barra de ações da empresa (Fase 139 §5 item 4): progressão
+                    e PDF. O marcador de pagamento saiu daqui (Fase 139 Plano
+                    07) — não era alimentado por ninguém em produção. */}
                 <div className="flex flex-wrap items-center justify-end gap-2">
                     {(empresa.progressao?.length > 0) && (
                         <button
@@ -1038,7 +1003,6 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                             Gerar relatório PDF
                         </a>
                     )}
-                    <RecebidoToggle empresa={empresa} mesSelecionado={mesSelecionado} />
                 </div>
             </div>
 
@@ -1167,13 +1131,9 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
     const [feedback, setFeedback]   = useState(null); // { tipo: 'success'|'error', msg: string } | null
 
     const totalPrincipais = companies.filter(e => !e.is_filha).length;
-    const totalRecebidos  = companies.filter(e => !e.is_filha && e.recebido).length;
-    const totalPendentes  = companies.filter(e => !e.is_filha && !e.recebido).length;
 
-    function urlGeral(filtroRecebido = '') {
-        const params = { mes: mesSelecionado };
-        if (filtroRecebido) params.recebido = filtroRecebido;
-        return route('admin.financeiro.relatorio.geral', params);
+    function urlGeral() {
+        return route('admin.financeiro.relatorio.geral', { mes: mesSelecionado });
     }
 
     // Dispara o job de envio por email via axios POST
@@ -1207,7 +1167,7 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
                             <p className="text-[10px] uppercase tracking-widest text-white/30 font-semibold">Gerar PDF para financeiro</p>
                         </div>
                         <a
-                            href={urlGeral('')}
+                            href={urlGeral()}
                             target="_blank"
                             rel="noreferrer"
                             onClick={() => setAberto(false)}
@@ -1215,26 +1175,6 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
                         >
                             <span className="text-[13px] text-white/70">Todas as empresas</span>
                             <span className="text-[11px] text-white/30 font-mono">{totalPrincipais}</span>
-                        </a>
-                        <a
-                            href={urlGeral('sim')}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={() => setAberto(false)}
-                            className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.04] transition-colors"
-                        >
-                            <span className="text-[13px] text-emerald-400">Recebidas</span>
-                            <span className="text-[11px] text-white/30 font-mono">{totalRecebidos}</span>
-                        </a>
-                        <a
-                            href={urlGeral('nao')}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={() => setAberto(false)}
-                            className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.04] transition-colors"
-                        >
-                            <span className="text-[13px] text-amber-400">Pendentes (inadimplentes)</span>
-                            <span className="text-[11px] text-white/30 font-mono">{totalPendentes}</span>
                         </a>
 
                         {/* Divisor — seção de envio por email */}
@@ -1317,7 +1257,7 @@ function SyncFaturamentoBtn({ mesSelecionado, competenciaFechada = false }) {
 
 // Filtro de servico derivado dinamicamente dos contratos ativos do dataset.
 // Sem `estado` — os chips (Fase 139, §3) cobrem o que o select de Estado fazia.
-const FILTROS_INICIAL = { busca: '', servico_nome: '', recebido: '' };
+const FILTROS_INICIAL = { busca: '', servico_nome: '' };
 
 // ─── Chips de filtro (Fase 139, §3) ───────────────────────────────────────
 // Mutuamente exclusivos. "topo" não filtra a lista — só reordena por
@@ -1470,7 +1410,7 @@ function SubiramDeFaixaCard({ totais, companies, onFocarEmpresa }) {
 
 function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLimpar, total, filtrado, servicosNomes }) {
     const sel = 'h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/60 focus:outline-none focus:border-ecf-yellow/40';
-    const ativo = filtroChip !== 'todos' || filtros.busca !== '' || filtros.servico_nome !== '' || filtros.recebido !== '';
+    const ativo = filtroChip !== 'todos' || filtros.busca !== '' || filtros.servico_nome !== '';
 
     return (
         <div className="flex flex-wrap gap-3 items-center justify-between">
@@ -1501,11 +1441,6 @@ function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLim
                     {servicosNomes.map(nome => (
                         <option key={nome} value={nome}>{nome}</option>
                     ))}
-                </select>
-                <select value={filtros.recebido} onChange={e => onChangeFiltros({ ...filtros, recebido: e.target.value })} className={sel}>
-                    <option value="">Pagamento</option>
-                    <option value="sim">Recebido</option>
-                    <option value="nao">Pendente</option>
                 </select>
                 {ativo && (
                     <button
@@ -1569,7 +1504,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
         [companies],
     );
 
-    // Ordem: busca → chip → serviço → pagamento → ordenação (Fase 139, §3).
+    // Ordem: busca → chip → serviço → ordenação (Fase 139, §3).
     // "topo" não filtra — só reordena por mensalidade desc no final; os
     // demais chips preservam a ordem alfabética que já vem do backend.
     const filtradas = useMemo(() => {
@@ -1588,9 +1523,6 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
         if (filtros.servico_nome) {
             lista = lista.filter(e => (e.servicos_contratados || []).some(s => s.servico_nome === filtros.servico_nome));
         }
-        if (filtros.recebido === 'sim') lista = lista.filter(e => e.recebido);
-        if (filtros.recebido === 'nao') lista = lista.filter(e => !e.recebido);
-
         if (filtroChip === 'topo') {
             lista = [...lista].sort((a, b) => (b.cobranca_mensal ?? -Infinity) - (a.cobranca_mensal ?? -Infinity));
         }

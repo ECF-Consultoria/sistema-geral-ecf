@@ -1415,7 +1415,6 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     Route::post('/financeiro/faixas/grupo/{grupo}',             [FechamentoController::class, 'salvarFaixasGrupo'])->name('financeiro.faixas.grupo');
     Route::delete('/financeiro/faixas/grupo/{grupo}',           [FechamentoController::class, 'removerFaixasGrupo'])->name('financeiro.faixas.grupo.remover');
     Route::patch('/financeiro/{company}',             [AdminController::class, 'updateFechamento'])->name('financeiro.update');
-    Route::post('/financeiro/{company}/recebido',     [AdminController::class, 'toggleRecebido'])->name('financeiro.recebido');
     Route::get('/financeiro/{company}/relatorio',     [AdminController::class, 'gerarRelatorio'])->name('financeiro.relatorio');
     Route::get('/inventario',              [AdminController::class, 'inventario'])->name('inventario');
 

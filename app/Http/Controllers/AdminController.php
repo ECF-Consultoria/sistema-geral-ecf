@@ -7,7 +7,6 @@ use App\Models\Company;
 use App\Models\CompanyGroup;
 use App\Models\Configuracao;
 use App\Models\FechamentoGrupoSnapshot;
-use App\Models\FechamentoRecebido;
 use App\Models\FechamentoSnapshot;
 use App\Models\GrupoFaixaFaturamento;
 use App\Models\Servico;
@@ -182,13 +181,10 @@ class AdminController extends Controller
             ->orderBy('name')
             ->get();
 
-        $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
-            ->pluck('recebido_em', 'company_id');
-
         // Passo 2 — números por empresa: congelado (snapshot) ou ao vivo (rollup + resolver).
         $dadosPorId = $competenciaFechada
-            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $recebidos)
-            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $recebidos);
+            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim)
+            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim);
 
         // Passo 3 — agregação por CompanyGroup (D-08/D-09/D-10). parent_company_id
         // NUNCA participa da soma, faixa ou conta_no_total a partir daqui.
@@ -409,7 +405,7 @@ class AdminController extends Controller
      * (App\Console\Commands\ConsolidarMesFechamento), só que sem gravar
      * nada.
      */
-    private function fechamentoDadosPorEmpresaAoVivo(Collection $rawCompanies, string $mesSelecionado, Carbon $inicio, Carbon $fim, Collection $recebidos): array
+    private function fechamentoDadosPorEmpresaAoVivo(Collection $rawCompanies, string $mesSelecionado, Carbon $inicio, Carbon $fim): array
     {
         $rollupAtual = $this->rollupService->porEmpresa($mesSelecionado, $rawCompanies);
 
@@ -516,7 +512,6 @@ class AdminController extends Controller
                 'tabela_origem'         => $faixaData['origem'] ?? null,
                 'tabela_servico_nome'   => $faixaData['servico_nome'] ?? null,
                 'cobranca_mensal'       => $cobrancaMensal,
-                'recebido'              => isset($recebidos[$c->id]),
                 'evolucao'              => $evolucao,
                 // Fase 139 (D-04): de qual faixa a empresa veio e quanto
                 // aquela faixa cobrava — base do widget "Subiram de faixa".
@@ -536,7 +531,7 @@ class AdminController extends Controller
      * `fechamento:consolidar-mes`. Nunca recalcula — corrigir `adman_metrics`
      * depois do fechamento não muda o que já foi cobrado.
      */
-    private function fechamentoDadosPorEmpresaCongelados(Collection $rawCompanies, string $mesReferenciaStr, Carbon $inicio, Carbon $fim, Collection $recebidos): array
+    private function fechamentoDadosPorEmpresaCongelados(Collection $rawCompanies, string $mesReferenciaStr, Carbon $inicio, Carbon $fim): array
     {
         $snapshots = FechamentoSnapshot::query()
             ->whereDate('mes_referencia', $mesReferenciaStr)
@@ -581,7 +576,6 @@ class AdminController extends Controller
                     'tabela_origem'         => null,
                     'tabela_servico_nome'   => null,
                     'cobranca_mensal'       => null,
-                    'recebido'              => isset($recebidos[$c->id]),
                     'evolucao'              => null,
                     // Fase 139 (D-04): sem linha nesta competência, também
                     // não há como comparar com o mês anterior.
@@ -622,7 +616,6 @@ class AdminController extends Controller
                 'tabela_origem'         => $s->tabela_origem,
                 'tabela_servico_nome'   => $s->servico?->nome,
                 'cobranca_mensal'       => $s->cobranca_mensal !== null ? (float) $s->cobranca_mensal : null,
-                'recebido'              => isset($recebidos[$c->id]),
                 'evolucao'              => $s->evolucao,
                 // Fase 139 (D-04): reconstruído do snapshot do mês anterior
                 // — nunca recalcula (D-11).
@@ -799,7 +792,6 @@ class AdminController extends Controller
                 'tabela_herdada_de_nome'  => ($faixaAncora !== null && $faixaAncora['origem'] !== 'grupo') ? ($faixaAncora['herdada_de_company_name'] ?? null) : null,
                 'tabelas_divergentes'   => $tabelasDivergentes,
                 'cobranca_mensal'       => $cobrancaMensalGrupo,
-                'recebido'              => $dadosPorId[$ancora->id]['recebido'] ?? false,
                 'evolucao'              => $evolucaoGrupo,
                 'conta_no_total'        => true,
                 // Fase 139 (D-04): grupo continua sem fallback ao vivo —
@@ -912,7 +904,6 @@ class AdminController extends Controller
                 'tabela_herdada_de_nome' => $tabelaHerdadaDeNome,
                 'tabelas_divergentes'   => (bool) ($s?->tabelas_divergentes ?? false),
                 'cobranca_mensal'       => $s?->cobranca_mensal !== null ? (float) $s->cobranca_mensal : null,
-                'recebido'              => $dadosPorId[$ancoraId]['recebido'] ?? false,
                 'evolucao'              => $s?->evolucao,
                 'conta_no_total'        => true,
                 // Fase 139 (D-04): reconstruído do snapshot de grupo do mês
@@ -1117,27 +1108,6 @@ class AdminController extends Controller
         return back();
     }
 
-    public function toggleRecebido(Request $request, Company $company)
-    {
-        $mes = $request->input('mes', Carbon::now()->format('Y-m'));
-
-        $recebido = FechamentoRecebido::where('company_id', $company->id)
-            ->where('mes', $mes)
-            ->first();
-
-        if ($recebido) {
-            $recebido->delete();
-        } else {
-            FechamentoRecebido::create([
-                'company_id'  => $company->id,
-                'mes'         => $mes,
-                'recebido_em' => now(),
-            ]);
-        }
-
-        return back();
-    }
-
     public function gerarRelatorio(Request $request, Company $company)
     {
         // Determina mês de referência
@@ -1177,20 +1147,15 @@ class AdminController extends Controller
 
         $todasEmpresas = collect([$company])->merge($vinculadasCompanies);
 
-        $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
-            ->pluck('recebido_em', 'company_id');
-
         // D-11 — mesma bifurcação de fechamento(): competência congelada lê
         // fechamento_snapshots, nunca recalcula (D-05: ML+Shopee já somados
         // e classificados pelas mesmas fontes centrais).
         $dadosPorId = $this->relatorioCompetenciaFechada($mesReferenciaStr)
-            ? $this->fechamentoDadosPorEmpresaCongelados($todasEmpresas, $mesReferenciaStr, $inicio, $fim, $recebidos)
-            : $this->fechamentoDadosPorEmpresaAoVivo($todasEmpresas, $mesSelecionado, $inicio, $fim, $recebidos);
+            ? $this->fechamentoDadosPorEmpresaCongelados($todasEmpresas, $mesReferenciaStr, $inicio, $fim)
+            : $this->fechamentoDadosPorEmpresaAoVivo($todasEmpresas, $mesSelecionado, $inicio, $fim);
 
         $periodoInicioFmt = $inicio->format('d/m/Y');
         $periodoFimFmt    = $fim->format('d/m/Y');
-
-        $recebido = isset($recebidos[$company->id]);
 
         $linhaPai = $this->relatorioLinhaEmpresa($company, $dadosPorId[$company->id], $periodoInicioFmt, $periodoFimFmt);
 
@@ -1222,7 +1187,6 @@ class AdminController extends Controller
             'vinculadas'       => $vinculadas,
             'total_faturamento'=> $totalFaturamento,
             'total_mensalidade'=> $totalMensalidade,
-            'recebido'         => $recebido,
             'gerado_em'        => Carbon::now()->format('d/m/Y \à\s H:i'),
         ]);
     }
@@ -1271,17 +1235,14 @@ class AdminController extends Controller
 
         $rawCompanies = $query->get();
 
-        $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
-            ->pluck('recebido_em', 'company_id');
-
         $competenciaFechada = $this->relatorioCompetenciaFechada($mesReferenciaStr);
 
         // Mesmo pipeline de fechamento(): números por empresa (congelado ou
         // ao vivo, D-05/D-11) e depois agregação por CompanyGroup
         // (D-08/D-09/D-10) — nunca a hierarquia legada de pai/filha.
         $dadosPorId = $competenciaFechada
-            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $recebidos)
-            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $recebidos);
+            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim)
+            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim);
 
         $dadosPorId = $competenciaFechada
             ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr)
@@ -1290,19 +1251,12 @@ class AdminController extends Controller
         $periodoInicioFmt = $inicio->format('d/m/Y');
         $periodoFimFmt    = $fim->format('d/m/Y');
 
-        $filtroRecebido = $request->input('recebido'); // 'sim', 'nao', ou null
-
         $relatorios = [];
         foreach ($dadosPorId as $ancoraId => $linha) {
             $ancora = $rawCompanies->firstWhere('id', $ancoraId);
             if ($ancora === null) {
                 continue;
             }
-
-            $recebido = (bool) ($linha['recebido'] ?? false);
-
-            if ($filtroRecebido === 'sim' && ! $recebido) continue;
-            if ($filtroRecebido === 'nao' && $recebido)  continue;
 
             $linhaPrincipal = $this->relatorioLinhaEmpresa($ancora, $linha, $periodoInicioFmt, $periodoFimFmt);
 
@@ -1324,7 +1278,6 @@ class AdminController extends Controller
             $relatorios[] = [
                 'company'           => $ancora,
                 'titulo'            => $titulo,
-                'recebido'          => $recebido,
                 'faturamento'       => $linhaPrincipal['faturamento'],
                 'periodo_inicio'    => $linhaPrincipal['periodo_inicio'],
                 'periodo_fim'       => $linhaPrincipal['periodo_fim'],
@@ -1347,7 +1300,6 @@ class AdminController extends Controller
             'mes_label'       => $mesLabel,
             'mes_selecionado' => $mesSelecionado,
             'gerado_em'       => Carbon::now()->format('d/m/Y \à\s H:i'),
-            'filtro_recebido' => $filtroRecebido,
         ]);
     }
 
