@@ -1,0 +1,21 @@
+CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE GESTÃO DE ADS
+
+CONTRATANTE: EMPRESA FICTICIA MODELO ANTIGO LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 22.333.444/0001-55, com sede na Rua Exemplo, 200.
+
+CONTRATADA: ECF CONSULTORIA E GESTAO LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 99.888.777/0001-11.
+
+CLÁUSULA 3 — DO INVESTIMENTO
+
+Faturamento    | Investimento         | Invest. % / Fat.
+-100M / mês    | R$ 2.250,00 / mês    | -
++100M / mês    | R$ 3.000,00 / mês    | 3% - 0.6%
++500M / mês    | R$ 4.500,00 / mês    | 0.9% - 0.45%
++1MM / mês     | R$ 6.000,00 / mês    | 0.6% - 0.3%
++2MM / mês     | R$ 8.000,00 / mês    | 0.4% - 0.27%
++3MM / mês     | R$ 10.000,00 / mês   | 0.33% - 0.2%
++5MM / mês     | R$ 13.000,00 / mês   | 0.26% - 0.19%
++7MM / mês     | R$ 16.000,00 / mês   | 0.23% - 0.18%
++9MM / mês     | R$ 19.000,00 / mês   | 0.21% - 0.17%
++11MM / mês    | R$ 21.000,00 / mês   | 0.19% - 0.16%
++13MM / mês    | R$ 23.000,00 / mês   | 0.18% - 0.17%
++15MM / mês    | R$ 25.000,00 / mês   | 0.165% - 0.21%
