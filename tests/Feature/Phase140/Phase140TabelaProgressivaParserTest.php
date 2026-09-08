@@ -266,4 +266,124 @@ class Phase140TabelaProgressivaParserTest extends TestCase
         $this->assertSame('55666777000188', $resultado['cnpj']);
         $this->assertNull($resultado['razao_social']);
     }
+
+    // ═══ CORREÇÃO PÓS-RODADA REAL (2026-09-08) — DEFEITO 1: ordem ECF/cliente variável ═══
+    //
+    // A rodada real (`clicksign:extrair-tabelas --limite=10`) devolveu o MESMO CNPJ nas 10 linhas
+    // — o da ECF, não o do cliente — porque a extração pegava "o primeiro CNPJ do documento" e a
+    // ECF costuma aparecer primeiro. Medido: DESK DESIGN tem a ECF primeiro; ALUMEN tem o cliente
+    // primeiro. Os dois cenários abaixo reproduzem essa dinâmica com CNPJs FICTÍCIOS — nunca os
+    // reais citados pelo coordenador.
+    //
+    // ⚠️ SEM `config('services.clicksign.cnpj_ecf')` de propósito nestes dois testes — é exatamente
+    // o estado real de produção (a chave não está no `.env` do servidor) e é o que fez a extração
+    // antiga degenerar para "primeiro CNPJ do documento" sempre. A correção tem que funcionar só
+    // com o RÓTULO, sem depender de configuração nenhuma.
+
+    #[Test]
+    public function ecf_primeiro_no_texto_como_desk_design_ainda_assim_extrai_o_cnpj_do_cliente(): void
+    {
+        $texto = <<<'TXT'
+        CONTRATADA: ECF FICTICIA HOLDING LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 11.111.111/0001-11.
+        CONTRATANTE: EMPRESA FICTICIA ORDEM UM LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 22.222.222/0001-22.
+        TXT;
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('22222222000122', $resultado['cnpj']);
+        $this->assertSame('EMPRESA FICTICIA ORDEM UM LTDA', $resultado['razao_social']);
+    }
+
+    #[Test]
+    public function cliente_primeiro_no_texto_como_alumen_extrai_o_cnpj_do_cliente_e_nao_o_da_ecf(): void
+    {
+        $texto = <<<'TXT'
+        CONTRATANTE: EMPRESA FICTICIA ORDEM DOIS LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 33.333.333/0001-33.
+        CONTRATADA: ECF FICTICIA HOLDING LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 44.444.444/0001-44.
+        TXT;
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('33333333000133', $resultado['cnpj']);
+        $this->assertSame('EMPRESA FICTICIA ORDEM DOIS LTDA', $resultado['razao_social']);
+    }
+
+    #[Test]
+    public function rede_de_seguranca_descarta_cnpj_da_ecf_mesmo_sem_rotulo_reconhecivel(): void
+    {
+        // Sem "CONTRATANTE"/"CONTRATADA" no texto — o fallback por eliminação pegaria este único
+        // CNPJ, mas ele é (fictiamente) um CNPJ conhecido da ECF: a rede de segurança tem que
+        // vencer o fallback e devolver vazio, nunca o nosso CNPJ como se fosse do cliente.
+        $texto = 'Contrato de prestação de serviços diversos. Cadastro: CNPJ 55.555.555/0001-55. '
+            . 'Documento assinado eletronicamente sem outras referências.';
+
+        config(['services.clicksign.cnpj_ecf' => '55.555.555/0001-55']);
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertNull($resultado['cnpj']);
+        $this->assertNull($resultado['razao_social']);
+        $this->assertStringContainsString('rede de segurança', implode(' ', $resultado['avisos']));
+    }
+
+    #[Test]
+    public function sem_rotulo_reconhecivel_usa_fallback_por_eliminacao_com_aviso_de_confianca_menor(): void
+    {
+        // Dois CNPJs, nenhum rótulo CONTRATANTE/CONTRATADA no texto — cai no fallback antigo
+        // (primeiro que não é CNPJ conhecido da ECF), mas com aviso deixando claro que a confiança
+        // é menor (sem rótulo para confirmar).
+        $texto = 'Documento cita o CNPJ 66.666.666/0001-66 e também o CNPJ 77.777.777/0001-77, sem qualificar as partes.';
+
+        config(['services.clicksign.cnpj_ecf' => '66.666.666/0001-66']);
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('77777777000177', $resultado['cnpj']);
+        $this->assertStringContainsString('eliminação', implode(' ', $resultado['avisos']));
+    }
+
+    // ═══ CORREÇÃO PÓS-RODADA REAL (2026-09-08) — DEFEITO 2: dígitos apagados no PDF ═══
+    //
+    // Texto reproduzido LITERALMENTE do exemplo que o coordenador extraiu de um contrato real
+    // `contrato_gestao_ads_meli_*` (ago/2025) — é boilerplate contratual genérico, sem nome de
+    // empresa nem CNPJ, então é seguro usar tal como veio no relatório do defeito.
+
+    #[Test]
+    public function contrato_com_digitos_apagados_no_pdf_vira_numeros_ilegiveis_nunca_indefinido_generico(): void
+    {
+        $texto = 'Pelos servicos de gestao de ADS ora contratados, a CONTRATANTE pagara a CONTRATADA '
+            . 'o valor total de R  .   ,   (tres mil reais) de entrada e   (seis) parcelas mensais '
+            . 'e iguais de R$  .   ,   (quatro mil e quinhentos reais) cada.';
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('numeros_ilegiveis', $resultado['tipo']);
+        $this->assertSame([], $resultado['faixas']);
+        $this->assertNull($resultado['valor_fixo']);
+        $this->assertNull($resultado['cnpj']);
+        $this->assertNotEmpty($resultado['avisos']);
+        $this->assertStringContainsString('precisa abrir o contrato', implode(' ', $resultado['avisos']));
+    }
+
+    #[Test]
+    public function texto_genuinamente_sem_sinal_nenhum_continua_indefinido_nao_numeros_ilegiveis(): void
+    {
+        // Guarda contra o novo detector disparar demais: texto sem NENHUMA menção a "R$" continua
+        // caindo em `indefinido`, não em `numeros_ilegiveis`.
+        $resultado = $this->parser()->analisar('Este é um contrato de locação de sala comercial, sem relação com gestão de ADS.');
+
+        $this->assertSame('indefinido', $resultado['tipo']);
+    }
+
+    #[Test]
+    public function valor_com_digitos_normais_nunca_e_confundido_com_numeros_ilegiveis(): void
+    {
+        // Guarda de não-regressão: um valor válido (com dígitos de verdade) não pode disparar o
+        // detector de dígitos apagados.
+        $texto = 'Pagamento único de R$ 3.000,00 (três mil reais), sem parcelamento, sem tabela.';
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertNotSame('numeros_ilegiveis', $resultado['tipo']);
+    }
 }
