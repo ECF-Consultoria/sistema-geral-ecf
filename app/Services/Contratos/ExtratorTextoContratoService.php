@@ -78,11 +78,12 @@ class ExtratorTextoContratoService
 
     /**
      * Abre um ZIP e lê a PRIMEIRA entrada cujo nome termina em `.pdf`, em memória, com
-     * `getFromName()`. ⚠️ Nunca `extractTo()`: extrair entrada de ZIP de terceiro para disco é
-     * caminho de zip-slip (entrada com `../` sobrescreve arquivo do servidor) — T-140-05 do
-     * threat_model. O binário do ZIP em si precisa de um caminho de arquivo para o `ZipArchive`
-     * abrir (limitação da extensão), então grava só o pacote inteiro num temporário e apaga no
-     * `finally`; as entradas de DENTRO do pacote nunca tocam o disco.
+     * `getFromName()`. ⚠️ Proibido usar o método de extração-para-disco do `ZipArchive` nas
+     * entradas: extrair entrada de ZIP de terceiro para disco é caminho de zip-slip (entrada com
+     * `../` sobrescreve arquivo do servidor) — T-140-05 do threat_model. O binário do ZIP em si
+     * precisa de um caminho de arquivo para o `ZipArchive` abrir (limitação da extensão), então
+     * grava só o pacote inteiro num temporário e apaga no `finally`; as entradas de DENTRO do
+     * pacote nunca tocam o disco.
      *
      * @return array{texto: ?string, motivo: ?string, formato: string}
      */
