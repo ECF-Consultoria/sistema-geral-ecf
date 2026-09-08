@@ -33,6 +33,23 @@ namespace App\Services\Contratos;
  * avisos}`, onde cada faixa tem exatamente o shape de `App\Models\EmpresaFaixaFaturamento`
  * (`ordem`, `limite_superior`, `valor`, `valor_e_piso`) — o plano 140-05 grava direto, sem
  * tradutor no meio.
+ *
+ * ═══ CORREÇÕES PÓS-RODADA REAL (140-02, 2026-09-08) ═══
+ *
+ * A rodada real contra a conta de produção (`clicksign:extrair-tabelas --limite=10`, executada
+ * pelo 140-03) revelou dois defeitos que não apareciam nas fixtures fictícias originais:
+ *
+ * 1. **CNPJ/razão social vinham sempre da ECF, nunca do cliente.** A extração pegava o PRIMEIRO
+ *    CNPJ do documento, mas a ORDEM entre ECF e cliente VARIA entre contratos — medido: DESK
+ *    DESIGN (ECF primeiro) vs. ALUMEN (cliente primeiro). A correção lê pelo RÓTULO
+ *    (CONTRATANTE/CONTRATADA), que aparece literalmente nos contratos, e não pela posição — ver
+ *    `extrairCnpjERazaoSocial()` e `CNPJS_ECF_CONHECIDOS` (rede de segurança).
+ * 2. **Contratos antigos (ago/2025) têm os dígitos apagados no PDF** — problema de fonte no
+ *    documento, não do parser: o texto extrai com `R$  .   ,   ` (dígitos viraram espaço), mas o
+ *    valor por extenso entre parênteses sobrevive. Decisão: marcar essas linhas com um tipo
+ *    PRÓPRIO (`numeros_ilegiveis`), nunca deixá-las cair no genérico `indefinido` ("não deu para
+ *    entender a cobrança") — ver `pareceNumerosIlegiveis()` e a justificativa no SUMMARY do plano
+ *    140-02 sobre por que NÃO se tentou converter o valor por extenso em número.
  */
 class TabelaProgressivaContratoParser
 {
@@ -43,8 +60,29 @@ class TabelaProgressivaContratoParser
     private const MINIMO_MARCOS_PARA_TABELA = 3;
 
     /**
+     * CNPJs conhecidos da PRÓPRIA ECF — as duas pessoas jurídicas que assinam como CONTRATADA nos
+     * modelos de contrato. Não é dado sensível: o `63.381.851/0001-41` já está literal e versionado
+     * em `.planning/phases/126-.../126-VARIAVEIS-DO-MODELO.md` desde a Fase 126 (qualificação fixa
+     * do modelo `.docx`) — é o CNPJ público da própria empresa, não segredo nem dado de cliente.
+     *
+     * Rede de segurança (correção pós-rodada real, 2026-09-08): se o CNPJ que a extração aponta
+     * como "do cliente" bater com um destes, a leitura falhou — devolve `null` em vez do nosso
+     * próprio CNPJ, porque este campo vira chave de casamento de cobrança (ver `ehCnpjDaEcf()`).
+     * Configuração adicional (não substitui esta lista) pode vir de
+     * `config('services.clicksign.cnpj_ecf')`, aceitando um ou mais CNPJs separados por vírgula.
+     *
+     * @var array<int, string>
+     */
+    private const CNPJS_ECF_CONHECIDOS = [
+        '39783867000104', // ECF Comércio Treinamento e Desenvolvimento LTDA
+        '63381851000141', // ECF Negócios Digitais LTDA
+    ];
+
+    private const REGEX_CNPJ = '/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/';
+
+    /**
      * @return array{
-     *     tipo: 'tabela'|'valor_fixo'|'indefinido',
+     *     tipo: 'tabela'|'valor_fixo'|'indefinido'|'numeros_ilegiveis',
      *     faixas: array<int, array{ordem: int, limite_superior: ?float, valor: float, valor_e_piso: bool}>,
      *     valor_fixo: ?float,
      *     cnpj: ?string,
@@ -83,6 +121,23 @@ class TabelaProgressivaContratoParser
             ];
         }
 
+        // Correção pós-rodada real: contratos antigos (ago/2025) chegam com os dígitos apagados
+        // pelo PDF ("R$  .   ,   ") — nem valor fixo nem tabela batem, porque os dois exigem
+        // dígitos de verdade. Isso NÃO é "indefinido" (não é falta de sinal — é sinal presente e
+        // ilegível), então ganha tipo próprio para não sair do relatório como se tivesse sido lido.
+        if (count($marcos) === 0 && $this->pareceNumerosIlegiveis($texto)) {
+            return [
+                'tipo'         => 'numeros_ilegiveis',
+                'faixas'       => [],
+                'valor_fixo'   => null,
+                'cnpj'         => $cnpj,
+                'razao_social' => $razaoSocial,
+                'avisos'       => array_merge($avisosCnpj, [
+                    'os números deste contrato não são legíveis no arquivo (dígitos vieram como espaços) — precisa abrir o contrato à mão',
+                ]),
+            ];
+        }
+
         // Um ou dois marcos batidos não é tabela pela metade — é indício insuficiente.
         $avisosIndefinido = $avisosCnpj;
         if (count($marcos) > 0) {
@@ -98,6 +153,28 @@ class TabelaProgressivaContratoParser
             'razao_social' => $razaoSocial,
             'avisos'       => $avisosIndefinido,
         ];
+    }
+
+    // ═══ NÚMEROS ILEGÍVEIS (dígitos apagados no PDF) ═══
+
+    /**
+     * Detecta a marca estrutural de um contrato onde os DÍGITOS de valores em reais viraram espaço
+     * em branco no texto extraído — problema de fonte do PDF, não do parser (2026-09-08, contratos
+     * `contrato_gestao_ads_meli_*` de ago/2025). Um valor válido SEMPRE tem dígitos entre "R$" e o
+     * ponto de milhar e entre o ponto e a vírgula de centavos (ex.: "R$ 3.000,00"); esta regex só
+     * casa quando esses dígitos estão AUSENTES (só espaço), o que nunca acontece num valor lido
+     * corretamente — por isso é seguro contra falso positivo em texto normal.
+     *
+     * ⚠️ Decisão registrada no SUMMARY do plano 140-02: NÃO tentamos ler o valor por extenso
+     * (ex.: "três mil reais") e convertê-lo em número. O projeto já tem conversão número→extenso em
+     * `ContratoPdfService::quantidadeDeParcelasPorExtenso()`, mas o sentido INVERSO (extenso→número)
+     * é onde um erro de interpretação vira valor de cobrança errado sem parecer errado — para os
+     * poucos contratos afetados, marcar honestamente para conferência manual é mais seguro que
+     * arriscar um número.
+     */
+    private function pareceNumerosIlegiveis(string $texto): bool
+    {
+        return preg_match('/R\$?\s*\.\s*,\s*/u', $texto) === 1;
     }
 
     // ═══ VALOR FIXO ═══
@@ -296,27 +373,39 @@ class TabelaProgressivaContratoParser
     // ═══ CNPJ E RAZÃO SOCIAL ═══
 
     /**
-     * Um contrato tem DOIS CNPJs: o da ECF (contratada) e o do cliente (contratante). Ignora o
-     * CNPJ da ECF (`config('services.clicksign.cnpj_ecf')`) — sem essa config, degenera para "pega
-     * o primeiro CNPJ que aparecer", que é a mesma regra ("primeiro que não for da ECF") quando não
-     * há como saber qual é o da ECF. Registra aviso quando só existe um CNPJ no texto.
+     * Um contrato tem DOIS CNPJs: o da ECF (contratada) e o do cliente (contratante).
+     *
+     * ⚠️ Correção pós-rodada real (2026-09-08): a versão original desta função pegava "o primeiro
+     * CNPJ que não é o da ECF configurada" — e a rodada real mostrou que a ORDEM entre ECF e
+     * cliente VARIA entre contratos (DESK DESIGN: ECF primeiro; ALUMEN: cliente primeiro), então
+     * "primeiro" acertava por acaso ou errava, e SEM `cnpj_ecf` configurado (o caso de produção)
+     * sempre devolvia o primeiro CNPJ do documento — que na maioria dos contratos é o da própria
+     * ECF, porque ela costuma abrir a qualificação. As 10 linhas da rodada real vieram todas com o
+     * MESMO CNPJ (o nosso) por causa disso.
+     *
+     * A leitura agora é por RÓTULO: o CNPJ mais próximo da palavra "CONTRATANTE" no texto é o do
+     * cliente — os contratos sempre trazem esse rótulo literal na cláusula de qualificação,
+     * independente de qual pessoa jurídica vem primeiro. Só cai no fallback por eliminação (ver
+     * `escolherCnpjDoCliente()`) quando nenhum rótulo é encontrado perto de nenhum CNPJ.
+     *
+     * Rede de segurança final: se o CNPJ escolhido (por rótulo OU por fallback) bater com um dos
+     * `CNPJS_ECF_CONHECIDOS` (ou com `config('services.clicksign.cnpj_ecf')`), a leitura falhou —
+     * devolve `null` em vez do CNPJ da própria ECF. Melhor sem dado do que com dado errado: este
+     * campo vira chave de casamento de cobrança (ver `ehCnpjDaEcf()`).
      *
      * @return array{0: ?string, 1: ?string, 2: array<int, string>} [cnpj, razao_social, avisos]
      */
     private function extrairCnpjERazaoSocial(string $texto): array
     {
-        if (!preg_match_all('/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/', $texto, $matches, PREG_OFFSET_CAPTURE)) {
+        if (!preg_match_all(self::REGEX_CNPJ, $texto, $matches, PREG_OFFSET_CAPTURE)) {
             return [null, null, []];
         }
 
-        $ecfCnpjConfig  = config('services.clicksign.cnpj_ecf');
-        $ecfNormalizado = $ecfCnpjConfig ? preg_replace('/\D/', '', (string) $ecfCnpjConfig) : null;
-
         // Deduplica por valor normalizado, mantendo a PRIMEIRA ocorrência (posição) de cada CNPJ
-        // distinto — é essa posição que localiza a razão social na cláusula de qualificação.
-        // ⚠️ Lista sequencial de propósito, NUNCA `$distintos[$normalizado] = ...`: chave de array
-        // toda-dígitos é convertida para int pelo PHP, e um CNPJ normalizado É toda dígitos —
-        // guardar como chave silenciosamente troca o tipo que o chamador espera (string).
+        // distinto — é essa posição que localiza o rótulo e a razão social na cláusula de
+        // qualificação. ⚠️ Lista sequencial de propósito, NUNCA `$distintos[$normalizado] = ...`:
+        // chave de array toda-dígitos é convertida para `int` pelo PHP, e um CNPJ normalizado É
+        // toda dígitos — guardar como chave silenciosamente troca o tipo que o chamador espera.
         $distintos = [];
         $vistos    = [];
         foreach ($matches[0] as [$bruto, $offset]) {
@@ -330,29 +419,175 @@ class TabelaProgressivaContratoParser
             $distintos[] = ['cnpj' => $normalizado, 'offset' => $offset];
         }
 
+        $avisos = [];
         if (count($distintos) === 1) {
-            $normalizado = $distintos[0]['cnpj'];
-            $offset      = $distintos[0]['offset'];
-            $aviso       = ['só um CNPJ encontrado no texto — não deu para confirmar contra o CNPJ da ECF'];
-
-            if ($ecfNormalizado !== null && $normalizado === $ecfNormalizado) {
-                return [null, null, $aviso];
-            }
-
-            return [$normalizado, $this->extrairRazaoSocial($texto, $offset), $aviso];
+            $avisos[] = 'só um CNPJ encontrado no texto — não deu para confirmar contra o CNPJ da ECF';
         }
 
+        $cnpjParaRotulo = $this->mapearCnpjParaRotulo($texto, $distintos);
+        $candidato      = $this->escolherCnpjDoCliente($distintos, $cnpjParaRotulo, $avisos);
+
+        if ($candidato === null) {
+            return [null, null, $avisos];
+        }
+
+        if ($this->ehCnpjDaEcf($candidato['cnpj'])) {
+            $avisos[] = 'o CNPJ identificado é da própria ECF, não do cliente — descartado (rede de segurança)';
+
+            return [null, null, $avisos];
+        }
+
+        return [$candidato['cnpj'], $this->extrairRazaoSocial($texto, $candidato['offset']), $avisos];
+    }
+
+    /**
+     * Associa cada CNPJ distinto ao rótulo ("contratante"/"contratada") que o qualifica, usando os
+     * DOIS jeitos como contratos reais escrevem a cláusula de qualificação:
+     *
+     * 1. **Rótulo ANTES, com dois-pontos**: `"CONTRATANTE: NOME LTDA, ..., CNPJ X"` — busca o CNPJ
+     *    mais próximo À FRENTE do rótulo (nunca um CNPJ que vem antes dele no texto).
+     * 2. **Rótulo DEPOIS, sem dois-pontos**: `"NOME LTDA, CNPJ X, ..., doravante denominada
+     *    CONTRATANTE"` — busca o CNPJ mais próximo ATRÁS do rótulo.
+     *
+     * ⚠️ Por que direção importa (bug corrigido em 2026-09-08, pós-rodada real): usar "rótulo mais
+     * próximo por distância, em qualquer direção" errava quando um CNPJ ficava entre dois rótulos
+     * de cláusulas VIZINHAS (`"CONTRATADA: ..., CNPJ da ECF.\nCONTRATANTE: ..."` — o CNPJ da ECF,
+     * por estar no fim da própria linha, acabava mais PERTO do "CONTRATANTE" da linha seguinte do
+     * que do "CONTRATADA" que na verdade o qualifica). Buscar só NA DIREÇÃO que o padrão de
+     * qualificação realmente usa (à frente para o rótulo com dois-pontos) elimina essa ambiguidade.
+     *
+     * @param  array<int, array{cnpj: string, offset: int}>  $distintos
+     * @return array<int, 'contratante'|'contratada'> chave = offset do CNPJ (do array $distintos)
+     */
+    private function mapearCnpjParaRotulo(string $texto, array $distintos): array
+    {
+        $porOffset = [];
+
+        if (preg_match_all('/(CONTRATANTE|CONTRATADA)\s*:/iu', $texto, $m, PREG_OFFSET_CAPTURE)) {
+            foreach ($m[1] as [$rotuloTexto, $rotuloOffset]) {
+                $cnpj = $this->cnpjMaisProximoNaDirecao($distintos, $rotuloOffset, 'frente');
+
+                if ($cnpj !== null) {
+                    $porOffset[$cnpj['offset']] = mb_strtolower($rotuloTexto);
+                }
+            }
+        }
+
+        if (preg_match_all('/denominad[ao]\s+(CONTRATANTE|CONTRATADA)/iu', $texto, $m, PREG_OFFSET_CAPTURE)) {
+            foreach ($m[1] as [$rotuloTexto, $rotuloOffset]) {
+                $cnpj = $this->cnpjMaisProximoNaDirecao($distintos, $rotuloOffset, 'tras');
+
+                // Padrão 1 (dois-pontos) tem precedência se os dois já resolveram o mesmo CNPJ.
+                if ($cnpj !== null && !isset($porOffset[$cnpj['offset']])) {
+                    $porOffset[$cnpj['offset']] = mb_strtolower($rotuloTexto);
+                }
+            }
+        }
+
+        return $porOffset;
+    }
+
+    /**
+     * CNPJ distinto mais próximo de um rótulo, só na direção pedida (`'frente'`: CNPJ com offset
+     * maior que o do rótulo; `'tras'`: offset menor), dentro de uma janela máxima — evita cruzar
+     * para o CNPJ de uma cláusula vizinha.
+     *
+     * @param  array<int, array{cnpj: string, offset: int}>  $distintos
+     * @return array{cnpj: string, offset: int}|null
+     */
+    private function cnpjMaisProximoNaDirecao(array $distintos, int $offsetRotulo, string $direcao, int $janelaMaxima = 400): ?array
+    {
+        $melhor          = null;
+        $melhorDistancia = null;
+
         foreach ($distintos as $item) {
-            if ($ecfNormalizado !== null && $item['cnpj'] === $ecfNormalizado) {
+            if ($direcao === 'frente' && $item['offset'] < $offsetRotulo) {
                 continue;
             }
 
-            return [$item['cnpj'], $this->extrairRazaoSocial($texto, $item['offset']), []];
+            if ($direcao === 'tras' && $item['offset'] > $offsetRotulo) {
+                continue;
+            }
+
+            $distancia = abs($item['offset'] - $offsetRotulo);
+
+            if ($distancia > $janelaMaxima) {
+                continue;
+            }
+
+            if ($melhorDistancia === null || $distancia < $melhorDistancia) {
+                $melhorDistancia = $distancia;
+                $melhor          = $item;
+            }
         }
 
-        // Todos os CNPJs distintos bateram com o da ECF (não deveria acontecer num contrato real)
-        // — melhor devolver o primeiro do que devolver null quando existe candidato no texto.
-        return [$distintos[0]['cnpj'], $this->extrairRazaoSocial($texto, $distintos[0]['offset']), []];
+        return $melhor;
+    }
+
+    /**
+     * Escolhe o CNPJ do cliente dentre os distintos encontrados no texto:
+     *
+     * 1. Primeiro CNPJ (na ordem em que aparece no documento) mapeado para o rótulo "contratante"
+     *    por `mapearCnpjParaRotulo()` — caminho principal, funciona com ECF ou cliente em qualquer
+     *    ordem no documento.
+     * 2. Sem nenhum rótulo reconhecível: fallback por eliminação (o comportamento antigo) —
+     *    primeiro CNPJ que não é um CNPJ conhecido da ECF, com aviso de confiança menor.
+     * 3. Nenhum dos dois: devolve o primeiro CNPJ distinto mesmo assim, deixando a rede de
+     *    segurança do chamador (`ehCnpjDaEcf()` em `extrairCnpjERazaoSocial()`) decidir se descarta.
+     *
+     * @param  array<int, array{cnpj: string, offset: int}>  $distintos
+     * @param  array<int, string>  $cnpjParaRotulo  chave = offset do CNPJ
+     * @param  array<int, string>  $avisos
+     * @return array{cnpj: string, offset: int}|null
+     */
+    private function escolherCnpjDoCliente(array $distintos, array $cnpjParaRotulo, array &$avisos): ?array
+    {
+        if ($distintos === []) {
+            return null;
+        }
+
+        foreach ($distintos as $item) {
+            if (($cnpjParaRotulo[$item['offset']] ?? null) === 'contratante') {
+                return $item;
+            }
+        }
+
+        foreach ($distintos as $item) {
+            if (!$this->ehCnpjDaEcf($item['cnpj'])) {
+                $avisos[] = 'CNPJ do cliente identificado por eliminação — nenhum rótulo "CONTRATANTE" foi encontrado perto de nenhum CNPJ neste texto — conferir manualmente';
+
+                return $item;
+            }
+        }
+
+        return $distintos[0];
+    }
+
+    /**
+     * `true` quando o CNPJ normalizado é um dos CNPJs conhecidos da PRÓPRIA ECF —
+     * `CNPJS_ECF_CONHECIDOS` (hardcoded, precedente já versionado desde a Fase 126) mais qualquer
+     * CNPJ adicional em `config('services.clicksign.cnpj_ecf')` (aceita lista separada por vírgula,
+     * para adicionar uma terceira pessoa jurídica sem alterar código).
+     */
+    private function ehCnpjDaEcf(string $cnpjNormalizado): bool
+    {
+        if (in_array($cnpjNormalizado, self::CNPJS_ECF_CONHECIDOS, true)) {
+            return true;
+        }
+
+        $configurado = config('services.clicksign.cnpj_ecf');
+
+        if (!$configurado) {
+            return false;
+        }
+
+        foreach (explode(',', (string) $configurado) as $cnpjConfigurado) {
+            if (preg_replace('/\D/', '', trim($cnpjConfigurado)) === $cnpjNormalizado) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
