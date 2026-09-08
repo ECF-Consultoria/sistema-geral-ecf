@@ -56,16 +56,18 @@ class Phase140AcervoColetaTest extends TestCase
     #[Test]
     public function pagina_ate_a_pagina_curta_filtra_gestao_de_ads_e_descarta_funcionario_e_locacao(): void
     {
-        // Página 1: 100 itens (página CHEIA — força ir buscar a página 2,
-        // sem depender de nenhum contador total, que 'enviar()' descarta).
+        // Página 1: 50 itens — página CHEIA no teto MEDIDO da API
+        // (`ClicksignClient::ENVELOPES_TAMANHO_MAXIMO_PAGINA`, 50,
+        // 2026-09-08 — NÃO 100). Página cheia força ir buscar a página 2,
+        // sem depender de nenhum contador total, que 'enviar()' descarta.
         $pagina1 = [];
-        for ($i = 1; $i <= 97; $i++) {
+        for ($i = 1; $i <= 47; $i++) {
             $pagina1[] = $this->envelope("outro-{$i}", "Locação de Auditório {$i}");
         }
         $pagina1[] = $this->envelope('mentoria-1', 'Contrato de Mentoria — Sócios');
         $pagina1[] = $this->envelope('funcionario-1', 'CONTRATO PRESTAÇÃO DE SERVIÇOS - Jessica De Oliveira');
         $pagina1[] = $this->envelope('ads-1', 'Contrato Gestao de Ads ECF - Empresa Um', 'closed', '2026-01-10T00:00:00-03:00');
-        $this->assertCount(100, $pagina1);
+        $this->assertCount(50, $pagina1);
 
         // Página 2: 2 itens (CURTA — sinal de fim da varredura).
         $pagina2 = [
@@ -122,6 +124,31 @@ class Phase140AcervoColetaTest extends TestCase
         $ids = array_column($resultado, 'id');
         sort($ids);
         $this->assertSame(['ads-fechado', 'ads-rascunho'], $ids);
+    }
+
+    /**
+     * Trava de regressão do defeito medido em produção em 2026-09-08
+     * (`clicksign:extrair-tabelas` pediu 100/página e a API recusou com
+     * "size exceeds maximum page size of 50."). Prova, no nível do
+     * SERVIÇO (não só do client), que a varredura nunca pede mais que o
+     * teto medido — ela não sabe pedir 100 de novo por acidente.
+     */
+    #[Test]
+    public function varredura_nunca_pede_mais_que_50_por_pagina(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes*' => Http::response(['data' => []], 200),
+        ]);
+
+        $this->servico()->envelopesDeGestaoDeAds();
+
+        Http::assertSent(function ($request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            $this->assertSame('50', $query['page']['size'] ?? null);
+
+            return true;
+        });
     }
 
     #[Test]
@@ -276,7 +303,10 @@ class Phase140AcervoColetaTest extends TestCase
     {
         Http::fake([
             self::BASE . '/envelopes*' => Http::sequence()
-                ->push(['data' => array_fill(0, 100, $this->envelope('x', 'Locação de Auditório'))], 200)
+                // Página cheia no teto MEDIDO da API (50, ver
+                // ClicksignClient::ENVELOPES_TAMANHO_MAXIMO_PAGINA) — força
+                // a segunda chamada mesmo com pausa zero.
+                ->push(['data' => array_fill(0, 50, $this->envelope('x', 'Locação de Auditório'))], 200)
                 ->push(['data' => []], 200),
         ]);
 

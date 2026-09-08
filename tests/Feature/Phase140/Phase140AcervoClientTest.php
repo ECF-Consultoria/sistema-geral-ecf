@@ -53,7 +53,9 @@ class Phase140AcervoClientTest extends TestCase
             ], 200),
         ]);
 
-        $envelopes = $this->client()->listarEnvelopes(pagina: 2, porPagina: 100);
+        // 50 — o TETO medido em produção (2026-09-08), não 100. Passar
+        // exatamente o teto prova que o valor-limite continua aceito.
+        $envelopes = $this->client()->listarEnvelopes(pagina: 2, porPagina: 50);
 
         Http::assertSent(function ($request) {
             $this->assertSame('GET', $request->method());
@@ -61,7 +63,7 @@ class Phase140AcervoClientTest extends TestCase
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
 
             $this->assertSame('2', $query['page']['number'] ?? null);
-            $this->assertSame('100', $query['page']['size'] ?? null);
+            $this->assertSame('50', $query['page']['size'] ?? null);
 
             return true;
         });
@@ -77,9 +79,62 @@ class Phase140AcervoClientTest extends TestCase
             self::BASE . '/envelopes*' => Http::response(['data' => []], 200),
         ]);
 
-        $envelopes = $this->client()->listarEnvelopes(pagina: 5, porPagina: 100);
+        $envelopes = $this->client()->listarEnvelopes(pagina: 5, porPagina: 50);
 
         $this->assertSame([], $envelopes);
+    }
+
+    /**
+     * Trava de regressão do defeito medido em produção em 2026-09-08: a
+     * primeira rodada real de `clicksign:extrair-tabelas` pediu 100 por
+     * página e a API recusou com "size exceeds maximum page size of 50."
+     * `Http::fake()` aceita qualquer tamanho — por isso este teste não
+     * confere contra a API real, mas prova que o CLIENT nunca monta uma
+     * chamada pedindo mais que o teto, não importa o que o chamador peça.
+     */
+    #[Test]
+    public function listar_envelopes_nunca_pede_mais_que_50_por_pagina_mesmo_se_o_chamador_pedir_mais(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes*' => Http::response(['data' => []], 200),
+        ]);
+
+        $this->client()->listarEnvelopes(pagina: 1, porPagina: 999);
+
+        Http::assertSent(function ($request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            $this->assertSame('50', $query['page']['size'] ?? null);
+
+            return true;
+        });
+    }
+
+    #[Test]
+    public function listar_envelopes_sem_argumentos_usa_50_como_default(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes*' => Http::response(['data' => []], 200),
+        ]);
+
+        $this->client()->listarEnvelopes();
+
+        Http::assertSent(function ($request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            $this->assertSame('50', $query['page']['size'] ?? null);
+
+            return true;
+        });
+    }
+
+    #[Test]
+    public function constante_do_teto_de_pagina_e_50(): void
+    {
+        // Trava direta contra "otimização" futura que reverta o valor sem
+        // medir de novo contra produção (o próprio incidente que motivou
+        // esta correção).
+        $this->assertSame(50, ClicksignClient::ENVELOPES_TAMANHO_MAXIMO_PAGINA);
     }
 
     #[Test]

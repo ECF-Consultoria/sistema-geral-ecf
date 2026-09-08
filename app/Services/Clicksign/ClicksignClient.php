@@ -533,6 +533,26 @@ class ClicksignClient
     }
 
     /**
+     * Teto de itens por página que a API aceita em `GET /envelopes` —
+     * **MEDIDO contra produção em 2026-09-08.** A primeira rodada real do
+     * comando `clicksign:extrair-tabelas` (140-03) pediu 100 (o valor que
+     * este client usava até então) e a API recusou já na primeira chamada:
+     * `"size exceeds maximum page size of 50."`. A sondagem manual do
+     * mesmo dia tinha usado `page[size]=30`, que também funciona — mas 30
+     * NÃO é o teto, é só o valor que a sondagem escolheu; **50 é o teto
+     * real da API**, achado só na rodada real porque `Http::fake()` aceita
+     * qualquer tamanho de página (mock não conhece a regra do servidor).
+     *
+     * ⚠️ **É TETO DA API, não preferência nossa.** Não subir este valor de
+     * volta sem medir de novo contra produção — foi exatamente essa
+     * "otimização" (100 em vez do teto real) que quebrou a rodada de
+     * 2026-09-08. `listarEnvelopes()` usa `min()` contra esta constante
+     * para nunca deixar passar um valor maior, mesmo que um chamador
+     * futuro peça mais.
+     */
+    public const ENVELOPES_TAMANHO_MAXIMO_PAGINA = 50;
+
+    /**
      * GET /envelopes — lista os envelopes da conta (paginação JSON:API,
      * `page[number]`/`page[size]`), no mesmo molde de `listarModelos()`.
      * Devolve a LISTA já desembrulhada (`data`).
@@ -544,6 +564,12 @@ class ClicksignClient
      * contador total disponível aqui. Quem pagina detecta o fim da
      * varredura pela página vir vazia ou mais curta que `$porPagina` (ver
      * `AcervoContratosClicksignService::envelopesDeGestaoDeAds()`).
+     *
+     * ⚠️ **Teto de 50 por página (MEDIDO, ver `ENVELOPES_TAMANHO_MAXIMO_PAGINA`).**
+     * Qualquer `$porPagina` acima de 50 é reduzido para 50 ANTES da
+     * chamada — a clamping é a trava real contra regressão silenciosa,
+     * não um comentário. Pedir mais que isso faz a API responder "size
+     * exceeds maximum page size of 50" (medido em produção, 2026-09-08).
      *
      * ⚠️ **Sem filtro de servidor.** A investigação de 2026-09-08
      * (`140-CONTEXT.md`, D-01/D-02) mediu quantidade e nomes de envelopes,
@@ -560,12 +586,16 @@ class ClicksignClient
      *
      * @return array<int, array<string, mixed>>
      */
-    public function listarEnvelopes(int $pagina = 1, int $porPagina = 100): array
+    public function listarEnvelopes(int $pagina = 1, int $porPagina = self::ENVELOPES_TAMANHO_MAXIMO_PAGINA): array
     {
+        // Clamp — nunca confiar que quem chama já sabe o teto. A API não é
+        // quem deve nos avisar disso de novo (2026-09-08).
+        $tamanhoSeguro = min($porPagina, self::ENVELOPES_TAMANHO_MAXIMO_PAGINA);
+
         return $this->enviar('get', '/envelopes', [], 'listar envelopes', [
             'page' => [
                 'number' => $pagina,
-                'size'   => $porPagina,
+                'size'   => $tamanhoSeguro,
             ],
         ]);
     }

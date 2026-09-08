@@ -38,10 +38,15 @@ use Illuminate\Support\Str;
 class AcervoContratosClicksignService
 {
     /**
-     * Quantidade de envelopes buscada por página na varredura — mesmo teto
-     * aceito por `ClicksignClient::listarEnvelopes()`.
+     * Quantidade de envelopes buscada por página na varredura — usa o MESMO
+     * teto do client (`ClicksignClient::ENVELOPES_TAMANHO_MAXIMO_PAGINA`),
+     * em vez de declarar um número solto aqui. **Não duplicar o valor.** A
+     * duplicação (100 aqui, contra o teto real de 50) foi exatamente o que
+     * quebrou a primeira rodada real do comando `clicksign:extrair-tabelas`
+     * em 2026-09-08 — `Http::fake()` aceita qualquer tamanho de página,
+     * então nenhum teste pegou até a chamada bater na API de verdade.
      */
-    private const ENVELOPES_POR_PAGINA = 100;
+    private const ENVELOPES_POR_PAGINA = ClicksignClient::ENVELOPES_TAMANHO_MAXIMO_PAGINA;
 
     public function __construct(
         private readonly ClicksignClient $client,
