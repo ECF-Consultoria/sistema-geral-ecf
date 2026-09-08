@@ -110,7 +110,7 @@ class Phase140RelatorioTabelasTest extends TestCase
         $qtdFaixasAntes = EmpresaFaixaFaturamento::count();
 
         Http::fake([
-            self::BASE . '/envelopes*' => Http::response(['data' => [
+            self::BASE . '/envelopes?*' => Http::response(['data' => [
                 $this->envelope('ads-1', 'Contrato Gestao de Ads ECF - EMPRESA ENVELOPE TABELA'),
                 $this->envelope('ads-2', 'Contrato Gestao de Ads ECF - EMPRESA ENVELOPE VALOR FIXO'),
                 $this->envelope('ads-3', 'Contrato Gestao de Ads ECF - EMPRESA ENVELOPE ILEGIVEL'),
@@ -178,7 +178,7 @@ class Phase140RelatorioTabelasTest extends TestCase
     public function limite_processa_no_maximo_a_quantidade_pedida(): void
     {
         Http::fake([
-            self::BASE . '/envelopes*' => Http::response(['data' => [
+            self::BASE . '/envelopes?*' => Http::response(['data' => [
                 $this->envelope('ads-1', 'Contrato Gestao de Ads ECF - EMPRESA UM'),
                 $this->envelope('ads-2', 'Contrato Gestao de Ads ECF - EMPRESA DOIS'),
                 $this->envelope('ads-3', 'Contrato Gestao de Ads ECF - EMPRESA TRES'),
@@ -209,7 +209,7 @@ class Phase140RelatorioTabelasTest extends TestCase
     public function aviso_de_nao_commitar_e_impresso_no_terminal(): void
     {
         Http::fake([
-            self::BASE . '/envelopes*' => Http::response(['data' => []], 200),
+            self::BASE . '/envelopes?*' => Http::response(['data' => []], 200),
         ]);
 
         $this->artisan('clicksign:extrair-tabelas', ['--pausa-ms' => 0])
