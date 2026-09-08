@@ -50,6 +50,42 @@ namespace App\Services\Contratos;
  *    PRÓPRIO (`numeros_ilegiveis`), nunca deixá-las cair no genérico `indefinido` ("não deu para
  *    entender a cobrança") — ver `pareceNumerosIlegiveis()` e a justificativa no SUMMARY do plano
  *    140-02 sobre por que NÃO se tentou converter o valor por extenso em número.
+ * 3. **`.docx` dentro do ZIP não era reconhecido** (correção do `ExtratorTextoContratoService`,
+ *    não deste arquivo — ver o próprio serviço).
+ *
+ * ═══ CORREÇÃO PÓS-RODADA REAL #4 (140-02, 2026-09-08) — quatro formatos novos + reordenação ═══
+ *
+ * Varredura COMPLETA (85 contratos): 47 tabelas lidas, mas 28 ainda "não deu para entender". Dois
+ * grupos, quatro formatos:
+ *
+ * - **Valor fixo, formatos novos** (`analisarValorFixo()`): "dividido em 3x parcelas de R$ X e 9x
+ *   parcelas de R$ Y" (pagamento escalonado — DOIS valores de parcela diferentes no mesmo
+ *   contrato) e "valor anual ..., dividido em N parcelas de R$ X" (valor anual dividido). Um único
+ *   reconhecedor generalizado de "parcela(s) ... de R$ X" cobre os dois formatos NOVOS e o
+ *   original ("parcelas mensais e iguais de R$ X") — a diferença é só QUANTOS valores distintos de
+ *   parcela aparecem: um → `valor_fixo` normal; mais de um → pagamento escalonado, `valor_fixo`
+ *   fica `null` e o aviso lista os valores encontrados. ⚠️ NUNCA inventar média nem escolher um dos
+ *   valores em silêncio quando há mais de um.
+ * - **Tabela, notações novas** (`extrairPontoDeLimiar()`): notação de SINAIS (MAXIGOLD) — `- R$ X`
+ *   fecha, `+ R$ X`/`+ X` (o "R$" às vezes falta) abre, sufixo `/mês` (ou `/mes`, sem acento); e
+ *   notação de INTERVALO FECHADO (UTILAR) — `De R$ X a R$ Y` traz o TETO explícito na própria
+ *   linha (não precisa olhar o próximo marco), e `De R$ X` sozinho (sem "a Y") é faixa aberta.
+ *
+ * **Reordenação de prioridade:** a checagem de TABELA agora roda ANTES da de valor fixo (era o
+ * contrário). Motivo: um contrato pode ter tabela de verdade E texto de parcelas ao mesmo tempo
+ * (MAXIGOLD) — quando a tabela é reconhecida de verdade (≥3 marcos), ela vence; só quando não há
+ * marcos suficientes é que a checagem de valor fixo entra em cena. Como nenhum contrato de valor
+ * fixo conhecido produz marcos de tabela por acidente, essa troca não reabre o bug original do D-03
+ * (contrato de valor fixo virando tabela) — verificado com toda a suíte de testes anterior.
+ *
+ * **Guarda de seção "Bônus de Performance"** (`extrairMarcos()`): um contrato pode ter uma seção de
+ * bônus LOGO DEPOIS da tabela de faturamento, com valores em R$ que não são faixa nenhuma — o texto
+ * é cortado nessa palavra-chave antes de procurar marcos, para esses valores nunca virarem faixa.
+ *
+ * **Aviso de valor implausível** (`avisarValoresImplausiveis()`): um contrato real tinha um limite
+ * de "R$ 15 bilhões" (quase certamente um erro de digitação no PRÓPRIO contrato — um ponto a mais
+ * em vez de vírgula). ⚠️ O parser NUNCA corrige isso — leria como está, sempre — só adiciona um
+ * aviso quando um limite ou valor está acima de R$ 1 bilhão, para conferência humana.
  */
 class TabelaProgressivaContratoParser
 {
@@ -94,18 +130,9 @@ class TabelaProgressivaContratoParser
     {
         [$cnpj, $razaoSocial, $avisosCnpj] = $this->extrairCnpjERazaoSocial($texto);
 
-        // Prioridade de exclusão (D-03): valor fixo é checado ANTES de tentar reconhecer tabela.
-        if ($this->pareceValorFixo($texto)) {
-            return [
-                'tipo'         => 'valor_fixo',
-                'faixas'       => [],
-                'valor_fixo'   => $this->extrairValorFixo($texto),
-                'cnpj'         => $cnpj,
-                'razao_social' => $razaoSocial,
-                'avisos'       => $avisosCnpj,
-            ];
-        }
-
+        // Correção pós-rodada real #4: TABELA é checada ANTES de valor fixo agora (era o
+        // contrário) — um contrato pode ter tabela de verdade E texto de parcelas ao mesmo tempo
+        // (MAXIGOLD); quando a tabela é reconhecida de verdade, ela vence.
         $marcos = $this->extrairMarcos($texto);
 
         if (count($marcos) >= self::MINIMO_MARCOS_PARA_TABELA) {
@@ -117,7 +144,24 @@ class TabelaProgressivaContratoParser
                 'valor_fixo'   => null,
                 'cnpj'         => $cnpj,
                 'razao_social' => $razaoSocial,
-                'avisos'       => array_merge($avisosCnpj, $this->avisarInconsistencias($faixas)),
+                'avisos'       => array_merge(
+                    $avisosCnpj,
+                    $this->avisarInconsistencias($faixas),
+                    $this->avisarValoresImplausiveis($faixas)
+                ),
+            ];
+        }
+
+        $valorFixo = $this->analisarValorFixo($texto);
+
+        if ($valorFixo !== null) {
+            return [
+                'tipo'         => 'valor_fixo',
+                'faixas'       => [],
+                'valor_fixo'   => $valorFixo['valor'],
+                'cnpj'         => $cnpj,
+                'razao_social' => $razaoSocial,
+                'avisos'       => array_merge($avisosCnpj, $valorFixo['avisos']),
             ];
         }
 
@@ -204,34 +248,69 @@ class TabelaProgressivaContratoParser
     // ═══ VALOR FIXO ═══
 
     /**
-     * D-03: valor fixo é "parcelas mensais e iguais de R$ X" SEM nenhuma ocorrência de "faixa",
-     * "progressiv" ou "faturamento mensal" — as três palavras que aparecem em TODO contrato com
-     * tabela (mesmo na notação abreviada, que traz "Faturamento" no cabeçalho da tabela).
+     * D-03: valor fixo é "parcelas ... de R$ X" SEM nenhuma ocorrência de "faixa", "progressiv" ou
+     * "faturamento mensal" — as três palavras que aparecem em TODO contrato com tabela (mesmo na
+     * notação abreviada, que traz "Faturamento" no cabeçalho da tabela).
+     *
+     * Correção pós-rodada real #4: um ÚNICO reconhecedor generalizado ("parcela(s)" seguido de "de
+     * R$ X" a até 40 caracteres de distância, tolerando parênteses de valor por extenso no meio)
+     * cobre TRÊS formas de texto, e a única diferença entre elas é QUANTOS valores distintos de
+     * parcela aparecem no contrato:
+     *
+     * - original: "parcelas mensais e iguais de R$ 3.000,00" — 1 valor distinto.
+     * - valor anual dividido: "valor anual ..., dividido em 12 parcelas de R$ 9.000,00" — também
+     *   1 valor distinto (o total anual não é capturado, só o valor DA parcela).
+     * - pagamento escalonado: "dividido em 3x parcelas de R$ 1.200,00 e 9x parcelas de R$
+     *   1.600,00" — 2+ valores distintos. ⚠️ Aqui `valor` volta `null` e o aviso LISTA os valores
+     *   encontrados — nunca inventar média, nunca escolher um dos dois em silêncio. O projeto já
+     *   usa o termo "pagamento escalonado" para múltiplas parcelas de valores diferentes (ver
+     *   `ContratoClicksignService`), mesmo conceito, contexto diferente (lá é geração de contrato a
+     *   partir do HubSpot; aqui é LEITURA de contrato já assinado).
+     *
+     * @return array{valor: ?float, avisos: array<int, string>}|null null quando o texto não parece
+     *         valor fixo (nenhuma ocorrência de "parcela(s) ... de R$ X", ou contém palavra que
+     *         indica tabela).
      */
-    private function pareceValorFixo(string $texto): bool
+    private function analisarValorFixo(string $texto): ?array
     {
-        if (!preg_match('/parcelas\s+mensais\s+e\s+iguais\s+de\s+R\$\s*[\d.]+,\d{2}/iu', $texto)) {
-            return false;
+        if (!preg_match_all('/parcelas?\b.{0,40}?de\s+R\$\s*([\d.]+,\d{2})/isu', $texto, $m)) {
+            return null;
         }
 
         $textoLower = mb_strtolower($texto);
 
         foreach (['faixa', 'progressiv', 'faturamento mensal'] as $palavraQueDescartaValorFixo) {
             if (str_contains($textoLower, $palavraQueDescartaValorFixo)) {
-                return false;
+                return null;
             }
         }
 
-        return true;
-    }
+        $valoresDistintos = [];
+        foreach ($m[1] as $bruto) {
+            $valor = $this->paraFloat($bruto);
 
-    private function extrairValorFixo(string $texto): ?float
-    {
-        if (preg_match('/parcelas\s+mensais\s+e\s+iguais\s+de\s+R\$\s*([\d.]+,\d{2})/iu', $texto, $m)) {
-            return $this->paraFloat($m[1]);
+            if (!in_array($valor, $valoresDistintos, true)) {
+                $valoresDistintos[] = $valor;
+            }
         }
 
-        return null;
+        if (count($valoresDistintos) === 1) {
+            return ['valor' => $valoresDistintos[0], 'avisos' => []];
+        }
+
+        // Pagamento escalonado: mais de um valor de parcela no mesmo contrato.
+        $listaDeValores = implode(' e ', array_map(
+            fn (float $v) => 'R$ ' . number_format($v, 2, ',', '.'),
+            $valoresDistintos
+        ));
+
+        return [
+            'valor'  => null,
+            'avisos' => [
+                "este contrato tem mais de um valor de parcela (pagamento escalonado): {$listaDeValores} — "
+                . 'conferir manualmente, não dá para representar como um valor fixo único',
+            ],
+        ];
     }
 
     // ═══ TABELA — reconhecimento de marcos, linha a linha ═══
@@ -245,6 +324,12 @@ class TabelaProgressivaContratoParser
      */
     private function extrairMarcos(string $texto): array
     {
+        // Correção pós-rodada real #4 (UTILAR): uma seção "Bônus de Performance" pode vir LOGO
+        // DEPOIS da tabela de faturamento, com valores em R$ que não são faixa nenhuma. Corta o
+        // texto nessa palavra-chave antes de procurar marcos — sem isso, um valor de bônus vira
+        // uma "faixa" espúria (e, pior, rouba a posição de última faixa aberta da faixa real).
+        $texto = preg_split('/b[ôo]nus\s+de\s+performance/iu', $texto, 2)[0];
+
         $marcos = [];
 
         foreach (preg_split('/\r\n|\r|\n/', $texto) as $linha) {
@@ -283,9 +368,21 @@ class TabelaProgressivaContratoParser
     }
 
     /**
-     * Tenta reconhecer, numa única linha, um "ponto de limiar" de faturamento nas TRÊS formas
-     * conhecidas (D-04): abreviada (`-100M`/`+1MM`), por extenso (`até 100 mil`/`a partir de 1
-     * milhão`) ou nova (`Até R$500.000,00`). Devolve `null` se a linha não bate em nenhuma.
+     * Rótulos de fechamento reconhecidos como "até" — inclui a grafia sem acento ("Ate"), medida
+     * literalmente no texto extraído de um contrato real (UTILAR, correção pós-rodada real #4) —
+     * não dá pra saber se é o extrator que perde o acento ou o próprio documento; ler os dois é
+     * mais barato do que arriscar não reconhecer a faixa.
+     *
+     * @var array<int, string>
+     */
+    private const ROTULOS_FECHAMENTO = ['até', 'ate'];
+
+    /**
+     * Tenta reconhecer, numa única linha, um "ponto de limiar" de faturamento nas formas
+     * conhecidas (D-04 + correção pós-rodada real #4): abreviada (`-100M`/`+1MM`), por extenso
+     * (`até 100 mil`/`a partir de 1 milhão`), nova (`Até R$500.000,00`), de SINAIS (`- R$ 500.000,00
+     * /mês`/`+ 1.000.000,00/mês` — MAXIGOLD) ou de INTERVALO FECHADO (`De R$ X a R$ Y`/`De R$ X` —
+     * UTILAR). Devolve `null` se a linha não bate em nenhuma.
      *
      * @return array{tipo: 'fecha'|'abre', limiar: float, fim: int}|null
      */
@@ -308,22 +405,56 @@ class TabelaProgressivaContratoParser
         }
 
         // Notação antiga POR EXTENSO: até/a partir de/acima de + número + mil|milhão|milhões.
-        if (preg_match('/(Até|A\s*partir\s*de|Acima\s*de)\s+(\d+(?:[.,]\d+)?)\s*(mil|milh(?:ão|ões|ao))\b/iu', $linha, $m, PREG_OFFSET_CAPTURE)) {
+        if (preg_match('/(Até|Ate|A\s*partir\s*de|Acima\s*de)\s+(\d+(?:[.,]\d+)?)\s*(mil|milh(?:ão|ões|ao))\b/iu', $linha, $m, PREG_OFFSET_CAPTURE)) {
             $numero = $this->paraFloatAbreviado($m[2][0]);
             $mult   = str_starts_with(mb_strtolower($m[3][0]), 'milh') ? 1_000_000 : 1_000;
 
             return [
-                'tipo'   => mb_strtolower(trim($m[1][0])) === 'até' ? 'fecha' : 'abre',
+                'tipo'   => in_array(mb_strtolower(trim($m[1][0])), self::ROTULOS_FECHAMENTO, true) ? 'fecha' : 'abre',
                 'limiar' => $numero * $mult,
                 'fim'    => $m[0][1] + strlen($m[0][0]),
             ];
         }
 
         // Notação NOVA: até/a partir de/acima de + valor em R$ direto.
-        if (preg_match('/(Até|A\s*partir\s*de|Acima\s*de)\s+R\$\s*([\d.]+,\d{2})/iu', $linha, $m, PREG_OFFSET_CAPTURE)) {
+        if (preg_match('/(Até|Ate|A\s*partir\s*de|Acima\s*de)\s+R\$\s*([\d.]+,\d{2})/iu', $linha, $m, PREG_OFFSET_CAPTURE)) {
             return [
-                'tipo'   => mb_strtolower(trim($m[1][0])) === 'até' ? 'fecha' : 'abre',
+                'tipo'   => in_array(mb_strtolower(trim($m[1][0])), self::ROTULOS_FECHAMENTO, true) ? 'fecha' : 'abre',
                 'limiar' => $this->paraFloat($m[2][0]),
+                'fim'    => $m[0][1] + strlen($m[0][0]),
+            ];
+        }
+
+        // Notação de SINAIS (MAXIGOLD, correção pós-rodada real #4): "-"/"+" com "R$" OPCIONAL
+        // (falta em algumas linhas do mesmo contrato) + valor com centavos + sufixo "/mês" (ou
+        // "/mes", sem acento). Distinta da abreviada M/MM porque aqui o número vem por extenso com
+        // vírgula de centavos, nunca abreviado — as duas nunca colidem.
+        if (preg_match('/([+-])\s*(?:R\$\s*)?([\d.]+,\d{2})\s*\/?\s*m[eê]s\b/iu', $linha, $m, PREG_OFFSET_CAPTURE)) {
+            return [
+                'tipo'   => $m[1][0] === '-' ? 'fecha' : 'abre',
+                'limiar' => $this->paraFloat($m[2][0]),
+                'fim'    => $m[0][1] + strlen($m[0][0]),
+            ];
+        }
+
+        // Notação de INTERVALO FECHADO (UTILAR, correção pós-rodada real #4): "De R$ X a R$ Y"
+        // traz o TETO explícito na própria linha — usa Y direto como limite_superior, sem precisar
+        // olhar o próximo marco (ao contrário das outras notações, que inferem o teto do PRÓXIMO
+        // limiar). Checado ANTES do "De R$ X" sozinho, senão este casaria só a parte "De X" e
+        // perderia o "a Y".
+        if (preg_match('/\bDe\s+R\$\s*[\d.]+,\d{2}\s+a\s+R\$\s*([\d.]+,\d{2})/iu', $linha, $m, PREG_OFFSET_CAPTURE)) {
+            return [
+                'tipo'   => 'fecha',
+                'limiar' => $this->paraFloat($m[1][0]),
+                'fim'    => $m[0][1] + strlen($m[0][0]),
+            ];
+        }
+
+        // "De R$ X" SOZINHO (sem "a R$ Y") — faixa aberta, equivalente a "A partir de R$ X".
+        if (preg_match('/\bDe\s+R\$\s*([\d.]+,\d{2})\b(?!\s+a\s+R\$)/iu', $linha, $m, PREG_OFFSET_CAPTURE)) {
+            return [
+                'tipo'   => 'abre',
+                'limiar' => $this->paraFloat($m[1][0]),
                 'fim'    => $m[0][1] + strlen($m[0][0]),
             ];
         }
@@ -388,6 +519,42 @@ class TabelaProgressivaContratoParser
                 && $atual['limite_superior'] !== null
                 && $atual['limite_superior'] < $anterior['limite_superior']) {
                 $avisos[] = "faixa {$atual['ordem']} tem limite superior menor que a faixa anterior — conferir manualmente";
+            }
+        }
+
+        return $avisos;
+    }
+
+    /**
+     * Limite acima do qual um valor de faixa é "implausível" — motivo puramente prático: um
+     * contrato real tinha um limite de "R$ 15 bilhões" (quase certamente um erro de digitação NO
+     * PRÓPRIO CONTRATO — um ponto a mais em vez de vírgula, transformando 15 milhões em 15
+     * bilhões). ⚠️ O parser NUNCA corrige isso automaticamente — lê como está, sempre — só avisa
+     * para conferência humana. Ver `avisarValoresImplausiveis()`.
+     */
+    private const LIMITE_PLAUSIVEL_REAIS = 1_000_000_000.0; // R$ 1 bilhão
+
+    /**
+     * Faixa com `limite_superior` ou `valor` acima de `LIMITE_PLAUSIVEL_REAIS` entra em `avisos`,
+     * SEM alterar o número — é sinalização barata para conferência humana, nunca correção
+     * automática (o contrato pode estar certo; o parser não tem como saber).
+     *
+     * @param  array<int, array{ordem: int, limite_superior: ?float, valor: float, valor_e_piso: bool}>  $faixas
+     * @return array<int, string>
+     */
+    private function avisarValoresImplausiveis(array $faixas): array
+    {
+        $avisos = [];
+
+        foreach ($faixas as $faixa) {
+            if ($faixa['limite_superior'] !== null && $faixa['limite_superior'] >= self::LIMITE_PLAUSIVEL_REAIS) {
+                $avisos[] = "faixa {$faixa['ordem']} tem limite superior acima de R$ 1 bilhão — "
+                    . 'conferir se não é erro de digitação no contrato (o parser nunca corrige isso sozinho)';
+            }
+
+            if ($faixa['valor'] >= self::LIMITE_PLAUSIVEL_REAIS) {
+                $avisos[] = "faixa {$faixa['ordem']} tem valor de investimento acima de R$ 1 bilhão — "
+                    . 'conferir se não é erro de digitação no contrato (o parser nunca corrige isso sozinho)';
             }
         }
 
