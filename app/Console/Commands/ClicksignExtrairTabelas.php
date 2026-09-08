@@ -52,9 +52,13 @@ class ClicksignExtrairTabelas extends Command
      * Vocabulário fixo de confiança (T-140-11, D-05) — a régua de
      * `EmpresaPalpiteService` nunca aparece no relatório como número solto.
      *
+     * Pública (não privada) de propósito: `Phase140RelatorioTabelasTest`
+     * lê esta constante por reflexão/acesso direto para travar que todo
+     * rótulo existe — ver `TIPO_LABEL` abaixo para o mesmo raciocínio.
+     *
      * @var array<string, string>
      */
-    private const CONFIANCA_LABEL = [
+    public const CONFIANCA_LABEL = [
         'certo'    => 'confirmado pelo CNPJ',
         'provavel' => 'parece ser esta — confira',
         'incerto'  => 'só um palpite — confira',
@@ -63,12 +67,27 @@ class ClicksignExtrairTabelas extends Command
     /**
      * Vocabulário fixo de tipo de cobrança.
      *
+     * Pública (não privada) de propósito: um teste (140-03,
+     * `Phase140RelatorioTabelasTest::todo_tipo_que_o_parser_pode_emitir_tem_rotulo_no_comando`)
+     * lê o docblock de `TabelaProgressivaContratoParser::analisar()` por
+     * reflexão e confere que TODO tipo que o parser pode emitir tem
+     * entrada aqui — sem essa trava, um tipo novo lá (como
+     * `numeros_ilegiveis`, acrescentado pelo 140-02 em 2026-09-08 sem
+     * atualizar este comando) cai no fallback `?? $linha['tipo']` e o
+     * relatório imprime o nome CRU da constante em vez de uma frase que a
+     * pessoa entende — o defeito que este comentário existe para não
+     * deixar se repetir uma quarta vez.
+     *
      * @var array<string, string>
      */
-    private const TIPO_LABEL = [
-        'tabela'     => 'cobra por faixa de faturamento',
-        'valor_fixo' => 'valor fixo por mês',
-        'indefinido' => 'não deu para entender a cobrança',
+    public const TIPO_LABEL = [
+        'tabela'            => 'cobra por faixa de faturamento',
+        'valor_fixo'        => 'valor fixo por mês',
+        'indefinido'        => 'não deu para entender a cobrança',
+        // 140-02 (correção pós-rodada real, commit 539d3731): contratos
+        // antigos (ago/2025) têm os dígitos apagados no PDF — o arquivo
+        // abre, mas o valor da cobrança não dá para ler.
+        'numeros_ilegiveis' => 'os números deste contrato não são legíveis — precisa abrir o contrato à mão',
     ];
 
     private const TIPO_LABEL_ILEGIVEL = 'não deu para ler o arquivo';
@@ -194,6 +213,10 @@ class ClicksignExtrairTabelas extends Command
                 'cnpj'         => $analise['cnpj'],
                 'razao_social' => $analise['razao_social'],
                 'palpite'      => $palpite,
+                // Fase 140-02 já devolve avisos prontos em pt-BR (ex.: o
+                // caso `numeros_ilegiveis`) — reusar em vez de reescrever a
+                // frase aqui.
+                'avisos'       => $analise['avisos'] ?? [],
             ]);
         } catch (Throwable $e) {
             // T-140-12 — log só com id do envelope e motivo curto; nunca o
@@ -239,6 +262,7 @@ class ClicksignExtrairTabelas extends Command
             'cnpj'         => null,
             'razao_social' => null,
             'palpite'      => null,
+            'avisos'       => [],
         ]);
     }
 
@@ -250,12 +274,27 @@ class ClicksignExtrairTabelas extends Command
      * para ler. Um contrato de valor fixo com palpite `certo` conta em dois
      * lugares ao mesmo tempo — de propósito.
      *
+     * ⚠️ `numeros_ilegiveis` (140-02) é EXCEÇÃO a essa independência: mesmo
+     * que o CNPJ bata com uma empresa certa, a linha ainda precisa de
+     * conferência manual porque o VALOR da cobrança não dá para ler — contar
+     * como "casaram com segurança" diria "está resolvida" quando não está.
+     * Cai no mesmo bucket de "não deu para ler" que um arquivo que nem abriu
+     * — do ponto de vista de quem lê o resumo, a ação é a mesma (abrir o
+     * contrato à mão) — e NUNCA em "valor fixo"/"casaram com
+     * segurança"/"duvidosos".
+     *
      * @param  array<string, int>  $resumo
      * @param  array<string, mixed>  $linha
      */
     private function contabilizar(array &$resumo, array $linha): void
     {
         if ($linha['legivel'] === false) {
+            $resumo['ilegiveis']++;
+
+            return;
+        }
+
+        if ($linha['tipo'] === 'numeros_ilegiveis') {
             $resumo['ilegiveis']++;
 
             return;
@@ -350,7 +389,7 @@ class ClicksignExtrairTabelas extends Command
         $empresaNome = $linha['palpite']['company_nome'] ?? ($linha['legivel'] ? 'nenhuma empresa parecida encontrada' : '-');
         $confianca   = $linha['palpite'] !== null ? $this->confiancaLabel($linha['palpite']) : '-';
         $tipo        = $linha['legivel'] ? (self::TIPO_LABEL[$linha['tipo']] ?? $linha['tipo']) : self::TIPO_LABEL_ILEGIVEL;
-        $faixas      = $this->formatarFaixas($linha['faixas'] ?? [], $linha['valor_fixo'] ?? null, $linha['tipo'] ?? null);
+        $faixas      = $this->formatarFaixas($linha['faixas'] ?? [], $linha['valor_fixo'] ?? null, $linha['tipo'] ?? null, $linha['avisos'] ?? []);
 
         $celulas = [
             (string) ($linha['envelope_id'] ?? '-'),
@@ -387,13 +426,20 @@ class ClicksignExtrairTabelas extends Command
 
     /**
      * @param  array<int, array{ordem: int, limite_superior: ?float, valor: float, valor_e_piso: bool}>  $faixas
+     * @param  array<int, string>  $avisos
      */
-    private function formatarFaixas(array $faixas, ?float $valorFixo, ?string $tipo): string
+    private function formatarFaixas(array $faixas, ?float $valorFixo, ?string $tipo, array $avisos = []): string
     {
         if ($tipo === 'valor_fixo') {
             return $valorFixo !== null
                 ? 'R$ ' . number_format($valorFixo, 2, ',', '.') . ' por mês'
                 : 'valor fixo, mas não deu para ler o número';
+        }
+
+        // 140-02 já devolve o aviso pronto em pt-BR para este tipo — reusar
+        // em vez de um "-" mudo (mesma disciplina de honestidade da data).
+        if ($tipo === 'numeros_ilegiveis') {
+            return $avisos[0] ?? self::TIPO_LABEL['numeros_ilegiveis'];
         }
 
         if ($faixas === []) {
@@ -427,7 +473,7 @@ class ClicksignExtrairTabelas extends Command
             $empresaNome = $linha['palpite']['company_nome'] ?? ($linha['legivel'] ? 'nenhuma empresa parecida encontrada' : '-');
             $confianca   = $linha['palpite'] !== null ? $this->confiancaLabel($linha['palpite']) : '-';
             $tipo        = $linha['legivel'] ? (self::TIPO_LABEL[$linha['tipo']] ?? $linha['tipo']) : self::TIPO_LABEL_ILEGIVEL;
-            $faixas      = $this->formatarFaixas($linha['faixas'] ?? [], $linha['valor_fixo'] ?? null, $linha['tipo'] ?? null);
+            $faixas      = $this->formatarFaixas($linha['faixas'] ?? [], $linha['valor_fixo'] ?? null, $linha['tipo'] ?? null, $linha['avisos'] ?? []);
 
             fputcsv($memoria, [
                 $linha['envelope_id'] ?? '-',
