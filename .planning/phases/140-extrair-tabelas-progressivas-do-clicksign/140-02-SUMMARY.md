@@ -260,10 +260,75 @@ normais (nunca dispara `numeros_ilegiveis`).
 incluem trabalho concorrente do 140-03/140-04 rodando em paralelo na mesma árvore; sem regressão em
 nenhum teste pré-existente). `Phase140TabelaProgressivaParserTest` isolado: 18 testes / 88 asserções.
 
+## Correção pós-rodada real #2 (2026-09-08) — `numeros_ilegiveis` nunca disparava
+
+Deploy `f8a41be4`, segunda rodada real (`clicksign:extrair-tabelas --limite=10`). O CNPJ por rótulo
+funcionou perfeitamente em produção (CNPJ e razão social do CLIENTE, um diferente por linha:
+ADVANZ COMMERCE, KAITON COMERCIO, ARELO INFO, DSG VARIEDADES — antes vinha sempre o nosso). Mas o
+tipo `numeros_ilegiveis` da primeira correção **nunca apareceu**: os três contratos de agosto/2025
+saíram como `indefinido` genérico, e o resumo contou "Não deu para ler: 0".
+
+### Causa raiz 1 — bug de precedência (a hipótese certa do coordenador)
+
+A checagem original exigia `count($marcos) === 0` antes de rodar `pareceNumerosIlegiveis()`. Só que
+o CONTRATO INTEIRO — não apenas o parágrafo com os dígitos apagados — pode ter outras cláusulas com
+dígitos perfeitamente legíveis (multa de rescisão, prazo, etc.) que batem, por acidente, no
+reconhecedor de marcos (`extrairMarcos()`). Um único marco espúrio já bastava para
+`count($marcos)` sair de `0`, pular inteiramente a checagem de dígitos apagados, e cair no
+`indefinido` genérico com o aviso errado ("texto tem indícios de tabela progressiva..." em vez de
+"os números não são legíveis").
+
+**Correção:** removida a exigência de `count($marcos) === 0`. Como a checagem já roda DEPOIS do
+`count($marcos) >= MINIMO_MARCOS_PARA_TABELA` (que teria retornado `tabela` antes de chegar aqui),
+neste ponto `count($marcos)` é sempre menor que o mínimo — não há necessidade de exigir exatamente
+zero. O sinal de dígitos apagados é mais específico e passa a ter precedência sobre "poucos marcos,
+talvez tabela incompleta".
+
+⚠️ **Achado ao escrever o teste de regressão:** a primeira tentativa de reproduzir o bug (frase solta
+"até 5 mil reais de multa") não bastava — `extrairMarcos()` só conta um marco quando o limiar E um
+valor em R$ aparecem na MESMA linha; uma frase com limiar mas sem R$ próprio é descartada pelo
+próprio reconhecedor antes de chegar em lugar nenhum. O teste precisou de uma cláusula plausível com
+limiar por extenso E valor R$ próprio na mesma linha ("multa de até 2 mil reais, cobrada no valor de
+R$ 500,00 por dia de atraso") para produzir de fato um marco espúrio e reproduzir o defeito.
+
+### Causa raiz 2 — regex frágil contra tipos de espaço não-ASCII (correção defensiva)
+
+A regex original usava `\s*` para o preenchimento entre "R$"/"."/"," — que só cobre espaço ASCII
+comum (0x20). Não foi possível confirmar contra o texto real de produção (sem acesso), mas
+extratores de PDF frequentemente preenchem a posição de um glifo corrompido com espaço não-quebra
+(U+00A0) ou não deixam filler nenhum (glifo sem `ToUnicode` simplesmente some do texto extraído).
+Trocado `\s*` por `[^\d,.]{0,10}` (qualquer caractere que NÃO seja dígito/ponto/vírgula, limitado a
+10 posições para não escapar para prosa comum) — cobre os dois casos sem abrir mão da garantia de
+zero falso positivo: um valor válido sempre tem um DÍGITO de verdade entre "R$" e a pontuação, que a
+classe negada exclui.
+
+### Testes novos
+
+- Reprodução exata do bug de precedência (marco espúrio de multa + parágrafo com dígitos apagados no
+  mesmo texto) — RED confirmado revertendo temporariamente para o commit `539d3731` (1 falha:
+  `indefinido` em vez de `numeros_ilegiveis`).
+- Preenchimento sem espaço ASCII entre a pontuação (nenhum filler e espaço não-quebra U+00A0).
+
+### Commits
+
+- `3f279f35` (test) — 2 testes falhos, RED confirmado
+- `43d41c9e` (fix) — remove a exigência `count($marcos) === 0` + regex robustecida, GREEN
+
+### Gate após esta correção
+
+`--filter="Phase122|Phase136|Phase137|Phase138|Phase139|Phase140"`: **419 testes / 2036 asserções /
+0 falhas** (o coordenador mediu 417/2031 antes desta correção, em árvore limpa — sem regressão).
+`Phase140TabelaProgressivaParserTest` isolado: 20 testes / 93 asserções.
+
+⚠️ **Dependência aberta para o 140-03 permanece a mesma da correção anterior:** `TIPO_LABEL` do
+comando `clicksign:extrair-tabelas` ainda precisa de uma entrada para `numeros_ilegiveis` para o
+tipo virar frase honesta no relatório — mas isso não bloqueia mais a CONTAGEM do resumo, porque a
+raiz do problema (o tipo nunca sendo emitido) está corrigida agora.
+
 ---
 *Phase: 140-extrair-tabelas-progressivas-do-clicksign*
 *Completed: 2026-09-08*
 
 ## Self-Check: PASSED
 
-Todos os 7 arquivos declarados (ExtratorTextoContratoService.php, TabelaProgressivaContratoParser.php, os 2 testes Phase140 e as 3 fixtures) confirmados em disco; os 5 hashes de commit (`b0307ee6`, `518002e1`, `b9a6a028`, `f0e15ed2`, `2a97b64f`) confirmados em `git log`. Correção pós-rodada real: commits `025be6f1` (test) e `539d3731` (fix) confirmados em `git log`; `TabelaProgressivaContratoParser.php` e `Phase140TabelaProgressivaParserTest.php` confirmados em disco com as novas seções.
+Todos os 7 arquivos declarados (ExtratorTextoContratoService.php, TabelaProgressivaContratoParser.php, os 2 testes Phase140 e as 3 fixtures) confirmados em disco; os 5 hashes de commit (`b0307ee6`, `518002e1`, `b9a6a028`, `f0e15ed2`, `2a97b64f`) confirmados em `git log`. Correção pós-rodada real #1: commits `025be6f1` (test) e `539d3731` (fix) confirmados em `git log`. Correção pós-rodada real #2: commits `3f279f35` (test) e `43d41c9e` (fix) confirmados em `git log`; `TabelaProgressivaContratoParser.php` e `Phase140TabelaProgressivaParserTest.php` confirmados em disco com as novas seções.

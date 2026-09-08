@@ -1877,6 +1877,25 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-08T16:35:00Z
+Stopped at: Corrigido o defeito 2 do 140-02 que sobrou da correção anterior — `numeros_ilegiveis`
+nunca era emitido em produção (deploy `f8a41be4`, segunda rodada real de 10 contratos). O CNPJ por
+rótulo (correção anterior) funcionou perfeitamente (CNPJ/razão social do cliente certos nas 4
+empresas conferidas). Causa raiz: a checagem exigia `count($marcos) === 0` antes de rodar a detecção
+de dígitos apagados — mas o contrato inteiro (não só o parágrafo do valor) pode ter outra cláusula
+com dígitos legíveis (ex.: multa de rescisão) que bate por acidente no reconhecedor de marcos,
+produzindo 1-2 marcos espúrios que já bastavam para pular a checagem inteira e cair no `indefinido`
+genérico. Removida a exigência de zero marcos — o sinal de dígitos apagados agora tem precedência
+sobre "poucos marcos, talvez tabela incompleta". Correção defensiva adicional: regex trocou `\s*`
+por `[^\d,.]{0,10}` no preenchimento entre R$/./., — cobre espaço não-quebra (U+00A0) e ausência
+total de filler, não só espaço ASCII comum (não confirmável contra produção, mas defensável sem
+acesso). TDD: 2 commits RED→GREEN (`3f279f35` test, `43d41c9e` fix) — RED confirmado revertendo
+temporariamente para o commit anterior e reproduzindo o `indefinido` incorreto. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: 419 testes / 2036 asserções / 0 falhas (o
+coordenador mediu 417/2031 antes desta correção, em árvore limpa). Dependência aberta para o 140-03
+(não tocado): `TIPO_LABEL` do comando ainda precisa de entrada para `numeros_ilegiveis` virar frase
+no relatório, mas isso não bloqueia mais a contagem do resumo. Sem deploy — sem acesso a produção
+nesta sessão.
 Last session: 2026-09-08T16:10:00Z
 Stopped at: Corrigidos os dois defeitos pós-deploy do 140-02 reportados pelo coordenador na rodada
 real (`clicksign:extrair-tabelas --limite=10`, deploy `1f53bfa6`). Defeito 1: CNPJ/razão social
