@@ -2,13 +2,16 @@
 
 namespace Tests\Feature\Phase140;
 
+use App\Console\Commands\ClicksignExtrairTabelas;
 use App\Models\Company;
 use App\Models\EmpresaFaixaFaturamento;
+use App\Services\Contratos\TabelaProgressivaContratoParser;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
+use ReflectionMethod;
 use Tests\TestCase;
 
 /**
@@ -53,6 +56,26 @@ class Phase140RelatorioTabelasTest extends TestCase
     private function textoFixture(string $nome): string
     {
         return file_get_contents(__DIR__ . "/fixtures/{$nome}.txt");
+    }
+
+    /**
+     * Contrato fictício onde os dígitos de valores em reais viraram espaço
+     * no texto extraído — o defeito medido pelo 140-02 em contratos antigos
+     * (ago/2025), que agora sai do parser como tipo `numeros_ilegiveis`
+     * (correção pós-rodada real, commit `539d3731`). CNPJ e nome
+     * inteiramente fictícios.
+     */
+    private function textoNumerosIlegiveis(): string
+    {
+        return <<<TXT
+        CONTRATANTE: EMPRESA FICTICIA NUMEROS ILEGIVEIS LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 44.555.666/0001-77, com sede na Rua Exemplo, 400.
+
+        CONTRATADA: ECF NEGOCIOS DIGITAIS LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 63.381.851/0001-41.
+
+        CLÁUSULA 3 — DO PAGAMENTO
+
+        O valor mensal será de R\$  .   ,   (três mil reais), conforme tabela vigente.
+        TXT;
     }
 
     /**
@@ -312,5 +335,113 @@ class Phase140RelatorioTabelasTest extends TestCase
         // Data formatada para leitura humana, não a string ISO crua.
         $this->assertStringContainsString('01/11/2025', $conteudo);
         $this->assertStringContainsString('20/08/2026', $conteudo);
+    }
+
+    // ─── numeros_ilegiveis (140-02, correção pós-rodada real) ───
+
+    /**
+     * Trava de regressão: o 140-02 acrescentou um tipo novo ao parser
+     * (`numeros_ilegiveis`, commit `539d3731`) e o comando ficou sem
+     * rótulo para ele — `TIPO_LABEL[$tipo] ?? $tipo` faria o relatório
+     * imprimir o nome cru da constante. Copy sem jargão: nada de
+     * "ilegível", "parser", "extração", "OCR".
+     */
+    #[Test]
+    public function numeros_ilegiveis_tem_rotulo_sem_jargao(): void
+    {
+        $this->assertArrayHasKey('numeros_ilegiveis', ClicksignExtrairTabelas::TIPO_LABEL);
+
+        $rotulo = ClicksignExtrairTabelas::TIPO_LABEL['numeros_ilegiveis'];
+
+        foreach (['ilegível', 'ilegivel', 'parser', 'extração', 'extracao', 'ocr'] as $jargao) {
+            $this->assertStringNotContainsStringIgnoringCase($jargao, $rotulo, "rótulo de numeros_ilegiveis não pode usar jargão ('{$jargao}')");
+        }
+    }
+
+    /**
+     * A trava pedida pelo coordenador: todo tipo que
+     * `TabelaProgressivaContratoParser::analisar()` PODE emitir (lido do
+     * próprio docblock de retorno do 140-02, não copiado à mão aqui) tem
+     * que ter rótulo em `ClicksignExtrairTabelas::TIPO_LABEL`. Se alguém
+     * acrescentar um tipo novo ao parser amanhã sem vir aqui, este teste
+     * avisa — em vez do relatório imprimir o nome cru da constante em
+     * produção (o padrão que já mordeu três vezes nesta linha de
+     * trabalho).
+     */
+    #[Test]
+    public function todo_tipo_que_o_parser_pode_emitir_tem_rotulo_no_comando(): void
+    {
+        $reflexao = new ReflectionMethod(TabelaProgressivaContratoParser::class, 'analisar');
+        $docblock = (string) $reflexao->getDocComment();
+
+        $this->assertMatchesRegularExpression(
+            '/tipo:\s*(?:\'[a-z_]+\'\|?)+/',
+            $docblock,
+            'não achei a união de tipos no docblock de analisar() — o parser mudou de forma inesperada, confira manualmente'
+        );
+
+        preg_match('/tipo:\s*((?:\'[a-z_]+\'\|?)+)/', $docblock, $uniao);
+        preg_match_all('/\'([a-z_]+)\'/', $uniao[1], $tiposEncontrados);
+        $tipos = $tiposEncontrados[1];
+
+        $this->assertNotEmpty($tipos, 'não consegui extrair nenhum tipo do docblock de analisar()');
+
+        foreach ($tipos as $tipo) {
+            $this->assertArrayHasKey(
+                $tipo,
+                ClicksignExtrairTabelas::TIPO_LABEL,
+                "o parser pode emitir o tipo '{$tipo}', mas o comando não tem rótulo para ele em TIPO_LABEL"
+            );
+        }
+    }
+
+    /**
+     * Ponta a ponta: um contrato com dígitos apagados no PDF não pode virar
+     * "valor fixo" nem "casaram com segurança" no resumo — mesmo quando o
+     * CNPJ bate com uma empresa cadastrada (a linha ainda precisa de
+     * conferência manual por causa do valor, então não é "resolvida"). Tem
+     * que entrar em "não deu para ler", e a coluna de faixas precisa mostrar
+     * o aviso do parser, nunca um "-" mudo.
+     */
+    #[Test]
+    public function contrato_com_numeros_ilegiveis_nao_conta_como_valor_fixo_nem_como_casaram_com_seguranca(): void
+    {
+        // CNPJ do fixture bate com esta empresa — prova que a exclusão é
+        // deliberada, não um acaso de "não achou candidato".
+        Company::factory()->create([
+            'cnpj'         => '44.555.666/0001-77',
+            'razao_social' => null,
+        ]);
+
+        Http::fake([
+            self::BASE . '/envelopes?*' => Http::response(['data' => [
+                $this->envelope('ads-numeros', 'Contrato Gestao de Ads ECF - EMPRESA NUMEROS ILEGIVEIS'),
+            ]], 200),
+            self::BASE . '/envelopes/ads-numeros/documents' => Http::response(
+                $this->documentoResposta('doc-numeros', 'https://s3.example.com/ads-numeros.pdf'),
+                200
+            ),
+            'https://s3.example.com/ads-numeros.pdf*' => Http::response($this->pdfDoTexto($this->textoNumerosIlegiveis()), 200),
+        ]);
+
+        $this->artisan('clicksign:extrair-tabelas', ['--pausa-ms' => 0])
+            ->assertExitCode(0);
+
+        $arquivos = Storage::disk('local')->allFiles('relatorios');
+        $md       = collect($arquivos)->first(fn ($f) => str_ends_with($f, '.md'));
+        $conteudo = Storage::disk('local')->get($md);
+
+        // Resumo: nem valor fixo, nem casaram com segurança — conta como
+        // "não deu para ler".
+        $this->assertStringContainsString('Casaram com segurança: **0**', $conteudo);
+        $this->assertStringContainsString('São valor fixo: **0**', $conteudo);
+        $this->assertStringContainsString('Não deu para ler: **1**', $conteudo);
+
+        // Rótulo sem jargão na linha, não o nome cru da constante.
+        $this->assertStringNotContainsString('numeros_ilegiveis', $conteudo);
+        $this->assertStringContainsString(ClicksignExtrairTabelas::TIPO_LABEL['numeros_ilegiveis'], $conteudo);
+
+        // Coluna de faixas usa o aviso pronto do parser — não fica muda.
+        $this->assertStringContainsString('precisa abrir o contrato à mão', $conteudo);
     }
 }
