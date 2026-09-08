@@ -99,11 +99,21 @@ class AcervoContratosClicksignService
                     'id'       => $envelope['id'] ?? null,
                     'nome'     => $nome,
                     'situacao' => $situacao,
-                    // Cadeia defensiva (140-CONTEXT.md §envelopesDeGestaoDeAds
-                    // da PLAN): o nome exato do campo de data NÃO foi medido —
-                    // mesmo padrão de robustez da cadeia de links do
-                    // `BaixarPdfContratoAssinadoJob`.
-                    'data' => $atributos['finished_at'] ?? $atributos['updated_at'] ?? $atributos['created_at'] ?? null,
+                    // ⚠️ MEDIDO em produção (rodada real de 2026-09-08 —
+                    // `clicksign:extrair-tabelas --limite=10` devolveu a
+                    // coluna de data vazia em TODAS as linhas). A cadeia
+                    // antiga (`finished_at`/`updated_at`/`created_at`) era
+                    // uma suposição, nunca medida — e nenhum dos três nomes
+                    // existe no recurso real. Sondagem manual confirmou os
+                    // nomes verdadeiros: `created` e `modified`. `created` é
+                    // preferido — marca quando o contrato foi redigido, o
+                    // sinal que localiza a virada de dezembro/2025 (valor
+                    // fixo → tabela progressiva, D-03); `modified` só entra
+                    // como reforço quando `created` não vier. `finished_at`
+                    // segue por último, sem confirmação de existir, mas sem
+                    // custo mantê-lo — se algum dia existir, é o sinal mais
+                    // preciso de todos (data de fechamento).
+                    'data' => $atributos['created'] ?? $atributos['modified'] ?? $atributos['finished_at'] ?? null,
                 ];
 
                 if ($limite !== null && count($resultado) >= $limite) {
