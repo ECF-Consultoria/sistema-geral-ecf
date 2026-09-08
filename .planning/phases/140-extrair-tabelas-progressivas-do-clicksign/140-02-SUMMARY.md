@@ -2,7 +2,7 @@
 phase: 140-extrair-tabelas-progressivas-do-clicksign
 plan: 02
 subsystem: contracts-parsing
-tags: [pdf, zip, regex-parsing, tdd, clicksign]
+tags: [pdf, zip, regex-parsing, tdd, clicksign, post-producao-fix]
 
 requires: []
 provides:
@@ -19,6 +19,8 @@ tech-stack:
     - "Valor fixo tem prioridade de exclusão sobre detecção de tabela — checado ANTES de tentar reconhecer faixas (D-03)"
     - "Todo Throwable interno vira motivo em pt-BR, nunca propaga — uma rodada de ~123 contratos não pode morrer no arquivo 7"
     - "CNPJ/razão social: melhor null do que palpite — razão social só sai com sufixo de pessoa jurídica reconhecido por perto do CNPJ"
+    - "CNPJ do cliente resolvido por RÓTULO (CONTRATANTE/CONTRATADA), não por ordem no documento — correção pós-rodada real (ver seção dedicada abaixo)"
+    - "Tipo numeros_ilegiveis distingue 'texto presente mas dígitos apagados no PDF' de 'indefinido genérico' — correção pós-rodada real"
 
 key-files:
   created:
@@ -133,10 +135,135 @@ None — nenhuma configuração de serviço externo necessária. `services.click
 - Nenhum bloqueio conhecido. Zero escrita no banco, zero chamada real à Clicksign em teste — exatamente o que o `<success_criteria>` do plano pedia.
 - ⚠️ Atenção para 140-03/140-05: `valor_e_piso` da última faixa da notação antiga sai `false` nos casos medidos (o texto real não usa a wording "a partir de R$" no valor) — se a rodada real revelar contratos onde essa wording aparece, o parser já cobre (regex já existe), só não foi o caso medido.
 
+## Correções pós-rodada real (2026-09-08)
+
+O coordenador rodou `clicksign:extrair-tabelas --limite=10` contra a conta real de produção
+(deploy `1f53bfa6`, comando executado pelo 140-03) e reportou dois defeitos no parser deste plano.
+Os dois foram corrigidos aqui, sem tocar no comando/serviço de palpite (fora do escopo deste plano,
+sendo corrigidos em paralelo pelo 140-03).
+
+### Defeito 1 — CNPJ e razão social vinham sempre da ECF, nunca do cliente
+
+**Sintoma:** as 10 linhas do relatório trouxeram o MESMO CNPJ — o da ECF, não o do cliente.
+
+**Causa raiz:** a versão original de `extrairCnpjERazaoSocial()` pegava "o primeiro CNPJ que não
+bate com `cnpj_ecf` configurado". Sem essa config (o estado real do `.env` de produção — a chave
+nunca foi definida lá), a regra degenerava para "primeiro CNPJ do documento", e a ECF costuma abrir
+a cláusula de qualificação. A ordem entre ECF e cliente **varia entre contratos** (medido pelo
+coordenador: DESK DESIGN tem a ECF primeiro, ALUMEN tem o cliente primeiro) — "pegar o segundo" não
+resolveria, só trocaria de acerto por acaso para erro por acaso.
+
+**Correção:** leitura por **RÓTULO**, não por posição. Os contratos sempre qualificam a parte com
+"CONTRATANTE" ou "CONTRATADA" literalmente no texto, em uma de duas formas:
+
+1. Rótulo ANTES, com dois-pontos: `"CONTRATANTE: NOME LTDA, ..., CNPJ X"` — busca o CNPJ mais
+   próximo **à frente** do rótulo.
+2. Rótulo DEPOIS, sem dois-pontos: `"NOME LTDA, ..., CNPJ X, ..., doravante denominada
+   CONTRATANTE"` — busca o CNPJ mais próximo **atrás** do rótulo.
+
+O primeiro CNPJ mapeado para "contratante" por esse mecanismo é o CNPJ do cliente, independente de
+qual pessoa jurídica aparece primeiro no documento (`mapearCnpjParaRotulo()` +
+`cnpjMaisProximoNaDirecao()`).
+
+⚠️ **Armadilha descoberta ao escrever o teste do cenário "ECF primeiro":** uma primeira versão desta
+correção usava "rótulo mais próximo por distância, em qualquer direção" (sem direção fixa) — e
+falhava exatamente no caso "ECF primeiro, cliente depois", porque o CNPJ da ECF (no fim da própria
+linha) ficava mais PERTO do "CONTRATANTE" da linha SEGUINTE do que do "CONTRATADA" que de fato o
+qualifica (mesma linha, mas no início dela). A correção final busca só NA DIREÇÃO que cada padrão de
+qualificação realmente usa, o que elimina essa ambiguidade — documentado no docblock de
+`mapearCnpjParaRotulo()`.
+
+**Rede de segurança:** `CNPJS_ECF_CONHECIDOS` — as duas pessoas jurídicas que assinam como
+CONTRATADA nos modelos de contrato. Não é dado sensível: um dos dois CNPJs já está literal e
+versionado desde a Fase 126 em `126-VARIAVEIS-DO-MODELO.md` (qualificação fixa do modelo `.docx`) —
+é o CNPJ público da própria ECF, não segredo nem dado de cliente. Se o CNPJ que o rótulo (ou o
+fallback por eliminação) aponta como "do cliente" bater com um destes, a leitura falhou — o parser
+devolve `null` em vez do nosso próprio CNPJ, porque este campo vira chave de casamento de cobrança.
+`config('services.clicksign.cnpj_ecf')` continua funcionando como camada adicional (aceita lista
+separada por vírgula), para adicionar uma terceira pessoa jurídica sem alterar código.
+
+**Fallback (sem rótulo nenhum):** mantido o comportamento antigo — primeiro CNPJ que não é um CNPJ
+conhecido da ECF — mas agora com aviso explícito de confiança menor ("nenhum rótulo CONTRATANTE foi
+encontrado perto de nenhum CNPJ neste texto — conferir manualmente"), em vez de silenciosamente
+parecer tão confiável quanto a leitura por rótulo.
+
+**Testes novos** (`tests/Feature/Phase140/Phase140TabelaProgressivaParserTest.php`, CNPJs
+FICTÍCIOS): ECF primeiro (dinâmica DESK DESIGN, SEM `cnpj_ecf` configurado — reproduz o estado real
+de produção), cliente primeiro (dinâmica ALUMEN), rede de segurança descartando CNPJ da ECF mesmo
+sem rótulo, fallback por eliminação com aviso.
+
+### Defeito 2 — contratos antigos com os dígitos apagados no PDF
+
+**Sintoma:** 3 dos 10 contratos (`contrato_gestao_ads_meli_*`, ago/2025) saíram como *"não deu para
+entender a cobrança"*.
+
+**Causa raiz:** não é bug do parser — é problema de FONTE no PDF desses contratos antigos. O texto
+extrai literalmente com `R$  .   ,   ` (dígitos viraram espaço em branco), mas o valor por extenso
+entre parênteses sobrevive ("três mil reais", "quatro mil e quinhentos reais"). Como
+`pareceValorFixo()` e o reconhecedor de marcos exigem dígitos de verdade, nenhum dos dois batia, e o
+texto caía no `indefinido` genérico — mensagem que sugere "não achei sinal nenhum", quando na
+verdade havia sinal claro (a estrutura de um valor em reais), só que ilegível.
+
+**Decisão tomada — opção (b) do pedido do coordenador, marcar honestamente em vez de tentar
+converter o extenso:**
+
+Foi cogitado ler o valor por extenso ("três mil reais" → 3000.00) usando o mesmo tipo de lógica que
+`ContratoPdfService::quantidadeDeParcelasPorExtenso()` já faz no sentido inverso (número→extenso).
+**Optou-se por NÃO fazer isso**, por três razões:
+
+1. O próprio coordenador marcou essa rota como a de maior risco: "ler por extenso e converter para
+   número é caminho onde um erro vira valor de cobrança errado **sem parecer errado**". Um parser de
+   número-por-extenso em português é uma peça de lógica não-trivial (compostos como "quatro mil e
+   quinhentos", concordância, plural) — construir isso do zero introduz uma superfície de erro nova
+   e sutil, exatamente no dado que vira cobrança.
+2. **Poucos contratos afetados** (o coordenador já sinalizou "o lote `contrato_gestao_ads_meli_*` é
+   de ago/2025" — não é o volume principal da amostra) — o custo de construir e validar um parser de
+   extenso robusto não se paga para poucos casos, e o plano pede explicitamente "não superdimensione
+   a solução".
+3. **Acertividade > praticidade** quando o dado vira número de cobrança (prioridade permanente do
+   projeto, registrada em `feedback_project_priorities.md`) — errar silenciosamente um valor de
+   mensalidade é pior do que pedir para alguém abrir o contrato e conferir a mão.
+
+**Correção:** `pareceNumerosIlegiveis()` detecta a marca estrutural — `R\$?\s*\.\s*,\s*` (R$ seguido
+de espaço-ponto-espaço-vírgula-espaço, **sem nenhum dígito** entre eles). Um valor válido SEMPRE tem
+dígitos nessas posições ("R$ 3.000,00"), então esta regex nunca dá falso positivo em texto normal
+(coberto por teste de não-regressão). Quando bate E nenhum marco de tabela foi reconhecido, o texto
+ganha tipo **próprio** `numeros_ilegiveis` (distinto de `indefinido`), com aviso explícito "os
+números deste contrato não são legíveis no arquivo (dígitos vieram como espaços) — precisa abrir o
+contrato à mão".
+
+⚠️ **Dependência do 140-03 (fora deste plano, não tocado):** o comando `clicksign:extrair-tabelas`
+mapeia `tipo` para texto do relatório via a constante `TIPO_LABEL` (hoje só tem `tabela`,
+`valor_fixo`, `indefinido`) — para o novo tipo `numeros_ilegiveis` virar uma frase honesta no
+relatório em vez do nome cru da constante, o 140-03 precisa adicionar uma entrada nesse mapa. Esse
+arquivo está sendo corrigido em paralelo pela outra sessão (trava explícita deste plano: não
+encostar nele) — o `avisos` retornado por este parser já carrega a frase completa em pt-BR, pronta
+para ser usada assim que o 140-03 acoplar.
+
+**Testes novos:** contrato com dígitos apagados (texto reproduzido literalmente do exemplo do
+coordenador — é boilerplate contratual genérico, sem nome nem CNPJ, seguro de usar tal como veio),
+guarda de não-regressão para texto sem sinal nenhum (continua `indefinido`) e para valor com dígitos
+normais (nunca dispara `numeros_ilegiveis`).
+
+### Commits da correção
+
+- `025be6f1` (test) — 7 testes falhos cobrindo os dois defeitos (RED confirmado revertendo
+  temporariamente o parser para o commit `2a97b64f` e rodando a suíte — 4 falhas claras: ordem
+  ECF-primeiro, rede de segurança, fallback por eliminação, números ilegíveis)
+- `539d3731` (fix) — `mapearCnpjParaRotulo()` + `cnpjMaisProximoNaDirecao()` + `ehCnpjDaEcf()` +
+  `pareceNumerosIlegiveis()`, GREEN
+
+### Gate após a correção
+
+`--filter="Phase122|Phase136|Phase137|Phase138|Phase139|Phase140"`: **414 testes / 2011 asserções /
+0 falhas** (o coordenador reportou 402/1981 antes desta correção — os números absolutos também
+incluem trabalho concorrente do 140-03/140-04 rodando em paralelo na mesma árvore; sem regressão em
+nenhum teste pré-existente). `Phase140TabelaProgressivaParserTest` isolado: 18 testes / 88 asserções.
+
 ---
 *Phase: 140-extrair-tabelas-progressivas-do-clicksign*
 *Completed: 2026-09-08*
 
 ## Self-Check: PASSED
 
-Todos os 7 arquivos declarados (ExtratorTextoContratoService.php, TabelaProgressivaContratoParser.php, os 2 testes Phase140 e as 3 fixtures) confirmados em disco; os 5 hashes de commit (`b0307ee6`, `518002e1`, `b9a6a028`, `f0e15ed2`, `2a97b64f`) confirmados em `git log`.
+Todos os 7 arquivos declarados (ExtratorTextoContratoService.php, TabelaProgressivaContratoParser.php, os 2 testes Phase140 e as 3 fixtures) confirmados em disco; os 5 hashes de commit (`b0307ee6`, `518002e1`, `b9a6a028`, `f0e15ed2`, `2a97b64f`) confirmados em `git log`. Correção pós-rodada real: commits `025be6f1` (test) e `539d3731` (fix) confirmados em `git log`; `TabelaProgressivaContratoParser.php` e `Phase140TabelaProgressivaParserTest.php` confirmados em disco com as novas seções.

@@ -1877,6 +1877,28 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-08T16:10:00Z
+Stopped at: Corrigidos os dois defeitos pós-deploy do 140-02 reportados pelo coordenador na rodada
+real (`clicksign:extrair-tabelas --limite=10`, deploy `1f53bfa6`). Defeito 1: CNPJ/razão social
+saíam sempre da ECF, nunca do cliente — a extração pegava "o primeiro CNPJ do documento" (sem
+`cnpj_ecf` configurado em produção, a exclusão por config nunca disparava) e a ordem ECF/cliente
+varia entre contratos (DESK DESIGN: ECF primeiro; ALUMEN: cliente primeiro). Corrigido para ler por
+RÓTULO ("CONTRATANTE:"/"...doravante denominada CONTRATANTE", buscando o CNPJ na direção certa —
+à frente do rótulo com dois-pontos, atrás do rótulo sem), com rede de segurança
+(`CNPJS_ECF_CONHECIDOS`, hardcoded — CNPJ público da própria ECF, já versionado desde a Fase 126)
+que descarta o CNPJ mesmo se o rótulo falhar. Defeito 2: contratos antigos (ago/2025,
+`contrato_gestao_ads_meli_*`) têm os dígitos apagados no PDF (`R$  .   ,   ` em vez de valor real) —
+problema de fonte no documento, não do parser. Saíam como "não deu para entender a cobrança"
+(indefinido genérico); ganharam tipo próprio `numeros_ilegiveis` com aviso explícito "precisa abrir
+o contrato à mão". Decisão registrada: NÃO se tentou ler o valor por extenso ("três mil reais") e
+converter em número — risco de acertar por acaso e errar sem parecer errado, para poucos contratos
+afetados, não compensa (acertividade > praticidade quando o dado vira cobrança). TDD: 2 commits
+RED→GREEN (`025be6f1` test, `539d3731` fix). Gate `Phase122|Phase136|Phase137|Phase138|Phase139|
+Phase140`: 414 testes / 2011 asserções / 0 falhas (era 402/1981 antes desta correção — inclui
+trabalho concorrente do 140-03/140-04 em paralelo). ⚠️ Dependência aberta para o 140-03 (não tocado
+por este plano): `TIPO_LABEL` do comando `clicksign:extrair-tabelas` precisa de uma entrada para
+`numeros_ilegiveis` para o novo tipo virar frase honesta no relatório em vez do nome cru da
+constante. Sem deploy — sem acesso a produção nesta sessão.
 Last session: 2026-09-08T15:44:00Z
 Stopped at: Corrigido defeito pós-deploy do 140-01 (commit `91397bf2`) — teto real de página do
 Clicksign é 50, não 100 (achado na rodada real de produção pelo coordenador, deploy `764d228f`);
