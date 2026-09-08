@@ -549,6 +549,41 @@ regressão. 3 commits (`f2811636` tela+controller+rota, `5ed80d1e` job+mail+quat
 `bdbb6127` trava de teste). Last activity: 2026-09-04 — 139-07 executado (6/7 planos concluídos;
 139-06 segue pendente, fora da dependência deste plano — `depends_on: ["139-05"]`). Sem deploy.
 
+## Posição paralela — Fase 140 (Extrair tabelas progressivas do Clicksign) — EM EXECUÇÃO (1/2 planos)
+
+**Mesma disciplina dos blocos 135/136/137/138/139 acima:** Fase 140 fora de milestone, rodando em
+paralelo (140-02 executado por outra sessão na MESMA árvore, ao mesmo tempo que 140-01). `##
+Current Position` (Fase 132/133) não foi tocado.
+
+Origem: `140-CONTEXT.md`, investigação de viabilidade de 2026-09-08 (autorizada pelo usuário) —
+127 empresas cobram por tabela ASSUMIDA (quick 260904-jpn/kwz), cadastro manual da Fase 137 segue
+com zero registros. Medido contra a conta de produção Clicksign: 429 envelopes, 123 de gestão de
+ADS, 85 candidatos fechados. Estratégia acordada (D-06): primeiro um comando de LEITURA que só
+gera relatório — sem tela, sem escrita — para o usuário avaliar a qualidade do casamento antes de
+construir a tela de conferência e a escrita auditada.
+
+140-01 concluído (TAB-01) — `ClicksignClient` ganhou `listarEnvelopes()` (GET /envelopes paginado,
+molde de `listarModelos()`) e `listarDocumentos()` (GET /envelopes/{id}/documents), os dois pelo
+`enviar()` existente, sem inventar filtro de servidor não medido. Novo
+`AcervoContratosClicksignService` (injeta `ClicksignClient` + `$pausaMs=3500` no construtor):
+`envelopesDeGestaoDeAds()` pagina 100/página até página vazia/curta (sem contador total — `enviar()`
+descarta `meta`/`links`), filtra localmente por `pareceGestaoDeAds()` (normaliza e exige "gestao" E
+"ads" no nome — não "prestação de serviços", que pega contrato de FUNCIONÁRIO, medido com a
+Jessica) e por situação (default só `closed`); `baixarArquivo()` chama `listarDocumentos()` e baixa
+na MESMA execução pela cadeia `links.files.original → attributes.files.original → …signed →
+…ziped`, nunca guarda/loga/devolve o link (janela de ~299s, D-02, MEDIDO); link ou documento
+ausente devolve `['ok'=>false,'motivo'=>...]`, nunca lança exceção. Pausa `usleep($pausaMs*1000)`
+antes de cada chamada ao client (0 nos testes) — a conta aceita 20 chamadas/min e uma varredura
+completa passa de 130. TDD: 2 tarefas, 4 commits RED→GREEN (`c44eaf77`/`99c57da2` client,
+`f5411cbf`/`a7816bb1` serviço). Testes novos: `Phase140AcervoClientTest` (5) +
+`Phase140AcervoColetaTest` (14) = 19 testes / 47 asserções, todos com `Http::fake()` (zero chamada
+real — subagente não tem acesso à conta de produção). Gate `Phase122|Phase136|Phase137|Phase138|
+Phase139|Phase140`: **367 testes / 1812 asserções / 0 falhas** (era 348/1765 antes deste plano —
++19 testes/+47 asserções, sem regressão; o flaky pré-existente `Phase138AvisoMudancaFaixaTest` não
+tropeçou nesta rodada). Este plano **não lê PDF, não casa com empresa e não escreve no banco** —
+para no binário, por desenho (140-02 cobre a extração de texto/parser de tabela). Last activity:
+2026-09-08 — 140-01 executado (`140-01-SUMMARY.md`). Sem deploy.
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
@@ -1792,6 +1827,10 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-08T15:03:57Z
+Stopped at: Completed 140-01-PLAN.md (ClicksignClient::listarEnvelopes()/listarDocumentos() +
+AcervoContratosClicksignService — varredura paginada, filtro de gestão de ADS e download imediato
+do binário; 140-02 roda em paralelo, fora da dependência deste plano)
 Last session: 2026-09-04T12:42:05-03:00
 Stopped at: Completed 139-07-PLAN.md (marcador de recebido removido dos seis pontos; trava de teste criada; 139-06 segue pendente, fora da dependência deste plano)
 Last session: 2026-09-04T00:00:00.000Z

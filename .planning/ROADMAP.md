@@ -2266,7 +2266,7 @@ leitura ou instalar poppler.
 
 | ID | O que é |
 |---|---|
-| TAB-01 | Listar e baixar os contratos do Clicksign dentro da validade do link (D-01, D-02) |
+| TAB-01 | Listar e baixar os contratos do Clicksign dentro da validade do link (D-01, D-02) — ✅ concluído em 140-01 (2026-09-08) |
 | TAB-02 | Ler o texto do contrato mesmo quando o arquivo vier como ZIP (D-02) |
 | TAB-03 | Reconhecer as duas notações de tabela progressiva (D-04) |
 | TAB-04 | Distinguir contrato com tabela de contrato de valor fixo (D-03) |
@@ -2280,7 +2280,7 @@ leitura ou instalar poppler.
 depois de o usuário aprovar a rodada real do relatório (checkpoint do 140-03).
 
 Plans:
-- [ ] 140-01-PLAN.md — wave 1 — ler o acervo do Clicksign: listar envelopes, filtrar gestão de ADS, baixar o arquivo dentro dos 299s
+- [x] 140-01-PLAN.md — wave 1 — ler o acervo do Clicksign: listar envelopes, filtrar gestão de ADS, baixar o arquivo dentro dos 299s
 - [ ] 140-02-PLAN.md — wave 1 — ler o texto do contrato (PDF e ZIP) e extrair tabela, valor fixo, CNPJ e razão social
 - [ ] 140-03-PLAN.md — wave 2 — palpite de empresa com confiança honesta + comando `clicksign:extrair-tabelas` (só relatório) + **checkpoint: rodada real e decisão de continuar**
 - [ ] 140-04-PLAN.md — wave 3 — guardar as propostas lidas (`--gravar`), sem tocar em cobrança — BLOQUEADO até o checkpoint do 140-03
