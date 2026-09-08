@@ -151,6 +151,92 @@ class Phase140AcervoColetaTest extends TestCase
         });
     }
 
+    /**
+     * Trava de regressão do defeito medido em produção em 2026-09-08 (rodada
+     * real via `clicksign:extrair-tabelas --limite=10`): a coluna de data
+     * saiu vazia em TODAS as 10 linhas. Causa: o código lia
+     * `finished_at`/`updated_at`/`created_at` — nenhum dos três existe no
+     * recurso real. Sondagem manual contra a API confirmou os nomes
+     * verdadeiros: `created` e `modified`. `created` é preferido — é o que
+     * marca a data em que o contrato foi redigido/enviado, o sinal que
+     * importa para localizar a virada de dezembro/2025 (valor fixo →
+     * tabela progressiva, D-03 de `140-CONTEXT.md`); `modified` só entra
+     * como reforço quando `created` não vier.
+     */
+    #[Test]
+    public function le_a_data_do_atributo_created_medido_quando_finished_at_nao_existe(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes*' => Http::response([
+                'data' => [
+                    [
+                        'id'         => 'ads-1',
+                        'type'       => 'envelopes',
+                        'attributes' => [
+                            'name'     => 'Contrato Gestao de Ads ECF - Empresa Real',
+                            'status'   => 'closed',
+                            'created'  => '2025-01-23T12:30:04.476-03:00',
+                            'modified' => '2025-02-22T12:30:32.081-03:00',
+                            // Sem finished_at/updated_at/created_at — os
+                            // nomes NUNCA existiram no recurso real.
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $resultado = $this->servico()->envelopesDeGestaoDeAds();
+
+        $this->assertSame('2025-01-23T12:30:04.476-03:00', $resultado[0]['data']);
+    }
+
+    #[Test]
+    public function le_a_data_do_atributo_modified_quando_created_nao_vem(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes*' => Http::response([
+                'data' => [
+                    [
+                        'id'         => 'ads-1',
+                        'type'       => 'envelopes',
+                        'attributes' => [
+                            'name'     => 'Contrato Gestao de Ads ECF - Empresa Real',
+                            'status'   => 'closed',
+                            'modified' => '2025-02-22T12:30:32.081-03:00',
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $resultado = $this->servico()->envelopesDeGestaoDeAds();
+
+        $this->assertSame('2025-02-22T12:30:32.081-03:00', $resultado[0]['data']);
+    }
+
+    #[Test]
+    public function sem_nenhum_atributo_de_data_conhecido_a_data_fica_nula_sem_quebrar(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes*' => Http::response([
+                'data' => [
+                    [
+                        'id'         => 'ads-1',
+                        'type'       => 'envelopes',
+                        'attributes' => [
+                            'name'   => 'Contrato Gestao de Ads ECF - Empresa Sem Data',
+                            'status' => 'closed',
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $resultado = $this->servico()->envelopesDeGestaoDeAds();
+
+        $this->assertNull($resultado[0]['data']);
+    }
+
     #[Test]
     public function limite_para_a_varredura_assim_que_atinge_a_quantidade_pedida(): void
     {
