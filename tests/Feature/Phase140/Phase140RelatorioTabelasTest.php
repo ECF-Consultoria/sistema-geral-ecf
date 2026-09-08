@@ -56,18 +56,27 @@ class Phase140RelatorioTabelasTest extends TestCase
     }
 
     /**
+     * `$created = null` simula um envelope sem NENHUM atributo de data
+     * conhecido — o caso que a rodada real de 2026-09-08 revelou (coluna de
+     * data vazia em todas as linhas).
+     *
      * @return array<string, mixed>
      */
-    private function envelope(string $id, string $nome, string $status = 'closed'): array
+    private function envelope(string $id, string $nome, string $status = 'closed', ?string $created = '2026-08-01T00:00:00-03:00'): array
     {
+        $atributos = [
+            'name'   => $nome,
+            'status' => $status,
+        ];
+
+        if ($created !== null) {
+            $atributos['created'] = $created;
+        }
+
         return [
             'id'         => $id,
             'type'       => 'envelopes',
-            'attributes' => [
-                'name'        => $nome,
-                'status'      => $status,
-                'finished_at' => '2026-08-01T00:00:00-03:00',
-            ],
+            'attributes' => $atributos,
         ];
     }
 
@@ -215,5 +224,93 @@ class Phase140RelatorioTabelasTest extends TestCase
         $this->artisan('clicksign:extrair-tabelas', ['--pausa-ms' => 0])
             ->expectsOutputToContain('não commite')
             ->assertExitCode(0);
+    }
+
+    /**
+     * Trava de regressão do defeito relatado após a rodada real de
+     * 2026-09-08: a coluna de data saiu vazia em TODAS as 10 linhas, e o
+     * relatório mostrava só "-" — o mesmo traço genérico usado para
+     * "campo não se aplica" em qualquer outra coluna, sem dizer que o dado
+     * FALTOU. Mesma disciplina de honestidade do palpite de empresa: célula
+     * vazia precisa dizer que faltou, nunca ficar muda.
+     */
+    #[Test]
+    public function contrato_sem_data_conhecida_mostra_aviso_honesto_em_vez_de_traco_mudo(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes?*' => Http::response(['data' => [
+                $this->envelope('ads-1', 'Contrato Gestao de Ads ECF - EMPRESA SEM DATA', 'closed', null),
+            ]], 200),
+            self::BASE . '/envelopes/ads-1/documents' => Http::response(
+                $this->documentoResposta('doc-1', 'https://s3.example.com/ads-1.pdf'),
+                200
+            ),
+            'https://s3.example.com/ads-1.pdf*' => Http::response($this->pdfDoTexto($this->textoFixture('valor-fixo')), 200),
+        ]);
+
+        $this->artisan('clicksign:extrair-tabelas', ['--pausa-ms' => 0])
+            ->assertExitCode(0);
+
+        $arquivos = Storage::disk('local')->allFiles('relatorios');
+        $md       = collect($arquivos)->first(fn ($f) => str_ends_with($f, '.md'));
+        $conteudo = Storage::disk('local')->get($md);
+
+        $this->assertStringContainsString('data não informada pela Clicksign', $conteudo);
+    }
+
+    /**
+     * "Considere ordenar o relatório por data — ajuda a leitura humana das
+     * 123 linhas, já que a virada de dezembro/2025 fica visível de bater o
+     * olho" (pedido do coordenador após a rodada real). Três envelopes fora
+     * de ordem cronológica na resposta da API; o relatório precisa sair da
+     * mais antiga para a mais recente.
+     */
+    #[Test]
+    public function relatorio_sai_ordenado_da_data_mais_antiga_para_a_mais_recente(): void
+    {
+        Http::fake([
+            self::BASE . '/envelopes?*' => Http::response(['data' => [
+                $this->envelope('ads-meio', 'Contrato Gestao de Ads ECF - EMPRESA MEIO', 'closed', '2026-03-15T00:00:00-03:00'),
+                $this->envelope('ads-antigo', 'Contrato Gestao de Ads ECF - EMPRESA ANTIGA', 'closed', '2025-11-01T00:00:00-03:00'),
+                $this->envelope('ads-recente', 'Contrato Gestao de Ads ECF - EMPRESA RECENTE', 'closed', '2026-08-20T00:00:00-03:00'),
+            ]], 200),
+            self::BASE . '/envelopes/ads-meio/documents' => Http::response(
+                $this->documentoResposta('doc-meio', 'https://s3.example.com/ads-meio.pdf'),
+                200
+            ),
+            self::BASE . '/envelopes/ads-antigo/documents' => Http::response(
+                $this->documentoResposta('doc-antigo', 'https://s3.example.com/ads-antigo.pdf'),
+                200
+            ),
+            self::BASE . '/envelopes/ads-recente/documents' => Http::response(
+                $this->documentoResposta('doc-recente', 'https://s3.example.com/ads-recente.pdf'),
+                200
+            ),
+            'https://s3.example.com/ads-meio.pdf*'    => Http::response($this->pdfDoTexto($this->textoFixture('valor-fixo')), 200),
+            'https://s3.example.com/ads-antigo.pdf*'  => Http::response($this->pdfDoTexto($this->textoFixture('valor-fixo')), 200),
+            'https://s3.example.com/ads-recente.pdf*' => Http::response($this->pdfDoTexto($this->textoFixture('valor-fixo')), 200),
+        ]);
+
+        $this->artisan('clicksign:extrair-tabelas', ['--pausa-ms' => 0])
+            ->assertExitCode(0);
+
+        $arquivos = Storage::disk('local')->allFiles('relatorios');
+        $md       = collect($arquivos)->first(fn ($f) => str_ends_with($f, '.md'));
+        $conteudo = Storage::disk('local')->get($md);
+
+        $posicaoAntigo  = strpos($conteudo, 'ads-antigo');
+        $posicaoMeio    = strpos($conteudo, 'ads-meio');
+        $posicaoRecente = strpos($conteudo, 'ads-recente');
+
+        $this->assertNotFalse($posicaoAntigo);
+        $this->assertNotFalse($posicaoMeio);
+        $this->assertNotFalse($posicaoRecente);
+
+        $this->assertLessThan($posicaoMeio, $posicaoAntigo, 'contrato mais antigo deveria vir antes do do meio');
+        $this->assertLessThan($posicaoRecente, $posicaoMeio, 'contrato do meio deveria vir antes do mais recente');
+
+        // Data formatada para leitura humana, não a string ISO crua.
+        $this->assertStringContainsString('01/11/2025', $conteudo);
+        $this->assertStringContainsString('20/08/2026', $conteudo);
     }
 }
