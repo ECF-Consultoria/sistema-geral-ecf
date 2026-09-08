@@ -2226,6 +2226,46 @@ Plans:
 
 ---
 
+### Phase 140: Extrair as tabelas progressivas dos contratos do Clicksign
+
+**Goal:** Parar de cobrar por tabela assumida. Hoje 127 empresas têm mensalidade calculada por uma
+tabela que o sistema herdou do serviço, sem contrato nem cadastro que a confirme — R$ 460.500/mês sem
+lastro. O cadastro manual existe desde a Fase 137 e **nunca foi usado**; digitar ~124 tabelas à mão é
+o caminho óbvio e o mais caro.
+
+Esta fase lê os contratos que já existem no Clicksign e transforma cada um numa proposta conferível.
+
+**Origem:** o usuário levantou a possibilidade ("isso pode consultar no Clicksign") e autorizou a
+investigação, feita em 2026-09-08 contra a conta de produção. Os achados estão medidos no
+`140-CONTEXT.md` e não devem ser re-medidos.
+
+**O que a investigação estabeleceu:**
+
+| achado | consequência |
+|---|---|
+| 429 envelopes, **123** de gestão de ADS | o material existe |
+| PDFs baixáveis, com **CNPJ e razão social** no texto | a leitura é viável |
+| **nem todo contrato tem tabela** — 6 de 11 são valor fixo | o sistema classifica em faixa quem não deveria |
+| **DESK DESIGN tem tabela de 12 faixas** começando em R$ 2.250 | a "tabela fora do padrão" existe e já custa dinheiro |
+| só **10 de 201** empresas têm CNPJ | a chave exata de casamento não existe |
+| casamento por nome: **9 de 14**, com falsos positivos plausíveis | escrita automática está fora |
+
+O caso DESK DESIGN é o argumento da fase: o contrato dela diz R$ 2.250 abaixo de 100 mil, e o sistema
+cobra R$ 3.000 por assumir a tabela padrão.
+
+**Estratégia acordada (D-06):** começar pelo **comando de leitura que gera só um relatório** — sem
+tela, sem escrita. O usuário confere a qualidade real do casamento nas 123 linhas e decide se vale
+construir a tela de conferência e a escrita auditada. Só a segunda etapa grava, e sempre com
+confirmação humana do vínculo.
+
+**Decisão de implementação em aberto:** não há extrator de PDF no servidor (`pdftotext`, `PyPDF2` e
+`pymupdf` ausentes) e o `dompdf` do projeto só gera. Escolher entre adicionar uma biblioteca de
+leitura ou instalar poppler.
+
+Plans: a planejar
+
+---
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
@@ -2240,3 +2280,5 @@ Plans:
 *Roadmap atualizado: 2026-09-03 — **Fase 138 (Tabela do grupo e aviso de mudanca de faixa)** anexada. Origem: uso real do fechamento no mesmo dia em que a Fase 137 foi para producao e agosto/2026 foi fechado. Duas lacunas que so o uso revelou: (1) grupo nao tem tabela propria — e classificado pela tabela da empresa que mais faturou no mes, entao grupo com tabela negociada nao tem onde registra-la e, se as irmas divergem, o criterio muda de mes para mes sem aviso; (2) nao ha notificacao quando uma empresa muda de faixa, embora o snapshot ja calcule `evolucao`. Decisoes do usuario em 2026-09-03: tabela de grupo com precedencia sobre a da empresa, e aviso nos DOIS sentidos (subida e queda — queda significa cobrar menos). Entrar/sair de `A DEFINIR` fica fora por ora, para nao virar ruido com as 74 empresas hoje sem faixa. Fases 1-137 preservadas.*
 
 *Roadmap atualizado: 2026-09-04 - **Fase 139 (Redesenho da tela de Fechamento)** anexada. Origem: o usuario usou a tela em producao depois das Fases 137 e 138 e disse que a UI/UX estava dificil de entender. Ele produziu um handoff de design completo em `design_handoff_fechamento/` (README com tokens e comportamento, prototipo HTML e captura da tela atual) e pediu que fosse desenvolvido. Cinco decisoes de widget dele: manter Servicos contratados, remover Tipo de cobranca e Distribuicao de faixas, reduzir o Total consolidado a 'Total a receber' (o sistema nao sabe se o cliente pagou) e criar um widget em destaque para as empresas que subiram de faixa. Decisao de fidelidade tomada em 2026-09-04: estrutura e comportamento do design com fidelidade, cores e tipografia do ECF Admin — a paleta do handoff e proxima mas nao identica a do projeto e faria a tela destoar das outras. Fases 1-138 preservadas.*
+
+*Roadmap atualizado: 2026-09-08 - **Fase 140 (Extrair as tabelas progressivas do Clicksign)** anexada. Origem: depois da Fase 139 ficou medido que 127 empresas cobram por tabela assumida (R$ 460.500/mes sem lastro) e que o cadastro manual da Fase 137 nunca foi usado. O usuario levantou consultar o Clicksign e autorizou a investigacao, feita em 2026-09-08 contra a conta de producao: 429 envelopes, 123 de gestao de ADS, PDFs baixaveis com CNPJ e razao social no texto. Dois achados mudaram o desenho: nem todo contrato tem tabela progressiva (6 de 11 da amostra sao valor fixo) e existe tabela fora do padrao em uso — DESK DESIGN com 12 faixas comecando em R$ 2.250, contra os R$ 3.000 que o sistema cobra por assumir a tabela padrao. O casamento com a empresa e o elo fraco: so 10 de 201 empresas tem CNPJ, e o casamento por nome acerta 9 de 14 com falsos positivos plausiveis (GRAFICA ADHARA -> Filipe Adada), entao escrita automatica ficou FORA por decisao. Estrategia acordada: primeiro um comando de leitura que gera so relatorio, sem tela e sem escrita; a tela de conferencia e a escrita auditada dependem de o relatorio se mostrar bom. Fases 1-139 preservadas.*
