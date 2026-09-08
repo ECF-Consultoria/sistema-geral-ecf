@@ -533,6 +533,66 @@ class ClicksignClient
     }
 
     /**
+     * GET /envelopes — lista os envelopes da conta (paginação JSON:API,
+     * `page[number]`/`page[size]`), no mesmo molde de `listarModelos()`.
+     * Devolve a LISTA já desembrulhada (`data`).
+     *
+     * Fase 140 Plan 140-01 (TAB-01) — nasce para o comando de leitura do
+     * acervo de contratos, não para o caminho de criação de envelope.
+     *
+     * ⚠️ `enviar()` descarta `meta`/`links` do topo da resposta — não existe
+     * contador total disponível aqui. Quem pagina detecta o fim da
+     * varredura pela página vir vazia ou mais curta que `$porPagina` (ver
+     * `AcervoContratosClicksignService::envelopesDeGestaoDeAds()`).
+     *
+     * ⚠️ **Sem filtro de servidor.** A investigação de 2026-09-08
+     * (`140-CONTEXT.md`, D-01/D-02) mediu quantidade e nomes de envelopes,
+     * **não** mediu nenhum parâmetro de busca/filtro (`filter[...]`, `q=`)
+     * nesta listagem. Não inventar um aqui — passar parâmetro que a API não
+     * conhece é a classe de erro que já custou horas nesta integração (ver
+     * docblock de `adicionarSignatario()` sobre `communicate_by`). O filtro
+     * é local, em `AcervoContratosClicksignService::pareceGestaoDeAds()`.
+     *
+     * ⚠️ Cada chamada consome 1 unidade da janela medida de 20/min da conta
+     * (docblock de classe) — uma varredura completa passa de 130 chamadas.
+     * Quem itera este método precisa espaçar as chamadas (ver `$pausaMs` do
+     * serviço de coleta) — sem pausa a rodada toma 429 no meio.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function listarEnvelopes(int $pagina = 1, int $porPagina = 100): array
+    {
+        return $this->enviar('get', '/envelopes', [], 'listar envelopes', [
+            'page' => [
+                'number' => $pagina,
+                'size'   => $porPagina,
+            ],
+        ]);
+    }
+
+    /**
+     * GET /envelopes/{envelopeId}/documents — lista os documentos de um
+     * envelope. Devolve a LISTA já desembrulhada (`data`), mesmo padrão de
+     * `listarEnvelopes()`/`listarModelos()`.
+     *
+     * Fase 140 Plan 140-01 (TAB-01) — irmão de leitura de
+     * `consultarDocumento()`, mas sem exigir o `documentId` de antemão (o
+     * acervo não guarda esse id do lado do sistema).
+     *
+     * ⚠️ Mesmo aviso de `consultarDocumento()`: os links de download
+     * (`links.files.original`/`signed`/`ziped`) são URLs S3 pré-assinadas
+     * que valem ~299 segundos (D-02 de `140-CONTEXT.md`, medido). Quem
+     * chama este método precisa baixar o arquivo NA SEQUÊNCIA IMEDIATA —
+     * nunca guardar o link, nunca reusar numa chamada posterior.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function listarDocumentos(string $envelopeId): array
+    {
+        return $this->enviar('get', "/envelopes/{$envelopeId}/documents", [], 'listar documentos');
+    }
+
+    /**
      * GET /templates — lista os modelos cadastrados na conta (paginação
      * JSON:API, `page[number]`/`page[size]`, default 20 — §1 do empírico).
      * Devolve a LISTA já desembrulhada (`data`), não o envelope JSON:API
