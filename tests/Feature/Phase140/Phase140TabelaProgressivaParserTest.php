@@ -429,4 +429,161 @@ class Phase140TabelaProgressivaParserTest extends TestCase
         $this->assertSame('numeros_ilegiveis', $resultado1['tipo']);
         $this->assertSame('numeros_ilegiveis', $resultado2['tipo']);
     }
+
+    // ═══ CORREÇÃO PÓS-RODADA REAL #4 (2026-09-08) — 4 formatos novos, varredura completa (85) ═══
+    //
+    // 47 tabelas lidas, 28 "não deu para entender" — investigados em dois grupos, quatro formatos.
+    // Textos abaixo reproduzem a ESTRUTURA literal medida pelo coordenador; nome de empresa e CNPJ
+    // são FICTÍCIOS (nunca os reais citados: ZM DISTRIBUIDORA, GRUPO LUCCAUTO, MAXIGOLD, UTILAR,
+    // CAMILLO PARTS).
+
+    #[Test]
+    public function grupo1a_pagamento_escalonado_nao_inventa_media_e_lista_os_dois_valores(): void
+    {
+        // ZM DISTRIBUIDORA (out/2025): dois valores de parcela diferentes no mesmo contrato.
+        $texto = "CONTRATANTE: EMPRESA FICTICIA ESCALONADO LTDA, inscrita no CNPJ sob o nº 11.222.333/0001-44.\n"
+            . "o valor total de R\$ 18.000,00 (dezoito mil reais), dividido em 3x parcelas (tres)\n"
+            . "de R\$ 1.200,00 (mil e duzentos reais) e 9x (nove) parcelas de R\$ 1.600,00\n"
+            . "(mil e seiscentos reais) cada.";
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('valor_fixo', $resultado['tipo']);
+        $this->assertNull($resultado['valor_fixo'], 'nunca inventar média nem escolher um dos dois em silêncio');
+        $this->assertSame([], $resultado['faixas']);
+        $aviso = implode(' ', $resultado['avisos']);
+        $this->assertStringContainsString('mais de um valor de parcela', $aviso);
+        $this->assertStringContainsString('pagamento escalonado', $aviso);
+        $this->assertStringContainsString('R$ 1.200,00', $aviso);
+        $this->assertStringContainsString('R$ 1.600,00', $aviso);
+    }
+
+    #[Test]
+    public function grupo1b_valor_anual_dividido_extrai_o_valor_da_parcela_nao_o_total_anual(): void
+    {
+        // GRUPO LUCCAUTO (nov/2025): valor anual total ≠ valor da parcela mensal.
+        $texto = "CONTRATANTE: EMPRESA FICTICIA ANUAL LTDA, inscrita no CNPJ sob o nº 22.333.444/0001-55.\n"
+            . "o valor anual que parte de R\$ 108.000,00 (cento e oito mil reais),\n"
+            . "dividido em 12 parcelas de R\$ 9.000,00 (nove mil reais).";
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('valor_fixo', $resultado['tipo']);
+        $this->assertSame(9_000.0, $resultado['valor_fixo']);
+        $this->assertSame([], $resultado['faixas']);
+    }
+
+    #[Test]
+    public function grupo2c_notacao_de_sinais_com_rs_faltando_em_algumas_linhas(): void
+    {
+        // MAXIGOLD (jul/2026): "-"/"+" com "R$" faltando em algumas linhas do MESMO contrato.
+        $texto = "Faturamento Mensal (Mercado Livre) | Investimento Mensal | % sobre o Faturamento\n"
+            . "- R\$ 500.000,00/mes    R\$  4.000,00/mes   -\n"
+            . "+ R\$ 500.000,00/mes    R\$  5.000,00/mes   0,5%\n"
+            . "+ 1.000.000,00/mes     R\$  6.000,00/mes   0,60% - 0,3%\n"
+            . "+ 2.000.000,00/mes     R\$  7.500,00/mes   0,37% - 0,25%\n"
+            . "+ 5.000.000,00/mes     R\$ 12.000,00/mes   0,24%\n";
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('tabela', $resultado['tipo']);
+        $this->assertCount(5, $resultado['faixas']);
+
+        $faixas = $resultado['faixas'];
+        $this->assertSame(500_000.0, $faixas[0]['limite_superior']);
+        $this->assertSame(4_000.0, $faixas[0]['valor']);
+        $this->assertSame(1_000_000.0, $faixas[1]['limite_superior']);
+        $this->assertSame(5_000.0, $faixas[1]['valor']);
+        // Faixa 3: limiar da linha SEM "R$" ("+ 1.000.000,00/mes") — precisa funcionar mesmo assim.
+        $this->assertSame(2_000_000.0, $faixas[2]['limite_superior']);
+        $this->assertSame(6_000.0, $faixas[2]['valor']);
+        $this->assertSame(5_000_000.0, $faixas[3]['limite_superior']);
+        $this->assertSame(7_500.0, $faixas[3]['valor']);
+        $this->assertNull($faixas[4]['limite_superior']);
+        $this->assertSame(12_000.0, $faixas[4]['valor']);
+    }
+
+    #[Test]
+    public function grupo2d_notacao_de_intervalo_fechado_com_piso_e_teto_explicitos(): void
+    {
+        // UTILAR (jun/2026): "De X a Y" traz o teto explícito, não precisa olhar o próximo marco.
+        $texto = "Ate R\$ 5.800.000,00                        R\$ 15.000,00\n"
+            . "De R\$ 5.800.001,00 a R\$ 6.800.000,00       R\$ 17.000,00\n"
+            . "De R\$ 6.800.001,00 a R\$ 8.800.000,00       R\$ 19.000,00\n"
+            . "De R\$ 8.800.000,00                         R\$ 21.000,00\n";
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('tabela', $resultado['tipo']);
+        $this->assertCount(4, $resultado['faixas']);
+
+        $faixas = $resultado['faixas'];
+        $this->assertSame(5_800_000.0, $faixas[0]['limite_superior']);
+        $this->assertSame(15_000.0, $faixas[0]['valor']);
+        $this->assertSame(6_800_000.0, $faixas[1]['limite_superior']);
+        $this->assertSame(17_000.0, $faixas[1]['valor']);
+        $this->assertSame(8_800_000.0, $faixas[2]['limite_superior']);
+        $this->assertSame(19_000.0, $faixas[2]['valor']);
+        // Última linha: "De X" sozinho (sem "a Y") — faixa aberta.
+        $this->assertNull($faixas[3]['limite_superior']);
+        $this->assertSame(21_000.0, $faixas[3]['valor']);
+    }
+
+    #[Test]
+    public function secao_de_bonus_de_performance_depois_da_tabela_nunca_vira_faixa(): void
+    {
+        // UTILAR também tem uma seção "Bônus de Performance" logo após a tabela — os valores dela
+        // não podem entrar como faixa (nem roubar a posição de última faixa aberta da tabela real).
+        $texto = "Ate R\$ 5.800.000,00                        R\$ 15.000,00\n"
+            . "De R\$ 5.800.001,00 a R\$ 6.800.000,00       R\$ 17.000,00\n"
+            . "De R\$ 6.800.001,00 a R\$ 8.800.000,00       R\$ 19.000,00\n"
+            . "De R\$ 8.800.000,00                         R\$ 21.000,00\n"
+            . "Bônus de Performance: caso a meta seja atingida, bônus a partir de R\$ 9.000.000,00 "
+            . 'de faturamento anual, valor de R$ 5.000,00.';
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('tabela', $resultado['tipo']);
+        $this->assertCount(4, $resultado['faixas'], 'os valores do bônus não podem virar uma 5ª faixa');
+        $this->assertNull($resultado['faixas'][3]['limite_superior'], 'a última faixa ABERTA continua sendo a da tabela real, não a do bônus');
+        $this->assertSame(21_000.0, $resultado['faixas'][3]['valor']);
+    }
+
+    #[Test]
+    public function tabela_reconhecida_de_verdade_vence_texto_de_parcelas_no_mesmo_contrato(): void
+    {
+        // MAXIGOLD tem tabela E texto de parcelas no mesmo documento — quando a tabela é
+        // reconhecida de verdade (≥3 marcos), ela vence.
+        $texto = 'Pelos serviços ora contratados, o pagamento seguirá conforme tabela abaixo, em '
+            . "parcelas mensais e iguais de R\$ 3.000,00.\n"
+            . "Faturamento Mensal (Mercado Livre) | Investimento Mensal\n"
+            . "- R\$ 500.000,00/mes    R\$  4.000,00/mes\n"
+            . "+ R\$ 500.000,00/mes    R\$  5.000,00/mes\n"
+            . "+ 1.000.000,00/mes     R\$  6.000,00/mes\n";
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('tabela', $resultado['tipo']);
+        $this->assertCount(3, $resultado['faixas']);
+        $this->assertNull($resultado['valor_fixo']);
+    }
+
+    #[Test]
+    public function faixa_acima_de_um_bilhao_gera_aviso_mas_o_valor_nao_e_alterado(): void
+    {
+        // CAMILLO PARTS: um limite de "R$ 15 bilhões" no contrato real (quase certamente um ponto a
+        // mais em vez de vírgula — 15 milhões virou 15 bilhões). O parser NUNCA corrige isso, só
+        // sinaliza. Valores fictícios aqui, mas com a MESMA ordem de grandeza do caso real.
+        $texto = "Ate R\$ 500.000,00 R\$ 3.000,00\n"
+            . "De R\$ 500.001,00 a R\$ 15.000.000.000,00 R\$ 30.000,00\n"
+            . "De R\$ 15.000.000.001,00 R\$ 32.000,00\n";
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('tabela', $resultado['tipo']);
+        $this->assertCount(3, $resultado['faixas']);
+        // O valor NÃO foi alterado — continua exatamente o que o contrato diz, dígito a dígito.
+        $this->assertSame(15_000_000_000.0, $resultado['faixas'][1]['limite_superior']);
+        $this->assertStringContainsString('acima de R$ 1 bilhão', implode(' ', $resultado['avisos']));
+    }
 }
