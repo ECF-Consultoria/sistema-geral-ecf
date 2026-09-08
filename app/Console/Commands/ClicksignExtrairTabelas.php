@@ -27,10 +27,10 @@ use Throwable;
  * `EmpresaPalpiteService::palpitar()`.
  *
  * ⚠️ **O relatório é sobre dinheiro.** Ele pareia nome de empresa com valor
- * de mensalidade — grava SÓ em `storage/app/private/relatorios/` (já
- * ignorado pelo git, T-140-09), nunca em `storage/app/public` nem dentro de
- * `.planning/`. O comando imprime, ao final, o aviso de que o arquivo não
- * deve ser commitado nem colocado em canal aberto.
+ * de mensalidade — grava SÓ no disco `local` (`storage/app/private/relatorios/`,
+ * já ignorado pelo git, T-140-09), nunca no disco público nem dentro da pasta
+ * de planejamento do projeto. O comando imprime, ao final, o aviso de que o
+ * arquivo não deve ser commitado nem colocado em canal aberto.
  *
  * ⚠️ **Vocabulário sem jargão e sem falsa certeza (D-05).** As constantes
  * `CONFIANCA_LABEL`/`TIPO_LABEL` são o único lugar que decide como cada
@@ -280,8 +280,8 @@ class ClicksignExtrairTabelas extends Command
 
     /**
      * Grava `.md` (leitura humana) e `.csv` (planilha) com o MESMO
-     * nome-base, dentro de `storage/app/private/relatorios/` — nunca em
-     * `storage/app/public` nem em `.planning/` (T-140-09).
+     * nome-base, dentro do disco `local` (`relatorios/` — T-140-09) — nunca
+     * no disco público nem na pasta de planejamento do projeto.
      *
      * `--saida` (opcional) sobrescreve o nome-base — útil para quem quer um
      * nome previsível; sem a opção, o nome-base carrega o timestamp da
