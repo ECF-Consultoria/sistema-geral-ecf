@@ -386,4 +386,47 @@ class Phase140TabelaProgressivaParserTest extends TestCase
 
         $this->assertNotSame('numeros_ilegiveis', $resultado['tipo']);
     }
+
+    #[Test]
+    public function numeros_ilegiveis_tem_precedencia_mesmo_com_marco_espurio_em_outro_trecho_do_contrato(): void
+    {
+        // Bug real reportado pelo coordenador (segunda rodada, deploy f8a41be4): o contrato
+        // inteiro (não só o parágrafo do valor) pode ter OUTRA cláusula, com dígitos legíveis
+        // (não afetados pela corrupção de fonte), que bate por acidente no reconhecedor de marcos
+        // ("a partir de R$ 5.000,00 de multa" não tem nada a ver com tabela de faturamento — é uma
+        // cláusula de rescisão qualquer). A versão anterior desta checagem exigia
+        // `count($marcos) === 0` e por isso caía no `indefinido` genérico assim que UM marco
+        // espúrio aparecia em qualquer outro lugar do documento — exatamente o defeito relatado
+        // ("Não deu para ler: 0" no resumo, quando deveria contar os 3 contratos ilegíveis).
+        //
+        // ⚠️ O marco espúrio precisa estar em linha PRÓPRIA, com um limiar por extenso ("até 2 mil")
+        // e um valor R$ SEPARADO na mesma linha (o valor de uma multa, não relacionado à tabela) —
+        // é essa combinação que faz `extrairMarcos()` reconhecer a linha como um marco de verdade.
+        $texto = "Cláusula de rescisão: multa de até 2 mil reais, cobrada no valor de R\$ 500,00 por dia de atraso.\n"
+            . "Pelos servicos de gestao de ADS ora contratados, a CONTRATANTE pagara a CONTRATADA\n"
+            . "o valor total de R  .   ,   (tres mil reais) de entrada e   (seis) parcelas mensais\n"
+            . "e iguais de R$  .   ,   (quatro mil e quinhentos reais) cada.";
+
+        $resultado = $this->parser()->analisar($texto);
+
+        $this->assertSame('numeros_ilegiveis', $resultado['tipo']);
+        $this->assertSame([], $resultado['faixas']);
+        $this->assertStringContainsString('precisa abrir o contrato', implode(' ', $resultado['avisos']));
+    }
+
+    #[Test]
+    public function numeros_ilegiveis_reconhece_preenchimento_sem_espaco_ascii_entre_pontuacao(): void
+    {
+        // Robustez do defeito 2: extratores de PDF podem preencher a posição do glifo corrompido
+        // com espaço não-quebra (U+00A0) ou nada (glifo sem ToUnicode simplesmente some), não só
+        // espaço ASCII comum. A regex precisa reconhecer os dois casos.
+        $semFillerNenhum   = 'Valor de entrada: R$.,  seguido de parcelas mensais e iguais de R$.,  cada uma delas.';
+        $comEspacoNaoQuebra = "Valor de entrada: R$\u{00A0}.\u{00A0},\u{00A0} conforme tabela anexa.";
+
+        $resultado1 = $this->parser()->analisar($semFillerNenhum);
+        $resultado2 = $this->parser()->analisar($comEspacoNaoQuebra);
+
+        $this->assertSame('numeros_ilegiveis', $resultado1['tipo']);
+        $this->assertSame('numeros_ilegiveis', $resultado2['tipo']);
+    }
 }
