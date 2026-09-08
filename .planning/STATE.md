@@ -1877,6 +1877,27 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-08T17:00:00Z
+Stopped at: Corrigido o defeito 3 do 140-02 — varredura COMPLETA em produção (85 contratos, não mais
+a amostra de 10) achou 33 tabelas lidas, 7 valor fixo, 23 "não deu para entender" e 19 "não deu para
+ler o arquivo" (todas com o mesmo motivo, todas contratos de 2026). Causa: esses envelopes foram
+gerados a partir do MODELO da Clicksign — o arquivo `original` que sobe é o `.docx` (Word, OOXML) que
+ela usa para montar o PDF depois, não um PDF em si. `.docx` é um ZIP (mesmo cabeçalho `PK`), mas o
+extrator só sabia procurar `.pdf` dentro de ZIP, nunca reconhecia que o ZIP podia SER um `.docx`.
+Corrigido: detecção por CONTEÚDO (`[Content_Types].xml` + `word/document.xml` no índice do ZIP, via
+`locateName()`, sem ler conteúdo), checada antes da busca por `.pdf`; lê só a entrada
+`word/document.xml` (194–251 KB medidos), nunca o pacote de mídia embutido; concatena `<w:t>`
+rastreando se está dentro de `<w:tbl>` (dentro de tabela, `</w:tr>` fecha linha e `</w:tc>` separa
+células da mesma linha — cada célula do Word é seu próprio parágrafo, então `</w:p>` sozinho
+quebraria uma linha de tabela em duas). Bug encontrado ao escrever o teste: `<w:t[^>]*>` sem
+fronteira de palavra casava por engano `<w:tc>`/`<w:tr>`/`<w:tbl>`/`<w:tab>` (w:t é prefixo de
+todos), vazando marcação XML pro texto — corrigido com `\b` após o nome de cada tag. Continua
+proibido o método de extração-para-disco do `ZipArchive` (zip-slip, T-140-05). NÃO misturado com os
+23 "não deu para entender" (outro problema, fora de escopo, por pedido explícito do coordenador).
+TDD: 2 commits RED→GREEN (`ee0a1570` test, `7f68b1c7` fix) — RED confirmado revertendo temporariamente
+para o commit anterior. Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: 423 testes /
+2061 asserções / 0 falhas (baseline 419/2036 antes desta correção). Sem deploy — sem acesso a
+produção nesta sessão. Coordenador vai deployar e rodar a varredura completa de novo.
 Last session: 2026-09-08T16:35:00Z
 Stopped at: Corrigido o defeito 2 do 140-02 que sobrou da correção anterior — `numeros_ilegiveis`
 nunca era emitido em produção (deploy `f8a41be4`, segunda rodada real de 10 contratos). O CNPJ por

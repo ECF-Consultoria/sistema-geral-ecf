@@ -325,10 +325,75 @@ comando `clicksign:extrair-tabelas` ainda precisa de uma entrada para `numeros_i
 tipo virar frase honesta no relatório — mas isso não bloqueia mais a CONTAGEM do resumo, porque a
 raiz do problema (o tipo nunca sendo emitido) está corrigida agora.
 
+## Correção pós-rodada real #3 (2026-09-08) — `.docx` dentro do ZIP não era reconhecido
+
+Varredura COMPLETA em produção (85 contratos, não mais a amostra de 10): **33 tabelas lidas, 7 valor
+fixo, 23 "não deu para entender", 19 "não deu para ler o arquivo"** — as 19 saíram todas com o MESMO
+motivo, *"o pacote não tem nenhum contrato em PDF"*, e são justamente os contratos de **2026**, os
+mais recentes e os que mais importam para a fase.
+
+### Causa raiz
+
+Esses 19 envelopes foram gerados a partir do MODELO da Clicksign — o arquivo `original` que sobe é o
+`.docx` (Word, OOXML) que a Clicksign usa para montar o PDF depois, não um PDF em si. `.docx` **é**
+um ZIP (mesmo cabeçalho `PK` de qualquer ZIP), mas com uma estrutura própria: `[Content_Types].xml`
+na raiz e o texto do contrato em `word/document.xml`, dentro de elementos `<w:t>`. O extrator sabia
+procurar `.pdf` dentro de um ZIP, mas não sabia que um ZIP podia SER um `.docx` — procurava PDF, não
+achava, e concluía "sem contrato".
+
+### Correção
+
+- **Detecção por CONTEÚDO**, nunca por extensão nem só pelo cabeçalho `PK` (que `.docx` e `.zip`
+  comum compartilham): presença de `[Content_Types].xml` **e** `word/document.xml` no ÍNDICE do ZIP
+  (`ZipArchive::locateName()`, que consulta o diretório central sem ler nenhum conteúdo) — checada
+  **antes** da busca por `.pdf`, porque o `.docx` tem prioridade quando os dois sinais aparecem.
+- Lê só a entrada que interessa (`word/document.xml`, 194–251 KB medidos pelo coordenador), nunca o
+  pacote de mídia/imagens embutido — mesmo teto de tamanho descomprimido já usado para PDF dentro de
+  ZIP (T-140-06), o que mantém o consumo de memória baixo mesmo no pacote de 12 MB.
+- Concatena o texto de `<w:t>`, rastreando se está dentro de `<w:tbl>`: dentro de tabela, `</w:tr>`
+  fecha linha e `</w:tc>` vira separador (tab) entre células da MESMA linha — cada CÉLULA de uma
+  tabela do Word é seu próprio parágrafo, então `</w:p>` sozinho quebraria uma linha de tabela em
+  duas (limiar numa linha, valor na outra) e nenhum "marco" seria reconhecido pelo parser.
+- Continua proibido o método de extração-para-disco do `ZipArchive` nas entradas (zip-slip,
+  T-140-05) — só leitura em memória via `getFromName()`, mesma disciplina da Tarefa 1.
+
+⚠️ **Bug encontrado ao escrever o teste:** a primeira versão do regex de extração usava
+`<w:t[^>]*>` **sem fronteira de palavra** — e `w:t` é PREFIXO de `w:tc`, `w:tr`, `w:tbl` e `w:tab`.
+Sem o `\b`, o regex casava por engano `<w:tc>`, `<w:tr>` etc., e a marcação XML inteira da tabela
+vazava para o texto extraído em vez de virar quebra/separador de linha. Corrigido com `\b` logo após
+o nome de cada tag (`<w:t\b`, `<w:tbl\b`, `<w:tab\b`, `<w:br\b`).
+
+⚠️ **Não misturado com os 23 "não deu para entender":** esses são outro problema (contratos de 2025,
+a maioria em PDF legível, onde o parser de tabela não encontrou estrutura reconhecível) — fora do
+escopo desta correção, como o coordenador pediu explicitamente para não confundir.
+
+### Testes novos (`tests/Feature/Phase140/Phase140ExtratorTextoTest.php`)
+
+- `.docx` mínimo em memória (`[Content_Types].xml` + `word/document.xml` com tabela fictícia em
+  `<w:tbl>`/`<w:tr>`/`<w:tc>`, CNPJ/razão social fictícios) — prova de ponta a ponta que o texto sai
+  E a tabela de 4 faixas é lida corretamente pelo `TabelaProgressivaContratoParser`, sem tradutor no
+  meio. RED confirmado revertendo temporariamente para o commit `518002e1` (3 falhas: `formato` saía
+  `zip` em vez de `docx`, motivo de tamanho não disparava).
+- Guarda de precisão: `.xlsx`/`.pptx` (outro OOXML, tem `[Content_Types].xml` mas NÃO
+  `word/document.xml`) não é confundido com `.docx` — cai no caminho normal de busca por `.pdf`.
+- Teto de tamanho da entrada `word/document.xml` (mesma lógica do teste equivalente de PDF-em-ZIP).
+- `word/document.xml` corrompido/vazio devolve motivo, nunca exceção.
+
+### Commits
+
+- `ee0a1570` (test) — 4 testes falhos, RED confirmado
+- `7f68b1c7` (fix) — detecção de `.docx` + extração de texto + correção do bug `\b`, GREEN
+
+### Gate após esta correção
+
+`--filter="Phase122|Phase136|Phase137|Phase138|Phase139|Phase140"`: **423 testes / 2061 asserções /
+0 falhas** (baseline era 419/2036 antes desta correção — sem regressão).
+`Phase140ExtratorTextoTest` isolado: 11 testes / 50 asserções.
+
 ---
 *Phase: 140-extrair-tabelas-progressivas-do-clicksign*
 *Completed: 2026-09-08*
 
 ## Self-Check: PASSED
 
-Todos os 7 arquivos declarados (ExtratorTextoContratoService.php, TabelaProgressivaContratoParser.php, os 2 testes Phase140 e as 3 fixtures) confirmados em disco; os 5 hashes de commit (`b0307ee6`, `518002e1`, `b9a6a028`, `f0e15ed2`, `2a97b64f`) confirmados em `git log`. Correção pós-rodada real #1: commits `025be6f1` (test) e `539d3731` (fix) confirmados em `git log`. Correção pós-rodada real #2: commits `3f279f35` (test) e `43d41c9e` (fix) confirmados em `git log`; `TabelaProgressivaContratoParser.php` e `Phase140TabelaProgressivaParserTest.php` confirmados em disco com as novas seções.
+Todos os 7 arquivos declarados (ExtratorTextoContratoService.php, TabelaProgressivaContratoParser.php, os 2 testes Phase140 e as 3 fixtures) confirmados em disco; os 5 hashes de commit (`b0307ee6`, `518002e1`, `b9a6a028`, `f0e15ed2`, `2a97b64f`) confirmados em `git log`. Correção pós-rodada real #1: commits `025be6f1` (test) e `539d3731` (fix) confirmados em `git log`. Correção pós-rodada real #2: commits `3f279f35` (test) e `43d41c9e` (fix) confirmados em `git log`. Correção pós-rodada real #3: commits `ee0a1570` (test) e `7f68b1c7` (fix) confirmados em `git log`; `ExtratorTextoContratoService.php` e `Phase140ExtratorTextoTest.php` confirmados em disco com as novas seções.
