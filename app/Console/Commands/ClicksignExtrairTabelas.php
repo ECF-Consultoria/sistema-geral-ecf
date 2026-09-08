@@ -8,6 +8,7 @@ use App\Services\Contratos\EmpresaPalpiteService;
 use App\Services\Contratos\ExtratorTextoContratoService;
 use App\Services\Contratos\TabelaProgressivaContratoParser;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -111,6 +112,12 @@ class ClicksignExtrairTabelas extends Command
 
             $this->contabilizar($resumo, $linha);
         }
+
+        // Data mais antiga primeiro — a virada de dezembro/2025 (valor fixo
+        // → tabela progressiva, D-03) fica visível de bater o olho ao ler as
+        // linhas em ordem. Contrato sem data conhecida vai para o fim, nunca
+        // para o topo (não empurra os datados para baixo).
+        usort($linhas, fn (array $a, array $b) => $this->compararData($a['data'] ?? null, $b['data'] ?? null));
 
         [$caminhoMd, $caminhoCsv] = $this->gravarRelatorios($linhas, $resumo, $situacao);
 
@@ -348,7 +355,7 @@ class ClicksignExtrairTabelas extends Command
         $celulas = [
             (string) ($linha['envelope_id'] ?? '-'),
             $this->escaparCelula((string) $linha['nome']),
-            (string) ($linha['data'] ?? '-'),
+            $this->escaparCelula($this->formatarData($linha['data'] ?? null)),
             (string) ($linha['situacao'] ?? '-'),
             $this->escaparCelula($empresaNome),
             $this->escaparCelula($confianca),
@@ -425,7 +432,7 @@ class ClicksignExtrairTabelas extends Command
             fputcsv($memoria, [
                 $linha['envelope_id'] ?? '-',
                 $linha['nome'],
-                $linha['data'] ?? '-',
+                $this->formatarData($linha['data'] ?? null),
                 $linha['situacao'] ?? '-',
                 $empresaNome,
                 $confianca,
@@ -442,5 +449,70 @@ class ClicksignExtrairTabelas extends Command
         fclose($memoria);
 
         return $conteudo === false ? '' : $conteudo;
+    }
+
+    /**
+     * Defeito relatado após a rodada real de 2026-09-08: a coluna de data
+     * saiu vazia em TODAS as 10 linhas, disfarçada atrás do mesmo "-"
+     * genérico usado para "não se aplica" em qualquer outra coluna — o
+     * fallback mudo escondeu o defeito. Célula de data sem dado precisa
+     * DIZER que faltou, mesma disciplina de honestidade do palpite de
+     * empresa (T-140-11): nunca "-" sozinho.
+     *
+     * Formato `d/m/Y` — leitura humana das 123 linhas, não a string ISO
+     * crua que a API devolve.
+     */
+    private function formatarData(?string $iso): string
+    {
+        if ($iso === null || $iso === '') {
+            return 'data não informada pela Clicksign';
+        }
+
+        try {
+            return Carbon::parse($iso)->format('d/m/Y');
+        } catch (Throwable $e) {
+            return 'data não informada pela Clicksign';
+        }
+    }
+
+    /**
+     * Comparador para ordenar o relatório da data mais antiga para a mais
+     * recente — pedido do coordenador após a rodada real: a virada de
+     * dezembro/2025 (valor fixo → tabela progressiva, D-03) fica visível de
+     * bater o olho quando as linhas seguem a ordem cronológica. Contrato
+     * sem data conhecida (ou com data ilegível) vai sempre para o FIM —
+     * nunca para o topo, onde atrapalharia a leitura da virada.
+     */
+    private function compararData(?string $a, ?string $b): int
+    {
+        $tsA = $this->paraTimestamp($a);
+        $tsB = $this->paraTimestamp($b);
+
+        if ($tsA === null && $tsB === null) {
+            return 0;
+        }
+
+        if ($tsA === null) {
+            return 1;
+        }
+
+        if ($tsB === null) {
+            return -1;
+        }
+
+        return $tsA <=> $tsB;
+    }
+
+    private function paraTimestamp(?string $iso): ?int
+    {
+        if ($iso === null || $iso === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($iso)->getTimestamp();
+        } catch (Throwable $e) {
+            return null;
+        }
     }
 }
