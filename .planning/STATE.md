@@ -617,6 +617,23 @@ asserções / 0 falhas** (era 348/1765 antes deste plano — +37 testes/+143 ass
 comando de leitura + relatório). Last activity: 2026-09-08 — 140-02 executado
 (`140-02-SUMMARY.md`). Sem deploy.
 
+⚠️ **Correção pós-deploy no 140-01 (2026-09-08).** A primeira rodada real em produção
+(`clicksign:extrair-tabelas`, deploy `764d228f`) falhou na primeira chamada: `size exceeds maximum
+page size of 50`. `ClicksignClient::listarEnvelopes()` e `AcervoContratosClicksignService` usavam
+`100` por página — número nunca medido contra a API (a sondagem manual de 2026-09-08 tinha usado
+`30`, que funciona mas não é o teto). `Http::fake()` não pega esse tipo de limite porque um mock
+aceita qualquer tamanho de página — só a chamada real expôs o defeito, exatamente por isso o plano
+previu ensaio real antes da varredura completa. Correção (commit `91397bf2`): nova constante
+`ClicksignClient::ENVELOPES_TAMANHO_MAXIMO_PAGINA = 50` (com o incidente e a data no docblock, para
+não "otimizar" de volta pra 100 sem medir de novo); `listarEnvelopes()` agora faz
+`min($porPagina, 50)` — clamping em código, não só o default; `AcervoContratosClicksignService`
+passou a referenciar a constante do client em vez de duplicar o número. 4 testes novos travando o
+teto em dois níveis (client e serviço). Gate `Phase122|Phase136|Phase137|Phase138|Phase139|
+Phase140`: **402 testes / 1981 asserções / 0 falhas** (baseline do coordenador, árvore limpa:
+398/1974 — +4 testes/+7 asserções, sem regressão). Detalhe completo em
+`140-01-SUMMARY.md` § "Defeito encontrado em produção e correção". **Ainda não deployado por esta
+sessão** — falta o coordenador deployar `91397bf2` e repetir o ensaio real.
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
@@ -1860,6 +1877,12 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-08T15:44:00Z
+Stopped at: Corrigido defeito pós-deploy do 140-01 (commit `91397bf2`) — teto real de página do
+Clicksign é 50, não 100 (achado na rodada real de produção pelo coordenador, deploy `764d228f`);
+`ClicksignClient::ENVELOPES_TAMANHO_MAXIMO_PAGINA` + clamp + 4 testes novos travando o teto em dois
+níveis. Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: 402 testes / 1981 asserções /
+0 falhas. Ainda não deployado por esta sessão — sem acesso a produção.
 Last session: 2026-09-08T15:20:33Z
 Stopped at: Completed 140-02-PLAN.md (ExtratorTextoContratoService — PDF/ZIP → texto — e
 TabelaProgressivaContratoParser — texto → tipo de cobrança + faixas + CNPJ + razão social; rodou em
