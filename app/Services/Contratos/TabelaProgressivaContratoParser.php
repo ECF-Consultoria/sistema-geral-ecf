@@ -121,11 +121,25 @@ class TabelaProgressivaContratoParser
             ];
         }
 
-        // Correção pós-rodada real: contratos antigos (ago/2025) chegam com os dígitos apagados
-        // pelo PDF ("R$  .   ,   ") — nem valor fixo nem tabela batem, porque os dois exigem
-        // dígitos de verdade. Isso NÃO é "indefinido" (não é falta de sinal — é sinal presente e
-        // ilegível), então ganha tipo próprio para não sair do relatório como se tivesse sido lido.
-        if (count($marcos) === 0 && $this->pareceNumerosIlegiveis($texto)) {
+        // Correção pós-rodada real (2026-09-08, segunda rodada): contratos antigos (ago/2025)
+        // chegam com os dígitos apagados pelo PDF ("R$  .   ,   ") — nem valor fixo nem tabela
+        // batem, porque os dois exigem dígitos de verdade. Isso NÃO é "indefinido" (não é falta de
+        // sinal — é sinal presente e ilegível), então ganha tipo próprio para não sair do relatório
+        // como se tivesse sido lido.
+        //
+        // ⚠️ Bug corrigido aqui: a primeira versão desta checagem exigia `count($marcos) === 0`
+        // antes de rodar — e a rodada real mostrou que o contrato inteiro (não só o trecho do
+        // valor) pode ter outras linhas em português comum ("a partir da assinatura", "até o
+        // vencimento" etc.) que batem por acidente no reconhecedor de marcos da NOTAÇÃO POR
+        // EXTENSO, produzindo 1 ou 2 marcos espúrios sem relação nenhuma com tabela de faturamento.
+        // Isso já bastava para pular esta checagem inteira e cair no `indefinido` genérico — a
+        // MESMA falha de precedência que o coordenador pediu para investigar. Como já estamos
+        // depois do `count($marcos) >= MINIMO_MARCOS_PARA_TABELA` acima (ou já teria retornado como
+        // `tabela`), aqui `count($marcos)` é sempre `< MINIMO_MARCOS_PARA_TABELA` — não há mais
+        // necessidade de exigir exatamente zero; o sinal específico de dígitos apagados
+        // (`pareceNumerosIlegiveis()`) tem precedência sobre "poucos marcos, talvez tabela
+        // incompleta", porque é um sinal mais específico e mais raro de dar falso positivo.
+        if ($this->pareceNumerosIlegiveis($texto)) {
             return [
                 'tipo'         => 'numeros_ilegiveis',
                 'faixas'       => [],
@@ -171,10 +185,20 @@ class TabelaProgressivaContratoParser
      * é onde um erro de interpretação vira valor de cobrança errado sem parecer errado — para os
      * poucos contratos afetados, marcar honestamente para conferência manual é mais seguro que
      * arriscar um número.
+     *
+     * ⚠️ Regex robustecida (correção pós-rodada real, segunda vez): a versão original usava `\s*`
+     * para o preenchimento entre "R$"/"." /",", que só cobre espaço ASCII comum. Extratores de PDF
+     * às vezes preenchem posição de glifo corrompido com outro tipo de espaço (não-quebra, U+00A0,
+     * ou simplesmente nada — o glifo sem `ToUnicode` some por completo, sem deixar filler nenhum).
+     * Por isso o preenchimento aqui é `[^\d,.]` (qualquer coisa que NÃO seja dígito, ponto ou
+     * vírgula) — cobre espaço comum, espaço não-quebra, tab ou ausência total do glifo — limitado a
+     * no máximo 10 caracteres para não escapar para fora da vizinhança imediata do "R$" e virar
+     * falso positivo em prosa comum. Um valor válido (ex.: "R$ 3.000,00") NUNCA casa aqui, porque
+     * entre "R$" e o ponto de milhar sempre há um DÍGITO de verdade — que a classe negada exclui.
      */
     private function pareceNumerosIlegiveis(string $texto): bool
     {
-        return preg_match('/R\$?\s*\.\s*,\s*/u', $texto) === 1;
+        return preg_match('/R\$?[^\d,.]{0,10}\.[^\d,.]{0,10},[^\d,.]{0,10}/u', $texto) === 1;
     }
 
     // ═══ VALOR FIXO ═══
