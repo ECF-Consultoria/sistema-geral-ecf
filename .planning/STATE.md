@@ -549,7 +549,7 @@ regressão. 3 commits (`f2811636` tela+controller+rota, `5ed80d1e` job+mail+quat
 `bdbb6127` trava de teste). Last activity: 2026-09-04 — 139-07 executado (6/7 planos concluídos;
 139-06 segue pendente, fora da dependência deste plano — `depends_on: ["139-05"]`). Sem deploy.
 
-## Posição paralela — Fase 140 (Extrair tabelas progressivas do Clicksign) — EM EXECUÇÃO (1/2 planos)
+## Posição paralela — Fase 140 (Extrair tabelas progressivas do Clicksign) — EM EXECUÇÃO (2/5 planos, wave 1 completa)
 
 **Mesma disciplina dos blocos 135/136/137/138/139 acima:** Fase 140 fora de milestone, rodando em
 paralelo (140-02 executado por outra sessão na MESMA árvore, ao mesmo tempo que 140-01). `##
@@ -583,6 +583,39 @@ Phase139|Phase140`: **367 testes / 1812 asserções / 0 falhas** (era 348/1765 a
 tropeçou nesta rodada). Este plano **não lê PDF, não casa com empresa e não escreve no banco** —
 para no binário, por desenho (140-02 cobre a extração de texto/parser de tabela). Last activity:
 2026-09-08 — 140-01 executado (`140-01-SUMMARY.md`). Sem deploy.
+
+140-02 concluído (TAB-02, TAB-03, TAB-04) — rodou em paralelo ao 140-01, na MESMA árvore, outra
+sessão. `composer require smalot/pdfparser` (PHP puro — poppler exigiria pacote de sistema na VPS,
+que nem executor nem teste alcançam; decisão registrada no docblock). Novo
+`ExtratorTextoContratoService::extrair()`: detecta formato pelo CABEÇALHO do binário (`%PDF`/`PK`),
+nunca pela extensão; ZIP lê a primeira entrada `.pdf` em memória com `getFromName()` — **nunca**
+o método de extração-para-disco do `ZipArchive` (zip-slip, T-140-05); guarda de tamanho antes de
+abrir (binário inteiro E entrada descomprimida do ZIP, via `statIndex`); todo `\Throwable` vira
+motivo em pt-BR, nunca propaga (rodada de ~123 contratos não pode morrer no arquivo 7). Novo
+`TabelaProgressivaContratoParser::analisar()`: um único reconhecedor de "marcos" por linha cobre as
+TRÊS formas medidas no CONTEXT (D-04) — abreviada (`-100M`/`+1MM`, M=mil MM=milhão, travado por
+teste dedicado), por extenso (`até 100 mil`/`a partir de 1 milhão`) e nova (`Até R$500.000,00`) — só
+a leitura do número muda entre elas. **Valor fixo tem prioridade de exclusão sobre detecção de
+tabela (D-03)**: é exatamente aqui que o sistema classificava contrato de valor fixo como faixa
+progressiva antes desta fase. Mínimo de 3 marcos para aceitar como tabela — texto com 1-2 nunca vira
+tabela pela metade, cai em `indefinido` com aviso. CNPJ: ignora o da ECF (`config('services.
+clicksign.cnpj_ecf')`, com fallback pro primeiro quando a config não existe); razão social só sai
+quando há sufixo de pessoa jurídica reconhecido perto do CNPJ — sem isso, `null` (nunca palpite que
+vira cadastro). Retorno no mesmo shape de `EmpresaFaixaFaturamento` (`ordem`, `limite_superior`,
+`valor`, `valor_e_piso`) para o 140-05 gravar sem tradutor. Fixtures **fictícias** (nome/CNPJ
+inventados; formatos e valores das 7 faixas da notação nova batem com a semeadura da Fase 137; os 4
+pontos medidos da notação antiga — 100 mil→R$2.250/R$3.000, 500 mil→R$4.500, 1 milhão→R$6.000,
+15 milhões→R$25.000 — usados literalmente; faixas intermediárias 5-11, não medidas no CONTEXT, são
+progressão sintética só para completar 12 linhas). TDD: 2 tarefas, 4 commits RED→GREEN
+(`b0307ee6`/`518002e1` extrator, `f0e15ed2`/`2a97b64f` parser) + 1 fix (`b9a6a028`, docblock que
+citava o nome do método proibido e derrubava o próprio grep de verificação). Testes novos:
+`Phase140ExtratorTextoTest` (7) + `Phase140TabelaProgressivaParserTest` (11) = 18 testes / 96
+asserções. Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: **385 testes / 1908
+asserções / 0 falhas** (era 348/1765 antes deste plano — +37 testes/+143 asserções, somando 140-01 e
+140-02, sem regressão; flaky pré-existente `Phase138AvisoMudancaFaixaTest` não tropeçou). Este plano
+**não fala com a Clicksign e não escreve no banco** — entra binário, sai estrutura (140-03 cobre o
+comando de leitura + relatório). Last activity: 2026-09-08 — 140-02 executado
+(`140-02-SUMMARY.md`). Sem deploy.
 
 ## Current Position
 
@@ -1827,6 +1860,10 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-08T15:20:33Z
+Stopped at: Completed 140-02-PLAN.md (ExtratorTextoContratoService — PDF/ZIP → texto — e
+TabelaProgressivaContratoParser — texto → tipo de cobrança + faixas + CNPJ + razão social; rodou em
+paralelo ao 140-01, wave 1 da Fase 140 completa; 140-03 é o próximo, wave 2, com checkpoint humano)
 Last session: 2026-09-08T15:03:57Z
 Stopped at: Completed 140-01-PLAN.md (ClicksignClient::listarEnvelopes()/listarDocumentos() +
 AcervoContratosClicksignService — varredura paginada, filtro de gestão de ADS e download imediato
