@@ -1877,6 +1877,30 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-08T17:30:00Z
+Stopped at: Correção 4 do 140-02 — a correção do .docx (defeito 3) funcionou muito bem em produção:
+ilegíveis caíram de 19 para 3, tabelas lidas subiram de 33 para 47 (de 85 contratos). Investigados
+os 28 que ainda saíam "não deu para entender", em dois grupos, quatro formatos novos. GRUPO 1 (valor
+fixo em formatos novos, `analisarValorFixo()` generalizado): pagamento escalonado (2 valores de
+parcela diferentes no mesmo contrato — `valor_fixo` fica `null` e o aviso LISTA os valores, nunca
+inventa média nem escolhe um em silêncio) e valor anual dividido em parcelas (extrai o valor DA
+PARCELA, não o total anual). GRUPO 2 (tabela em notações novas, `extrairPontoDeLimiar()`): notação de
+sinais (`-`/`+` com "R$" opcional — falta em algumas linhas do MESMO contrato — e sufixo `/mês` ou
+`/mes` sem acento) e notação de intervalo fechado (`De X a Y` traz o teto explícito na própria linha,
+`De X` sozinho é faixa aberta; tolerância a "Ate" sem acento, medido no texto real). Guarda nova:
+seção "Bônus de Performance" logo depois de uma tabela é cortada ANTES de procurar marcos (senão vira
+faixa espúria e rouba a posição de última-faixa-aberta). Reordenada a prioridade do `analisar()`:
+TABELA agora é checada ANTES de valor fixo (era o contrário, decisão original do D-03) — um contrato
+pode ter tabela de verdade E texto de parcelas ao mesmo tempo (MAXIGOLD), e quando a tabela é
+reconhecida de verdade ela vence; verificado contra toda a suíte anterior que a troca não reabre o
+bug original (nenhum valor-fixo conhecido produz marcos por acidente). Aviso de valor implausível
+(`avisarValoresImplausiveis()`, sem alterar o número): um contrato real tinha limite de "R$ 15
+bilhões" (quase certamente ponto a mais em vez de vírgula NO PRÓPRIO CONTRATO) — o parser nunca
+corrige, só sinaliza acima de R$ 1 bilhão para conferência humana. TDD: 2 commits RED→GREEN
+(`c6c6484b` test, `8024a118` feat) — RED confirmado revertendo temporariamente para o commit
+anterior (7 falhas). Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: 430 testes / 2104
+asserções / 0 falhas (baseline 423/2061 antes desta correção). Sem deploy — sem acesso a produção
+nesta sessão. Coordenador vai deployar e rodar a varredura completa de novo.
 Last session: 2026-09-08T17:00:00Z
 Stopped at: Corrigido o defeito 3 do 140-02 — varredura COMPLETA em produção (85 contratos, não mais
 a amostra de 10) achou 33 tabelas lidas, 7 valor fixo, 23 "não deu para entender" e 19 "não deu para

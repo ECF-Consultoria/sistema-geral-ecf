@@ -390,10 +390,87 @@ escopo desta correção, como o coordenador pediu explicitamente para não confu
 0 falhas** (baseline era 419/2036 antes desta correção — sem regressão).
 `Phase140ExtratorTextoTest` isolado: 11 testes / 50 asserções.
 
+## Correção pós-rodada real #4 (2026-09-08) — 4 formatos novos, varredura completa (85 contratos)
+
+Varredura COMPLETA em produção (85 contratos, não mais amostra de 10): **47 tabelas lidas** (era 33),
+**7 valor fixo**, **28 "não deu para entender"** (era 23; ilegíveis caíram de 19 para **3**, graças à
+correção #3 do `.docx`). O coordenador investigou os 28 e achou **dois grupos, quatro formatos
+novos** — nenhum exigia mudança estrutural, todos couberam nas abstrações já existentes (marcos,
+valor fixo generalizado).
+
+### GRUPO 1 — valor fixo em formatos não reconhecidos
+
+- **(a) Pagamento escalonado** (ZM DISTRIBUIDORA, out/2025): dois valores de parcela DIFERENTES no
+  mesmo contrato ("3x parcelas de R$ 1.200,00 e 9x parcelas de R$ 1.600,00"). ⚠️ Não inventar média
+  nem escolher um dos dois em silêncio — `valor_fixo` fica `null` e o aviso LISTA os dois valores
+  encontrados, deixando explícito para quem lê o relatório. O projeto já usa o termo "pagamento
+  escalonado" em outro contexto (`ContratoClicksignService`, geração de contrato a partir do
+  HubSpot) — mesmo conceito, aqui é leitura, não geração.
+- **(b) Valor anual dividido** (GRUPO LUCCAUTO, nov/2025): "valor anual que parte de R$ 108.000,00,
+  dividido em 12 parcelas de R$ 9.000,00". Extrai o valor DA PARCELA (9.000,00), não o total anual
+  (108.000,00) — o reconhecedor busca "parcela(s) ... de R$ X" direcionalmente, então o total (que
+  aparece ANTES da palavra "parcela" no texto) nunca é capturado por engano.
+
+Os dois formatos + o original ("parcelas mensais e iguais de R$ X") agora passam por UM reconhecedor
+generalizado (`analisarValorFixo()`): a única diferença entre eles é quantos valores DISTINTOS de
+parcela aparecem no texto (1 → valor fixo normal; 2+ → escalonado, `null` + aviso).
+
+### GRUPO 2 — tabela em notações não reconhecidas
+
+- **(c) Notação de sinais** (MAXIGOLD, jul/2026): `- R$ 500.000,00/mês` fecha, `+ R$ 500.000,00/mês`
+  ou `+ 1.000.000,00/mês` (o "R$" às vezes falta, no MESMO contrato) abre. Sufixo `/mês` (ou `/mes`,
+  sem acento) distingue esta notação da abreviada M/MM — nunca colidem, porque uma exige vírgula de
+  centavos e a outra não.
+- **(d) Notação de intervalo fechado** (UTILAR, jun/2026): `De R$ 5.800.001,00 a R$ 6.800.000,00`
+  traz o TETO explícito na própria linha (diferente das outras notações, que inferem o teto do
+  PRÓXIMO marco) — `De R$ X` sozinho (sem "a Y") é a faixa aberta final. Tolerância adicional: "Ate"
+  sem acento (medido literalmente no texto real — não dá para saber se é o extrator ou o documento
+  que perde o acento; ler os dois é mais barato que arriscar não reconhecer a faixa).
+
+### Guarda "Bônus de Performance" e prioridade tabela-vs-valor-fixo
+
+O contrato UTILAR tem uma seção "Bônus de Performance" logo depois da tabela, com valores em R$ que
+não são faixa nenhuma — `extrairMarcos()` agora corta o texto nessa palavra-chave antes de procurar
+marcos (sem isso, o bônus vira uma 5ª faixa espúria e ROUBA a posição de última-faixa-aberta da
+faixa real da tabela).
+
+O contrato MAXIGOLD tem tabela E texto de parcelas ("parcelas mensais e iguais de R$ 3.000,00") no
+MESMO documento. **Reordenada a prioridade**: `analisar()` agora checa TABELA antes de valor fixo
+(era o contrário, decisão original do D-03) — quando a tabela é reconhecida de verdade (≥3 marcos),
+ela vence. Verificado contra toda a suíte anterior (nenhum contrato de valor fixo conhecido produz
+marcos de tabela por acidente) que essa troca não reabre o bug original do D-03.
+
+### Aviso de valor implausível — CAMILLO PARTS, "R$ 15 bilhões"
+
+O contrato tinha um limite de faixa em **R$ 15 bilhões** — quase certamente um ponto a mais em vez
+de vírgula no PRÓPRIO CONTRATO (15 milhões virou 15 bilhões). ⚠️ **O parser NUNCA corrige isso** — lê
+como está, sempre. `avisarValoresImplausiveis()` só adiciona um aviso quando um limite ou valor está
+acima de R$ 1 bilhão, para conferência humana decidir. Testado com valores fictícios na MESMA ordem
+de grandeza do caso real, nunca os números reais do contrato.
+
+### Testes novos (`Phase140TabelaProgressivaParserTest`, 7 testes)
+
+Reproduzem a ESTRUTURA literal de cada formato (nome/CNPJ fictícios, nunca ZM DISTRIBUIDORA/GRUPO
+LUCCAUTO/MAXIGOLD/UTILAR/CAMILLO PARTS reais): escalonado, valor anual dividido, sinais com R$
+faltando em algumas linhas, intervalo fechado, bônus não vira faixa, tabela vence texto de parcelas,
+aviso de bilhão sem alterar o valor. RED confirmado revertendo temporariamente para o commit
+`43d41c9e` (7 falhas: `indefinido` em vez do tipo esperado em todos os casos novos).
+
+### Commits
+
+- `c6c6484b` (test) — 7 testes falhos, RED confirmado
+- `8024a118` (feat) — 4 formatos novos + reordenação + guarda de bônus + aviso de bilhão, GREEN
+
+### Gate após esta correção
+
+`--filter="Phase122|Phase136|Phase137|Phase138|Phase139|Phase140"`: **430 testes / 2104 asserções /
+0 falhas** (baseline era 423/2061 antes desta correção — sem regressão).
+`Phase140TabelaProgressivaParserTest` isolado: 27 testes / 136 asserções.
+
 ---
 *Phase: 140-extrair-tabelas-progressivas-do-clicksign*
 *Completed: 2026-09-08*
 
 ## Self-Check: PASSED
 
-Todos os 7 arquivos declarados (ExtratorTextoContratoService.php, TabelaProgressivaContratoParser.php, os 2 testes Phase140 e as 3 fixtures) confirmados em disco; os 5 hashes de commit (`b0307ee6`, `518002e1`, `b9a6a028`, `f0e15ed2`, `2a97b64f`) confirmados em `git log`. Correção pós-rodada real #1: commits `025be6f1` (test) e `539d3731` (fix) confirmados em `git log`. Correção pós-rodada real #2: commits `3f279f35` (test) e `43d41c9e` (fix) confirmados em `git log`. Correção pós-rodada real #3: commits `ee0a1570` (test) e `7f68b1c7` (fix) confirmados em `git log`; `ExtratorTextoContratoService.php` e `Phase140ExtratorTextoTest.php` confirmados em disco com as novas seções.
+Todos os 7 arquivos declarados (ExtratorTextoContratoService.php, TabelaProgressivaContratoParser.php, os 2 testes Phase140 e as 3 fixtures) confirmados em disco; os 5 hashes de commit (`b0307ee6`, `518002e1`, `b9a6a028`, `f0e15ed2`, `2a97b64f`) confirmados em `git log`. Correção pós-rodada real #1: commits `025be6f1` (test) e `539d3731` (fix) confirmados em `git log`. Correção pós-rodada real #2: commits `3f279f35` (test) e `43d41c9e` (fix) confirmados em `git log`. Correção pós-rodada real #3: commits `ee0a1570` (test) e `7f68b1c7` (fix) confirmados em `git log`. Correção pós-rodada real #4: commits `c6c6484b` (test) e `8024a118` (feat) confirmados em `git log`; `TabelaProgressivaContratoParser.php` e `Phase140TabelaProgressivaParserTest.php` confirmados em disco com as novas seções (4 formatos, guarda de bônus, aviso de bilhão).
