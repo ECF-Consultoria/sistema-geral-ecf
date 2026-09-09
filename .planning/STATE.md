@@ -4,14 +4,14 @@ milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
 stopped_at: Phase 139 context gathered
-last_updated: "2026-09-09T18:25:47.934Z"
+last_updated: "2026-09-09T18:39:58.893Z"
 last_activity: 2026-09-09
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 30
-  completed_plans: 20
-  percent: 29
+  completed_plans: 21
+  percent: 70
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -25,6 +25,16 @@ progress:
 > zerou `progress.percent` para `14` (cálculo global, não desta fase/milestone)
 > depois de `completed_plans` ir de 18 para 19 — corrigido à mão de volta para
 > `95` (`round(19/20*100)`) antes de commitar.
+> **Reincidiu de novo no fechamento do 139-01** (2026-09-09): `completed_plans` foi de 20 para
+> 21 corretamente, mas `percent` ficou parado em `29` (não recomputado desta vez — mesmo assim
+> errado, porque 29 nunca bateu com `completed_plans/total_plans` deste milestone). Corrigido à
+> mão para `70` (`round(21/30*100)`). **Adicionalmente**, esta mesma execução sobrescreveu, sem
+> relação nenhuma com o campo que deveria mudar, a linha solta `Status: Executing Phase 139 — 10
+> planos em 9 waves.` (dentro do bloco histórico "Fase 137 — COMPLETA", não da seção "Current
+> Position" no topo) para o texto genérico `Status: Ready to execute` — restaurada à mão abaixo.
+> O padrão bate com o §5 do learning `gates-do-gsd-em-projeto-pt-br.md`: o comando não erra só o
+> campo que deveria tocar, erra também um campo qualquer que combine com o mesmo regex em outro
+> lugar do arquivo.
 
 # Project State
 
@@ -47,7 +57,12 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 ## Current Position
 
 Phase: 139 (checklist-administrativo-trava-de-finaliza-o-v23-0) — EXECUTING
-Plan: 1 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`.
+Plan: 2 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
+(baseline 137/138 100% verde — 123 testes, 444 assertions, `139-BASELINE-TESTES.md`;
+`config('services.adman.register_url')` publicada com o link fixo do Adman, D-04, provada por
+`tests/Unit/Phase139/AdmanRegisterUrlConfigTest.php`; `REQUIREMENTS-v23.md` registra as exceções
+D-06/D-16 sob o ADMIN-02 e a correção D-04/D-05/D-14 sob o ADMIN-03, D-19). Commits `35f9d193`,
+`c0b68597`, `a83c7706`; SUMMARY em `139-01-SUMMARY.md`. Sem deviations.
 
 ### Fase 138 — COMPLETA (9/9) · registro preservado
 
