@@ -42,14 +42,24 @@ const fmtValorFaixa = (valor, isPiso) => valor == null ? null
 // competia com o acento reservado a ação/status (Color Contract do UI-SPEC).
 function ServiceBadge({ servicos_contratados }) {
     if (Array.isArray(servicos_contratados) && servicos_contratados.length > 0) {
+        // Quick 260909-lge — numa linha de grupo, o mesmo serviço aparece uma
+        // vez por empresa membro (contratos distintos, mesmo nome): saía
+        // "Gestão Gestão Gestão…". Agrupa por nome com a quantidade ao lado
+        // ("Gestão 5"); mantém a ordem de primeira aparição.
+        const contagemPorNome = new Map();
+        servicos_contratados.forEach(c => {
+            const nome = c.servico_nome ?? '—';
+            contagemPorNome.set(nome, (contagemPorNome.get(nome) ?? 0) + 1);
+        });
+
         return (
             <span className="inline-flex items-center gap-1.5 flex-wrap">
-                {servicos_contratados.map(c => (
+                {[...contagemPorNome.entries()].map(([nome, quantidade]) => (
                     <span
-                        key={c.id}
+                        key={nome}
                         className="text-[12px] px-2 py-0.5 rounded-md bg-white/[0.06] text-white/60"
                     >
-                        {c.servico_nome}
+                        {nome}{quantidade > 1 ? ` ${quantidade}` : ''}
                     </span>
                 ))}
             </span>
@@ -470,6 +480,46 @@ function FaturamentoCombinadoBreakdown({ faturamentoMl, faturamentoShopee, fatur
     return (
         <p className="text-white/40 text-[12px] mb-2">
             Mercado Livre {fmtBRL(faturamentoMl)} + Shopee {fmtBRL(faturamentoShopee)} = {fmtBRL(faturamentoTotal)}
+        </p>
+    );
+}
+
+// Quick 260909-lge — a composição da mensalidade quando ela soma a faixa
+// aplicada com contrato(s) de valor fixo (caso medido: BARAOSHOP, agosto/2026
+// — Faixa 1 = R$ 3.000, mas a tela mostrava R$ 5.500 sem dizer que também
+// somava o contrato de Gestão de ADS Shopee, R$ 2.500). O número da
+// mensalidade está certo — isto só explica de onde ele veio, sem recalcular
+// nada (backend já manda `valor_mensal` = valor da faixa e `cobranca_mensal`
+// = faixa + contratos mensais, mesma fórmula de `CobrancaCalculator::novo`).
+//
+// ⚠️ Paliativo de propósito: a soma de mensalidades vai deixar de existir
+// quando a tabela progressiva passar a ser por empresa/grupo com faturamento
+// de plataformas somado (decisão do usuário, 2026-09-09) — isso é outra
+// fase. Aqui só se resolve a ilegibilidade.
+function MensalidadeComposicaoBreakdown({ empresa }) {
+    if (empresa.cobranca_mensal == null || empresa.valor_mensal == null) return null;
+
+    const extras = (empresa.servicos_contratados || [])
+        .filter(c => c.tipo_cobranca === 'mensal' && Number(c.valor_contratado) > 0);
+
+    if (extras.length === 0) return null;
+
+    const somaExtras = extras.reduce((acc, c) => acc + Number(c.valor_contratado), 0);
+
+    // Só mostra a composição quando os números batem exatamente com o total
+    // que o backend mandou — nunca uma soma que pareça certa mas divirja da
+    // conta real (D-05, "nunca soma silenciosa").
+    if (Math.abs((Number(empresa.valor_mensal) + somaExtras) - Number(empresa.cobranca_mensal)) > 0.01) {
+        return null;
+    }
+
+    const nomeFaixa = empresa.tabela_servico_nome ?? 'Faixa';
+
+    return (
+        <p className="text-white/40 text-[12px] mt-1">
+            {nomeFaixa} (faixa) {fmtBRL(empresa.valor_mensal)}
+            {extras.map(c => ` + ${c.servico_nome} ${fmtBRL(c.valor_contratado)}`).join('')}
+            {' '}= {fmtBRL(empresa.cobranca_mensal)}
         </p>
     );
 }
@@ -973,6 +1023,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                         <span className="text-[24px] font-bold font-mono text-emerald-400">
                             {empresa.cobranca_mensal != null ? fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso) : '—'}
                         </span>
+                        <MensalidadeComposicaoBreakdown empresa={empresa} />
                         {subLinha3 && (
                             <span className="text-[13px] text-white/40">{subLinha3}</span>
                         )}
