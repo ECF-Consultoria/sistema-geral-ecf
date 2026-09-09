@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 139-03-PLAN.md
-last_updated: "2026-09-09T19:17:23.372Z"
+stopped_at: Completed 139-04-PLAN.md
+last_updated: "2026-09-09T19:40:58.428Z"
 last_activity: 2026-09-09
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 30
-  completed_plans: 23
-  percent: 77
+  completed_plans: 24
+  percent: 80
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -41,6 +41,13 @@ progress:
 > planos em 9 waves.` foi sobrescrita outra vez para o texto genérico `Status: Ready to execute` —
 > restaurada à mão de novo. Terceira vez que este exato par de campos é corrompido pelo mesmo
 > comando; ver `.planning/learnings/gates-do-gsd-em-projeto-pt-br.md` §4/§8.
+> **Reincidiu de novo no fechamento do 139-04** (2026-09-09): `completed_plans` foi de 23 para 24
+> corretamente, mas `percent` foi recomputado GLOBAL (`29`) em vez de `round(24/30*100)` desta
+> milestone — corrigido à mão para `80`. Desta vez a linha solta `Status: Executing Phase 139 — 10
+> planos em 9 waves.` **não** foi tocada (conferido por grep antes de commitar) — o padrão de dano
+> não é 100% determinístico execução a execução, o que reforça a disciplina: NUNCA commitar um
+> resultado de `state.*`/`roadmap.*` sem ler o diff inteiro primeiro. Quarta vez que `percent` é
+> corrompido pelo mesmo comando.
 
 # Project State
 
@@ -63,7 +70,7 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 ## Current Position
 
 Phase: 139 (checklist-administrativo-trava-de-finaliza-o-v23-0) — EXECUTING
-Plan: 4 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
+Plan: 5 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
 (baseline 137/138 100% verde — 123 testes, 444 assertions, `139-BASELINE-TESTES.md`;
 `config('services.adman.register_url')` publicada com o link fixo do Adman, D-04, provada por
 `tests/Unit/Phase139/AdmanRegisterUrlConfigTest.php`; `REQUIREMENTS-v23.md` registra as exceções
@@ -85,6 +92,17 @@ devolvendo só os 6 do grupo Entrada para serviço isento, D-07). Commits `69719
 `1dad3cf8`; SUMMARY em `139-03-SUMMARY.md`. Regressão 137/138 — 123 testes, 444 assertions, OK
 (idêntica à baseline); `tests/Unit/Phase139` completo — 12 testes, 71 assertions, OK. Sem
 deviations.
+**139-04 concluído** (os 4 resolvers automáticos — `ContratoEnviadoResolver`/item 2,
+`ContratoAssinadoResolver`/item 3 com OR entre envelope assinado e `ContratoLiberacao::
+existeParaServico()`, D-16, agregado "manda o mais atrasado" por serviço, D-18;
+`MlOAuthConectadoResolver`/item 7 fecha só com `ml_tokens.status=active`, D-05;
+`ConexaoEcfResolver`/item 8 fecha por existência de `onboarding_links`, sem nunca criar a linha,
+D-14). Commits `efbedccf`, `242d91e7`, `4ec544c4`; SUMMARY em `139-04-SUMMARY.md`. Regressão
+137/138/139 — 151 testes, 547 assertions, OK (era 135/515 no fechamento do 139-03, +16 testes/+32
+assertions deste plano). Desvio: docblock de `MlOAuthConectadoResolver` citava literalmente
+`buildAuthUrl`/`MercadoLivreService` para explicar o que o resolver NÃO faz — reescrito em prosa
+sem os identificadores para não colidir com o grep de auditoria do próprio plano (mesma lição do
+139-02/139-03; ver `139-04-SUMMARY.md`, seção Deviations).
 
 ### Fase 138 — COMPLETA (9/9) · registro preservado
 
@@ -807,6 +825,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 138 P09 | ~90min (inclui espera de aprovação humana nos 2 checkpoints) | 3 tasks | 1 files |
 | Phase 139 P02 | 14min | 2 tasks | 3 files |
 | Phase 139 P03 | 20min | 3 tasks | 4 files |
+| Phase 139 P04 | 25min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -1571,8 +1590,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-09-09T19:17:23.156Z
-Stopped at: Completed 139-03-PLAN.md
+Last session: 2026-09-09T19:40:58.172Z
+Stopped at: Completed 139-04-PLAN.md
 Last session: 2026-09-03T21:17:01.000Z
 Stopped at: Completed 138-06-PLAN.md — listagem Contrato ganha os 8 campos do §2, COMERC-02 fechado por completo (commits `551117d0`, `f8e4044b`); fechamento (SUMMARY/STATE/ROADMAP/REQUIREMENTS) feito por agente de closeout porque o executor original morreu por erro de stream da API após commitar as duas tasks
 Last session: 2026-09-02T20:14:25.367Z
@@ -1715,3 +1734,5 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 139]: D-11 implementado: feitoPor()->withTrashed() copiado de Pendencia::abertaPor()/corrigidaPor() (nao de OnboardingPasso::feitoPor(), que nao usa withTrashed()) — autoria sobrevive a soft delete do usuario, provado por teste
 - [Phase 139]: 139-03: catálogo fechado ChecklistAdministrativoDefinicao com os 9 itens do §5 (D-01/D-03); itens(false) filtra o grupo Contrato por montagem condicional (D-07), sem estado não aplicável (D-02)
 - [Phase 139]: 139-03: ChecklistResolver e ChecklistResolverResultado copiam o molde do motor de Onboarding sem os ramos de coleta assíncrona — os 4 resolvers desta fase são síncronos (D-10)
+- [Phase 139]: 139-04: ContratoAssinadoResolver fecha por OR entre envelope assinado e ContratoLiberacao::existeParaServico() (D-16), agregado manda-o-mais-atrasado por servico (D-18) — testado isoladamente com a via manual chamada direto em EmpresaOperacionalRouter::liberarEmpresa()
+- [Phase 139]: 139-04: MlOAuthConectadoResolver e ConexaoEcfResolver fecham itens 7 e 8 por leitura pura (ml_tokens.status=active, D-05; existencia de onboarding_links, D-14) — nenhum dos 4 resolvers da task escreve em contrato_assinaturas/contrato_liberacoes/onboarding_links, provado por reconsulta ao banco e Http::assertNothingSent() (D5 da milestone)
