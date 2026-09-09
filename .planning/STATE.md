@@ -718,6 +718,66 @@ comparação fica assimétrica e a Fase 138 dispara aviso falso de mudança de f
 produção/`.env` (trava do próprio plano); migration só validada via `RefreshDatabase` (SQLite),
 nunca rodada contra MySQL local ou produção.
 
+141-02 concluído (TPE-02/TPE-03/TPE-07) — as duas peças que mudam o VALOR cobrado, ainda sem
+nenhum consumidor ligado. `App\Services\Fechamento\FechamentoRegraTabela::ativa()` lê
+`configuracoes.fechamento_tabela_por_empresa_ativa` (default `'0'`, só `'1'` liga), memoizado por
+instância (1 consulta em 100 chamadas, provado por `DB::getQueryLog()`), com `esquecer()` para
+re-leitura; nasce e permanece DESLIGADA, mesmo padrão de
+`EmpresaOperacionalRouter::CHAVE_BLOQUEIO` (Fase 124) — ligar em produção é decisão do plano
+141-07. `CobrancaCalculator::mensalidade(?array $classificacao, iterable $contratos): ?float`
+(D-03) devolve **só o valor da faixa** quando `$classificacao` existe, e cai para a soma dos
+contratos mensais ativos (helper `contratosMensaisElegiveis()` extraído, reusado por `novo()` sem
+mudar o comportamento dele) quando não há tabela — zero contratos elegíveis devolve `null`, nunca
+`0.0` (distinção por lista vazia, não por soma > 0, para não confundir "nenhum contrato" com "um
+contrato de R$ 0,00"). Teste prova o caso concreto lado a lado: `novo()` = R$5.500,00 (faixa
+R$3.000 + contrato Shopee R$2.500, a fórmula de hoje) e `mensalidade()` = R$3.000,00 (só a faixa,
+a fórmula nova) para a MESMA composição de dados do BARAOSHOP. `FechamentoSnapshot::ESTADO_VALOR_FIXO
+= 'valor_fixo'` acrescentado (coluna `estado` é `string(20)`, sem migration) para a empresa sem
+tabela progressiva nenhuma (Mentoria, os 29 contratos de valor fixo da Fase 140) — resultado
+NORMAL, não pendência, diferente de `ESTADO_SEM_TABELA`. TDD: 2 tarefas, 4 commits RED→GREEN
+(`30f9c833`/`591674be` interruptor, `b4700ca8`/`5b7d7ede` `mensalidade()`+estado). Testes novos:
+`Phase141RegraTabelaFlagTest` (5) + `Phase141MensalidadeCalculatorTest` (7) = 12 testes. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Quick260909`: **477 testes / 2318
+asserções / 0 falhas** — idêntico ao baseline informado antes de começar, zero regressão.
+`grep -rn "FechamentoRegraTabela\|CobrancaCalculator::mensalidade" app/` confirma: só as próprias
+definições, nenhum consumidor ainda — quem liga é o plano 141-03. Falha pré-existente e alheia a
+este plano: `Phase14VerificarCobrancaTest::test_aborta_com_divergencia` (listada como não-minha no
+prompt de execução; `legacy()`/`novo()` seguem com comportamento idêntico ao de antes). Last
+activity: 2026-09-09 — 141-02 executado (`141-02-SUMMARY.md`). Sem deploy — subagente sem acesso a
+produção/`.env` (trava do próprio plano).
+
+141-03 concluído (TPE-05/TPE-06) — **a ponte de transição**, NÃO a flag que liga o modo novo (as
+notas do 141-01 e do 141-02 acima previram errado quem faria isso; 141-03 não toca em
+`FechamentoRollupService`, `FechamentoRegraTabela` nem `CobrancaCalculator` — quem liga é outro
+plano da fase, ainda não executado nesta árvore no momento em que este parágrafo foi escrito). O
+que 141-03 entrega: coluna `origem` (+`servico_origem_id`, sem FK de propósito) em
+`empresa_faixas_faturamento`, com as constantes `EmpresaFaixaFaturamento::ORIGEM_MANUAL` /
+`ORIGEM_CONTRATO` / `ORIGEM_PRESUMIDA_SERVICO`; os dois pontos de escrita existentes
+(`FechamentoController::salvarFaixasEmpresa()`, `TabelasContratoController::confirmar()`) passam a
+carimbar a procedência certa; e o comando `fechamento:materializar-tabelas` (dry-run por padrão,
+`--aplicar` grava, `--json` para conferência) — copia, para as 127 empresas hoje classificadas por
+`origem='servico'` no `FechamentoFaixaResolver`, essa mesma tabela como tabela própria carimbada
+`presumida_servico`, com os MESMOS valores (nenhuma cobrança muda por causa dele). Idempotente:
+guard de existência checado DENTRO da transação de cada empresa; empresa com tabela própria (de
+qualquer origem) ou classificada por grupo nunca é tocada; nenhuma linha de
+`fechamento_snapshots`/`fechamento_grupo_snapshots` é lida ou escrita (D-11 preservado). TDD: 2
+tarefas, 2 commits (`73d8c4fc` procedência, `8fda8a44` comando) — teste escrito e confirmado
+falhando (RED) antes da implementação em ambas, mas commitado junto com a implementação verde num
+único `feat` por tarefa (árvore compartilhada tornava reescrita de histórico arriscada). Testes
+novos: `Phase141ProcedenciaTabelaTest` (4) + `Phase141MaterializarTabelasTest` (7) = 11 testes / 44
+asserções. Gate do plano `Phase141|Phase137|Phase140`: 270 testes / 1143 asserções / 0 falhas.
+Gate do coordenador `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Quick260909`: **477
+testes / 2318 asserções / 0 falhas** — idêntico ao baseline, sem regressão (não inclui Phase141
+porque "Phase140" não casa como substring de "Phase141" no filtro do PHPUnit). ⚠️ Pendência para
+quem executar 141-06 (tela): `AdminController::fechamentoTabelaConfirmada()` (fora dos
+`files_modified` deste plano) ainda devolve `true` para QUALQUER tabela `'propria'` — sem tratar
+`origem='presumida_servico'` lá, as tabelas materializadas por este comando apareceriam como
+CONFIRMADAS na tela, reintroduzindo em silêncio o problema que a Fase 141 existe para resolver.
+`TabelaPresumidaBadge`/`TabelaPresumidaAviso` já existem na tela e devem ser reaproveitados, não
+recriados. Last activity: 2026-09-09 — 141-03 executado (`141-03-SUMMARY.md`). Sem deploy —
+subagente sem acesso a produção/`.env`/`plink`/`pscp` (trava do próprio plano); comando de
+materialização NUNCA rodado contra produção (é checkpoint humano do plano 141-07).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
