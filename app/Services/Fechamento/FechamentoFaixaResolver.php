@@ -13,31 +13,49 @@ use Illuminate\Support\Collection;
 
 /**
  * FechamentoFaixaResolver — responde duas perguntas do fechamento mensal
- * (Fase 137/138): "qual tabela de faixas vale para esta empresa (ou para o
- * grupo dela)?" (D-01, D-05, D-13) e "em que faixa um faturamento cai?"
- * (D-02b, faixa-piso).
+ * (Fase 137/138/141): "qual tabela de faixas vale para esta empresa (ou
+ * para o grupo dela)?" (D-01, D-05, D-13, e a virada de regra da Fase 141)
+ * e "em que faixa um faturamento cai?" (D-02b, faixa-piso).
  *
  * Serviço PURO de leitura: não grava nada, não decide faturamento — só
  * tabela e classificação. Quem soma ML+Shopee é o `FechamentoRollupService`
  * (Fase 137); quem congela o resultado é o writer da Fase 137.
  *
  * ### Shape único de retorno (`paraEmpresa()` e `paraGrupo()`)
- * As 8 chaves abaixo estão SEMPRE presentes — `null` quando não se aplica —
+ * As 9 chaves abaixo estão SEMPRE presentes — `null` quando não se aplica —
  * para o consumidor nunca precisar de coalesce:
  * `origem` ('grupo'|'propria'|'servico'), `servico_id`, `servico_nome`,
  * `grupo_id`, `grupo_nome`, `herdada_de_company_id`,
- * `herdada_de_company_name`, `faixas`.
+ * `herdada_de_company_name`, `faixas`, `procedencia`.
  *
- * ### paraEmpresa() — ordem de resolução (D-01/D-05/D-13, Fase 138)
- * 1. **Tabela do GRUPO** (`GrupoFaixaFaturamento`, Fase 138, D-01) — se a
- *    empresa pertence a um grupo (`company_group_id`) e existe QUALQUER
- *    linha de faixa para esse grupo, ela vence sobre a exceção da própria
- *    empresa e sobre a do serviço. Uma empresa-membro de um grupo com
- *    tabela própria é classificada por essa tabela mesmo que ela própria
- *    tenha uma exceção cadastrada — se o grupo negociou uma tabela, é essa
- *    que vale para todo mundo dentro dele.
- * 2. Exceção por empresa (`EmpresaFaixaFaturamento`) — se existir QUALQUER
- *    linha, ela substitui a tabela INTEIRA do serviço (D-13, all-or-nothing).
+ * `procedencia` (Fase 141, D-04/D-05) só é preenchida quando `origem ===
+ * 'propria'`, a partir da coluna `origem` da PRIMEIRA linha da tabela de
+ * empresa (`EmpresaFaixaFaturamento::ORIGEM_MANUAL`/`ORIGEM_CONTRATO`/
+ * `ORIGEM_PRESUMIDA_SERVICO`) — nos demais casos (`'grupo'`, `'servico'`)
+ * vale `null`: tabela de grupo é sempre cadastro humano (não tem coluna
+ * `origem`) e tabela de serviço não é mais régua aplicável quando a flag
+ * está ligada.
+ *
+ * ### paraEmpresa() — ordem de resolução
+ *
+ * **Com a flag `FechamentoRegraTabela::CHAVE` LIGADA (Fase 141, D-01/D-04)
+ * — regra NOVA, definitiva:**
+ * 1. **Tabela do GRUPO** (`GrupoFaixaFaturamento`) — se a empresa pertence a
+ *    um grupo (`company_group_id`) e existe QUALQUER linha de faixa para
+ *    esse grupo, ela vence sobre a tabela própria da empresa.
+ * 2. Tabela PRÓPRIA da empresa (`EmpresaFaixaFaturamento`) — se existir
+ *    QUALQUER linha, ela vale inteira (D-13, all-or-nothing).
+ * 3. Sem tabela de grupo nem própria: `null` — a tabela do SERVIÇO nunca
+ *    mais entra como régua. Vira estado visível no fechamento
+ *    (`ESTADO_VALOR_FIXO` quando há contrato mensal ativo, `ESTADO_SEM_TABELA`
+ *    quando não há), nunca faixa aproximada.
+ *
+ * **Com a flag DESLIGADA — regra ANTIGA, transitória (nasce ativa, existe
+ * só até a virada do plano 141-07; sem a materialização do plano 141-03
+ * aplicada em produção, 127 das 201 empresas medidas em 2026-09-09 ficariam
+ * sem régua nenhuma se este degrau sumisse antes da hora):**
+ * 1. Tabela do GRUPO — mesmo degrau 1 acima.
+ * 2. Tabela PRÓPRIA da empresa — mesmo degrau 2 acima.
  * 3. Serviço candidato entre os contratos ativos da empresa — candidato é
  *    quem tem `plataforma` preenchida OU `setor` financeiro
  *    (`Servico::SETORES_FINANCEIROS`), critério em OU por robustez (ver
@@ -54,7 +72,9 @@ use Illuminate\Support\Collection;
  *    `herdada_de_company_id`/`herdada_de_company_name` da âncora —
  *    `herdada_de_*` só é preenchido nesse caso, nunca quando a tabela do
  *    grupo existe. É essa informação que evita a herança invisível: a tela
- *    precisa dizer de qual empresa a tabela foi herdada.
+ *    precisa dizer de qual empresa a tabela foi herdada. Com a flag da Fase
+ *    141 ligada, essa herança só encontra alguma coisa quando a âncora tem
+ *    tabela PRÓPRIA — `paraEmpresa($ancora)` já não olha mais o serviço.
  * 3. Sem tabela de grupo e sem âncora informada (ou âncora sem nenhuma
  *    tabela resolvida): `null` — estado "A DEFINIR", nunca faixa
  *    aproximada.
@@ -66,11 +86,15 @@ use Illuminate\Support\Collection;
  */
 class FechamentoFaixaResolver
 {
+    public function __construct(private FechamentoRegraTabela $regra)
+    {
+    }
+
     /**
      * Resolve a tabela de faixas aplicável a uma empresa (grupo → própria →
-     * serviço, D-01).
+     * serviço [só com a flag da Fase 141 desligada], D-01).
      *
-     * @return array{origem: string, servico_id: int|null, servico_nome: string|null, grupo_id: int|null, grupo_nome: string|null, herdada_de_company_id: int|null, herdada_de_company_name: string|null, faixas: Collection}|null
+     * @return array{origem: string, servico_id: int|null, servico_nome: string|null, grupo_id: int|null, grupo_nome: string|null, herdada_de_company_id: int|null, herdada_de_company_name: string|null, faixas: Collection, procedencia: string|null}|null
      */
     public function paraEmpresa(Company $company): ?array
     {
@@ -92,7 +116,23 @@ class FechamentoFaixaResolver
         // D-13: a existência de QUALQUER linha própria substitui a tabela
         // inteira do serviço — nunca linha a linha.
         if ($excecaoPropria->isNotEmpty()) {
-            return $this->shape('propria', faixas: $excecaoPropria);
+            return $this->shape(
+                'propria',
+                faixas: $excecaoPropria,
+                procedencia: $excecaoPropria->first()->origem ?? null,
+            );
+        }
+
+        // Fase 141 (D-01/D-04): com a flag ligada, a tabela do SERVIÇO
+        // deixou de ser régua aplicável — sem tabela de grupo nem própria,
+        // a empresa fica sem tabela nenhuma (estado visível no fechamento:
+        // `ESTADO_VALOR_FIXO` com contrato mensal, `ESTADO_SEM_TABELA` sem
+        // ele), nunca herda a tabela do serviço. Degrau 3-5 abaixo (a régua
+        // ANTIGA) só executa com a flag desligada — mantido de propósito
+        // para o rollback sem deploy e para a comparação ANTES×DEPOIS do
+        // plano 141-05.
+        if ($this->regra->ativa()) {
+            return null;
         }
 
         $servicoEscolhido = $this->escolherServicoCandidato($company);
@@ -124,7 +164,7 @@ class FechamentoFaixaResolver
      * tabela própria do grupo quando houver, senão a tabela da empresa
      * âncora com a herança marcada explicitamente.
      *
-     * @return array{origem: string, servico_id: int|null, servico_nome: string|null, grupo_id: int|null, grupo_nome: string|null, herdada_de_company_id: int|null, herdada_de_company_name: string|null, faixas: Collection}|null
+     * @return array{origem: string, servico_id: int|null, servico_nome: string|null, grupo_id: int|null, grupo_nome: string|null, herdada_de_company_id: int|null, herdada_de_company_name: string|null, faixas: Collection, procedencia: string|null}|null
      */
     public function paraGrupo(CompanyGroup $grupo, ?Company $ancora): ?array
     {
@@ -169,7 +209,8 @@ class FechamentoFaixaResolver
     }
 
     /**
-     * Monta o shape único de retorno com as 8 chaves sempre presentes.
+     * Monta o shape único de retorno com as 9 chaves sempre presentes
+     * (Fase 141 acrescentou `procedencia`).
      */
     private function shape(
         string $origem,
@@ -180,6 +221,7 @@ class FechamentoFaixaResolver
         ?int $herdadaDeCompanyId = null,
         ?string $herdadaDeCompanyName = null,
         Collection $faixas = new Collection(),
+        ?string $procedencia = null,
     ): array {
         return [
             'origem'                   => $origem,
@@ -190,6 +232,7 @@ class FechamentoFaixaResolver
             'herdada_de_company_id'    => $herdadaDeCompanyId,
             'herdada_de_company_name'  => $herdadaDeCompanyName,
             'faixas'                   => $faixas,
+            'procedencia'              => $procedencia,
         ];
     }
 
