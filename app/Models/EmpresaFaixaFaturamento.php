@@ -26,12 +26,23 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * `valor_e_piso` marca a faixa cujo `valor` é "a partir de R$ X", nunca um
  * preço fechado — mesma semântica de `ServicoFaixaFaturamento::valor_e_piso`.
  *
+ * ### Procedência (`origem`, Fase 141 Plano 03, D-04/D-05)
+ * `ORIGEM_MANUAL` — cadastro humano pelo sistema (default; toda linha criada antes desta fase é
+ * disto). `ORIGEM_CONTRATO` — confirmação humana da leitura de um contrato do Clicksign (Fase 140).
+ * `ORIGEM_PRESUMIDA_SERVICO` — **ninguém confirmou esta tabela**; ela foi copiada da tabela do
+ * serviço na virada da Fase 141, porque a tabela por serviço deixou de ser régua aplicável (D-04) e
+ * sem essa cópia a empresa ficaria sem tabela nenhuma. `servico_origem_id` guarda de qual serviço.
+ * A tela precisa dizer isso ao usuário — não é o mesmo grau de confiança que uma tabela confirmada
+ * por humano, e `presumida_servico` NUNCA deve contar como `tabela_confirmada = true`.
+ *
  * @property int $id
  * @property int $company_id
  * @property int $ordem
  * @property string|null $limite_superior (decimal:2 — null = faixa aberta)
  * @property string $valor (decimal:2)
  * @property bool $valor_e_piso
+ * @property string $origem
+ * @property int|null $servico_origem_id
  */
 class EmpresaFaixaFaturamento extends Model
 {
@@ -39,12 +50,20 @@ class EmpresaFaixaFaturamento extends Model
 
     protected $table = 'empresa_faixas_faturamento';
 
+    public const ORIGEM_MANUAL             = 'manual';
+
+    public const ORIGEM_CONTRATO           = 'contrato';
+
+    public const ORIGEM_PRESUMIDA_SERVICO  = 'presumida_servico';
+
     protected $fillable = [
         'company_id',
         'ordem',
         'limite_superior',
         'valor',
         'valor_e_piso',
+        'origem',
+        'servico_origem_id',
     ];
 
     protected $casts = [

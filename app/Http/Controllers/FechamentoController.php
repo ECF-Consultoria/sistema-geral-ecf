@@ -95,6 +95,9 @@ class FechamentoController extends Controller
                     'limite_superior' => $faixa['limite_superior'] ?? null,
                     'valor'           => $faixa['valor'],
                     'valor_e_piso'    => $faixa['valor_e_piso'] ?? false,
+                    // Fase 141 (D-04) — cadastro manual pelo sistema; gravado explicitamente (não
+                    // confiar no default do banco) para quem lê o código ver a decisão.
+                    'origem'          => EmpresaFaixaFaturamento::ORIGEM_MANUAL,
                 ]);
             }
         });
