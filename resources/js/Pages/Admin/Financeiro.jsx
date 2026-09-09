@@ -47,7 +47,7 @@ function ServiceBadge({ servicos_contratados }) {
                 {servicos_contratados.map(c => (
                     <span
                         key={c.id}
-                        className="text-[11px] px-2 py-0.5 rounded-md bg-white/[0.06] text-white/60"
+                        className="text-[12px] px-2 py-0.5 rounded-md bg-white/[0.06] text-white/60"
                     >
                         {c.servico_nome}
                     </span>
@@ -57,15 +57,19 @@ function ServiceBadge({ servicos_contratados }) {
     }
 
     return (
-        <span className="text-[11px] px-2 py-0.5 rounded-md bg-white/[0.06] text-white/40">
+        <span className="text-[12px] px-2 py-0.5 rounded-md bg-white/[0.06] text-white/40">
             Sem serviços
         </span>
     );
 }
 
+// Quick 260909-e8n — a badge segue o ESTADO da linha (`sem_integracao`), não
+// mais `!has_adman`. `has_adman` só olha Adman/ML: empresa atendida apenas na
+// Shopee (Ale Peças, Tuki Pet, RAVENA) aparecia marcada "Sem integração" com
+// 31 dias de faturamento apurado na tela ao lado.
 function IntegrationBadge() {
     return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold bg-amber-500/10 text-amber-300 border-amber-500/20">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[12px] font-semibold bg-amber-500/10 text-amber-300 border-amber-500/20">
             <WifiOff size={10} className="shrink-0" />
             Sem integração
         </span>
@@ -82,7 +86,7 @@ function IntegrationBadge() {
 function TabelaPresumidaBadge() {
     return (
         <span
-            className="inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium bg-white/[0.03] text-white/40 border-white/[0.08]"
+            className="inline-flex items-center px-2 py-0.5 rounded-full border text-[12px] font-medium bg-white/[0.03] text-white/40 border-white/[0.08]"
             title="A tabela de faixas foi presumida a partir do serviço contratado — ainda sem confirmação por contrato assinado ou cadastro manual."
         >
             Tabela presumida
@@ -136,14 +140,14 @@ function ServicosContratadosBar({ companies }) {
     return (
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] px-6 py-[22px] flex flex-col gap-4 xl:col-span-2">
             <div className="flex items-center justify-between gap-3">
-                <span className="text-white/40 text-[13px]">Serviços contratados</span>
-                <span className="text-white/30 text-[12px] shrink-0">
+                <span className="text-white/40 text-[14px]">Serviços contratados</span>
+                <span className="text-white/30 text-[13px] shrink-0">
                     {totalContratos} contrato{totalContratos !== 1 ? 's' : ''} ativo{totalContratos !== 1 ? 's' : ''}
                 </span>
             </div>
 
             {totalContratos === 0 ? (
-                <p className="text-white/30 text-[13px]">Nenhum contrato ativo.</p>
+                <p className="text-white/30 text-[14px]">Nenhum contrato ativo.</p>
             ) : (
                 <>
                     <div className="flex h-2.5 rounded-full overflow-hidden gap-[2px]">
@@ -159,8 +163,8 @@ function ServicosContratadosBar({ companies }) {
                         {data.map(d => (
                             <div key={d.key} className="flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: d.color }} />
-                                <span className="text-white/75 text-[13px]">{d.name}</span>
-                                <span className="text-white text-[13px] font-semibold font-mono">{d.value}</span>
+                                <span className="text-white/75 text-[14px]">{d.name}</span>
+                                <span className="text-white text-[14px] font-semibold font-mono">{d.value}</span>
                             </div>
                         ))}
                     </div>
@@ -214,7 +218,7 @@ function useConfirmacaoTemporaria() {
 function ConfirmacaoInline({ mensagem, onFechar }) {
     if (!mensagem) return null;
     return (
-        <div className="absolute right-0 top-full mt-2 z-20 flex items-start gap-2 rounded-xl border border-green-500/30 bg-green-950/90 backdrop-blur-md px-3 py-2 text-[12px] font-semibold text-green-300 shadow-2xl w-64">
+        <div className="absolute right-0 top-full mt-2 z-20 flex items-start gap-2 rounded-xl border border-green-500/30 bg-green-950/90 backdrop-blur-md px-3 py-2 text-[13px] font-semibold text-green-300 shadow-2xl w-64">
             <span className="flex-1">{mensagem}</span>
             <button type="button" onClick={onFechar} className="opacity-60 hover:opacity-100 transition-opacity shrink-0">
                 <X size={12} />
@@ -242,24 +246,39 @@ function tituloDoMes(anoMes) {
 
 // Pill do handoff (§1): pontinho de 6px + texto, âmbar em "Em aberto" e
 // esmeralda em "Fechado" — as palavras e a data de fechamento não mudam.
-function StatusCompetenciaBadge({ fechada, fechadaEm }) {
+function StatusCompetenciaBadge({ fechada, fechadaEm, periodo }) {
+    // Quick 260909-e8n — o período apurado sempre visível ao lado do status.
+    // A data de execução do fechamento é do mês SEGUINTE ao apurado (agosto
+    // fecha no 1º dia útil de setembro) e sozinha fazia parecer que o
+    // período ia até setembro.
+    const periodoTexto = periodo?.inicio && periodo?.fim
+        ? `Período ${periodo.inicio} a ${periodo.fim}`
+        : null;
+
     if (!fechada) {
         return (
-            <span className="inline-flex items-center gap-1.5 text-ecf-yellow text-[12px] font-semibold px-[11px] py-[5px] rounded-full border border-ecf-yellow/35 bg-ecf-yellow/10 shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-ecf-yellow shrink-0" />
-                Em aberto
-            </span>
+            <div className="flex flex-col items-start gap-1 shrink-0">
+                <span className="inline-flex items-center gap-1.5 text-ecf-yellow text-[14px] font-semibold px-[11px] py-[5px] rounded-full border border-ecf-yellow/35 bg-ecf-yellow/10">
+                    <span className="w-1.5 h-1.5 rounded-full bg-ecf-yellow shrink-0" />
+                    Em aberto
+                </span>
+                {periodoTexto && (
+                    <span className="text-white/40 text-[13px] whitespace-nowrap">
+                        {periodoTexto}. Os valores ainda mudam a cada sync.
+                    </span>
+                )}
+            </div>
         );
     }
 
     return (
         <div className="flex flex-col items-start gap-1 shrink-0">
-            <span className="inline-flex items-center gap-1.5 text-emerald-400 text-[12px] font-semibold px-[11px] py-[5px] rounded-full border border-emerald-400/35 bg-emerald-400/10">
+            <span className="inline-flex items-center gap-1.5 text-emerald-400 text-[14px] font-semibold px-[11px] py-[5px] rounded-full border border-emerald-400/35 bg-emerald-400/10">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                 Fechado
             </span>
-            <span className="text-white/30 text-[11px] whitespace-nowrap">
-                Fechado em {formatDate(fechadaEm)}. Os valores não mudam sozinhos.
+            <span className="text-white/40 text-[13px] whitespace-nowrap">
+                {periodoTexto ? `${periodoTexto} · ` : ''}Fechado em {formatDate(fechadaEm)}. Os valores não mudam sozinhos.
             </span>
         </div>
     );
@@ -298,7 +317,7 @@ function FecharCompetenciaButton({ mes }) {
                 type="button"
                 onClick={handleFechar}
                 disabled={loading}
-                className="inline-flex items-center gap-2 px-[18px] py-2.5 rounded-[10px] bg-ecf-yellow hover:bg-ecf-yellow/80 text-[14px] font-semibold text-black transition-colors disabled:opacity-50 disabled:cursor-wait shrink-0"
+                className="inline-flex items-center gap-2 px-[18px] py-2.5 rounded-[10px] bg-ecf-yellow hover:bg-ecf-yellow/80 text-[15px] font-semibold text-black transition-colors disabled:opacity-50 disabled:cursor-wait shrink-0"
             >
                 {loading ? 'Fechando...' : `Fechar ${mesLabel}`}
             </button>
@@ -350,7 +369,7 @@ function RefazerFechamentoDialog({ mes }) {
             <button
                 type="button"
                 onClick={() => handleOpenChange(true)}
-                className="inline-flex items-center gap-2 px-[18px] py-2.5 rounded-[10px] border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-[14px] font-semibold transition-colors shrink-0"
+                className="inline-flex items-center gap-2 px-[18px] py-2.5 rounded-[10px] border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-[15px] font-semibold transition-colors shrink-0"
             >
                 Refazer fechamento
             </button>
@@ -360,7 +379,7 @@ function RefazerFechamentoDialog({ mes }) {
                     <DialogHeader>
                         <DialogTitle>Refazer fechamento de {mesLabel}</DialogTitle>
                     </DialogHeader>
-                    <p className="text-white/60 text-[13px]">
+                    <p className="text-white/60 text-[14px]">
                         Os valores já cobrados ficam registrados no histórico. Ao confirmar, os números exibidos nesta tela passam a refletir o novo cálculo.
                     </p>
                     <div className="space-y-1.5">
@@ -372,7 +391,7 @@ function RefazerFechamentoDialog({ mes }) {
                             placeholder="Ex.: correção de faturamento na Adman após o fechamento."
                         />
                     </div>
-                    {erro && <p className="text-red-400 text-[12px]">{erro}</p>}
+                    {erro && <p className="text-red-400 text-[13px]">{erro}</p>}
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                             Cancelar
@@ -402,7 +421,7 @@ function RefazerFechamentoDialog({ mes }) {
 function AusenciaTabelaPendencia({ variant = 'compact', href }) {
     if (variant === 'compact') {
         return (
-            <span className="inline-flex items-center gap-1.5 text-amber-400 text-[13px] font-semibold shrink-0">
+            <span className="inline-flex items-center gap-1.5 text-amber-400 text-[14px] font-semibold shrink-0">
                 <AlertTriangle size={13} className="shrink-0" />
                 Tabela de faixas: A DEFINIR
             </span>
@@ -416,17 +435,17 @@ function AusenciaTabelaPendencia({ variant = 'compact', href }) {
     // mais abaixo no mesmo accordion.
     return (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-[18px] py-4 flex flex-col gap-1.5">
-            <p className="text-amber-400 text-[13px] font-semibold flex items-center gap-1.5">
+            <p className="text-amber-400 text-[14px] font-semibold flex items-center gap-1.5">
                 <AlertTriangle size={13} className="shrink-0" />
                 Tabela de faixas: A DEFINIR
             </p>
-            <p className="text-white/40 text-[11px]">
+            <p className="text-white/40 text-[12px]">
                 Cadastre a tabela de faturamento desta empresa para ela entrar no fechamento.
             </p>
             {href && (
                 <a
                     href={href}
-                    className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/70 bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 px-3 h-7 rounded-lg transition-colors w-fit"
+                    className="mt-1 inline-flex items-center gap-1.5 text-[12px] font-semibold text-white/70 bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 px-3 h-7 rounded-lg transition-colors w-fit"
                 >
                     Cadastrar tabela de faixas
                 </a>
@@ -437,7 +456,7 @@ function AusenciaTabelaPendencia({ variant = 'compact', href }) {
 
 function AusenciaFaturamentoBadge() {
     return (
-        <span className="text-white/40 text-[13px]">
+        <span className="text-white/40 text-[14px]">
             Sem faturamento neste mês
         </span>
     );
@@ -449,7 +468,7 @@ function FaturamentoCombinadoBreakdown({ faturamentoMl, faturamentoShopee, fatur
     if (faturamentoMl == null || faturamentoShopee == null) return null;
 
     return (
-        <p className="text-white/40 text-[11px] mb-2">
+        <p className="text-white/40 text-[12px] mb-2">
             Mercado Livre {fmtBRL(faturamentoMl)} + Shopee {fmtBRL(faturamentoShopee)} = {fmtBRL(faturamentoTotal)}
         </p>
     );
@@ -462,10 +481,10 @@ function GrupoServicosDivergentesBanner({ empresa }) {
 
     return (
         <div className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2.5">
-            <p className="text-amber-400 text-[13px] font-semibold">Este grupo tem empresas com tabelas diferentes</p>
+            <p className="text-amber-400 text-[14px] font-semibold">Este grupo tem empresas com tabelas diferentes</p>
             <ul className="mt-1.5 space-y-1">
                 {membros.map(m => (
-                    <li key={m.id} className="text-white/50 text-[11px]">
+                    <li key={m.id} className="text-white/50 text-[12px]">
                         {m.name} → {m.tabela_origem === 'propria'
                             ? 'Tabela própria'
                             : (m.tabela_servico_nome ? `Tabela do serviço ${m.tabela_servico_nome}` : 'A DEFINIR')}
@@ -506,8 +525,8 @@ function FaixaProgresso({ faturamento, faixa, limiteInferior, limiteSuperior, fa
     return (
         <div className="flex flex-col gap-1.5 w-full">
             <div className="flex items-center justify-between gap-2">
-                <span className="text-white text-[13px] font-semibold truncate">{faixaNome(faixaLabel ?? faixa)}</span>
-                <span className="text-white/30 text-[11px] shrink-0 whitespace-nowrap">{textoDireita}</span>
+                <span className="text-white text-[14px] font-semibold truncate">{faixaNome(faixaLabel ?? faixa)}</span>
+                <span className="text-white/30 text-[12px] shrink-0 whitespace-nowrap">{textoDireita}</span>
             </div>
             {pct != null && (
                 <div className="h-[5px] rounded-full bg-white/[0.08] overflow-hidden">
@@ -534,12 +553,12 @@ function ProgressaoModal({ empresa, onClose }) {
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06] shrink-0">
                     <div>
-                        <p className="text-[11px] uppercase tracking-wider text-white/40 flex items-center gap-1.5">
+                        <p className="text-[12px] uppercase tracking-wider text-white/40 flex items-center gap-1.5">
                             <BarChart2 size={12} /> Progressão de faixa
                         </p>
-                        <p className="text-white font-semibold text-[15px] mt-0.5">{empresa.name}</p>
+                        <p className="text-white font-semibold text-[16px] mt-0.5">{empresa.name}</p>
                         {empresa.inicio_dados && (
-                            <p className="text-white/30 text-[11px] mt-0.5">
+                            <p className="text-white/30 text-[12px] mt-0.5">
                                 Dados desde {empresa.inicio_dados}
                             </p>
                         )}
@@ -551,14 +570,14 @@ function ProgressaoModal({ empresa, onClose }) {
 
                 {/* Tabela */}
                 <div className="overflow-y-auto flex-1">
-                    <table className="w-full text-[13px]">
+                    <table className="w-full text-[14px]">
                         <thead className="sticky top-0 bg-ecf-card border-b border-white/[0.06]">
                             <tr>
-                                <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-white/30">Mês</th>
-                                <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-white/30">Faturamento do mês</th>
-                                <th className="px-4 py-2.5 text-center text-[10px] font-semibold uppercase tracking-wider text-white/30">Faixa</th>
-                                <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-white/30">Mensalidade</th>
-                                <th className="px-4 py-2.5 text-center text-[10px] font-semibold uppercase tracking-wider text-white/30">Evolução</th>
+                                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/30">Mês</th>
+                                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white/30">Faturamento do mês</th>
+                                <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-white/30">Faixa</th>
+                                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white/30">Mensalidade</th>
+                                <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-white/30">Evolução</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -575,13 +594,13 @@ function ProgressaoModal({ empresa, onClose }) {
                                         <td className="px-4 py-2.5 text-white/70 capitalize whitespace-nowrap">
                                             {fmtMes(p.mes)}
                                             {isLast && (
-                                                <span className="ml-1.5 text-[10px] text-ecf-yellow/70 font-semibold">atual</span>
+                                                <span className="ml-1.5 text-[11px] text-ecf-yellow/70 font-semibold">atual</span>
                                             )}
                                         </td>
                                         <td className="px-4 py-2.5 text-right text-white/45 font-mono">{fmtBRL(p.mensal)}</td>
                                         <td className="px-4 py-2.5 text-center">
                                             <span className={cn(
-                                                'text-[11px] font-semibold px-2 py-0.5 rounded-full',
+                                                'text-[12px] font-semibold px-2 py-0.5 rounded-full',
                                                 isLast
                                                     ? 'bg-ecf-yellow/20 text-ecf-yellow'
                                                     : 'bg-white/[0.05] text-white/50'
@@ -608,7 +627,7 @@ function ProgressaoModal({ empresa, onClose }) {
                 <div className="px-5 py-3 border-t border-white/[0.06] shrink-0 flex justify-end">
                     <button
                         onClick={onClose}
-                        className="text-[13px] text-white/40 hover:text-white/70 h-8 px-4 rounded-lg border border-white/[0.08] hover:border-white/20 transition-colors"
+                        className="text-[14px] text-white/40 hover:text-white/70 h-8 px-4 rounded-lg border border-white/[0.08] hover:border-white/20 transition-colors"
                     >
                         Fechar
                     </button>
@@ -627,7 +646,7 @@ function ProgressaoModal({ empresa, onClose }) {
 // por teste (Phase137CompetenciaUiTest) — a forma abreviada é proibida.
 function CabecalhoColunas() {
     return (
-        <div className="hidden min-[820px]:grid min-[820px]:grid-cols-[minmax(0,1.5fr)_1fr_1.3fr_0.9fr_28px] gap-5 px-5 text-[11px] font-semibold uppercase tracking-[0.06em] text-white/30">
+        <div className="hidden min-[820px]:grid min-[820px]:grid-cols-[minmax(0,1.5fr)_1fr_1.3fr_0.9fr_28px] gap-5 px-5 text-[12px] font-semibold uppercase tracking-[0.06em] text-white/30">
             <span>Empresa</span>
             <span>Faturamento do mês</span>
             <span>Faixa aplicada</span>
@@ -646,10 +665,10 @@ function ColunaFaturamento({ empresa }) {
         return <AusenciaFaturamentoBadge />;
     }
     if (empresa.estado === 'sem_integracao') {
-        return <span className="text-white/30 text-[15px]">sem dados</span>;
+        return <span className="text-white/30 text-[16px]">sem dados</span>;
     }
     return (
-        <span className="font-mono tabular-nums text-[15px] text-white/75">
+        <span className="font-mono tabular-nums text-[16px] text-white/75">
             {fmtBRL(empresa.faturamento)}
         </span>
     );
@@ -669,23 +688,23 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
             {/* Empresa */}
             <div className="min-w-0 flex items-start justify-between gap-3 min-[820px]:block">
                 <div className="min-w-0">
-                    <p className="text-white text-[16px] font-semibold tracking-[-0.01em] truncate">{empresa.name}</p>
+                    <p className="text-white text-[17px] font-semibold tracking-[-0.01em] truncate">{empresa.name}</p>
                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                         <ServiceBadge servicos_contratados={empresa.servicos_contratados} />
                         {empresa.subiu_de_faixa && (
-                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-ecf-yellow/15 text-ecf-yellow">
+                            <span className="text-[12px] font-semibold px-2 py-0.5 rounded-md bg-ecf-yellow/15 text-ecf-yellow">
                                 ↑ subiu de faixa
                             </span>
                         )}
-                        {!empresa.has_adman && <IntegrationBadge />}
+                        {empresa.estado === 'sem_integracao' && <IntegrationBadge />}
                         {empresa.tabela_confirmada === false && <TabelaPresumidaBadge />}
                         {empresa.filhas?.length > 0 && (
-                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20">
+                            <span className="text-[12px] font-semibold px-2 py-0.5 rounded-md bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20">
                                 Grupo · {empresa.filhas.length + 1}
                             </span>
                         )}
                         {empresa.is_filha && (
-                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-white/[0.05] text-white/40 border border-white/[0.08]">
+                            <span className="text-[12px] font-semibold px-2 py-0.5 rounded-md bg-white/[0.05] text-white/40 border border-white/[0.08]">
                                 Vinculada · {empresa.nome_pai}
                             </span>
                         )}
@@ -726,10 +745,10 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
                         coluna da faixa (A DEFINIR / sem dados). Nunca ler a chave
                         de grupo com sufixo "_grupo" — o backend não a emite. */}
                     {empresa.cobranca_mensal != null && (
-                        <span className={cn('font-mono tabular-nums text-[18px] font-bold text-right whitespace-nowrap',
+                        <span className={cn('font-mono tabular-nums text-[20px] font-bold text-right whitespace-nowrap',
                             empresa.is_filha ? 'text-white/25' : 'text-emerald-400')}>
                             {fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}
-                            <span className="text-white/30 font-normal text-[11px] ml-1">/mês</span>
+                            <span className="text-white/30 font-normal text-[12px] ml-1">/mês</span>
                         </span>
                     )}
                 </div>
@@ -754,25 +773,25 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Briefcase size={14} className="text-ecf-yellow/70" />
-                    <h4 className="text-white/80 text-[13px] font-semibold">Serviços contratados</h4>
-                    <span className="text-white/30 text-[11px]">
+                    <h4 className="text-white/80 text-[14px] font-semibold">Serviços contratados</h4>
+                    <span className="text-white/30 text-[12px]">
                         {contratos.length} {contratos.length === 1 ? 'contrato' : 'contratos'}
                     </span>
                 </div>
                 <button
                     type="button"
                     onClick={() => onAdicionar(empresa)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] rounded-md bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow border border-ecf-yellow/20 transition-colors"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[13px] rounded-md bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow border border-ecf-yellow/20 transition-colors"
                 >
                     <Plus size={12} /> Adicionar contrato
                 </button>
             </div>
 
             {contratos.length === 0 ? (
-                <p className="text-white/40 text-[12px] py-2">Nenhum contrato ativo para esta empresa.</p>
+                <p className="text-white/40 text-[13px] py-2">Nenhum contrato ativo para esta empresa.</p>
             ) : (
                 <div className="overflow-x-auto rounded-lg border border-white/[0.06]">
-                    <table className="w-full text-[12px]">
+                    <table className="w-full text-[13px]">
                         <thead>
                             <tr className="text-white/30 border-b border-white/[0.06] bg-white/[0.02]">
                                 <th className="text-left py-2 px-3 font-semibold">Serviço</th>
@@ -793,12 +812,12 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
                                     <td className="py-2 px-3 text-right font-mono tabular-nums">
                                         {c.valor_contratado > 0
                                             ? formatCurrency(c.valor_contratado)
-                                            : <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold border uppercase tracking-wide bg-white/[0.05] text-white/50 border-white/10">Escala</span>
+                                            : <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold border uppercase tracking-wide bg-white/[0.05] text-white/50 border-white/10">Escala</span>
                                         }
                                     </td>
                                     <td className="py-2 px-3 text-center">
                                         <span className={cn(
-                                            'px-1.5 py-0.5 rounded text-[10px] font-semibold border uppercase tracking-wide',
+                                            'px-1.5 py-0.5 rounded text-[11px] font-semibold border uppercase tracking-wide',
                                             c.tipo_cobranca === 'mensal'
                                                 ? 'bg-ecf-yellow/10 text-ecf-yellow border-ecf-yellow/20'
                                                 : 'bg-white/10 text-white/60 border-white/15',
@@ -911,11 +930,11 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
             <div className="px-[22px] pt-1 pb-6 flex flex-col gap-5">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="bg-black/30 border border-white/[0.06] rounded-xl px-[18px] py-4 flex flex-col gap-1.5">
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-white/30">1 · Faturou no mês</span>
+                        <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-white/30">1 · Faturou no mês</span>
                         {empresa.faturamento == null ? (
                             <AusenciaFaturamentoBadge />
                         ) : (
-                            <span className="text-[22px] font-semibold font-mono tabular-nums text-white">{fmtBRL(empresa.faturamento)}</span>
+                            <span className="text-[24px] font-semibold font-mono tabular-nums text-white">{fmtBRL(empresa.faturamento)}</span>
                         )}
                         <FaturamentoCombinadoBreakdown
                             faturamentoMl={empresa.faturamento_ml}
@@ -928,10 +947,10 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                         <AusenciaTabelaPendencia variant="full" href={`#tabela-faixas-${empresa.id}`} />
                     ) : (
                         <div className="bg-black/30 border border-white/[0.06] rounded-xl px-[18px] py-4 flex flex-col gap-1.5">
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-white/30">2 · Faixa do contrato</span>
-                            <span className="text-[22px] font-semibold font-mono text-white">{faixaNome(empresa.faixa_label ?? empresa.faixa)}</span>
+                            <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-white/30">2 · Faixa do contrato</span>
+                            <span className="text-[24px] font-semibold font-mono text-white">{faixaNome(empresa.faixa_label ?? empresa.faixa)}</span>
                             {intervaloFaixa && (
-                                <span className="text-[12px] text-white/40">{intervaloFaixa}</span>
+                                <span className="text-[13px] text-white/40">{intervaloFaixa}</span>
                             )}
                             {/* Quick 260904-kwz — discreto, nunca alarmante: a
                                 tabela do serviço foi presumida, não confirmada
@@ -941,7 +960,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                             {empresa.tabela_confirmada === false && (
                                 <a
                                     href={`#tabela-faixas-${empresa.id}`}
-                                    className="mt-1 text-[11px] text-white/40 hover:text-white/70 underline underline-offset-2 w-fit"
+                                    className="mt-1 text-[12px] text-white/40 hover:text-white/70 underline underline-offset-2 w-fit"
                                 >
                                     Tabela presumida a partir do serviço contratado — cadastrar a tabela real
                                 </a>
@@ -950,12 +969,12 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                     )}
 
                     <div className="bg-emerald-500/[0.07] border border-emerald-400/30 rounded-xl px-[18px] py-4 flex flex-col gap-1.5">
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-emerald-400">3 · Mensalidade a cobrar</span>
-                        <span className="text-[22px] font-bold font-mono text-emerald-400">
+                        <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-emerald-400">3 · Mensalidade a cobrar</span>
+                        <span className="text-[24px] font-bold font-mono text-emerald-400">
                             {empresa.cobranca_mensal != null ? fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso) : '—'}
                         </span>
                         {subLinha3 && (
-                            <span className="text-[12px] text-white/40">{subLinha3}</span>
+                            <span className="text-[13px] text-white/40">{subLinha3}</span>
                         )}
                     </div>
                 </div>
@@ -967,35 +986,35 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                         <GrupoServicosDivergentesBanner empresa={empresa} />
                         <div className="rounded-lg border border-white/[0.06] overflow-hidden">
                             <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04]">
-                                <span className="text-[11px] uppercase tracking-wider text-white/40">Composição do grupo</span>
+                                <span className="text-[12px] uppercase tracking-wider text-white/40">Composição do grupo</span>
                             </div>
                             {[empresa, ...empresa.filhas].map((e, i) => (
                                 <div key={e.id} className={cn('flex items-center justify-between px-3 py-2', i > 0 && 'border-t border-white/[0.03]')}>
-                                    <span className="text-white/60 text-[12px]">
+                                    <span className="text-white/60 text-[13px]">
                                         {i === 0 ? `${e.name} (este)` : `↳ ${e.name}`}
                                         {e.tabela_origem && (
-                                            <span className="text-white/30 text-[11px] ml-1.5">
+                                            <span className="text-white/30 text-[12px] ml-1.5">
                                                 ({e.tabela_origem === 'grupo'
                                                     ? 'tabela do grupo'
                                                     : (e.tabela_origem === 'propria' ? 'tabela própria' : (e.tabela_servico_nome ?? 'tabela do serviço'))})
                                             </span>
                                         )}
                                         {e.tabela_confirmada === false && (
-                                            <span className="text-white/25 text-[10px] ml-1">· presumida</span>
+                                            <span className="text-white/25 text-[11px] ml-1">· presumida</span>
                                         )}
                                     </span>
-                                    <span className="text-white/50 text-[12px] font-mono">
+                                    <span className="text-white/50 text-[13px] font-mono">
                                         {e.cobranca_mensal != null ? fmtValorFaixa(e.cobranca_mensal, e.valor_faixa_e_piso) : '—'}
                                     </span>
                                 </div>
                             ))}
                             <div className="flex items-center justify-between px-3 py-2 border-t border-white/[0.06] bg-white/[0.02]">
-                                <span className="text-[11px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
+                                <span className="text-[12px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
                                 {/* `empresa` aqui É a linha do grupo (tipo 'grupo') — o backend já
                                     grava o total do grupo no `cobranca_mensal` da própria linha-mãe
                                     (AdminController ~linha 801). A chave com sufixo "_grupo" nunca
                                     existiu separada (mesma prop fantasma que existia na FechamentoRow). */}
-                                <span className="text-emerald-400 text-[13px] font-bold font-mono">{fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}</span>
+                                <span className="text-emerald-400 text-[14px] font-bold font-mono">{fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}</span>
                             </div>
                         </div>
                     </>
@@ -1023,7 +1042,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                     {(empresa.progressao?.length > 0) && (
                         <button
                             onClick={() => setModalAberto(true)}
-                            className="inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-8 rounded-lg transition-colors"
+                            className="inline-flex items-center gap-1.5 text-[13px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-8 rounded-lg transition-colors"
                         >
                             <BarChart2 size={12} />
                             Ver progressão
@@ -1034,7 +1053,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                             href={route('admin.financeiro.relatorio', { company: empresa.id, mes: mesSelecionado })}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-8 rounded-lg transition-colors"
+                            className="inline-flex items-center gap-1.5 text-[13px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-8 rounded-lg transition-colors"
                         >
                             <FileText size={13} />
                             Gerar relatório PDF
@@ -1080,15 +1099,15 @@ function FechamentoList({ empresas, totalGeral, mesSelecionado, faixasPorServico
         return (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <Building2 size={24} className="text-white/20" />
-                <p className="text-[13px] font-semibold text-white/40">Nenhuma empresa ativa encontrada.</p>
-                <p className="text-[12px] text-white/25">Cadastre uma empresa com status ativo para que ela apareça aqui.</p>
+                <p className="text-[14px] font-semibold text-white/40">Nenhuma empresa ativa encontrada.</p>
+                <p className="text-[13px] text-white/25">Cadastre uma empresa com status ativo para que ela apareça aqui.</p>
             </div>
         );
     }
 
     if (empresas.length === 0) {
         return (
-            <div className="p-12 text-center text-[14px] text-white/30 border border-dashed border-white/[0.08] rounded-[14px]">
+            <div className="p-12 text-center text-[15px] text-white/30 border border-dashed border-white/[0.08] rounded-[14px]">
                 Nenhuma empresa encontrada com esses filtros.
             </div>
         );
@@ -1152,7 +1171,7 @@ function MesSeletor({ mesSelecionado }) {
         <select
             value={mesSelecionado}
             onChange={handleChange}
-            className="pl-3.5 pr-8 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] text-[14px] text-white/75 hover:bg-white/[0.06] hover:text-white focus:outline-none focus:border-ecf-yellow/40 transition-colors shrink-0"
+            className="pl-3.5 pr-8 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] text-[15px] text-white/75 hover:bg-white/[0.06] hover:text-white focus:outline-none focus:border-ecf-yellow/40 transition-colors shrink-0"
         >
             {meses.map(m => (
                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -1188,7 +1207,7 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
         <div className="relative">
             <button
                 onClick={() => setAberto(v => !v)}
-                className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-[14px] text-white/75 hover:text-white transition-colors"
+                className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-[15px] text-white/75 hover:text-white transition-colors"
             >
                 <Printer size={14} />
                 Gerar relatórios
@@ -1201,7 +1220,7 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
                     <div className="absolute right-0 top-full mt-1.5 w-60 rounded-xl border border-white/[0.08] bg-ecf-card shadow-xl z-20 overflow-hidden">
                         {/* Seção: Gerar PDF */}
                         <div className="px-3 py-2 border-b border-white/[0.04]">
-                            <p className="text-[10px] uppercase tracking-widest text-white/30 font-semibold">Gerar PDF para financeiro</p>
+                            <p className="text-[11px] uppercase tracking-widest text-white/30 font-semibold">Gerar PDF para financeiro</p>
                         </div>
                         <a
                             href={urlGeral()}
@@ -1210,13 +1229,13 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
                             onClick={() => setAberto(false)}
                             className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.04] transition-colors"
                         >
-                            <span className="text-[13px] text-white/70">Todas as empresas</span>
-                            <span className="text-[11px] text-white/30 font-mono">{totalPrincipais}</span>
+                            <span className="text-[14px] text-white/70">Todas as empresas</span>
+                            <span className="text-[12px] text-white/30 font-mono">{totalPrincipais}</span>
                         </a>
 
                         {/* Divisor — seção de envio por email */}
                         <div className="px-3 py-2 border-t border-white/[0.04]">
-                            <p className="text-[10px] uppercase tracking-widest text-white/30 font-semibold">Enviar por email</p>
+                            <p className="text-[11px] uppercase tracking-widest text-white/30 font-semibold">Enviar por email</p>
                         </div>
 
                         {/* Botão de envio — não fecha o dropdown para mostrar feedback */}
@@ -1227,14 +1246,14 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
                             className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-white/[0.04] transition-colors text-left disabled:opacity-60 disabled:cursor-wait"
                         >
                             <Send size={13} className="text-white/50 shrink-0" />
-                            <span className="text-[13px] text-white/70">
+                            <span className="text-[14px] text-white/70">
                                 {enviando ? 'Enviando...' : 'Enviar relatório geral'}
                             </span>
                         </button>
 
                         {/* Mensagem de feedback do envio */}
                         {feedback && (
-                            <div className={cn('px-3 py-1.5 text-[12px]', feedback.tipo === 'success' ? 'text-emerald-400' : 'text-red-400')}>
+                            <div className={cn('px-3 py-1.5 text-[13px]', feedback.tipo === 'success' ? 'text-emerald-400' : 'text-red-400')}>
                                 {feedback.msg}
                             </div>
                         )}
@@ -1243,7 +1262,7 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
                         <Link
                             href={route('admin.configuracoes.financeiro')}
                             onClick={() => setAberto(false)}
-                            className="flex items-center gap-2 px-3 py-2.5 hover:bg-white/[0.04] transition-colors text-[13px] text-white/60 border-t border-white/[0.04]"
+                            className="flex items-center gap-2 px-3 py-2.5 hover:bg-white/[0.04] transition-colors text-[14px] text-white/60 border-t border-white/[0.04]"
                         >
                             <Settings size={13} className="text-white/40 shrink-0" />
                             Configurar destinatários
@@ -1282,7 +1301,7 @@ function SyncFaturamentoBtn({ mesSelecionado, competenciaFechada = false }) {
                 ? 'Este mês está fechado — sincronizar não altera os valores já congelados.'
                 : 'Sincronizar faturamento bruto do mês via Adman'}
             className={cn(
-                'inline-flex items-center gap-2 px-3.5 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] text-[14px] text-white/75 transition-colors disabled:cursor-not-allowed',
+                'inline-flex items-center gap-2 px-3.5 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] text-[15px] text-white/75 transition-colors disabled:cursor-not-allowed',
                 competenciaFechada ? 'opacity-40' : 'hover:bg-white/[0.06] hover:text-white disabled:opacity-40 disabled:cursor-wait'
             )}
         >
@@ -1337,13 +1356,13 @@ function TotalAReceberCard({ totais }) {
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] px-6 py-6 flex flex-col gap-[18px]">
             <div>
                 <div className="flex items-center justify-between gap-3">
-                    <span className="text-white/40 text-[13px]">Total a receber neste fechamento</span>
-                    <span className="text-white/30 text-[12px] shrink-0 whitespace-nowrap">
+                    <span className="text-white/40 text-[14px]">Total a receber neste fechamento</span>
+                    <span className="text-white/30 text-[13px] shrink-0 whitespace-nowrap">
                         {empresas_com_cobranca} empresa{empresas_com_cobranca !== 1 ? 's' : ''} com cobrança
                     </span>
                 </div>
                 {empresas_sem_valor_definido > 0 && (
-                    <p className="text-amber-300 text-[12px] mt-1">
+                    <p className="text-amber-300 text-[13px] mt-1">
                         {empresas_sem_valor_definido} sem valor definido — não entram nesta soma
                     </p>
                 )}
@@ -1351,29 +1370,29 @@ function TotalAReceberCard({ totais }) {
 
             <div className="flex items-baseline gap-1.5 flex-wrap">
                 {total_e_piso && (
-                    <span className="text-white/40 text-[15px]">a partir de</span>
+                    <span className="text-white/40 text-[16px]">a partir de</span>
                 )}
-                <span className="text-emerald-400 text-[22px] font-medium font-mono">R$</span>
+                <span className="text-emerald-400 text-[24px] font-medium font-mono">R$</span>
                 <span className="text-emerald-400 text-[52px] font-bold font-mono tabular-nums tracking-[-0.03em] leading-none">
                     {numeroHero}
                 </span>
-                <span className="text-white/30 text-[15px]">/mês</span>
+                <span className="text-white/30 text-[16px]">/mês</span>
             </div>
 
             <div className="border-t border-white/[0.06] pt-4 flex flex-wrap gap-7">
                 <div>
-                    <p className="text-white/30 text-[12px] mb-1">Mês passado</p>
-                    <p className={cn('text-[16px] font-mono tabular-nums', mes_anterior_fechado ? 'text-white/75' : 'text-white/30 font-sans')}>
+                    <p className="text-white/30 text-[13px] mb-1">Mês passado</p>
+                    <p className={cn('text-[17px] font-mono tabular-nums', mes_anterior_fechado ? 'text-white/75' : 'text-white/30 font-sans')}>
                         {mesPassadoTexto}
                     </p>
                 </div>
                 <div>
-                    <p className="text-white/30 text-[12px] mb-1">Variação</p>
+                    <p className="text-white/30 text-[13px] mb-1">Variação</p>
                     {variacao == null ? (
-                        <p className="text-white/30 text-[16px]">{mesPassadoTexto}</p>
+                        <p className="text-white/30 text-[17px]">{mesPassadoTexto}</p>
                     ) : (
                         <p className={cn(
-                            'text-[16px] font-mono tabular-nums',
+                            'text-[17px] font-mono tabular-nums',
                             variacao > 0 ? 'text-emerald-400' : variacao < 0 ? 'text-red-400' : 'text-white/60',
                         )}>
                             {variacao > 0 ? '+' : variacao < 0 ? '−' : ''}{fmtBRL(Math.abs(variacao))}
@@ -1381,8 +1400,8 @@ function TotalAReceberCard({ totais }) {
                     )}
                 </div>
                 <div>
-                    <p className="text-white/30 text-[12px] mb-1">Faturamento gerado</p>
-                    <p className={cn('text-[16px] font-mono tabular-nums', faturamento_gerado == null ? 'text-white/30 font-sans' : 'text-white/75')}>
+                    <p className="text-white/30 text-[13px] mb-1">Faturamento gerado</p>
+                    <p className={cn('text-[17px] font-mono tabular-nums', faturamento_gerado == null ? 'text-white/30 font-sans' : 'text-white/75')}>
                         {faturamento_gerado == null ? 'sem faturamento apurado neste mês' : fmtBRL(faturamento_gerado)}
                     </p>
                 </div>
@@ -1410,8 +1429,8 @@ function SubiramDeFaixaCard({ totais, companies, onFocarEmpresa }) {
     return (
         <div className="rounded-2xl border border-ecf-yellow/35 bg-gradient-to-b from-ecf-yellow/10 to-ecf-yellow/[0.02] px-6 py-6 flex flex-col gap-4">
             <div className="flex items-center justify-between gap-3">
-                <span className="text-ecf-yellow text-[13px] font-semibold">Subiram de faixa este mês</span>
-                <span className="text-white/40 text-[12px] font-mono shrink-0 whitespace-nowrap">
+                <span className="text-ecf-yellow text-[14px] font-semibold">Subiram de faixa este mês</span>
+                <span className="text-white/40 text-[13px] font-mono shrink-0 whitespace-nowrap">
                     {upgrades_ganho_parcial ? 'no mínimo ' : ''}+{fmtBRL(upgrades_ganho_total)}/mês
                 </span>
             </div>
@@ -1420,11 +1439,11 @@ function SubiramDeFaixaCard({ totais, companies, onFocarEmpresa }) {
                 <span className="text-white text-[52px] font-bold font-mono tabular-nums leading-none">
                     {upgrades_quantidade}
                 </span>
-                <span className="text-white/40 text-[15px]">empresa{upgrades_quantidade === 1 ? '' : 's'}</span>
+                <span className="text-white/40 text-[16px]">empresa{upgrades_quantidade === 1 ? '' : 's'}</span>
             </div>
 
             {upgrades_quantidade === 0 ? (
-                <p className="text-white/40 text-[13px]">Nenhuma empresa mudou de faixa neste mês.</p>
+                <p className="text-white/40 text-[14px]">Nenhuma empresa mudou de faixa neste mês.</p>
             ) : (
                 <div className="flex flex-col gap-2">
                     {empresasQueSubiram.map(c => (
@@ -1434,8 +1453,8 @@ function SubiramDeFaixaCard({ totais, companies, onFocarEmpresa }) {
                             onClick={() => onFocarEmpresa(c.id)}
                             className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-[9px] border border-ecf-yellow/20 bg-black/40 text-left hover:border-ecf-yellow/50 hover:bg-black/70 transition-colors"
                         >
-                            <span className="text-white text-[13px] font-medium truncate">{c.name}</span>
-                            <span className="text-ecf-yellow text-[12px] font-mono shrink-0">
+                            <span className="text-white text-[14px] font-medium truncate">{c.name}</span>
+                            <span className="text-ecf-yellow text-[13px] font-mono shrink-0">
                                 {c.faixa_ordem_anterior != null
                                     ? `Faixa ${c.faixa_ordem_anterior} → ${c.faixa_ordem}`
                                     : `subiu para a faixa ${c.faixa_ordem}`}
@@ -1459,13 +1478,13 @@ function TabelaPresumidaAviso({ quantidade, onVerQuais }) {
 
     return (
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-white/50 text-[13px]">
+            <p className="text-white/50 text-[14px]">
                 {quantidade} {quantidade === 1 ? 'empresa está' : 'empresas estão'} com a tabela de faixas presumida a partir do serviço contratado — sem confirmação por contrato assinado ou cadastro manual.
             </p>
             <button
                 type="button"
                 onClick={onVerQuais}
-                className="text-[12px] font-semibold text-white/70 hover:text-white border border-white/15 hover:border-white/30 px-3 h-8 rounded-lg transition-colors shrink-0 whitespace-nowrap"
+                className="text-[13px] font-semibold text-white/70 hover:text-white border border-white/15 hover:border-white/30 px-3 h-8 rounded-lg transition-colors shrink-0 whitespace-nowrap"
             >
                 Ver quais
             </button>
@@ -1474,7 +1493,7 @@ function TabelaPresumidaAviso({ quantidade, onVerQuais }) {
 }
 
 function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLimpar, total, filtrado, servicosNomes }) {
-    const sel = 'h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/60 focus:outline-none focus:border-ecf-yellow/40';
+    const sel = 'h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/60 focus:outline-none focus:border-ecf-yellow/40';
     const ativo = filtroChip !== 'todos' || filtros.busca !== '' || filtros.servico_nome !== '';
 
     return (
@@ -1486,7 +1505,7 @@ function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLim
                         type="button"
                         onClick={() => onChangeChip(chip.key)}
                         className={cn(
-                            'px-3.5 py-2 rounded-full text-[13px] font-medium border transition-colors',
+                            'px-3.5 py-2 rounded-full text-[14px] font-medium border transition-colors',
                             filtroChip === chip.key
                                 ? 'bg-ecf-yellow border-ecf-yellow text-black'
                                 : 'bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white/80',
@@ -1511,13 +1530,13 @@ function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLim
                     <button
                         type="button"
                         onClick={onLimpar}
-                        className="h-8 px-2.5 rounded-lg text-[12px] text-white/40 hover:text-white/70 border border-white/[0.06] hover:border-white/20 transition-colors"
+                        className="h-8 px-2.5 rounded-lg text-[13px] text-white/40 hover:text-white/70 border border-white/[0.06] hover:border-white/20 transition-colors"
                     >
                         Limpar
                     </button>
                 )}
                 {ativo && (
-                    <span className="text-white/30 text-[12px] whitespace-nowrap">
+                    <span className="text-white/30 text-[13px] whitespace-nowrap">
                         {filtrado} de {total}
                     </span>
                 )}
@@ -1526,14 +1545,14 @@ function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLim
                     value={filtros.busca}
                     onChange={e => onChangeFiltros({ ...filtros, busca: e.target.value })}
                     placeholder="Buscar empresa"
-                    className="w-[280px] px-3.5 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] text-[14px] text-white placeholder:text-white/30 focus:outline-none focus:border-ecf-yellow/40"
+                    className="w-[280px] px-3.5 py-2.5 rounded-[10px] border border-white/[0.08] bg-white/[0.03] text-[15px] text-white placeholder:text-white/30 focus:outline-none focus:border-ecf-yellow/40"
                 />
             </div>
         </div>
     );
 }
 
-export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, totais }) {
+export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, periodo = null, totais }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
     // Atalho do widget "Subiram de faixa este mês" (Fase 139): liga o chip
@@ -1698,12 +1717,12 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                     <div className="flex flex-wrap gap-5 items-end justify-between mb-1">
                         <div>
                             <div className="flex items-center gap-2.5 flex-wrap">
-                                <h1 className="text-white text-[30px] font-semibold tracking-[-0.02em] font-display capitalize">
+                                <h1 className="text-white text-[32px] font-semibold tracking-[-0.02em] font-display capitalize">
                                     Fechamento de {tituloDoMes(mes_selecionado)}
                                 </h1>
-                                <StatusCompetenciaBadge fechada={competencia_fechada} fechadaEm={competencia_fechada_em} />
+                                <StatusCompetenciaBadge fechada={competencia_fechada} fechadaEm={competencia_fechada_em} periodo={periodo} />
                             </div>
-                            <p className="text-white/40 text-[14px] mt-2">
+                            <p className="text-white/40 text-[15px] mt-2">
                                 Faturamento do mês, faixa aplicada e mensalidade a cobrar de cada empresa.{' '}
                                 {/* Disclaimer D-1 da Adman (Phase 16 SC-7): números de
                                     investimento/TACOS vêm da API Adman, que publica D-1. */}
@@ -1780,7 +1799,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                                     value={contratoForm.servico_id}
                                     onChange={e => escolherServico(e.target.value)}
                                     required
-                                    className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none"
+                                    className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[14px] text-white focus:border-ecf-yellow/40 focus:outline-none"
                                 >
                                     <option value="">Selecionar...</option>
                                     {servicos_disponiveis.map(s => (
@@ -1789,7 +1808,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                                 </select>
                             )}
                             {contratoErrors.servico_id && (
-                                <p className="text-red-400 text-xs">{contratoErrors.servico_id}</p>
+                                <p className="text-red-400 text-[13px]">{contratoErrors.servico_id}</p>
                             )}
                         </div>
 
@@ -1813,7 +1832,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                                             }))}
                                             className="accent-ecf-yellow"
                                         />
-                                        <span className="text-[13px] text-white/75">{label}</span>
+                                        <span className="text-[14px] text-white/75">{label}</span>
                                     </label>
                                 ))}
                             </div>
@@ -1832,7 +1851,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                                     placeholder="0,00"
                                 />
                                 {contratoErrors.valor_contratado && (
-                                    <p className="text-red-400 text-xs">{contratoErrors.valor_contratado}</p>
+                                    <p className="text-red-400 text-[13px]">{contratoErrors.valor_contratado}</p>
                                 )}
                             </div>
                         )}
@@ -1847,7 +1866,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                                     required
                                 />
                                 {contratoErrors.data_contratacao && (
-                                    <p className="text-red-400 text-xs">{contratoErrors.data_contratacao}</p>
+                                    <p className="text-red-400 text-[13px]">{contratoErrors.data_contratacao}</p>
                                 )}
                             </div>
                             <div className="space-y-1.5">
@@ -1857,9 +1876,9 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                                     value={contratoForm.data_vencimento || ''}
                                     onChange={e => setContratoForm(prev => ({ ...prev, data_vencimento: e.target.value }))}
                                 />
-                                <p className="text-white/30 text-[11px]">Em branco = sem fim.</p>
+                                <p className="text-white/30 text-[12px]">Em branco = sem fim.</p>
                                 {contratoErrors.data_vencimento && (
-                                    <p className="text-red-400 text-xs">{contratoErrors.data_vencimento}</p>
+                                    <p className="text-red-400 text-[13px]">{contratoErrors.data_vencimento}</p>
                                 )}
                             </div>
                         </div>
@@ -1873,7 +1892,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                                 placeholder="Detalhes do contrato (opcional)"
                             />
                             {contratoErrors.observacoes && (
-                                <p className="text-red-400 text-xs">{contratoErrors.observacoes}</p>
+                                <p className="text-red-400 text-[13px]">{contratoErrors.observacoes}</p>
                             )}
                         </div>
 
@@ -1886,7 +1905,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                                     onChange={e => setContratoForm(prev => ({ ...prev, ativo: e.target.checked }))}
                                     className="h-4 w-4 rounded border-white/20 bg-white/5 accent-ecf-yellow"
                                 />
-                                <Label htmlFor="contrato-ativo-financeiro" className="cursor-pointer text-sm text-white/80">
+                                <Label htmlFor="contrato-ativo-financeiro" className="cursor-pointer text-[15px] text-white/80">
                                     Contrato ativo
                                 </Label>
                             </div>

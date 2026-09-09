@@ -121,15 +121,15 @@ function FaixaFormDialog({ open, title, aviso, faixasIniciais, onClose, onSalvar
                 <DialogHeader>
                     <DialogTitle>{title}</DialogTitle>
                 </DialogHeader>
-                {aviso && <p className="text-white/40 text-[11px] -mt-2">{aviso}</p>}
-                {erro && <p className="text-red-400 text-[11px]">{erro}</p>}
+                {aviso && <p className="text-white/40 text-[12px] -mt-2">{aviso}</p>}
+                {erro && <p className="text-red-400 text-[12px]">{erro}</p>}
 
                 <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
                     {linhas.map((linha, idx) => (
                         <div key={idx} className="border-b border-white/[0.06] pb-3 space-y-2 last:border-0">
                             <div className="grid grid-cols-[64px_1fr_1fr_auto] gap-2 items-end">
                                 <div className="space-y-1">
-                                    <Label className="text-[11px]">Ordem</Label>
+                                    <Label className="text-[12px]">Ordem</Label>
                                     <Input
                                         type="number"
                                         min="1"
@@ -138,7 +138,7 @@ function FaixaFormDialog({ open, title, aviso, faixasIniciais, onClose, onSalvar
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-[11px]">Faturamento até</Label>
+                                    <Label className="text-[12px]">Faturamento até</Label>
                                     <Input
                                         type="number"
                                         min="0"
@@ -149,7 +149,7 @@ function FaixaFormDialog({ open, title, aviso, faixasIniciais, onClose, onSalvar
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-[11px]">Valor da mensalidade</Label>
+                                    <Label className="text-[12px]">Valor da mensalidade</Label>
                                     <Input
                                         type="number"
                                         min="0"
@@ -175,7 +175,7 @@ function FaixaFormDialog({ open, title, aviso, faixasIniciais, onClose, onSalvar
                                         onChange={e => atualizarLinha(idx, 'valor_e_piso', e.target.checked)}
                                         className="h-4 w-4 rounded border-white/20 bg-white/5 accent-ecf-yellow"
                                     />
-                                    <span className="text-[11px] text-white/60">Valor é um piso (&quot;a partir de&quot;)</span>
+                                    <span className="text-[12px] text-white/60">Valor é um piso (&quot;a partir de&quot;)</span>
                                 </label>
                             )}
                         </div>
@@ -185,7 +185,7 @@ function FaixaFormDialog({ open, title, aviso, faixasIniciais, onClose, onSalvar
                 <button
                     type="button"
                     onClick={adicionarLinha}
-                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-ecf-yellow bg-ecf-yellow/10 hover:bg-ecf-yellow/20 border border-ecf-yellow/20 px-3 h-7 rounded-lg transition-colors w-fit"
+                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ecf-yellow bg-ecf-yellow/10 hover:bg-ecf-yellow/20 border border-ecf-yellow/20 px-3 h-7 rounded-lg transition-colors w-fit"
                 >
                     <Plus size={12} /> Adicionar faixa
                 </button>
@@ -215,7 +215,7 @@ function TabelaProgressivaFaixas({ faixas, faixaOrdemAtual }) {
 
     return (
         <div className="rounded-xl border border-white/[0.06] overflow-hidden">
-            <div className={cn(colunas, 'px-[18px] py-2.5 bg-ecf-card-2 text-white/40 text-[11px] font-semibold uppercase tracking-[0.05em]')}>
+            <div className={cn(colunas, 'px-[18px] py-2.5 bg-ecf-card-2 text-white/40 text-[12px] font-semibold uppercase tracking-[0.05em]')}>
                 <span>Faixa</span>
                 <span>Faturamento até</span>
                 <span className="text-right">Mensalidade</span>
@@ -227,7 +227,7 @@ function TabelaProgressivaFaixas({ faixas, faixaOrdemAtual }) {
                         key={f.ordem}
                         className={cn(
                             colunas,
-                            'items-center px-[18px] py-3 font-mono text-[13px]',
+                            'items-center px-[18px] py-3 font-mono text-[14px]',
                             i > 0 && 'border-t border-white/[0.03]',
                             atual && 'bg-ecf-yellow/10',
                         )}
@@ -334,10 +334,10 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
     }
 
     const bloqueado = !!competenciaFechada;
-    const btnNeutro = 'inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/70 bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 px-3 h-7 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+    const btnNeutro = 'inline-flex items-center gap-1.5 text-[12px] font-semibold text-white/70 bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 px-3 h-7 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
     // Accent reservado ao botão de cadastrar/editar tabela — item 5 da
     // lista fechada do Color Contract (UI-SPEC).
-    const btnAccent  = 'inline-flex items-center gap-1.5 text-[11px] font-semibold text-ecf-yellow bg-ecf-yellow/10 hover:bg-ecf-yellow/20 border border-ecf-yellow/20 px-3 h-7 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+    const btnAccent  = 'inline-flex items-center gap-1.5 text-[12px] font-semibold text-ecf-yellow bg-ecf-yellow/10 hover:bg-ecf-yellow/20 border border-ecf-yellow/20 px-3 h-7 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
 
     // Fase 139 Tarefa 2 — título do bloco no formato do handoff ("TABELA
     // PROGRESSIVA · <serviço/grupo>"), nomeando de onde a tabela vem quando
@@ -351,14 +351,14 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
         <div id={`tabela-faixas-${empresa.id}`} className="rounded-lg border border-white/[0.06] overflow-hidden">
             <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04] flex items-center gap-1.5">
                 <Table2 size={12} className="text-white/40 shrink-0" />
-                <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-white/40">
+                <span className="text-[13px] font-semibold uppercase tracking-[0.05em] text-white/40">
                     Tabela progressiva{nomeTabela ? ` · ${nomeTabela}` : ''}
                 </span>
             </div>
 
             <div className="p-3 space-y-3">
                 {bloqueado && (
-                    <p className="text-white/30 text-[11px] flex items-center gap-1.5">
+                    <p className="text-white/30 text-[12px] flex items-center gap-1.5">
                         <Lock size={11} className="shrink-0" />
                         Este mês está fechado — a tabela não pode ser alterada.
                     </p>
@@ -372,7 +372,7 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                     <div className="space-y-2 pb-3 border-b border-white/[0.06]">
                         {grupoAplicado ? (
                             <>
-                                <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20">
+                                <span className="inline-block text-[12px] font-semibold px-2 py-0.5 rounded-full bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20">
                                     Tabela deste grupo
                                 </span>
                                 <TabelaProgressivaFaixas faixas={grupoAplicado.faixas} faixaOrdemAtual={faixaOrdemAtual} />
@@ -387,12 +387,12 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                             </>
                         ) : (
                             <>
-                                <p className="text-white/60 text-[12px]">
+                                <p className="text-white/60 text-[13px]">
                                     {empresa.tabela_herdada_de_nome
                                         ? <>Este grupo está usando a tabela da empresa <span className="font-semibold text-white/80">{empresa.tabela_herdada_de_nome}</span>.</>
                                         : 'Este grupo está usando a tabela de uma das empresas dele.'}
                                 </p>
-                                <p className="text-white/30 text-[11px]">
+                                <p className="text-white/30 text-[12px]">
                                     Quem manda é a empresa do grupo que mais faturou no mês — se outra empresa passar
                                     na frente, a tabela muda junto.
                                 </p>
@@ -407,7 +407,7 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                 {/* Estado 1 — herda a tabela do serviço */}
                 {empresa.tabela_origem === 'servico' && (
                     <div className="space-y-2">
-                        <p className="text-white/70 text-[13px] font-semibold">
+                        <p className="text-white/70 text-[14px] font-semibold">
                             Tabela do serviço {empresa.tabela_servico_nome}
                         </p>
 
@@ -426,7 +426,7 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                             )}
                         </div>
                         {servicoAplicado && (
-                            <p className="text-white/30 text-[11px]">
+                            <p className="text-white/30 text-[12px]">
                                 Editar aqui afeta todas as empresas que usam a tabela de {servicoAplicado.nome}.
                             </p>
                         )}
@@ -436,10 +436,10 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                 {/* Estado 2 — exceção própria já cadastrada (D-13) */}
                 {empresa.tabela_origem === 'propria' && (
                     <div className="space-y-2">
-                        <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/[0.06] text-white/60 border border-white/10">
+                        <span className="inline-block text-[12px] font-semibold px-2 py-0.5 rounded-full bg-white/[0.06] text-white/60 border border-white/10">
                             Tabela própria desta empresa
                         </span>
-                        <p className="text-white/40 text-[11px]">
+                        <p className="text-white/40 text-[12px]">
                             Substitui completamente a tabela do serviço {servicoInferido ? `"${servicoInferido}"` : 'vinculado a este contrato'}.
                         </p>
                         <div className="flex flex-wrap gap-2">
@@ -456,8 +456,8 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                 {/* Estado 3 — nem exceção própria, nem serviço candidato com tabela */}
                 {!empresa.tabela_origem && (
                     <div className="space-y-2">
-                        <p className="text-amber-400 text-[13px] font-semibold">Tabela de faixas: A DEFINIR</p>
-                        <p className="text-white/40 text-[11px]">
+                        <p className="text-amber-400 text-[14px] font-semibold">Tabela de faixas: A DEFINIR</p>
+                        <p className="text-white/40 text-[12px]">
                             Cadastre a tabela de faturamento desta empresa para ela entrar no fechamento.
                         </p>
                         <button type="button" disabled={bloqueado} onClick={() => setDialog('criar-propria')} className={btnAccent}>
