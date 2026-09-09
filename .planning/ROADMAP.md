@@ -2199,7 +2199,7 @@ Plans:
 
 > 🔒 **D5 — nada aqui reconstrói assinatura.** O grupo Contrato **lê** o estado do envelope Clicksign entregue pelas Fases 126/127/129/132 (`ContratoClicksignService`, `ClicksignWebhookController`) e pela tela da Fase 131. Nenhum plano desta fase cria cliente HTTP de assinatura, webhook de contrato novo, ou lógica paralela de "contrato assinado" — só leitura do estado que já existe.
 
-> ⚠️ **Contagem em aberto — decidir explicitamente, não deduzir.** O §3 lista **12** atividades (4 de Contrato + 8 de Entrada, depois da fusão da D-02 da Fase 138); o §5 controla **9** com Pendente/Concluído, e é o §5 que trava o botão FINALIZAR (ADMIN-05). Qual das duas listas vale é decisão **desta** fase.
+> ✅ **Contagem FECHADA em 2026-09-09 — valem os 9 itens do §5** (D-01 do `139-CONTEXT.md`). Os 3 excluídos do §3 (`acompanhar a assinatura`, `gerar mensagem de boas-vindas`, `inserir todos os links necessários`) são passos intermediários que desembocam em item já controlado. Para serviço isento de contrato o checklist nasce com **6** itens — o grupo Contrato não existe (D-07), em vez de existir marcado "não aplicável" (proibido pela D-02).
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -2209,7 +2209,24 @@ Plans:
   4. O botão FINALIZAR ENTRADA ADMINISTRATIVA fica desabilitado enquanto qualquer item obrigatório está pendente ou o contrato não está assinado, e habilita no instante em que o último requisito é cumprido — nunca antes (ADMIN-05)
   5. Clicar em FINALIZAR ENTRADA ADMINISTRATIVA move a mesma empresa (mesmo `company_id`, nenhum cadastro novo) para a etapa "Aguardando Distribuição" e para o módulo do marketplace do contrato, resolvido por `company_marketplaces` (ADMIN-06, D4)
 
-**Plans:** TBD
+> ⚠️ **Correções do `139-CONTEXT.md` aos critérios 1 e 2 acima** (decisões travadas com o usuário em 2026-09-09; o texto original fica preservado, mas **quem verifica esta fase mede pelas correções**):
+> - Critério 1 — o grupo Contrato tem **3** itens, não 4, e o item "Contrato revisado" é **marcação manual com autoria** (D-06), exceção registrada junto ao ADMIN-02 em `REQUIREMENTS-v23.md` (D-19). "Contrato assinado" fecha por assinatura **ou** por `ContratoLiberacao` (D-16), e com 2+ envelopes manda o mais atrasado (D-18). As duas seções aparecem numa **ficha única** aberta pelas duas listagens (D-08/D-17), não em duas telas.
+> - Critério 2 — o nome é **Adman**, não ADMA, e o link é **fixo e igual para todas as empresas**, em `config('services.adman.register_url')`; o item 6 é manual (D-04). O "Grant da consultoria" é o **OAuth do Mercado Livre**, nada a ver com `SyncGrantsFromSftp`, e fecha somente quando o cliente **conectou** (`ml_tokens.status = active`), nunca quando o link foi gerado (D-05).
+> - Além dos ADMIN-01..06 — o progresso do checklist passa a **dirigir as etapas 2, 3 e 4** da máquina de estados da Fase 137, por `EtapaTransicaoService` (D-15). Sem isso o FINALIZAR nasceria morto, porque a etapa 5 só é alcançável a partir da 4.
+
+**Plans:** 10 plans em 9 waves
+
+Plans:
+- [ ] 139-01-PLAN.md — Baseline de testes 137/138, link fixo do Adman em `config/services.php`/`.env.example` (D-04) e registro das exceções ao ADMIN-02 em `REQUIREMENTS-v23.md` (D-19)
+- [ ] 139-02-PLAN.md — Migration `checklist_administrativo_itens` ancorada em `company_id` e model com autoria `withTrashed` (D-10/D-11)
+- [ ] 139-03-PLAN.md — Contrato de resolver, value object de 3 estados e catálogo fechado dos 9 itens, com montagem condicional do grupo Contrato (D-01/D-03/D-07)
+- [ ] 139-04-PLAN.md — Os 4 resolvers automáticos (itens 2, 3, 7 e 8), com a segunda fonte do item 3 (D-16) e a agregação de múltiplos envelopes (D-18)
+- [ ] 139-05-PLAN.md — `ChecklistAdministrativoService`: montagem, progresso com denominador do catálogo e marcação manual com autoria (D-07/D-10/D-11/D-13)
+- [ ] 139-06-PLAN.md — `FinalizarEntradaAdministrativaService`: régua pura da trava (ADMIN-05) e transição 4→5 com destino determinístico (ADMIN-06/D-12)
+- [ ] 139-07-PLAN.md — `ChecklistEtapaSincronizadorService`: o progresso dirige as etapas 2, 3 e 4, incluindo o salto 2→4 da empresa isenta (D-15)
+- [ ] 139-08-PLAN.md — Rota da ficha em OR (`admin.contratos,comercial.entrada`) e os 4 endpoints do checklist, com a seção Contrato gated por módulo (D-08/D-09/D-17)
+- [ ] 139-09-PLAN.md — UI: componentes do checklist, seção em `ContratoDetalhe.jsx`, ação "Abrir" em `Entrada.jsx` e `npm run build` (D-05 — copiar link, nunca abrir)
+- [ ] 139-10-PLAN.md — Regressão final contra a baseline e os dois checkpoints humanos de conferência visual
 
 ### Phase 140: Mensagem de boas-vindas generalizada (v23.0)
 
