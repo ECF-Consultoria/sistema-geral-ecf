@@ -68,3 +68,40 @@ Próximo passo sugerido, ainda **não autorizado**: comando que varre lacunas de
 numa janela e reenfileira `SyncAdmanCompanyJob(company, date)`, mais um alerta quando a
 competência tem cobertura incompleta. Backfill retroativo de agosto exigiria refazer o
 fechamento já congelado.
+
+## Correções de cadastro aplicadas em produção (2026-09-09, autorizadas caso a caso)
+
+Depois do deploy (feito por outra sessão às 10:43 BRT, que levou estes commits junto), a tela
+passou de 201 para **134 empresas**. Sobraram três linhas que pareciam escapar do filtro; nenhuma
+era defeito do filtro:
+
+- **Dev 02 Teste** — tem Polos **e** Publicação, Gestão e Gestão de ADS Shopee. A regra só tira
+  quem é exclusivamente Polos. Usuário optou por deixar como está.
+- **ALCOMERCIOEIMPORTACAO** (id 251) — nunca teve contrato de serviço no sistema, embora fature
+  ~R$ 170k/mês pelo ML desde maio e tenha consultor e estrategista atribuídos. Criado contrato
+  **#364 de Gestão com `valor_contratado = 0`** (a mensalidade vem da tabela progressiva; 88 dos
+  165 contratos de Gestão em produção seguem esse padrão). Cobrança resultante em setembro:
+  faixa 1, R$ 3.000.
+- **Interior Magazine** (id 370) — os contratos não estavam faltando: foram **desativados em
+  27/08/2026 às 22:18**, os dois no mesmo minuto (Gestão R$ 3.000 e Gestão de ADS Shopee
+  R$ 2.500), enquanto as três irmãs do grupo Utilar seguem com o par ativo. Reativados os
+  contratos #252 e #272 (update dos existentes, sem criar novos). Cobrança individual voltou a
+  R$ 8.500, idêntica a Utilarshop, Itadecor e Ita Prime — o padrão do grupo foi restaurado, não
+  uma anomalia nova.
+
+**`custId=Fuxicando` resolvido**: era o `ml_store_id` da Interior Magazine, preenchido com texto
+em vez de ID — a única empresa ativa com cust_id não numérico. Campo limpo (`null`). Era uma das
+fontes do erro 500 diário na API Adman; o faturamento dela é 100% Shopee, que não usa esse campo
+(a Shopee resolve por `shopeeToken`).
+
+⚠️ **Efeitos colaterais controlados.** `ContratoServico` tem dois observers: um gera contrato para
+assinatura na Clicksign (o interruptor de congelamento de emissão estava **desligado** em
+produção) e outro cria onboarding em rascunho. As escritas rodaram dentro de
+`ContratoServicoGatilhoObserver::semDisparo()` — correção retroativa de cadastro não é venda
+nova. Confirmado por reconsulta: **nenhum `ContratoAssinatura` criado** para 251 ou 370. Nasceu o
+onboarding **#28 em rascunho** para ALCOMERCIO (serviço Gestão), inofensivo mas removível se o
+time não quiser o ruído.
+
+⚠️ **Agosto não muda sozinho**: a competência está congelada. ALCOMERCIO segue como "sem tabela"
+no fechamento de agosto; para o contrato novo valer lá, seria preciso refazer o fechamento
+daquela competência — decisão não tomada.
