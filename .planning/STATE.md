@@ -549,7 +549,7 @@ regressão. 3 commits (`f2811636` tela+controller+rota, `5ed80d1e` job+mail+quat
 `bdbb6127` trava de teste). Last activity: 2026-09-04 — 139-07 executado (6/7 planos concluídos;
 139-06 segue pendente, fora da dependência deste plano — `depends_on: ["139-05"]`). Sem deploy.
 
-## Posição paralela — Fase 140 (Extrair tabelas progressivas do Clicksign) — EM EXECUÇÃO (2/5 planos, wave 1 completa)
+## Posição paralela — Fase 140 (Extrair tabelas progressivas do Clicksign) — EM EXECUÇÃO (140-04 concluído; 140-03 sem SUMMARY formal — ver nota abaixo)
 
 **Mesma disciplina dos blocos 135/136/137/138/139 acima:** Fase 140 fora de milestone, rodando em
 paralelo (140-02 executado por outra sessão na MESMA árvore, ao mesmo tempo que 140-01). `##
@@ -633,6 +633,40 @@ Phase140`: **402 testes / 1981 asserções / 0 falhas** (baseline do coordenador
 398/1974 — +4 testes/+7 asserções, sem regressão). Detalhe completo em
 `140-01-SUMMARY.md` § "Defeito encontrado em produção e correção". **Ainda não deployado por esta
 sessão** — falta o coordenador deployar `91397bf2` e repetir o ensaio real.
+
+⚠️ **140-03 não tem `140-03-SUMMARY.md` no repositório, mas a varredura completa que ele cobre já
+rodou de verdade em produção antes deste plano.** O checkpoint do 140-03 (que bloqueava o 140-04)
+foi respondido diretamente pelo usuário no prompt do 140-04, com os números MEDIDOS da rodada real
+completa contra os 85 contratos fechados, substituindo os números do `140-CONTEXT.md` original
+(que eram de uma amostra de 14): **49 tabelas lidas, 29 valor fixo, 4 indefinidos, 3 números
+ilegíveis, 0 casamentos com segurança**. Fica pendente para o coordenador reconciliar
+`140-03-SUMMARY.md` (ou registrar por que ele não existe) — não fiz isso aqui porque está fora do
+escopo do 140-04 e a tarefa já veio autorizada a prosseguir.
+
+140-04 concluído (TAB-07) — tabela `contrato_tabela_propostas` + model `ContratoTabelaProposta`
+(auditável, `LogsActivity` log `tabela_proposta`) + opção `--gravar` no comando
+`clicksign:extrair-tabelas`. Proposta ≠ cobrança confirmada: `company_id` é sempre o PALPITE de
+`EmpresaPalpiteService`, nunca uma empresa confirmada (D-05 — zero casamentos com segurança na
+rodada real); vira dado de cobrança só depois de confirmação humana no 140-05. Schema comporta os
+dois formatos medidos (29 valor fixo, `faixas` nulo; 49 tabela, `valor_fixo` nulo) e o caso de
+pagamento escalonado (`valor_fixo` nulo, valores no `motivo`, nunca uma média inventada) e o aviso
+de valor implausível (limite de R$15 bilhões — o parser nunca corrige, só sinaliza; guardado no
+`motivo` para conferência). `tipo_cobranca` (`string(16)`) normaliza `numeros_ilegiveis` do parser
+(17 caracteres, não caberia) e "arquivo não legível" para o mesmo valor `ilegivel`. `--gravar`
+grava/atualiza por `clicksign_envelope_id` (índice único `ctp_envelope_unq`) e NUNCA sobrescreve
+proposta já `confirmada`/`descartada` (T-140-14/T-140-15) — a rodada pode repetir sem duplicar nem
+apagar conferência humana. Escrita restrita a esta ÚNICA tabela: `empresa_faixas_faturamento`,
+`grupo_faixas_faturamento` e `companies` seguem intocadas, coberto por teste dedicado. Três
+armadilhas de MariaDB respeitadas (índices curtos nomeados à mão, `nullable()` antes de
+`constrained()->nullOnDelete()`, nenhuma coluna de tipo enumerado fechado). TDD: 2 tarefas, 4
+commits RED→GREEN (`a1c398d5`/`76c7f417` schema, `263bb07f`/`0da662c4` `--gravar`). Testes novos:
+`Phase140PropostaSchemaTest` (8) + `Phase140GravarPropostasTest` (6) = 14 testes / 61 asserções,
+`Http::fake()`/`Storage::fake()` (zero chamada real). Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: **444 testes / 2165 asserções / 0
+falhas** (era 430/2104 antes deste plano — +14 testes/+61 asserções, sem regressão; flaky
+pré-existente `Phase138AvisoMudancaFaixaTest` não tropeçou). Last activity: 2026-09-09 — 140-04
+executado (`140-04-SUMMARY.md`). Sem deploy — subagente sem acesso a produção, sem `.env`, sem
+chamada real à API (item de trava do próprio plano).
 
 ## Current Position
 

@@ -2272,7 +2272,7 @@ leitura ou instalar poppler.
 | TAB-04 | Distinguir contrato com tabela de contrato de valor fixo (D-03) — ✅ concluído em 140-02 (2026-09-08) |
 | TAB-05 | Palpite de empresa com grau de confiança honesto, sem falso positivo com cara de acerto (D-05) |
 | TAB-06 | Relatório conferível, fora do repositório (D-06) |
-| TAB-07 | Guardar o que foi lido, para conferir depois sem re-ler (D-06) |
+| TAB-07 | Guardar o que foi lido, para conferir depois sem re-ler (D-06) — ✅ concluído em 140-04 (2026-09-09) |
 | TAB-08 | Tela de conferência sem jargão e sem falsa certeza (D-06) |
 | TAB-09 | Escrita só depois de confirmação humana, gravando faixas + CNPJ + razão social (D-05, D-06) |
 
@@ -2282,9 +2282,9 @@ depois de o usuário aprovar a rodada real do relatório (checkpoint do 140-03).
 Plans:
 - [x] 140-01-PLAN.md — wave 1 — ler o acervo do Clicksign: listar envelopes, filtrar gestão de ADS, baixar o arquivo dentro dos 299s
 - [x] 140-02-PLAN.md — wave 1 — ler o texto do contrato (PDF e ZIP) e extrair tabela, valor fixo, CNPJ e razão social
-- [ ] 140-03-PLAN.md — wave 2 — palpite de empresa com confiança honesta + comando `clicksign:extrair-tabelas` (só relatório) + **checkpoint: rodada real e decisão de continuar**
-- [ ] 140-04-PLAN.md — wave 3 — guardar as propostas lidas (`--gravar`), sem tocar em cobrança — BLOQUEADO até o checkpoint do 140-03
-- [ ] 140-05-PLAN.md — wave 4 — tela de conferência + confirmação auditada que grava a tabela e completa o cadastro — BLOQUEADO até o checkpoint do 140-03
+- [ ] 140-03-PLAN.md — wave 2 — palpite de empresa com confiança honesta + comando `clicksign:extrair-tabelas` (só relatório) + **checkpoint: rodada real e decisão de continuar** — ⚠️ a rodada real completa já rodou em produção (85 contratos, 49 tabelas, 29 valor fixo, 0 casamentos com segurança) e o checkpoint foi respondido pelo usuário no prompt do 140-04, mas falta `140-03-SUMMARY.md` formal — pendência do coordenador
+- [x] 140-04-PLAN.md — wave 3 — guardar as propostas lidas (`--gravar`), sem tocar em cobrança
+- [ ] 140-05-PLAN.md — wave 4 — tela de conferência + confirmação auditada que grava a tabela e completa o cadastro
 
 ---
 
