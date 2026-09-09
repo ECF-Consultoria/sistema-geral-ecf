@@ -1,8 +1,8 @@
 ---
 phase: 139
 slug: checklist-administrativo-trava-de-finaliza-o-v23-0
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-09-09
 ---
@@ -20,8 +20,8 @@ created: 2026-09-09
 |-------------|-------|
 | **Framework** | PHPUnit 11.x (`phpunit/phpunit ^11.5.50`) — já instalado, nada a instalar |
 | **Config** | `phpunit.xml` (banco de teste = SQLite `:memory:`) |
-| **Comando rápido** | `C:\xampp\php\php.exe vendor/bin/phpunit tests/Unit/Phase139 tests/Feature/Phase139 --colors=never` |
-| **Comando de suíte (por wave)** | `C:\xampp\php\php.exe vendor/bin/phpunit tests/Unit/Phase139 tests/Feature/Phase139 tests/Unit/Phase137 tests/Feature/Phase137 tests/Feature/Phase138 --colors=never` |
+| **Comando rápido** | `/c/xampp/php/php.exe vendor/bin/phpunit tests/Unit/Phase139 tests/Feature/Phase139 --colors=never` |
+| **Comando de suíte (por wave)** | `/c/xampp/php/php.exe vendor/bin/phpunit tests/Unit/Phase139 tests/Feature/Phase139 tests/Unit/Phase137 tests/Feature/Phase137 tests/Feature/Phase138 --colors=never` |
 | **Runtime estimado** | ~40–90s (por diretório; a suíte inteira NÃO termina — ver abaixo) |
 
 ### ⚠️ Restrições duras deste ambiente (não são opcionais)
@@ -30,7 +30,10 @@ created: 2026-09-09
    cascata de timeout de rede (~300s) e nunca imprimem resumo. Herdado de
    `137-BASELINE-TESTES.md` e reconfirmado em `138-VALIDATION.md`.
    **Rodar sempre por diretório ou arquivo**, nunca a suíte inteira.
-2. **`php` não está no PATH do Bash** — usar `C:\xampp\php\php.exe` sempre.
+2. **`php` não está no PATH do Bash** — usar `/c/xampp/php/php.exe` sempre.
+   ⚠️ **A forma com barras invertidas NÃO funciona no Bash** — o shell come as barras e o comando
+   vira `C:xamppphpphp.exe`. Use a forma POSIX no Bash; a forma com barras invertidas só vale no
+   PowerShell.
 3. **~10 falhas pré-existentes** em `tests/Feature/Phase38/PolosControllerTest.php` e
    `tests/Feature/Polos/PolosFaturamentoSnapshotTest.php` — documentadas em
    `.planning/learnings/painel-polos-status-e-meta.md` §2. **NÃO são regressão desta fase.**
@@ -47,7 +50,7 @@ D-15) sobre uma máquina de estados que já tem baseline própria. Capturar em
 `139-BASELINE-TESTES.md` antes da primeira linha de código:
 
 ```
-C:\xampp\php\php.exe vendor/bin/phpunit tests/Unit/Phase137 tests/Feature/Phase137 tests/Feature/Phase138 --colors=never
+/c/xampp/php/php.exe vendor/bin/phpunit tests/Unit/Phase137 tests/Feature/Phase137 tests/Feature/Phase138 --colors=never
 ```
 
 Sem esta baseline não há como distinguir falha nova de falha herdada.
@@ -116,12 +119,14 @@ Sem esta baseline não há como distinguir falha nova de falha herdada.
 
 ## Sign-off da validação
 
-- [ ] Toda task tem verificação automatizada ou dependência declarada de Wave 0
-- [ ] Continuidade da amostragem: nunca 3 tasks seguidas sem verificação automatizada
+- [x] Toda task tem verificação automatizada ou dependência declarada de Wave 0
+- [x] Continuidade da amostragem: nunca 3 tasks seguidas sem verificação automatizada
 - [ ] Wave 0 cobre todos os arquivos marcados ❌
-- [ ] Nenhum comando em watch-mode
-- [ ] Nenhum comando que não termine neste ambiente (`artisan test`, `--testsuite=Feature`)
+- [x] Nenhum comando em watch-mode
+- [x] Nenhum comando que não termine neste ambiente (`artisan test`, `--testsuite=Feature`)
 - [ ] Baseline 137/138 capturada em `139-BASELINE-TESTES.md` antes do primeiro commit de código
-- [ ] `nyquist_compliant: true` no frontmatter
+- [x] `nyquist_compliant: true` no frontmatter
 
-**Aprovação:** pendente
+**Aprovação:** aprovada 2026-09-09 — planos 139-01..139-10 verificados pelo `gsd-plan-checker`.
+`wave_0_complete` segue `false` de propósito: os 11 arquivos de teste nascem DURANTE a execução,
+junto da task que implementa cada comportamento (disciplina "Teste no mesmo commit" do CLAUDE.md).

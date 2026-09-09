@@ -271,7 +271,7 @@ $item->save();
 **How to avoid:** o botão do item 7 deve ser "copiar link" (via `POST /companies/{company}/ml/initiate`, que já devolve a URL em JSON — `MercadoLivreOAuthController::initiate()`, linhas 52-57), nunca um link `<a href>` que abre direto. Isso não elimina o risco de um usuário colar o link no PRÓPRIO navegador por engano, mas remove o convite de um clique.
 **Warning signs:** se o log `[MercadoLivre] ml_store_id corrigido empresa {id}` (linha 138) aparecer para uma empresa recém-onboardada, é o sinal de que uma conta diferente da esperada assinou o OAuth.
 
-### Pitfall 2 — ⚠️ CONFLITO COM O CONTEXT.md: item 3 "Contrato assinado" pode nunca fechar para empresas liberadas manualmente
+### Pitfall 2 — ✅ RESOLVIDO pela D-16 (era: ⚠️ CONFLITO COM O CONTEXT.md): item 3 "Contrato assinado" pode nunca fechar para empresas liberadas manualmente
 **Decisão impactada:** D-03 (tabela dos 9 itens), coluna "Fecha por" do item 3: `contrato_assinaturas.assinado_em` / `status === assinado`.
 **O que o código mostra:** existem **3 vias** de liberação de uma empresa para o operacional (`ContratoLiberacao::VIA_TODAS` — `webhook`, `manual`, `reconciliacao`, `app/Models/ContratoLiberacao.php:61-70`). Na via `webhook` (`ProcessarEventoClicksignJob.php:227-239`) e na via `reconciliacao` (`ReconciliarContratoClicksignJob.php:108-115`), `status=assinado` e `assinado_em` **são sempre gravados no mesmo `save()`** que cria a `ContratoLiberacao` — nesses dois casos ler as colunas do D-03 é equivalente a ler `ContratoLiberacao`.
 Mas na via `manual` (`ContratoAdminController::liberarManual()`, linhas 1201-1243 → `EmpresaOperacionalRouter::liberarEmpresa()`, linhas 284-361), **o `status`/`assinado_em` do `ContratoAssinatura` NUNCA são tocados** — só `liberado_em` é gravado (linha 348, e só se um `$contrato` foi passado; `contrato_assinatura_id` é `nullable` na validação, linha 1206, então a liberação manual pode existir SEM nenhum `ContratoAssinatura`). Esta via existe exatamente para o cenário "Clicksign fora do ar, contrato recusado, envelope apagado, cliente assinou fora do sistema" (docblock de `liberarManual()`, linha 1195-1196).
@@ -279,16 +279,19 @@ Mas na via `manual` (`ContratoAdminController::liberarManual()`, linhas 1201-124
 **NÃO MEDIDO:** o banco local (`ecf_admin`, MariaDB via XAMPP) tem **0 linhas** em `contrato_assinaturas` e **0 linhas** em `contrato_liberacoes` no momento desta pesquisa — não há como medir a frequência real desse cenário; a análise acima é 100% leitura de código, não de dado.
 
 ### Pitfall 3 — Ambiguidade do "envelope vigente" quando a empresa tem 2+ serviços que exigem contrato
+**✅ Fechado pela D-18** (usuário, 2026-09-09): manda o mais atrasado — itens 2 e 3 só fecham quando TODOS os envelopes ativos atingiram o estado.
 **O que o código mostra:** `ContratoClicksignService::iniciarParaEmpresa()` itera `foreach ($porGrupo as $servicoId => $membrosDoGrupo)` (linhas 138-223) e pode criar **um `ContratoAssinatura` por grupo de serviço** — ou seja, uma empresa com 2 serviços não-combinados que exigem contrato pode ter 2 envelopes simultâneos, cada um em um estado diferente. `ContratoAdminController::show()` já expõe isso como lista achatada (`orderByDesc('id')`, linhas 567-570) sem escolher "o" envelope — a tela atual mostra todos.
 **Medido:** no banco local, a empresa `id=64` ("Teste Dev 02") tem 3 `contratos_servico` ativos — `servico_id=2` (Polos, isento) + `servico_id=1` e `servico_id=5` (ambos exigem contrato). É uma empresa de teste, sem nenhum `ContratoAssinatura` gerado ainda, então **não dá para observar o comportamento real do checklist neste caso** — só confirmar que o schema permite a situação (1 empresa entre ~190 no banco local tem 2+ serviços não-Polos simultâneos).
 **Consequência para o plano:** o CONTEXT.md (D-03) descreve o grupo Contrato como 3 itens únicos por empresa, sem prever múltiplos envelopes concorrentes. O planejador precisa decidir: (a) o checklist agrega por "pior estado entre os envelopes ativos" (ex.: se um está assinado e outro não, item 3 fica pendente), ou (b) o checklist assume 1 serviço-com-contrato por empresa como caso normal e trata o resto como fora de escopo. Nenhuma das duas está decidida.
 
 ### Pitfall 4 — Rota da ficha (`admin.contratos.show`) não é acessível por quem só tem `comercial.entrada`
+**✅ Fechado pela D-17** (usuário, 2026-09-09): mesma rota, `permission:admin.contratos,comercial.entrada` (o middleware `EnsurePermission` já aceita OR nativamente). A seção Contrato dentro da ficha continua gated por `admin.contratos` — sem isso a mudança de rota vira vazamento de dado contratual.
 **Decisão impactada:** D-08 ("A listagem Entrada ganha uma ação 'Abrir' apontando para a MESMA ficha") + D-09 ("nenhuma chave nova").
 **O que o código mostra:** `admin.contratos.show` (`/administrativo/contratos/empresa/{company}`) está dentro de `Route::middleware(['auth', 'verified', 'permission:admin.contratos'])` (`routes/web.php:1443`). Não há checagem alternativa dentro de `ContratoAdminController::show()` — só o middleware da rota decide. Um usuário com `comercial.entrada` mas **sem** `admin.contratos` (perfil plausível: alguém do time Comercial que só cuida de Entrada) receberia **403** ao clicar em "Abrir" a partir de `Comercial/Entrada.jsx`.
 **Consequência para o plano:** D-09 precisa de um ajuste — ou o middleware da rota passa a aceitar `admin.contratos` OU `comercial.entrada` (checagem dupla), ou nasce uma rota irmã sob o grupo `comercial.entrada.*` apontando para o MESMO controller/método. Qualquer uma das duas ainda respeita "nenhuma chave nova" (nenhuma permission nova é criada), mas o desenho da rota precisa mudar — isso não está nas 14 decisões travadas.
 
 ### Pitfall 5 — Nenhum chamador transiciona `companies.etapa` para 2, 3 ou 4 hoje
+**✅ Fechado pela D-15** (usuário, 2026-09-09): o progresso do checklist dirige as etapas 2/3/4; o FINALIZAR faz 4→5. Toda transição via `EtapaTransicaoService::transicionar()`.
 Ver a seção "Architecture Patterns" acima e o achado #3 do Summary — detalhado com toda a evidência abaixo, em "Open Questions".
 
 ### Pitfall 6 — Armadilhas de MariaDB que o SQLite dos testes não pega (aplicar ao schema novo)
@@ -348,18 +351,25 @@ Não aplicável no sentido tradicional (não é uma biblioteca com versões). O 
 
 **Nenhuma claim de nome de pacote foi feita** — esta fase não instala pacotes novos.
 
-## Open Questions
+## Open Questions (RESOLVED — 2026-09-09)
+
+> As três perguntas abaixo foram levadas ao usuário no `/gsd:plan-phase` e **fechadas por ele**.
+> As decisões correspondentes estão travadas em `139-CONTEXT.md` (D-15, D-16, D-18) e o Pitfall 4
+> foi fechado pela D-17. Nenhuma delas segue em aberto.
 
 1. **Quem transiciona `companies.etapa` para 2, 3 e 4, e quando?**
    - O que sabemos: `EtapaTransicaoService::TRANSICOES_PERMITIDAS` (`app/Services/FluxoEntrada/EtapaTransicaoService.php:58-75`) só permite chegar em `aguardando_distribuicao` (etapa 5) **a partir de** `administrativo_concluido` (etapa 4). Os dois únicos chamadores de produção hoje (`HubspotWebhookController.php:500` e `ComercialController.php:683`) só escrevem etapa 1. `ComercialEntradaController::index()` (`app/Http/Controllers/ComercialEntradaController.php:61-72`) já filtra empresas nas etapas 1 a 4 — o que implica que popular 2/3/4 é esperado pelo sistema, mas nenhuma decisão do CONTEXT.md nem do ROADMAP diz QUEM dispara essas transições.
    - O que está incerto: se cada item do checklist deve disparar sua própria transição (ex.: "Contrato enviado" fecha → etapa vai para 3; "todos os itens + contrato assinado" → etapa vai para 4) — o que dá granularidade real para a Fase 143 medir SLA por etapa —, ou se o botão FINALIZAR deve encadear múltiplas chamadas a `transicionar()` num único clique, partindo de onde a empresa estiver.
+   - ✅ **RESOLVIDA pela D-15** (usuário, 2026-09-09): o progresso do checklist dirige as etapas 2/3/4 — 1º item concluído → 2; envelope enviado → 3; tudo pronto → 4; FINALIZAR → 5, com salto 2→4 para empresa isenta. É a opção recomendada abaixo, escolhida com o custo de escopo aceito explicitamente.
    - Recommendation: recomendo a primeira opção (transições disparadas pelo progresso do checklist, não só pelo clique final) porque é a única que preserva o propósito documentado da máquina de estados (`EtapaTransicaoService.php:28-32`: "a etapa NUNCA é derivada... a Fase 143 (HIST-03) não teria o instante real da transição"). Mas isso expande o escopo desta fase além do que ADMIN-01..06 descreve literalmente — **o planejador/usuário precisa confirmar isso explicitamente antes de escrever tasks**, porque é decisão de produto, não só técnica.
 
 2. **Item 3 deve ler `ContratoLiberacao` além de (ou em vez de) `contrato_assinaturas.status`/`assinado_em`?**
-   - Ver Pitfall 2 acima. Não resolvido nesta pesquisa — é conflito com D-03, reportado, não decidido.
+   - ✅ **RESOLVIDA pela D-16** (usuário, 2026-09-09): o item 3 fecha por `assinado_em`/`status === assinado` **OU** por `ContratoLiberacao` existente para aquele serviço — cobre a via `manual`, que não escreve `contrato_assinaturas`. Continua leitura pura (D5 preservada).
+   - Ver Pitfall 2 acima (registro original, mantido para histórico).
 
 3. **Empresa com 2+ serviços que exigem contrato simultaneamente: o checklist agrega como?**
-   - Ver Pitfall 3. Caso raro (1 empresa de teste em ~190 no banco local), mas o schema permite.
+   - ✅ **RESOLVIDA pela D-18** (usuário, 2026-09-09): manda o mais atrasado — os itens 2 e 3 só fecham quando TODOS os envelopes ativos atingiram aquele estado. Mesmo precedente que o `EtapaTransicaoService` já declara para o onboarding da Fase 142.
+   - Ver Pitfall 3 (registro original, mantido para histórico).
 
 ## Environment Availability
 
