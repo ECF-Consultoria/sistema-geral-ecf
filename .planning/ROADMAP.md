@@ -2214,18 +2214,44 @@ Plans:
 > - Critério 2 — o nome é **Adman**, não ADMA, e o link é **fixo e igual para todas as empresas**, em `config('services.adman.register_url')`; o item 6 é manual (D-04). O "Grant da consultoria" é o **OAuth do Mercado Livre**, nada a ver com `SyncGrantsFromSftp`, e fecha somente quando o cliente **conectou** (`ml_tokens.status = active`), nunca quando o link foi gerado (D-05).
 > - Além dos ADMIN-01..06 — o progresso do checklist passa a **dirigir as etapas 2, 3 e 4** da máquina de estados da Fase 137, por `EtapaTransicaoService` (D-15). Sem isso o FINALIZAR nasceria morto, porque a etapa 5 só é alcançável a partir da 4.
 
-**Plans:** 10 plans em 9 waves
+**Plans:** 10 planos em 9 waves
 
 Plans:
+**Wave 1**
+
 - [ ] 139-01-PLAN.md — Baseline de testes 137/138, link fixo do Adman em `config/services.php`/`.env.example` (D-04) e registro das exceções ao ADMIN-02 em `REQUIREMENTS-v23.md` (D-19)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 139-02-PLAN.md — Migration `checklist_administrativo_itens` ancorada em `company_id` e model com autoria `withTrashed` (D-10/D-11)
 - [ ] 139-03-PLAN.md — Contrato de resolver, value object de 3 estados e catálogo fechado dos 9 itens, com montagem condicional do grupo Contrato (D-01/D-03/D-07)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 139-04-PLAN.md — Os 4 resolvers automáticos (itens 2, 3, 7 e 8), com a segunda fonte do item 3 (D-16) e a agregação de múltiplos envelopes (D-18)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 139-05-PLAN.md — `ChecklistAdministrativoService`: montagem, progresso com denominador do catálogo e marcação manual com autoria (D-07/D-10/D-11/D-13)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 139-06-PLAN.md — `FinalizarEntradaAdministrativaService`: régua pura da trava (ADMIN-05) e transição 4→5 com destino determinístico (ADMIN-06/D-12)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 139-07-PLAN.md — `ChecklistEtapaSincronizadorService`: o progresso dirige as etapas 2, 3 e 4, incluindo o salto 2→4 da empresa isenta (D-15)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 139-08-PLAN.md — Rota da ficha em OR (`admin.contratos,comercial.entrada`) e os 4 endpoints do checklist, com a seção Contrato gated por módulo (D-08/D-09/D-17)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
 - [ ] 139-09-PLAN.md — UI: componentes do checklist, seção em `ContratoDetalhe.jsx`, ação "Abrir" em `Entrada.jsx` e `npm run build` (D-05 — copiar link, nunca abrir)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
 - [ ] 139-10-PLAN.md — Regressão final contra a baseline e os dois checkpoints humanos de conferência visual
 
 ### Phase 140: Mensagem de boas-vindas generalizada (v23.0)

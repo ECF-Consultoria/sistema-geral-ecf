@@ -4,14 +4,14 @@ milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
 stopped_at: Phase 139 context gathered
-last_updated: "2026-09-09T16:31:39.954Z"
+last_updated: "2026-09-09T18:21:38.462Z"
 last_activity: 2026-09-09
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 20
+  total_plans: 30
   completed_plans: 20
-  percent: 100
+  percent: 29
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -216,7 +216,7 @@ prova; FLUXO-09 já é `Done` desde o 133-02. **A milestone v22.0 NÃO está fec
 `.planning/todos/pending/260818-ficha-operacional-nao-criada-na-liberacao.md` — na prova do gate
 #10 a `ContratoLiberacao` nasceu mas a ficha operacional (`MlbEmpresa`) não foi criada. Provável
 que seja esperado (empresa fictícia sem loja ML), mas **não confirmado**.
-Last activity: 2026-09-03
+Last activity: 2026-09-09
 
 ## Posição paralela — Fase 136 (Métricas manuais por empresa/mês) — AGUARDANDO GATE HUMANO
 
