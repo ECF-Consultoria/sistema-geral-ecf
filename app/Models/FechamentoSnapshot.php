@@ -33,6 +33,19 @@ class FechamentoSnapshot extends Model
 
     public const ESTADO_SEM_INTEGRACAO = 'sem_integracao';
 
+    /**
+     * Fase 141 (D-03) — empresa SEM tabela progressiva cadastrada (nem
+     * própria, nem herdada de grupo/serviço): cobra o valor fixo do
+     * contrato (`CobrancaCalculator::mensalidade()` com `$classificacao =
+     * null`). É resultado NORMAL desse tipo de empresa — o caso de
+     * Mentoria — e não pendência a resolver, diferente de
+     * `ESTADO_SEM_TABELA` (que hoje significa "tinha serviço candidato mas
+     * a tabela dele veio vazia"). A coluna `estado` é `string(20)` nas
+     * duas tabelas de snapshot; 'valor_fixo' tem 10 caracteres, cabe sem
+     * migration.
+     */
+    public const ESTADO_VALOR_FIXO = 'valor_fixo';
+
     protected $fillable = [
         'company_id',
         'mes_referencia',
