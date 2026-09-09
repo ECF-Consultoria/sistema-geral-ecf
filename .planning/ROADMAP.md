@@ -2288,6 +2288,45 @@ Plans:
 
 ---
 
+### Phase 141: A tabela progressiva passa a ser da empresa e do grupo
+
+**Goal:** Corrigir a premissa que atravessa as Fases 137, 138 e 139. O usuário, olhando o fechamento
+em produção em 2026-09-09, estabeleceu que **a tabela progressiva é da empresa ou do grupo — nunca do
+serviço** — e que o faturamento das plataformas é **somado** para achar **uma única** faixa.
+
+Não é ajuste de tela: muda como a mensalidade é calculada.
+
+**O caso que abriu a fase:** BARAOSHOP VARIEDADES faturou R$ 488.262,90 em agosto, caiu na faixa 1,
+cujo valor é R$ 3.000 — e a tela cobra **R$ 5.500**. A regra atual é *"faixa + soma dos contratos
+mensais"*, então soma R$ 3.000 da faixa com R$ 2.500 do contrato de Shopee. Pela regra nova, soma-se
+**faturamento**, não **mensalidade**: as duas plataformas somam, dão uma faixa, e é ela que se cobra.
+
+**As regras, como o usuário as definiu (detalhe em `141-CONTEXT.md`):**
+
+| regra | consequência |
+|---|---|
+| tabela é da empresa/grupo | `servico_faixas_faturamento` deixa de ser régua aplicável |
+| faturamento das plataformas soma | ML + Shopee viram um número só para achar a faixa |
+| Mentoria **não** entra na soma | serviço sem tabela não contribui faturamento |
+| mensalidade = valor da faixa | a soma de mensalidades deixa de existir |
+| sem tabela → valor do contrato | é o caso dos 29 contratos de valor fixo já identificados |
+
+**O problema de transição:** hoje **127 das 201 empresas** são classificadas pela tabela do serviço, e
+**nenhuma** tem tabela própria cadastrada. Aplicar a regra sem mais nada esvazia o fechamento.
+
+**O caminho existe por causa da Fase 140:** a leitura dos contratos do Clicksign produziu 85
+propostas em produção — **49 com tabela** e 29 de valor fixo — e a tela de conferência já está
+construída. As 49 viram tabelas de empresa, que é a única forma que passa a valer. As 18 réguas
+distintas medidas ali confirmam que a tabela é mesmo por empresa: duas divergem já na terceira faixa,
+e quem fatura R$ 2,5 milhões paga R$ 6.000 numa e R$ 7.500 na outra.
+
+**Fora de escopo:** a tela de cadastro (mostrar as faixas, máscara de dinheiro, mover para a página
+de contrato da empresa, fechamento só leitura) é fase própria, a pedido do usuário.
+
+Plans: a planejar
+
+---
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
@@ -2304,3 +2343,5 @@ Plans:
 *Roadmap atualizado: 2026-09-04 - **Fase 139 (Redesenho da tela de Fechamento)** anexada. Origem: o usuario usou a tela em producao depois das Fases 137 e 138 e disse que a UI/UX estava dificil de entender. Ele produziu um handoff de design completo em `design_handoff_fechamento/` (README com tokens e comportamento, prototipo HTML e captura da tela atual) e pediu que fosse desenvolvido. Cinco decisoes de widget dele: manter Servicos contratados, remover Tipo de cobranca e Distribuicao de faixas, reduzir o Total consolidado a 'Total a receber' (o sistema nao sabe se o cliente pagou) e criar um widget em destaque para as empresas que subiram de faixa. Decisao de fidelidade tomada em 2026-09-04: estrutura e comportamento do design com fidelidade, cores e tipografia do ECF Admin — a paleta do handoff e proxima mas nao identica a do projeto e faria a tela destoar das outras. Fases 1-138 preservadas.*
 
 *Roadmap atualizado: 2026-09-08 - **Fase 140 (Extrair as tabelas progressivas do Clicksign)** anexada. Origem: depois da Fase 139 ficou medido que 127 empresas cobram por tabela assumida (R$ 460.500/mes sem lastro) e que o cadastro manual da Fase 137 nunca foi usado. O usuario levantou consultar o Clicksign e autorizou a investigacao, feita em 2026-09-08 contra a conta de producao: 429 envelopes, 123 de gestao de ADS, PDFs baixaveis com CNPJ e razao social no texto. Dois achados mudaram o desenho: nem todo contrato tem tabela progressiva (6 de 11 da amostra sao valor fixo) e existe tabela fora do padrao em uso — DESK DESIGN com 12 faixas comecando em R$ 2.250, contra os R$ 3.000 que o sistema cobra por assumir a tabela padrao. O casamento com a empresa e o elo fraco: so 10 de 201 empresas tem CNPJ, e o casamento por nome acerta 9 de 14 com falsos positivos plausiveis (GRAFICA ADHARA -> Filipe Adada), entao escrita automatica ficou FORA por decisao. Estrategia acordada: primeiro um comando de leitura que gera so relatorio, sem tela e sem escrita; a tela de conferencia e a escrita auditada dependem de o relatorio se mostrar bom. Fases 1-139 preservadas.*
+
+*Roadmap atualizado: 2026-09-09 - **Fase 141 (A tabela progressiva passa a ser da empresa e do grupo)** anexada. Origem: correcao de premissa feita pelo usuario em 2026-09-09 olhando o fechamento em producao. Ela atravessa as Fases 137/138/139 e muda o CALCULO da mensalidade, nao a tela. Regras: a tabela e da empresa ou do grupo, nunca do servico; o faturamento das plataformas com tabela e SOMADO para achar UMA faixa; Mentoria nao entra na soma por nao ter tabela; a mensalidade e o valor da faixa, entao a soma de mensalidades deixa de existir. Caso que abriu a fase: BARAOSHOP faturou R$ 488.262,90, caiu na faixa 1 de R$ 3.000 e a tela cobra R$ 5.500, porque soma o contrato de Shopee. Problema de transicao: 127 de 201 empresas sao classificadas hoje pela tabela do servico e NENHUMA tem tabela propria — aplicar a regra sem mais nada esvazia o fechamento. O caminho existe por causa da Fase 140, que leu 85 contratos do Clicksign (49 com tabela, 29 de valor fixo) e cuja tela de conferencia ja esta construida. A tela de cadastro e fase propria, a pedido do usuario. Fases 1-140 preservadas.*
