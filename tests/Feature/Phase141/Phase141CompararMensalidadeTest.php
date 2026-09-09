@@ -383,6 +383,76 @@ class Phase141CompararMensalidadeTest extends TestCase
         $this->assertEqualsWithDelta(4_500.00, (float) $depoisGrupo->cobranca_mensal, 0.01, 'DEPOIS: só a faixa da soma do grupo (R$ 550.000) — os R$ 900 + R$ 700 dos contratos-membro não entram.');
     }
 
+    // ─── "Maiores altas" nunca lista diferença negativa ─────────────────
+    //
+    // Defeito real encontrado numa rodada de produção (2026-09-09,
+    // competência 2026-08): TODA empresa caiu, e a seção "Maiores altas"
+    // preencheu com as quedas MENOS severas em vez de dizer que não havia
+    // nenhuma alta — um instrumento de decisão sobre cobrança de ~200
+    // clientes não pode inverter o sinal do número.
+
+    #[Test]
+    public function secao_de_altas_fica_vazia_e_o_texto_diz_isso_quando_todas_as_empresas_caem(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-02'));
+
+        $gestaoComTabela = $this->criarServicoGestaoComTabela();
+        $shopee          = $this->criarServicoShopee();
+
+        // 3 empresas com tabela própria + contrato de Shopee por cima —
+        // todas caem na regra nova (deixam de somar o contrato por cima da
+        // faixa), nenhuma sobe.
+        foreach ([1_000.00, 1_500.00, 2_000.00] as $i => $valorContrato) {
+            $company = Company::factory()->create(['adman_account_id' => 'cust-queda-'.$i]);
+            ContratoServico::factory()->paraServico($gestaoComTabela)->create([
+                'company_id'       => $company->id,
+                'ativo'            => true,
+                'valor_contratado' => 0,
+            ]);
+            ContratoServico::factory()->paraServico($shopee)->create([
+                'company_id'       => $company->id,
+                'ativo'            => true,
+                'valor_contratado' => $valorContrato,
+            ]);
+            $this->criarTabelaPropriaComFaixasReais($company);
+            AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 300_000.00]);
+        }
+
+        $relatorio = $this->relatorio('2026-08');
+
+        $this->assertSame(0, $relatorio['resumo']['sobem'], 'Nenhuma empresa deveria subir neste cenário.');
+        $this->assertGreaterThan(0, $relatorio['resumo']['descem']);
+        $this->assertSame([], $relatorio['resumo']['maiores_altas'], 'A seção de altas não pode inventar diferenças negativas.');
+        $this->assertNotEmpty($relatorio['resumo']['maiores_quedas']);
+
+        foreach ($relatorio['resumo']['maiores_quedas'] as $queda) {
+            $this->assertLessThan(0, $queda['diferenca'], 'Toda "maior queda" precisa ser negativa.');
+        }
+        foreach ($relatorio['resumo']['maiores_altas'] as $alta) {
+            $this->assertGreaterThan(0, $alta['diferenca'], 'Toda "maior alta" precisa ser positiva — nunca chega aqui neste cenário.');
+        }
+
+        // O texto (conveniência humana) precisa dizer em palavras que
+        // ninguém sobe — nunca preencher a seção com o sinal errado.
+        Artisan::call('fechamento:comparar-mensalidade', ['--mes' => '2026-08', '--todas' => true]);
+        $textoOriginal = Artisan::output();
+
+        $this->assertStringContainsString('nenhuma empresa sobe', mb_strtolower($textoOriginal));
+        $this->assertStringNotContainsString('R$ -', $this->trechoAposMaioresAltas($textoOriginal), 'A seção "Maiores altas" não pode imprimir nenhum valor negativo.');
+    }
+
+    /**
+     * Recorta o texto a partir de "Maiores altas:" — usado só para provar
+     * que a seção não imprime nenhum valor negativo (não é o contrato
+     * oficial do comando, só uma checagem extra de sanidade do texto).
+     */
+    private function trechoAposMaioresAltas(string $texto): string
+    {
+        $posicao = mb_stripos($texto, 'Maiores altas:');
+
+        return $posicao === false ? '' : mb_substr($texto, $posicao);
+    }
+
     // ─── Rodar o comando não escreve nada, mesmo isoladamente ───────────
 
     #[Test]

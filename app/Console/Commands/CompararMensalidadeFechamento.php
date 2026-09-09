@@ -466,9 +466,25 @@ class CompararMensalidadeFechamento extends Command
             }
         }
 
-        usort($deltas, fn ($a, $b) => $a['diferenca'] <=> $b['diferenca']);
-        $maioresQuedas = array_slice($deltas, 0, 10);
-        $maioresAltas  = array_slice(array_reverse($deltas), 0, 10);
+        // ⚠️ "Maiores altas"/"maiores quedas" SÓ podem conter diferenças do
+        // sinal correspondente — subida é `diferenca > 0`, queda é
+        // `diferenca < 0`, nunca "a menos negativa de todas" nem "a menos
+        // positiva de todas". Sem este filtro, um cenário em que TODA
+        // empresa cai (real: rodada de produção de 2026-09-09) faz
+        // `array_reverse()` devolver as quedas MENOS severas sob o rótulo
+        // "Maiores altas" — um instrumento de decisão sobre cobrança de
+        // ~200 clientes não pode inverter o sinal do número. Quando um dos
+        // lados não tem nenhuma linha do sinal certo, a lista fica vazia
+        // de propósito — `imprimirRelatorioHumano()` diz isso em palavras
+        // (nunca preenche com o sinal errado).
+        $quedas = array_values(array_filter($deltas, fn ($d) => $d['diferenca'] < 0));
+        $altas  = array_values(array_filter($deltas, fn ($d) => $d['diferenca'] > 0));
+
+        usort($quedas, fn ($a, $b) => $a['diferenca'] <=> $b['diferenca']); // mais negativa primeiro
+        usort($altas, fn ($a, $b) => $b['diferenca'] <=> $a['diferenca']);  // mais positiva primeiro
+
+        $maioresQuedas = array_slice($quedas, 0, 10);
+        $maioresAltas  = array_slice($altas, 0, 10);
 
         return [
             'total_receber_antes'  => round($totalAntes, 2),
@@ -555,17 +571,26 @@ class CompararMensalidadeFechamento extends Command
                 collect($resumo['sem_regua_depois']['nomes'])->pluck('nome')->implode(', '));
         }
 
-        if ($resumo['maiores_quedas'] !== []) {
-            $this->line('');
-            $this->info('[CompararMensalidade] Maiores quedas:');
+        // ⚠️ Cada seção só lista o sinal correspondente (garantido em
+        // `montarResumo()`) — quando não há nenhuma linha daquele sinal, o
+        // texto PRECISA dizer isso em palavras. Nunca omitir a seção em
+        // silêncio nem preencher com o sinal errado: quem lê rápido não
+        // pode concluir "tem gente subindo" quando não tem ninguém.
+        $this->line('');
+        $this->info('[CompararMensalidade] Maiores quedas:');
+        if ($resumo['maiores_quedas'] === []) {
+            $this->line('  nenhuma empresa desce nesta comparação.');
+        } else {
             foreach ($resumo['maiores_quedas'] as $q) {
                 $this->line(sprintf('  %s — %s', $q['nome'], $this->fmtMoeda($q['diferenca'])));
             }
         }
 
-        if ($resumo['maiores_altas'] !== []) {
-            $this->line('');
-            $this->info('[CompararMensalidade] Maiores altas:');
+        $this->line('');
+        $this->info('[CompararMensalidade] Maiores altas:');
+        if ($resumo['maiores_altas'] === []) {
+            $this->line('  nenhuma empresa sobe nesta comparação.');
+        } else {
             foreach ($resumo['maiores_altas'] as $a) {
                 $this->line(sprintf('  %s — %s', $a['nome'], $this->fmtMoeda($a['diferenca'])));
             }
