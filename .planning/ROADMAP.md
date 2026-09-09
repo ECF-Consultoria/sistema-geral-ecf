@@ -2340,7 +2340,7 @@ fase (o `REQUIREMENTS.md` da raiz parou na v17.0):
 **Plans:** 7 plans em 4 waves
 
 Plans:
-- [ ] 141-01-PLAN.md — Elegibilidade de plataforma: `servicos.usa_tabela_progressiva` + rollup que só soma plataforma contratada (wave 1)
+- [x] 141-01-PLAN.md — Elegibilidade de plataforma: `servicos.usa_tabela_progressiva` + rollup que só soma plataforma contratada (wave 1)
 - [ ] 141-02-PLAN.md — Flag de corte `fechamento_tabela_por_empresa_ativa` + `CobrancaCalculator::mensalidade()` + estado `valor_fixo` (wave 1)
 - [ ] 141-03-PLAN.md — Transição: procedência da tabela da empresa + comando `fechamento:materializar-tabelas` (wave 1)
 - [ ] 141-04-PLAN.md — Virada da régua no motor: resolver sem a tabela do serviço + consolidação pela regra nova (wave 2)

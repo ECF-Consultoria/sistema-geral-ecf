@@ -668,6 +668,56 @@ pré-existente `Phase138AvisoMudancaFaixaTest` não tropeçou). Last activity: 2
 executado (`140-04-SUMMARY.md`). Sem deploy — subagente sem acesso a produção, sem `.env`, sem
 chamada real à API (item de trava do próprio plano).
 
+## Posição paralela — Fase 141 (Tabela progressiva por empresa e grupo) — EM EXECUÇÃO
+
+**Mesma disciplina dos blocos 135-140 acima:** Fase 141 fora de milestone, rodando em paralelo
+(141-01/141-02/141-03 executados por sessões diferentes na MESMA árvore, ao mesmo tempo). `##
+Current Position` (Fase 132/133) não foi tocado.
+
+Origem: `141-CONTEXT.md` — correção de modelagem do usuário em 2026-09-09, olhando o fechamento em
+produção. D-01: a tabela progressiva é da EMPRESA ou do GRUPO, nunca do serviço — se a empresa tem
+Gestão + Gestão de ADS Shopee, é UMA tabela só e o faturamento das duas plataformas é SOMADO antes
+de classificar a faixa. D-02: só faturamento de serviço COM tabela entra na soma — Mentoria não tem
+tabela progressiva, confirmado pelo usuário. D-03: a mensalidade passa a ser só o valor da faixa
+(motivou a fase — BARAOSHOP agosto/2026: tela mostrava R$5.500 = faixa R$3.000 + contrato Shopee
+R$2.500, quando deveria ser só R$3.000 pela faixa do faturamento somado). ⚠️ Muda **quanto a ECF
+cobra dos clientes** — cada decisão aqui vira fatura.
+
+141-01 concluído (TPE-01) — `servicos.usa_tabela_progressiva` (migration idempotente, guard
+`Schema::hasColumn`, `default(false)` DELIBERADO: na dúvida, um serviço NÃO entra na soma, nunca
+infla cobrança) com backfill ligando `true` só para `servico_id` já presente em
+`servico_faixas_faturamento` (Gestão, Gestão de ADS Shopee, Brigada — Mentoria continua `false`).
+Coluna entra no `$fillable`/`$casts` do model `Servico`, auditável via `activity_log`
+(`LogsActivity` já existente). `FechamentoRollupService` ganha `plataformasElegiveis(Company)`:
+resolve, a partir dos contratos ATIVOS da empresa, quais plataformas (`ml`/`shopee`) têm serviço
+contratado com `usa_tabela_progressiva=true` — critério em OU (não `elseif`) entre `plataforma`
+(texto manual, pode trazer as duas no mesmo campo) e `setor` (enum, rede de segurança), mesmo
+espírito do comentário de `FechamentoFaixaResolver::escolherServicoCandidato()`. `porEmpresa()`
+ganha o parâmetro opt-in `somenteContratadas` (default `false`, nenhum chamador atual muda de
+comportamento — os 4 call-sites reais continuam com 2 argumentos, confirmado por `grep -rn
+"porEmpresa(" app/`): ligado, zera para `null` o lado NÃO elegível ANTES de somar o total (nunca
+soma e depois subtrai) e recalcula `faturamento_total` pela mesma regra de sempre (ausência ≠
+faturou zero). Toda resposta ganha a chave `plataformas_consideradas` (`['ml','shopee']` no modo
+atual, subconjunto elegível no modo novo) — é o que a tela do plano 141-06 vai usar para explicar
+por que um faturamento não entrou. Guard: `somenteContratadas=true` sem `$companies` lança
+`InvalidArgumentException` em vez de considerar tudo elegível silenciosamente. TDD: 2 tarefas, 2
+commits (`2d9a2f07` coluna/backfill, `3ef58eba` rollup). Testes novos:
+`Phase141ServicoTabelaSchemaTest` (5) + `Phase141ElegibilidadePlataformaTest` (10) = 15 testes / 37
+asserções — cobrem os 3 casos do must_have (Mentoria-only não soma nada mesmo com métrica ML;
+Gestão+Shopee soma as duas; Gestão-only não soma métrica Shopee avulsa) mais contrato inativo,
+modo desligado byte a byte igual ao de hoje (só com a chave nova) e o guard de exceção. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141`: **506 testes / 2379 asserções /
+0 falhas** (baseline pré-141 medido pelo coordenador: 477/2318 — a diferença além dos +15/+37
+deste plano vem dos planos irmãos 141-02/141-03, que já tinham commitado na mesma árvore quando o
+gate rodou; sem regressão, nenhuma falha). ⚠️ **Nada foi ligado ainda** — `somenteContratadas`
+continua `false` em todos os call-sites reais; é o plano 141-03 quem liga, atrás da flag de corte.
+⚠️ Nota para quem ligar: o rollup é chamado DUAS vezes (competência atual + mês anterior, para a
+comparação de faixa) — `somenteContratadas` precisa ir `true` nas DUAS chamadas, senão a
+comparação fica assimétrica e a Fase 138 dispara aviso falso de mudança de faixa. Last activity:
+2026-09-09 — 141-01 executado (`141-01-SUMMARY.md`). Sem deploy — subagente sem acesso a
+produção/`.env` (trava do próprio plano); migration só validada via `RefreshDatabase` (SQLite),
+nunca rodada contra MySQL local ou produção.
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
