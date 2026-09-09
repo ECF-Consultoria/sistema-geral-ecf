@@ -71,4 +71,23 @@ class FechamentoRegraTabela
     {
         $this->memoria = null;
     }
+
+    /**
+     * Força o valor que `ativa()` devolve, SEM tocar em `configuracoes` —
+     * existe para UM propósito só: calcular os dois lados (ANTES × DEPOIS)
+     * da comparação do plano 141-05 no mesmo processo PHP (e para testes
+     * que precisam do mesmo efeito). `forcar(true)`/`forcar(false)` gravam
+     * só a memória desta instância; `forcar(null)` devolve o leitor ao
+     * comportamento normal — a próxima chamada de `ativa()` volta a ler
+     * `configuracoes` (mesmo efeito de `esquecer()`, é a implementação por
+     * baixo: `ativa()` só relê o banco quando a memória está em `null`).
+     *
+     * ⚠️ Não serve para ligar a regra em produção — não persiste nada.
+     * Ligar a flag de verdade é `Configuracao::set(self::CHAVE, '1')`,
+     * decisão do plano 141-07.
+     */
+    public function forcar(?bool $valor): void
+    {
+        $this->memoria = $valor;
+    }
 }
