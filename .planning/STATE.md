@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 139-04-PLAN.md
-last_updated: "2026-09-09T19:40:58.428Z"
+stopped_at: Completed 139-05-PLAN.md
+last_updated: "2026-09-09T20:09:24.366Z"
 last_activity: 2026-09-09
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 30
-  completed_plans: 24
-  percent: 80
+  completed_plans: 25
+  percent: 83
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -48,6 +48,12 @@ progress:
 > não é 100% determinístico execução a execução, o que reforça a disciplina: NUNCA commitar um
 > resultado de `state.*`/`roadmap.*` sem ler o diff inteiro primeiro. Quarta vez que `percent` é
 > corrompido pelo mesmo comando.
+> **Reincidiu de novo no fechamento do 139-05** (2026-09-09): `completed_plans` foi de 24 para 25
+> corretamente, mas `percent` foi recomputado GLOBAL (`29`) em vez de `round(25/30*100)` desta
+> milestone — corrigido à mão para `83`. A linha solta `Status: Executing Phase 139 — 10 planos em
+> 9 waves.` foi sobrescrita de novo para o texto genérico `Status: Ready to execute` — restaurada à
+> mão mais uma vez. Quinta vez que `percent` é corrompido pelo mesmo comando; terceira vez que a
+> mesma linha solta é atingida junto.
 
 # Project State
 
@@ -70,7 +76,7 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 ## Current Position
 
 Phase: 139 (checklist-administrativo-trava-de-finaliza-o-v23-0) — EXECUTING
-Plan: 5 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
+Plan: 6 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
 (baseline 137/138 100% verde — 123 testes, 444 assertions, `139-BASELINE-TESTES.md`;
 `config('services.adman.register_url')` publicada com o link fixo do Adman, D-04, provada por
 `tests/Unit/Phase139/AdmanRegisterUrlConfigTest.php`; `REQUIREMENTS-v23.md` registra as exceções
@@ -826,6 +832,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 139 P02 | 14min | 2 tasks | 3 files |
 | Phase 139 P03 | 20min | 3 tasks | 4 files |
 | Phase 139 P04 | 25min | 3 tasks | 8 files |
+| Phase 139 P05 | 35min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1590,8 +1597,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-09-09T19:40:58.172Z
-Stopped at: Completed 139-04-PLAN.md
+Last session: 2026-09-09T20:09:24.038Z
+Stopped at: Completed 139-05-PLAN.md
 Last session: 2026-09-03T21:17:01.000Z
 Stopped at: Completed 138-06-PLAN.md — listagem Contrato ganha os 8 campos do §2, COMERC-02 fechado por completo (commits `551117d0`, `f8e4044b`); fechamento (SUMMARY/STATE/ROADMAP/REQUIREMENTS) feito por agente de closeout porque o executor original morreu por erro de stream da API após commitar as duas tasks
 Last session: 2026-09-02T20:14:25.367Z
@@ -1736,3 +1743,4 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 139]: 139-03: ChecklistResolver e ChecklistResolverResultado copiam o molde do motor de Onboarding sem os ramos de coleta assíncrona — os 4 resolvers desta fase são síncronos (D-10)
 - [Phase 139]: 139-04: ContratoAssinadoResolver fecha por OR entre envelope assinado e ContratoLiberacao::existeParaServico() (D-16), agregado manda-o-mais-atrasado por servico (D-18) — testado isoladamente com a via manual chamada direto em EmpresaOperacionalRouter::liberarEmpresa()
 - [Phase 139]: 139-04: MlOAuthConectadoResolver e ConexaoEcfResolver fecham itens 7 e 8 por leitura pura (ml_tokens.status=active, D-05; existencia de onboarding_links, D-14) — nenhum dos 4 resolvers da task escreve em contrato_assinaturas/contrato_liberacoes/onboarding_links, provado por reconsulta ao banco e Http::assertNothingSent() (D5 da milestone)
+- [Phase 139]: 139-05: ChecklistAdministrativoService.paraEmpresa() monta 9/6 itens por montagem condicional (D-07), roda e persiste os 4 resolvers automaticos a cada chamada, calcula progresso pelo catalogo (D-10, imune a chave orfa), e marca/desmarca manualmente com autoria em par (D-11), recusando item automatico (D-13) e gerando a conexao ECF de forma idempotente sem segunda fonte de verdade (D-14)
