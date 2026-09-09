@@ -40,6 +40,12 @@ return [
     'adman' => [
         'base_url' => env('ADMAN_BASE_URL', 'https://api.adman.com.br/v1'),
         'api_key'  => env('ADMAN_API_KEY', ''),
+        // Fase 139 (ADMIN-03, D-04) — link de cadastro/indicação do Adman,
+        // FIXO e idêntico para todas as empresas: não há geração por empresa,
+        // e o AdmanService é somente leitura (só puxa métricas). Trocar o
+        // código `ref` em produção é edição de `.env` na VPS — sem deploy e
+        // sem mudança de código.
+        'register_url' => env('ADMAN_REGISTER_URL', 'https://app.ad-man.io/register?ref=588D0DD78C4F'),
     ],
 
     'adman_mcp' => [
