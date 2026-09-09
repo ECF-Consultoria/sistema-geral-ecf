@@ -182,6 +182,74 @@ das três primeiras e não corrigiu; as demais são consequência direta das dec
   (unique), sem rede e sem depender de o onboarding existir — é idempotente, então "o link existe"
   é sinal suficiente e o botão pode ser acionado quantas vezes for.
 
+
+### Decisões abertas pela pesquisa e fechadas pelo usuário (2026-09-09)
+
+As quatro decisões abaixo nasceram de conflitos que a `139-RESEARCH.md` mediu contra o código e
+**não** resolveu sozinha. Foram apresentadas ao usuário com trade-off explícito e fechadas por ele.
+
+- **D-15:** **O progresso do checklist dirige as etapas 2, 3 e 4 — não o clique final.**
+  Medido: `EtapaTransicaoService::TRANSICOES_PERMITIDAS` só permite chegar em
+  `aguardando_distribuicao` (5) vindo de `administrativo_concluido` (4), mas **nenhum chamador de
+  produção escreve 2, 3 ou 4 hoje** — só a etapa 1 (`HubspotWebhookController:500`,
+  `ComercialController:683`). Sem esta decisão o FINALIZAR nasce morto.
+  **A régua:** 1º item concluído → `administrativo_andamento` (2); envelope Clicksign enviado →
+  `aguardando_assinatura` (3); todos os itens obrigatórios concluídos **e** contrato assinado →
+  `administrativo_concluido` (4); clique no FINALIZAR → `aguardando_distribuicao` (5).
+  ⚠️ **O salto 2→4 já é previsto** na tabela da Fase 137 para empresa isenta de contrato (D-07):
+  sem envelope não existe etapa 3.
+  Toda transição passa por `EtapaTransicaoService::transicionar()` — **nunca** `update()` direto.
+  Motivo: é a única opção que preserva o propósito declarado da máquina de estados
+  (`EtapaTransicaoService.php:28-32`) e dá à Fase 143 (HIST-03) o **instante real** de cada etapa.
+  Custo aceito: amplia o escopo além da letra de ADMIN-01..06.
+
+- **D-16:** **O item 3 "Contrato assinado" fecha por assinatura OU por liberação registrada.**
+  Fonte: `contrato_assinaturas.assinado_em` / `status === assinado` **OU**
+  `ContratoLiberacao` existente para aquele serviço.
+  Medido: existem **3 vias** de liberação (`ContratoLiberacao::VIA_TODAS` — `webhook`, `manual`,
+  `reconciliacao`). Nas vias `webhook` e `reconciliacao` o `status`/`assinado_em` é gravado no mesmo
+  `save()`, então ler as colunas equivale a ler a liberação. Mas a via **`manual`**
+  (`ContratoAdminController::liberarManual()` → `EmpresaOperacionalRouter::liberarEmpresa()`)
+  **nunca toca** essas colunas — e existe exatamente para "Clicksign fora do ar, cliente assinou
+  fora do sistema". Sem esta decisão, empresa liberada por essa via ficaria **permanentemente
+  impedida** de finalizar a entrada administrativa, sem saída pela tela.
+  Continua sendo **leitura pura** — não fere a D5 da milestone.
+  ⚠️ **Isto altera a coluna "Fecha por" do item 3 na tabela da D-03.** A D-03 continua valendo em
+  tudo o mais; só o item 3 ganha a segunda fonte.
+
+- **D-17:** **Mesma rota para a ficha, com permissão em OR — nenhuma rota nova, nenhuma chave nova.**
+  Medido: `admin.contratos.show` está sob `permission:admin.contratos` (`routes/web.php:1443`), então
+  quem tem só `comercial.entrada` tomaria **403** ao clicar "Abrir" na listagem Entrada — o que
+  quebraria a D-08. O middleware `EnsurePermission` **já aceita várias chaves em OR nativamente**
+  (`app/Http/Middleware/EnsurePermission.php:24-38`, docblock literal:
+  *"Permite acesso à rota se o user tem QUALQUER uma das permission keys"*).
+  **A mudança:** `permission:admin.contratos,comercial.entrada` na rota existente.
+  A **seção Contrato dentro da ficha** é renderizada apenas para quem tem `admin.contratos` —
+  a permissão de rota abre a ficha; a permissão de módulo decide o que aparece nela.
+  A D-09 fica preservada na letra: nenhuma chave de permissão nova é criada.
+
+- **D-18:** **Com 2+ envelopes ativos, manda o mais atrasado.**
+  Medido: `ContratoClicksignService::iniciarParaEmpresa()` itera por grupo de serviço (linhas
+  138-223) e pode criar **um `ContratoAssinatura` por grupo** — envelopes simultâneos em estados
+  diferentes. A D-03 descreve o grupo Contrato como 3 itens únicos por empresa e não previa isso.
+  **A régua:** os itens 2 e 3 só fecham quando **TODOS** os envelopes ativos da empresa atingiram
+  aquele estado. Um assinado + um pendente = item 3 **pendente**.
+  Precedente do próprio projeto, não invenção: o `EtapaTransicaoService` já declara por escrito a
+  mesma regra para o onboarding da Fase 142 — *"Manda o onboarding mais atrasado — a empresa só
+  chega em `onboarding_concluido` quando TODOS os onboardings considerados concluírem"*
+  (`EtapaTransicaoService.php:36-39`).
+
+### Registro obrigatório em REQUIREMENTS-v23.md
+
+- **D-19:** Duas exceções ao **ADMIN-02** ("o grupo Contrato reflete o envelope, sem marcação manual
+  paralela") precisam ficar **escritas** em `.planning/REQUIREMENTS-v23.md`, junto ao próprio
+  ADMIN-02 — não implícitas no código:
+  (1) **D-06** — "Contrato revisado" é marcação **manual** com autoria, porque revisar é ato humano
+  e nenhum dos 7 estados do envelope o representa;
+  (2) **D-16** — "Contrato assinado" também fecha por `ContratoLiberacao`, porque a via de liberação
+  manual não escreve `contrato_assinaturas`.
+  ⚠️ Editar `REQUIREMENTS-v23.md` **à mão**: os verbos `gsd-sdk query requirements.*` escrevem no
+  `REQUIREMENTS.md` sem sufixo, que é da v17 e está stale.
 </decisions>
 
 <canonical_refs>
