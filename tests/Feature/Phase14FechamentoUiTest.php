@@ -153,6 +153,11 @@ class Phase14FechamentoUiTest extends TestCase
         $this->registrarFaturamento($semContratos, 10000.00);
 
         // 2) Empresa com 1 contrato
+        // Quick 260909-lge: trocado de 'Publicação' para 'Gestão' — o
+        // escopo do fechamento ampliou pra "só performance/shopee", e
+        // Publicação (sem faturamento apurado) sairia da lista, quebrando
+        // o que este teste realmente prova (o SHAPE de `servicos_contratados`
+        // com exatamente 1 item, não o escopo).
         $b = Company::create([
             'name'             => 'Um Contrato',
             'cnpj'             => '88888888000088',
@@ -160,7 +165,7 @@ class Phase14FechamentoUiTest extends TestCase
             'adman_account_id' => 'ACC-N2',
             'service_type'     => [],
         ]);
-        $this->criarContrato($b, 'Publicação', 0.0);
+        $this->criarContrato($b, 'Gestão', 0.0);
 
         // 3) Empresa com 3 contratos
         $c = Company::create([
