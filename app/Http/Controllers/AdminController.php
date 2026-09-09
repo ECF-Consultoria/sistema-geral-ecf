@@ -487,17 +487,23 @@ class AdminController extends Controller
     }
 
     /**
-     * Quick 260909-e8n — quem NÃO deve aparecer na tela de fechamento.
+     * Quick 260909-e8n (ampliado no Quick 260909-lge) — quem NÃO deve
+     * aparecer na tela de fechamento.
      *
      * O fechamento existe para responder "quem a ECF vai cobrar neste mês".
-     * Três perfis poluíam a lista sem nunca gerar cobrança (medido em
-     * produção 2026-09-09, competência 2026-08: 72 de 201 empresas):
+     * O escopo é setor `performance` (Gestão, Mentoria, Brigada) OU `shopee`
+     * (Gestão de ADS Shopee) — `Servico::SETORES_FINANCEIROS`. Perfis que
+     * poluíam a lista sem pertencer a essa pergunta (medido em produção
+     * 2026-09-09, competência 2026-08: 72 de 201 empresas):
      *  1. `status = 'pendente'` — cadastro de onboarding ainda não ativado,
      *     incluindo os registros de teste; 61 das 69 linhas "sem dados" eram
      *     desta categoria.
      *  2. Sem nenhum contrato de serviço ativo — nunca há o que cobrar.
-     *  3. Só serviço do setor `polos` — Polos tem cobrança própria, fora
-     *     deste fechamento.
+     *  3. Só serviço fora de `SETORES_FINANCEIROS` — inicialmente só
+     *     `polos` era excluído; o Quick 260909-lge ampliou para qualquer
+     *     setor fora de performance/shopee (`publicacao`, `polos`,
+     *     `outros`), porque só estes dois setores geram cobrança NESTE
+     *     fechamento.
      *
      * ⚠️ TRAVA DE SEGURANÇA (decisão do usuário, 2026-09-09): esconder linha
      * que representa dinheiro é pior do que a poluição que este filtro
@@ -514,6 +520,17 @@ class AdminController extends Controller
      * Os três clientes Shopee com `status = 'pendente'` e cobrança ativa
      * (Ale Peças, Tuki Pet, RAVENA RESKALLA HOME) sobrevivem pela primeira
      * trava — o status é que está desatualizado no cadastro, não a cobrança.
+     *
+     * ⚠️ QUICK 260909-lge — O SETOR MANDA sobre "tem faturamento" quando a
+     * empresa TEM contrato ativo, mas de um setor fora do escopo (ex.:
+     * Publicação com faturamento apurado). Faturamento de um setor que não é
+     * cobrado neste fechamento é irrelevante aqui, então a válvula de
+     * dinheiro NÃO se aplica nesse caso — só grupo/hierarquia continuam
+     * travando. Isso é diferente do caso "sem NENHUM contrato ativo": aí a
+     * válvula de dinheiro completa (a de sempre) continua valendo, porque
+     * não há setor nenhum pra mandar (protegido pelo teste
+     * `test_trava_faturamento_mantem_empresa_sem_servico_que_esta_faturando`,
+     * Quick 260909-e8n).
      *
      * Roda ANTES da agregação por grupo nos dois endpoints que montam linhas
      * de fechamento (`fechamento()` e `gerarRelatorioGeral()`), para o PDF
@@ -535,16 +552,26 @@ class AdminController extends Controller
                 return true;
             }
 
+            $temAlgumServicoAtivo = $c->contratosServico->isNotEmpty();
+
             $temServicoCobravel = $c->contratosServico->contains(
                 fn ($ct) => $ct->ativo === true
                     && $ct->servico !== null
-                    && $ct->servico->setor !== Servico::SETOR_POLOS
+                    && in_array($ct->servico->setor, Servico::SETORES_FINANCEIROS, true)
             );
 
             $foraDeEscopo = $c->status === 'pendente' || ! $temServicoCobravel;
 
             if (! $foraDeEscopo) {
                 return true;
+            }
+
+            // Setor manda: tem contrato ativo, mas de setor fora do escopo
+            // (Publicação/Polos/Outros...) — o faturamento dela não conta
+            // pra esta pergunta, só grupo/hierarquia seguram a linha.
+            if ($temAlgumServicoAtivo && ! $temServicoCobravel) {
+                return $c->company_group_id !== null
+                    || $c->parent_company_id !== null;
             }
 
             $temDinheiro = (float) ($linha['faturamento'] ?? 0) > 0
