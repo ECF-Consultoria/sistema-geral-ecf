@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\CompanyGroup;
 use App\Models\Configuracao;
 use App\Models\ContratoAssinatura;
+use App\Models\EmpresaFaixaFaturamento;
 use App\Models\FechamentoGrupoSnapshot;
 use App\Models\FechamentoSnapshot;
 use App\Models\GrupoFaixaFaturamento;
@@ -16,6 +17,7 @@ use App\Models\ShopeeMetric;
 use App\Services\AdmanService;
 use App\Services\Fechamento\FechamentoComparativoService;
 use App\Services\Fechamento\FechamentoFaixaResolver;
+use App\Services\Fechamento\FechamentoRegraTabela;
 use App\Services\Fechamento\FechamentoRollupService;
 use App\Support\CobrancaCalculator;
 use Carbon\Carbon;
@@ -32,6 +34,7 @@ class AdminController extends Controller
         private FechamentoRollupService $rollupService,
         private FechamentoFaixaResolver $faixaResolver,
         private FechamentoComparativoService $comparativoService,
+        private FechamentoRegraTabela $regra,
     ) {}
 
     public function empresas()
@@ -130,6 +133,14 @@ class AdminController extends Controller
 
     public function fechamento(Request $request)
     {
+        // Fase 141 (D-01/D-02/D-03/T-141-19) — lida UMA vez, nunca dentro
+        // de laço: passada adiante para os cinco montadores de linha, o
+        // mesmo padrão de `ConsolidarMesFechamento::handle()`. `grep -n
+        // "regraNova"` deste arquivo precisa alcançar os cinco métodos —
+        // esquecer um é exatamente o defeito recorrente desta linha de
+        // trabalho (o quinto ramo ficando pra trás).
+        $regraNova = $this->regra->ativa();
+
         // Determina o mês de referência — padrão: mês corrente (mesma
         // validação de sempre: mês futuro é recusado e cai no corrente).
         try {
@@ -190,10 +201,24 @@ class AdminController extends Controller
         // manual, a tabela do serviço foi só presumida.
         $companyIdsComContratoAssinado = $this->fechamentoCompanyIdsComContratoAssinado();
 
+        // Fase 141 (T-141-18) — procedência ATUAL da tabela própria de cada
+        // empresa, uma consulta agregada ANTES dos laços (mesmo molde de
+        // `fechamentoCompanyIdsComContratoAssinado()`). D-13 garante que
+        // todas as linhas de uma empresa compartilham a mesma origem —
+        // MIN() é só uma forma barata de pegar "a" origem sem outra query
+        // por empresa. Usada pelos ramos CONGELADOS (2/3/5), que não chamam
+        // o resolver; os ramos AO VIVO (1/4) já recebem a procedência
+        // pronta no shape do resolver (`$faixaData['procedencia']`/
+        // `$faixaAncora['procedencia']`), sem precisar deste mapa.
+        $procedenciaPorEmpresa = EmpresaFaixaFaturamento::query()
+            ->selectRaw('company_id, MIN(origem) as origem')
+            ->groupBy('company_id')
+            ->pluck('origem', 'company_id');
+
         // Passo 2 — números por empresa: congelado (snapshot) ou ao vivo (rollup + resolver).
         $dadosPorId = $competenciaFechada
-            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $companyIdsComContratoAssinado)
-            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $companyIdsComContratoAssinado);
+            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $companyIdsComContratoAssinado, $procedenciaPorEmpresa)
+            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $companyIdsComContratoAssinado, $regraNova);
 
         // Quick 260909-e8n — corta quem não é cobrado por este fechamento
         // (pendente / sem serviço / só Polos), com as travas do helper.
@@ -203,8 +228,8 @@ class AdminController extends Controller
         // Passo 3 — agregação por CompanyGroup (D-08/D-09/D-10). parent_company_id
         // NUNCA participa da soma, faixa ou conta_no_total a partir daqui.
         $dadosPorId = $competenciaFechada
-            ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado)
-            : $this->fechamentoAgregarGruposAoVivo($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado);
+            ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado, $procedenciaPorEmpresa)
+            : $this->fechamentoAgregarGruposAoVivo($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado, $regraNova);
 
         // Fase 139 (D-01/D-04, item 3) — números do topo da tela ("Total a
         // receber" + widget de upgrades). Somado sobre as MESMAS linhas que
@@ -270,6 +295,10 @@ class AdminController extends Controller
             'faixas_por_grupo'       => $this->fechamentoFaixasPorGrupo(),
             // Fase 139 (D-01/D-04, item 3): números do topo da tela.
             'totais'                 => $totais,
+            // Fase 141 (D-01/D-02/D-03) — a tela usa esta prop só para
+            // decidir COPY (ex.: "Valor fixo do contrato" em vez de "A
+            // DEFINIR"), nunca para recalcular nada no frontend.
+            'regra_nova_ativa'       => $regraNova,
         ]);
     }
 
@@ -359,10 +388,24 @@ class AdminController extends Controller
             ->flip();
     }
 
-    private function fechamentoTabelaConfirmada(?string $tabelaOrigem, ?int $companyIdDaTabela, Collection $companyIdsComContratoAssinado): ?bool
+    /**
+     * Fase 141 (D-04/D-05, T-141-18) — `$procedenciaTabela` é a coluna
+     * `origem` da tabela PRÓPRIA da empresa dona (`EmpresaFaixaFaturamento`),
+     * só relevante quando `$tabelaOrigem === 'propria'`. Uma tabela copiada
+     * da tabela do serviço na virada (`ORIGEM_PRESUMIDA_SERVICO`, comando
+     * `fechamento:materializar-tabelas`) é exatamente a presunção que esta
+     * fase existe para tornar visível — deixá-la passar por confirmada só
+     * porque a origem virou 'propria' reintroduziria em silêncio o mesmo
+     * problema que a Quick 260904-kwz resolveu para a tabela do serviço.
+     */
+    private function fechamentoTabelaConfirmada(?string $tabelaOrigem, ?int $companyIdDaTabela, Collection $companyIdsComContratoAssinado, ?string $procedenciaTabela = null): ?bool
     {
         if ($tabelaOrigem === null) {
             return null;
+        }
+
+        if ($tabelaOrigem === 'propria' && $procedenciaTabela === EmpresaFaixaFaturamento::ORIGEM_PRESUMIDA_SERVICO) {
+            return false;
         }
 
         if (in_array($tabelaOrigem, ['propria', 'grupo'], true)) {
@@ -434,6 +477,12 @@ class AdminController extends Controller
                 $totalEPiso = true;
             }
 
+            // Fase 141 (D-03) — `ESTADO_VALOR_FIXO` é resultado normal (a
+            // empresa tem cobrança, só não vem de tabela), nunca pendência.
+            // Não entra aqui de propósito: é uma constante DISTINTA de
+            // `ESTADO_SEM_TABELA`, então esta soma já a exclui sem precisar
+            // de bifurcação por `$regraNova` — o `cobranca_mensal` dela
+            // ainda soma normalmente em `total_a_receber` acima.
             if (($linha['estado'] ?? null) === FechamentoSnapshot::ESTADO_SEM_TABELA) {
                 $empresasSemValorDefinido++;
             }
@@ -591,12 +640,17 @@ class AdminController extends Controller
      * (App\Console\Commands\ConsolidarMesFechamento), só que sem gravar
      * nada.
      */
-    private function fechamentoDadosPorEmpresaAoVivo(Collection $rawCompanies, string $mesSelecionado, Carbon $inicio, Carbon $fim, Collection $companyIdsComContratoAssinado): array
+    private function fechamentoDadosPorEmpresaAoVivo(Collection $rawCompanies, string $mesSelecionado, Carbon $inicio, Carbon $fim, Collection $companyIdsComContratoAssinado, bool $regraNova): array
     {
-        $rollupAtual = $this->rollupService->porEmpresa($mesSelecionado, $rawCompanies);
+        // Fase 141 (D-02): `somenteContratadas: $regraNova` vai NAS DUAS
+        // chamadas — competência atual e mês anterior. Recortar só a atual
+        // compararia réguas diferentes entre os dois meses e inventaria
+        // evolução de faixa falsa (mesma disciplina de
+        // `ConsolidarMesFechamento::handle()`).
+        $rollupAtual = $this->rollupService->porEmpresa($mesSelecionado, $rawCompanies, somenteContratadas: $regraNova);
 
         $mesAnterior    = Carbon::createFromFormat('Y-m-d', $mesSelecionado.'-01')->startOfMonth()->subMonthNoOverflow();
-        $rollupAnterior = $this->rollupService->porEmpresa($mesAnterior->format('Y-m'), $rawCompanies);
+        $rollupAnterior = $this->rollupService->porEmpresa($mesAnterior->format('Y-m'), $rawCompanies, somenteContratadas: $regraNova);
 
         $companyIdsComShopee = ShopeeMetric::query()->distinct()->pluck('company_id')->flip();
 
@@ -618,12 +672,35 @@ class AdminController extends Controller
                 ? $this->faixaResolver->classificar((float) $fatAtual['faturamento_total'], $faixaData['faixas'])
                 : null;
 
-            $estado = match (true) {
-                ! $temIntegracao                                 => FechamentoSnapshot::ESTADO_SEM_INTEGRACAO,
-                $fatAtual['faturamento_total'] === null          => FechamentoSnapshot::ESTADO_SEM_FATURAMENTO,
-                $faixaData === null || $classificacao === null   => FechamentoSnapshot::ESTADO_SEM_TABELA,
-                default                                          => FechamentoSnapshot::ESTADO_OK,
-            };
+            // Precisa estar disponível ANTES da precedência de estado — com
+            // a regra nova, a existência de contrato mensal decide
+            // ESTADO_VALOR_FIXO (Fase 141, D-03).
+            $temContratoMensal = $c->contratosServico->contains(
+                fn ($ct) => $ct->ativo === true && $ct->servico !== null && $ct->servico->tipo_cobranca === Servico::TIPO_MENSAL
+            );
+
+            // Precedência de estado. Fase 141: com a regra nova, a tabela do
+            // serviço nunca mais aparece — empresa sem tabela de
+            // grupo/própria mas com contrato mensal ativo cobra o valor
+            // FIXO do contrato (estado visível, nunca pendência). Com a
+            // flag desligada a precedência de sempre fica intocada, byte a
+            // byte (mesmo bloco de `ConsolidarMesFechamento::handle()`).
+            if ($regraNova) {
+                $estado = match (true) {
+                    ! $temIntegracao                                => FechamentoSnapshot::ESTADO_SEM_INTEGRACAO,
+                    $faixaData === null && $temContratoMensal       => FechamentoSnapshot::ESTADO_VALOR_FIXO,
+                    $fatAtual['faturamento_total'] === null         => FechamentoSnapshot::ESTADO_SEM_FATURAMENTO,
+                    $faixaData === null || $classificacao === null  => FechamentoSnapshot::ESTADO_SEM_TABELA,
+                    default                                         => FechamentoSnapshot::ESTADO_OK,
+                };
+            } else {
+                $estado = match (true) {
+                    ! $temIntegracao                                 => FechamentoSnapshot::ESTADO_SEM_INTEGRACAO,
+                    $fatAtual['faturamento_total'] === null          => FechamentoSnapshot::ESTADO_SEM_FATURAMENTO,
+                    $faixaData === null || $classificacao === null   => FechamentoSnapshot::ESTADO_SEM_TABELA,
+                    default                                          => FechamentoSnapshot::ESTADO_OK,
+                };
+            }
 
             // Evolução: compara com o snapshot congelado do mês anterior
             // quando existe; senão calcula o rollup do mês anterior ao vivo
@@ -668,12 +745,16 @@ class AdminController extends Controller
 
             $upgrade = $this->fechamentoDerivarUpgrade($classificacao['ordem'] ?? null, $classificacao['valor'] ?? null, $ordemAnterior, $valorFaixaAnterior);
 
-            $temContratoMensal = $c->contratosServico->contains(
-                fn ($ct) => $ct->ativo === true && $ct->servico !== null && $ct->servico->tipo_cobranca === Servico::TIPO_MENSAL
-            );
-            $cobrancaMensal = ($classificacao !== null || $temContratoMensal)
-                ? (CobrancaCalculator::novo($classificacao, $c->contratosServico) ?: null)
-                : null;
+            // Fase 141 (D-03): com a regra nova, a mensalidade é o valor da
+            // FAIXA e só isso — `mensalidade()` já devolve null quando não
+            // há nem faixa nem contrato mensal. Com a flag desligada, a
+            // fórmula antiga (faixa + soma dos contratos mensais) continua
+            // exatamente como era.
+            $cobrancaMensal = $regraNova
+                ? CobrancaCalculator::mensalidade($classificacao, $c->contratosServico)
+                : (($classificacao !== null || $temContratoMensal)
+                    ? (CobrancaCalculator::novo($classificacao, $c->contratosServico) ?: null)
+                    : null);
 
             $dadosPorId[$c->id] = [
                 'id'                    => $c->id,
@@ -697,9 +778,21 @@ class AdminController extends Controller
                 'valor_faixa_e_piso'    => $classificacao['valor_e_piso'] ?? false,
                 'tabela_origem'         => $faixaData['origem'] ?? null,
                 'tabela_servico_nome'   => $faixaData['servico_nome'] ?? null,
+                // Fase 141 (D-04/D-05) — procedência da tabela PRÓPRIA desta
+                // empresa (manual/contrato/presumida do serviço); `null` nos
+                // demais casos (tabela do grupo ou do serviço). Vem pronta
+                // do resolver, sem consulta extra.
+                'procedencia_tabela'    => $faixaData['procedencia'] ?? null,
                 // Quick 260904-kwz — confirmada (cadastro manual ou contrato
-                // assinado) ou só presumida a partir do serviço.
-                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($faixaData['origem'] ?? null, $c->id, $companyIdsComContratoAssinado),
+                // assinado) ou só presumida a partir do serviço. Fase 141
+                // (T-141-18): tabela própria com procedência
+                // 'presumida_servico' nunca é confirmada, mesmo sendo
+                // origem 'propria'.
+                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($faixaData['origem'] ?? null, $c->id, $companyIdsComContratoAssinado, $faixaData['procedencia'] ?? null),
+                // Fase 141 (D-02) — quais plataformas entraram na soma que
+                // define a faixa; sempre presente (rollup devolve
+                // ['ml','shopee'] quando a regra nova está desligada).
+                'plataformas_consideradas' => $fatAtual['plataformas_consideradas'] ?? null,
                 'cobranca_mensal'       => $cobrancaMensal,
                 'evolucao'              => $evolucao,
                 // Fase 139 (D-04): de qual faixa a empresa veio e quanto
@@ -720,7 +813,7 @@ class AdminController extends Controller
      * `fechamento:consolidar-mes`. Nunca recalcula — corrigir `adman_metrics`
      * depois do fechamento não muda o que já foi cobrado.
      */
-    private function fechamentoDadosPorEmpresaCongelados(Collection $rawCompanies, string $mesReferenciaStr, Carbon $inicio, Carbon $fim, Collection $companyIdsComContratoAssinado): array
+    private function fechamentoDadosPorEmpresaCongelados(Collection $rawCompanies, string $mesReferenciaStr, Carbon $inicio, Carbon $fim, Collection $companyIdsComContratoAssinado, Collection $procedenciaPorEmpresa): array
     {
         $snapshots = FechamentoSnapshot::query()
             ->whereDate('mes_referencia', $mesReferenciaStr)
@@ -764,6 +857,11 @@ class AdminController extends Controller
                     'valor_faixa_e_piso'    => false,
                     'tabela_origem'         => null,
                     'tabela_servico_nome'   => null,
+                    // Fase 141 (D-04) — sem linha nesta competência, também
+                    // não há procedência nem recorte de plataforma pra
+                    // mostrar (nunca inventar um palpite, D-11).
+                    'procedencia_tabela'       => null,
+                    'plataformas_consideradas' => null,
                     // Quick 260904-kwz — sem linha nesta competência, não há
                     // tabela nenhuma pra perguntar se está confirmada.
                     'tabela_confirmada'     => null,
@@ -807,6 +905,16 @@ class AdminController extends Controller
                 'valor_faixa_e_piso'    => (bool) $s->valor_faixa_e_piso,
                 'tabela_origem'         => $s->tabela_origem,
                 'tabela_servico_nome'   => $s->servico?->nome,
+                // Fase 141 (D-04/D-05) — procedência ATUAL da tabela própria
+                // desta empresa (o snapshot não guarda essa coluna — D-11
+                // proíbe recalcular, mas "quem é dono da tabela hoje" é uma
+                // pergunta sobre HOJE, mesma disciplina do contrato assinado
+                // logo abaixo, nunca sobre "como era no mês fechado").
+                'procedencia_tabela'    => $s->tabela_origem === 'propria' ? ($procedenciaPorEmpresa[$c->id] ?? null) : null,
+                // Fase 141 (D-02) — a competência congelada não guarda quais
+                // plataformas entraram na soma daquele mês; mandar `null` (a
+                // tela não mostra a explicação) em vez de um palpite.
+                'plataformas_consideradas' => null,
                 // Quick 260904-kwz — confirmada (cadastro manual ou contrato
                 // assinado) ou só presumida a partir do serviço. Lê o
                 // contrato assinado ATUAL (não congela junto do snapshot) —
@@ -814,8 +922,10 @@ class AdminController extends Controller
                 // confirmar a tabela de competências passadas também,
                 // porque a pergunta é "existe confirmação HOJE", não
                 // "existia confirmação naquele mês" (D-11 é sobre números,
-                // nunca recalcula faturamento/faixa/mensalidade).
-                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($s->tabela_origem, $c->id, $companyIdsComContratoAssinado),
+                // nunca recalcula faturamento/faixa/mensalidade). Fase 141
+                // (T-141-18): mesma correção do ramo ao vivo — procedência
+                // 'presumida_servico' nunca é confirmada.
+                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($s->tabela_origem, $c->id, $companyIdsComContratoAssinado, $procedenciaPorEmpresa[$c->id] ?? null),
                 'cobranca_mensal'       => $s->cobranca_mensal !== null ? (float) $s->cobranca_mensal : null,
                 'evolucao'              => $s->evolucao,
                 // Fase 139 (D-04): reconstruído do snapshot do mês anterior
@@ -836,7 +946,7 @@ class AdminController extends Controller
      * (tabela da empresa-âncora), `tabelas_divergentes` quando as membros
      * resolvem tabelas diferentes. `parent_company_id` NUNCA participa.
      */
-    private function fechamentoAgregarGruposAoVivo(array $dadosPorId, Collection $rawCompanies, string $mesReferenciaStr, Collection $companyIdsComContratoAssinado): array
+    private function fechamentoAgregarGruposAoVivo(array $dadosPorId, Collection $rawCompanies, string $mesReferenciaStr, Collection $companyIdsComContratoAssinado, bool $regraNova): array
     {
         $linhasFinais = [];
 
@@ -912,11 +1022,31 @@ class AdminController extends Controller
                 ? $this->faixaResolver->classificar($faturamentoTotal, $faixaAncora['faixas'])
                 : null;
 
-            $estadoGrupo = match (true) {
-                $faturamentoTotal === null                            => FechamentoSnapshot::ESTADO_SEM_FATURAMENTO,
-                $faixaAncora === null || $classificacaoGrupo === null => FechamentoSnapshot::ESTADO_SEM_TABELA,
-                default                                                => FechamentoSnapshot::ESTADO_OK,
-            };
+            // Precisa estar disponível ANTES da precedência de estado —
+            // mesma razão da linha de empresa (Fase 141, D-03).
+            $todosContratosDoGrupo  = $membros->flatMap(fn (Company $c) => $c->contratosServico);
+            $temContratoMensalGrupo = $todosContratosDoGrupo->contains(
+                fn ($ct) => $ct->ativo === true && $ct->servico !== null && $ct->servico->tipo_cobranca === Servico::TIPO_MENSAL
+            );
+
+            // Mesma precedência da linha de empresa (Fase 141, D-03): com a
+            // regra nova, grupo sem régua e com contrato mensal em qualquer
+            // empresa-membro cobra o valor FIXO. Flag desligada mantém a
+            // precedência de sempre, intocada.
+            if ($regraNova) {
+                $estadoGrupo = match (true) {
+                    $faixaAncora === null && $temContratoMensalGrupo      => FechamentoSnapshot::ESTADO_VALOR_FIXO,
+                    $faturamentoTotal === null                            => FechamentoSnapshot::ESTADO_SEM_FATURAMENTO,
+                    $faixaAncora === null || $classificacaoGrupo === null => FechamentoSnapshot::ESTADO_SEM_TABELA,
+                    default                                                => FechamentoSnapshot::ESTADO_OK,
+                };
+            } else {
+                $estadoGrupo = match (true) {
+                    $faturamentoTotal === null                            => FechamentoSnapshot::ESTADO_SEM_FATURAMENTO,
+                    $faixaAncora === null || $classificacaoGrupo === null => FechamentoSnapshot::ESTADO_SEM_TABELA,
+                    default                                                => FechamentoSnapshot::ESTADO_OK,
+                };
+            }
 
             // Fase 138: nenhum caso especial aqui pra tabela de grupo — desde
             // que `paraEmpresa()` (Plano 01) passou a devolver origem
@@ -946,13 +1076,14 @@ class AdminController extends Controller
 
             $upgradeGrupo = $this->fechamentoDerivarUpgrade($classificacaoGrupo['ordem'] ?? null, $classificacaoGrupo['valor'] ?? null, $ordemAnteriorGrupo, $valorFaixaAnteriorGrupo);
 
-            $todosContratosDoGrupo  = $membros->flatMap(fn (Company $c) => $c->contratosServico);
-            $temContratoMensalGrupo = $todosContratosDoGrupo->contains(
-                fn ($ct) => $ct->ativo === true && $ct->servico !== null && $ct->servico->tipo_cobranca === Servico::TIPO_MENSAL
-            );
-            $cobrancaMensalGrupo = ($classificacaoGrupo !== null || $temContratoMensalGrupo)
-                ? (CobrancaCalculator::novo($classificacaoGrupo, $todosContratosDoGrupo) ?: null)
-                : null;
+            // Fase 141 (D-03): mesma bifurcação da linha de empresa — com a
+            // regra nova, a mensalidade do grupo é só o valor da faixa da
+            // SOMA, nunca faixa + contratos-membro somados por cima.
+            $cobrancaMensalGrupo = $regraNova
+                ? CobrancaCalculator::mensalidade($classificacaoGrupo, $todosContratosDoGrupo)
+                : (($classificacaoGrupo !== null || $temContratoMensalGrupo)
+                    ? (CobrancaCalculator::novo($classificacaoGrupo, $todosContratosDoGrupo) ?: null)
+                    : null);
 
             $servicosContratadosUniao = $membros
                 ->flatMap(fn (Company $c) => $dadosPorId[$c->id]['servicos_contratados'])
@@ -991,13 +1122,27 @@ class AdminController extends Controller
                 // herdada.
                 'tabela_grupo_nome'       => ($faixaAncora['origem'] ?? null) === 'grupo' ? ($faixaAncora['grupo_nome'] ?? null) : null,
                 'tabela_herdada_de_nome'  => ($faixaAncora !== null && $faixaAncora['origem'] !== 'grupo') ? ($faixaAncora['herdada_de_company_name'] ?? null) : null,
+                // Fase 141 (D-04/D-05) — procedência da tabela PRÓPRIA da
+                // âncora; `null` quando a origem é 'grupo' ou 'servico'
+                // (mesma semântica de `procedencia_tabela` na linha de
+                // empresa). Vem pronta do resolver, sem consulta extra.
+                'procedencia_tabela'    => $faixaAncora['procedencia'] ?? null,
+                // Fase 141 (D-02) — união das plataformas consideradas pelos
+                // membros (cada linha-membro já carrega a sua, calculada no
+                // ramo ao vivo de empresa).
+                'plataformas_consideradas' => $linhasMembros
+                    ->flatMap(fn ($lm) => $lm['plataformas_consideradas'] ?? [])
+                    ->unique()
+                    ->values()
+                    ->all(),
                 // Quick 260904-kwz — confirmada (cadastro manual do GRUPO ou
                 // da empresa-âncora, ou contrato assinado da âncora) ou só
                 // presumida a partir do serviço. `origem` 'grupo' já é
                 // manual por si só; 'propria'/'servico' vêm da âncora
                 // (`paraGrupo()` delega em `paraEmpresa($ancora)`), então o
-                // contrato a checar é o DELA.
-                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($faixaAncora['origem'] ?? null, $ancora->id, $companyIdsComContratoAssinado),
+                // contrato a checar é o DELA. Fase 141 (T-141-18): mesma
+                // correção — procedência 'presumida_servico' nunca confirma.
+                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($faixaAncora['origem'] ?? null, $ancora->id, $companyIdsComContratoAssinado, $faixaAncora['procedencia'] ?? null),
                 'tabelas_divergentes'   => $tabelasDivergentes,
                 'cobranca_mensal'       => $cobrancaMensalGrupo,
                 'evolucao'              => $evolucaoGrupo,
@@ -1019,7 +1164,7 @@ class AdminController extends Controller
      * `CompanyGroup` lendo `fechamento_grupo_snapshots`, quando a
      * competência já foi fechada. Nunca recalcula a soma.
      */
-    private function fechamentoAgregarGruposCongelados(array $dadosPorId, Collection $rawCompanies, string $mesReferenciaStr, Collection $companyIdsComContratoAssinado): array
+    private function fechamentoAgregarGruposCongelados(array $dadosPorId, Collection $rawCompanies, string $mesReferenciaStr, Collection $companyIdsComContratoAssinado, Collection $procedenciaPorEmpresa): array
     {
         $linhasFinais = [];
 
@@ -1110,10 +1255,21 @@ class AdminController extends Controller
                 'tabela_servico_nome'   => $s?->servico?->nome,
                 'tabela_grupo_nome'      => $tabelaGrupoNome,
                 'tabela_herdada_de_nome' => $tabelaHerdadaDeNome,
+                // Fase 141 (D-04/D-05) — procedência ATUAL da tabela própria
+                // da empresa-âncora deste snapshot (mesma disciplina do
+                // ramo 3 de empresa: "quem é dono hoje" é pergunta sobre
+                // HOJE, não sobre o mês congelado).
+                'procedencia_tabela'    => $s?->tabela_origem === 'propria' ? ($procedenciaPorEmpresa[$s?->empresa_ancora_id] ?? null) : null,
+                // Fase 141 (D-02) — o snapshot de grupo não guarda quais
+                // plataformas entraram na soma daquele mês; `null` em vez de
+                // palpite (mesma disciplina do ramo 3 de empresa).
+                'plataformas_consideradas' => null,
                 // Quick 260904-kwz — mesma regra do ramo ao vivo: origem
                 // 'grupo' é manual por si só; 'propria'/'servico' checam o
-                // contrato assinado da empresa-âncora deste snapshot.
-                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($s?->tabela_origem, $s?->empresa_ancora_id, $companyIdsComContratoAssinado),
+                // contrato assinado da empresa-âncora deste snapshot. Fase
+                // 141 (T-141-18): mesma correção — procedência
+                // 'presumida_servico' nunca confirma.
+                'tabela_confirmada'     => $this->fechamentoTabelaConfirmada($s?->tabela_origem, $s?->empresa_ancora_id, $companyIdsComContratoAssinado, $procedenciaPorEmpresa[$s?->empresa_ancora_id] ?? null),
                 'tabelas_divergentes'   => (bool) ($s?->tabelas_divergentes ?? false),
                 'cobranca_mensal'       => $s?->cobranca_mensal !== null ? (float) $s->cobranca_mensal : null,
                 'evolucao'              => $s?->evolucao,
@@ -1362,12 +1518,20 @@ class AdminController extends Controller
         // Quick 260904-kwz — mesma consulta em massa de fechamento().
         $companyIdsComContratoAssinado = $this->fechamentoCompanyIdsComContratoAssinado();
 
+        // Fase 141 — mesma flag e mesmo mapa de procedência de fechamento(),
+        // para o PDF individual nunca divergir da tela (T-141-19).
+        $regraNova             = $this->regra->ativa();
+        $procedenciaPorEmpresa = EmpresaFaixaFaturamento::query()
+            ->selectRaw('company_id, MIN(origem) as origem')
+            ->groupBy('company_id')
+            ->pluck('origem', 'company_id');
+
         // D-11 — mesma bifurcação de fechamento(): competência congelada lê
         // fechamento_snapshots, nunca recalcula (D-05: ML+Shopee já somados
         // e classificados pelas mesmas fontes centrais).
         $dadosPorId = $this->relatorioCompetenciaFechada($mesReferenciaStr)
-            ? $this->fechamentoDadosPorEmpresaCongelados($todasEmpresas, $mesReferenciaStr, $inicio, $fim, $companyIdsComContratoAssinado)
-            : $this->fechamentoDadosPorEmpresaAoVivo($todasEmpresas, $mesSelecionado, $inicio, $fim, $companyIdsComContratoAssinado);
+            ? $this->fechamentoDadosPorEmpresaCongelados($todasEmpresas, $mesReferenciaStr, $inicio, $fim, $companyIdsComContratoAssinado, $procedenciaPorEmpresa)
+            : $this->fechamentoDadosPorEmpresaAoVivo($todasEmpresas, $mesSelecionado, $inicio, $fim, $companyIdsComContratoAssinado, $regraNova);
 
         $periodoInicioFmt = $inicio->format('d/m/Y');
         $periodoFimFmt    = $fim->format('d/m/Y');
@@ -1455,12 +1619,20 @@ class AdminController extends Controller
         // Quick 260904-kwz — mesma consulta em massa de fechamento().
         $companyIdsComContratoAssinado = $this->fechamentoCompanyIdsComContratoAssinado();
 
+        // Fase 141 — mesma flag e mesmo mapa de procedência de fechamento(),
+        // para o PDF geral nunca divergir da tela (T-141-19).
+        $regraNova             = $this->regra->ativa();
+        $procedenciaPorEmpresa = EmpresaFaixaFaturamento::query()
+            ->selectRaw('company_id, MIN(origem) as origem')
+            ->groupBy('company_id')
+            ->pluck('origem', 'company_id');
+
         // Mesmo pipeline de fechamento(): números por empresa (congelado ou
         // ao vivo, D-05/D-11) e depois agregação por CompanyGroup
         // (D-08/D-09/D-10) — nunca a hierarquia legada de pai/filha.
         $dadosPorId = $competenciaFechada
-            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $companyIdsComContratoAssinado)
-            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $companyIdsComContratoAssinado);
+            ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $companyIdsComContratoAssinado, $procedenciaPorEmpresa)
+            : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $companyIdsComContratoAssinado, $regraNova);
 
         // Quick 260909-e8n — mesmo corte de escopo da tela (pendente / sem
         // serviço / só Polos, com as travas). O PDF do relatório geral tem
@@ -1468,8 +1640,8 @@ class AdminController extends Controller
         $dadosPorId = $this->fechamentoRemoverForaDeEscopo($dadosPorId, $rawCompanies);
 
         $dadosPorId = $competenciaFechada
-            ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado)
-            : $this->fechamentoAgregarGruposAoVivo($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado);
+            ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado, $procedenciaPorEmpresa)
+            : $this->fechamentoAgregarGruposAoVivo($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado, $regraNova);
 
         $periodoInicioFmt = $inicio->format('d/m/Y');
         $periodoFimFmt    = $fim->format('d/m/Y');
