@@ -57,7 +57,10 @@ class AdminFechamentoControllerTest extends TestCase
     public function test_fechamento_retorna_empresas_ativas_com_has_adman(): void
     {
         $admin = $this->criarAdmin();
-        Company::create(['name' => 'Empresa A', 'cnpj' => '11111111111111', 'active' => true, 'adman_account_id' => '123']);
+        // Quick 260909-e8n: sem contrato de servico ativo a empresa sai do
+        // escopo do fechamento — o vinculo mantem o que este teste afirma.
+        $company = Company::create(['name' => 'Empresa A', 'cnpj' => '11111111111111', 'active' => true, 'adman_account_id' => '123']);
+        $this->vincularGestao($company);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
@@ -72,7 +75,8 @@ class AdminFechamentoControllerTest extends TestCase
     public function test_empresa_sem_adman_recebe_has_adman_false(): void
     {
         $admin = $this->criarAdmin();
-        Company::create(['name' => 'Empresa B', 'cnpj' => '22222222222222', 'active' => true]);
+        $company = Company::create(['name' => 'Empresa B', 'cnpj' => '22222222222222', 'active' => true]);
+        $this->vincularGestao($company);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
@@ -208,7 +212,8 @@ class AdminFechamentoControllerTest extends TestCase
     public function test_empresa_sem_dados_recebe_estado_sem_dados(): void
     {
         $admin   = $this->criarAdmin();
-        Company::create(['name' => 'Empresa Sem Dados', 'cnpj' => '10000000000003', 'active' => true, 'adman_account_id' => 'ACC003']);
+        $company = Company::create(['name' => 'Empresa Sem Dados', 'cnpj' => '10000000000003', 'active' => true, 'adman_account_id' => 'ACC003']);
+        $this->vincularGestao($company);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
@@ -227,7 +232,8 @@ class AdminFechamentoControllerTest extends TestCase
     public function test_empresa_sem_adman_recebe_estado_sem_integracao(): void
     {
         $admin   = $this->criarAdmin();
-        Company::create(['name' => 'Empresa Sem Adman', 'cnpj' => '10000000000004', 'active' => true]);
+        $company = Company::create(['name' => 'Empresa Sem Adman', 'cnpj' => '10000000000004', 'active' => true]);
+        $this->vincularGestao($company);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 

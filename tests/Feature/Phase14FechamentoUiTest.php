@@ -138,13 +138,19 @@ class Phase14FechamentoUiTest extends TestCase
         $admin = $this->criarAdmin();
 
         // 1) Empresa sem contratos
-        Company::create([
+        // Quick 260909-e8n: sem contrato de servico ativo a empresa sairia do
+        // escopo do fechamento — o faturamento no mes aciona a TRAVA de
+        // seguranca do filtro (linha que representa dinheiro nunca some) e
+        // preserva o que este teste prova: `servicos_contratados` vem como
+        // array vazio, nunca ausente.
+        $semContratos = Company::create([
             'name'             => 'Sem Contratos',
             'cnpj'             => '77777777000077',
             'active'           => true,
             'adman_account_id' => 'ACC-N1',
             'service_type'     => [],
         ]);
+        $this->registrarFaturamento($semContratos, 10000.00);
 
         // 2) Empresa com 1 contrato
         $b = Company::create([

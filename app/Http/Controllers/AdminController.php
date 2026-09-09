@@ -195,6 +195,11 @@ class AdminController extends Controller
             ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $companyIdsComContratoAssinado)
             : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $companyIdsComContratoAssinado);
 
+        // Quick 260909-e8n — corta quem não é cobrado por este fechamento
+        // (pendente / sem serviço / só Polos), com as travas do helper.
+        // ANTES da agregação: assim a soma de nenhum grupo muda.
+        $dadosPorId = $this->fechamentoRemoverForaDeEscopo($dadosPorId, $rawCompanies);
+
         // Passo 3 — agregação por CompanyGroup (D-08/D-09/D-10). parent_company_id
         // NUNCA participa da soma, faixa ou conta_no_total a partir daqui.
         $dadosPorId = $competenciaFechada
@@ -253,6 +258,14 @@ class AdminController extends Controller
             'servicos_disponiveis'   => $servicosDisponiveis,
             'competencia_fechada'    => $competenciaFechada,
             'competencia_fechada_em' => $competenciaFechadaEm,
+            // Quick 260909-e8n — o período APURADO, ao lado da data em que o
+            // fechamento foi executado. Sem isto a tela mostrava só
+            // "Fechado em 03/09" numa competência de agosto e parecia que o
+            // período apurado ia até setembro.
+            'periodo'                => [
+                'inicio' => $inicio->format('d/m/Y'),
+                'fim'    => $fim->format('d/m/Y'),
+            ],
             'faixas_por_servico'     => $this->fechamentoFaixasPorServico(),
             'faixas_por_grupo'       => $this->fechamentoFaixasPorGrupo(),
             // Fase 139 (D-01/D-04, item 3): números do topo da tela.
@@ -471,6 +484,77 @@ class AdminController extends Controller
             'upgrades_ganho_parcial'      => $upgradesGanhoParcial,
             'tabelas_assumidas'           => $tabelasAssumidas,
         ];
+    }
+
+    /**
+     * Quick 260909-e8n — quem NÃO deve aparecer na tela de fechamento.
+     *
+     * O fechamento existe para responder "quem a ECF vai cobrar neste mês".
+     * Três perfis poluíam a lista sem nunca gerar cobrança (medido em
+     * produção 2026-09-09, competência 2026-08: 72 de 201 empresas):
+     *  1. `status = 'pendente'` — cadastro de onboarding ainda não ativado,
+     *     incluindo os registros de teste; 61 das 69 linhas "sem dados" eram
+     *     desta categoria.
+     *  2. Sem nenhum contrato de serviço ativo — nunca há o que cobrar.
+     *  3. Só serviço do setor `polos` — Polos tem cobrança própria, fora
+     *     deste fechamento.
+     *
+     * ⚠️ TRAVA DE SEGURANÇA (decisão do usuário, 2026-09-09): esconder linha
+     * que representa dinheiro é pior do que a poluição que este filtro
+     * resolve. A empresa PERMANECE na lista, mesmo se cair numa das três
+     * regras acima, quando:
+     *  - tem faturamento apurado no mês (> 0);
+     *  - tem cobrança calculada (`cobranca_mensal` ou `valor_mensal` > 0);
+     *  - é membro de `CompanyGroup` — tirá-la mudaria a SOMA do grupo e
+     *    poderia derrubar a faixa cobrada do grupo inteiro (o caso real:
+     *    Interior Magazine, contratos inativos, R$ 204.427 dentro do grupo
+     *    Utilar);
+     *  - tem hierarquia de empresa (`parent_company_id`).
+     *
+     * Os três clientes Shopee com `status = 'pendente'` e cobrança ativa
+     * (Ale Peças, Tuki Pet, RAVENA RESKALLA HOME) sobrevivem pela primeira
+     * trava — o status é que está desatualizado no cadastro, não a cobrança.
+     *
+     * Roda ANTES da agregação por grupo nos dois endpoints que montam linhas
+     * de fechamento (`fechamento()` e `gerarRelatorioGeral()`), para o PDF
+     * nunca divergir da tela.
+     *
+     * @param  array<int|string, array<string, mixed>>  $dadosPorId  linhas por empresa, ANTES da agregação de grupo
+     * @return array<int|string, array<string, mixed>>
+     */
+    private function fechamentoRemoverForaDeEscopo(array $dadosPorId, Collection $rawCompanies): array
+    {
+        $porId = $rawCompanies->keyBy('id');
+
+        return array_filter($dadosPorId, function (array $linha, $id) use ($porId) {
+            $c = $porId->get($id);
+
+            // Fail-safe: sem a empresa em mãos não dá para julgar escopo —
+            // manter a linha (nunca sumir com dado por dúvida).
+            if ($c === null) {
+                return true;
+            }
+
+            $temServicoCobravel = $c->contratosServico->contains(
+                fn ($ct) => $ct->ativo === true
+                    && $ct->servico !== null
+                    && $ct->servico->setor !== Servico::SETOR_POLOS
+            );
+
+            $foraDeEscopo = $c->status === 'pendente' || ! $temServicoCobravel;
+
+            if (! $foraDeEscopo) {
+                return true;
+            }
+
+            $temDinheiro = (float) ($linha['faturamento'] ?? 0) > 0
+                || (float) ($linha['cobranca_mensal'] ?? 0) > 0
+                || (float) ($linha['valor_mensal'] ?? 0) > 0;
+
+            return $temDinheiro
+                || $c->company_group_id !== null
+                || $c->parent_company_id !== null;
+        }, ARRAY_FILTER_USE_BOTH);
     }
 
     /**
@@ -1350,6 +1434,11 @@ class AdminController extends Controller
         $dadosPorId = $competenciaFechada
             ? $this->fechamentoDadosPorEmpresaCongelados($rawCompanies, $mesReferenciaStr, $inicio, $fim, $companyIdsComContratoAssinado)
             : $this->fechamentoDadosPorEmpresaAoVivo($rawCompanies, $mesSelecionado, $inicio, $fim, $companyIdsComContratoAssinado);
+
+        // Quick 260909-e8n — mesmo corte de escopo da tela (pendente / sem
+        // serviço / só Polos, com as travas). O PDF do relatório geral tem
+        // que listar exatamente quem a tela lista.
+        $dadosPorId = $this->fechamentoRemoverForaDeEscopo($dadosPorId, $rawCompanies);
 
         $dadosPorId = $competenciaFechada
             ? $this->fechamentoAgregarGruposCongelados($dadosPorId, $rawCompanies, $mesReferenciaStr, $companyIdsComContratoAssinado)
