@@ -2,6 +2,7 @@
 
 use Inertia\Inertia;
 use App\Http\Controllers\ContratoAdminController;
+use App\Http\Controllers\TabelasContratoController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\EcfWebhookController;
@@ -1469,6 +1470,15 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     // Plano 131-06 (D-10) — absorve ContratoLiberacaoManualController::store()
     // (Fase 130). Ação disparada de dentro do detalhe da empresa.
     Route::post('/liberacao-manual', [ContratoAdminController::class, 'liberarManual'])->name('liberacao-manual');
+
+    // Plano 140-05 (TAB-08/TAB-09) — tela de conferência das tabelas de cobrança lidas do
+    // Clicksign (140-01/02/03/04) e a confirmação auditada que grava
+    // empresa_faixas_faturamento/companies. MESMO grupo de permissão acima, de propósito — nunca
+    // um grupo novo nem role:admin (T-140-19).
+    // Rotas: admin.contratos.tabelas.index, admin.contratos.tabelas.confirmar, admin.contratos.tabelas.descartar.
+    Route::get('/tabelas', [TabelasContratoController::class, 'index'])->name('tabelas.index');
+    Route::post('/tabelas/{proposta}/confirmar', [TabelasContratoController::class, 'confirmar'])->name('tabelas.confirmar');
+    Route::post('/tabelas/{proposta}/descartar', [TabelasContratoController::class, 'descartar'])->name('tabelas.descartar');
 });
 
 // ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────
