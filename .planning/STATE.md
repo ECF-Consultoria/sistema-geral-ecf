@@ -778,6 +778,48 @@ recriados. Last activity: 2026-09-09 — 141-03 executado (`141-03-SUMMARY.md`).
 subagente sem acesso a produção/`.env`/`plink`/`pscp` (trava do próprio plano); comando de
 materialização NUNCA rodado contra produção (é checkpoint humano do plano 141-07).
 
+141-04 concluído (TPE-01/TPE-02/TPE-03/TPE-04/TPE-08) — **o plano que liga o interruptor**: tudo
+antes dele construiu peças desligadas, a partir daqui o motor resolve a faixa sem a tabela do
+serviço e a consolidação usa a regra nova, os dois atrás da flag (que continua nascendo desligada —
+ninguém ligou em produção). `FechamentoFaixaResolver::paraEmpresa()` retorna `null` direto (nunca
+mais cai no degrau do serviço) quando a flag está ligada e não há tabela de grupo/própria; shape
+ganha a 9ª chave `procedencia` (`manual`/`contrato`/`presumida_servico` só quando
+`origem='propria'`). `paraGrupo()` não precisou de nenhuma linha de código nova — por já delegar
+para `paraEmpresa($ancora)`, a herança do grupo já para de encontrar o serviço quando a flag liga.
+`ConsolidarMesFechamento` lê `$regraNova` UMA vez no início de `handle()` e passa
+`somenteContratadas: $regraNova` nas DUAS chamadas de `porEmpresa()` (competência atual E mês
+anterior — a armadilha que o 141-01 avisou: só uma inventaria evolução de faixa falsa); estado ganha
+precedência nova (`ESTADO_VALOR_FIXO` antes de `ESTADO_SEM_FATURAMENTO` quando não há régua mas há
+contrato mensal ativo, para empresa E grupo); cobrança usa `CobrancaCalculator::mensalidade()` (só o
+valor da faixa) com a flag ligada, `novo()` (fórmula antiga) com a flag desligada, byte a byte. Gate
+de cobertura de faturamento passa a excluir `ESTADO_VALOR_FIXO` do denominador (além de
+`ESTADO_SEM_INTEGRACAO`) — a segunda armadilha avisada pelo orquestrador: sem essa exclusão, um
+punhado de empresas sem plataforma elegível (Mentoria e afins) derrubaria a cobertura abaixo de 0,7
+e recusaria o fechamento de TODO MUNDO, efeito colateral puro da regra nova. Cenário BARAOSHOP
+provado ponta a ponta com valores reais: **ANTES R$5.500,00** (faixa R$3.000 + contrato Shopee
+R$2.500, o bug que abriu a Fase 141) → **DEPOIS R$3.000,00** (só a faixa, classificada sobre a soma
+R$488.262,90 das duas plataformas) — dois métodos de teste separados (não dois `artisan()` no mesmo
+método), porque o console Kernel de teste memoiza a instância do comando entre chamadas de
+`$this->artisan()` dentro do MESMO método, e `FechamentoRegraTabela::ativa()` é memoizado por
+instância — ligar a flag no meio do mesmo método leria o valor ANTIGO (falso positivo de teste;
+produção não tem esse problema, cada `artisan` é processo novo). Trava D-11 (Fase 137) reprovada sob
+a regra nova: congela com a flag desligada, liga a flag, cadastra tabela de empresa e altera
+métricas de origem, reconsulta direta a `fechamento_snapshots`/`fechamento_grupo_snapshots` prova
+que nada se move, e reconsolidar sem `--motivo=` continua recusado mesmo com a flag ligada. TDD: 3
+tarefas, 3 commits (`9a9a1905` resolver, `992149d9` comando, `d4427952` trava) — teste escrito e
+confirmado antes da implementação em cada tarefa, commit final junta teste+implementação (mesmo
+padrão pragmático do 141-01/02/03, árvore compartilhada). Testes novos: `Phase141ResolverCutoverTest`
+(7) + `Phase141ConsolidarRegraNovaTest` (7) + `Phase141CongeladoNaoMudaTest` (1) = 15 testes. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Quick260909`: **528 testes / 2481
+asserções / 0 falhas** (baseline informado 513/2408 — bate exatamente com +15 testes/+73 asserções
+deste plano, zero regressão). ⚠️ Pendência explícita para quem executar 141-06: `AdminController`
+(os 5 literais de linha — empresa ao vivo, congelada com/sem snapshot, grupo ao vivo, grupo
+congelado) **NÃO foi tocado** — fora dos `files_modified` deste plano; a tela administrativa ainda
+calcula pela fórmula antiga mesmo com a flag ligada, só o motor (resolver+comando) mudou. Last
+activity: 2026-09-09 — 141-04 executado (`141-04-SUMMARY.md`). Sem deploy — subagente sem acesso a
+produção/`.env`/`plink`/`pscp` (trava do próprio plano); `artisan migrate` local NUNCA rodado (trava
+do próprio plano — banco local ~31 migrations atrás e vazio de dado real).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
