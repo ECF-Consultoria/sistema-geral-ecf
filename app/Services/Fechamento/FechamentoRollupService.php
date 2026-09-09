@@ -4,10 +4,12 @@ namespace App\Services\Fechamento;
 
 use App\Models\AdmanMetric;
 use App\Models\Company;
+use App\Models\Servico;
 use App\Models\ShopeeMetric;
 use App\Services\Metrics\MetricPeriodResolver;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use InvalidArgumentException;
 
 /**
  * FechamentoRollupService — responde "quanto uma empresa faturou nesta
@@ -20,6 +22,15 @@ use Illuminate\Support\Collection;
  *
  * D-05 soma ML (`adman_metrics`) + Shopee (`shopee_metrics`) numa faixa
  * única. D-07 garante que Shopee entra no fechamento mesmo sem ML.
+ *
+ * Fase 141 Plano 01 (D-02): o D-05 acima passa a ter um RECORTE — só entra
+ * na soma o faturamento da plataforma em que a empresa tem serviço
+ * CONTRATADO e ATIVO cobrado por tabela progressiva (`plataformasElegiveis()`).
+ * Mentoria, por exemplo, não tem tabela — faturamento ligado só a ela não
+ * conta. O recorte é OPT-IN via `$somenteContratadas` em `porEmpresa()`; o
+ * modo padrão (`false`) continua sendo o D-05 original, sem olhar contrato
+ * nenhum. Quem liga o recorte na prática é o chamador atrás da flag de
+ * corte (plano 141-03) — este plano só entrega a capacidade.
  *
  * Não usa o serviço de diff HTTP-first do módulo de bônus (orientado a
  * variação percentual — chamada de rede desnecessária todo dia 1) nem a
@@ -64,20 +75,93 @@ class FechamentoRollupService
     }
 
     /**
+     * Fase 141 Plano 01 (D-02): quais plataformas ('ml' | 'shopee') esta
+     * empresa tem HABILITADAS para entrar na soma que define a faixa —
+     * segundo os contratos ATIVOS de serviço com `usa_tabela_progressiva =
+     * true` (Mentoria, por exemplo, não tem tabela — não habilita nada).
+     *
+     * O critério por serviço é em OU entre duas fontes, porque nenhuma
+     * sozinha é garantida: `plataforma` é texto preenchido À MÃO na tela
+     * administrativa (pode nascer nulo ou trazer as duas plataformas no
+     * mesmo campo, ex. "Mercado Livre e Shopee") e `setor` é a rede de
+     * segurança (sempre um dos valores do enum). Mesmo espírito do
+     * comentário de `escolherServicoCandidato()` em
+     * `FechamentoFaixaResolver` — não confiar cegamente numa fonte só. Por
+     * isso o MESMO serviço pode habilitar as DUAS plataformas ao mesmo
+     * tempo; não é `elseif`.
+     *
+     * `loadMissing()` é defesa contra N+1 para quem não fez eager loading —
+     * os chamadores atuais do rollup (`ConsolidarMesFechamento`,
+     * `AdminController::fechamento()`, `EnviarRelatorioFechamentoJob`) já
+     * carregam `contratosServico.servico`, então nenhuma query nova entra no
+     * laço de ~201 empresas em produção.
+     *
+     * @return array<int, string> subconjunto de ['ml', 'shopee'], sem repetição
+     */
+    public function plataformasElegiveis(Company $company): array
+    {
+        $company->loadMissing('contratosServico.servico');
+
+        $plataformas = [];
+
+        foreach ($company->contratosServico as $contrato) {
+            if (! $contrato->ativo) {
+                continue;
+            }
+
+            $servico = $contrato->servico;
+
+            if ($servico === null || ! $servico->usa_tabela_progressiva) {
+                continue;
+            }
+
+            $plataformaTexto = mb_strtolower((string) ($servico->plataforma ?? ''));
+
+            if (str_contains($plataformaTexto, 'shopee') || $servico->setor === Servico::SETOR_SHOPEE) {
+                $plataformas['shopee'] = 'shopee';
+            }
+
+            if (str_contains($plataformaTexto, 'mercado livre') || $servico->setor === Servico::SETOR_PERFORMANCE) {
+                $plataformas['ml'] = 'ml';
+            }
+        }
+
+        return array_values($plataformas);
+    }
+
+    /**
      * Faturamento ML + Shopee por empresa, na janela de mês-calendário de
      * `$mes`. Duas queries agregadas (nunca N+1).
      *
      * Quando `$companies` é informado, o resultado tem UMA entrada por
      * empresa da coleção — mesmo as sem nenhuma métrica no mês (com as três
-     * chaves nulas: ausência é estado distinto de "faturou zero", nunca
-     * 0.0). Quando `$companies` é omitido, o resultado só contém empresas
-     * com pelo menos uma linha de métrica no mês.
+     * chaves de faturamento nulas: ausência é estado distinto de "faturou
+     * zero", nunca 0.0). Quando `$companies` é omitido, o resultado só
+     * contém empresas com pelo menos uma linha de métrica no mês.
+     *
+     * Fase 141 Plano 01 (D-02): `$somenteContratadas` (default `false`, modo
+     * atual intocado) liga o recorte por plataforma contratada —
+     * `plataformasElegiveis()`. Quando ligado, o lado de plataforma NÃO
+     * elegível é zerado para `null` ANTES de compor o total (nunca somar e
+     * depois subtrair) e `faturamento_total` é recalculado pela mesma regra
+     * de sempre. Exige `$companies` — é de lá que vêm os contratos; sem
+     * empresa não há como saber o que está contratado.
+     *
+     * `plataformas_consideradas` vai em TODO resultado: no modo atual vale
+     * `['ml', 'shopee']` (o que o método de fato considera hoje), no modo
+     * novo vale o retorno de `plataformasElegiveis()` para aquela empresa.
      *
      * @param  Collection<int, Company>|null  $companies
-     * @return array<int, array{faturamento_ml: float|null, faturamento_shopee: float|null, faturamento_total: float|null}>
+     * @return array<int, array{faturamento_ml: float|null, faturamento_shopee: float|null, faturamento_total: float|null, plataformas_consideradas: array<int, string>}>
      */
-    public function porEmpresa(string $mes, ?Collection $companies = null): array
+    public function porEmpresa(string $mes, ?Collection $companies = null, bool $somenteContratadas = false): array
     {
+        if ($somenteContratadas && $companies === null) {
+            throw new InvalidArgumentException(
+                'porEmpresa(): somenteContratadas=true exige $companies informado — é de lá que vêm os contratos que decidem a elegibilidade por plataforma.'
+            );
+        }
+
         $janela = $this->janela($mes);
         $inicio = $janela['inicio'];
         $fim    = $janela['fim'];
@@ -108,11 +192,34 @@ class FechamentoRollupService
             ? $companies->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()
             : $porEmpresaMl->keys()->merge($porEmpresaShopee->keys())->map(fn ($id) => (int) $id)->unique()->values();
 
+        // Só existe quando $companies foi informado (guard acima já garante
+        // isso para $somenteContratadas=true) — mapa id → Company para
+        // resolver plataformasElegiveis() sem re-consultar o banco.
+        $companiesPorId = $companies?->keyBy(fn ($company) => (int) $company->id);
+
         $resultado = [];
 
         foreach ($idsParaMontar as $companyId) {
             $faturamentoMl     = $porEmpresaMl->has($companyId) ? (float) $porEmpresaMl[$companyId]->faturamento : null;
             $faturamentoShopee = $porEmpresaShopee->has($companyId) ? (float) $porEmpresaShopee[$companyId]->faturamento : null;
+
+            if ($somenteContratadas) {
+                $plataformasConsideradas = $this->plataformasElegiveis($companiesPorId[$companyId]);
+
+                // Zera para null ANTES de compor o total — nunca somar tudo
+                // e depois subtrair a plataforma não elegível.
+                if (! in_array('ml', $plataformasConsideradas, true)) {
+                    $faturamentoMl = null;
+                }
+
+                if (! in_array('shopee', $plataformasConsideradas, true)) {
+                    $faturamentoShopee = null;
+                }
+            } else {
+                // Modo atual: o rollup considera as duas plataformas sem
+                // olhar contrato nenhum (D-05 original).
+                $plataformasConsideradas = ['ml', 'shopee'];
+            }
 
             // "Sem faturamento" e "faturou zero" são estados diferentes —
             // total só existe quando pelo menos um dos dois lados existe.
@@ -121,9 +228,10 @@ class FechamentoRollupService
                 : null;
 
             $resultado[$companyId] = [
-                'faturamento_ml'     => $faturamentoMl,
-                'faturamento_shopee' => $faturamentoShopee,
-                'faturamento_total'  => $faturamentoTotal,
+                'faturamento_ml'            => $faturamentoMl,
+                'faturamento_shopee'        => $faturamentoShopee,
+                'faturamento_total'         => $faturamentoTotal,
+                'plataformas_consideradas'  => $plataformasConsideradas,
             ];
         }
 
