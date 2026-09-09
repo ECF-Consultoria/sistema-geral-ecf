@@ -2323,7 +2323,30 @@ e quem fatura R$ 2,5 milhões paga R$ 6.000 numa e R$ 7.500 na outra.
 **Fora de escopo:** a tela de cadastro (mostrar as faixas, máscara de dinheiro, mover para a página
 de contrato da empresa, fechamento só leitura) é fase própria, a pedido do usuário.
 
-Plans: a planejar
+**Requirements:** [TPE-01, TPE-02, TPE-03, TPE-04, TPE-05, TPE-06, TPE-07, TPE-08] — definidos nesta
+fase (o `REQUIREMENTS.md` da raiz parou na v17.0):
+
+| ID | Requisito |
+|----|-----------|
+| TPE-01 | Só entra na soma o faturamento de plataforma em que a empresa tem serviço contratado que é cobrado por tabela progressiva (Mentoria fica fora) |
+| TPE-02 | A mensalidade é o valor da faixa, e só isso — a soma de mensalidades deixa de existir |
+| TPE-03 | Empresa sem tabela progressiva cobra o valor fixo do contrato, em estado visível na tela |
+| TPE-04 | A tabela aplicável é da empresa ou do grupo; a do serviço deixa de ser régua |
+| TPE-05 | A tabela do serviço vira modelo de partida do cadastro e semente da materialização das tabelas presumidas |
+| TPE-06 | Toda tabela de empresa carrega procedência: cadastro manual, contrato assinado ou presumida do serviço — presumida nunca conta como confirmada |
+| TPE-07 | A virada é comandada por flag desligada por padrão, com comparação ANTES × DEPOIS em produção e gate humano |
+| TPE-08 | Competência já congelada não muda quando a regra vira (D-11 da Fase 137) |
+
+**Plans:** 7 plans em 4 waves
+
+Plans:
+- [ ] 141-01-PLAN.md — Elegibilidade de plataforma: `servicos.usa_tabela_progressiva` + rollup que só soma plataforma contratada (wave 1)
+- [ ] 141-02-PLAN.md — Flag de corte `fechamento_tabela_por_empresa_ativa` + `CobrancaCalculator::mensalidade()` + estado `valor_fixo` (wave 1)
+- [ ] 141-03-PLAN.md — Transição: procedência da tabela da empresa + comando `fechamento:materializar-tabelas` (wave 1)
+- [ ] 141-04-PLAN.md — Virada da régua no motor: resolver sem a tabela do serviço + consolidação pela regra nova (wave 2)
+- [ ] 141-05-PLAN.md — `fechamento:comparar-mensalidade`: o delta ANTES × DEPOIS que precede a virada (wave 3)
+- [ ] 141-06-PLAN.md — Os cinco ramos da tela de Fechamento + remoção do paliativo da composição (wave 3)
+- [ ] 141-07-PLAN.md — Virada em produção com gate humano e registro dos números reais (wave 4)
 
 ---
 
