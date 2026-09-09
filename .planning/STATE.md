@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 139-02-PLAN.md
-last_updated: "2026-09-09T18:56:58.127Z"
+stopped_at: Completed 139-03-PLAN.md
+last_updated: "2026-09-09T19:17:23.372Z"
 last_activity: 2026-09-09
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 30
-  completed_plans: 22
-  percent: 73
+  completed_plans: 23
+  percent: 77
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -35,6 +35,12 @@ progress:
 > O padrão bate com o §5 do learning `gates-do-gsd-em-projeto-pt-br.md`: o comando não erra só o
 > campo que deveria tocar, erra também um campo qualquer que combine com o mesmo regex em outro
 > lugar do arquivo.
+> **Reincidiu de novo no fechamento do 139-03** (2026-09-09): `completed_plans` foi de 22 para 23
+> corretamente, mas `percent` foi recomputado GLOBAL (`29`) em vez de `round(23/30*100)` desta
+> milestone — corrigido à mão para `77`. A MESMA linha solta `Status: Executing Phase 139 — 10
+> planos em 9 waves.` foi sobrescrita outra vez para o texto genérico `Status: Ready to execute` —
+> restaurada à mão de novo. Terceira vez que este exato par de campos é corrompido pelo mesmo
+> comando; ver `.planning/learnings/gates-do-gsd-em-projeto-pt-br.md` §4/§8.
 
 # Project State
 
@@ -57,7 +63,7 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 ## Current Position
 
 Phase: 139 (checklist-administrativo-trava-de-finaliza-o-v23-0) — EXECUTING
-Plan: 3 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
+Plan: 4 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
 (baseline 137/138 100% verde — 123 testes, 444 assertions, `139-BASELINE-TESTES.md`;
 `config('services.adman.register_url')` publicada com o link fixo do Adman, D-04, provada por
 `tests/Unit/Phase139/AdmanRegisterUrlConfigTest.php`; `REQUIREMENTS-v23.md` registra as exceções
@@ -71,6 +77,14 @@ status, D-02, e `feitoPor()->withTrashed()`, D-11). Commits `3b90803d`, `33e7c9b
 explicativos citavam literalmente `nao_aplicavel`/`onboarding_id`/`template_passo_id` para
 descrever o que NÃO existe — reescritos sem os identificadores literais para satisfazer a
 verificação por grep do próprio plano (ver `139-02-SUMMARY.md`, seção Deviations).
+**139-03 concluído** (interface `App\Contracts\ChecklistResolver` sem método de assincronismo;
+value object `ChecklistResolverResultado` de 3 estados — `concluido`/`nao_coletado`/`indeterminado`
+— cópia do molde de `OnboardingResolverResultado` sem os ramos de coleta assíncrona; catálogo
+fechado `ChecklistAdministrativoDefinicao` com os 9 itens do §5 na ordem D-03, `itens(false)`
+devolvendo só os 6 do grupo Entrada para serviço isento, D-07). Commits `697195e4`, `c2dcddcc`,
+`1dad3cf8`; SUMMARY em `139-03-SUMMARY.md`. Regressão 137/138 — 123 testes, 444 assertions, OK
+(idêntica à baseline); `tests/Unit/Phase139` completo — 12 testes, 71 assertions, OK. Sem
+deviations.
 
 ### Fase 138 — COMPLETA (9/9) · registro preservado
 
@@ -792,6 +806,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 138 P08 | 35min | 3 tasks | 3 files |
 | Phase 138 P09 | ~90min (inclui espera de aprovação humana nos 2 checkpoints) | 3 tasks | 1 files |
 | Phase 139 P02 | 14min | 2 tasks | 3 files |
+| Phase 139 P03 | 20min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1556,8 +1571,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-09-09T18:56:57.927Z
-Stopped at: Completed 139-02-PLAN.md
+Last session: 2026-09-09T19:17:23.156Z
+Stopped at: Completed 139-03-PLAN.md
 Last session: 2026-09-03T21:17:01.000Z
 Stopped at: Completed 138-06-PLAN.md — listagem Contrato ganha os 8 campos do §2, COMERC-02 fechado por completo (commits `551117d0`, `f8e4044b`); fechamento (SUMMARY/STATE/ROADMAP/REQUIREMENTS) feito por agente de closeout porque o executor original morreu por erro de stream da API após commitar as duas tasks
 Last session: 2026-09-02T20:14:25.367Z
@@ -1698,3 +1713,5 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 139]: D-10 implementado: checklist_administrativo_itens ancorada em company_id direto, nunca em onboarding_id/contrato_servico_id — só o shape do motor de Onboarding foi copiado, nunca a hospedagem
 - [Phase 139]: D-02 implementado: catalogo fechado de status com 2 valores (aberto/concluido) — estado nao_aplicavel excluido do model, da migration e de todo comentario/docblock
 - [Phase 139]: D-11 implementado: feitoPor()->withTrashed() copiado de Pendencia::abertaPor()/corrigidaPor() (nao de OnboardingPasso::feitoPor(), que nao usa withTrashed()) — autoria sobrevive a soft delete do usuario, provado por teste
+- [Phase 139]: 139-03: catálogo fechado ChecklistAdministrativoDefinicao com os 9 itens do §5 (D-01/D-03); itens(false) filtra o grupo Contrato por montagem condicional (D-07), sem estado não aplicável (D-02)
+- [Phase 139]: 139-03: ChecklistResolver e ChecklistResolverResultado copiam o molde do motor de Onboarding sem os ramos de coleta assíncrona — os 4 resolvers desta fase são síncronos (D-10)
