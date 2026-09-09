@@ -2163,7 +2163,7 @@ Plans:
 > produção. **Contrato é ferramenta administrativa contínua: o critério de saída dela é o estado do
 > contrato, não a etapa.** O corte da etapa 5 (D-07/COMERC-03) vale só para a listagem **Entrada**.
 
-**Plans:** 9/9 plans executed — Fase 138 COMPLETA. Deploy NÃO autorizado — ver `138-09-SUMMARY.md` § "Pendências obrigatórias para a VPS" antes de subir.
+**Plans:** 9/9 plans complete — Fase 138 COMPLETA. Deploy NÃO autorizado — ver `138-09-SUMMARY.md` § "Pendências obrigatórias para a VPS" antes de subir.
 
 Plans:
 **Wave 0** *(medições antes de qualquer código — gate do `CLAUDE.md`)*
