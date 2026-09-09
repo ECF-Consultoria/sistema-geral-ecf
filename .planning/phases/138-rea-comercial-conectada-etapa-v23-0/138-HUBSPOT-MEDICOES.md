@@ -113,3 +113,13 @@ tratá-las como pendência obrigatória antes de considerar a fase encerrada:
    - Se o escopo não puder ser concedido: `GET /crm/v3/owners/{id}` continuará devolvendo 403 e
      `companies.hubspot_owner_nome` continuará sempre vazio — sem erro visível — até isso ser
      corrigido.
+
+## Confirmação no checkpoint do plano 138-09 (2026-09-09)
+
+No checkpoint da Task 2 do plano 138-09, questionado se o escopo `crm.objects.owners.read`
+poderia ser confirmado agora, o usuário respondeu **"Deixar anotada para o deploy"**.
+`escopo_owners_read:` permanece `NÃO CONFIRMADO` — nenhuma tentativa nova de confirmação foi
+feita nesta sessão. O item segue exatamente como pendência obrigatória da VPS, descrita acima,
+no mesmo pacote da medição da property de owner. Registro completo do roteiro de deploy dos dois
+itens (property + escopo) também em `138-CONTA-SISTEMA-HUBSPOT.md`, seção "Roteiro completo para
+a VPS".
