@@ -4,7 +4,7 @@ milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
 stopped_at: Phase 139 context gathered
-last_updated: "2026-09-09T18:21:38.462Z"
+last_updated: "2026-09-09T18:25:47.934Z"
 last_activity: 2026-09-09
 progress:
   total_phases: 7
@@ -33,9 +33,9 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 138 — rea-comercial-conectada-etapa-v23-0 — **COMPLETA (9/9)**. Próxima:
-Fase 139 (checklist administrativo + trava de finalização), ainda **não planejada** (`Plans: TBD`
-no `ROADMAP.md`) — rodar `/gsd:plan-phase 139` quando for a vez.
+**Current focus:** Phase 139 — checklist-administrativo-trava-de-finaliza-o-v23-0 — **EM
+EXECUÇÃO** (10 planos em 9 waves, planejada em 2026-09-09). Anterior: Fase 138 — Área Comercial
+conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current Position.
 
 > ⚠️ **Não é a 134.** O `phase.complete` apontou 134 ao fechar a 132, mas isso é artefato da
 > ferramenta: a **Fase 133 tem `Plans: TBD`** e nenhum diretório, então foi pulada na busca pela
@@ -45,6 +45,11 @@ no `ROADMAP.md`) — rodar `/gsd:plan-phase 139` quando for a vez.
 > já foram executadas em paralelo por outra sessão.
 
 ## Current Position
+
+Phase: 139 (checklist-administrativo-trava-de-finaliza-o-v23-0) — EXECUTING
+Plan: 1 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`.
+
+### Fase 138 — COMPLETA (9/9) · registro preservado
 
 Phase: 138 (rea-comercial-conectada-etapa-v23-0) — **COMPLETA (9/9)**
 Plan: 9 of 9 — **138-09 concluído em 2026-09-09** (checkpoints humanos finais da fase, `wave 4`,
@@ -172,7 +177,9 @@ por conta própria). Suíte da fase 58/58 verde, baseline 24/24 verde. **Verific
 aprovada** — o usuário combinou os três filtros na tela real e produziu a URL
 `?cust_id_status=invalido&etapa=sem_etapa&tab=empresas` como evidência do passo que falhava
 antes; ver `137-11-SUMMARY.md`.
-Status: Ready to execute
+Status: Executing Phase 139 — 10 planos em 9 waves.
+
+**Histórico do planejamento da 138 (cabeça restaurada à mão):** plano aprovado pelo
 `gsd-plan-checker` com 0 blockers; os 5 warnings foram fechados (arestas `depends_on` de 138-06
 e 138-07, Open Questions do RESEARCH marcadas resolvidas, frontmatter do VALIDATION aprovado, e a
 tensão D-06 × SC#4 escalada e decidida pelo usuário). Cobertura de decisões **17/17**
