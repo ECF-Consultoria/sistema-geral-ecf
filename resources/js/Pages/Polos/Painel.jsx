@@ -1,4 +1,5 @@
-import { useMemo, useState, useEffect, useCallback, Fragment } from 'react';
+import { useMemo, useState, useEffect, useCallback, useDeferredValue, useRef, memo, Fragment } from 'react';
+import { flushSync } from 'react-dom';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
@@ -468,6 +469,34 @@ function Barra({ pct, cor }) {
     );
 }
 
+// ─── Desempenho da grade ───────────────────────────────────
+// Guarda o valor mais recente numa ref para que um callback possa lê-lo sem entrar nas
+// dependências do useCallback. Serve para dar IDENTIDADE ESTÁVEL a `on`/`onToggleSel`: se
+// eles mudassem a cada render, o memo() de LinhaPainel nunca pegaria e um clique numa única
+// caixa de seleção redesenharia as ~180 linhas da grade.
+function useLatest(valor) {
+    const ref = useRef(valor);
+    useEffect(() => { ref.current = valor; });
+    return ref;
+}
+
+// Opções de <select> sob demanda.
+// A lente Geral tem ~16 selects por linha; com o catálogo inteiro renderizado de largada
+// isso colocava ~23 mil <option> na página (~180 empresas x ~130 opções). Era o que travava
+// a rolagem, o filtro e até o "Inspecionar" do navegador — o custo é do DOM, não do dado.
+// Aqui o select nasce só com a opção do valor atual e recebe a lista completa no primeiro
+// contato (mouse, foco ou teclado).
+// `flushSync` é obrigatório: sem ele o React aplicaria a lista só DEPOIS que o navegador já
+// tivesse aberto o dropdown nativo, e o primeiro clique mostraria uma lista curta.
+function useOpcoesSobDemanda() {
+    const [pronto, setPronto] = useState(false);
+    const aoAbrir = useMemo(() => {
+        const ativar = () => { if (!pronto) flushSync(() => setPronto(true)); };
+        return { onMouseDown: ativar, onFocus: ativar, onKeyDown: ativar, onTouchStart: ativar };
+    }, [pronto]);
+    return [pronto, aoAbrir];
+}
+
 // ─── Editores inline (planilha) ─────────────────────────────────────────────────────
 // Cada editor salva sozinho. Campos do onboarding exigem ficha; sem ela mostram um
 // hint "criar ficha" no lugar do controle (exceto fase/polo, que salvam via empresa).
@@ -488,14 +517,19 @@ const NOVO_VALOR = '__novo__';
 // `criavel={false}` esconde o "＋ Criar novo valor…" — usado só na Fase, domínio fechado que
 // alimenta FASE_PARA_PROJETO no backend (fase inventada tiraria a empresa do projeto POLOS).
 function EditSelect({ e, campo, opcoes = [], presentes = [], onSave, onCriar, placeholder = '—', cor, criavel = true }) {
+    // Hook SEMPRE no topo (Rules of Hooks) — o early-return de "sem ficha" vem depois.
+    const [pronto, aoAbrir] = useOpcoesSobDemanda();
     if (exigeFicha(campo, e)) return <SemFicha onCriar={onCriar} />;
     const val = e[campo] ?? '';
     const corTxt = val ? (cor ? cor(val) : 'text-white/85') : 'text-white/25';
     // Opções = catálogo ∪ valores presentes nos dados ∪ valor atual (dedup, ordem preservada).
+    // Só é montada quando o select vai abrir — ver useOpcoesSobDemanda.
     const lista = [];
-    const vistos = new Set();
-    for (const o of [...opcoes, ...presentes, val]) {
-        if (o && !vistos.has(o)) { vistos.add(o); lista.push(o); }
+    if (pronto) {
+        const vistos = new Set();
+        for (const o of [...opcoes, ...presentes, val]) {
+            if (o && !vistos.has(o)) { vistos.add(o); lista.push(o); }
+        }
     }
     const aoMudar = (ev) => {
         const v = ev.target.value;
@@ -510,12 +544,20 @@ function EditSelect({ e, campo, opcoes = [], presentes = [], onSave, onCriar, pl
         <select
             value={val}
             onChange={aoMudar}
+            {...aoAbrir}
             style={{ backgroundColor: 'transparent' }}
             className={cn(CELL, corTxt, val && 'font-medium')}
         >
             <option value="" className="bg-ecf-card text-white/50">{placeholder}</option>
-            {lista.map((o) => <option key={o} value={o} className="bg-ecf-card text-white">{o}</option>)}
-            {criavel && <option value={NOVO_VALOR} className="bg-ecf-card text-ecf-yellow">＋ Criar novo valor…</option>}
+            {pronto ? (
+                <>
+                    {lista.map((o) => <option key={o} value={o} className="bg-ecf-card text-white">{o}</option>)}
+                    {criavel && <option value={NOVO_VALOR} className="bg-ecf-card text-ecf-yellow">＋ Criar novo valor…</option>}
+                </>
+            ) : (
+                // Fechado: só o valor atual, para o <select> exibir o texto certo.
+                val ? <option value={val} className="bg-ecf-card text-white">{val}</option> : null
+            )}
         </select>
     );
 }
@@ -718,7 +760,9 @@ export default function PolosPainel({
     const parcial    = cockpit?.parcial ?? false;
     const fechado    = !parcial;
     const polosCk    = cockpit?.polos ?? [];
-    const adsLimites = cockpit?.adsLimites ?? { teto: 3000, alerta1: 1000, alerta2: 2000 }; // barra de ADS (lente Performance)
+    // useMemo p/ o objeto não nascer novo a cada render — é prop de todas as linhas e
+    // furaria o memo() de LinhaPainel enquanto o cockpit não tivesse carregado.
+    const adsLimites = useMemo(() => cockpit?.adsLimites ?? { teto: 3000, alerta1: 1000, alerta2: 2000 }, [cockpit]); // barra de ADS (lente Performance)
     const corDoPolo  = useMemo(() => montarCorDoPolo(polosCk), [polosCk]);
     const finDe      = (e) => (fin && e.cust_norm) ? (fin[e.cust_norm] ?? null) : null;
 
@@ -836,7 +880,11 @@ export default function PolosPainel({
     );
     const nForaDoEscopo = empresas.length - empresasEscopo.length;
 
-    const af = useAutoFilter(empresasEscopo, COLUNAS, { search: busca, matchSearch: matchBusca, storageKey: 'polos-painel-af', visibleKeys: colsVisiveis });
+    // A grade filtra pela busca DIFERIDA: digitar atualiza o campo na hora (prioridade alta)
+    // e a varredura das ~180 linhas roda em prioridade baixa, interrompível a cada tecla.
+    // Sem isso cada caractere segurava a thread principal até a grade inteira redesenhar.
+    const buscaDiferida = useDeferredValue(busca);
+    const af = useAutoFilter(empresasEscopo, COLUNAS, { search: buscaDiferida, matchSearch: matchBusca, storageKey: 'polos-painel-af', visibleKeys: colsVisiveis });
     const filtradas = af.filtered;
 
     // Indicador acionável → filtra + navega p/ a lente da coluna (ou limpa, se já isolado).
@@ -868,20 +916,29 @@ export default function PolosPainel({
     // Âncora que saiu da vista deixa de valer p/ o shift-range.
     useEffect(() => { if (ancora != null && !idsVisiveis.includes(ancora)) setAncora(null); }, [idsVisiveis, ancora]);
 
-    const toggleLinha = useCallback((id, idx, shift) => {
+    // Identidade ESTÁVEL (deps só de refs): é prop de todas as linhas e a cada clique `ancora`
+    // muda — com deps normais isso redesenharia a grade inteira. O índice sai da lista visível
+    // pelo id, então a linha não precisa mais receber `idx` (que mudava a cada filtro e
+    // também furava o memo).
+    const idsVisiveisRef = useLatest(idsVisiveis);
+    const ancoraRef      = useLatest(ancora);
+    const toggleLinha = useCallback((id, shift) => {
+        const visiveis = idsVisiveisRef.current;
+        const anc      = ancoraRef.current;
+        const idx      = visiveis.indexOf(id);
         setSelecionadas((prev) => {
             const n = new Set(prev);
-            const a = ancora != null ? idsVisiveis.indexOf(ancora) : -1;
-            if (shift && a !== -1) {
+            const a = anc != null ? visiveis.indexOf(anc) : -1;
+            if (shift && a !== -1 && idx !== -1) {
                 const marcar = !n.has(id); // segue a ação no item clicado
                 const [lo, hi] = a < idx ? [a, idx] : [idx, a];
-                for (let i = lo; i <= hi; i++) { if (marcar) n.add(idsVisiveis[i]); else n.delete(idsVisiveis[i]); }
+                for (let i = lo; i <= hi; i++) { if (marcar) n.add(visiveis[i]); else n.delete(visiveis[i]); }
             } else if (shift) { n.add(id); } // âncora perdida: seleção pura (nunca desmarca por engano)
             else if (n.has(id)) { n.delete(id); } else { n.add(id); }
             return n;
         });
         setAncora(id);
-    }, [ancora, idsVisiveis]);
+    }, [idsVisiveisRef, ancoraRef]);
 
     const toggleTodasVisiveis = () => setSelecionadas((prev) => {
         const n = new Set(prev);
@@ -1097,7 +1154,16 @@ export default function PolosPainel({
         window.axios.post(route('mlb.polos-painel.meta-faturamento'), { meta: n }, { headers: { 'X-CSRF-TOKEN': csrf_token } }).catch(() => {});
     }, [metaInput, csrf_token]);
 
-    const handlers = { salvarCampo, trocarResponsavel, toggleProblema, alternarMeta, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal, salvarCustId, salvarNome };
+    // `on` é prop de TODA linha. O objeto literal nascia novo a cada render e furava o memo()
+    // de LinhaPainel — daí um clique em qualquer célula redesenhar as ~180 linhas. Aqui ele é
+    // criado UMA vez e cada método despacha para a versão mais recente via ref.
+    const handlersAtuais = useLatest({ salvarCampo, trocarResponsavel, toggleProblema, alternarMeta, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal, salvarCustId, salvarNome });
+    const handlers = useMemo(() => {
+        const nomes = ['salvarCampo', 'trocarResponsavel', 'toggleProblema', 'alternarMeta', 'salvarNota', 'removerProblema', 'marcarEnviado', 'desfazerEnvio', 'criarOnboarding', 'arquivar', 'toggleExpandir', 'verEmpresa', 'salvarCustId', 'salvarNome'];
+        const obj = {};
+        nomes.forEach((nome) => { obj[nome] = (...args) => handlersAtuais.current[nome](...args); });
+        return obj;
+    }, [handlersAtuais]);
 
     // ── Modo TELA CHEIA (planilha): overlay que estoura sidebar/max-width + Fullscreen API. ──
     // ── Baixar planilha (.xlsx) ────────────────────────────────────────────────
@@ -1500,11 +1566,10 @@ export default function PolosPainel({
                             )}
                             {/* Em edição o corpo vira amostra: mover coluna com a grade toda
                                 montada é o que travava. */}
-                            {(editandoCols ? filtradas.slice(0, LINHAS_AMOSTRA) : filtradas).map((e, idx) => (
+                            {(editandoCols ? filtradas.slice(0, LINHAS_AMOSTRA) : filtradas).map((e) => (
                                 <LinhaPainel
                                     key={e.id}
                                     e={e}
-                                    idx={idx}
                                     selecionada={selecionadas.has(e.id)}
                                     onToggleSel={toggleLinha}
                                     lente={lente}
@@ -1521,7 +1586,7 @@ export default function PolosPainel({
                                     adsLimites={adsLimites}
                                     semanal={e.cust_id ? semanal[e.cust_id] : null}
                                     aberta={expandida === e.id}
-                                    editNota={editNota}
+                                    notaEdit={editNota[e.id]}
                                     setEditNota={setEditNota}
                                     on={handlers}
                                 />
@@ -1855,8 +1920,29 @@ function CabecalhoLente({ keys = [], af, colunas, edicao = null }) {
     );
 }
 
+// Select de responsável — mesma economia do EditSelect: 23 usuários x uma linha cada dava
+// ~4 mil <option> na página. A lista só entra no DOM quando o select vai abrir.
+function SelectResponsavel({ e, usuarios, onTrocar }) {
+    const [pronto, aoAbrir] = useOpcoesSobDemanda();
+    const atual = e.responsavel_id ? String(e.responsavel_id) : '__sem__';
+    const nomeAtual = e.responsavel_nome ?? usuarios.find((u) => String(u.id) === atual)?.name ?? '—';
+    return (
+        <select value={atual} onChange={(ev) => onTrocar(e, ev.target.value)} {...aoAbrir}
+            style={{ backgroundColor: 'transparent' }}
+            className={cn('w-40', CELL, e.responsavel_id ? 'text-white/85 font-medium' : 'text-white/30')}>
+            <option value="__sem__" className="bg-ecf-card">Sem responsável</option>
+            {pronto
+                ? usuarios.map((u) => <option key={u.id} value={String(u.id)} className="bg-ecf-card text-white">{u.name}</option>)
+                : (atual !== '__sem__' && <option value={atual} className="bg-ecf-card text-white">{nomeAtual}</option>)}
+        </select>
+    );
+}
+
 // ─── Linha ──────────────────────────────────────────────────────────────────────────
-function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], ocultas = SEM_OCULTAS, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, editNota, setEditNota, on }) {
+// memo(): sem ele, qualquer estado do painel (uma tecla na busca, uma caixa marcada, uma
+// célula salva) redesenhava as ~180 linhas x ~32 colunas. Com as props estáveis acima, só a
+// linha que de fato mudou é redesenhada.
+const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, lente, colunas = [], ocultas = SEM_OCULTAS, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, notaEdit, setEditNota, on }) {
     const precisaAcao = e.problema || e.fora_do_prazo || e.status_envio === 'falta_enviar';
     const onb = e.onboarding_progresso;
     const td = 'px-2.5 py-3 align-middle';
@@ -1889,10 +1975,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], oc
         responsavel: (
             <td className={td}>
                 {e.impl_id ? (
-                    <select value={e.responsavel_id ? String(e.responsavel_id) : '__sem__'} onChange={(ev) => on.trocarResponsavel(e, ev.target.value)} style={{ backgroundColor: 'transparent' }} className={cn('w-40', CELL, e.responsavel_id ? 'text-white/85 font-medium' : 'text-white/30')}>
-                        <option value="__sem__" className="bg-ecf-card">Sem responsável</option>
-                        {usuarios.map((u) => <option key={u.id} value={String(u.id)} className="bg-ecf-card text-white">{u.name}</option>)}
-                    </select>
+                    <SelectResponsavel e={e} usuarios={usuarios} onTrocar={on.trocarResponsavel} />
                 ) : <span className="text-white/40 text-[12px]">{e.empresa_responsavel_nome ?? '—'}</span>}
             </td>
         ),
@@ -1976,7 +2059,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], oc
             <tr className={cn('border-b border-white/[0.05] transition-colors hover:bg-white/[0.025]', aberta && 'bg-white/[0.04]', selecionada && 'bg-ecf-yellow/[0.05]')}>
                 {/* Seleção (congelada à esquerda) */}
                 <td className="sticky left-0 z-10 bg-ecf-card px-3 py-3 align-middle">
-                    <button type="button" onClick={(ev) => onToggleSel(e.id, idx, ev.shiftKey)} title="Selecionar (Shift = intervalo)" className="align-middle">
+                    <button type="button" onClick={(ev) => onToggleSel(e.id, ev.shiftKey)} title="Selecionar (Shift = intervalo)" className="align-middle">
                         <CaixaSel state={selecionada ? 'on' : 'off'} />
                     </button>
                 </td>
@@ -2048,7 +2131,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], oc
                                 <h4 className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5"><ShieldAlert size={12} /> Problema</h4>
                                 {e.problema ? (
                                     <div className="space-y-2">
-                                        <textarea value={editNota[e.id] ?? e.problema_nota ?? ''} onChange={(ev) => setEditNota((s) => ({ ...s, [e.id]: ev.target.value }))} rows={2} placeholder="Descreva o problema…"
+                                        <textarea value={notaEdit ?? e.problema_nota ?? ''} onChange={(ev) => setEditNota((s) => ({ ...s, [e.id]: ev.target.value }))} rows={2} placeholder="Descreva o problema…"
                                             className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[12px] p-2 outline-none focus:border-ecf-yellow/40" />
                                         {/* Decide se ESTE problema tira a empresa da meta. Desmarcado (padrão)
                                             ela continua contando em No alvo / Em progresso / Não. */}
@@ -2108,7 +2191,8 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], oc
             )}
         </>
     );
-}
+});
+LinhaPainel.displayName = 'LinhaPainel';
 
 // ─── Célula financeira por CHAVE (admin, read-only) ─────────────────────────
 function CelulaFinanceira({ campo, fin, finLoaded, td, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, fechado = false }) {
