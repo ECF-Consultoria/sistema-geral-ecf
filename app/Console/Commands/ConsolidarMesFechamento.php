@@ -8,6 +8,7 @@ use App\Models\Servico;
 use App\Models\ShopeeMetric;
 use App\Services\Fechamento\FechamentoFaixaNotifier;
 use App\Services\Fechamento\FechamentoFaixaResolver;
+use App\Services\Fechamento\FechamentoRegraTabela;
 use App\Services\Fechamento\FechamentoRollupService;
 use App\Services\Fechamento\FechamentoSnapshotWriter;
 use App\Support\CobrancaCalculator;
@@ -51,7 +52,32 @@ use Illuminate\Support\Facades\Log;
  * Gate de qualidade (Passo 6, mesmo espírito do FIXMARG-03 do Desempenho):
  * cobertura de faturamento abaixo de `COBERTURA_MINIMA_FATURAMENTO` entre as
  * empresas com integração financeira NÃO grava nada e retorna exit code 1 —
- * nunca sobrescreve um snapshot bom por um degradado.
+ * nunca sobrescreve um snapshot bom por um degradado. Fase 141: o
+ * denominador também exclui `ESTADO_VALOR_FIXO` (empresa sem tabela e sem
+ * plataforma elegível não tem faturamento a cobrir) — sem essa exclusão a
+ * regra nova recusaria o fechamento de todo mundo por um efeito colateral.
+ *
+ * Fase 141 (D-01/D-02/D-03, flag `FechamentoRegraTabela::CHAVE`, nasce
+ * desligada) — a virada de regra propriamente dita:
+ * - `$regraNova` é lido UMA vez no início do `handle()` e passado adiante
+ *   como booleano local — nunca relido dentro do laço de ~201 empresas.
+ * - Rollup: as DUAS chamadas de `porEmpresa()` (competência atual e mês
+ *   anterior) recebem `somenteContratadas: $regraNova` — as duas juntas,
+ *   nunca só uma, senão a evolução de faixa compara réguas diferentes entre
+ *   os dois meses e o Passo 8 dispara aviso falso.
+ * - Estado: com a regra nova, a tabela do SERVIÇO não existe mais — empresa
+ *   sem tabela de grupo/própria mas com contrato mensal ativo grava
+ *   `ESTADO_VALOR_FIXO` (resultado normal, não pendência); sem contrato
+ *   mensal continua `ESTADO_SEM_TABELA`.
+ * - Cobrança: com a regra nova, `CobrancaCalculator::mensalidade()` — o
+ *   valor é o da FAIXA (classificada sobre a soma das plataformas
+ *   contratadas), e só isso; nunca mais faixa + soma de contratos. Com a
+ *   flag desligada, `CobrancaCalculator::novo()` (a fórmula antiga) continua
+ *   exatamente igual, para empresa E grupo.
+ * - Competência já fechada continua exigindo `--motivo=` (D-12) mesmo com a
+ *   flag ligada — ligar/desligar a flag NUNCA reescreve um snapshot
+ *   congelado (D-11 da Fase 137); só muda o que o fechamento calcula dali
+ *   pra frente.
  *
  * Fase 138 (D-02 + D-03) — Passo 8, logo após o congelamento do Passo 7:
  * avisa os admins quando uma empresa ou grupo mudou de faixa nesta
@@ -92,12 +118,20 @@ class ConsolidarMesFechamento extends Command
         private FechamentoFaixaResolver $faixaResolver,
         private FechamentoSnapshotWriter $writer,
         private FechamentoFaixaNotifier $faixaNotifier,
+        private FechamentoRegraTabela $regra,
     ) {
         parent::__construct();
     }
 
     public function handle(): int
     {
+        // Fase 141 (D-01/D-02/D-03): flag lida UMA vez, nunca dentro do
+        // laço de 201 empresas — o booleano local é passado adiante para
+        // rollup, estado e cobrança. `FechamentoRegraTabela::ativa()` já é
+        // memoizado por instância, mas resolver aqui deixa explícito que a
+        // decisão vale para a execução inteira do comando.
+        $regraNova = $this->regra->ativa();
+
         $mesOption = $this->option('mes');
 
         if ($mesOption) {
@@ -148,9 +182,13 @@ class ConsolidarMesFechamento extends Command
 
         // ── Passo 2 — faturamento da competência e do mês anterior (D-06),
         //    UMA passada cada — nunca uma query por empresa (T-137-19).
+        // Fase 141: `somenteContratadas: $regraNova` vai NAS DUAS chamadas —
+        // competência atual e mês anterior. Recortar só a atual compararia
+        // réguas diferentes entre os dois meses e inventaria evolução de
+        // faixa falsa (Fase 138 dispara aviso aos admins com base nisso).
         $mesAnterior     = $mes->copy()->subMonthNoOverflow()->startOfMonth();
-        $rollupAtual     = $this->rollupService->porEmpresa($mesLabel, $companies);
-        $rollupAnterior  = $this->rollupService->porEmpresa($mesAnterior->format('Y-m'), $companies);
+        $rollupAtual     = $this->rollupService->porEmpresa($mesLabel, $companies, somenteContratadas: $regraNova);
+        $rollupAnterior  = $this->rollupService->porEmpresa($mesAnterior->format('Y-m'), $companies, somenteContratadas: $regraNova);
 
         // Empresas com pelo menos uma linha em shopee_metrics (qualquer
         // data) — usado só para decidir "tem integração", não para o
@@ -179,15 +217,41 @@ class ConsolidarMesFechamento extends Command
                     ? $this->faixaResolver->classificar((float) $fatAtual['faturamento_total'], $faixaData['faixas'])
                     : null;
 
-                // Precedência de estado (D-01/D-05/D-06/D-07 aplicados):
-                if (! $temIntegracao) {
-                    $estado = FechamentoSnapshot::ESTADO_SEM_INTEGRACAO;
-                } elseif ($fatAtual['faturamento_total'] === null) {
-                    $estado = FechamentoSnapshot::ESTADO_SEM_FATURAMENTO;
-                } elseif ($faixaData === null || $classificacao === null) {
-                    $estado = FechamentoSnapshot::ESTADO_SEM_TABELA;
+                // Precisa estar disponível ANTES da precedência de estado —
+                // com a regra nova, a existência de contrato mensal decide
+                // ESTADO_VALOR_FIXO (Fase 141, D-03).
+                $temContratoMensal = $company->contratosServico->contains(
+                    fn ($c) => $c->ativo === true && $c->servico !== null && $c->servico->tipo_cobranca === Servico::TIPO_MENSAL
+                );
+
+                // Precedência de estado (D-01/D-05/D-06/D-07 aplicados). Fase
+                // 141: com a regra nova, a tabela do serviço nunca mais
+                // aparece — empresa sem tabela de grupo/própria mas com
+                // contrato mensal ativo cobra o valor FIXO do contrato
+                // (estado visível, nunca pendência). Com a flag desligada a
+                // precedência de sempre fica intocada, byte a byte.
+                if ($regraNova) {
+                    if (! $temIntegracao) {
+                        $estado = FechamentoSnapshot::ESTADO_SEM_INTEGRACAO;
+                    } elseif ($faixaData === null && $temContratoMensal) {
+                        $estado = FechamentoSnapshot::ESTADO_VALOR_FIXO;
+                    } elseif ($fatAtual['faturamento_total'] === null) {
+                        $estado = FechamentoSnapshot::ESTADO_SEM_FATURAMENTO;
+                    } elseif ($faixaData === null || $classificacao === null) {
+                        $estado = FechamentoSnapshot::ESTADO_SEM_TABELA;
+                    } else {
+                        $estado = FechamentoSnapshot::ESTADO_OK;
+                    }
                 } else {
-                    $estado = FechamentoSnapshot::ESTADO_OK;
+                    if (! $temIntegracao) {
+                        $estado = FechamentoSnapshot::ESTADO_SEM_INTEGRACAO;
+                    } elseif ($fatAtual['faturamento_total'] === null) {
+                        $estado = FechamentoSnapshot::ESTADO_SEM_FATURAMENTO;
+                    } elseif ($faixaData === null || $classificacao === null) {
+                        $estado = FechamentoSnapshot::ESTADO_SEM_TABELA;
+                    } else {
+                        $estado = FechamentoSnapshot::ESTADO_OK;
+                    }
                 }
 
                 // ── Passo 4 — evolução ────────────────────────────────────
@@ -221,14 +285,19 @@ class ConsolidarMesFechamento extends Command
                     }
                 }
 
-                // ── Cobrança mensal (faixa + contratos ativos mensais) ────
-                $temContratoMensal = $company->contratosServico->contains(
-                    fn ($c) => $c->ativo === true && $c->servico !== null && $c->servico->tipo_cobranca === Servico::TIPO_MENSAL
-                );
-
-                $cobrancaMensal = ($classificacao !== null || $temContratoMensal)
-                    ? (CobrancaCalculator::novo($classificacao, $company->contratosServico) ?: null)
-                    : null;
+                // ── Cobrança mensal ────────────────────────────────────────
+                // Fase 141 (D-03): com a regra nova, a mensalidade é o valor
+                // da FAIXA e só isso — `mensalidade()` já devolve null
+                // quando não há nem faixa nem contrato mensal, então o guard
+                // de `$temContratoMensal` deixa de ser necessário aqui (ele
+                // ainda importa lá em cima, para decidir ESTADO_VALOR_FIXO).
+                // Com a flag desligada, a fórmula antiga (faixa + soma dos
+                // contratos mensais) continua exatamente como era.
+                $cobrancaMensal = $regraNova
+                    ? CobrancaCalculator::mensalidade($classificacao, $company->contratosServico)
+                    : (($classificacao !== null || $temContratoMensal)
+                        ? (CobrancaCalculator::novo($classificacao, $company->contratosServico) ?: null)
+                        : null);
 
                 $linhasEmpresa[] = [
                     'company_id'             => $company->id,
@@ -321,12 +390,35 @@ class ConsolidarMesFechamento extends Command
                 ? $this->faixaResolver->classificar($faturamentoTotal, $faixaGrupo['faixas'])
                 : null;
 
-            if ($faturamentoTotal === null) {
-                $estadoGrupo = FechamentoSnapshot::ESTADO_SEM_FATURAMENTO;
-            } elseif ($faixaGrupo === null || $classificacaoGrupo === null) {
-                $estadoGrupo = FechamentoSnapshot::ESTADO_SEM_TABELA;
+            // Precisa estar disponível ANTES da precedência de estado — mesma
+            // razão da linha de empresa acima (Fase 141, D-03).
+            $todosContratosDoGrupo = $membros->flatMap(fn (Company $c) => $c->contratosServico);
+            $temContratoMensalGrupo = $todosContratosDoGrupo->contains(
+                fn ($c) => $c->ativo === true && $c->servico !== null && $c->servico->tipo_cobranca === Servico::TIPO_MENSAL
+            );
+
+            // Mesma precedência da linha de empresa (Fase 141, D-03): com a
+            // regra nova, grupo sem régua e com contrato mensal em qualquer
+            // empresa-membro cobra o valor FIXO. Flag desligada mantém a
+            // precedência de sempre, intocada.
+            if ($regraNova) {
+                if ($faixaGrupo === null && $temContratoMensalGrupo) {
+                    $estadoGrupo = FechamentoSnapshot::ESTADO_VALOR_FIXO;
+                } elseif ($faturamentoTotal === null) {
+                    $estadoGrupo = FechamentoSnapshot::ESTADO_SEM_FATURAMENTO;
+                } elseif ($faixaGrupo === null || $classificacaoGrupo === null) {
+                    $estadoGrupo = FechamentoSnapshot::ESTADO_SEM_TABELA;
+                } else {
+                    $estadoGrupo = FechamentoSnapshot::ESTADO_OK;
+                }
             } else {
-                $estadoGrupo = FechamentoSnapshot::ESTADO_OK;
+                if ($faturamentoTotal === null) {
+                    $estadoGrupo = FechamentoSnapshot::ESTADO_SEM_FATURAMENTO;
+                } elseif ($faixaGrupo === null || $classificacaoGrupo === null) {
+                    $estadoGrupo = FechamentoSnapshot::ESTADO_SEM_TABELA;
+                } else {
+                    $estadoGrupo = FechamentoSnapshot::ESTADO_OK;
+                }
             }
 
             // tabelas_divergentes: pares (origem, servico_id) diferentes
@@ -359,16 +451,16 @@ class ConsolidarMesFechamento extends Command
                 }
             }
 
-            // Cobrança do grupo: faixa da soma + SUM dos contratos mensais
-            // de TODAS as empresas-membro (nunca só a âncora).
-            $todosContratosDoGrupo = $membros->flatMap(fn (Company $c) => $c->contratosServico);
-            $temContratoMensalGrupo = $todosContratosDoGrupo->contains(
-                fn ($c) => $c->ativo === true && $c->servico !== null && $c->servico->tipo_cobranca === Servico::TIPO_MENSAL
-            );
-
-            $cobrancaMensalGrupo = ($classificacaoGrupo !== null || $temContratoMensalGrupo)
-                ? (CobrancaCalculator::novo($classificacaoGrupo, $todosContratosDoGrupo) ?: null)
-                : null;
+            // Cobrança do grupo. Fase 141 (D-03): com a regra nova, o valor
+            // da faixa da SOMA do grupo — nenhum contrato de empresa-membro
+            // é somado por cima. Com a flag desligada, a fórmula antiga
+            // (faixa da soma + SUM dos contratos mensais de TODAS as
+            // empresas-membro, nunca só a âncora) continua exatamente igual.
+            $cobrancaMensalGrupo = $regraNova
+                ? CobrancaCalculator::mensalidade($classificacaoGrupo, $todosContratosDoGrupo)
+                : (($classificacaoGrupo !== null || $temContratoMensalGrupo)
+                    ? (CobrancaCalculator::novo($classificacaoGrupo, $todosContratosDoGrupo) ?: null)
+                    : null);
 
             $linhasGrupo[] = [
                 'company_group_id'      => $groupId,
@@ -394,7 +486,18 @@ class ConsolidarMesFechamento extends Command
         }
 
         // ── Passo 6 — gate de qualidade ANTES de persistir ────────────────
-        $comIntegracao = collect($linhasEmpresa)->filter(fn ($l) => $l['estado'] !== FechamentoSnapshot::ESTADO_SEM_INTEGRACAO);
+        // Fase 141: além de ESTADO_SEM_INTEGRACAO, o denominador também
+        // exclui ESTADO_VALOR_FIXO — quem não é cobrado por tabela (Mentoria
+        // e afins, sem plataforma elegível) não tem faturamento nenhum a
+        // cobrir, e SEM esta exclusão um punhado dessas empresas derrubaria
+        // a cobertura abaixo do mínimo e recusaria o fechamento de TODO
+        // MUNDO por um efeito colateral da regra nova (armadilha registrada
+        // no CONTEXT da Fase 141). Com a flag desligada, ESTADO_VALOR_FIXO
+        // nunca é atribuído — o filtro é inofensivo (não muda nada).
+        $comIntegracao = collect($linhasEmpresa)->filter(fn ($l) => ! in_array($l['estado'], [
+            FechamentoSnapshot::ESTADO_SEM_INTEGRACAO,
+            FechamentoSnapshot::ESTADO_VALOR_FIXO,
+        ], true));
         $denominador   = $comIntegracao->count();
         $numerador     = $comIntegracao->filter(fn ($l) => $l['faturamento_total'] !== null)->count();
         $cobertura     = $denominador > 0 ? ($numerador / $denominador) : 1.0;
