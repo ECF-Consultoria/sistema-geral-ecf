@@ -652,6 +652,15 @@ class AdminController extends Controller
         $mesAnterior    = Carbon::createFromFormat('Y-m-d', $mesSelecionado.'-01')->startOfMonth()->subMonthNoOverflow();
         $rollupAnterior = $this->rollupService->porEmpresa($mesAnterior->format('Y-m'), $rawCompanies, somenteContratadas: $regraNova);
 
+        // Fase 141 (D-02) — só quando a regra nova filtra plataforma: o
+        // faturamento BRUTO (sem filtro) alimenta SÓ a explicação da tela
+        // de qual plataforma ficou de fora da conta — nunca a classificação
+        // nem a cobrança, que usam sempre o rollup filtrado acima. Uma
+        // chamada extra (2 queries agregadas), fora do laço de empresas.
+        $rollupBrutoAtual = $regraNova
+            ? $this->rollupService->porEmpresa($mesSelecionado, $rawCompanies)
+            : [];
+
         $companyIdsComShopee = ShopeeMetric::query()->distinct()->pluck('company_id')->flip();
 
         // Fase 139 (D-04): leitura única do fechamento congelado do mês
@@ -662,7 +671,8 @@ class AdminController extends Controller
         $dadosPorId = [];
 
         foreach ($rawCompanies as $c) {
-            $fatAtual = $rollupAtual[$c->id] ?? ['faturamento_ml' => null, 'faturamento_shopee' => null, 'faturamento_total' => null];
+            $fatAtual  = $rollupAtual[$c->id] ?? ['faturamento_ml' => null, 'faturamento_shopee' => null, 'faturamento_total' => null];
+            $fatBruto  = $rollupBrutoAtual[$c->id] ?? null;
 
             $hasAdman      = $c->cust_id !== null;
             $temIntegracao = $hasAdman || $companyIdsComShopee->has($c->id);
@@ -793,6 +803,13 @@ class AdminController extends Controller
                 // define a faixa; sempre presente (rollup devolve
                 // ['ml','shopee'] quando a regra nova está desligada).
                 'plataformas_consideradas' => $fatAtual['plataformas_consideradas'] ?? null,
+                // Fase 141 (D-02) — faturamento BRUTO (sem filtro), só para
+                // a tela explicar quando uma plataforma com faturamento
+                // real ficou de fora da soma que definiu a faixa. `null`
+                // quando a regra nova está desligada (nunca há recorte pra
+                // explicar).
+                'faturamento_ml_bruto'     => $fatBruto['faturamento_ml'] ?? null,
+                'faturamento_shopee_bruto' => $fatBruto['faturamento_shopee'] ?? null,
                 'cobranca_mensal'       => $cobrancaMensal,
                 'evolucao'              => $evolucao,
                 // Fase 139 (D-04): de qual faixa a empresa veio e quanto
@@ -862,6 +879,8 @@ class AdminController extends Controller
                     // mostrar (nunca inventar um palpite, D-11).
                     'procedencia_tabela'       => null,
                     'plataformas_consideradas' => null,
+                    'faturamento_ml_bruto'     => null,
+                    'faturamento_shopee_bruto' => null,
                     // Quick 260904-kwz — sem linha nesta competência, não há
                     // tabela nenhuma pra perguntar se está confirmada.
                     'tabela_confirmada'     => null,
@@ -915,6 +934,8 @@ class AdminController extends Controller
                 // plataformas entraram na soma daquele mês; mandar `null` (a
                 // tela não mostra a explicação) em vez de um palpite.
                 'plataformas_consideradas' => null,
+                'faturamento_ml_bruto'     => null,
+                'faturamento_shopee_bruto' => null,
                 // Quick 260904-kwz — confirmada (cadastro manual ou contrato
                 // assinado) ou só presumida a partir do serviço. Lê o
                 // contrato assinado ATUAL (não congela junto do snapshot) —
@@ -1135,6 +1156,11 @@ class AdminController extends Controller
                     ->unique()
                     ->values()
                     ->all(),
+                // Fase 141 (D-02) — a explicação de plataforma excluída é só
+                // por empresa (cada membro já carrega a sua em `filhas`);
+                // a linha de grupo não duplica a conta.
+                'faturamento_ml_bruto'     => null,
+                'faturamento_shopee_bruto' => null,
                 // Quick 260904-kwz — confirmada (cadastro manual do GRUPO ou
                 // da empresa-âncora, ou contrato assinado da âncora) ou só
                 // presumida a partir do serviço. `origem` 'grupo' já é
@@ -1264,6 +1290,8 @@ class AdminController extends Controller
                 // plataformas entraram na soma daquele mês; `null` em vez de
                 // palpite (mesma disciplina do ramo 3 de empresa).
                 'plataformas_consideradas' => null,
+                'faturamento_ml_bruto'     => null,
+                'faturamento_shopee_bruto' => null,
                 // Quick 260904-kwz — mesma regra do ramo ao vivo: origem
                 // 'grupo' é manual por si só; 'propria'/'servico' checam o
                 // contrato assinado da empresa-âncora deste snapshot. Fase

@@ -472,31 +472,78 @@ function AusenciaFaturamentoBadge() {
     );
 }
 
-function FaturamentoCombinadoBreakdown({ faturamentoMl, faturamentoShopee, faturamentoTotal }) {
-    // Só abre a composição quando as duas plataformas têm dado — nunca soma
-    // silenciosa (D-05).
-    if (faturamentoMl == null || faturamentoShopee == null) return null;
+// Fase 141 (D-03) — empresa sem tabela progressiva nenhuma, mas com
+// contrato de valor combinado (`estado === 'valor_fixo'`, o caso de
+// Mentoria). Resultado NORMAL, nunca pendência — por isso não usa a cara
+// alarmante (âmbar/triângulo) de `AusenciaTabelaPendencia`: aqui não falta
+// cadastrar nada.
+function ValorFixoContratoNota({ variant = 'compact' }) {
+    if (variant === 'compact') {
+        return (
+            <span className="text-white/50 text-[14px] font-medium shrink-0">
+                Valor fixo do contrato
+            </span>
+        );
+    }
 
     return (
-        <p className="text-white/40 text-[12px] mb-2">
-            Mercado Livre {fmtBRL(faturamentoMl)} + Shopee {fmtBRL(faturamentoShopee)} = {fmtBRL(faturamentoTotal)}
-        </p>
+        <div className="bg-black/30 border border-white/[0.06] rounded-xl px-[18px] py-4 flex flex-col gap-1.5">
+            <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-white/30">2 · Faixa do contrato</span>
+            <span className="text-[18px] font-semibold text-white/70">Valor fixo do contrato</span>
+            <p className="text-white/40 text-[12px]">
+                Esta empresa não tem tabela progressiva — a mensalidade vem do valor combinado em contrato.
+            </p>
+        </div>
     );
 }
 
-// Quick 260909-lge — a composição da mensalidade quando ela soma a faixa
-// aplicada com contrato(s) de valor fixo (caso medido: BARAOSHOP, agosto/2026
-// — Faixa 1 = R$ 3.000, mas a tela mostrava R$ 5.500 sem dizer que também
-// somava o contrato de Gestão de ADS Shopee, R$ 2.500). O número da
-// mensalidade está certo — isto só explica de onde ele veio, sem recalcular
-// nada (backend já manda `valor_mensal` = valor da faixa e `cobranca_mensal`
-// = faixa + contratos mensais, mesma fórmula de `CobrancaCalculator::novo`).
-//
-// ⚠️ Paliativo de propósito: a soma de mensalidades vai deixar de existir
-// quando a tabela progressiva passar a ser por empresa/grupo com faturamento
-// de plataformas somado (decisão do usuário, 2026-09-09) — isso é outra
-// fase. Aqui só se resolve a ilegibilidade.
-function MensalidadeComposicaoBreakdown({ empresa }) {
+// Fase 141 (D-02) — evoluído (não duplicado, UI-SPEC da Fase 139) para
+// também explicar quando uma plataforma com faturamento real não entrou na
+// soma que definiu a faixa, porque não há serviço contratado nela.
+// `plataformasConsideradas` só existe (não-nulo) sob a regra nova;
+// `faturamentoMlBruto`/`faturamentoShopeeBruto` são o faturamento SEM
+// filtro, só para esta comparação — nunca usados em cálculo nenhum.
+function FaturamentoCombinadoBreakdown({ faturamentoMl, faturamentoShopee, faturamentoTotal, plataformasConsideradas, faturamentoMlBruto, faturamentoShopeeBruto }) {
+    // Só abre a composição quando as duas plataformas têm dado — nunca soma
+    // silenciosa (D-05).
+    const composicao = (faturamentoMl != null && faturamentoShopee != null)
+        ? (
+            <p className="text-white/40 text-[12px] mb-2">
+                Mercado Livre {fmtBRL(faturamentoMl)} + Shopee {fmtBRL(faturamentoShopee)} = {fmtBRL(faturamentoTotal)}
+            </p>
+        )
+        : null;
+
+    let plataformaExcluida = null;
+    if (Array.isArray(plataformasConsideradas)) {
+        if (!plataformasConsideradas.includes('ml') && Number(faturamentoMlBruto) > 0) {
+            plataformaExcluida = 'Mercado Livre';
+        } else if (!plataformasConsideradas.includes('shopee') && Number(faturamentoShopeeBruto) > 0) {
+            plataformaExcluida = 'Shopee';
+        }
+    }
+
+    if (composicao == null && plataformaExcluida == null) return null;
+
+    return (
+        <>
+            {composicao}
+            {plataformaExcluida && (
+                <p className="text-white/40 text-[12px] mb-2">
+                    O faturamento de {plataformaExcluida} não entra nesta conta porque não há serviço contratado nela.
+                </p>
+            )}
+        </>
+    );
+}
+
+// Fase 141 (D-03) — o paliativo do quick 260909-lge (composição "faixa +
+// contrato" da mensalidade) SAIU: pela regra nova essa soma deixa de
+// existir, a mensalidade é só o valor da faixa. O que resta abaixo é só o
+// caminho da regra ANTIGA (`!regraNovaAtiva`), preservado byte a byte —
+// com a flag desligada nenhum número nem texto muda nesta tela. Sob a
+// regra nova esta função nunca é chamada.
+function legendaComposicaoAntiga(empresa) {
     if (empresa.cobranca_mensal == null || empresa.valor_mensal == null) return null;
 
     const extras = (empresa.servicos_contratados || [])
@@ -524,10 +571,26 @@ function MensalidadeComposicaoBreakdown({ empresa }) {
     );
 }
 
-function GrupoServicosDivergentesBanner({ empresa }) {
+// Fase 141 (D-01/D-04) — sob a regra nova a tabela do serviço deixou de
+// classificar quem quer que seja, então "Tabela do serviço {nome}" vira uma
+// frase falsa. `regraNovaAtiva` troca a legenda por própria/grupo/sem
+// tabela; com a flag desligada o texto continua exatamente o de hoje.
+function GrupoServicosDivergentesBanner({ empresa, regraNovaAtiva = false }) {
     if (!empresa.tabelas_divergentes) return null;
 
     const membros = [empresa, ...(empresa.filhas || [])];
+
+    function legendaTabela(m) {
+        if (regraNovaAtiva) {
+            if (m.tabela_origem === 'propria') return 'Tabela própria';
+            if (m.tabela_origem === 'grupo') return 'Tabela do grupo';
+            return 'Sem tabela cadastrada';
+        }
+
+        if (m.tabela_origem === 'propria') return 'Tabela própria';
+
+        return m.tabela_servico_nome ? `Tabela do serviço ${m.tabela_servico_nome}` : 'A DEFINIR';
+    }
 
     return (
         <div className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2.5">
@@ -535,9 +598,7 @@ function GrupoServicosDivergentesBanner({ empresa }) {
             <ul className="mt-1.5 space-y-1">
                 {membros.map(m => (
                     <li key={m.id} className="text-white/50 text-[12px]">
-                        {m.name} → {m.tabela_origem === 'propria'
-                            ? 'Tabela própria'
-                            : (m.tabela_servico_nome ? `Tabela do serviço ${m.tabela_servico_nome}` : 'A DEFINIR')}
+                        {m.name} → {legendaTabela(m)}
                     </li>
                 ))}
             </ul>
@@ -779,6 +840,8 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
                 <div className="min-[820px]:flex min-[820px]:items-center">
                     {empresa.estado === 'sem_tabela' ? (
                         <AusenciaTabelaPendencia variant="compact" />
+                    ) : empresa.estado === 'valor_fixo' ? (
+                        <ValorFixoContratoNota variant="compact" />
                     ) : (
                         <FaixaProgresso
                             faturamento={empresa.faturamento}
@@ -959,7 +1022,7 @@ function subLinhaMensalidade(empresa) {
     return null;
 }
 
-function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixasPorGrupo, competenciaFechada, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixasPorGrupo, competenciaFechada, regraNovaAtiva = false, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const temGrupo = empresa.filhas?.length > 0;
     const [modalAberto, setModalAberto] = useState(false);
 
@@ -990,11 +1053,16 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                             faturamentoMl={empresa.faturamento_ml}
                             faturamentoShopee={empresa.faturamento_shopee}
                             faturamentoTotal={empresa.faturamento}
+                            plataformasConsideradas={empresa.plataformas_consideradas}
+                            faturamentoMlBruto={empresa.faturamento_ml_bruto}
+                            faturamentoShopeeBruto={empresa.faturamento_shopee_bruto}
                         />
                     </div>
 
                     {empresa.estado === 'sem_tabela' ? (
                         <AusenciaTabelaPendencia variant="full" href={`#tabela-faixas-${empresa.id}`} />
+                    ) : empresa.estado === 'valor_fixo' ? (
+                        <ValorFixoContratoNota variant="full" />
                     ) : (
                         <div className="bg-black/30 border border-white/[0.06] rounded-xl px-[18px] py-4 flex flex-col gap-1.5">
                             <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-white/30">2 · Faixa do contrato</span>
@@ -1023,7 +1091,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                         <span className="text-[24px] font-bold font-mono text-emerald-400">
                             {empresa.cobranca_mensal != null ? fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso) : '—'}
                         </span>
-                        <MensalidadeComposicaoBreakdown empresa={empresa} />
+                        {!regraNovaAtiva && legendaComposicaoAntiga(empresa)}
                         {subLinha3 && (
                             <span className="text-[13px] text-white/40">{subLinha3}</span>
                         )}
@@ -1034,7 +1102,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                     preservada, agora depois dos três passos. */}
                 {temGrupo && (
                     <>
-                        <GrupoServicosDivergentesBanner empresa={empresa} />
+                        <GrupoServicosDivergentesBanner empresa={empresa} regraNovaAtiva={regraNovaAtiva} />
                         <div className="rounded-lg border border-white/[0.06] overflow-hidden">
                             <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04]">
                                 <span className="text-[12px] uppercase tracking-wider text-white/40">Composição do grupo</span>
@@ -1126,7 +1194,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
     );
 }
 
-function FechamentoList({ empresas, totalGeral, mesSelecionado, faixasPorServico, faixasPorGrupo, competenciaFechada, empresaFocada, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+function FechamentoList({ empresas, totalGeral, mesSelecionado, faixasPorServico, faixasPorGrupo, competenciaFechada, regraNovaAtiva = false, empresaFocada, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const [aberta, setAberta] = useState(null);
 
     // Atalho do widget "Subiram de faixa" (Fase 139 §2b): `empresaFocada` é
@@ -1188,6 +1256,7 @@ function FechamentoList({ empresas, totalGeral, mesSelecionado, faixasPorServico
                                 faixasPorServico={faixasPorServico}
                                 faixasPorGrupo={faixasPorGrupo}
                                 competenciaFechada={competenciaFechada}
+                                regraNovaAtiva={regraNovaAtiva}
                                 onClose={() => setAberta(null)}
                                 onAdicionarContrato={onAdicionarContrato}
                                 onEditarContrato={onEditarContrato}
@@ -1377,6 +1446,11 @@ const CHIPS_FILTRO = [
     // Quick 260904-kwz — tabela presumida a partir do serviço, sem
     // confirmação por contrato assinado nem cadastro manual.
     { key: 'tabela_presumida', label: 'Tabela sem confirmação' },
+    // Fase 141 (D-03) — empresa sem tabela progressiva, cobrando o valor
+    // combinado em contrato (`estado === 'valor_fixo'`). Só aparece
+    // populado sob a regra nova; com a flag desligada este chip nunca
+    // encontra nenhuma linha.
+    { key: 'valor_fixo',       label: 'Valor fixo'             },
 ];
 
 // ─── Widget "Total a receber" (Fase 139, D-01) ───────────────────────────
@@ -1603,7 +1677,7 @@ function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLim
     );
 }
 
-export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, periodo = null, totais }) {
+export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, periodo = null, totais, regra_nova_ativa = false }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
     // Atalho do widget "Subiram de faixa este mês" (Fase 139): liga o chip
@@ -1663,6 +1737,8 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
             lista = lista.filter(e => e.has_adman === false || e.estado === 'sem_integracao');
         } else if (filtroChip === 'tabela_presumida') {
             lista = lista.filter(e => e.tabela_confirmada === false);
+        } else if (filtroChip === 'valor_fixo') {
+            lista = lista.filter(e => e.estado === 'valor_fixo');
         }
 
         // Filtro por NOME do serviço — derivado do contrato (Phase 14)
@@ -1819,6 +1895,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                             faixasPorServico={faixas_por_servico}
                             faixasPorGrupo={faixas_por_grupo}
                             competenciaFechada={competencia_fechada}
+                            regraNovaAtiva={regra_nova_ativa}
                             empresaFocada={empresaFocada}
                             onAdicionarContrato={abrirAdicionarContrato}
                             onEditarContrato={abrirEditarContrato}
