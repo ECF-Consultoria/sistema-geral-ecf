@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Phase 139 context gathered
-last_updated: "2026-09-09T18:39:58.893Z"
+stopped_at: Completed 139-02-PLAN.md
+last_updated: "2026-09-09T18:56:58.127Z"
 last_activity: 2026-09-09
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 30
-  completed_plans: 21
-  percent: 70
+  completed_plans: 22
+  percent: 73
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -57,12 +57,20 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 ## Current Position
 
 Phase: 139 (checklist-administrativo-trava-de-finaliza-o-v23-0) — EXECUTING
-Plan: 2 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
+Plan: 3 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
 (baseline 137/138 100% verde — 123 testes, 444 assertions, `139-BASELINE-TESTES.md`;
 `config('services.adman.register_url')` publicada com o link fixo do Adman, D-04, provada por
 `tests/Unit/Phase139/AdmanRegisterUrlConfigTest.php`; `REQUIREMENTS-v23.md` registra as exceções
 D-06/D-16 sob o ADMIN-02 e a correção D-04/D-05/D-14 sob o ADMIN-03, D-19). Commits `35f9d193`,
 `c0b68597`, `a83c7706`; SUMMARY em `139-01-SUMMARY.md`. Sem deviations.
+**139-02 concluído** (tabela `checklist_administrativo_itens` ancorada em `company_id`, D-10, com
+índice unique nomeado à mão `cai_company_chave_unique` — rodada e conferida contra o MariaDB local
+via `SHOW INDEX`/`SHOW COLUMNS`; model `ChecklistAdministrativoItem` com catálogo fechado de 2
+status, D-02, e `feitoPor()->withTrashed()`, D-11). Commits `3b90803d`, `33e7c9b7`; SUMMARY em
+`139-02-SUMMARY.md`. Regressão 137/138/139 — 128 testes, 457 assertions, OK. Desvio: docblocks
+explicativos citavam literalmente `nao_aplicavel`/`onboarding_id`/`template_passo_id` para
+descrever o que NÃO existe — reescritos sem os identificadores literais para satisfazer a
+verificação por grep do próprio plano (ver `139-02-SUMMARY.md`, seção Deviations).
 
 ### Fase 138 — COMPLETA (9/9) · registro preservado
 
@@ -783,6 +791,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 138 P05 | 35min | 3 tasks | 8 files |
 | Phase 138 P08 | 35min | 3 tasks | 3 files |
 | Phase 138 P09 | ~90min (inclui espera de aprovação humana nos 2 checkpoints) | 3 tasks | 1 files |
+| Phase 139 P02 | 14min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1547,8 +1556,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-09-09T16:31:39.862Z
-Stopped at: Phase 139 context gathered
+Last session: 2026-09-09T18:56:57.927Z
+Stopped at: Completed 139-02-PLAN.md
 Last session: 2026-09-03T21:17:01.000Z
 Stopped at: Completed 138-06-PLAN.md — listagem Contrato ganha os 8 campos do §2, COMERC-02 fechado por completo (commits `551117d0`, `f8e4044b`); fechamento (SUMMARY/STATE/ROADMAP/REQUIREMENTS) feito por agente de closeout porque o executor original morreu por erro de stream da API após commitar as duas tasks
 Last session: 2026-09-02T20:14:25.367Z
@@ -1686,3 +1695,6 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 138]: 138-07: `HUBSPOT_WEBHOOK_USER_ID=49` setado no `.env` LOCAL deste worktree (não versionado); a mesma conta precisa ser criada na VPS e `id_vps:` preenchido em `138-CONTA-SISTEMA-HUBSPOT.md` antes do primeiro deploy da Fase 138 (pendência explícita do plano 138-09)
 - [Phase 138]: 138-08: Coluna 'Pendencias' unica na tabela Entrada (nao duas colunas), seguindo o padrao ja em producao de Admin/Contratos.jsx
 - [Phase 138]: 138-09 FECHA A FASE (9/9 planos). Task 1: suite da fase reexecutada sem regressao contra a baseline do 138-01 (252 tests/921 assertions, `tests/Unit/Phase138 tests/Feature/Phase138 tests/Feature/Phase131 tests/Unit/Phase137 tests/Feature/Phase137`); as ~10 falhas antigas de Polos permanecem identicas a baseline (mesmos nomes/causas), nao sao regressao desta fase. Task 2 (checkpoint aprovado): usuario dispensou a tentativa manual de login pela tela e aceitou `ComercAtorSistemaTest` (4 senhas via `Auth::attempt`) como prova de nao-logabilidade da conta `sistema.hubspot@ecfconsultoria.com.br` (id local 49); escopo OAuth `crm.objects.owners.read` fica NAO CONFIRMADO por decisao do usuario ("deixar anotada para o deploy"). Task 3 (checkpoint aprovado): render real de `/comercial/entrada` e `/administrativo/contratos` verificado por screenshot do usuario — 8 campos do §2, duas pendencias em colunas separadas nas DUAS telas, fronteira D-07 confirmada (empresas etapa 5, ids 412/417, existem no banco e nao aparecem na Entrada), Contrato sem corte por etapa confirmado pela empresa `asdadassdsad` (id 55, `em_operacao`) continuar visivel. Nenhuma correcao de codigo foi necessaria nesta fase de fechamento. **3 pendencias obrigatorias da VPS antes do deploy** (nenhuma executada): (1) `hubspot:criar-usuario-sistema --apply` na VPS + apontar `HUBSPOT_WEBHOOK_USER_ID` la; (2) `hubspot:inspect-properties --objects=deals` na VPS para medir o nome real da property de owner; (3) confirmar escopo `crm.objects.owners.read` no Private App de producao. Detalhamento completo em `138-CONTA-SISTEMA-HUBSPOT.md` e `138-09-SUMMARY.md`. Fixtures locais `[TESTE 138-09]` (ids 408-417) NAO removidas — fora do escopo deste plano.
+- [Phase 139]: D-10 implementado: checklist_administrativo_itens ancorada em company_id direto, nunca em onboarding_id/contrato_servico_id — só o shape do motor de Onboarding foi copiado, nunca a hospedagem
+- [Phase 139]: D-02 implementado: catalogo fechado de status com 2 valores (aberto/concluido) — estado nao_aplicavel excluido do model, da migration e de todo comentario/docblock
+- [Phase 139]: D-11 implementado: feitoPor()->withTrashed() copiado de Pendencia::abertaPor()/corrigidaPor() (nao de OnboardingPasso::feitoPor(), que nao usa withTrashed()) — autoria sobrevive a soft delete do usuario, provado por teste
