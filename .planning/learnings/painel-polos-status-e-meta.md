@@ -411,3 +411,55 @@ use `--ignore-platform-reqs`.
 - **`deploy.sh` exit 1 com "Network error: Software caused connection abort"** depois dos
   caches = queda do plink, não falha do deploy. Conferir por `git log -1`, `stat -c %U app`
   e o uptime dos workers antes de refazer.
+
+---
+
+## 8. Fase nova no painel são SETE lugares — e o sétimo é o que reverte (2026-09-09)
+
+Acrescentar um valor à coluna **Fase** parece uma linha em `MlbImplementacao::ONB_FASE_OPCOES`.
+Não é. "Desistência" (09/09/2026) precisou de:
+
+`ONB_FASE_OPCOES` (model) · `ORDEM_FASE`, `FASES_TERMINAIS`, `COR_FASE`/`BADGE_FASE`,
+`TONE_FASE`, `VAL_NEG` (`Polos/Painel.jsx`) · `FASES_TERMINAIS` de `lib/polosEntrantes.js` ·
+`ONB_FASE_OPCOES`/`negativos` de `Mlb/OnboardingFicha.jsx` · `DEFAULT_STATUS` de
+`Mlb/Empresas.jsx` — **e `SyncPolosPlanilha::FASE_MAP`**.
+
+O `FASE_MAP` é o que morde. Ele fundia `'DESISTÊNCIA' => 'Churn'` e
+`'PROTOCOLO CHURN' => 'Churn'`: a planilha já trazia as duas palavras, a tela oferecia as
+fases separadas, e **todo `polos:sync-planilha --apply` desfazia calado** o que o time
+marcava. Não há erro, log nem contador — a fase simplesmente volta para Churn no próximo
+sync. É o mesmo estrago que "Aceite no Projeto" e "Encaminhar Comercial" já tinham sofrido
+(§ do CHANGELOG da planilha V2).
+
+**Regra:** fase que a UI oferece separada NUNCA pode estar fundida no `FASE_MAP`. Ao
+adicionar uma, conferir `mb_strtoupper` da grafia da planilha — com e sem acento.
+
+Fase terminal (`FASES_TERMINAIS`) também muda comportamento: entra no `confirm` da edição
+em massa e sai do escopo M1–M4 do AutoFiltro. "Desistência" é terminal, como Churn.
+
+## 9. O "% da meta" de /polos/empresas está travado em 100 de propósito (2026-09-09)
+
+A meta por empresa é **limiar de entrada** (D-13: M2=1.000, M3=4.000, M4=8.000), não alvo
+proporcional. Dividir faturamento por limiar produzia números como **MS Decor 2.104,2%** e
+**LGN Móveis 1.016,7%** — a coluna deixava de informar. Desde 09/09/2026 a exibição é
+`Math.min(pct, 100)`, com o valor real no `title` e uma seta ↑ marcando o estouro.
+
+O que **não** mudou, e não deve mudar junto: `agregarPorPolo()` segue devolvendo o `pct`
+cru, a **ordenação da tabela usa o cru** (senão o topo da lista embaralha em empates de
+100%), e o `pct` do POLO continua sem teto — ali o problema é outro, e está no §5.
+
+## 10. Comentários de performance: cust_id + mês, nunca `mlb_empresa_id` (2026-09-09)
+
+`polos_comentarios` (migration `2026_09_09_140000`) guarda a explicação do número do mês
+("caiu porque ficou sem estoque na S3"), visível só em `/polos/empresas`.
+
+A chave é **`cust_id` normalizado + `mes`**. Amarrar em `mlb_empresas.id` parece mais
+correto e é a armadilha: a lista da tela é montada por cust normalizado e, em **mês
+fechado**, o roster vem do CSV/`polos_roster_snapshots` — não há `MlbEmpresa` garantida do
+outro lado (§3: das 285 POLOS ativas, 3 têm `company_id`). O comentário sumiria exatamente
+nos meses históricos, que é quando alguém volta para entender o que aconteceu.
+
+Duas decisões que parecem redundância e não são: `autor_nome` é **snapshot** ao lado do
+`user_id` (autoria não pode virar "—" quando o usuário é desativado), e `editado_em` é
+coluna **explícita** em vez de comparar `updated_at != created_at` — qualquer `touch()`
+futuro marcaria o comentário como editado sem ninguém ter editado nada.

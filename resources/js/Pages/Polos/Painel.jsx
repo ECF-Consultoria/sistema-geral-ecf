@@ -1,4 +1,5 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useDeferredValue, useRef, memo, Fragment } from 'react';
+import { flushSync } from 'react-dom';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
@@ -7,6 +8,7 @@ import {
     Sparkles, MegaphoneOff, ShieldAlert, Pencil, Trash2, Check, X,
     Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2,
     Archive, Filter, Tv, Download,
+    Columns3, GripVertical, Eye, EyeOff, ArrowLeft, ArrowRight, RotateCcw,
 } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -35,8 +37,10 @@ import ModoTV from './components/ModoTV';
 import ImplModal from '@/Pages/Mlb/components/ImplModal';
 
 // ─── Domínio (strings EXATAS — chaves de comparação no banco) ─────────────────────
-const ORDEM_FASE = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Churn'];
-const FASES_TERMINAIS = ['Encerrado', 'Protocolo Churn', 'Churn'];
+const ORDEM_FASE = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
+// 'Desistência' = saída por decisão do cliente. Terminal como Churn: mover pra cá tira a
+// empresa dos polos ativos, então passa pelo mesmo confirm da edição em massa.
+const FASES_TERMINAIS = ['Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
 
 // Escopo operacional do painel: só quem está EM OPERAÇÃO conta nos filtros/donuts/grade.
 // Fora ficam as fases que não são trabalho ativo — Churn, Encerrado, Aceite no Projeto,
@@ -95,14 +99,44 @@ const fmtPct = (n) => `${Number(n ?? 0).toFixed(0)}%`;
 const estagioKey = (e) => (e?.estagio && e.estagio !== '') ? e.estagio : SEM_ESTAGIO;
 
 // Cor do texto por Fase M — hierarquia rápida na grade.
-const COR_FASE = { 'Encaminhar Comercial': 'text-white/45', 'Aceite no Projeto': 'text-fuchsia-300', M0: 'text-violet-300', M1: 'text-sky-300', M2: 'text-amber-200', M3: 'text-amber-300', M4: 'text-emerald-300', Encerrado: 'text-white/40', 'Protocolo Churn': 'text-orange-300', Churn: 'text-red-300' };
+const COR_FASE = { 'Encaminhar Comercial': 'text-white/45', 'Aceite no Projeto': 'text-fuchsia-300', M0: 'text-violet-300', M1: 'text-sky-300', M2: 'text-amber-200', M3: 'text-amber-300', M4: 'text-emerald-300', Encerrado: 'text-white/40', 'Protocolo Churn': 'text-orange-300', 'Desistência': 'text-rose-300', Churn: 'text-red-300' };
 const corFase = (f) => COR_FASE[f] ?? 'text-white/70';
+
+// Tag de fase (pílula) exibida na coluna Empresa em TODAS as lentes. A coluna "Fase" só
+// existe na Geral e no funil; nas outras (Acessos, Produtos, Logística, Financeiro) o
+// usuário perdia a referência de onde a empresa está — e mesmo na Geral, que rola muito
+// na horizontal, a coluna Empresa é a congelada: a fase precisa viajar junto com ela.
+const BADGE_FASE = {
+    'Encaminhar Comercial': 'text-white/55 bg-white/[0.06] border-white/15',
+    'Aceite no Projeto':    'text-fuchsia-200 bg-fuchsia-500/10 border-fuchsia-500/25',
+    M0:                     'text-violet-200 bg-violet-500/10 border-violet-500/25',
+    M1:                     'text-sky-200 bg-sky-500/10 border-sky-500/25',
+    M2:                     'text-amber-200 bg-amber-500/10 border-amber-500/25',
+    M3:                     'text-amber-100 bg-amber-400/10 border-amber-400/30',
+    M4:                     'text-emerald-200 bg-emerald-500/10 border-emerald-500/25',
+    Fechamento:             'text-teal-200 bg-teal-500/10 border-teal-500/25',
+    Encerrado:              'text-white/45 bg-white/[0.05] border-white/10',
+    'Protocolo Churn':      'text-orange-200 bg-orange-500/10 border-orange-500/25',
+    'Desistência':          'text-rose-200 bg-rose-500/10 border-rose-500/25',
+    Churn:                  'text-red-200 bg-red-500/10 border-red-500/25',
+};
+const badgeFase = (f) => BADGE_FASE[f] ?? 'text-white/50 bg-white/[0.05] border-white/10';
+
+function TagFase({ fase, polo }) {
+    return (
+        <span
+            className={cn('inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide', badgeFase(fase))}
+            title={`Fase: ${fase || 'sem fase'}${polo ? ` · Polo: ${polo}` : ''}`}>
+            {fase || 'sem fase'}
+        </span>
+    );
+}
 
 // Cor do texto por valor de onboarding (verde=ok · âmbar=em progresso · vermelho=bloqueio).
 // Espelha a classificação da ficha (corStatus) — só a cor do texto, p/ a grade escaneável.
 const VAL_POS  = ['Com acesso', 'Já enviado', 'Já listado', 'Concluído', 'Concluido', 'Sim', 'Ativo', 'Checklist realizado', 'Feito', 'Alta'];
 const VAL_PROG = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado', 'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora', 'Preenchendo tabela', 'Verificando', 'Agendada', 'em contato', 'Média', 'Reserva - entrada prox mês', 'Mensagem Enviada', 'Falta Aceitar', 'Verificar'];
-const VAL_NEG  = ['Sem acesso', 'Banida', 'Protocolo Churn', 'Churn', 'Encerrado', 'Não', 'Não enviado', 'Suspensa', 'Falta informação', 'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal', 'Baixo', 'Abandonou o projeto', 'Não compareceu', 'Não responde', 'Não tem CNPJ', 'Não tem conta ML'];
+const VAL_NEG  = ['Sem acesso', 'Banida', 'Protocolo Churn', 'Desistência', 'Churn', 'Encerrado', 'Não', 'Não enviado', 'Suspensa', 'Falta informação', 'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal', 'Baixo', 'Abandonou o projeto', 'Não compareceu', 'Não responde', 'Não tem CNPJ', 'Não tem conta ML'];
 function corValor(v) {
     if (!v) return 'text-white/25';
     if (VAL_POS.includes(v)) return 'text-emerald-300';
@@ -113,7 +147,7 @@ function corValor(v) {
 
 // Classificadores de "tom" p/ os indicadores acionáveis do OperacoesPanel (reusam as listas acima).
 const toneValor = (v) => (VAL_POS.includes(v) ? 'green' : VAL_PROG.includes(v) ? 'amber' : VAL_NEG.includes(v) ? 'red' : 'neutral');
-const TONE_FASE = { 'Encaminhar Comercial': 'neutral', 'Aceite no Projeto': 'violet', M0: 'violet', M1: 'sky', M2: 'amber', M3: 'amber', M4: 'green', Encerrado: 'neutral', 'Protocolo Churn': 'red', Churn: 'red' };
+const TONE_FASE = { 'Encaminhar Comercial': 'neutral', 'Aceite no Projeto': 'violet', M0: 'violet', M1: 'sky', M2: 'amber', M3: 'amber', M4: 'green', Encerrado: 'neutral', 'Protocolo Churn': 'red', 'Desistência': 'red', Churn: 'red' };
 const toneFase = (f) => TONE_FASE[f] ?? 'neutral';
 
 // Coluna do indicador → lente onde ela é editável (p/ navegar ao clicar). null = visível em todas.
@@ -435,6 +469,34 @@ function Barra({ pct, cor }) {
     );
 }
 
+// ─── Desempenho da grade ───────────────────────────────────
+// Guarda o valor mais recente numa ref para que um callback possa lê-lo sem entrar nas
+// dependências do useCallback. Serve para dar IDENTIDADE ESTÁVEL a `on`/`onToggleSel`: se
+// eles mudassem a cada render, o memo() de LinhaPainel nunca pegaria e um clique numa única
+// caixa de seleção redesenharia as ~180 linhas da grade.
+function useLatest(valor) {
+    const ref = useRef(valor);
+    useEffect(() => { ref.current = valor; });
+    return ref;
+}
+
+// Opções de <select> sob demanda.
+// A lente Geral tem ~16 selects por linha; com o catálogo inteiro renderizado de largada
+// isso colocava ~23 mil <option> na página (~180 empresas x ~130 opções). Era o que travava
+// a rolagem, o filtro e até o "Inspecionar" do navegador — o custo é do DOM, não do dado.
+// Aqui o select nasce só com a opção do valor atual e recebe a lista completa no primeiro
+// contato (mouse, foco ou teclado).
+// `flushSync` é obrigatório: sem ele o React aplicaria a lista só DEPOIS que o navegador já
+// tivesse aberto o dropdown nativo, e o primeiro clique mostraria uma lista curta.
+function useOpcoesSobDemanda() {
+    const [pronto, setPronto] = useState(false);
+    const aoAbrir = useMemo(() => {
+        const ativar = () => { if (!pronto) flushSync(() => setPronto(true)); };
+        return { onMouseDown: ativar, onFocus: ativar, onKeyDown: ativar, onTouchStart: ativar };
+    }, [pronto]);
+    return [pronto, aoAbrir];
+}
+
 // ─── Editores inline (planilha) ─────────────────────────────────────────────────────
 // Cada editor salva sozinho. Campos do onboarding exigem ficha; sem ela mostram um
 // hint "criar ficha" no lugar do controle (exceto fase/polo, que salvam via empresa).
@@ -455,14 +517,19 @@ const NOVO_VALOR = '__novo__';
 // `criavel={false}` esconde o "＋ Criar novo valor…" — usado só na Fase, domínio fechado que
 // alimenta FASE_PARA_PROJETO no backend (fase inventada tiraria a empresa do projeto POLOS).
 function EditSelect({ e, campo, opcoes = [], presentes = [], onSave, onCriar, placeholder = '—', cor, criavel = true }) {
+    // Hook SEMPRE no topo (Rules of Hooks) — o early-return de "sem ficha" vem depois.
+    const [pronto, aoAbrir] = useOpcoesSobDemanda();
     if (exigeFicha(campo, e)) return <SemFicha onCriar={onCriar} />;
     const val = e[campo] ?? '';
     const corTxt = val ? (cor ? cor(val) : 'text-white/85') : 'text-white/25';
     // Opções = catálogo ∪ valores presentes nos dados ∪ valor atual (dedup, ordem preservada).
+    // Só é montada quando o select vai abrir — ver useOpcoesSobDemanda.
     const lista = [];
-    const vistos = new Set();
-    for (const o of [...opcoes, ...presentes, val]) {
-        if (o && !vistos.has(o)) { vistos.add(o); lista.push(o); }
+    if (pronto) {
+        const vistos = new Set();
+        for (const o of [...opcoes, ...presentes, val]) {
+            if (o && !vistos.has(o)) { vistos.add(o); lista.push(o); }
+        }
     }
     const aoMudar = (ev) => {
         const v = ev.target.value;
@@ -477,12 +544,20 @@ function EditSelect({ e, campo, opcoes = [], presentes = [], onSave, onCriar, pl
         <select
             value={val}
             onChange={aoMudar}
+            {...aoAbrir}
             style={{ backgroundColor: 'transparent' }}
             className={cn(CELL, corTxt, val && 'font-medium')}
         >
             <option value="" className="bg-ecf-card text-white/50">{placeholder}</option>
-            {lista.map((o) => <option key={o} value={o} className="bg-ecf-card text-white">{o}</option>)}
-            {criavel && <option value={NOVO_VALOR} className="bg-ecf-card text-ecf-yellow">＋ Criar novo valor…</option>}
+            {pronto ? (
+                <>
+                    {lista.map((o) => <option key={o} value={o} className="bg-ecf-card text-white">{o}</option>)}
+                    {criavel && <option value={NOVO_VALOR} className="bg-ecf-card text-ecf-yellow">＋ Criar novo valor…</option>}
+                </>
+            ) : (
+                // Fechado: só o valor atual, para o <select> exibir o texto certo.
+                val ? <option value={val} className="bg-ecf-card text-white">{val}</option> : null
+            )}
         </select>
     );
 }
@@ -685,7 +760,9 @@ export default function PolosPainel({
     const parcial    = cockpit?.parcial ?? false;
     const fechado    = !parcial;
     const polosCk    = cockpit?.polos ?? [];
-    const adsLimites = cockpit?.adsLimites ?? { teto: 3000, alerta1: 1000, alerta2: 2000 }; // barra de ADS (lente Performance)
+    // useMemo p/ o objeto não nascer novo a cada render — é prop de todas as linhas e
+    // furaria o memo() de LinhaPainel enquanto o cockpit não tivesse carregado.
+    const adsLimites = useMemo(() => cockpit?.adsLimites ?? { teto: 3000, alerta1: 1000, alerta2: 2000 }, [cockpit]); // barra de ADS (lente Performance)
     const corDoPolo  = useMemo(() => montarCorDoPolo(polosCk), [polosCk]);
     const finDe      = (e) => (fin && e.cust_norm) ? (fin[e.cust_norm] ?? null) : null;
 
@@ -758,12 +835,39 @@ export default function PolosPainel({
         return cols;
     }, [isAdmin, fin, respNome]);
 
-    // Colunas visíveis da lente ativa (na Geral = planilha completa; fin_* só p/ admin).
-    const colsVisiveis = useMemo(() => colsDaLente(lente, isAdmin), [lente, isAdmin]);
-    // Busca global casa por NOME + cust_id (bruto e normalizado) + polo — assim digitar o
-    // cust_id da loja no campo já traz a empresa (espelha o filtro de "Arquivados").
+    // Ordem/visibilidade das colunas da Geral escolhida pelo usuário (persistida no
+    // navegador). O cabeçalho, o corpo da tabela e o `visibleKeys` do AutoFiltro leem
+    // todos daqui — é uma lista só, então não há como dessincronizar.
+    const [colsGeral, setColsGeral] = useState(carregarColsGeral);
+    // Edição das colunas: o que se mexe é um RASCUNHO. Mover/ocultar não aplica nem grava
+    // nada até o "Salvar" — é o que evita a grade inteira re-renderizar a cada passo.
+    const [editandoCols, setEditandoCols] = useState(false);
+    const [rascunhoCols, setRascunhoCols] = useState(null);
+    const [colArrastada, setColArrastada] = useState(null);
+    useEffect(() => {
+        try { window.localStorage.setItem(COLS_GERAL_STORAGE, JSON.stringify(colsGeral)); } catch (_) { /* quota/priv */ }
+    }, [colsGeral]);
+
+    // Colunas visíveis da lente ativa (na Geral = a lista personalizada; fin_* só p/ admin).
+    // Em edição entram TODAS as colunas da Geral, inclusive as ocultas: sem isso não haveria
+    // como trazer de volta uma coluna escondida — ela sumiria da tela junto com o botão.
+    const colsVisiveis = useMemo(() => {
+        if (editandoCols && rascunhoCols) return colsDaLente('geral', isAdmin, { ordem: rascunhoCols.ordem, ocultas: [] });
+        return colsDaLente(lente, isAdmin, colsGeral);
+    }, [lente, isAdmin, colsGeral, editandoCols, rascunhoCols]);
+
+    // Ocultas do rascunho — pinta o cabeçalho e apaga a célula na amostra.
+    const ocultasEdicao = useMemo(
+        () => (editandoCols && rascunhoCols ? new Set(rascunhoCols.ocultas ?? []) : SEM_OCULTAS),
+        [editandoCols, rascunhoCols],
+    );
+    // Busca global casa por NOME + cust_id (bruto e normalizado) + polo + E-MAIL — assim
+    // digitar o cust_id da loja OU o e-mail do cliente já traz a empresa (espelha o filtro
+    // de "Arquivados"). São dois e-mails distintos de propósito: `gmail` é a conta do ML
+    // cadastrada na empresa e `gmail_colaborador` é o acesso que a ECF usa — quem procura
+    // não sabe (nem precisa saber) em qual dos dois o endereço foi digitado.
     const matchBusca = useCallback(
-        (e, q) => `${e.nome ?? ''} ${e.cust_id ?? ''} ${e.cust_norm ?? ''} ${e.polo ?? ''}`.toLowerCase().includes(q),
+        (e, q) => `${e.nome ?? ''} ${e.cust_id ?? ''} ${e.cust_norm ?? ''} ${e.polo ?? ''} ${e.gmail ?? ''} ${e.gmail_colaborador ?? ''}`.toLowerCase().includes(q),
         [],
     );
     // Base do AutoFiltro: SÓ as fases em operação (FASES_ESCOPO), a menos que o toggle esteja
@@ -776,7 +880,11 @@ export default function PolosPainel({
     );
     const nForaDoEscopo = empresas.length - empresasEscopo.length;
 
-    const af = useAutoFilter(empresasEscopo, COLUNAS, { search: busca, matchSearch: matchBusca, storageKey: 'polos-painel-af', visibleKeys: colsVisiveis });
+    // A grade filtra pela busca DIFERIDA: digitar atualiza o campo na hora (prioridade alta)
+    // e a varredura das ~180 linhas roda em prioridade baixa, interrompível a cada tecla.
+    // Sem isso cada caractere segurava a thread principal até a grade inteira redesenhar.
+    const buscaDiferida = useDeferredValue(busca);
+    const af = useAutoFilter(empresasEscopo, COLUNAS, { search: buscaDiferida, matchSearch: matchBusca, storageKey: 'polos-painel-af', visibleKeys: colsVisiveis });
     const filtradas = af.filtered;
 
     // Indicador acionável → filtra + navega p/ a lente da coluna (ou limpa, se já isolado).
@@ -808,20 +916,29 @@ export default function PolosPainel({
     // Âncora que saiu da vista deixa de valer p/ o shift-range.
     useEffect(() => { if (ancora != null && !idsVisiveis.includes(ancora)) setAncora(null); }, [idsVisiveis, ancora]);
 
-    const toggleLinha = useCallback((id, idx, shift) => {
+    // Identidade ESTÁVEL (deps só de refs): é prop de todas as linhas e a cada clique `ancora`
+    // muda — com deps normais isso redesenharia a grade inteira. O índice sai da lista visível
+    // pelo id, então a linha não precisa mais receber `idx` (que mudava a cada filtro e
+    // também furava o memo).
+    const idsVisiveisRef = useLatest(idsVisiveis);
+    const ancoraRef      = useLatest(ancora);
+    const toggleLinha = useCallback((id, shift) => {
+        const visiveis = idsVisiveisRef.current;
+        const anc      = ancoraRef.current;
+        const idx      = visiveis.indexOf(id);
         setSelecionadas((prev) => {
             const n = new Set(prev);
-            const a = ancora != null ? idsVisiveis.indexOf(ancora) : -1;
-            if (shift && a !== -1) {
+            const a = anc != null ? visiveis.indexOf(anc) : -1;
+            if (shift && a !== -1 && idx !== -1) {
                 const marcar = !n.has(id); // segue a ação no item clicado
                 const [lo, hi] = a < idx ? [a, idx] : [idx, a];
-                for (let i = lo; i <= hi; i++) { if (marcar) n.add(idsVisiveis[i]); else n.delete(idsVisiveis[i]); }
+                for (let i = lo; i <= hi; i++) { if (marcar) n.add(visiveis[i]); else n.delete(visiveis[i]); }
             } else if (shift) { n.add(id); } // âncora perdida: seleção pura (nunca desmarca por engano)
             else if (n.has(id)) { n.delete(id); } else { n.add(id); }
             return n;
         });
         setAncora(id);
-    }, [ancora, idsVisiveis]);
+    }, [idsVisiveisRef, ancoraRef]);
 
     const toggleTodasVisiveis = () => setSelecionadas((prev) => {
         const n = new Set(prev);
@@ -830,6 +947,46 @@ export default function PolosPainel({
         return n;
     });
     const limparSelecao = () => { setSelecionadas(new Set()); setAncora(null); };
+
+    // ── Edição de colunas: abrir / mover / ocultar / salvar — tudo sobre o rascunho ──
+    const abrirEdicaoCols = () => { setRascunhoCols(colsGeral); setColArrastada(null); limparSelecao(); setEditandoCols(true); };
+    const sairEdicaoCols  = () => { setEditandoCols(false); setRascunhoCols(null); setColArrastada(null); };
+
+    // Troca a coluna de lugar com a VIZINHA NA TELA. A conta é pela chave e sobre a lista
+    // exibida de propósito: p/ não-admin as fin_* estão na ordem mas não na tela, e pular
+    // uma delas pareceria "o botão não fez nada". Trocar (em vez de remover+inserir) também
+    // dispensa corrigir índice depois do splice.
+    const trocarCol = (chave, alvo) => setRascunhoCols((c) => {
+        const ordem = [...c.ordem];
+        const i = ordem.indexOf(chave);
+        const j = ordem.indexOf(alvo);
+        if (i < 0 || j < 0 || i === j) return c;
+        ordem[i] = alvo; ordem[j] = chave;
+        return { ...c, ordem };
+    });
+
+    const moverCol = (chave, passo) => {
+        const vis = (rascunhoCols?.ordem ?? []).filter((k) => isAdmin || !k.startsWith('fin_'));
+        const alvo = vis[vis.indexOf(chave) + passo];
+        if (alvo) trocarCol(chave, alvo);
+    };
+
+    const soltarCol = (alvo) => { if (colArrastada && colArrastada !== alvo) trocarCol(colArrastada, alvo); };
+
+    const alternarCol = (chave) => setRascunhoCols((c) => {
+        const set = new Set(c.ocultas ?? []);
+        if (set.has(chave)) set.delete(chave); else set.add(chave);
+        return { ...c, ocultas: [...set] };
+    });
+
+    // Salvar aplica o rascunho (o efeito de colsGeral grava no localStorage) e limpa o funil
+    // das colunas que ficaram ocultas: filtro ligado numa coluna fora da tela deixaria a
+    // grade filtrando por um critério invisível.
+    const salvarEdicaoCols = () => {
+        (rascunhoCols?.ocultas ?? []).forEach((k) => { if (af.isColumnActive?.(k)) af.clearColumn(k); });
+        if (rascunhoCols) setColsGeral(rascunhoCols);
+        sairEdicaoCols();
+    };
 
     // ── Aplicar / desfazer (endpoint de lote transacional; recarrega só `empresas`) ──
     const postLote = useCallback((payload, aoConcluir) => {
@@ -997,7 +1154,16 @@ export default function PolosPainel({
         window.axios.post(route('mlb.polos-painel.meta-faturamento'), { meta: n }, { headers: { 'X-CSRF-TOKEN': csrf_token } }).catch(() => {});
     }, [metaInput, csrf_token]);
 
-    const handlers = { salvarCampo, trocarResponsavel, toggleProblema, alternarMeta, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal, salvarCustId, salvarNome };
+    // `on` é prop de TODA linha. O objeto literal nascia novo a cada render e furava o memo()
+    // de LinhaPainel — daí um clique em qualquer célula redesenhar as ~180 linhas. Aqui ele é
+    // criado UMA vez e cada método despacha para a versão mais recente via ref.
+    const handlersAtuais = useLatest({ salvarCampo, trocarResponsavel, toggleProblema, alternarMeta, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal, salvarCustId, salvarNome });
+    const handlers = useMemo(() => {
+        const nomes = ['salvarCampo', 'trocarResponsavel', 'toggleProblema', 'alternarMeta', 'salvarNota', 'removerProblema', 'marcarEnviado', 'desfazerEnvio', 'criarOnboarding', 'arquivar', 'toggleExpandir', 'verEmpresa', 'salvarCustId', 'salvarNome'];
+        const obj = {};
+        nomes.forEach((nome) => { obj[nome] = (...args) => handlersAtuais.current[nome](...args); });
+        return obj;
+    }, [handlersAtuais]);
 
     // ── Modo TELA CHEIA (planilha): overlay que estoura sidebar/max-width + Fullscreen API. ──
     // ── Baixar planilha (.xlsx) ────────────────────────────────────────────────
@@ -1177,8 +1343,12 @@ export default function PolosPainel({
                                                 <FatVsMetaChart polos={polosCk} corDoPolo={corDoPolo} fonteFaturamento={cockpit.fonteFaturamento} parcial={parcial} />
                                             </div>
                                             <div className={CARD}>
-                                                <h3 className="text-white/70 text-sm font-semibold mb-3">Distribuição de status</h3>
-                                                <StatusDonut statusDist={cockpit.statusDist} height={240} />
+                                                <h3 className="text-white/70 text-sm font-semibold mb-3">Distribuição de status
+                                                    <span className="ml-2 text-[11px] font-normal text-white/25">· clique p/ ver as empresas</span>
+                                                </h3>
+                                                {/* Mesma navegação do /polos: fatia → lista já filtrada, no mês da tela. */}
+                                                <StatusDonut statusDist={cockpit.statusDist} height={240}
+                                                    onSelecionar={(status) => router.visit(route('polos.empresas', { mes: mesEfetivo, status }))} />
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -1241,12 +1411,12 @@ export default function PolosPainel({
                     )}
                     <div className="relative ml-auto">
                         <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
-                        <input type="text" value={busca} onChange={(ev) => setBusca(ev.target.value)} placeholder="Buscar empresa ou cust_id…"
-                            className="w-52 rounded-lg border border-white/[0.08] bg-white/[0.03] pl-8 pr-3 py-1.5 text-[12px] text-white/90 outline-none focus:border-ecf-yellow/40" />
+                        <input type="text" value={busca} onChange={(ev) => setBusca(ev.target.value)} placeholder="Buscar empresa, cust_id ou e-mail…"
+                            className="w-64 rounded-lg border border-white/[0.08] bg-white/[0.03] pl-8 pr-3 py-1.5 text-[12px] text-white/90 outline-none focus:border-ecf-yellow/40" />
                     </div>
                     <button type="button" onClick={() => setSoEscopo((v) => !v)}
                         title={soEscopo
-                            ? `Mostrando só M1–M4. ${nForaDoEscopo} empresa(s) fora do escopo (Churn, Protocolo Churn, Encerrado, Aceite no Projeto, M0, Fechamento, sem fase) estão ocultas — clique para incluir.`
+                            ? `Mostrando só M1–M4. ${nForaDoEscopo} empresa(s) fora do escopo (Churn, Desistência, Protocolo Churn, Encerrado, Aceite no Projeto, M0, Fechamento, sem fase) estão ocultas — clique para incluir.`
                             : 'Mostrando todas as fases, inclusive Churn/Encerrado — clique para voltar ao escopo M1–M4.'}
                         className={cn('inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition shrink-0',
                             soEscopo ? 'border-ecf-yellow/30 bg-ecf-yellow/[0.08] text-ecf-yellow hover:bg-ecf-yellow/15'
@@ -1271,6 +1441,14 @@ export default function PolosPainel({
                         ))}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                        {/* Personalização de colunas: só na Geral (as demais lentes são fixas). */}
+                        {lente === 'geral' && !editandoCols && (
+                            <button type="button" onClick={abrirEdicaoCols}
+                                title="Reorganizar as colunas no próprio cabeçalho — mover pro lado, ocultar — e salvar no fim"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08]">
+                                <Columns3 size={13} /> Editar colunas
+                            </button>
+                        )}
                         <button type="button" onClick={baixarPlanilha}
                             title="Baixar as linhas visíveis em .xlsx — uma coluna por campo, com filtro já ligado"
                             className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08]">
@@ -1362,7 +1540,12 @@ export default function PolosPainel({
                                         />
                                     </div>
                                 </th>
-                                <CabecalhoLente keys={colsVisiveis} af={af} colunas={COLUNAS} />
+                                <CabecalhoLente keys={colsVisiveis} af={af} colunas={COLUNAS}
+                                    edicao={editandoCols ? {
+                                        ocultas: ocultasEdicao, arrastando: colArrastada,
+                                        onMover: moverCol, onAlternar: alternarCol,
+                                        onArrastar: setColArrastada, onSoltar: soltarCol,
+                                    } : null} />
                             </tr>
                         </thead>
                         <tbody>
@@ -1381,14 +1564,17 @@ export default function PolosPainel({
                                     )}
                                 </td></tr>
                             )}
-                            {filtradas.map((e, idx) => (
+                            {/* Em edição o corpo vira amostra: mover coluna com a grade toda
+                                montada é o que travava. */}
+                            {(editandoCols ? filtradas.slice(0, LINHAS_AMOSTRA) : filtradas).map((e) => (
                                 <LinhaPainel
                                     key={e.id}
                                     e={e}
-                                    idx={idx}
                                     selecionada={selecionadas.has(e.id)}
                                     onToggleSel={toggleLinha}
                                     lente={lente}
+                                    colunas={colsVisiveis}
+                                    ocultas={ocultasEdicao}
                                     isAdmin={isAdmin}
                                     opcoes={opcoes}
                                     valoresPresentes={valoresPresentes}
@@ -1400,7 +1586,7 @@ export default function PolosPainel({
                                     adsLimites={adsLimites}
                                     semanal={e.cust_id ? semanal[e.cust_id] : null}
                                     aberta={expandida === e.id}
-                                    editNota={editNota}
+                                    notaEdit={editNota[e.id]}
                                     setEditNota={setEditNota}
                                     on={handlers}
                                 />
@@ -1411,8 +1597,23 @@ export default function PolosPainel({
                 )}
             </div>
 
+            {/* ── Edição de colunas: barra de salvar/cancelar do rascunho ── */}
+            {editandoCols && rascunhoCols && (
+                <BarraEdicaoColunas
+                    nVisiveis={colsVisiveis.filter((k) => !ocultasEdicao.has(k)).length}
+                    nTotal={colsVisiveis.length}
+                    nAmostra={Math.min(filtradas.length, LINHAS_AMOSTRA)}
+                    nTotalLinhas={filtradas.length}
+                    sujo={JSON.stringify(rascunhoCols) !== JSON.stringify(colsGeral)}
+                    onRestaurar={() => setRascunhoCols(reconciliaColsGeral(null))}
+                    onCancelar={sairEdicaoCols}
+                    onSalvar={salvarEdicaoCols}
+                />
+            )}
+
             {/* ── Edição em massa (aparece só quando há seleção) ── */}
-            <BulkActionBar count={nAlvo} onClear={limparSelecao} busy={loteBusy}>
+            {/* count=0 durante a edição de colunas: as duas barras dividem o mesmo rodapé. */}
+            <BulkActionBar count={editandoCols ? 0 : nAlvo} onClear={limparSelecao} busy={loteBusy}>
                 <AcaoLote icon={GitBranch}  label="Fase"        opcoes={opcFase}  onPick={aplicarFase} />
                 <AcaoLote icon={MapPin}     label="Polo"        opcoes={opcPolo}  onPick={(v) => aplicarLote({ polo: v })} busca />
                 <AcaoLote icon={Users}      label="Responsável" opcoes={opcResp}  onPick={(v) => aplicarLote({ responsavel_id: v })} busca />
@@ -1471,6 +1672,41 @@ export default function PolosPainel({
     );
 }
 
+// ─── Edição das colunas da Geral ────────────────────────────────────
+// A edição acontece NO PRÓPRIO CABEÇALHO (mover pro lado, ocultar) e mexe num RASCUNHO:
+// nada é aplicado nem gravado até o "Salvar". Aplicar a cada passo obrigava a grade
+// inteira a re-renderizar no meio do arrasto — o travamento que motivou este desenho.
+function BarraEdicaoColunas({ nVisiveis, nTotal, nAmostra, nTotalLinhas, sujo, onRestaurar, onCancelar, onSalvar }) {
+    return (
+        <div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <div className="pointer-events-auto flex max-w-[95vw] items-center gap-2 overflow-x-auto rounded-2xl border border-ecf-yellow/30 bg-ecf-card/95 px-3 py-2 shadow-2xl shadow-black/60 ring-1 ring-black/20 backdrop-blur">
+                <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-ecf-yellow/15 px-2.5 py-1.5 text-[12px] font-bold text-ecf-yellow">
+                    <Columns3 size={13} /> Editando colunas
+                </span>
+                <div className="hidden shrink-0 flex-col leading-tight sm:flex">
+                    <span className="whitespace-nowrap text-[11px] tabular-nums text-white/60">{nVisiveis} de {nTotal} visíveis</span>
+                    <span className="whitespace-nowrap text-[10.5px] text-white/30">amostra de {nAmostra} de {nTotalLinhas} linhas</span>
+                </div>
+                <div className="h-5 w-px shrink-0 bg-white/10" />
+                <button type="button" onClick={onRestaurar} title="Voltar à ordem padrão, com todas as colunas visíveis"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] text-white/55 transition hover:bg-white/[0.06] hover:text-white">
+                    <RotateCcw size={12} /> Padrão
+                </button>
+                <button type="button" onClick={onCancelar} title="Sair sem aplicar nada do que foi mexido aqui"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] text-white/55 transition hover:bg-white/[0.06] hover:text-white">
+                    <X size={13} /> Cancelar
+                </button>
+                <button type="button" onClick={onSalvar}
+                    title={sujo ? 'Aplicar a nova ordem e voltar à grade completa' : 'Nada foi mexido — volta à grade completa'}
+                    className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-bold transition',
+                        sujo ? 'bg-ecf-yellow text-black hover:bg-ecf-yellow/85' : 'bg-white/[0.07] text-white/45 hover:bg-white/[0.12]')}>
+                    <Check size={13} /> Salvar
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // ─── Cabeçalho de colunas por lente (com AutoFiltro nos funis) ──────────────────────
 const TH = 'px-2.5 py-3 text-white/45 text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap';
 
@@ -1496,14 +1732,63 @@ const COLS_POR_LENTE = {
     financeiro: ['fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status'],
 };
 
+// Linhas mostradas enquanto se edita as colunas. O corpo inteiro re-renderizando a cada
+// passo do arrasto é exatamente o travamento que a edição em rascunho veio resolver — com
+// centenas de empresas × 35 colunas, cada mover custaria a grade toda. Cinco linhas bastam
+// para conferir a ordem; o resto volta ao salvar ou cancelar.
+const LINHAS_AMOSTRA = 5;
+
+// Sem colunas ocultas — const de módulo p/ não criar um Set novo a cada render de linha.
+const SEM_OCULTAS = new Set();
+
 // Colunas financeiras alinhadas à direita (números) — vale na lente Financeiro E na Geral.
 const FIN_ALIGN_RIGHT = ['fin_faturamento', 'fin_meta', 'fin_pct'];
 
-// Colunas visíveis da lente. Na Geral (planilha completa) as fin_* só aparecem p/ admin
-// (COLUNAS nem define fin_* p/ não-admin; sem o filtro o cabeçalho ficaria com <th> nulos).
-function colsDaLente(lente, isAdmin) {
-    const keys = COLS_POR_LENTE[lente] ?? [];
-    if (lente === 'geral' && !isAdmin) return keys.filter((k) => !k.startsWith('fin_'));
+// ─── Personalização das colunas da Geral (ordem + visibilidade) ─────────────────────
+// A Geral é a "planilha completa" e cada time olha um recorte diferente dela — por isso
+// SÓ ela é personalizável; as outras lentes são recortes curados por área e continuam
+// fixas. A preferência é por navegador (localStorage, não sessionStorage: ordem de
+// trabalho tem de sobreviver a fechar o navegador) e não vai para o banco.
+const COLS_GERAL_STORAGE = 'polos-painel-cols-geral';
+
+// Reconcilia o salvo com o catálogo ATUAL do código: chave que não existe mais é
+// descartada e coluna NOVA entra visível, ancorada na vizinha canônica anterior. Sem
+// isso, uma coluna adicionada depois nunca apareceria para quem já salvou preferência —
+// exatamente o tipo de sumiço silencioso que já custou caro neste painel.
+function reconciliaColsGeral(salvo) {
+    const canon = COLS_POR_LENTE.geral;
+    const ordem = Array.isArray(salvo?.ordem) ? salvo.ordem.filter((k) => canon.includes(k)) : [];
+    canon.forEach((k, i) => {
+        if (ordem.includes(k)) return;
+        let pos = ordem.length;
+        for (let j = i - 1; j >= 0; j--) {
+            const idx = ordem.indexOf(canon[j]);
+            if (idx >= 0) { pos = idx + 1; break; }
+        }
+        ordem.splice(pos, 0, k);
+    });
+    const ocultas = Array.isArray(salvo?.ocultas) ? salvo.ocultas.filter((k) => canon.includes(k)) : [];
+    return { ordem, ocultas };
+}
+
+function carregarColsGeral() {
+    if (typeof window === 'undefined') return reconciliaColsGeral(null);
+    try { return reconciliaColsGeral(JSON.parse(window.localStorage.getItem(COLS_GERAL_STORAGE))); }
+    catch (_) { return reconciliaColsGeral(null); }
+}
+
+// Colunas visíveis da lente. Na Geral (planilha completa) vale a ordem/visibilidade
+// escolhida pelo usuário, e as fin_* só aparecem p/ admin (COLUNAS nem define fin_*
+// p/ não-admin; sem o filtro o cabeçalho ficaria com <th> nulos).
+function colsDaLente(lente, isAdmin, colsGeral = null) {
+    let keys = COLS_POR_LENTE[lente] ?? [];
+    if (lente === 'geral') {
+        if (colsGeral) {
+            const ocultas = new Set(colsGeral.ocultas ?? []);
+            keys = (colsGeral.ordem ?? keys).filter((k) => !ocultas.has(k));
+        }
+        if (!isAdmin) return keys.filter((k) => !k.startsWith('fin_'));
+    }
     return keys;
 }
 
@@ -1520,6 +1805,41 @@ function CelResposta({ valor, curto = {}, maxW = 'max-w-[190px]' }) {
         <div className={cn(maxW, 'truncate text-[12px] text-white/70')} title={valor}>
             {curto[valor] ?? valor}
         </div>
+    );
+}
+
+// Observação livre escrita pelo CLIENTE: cabe uma linha na grade e o resto se perdia —
+// `title` do navegador não quebra linha, atrasa ~1s e some ao mover o mouse, então uma
+// observação de 3 parágrafos era ilegível na prática. Aqui a célula vira botão e a frase
+// inteira abre num painel pequeno (Popover em portal — não é recortado pelo
+// overflow-x-auto da tabela, que era o motivo de um popover comum não servir aqui).
+function CelObs({ valor, empresa, maxW = 'max-w-[260px]' }) {
+    if (!valor) return <span className="text-white/20 text-[12px]">—</span>;
+    return (
+        <Popover.Root>
+            <Popover.Trigger asChild>
+                <button type="button" title="Clique para ler a observação inteira"
+                    className={cn(maxW, 'block w-full truncate rounded px-1 py-0.5 text-left text-[12px] text-white/70 underline decoration-white/15 decoration-dotted underline-offset-2 transition hover:bg-white/[0.06] hover:text-white')}>
+                    {valor}
+                </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+                <Popover.Content side="bottom" align="start" sideOffset={6} collisionPadding={12}
+                    className="z-[70] w-[360px] max-w-[92vw] rounded-xl border border-white/10 bg-ecf-card p-3 text-white shadow-2xl shadow-black/60 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                            Obs. publicação{empresa ? <span className="ml-1 normal-case tracking-normal text-white/60">· {empresa}</span> : null}
+                        </p>
+                        <Popover.Close asChild>
+                            <button type="button" title="Fechar" className="-mr-1 -mt-1 rounded p-1 text-white/35 transition hover:bg-white/[0.08] hover:text-white"><X size={12} /></button>
+                        </Popover.Close>
+                    </div>
+                    {/* whitespace-pre-wrap: o cliente escreve com quebras de linha e elas fazem parte do sentido. */}
+                    <p className="max-h-[50vh] overflow-y-auto whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-white/85">{valor}</p>
+                    <Popover.Arrow className="fill-ecf-card" />
+                </Popover.Content>
+            </Popover.Portal>
+        </Popover.Root>
     );
 }
 
@@ -1545,7 +1865,50 @@ function ThFiltro({ col, af, alignRight = false }) {
     );
 }
 
-function CabecalhoLente({ keys = [], af, colunas }) {
+// <th> no modo de edição: sem funil (filtrar enquanto se reorganiza não faz sentido) —
+// no lugar dele, mover pro lado e ocultar. Arrastar o próprio cabeçalho também reordena;
+// as setas existem porque arrastar não funciona no teclado.
+function ThEdicao({ chave, label, oculta, primeira, ultima, arrastando, onMover, onAlternar, onArrastar, onSoltar }) {
+    return (
+        <th draggable
+            onDragStart={() => onArrastar(chave)}
+            onDragOver={(ev) => { ev.preventDefault(); onSoltar(chave); }}
+            onDragEnd={() => onArrastar(null)}
+            className={cn(TH, 'cursor-grab select-none border-x border-white/[0.06] bg-white/[0.03]',
+                arrastando && 'bg-ecf-yellow/10', oculta && 'opacity-45')}>
+            <div className="flex items-center gap-0.5">
+                <GripVertical size={12} className="shrink-0 text-white/25" />
+                <button type="button" onClick={() => onMover(chave, -1)} disabled={primeira} title="Mover para a esquerda"
+                    className="rounded p-0.5 text-white/35 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-20"><ArrowLeft size={12} /></button>
+                <span className={cn('max-w-[140px] truncate normal-case tracking-normal', oculta ? 'text-white/35 line-through' : 'text-white/75')} title={label}>{label}</span>
+                <button type="button" onClick={() => onMover(chave, 1)} disabled={ultima} title="Mover para a direita"
+                    className="rounded p-0.5 text-white/35 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-20"><ArrowRight size={12} /></button>
+                <button type="button" onClick={() => onAlternar(chave)} title={oculta ? 'Mostrar esta coluna' : 'Ocultar esta coluna'}
+                    className={cn('rounded p-0.5 transition hover:bg-white/[0.08]', oculta ? 'text-white/30 hover:text-white/70' : 'text-ecf-yellow/70 hover:text-ecf-yellow')}>
+                    {oculta ? <EyeOff size={12} /> : <Eye size={12} />}
+                </button>
+            </div>
+        </th>
+    );
+}
+
+function CabecalhoLente({ keys = [], af, colunas, edicao = null }) {
+    // Em edição o cabeçalho vira o próprio controle: é onde a coluna é movida.
+    if (edicao) {
+        return (
+            <>
+                {keys.map((k, i) => (
+                    <ThEdicao key={k} chave={k}
+                        label={k === '__acoes__' ? 'Ações' : (colunas[k]?.label ?? k)}
+                        oculta={edicao.ocultas.has(k)}
+                        primeira={i === 0} ultima={i === keys.length - 1}
+                        arrastando={edicao.arrastando === k}
+                        onMover={edicao.onMover} onAlternar={edicao.onAlternar}
+                        onArrastar={edicao.onArrastar} onSoltar={edicao.onSoltar} />
+                ))}
+            </>
+        );
+    }
     return (
         <>
             {keys.map((k) => {
@@ -1557,112 +1920,146 @@ function CabecalhoLente({ keys = [], af, colunas }) {
     );
 }
 
+// Select de responsável — mesma economia do EditSelect: 23 usuários x uma linha cada dava
+// ~4 mil <option> na página. A lista só entra no DOM quando o select vai abrir.
+function SelectResponsavel({ e, usuarios, onTrocar }) {
+    const [pronto, aoAbrir] = useOpcoesSobDemanda();
+    const atual = e.responsavel_id ? String(e.responsavel_id) : '__sem__';
+    const nomeAtual = e.responsavel_nome ?? usuarios.find((u) => String(u.id) === atual)?.name ?? '—';
+    return (
+        <select value={atual} onChange={(ev) => onTrocar(e, ev.target.value)} {...aoAbrir}
+            style={{ backgroundColor: 'transparent' }}
+            className={cn('w-40', CELL, e.responsavel_id ? 'text-white/85 font-medium' : 'text-white/30')}>
+            <option value="__sem__" className="bg-ecf-card">Sem responsável</option>
+            {pronto
+                ? usuarios.map((u) => <option key={u.id} value={String(u.id)} className="bg-ecf-card text-white">{u.name}</option>)
+                : (atual !== '__sem__' && <option value={atual} className="bg-ecf-card text-white">{nomeAtual}</option>)}
+        </select>
+    );
+}
+
 // ─── Linha ──────────────────────────────────────────────────────────────────────────
-function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, editNota, setEditNota, on }) {
+// memo(): sem ele, qualquer estado do painel (uma tecla na busca, uma caixa marcada, uma
+// célula salva) redesenhava as ~180 linhas x ~32 colunas. Com as props estáveis acima, só a
+// linha que de fato mudou é redesenhada.
+const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, lente, colunas = [], ocultas = SEM_OCULTAS, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, notaEdit, setEditNota, on }) {
     const precisaAcao = e.problema || e.fora_do_prazo || e.status_envio === 'falta_enviar';
     const onb = e.onboarding_progresso;
     const td = 'px-2.5 py-3 align-middle';
 
-    // ── Fragmentos de células por área ──────────────────────────────────────────────
-    // Reutilizados na lente própria E concatenados na Geral (planilha completa). A ordem
-    // AQUI tem de bater com COLS_POR_LENTE (cabeçalho ↔ corpo) — ver colsDaLente/CabecalhoLente.
-    const celIdentidade = (<>
-        <td className={td}><div className="min-w-[88px]"><EditSelect e={e} campo="fase" opcoes={opcoes.fase} presentes={valoresPresentes.fase} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corFase} criavel={false} /></div></td>
-        <td className={td}>{e.estagio ? <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full', corEstagio(e.estagio))}>{e.estagio}</span> : <span className="text-white/20 text-[12px]">—</span>}</td>
-        <td className={td}><div className="min-w-[120px]"><EditSelect e={e} campo="polo" opcoes={opcoes.polo} presentes={valoresPresentes.polo} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>
-        <td className={td}>
-            {e.impl_id ? (
-                <select value={e.responsavel_id ? String(e.responsavel_id) : '__sem__'} onChange={(ev) => on.trocarResponsavel(e, ev.target.value)} style={{ backgroundColor: 'transparent' }} className={cn('w-40', CELL, e.responsavel_id ? 'text-white/85 font-medium' : 'text-white/30')}>
-                    <option value="__sem__" className="bg-ecf-card">Sem responsável</option>
-                    {usuarios.map((u) => <option key={u.id} value={String(u.id)} className="bg-ecf-card text-white">{u.name}</option>)}
-                </select>
-            ) : <span className="text-white/40 text-[12px]">{e.empresa_responsavel_nome ?? '—'}</span>}
-        </td>
-        <td className={td}>
-            {e.impl_id && onb ? (
-                <div className="flex items-center gap-2 min-w-[90px]"><div className="flex-1"><Barra pct={onb.pct} cor={onb.pct === 100 ? '#22c55e' : '#6366f1'} /></div><span className="text-white/40 text-[10px] tabular-nums">{onb.feitos}/{onb.total}</span></div>
-            ) : <span className="text-white/20 text-[12px]">—</span>}
-        </td>
-        <td className={td}>
-            {e.status_envio ? (
-                <div className="flex flex-col gap-0.5">
-                    <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full border w-fit', STATUS_ENVIO_BADGE[e.status_envio])}>{STATUS_ENVIO_LABELS[e.status_envio]}</span>
-                    {!e.link_enviado_em && e.status_envio !== 'concluido' && <button onClick={() => on.marcarEnviado(e)} className="text-emerald-300/70 hover:text-emerald-300 text-[10px] text-left transition">marcar enviado</button>}
-                    {e.link_enviado_em && <button onClick={() => on.desfazerEnvio(e)} className="text-white/30 hover:text-white/60 text-[10px] text-left transition">desfazer</button>}
+    // ── Células por CHAVE de coluna ───────────────────────────────
+    // Mapa key→<td>, e não blocos por área concatenados numa ordem fixa: cabeçalho e corpo
+    // passam a ser gerados pela MESMA lista de chaves (`colunas`), então a ordem escolhida
+    // pelo usuário na Geral vale para os dois e acabou o risco de o cabeçalho dizer uma
+    // coisa e a célula mostrar outra.
+    const celFin = (k) => <CelulaFinanceira campo={k} fin={fin} finLoaded={finLoaded} td={td} adsLimites={adsLimites} fechado={fechado} />;
+
+    const cel = {
+        // Cadastro no sistema (created_at) — read-only, automático; existe mesmo sem ficha.
+        // Selo "novo": some depois que alguém editar a empresa ou a ficha (flag `e.novo`).
+        data_cadastro: (
+            <td className={td}>
+                <div className="flex items-center gap-1.5 whitespace-nowrap min-w-[112px]">
+                    <span className="text-white/60 text-[12px] tabular-nums">{e.data_cadastro ? fmtDataBR(e.data_cadastro) : '—'}</span>
+                    {e.novo && (
+                        <span className="rounded-full border border-emerald-400/30 bg-emerald-500/[0.12] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">novo</span>
+                    )}
                 </div>
-            ) : <span className="text-white/20 text-[12px]">—</span>}
-        </td>
-        <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="status_entrada" opcoes={opcoes.status_entrada} presentes={valoresPresentes.status_entrada} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[110px]"><EditSelect e={e} campo="chance_entrada" opcoes={opcoes.chance_entrada} presentes={valoresPresentes.chance_entrada} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-    </>);
+            </td>
+        ),
 
-    const celAcessos = (<>
-        <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="acesso_colaborador" opcoes={opcoes.acesso_colaborador} presentes={valoresPresentes.acesso_colaborador} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[200px]"><EditText e={e} campo="gmail_colaborador" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="gmail…" wide /></div></td>
-        <td className={td}><EditToggle e={e} campo="grupo_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
-        <td className={td}><EditLink e={e} campo="link_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
-        <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="reuniao_onboarding" opcoes={opcoes.reuniao_onboarding} presentes={valoresPresentes.reuniao_onboarding} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><CelResposta valor={e.canais_faturamento} curto={CANAIS_CURTO} /></td>
-        <td className={td}><div className="min-w-[140px]"><EditDate e={e} campo="data_solicitacao" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>
-    </>);
-
-    // Cadastro no sistema (created_at) — read-only, automático; existe mesmo sem ficha.
-    // Selo "novo": some depois que alguém editar a empresa ou a ficha (flag `e.novo` do backend).
-    const celCadastro = (
-        <td className={td}>
-            <div className="flex items-center gap-1.5 whitespace-nowrap min-w-[112px]">
-                <span className="text-white/60 text-[12px] tabular-nums">{e.data_cadastro ? fmtDataBR(e.data_cadastro) : '—'}</span>
-                {e.novo && (
-                    <span className="rounded-full border border-emerald-400/30 bg-emerald-500/[0.12] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">novo</span>
-                )}
-            </div>
-        </td>
-    );
-
-    const celProdutos = (<>
-        <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="planilha_produtos" opcoes={opcoes.planilha_produtos} presentes={valoresPresentes.planilha_produtos} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="listagem" opcoes={opcoes.listagem} presentes={valoresPresentes.listagem} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="publicacao" opcoes={opcoes.publicacao} presentes={valoresPresentes.publicacao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="decola" opcoes={opcoes.decola} presentes={valoresPresentes.decola} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><EditToggle e={e} campo="campanha_criada" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
-        <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="central_promocao" opcoes={opcoes.central_promocao} presentes={valoresPresentes.central_promocao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        {/* Observação escrita pelo CLIENTE no link do Onboarding — somente leitura, como
-            as demais respostas dele. A frase inteira (com as quebras de linha) fica no
-            title; a célula mostra a primeira linha truncada. */}
-        <td className={td}><CelResposta valor={e.obs_publicacao} maxW="max-w-[260px]" /></td>
-    </>);
-
-    const celLogistica = (<>
-        <td className={td}><div className="min-w-[240px]"><EditText e={e} campo="contextos_logistica" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="anotação…" wide /></div></td>
-        <td className={td}><div className="min-w-[160px]"><EditSelect e={e} campo="me1" opcoes={opcoes.me1} presentes={valoresPresentes.me1} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="integradora" opcoes={opcoes.integradora} presentes={valoresPresentes.integradora} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><CelResposta valor={e.produtos_perfil} curto={PERFIL_PRODUTOS_CURTO} /></td>
-        <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="places" opcoes={opcoes.places} presentes={valoresPresentes.places} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="erp" opcoes={opcoes.erp} presentes={valoresPresentes.erp} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-    </>);
-
-    const celAcoes = (
-        <td className={td}>
-            <div className="flex items-center gap-1.5 whitespace-nowrap">
-                <button onClick={() => on.toggleProblema(e)} title={e.problema ? 'Alternar problema' : 'Marcar problema'}
-                    className={cn('p-1.5 rounded-lg transition', e.problema ? 'text-red-300 bg-red-500/10 hover:bg-red-500/20' : 'text-white/40 hover:text-red-300 hover:bg-white/[0.06]')}><ShieldAlert size={13} /></button>
+        // ── Identidade ──
+        fase: <td className={td}><div className="min-w-[88px]"><EditSelect e={e} campo="fase" opcoes={opcoes.fase} presentes={valoresPresentes.fase} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corFase} criavel={false} /></div></td>,
+        estagio: <td className={td}>{e.estagio ? <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full', corEstagio(e.estagio))}>{e.estagio}</span> : <span className="text-white/20 text-[12px]">—</span>}</td>,
+        polo: <td className={td}><div className="min-w-[120px]"><EditSelect e={e} campo="polo" opcoes={opcoes.polo} presentes={valoresPresentes.polo} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>,
+        responsavel: (
+            <td className={td}>
                 {e.impl_id ? (
-                    <Link href={route('mlb.implementacao.ficha', e.impl_id)} className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[11px] transition" title="Abrir ficha completa (página inteira)"><FileText size={12} /></Link>
-                ) : (
-                    <button onClick={() => on.criarOnboarding(e)} className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[11px] transition" title="Criar ficha de onboarding"><FilePlus2 size={12} /></button>
-                )}
-                <button onClick={() => on.arquivar(e)} title="Arquivar (sai do painel; não conta em nada — reversível)"
-                    className="p-1.5 rounded-lg text-white/40 transition hover:text-amber-300 hover:bg-white/[0.06]"><Archive size={13} /></button>
-            </div>
-        </td>
-    );
+                    <SelectResponsavel e={e} usuarios={usuarios} onTrocar={on.trocarResponsavel} />
+                ) : <span className="text-white/40 text-[12px]">{e.empresa_responsavel_nome ?? '—'}</span>}
+            </td>
+        ),
+        onboarding: (
+            <td className={td}>
+                {e.impl_id && onb ? (
+                    <div className="flex items-center gap-2 min-w-[90px]"><div className="flex-1"><Barra pct={onb.pct} cor={onb.pct === 100 ? '#22c55e' : '#6366f1'} /></div><span className="text-white/40 text-[10px] tabular-nums">{onb.feitos}/{onb.total}</span></div>
+                ) : <span className="text-white/20 text-[12px]">—</span>}
+            </td>
+        ),
+        envio: (
+            <td className={td}>
+                {e.status_envio ? (
+                    <div className="flex flex-col gap-0.5">
+                        <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full border w-fit', STATUS_ENVIO_BADGE[e.status_envio])}>{STATUS_ENVIO_LABELS[e.status_envio]}</span>
+                        {!e.link_enviado_em && e.status_envio !== 'concluido' && <button onClick={() => on.marcarEnviado(e)} className="text-emerald-300/70 hover:text-emerald-300 text-[10px] text-left transition">marcar enviado</button>}
+                        {e.link_enviado_em && <button onClick={() => on.desfazerEnvio(e)} className="text-white/30 hover:text-white/60 text-[10px] text-left transition">desfazer</button>}
+                    </div>
+                ) : <span className="text-white/20 text-[12px]">—</span>}
+            </td>
+        ),
+        status_entrada: <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="status_entrada" opcoes={opcoes.status_entrada} presentes={valoresPresentes.status_entrada} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        chance_entrada: <td className={td}><div className="min-w-[110px]"><EditSelect e={e} campo="chance_entrada" opcoes={opcoes.chance_entrada} presentes={valoresPresentes.chance_entrada} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+
+        // ── Acessos ──
+        acesso_colaborador: <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="acesso_colaborador" opcoes={opcoes.acesso_colaborador} presentes={valoresPresentes.acesso_colaborador} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        gmail_colaborador: <td className={td}><div className="min-w-[200px]"><EditText e={e} campo="gmail_colaborador" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="gmail…" wide /></div></td>,
+        grupo_whatsapp: <td className={td}><EditToggle e={e} campo="grupo_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>,
+        link_whatsapp: <td className={td}><EditLink e={e} campo="link_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>,
+        reuniao_onboarding: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="reuniao_onboarding" opcoes={opcoes.reuniao_onboarding} presentes={valoresPresentes.reuniao_onboarding} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        canais_faturamento: <td className={td}><CelResposta valor={e.canais_faturamento} curto={CANAIS_CURTO} /></td>,
+        data_solicitacao: <td className={td}><div className="min-w-[140px]"><EditDate e={e} campo="data_solicitacao" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>,
+
+        // ── Produtos & publicação ──
+        planilha_produtos: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="planilha_produtos" opcoes={opcoes.planilha_produtos} presentes={valoresPresentes.planilha_produtos} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        listagem: <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="listagem" opcoes={opcoes.listagem} presentes={valoresPresentes.listagem} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        publicacao: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="publicacao" opcoes={opcoes.publicacao} presentes={valoresPresentes.publicacao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        decola: <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="decola" opcoes={opcoes.decola} presentes={valoresPresentes.decola} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        campanha_criada: <td className={td}><EditToggle e={e} campo="campanha_criada" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>,
+        central_promocao: <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="central_promocao" opcoes={opcoes.central_promocao} presentes={valoresPresentes.central_promocao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        // Observação escrita pelo CLIENTE no link do Onboarding — somente leitura, como as
+        // demais respostas dele. A célula mostra o começo truncado; clicar abre o painel
+        // com o texto inteiro (ver CelObs).
+        obs_publicacao: <td className={td}><CelObs valor={e.obs_publicacao} empresa={e.nome} /></td>,
+
+        // ── Logística ──
+        contextos_logistica: <td className={td}><div className="min-w-[240px]"><EditText e={e} campo="contextos_logistica" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="anotação…" wide /></div></td>,
+        me1: <td className={td}><div className="min-w-[160px]"><EditSelect e={e} campo="me1" opcoes={opcoes.me1} presentes={valoresPresentes.me1} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        integradora: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="integradora" opcoes={opcoes.integradora} presentes={valoresPresentes.integradora} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        produtos_perfil: <td className={td}><CelResposta valor={e.produtos_perfil} curto={PERFIL_PRODUTOS_CURTO} /></td>,
+        places: <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="places" opcoes={opcoes.places} presentes={valoresPresentes.places} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        erp: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="erp" opcoes={opcoes.erp} presentes={valoresPresentes.erp} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+
+        // ── Financeiro (admin) — uma célula por chave; ver CelulaFinanceira ──
+        fin_faturamento: celFin('fin_faturamento'),
+        fin_meta:        celFin('fin_meta'),
+        fin_pct:         celFin('fin_pct'),
+        fin_ads:         celFin('fin_ads'),
+        fin_status:      celFin('fin_status'),
+
+        // ── Ações ──
+        __acoes__: (
+            <td className={td}>
+                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                    <button onClick={() => on.toggleProblema(e)} title={e.problema ? 'Alternar problema' : 'Marcar problema'}
+                        className={cn('p-1.5 rounded-lg transition', e.problema ? 'text-red-300 bg-red-500/10 hover:bg-red-500/20' : 'text-white/40 hover:text-red-300 hover:bg-white/[0.06]')}><ShieldAlert size={13} /></button>
+                    {e.impl_id ? (
+                        <Link href={route('mlb.implementacao.ficha', e.impl_id)} className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[11px] transition" title="Abrir ficha completa (página inteira)"><FileText size={12} /></Link>
+                    ) : (
+                        <button onClick={() => on.criarOnboarding(e)} className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[11px] transition" title="Criar ficha de onboarding"><FilePlus2 size={12} /></button>
+                    )}
+                    <button onClick={() => on.arquivar(e)} title="Arquivar (sai do painel; não conta em nada — reversível)"
+                        className="p-1.5 rounded-lg text-white/40 transition hover:text-amber-300 hover:bg-white/[0.06]"><Archive size={13} /></button>
+                </div>
+            </td>
+        ),
+    };
 
     return (
         <>
             <tr className={cn('border-b border-white/[0.05] transition-colors hover:bg-white/[0.025]', aberta && 'bg-white/[0.04]', selecionada && 'bg-ecf-yellow/[0.05]')}>
                 {/* Seleção (congelada à esquerda) */}
                 <td className="sticky left-0 z-10 bg-ecf-card px-3 py-3 align-middle">
-                    <button type="button" onClick={(ev) => onToggleSel(e.id, idx, ev.shiftKey)} title="Selecionar (Shift = intervalo)" className="align-middle">
+                    <button type="button" onClick={(ev) => onToggleSel(e.id, ev.shiftKey)} title="Selecionar (Shift = intervalo)" className="align-middle">
                         <CaixaSel state={selecionada ? 'on' : 'off'} />
                     </button>
                 </td>
@@ -1683,6 +2080,8 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                                     className="text-white text-[13.5px] font-semibold truncate max-w-[220px]"
                                 />
                                 <CustIdCell e={e} onSalvar={on.salvarCustId} />
+                                {/* Fase SEMPRE visível, em qualquer lente — ver TagFase. */}
+                                <TagFase fase={e.fase} polo={e.polo} />
                                 {/* Roxo (cor do status Problema no donut) = problema que tira da meta. */}
                                 {e.problema && (
                                     <span
@@ -1698,30 +2097,26 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                                 {e.ads_desligado && <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full text-white/50 bg-white/[0.05] border border-white/10" title="ADS desligado"><MegaphoneOff size={9} /> ads off</span>}
                                 {!e.impl_id && <span className="text-[9px] px-1.5 py-0.5 rounded-full text-amber-200/70 bg-amber-500/[0.08] border border-amber-500/20" title="Sem ficha de onboarding">sem ficha</span>}
                             </div>
-                            {/* Contexto fase·polo só fora da lente Geral (lá viram colunas) */}
-                            {lente !== 'geral' && (
-                                <div className="text-[11px] mt-1"><span className={cn('font-semibold', corFase(e.fase))}>{e.fase || '—'}</span>{e.polo ? <span className="text-white/35"> · {e.polo}</span> : null}</div>
+                            {/* A fase virou tag fixa acima; aqui sobra o polo, e só quando a
+                                coluna Polo não está na tela (na Geral ela é coluna). */}
+                            {e.polo && !colunas.includes('polo') && (
+                                <div className="text-[11px] mt-1 text-white/35">{e.polo}</div>
                             )}
                         </div>
                     </div>
                 </td>
 
-                {/* Colunas da lente — Geral concatena TODAS as áreas (planilha completa). */}
-                {lente === 'geral' && (<>
-                    {celCadastro}
-                    {celIdentidade}
-                    {celAcessos}
-                    {celProdutos}
-                    {celLogistica}
-                    {isAdmin && <CelulasFinanceiro fin={fin} finLoaded={finLoaded} td={td} adsLimites={adsLimites} fechado={fechado} />}
-                    {celAcoes}
-                </>)}
-                {lente === 'acessos'   && celAcessos}
-                {lente === 'produtos'  && celProdutos}
-                {lente === 'logistica' && celLogistica}
-                {lente === 'financeiro' && isAdmin && (
-                    <CelulasFinanceiro fin={fin} finLoaded={finLoaded} td={td} adsLimites={adsLimites} fechado={fechado} />
-                )}
+                {/* Colunas: a MESMA lista de chaves que montou o cabeçalho. Ordem e
+                    visibilidade personalizadas na Geral valem aqui sem nenhum ajuste. */}
+                {colunas.map((k) => (
+                    <Fragment key={k}>
+                        {/* Só em edição: coluna marcada p/ ocultar aparece apagada, para a amostra
+                            mostrar como a grade vai ficar depois de salvar. */}
+                        {ocultas.has(k)
+                            ? <td className={cn(td, 'text-center text-[12px] text-white/15')}>·</td>
+                            : (cel[k] ?? <td className={td} />)}
+                    </Fragment>
+                ))}
             </tr>
 
             {/* Drawer (detalhe pesado sob demanda) */}
@@ -1736,7 +2131,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                                 <h4 className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5"><ShieldAlert size={12} /> Problema</h4>
                                 {e.problema ? (
                                     <div className="space-y-2">
-                                        <textarea value={editNota[e.id] ?? e.problema_nota ?? ''} onChange={(ev) => setEditNota((s) => ({ ...s, [e.id]: ev.target.value }))} rows={2} placeholder="Descreva o problema…"
+                                        <textarea value={notaEdit ?? e.problema_nota ?? ''} onChange={(ev) => setEditNota((s) => ({ ...s, [e.id]: ev.target.value }))} rows={2} placeholder="Descreva o problema…"
                                             className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[12px] p-2 outline-none focus:border-ecf-yellow/40" />
                                         {/* Decide se ESTE problema tira a empresa da meta. Desmarcado (padrão)
                                             ela continua contando em No alvo / Em progresso / Não. */}
@@ -1796,44 +2191,59 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
             )}
         </>
     );
-}
+});
+LinhaPainel.displayName = 'LinhaPainel';
 
-// ─── Células da lente Financeiro/Performance (admin, read-only) ─────────────────────
-function CelulasFinanceiro({ fin, finLoaded, td, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, fechado = false }) {
-    if (!finLoaded) return <td className={td} colSpan={5}><span className="text-white/25 text-[12px] inline-flex items-center gap-1.5"><RefreshCw size={11} className="animate-spin" /> carregando…</span></td>;
-    if (!fin) return <td className={td} colSpan={5}><span className="text-white/20 text-[12px]">— sem dado financeiro (não ativo / sem sync)</span></td>;
-    if (fin.tipo === 'm1') {
-        return (<>
-            <td className={cn(td, 'text-right')}><span className="text-white/80 text-[12px] tabular-nums">{formatCurrency(fin.faturamento ?? 0)}</span></td>
-            <td className={cn(td, 'text-right text-white/20 text-[12px]')}>—</td>
-            <td className={cn(td, 'text-right text-white/20 text-[12px]')}>—</td>
-            <td className={cn(td, 'text-white/20 text-[12px]')}>—</td>
-            <td className={td}>{fin.faturando ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-300"><Sparkles size={10} /> Pronto p/ M2</span> : <span className="text-white/30 text-[11px]">M1 — não fatura</span>}</td>
-        </>);
+// ─── Célula financeira por CHAVE (admin, read-only) ─────────────────────────
+function CelulaFinanceira({ campo, fin, finLoaded, td, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, fechado = false }) {
+    const dir = FIN_ALIGN_RIGHT.includes(campo);
+    // Estados "carregando"/"sem dado" eram UM <td colSpan={5}> — isso só vale enquanto as
+    // cinco colunas forem vizinhas, garantia que a ordem personálizavel da Geral desfez.
+    // Agora a mensagem fica na coluna de Faturamento e as demais mostram "—" (o texto
+    // inteiro vai no title, então nada de informação se perde).
+    const vazio = (texto, title) => (
+        <td className={cn(td, dir && 'text-right')}><span className="text-white/20 text-[12px]" title={title}>{texto ?? '—'}</span></td>
+    );
+
+    if (!finLoaded) {
+        if (campo !== 'fin_faturamento') return vazio();
+        return <td className={cn(td, 'text-right')}><span className="text-white/25 text-[12px] inline-flex items-center gap-1.5"><RefreshCw size={11} className="animate-spin" /> carregando…</span></td>;
     }
-    const cor = fin.pct >= 100 ? '#22c55e' : fin.pct > 0 ? '#ffe600' : '#ef4444';
-    // ADS: MESMA coluna de /polos/empresas — barra do gasto vs teto/empresa, cor por limiar (corAds),
-    // com o teto visível ("R$ X / R$ 3.000,00"). Mês fechado não tem fonte de ADS → "—".
-    const ads    = fin.ads ?? 0;
-    const adsPct = Math.min(ads / (adsLimites.teto || 3000) * 100, 100);
-    return (<>
-        <td className={cn(td, 'text-right')}><span className="text-white/90 text-[12px] font-semibold tabular-nums">{formatCurrency(fin.faturamento ?? 0)}</span></td>
-        <td className={cn(td, 'text-right text-white/40 text-[12px] tabular-nums')}>{formatCurrency(fin.meta ?? 0)}</td>
-        <td className={cn(td, 'text-right')}><span className="text-[12px] font-semibold tabular-nums" style={{ color: cor }}>{fmtPct(fin.pct)}</span></td>
-        <td className={td}>
-            {fechado ? (
-                <span className="text-white/20 text-[12px]" title="ADS só é apurado no mês corrente">—</span>
-            ) : (
-                <div className="flex items-center gap-2">
-                    <div className="w-24 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${adsPct}%`, background: corAds(ads, adsLimites) }} />
+    if (!fin) return vazio(campo === 'fin_faturamento' ? 'sem dado' : '—', 'Sem dado financeiro (não ativo / sem sync)');
+
+    if (fin.tipo === 'm1') {
+        if (campo === 'fin_faturamento') return <td className={cn(td, 'text-right')}><span className="text-white/80 text-[12px] tabular-nums">{formatCurrency(fin.faturamento ?? 0)}</span></td>;
+        if (campo === 'fin_status') return <td className={td}>{fin.faturando ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-300"><Sparkles size={10} /> Pronto p/ M2</span> : <span className="text-white/30 text-[11px]">M1 — não fatura</span>}</td>;
+        return vazio();
+    }
+
+    if (campo === 'fin_faturamento') return <td className={cn(td, 'text-right')}><span className="text-white/90 text-[12px] font-semibold tabular-nums">{formatCurrency(fin.faturamento ?? 0)}</span></td>;
+    if (campo === 'fin_meta') return <td className={cn(td, 'text-right text-white/40 text-[12px] tabular-nums')}>{formatCurrency(fin.meta ?? 0)}</td>;
+    if (campo === 'fin_pct') {
+        const cor = fin.pct >= 100 ? '#22c55e' : fin.pct > 0 ? '#ffe600' : '#ef4444';
+        return <td className={cn(td, 'text-right')}><span className="text-[12px] font-semibold tabular-nums" style={{ color: cor }}>{fmtPct(fin.pct)}</span></td>;
+    }
+    if (campo === 'fin_ads') {
+        // ADS: MESMA coluna de /polos/empresas — barra do gasto vs teto/empresa, cor por
+        // limiar (corAds), com o teto visível. Mês fechado não tem fonte de ADS → "—".
+        const ads    = fin.ads ?? 0;
+        const adsPct = Math.min(ads / (adsLimites.teto || 3000) * 100, 100);
+        return (
+            <td className={td}>
+                {fechado ? (
+                    <span className="text-white/20 text-[12px]" title="ADS só é apurado no mês corrente">—</span>
+                ) : (
+                    <div className="flex items-center gap-2">
+                        <div className="w-24 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${adsPct}%`, background: corAds(ads, adsLimites) }} />
+                        </div>
+                        <span className="text-white/40 text-xs tabular-nums whitespace-nowrap">
+                            {formatCurrency(ads)} <span className="text-white/20">/ {formatCurrency(adsLimites.teto)}</span>
+                        </span>
                     </div>
-                    <span className="text-white/40 text-xs tabular-nums whitespace-nowrap">
-                        {formatCurrency(ads)} <span className="text-white/20">/ {formatCurrency(adsLimites.teto)}</span>
-                    </span>
-                </div>
-            )}
-        </td>
-        <td className={td}><StatusBadge status={fin.status} /></td>
-    </>);
+                )}
+            </td>
+        );
+    }
+    return <td className={td}><StatusBadge status={fin.status} /></td>;
 }
