@@ -94,6 +94,58 @@ Private App (Configurações → Integrações → Private Apps → app do ECF A
 rotacionar o token ao salvar, `HUBSPOT_ACCESS_TOKEN` precisa ser atualizado no `.env` da VPS antes
 de considerar o escopo resolvido — rotação sem atualizar o `.env` reintroduz o mesmo 403.
 
+## Task 3 — resolução do checkpoint (render das duas telas e navegação reorganizada, 2026-09-09)
+
+**Verificado visualmente pelo usuário (screenshots das duas telas, 2026-09-09):**
+
+- **Tela Entrada** (`/comercial/entrada`): 11 colunas — Empresa, CNPJ, Serviços, Setor, Origem,
+  Responsável comercial, Data da venda, Contato, Status do contrato, Pendências, Etapa. Listou as
+  8 empresas `[TESTE 138-09]` de etapas 1 a 4. Etapa renderizada legível ("Administrativo
+  Concluído", não a chave crua). Nenhum item de checklist nem botão FINALIZAR. O texto de topo
+  declara que os itens do checklist chegam na Fase 139.
+- **Fronteira D-07 confirmada com evidência dos dois lados:** as empresas de etapa 5
+  (`aguardando_distribuicao`, ids **412** e **417**) **existem no banco** — confirmado por
+  consulta direta ao banco pelo orquestrador — e **não** aparecem na tela. Ausência com o
+  registro existente, não ausência por falta de dado.
+- **Tela Contrato** (`/administrativo/contratos`): grid de resumo por situação no topo; colunas
+  novas presentes (Setor, Responsável comercial, Data da venda, Etapa, Pendências) junto das
+  antigas. **A linha `asdadassdsad` aparece com etapa "Em Operação"** — prova direta de que a
+  listagem Contrato NÃO ganhou corte por etapa; empresa em operação continua visível, que era a
+  regressão de produto a evitar.
+- **Pendências separadas nas duas telas:** badges distintas ("Sem serviço"/"Sem contato" na
+  Entrada, "Sem valor"/"Sem contato" na Contrato), nunca somadas num número único.
+- **Responsável comercial e Data da venda vazios (—) em todas as linhas, sem erro nem alerta** —
+  esperado: `HUBSPOT_ACCESS_TOKEN` ausente do `.env` local e zero empresas locais com
+  `hubspot_owner_nome`/`data_venda`. Já é pendência declarada para a VPS.
+
+**Explicado e confirmado durante o checkpoint (duas coisas que pareciam defeito e não são):**
+
+- As empresas `[TESTE 138-09]` NÃO aparecem na listagem Contrato porque têm **zero serviços
+  contratados** (`contratosServico()->count() === 0`, medido nos ids 408, 411 e 412). O universo
+  da Contrato é estado de contrato, não etapa. Não é corte por etapa.
+- **179 das 190 empresas locais têm `etapa` NULL** e a tela Contrato as mostra como "Sem etapa
+  (legado)". Isso é decisão de projeto **D-03**, escrita no cabeçalho de
+  `database/migrations/2026_09_01_110000_add_etapa_to_companies_table.php`: `nullable()` SEM
+  `default()`, porque um default `aguardando_administrativo` colocaria centenas de empresas
+  legadas na etapa 1 — falso, e inundaria a listagem da Fase 138.
+
+**Aprovado pelo usuário sem relato separado (registrado como tal, sem inflar):**
+
+- A conferência da **barra lateral** (grupo Comercial com Contrato e Entrada; grupo
+  Administrativo sem Empresas e sem Contratos) e o passo do **usuário não-admin com apenas
+  `admin.contratos`** não tiveram relato item-a-item do usuário. Ele respondeu "aprovado" cobrindo
+  o checkpoint inteiro depois de ver as duas telas. A cobertura automatizada dessas duas regras
+  existe em `tests/Feature/Phase138/ComercNavegacaoReorganizadaTest.php` e
+  `ComercEntradaPermissaoRotaTest.php` (verdes) — o usuário não conferiu o menu visualmente.
+
+**Reconfirmação automatizada no fechamento (2026-09-09):**
+`/c/xampp/php/php.exe vendor/bin/phpunit tests/Feature/Phase138 tests/Feature/Phase131 --colors=never`
+→ **OK, 187 tests, 746 assertions**, exit code 0.
+
+**Fixtures locais usadas na verificação (não removidas — não é escopo deste plano):** ids
+**408-417**, 10 empresas `[TESTE 138-09]`, duas por etapa de 1 a 5. Empresa `asdadassdsad`
+(id **55**) usada como prova viva da não-regressão da listagem Contrato.
+
 ## Roteiro completo para a VPS (só na sessão de deploy, com autorização explícita do usuário)
 
 Nenhum destes itens foi executado. É a lista completa do que precisa acontecer quando — e só
