@@ -19,6 +19,7 @@ use App\Models\MlbImplementacao;
 use App\Models\PoloFaturamentoSnapshot;
 use App\Models\PoloMetaEntrada;
 use App\Models\PoloRosterSnapshot;
+use App\Models\PolosComentario;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
@@ -1247,9 +1248,17 @@ class PolosController extends Controller
      * lista plana de TODAS as empresas ativas (todos os polos) do mês, com status,
      * faturamento vs meta, ads e problema. Abre numa aba própria (mais espaço).
      */
-    public function todasEmpresas(): \Inertia\Response
+    public function todasEmpresas(Request $request): \Inertia\Response
     {
         $this->checkFaturamentoAccess();
+
+        // Status vindo do clique numa fatia da "Distribuição de status" (/polos e Cockpit).
+        // Só chaves conhecidas: query string é entrada do usuário, e um valor livre viraria
+        // um chip que não filtra nada — a tela diria "0 empresas" sem explicar por quê.
+        $statusInicial = $request->query('status');
+        if (! in_array($statusInicial, ['Sim', 'Em progresso', 'Não', 'Problema', 'ads'], true)) {
+            $statusInicial = null;
+        }
 
         $vazio = [
             'empresas'       => [],
@@ -1261,6 +1270,8 @@ class PolosController extends Controller
             'totais'         => ['faturamento' => 0, 'meta' => 0, 'pct' => 0, 'ativos' => 0],
             // Limites de ADS defensivos: garante shape consistente no frontend mesmo sem dados.
             'adsLimites'     => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
+            'comentarios'    => (object) [],
+            'statusInicial'  => $statusInicial,
             'erro'           => null,
         ];
 
@@ -1298,6 +1309,11 @@ class PolosController extends Controller
                     'ativos'      => count($empresas),
                 ],
                 'adsLimites'     => $d['adsLimites'],
+                // Comentarios de performance do mes, agrupados por cust_id. Vem junto com a
+                // pagina (volume pequeno) em vez de um fetch por linha aberta: sem isso, abrir
+                // 20 empresas seriam 20 idas ao servidor para mostrar 3 frases.
+                'comentarios'    => $this->comentariosDoMes($d['mesSel'], $request->user()),
+                'statusInicial'  => $statusInicial,
                 'erro'           => null,
             ]);
         } catch (\Throwable $e) {
@@ -1306,6 +1322,102 @@ class PolosController extends Controller
                 'erro' => 'Não foi possível buscar dados do ECF Drive. Tente em alguns segundos.',
             ]));
         }
+    }
+
+    // ═══ Comentários de performance (/polos/empresas) ═══
+    // Ver o docblock da migration polos_comentarios para as decisões de schema.
+
+    /**
+     * Comentários do mês agrupados por cust_id, no shape que a tela consome.
+     *
+     * `pode_editar` é resolvido AQUI e não no front: a regra (autor ou admin) é a mesma
+     * que os endpoints aplicam, e derivar isso no JSX abriria caminho para a tela mostrar
+     * um lápis que o servidor recusa.
+     *
+     * @return array<string, array<int, array<string,mixed>>>
+     */
+    private function comentariosDoMes(?string $mes, ?User $user): array
+    {
+        if ($mes === null || $mes === '') {
+            return [];
+        }
+
+        return PolosComentario::with('autor:id,name')
+            ->where('mes', $mes)
+            ->orderBy('created_at')
+            ->get()
+            ->groupBy('cust_id')
+            ->map(fn ($grupo) => $grupo->map(fn (PolosComentario $c) => [
+                'id'          => $c->id,
+                'texto'       => $c->texto,
+                'autor'       => $c->autorNome(),
+                'criado_em'   => $c->created_at?->format('d/m/Y H:i'),
+                'editado_em'  => $c->editado_em?->format('d/m/Y H:i'),
+                'pode_editar' => $this->podeMexerNoComentario($user, $c),
+            ])->values()->all())
+            ->all();
+    }
+
+    /** Só o autor mexe no próprio comentário; admin mexe em qualquer um (moderação). */
+    private function podeMexerNoComentario(?User $user, PolosComentario $comentario): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        return $user->isAdmin() || $comentario->user_id === $user->id;
+    }
+
+    public function comentarioStore(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+
+        $dados = $request->validate([
+            'cust_id' => ['required', 'string', 'max:50'],
+            'mes'     => ['required', 'string', 'regex:/^[0-9]{6}$/'],
+            'texto'   => ['required', 'string', 'max:5000'],
+        ]);
+
+        $user = $request->user();
+
+        PolosComentario::create([
+            // Normaliza na escrita: a lista da tela é montada por cust normalizado, e um
+            // comentário gravado com o cru nunca mais reencontraria a própria empresa.
+            'cust_id'    => CustId::normaliza($dados['cust_id']),
+            'mes'        => $dados['mes'],
+            'user_id'    => $user->id,
+            'autor_nome' => $user->name,
+            'texto'      => trim($dados['texto']),
+        ]);
+
+        return back()->with('success', 'Comentário adicionado.');
+    }
+
+    public function comentarioUpdate(Request $request, PolosComentario $comentario): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+        abort_unless($this->podeMexerNoComentario($request->user(), $comentario), 403, 'Só o autor pode editar este comentário.');
+
+        $dados = $request->validate([
+            'texto' => ['required', 'string', 'max:5000'],
+        ]);
+
+        $comentario->update([
+            'texto'      => trim($dados['texto']),
+            'editado_em' => now(),
+        ]);
+
+        return back()->with('success', 'Comentário atualizado.');
+    }
+
+    public function comentarioDestroy(Request $request, PolosComentario $comentario): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+        abort_unless($this->podeMexerNoComentario($request->user(), $comentario), 403, 'Só o autor pode apagar este comentário.');
+
+        $comentario->delete();
+
+        return back()->with('success', 'Comentário removido.');
     }
 
     /**

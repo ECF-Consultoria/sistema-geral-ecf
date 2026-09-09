@@ -36,8 +36,10 @@ import ModoTV from './components/ModoTV';
 import ImplModal from '@/Pages/Mlb/components/ImplModal';
 
 // ─── Domínio (strings EXATAS — chaves de comparação no banco) ─────────────────────
-const ORDEM_FASE = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Churn'];
-const FASES_TERMINAIS = ['Encerrado', 'Protocolo Churn', 'Churn'];
+const ORDEM_FASE = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
+// 'Desistência' = saída por decisão do cliente. Terminal como Churn: mover pra cá tira a
+// empresa dos polos ativos, então passa pelo mesmo confirm da edição em massa.
+const FASES_TERMINAIS = ['Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
 
 // Escopo operacional do painel: só quem está EM OPERAÇÃO conta nos filtros/donuts/grade.
 // Fora ficam as fases que não são trabalho ativo — Churn, Encerrado, Aceite no Projeto,
@@ -96,14 +98,44 @@ const fmtPct = (n) => `${Number(n ?? 0).toFixed(0)}%`;
 const estagioKey = (e) => (e?.estagio && e.estagio !== '') ? e.estagio : SEM_ESTAGIO;
 
 // Cor do texto por Fase M — hierarquia rápida na grade.
-const COR_FASE = { 'Encaminhar Comercial': 'text-white/45', 'Aceite no Projeto': 'text-fuchsia-300', M0: 'text-violet-300', M1: 'text-sky-300', M2: 'text-amber-200', M3: 'text-amber-300', M4: 'text-emerald-300', Encerrado: 'text-white/40', 'Protocolo Churn': 'text-orange-300', Churn: 'text-red-300' };
+const COR_FASE = { 'Encaminhar Comercial': 'text-white/45', 'Aceite no Projeto': 'text-fuchsia-300', M0: 'text-violet-300', M1: 'text-sky-300', M2: 'text-amber-200', M3: 'text-amber-300', M4: 'text-emerald-300', Encerrado: 'text-white/40', 'Protocolo Churn': 'text-orange-300', 'Desistência': 'text-rose-300', Churn: 'text-red-300' };
 const corFase = (f) => COR_FASE[f] ?? 'text-white/70';
+
+// Tag de fase (pílula) exibida na coluna Empresa em TODAS as lentes. A coluna "Fase" só
+// existe na Geral e no funil; nas outras (Acessos, Produtos, Logística, Financeiro) o
+// usuário perdia a referência de onde a empresa está — e mesmo na Geral, que rola muito
+// na horizontal, a coluna Empresa é a congelada: a fase precisa viajar junto com ela.
+const BADGE_FASE = {
+    'Encaminhar Comercial': 'text-white/55 bg-white/[0.06] border-white/15',
+    'Aceite no Projeto':    'text-fuchsia-200 bg-fuchsia-500/10 border-fuchsia-500/25',
+    M0:                     'text-violet-200 bg-violet-500/10 border-violet-500/25',
+    M1:                     'text-sky-200 bg-sky-500/10 border-sky-500/25',
+    M2:                     'text-amber-200 bg-amber-500/10 border-amber-500/25',
+    M3:                     'text-amber-100 bg-amber-400/10 border-amber-400/30',
+    M4:                     'text-emerald-200 bg-emerald-500/10 border-emerald-500/25',
+    Fechamento:             'text-teal-200 bg-teal-500/10 border-teal-500/25',
+    Encerrado:              'text-white/45 bg-white/[0.05] border-white/10',
+    'Protocolo Churn':      'text-orange-200 bg-orange-500/10 border-orange-500/25',
+    'Desistência':          'text-rose-200 bg-rose-500/10 border-rose-500/25',
+    Churn:                  'text-red-200 bg-red-500/10 border-red-500/25',
+};
+const badgeFase = (f) => BADGE_FASE[f] ?? 'text-white/50 bg-white/[0.05] border-white/10';
+
+function TagFase({ fase, polo }) {
+    return (
+        <span
+            className={cn('inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide', badgeFase(fase))}
+            title={`Fase: ${fase || 'sem fase'}${polo ? ` · Polo: ${polo}` : ''}`}>
+            {fase || 'sem fase'}
+        </span>
+    );
+}
 
 // Cor do texto por valor de onboarding (verde=ok · âmbar=em progresso · vermelho=bloqueio).
 // Espelha a classificação da ficha (corStatus) — só a cor do texto, p/ a grade escaneável.
 const VAL_POS  = ['Com acesso', 'Já enviado', 'Já listado', 'Concluído', 'Concluido', 'Sim', 'Ativo', 'Checklist realizado', 'Feito', 'Alta'];
 const VAL_PROG = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado', 'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora', 'Preenchendo tabela', 'Verificando', 'Agendada', 'em contato', 'Média', 'Reserva - entrada prox mês', 'Mensagem Enviada', 'Falta Aceitar', 'Verificar'];
-const VAL_NEG  = ['Sem acesso', 'Banida', 'Protocolo Churn', 'Churn', 'Encerrado', 'Não', 'Não enviado', 'Suspensa', 'Falta informação', 'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal', 'Baixo', 'Abandonou o projeto', 'Não compareceu', 'Não responde', 'Não tem CNPJ', 'Não tem conta ML'];
+const VAL_NEG  = ['Sem acesso', 'Banida', 'Protocolo Churn', 'Desistência', 'Churn', 'Encerrado', 'Não', 'Não enviado', 'Suspensa', 'Falta informação', 'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal', 'Baixo', 'Abandonou o projeto', 'Não compareceu', 'Não responde', 'Não tem CNPJ', 'Não tem conta ML'];
 function corValor(v) {
     if (!v) return 'text-white/25';
     if (VAL_POS.includes(v)) return 'text-emerald-300';
@@ -114,7 +146,7 @@ function corValor(v) {
 
 // Classificadores de "tom" p/ os indicadores acionáveis do OperacoesPanel (reusam as listas acima).
 const toneValor = (v) => (VAL_POS.includes(v) ? 'green' : VAL_PROG.includes(v) ? 'amber' : VAL_NEG.includes(v) ? 'red' : 'neutral');
-const TONE_FASE = { 'Encaminhar Comercial': 'neutral', 'Aceite no Projeto': 'violet', M0: 'violet', M1: 'sky', M2: 'amber', M3: 'amber', M4: 'green', Encerrado: 'neutral', 'Protocolo Churn': 'red', Churn: 'red' };
+const TONE_FASE = { 'Encaminhar Comercial': 'neutral', 'Aceite no Projeto': 'violet', M0: 'violet', M1: 'sky', M2: 'amber', M3: 'amber', M4: 'green', Encerrado: 'neutral', 'Protocolo Churn': 'red', 'Desistência': 'red', Churn: 'red' };
 const toneFase = (f) => TONE_FASE[f] ?? 'neutral';
 
 // Coluna do indicador → lente onde ela é editável (p/ navegar ao clicar). null = visível em todas.
@@ -1245,8 +1277,12 @@ export default function PolosPainel({
                                                 <FatVsMetaChart polos={polosCk} corDoPolo={corDoPolo} fonteFaturamento={cockpit.fonteFaturamento} parcial={parcial} />
                                             </div>
                                             <div className={CARD}>
-                                                <h3 className="text-white/70 text-sm font-semibold mb-3">Distribuição de status</h3>
-                                                <StatusDonut statusDist={cockpit.statusDist} height={240} />
+                                                <h3 className="text-white/70 text-sm font-semibold mb-3">Distribuição de status
+                                                    <span className="ml-2 text-[11px] font-normal text-white/25">· clique p/ ver as empresas</span>
+                                                </h3>
+                                                {/* Mesma navegação do /polos: fatia → lista já filtrada, no mês da tela. */}
+                                                <StatusDonut statusDist={cockpit.statusDist} height={240}
+                                                    onSelecionar={(status) => router.visit(route('polos.empresas', { mes: mesEfetivo, status }))} />
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -1314,7 +1350,7 @@ export default function PolosPainel({
                     </div>
                     <button type="button" onClick={() => setSoEscopo((v) => !v)}
                         title={soEscopo
-                            ? `Mostrando só M1–M4. ${nForaDoEscopo} empresa(s) fora do escopo (Churn, Protocolo Churn, Encerrado, Aceite no Projeto, M0, Fechamento, sem fase) estão ocultas — clique para incluir.`
+                            ? `Mostrando só M1–M4. ${nForaDoEscopo} empresa(s) fora do escopo (Churn, Desistência, Protocolo Churn, Encerrado, Aceite no Projeto, M0, Fechamento, sem fase) estão ocultas — clique para incluir.`
                             : 'Mostrando todas as fases, inclusive Churn/Encerrado — clique para voltar ao escopo M1–M4.'}
                         className={cn('inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition shrink-0',
                             soEscopo ? 'border-ecf-yellow/30 bg-ecf-yellow/[0.08] text-ecf-yellow hover:bg-ecf-yellow/15'
@@ -1707,6 +1743,41 @@ function CelResposta({ valor, curto = {}, maxW = 'max-w-[190px]' }) {
     );
 }
 
+// Observação livre escrita pelo CLIENTE: cabe uma linha na grade e o resto se perdia —
+// `title` do navegador não quebra linha, atrasa ~1s e some ao mover o mouse, então uma
+// observação de 3 parágrafos era ilegível na prática. Aqui a célula vira botão e a frase
+// inteira abre num painel pequeno (Popover em portal — não é recortado pelo
+// overflow-x-auto da tabela, que era o motivo de um popover comum não servir aqui).
+function CelObs({ valor, empresa, maxW = 'max-w-[260px]' }) {
+    if (!valor) return <span className="text-white/20 text-[12px]">—</span>;
+    return (
+        <Popover.Root>
+            <Popover.Trigger asChild>
+                <button type="button" title="Clique para ler a observação inteira"
+                    className={cn(maxW, 'block w-full truncate rounded px-1 py-0.5 text-left text-[12px] text-white/70 underline decoration-white/15 decoration-dotted underline-offset-2 transition hover:bg-white/[0.06] hover:text-white')}>
+                    {valor}
+                </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+                <Popover.Content side="bottom" align="start" sideOffset={6} collisionPadding={12}
+                    className="z-[70] w-[360px] max-w-[92vw] rounded-xl border border-white/10 bg-ecf-card p-3 text-white shadow-2xl shadow-black/60 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                            Obs. publicação{empresa ? <span className="ml-1 normal-case tracking-normal text-white/60">· {empresa}</span> : null}
+                        </p>
+                        <Popover.Close asChild>
+                            <button type="button" title="Fechar" className="-mr-1 -mt-1 rounded p-1 text-white/35 transition hover:bg-white/[0.08] hover:text-white"><X size={12} /></button>
+                        </Popover.Close>
+                    </div>
+                    {/* whitespace-pre-wrap: o cliente escreve com quebras de linha e elas fazem parte do sentido. */}
+                    <p className="max-h-[50vh] overflow-y-auto whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-white/85">{valor}</p>
+                    <Popover.Arrow className="fill-ecf-card" />
+                </Popover.Content>
+            </Popover.Portal>
+        </Popover.Root>
+    );
+}
+
 // <th> com funil de filtro/ordenação. `alignRight` p/ colunas numéricas do financeiro.
 function ThFiltro({ col, af, alignRight = false }) {
     if (!col) return null;
@@ -1863,9 +1934,9 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], oc
         campanha_criada: <td className={td}><EditToggle e={e} campo="campanha_criada" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>,
         central_promocao: <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="central_promocao" opcoes={opcoes.central_promocao} presentes={valoresPresentes.central_promocao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
         // Observação escrita pelo CLIENTE no link do Onboarding — somente leitura, como as
-        // demais respostas dele. A frase inteira (com as quebras) fica no title; a célula
-        // mostra a primeira linha truncada.
-        obs_publicacao: <td className={td}><CelResposta valor={e.obs_publicacao} maxW="max-w-[260px]" /></td>,
+        // demais respostas dele. A célula mostra o começo truncado; clicar abre o painel
+        // com o texto inteiro (ver CelObs).
+        obs_publicacao: <td className={td}><CelObs valor={e.obs_publicacao} empresa={e.nome} /></td>,
 
         // ── Logística ──
         contextos_logistica: <td className={td}><div className="min-w-[240px]"><EditText e={e} campo="contextos_logistica" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="anotação…" wide /></div></td>,
@@ -1926,6 +1997,8 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], oc
                                     className="text-white text-[13.5px] font-semibold truncate max-w-[220px]"
                                 />
                                 <CustIdCell e={e} onSalvar={on.salvarCustId} />
+                                {/* Fase SEMPRE visível, em qualquer lente — ver TagFase. */}
+                                <TagFase fase={e.fase} polo={e.polo} />
                                 {/* Roxo (cor do status Problema no donut) = problema que tira da meta. */}
                                 {e.problema && (
                                     <span
@@ -1941,10 +2014,10 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], oc
                                 {e.ads_desligado && <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full text-white/50 bg-white/[0.05] border border-white/10" title="ADS desligado"><MegaphoneOff size={9} /> ads off</span>}
                                 {!e.impl_id && <span className="text-[9px] px-1.5 py-0.5 rounded-full text-amber-200/70 bg-amber-500/[0.08] border border-amber-500/20" title="Sem ficha de onboarding">sem ficha</span>}
                             </div>
-                            {/* Contexto fase·polo só quando a coluna Fase não está na tela
-                                (na Geral ela é coluna — a menos que o usuário a esconda). */}
-                            {!colunas.includes('fase') && (
-                                <div className="text-[11px] mt-1"><span className={cn('font-semibold', corFase(e.fase))}>{e.fase || '—'}</span>{e.polo ? <span className="text-white/35"> · {e.polo}</span> : null}</div>
+                            {/* A fase virou tag fixa acima; aqui sobra o polo, e só quando a
+                                coluna Polo não está na tela (na Geral ela é coluna). */}
+                            {e.polo && !colunas.includes('polo') && (
+                                <div className="text-[11px] mt-1 text-white/35">{e.polo}</div>
                             )}
                         </div>
                     </div>

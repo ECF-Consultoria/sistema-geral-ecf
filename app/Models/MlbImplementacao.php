@@ -98,9 +98,11 @@ class MlbImplementacao extends Model
      * → "Aceite no Projeto" = aceitou, ainda entrando (pré-M0; espelha a planilha) → M0 = entrada
      * efetiva → M1..M4 → Encerrado/Churn = saída. "Protocolo Churn" = protocolo de
      * retenção aberto — a empresa ainda está no polo, mas em processo de saída.
+     * "Desistência" = saída por decisão do próprio cliente (planilha V2 já usava a palavra;
+     * até 2026-09-09 o sync a fundia em Churn e a distinção se perdia).
      */
     public const ONB_FASE_OPCOES = [
-        'Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Churn',
+        'Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn',
     ];
 
     /** Status de entrada da empresa no projeto (funil — planilha V2, coluna "status de entrada") */

@@ -56,6 +56,13 @@ export default function PolosIndex({
     const [ativos, setAtivos] = useState(() => polos.map((p) => p.polo));
     const visiveis = polos.filter((p) => ativos.includes(p.polo));
 
+    // Distribuição de status → lista filtrada. O donut responde "quantas", e a pergunta
+    // seguinte é sempre "quais": a fatia leva direto a /polos/empresas já filtrado pelo
+    // status clicado, no MESMO mês da tela (sem o `mes` a lista abriria no mês default e
+    // os números não bateriam com o donut que originou o clique).
+    const verEmpresasPorStatus = (status) =>
+        router.visit(route('polos.empresas', { mes: mesSelecionado, status }));
+
     const togglePolo = (nome) => {
         setAtivos((cur) => cur.includes(nome) ? cur.filter((n) => n !== nome) : [...cur, nome]);
     };
@@ -317,8 +324,9 @@ export default function PolosIndex({
                         <div className="flex flex-col items-center gap-3">
                             <p className="text-white/40 text-xs uppercase tracking-wider self-start">
                                 Distribuição de status — {mesRefLabel}
+                                <span className="ml-2 normal-case tracking-normal text-white/25">· clique p/ ver as empresas</span>
                             </p>
-                            <StatusDonut statusDist={statusDist} height={300} />
+                            <StatusDonut statusDist={statusDist} height={300} onSelecionar={verEmpresasPorStatus} />
                             <p className="text-white/40 text-[11px] self-start">
                                 <span className="text-ecf-yellow font-semibold">{statusDist.total}</span> ativos no mês · todos os polos
                             </p>
@@ -331,12 +339,16 @@ export default function PolosIndex({
                                 const pct   = statusDist.total > 0 ? (count / statusDist.total * 100) : 0;
                                 const { cor, label } = STATUS_META[k];
                                 return (
-                                    <div key={k} className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-white/[0.03]">
+                                    <button key={k} type="button" onClick={() => verEmpresasPorStatus(k)}
+                                            disabled={count === 0}
+                                            title={count > 0 ? `Ver as ${count} empresa(s) em "${label}"` : 'Nenhuma empresa neste status'}
+                                            className={cn('flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition',
+                                                count > 0 ? 'hover:bg-white/[0.06]' : 'cursor-default opacity-50')}>
                                         <span className="h-3 w-3 rounded-full shrink-0" style={{ background: cor }} />
                                         <span className="text-white/80 text-sm flex-1">{label}</span>
                                         <span className="text-white font-semibold text-sm tabular-nums">{count}</span>
                                         <span className="text-white/40 text-xs tabular-nums w-12 text-right">{pct.toFixed(1)}%</span>
-                                    </div>
+                                    </button>
                                 );
                             })}
                         </div>

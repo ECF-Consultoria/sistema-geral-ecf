@@ -1242,6 +1242,11 @@ Route::middleware(['auth', 'verified'])
          Route::post('/sync', [PolosController::class, 'sync'])->name('sync');
          // Detalhe semanal de 1 empresa (AJAX, sob demanda ao clicar no card).
          Route::get('/empresa/{cust}/semanal', [PolosController::class, 'semanal'])->name('empresa.semanal');
+         // Comentários de performance por empresa/mês — usados SÓ na tela /polos/empresas.
+         // Editar/apagar é do autor (ou admin); o gate fino está no controller.
+         Route::post('/comentarios',                [PolosController::class, 'comentarioStore'])->name('comentarios.store');
+         Route::put('/comentarios/{comentario}',    [PolosController::class, 'comentarioUpdate'])->name('comentarios.update');
+         Route::delete('/comentarios/{comentario}', [PolosController::class, 'comentarioDestroy'])->name('comentarios.destroy');
      });
 
 // ─── Análise por Empresa via ECF Drive (Phase 25) ────────────────────────────
