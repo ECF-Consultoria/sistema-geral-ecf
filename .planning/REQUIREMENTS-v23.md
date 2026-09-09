@@ -78,7 +78,46 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 - [ ] **ADMIN-01**: Dentro do cadastro da empresa existe checklist visual com os itens obrigatórios, agrupados nos dois módulos da Área Comercial — **Contrato** e **Entrada** (a fusão Estrutura+Comunicação decidida na Fase 138, D-02). ⚠️ Quantos itens o checklist controla — os **12** do §3 ou os **9** do §5 — é decisão explícita da Fase 139, não dedução
 - [ ] **ADMIN-02**: Os quatro itens do grupo Contrato refletem o estado real do envelope Clicksign entregue na v22.0 — sem marcação manual paralela e sem reimplementar assinatura (D5)
+  > **Duas exceções explícitas (Fase 139, D-19):**
+  > 1. **D-06 — "Contrato revisado" é marcação MANUAL, com autoria.** Revisar um
+  >    contrato é ato humano e não deixa rastro digital; nenhum dos 7 estados do
+  >    envelope (`rascunho`, `aguardando_assinaturas`, `assinado`, `recusado`,
+  >    `expirado`, `cancelado`, `erro`) representa "revisado". As duas
+  >    alternativas avaliadas foram recusadas: `ContratoDadosMinimosService::estaPronta()`
+  >    mediria completude de cadastro, não revisão; e `status !== rascunho`
+  >    seria, na prática, a mesma condição de "enviado", tornando um dos dois
+  >    itens decorativo.
+  > 2. **D-16 — "Contrato assinado" também fecha por `ContratoLiberacao`.** Das
+  >    3 vias de liberação (`ContratoLiberacao::VIA_TODAS` — `webhook`, `manual`,
+  >    `reconciliacao`), a via `manual` (`ContratoAdminController::liberarManual()`
+  >    → `EmpresaOperacionalRouter::liberarEmpresa()`) nunca escreve
+  >    `contrato_assinaturas.status`/`assinado_em`; ler só essas colunas
+  >    deixaria a empresa liberada por essa via permanentemente impedida de
+  >    finalizar a entrada administrativa.
+  >
+  > Escopo: ambas continuam sendo **leitura pura** do estado entregue pela
+  > v22.0 — nenhuma delas reintroduz lógica de assinatura, e a D5 da milestone
+  > segue intacta.
 - [ ] **ADMIN-03**: Link ADMA, link de conexão com o sistema ECF e Grant da consultoria são gerados pelo próprio checklist, que marca o item ao gerar (D3)
+  > **Correção de premissa (Fase 139, D-04/D-05/D-14):** o texto original acima
+  > está errado em dois pontos — fica preservado sem reescrita; a correção
+  > entra aqui, no mesmo padrão da nota do ADMIN-02.
+  > 1. **O nome é Adman, não ADMA** (correção do usuário, 2026-09-09).
+  > 2. **O link do Adman NÃO é gerado e NÃO é por empresa** — é um link fixo
+  >    de cadastro/indicação, idêntico para todas, que passa a morar em
+  >    `config('services.adman.register_url')` (D-04). Consequência direta: o
+  >    item 6 ("Link Adman entregue") é **manual**, porque não existe estado
+  >    observável para auto-marcar. Fabricar um sinal aqui seria marcar
+  >    "concluído" sem evidência.
+  > 3. **Só dois itens são de fato gerados e auto-marcados pelo checklist:** o
+  >    item 7, "Grant da consultoria", que é o **OAuth do Mercado Livre** e
+  >    fecha somente quando o cliente **conectou** (`ml_tokens.status = active`),
+  >    nunca quando o link foi gerado (D-05); e o item 8, "Conexão com o
+  >    sistema ECF", que fecha por **existência** da linha em
+  >    `onboarding_links` (D-14). A leitura original de que o item usaria
+  >    `SyncGrantsFromSftp` está descartada — aquele comando é **global**
+  >    (baixa um XLSX inteiro e faz upsert para todas as empresas) e nunca
+  >    poderia ser acionado como "gerar para esta empresa".
 - [ ] **ADMIN-04**: Grupo de WhatsApp, e-mail colaborador e envio da mensagem são marcados manualmente, registrando quem marcou e quando (D3)
 - [ ] **ADMIN-05**: O botão FINALIZAR ENTRADA ADMINISTRATIVA só habilita quando todos os itens obrigatórios estão concluídos **e** o contrato está assinado
 - [ ] **ADMIN-06**: Finalizar move a empresa para a etapa `Aguardando Distribuição` e para o módulo do marketplace do contrato, preservando o mesmo cadastro (D4)
