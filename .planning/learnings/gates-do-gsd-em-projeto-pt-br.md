@@ -172,3 +172,18 @@ Rodado na Fase 138, devolveu **"22 of 22 items not covered"** — os mesmos `CAR
 `DESEMP-*`, `MENU-01` da v17 que o §2 já descrevia, nenhum deles desta fase. Não-bloqueante, mas
 **não use a saída dele como sinal**: confira a cobertura à mão contra o `REQUIREMENTS-v<milestone>.md`
 certo, ou pelo `check.decision-coverage-plan` do §6.
+
+## 8. `roadmap.update-plan-progress` calcula certo mas sobrescreve a linha `**Plans:**` inteira (medido 2026-09-09, fechamento da Fase 138)
+
+Ao fechar o plano 138-09, `gsd-sdk query roadmap.update-plan-progress 138` devolveu o JSON certo
+(`plan_count: 9, summary_count: 9, status: "Complete", complete: true`) — o cálculo em si está
+correto. O problema é **o que ele escreve de volta no `ROADMAP.md`**: substitui a linha inteira
+`**Plans:** ...` por um texto genérico fixo (`**Plans:** 9/9 plans complete`), **sem preservar**
+qualquer anotação manual que já estivesse ali na mesma linha — no caso, uma frase inteira
+avisando que o deploy da fase não estava autorizado e apontando para as pendências da VPS no
+SUMMARY.
+
+**Como trabalhar:** igual ao §4/§5 — `cp .planning/ROADMAP.md /tmp/ROADMAP.md.bak` antes de rodar
+qualquer verbo `roadmap.*`/`state.*`, e `diff` depois, **antes** de commitar. Se a linha `**Plans:**`
+carregava uma anotação manual (aviso de deploy, pendência, ressalva de escopo), ela precisa ser
+reencaixada à mão no texto novo — o verbo não faz merge, faz substituição total da linha.
