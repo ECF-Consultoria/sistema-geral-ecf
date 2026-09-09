@@ -7,7 +7,7 @@ import {
     Sparkles, MegaphoneOff, ShieldAlert, Pencil, Trash2, Check, X,
     Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2,
     Archive, Filter, Tv, Download,
-    Columns3, GripVertical, Eye, EyeOff, ArrowUp, ArrowDown, RotateCcw,
+    Columns3, GripVertical, Eye, EyeOff, ArrowLeft, ArrowRight, RotateCcw,
 } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -763,12 +763,28 @@ export default function PolosPainel({
     // navegador). O cabeçalho, o corpo da tabela e o `visibleKeys` do AutoFiltro leem
     // todos daqui — é uma lista só, então não há como dessincronizar.
     const [colsGeral, setColsGeral] = useState(carregarColsGeral);
+    // Edição das colunas: o que se mexe é um RASCUNHO. Mover/ocultar não aplica nem grava
+    // nada até o "Salvar" — é o que evita a grade inteira re-renderizar a cada passo.
+    const [editandoCols, setEditandoCols] = useState(false);
+    const [rascunhoCols, setRascunhoCols] = useState(null);
+    const [colArrastada, setColArrastada] = useState(null);
     useEffect(() => {
         try { window.localStorage.setItem(COLS_GERAL_STORAGE, JSON.stringify(colsGeral)); } catch (_) { /* quota/priv */ }
     }, [colsGeral]);
 
     // Colunas visíveis da lente ativa (na Geral = a lista personalizada; fin_* só p/ admin).
-    const colsVisiveis = useMemo(() => colsDaLente(lente, isAdmin, colsGeral), [lente, isAdmin, colsGeral]);
+    // Em edição entram TODAS as colunas da Geral, inclusive as ocultas: sem isso não haveria
+    // como trazer de volta uma coluna escondida — ela sumiria da tela junto com o botão.
+    const colsVisiveis = useMemo(() => {
+        if (editandoCols && rascunhoCols) return colsDaLente('geral', isAdmin, { ordem: rascunhoCols.ordem, ocultas: [] });
+        return colsDaLente(lente, isAdmin, colsGeral);
+    }, [lente, isAdmin, colsGeral, editandoCols, rascunhoCols]);
+
+    // Ocultas do rascunho — pinta o cabeçalho e apaga a célula na amostra.
+    const ocultasEdicao = useMemo(
+        () => (editandoCols && rascunhoCols ? new Set(rascunhoCols.ocultas ?? []) : SEM_OCULTAS),
+        [editandoCols, rascunhoCols],
+    );
     // Busca global casa por NOME + cust_id (bruto e normalizado) + polo + E-MAIL — assim
     // digitar o cust_id da loja OU o e-mail do cliente já traz a empresa (espelha o filtro
     // de "Arquivados"). São dois e-mails distintos de propósito: `gmail` é a conta do ML
@@ -842,6 +858,46 @@ export default function PolosPainel({
         return n;
     });
     const limparSelecao = () => { setSelecionadas(new Set()); setAncora(null); };
+
+    // ── Edição de colunas: abrir / mover / ocultar / salvar — tudo sobre o rascunho ──
+    const abrirEdicaoCols = () => { setRascunhoCols(colsGeral); setColArrastada(null); limparSelecao(); setEditandoCols(true); };
+    const sairEdicaoCols  = () => { setEditandoCols(false); setRascunhoCols(null); setColArrastada(null); };
+
+    // Troca a coluna de lugar com a VIZINHA NA TELA. A conta é pela chave e sobre a lista
+    // exibida de propósito: p/ não-admin as fin_* estão na ordem mas não na tela, e pular
+    // uma delas pareceria "o botão não fez nada". Trocar (em vez de remover+inserir) também
+    // dispensa corrigir índice depois do splice.
+    const trocarCol = (chave, alvo) => setRascunhoCols((c) => {
+        const ordem = [...c.ordem];
+        const i = ordem.indexOf(chave);
+        const j = ordem.indexOf(alvo);
+        if (i < 0 || j < 0 || i === j) return c;
+        ordem[i] = alvo; ordem[j] = chave;
+        return { ...c, ordem };
+    });
+
+    const moverCol = (chave, passo) => {
+        const vis = (rascunhoCols?.ordem ?? []).filter((k) => isAdmin || !k.startsWith('fin_'));
+        const alvo = vis[vis.indexOf(chave) + passo];
+        if (alvo) trocarCol(chave, alvo);
+    };
+
+    const soltarCol = (alvo) => { if (colArrastada && colArrastada !== alvo) trocarCol(colArrastada, alvo); };
+
+    const alternarCol = (chave) => setRascunhoCols((c) => {
+        const set = new Set(c.ocultas ?? []);
+        if (set.has(chave)) set.delete(chave); else set.add(chave);
+        return { ...c, ocultas: [...set] };
+    });
+
+    // Salvar aplica o rascunho (o efeito de colsGeral grava no localStorage) e limpa o funil
+    // das colunas que ficaram ocultas: filtro ligado numa coluna fora da tela deixaria a
+    // grade filtrando por um critério invisível.
+    const salvarEdicaoCols = () => {
+        (rascunhoCols?.ocultas ?? []).forEach((k) => { if (af.isColumnActive?.(k)) af.clearColumn(k); });
+        if (rascunhoCols) setColsGeral(rascunhoCols);
+        sairEdicaoCols();
+    };
 
     // ── Aplicar / desfazer (endpoint de lote transacional; recarrega só `empresas`) ──
     const postLote = useCallback((payload, aoConcluir) => {
@@ -1284,8 +1340,12 @@ export default function PolosPainel({
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                         {/* Personalização de colunas: só na Geral (as demais lentes são fixas). */}
-                        {lente === 'geral' && (
-                            <PainelColunas cols={colsGeral} setCols={setColsGeral} colunas={COLUNAS} isAdmin={isAdmin} af={af} />
+                        {lente === 'geral' && !editandoCols && (
+                            <button type="button" onClick={abrirEdicaoCols}
+                                title="Reorganizar as colunas no próprio cabeçalho — mover pro lado, ocultar — e salvar no fim"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08]">
+                                <Columns3 size={13} /> Editar colunas
+                            </button>
                         )}
                         <button type="button" onClick={baixarPlanilha}
                             title="Baixar as linhas visíveis em .xlsx — uma coluna por campo, com filtro já ligado"
@@ -1378,7 +1438,12 @@ export default function PolosPainel({
                                         />
                                     </div>
                                 </th>
-                                <CabecalhoLente keys={colsVisiveis} af={af} colunas={COLUNAS} />
+                                <CabecalhoLente keys={colsVisiveis} af={af} colunas={COLUNAS}
+                                    edicao={editandoCols ? {
+                                        ocultas: ocultasEdicao, arrastando: colArrastada,
+                                        onMover: moverCol, onAlternar: alternarCol,
+                                        onArrastar: setColArrastada, onSoltar: soltarCol,
+                                    } : null} />
                             </tr>
                         </thead>
                         <tbody>
@@ -1397,7 +1462,9 @@ export default function PolosPainel({
                                     )}
                                 </td></tr>
                             )}
-                            {filtradas.map((e, idx) => (
+                            {/* Em edição o corpo vira amostra: mover coluna com a grade toda
+                                montada é o que travava. */}
+                            {(editandoCols ? filtradas.slice(0, LINHAS_AMOSTRA) : filtradas).map((e, idx) => (
                                 <LinhaPainel
                                     key={e.id}
                                     e={e}
@@ -1406,6 +1473,7 @@ export default function PolosPainel({
                                     onToggleSel={toggleLinha}
                                     lente={lente}
                                     colunas={colsVisiveis}
+                                    ocultas={ocultasEdicao}
                                     isAdmin={isAdmin}
                                     opcoes={opcoes}
                                     valoresPresentes={valoresPresentes}
@@ -1428,8 +1496,23 @@ export default function PolosPainel({
                 )}
             </div>
 
+            {/* ── Edição de colunas: barra de salvar/cancelar do rascunho ── */}
+            {editandoCols && rascunhoCols && (
+                <BarraEdicaoColunas
+                    nVisiveis={colsVisiveis.filter((k) => !ocultasEdicao.has(k)).length}
+                    nTotal={colsVisiveis.length}
+                    nAmostra={Math.min(filtradas.length, LINHAS_AMOSTRA)}
+                    nTotalLinhas={filtradas.length}
+                    sujo={JSON.stringify(rascunhoCols) !== JSON.stringify(colsGeral)}
+                    onRestaurar={() => setRascunhoCols(reconciliaColsGeral(null))}
+                    onCancelar={sairEdicaoCols}
+                    onSalvar={salvarEdicaoCols}
+                />
+            )}
+
             {/* ── Edição em massa (aparece só quando há seleção) ── */}
-            <BulkActionBar count={nAlvo} onClear={limparSelecao} busy={loteBusy}>
+            {/* count=0 durante a edição de colunas: as duas barras dividem o mesmo rodapé. */}
+            <BulkActionBar count={editandoCols ? 0 : nAlvo} onClear={limparSelecao} busy={loteBusy}>
                 <AcaoLote icon={GitBranch}  label="Fase"        opcoes={opcFase}  onPick={aplicarFase} />
                 <AcaoLote icon={MapPin}     label="Polo"        opcoes={opcPolo}  onPick={(v) => aplicarLote({ polo: v })} busca />
                 <AcaoLote icon={Users}      label="Responsável" opcoes={opcResp}  onPick={(v) => aplicarLote({ responsavel_id: v })} busca />
@@ -1488,109 +1571,38 @@ export default function PolosPainel({
     );
 }
 
-// ─── "Colunas": personalização da Geral (ordem + visibilidade) ─────────────────
-// Só aparece na Geral — as outras lentes são recortes curados por área. Reordena por
-// arrastar (drag nativo do HTML5, sem lib nova) E por setas: a lista tem 30+ itens e
-// arrastar não funciona no teclado. A escolha é do navegador de quem usa, não do banco.
-function PainelColunas({ cols, setCols, colunas, isAdmin, af }) {
-    const [arrastando, setArrastando] = useState(null);
-
-    // fin_* nem entram como opção p/ não-admin (COLUNAS não as define fora do admin).
-    const chaves  = useMemo(() => (cols.ordem ?? []).filter((k) => isAdmin || !k.startsWith('fin_')), [cols.ordem, isAdmin]);
-    const ocultas = useMemo(() => new Set(cols.ocultas ?? []), [cols.ocultas]);
-    const rotulo  = (k) => (k === '__acoes__' ? 'Ações' : (colunas[k]?.label ?? k));
-
-    // Move na lista COMPLETA (a exibida pode estar sem as fin_*), ancorando pelas chaves.
-    const mover = (de, para) => {
-        if (de === para || para < 0 || para >= chaves.length) return;
-        setCols((c) => {
-            const ordem = [...c.ordem];
-            const iDe   = ordem.indexOf(chaves[de]);
-            const iPara = ordem.indexOf(chaves[para]);
-            if (iDe < 0 || iPara < 0) return c;
-            const [k] = ordem.splice(iDe, 1);
-            ordem.splice(iPara, 0, k);
-            return { ...c, ordem };
-        });
-    };
-
-    // Ocultar limpa o funil daquela coluna: filtro ligado numa coluna que saiu da tela
-    // some do campo de visão e a grade fica filtrando por um critério invisível — o tipo
-    // de sumiço silencioso que este painel já pagou caro.
-    const alternar = (k) => {
-        const ocultando = !ocultas.has(k);
-        if (ocultando && af?.isColumnActive?.(k)) af.clearColumn(k);
-        setCols((c) => {
-            const set = new Set(c.ocultas ?? []);
-            if (set.has(k)) set.delete(k); else set.add(k);
-            return { ...c, ocultas: [...set] };
-        });
-    };
-
-    const nVisiveis = chaves.filter((k) => !ocultas.has(k)).length;
-
+// ─── Edição das colunas da Geral ────────────────────────────────────
+// A edição acontece NO PRÓPRIO CABEÇALHO (mover pro lado, ocultar) e mexe num RASCUNHO:
+// nada é aplicado nem gravado até o "Salvar". Aplicar a cada passo obrigava a grade
+// inteira a re-renderizar no meio do arrasto — o travamento que motivou este desenho.
+function BarraEdicaoColunas({ nVisiveis, nTotal, nAmostra, nTotalLinhas, sujo, onRestaurar, onCancelar, onSalvar }) {
     return (
-        <Popover.Root>
-            <Popover.Trigger asChild>
-                <button type="button" title="Escolher quais colunas aparecem e em que ordem"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08]">
-                    <Columns3 size={13} /> Colunas
-                    <span className="ml-0.5 rounded-full bg-white/[0.12] px-1.5 py-0.5 text-[10px] tabular-nums text-white/70">{nVisiveis}/{chaves.length}</span>
+        <div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <div className="pointer-events-auto flex max-w-[95vw] items-center gap-2 overflow-x-auto rounded-2xl border border-ecf-yellow/30 bg-ecf-card/95 px-3 py-2 shadow-2xl shadow-black/60 ring-1 ring-black/20 backdrop-blur">
+                <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-ecf-yellow/15 px-2.5 py-1.5 text-[12px] font-bold text-ecf-yellow">
+                    <Columns3 size={13} /> Editando colunas
+                </span>
+                <div className="hidden shrink-0 flex-col leading-tight sm:flex">
+                    <span className="whitespace-nowrap text-[11px] tabular-nums text-white/60">{nVisiveis} de {nTotal} visíveis</span>
+                    <span className="whitespace-nowrap text-[10.5px] text-white/30">amostra de {nAmostra} de {nTotalLinhas} linhas</span>
+                </div>
+                <div className="h-5 w-px shrink-0 bg-white/10" />
+                <button type="button" onClick={onRestaurar} title="Voltar à ordem padrão, com todas as colunas visíveis"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] text-white/55 transition hover:bg-white/[0.06] hover:text-white">
+                    <RotateCcw size={12} /> Padrão
                 </button>
-            </Popover.Trigger>
-            <Popover.Portal>
-                <Popover.Content side="bottom" align="end" sideOffset={8}
-                    className="z-[60] w-80 rounded-xl border border-white/10 bg-ecf-card p-2 text-white shadow-2xl shadow-black/50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95">
-                    <div className="flex items-start justify-between gap-2 px-1 pb-2">
-                        <div>
-                            <p className="text-[12px] font-semibold text-white/85">Colunas da Geral</p>
-                            <p className="text-[10.5px] text-white/35">Arraste para ordenar · clique no nome para ocultar</p>
-                        </div>
-                        <button type="button" onClick={() => setCols(reconciliaColsGeral(null))}
-                            title="Voltar à ordem padrão, com todas as colunas visíveis"
-                            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/[0.1] px-2 py-1 text-[11px] text-white/60 transition hover:border-white/25 hover:text-white">
-                            <RotateCcw size={11} /> Padrão
-                        </button>
-                    </div>
-                    <div className="max-h-[60vh] overflow-y-auto pr-0.5">
-                        {chaves.map((k, i) => {
-                            const oculta = ocultas.has(k);
-                            return (
-                                <div key={k} draggable
-                                    onDragStart={() => setArrastando(i)}
-                                    onDragOver={(ev) => {
-                                        ev.preventDefault();
-                                        if (arrastando === null || arrastando === i) return;
-                                        mover(arrastando, i);
-                                        setArrastando(i);
-                                    }}
-                                    onDragEnd={() => setArrastando(null)}
-                                    className={cn('group flex items-center gap-1 rounded-lg px-1.5 py-1 transition',
-                                        arrastando === i ? 'bg-ecf-yellow/10' : 'hover:bg-white/[0.05]')}>
-                                    <GripVertical size={13} className="shrink-0 cursor-grab text-white/25" />
-                                    <button type="button" onClick={() => alternar(k)}
-                                        title={oculta ? 'Mostrar coluna' : 'Ocultar coluna'}
-                                        className={cn('flex-1 truncate text-left text-[12px] transition', oculta ? 'text-white/25 line-through' : 'text-white/85')}>
-                                        {rotulo(k)}
-                                    </button>
-                                    <button type="button" onClick={() => mover(i, i - 1)} disabled={i === 0} title="Subir"
-                                        className="rounded p-0.5 text-white/30 transition hover:text-white disabled:opacity-20"><ArrowUp size={12} /></button>
-                                    <button type="button" onClick={() => mover(i, i + 1)} disabled={i === chaves.length - 1} title="Descer"
-                                        className="rounded p-0.5 text-white/30 transition hover:text-white disabled:opacity-20"><ArrowDown size={12} /></button>
-                                    <button type="button" onClick={() => alternar(k)} title={oculta ? 'Mostrar coluna' : 'Ocultar coluna'}
-                                        className={cn('rounded p-0.5 transition', oculta ? 'text-white/25 hover:text-white/70' : 'text-ecf-yellow/70 hover:text-ecf-yellow')}>
-                                        {oculta ? <EyeOff size={12} /> : <Eye size={12} />}
-                                    </button>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    <p className="px-1 pt-2 text-[10.5px] text-white/30">
-                        {nVisiveis} de {chaves.length} visíveis · vale só para você, neste navegador
-                    </p>
-                </Popover.Content>
-            </Popover.Portal>
-        </Popover.Root>
+                <button type="button" onClick={onCancelar} title="Sair sem aplicar nada do que foi mexido aqui"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] text-white/55 transition hover:bg-white/[0.06] hover:text-white">
+                    <X size={13} /> Cancelar
+                </button>
+                <button type="button" onClick={onSalvar}
+                    title={sujo ? 'Aplicar a nova ordem e voltar à grade completa' : 'Nada foi mexido — volta à grade completa'}
+                    className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-bold transition',
+                        sujo ? 'bg-ecf-yellow text-black hover:bg-ecf-yellow/85' : 'bg-white/[0.07] text-white/45 hover:bg-white/[0.12]')}>
+                    <Check size={13} /> Salvar
+                </button>
+            </div>
+        </div>
     );
 }
 
@@ -1618,6 +1630,15 @@ const COLS_POR_LENTE = {
     logistica:  ['contextos_logistica', 'me1', 'integradora', 'produtos_perfil', 'places', 'erp'],
     financeiro: ['fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status'],
 };
+
+// Linhas mostradas enquanto se edita as colunas. O corpo inteiro re-renderizando a cada
+// passo do arrasto é exatamente o travamento que a edição em rascunho veio resolver — com
+// centenas de empresas × 35 colunas, cada mover custaria a grade toda. Cinco linhas bastam
+// para conferir a ordem; o resto volta ao salvar ou cancelar.
+const LINHAS_AMOSTRA = 5;
+
+// Sem colunas ocultas — const de módulo p/ não criar um Set novo a cada render de linha.
+const SEM_OCULTAS = new Set();
 
 // Colunas financeiras alinhadas à direita (números) — vale na lente Financeiro E na Geral.
 const FIN_ALIGN_RIGHT = ['fin_faturamento', 'fin_meta', 'fin_pct'];
@@ -1708,7 +1729,50 @@ function ThFiltro({ col, af, alignRight = false }) {
     );
 }
 
-function CabecalhoLente({ keys = [], af, colunas }) {
+// <th> no modo de edição: sem funil (filtrar enquanto se reorganiza não faz sentido) —
+// no lugar dele, mover pro lado e ocultar. Arrastar o próprio cabeçalho também reordena;
+// as setas existem porque arrastar não funciona no teclado.
+function ThEdicao({ chave, label, oculta, primeira, ultima, arrastando, onMover, onAlternar, onArrastar, onSoltar }) {
+    return (
+        <th draggable
+            onDragStart={() => onArrastar(chave)}
+            onDragOver={(ev) => { ev.preventDefault(); onSoltar(chave); }}
+            onDragEnd={() => onArrastar(null)}
+            className={cn(TH, 'cursor-grab select-none border-x border-white/[0.06] bg-white/[0.03]',
+                arrastando && 'bg-ecf-yellow/10', oculta && 'opacity-45')}>
+            <div className="flex items-center gap-0.5">
+                <GripVertical size={12} className="shrink-0 text-white/25" />
+                <button type="button" onClick={() => onMover(chave, -1)} disabled={primeira} title="Mover para a esquerda"
+                    className="rounded p-0.5 text-white/35 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-20"><ArrowLeft size={12} /></button>
+                <span className={cn('max-w-[140px] truncate normal-case tracking-normal', oculta ? 'text-white/35 line-through' : 'text-white/75')} title={label}>{label}</span>
+                <button type="button" onClick={() => onMover(chave, 1)} disabled={ultima} title="Mover para a direita"
+                    className="rounded p-0.5 text-white/35 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-20"><ArrowRight size={12} /></button>
+                <button type="button" onClick={() => onAlternar(chave)} title={oculta ? 'Mostrar esta coluna' : 'Ocultar esta coluna'}
+                    className={cn('rounded p-0.5 transition hover:bg-white/[0.08]', oculta ? 'text-white/30 hover:text-white/70' : 'text-ecf-yellow/70 hover:text-ecf-yellow')}>
+                    {oculta ? <EyeOff size={12} /> : <Eye size={12} />}
+                </button>
+            </div>
+        </th>
+    );
+}
+
+function CabecalhoLente({ keys = [], af, colunas, edicao = null }) {
+    // Em edição o cabeçalho vira o próprio controle: é onde a coluna é movida.
+    if (edicao) {
+        return (
+            <>
+                {keys.map((k, i) => (
+                    <ThEdicao key={k} chave={k}
+                        label={k === '__acoes__' ? 'Ações' : (colunas[k]?.label ?? k)}
+                        oculta={edicao.ocultas.has(k)}
+                        primeira={i === 0} ultima={i === keys.length - 1}
+                        arrastando={edicao.arrastando === k}
+                        onMover={edicao.onMover} onAlternar={edicao.onAlternar}
+                        onArrastar={edicao.onArrastar} onSoltar={edicao.onSoltar} />
+                ))}
+            </>
+        );
+    }
     return (
         <>
             {keys.map((k) => {
@@ -1721,7 +1785,7 @@ function CabecalhoLente({ keys = [], af, colunas }) {
 }
 
 // ─── Linha ──────────────────────────────────────────────────────────────────────────
-function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, editNota, setEditNota, on }) {
+function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], ocultas = SEM_OCULTAS, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, editNota, setEditNota, on }) {
     const precisaAcao = e.problema || e.fora_do_prazo || e.status_envio === 'falta_enviar';
     const onb = e.onboarding_progresso;
     const td = 'px-2.5 py-3 align-middle';
@@ -1888,7 +1952,15 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], is
 
                 {/* Colunas: a MESMA lista de chaves que montou o cabeçalho. Ordem e
                     visibilidade personalizadas na Geral valem aqui sem nenhum ajuste. */}
-                {colunas.map((k) => <Fragment key={k}>{cel[k] ?? <td className={td} />}</Fragment>)}
+                {colunas.map((k) => (
+                    <Fragment key={k}>
+                        {/* Só em edição: coluna marcada p/ ocultar aparece apagada, para a amostra
+                            mostrar como a grade vai ficar depois de salvar. */}
+                        {ocultas.has(k)
+                            ? <td className={cn(td, 'text-center text-[12px] text-white/15')}>·</td>
+                            : (cel[k] ?? <td className={td} />)}
+                    </Fragment>
+                ))}
             </tr>
 
             {/* Drawer (detalhe pesado sob demanda) */}
