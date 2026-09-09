@@ -410,6 +410,11 @@ class PolosController extends Controller
                     'reuniao_onboarding'       => $impl?->reuniao_onboarding,
                     // ── Valores do onboarding (edição inline tipo planilha; null sem ficha) ──
                     'acesso_colaborador'       => $impl?->acesso_colaborador,
+                    // Dois e-mails distintos e ambos buscáveis na barra do painel: `gmail` é a
+                    // conta do ML cadastrada NA EMPRESA (existe sem ficha) e `gmail_colaborador`
+                    // é o acesso que a ECF usa (mora na ficha). Quem procura pelo endereço do
+                    // cliente não sabe em qual dos dois ele foi digitado.
+                    'gmail'                    => $e->gmail,
                     'gmail_colaborador'        => $impl?->gmail_colaborador,
                     'grupo_whatsapp'           => $impl ? (bool) $impl->grupo_whatsapp : null,
                     // Link do grupo de WhatsApp (coluna "Link do Whats"; quick 260810-dv6).

@@ -451,6 +451,10 @@ class MlbImplementacaoController extends Controller
                     'estagio'        => $e->estagio,
                     'polo'           => $e->polo,
                     'fase'           => $e->fase,
+                    // E-mails buscáveis na barra da listagem: `gmail` é a conta do ML cadastrada
+                    // na EMPRESA e `gmail_colaborador` o acesso que a ECF usa (fica na ficha).
+                    'gmail'             => $e->gmail,
+                    'gmail_colaborador' => $impl->gmail_colaborador,
                     'impl_id'        => $impl->id,
                     'token'          => $impl->token,
                     'dados'          => $impl->dados,

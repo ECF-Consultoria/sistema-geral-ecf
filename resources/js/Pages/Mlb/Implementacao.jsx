@@ -886,13 +886,18 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
         });
 
     // Busca local (complementar aos filtros de Polo/Fase do backend)
-    // Aceita nome OU Cust ID no mesmo campo - o Cust ID casa por trecho, colar o id inteiro tambem funciona
+    // Aceita nome, Cust ID OU e-mail no mesmo campo - todos casam por trecho, colar o valor
+    // inteiro tambem funciona. Sao dois e-mails distintos: `gmail` e a conta do ML cadastrada
+    // na empresa e `gmail_colaborador` o acesso que a ECF usa - quem procura pelo endereco do
+    // cliente nao sabe em qual dos dois ele foi digitado.
     const termoBusca = busca.trim().toLowerCase();
     const filtradas = !termoBusca
         ? empresas
         : empresas.filter(e =>
             (e.nome || '').toLowerCase().includes(termoBusca)
             || String(e.cust_id ?? '').toLowerCase().includes(termoBusca)
+            || String(e.gmail ?? '').toLowerCase().includes(termoBusca)
+            || String(e.gmail_colaborador ?? '').toLowerCase().includes(termoBusca)
         );
 
     return (
@@ -930,7 +935,7 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                             type="text"
                             value={busca}
                             onChange={e => setBusca(e.target.value)}
-                            placeholder="Buscar empresa ou Cust ID..."
+                            placeholder="Buscar empresa, Cust ID ou e-mail..."
                             className="h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 w-56"
                         />
                         <Link

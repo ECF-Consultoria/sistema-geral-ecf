@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, Fragment } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
@@ -7,6 +7,7 @@ import {
     Sparkles, MegaphoneOff, ShieldAlert, Pencil, Trash2, Check, X,
     Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2,
     Archive, Filter, Tv, Download,
+    Columns3, GripVertical, Eye, EyeOff, ArrowUp, ArrowDown, RotateCcw,
 } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -758,12 +759,23 @@ export default function PolosPainel({
         return cols;
     }, [isAdmin, fin, respNome]);
 
-    // Colunas visíveis da lente ativa (na Geral = planilha completa; fin_* só p/ admin).
-    const colsVisiveis = useMemo(() => colsDaLente(lente, isAdmin), [lente, isAdmin]);
-    // Busca global casa por NOME + cust_id (bruto e normalizado) + polo — assim digitar o
-    // cust_id da loja no campo já traz a empresa (espelha o filtro de "Arquivados").
+    // Ordem/visibilidade das colunas da Geral escolhida pelo usuário (persistida no
+    // navegador). O cabeçalho, o corpo da tabela e o `visibleKeys` do AutoFiltro leem
+    // todos daqui — é uma lista só, então não há como dessincronizar.
+    const [colsGeral, setColsGeral] = useState(carregarColsGeral);
+    useEffect(() => {
+        try { window.localStorage.setItem(COLS_GERAL_STORAGE, JSON.stringify(colsGeral)); } catch (_) { /* quota/priv */ }
+    }, [colsGeral]);
+
+    // Colunas visíveis da lente ativa (na Geral = a lista personalizada; fin_* só p/ admin).
+    const colsVisiveis = useMemo(() => colsDaLente(lente, isAdmin, colsGeral), [lente, isAdmin, colsGeral]);
+    // Busca global casa por NOME + cust_id (bruto e normalizado) + polo + E-MAIL — assim
+    // digitar o cust_id da loja OU o e-mail do cliente já traz a empresa (espelha o filtro
+    // de "Arquivados"). São dois e-mails distintos de propósito: `gmail` é a conta do ML
+    // cadastrada na empresa e `gmail_colaborador` é o acesso que a ECF usa — quem procura
+    // não sabe (nem precisa saber) em qual dos dois o endereço foi digitado.
     const matchBusca = useCallback(
-        (e, q) => `${e.nome ?? ''} ${e.cust_id ?? ''} ${e.cust_norm ?? ''} ${e.polo ?? ''}`.toLowerCase().includes(q),
+        (e, q) => `${e.nome ?? ''} ${e.cust_id ?? ''} ${e.cust_norm ?? ''} ${e.polo ?? ''} ${e.gmail ?? ''} ${e.gmail_colaborador ?? ''}`.toLowerCase().includes(q),
         [],
     );
     // Base do AutoFiltro: SÓ as fases em operação (FASES_ESCOPO), a menos que o toggle esteja
@@ -1241,8 +1253,8 @@ export default function PolosPainel({
                     )}
                     <div className="relative ml-auto">
                         <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
-                        <input type="text" value={busca} onChange={(ev) => setBusca(ev.target.value)} placeholder="Buscar empresa ou cust_id…"
-                            className="w-52 rounded-lg border border-white/[0.08] bg-white/[0.03] pl-8 pr-3 py-1.5 text-[12px] text-white/90 outline-none focus:border-ecf-yellow/40" />
+                        <input type="text" value={busca} onChange={(ev) => setBusca(ev.target.value)} placeholder="Buscar empresa, cust_id ou e-mail…"
+                            className="w-64 rounded-lg border border-white/[0.08] bg-white/[0.03] pl-8 pr-3 py-1.5 text-[12px] text-white/90 outline-none focus:border-ecf-yellow/40" />
                     </div>
                     <button type="button" onClick={() => setSoEscopo((v) => !v)}
                         title={soEscopo
@@ -1271,6 +1283,10 @@ export default function PolosPainel({
                         ))}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                        {/* Personalização de colunas: só na Geral (as demais lentes são fixas). */}
+                        {lente === 'geral' && (
+                            <PainelColunas cols={colsGeral} setCols={setColsGeral} colunas={COLUNAS} isAdmin={isAdmin} af={af} />
+                        )}
                         <button type="button" onClick={baixarPlanilha}
                             title="Baixar as linhas visíveis em .xlsx — uma coluna por campo, com filtro já ligado"
                             className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08]">
@@ -1389,6 +1405,7 @@ export default function PolosPainel({
                                     selecionada={selecionadas.has(e.id)}
                                     onToggleSel={toggleLinha}
                                     lente={lente}
+                                    colunas={colsVisiveis}
                                     isAdmin={isAdmin}
                                     opcoes={opcoes}
                                     valoresPresentes={valoresPresentes}
@@ -1471,6 +1488,112 @@ export default function PolosPainel({
     );
 }
 
+// ─── "Colunas": personalização da Geral (ordem + visibilidade) ─────────────────
+// Só aparece na Geral — as outras lentes são recortes curados por área. Reordena por
+// arrastar (drag nativo do HTML5, sem lib nova) E por setas: a lista tem 30+ itens e
+// arrastar não funciona no teclado. A escolha é do navegador de quem usa, não do banco.
+function PainelColunas({ cols, setCols, colunas, isAdmin, af }) {
+    const [arrastando, setArrastando] = useState(null);
+
+    // fin_* nem entram como opção p/ não-admin (COLUNAS não as define fora do admin).
+    const chaves  = useMemo(() => (cols.ordem ?? []).filter((k) => isAdmin || !k.startsWith('fin_')), [cols.ordem, isAdmin]);
+    const ocultas = useMemo(() => new Set(cols.ocultas ?? []), [cols.ocultas]);
+    const rotulo  = (k) => (k === '__acoes__' ? 'Ações' : (colunas[k]?.label ?? k));
+
+    // Move na lista COMPLETA (a exibida pode estar sem as fin_*), ancorando pelas chaves.
+    const mover = (de, para) => {
+        if (de === para || para < 0 || para >= chaves.length) return;
+        setCols((c) => {
+            const ordem = [...c.ordem];
+            const iDe   = ordem.indexOf(chaves[de]);
+            const iPara = ordem.indexOf(chaves[para]);
+            if (iDe < 0 || iPara < 0) return c;
+            const [k] = ordem.splice(iDe, 1);
+            ordem.splice(iPara, 0, k);
+            return { ...c, ordem };
+        });
+    };
+
+    // Ocultar limpa o funil daquela coluna: filtro ligado numa coluna que saiu da tela
+    // some do campo de visão e a grade fica filtrando por um critério invisível — o tipo
+    // de sumiço silencioso que este painel já pagou caro.
+    const alternar = (k) => {
+        const ocultando = !ocultas.has(k);
+        if (ocultando && af?.isColumnActive?.(k)) af.clearColumn(k);
+        setCols((c) => {
+            const set = new Set(c.ocultas ?? []);
+            if (set.has(k)) set.delete(k); else set.add(k);
+            return { ...c, ocultas: [...set] };
+        });
+    };
+
+    const nVisiveis = chaves.filter((k) => !ocultas.has(k)).length;
+
+    return (
+        <Popover.Root>
+            <Popover.Trigger asChild>
+                <button type="button" title="Escolher quais colunas aparecem e em que ordem"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08]">
+                    <Columns3 size={13} /> Colunas
+                    <span className="ml-0.5 rounded-full bg-white/[0.12] px-1.5 py-0.5 text-[10px] tabular-nums text-white/70">{nVisiveis}/{chaves.length}</span>
+                </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+                <Popover.Content side="bottom" align="end" sideOffset={8}
+                    className="z-[60] w-80 rounded-xl border border-white/10 bg-ecf-card p-2 text-white shadow-2xl shadow-black/50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95">
+                    <div className="flex items-start justify-between gap-2 px-1 pb-2">
+                        <div>
+                            <p className="text-[12px] font-semibold text-white/85">Colunas da Geral</p>
+                            <p className="text-[10.5px] text-white/35">Arraste para ordenar · clique no nome para ocultar</p>
+                        </div>
+                        <button type="button" onClick={() => setCols(reconciliaColsGeral(null))}
+                            title="Voltar à ordem padrão, com todas as colunas visíveis"
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/[0.1] px-2 py-1 text-[11px] text-white/60 transition hover:border-white/25 hover:text-white">
+                            <RotateCcw size={11} /> Padrão
+                        </button>
+                    </div>
+                    <div className="max-h-[60vh] overflow-y-auto pr-0.5">
+                        {chaves.map((k, i) => {
+                            const oculta = ocultas.has(k);
+                            return (
+                                <div key={k} draggable
+                                    onDragStart={() => setArrastando(i)}
+                                    onDragOver={(ev) => {
+                                        ev.preventDefault();
+                                        if (arrastando === null || arrastando === i) return;
+                                        mover(arrastando, i);
+                                        setArrastando(i);
+                                    }}
+                                    onDragEnd={() => setArrastando(null)}
+                                    className={cn('group flex items-center gap-1 rounded-lg px-1.5 py-1 transition',
+                                        arrastando === i ? 'bg-ecf-yellow/10' : 'hover:bg-white/[0.05]')}>
+                                    <GripVertical size={13} className="shrink-0 cursor-grab text-white/25" />
+                                    <button type="button" onClick={() => alternar(k)}
+                                        title={oculta ? 'Mostrar coluna' : 'Ocultar coluna'}
+                                        className={cn('flex-1 truncate text-left text-[12px] transition', oculta ? 'text-white/25 line-through' : 'text-white/85')}>
+                                        {rotulo(k)}
+                                    </button>
+                                    <button type="button" onClick={() => mover(i, i - 1)} disabled={i === 0} title="Subir"
+                                        className="rounded p-0.5 text-white/30 transition hover:text-white disabled:opacity-20"><ArrowUp size={12} /></button>
+                                    <button type="button" onClick={() => mover(i, i + 1)} disabled={i === chaves.length - 1} title="Descer"
+                                        className="rounded p-0.5 text-white/30 transition hover:text-white disabled:opacity-20"><ArrowDown size={12} /></button>
+                                    <button type="button" onClick={() => alternar(k)} title={oculta ? 'Mostrar coluna' : 'Ocultar coluna'}
+                                        className={cn('rounded p-0.5 transition', oculta ? 'text-white/25 hover:text-white/70' : 'text-ecf-yellow/70 hover:text-ecf-yellow')}>
+                                        {oculta ? <EyeOff size={12} /> : <Eye size={12} />}
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <p className="px-1 pt-2 text-[10.5px] text-white/30">
+                        {nVisiveis} de {chaves.length} visíveis · vale só para você, neste navegador
+                    </p>
+                </Popover.Content>
+            </Popover.Portal>
+        </Popover.Root>
+    );
+}
+
 // ─── Cabeçalho de colunas por lente (com AutoFiltro nos funis) ──────────────────────
 const TH = 'px-2.5 py-3 text-white/45 text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap';
 
@@ -1499,11 +1622,51 @@ const COLS_POR_LENTE = {
 // Colunas financeiras alinhadas à direita (números) — vale na lente Financeiro E na Geral.
 const FIN_ALIGN_RIGHT = ['fin_faturamento', 'fin_meta', 'fin_pct'];
 
-// Colunas visíveis da lente. Na Geral (planilha completa) as fin_* só aparecem p/ admin
-// (COLUNAS nem define fin_* p/ não-admin; sem o filtro o cabeçalho ficaria com <th> nulos).
-function colsDaLente(lente, isAdmin) {
-    const keys = COLS_POR_LENTE[lente] ?? [];
-    if (lente === 'geral' && !isAdmin) return keys.filter((k) => !k.startsWith('fin_'));
+// ─── Personalização das colunas da Geral (ordem + visibilidade) ─────────────────────
+// A Geral é a "planilha completa" e cada time olha um recorte diferente dela — por isso
+// SÓ ela é personalizável; as outras lentes são recortes curados por área e continuam
+// fixas. A preferência é por navegador (localStorage, não sessionStorage: ordem de
+// trabalho tem de sobreviver a fechar o navegador) e não vai para o banco.
+const COLS_GERAL_STORAGE = 'polos-painel-cols-geral';
+
+// Reconcilia o salvo com o catálogo ATUAL do código: chave que não existe mais é
+// descartada e coluna NOVA entra visível, ancorada na vizinha canônica anterior. Sem
+// isso, uma coluna adicionada depois nunca apareceria para quem já salvou preferência —
+// exatamente o tipo de sumiço silencioso que já custou caro neste painel.
+function reconciliaColsGeral(salvo) {
+    const canon = COLS_POR_LENTE.geral;
+    const ordem = Array.isArray(salvo?.ordem) ? salvo.ordem.filter((k) => canon.includes(k)) : [];
+    canon.forEach((k, i) => {
+        if (ordem.includes(k)) return;
+        let pos = ordem.length;
+        for (let j = i - 1; j >= 0; j--) {
+            const idx = ordem.indexOf(canon[j]);
+            if (idx >= 0) { pos = idx + 1; break; }
+        }
+        ordem.splice(pos, 0, k);
+    });
+    const ocultas = Array.isArray(salvo?.ocultas) ? salvo.ocultas.filter((k) => canon.includes(k)) : [];
+    return { ordem, ocultas };
+}
+
+function carregarColsGeral() {
+    if (typeof window === 'undefined') return reconciliaColsGeral(null);
+    try { return reconciliaColsGeral(JSON.parse(window.localStorage.getItem(COLS_GERAL_STORAGE))); }
+    catch (_) { return reconciliaColsGeral(null); }
+}
+
+// Colunas visíveis da lente. Na Geral (planilha completa) vale a ordem/visibilidade
+// escolhida pelo usuário, e as fin_* só aparecem p/ admin (COLUNAS nem define fin_*
+// p/ não-admin; sem o filtro o cabeçalho ficaria com <th> nulos).
+function colsDaLente(lente, isAdmin, colsGeral = null) {
+    let keys = COLS_POR_LENTE[lente] ?? [];
+    if (lente === 'geral') {
+        if (colsGeral) {
+            const ocultas = new Set(colsGeral.ocultas ?? []);
+            keys = (colsGeral.ordem ?? keys).filter((k) => !ocultas.has(k));
+        }
+        if (!isAdmin) return keys.filter((k) => !k.startsWith('fin_'));
+    }
     return keys;
 }
 
@@ -1558,104 +1721,120 @@ function CabecalhoLente({ keys = [], af, colunas }) {
 }
 
 // ─── Linha ──────────────────────────────────────────────────────────────────────────
-function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, editNota, setEditNota, on }) {
+function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, colunas = [], isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, editNota, setEditNota, on }) {
     const precisaAcao = e.problema || e.fora_do_prazo || e.status_envio === 'falta_enviar';
     const onb = e.onboarding_progresso;
     const td = 'px-2.5 py-3 align-middle';
 
-    // ── Fragmentos de células por área ──────────────────────────────────────────────
-    // Reutilizados na lente própria E concatenados na Geral (planilha completa). A ordem
-    // AQUI tem de bater com COLS_POR_LENTE (cabeçalho ↔ corpo) — ver colsDaLente/CabecalhoLente.
-    const celIdentidade = (<>
-        <td className={td}><div className="min-w-[88px]"><EditSelect e={e} campo="fase" opcoes={opcoes.fase} presentes={valoresPresentes.fase} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corFase} criavel={false} /></div></td>
-        <td className={td}>{e.estagio ? <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full', corEstagio(e.estagio))}>{e.estagio}</span> : <span className="text-white/20 text-[12px]">—</span>}</td>
-        <td className={td}><div className="min-w-[120px]"><EditSelect e={e} campo="polo" opcoes={opcoes.polo} presentes={valoresPresentes.polo} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>
-        <td className={td}>
-            {e.impl_id ? (
-                <select value={e.responsavel_id ? String(e.responsavel_id) : '__sem__'} onChange={(ev) => on.trocarResponsavel(e, ev.target.value)} style={{ backgroundColor: 'transparent' }} className={cn('w-40', CELL, e.responsavel_id ? 'text-white/85 font-medium' : 'text-white/30')}>
-                    <option value="__sem__" className="bg-ecf-card">Sem responsável</option>
-                    {usuarios.map((u) => <option key={u.id} value={String(u.id)} className="bg-ecf-card text-white">{u.name}</option>)}
-                </select>
-            ) : <span className="text-white/40 text-[12px]">{e.empresa_responsavel_nome ?? '—'}</span>}
-        </td>
-        <td className={td}>
-            {e.impl_id && onb ? (
-                <div className="flex items-center gap-2 min-w-[90px]"><div className="flex-1"><Barra pct={onb.pct} cor={onb.pct === 100 ? '#22c55e' : '#6366f1'} /></div><span className="text-white/40 text-[10px] tabular-nums">{onb.feitos}/{onb.total}</span></div>
-            ) : <span className="text-white/20 text-[12px]">—</span>}
-        </td>
-        <td className={td}>
-            {e.status_envio ? (
-                <div className="flex flex-col gap-0.5">
-                    <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full border w-fit', STATUS_ENVIO_BADGE[e.status_envio])}>{STATUS_ENVIO_LABELS[e.status_envio]}</span>
-                    {!e.link_enviado_em && e.status_envio !== 'concluido' && <button onClick={() => on.marcarEnviado(e)} className="text-emerald-300/70 hover:text-emerald-300 text-[10px] text-left transition">marcar enviado</button>}
-                    {e.link_enviado_em && <button onClick={() => on.desfazerEnvio(e)} className="text-white/30 hover:text-white/60 text-[10px] text-left transition">desfazer</button>}
+    // ── Células por CHAVE de coluna ───────────────────────────────
+    // Mapa key→<td>, e não blocos por área concatenados numa ordem fixa: cabeçalho e corpo
+    // passam a ser gerados pela MESMA lista de chaves (`colunas`), então a ordem escolhida
+    // pelo usuário na Geral vale para os dois e acabou o risco de o cabeçalho dizer uma
+    // coisa e a célula mostrar outra.
+    const celFin = (k) => <CelulaFinanceira campo={k} fin={fin} finLoaded={finLoaded} td={td} adsLimites={adsLimites} fechado={fechado} />;
+
+    const cel = {
+        // Cadastro no sistema (created_at) — read-only, automático; existe mesmo sem ficha.
+        // Selo "novo": some depois que alguém editar a empresa ou a ficha (flag `e.novo`).
+        data_cadastro: (
+            <td className={td}>
+                <div className="flex items-center gap-1.5 whitespace-nowrap min-w-[112px]">
+                    <span className="text-white/60 text-[12px] tabular-nums">{e.data_cadastro ? fmtDataBR(e.data_cadastro) : '—'}</span>
+                    {e.novo && (
+                        <span className="rounded-full border border-emerald-400/30 bg-emerald-500/[0.12] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">novo</span>
+                    )}
                 </div>
-            ) : <span className="text-white/20 text-[12px]">—</span>}
-        </td>
-        <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="status_entrada" opcoes={opcoes.status_entrada} presentes={valoresPresentes.status_entrada} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[110px]"><EditSelect e={e} campo="chance_entrada" opcoes={opcoes.chance_entrada} presentes={valoresPresentes.chance_entrada} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-    </>);
+            </td>
+        ),
 
-    const celAcessos = (<>
-        <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="acesso_colaborador" opcoes={opcoes.acesso_colaborador} presentes={valoresPresentes.acesso_colaborador} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[200px]"><EditText e={e} campo="gmail_colaborador" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="gmail…" wide /></div></td>
-        <td className={td}><EditToggle e={e} campo="grupo_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
-        <td className={td}><EditLink e={e} campo="link_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
-        <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="reuniao_onboarding" opcoes={opcoes.reuniao_onboarding} presentes={valoresPresentes.reuniao_onboarding} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><CelResposta valor={e.canais_faturamento} curto={CANAIS_CURTO} /></td>
-        <td className={td}><div className="min-w-[140px]"><EditDate e={e} campo="data_solicitacao" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>
-    </>);
-
-    // Cadastro no sistema (created_at) — read-only, automático; existe mesmo sem ficha.
-    // Selo "novo": some depois que alguém editar a empresa ou a ficha (flag `e.novo` do backend).
-    const celCadastro = (
-        <td className={td}>
-            <div className="flex items-center gap-1.5 whitespace-nowrap min-w-[112px]">
-                <span className="text-white/60 text-[12px] tabular-nums">{e.data_cadastro ? fmtDataBR(e.data_cadastro) : '—'}</span>
-                {e.novo && (
-                    <span className="rounded-full border border-emerald-400/30 bg-emerald-500/[0.12] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">novo</span>
-                )}
-            </div>
-        </td>
-    );
-
-    const celProdutos = (<>
-        <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="planilha_produtos" opcoes={opcoes.planilha_produtos} presentes={valoresPresentes.planilha_produtos} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="listagem" opcoes={opcoes.listagem} presentes={valoresPresentes.listagem} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="publicacao" opcoes={opcoes.publicacao} presentes={valoresPresentes.publicacao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="decola" opcoes={opcoes.decola} presentes={valoresPresentes.decola} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><EditToggle e={e} campo="campanha_criada" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
-        <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="central_promocao" opcoes={opcoes.central_promocao} presentes={valoresPresentes.central_promocao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        {/* Observação escrita pelo CLIENTE no link do Onboarding — somente leitura, como
-            as demais respostas dele. A frase inteira (com as quebras de linha) fica no
-            title; a célula mostra a primeira linha truncada. */}
-        <td className={td}><CelResposta valor={e.obs_publicacao} maxW="max-w-[260px]" /></td>
-    </>);
-
-    const celLogistica = (<>
-        <td className={td}><div className="min-w-[240px]"><EditText e={e} campo="contextos_logistica" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="anotação…" wide /></div></td>
-        <td className={td}><div className="min-w-[160px]"><EditSelect e={e} campo="me1" opcoes={opcoes.me1} presentes={valoresPresentes.me1} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="integradora" opcoes={opcoes.integradora} presentes={valoresPresentes.integradora} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><CelResposta valor={e.produtos_perfil} curto={PERFIL_PRODUTOS_CURTO} /></td>
-        <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="places" opcoes={opcoes.places} presentes={valoresPresentes.places} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-        <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="erp" opcoes={opcoes.erp} presentes={valoresPresentes.erp} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
-    </>);
-
-    const celAcoes = (
-        <td className={td}>
-            <div className="flex items-center gap-1.5 whitespace-nowrap">
-                <button onClick={() => on.toggleProblema(e)} title={e.problema ? 'Alternar problema' : 'Marcar problema'}
-                    className={cn('p-1.5 rounded-lg transition', e.problema ? 'text-red-300 bg-red-500/10 hover:bg-red-500/20' : 'text-white/40 hover:text-red-300 hover:bg-white/[0.06]')}><ShieldAlert size={13} /></button>
+        // ── Identidade ──
+        fase: <td className={td}><div className="min-w-[88px]"><EditSelect e={e} campo="fase" opcoes={opcoes.fase} presentes={valoresPresentes.fase} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corFase} criavel={false} /></div></td>,
+        estagio: <td className={td}>{e.estagio ? <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full', corEstagio(e.estagio))}>{e.estagio}</span> : <span className="text-white/20 text-[12px]">—</span>}</td>,
+        polo: <td className={td}><div className="min-w-[120px]"><EditSelect e={e} campo="polo" opcoes={opcoes.polo} presentes={valoresPresentes.polo} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>,
+        responsavel: (
+            <td className={td}>
                 {e.impl_id ? (
-                    <Link href={route('mlb.implementacao.ficha', e.impl_id)} className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[11px] transition" title="Abrir ficha completa (página inteira)"><FileText size={12} /></Link>
-                ) : (
-                    <button onClick={() => on.criarOnboarding(e)} className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[11px] transition" title="Criar ficha de onboarding"><FilePlus2 size={12} /></button>
-                )}
-                <button onClick={() => on.arquivar(e)} title="Arquivar (sai do painel; não conta em nada — reversível)"
-                    className="p-1.5 rounded-lg text-white/40 transition hover:text-amber-300 hover:bg-white/[0.06]"><Archive size={13} /></button>
-            </div>
-        </td>
-    );
+                    <select value={e.responsavel_id ? String(e.responsavel_id) : '__sem__'} onChange={(ev) => on.trocarResponsavel(e, ev.target.value)} style={{ backgroundColor: 'transparent' }} className={cn('w-40', CELL, e.responsavel_id ? 'text-white/85 font-medium' : 'text-white/30')}>
+                        <option value="__sem__" className="bg-ecf-card">Sem responsável</option>
+                        {usuarios.map((u) => <option key={u.id} value={String(u.id)} className="bg-ecf-card text-white">{u.name}</option>)}
+                    </select>
+                ) : <span className="text-white/40 text-[12px]">{e.empresa_responsavel_nome ?? '—'}</span>}
+            </td>
+        ),
+        onboarding: (
+            <td className={td}>
+                {e.impl_id && onb ? (
+                    <div className="flex items-center gap-2 min-w-[90px]"><div className="flex-1"><Barra pct={onb.pct} cor={onb.pct === 100 ? '#22c55e' : '#6366f1'} /></div><span className="text-white/40 text-[10px] tabular-nums">{onb.feitos}/{onb.total}</span></div>
+                ) : <span className="text-white/20 text-[12px]">—</span>}
+            </td>
+        ),
+        envio: (
+            <td className={td}>
+                {e.status_envio ? (
+                    <div className="flex flex-col gap-0.5">
+                        <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full border w-fit', STATUS_ENVIO_BADGE[e.status_envio])}>{STATUS_ENVIO_LABELS[e.status_envio]}</span>
+                        {!e.link_enviado_em && e.status_envio !== 'concluido' && <button onClick={() => on.marcarEnviado(e)} className="text-emerald-300/70 hover:text-emerald-300 text-[10px] text-left transition">marcar enviado</button>}
+                        {e.link_enviado_em && <button onClick={() => on.desfazerEnvio(e)} className="text-white/30 hover:text-white/60 text-[10px] text-left transition">desfazer</button>}
+                    </div>
+                ) : <span className="text-white/20 text-[12px]">—</span>}
+            </td>
+        ),
+        status_entrada: <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="status_entrada" opcoes={opcoes.status_entrada} presentes={valoresPresentes.status_entrada} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        chance_entrada: <td className={td}><div className="min-w-[110px]"><EditSelect e={e} campo="chance_entrada" opcoes={opcoes.chance_entrada} presentes={valoresPresentes.chance_entrada} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+
+        // ── Acessos ──
+        acesso_colaborador: <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="acesso_colaborador" opcoes={opcoes.acesso_colaborador} presentes={valoresPresentes.acesso_colaborador} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        gmail_colaborador: <td className={td}><div className="min-w-[200px]"><EditText e={e} campo="gmail_colaborador" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="gmail…" wide /></div></td>,
+        grupo_whatsapp: <td className={td}><EditToggle e={e} campo="grupo_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>,
+        link_whatsapp: <td className={td}><EditLink e={e} campo="link_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>,
+        reuniao_onboarding: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="reuniao_onboarding" opcoes={opcoes.reuniao_onboarding} presentes={valoresPresentes.reuniao_onboarding} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        canais_faturamento: <td className={td}><CelResposta valor={e.canais_faturamento} curto={CANAIS_CURTO} /></td>,
+        data_solicitacao: <td className={td}><div className="min-w-[140px]"><EditDate e={e} campo="data_solicitacao" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>,
+
+        // ── Produtos & publicação ──
+        planilha_produtos: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="planilha_produtos" opcoes={opcoes.planilha_produtos} presentes={valoresPresentes.planilha_produtos} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        listagem: <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="listagem" opcoes={opcoes.listagem} presentes={valoresPresentes.listagem} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        publicacao: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="publicacao" opcoes={opcoes.publicacao} presentes={valoresPresentes.publicacao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        decola: <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="decola" opcoes={opcoes.decola} presentes={valoresPresentes.decola} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        campanha_criada: <td className={td}><EditToggle e={e} campo="campanha_criada" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>,
+        central_promocao: <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="central_promocao" opcoes={opcoes.central_promocao} presentes={valoresPresentes.central_promocao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        // Observação escrita pelo CLIENTE no link do Onboarding — somente leitura, como as
+        // demais respostas dele. A frase inteira (com as quebras) fica no title; a célula
+        // mostra a primeira linha truncada.
+        obs_publicacao: <td className={td}><CelResposta valor={e.obs_publicacao} maxW="max-w-[260px]" /></td>,
+
+        // ── Logística ──
+        contextos_logistica: <td className={td}><div className="min-w-[240px]"><EditText e={e} campo="contextos_logistica" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="anotação…" wide /></div></td>,
+        me1: <td className={td}><div className="min-w-[160px]"><EditSelect e={e} campo="me1" opcoes={opcoes.me1} presentes={valoresPresentes.me1} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        integradora: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="integradora" opcoes={opcoes.integradora} presentes={valoresPresentes.integradora} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        produtos_perfil: <td className={td}><CelResposta valor={e.produtos_perfil} curto={PERFIL_PRODUTOS_CURTO} /></td>,
+        places: <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="places" opcoes={opcoes.places} presentes={valoresPresentes.places} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        erp: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="erp" opcoes={opcoes.erp} presentes={valoresPresentes.erp} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+
+        // ── Financeiro (admin) — uma célula por chave; ver CelulaFinanceira ──
+        fin_faturamento: celFin('fin_faturamento'),
+        fin_meta:        celFin('fin_meta'),
+        fin_pct:         celFin('fin_pct'),
+        fin_ads:         celFin('fin_ads'),
+        fin_status:      celFin('fin_status'),
+
+        // ── Ações ──
+        __acoes__: (
+            <td className={td}>
+                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                    <button onClick={() => on.toggleProblema(e)} title={e.problema ? 'Alternar problema' : 'Marcar problema'}
+                        className={cn('p-1.5 rounded-lg transition', e.problema ? 'text-red-300 bg-red-500/10 hover:bg-red-500/20' : 'text-white/40 hover:text-red-300 hover:bg-white/[0.06]')}><ShieldAlert size={13} /></button>
+                    {e.impl_id ? (
+                        <Link href={route('mlb.implementacao.ficha', e.impl_id)} className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[11px] transition" title="Abrir ficha completa (página inteira)"><FileText size={12} /></Link>
+                    ) : (
+                        <button onClick={() => on.criarOnboarding(e)} className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[11px] transition" title="Criar ficha de onboarding"><FilePlus2 size={12} /></button>
+                    )}
+                    <button onClick={() => on.arquivar(e)} title="Arquivar (sai do painel; não conta em nada — reversível)"
+                        className="p-1.5 rounded-lg text-white/40 transition hover:text-amber-300 hover:bg-white/[0.06]"><Archive size={13} /></button>
+                </div>
+            </td>
+        ),
+    };
 
     return (
         <>
@@ -1698,30 +1877,18 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                                 {e.ads_desligado && <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full text-white/50 bg-white/[0.05] border border-white/10" title="ADS desligado"><MegaphoneOff size={9} /> ads off</span>}
                                 {!e.impl_id && <span className="text-[9px] px-1.5 py-0.5 rounded-full text-amber-200/70 bg-amber-500/[0.08] border border-amber-500/20" title="Sem ficha de onboarding">sem ficha</span>}
                             </div>
-                            {/* Contexto fase·polo só fora da lente Geral (lá viram colunas) */}
-                            {lente !== 'geral' && (
+                            {/* Contexto fase·polo só quando a coluna Fase não está na tela
+                                (na Geral ela é coluna — a menos que o usuário a esconda). */}
+                            {!colunas.includes('fase') && (
                                 <div className="text-[11px] mt-1"><span className={cn('font-semibold', corFase(e.fase))}>{e.fase || '—'}</span>{e.polo ? <span className="text-white/35"> · {e.polo}</span> : null}</div>
                             )}
                         </div>
                     </div>
                 </td>
 
-                {/* Colunas da lente — Geral concatena TODAS as áreas (planilha completa). */}
-                {lente === 'geral' && (<>
-                    {celCadastro}
-                    {celIdentidade}
-                    {celAcessos}
-                    {celProdutos}
-                    {celLogistica}
-                    {isAdmin && <CelulasFinanceiro fin={fin} finLoaded={finLoaded} td={td} adsLimites={adsLimites} fechado={fechado} />}
-                    {celAcoes}
-                </>)}
-                {lente === 'acessos'   && celAcessos}
-                {lente === 'produtos'  && celProdutos}
-                {lente === 'logistica' && celLogistica}
-                {lente === 'financeiro' && isAdmin && (
-                    <CelulasFinanceiro fin={fin} finLoaded={finLoaded} td={td} adsLimites={adsLimites} fechado={fechado} />
-                )}
+                {/* Colunas: a MESMA lista de chaves que montou o cabeçalho. Ordem e
+                    visibilidade personalizadas na Geral valem aqui sem nenhum ajuste. */}
+                {colunas.map((k) => <Fragment key={k}>{cel[k] ?? <td className={td} />}</Fragment>)}
             </tr>
 
             {/* Drawer (detalhe pesado sob demanda) */}
@@ -1798,42 +1965,56 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
     );
 }
 
-// ─── Células da lente Financeiro/Performance (admin, read-only) ─────────────────────
-function CelulasFinanceiro({ fin, finLoaded, td, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, fechado = false }) {
-    if (!finLoaded) return <td className={td} colSpan={5}><span className="text-white/25 text-[12px] inline-flex items-center gap-1.5"><RefreshCw size={11} className="animate-spin" /> carregando…</span></td>;
-    if (!fin) return <td className={td} colSpan={5}><span className="text-white/20 text-[12px]">— sem dado financeiro (não ativo / sem sync)</span></td>;
-    if (fin.tipo === 'm1') {
-        return (<>
-            <td className={cn(td, 'text-right')}><span className="text-white/80 text-[12px] tabular-nums">{formatCurrency(fin.faturamento ?? 0)}</span></td>
-            <td className={cn(td, 'text-right text-white/20 text-[12px]')}>—</td>
-            <td className={cn(td, 'text-right text-white/20 text-[12px]')}>—</td>
-            <td className={cn(td, 'text-white/20 text-[12px]')}>—</td>
-            <td className={td}>{fin.faturando ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-300"><Sparkles size={10} /> Pronto p/ M2</span> : <span className="text-white/30 text-[11px]">M1 — não fatura</span>}</td>
-        </>);
+// ─── Célula financeira por CHAVE (admin, read-only) ─────────────────────────
+function CelulaFinanceira({ campo, fin, finLoaded, td, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, fechado = false }) {
+    const dir = FIN_ALIGN_RIGHT.includes(campo);
+    // Estados "carregando"/"sem dado" eram UM <td colSpan={5}> — isso só vale enquanto as
+    // cinco colunas forem vizinhas, garantia que a ordem personálizavel da Geral desfez.
+    // Agora a mensagem fica na coluna de Faturamento e as demais mostram "—" (o texto
+    // inteiro vai no title, então nada de informação se perde).
+    const vazio = (texto, title) => (
+        <td className={cn(td, dir && 'text-right')}><span className="text-white/20 text-[12px]" title={title}>{texto ?? '—'}</span></td>
+    );
+
+    if (!finLoaded) {
+        if (campo !== 'fin_faturamento') return vazio();
+        return <td className={cn(td, 'text-right')}><span className="text-white/25 text-[12px] inline-flex items-center gap-1.5"><RefreshCw size={11} className="animate-spin" /> carregando…</span></td>;
     }
-    const cor = fin.pct >= 100 ? '#22c55e' : fin.pct > 0 ? '#ffe600' : '#ef4444';
-    // ADS: MESMA coluna de /polos/empresas — barra do gasto vs teto/empresa, cor por limiar (corAds),
-    // com o teto visível ("R$ X / R$ 3.000,00"). Mês fechado não tem fonte de ADS → "—".
-    const ads    = fin.ads ?? 0;
-    const adsPct = Math.min(ads / (adsLimites.teto || 3000) * 100, 100);
-    return (<>
-        <td className={cn(td, 'text-right')}><span className="text-white/90 text-[12px] font-semibold tabular-nums">{formatCurrency(fin.faturamento ?? 0)}</span></td>
-        <td className={cn(td, 'text-right text-white/40 text-[12px] tabular-nums')}>{formatCurrency(fin.meta ?? 0)}</td>
-        <td className={cn(td, 'text-right')}><span className="text-[12px] font-semibold tabular-nums" style={{ color: cor }}>{fmtPct(fin.pct)}</span></td>
-        <td className={td}>
-            {fechado ? (
-                <span className="text-white/20 text-[12px]" title="ADS só é apurado no mês corrente">—</span>
-            ) : (
-                <div className="flex items-center gap-2">
-                    <div className="w-24 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${adsPct}%`, background: corAds(ads, adsLimites) }} />
+    if (!fin) return vazio(campo === 'fin_faturamento' ? 'sem dado' : '—', 'Sem dado financeiro (não ativo / sem sync)');
+
+    if (fin.tipo === 'm1') {
+        if (campo === 'fin_faturamento') return <td className={cn(td, 'text-right')}><span className="text-white/80 text-[12px] tabular-nums">{formatCurrency(fin.faturamento ?? 0)}</span></td>;
+        if (campo === 'fin_status') return <td className={td}>{fin.faturando ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-300"><Sparkles size={10} /> Pronto p/ M2</span> : <span className="text-white/30 text-[11px]">M1 — não fatura</span>}</td>;
+        return vazio();
+    }
+
+    if (campo === 'fin_faturamento') return <td className={cn(td, 'text-right')}><span className="text-white/90 text-[12px] font-semibold tabular-nums">{formatCurrency(fin.faturamento ?? 0)}</span></td>;
+    if (campo === 'fin_meta') return <td className={cn(td, 'text-right text-white/40 text-[12px] tabular-nums')}>{formatCurrency(fin.meta ?? 0)}</td>;
+    if (campo === 'fin_pct') {
+        const cor = fin.pct >= 100 ? '#22c55e' : fin.pct > 0 ? '#ffe600' : '#ef4444';
+        return <td className={cn(td, 'text-right')}><span className="text-[12px] font-semibold tabular-nums" style={{ color: cor }}>{fmtPct(fin.pct)}</span></td>;
+    }
+    if (campo === 'fin_ads') {
+        // ADS: MESMA coluna de /polos/empresas — barra do gasto vs teto/empresa, cor por
+        // limiar (corAds), com o teto visível. Mês fechado não tem fonte de ADS → "—".
+        const ads    = fin.ads ?? 0;
+        const adsPct = Math.min(ads / (adsLimites.teto || 3000) * 100, 100);
+        return (
+            <td className={td}>
+                {fechado ? (
+                    <span className="text-white/20 text-[12px]" title="ADS só é apurado no mês corrente">—</span>
+                ) : (
+                    <div className="flex items-center gap-2">
+                        <div className="w-24 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${adsPct}%`, background: corAds(ads, adsLimites) }} />
+                        </div>
+                        <span className="text-white/40 text-xs tabular-nums whitespace-nowrap">
+                            {formatCurrency(ads)} <span className="text-white/20">/ {formatCurrency(adsLimites.teto)}</span>
+                        </span>
                     </div>
-                    <span className="text-white/40 text-xs tabular-nums whitespace-nowrap">
-                        {formatCurrency(ads)} <span className="text-white/20">/ {formatCurrency(adsLimites.teto)}</span>
-                    </span>
-                </div>
-            )}
-        </td>
-        <td className={td}><StatusBadge status={fin.status} /></td>
-    </>);
+                )}
+            </td>
+        );
+    }
+    return <td className={td}><StatusBadge status={fin.status} /></td>;
 }
