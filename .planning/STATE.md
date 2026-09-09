@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 138-08-PLAN.md
-last_updated: "2026-09-03T22:01:48.291Z"
-last_activity: 2026-09-03
+stopped_at: Completed 138-09-PLAN.md — Fase 138 COMPLETA (9/9)
+last_updated: "2026-09-09T14:00:00.000Z"
+last_activity: 2026-09-09
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 20
-  completed_plans: 19
-  percent: 95
+  completed_plans: 20
+  percent: 100
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -33,7 +33,9 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 138 — rea-comercial-conectada-etapa-v23-0
+**Current focus:** Phase 138 — rea-comercial-conectada-etapa-v23-0 — **COMPLETA (9/9)**. Próxima:
+Fase 139 (checklist administrativo + trava de finalização), ainda **não planejada** (`Plans: TBD`
+no `ROADMAP.md`) — rodar `/gsd:plan-phase 139` quando for a vez.
 
 > ⚠️ **Não é a 134.** O `phase.complete` apontou 134 ao fechar a 132, mas isso é artefato da
 > ferramenta: a **Fase 133 tem `Plans: TBD`** e nenhum diretório, então foi pulada na busca pela
@@ -44,12 +46,21 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 138 (rea-comercial-conectada-etapa-v23-0) — EXECUTING
-Plan: 9 of 9 (138-08 concluído — `Comercial/Entrada.jsx` virou componente React completo com os
-8 campos do §2, `NAV_TREE` reorganizado (Contrato e Entrada dentro do Comercial, `admin.empresas`
-fora do menu), e regressão de D-15/D-16 travada por teste; COMERC-02 já estava fechado desde os
-planos 138-05/138-06, este plano só entrega a navegação). Falta só 138-09 (checkpoints finais,
-`autonomous: false`) — wave 4, última do plano da fase.
+Phase: 138 (rea-comercial-conectada-etapa-v23-0) — **COMPLETA (9/9)**
+Plan: 9 of 9 — **138-09 concluído em 2026-09-09** (checkpoints humanos finais da fase, `wave 4`,
+`autonomous: false`). Task 1 (`8df94867`) reexecutou a suíte da fase contra a baseline pré-migration
+sem regressão nova; Task 2 (`883479d5`, checkpoint aprovado) confirmou a conta de sistema
+`sistema.hubspot@ecfconsultoria.com.br` (id local 49) não-logável por reconsulta ao banco +
+`ComercAtorSistemaTest`; Task 3 (`30f39ab2`, checkpoint aprovado) confirmou por screenshot do
+usuário o render real de `/comercial/entrada` e `/administrativo/contratos` — os 8 campos do §2,
+as duas pendências em colunas separadas nas duas telas, a fronteira D-07 (empresas de etapa 5,
+ids 412/417, existem no banco e não aparecem na Entrada) e a não-regressão da listagem Contrato
+(empresa `asdadassdsad`, id 55, `em_operacao`, segue visível — sem corte por etapa). Suíte
+reexecutada nesta sessão de fechamento: `tests/Unit/Phase138 tests/Feature/Phase138
+tests/Feature/Phase131 tests/Unit/Phase137 tests/Feature/Phase137` → **252 tests, 921 assertions,
+OK**. Ver `138-09-SUMMARY.md` para a lista completa das 3 pendências obrigatórias da VPS (conta de
+sistema, property de owner, escopo `crm.objects.owners.read`) — nenhuma delas executada, **nenhum
+deploy foi autorizado**. **FASE 138 FECHADA — 9/9 planos.** COMERC-01/02/03 completos.
 
 > ⚠️ **O bloco da Fase 137 abaixo foi restaurado à mão em 2026-09-02.** O commit `cea0be5f`
 > (`phase.complete`/`state.record-session`) truncou o **início** de três linhas longas e deixou
@@ -749,6 +760,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 138 P04 | ~50min | 2 tasks | 6 files |
 | Phase 138 P05 | 35min | 3 tasks | 8 files |
 | Phase 138 P08 | 35min | 3 tasks | 3 files |
+| Phase 138 P09 | ~90min (inclui espera de aprovação humana nos 2 checkpoints) | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1651,3 +1663,4 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 138]: 138-07: COMERC-01 fechado por completo — conta de sistema "Sistema HubSpot" criada por `hubspot:criar-usuario-sistema --apply` (id local 49; senha aleatória de 64 caracteres descartada na criação é o que de fato bloqueia login, não `active=false` — o login deste projeto não checa `users.active`), resolvida por `config('services.hubspot.webhook_user_id')` (sem default). `HubspotWebhookController::nascerNaEtapa1()` chamado nos DOIS call sites de produção (`processar()` e `reprocessarEvento()` — este último não chamava o gate administrativo e ficaria sem etapa em replay). `ComercialController::store()` chama o mesmo serviço com `$request->user()` como ator. Ator ausente/inexistente: log + empresa sem etapa, nunca TypeError/500. `EtapaTransicaoService` não foi tocado (D-17). 17 testes novos (Phase138), suíte completa `tests/Feature/Phase138` 57/57 verde, `tests/Unit/Phase137`+`tests/Feature/Phase137`+`Phase34HubspotWebhookTest`+`ContratoAdminPermissaoTest` 68/68 verde
 - [Phase 138]: 138-07: `HUBSPOT_WEBHOOK_USER_ID=49` setado no `.env` LOCAL deste worktree (não versionado); a mesma conta precisa ser criada na VPS e `id_vps:` preenchido em `138-CONTA-SISTEMA-HUBSPOT.md` antes do primeiro deploy da Fase 138 (pendência explícita do plano 138-09)
 - [Phase 138]: 138-08: Coluna 'Pendencias' unica na tabela Entrada (nao duas colunas), seguindo o padrao ja em producao de Admin/Contratos.jsx
+- [Phase 138]: 138-09 FECHA A FASE (9/9 planos). Task 1: suite da fase reexecutada sem regressao contra a baseline do 138-01 (252 tests/921 assertions, `tests/Unit/Phase138 tests/Feature/Phase138 tests/Feature/Phase131 tests/Unit/Phase137 tests/Feature/Phase137`); as ~10 falhas antigas de Polos permanecem identicas a baseline (mesmos nomes/causas), nao sao regressao desta fase. Task 2 (checkpoint aprovado): usuario dispensou a tentativa manual de login pela tela e aceitou `ComercAtorSistemaTest` (4 senhas via `Auth::attempt`) como prova de nao-logabilidade da conta `sistema.hubspot@ecfconsultoria.com.br` (id local 49); escopo OAuth `crm.objects.owners.read` fica NAO CONFIRMADO por decisao do usuario ("deixar anotada para o deploy"). Task 3 (checkpoint aprovado): render real de `/comercial/entrada` e `/administrativo/contratos` verificado por screenshot do usuario — 8 campos do §2, duas pendencias em colunas separadas nas DUAS telas, fronteira D-07 confirmada (empresas etapa 5, ids 412/417, existem no banco e nao aparecem na Entrada), Contrato sem corte por etapa confirmado pela empresa `asdadassdsad` (id 55, `em_operacao`) continuar visivel. Nenhuma correcao de codigo foi necessaria nesta fase de fechamento. **3 pendencias obrigatorias da VPS antes do deploy** (nenhuma executada): (1) `hubspot:criar-usuario-sistema --apply` na VPS + apontar `HUBSPOT_WEBHOOK_USER_ID` la; (2) `hubspot:inspect-properties --objects=deals` na VPS para medir o nome real da property de owner; (3) confirmar escopo `crm.objects.owners.read` no Private App de producao. Detalhamento completo em `138-CONTA-SISTEMA-HUBSPOT.md` e `138-09-SUMMARY.md`. Fixtures locais `[TESTE 138-09]` (ids 408-417) NAO removidas — fora do escopo deste plano.

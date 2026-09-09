@@ -2135,7 +2135,7 @@ Plans:
 - [x] 137-10-PLAN.md — G4 + G5 + G6: `transicionar()` decide sobre a linha travada · backfill chaveado por id · frontmatter de 137-01 [wave 6]
 - [x] 137-11-PLAN.md — G3: filtros de `/companies` deixam de se apagar entre si + checkpoint humano [wave 6]
 
-### Phase 138: Área Comercial conectada à etapa + reorganização em Contrato e Entrada (v23.0)
+### Phase 138: Área Comercial conectada à etapa + reorganização em Contrato e Entrada (v23.0) — ✅ COMPLETA (9/9)
 
 **Goal:** A venda marcada GANHA no HubSpot chega na Área Comercial já na etapa "Aguardando Administrativo", sem cadastro manual, e o Comercial passa a ser a única casa da gestão de entrada — com as listagens **Contrato** e **Entrada** exibindo os 8 campos mínimos do §2, e a empresa saindo de lá só quando entra em "Aguardando Distribuição".
 **Requirements**: COMERC-01, COMERC-02, COMERC-03
@@ -2163,7 +2163,7 @@ Plans:
 > produção. **Contrato é ferramenta administrativa contínua: o critério de saída dela é o estado do
 > contrato, não a etapa.** O corte da etapa 5 (D-07/COMERC-03) vale só para a listagem **Entrada**.
 
-**Plans:** 8/9 plans executed
+**Plans:** 9/9 plans executed — Fase 138 COMPLETA. Deploy NÃO autorizado — ver `138-09-SUMMARY.md` § "Pendências obrigatórias para a VPS" antes de subir.
 
 Plans:
 **Wave 0** *(medições antes de qualquer código — gate do `CLAUDE.md`)*
@@ -2188,7 +2188,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 138-09-PLAN.md — Checkpoints humanos finais: conta de sistema não-logável em local e VPS, render das duas listagens, regressão contra a baseline (D-01/D-15/D-16/D-17) [wave 4]
+- [x] 138-09-PLAN.md — Checkpoints humanos finais: conta de sistema não-logável em local e VPS, render das duas listagens, regressão contra a baseline (D-01/D-15/D-16/D-17) [wave 4] — os dois checkpoints humanos foram aprovados; suíte reexecutada nesta sessão (252 tests/921 assertions, OK), sem regressão contra a baseline do 138-01. Ver `138-09-SUMMARY.md`
 
 ### Phase 139: Checklist administrativo + trava de finalização (v23.0)
 
