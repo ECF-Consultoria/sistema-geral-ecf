@@ -27,9 +27,9 @@ use Illuminate\Support\Facades\Schema;
  * 2. **`nullOnDelete()` exige `nullable()` ANTES** (erro 1830 no MariaDB, invisível no SQLite).
  *    `company_id` e `confirmado_por` são nullable DE PROPÓSITO aqui — a proposta nasce sem
  *    vínculo confirmado (D-05), então as duas FKs passam por este caminho.
- * 3. **`enum()` quebra o SQLite dos testes.** `envelope_situacao`, `confianca`, `tipo_cobranca` e
- *    `situacao` são `string()` + constantes `public const` no model, como o resto do projeto —
- *    nunca `enum()`.
+ * 3. **A coluna de tipo enumerado do MySQL quebra o SQLite dos testes.** `envelope_situacao`,
+ *    `confianca`, `tipo_cobranca` e `situacao` são `string()` + constantes `public const` no
+ *    model, como o resto do projeto — nunca essa coluna de tipo fechado do MariaDB/MySQL.
  *
  * Migration idempotente: guard `Schema::hasTable` evita recriação em rerun (mesmo padrão de
  * `empresa_faixas_faturamento`).

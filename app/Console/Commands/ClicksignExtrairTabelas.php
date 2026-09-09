@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\ContratoTabelaProposta;
 use App\Services\Clicksign\AcervoContratosClicksignService;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Contratos\EmpresaPalpiteService;
@@ -39,12 +40,28 @@ use Throwable;
  * pontuação sem a palavra ao lado, nunca "match"/"score"/"parser"/"envelope
  * id" como rótulo (T-140-11).
  *
- * ⚠️ **Nada é gravado no banco.** Este comando só lê e escreve arquivo em
- * disco — nenhum `Model::save()`/`create()`/`update()` em nenhum caminho.
+ * ⚠️ **Sem `--gravar`, nada é gravado no banco.** Sem a opção, o comando só lê e escreve arquivo
+ * em disco — nenhum `Model::save()`/`create()`/`update()` em nenhum caminho.
+ *
+ * ⚠️ **Com `--gravar` (Fase 140 Plano 04, TAB-07), a escrita é restrita a UMA tabela:
+ * `contrato_tabela_propostas`.** Este comando nunca grava em `empresa_faixas_faturamento`,
+ * `grupo_faixas_faturamento` nem `companies` — quem grava tabela de cobrança de verdade é o plano
+ * 140-05, e só depois que uma pessoa confirmar o palpite de empresa (D-05, D-06 do CONTEXT). Um
+ * vínculo automático errado gravaria a tabela de cobrança de uma empresa em outra, e ninguém
+ * revisaria depois — por isso a escrita automática para de propósito na tabela de proposta.
+ *
+ * Duas guardas em `gravarProposta()` (T-140-14, T-140-15):
+ * 1. Nunca sobrescrever conferência humana — proposta `confirmada`/`descartada` é pulada.
+ * 2. `clicksign_envelope_id` é único — a mesma rodada, repetida, atualiza a mesma linha.
  */
 class ClicksignExtrairTabelas extends Command
 {
-    protected $signature = 'clicksign:extrair-tabelas {--limite=} {--situacao=closed} {--pausa-ms=3500} {--saida=}';
+    protected $signature = 'clicksign:extrair-tabelas
+        {--limite=}
+        {--situacao=closed}
+        {--pausa-ms=3500}
+        {--saida=}
+        {--gravar : guarda o que foi lido para conferir depois na tela. Continua sem alterar cobrança.}';
 
     protected $description = 'Lê os contratos de gestão de ADS que estão no Clicksign e gera um relatório com a tabela de cobrança de cada um. Só lê — não altera nada no sistema.';
 
@@ -102,6 +119,7 @@ class ClicksignExtrairTabelas extends Command
         $limite      = $limiteOpcao !== null ? (int) $limiteOpcao : null;
         $situacao    = (string) $this->option('situacao');
         $pausaMs     = (int) $this->option('pausa-ms');
+        $gravar      = (bool) $this->option('gravar');
 
         // AcervoContratosClicksignService (140-01) não entra por injeção de
         // container — o `$pausaMs` é escolhido pela opção do comando, não
@@ -116,11 +134,13 @@ class ClicksignExtrairTabelas extends Command
 
         $linhas = [];
         $resumo = [
-            'total'             => 0,
-            'casaram_seguranca' => 0,
-            'duvidosos'         => 0,
-            'valor_fixo'        => 0,
-            'ilegiveis'         => 0,
+            'total'               => 0,
+            'casaram_seguranca'   => 0,
+            'duvidosos'           => 0,
+            'valor_fixo'          => 0,
+            'ilegiveis'           => 0,
+            'propostas_gravadas'  => 0,
+            'propostas_mantidas'  => 0,
         ];
 
         foreach ($envelopes as $envelope) {
@@ -130,6 +150,10 @@ class ClicksignExtrairTabelas extends Command
             $linhas[] = $linha;
 
             $this->contabilizar($resumo, $linha);
+
+            if ($gravar) {
+                $this->gravarProposta($linha, $resumo);
+            }
         }
 
         // Data mais antiga primeiro — a virada de dezembro/2025 (valor fixo
@@ -140,7 +164,7 @@ class ClicksignExtrairTabelas extends Command
 
         [$caminhoMd, $caminhoCsv] = $this->gravarRelatorios($linhas, $resumo, $situacao);
 
-        $this->exibirResumo($resumo);
+        $this->exibirResumo($resumo, $gravar);
         $this->line('');
         $this->info('Arquivo (leitura humana): ' . $caminhoMd);
         $this->info('Arquivo (planilha): ' . $caminhoCsv);
@@ -313,7 +337,7 @@ class ClicksignExtrairTabelas extends Command
         }
     }
 
-    private function exibirResumo(array $resumo): void
+    private function exibirResumo(array $resumo, bool $gravou = false): void
     {
         $this->line('');
         $this->info('Resumo da rodada:');
@@ -322,6 +346,121 @@ class ClicksignExtrairTabelas extends Command
         $this->line("  Ficaram duvidosos: {$resumo['duvidosos']}");
         $this->line("  São valor fixo: {$resumo['valor_fixo']}");
         $this->line("  Não deu para ler: {$resumo['ilegiveis']}");
+
+        // Só aparece com --gravar (TAB-07) — sem a opção não há propostas para contar.
+        if ($gravou) {
+            $this->line("  Propostas criadas/atualizadas: {$resumo['propostas_gravadas']}");
+            $this->line("  Propostas mantidas (já conferidas antes): {$resumo['propostas_mantidas']}");
+        }
+    }
+
+    /**
+     * `--gravar` (Fase 140 Plano 04, TAB-07) — guarda o que a leitura descobriu em
+     * `ContratoTabelaProposta`, para a tela do plano 140-05 mostrar depois.
+     *
+     * ⚠️ Escrita restrita a esta ÚNICA tabela — nunca `empresa_faixas_faturamento`,
+     * `grupo_faixas_faturamento` nem `companies`. Um vínculo automático errado gravaria a tabela
+     * de cobrança de uma empresa em outra, e ninguém revisaria depois (D-05 do CONTEXT); quem
+     * confirma o palpite e grava cobrança de verdade é sempre uma pessoa, no plano 140-05.
+     *
+     * ⚠️ Guarda T-140-15: proposta já `confirmada`/`descartada` NUNCA é sobrescrita por uma
+     * rodada nova — só conta como "mantida". `clicksign_envelope_id` é único (T-140-14), então
+     * `updateOrCreate` na chave do envelope garante uma linha por contrato mesmo re-rodando.
+     *
+     * @param  array<string, mixed>  $linha
+     * @param  array<string, int>  $resumo
+     */
+    private function gravarProposta(array $linha, array &$resumo): void
+    {
+        $envelopeId = $linha['envelope_id'] ?? null;
+
+        // Envelope sem identificador nem chegou a ser processado — nada para gravar.
+        if ($envelopeId === null) {
+            return;
+        }
+
+        $existente = ContratoTabelaProposta::where('clicksign_envelope_id', $envelopeId)->first();
+
+        if ($existente !== null && $existente->situacao !== ContratoTabelaProposta::SITUACAO_PENDENTE) {
+            $resumo['propostas_mantidas']++;
+
+            return;
+        }
+
+        $palpite = $linha['palpite'] ?? null;
+        $faixas  = $linha['faixas'] ?? [];
+
+        ContratoTabelaProposta::updateOrCreate(
+            ['clicksign_envelope_id' => $envelopeId],
+            [
+                'nome_envelope'     => (string) ($linha['nome'] ?? ''),
+                'envelope_situacao' => (string) ($linha['situacao'] ?? 'desconhecida'),
+                'envelope_data'     => $linha['data'] ?? null,
+                'company_id'        => $palpite['company_id'] ?? null,
+                'confianca'         => $palpite['confianca'] ?? ContratoTabelaProposta::CONFIANCA_INCERTO,
+                'pontuacao'         => $palpite['pontuacao'] ?? null,
+                'ambiguo'           => $palpite['ambiguo'] ?? false,
+                'candidatos'        => $palpite['candidatos'] ?? [],
+                'tipo_cobranca'     => $this->tipoCobrancaProposta($linha),
+                'valor_fixo'        => $linha['valor_fixo'] ?? null,
+                'faixas'            => $faixas !== [] ? $faixas : null,
+                'cnpj_lido'         => $linha['cnpj'] ?? null,
+                'razao_social_lida' => $linha['razao_social'] ?? null,
+                'motivo'            => $this->motivoProposta($linha),
+            ]
+        );
+
+        $resumo['propostas_gravadas']++;
+    }
+
+    /**
+     * Traduz o `tipo` do parser (140-02) para as quatro categorias de `tipo_cobranca` da proposta
+     * (coluna `string(16)`). `numeros_ilegiveis` (17 caracteres, não caberia) e "arquivo não
+     * legível" caem no mesmo `ilegivel` — do ponto de vista de quem confere depois, a ação é a
+     * mesma: abrir o contrato à mão.
+     *
+     * @param  array<string, mixed>  $linha
+     */
+    private function tipoCobrancaProposta(array $linha): string
+    {
+        if ($linha['legivel'] === false) {
+            return ContratoTabelaProposta::TIPO_ILEGIVEL;
+        }
+
+        return match ($linha['tipo']) {
+            'tabela'     => ContratoTabelaProposta::TIPO_TABELA,
+            'valor_fixo' => ContratoTabelaProposta::TIPO_VALOR_FIXO,
+            'numeros_ilegiveis' => ContratoTabelaProposta::TIPO_ILEGIVEL,
+            default      => ContratoTabelaProposta::TIPO_INDEFINIDO,
+        };
+    }
+
+    /**
+     * O aviso que a pessoa precisa ver na conferência — nunca perdido. Cobre tanto "não deu para
+     * ler o arquivo" quanto os avisos que o parser (140-02) já devolve prontos: valor implausível
+     * (ex.: limite de R$ 15 bilhões — o parser NUNCA corrige, só sinaliza), pagamento escalonado
+     * (`valor_fixo` fica nulo e os valores encontrados vêm aqui, nunca uma média inventada) e o
+     * caso de dígitos apagados no PDF (`numeros_ilegiveis`).
+     *
+     * @param  array<string, mixed>  $linha
+     */
+    private function motivoProposta(array $linha): ?string
+    {
+        if ($linha['legivel'] === false) {
+            return $linha['motivo'] ?? null;
+        }
+
+        $avisos = $linha['avisos'] ?? [];
+
+        if ($linha['tipo'] === 'numeros_ilegiveis') {
+            return $avisos[0] ?? self::TIPO_LABEL['numeros_ilegiveis'];
+        }
+
+        if ($avisos !== []) {
+            return implode(' | ', $avisos);
+        }
+
+        return null;
     }
 
     /**
