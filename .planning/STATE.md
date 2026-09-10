@@ -880,6 +880,47 @@ activity: 2026-09-10 — 141-07 executado (`141-07-SUMMARY.md`). Ações de prod
 comparar, ligar a flag, reconsolidar agosto) executadas pelo orquestrador; este registro (Task 3)
 executado pelo subagente executor.
 
+## Posição paralela — Fase 142 (Cadastro da tabela progressiva no contrato) — EM EXECUÇÃO
+
+⚠️ **Mesma disciplina dos blocos 135-141 acima:** Fase 142 fora de milestone, rodando em paralelo
+nesta árvore compartilhada. `## Current Position` (Fase 132/133) não foi tocado. `gsd-sdk query
+state.advance-plan` foi rodado e **descartado** nesta sessão — ele avançou o contador de Plan da
+Fase 133 (4→5), que não é o que esta execução fechou; o comando parece assumir "fase/plano atual"
+por heurística e não reconheceu a Fase 142 como posição corrente numa árvore com várias fases fora
+de milestone em paralelo. Revertido via `cp` do backup antes de qualquer commit — nenhuma alteração
+indevida chegou a ser commitada. Registro manual aditivo aqui, como nos blocos anteriores.
+
+Origem: `142-CONTEXT.md` — pedido do usuário em 2026-09-10, olhando o fechamento em produção
+("a parte do cadastro de tabela progressiva pelo sistema deve melhorar bastante"). ⚠️ **A regra
+nova está ligada em produção desde 2026-09-09** (Fase 141) e agosto/2026 já foi refeito sob ela —
+esta fase edita cobrança viva de 169 empresas, não rascunho.
+
+142-01 concluído (D-01, DEC-TELAS) — paga a dívida do `137-09` (tela mostrava só "Tabela própria
+desta empresa", sem as faixas) e fecha um buraco de auditoria achado na leitura do código:
+`EmpresaFaixaFaturamento::where(...)->delete()` é delete de query builder, não dispara evento de
+model, então `LogsActivity` nunca via as linhas apagadas — quem substituía a tabela de uma empresa
+deixava rastro só das linhas novas. `GravarTabelaEmpresaService::gravar()`/`remover()` — porta
+única de escrita, com a trava de precedência do D-05 da Fase 141 (`presumida_servico` nunca
+sobrescreve `manual`/`contrato`, `\RuntimeException` sem alterar nada) e UMA entrada de
+`activity_log` (`log_name='faixa_faturamento_tabela'`) por gravação, com `antes`/`depois` da tabela
+inteira, causer e `feito_de`. `FechamentoController::salvarFaixasEmpresa()`/`removerFaixasEmpresa()`
+e `TabelasContratoController::confirmar()` religados ao serviço, contrato HTTP e mensagens de flash
+intocados. Props de `/administrativo/financeiro` ganham `tabela_faixas`/`tabela_faixas_e_de_hoje`
+nos dois ramos (ao vivo/congelado), por empresa e por grupo — só preenchido quando origem='propria'
+(servico/grupo já têm catálogo em faixas_por_servico/faixas_por_grupo). Achado durante a Tarefa 3:
+a implementação inicial gerava 2 consultas a `empresa_faixas_faturamento` no ramo congelado (a nova
+leitura de linhas + a `MIN(origem)` que já existia desde a Fase 141 para `procedencia_tabela`) —
+corrigido reaproveitando a mesma leitura em lote para as duas necessidades, removendo a consulta
+duplicada dos 3 chamadores (`fechamento()`, relatório PDF individual, relatório PDF geral). TDD:
+Tarefa 1 com commit `test` (RED) seguido de `feat` (GREEN) — `77ec1ab3`/`368d49ee`; Tarefa 2
+`a76afed3` (refactor); Tarefa 3 `2bd43bcf` (feat). Testes novos: `Phase142GravarTabelaEmpresaTest`
+(14) + `Phase142FaixasProprasNasPropsTest` (4) = 18 testes / 87 asserções. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Phase142|Quick260909`: **571
+testes / 2729 asserções / 0 falhas** (baseline pré-142 informado 553/2642 — bate exatamente com
++18/+87 deste plano, zero regressão). Last activity: 2026-09-10 — 142-01 executado
+(`142-01-SUMMARY.md`). Sem deploy — subagente sem acesso a produção/`.env`/`plink`/`pscp` (trava do
+próprio plano); `artisan migrate` local não rodado (nenhuma migration neste plano).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
