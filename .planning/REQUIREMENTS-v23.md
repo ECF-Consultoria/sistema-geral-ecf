@@ -142,10 +142,10 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### ONBRD — Onboarding dentro da máquina de estados (§9)
 
-- [ ] **ONBRD-01**: Iniciar o onboarding move a empresa de `Aguardando Onboarding` para `Onboarding em andamento`
-- [ ] **ONBRD-02**: Concluir todas as atividades previstas move para `Onboarding concluído` e, na sequência, para `Em operação`
-- [ ] **ONBRD-03**: O checklist de onboarding continua variando por serviço contratado, reusando a régua existente (`DefinicaoOnboarding`) sem recriá-la
-- [ ] **ONBRD-04**: Empresa sem analista **e** sem estrategista definidos não consegue iniciar o onboarding
+- [x] **ONBRD-01**: Iniciar o onboarding move a empresa de `Aguardando Onboarding` para `Onboarding em andamento`
+- [x] **ONBRD-02**: Concluir todas as atividades previstas move para `Onboarding concluído` e, na sequência, para `Em operação`
+- [x] **ONBRD-03**: O checklist de onboarding continua variando por serviço contratado, reusando a régua existente (`DefinicaoOnboarding`) sem recriá-la
+- [x] **ONBRD-04**: Empresa sem analista **e** sem estrategista definidos não consegue iniciar o onboarding
 
 ### HIST — Histórico e rastreabilidade (§12)
 

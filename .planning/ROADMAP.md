@@ -2287,7 +2287,7 @@ Plans:
 
 **Plans:** sem planos GSD — **trabalho direto** (`CLAUDE.md` → "GSD por RISCO"). A fase **não tem migration nenhuma**: reusa o enum de `company_users.role` e a linha de transição 5→6 como auditoria, então não altera tabela com dado em produção. Decisões em `.planning/phases/154-distribuicao-pela-coordenacao-v23-0/154-DECISOES.md`, escritas ANTES do código. 24 testes / 74 assertions.
 
-### Phase 155: Onboarding plugado na máquina de estados (v23.0)
+### Phase 155: Onboarding plugado na máquina de estados (v23.0) — ✅ COMPLETA (trabalho direto)
 
 **Goal:** O motor de onboarding por serviço, já entregue na Fase 135, passa a nascer e avançar junto com a etapa da empresa — sem recriar a régua — e trava quem não tem os dois responsáveis definidos.
 **Requirements**: ONBRD-01, ONBRD-02, ONBRD-03, ONBRD-04
@@ -2302,7 +2302,7 @@ Plans:
   3. O checklist de onboarding aberto continua sendo o gerado por `DefinicaoOnboarding`/`OnboardingEngineService` conforme o serviço contratado — nenhuma tela ou tabela nova de checklist nasce nesta fase (ONBRD-03)
   4. Tentar iniciar o onboarding de uma empresa sem analista e sem estrategista definidos é recusado (ONBRD-04)
 
-**Plans:** TBD
+**Plans:** sem planos GSD — **trabalho direto** (`CLAUDE.md` → "GSD por RISCO"), sem migration. `DefinicaoOnboarding` **não foi tocada** e a `VERSAO` continua 17, com teste que falha se alguém a reescrever (ONBRD-03). Decisões em `.planning/phases/155-onboarding-na-maquina-de-estados-v23-0/155-DECISOES.md`. 10 testes / 24 assertions; regressão de 795 testes incluindo as suítes de onboarding.
 
 ### Phase 156: Histórico e rastreabilidade para SLA (v23.0)
 

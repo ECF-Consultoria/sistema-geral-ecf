@@ -4,11 +4,11 @@ milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
 stopped_at: Completed 152-10-PLAN.md — FASE 139 COMPLETA (10/10)
-last_updated: "2026-09-10T06:00:00.000Z"
+last_updated: "2026-09-10T07:00:00.000Z"
 last_activity: 2026-09-10
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 30
   completed_plans: 30
   percent: 100
@@ -91,6 +91,8 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 > já foram executadas em paralelo por outra sessão.
 
 ## Current Position
+
+Phase: 155 (onboarding-na-maquina-de-estados-v23-0) — **COMPLETA** (trabalho direto; a régua do onboarding NÃO foi tocada, VERSAO segue 17)
 
 Phase: 154 (distribuicao-pela-coordenacao-v23-0) — **COMPLETA** (trabalho direto, sem planos GSD e SEM MIGRATION)
 
@@ -1649,6 +1651,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-10T07:00:00.000Z
+Stopped at: **Fase 155 COMPLETA** (onboarding move a etapa). Commit `6d12e4e6`. `DefinicaoOnboarding` intocada (VERSAO 17), com teste-guarda. **Medição que corrigiu o desenho:** o guard do ONBRD-04 sem a condição de empresa legada quebrava **136 testes** das Fases 135/OnboardingEmCompanies — a trava passou a valer só dentro do fluxo novo (`etapa` não-nula). Regressão de **795 testes / 3419 assertions** verde. **NADA DEPLOYADO** — 2 migrations fora de produção (152 e 153). Resta a Fase 156 (SLA).
 Last session: 2026-09-10T06:00:00.000Z
 Stopped at: **Fase 154 COMPLETA** (distribuição pela Coordenação). Trabalho direto, **zero migration** — reusa `company_users.role` e a transição 5→6 como auditoria. Commits `92758f19` (motor+13 testes), `e8796d2f` (fila+rota), `b8180781` (RESP-01/02). Chave nova `coordenacao.distribuir`. 24 testes / 74 assertions; regressão 150+151+152+153+131 em 369/1366. **NADA DEPLOYADO** — 2 migrations novas fora de produção (das fases 152 e 153).
 Last session: 2026-09-10T05:00:00.000Z
