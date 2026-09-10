@@ -7,7 +7,8 @@ import {
     BarChart2, LineChart, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
     Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart, EyeOff,
-    FileSignature, PencilLine
+    FileSignature, PencilLine,
+    MessageSquareText, UsersRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
@@ -248,6 +249,10 @@ const NAV_TREE = [
             // do §10). Permission própria `comercial.entrada` (D-15) — não
             // reusa `comercial.cadastrar_empresa`. Checklist chega na Fase 152.
             { label: 'Entrada', routeName: 'comercial.entrada.index', page: 'Comercial/Entrada', icon: ListChecks, permission: 'comercial.entrada' },
+            // Fase 153 (COMUNIC-03) — textos da mensagem de boas-vindas, um por
+            // serviço mais um genérico. Mesma permissão em OR da ficha (D-17):
+            // quem opera a Entrada precisa ajustar o texto que envia.
+            { label: 'Boas-vindas', routeName: 'admin.boas-vindas.index', page: 'Admin/BoasVindasTemplates', icon: MessageSquareText, permission: ['admin.contratos', 'comercial.entrada'] },
             // Fase 135 Plano 12 — painel operacional do onboarding geral por
             // serviço. Gate DEDICADO `core.onboarding` (Plano 09) — NÃO
             // reutiliza a permission do item "Onboarding" de Polos (grupo
@@ -290,6 +295,20 @@ const NAV_TREE = [
             { label: 'Revisão',         routeName: 'mlb.revisao',      page: 'Mlb/Revisao',      icon: ClipboardCheck, permission: 'mlb.revisao' },
             { label: 'Empresas',        routeName: 'mlb.empresas',     page: 'Mlb/Empresas',     icon: Store,          permission: 'mlb.empresas' },
             { label: 'Metas',           routeName: 'mlb.metas.index',  page: 'Mlb/Metas',        icon: SlidersHorizontal, permission: 'mlb.metas' },
+        ],
+    },
+
+    // ── Grupo: Coordenação ───────────────────────────────────────────────────
+    // Fase 154 (DISTRIB-01..04) — a fila de distribuição. Grupo PRÓPRIO e chave
+    // PRÓPRIA (`coordenacao.distribuir`, D-G): distribuir é ato de Coordenação,
+    // e pendurar sob Comercial daria à Entrada o poder de escolher o time — a
+    // separação que o §10 do PDF estabelece. Posicionado antes de
+    // Administrativo porque segue a ordem do fluxo: Comercial → Coordenação.
+    {
+        group: 'Coordenação',
+        icon: UsersRound,
+        children: [
+            { label: 'Distribuição', routeName: 'coordenacao.distribuicao.index', page: 'Coordenacao/Distribuicao', icon: UsersRound, permission: 'coordenacao.distribuir' },
         ],
     },
 
@@ -471,6 +490,13 @@ export default function AppLayout({ children, title }) {
         // Gate de visibilidade por módulo — Dev vê tudo; demais não veem os ocultos.
         if (!isAdminDev && rotaOculta(item.routeName)) return false;
         if (item.excludeRoles?.some(r => effectiveRoles.has(r))) return false;
+        // `permission` aceita ARRAY = OR entre chaves (Fase 152, D-17 em diante):
+        // há rotas servidas por `permission:a,b` no backend, e usar só uma das
+        // chaves aqui esconderia o item de metade de quem pode abri-lo.
+        if (Array.isArray(item.permission)) {
+            return item.permission.some(p => permissions.includes(p));
+        }
+
         return item.permission ? permissions.includes(item.permission) : true;
     };
 
