@@ -217,6 +217,13 @@ class Phase139TabelaProgressivaFielTest extends TestCase
     }
 
     #[Test]
+    // ⚠️ RETARGET (Fase 142 Plano 04, D-04): mesma troca da suíte da Fase
+    // 138 — o fechamento parou de gravar tabela, então a exigência de rota
+    // migrou de "onde o bloco de grupo salva" (`admin.financeiro.faixas.grupo`)
+    // para "para onde o bloco de grupo leva quem quer cadastrar"
+    // (`admin.contratos.tabela.show`). As frases de herança, que são o
+    // motivo original desta trava, continuam intactas — só o caminho de
+    // cadastro mudou de endereço.
     public function frase_de_heranca_da_tabela_do_grupo_continua_intacta(): void
     {
         $conteudo = $this->lerArquivoJsx(self::ARQUIVO_TABELA_FAIXAS);
@@ -224,6 +231,6 @@ class Phase139TabelaProgressivaFielTest extends TestCase
         $this->assertStringContainsString('Este grupo está usando a tabela da empresa', $conteudo, 'A frase que nomeia a empresa dona da tabela herdada não pode sumir no refactor.');
         $this->assertStringContainsString('Quem manda é a empresa do grupo que mais faturou no mês', $conteudo, 'A frase de desempate do grupo não pode sumir no refactor.');
         $this->assertStringContainsString('tabela_herdada_de_nome', $conteudo);
-        $this->assertStringContainsString('admin.financeiro.faixas.grupo', $conteudo);
+        $this->assertStringContainsString('admin.contratos.tabela.show', $conteudo);
     }
 }

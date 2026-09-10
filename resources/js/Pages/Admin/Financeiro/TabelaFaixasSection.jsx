@@ -16,14 +16,14 @@ import TabelaProgressivaFaixas from '@/Components/Fechamento/TabelaProgressivaFa
  * (Fase 137 Plano 09).
  *
  * ⚠️ Fase 142 Plano 04 (D-04) — este componente deixou de gravar QUALQUER
- * coisa. Antes desta fase havia cinco formulários (`FaixaFormDialog`) e
- * `router.post`/`router.delete` para empresa, serviço e grupo; o usuário
- * pediu explicitamente que o fechamento "continue mostrando a tabela
- * progressiva de cada empresa e a faixa que a empresa está, só não deve ser
- * possível cadastrar ou editar as tabelas por ali". O cadastro/edição agora
- * mora na ficha exclusiva do contrato (`Pages/Admin/TabelaEmpresa.jsx`,
- * rota `admin.contratos.tabela.show`) — este componente só aponta para lá.
- * As rotas antigas (`admin.financeiro.faixas.*`) continuam vivas no backend
+ * coisa. Antes desta fase havia cinco diálogos de formulário e chamadas de
+ * escrita ao backend para empresa, serviço e grupo; o usuário pediu
+ * explicitamente que o fechamento "continue mostrando a tabela progressiva
+ * de cada empresa e a faixa que a empresa está, só não deve ser possível
+ * cadastrar ou editar as tabelas por ali". O cadastro/edição agora mora na
+ * ficha exclusiva do contrato (`Pages/Admin/TabelaEmpresa.jsx`, rota
+ * `admin.contratos.tabela.show`) — este componente só aponta para lá. As
+ * rotas de gravação antigas do fechamento continuam vivas no backend
  * (rollback + suíte das Fases 137/138), só sem UI daqui.
  *
  * Quatro estados possíveis por empresa (`empresa.tabela_origem`), na mesma
@@ -157,8 +157,7 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                                 <span className="inline-block text-[12px] font-semibold px-2 py-0.5 rounded-full bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20">
                                     Tabela deste grupo
                                 </span>
-                                <TabelaProgressivaFaixas
-                                    faixas={grupoAplicado.faixas}
+                                <TabelaProgressivaFaixas faixas={grupoAplicado.faixas}
                                     faixaOrdemAtual={destaqueGrupo.ordem}
                                     notaRodape={destaqueGrupo.nota}
                                 />
@@ -189,8 +188,7 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                         </p>
 
                         {servicoAplicado && (
-                            <TabelaProgressivaFaixas
-                                faixas={servicoAplicado.faixas}
+                            <TabelaProgressivaFaixas faixas={servicoAplicado.faixas}
                                 faixaOrdemAtual={destaqueServico.ordem}
                                 notaRodape={destaqueServico.nota}
                             />
@@ -211,8 +209,7 @@ export default function TabelaFaixasSection({ empresa, faixasPorServico = [], fa
                         </p>
 
                         {temTabelaPropriaEmpresa ? (
-                            <TabelaProgressivaFaixas
-                                faixas={empresa.tabela_faixas}
+                            <TabelaProgressivaFaixas faixas={empresa.tabela_faixas}
                                 faixaOrdemAtual={destaquePropria.ordem}
                                 notaRodape={destaquePropria.nota}
                             />

@@ -185,13 +185,23 @@ class Phase138FaixasGrupoCrudTest extends TestCase
 
     // ═══ (f) — trava de arquivo (regressão silenciosa de UI) ═════════════
 
+    // ⚠️ RETARGET (Fase 142 Plano 04, D-04): esta trava exigia a rota
+    // `admin.financeiro.faixas.grupo` dentro do arquivo porque o bloco de
+    // grupo salvava a própria tabela ali. Desde a Fase 142 o fechamento
+    // parou de gravar tabela nenhuma — o bloco de grupo agora LEVA para a
+    // ficha exclusiva no contrato (`admin.contratos.tabela.show`) em vez de
+    // salvar no próprio accordion. A intenção original (o bloco de grupo
+    // não pode ficar sem caminho nenhum de cadastro) continua de pé, só
+    // que o caminho mudou de "salvar aqui" para "editar lá". A rota antiga
+    // `admin.financeiro.faixas.grupo` continua viva no backend (CRUD HTTP
+    // testado no resto desta suíte, sem nenhuma alteração) — só sem UI.
     #[Test]
-    public function tabela_faixas_section_jsx_tem_a_frase_de_heranca_e_a_rota_nova(): void
+    public function tabela_faixas_section_jsx_tem_a_frase_de_heranca_e_o_caminho_do_cadastro(): void
     {
         $conteudo = file_get_contents(resource_path('js/Pages/Admin/Financeiro/TabelaFaixasSection.jsx'));
 
         $this->assertStringContainsString('tabela_herdada_de_nome', $conteudo, 'Sem essa chave a tela não nomeia de qual empresa a tabela do grupo foi herdada.');
-        $this->assertStringContainsString('admin.financeiro.faixas.grupo', $conteudo, 'Sem essa rota o bloco de grupo não tem para onde salvar.');
+        $this->assertStringContainsString('admin.contratos.tabela.show', $conteudo, 'Sem essa rota o bloco de grupo não tem para onde levar quem quer cadastrar.');
 
         // Copy sem jargão interno — "âncora" é termo de código, nunca de tela.
         $this->assertStringNotContainsString('âncora', $conteudo);
