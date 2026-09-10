@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 139-06-PLAN.md
-last_updated: "2026-09-09T20:37:21.711Z"
-last_activity: 2026-09-09
+stopped_at: Completed 139-07-PLAN.md
+last_updated: "2026-09-10T00:00:00.000Z"
+last_activity: 2026-09-10
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 30
-  completed_plans: 26
-  percent: 87
+  completed_plans: 27
+  percent: 90
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -62,6 +62,15 @@ progress:
 > Session Continuity em vez de empilhar): a entrada da 139-05 foi substituída pela da 139-06 em vez
 > de ficar abaixo dela — restaurada à mão logo abaixo da nova entrada. Sexta vez que `percent` é
 > corrompido pelo mesmo comando; quarta vez que a mesma linha solta é atingida junto.
+> **Fechamento do 139-07 (2026-09-10) — nenhum handler `state.*`/`roadmap.*` foi executado.**
+> Depois de seis reincidências seguidas do mesmo dano, este fechamento editou `STATE.md` e
+> `ROADMAP.md` **à mão**: frontmatter (`stopped_at`, `last_updated`, `last_activity`,
+> `completed_plans` 26→27, `percent` `round(27/30*100)`=`90`), `Plan: 7 of 10` → `8 of 10`,
+> uma linha em Performance Metrics, quatro em Decisions, uma entrada empilhada no topo de Session
+> Continuity, e dois pontos no ROADMAP. `git diff --numstat` conferido ANTES do commit: nenhuma
+> linha solta de outra fase tocada, a anotação `10 planos em 9 waves` intacta, e a pilha do
+> Session Continuity empilhada em vez de sobrescrita. Custo: ~2 min. É mais barato que auditar o
+> estrago do handler, e não há sétima reincidência para registrar.
 
 # Project State
 
@@ -84,7 +93,7 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 ## Current Position
 
 Phase: 139 (checklist-administrativo-trava-de-finaliza-o-v23-0) — EXECUTING
-Plan: 7 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
+Plan: 8 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
 (baseline 137/138 100% verde — 123 testes, 444 assertions, `139-BASELINE-TESTES.md`;
 `config('services.adman.register_url')` publicada com o link fixo do Adman, D-04, provada por
 `tests/Unit/Phase139/AdmanRegisterUrlConfigTest.php`; `REQUIREMENTS-v23.md` registra as exceções
@@ -842,6 +851,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 139 P04 | 25min | 3 tasks | 8 files |
 | Phase 139 P05 | 35min | 3 tasks | 4 files |
 | Phase 139 P06 | 25min | 2 tasks | 3 files |
+| Phase 139 P07 | 35min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1606,6 +1616,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-10T00:00:00.000Z
+Stopped at: Completed 139-07-PLAN.md — `ChecklistEtapaSincronizadorService` (a régua da D-15) com Task 1 retomada de sessão anterior e Task 2 provada e commitada nesta (commits `2f44342d`, `3dd5718`); suíte da fase 68/68, regressão 137/138 idêntica à baseline (123/444)
 Last session: 2026-09-09T20:36:55.645Z
 Stopped at: Completed 139-06-PLAN.md
 Last session: 2026-09-09T20:09:24.038Z
@@ -1759,3 +1771,7 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 139]: 139-06: marketplaceDestino() desempata is_primary duplicado por orderBy(id) (menor id vence) e loga warning; Company::primaryMarketplace() nao e alterado, e compartilhado por outros modulos (D-12)
 - [Phase 139]: 139-06: finalizar() so chama EtapaTransicaoService::transicionar() — nenhum update([etapa =>]) direto neste arquivo, comprovado por grep de auditoria (ADMIN-06)
 - [Phase 139]: 139-06: FinalizarEntradaAdministrativaService nao conhece a camada de sincronizacao de etapa do plano 139-07 — grafo de injecao acíclico preservado por construcao
+- [Phase 139]: 139-07: D-15 implementada — 1→2 quando progresso feitos>=1; 2→3 quando exige_contrato e o item contrato_enviado esta concluido; 2/3→4 quando podeFinalizar permitido. Toda transicao por EtapaTransicaoService::transicionar(), nenhuma escrita direta em companies.etapa
+- [Phase 139]: 139-07: o salto 2→4 da empresa isenta (D-07) sai da ORDEM de checagem em proximoDestino() — a etapa 4 e avaliada ANTES do avanco 2→3 — e nao de um ramo especial; a tabela TRANSICOES_PERMITIDAS da Fase 137 ja previa a aresta
+- [Phase 139]: 139-07: o sincronizador so AVANCA — desmarcar item na etapa 4 nao devolve a empresa a 3. Reversibilidade e Deferred no CONTEXT.md; motivo automatico de retrocesso escreveria no historico uma decisao que ninguem tomou
+- [Phase 139]: 139-07: grafo de injecao one-way defendido em RUNTIME e nao so por grep — o teste resolve os tres servicos pelo container e falha nomeando CircularDependencyException, regressao que nao aparece em php -l e derruba com 500 toda rota que type-hinte qualquer um dos tres
