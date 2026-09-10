@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { Badge } from '@/Components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
-import { router } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect } from 'react';
 import { ListChecks, Search, Webhook, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
@@ -82,11 +82,16 @@ function ContratoBadge({ badge }) {
  * Comercial/Entrada.jsx — Fase 138 Plano 08 (COMERC-02, D-01/D-02/D-06/D-11).
  *
  * Módulo Entrada dentro da Área Comercial: lista as empresas em fluxo de
- * entrada (etapas 1 a 4 do §10) com os 8 campos mínimos do §2. É a CASCA
- * (D-06) — o checklist dos 8 itens do módulo (grupo de WhatsApp, e-mail
- * colaborador, link ADMA, Grant, link/conexão ECF, mensagem de boas-vindas,
- * inserir os links, enviar a mensagem) chega na Fase 139. Nenhum controle
- * desta tela finge que esses itens já existem.
+ * entrada (etapas 1 a 4 do §10) com os 8 campos mínimos do §2.
+ *
+ * ### O checklist chegou — e não mora aqui (Fase 139)
+ * Esta tela continua sendo LISTAGEM. O checklist administrativo é da Fase 139,
+ * são **9** itens (a lista do §5, D-01) e não 8 como esta nota dizia antes, e
+ * quem os mostra e opera é a ficha `admin.contratos.show`, alcançada pela ação
+ * "Abrir" de cada linha (D-08). A ficha é ÚNICA para os dois módulos: a rota
+ * aceita `admin.contratos` OU `comercial.entrada` (D-17), e é o próprio
+ * payload dela que recorta a seção Contrato para quem não tem a permissão de
+ * módulo.
  *
  * Componente REAL, nunca re-export puro — anti-padrão medido em
  * `.planning/learnings/painel-polos-status-e-meta.md:83-88`: o bundler
@@ -179,12 +184,13 @@ export default function Entrada({ companies, filters = {}, resumo = {} }) {
                                         <TableHead className="text-[11px] uppercase tracking-wide">Status do contrato</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Pendências</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Etapa</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Ações</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {linhas.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={11} className="text-center py-10">
+                                            <TableCell colSpan={12} className="text-center py-10">
                                                 {filters.q ? (
                                                     <p className="text-[13px] text-white/40">
                                                         Nenhuma empresa encontrada para "{filters.q}".
@@ -251,6 +257,18 @@ export default function Entrada({ companies, filters = {}, resumo = {} }) {
                                             </TableCell>
                                             <TableCell className="text-[13px] text-white/60">
                                                 {c.etapa ? (ETAPA_LABELS[c.etapa] ?? c.etapa) : 'Sem etapa (legado)'}
+                                            </TableCell>
+                                            {/* D-08 — a MESMA ficha que o Administrativo abre pela
+                                                listagem Contrato. Trecho copiado de Admin/Contratos.jsx
+                                                de propósito: uma ficha só, um caminho só. */}
+                                            <TableCell onClick={(e) => e.stopPropagation()}>
+                                                <Link
+                                                    href={route('admin.contratos.show', c.id)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="text-[12px] text-white/50 hover:text-white/80 hover:underline"
+                                                >
+                                                    Abrir
+                                                </Link>
                                             </TableCell>
                                         </TableRow>
                                     ))}
