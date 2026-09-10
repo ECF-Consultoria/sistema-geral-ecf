@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useForm } from '@inertiajs/react';
 import axios from 'axios';
-import { ArrowDown, CheckCircle2, Copy, Zap } from 'lucide-react';
+import { CheckCircle2, Copy, FileText, Zap } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -151,20 +151,17 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, 
     };
 
     /**
-     * Item 2 — leva ao bloco que de fato ENVIA o contrato (Fase 157).
+     * Itens do grupo Contrato — leva à LISTA de contratos da empresa, onde se
+     * revisa o envelope: status, signatários e as ações de reenviar, cancelar
+     * ou refazer (Fase 157).
      *
-     * Quem envia é o Administrativo (§3 do PDF: "Revisar o contrato; enviar ao
-     * cliente; acompanhar a assinatura"), e a ação vive no bloco de geração,
-     * mais abaixo na mesma ficha. Sem este atalho, quem lê de cima para baixo
-     * encontrava "Contrato enviado" pendente antes de saber que existe um botão
-     * para resolvê-lo — os outros itens não têm esse problema porque a ação
-     * mora na própria linha.
-     *
-     * Rola em vez de duplicar o bloco: motivo de bloqueio, dados faltantes e
-     * congelamento de emissão continuam num lugar só.
+     * ⚠️ O checklist **não gera** contrato. A geração fica exatamente como está
+     * no sistema hoje, no bloco próprio construído na Fase 131 — este atalho só
+     * dá ACESSO ao que já existe. Decisão do usuário: manter o fluxo de contrato
+     * como está e encaixar o fluxo de entrada em volta dele.
      */
-    const irParaGeracaoDoContrato = () => {
-        document.getElementById('gerar-contrato')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const verContrato = () => {
+        document.getElementById('contratos-da-empresa')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     const feitoEm = dataCurta(item.feito_em);
@@ -198,12 +195,12 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, 
                         />
                     )}
 
-                    {/* Item 2 — quem envia o contrato é o Administrativo (§3).
-                        O botão leva ao bloco de geração, na mesma ficha. */}
-                    {item.chave === 'contrato_enviado' && !concluido && (
-                        <Button size="sm" variant="outline" onClick={irParaGeracaoDoContrato}>
-                            <ArrowDown size={13} className="mr-1.5" />
-                            Ir para geração do contrato
+                    {/* Grupo Contrato — acesso ao contrato para revisar. NÃO
+                        gera: a geração fica no bloco próprio, como já era. */}
+                    {item.grupo === 'contrato' && (
+                        <Button size="sm" variant="outline" onClick={verContrato}>
+                            <FileText size={13} className="mr-1.5" />
+                            Ver contrato
                         </Button>
                     )}
 

@@ -765,6 +765,13 @@ export default function ContratoDetalhe({
                         </Card>
                     )}
 
+                    {/* Âncora dos itens de Contrato do checklist (Fase 157).
+                        O checklist NÃO gera contrato — a geração fica como o
+                        outro dev construiu, no bloco próprio. Daqui o checklist
+                        só dá ACESSO ao contrato para revisar: envelope, status,
+                        signatários e as ações de reenviar/cancelar/refazer. */}
+                    <div id="contratos-da-empresa" className="scroll-mt-24" />
+
                     {/* Lista dos contratos desta empresa. */}
                     <Card>
                         <CardContent className="p-0">
