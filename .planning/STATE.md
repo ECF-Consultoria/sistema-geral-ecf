@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: 139-10 Task 1 concluida — Tasks 2 e 3 sao gate humano BLOQUEANTE
-last_updated: "2026-09-10T03:00:00.000Z"
+stopped_at: Completed 139-10-PLAN.md — FASE 139 COMPLETA (10/10)
+last_updated: "2026-09-10T04:00:00.000Z"
 last_activity: 2026-09-10
 progress:
   total_phases: 7
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 30
-  completed_plans: 29
-  percent: 97
+  completed_plans: 30
+  percent: 100
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -92,8 +92,8 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 
 ## Current Position
 
-Phase: 139 (checklist-administrativo-trava-de-finaliza-o-v23-0) — EXECUTING
-Plan: 10 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
+Phase: 139 (checklist-administrativo-trava-de-finaliza-o-v23-0) — **COMPLETA (10/10)**
+Plan: 10 of 10 — **TODOS EXECUTADOS; os 2 gates humanos do 139-10 foram APROVADOS em 2026-09-10.** Execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
 (baseline 137/138 100% verde — 123 testes, 444 assertions, `139-BASELINE-TESTES.md`;
 `config('services.adman.register_url')` publicada com o link fixo do Adman, D-04, provada por
 `tests/Unit/Phase139/AdmanRegisterUrlConfigTest.php`; `REQUIREMENTS-v23.md` registra as exceções
@@ -854,6 +854,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 139 P07 | 35min | 2 tasks | 2 files |
 | Phase 139 P08 | 50min | 3 tasks | 4 files |
 | Phase 139 P09 | 40min | 3 tasks | 4 files |
+| Phase 139 P10 | 45min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1618,6 +1619,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-10T04:00:00.000Z
+Stopped at: Completed 139-10-PLAN.md — **FASE 139 COMPLETA (10/10)**. Regressao final igual a baseline (`5d839ece`); os 2 gates humanos APROVADOS com evidencia por reconsulta ao banco: a empresa 418 registrou os 4 degraus da D-15 em `company_etapa_transicoes` (1→2 por marcacao na tela, 2→3 e 3→4 por ABERTURA da ficha observando evento externo, 4→5 pelo clique no FINALIZAR) e terminou em `aguardando_distribuicao`, fora da listagem Entrada e dentro da Contrato. ADMIN-01..06 marcados em `REQUIREMENTS-v23.md`. **NADA DEPLOYADO** — 1 migration nova fora de producao.
 Last session: 2026-09-10T03:00:00.000Z
 Stopped at: 139-10 Task 1 concluida (`5d839ece`) — regressao final verde e igual a baseline; `139-REGRESSAO-FINAL.md` gravado. **Tasks 2 e 3 sao `checkpoint:human-verify` com `gate="blocking"` e a fase PARA aqui.** Ambiente preparado no localhost: servidor em `http://127.0.0.1:8139`, empresa com contrato id=418, empresa isenta id=419, usuario so-`comercial.entrada` `entrada139@ecfconsultoria.com.br` / `Entrada@139` (id=50, setor `conferencia-entrada-139`). NADA DEPLOYADO.
 Last session: 2026-09-10T02:00:00.000Z
@@ -1794,3 +1797,7 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 139]: 139-09: ProgressoBarra reusada por IMPORT direto entre modulos (o backend devolve o mesmo contrato {feitos,total,percentual} justamente para isso) — duas barras parecidas eventualmente arredondam diferente
 - [Phase 139]: 139-09: o checklist vem ACIMA do bloco de geracao de contrato na ficha — decisao desta fase: o checklist e o novo ponto focal e gerar contrato virou acao pontual dentro de um dos 9 itens
 - [Phase 139]: 139-09: docblock que enuncia uma proibicao NAO pode citar o identificador proibido em prosa — o grep de auditoria do proprio plano nao distingue comentario de codigo. Terceira reincidencia na fase (139-02/03/04)
+- [Phase 139]: 139-10: gate humano conferido contra o BANCO, nunca contra o relato da tela. O usuario reportou a mensagem "A empresa ja esta na etapa aguardando_distribuicao" como falha; o historico mostrou que a transicao ja tinha acontecido e a mensagem vinha de um SEGUNDO clique — a trava de duplicidade funcionando. Neste sistema texto de erro aparece no caminho FELIZ, e so o historico distingue "falhou" de "ja deu certo"
+- [Phase 139]: 139-10: o ramo D-16 (contrato_assinado fechando por ContratoLiberacao, sem envelope assinado) NAO foi conferido visualmente — o usuario nao tinha dado real de liberacao e preencher motivo inventado gravaria justificativa falsa. Segue coberto so por ContratoAssinadoPorLiberacaoTest. Lacuna de VERIFICACAO declarada, nao de implementacao
+- [Phase 139]: 139-10: ASSET_URL fixo no .env do worktree (caminho do Apache) faz `artisan serve` servir HTML apontando para a porta 80; com o Apache desligado a tela vem BRANCA sem erro nenhum. Correcao: ASSET_URL VAZIO, que faz o Laravel derivar do request e funciona nos dois. Backup em .env.bak-139
+- [Phase 139]: 139-10: fixtures do gate MANTIDAS no MariaDB local e documentadas com o passo a passo de remocao — empresas 418/419 e usuario 50 (`entrada139@ecfconsultoria.com.br`, setor `conferencia-entrada-139`). Escrito porque o usuario de review da Shopee (users.id=30) segue em PRODUCAO desde 16/07 por ninguem ter anotado
