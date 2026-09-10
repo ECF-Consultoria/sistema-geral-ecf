@@ -155,6 +155,32 @@ class DistribuicaoServiceTest extends TestCase
         $this->assertSame(['AAA Na fila'], $fila);
     }
 
+    /**
+     * Regressão medida em 2026-09-10: duas empresas de teste sem serviço ativo
+     * apareciam na fila e só falhavam DEPOIS de o usuário escolher as duas
+     * pessoas ("A empresa não tem serviço ativo"). Listar o que não dá para
+     * fazer é pior que não listar — `distribuir()` já recusava, mas a recusa
+     * chegava tarde demais.
+     */
+    public function test_empresa_sem_servico_ativo_nao_entra_na_fila(): void
+    {
+        $servico = $this->servico('Publicação 154', 'publicacao');
+
+        $comServico = $this->empresa(['name' => 'AAA Com servico']);
+        $this->vincularServico($comServico, $servico);
+
+        $semServico = $this->empresa(['name' => 'BBB Sem servico']);
+        // De propósito: nenhum ContratoServico.
+
+        $comServicoInativo = $this->empresa(['name' => 'CCC Servico inativo']);
+        $vinculo = $this->vincularServico($comServicoInativo, $servico);
+        ContratoServico::withoutEvents(fn () => $vinculo->update(['ativo' => false]));
+
+        $fila = $this->svc()->fila()->pluck('name')->all();
+
+        $this->assertSame(['AAA Com servico'], $fila);
+    }
+
     public function test_empresa_inativa_nao_entra_na_fila(): void
     {
         $servico = $this->servico('Publicação 154', 'publicacao');

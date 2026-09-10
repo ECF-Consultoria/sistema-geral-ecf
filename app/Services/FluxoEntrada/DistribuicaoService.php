@@ -90,6 +90,13 @@ class DistribuicaoService
             ->whereDoesntHave('users', function ($q) {
                 $q->whereIn('company_users.role', [self::ROLE_ANALISTA, self::ROLE_ESTRATEGISTA]);
             })
+            // ⚠️ Só entra na fila quem TEM serviço ativo. O vínculo de
+            // responsável é por serviço (D-A), então empresa sem nenhum não tem
+            // onde ser vinculada — `distribuir()` a recusa. Sem esta condição
+            // ela aparecia na fila só para falhar no clique, com a mensagem
+            // "não tem serviço ativo" depois de o usuário escolher as duas
+            // pessoas. Listar o que não dá para fazer é pior que não listar.
+            ->whereHas('contratosServico', fn ($q) => $q->where('ativo', true))
             ->with('contratosServico.servico')
             ->orderBy('name')
             ->get();
