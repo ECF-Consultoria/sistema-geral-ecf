@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\ContratoTabelaProposta;
 use App\Models\EmpresaFaixaFaturamento;
 use App\Services\Fechamento\FechamentoFaixaResolver;
+use App\Services\Fechamento\GravarTabelaEmpresaService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -119,7 +120,7 @@ class TabelasContratoController extends Controller
      * é obrigatório e existente nesta requisição, nunca herdado silenciosamente do que a leitura
      * automática chutou.
      */
-    public function confirmar(Request $request, ContratoTabelaProposta $proposta): RedirectResponse
+    public function confirmar(Request $request, ContratoTabelaProposta $proposta, GravarTabelaEmpresaService $servico): RedirectResponse
     {
         $data = $request->validate([
             'company_id' => ['required', 'integer', 'exists:companies,id'],
@@ -132,25 +133,22 @@ class TabelasContratoController extends Controller
 
         $avisoCnpj = null;
 
-        DB::transaction(function () use ($data, $proposta, $request, &$avisoCnpj) {
+        DB::transaction(function () use ($data, $proposta, $request, $servico, &$avisoCnpj) {
             $company = Company::findOrFail($data['company_id']);
 
             // ── All-or-nothing (D-13 da Fase 137) ──────────────────────────
+            // Fase 142 (142-01) — escrita centralizada: a mesma porta única de
+            // `FechamentoController::salvarFaixasEmpresa()`, com origem 'contrato' — confirmação
+            // humana da leitura do Clicksign, que sobrescreve qualquer presunção anterior.
             if ($proposta->tipo_cobranca === ContratoTabelaProposta::TIPO_TABELA) {
-                EmpresaFaixaFaturamento::where('company_id', $company->id)->delete();
-
-                foreach (($proposta->faixas ?? []) as $faixa) {
-                    EmpresaFaixaFaturamento::create([
-                        'company_id'      => $company->id,
-                        'ordem'           => $faixa['ordem'],
-                        'limite_superior' => $faixa['limite_superior'] ?? null,
-                        'valor'           => $faixa['valor'],
-                        'valor_e_piso'    => $faixa['valor_e_piso'] ?? false,
-                        // Fase 141 (D-04/D-05) — confirmação humana da leitura do contrato do
-                        // Clicksign; sobrescreve qualquer presunção anterior.
-                        'origem'          => EmpresaFaixaFaturamento::ORIGEM_CONTRATO,
-                    ]);
-                }
+                $servico->gravar(
+                    $company,
+                    $proposta->faixas ?? [],
+                    EmpresaFaixaFaturamento::ORIGEM_CONTRATO,
+                    null,
+                    $request->user(),
+                    'contrato_leitura',
+                );
             }
             // D-03 — valor_fixo/indefinido/ilegivel NUNCA viram faixa. É exatamente o erro que
             // esta fase existe para corrigir: pôr em faixa quem tem contrato de valor fixo.

@@ -9,6 +9,7 @@ use App\Models\EmpresaFaixaFaturamento;
 use App\Models\GrupoFaixaFaturamento;
 use App\Models\Servico;
 use App\Models\ServicoFaixaFaturamento;
+use App\Services\Fechamento\GravarTabelaEmpresaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
@@ -83,24 +84,19 @@ class FechamentoController extends Controller
      * já basta para `FechamentoFaixaResolver::paraEmpresa()` devolver
      * `origem = 'propria'` e ignorar a tabela do serviço por inteiro.
      */
-    public function salvarFaixasEmpresa(SalvarFaixasFaturamentoRequest $request, Company $company)
+    // Fase 142 (142-01) — escrita centralizada: as duas telas que gravam
+    // `empresa_faixas_faturamento` (esta e `TabelasContratoController::confirmar()`) passam
+    // pela mesma porta única, com precedência e trilha de auditoria numa só implementação.
+    public function salvarFaixasEmpresa(SalvarFaixasFaturamentoRequest $request, Company $company, GravarTabelaEmpresaService $servico)
     {
-        DB::transaction(function () use ($request, $company) {
-            EmpresaFaixaFaturamento::where('company_id', $company->id)->delete();
-
-            foreach ($request->validated('faixas') as $faixa) {
-                EmpresaFaixaFaturamento::create([
-                    'company_id'      => $company->id,
-                    'ordem'           => $faixa['ordem'],
-                    'limite_superior' => $faixa['limite_superior'] ?? null,
-                    'valor'           => $faixa['valor'],
-                    'valor_e_piso'    => $faixa['valor_e_piso'] ?? false,
-                    // Fase 141 (D-04) — cadastro manual pelo sistema; gravado explicitamente (não
-                    // confiar no default do banco) para quem lê o código ver a decisão.
-                    'origem'          => EmpresaFaixaFaturamento::ORIGEM_MANUAL,
-                ]);
-            }
-        });
+        $servico->gravar(
+            $company,
+            $request->validated('faixas'),
+            EmpresaFaixaFaturamento::ORIGEM_MANUAL,
+            null,
+            $request->user(),
+            'fechamento',
+        );
 
         return back()->with('success', 'Tabela própria da empresa salva.');
     }
@@ -111,11 +107,11 @@ class FechamentoController extends Controller
      * UI-SPEC). Sem FormRequest (não há payload a validar) — guard próprio
      * via `abort_unless`.
      */
-    public function removerFaixasEmpresa(Request $request, Company $company)
+    public function removerFaixasEmpresa(Request $request, Company $company, GravarTabelaEmpresaService $servico)
     {
         abort_unless($request->user()?->isAdmin() === true, 403);
 
-        EmpresaFaixaFaturamento::where('company_id', $company->id)->delete();
+        $servico->remover($company, $request->user(), 'fechamento');
 
         return back()->with('success', 'Empresa voltou a usar a tabela do serviço.');
     }
