@@ -2,6 +2,7 @@
 
 use Inertia\Inertia;
 use App\Http\Controllers\BoasVindasTemplateController;
+use App\Http\Controllers\CoordenacaoDistribuicaoController;
 use App\Http\Controllers\ContratoAdminController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
@@ -1502,6 +1503,17 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos,comercial.ent
     Route::post('/empresa/{company}/checklist/conexao-ecf',      [ContratoAdminController::class, 'gerarConexaoEcfChecklist'])->name('checklist.conexao-ecf');
     Route::post('/empresa/{company}/finalizar-entrada',          [ContratoAdminController::class, 'finalizarEntradaAdministrativa'])->name('finalizar-entrada');
 });
+
+// ─── Coordenação · Distribuição (Fase 154, DISTRIB-01..04) ───────────────────
+// Chave PRÓPRIA `coordenacao.distribuir` (D-G): distribuir é ato de Coordenação,
+// e reusar admin.contratos/comercial.entrada daria à Entrada o poder de escolher
+// o time — a separação que o §10 do PDF estabelece. FORA de role:admin pelo mesmo
+// motivo das outras: liberável por setor sem deploy.
+Route::middleware(['auth', 'verified', 'permission:coordenacao.distribuir'])
+    ->prefix('coordenacao/distribuicao')->name('coordenacao.distribuicao.')->group(function () {
+        Route::get('/', [CoordenacaoDistribuicaoController::class, 'index'])->name('index');
+        Route::post('/{company}', [CoordenacaoDistribuicaoController::class, 'distribuir'])->name('distribuir');
+    });
 
 // ─── Boas-vindas: textos por serviço (Fase 153, COMUNIC-03) ──────────────────
 // Mesma permissão em OR da ficha (D-17 da Fase 152), pelo mesmo motivo: quem
