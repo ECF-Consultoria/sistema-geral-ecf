@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { IMaskInput } from 'react-imask';
 import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, RotateCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
+import CardChecklistAdministrativo from '@/Components/ChecklistAdministrativo/CardChecklistAdministrativo';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
 import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO, MONTAGEM_TRAVADA_AVISO } from '@/lib/contratoStatus';
 
@@ -57,6 +58,13 @@ export default function ContratoDetalhe({
     painel_clicksign_url = null,
     motivos_manuais = {},
     contratos = [],
+    // Fase 139 Plano 09 — props do checklist administrativo. Defaults
+    // defensivos: a página não pode quebrar se for renderizada por um caminho
+    // que ainda não envie estas chaves.
+    checklist = null,
+    pode_ver_contrato = false,
+    pode_finalizar = { permitido: false, requisito_faltante: null },
+    adman_register_url = null,
 }) {
     const { flash } = usePage().props;
 
@@ -331,10 +339,27 @@ export default function ContratoDetalhe({
                         </div>
                     )}
 
-                    {/* Ponto focal da tela (131-UI-SPEC.md): quando há pendência, o
-                        bloco de "falta completar" + botão desabilitado, adjacentes
-                        (D-03). Quando não há, o botão ativo sozinho — nunca os dois
-                        ao mesmo tempo. */}
+                    {/* Fase 139 Plano 09 (D-08) — o checklist vem ACIMA do bloco de
+                        geração de contrato, e a ordem é decisão desta fase: o
+                        checklist é o novo ponto focal da ficha (é ele que a pessoa
+                        vem conferir antes de finalizar a entrada administrativa), e
+                        gerar contrato passou a ser uma ação pontual dentro de UM dos
+                        seus nove itens. O bloco de geração abaixo continua
+                        exatamente como estava — nada foi removido nem reordenado. */}
+                    {checklist && (
+                        <CardChecklistAdministrativo
+                            checklist={checklist}
+                            companyId={company.id}
+                            podeVerContrato={pode_ver_contrato}
+                            podeFinalizar={pode_finalizar}
+                            admanRegisterUrl={adman_register_url}
+                        />
+                    )}
+
+                    {/* Ponto focal ORIGINAL do bloco de contrato (131-UI-SPEC.md):
+                        quando há pendência, o bloco de "falta completar" + botão
+                        desabilitado, adjacentes (D-03). Quando não há, o botão ativo
+                        sozinho — nunca os dois ao mesmo tempo. */}
                     {!pode_gerar_contrato && motivo_bloqueio === 'emissao_congelada' ? (
                         // Fase 132 Plano 01 (D-07) — bloco PRÓPRIO: com a
                         // emissão congelada, ninguém gera contrato para
