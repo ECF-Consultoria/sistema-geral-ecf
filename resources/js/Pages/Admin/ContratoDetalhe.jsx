@@ -57,6 +57,9 @@ export default function ContratoDetalhe({
     painel_clicksign_url = null,
     motivos_manuais = {},
     contratos = [],
+    // Plano 142-02 (D-03) — resumo da tabela de cobrança, alimenta o bloco novo abaixo do
+    // "Cadastro da empresa". `null` degrada para o texto de "sem tabela ainda".
+    tabela_resumo = null,
 }) {
     const { flash } = usePage().props;
 
@@ -101,6 +104,54 @@ export default function ContratoDetalhe({
     const gerarContrato = () => {
         gerarForm.post(route('admin.contratos.gerar', company.id), { preserveScroll: true });
     };
+
+    // Plano 142-02 (D-03) — texto do bloco "Tabela de cobrança", em português comum, sem jargão
+    // (proibidos: snapshot, competência, reconsolidação, rollup, âncora, origem, faixa piso,
+    // presumida). `tabela_resumo` vem pronto do backend — a tela não recalcula nada, só escolhe
+    // qual frase mostrar.
+    const tabelaCobranca = (() => {
+        if (!tabela_resumo || !tabela_resumo.tem_tabela) {
+            return {
+                texto: 'Esta empresa ainda não tem tabela de cobrança cadastrada.',
+                rotuloBotao: 'Cadastrar tabela de cobrança',
+            };
+        }
+
+        const n = tabela_resumo.quantidade_faixas;
+        const faixaPalavra = n === 1 ? 'faixa' : 'faixas';
+
+        // Quem manda é a tabela do GRUPO — vence sobre a da empresa (Fase 138). A quantidade já
+        // é a do grupo (vem do resolver); a procedência da tabela própria da empresa não importa
+        // aqui, porque não é ela quem está cobrando.
+        if (tabela_resumo.origem_aplicada === 'grupo') {
+            return {
+                texto: `${n} ${faixaPalavra}.`,
+                linhaExtra: 'Quem manda aqui é a tabela do grupo.',
+                rotuloBotao: 'Ver tabela de cobrança',
+            };
+        }
+
+        if (tabela_resumo.procedencia === 'contrato') {
+            return {
+                texto: `${n} ${faixaPalavra}, conferidas pelo contrato assinado.`,
+                rotuloBotao: 'Ver tabela de cobrança',
+            };
+        }
+
+        if (tabela_resumo.procedencia === 'presumida_servico') {
+            return {
+                texto: `${n} ${faixaPalavra} — ninguém conferiu esta tabela contra o contrato ainda.`,
+                rotuloBotao: 'Conferir tabela de cobrança',
+            };
+        }
+
+        // Cadastro manual — também o fallback padrão quando há tabela aplicada sem uma
+        // procedência própria reconhecida.
+        return {
+            texto: `${n} ${faixaPalavra}, cadastradas à mão no sistema.`,
+            rotuloBotao: 'Ver tabela de cobrança',
+        };
+    })();
 
     // Texto ao lado do botão desabilitado quando NÃO é falta de dado mínimo
     // (esses já aparecem na lista de `faltantes`) — sem jargão.
@@ -620,6 +671,25 @@ export default function ContratoDetalhe({
                                     {cadastroForm.processing ? 'Salvando…' : 'Salvar cadastro'}
                                 </Button>
                             </form>
+                        </CardContent>
+                    </Card>
+
+                    {/* Plano 142-02 (D-03) — bloco novo: botão que leva à ficha exclusiva da
+                        tabela de cobrança desta empresa, dentro do módulo de contratos (pedido
+                        do usuário: "acho que no contrato fica mais adequado"). Texto vem pronto
+                        de `tabela_resumo` — a tela não recalcula nada. */}
+                    <Card>
+                        <CardContent className="p-4 space-y-2">
+                            <h2 className="text-white/85 text-[15px] font-semibold">Tabela de cobrança</h2>
+                            <p className="text-[13px] text-white/60">{tabelaCobranca.texto}</p>
+                            {tabelaCobranca.linhaExtra && (
+                                <p className="text-[13px] text-white/50">{tabelaCobranca.linhaExtra}</p>
+                            )}
+                            <Link href={route('admin.contratos.tabela.show', company.id)}>
+                                <Button type="button" variant="outline">
+                                    {tabelaCobranca.rotuloBotao}
+                                </Button>
+                            </Link>
                         </CardContent>
                     </Card>
 

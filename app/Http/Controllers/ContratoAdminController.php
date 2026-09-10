@@ -8,6 +8,7 @@ use App\Models\ContratoAssinatura;
 use App\Models\ContratoAssinaturaSignatario;
 use App\Models\ContratoLiberacao;
 use App\Models\ContratoServico;
+use App\Models\EmpresaFaixaFaturamento;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Clicksign\ClicksignClient;
@@ -17,6 +18,7 @@ use App\Services\Contratos\ContratoDadosMinimosService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\ContratoPdfService;
+use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -424,6 +426,9 @@ class ContratoAdminController extends Controller
         // que mostra na tela o texto EFETIVO atual (override ou composto)
         // do campo editável de {{plano_parcelas}}.
         ContratoPdfService $pdfDados,
+        // Plano 142-02 (D-03) — só para `tabela_resumo` abaixo, alimentar o botão novo que leva
+        // até a ficha da tabela de cobrança sem a tela recalcular nada.
+        FechamentoFaixaResolver $resolverFaixa,
     ): \Inertia\Response {
         $company->loadMissing('contratosServico.servico');
 
@@ -489,6 +494,21 @@ class ContratoAdminController extends Controller
         // mesmo serviço já é, por definição, uma tentativa seguinte.
         $idMaisAntigoPorServico = $contratos->groupBy('servico_id')->map(fn ($grupo) => $grupo->min('id'));
 
+        // Plano 142-02 (D-03) — resumo pequeno para o botão "Tabela de cobrança" saber o que
+        // dizer sem a tela recalcular nada. `origem_aplicada` é quem cobra HOJE (grupo vence
+        // sobre a própria, Fase 138); `procedencia` é da tabela PRÓPRIA da empresa
+        // especificamente (manual/contrato/presumida_servico/null) — as duas podem divergir
+        // quando quem cobra é o grupo.
+        $tabelaAplicada = $resolverFaixa->paraEmpresa($company);
+        $procedenciaPropria = EmpresaFaixaFaturamento::where('company_id', $company->id)->value('origem');
+
+        $tabelaResumo = [
+            'tem_tabela'        => $tabelaAplicada !== null,
+            'quantidade_faixas' => $tabelaAplicada !== null ? $tabelaAplicada['faixas']->count() : 0,
+            'procedencia'       => $procedenciaPropria,
+            'origem_aplicada'   => $tabelaAplicada['origem'] ?? null,
+        ];
+
         return Inertia::render('Admin/ContratoDetalhe', [
             'company' => [
                 'id'                => $company->id,
@@ -547,6 +567,9 @@ class ContratoAdminController extends Controller
             // desta tela para alimentar o select do modal "Liberar
             // manualmente".
             'motivos_manuais' => ContratoLiberacao::MOTIVOS_MANUAIS_LABELS,
+            // Plano 142-02 (D-03) — alimenta o bloco "Tabela de cobrança" e o botão que leva à
+            // ficha exclusiva (`admin.contratos.tabela.show`).
+            'tabela_resumo' => $tabelaResumo,
             'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico, $pdfDados) {
                 return [
                     'id'                                => $c->id,
