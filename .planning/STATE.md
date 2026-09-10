@@ -921,6 +921,36 @@ testes / 2729 asserções / 0 falhas** (baseline pré-142 informado 553/2642 —
 (`142-01-SUMMARY.md`). Sem deploy — subagente sem acesso a produção/`.env`/`plink`/`pscp` (trava do
 próprio plano); `artisan migrate` local não rodado (nenhuma migration neste plano).
 
+142-02 concluído (D-03) — rotas, controller e autorização da página exclusiva de cadastro da
+tabela, dentro do módulo `admin.contratos`, mais o botão em `ContratoDetalhe.jsx`. Armadilha
+central do plano (e a razão de existir da Tarefa 3): `admin.contratos` é permissão de SETOR, fora
+de `role:admin` de propósito, mas `SalvarFaixasFaturamentoRequest::authorize()` exige `isAdmin()`
+— apontar a ficha nova para as rotas antigas de `/financeiro/faixas/*` abriria a tela para quem tem
+a permissão e devolveria 403 no botão Salvar. `SalvarFaixasContratoRequest` HERDA a classe-mãe e
+sobrescreve só `authorize()` (`isAdmin() OU hasPermission('admin.contratos')`) — zero linha de
+validação de faixa reescrita. Cinco rotas novas (`admin.contratos.tabela.show/salvar/remover/
+grupo.salvar/grupo.remover`) no MESMO grupo de permissão, nunca `role:admin`; rotas antigas
+`admin.financeiro.faixas.*` intocadas (rollback). `TabelaEmpresaContratoController::show()` monta
+props achatadas (`tabela_empresa`, `procedencia_empresa`, `tabela_grupo`, `tabela_aplicada` via
+`FechamentoFaixaResolver`, `modelos_de_partida`, `leitura_pendente` — link cruzado com a caixa de
+entrada da Fase 140); `salvar()`/`remover()` passam pela porta única `GravarTabelaEmpresaService`
+(142-01), `feito_de='contrato_ficha'`; grupo não passa pela porta única (`GrupoFaixaFaturamento`
+não tem coluna de origem) — lógica replicada de `FechamentoController::salvarFaixasGrupo`, com
+comentário apontando o gêmeo. `ContratoAdminController::show()` ganha `tabela_resumo`
+(`tem_tabela`/`quantidade_faixas`/`procedencia`/`origem_aplicada`); `ContratoDetalhe.jsx` ganha o
+Card "Tabela de cobrança" com texto por estado, sem jargão (`npm run build` ok, sem classe
+Tailwind fora da escala). Testes novos: `Phase142FichaTabelaControllerTest` (9, via `X-Inertia`
+header — `Admin/TabelaEmpresa.jsx` só existe no plano 03, mesmo padrão de
+`Phase58/DashboardShellsBackendTest`) + `Phase142FichaTabelaPermissaoTest` (7, trava a armadilha
+central: permissão de setor abre E salva com a MESMA permissão) = 16 testes / 48 asserções. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Phase142|Quick260909`: **587
+testes / 2777 asserções / 0 falhas** (bate exatamente com +16/+48 sobre o baseline do 142-01, zero
+regressão). Last activity: 2026-09-10 — 142-02 executado (`142-02-SUMMARY.md`). `gsd-sdk query
+state.advance-plan` NÃO foi executado nesta sessão (instrução explícita do plano, por causa do
+incidente relatado no bloco do 142-01 acima) — este parágrafo é a única alteração de `STATE.md`.
+Sem deploy — subagente sem acesso a produção/`.env`/`plink`/`pscp`; `artisan migrate` local não
+rodado (nenhuma migration neste plano).
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
