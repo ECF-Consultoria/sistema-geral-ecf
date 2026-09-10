@@ -45,6 +45,7 @@ export default function PolosEmpresas({
     parcial        = false,
     totais         = { faturamento: 0, meta: 0, pct: 0, ativos: 0 },
     adsLimites     = { teto: 3000, alerta1: 1000, alerta2: 2000 },
+    metricaFaturamento = 'moveis',
     comentarios    = {},
     statusInicial  = null,
     erro           = null,
@@ -188,7 +189,9 @@ export default function PolosEmpresas({
                                 <Th campo="polo">Polo</Th>
                                 <Th campo="fase">Fase</Th>
                                 <Th campo="status">Status</Th>
-                                <Th campo="faturamento" className="text-right">Faturamento</Th>
+                                <Th campo="faturamento" className="text-right">
+                                    {metricaFaturamento === 'gross' ? 'Faturamento' : 'Faturamento (móveis)'}
+                                </Th>
                                 <Th campo="pct">% da meta</Th>
                                 <Th campo="ads">ADS</Th>
                                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Sinais</th>

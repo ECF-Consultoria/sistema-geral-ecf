@@ -104,7 +104,7 @@ class PolosController extends Controller
      *
      * @param  string|null $mesPedido  YYYYMM solicitado (?mes); null/inválido → mês mais recente.
      * @return array  polos, statusDist, meses, mesSelecionado, mesRefLabel, parcial,
-     *                fonteFaturamento, adsLimites, m1, erro
+     *                fonteFaturamento, metricaFaturamento, adsLimites, m1, erro
      */
     public function montarCockpit(?string $mesPedido = null): array
     {
@@ -201,6 +201,9 @@ class PolosController extends Controller
                 'mesRefLabel'      => $mesAtual['label'] ?? null,
                 'parcial'          => $parcial,
                 'fonteFaturamento' => $fonteFaturamento,
+                // 'moveis' | 'gross' — a tela ROTULA o número por aqui. O painel já mostrou
+                // móveis sob o título 'Faturamento total' por 2 meses; não repetir.
+                'metricaFaturamento' => $this->metricaFaturamento(),
                 'adsLimites'       => $adsLimites,
                 // Meta ÚNICA de faturamento do projeto Polos (R$), editável no painel.
                 // NÃO é a soma das metas por empresa (limiar×ativos) — é um alvo global.
@@ -1309,6 +1312,7 @@ class PolosController extends Controller
                     'ativos'      => count($empresas),
                 ],
                 'adsLimites'     => $d['adsLimites'],
+                'metricaFaturamento' => $d['metricaFaturamento'],
                 // Comentarios de performance do mes, agrupados por cust_id. Vem junto com a
                 // pagina (volume pequeno) em vez de um fetch por linha aberta: sem isso, abrir
                 // 20 empresas seriam 20 idas ao servidor para mostrar 3 frases.
@@ -1478,7 +1482,9 @@ class PolosController extends Controller
         $polos      = $this->agregarPorPolo($ativos, $linhasMes, $limiares, $fatMes, $adsMes);
         $statusDist = $this->distribuicaoStatus($ativos, $linhasMes, $limiares, $fatMes);
 
-        return compact('polos', 'statusDist', 'meses', 'mesSel', 'mesAtual', 'parcial', 'adsLimites');
+        $metricaFaturamento = $this->metricaFaturamento();
+
+        return compact('polos', 'statusDist', 'meses', 'mesSel', 'mesAtual', 'parcial', 'adsLimites', 'metricaFaturamento');
     }
 
     /**
@@ -1591,6 +1597,7 @@ class PolosController extends Controller
             'mesRefLabel'      => null,
             'parcial'          => false,
             'fonteFaturamento' => 'csv',
+            'metricaFaturamento' => $this->metricaFaturamento(),
             'adsLimites'       => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
             'metaFaturamento'  => (float) Configuracao::get('polo_meta_faturamento', 3200000),
             'm1'               => ['total' => 0, 'faturando' => 0, 'nao' => 0, 'faturamento' => 0, 'empresas' => [], 'polos' => []],
@@ -1639,45 +1646,73 @@ class PolosController extends Controller
         }
     }
 
+    /** Métrica de faturamento do painel: só Casa/Móveis (raiz MLB1574). */
+    public const METRICA_MOVEIS = 'moveis';
+
+    /** Métrica de faturamento do painel: gross da conta inteira, todas as categorias. */
+    public const METRICA_GROSS = 'gross';
+
     /**
-     * Faturamento GROSS da conta (todas as categorias) do mês, por cust_id normalizado.
+     * Qual métrica alimenta meta, status e totais do painel.
      *
-     * Entre 260707 e 260902 o painel servia `faturamento_moveis` — só a raiz MLB1574,
-     * em netBilling por item. A intenção era não dar meta batida a quem não vende móvel
-     * (JHOLP MIX MAGAZINE é 99% Pet Shop; Primus Haus, 83% Acessórios para Veículos).
-     * Foi revertido por três motivos medidos:
+     * Vive em `Configuracao` (chave `polo_metrica_faturamento`) e NÃO no código porque
+     * já virou duas vezes — 260707 gross→móveis, 260902 móveis→gross, 260910 de volta
+     * para móveis. Cada giro custou um deploy; agora é toggle. Valor inválido cai no
+     * default em vez de quebrar o painel.
      *
+     * @return self::METRICA_*
+     */
+    private function metricaFaturamento(): string
+    {
+        $m = (string) Configuracao::get('polo_metrica_faturamento', self::METRICA_MOVEIS);
+
+        return $m === self::METRICA_GROSS ? self::METRICA_GROSS : self::METRICA_MOVEIS;
+    }
+
+    /**
+     * Faturamento que alimenta meta, status e totais do mês, por cust_id normalizado.
+     *
+     * A coluna sai de metricaFaturamento(). O histórico dessa decisão importa porque os
+     * dois lados têm argumento medido e ela vai voltar à mesa:
+     *
+     * **260902 — móveis → gross** (`00c8e4f3`), por três motivos:
      *  1. Os limiares M2=1.000 / M3=4.000 / M4=8.000 vêm da planilha, que sempre usou
      *     gross ("defaults da planilha", D-07). Ninguém os recalibrou quando o insumo
      *     virou Móveis-net — a meta ficou ~13% mais difícil sem decisão de produto.
-     *  2. Fatiar por categoria obrigou a trocar de métrica junto: a Adman só entrega
-     *     netBilling POR ITEM (o gross existe só no total da conta). Dos ~13% de queda,
-     *     ~11 pontos são gross→net e só ~3 são categoria — a Lutz Home Decor é 100%
-     *     móvel e mesmo assim aparecia R$ 74 mil menor.
+     *  2. Fatiar por categoria obriga a trocar de métrica junto: a Adman só entrega
+     *     netBilling POR ITEM (o gross existe só no total da conta).
      *  3. A planilha de Evolução, referência do time, NÃO filtra categoria: traz a JHOLP
      *     com R$ 50.818 (a conta inteira), não com os R$ 396 de móveis dela.
      *
-     * Com gross o painel reproduz a planilha com 0,1% de resíduo. O caso "vende ração num
-     * polo moveleiro" continua real, mas é decisão de ROSTER (quem entra no programa) e
-     * não de métrica — por isso `faturamento_moveis` segue sendo calculado e gravado pelo
-     * job, exposto como "% móveis" na exportação do painel.
+     * **260910 — gross → móveis** (pedido do time: "tirar o cross e deixar só móveis").
+     * O motivo 2 acima **não se sustentou na medição** de 202608/202609: nas empresas
+     * ~100% móveis a razão móveis/gross tem mediana de 98,1% (set) e 91,6% (ago), e
+     * NENHUMA das 6 (set) / 7 (ago) que deixam de bater a meta perde por gross→net —
+     * todas perdem por categoria mesmo (JHOLP 1–5% móveis, Iaare Decor 0%, MSI 0%,
+     * Primus Haus 4–16%). O motivo 1 segue de pé em agregado e o 3 é real e visível:
+     * o total do painel cai ~14–18% e volta a divergir da planilha. Foi aceito.
      *
-     * Fonte: coluna `faturamento` do PoloFaturamentoSnapshot. Cust_id sem snapshot →
-     * ausência no mapa (o chamador trata como R$0). NUNCA quebra o /polos.
+     * Cust_id sem snapshot → ausência no mapa (o chamador trata como R$0, e é por isso
+     * que "sem dado" hoje é indistinguível de "não vendeu"). NUNCA quebra o /polos.
      *
      * @param  array<array<string,mixed>>  $ativos  Ativos (toArray)
      * @param  string  $mesSel  TIM_MONTH_ID 'YYYYMM' do mês exibido
-     * @return array<string,float>  [cust_id normalizado => faturamento gross da conta]
+     * @return array<string,float>  [cust_id normalizado => faturamento da métrica vigente]
      */
     private function faturamentoAdmanDoMes(array $ativos, string $mesSel): array
     {
-        return $this->colunaDoSnapshot($ativos, $mesSel, 'faturamento');
+        $coluna = $this->metricaFaturamento() === self::METRICA_GROSS
+            ? 'faturamento'
+            : 'faturamento_moveis';
+
+        return $this->colunaDoSnapshot($ativos, $mesSel, $coluna);
     }
 
     /**
      * Faturamento só da raiz "Casa, Móveis e Decoração" (MLB1574), em netBilling por item.
-     * NÃO alimenta meta nem status — serve para expor "% móveis" e sinalizar empresa que
-     * não vende móvel num polo moveleiro (decisão de roster). Ver faturamentoAdmanDoMes().
+     * Alimenta a coluna "% móveis" da exportação, que existe mesmo quando a métrica
+     * vigente já é móveis: lá o número é a RAZÃO móveis/gross, útil para curadoria de
+     * roster ("essa empresa vende móvel mesmo?"). Ver faturamentoAdmanDoMes().
      *
      * @param  array<array<string,mixed>>  $ativos
      * @return array<string,float>  [cust_id normalizado => faturamento Móveis (net)]
