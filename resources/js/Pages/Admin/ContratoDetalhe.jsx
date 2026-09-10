@@ -400,30 +400,6 @@ export default function ContratoDetalhe({
                         </div>
                     )}
 
-                    {/* Fase 152 Plano 09 (D-08) — o checklist vem ACIMA do bloco de
-                        geração de contrato, e a ordem é decisão desta fase: o
-                        checklist é o novo ponto focal da ficha (é ele que a pessoa
-                        vem conferir antes de finalizar a entrada administrativa), e
-                        gerar contrato passou a ser uma ação pontual dentro de UM dos
-                        seus nove itens. O bloco de geração abaixo continua
-                        exatamente como estava — nada foi removido nem reordenado. */}
-                    {checklist && (
-                        <CardChecklistAdministrativo
-                            checklist={checklist}
-                            companyId={company.id}
-                            podeVerContrato={pode_ver_contrato}
-                            podeFinalizar={pode_finalizar}
-                            admanRegisterUrl={adman_register_url}
-                            mensagemBoasVindas={mensagem_boas_vindas}
-                        />
-                    )}
-
-                    {/* Fase 156 (HIST-01/02/03) — abaixo do checklist: primeiro o
-                        que FALTA fazer, depois o que JÁ aconteceu. A timeline não
-                        é recortada por permissão de módulo (D-E): são datas,
-                        etapas e quem agiu, sem envelope, signatário ou valor. */}
-                    <TimelineEntrada eventos={timeline} duracoes={duracao_por_etapa} />
-
                     {/* Âncora do bloco de contrato (Fase 157).
                         O item "Contrato enviado" do checklist rola até aqui: sem
                         isso, quem lê a ficha de cima para baixo via o item
@@ -496,6 +472,27 @@ export default function ContratoDetalhe({
                             </Button>
                         </div>
                     )}
+
+                    {/* Fase 157 — ORDEM CORRIGIDA depois da conferência.
+                        Antes era Checklist → Timeline → Gerar contrato, e isso
+                        pedia para marcar itens de Contrato ANTES de oferecer a
+                        ação que os resolve — com o histórico inteiro no meio do
+                        caminho. A ordem agora segue o trabalho: a AÇÃO de
+                        contrato primeiro, depois o RETRATO (checklist), depois o
+                        cadastro, e o histórico por último — que é o que já
+                        aconteceu, não o que falta fazer. */}
+                        <CardChecklistAdministrativo
+                            checklist={checklist}
+                            companyId={company.id}
+                            podeVerContrato={pode_ver_contrato}
+                            podeFinalizar={pode_finalizar}
+                            admanRegisterUrl={adman_register_url}
+                            mensagemBoasVindas={mensagem_boas_vindas}
+                        />
+                    )}
+
+
+
 
                     {/* Formulário de completar cadastro (ADM-01) */}
                     <Card>
@@ -1072,6 +1069,17 @@ export default function ContratoDetalhe({
                             </Table>
                         </CardContent>
                     </Card>
+
+                    {/* Fase 156 (HIST-01/02/03) — o HISTÓRICO fica por ÚLTIMO, e
+                        a posição é decisão de leitura: acima está o que FALTA
+                        fazer (contrato, checklist, cadastro); aqui está o que JÁ
+                        aconteceu. Estava entre o checklist e o bloco de contrato,
+                        obrigando a rolar todo o passado para alcançar a próxima
+                        ação.
+
+                        NÃO é recortada por permissão de módulo (D-E): são datas,
+                        etapas e quem agiu — sem envelope, signatário ou valor. */}
+                    <TimelineEntrada eventos={timeline} duracoes={duracao_por_etapa} />
                 </div>
             </main>
 
