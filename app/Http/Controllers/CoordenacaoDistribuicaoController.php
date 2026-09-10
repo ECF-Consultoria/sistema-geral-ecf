@@ -61,6 +61,16 @@ class CoordenacaoDistribuicaoController extends Controller
      */
     public function distribuir(Request $request, Company $company, DistribuicaoService $distribuicao): RedirectResponse
     {
+        // Fase 157 — a autorização vive no SERVICE porque agora há DUAS portas
+        // para o mesmo ato (esta tela e a aba de `/companies`). Sem a fonte
+        // única, o líder via a fila e tomava 403 no botão — foi o que o teste
+        // pegou. O middleware da rota continua como primeira barreira.
+        abort_unless(
+            $distribuicao->podeDistribuir($request->user()),
+            403,
+            'Você não tem permissão para distribuir empresas.'
+        );
+
         $dados = $request->validate([
             // `exists` com o filtro de ativo: usuário desligado não pode ser
             // escolhido nem por POST direto, mesmo que o select da tela o

@@ -15,6 +15,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 // Phase 72 Plan 03 v15.0 — Badge NPS pendente na coluna Empresa da listagem/pendências
 import NpsPendingBadge from '@/Components/Nps/NpsPendingBadge';
+import LinhaDistribuicao from '@/Components/FluxoEntrada/LinhaDistribuicao';
 // Phase 37 Plan 37-06 (REQ-37-07) — GruposManager removido daqui; aba Grupos
 // migrou para /comercial/empresas/listagem (Plan 37-05). Briefcase removido
 // junto pois o botao "Servico" inline tambem nao aparece mais (pendencia
@@ -145,7 +146,7 @@ function GrupoBadge({ grupo }) {
     );
 }
 
-export default function Companies({ companies, users, estrategistas = [], analistas = [], grupos = [], servico_counts = [], servicos_disponiveis = [], filters = {}, nps_pendentes = [] }) {
+export default function Companies({ companies, users, estrategistas = [], analistas = [], grupos = [], servico_counts = [], servicos_disponiveis = [], filters = {}, nps_pendentes = [], pode_distribuir = false, fila_distribuicao = [] }) {
     // Phase 72 Plan 03 v15.0 — Guard defensivo pra prop `nps_pendentes` (Plan 72-02 injection)
     const npsPendentesList = nps_pendentes ?? [];
     // Phase 34 Plan 34-03 — admin check para botao "Marcar como visto" (D-06)
@@ -180,7 +181,7 @@ export default function Companies({ companies, users, estrategistas = [], analis
         // ?tab=onboarding de quem não tem a permission cai em 'empresas': sem
         // isto o deep-link deixaria a pessoa numa tela em branco — a aba não
         // renderiza e nenhuma outra assume.
-        const abas = ['empresas', 'pendencias', ...(podeVerOnboarding ? ['onboarding'] : [])];
+        const abas = ['empresas', ...(pode_distribuir ? ['distribuicao'] : []), ...(podeVerOnboarding ? ['onboarding'] : [])];
         return abas.includes(t) ? t : 'empresas';
     });
     const [search, setSearch] = useRemember('', 'companies-index-search');
@@ -440,7 +441,13 @@ export default function Companies({ companies, users, estrategistas = [], analis
 
     const TABS = [
         { key: 'empresas',   label: `Empresas (${totalAtivas})` },
-        { key: 'pendencias', label: `Pendências (${pendentes.length})` },
+        // Fase 157 (D-C) — a aba Pendências virou Distribuição, e é do LÍDER.
+        // Os 5 cards de pendência mudaram para a aba Empresas: `sem_responsavel`
+        // é resolvido pela própria distribuição, e os outros quatro continuam
+        // acessíveis lá, onde os badges já apareciam.
+        ...(pode_distribuir
+            ? [{ key: 'distribuicao', label: `Distribuição (${fila_distribuicao.length})` }]
+            : []),
         ...(podeVerOnboarding
             ? [{ key: 'onboarding', label: `Onboarding (${emOnboarding.length})` }]
             : []),
@@ -469,6 +476,43 @@ export default function Companies({ companies, users, estrategistas = [], analis
                 {/* ══════════════ ABA EMPRESAS ══════════════ */}
                 {tab === 'empresas' && (
                     <>
+                        {/* Cards clicáveis — filtram a lista por tipo de pendência */}
+                        <div className="flex flex-wrap items-center gap-3">
+                            {Object.entries(PENDENCIAS).map(([key, cfg]) => (
+                                <button
+                                    key={key}
+                                    onClick={() => togglePendenciaFilter(key)}
+                                    className={cn('rounded-xl border px-4 py-3 flex items-center gap-3 transition-all', cfg.cls,
+                                        pendenciaFilter === key ? 'ring-2 ring-white/40' : 'opacity-90 hover:opacity-100')}
+                                    title={`Mostrar só empresas com: ${cfg.label}`}
+                                >
+                                    <span className="text-2xl font-bold tabular-nums">{pendCounts[key]}</span>
+                                    <span className="text-[12px] font-medium leading-tight text-left">{cfg.label}</span>
+                                </button>
+                            ))}
+                            {pendenciaFilter && (
+                                <button onClick={() => togglePendenciaFilter(pendenciaFilter)} className="text-[12px] text-white/50 hover:text-white underline">
+                                    limpar filtro
+                                </button>
+                            )}
+                            {/* Phase 35 Plan 35-01 (D-02) — sort por created_at so quando filtro=empresa_nova.
+                                Outras pendencias mantem ordem alfabetica (padrao do backend). */}
+                            {pendenciaFilter === 'empresa_nova' && (
+                                <div className="ml-auto flex items-center gap-2">
+                                    <span className="text-[12px] text-white/40">Ordenar:</span>
+                                    <select
+                                        value={sortFilter}
+                                        onChange={e => aplicarSort(e.target.value)}
+                                        className="h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 cursor-pointer"
+                                        title="Ordenar empresas novas por data de cadastro"
+                                    >
+                                        <option value="">Padrão (nome)</option>
+                                        <option value="nova_recente">Mais recente primeiro</option>
+                                        <option value="nova_antiga">Mais antiga primeiro</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
                         <div className="flex items-center gap-2 flex-wrap">
                             <Input placeholder="Buscar empresa..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-sm" />
                             <select
@@ -607,44 +651,43 @@ export default function Companies({ companies, users, estrategistas = [], analis
                 )}
 
                 {/* ══════════════ ABA PENDÊNCIAS ══════════════ */}
-                {tab === 'pendencias' && (
+                {tab === 'distribuicao' && (
                     <>
-                        {/* Cards clicáveis — filtram a lista por tipo de pendência */}
-                        <div className="flex flex-wrap items-center gap-3">
-                            {Object.entries(PENDENCIAS).map(([key, cfg]) => (
-                                <button
-                                    key={key}
-                                    onClick={() => togglePendenciaFilter(key)}
-                                    className={cn('rounded-xl border px-4 py-3 flex items-center gap-3 transition-all', cfg.cls,
-                                        pendenciaFilter === key ? 'ring-2 ring-white/40' : 'opacity-90 hover:opacity-100')}
-                                    title={`Mostrar só empresas com: ${cfg.label}`}
-                                >
-                                    <span className="text-2xl font-bold tabular-nums">{pendCounts[key]}</span>
-                                    <span className="text-[12px] font-medium leading-tight text-left">{cfg.label}</span>
-                                </button>
-                            ))}
-                            {pendenciaFilter && (
-                                <button onClick={() => togglePendenciaFilter(pendenciaFilter)} className="text-[12px] text-white/50 hover:text-white underline">
-                                    limpar filtro
-                                </button>
-                            )}
-                            {/* Phase 35 Plan 35-01 (D-02) — sort por created_at so quando filtro=empresa_nova.
-                                Outras pendencias mantem ordem alfabetica (padrao do backend). */}
-                            {pendenciaFilter === 'empresa_nova' && (
-                                <div className="ml-auto flex items-center gap-2">
-                                    <span className="text-[12px] text-white/40">Ordenar:</span>
-                                    <select
-                                        value={sortFilter}
-                                        onChange={e => aplicarSort(e.target.value)}
-                                        className="h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 cursor-pointer"
-                                        title="Ordenar empresas novas por data de cadastro"
-                                    >
-                                        <option value="">Padrão (nome)</option>
-                                        <option value="nova_recente">Mais recente primeiro</option>
-                                        <option value="nova_antiga">Mais antiga primeiro</option>
-                                    </select>
+                        {/* ─── Fila de distribuição (Fase 157) ──────────────────
+                            Empresas que concluíram o Administrativo e ainda não
+                            têm analista nem estrategista. Confirmar vincula os
+                            dois em todos os serviços ativos e move a empresa
+                            para Aguardando Onboarding — mesmo ato do service,
+                            só que aqui é o LÍDER quem faz. */}
+                        {fila_distribuicao.length > 0 ? (
+                            <div className="space-y-3">
+                                <div>
+                                    <h2 className="text-white font-semibold text-[15px]">Aguardando distribuição</h2>
+                                    <p className="text-[12px] text-white/40">
+                                        Concluíram o Administrativo e ainda não têm responsáveis definidos.
+                                    </p>
                                 </div>
-                            )}
+
+                                {fila_distribuicao.map(emp => (
+                                    <LinhaDistribuicao key={emp.id} empresa={emp} />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] px-4 py-6 text-center">
+                                <p className="text-[13px] text-white/60 font-semibold">
+                                    Nenhuma empresa aguardando distribuição.
+                                </p>
+                                <p className="text-[12px] text-white/30 mt-1">
+                                    Elas aparecem aqui assim que o Administrativo finaliza a entrada.
+                                </p>
+                            </div>
+                        )}
+
+                        <div className="pt-2 border-t border-white/[0.06]">
+                            <h2 className="text-white font-semibold text-[15px]">Empresas com pendência</h2>
+                            <p className="text-[12px] text-white/40 mb-3">
+                                Já distribuídas ou fora do fluxo de entrada, mas com algo faltando no cadastro.
+                            </p>
                         </div>
 
                         {/* Barra de ações em massa (aparece com seleção) */}

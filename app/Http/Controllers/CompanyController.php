@@ -457,6 +457,33 @@ class CompanyController extends Controller
             ->orderBy('nome')
             ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
 
+        // Fase 157 — a fila do líder. `DistribuicaoService` é REUSADO inteiro
+        // (mesma régua de elegibilidade, mesmo desempate determinístico, mesma
+        // transição 5→6): o que muda é quem chama e de onde, nunca a régua.
+        $podeDistribuir   = $usuario->isAdmin() || $this->ehLiderDaPerformance($usuario);
+        $filaDistribuicao = [];
+
+        if ($podeDistribuir) {
+            $distribuicao = app(\App\Services\FluxoEntrada\DistribuicaoService::class);
+
+            $filaDistribuicao = $distribuicao->fila()->map(function (Company $c) use ($distribuicao) {
+                $elegiveis = $distribuicao->elegiveis($c);
+
+                return [
+                    'id'   => $c->id,
+                    'name' => $c->name,
+                    'cnpj' => $c->cnpj,
+                    'servicos' => $c->contratosServico
+                        ->where('ativo', true)
+                        ->map(fn (ContratoServico $cs) => $cs->servico?->nome)
+                        ->filter()->values()->all(),
+                    'analistas'       => $elegiveis['analistas'],
+                    'estrategistas'   => $elegiveis['estrategistas'],
+                    'motivo_abertura' => $elegiveis['motivo_abertura'],
+                ];
+            })->values()->all();
+        }
+
         return Inertia::render('Companies/Index', [
             'companies'            => $companies,
             'users'                => $users,
@@ -480,6 +507,20 @@ class CompanyController extends Controller
             // esconder no front é cosmético; o que protege é o bloco vazio
             // acima, montado no servidor.
             'pode_ver_onboarding' => $podeVerOnboarding,
+
+            // ─── Fase 157 (D-C/D-D) — a aba Distribuição, do LÍDER ───────────
+            //
+            // Substitui a antiga aba Pendências. Não é troca arbitrária: um dos
+            // 5 tipos de pendência era `sem_responsavel`, que é exatamente o que
+            // a distribuição resolve. Os outros quatro viraram filtro na aba
+            // Empresas, onde os badges já apareciam — nada some, muda de lugar.
+            //
+            // `fila_distribuicao` só é montada para quem pode distribuir: para
+            // os demais é lista vazia, e o custo (uma consulta de elegíveis POR
+            // empresa) nem é pago. Esconder no front é cosmético; o que protege
+            // é este bloco.
+            'pode_distribuir'    => $podeDistribuir,
+            'fila_distribuicao'  => $filaDistribuicao,
             // Onboarding NASCE do contrato (Observer), nunca de um botão. O
             // cockpit não oferece "criar onboarding": oferece o caminho real,
             // que é cadastrar a empresa/contrato. Sem esta flag o botão

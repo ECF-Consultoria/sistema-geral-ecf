@@ -109,16 +109,61 @@ class DistribuicaoRotaTest extends TestCase
 
     // ─── Permissão (D-G) ────────────────────────────────────────────────────
 
-    public function test_as_duas_rotas_usam_a_chave_propria_e_nunca_role_admin(): void
+    /**
+     * ⚠️ Atualizado na Fase 157: o POST passou a aceitar TAMBÉM quem alcança
+     * `/companies`, porque a distribuição virou a aba de lá e o LÍDER do setor
+     * Performance é o dono do ato — e liderança não é expressável em middleware
+     * de permissão. O middleware do POST é a primeira barreira, larga de
+     * propósito; quem decide é `DistribuicaoService::podeDistribuir()`.
+     *
+     * O GET (a tela própria, hoje fora do menu) segue com a chave estrita.
+     */
+    public function test_as_rotas_usam_a_chave_propria_e_nunca_role_admin(): void
     {
-        foreach (['coordenacao.distribuicao.index', 'coordenacao.distribuicao.distribuir'] as $nome) {
-            $rota = Route::getRoutes()->getByName($nome);
-            $this->assertNotNull($rota, "A rota {$nome} precisa existir.");
+        $index = Route::getRoutes()->getByName('coordenacao.distribuicao.index');
+        $this->assertNotNull($index);
+        $this->assertContains('permission:'.Permissions::COORDENACAO_DISTRIBUIR, $index->gatherMiddleware());
+        $this->assertNotContains('role:admin', $index->gatherMiddleware());
 
-            $mw = $rota->gatherMiddleware();
-            $this->assertContains('permission:'.Permissions::COORDENACAO_DISTRIBUIR, $mw);
-            $this->assertNotContains('role:admin', $mw, 'a chave precisa ser liberável por setor, sem deploy.');
-        }
+        $post = Route::getRoutes()->getByName('coordenacao.distribuicao.distribuir');
+        $this->assertNotNull($post);
+        $mwPost = $post->gatherMiddleware();
+
+        $this->assertContains(
+            'permission:'.Permissions::COORDENACAO_DISTRIBUIR.',core.empresas',
+            $mwPost,
+            'o POST aceita as duas portas desde a Fase 157 — a régua fina está no service.'
+        );
+        $this->assertNotContains('role:admin', $mwPost, 'a chave precisa ser liberável por setor, sem deploy.');
+    }
+
+    /**
+     * A barreira que de fato importa depois do alargamento acima: quem alcança
+     * `/companies` mas NÃO pode distribuir continua tomando 403 no POST.
+     */
+    public function test_quem_alcanca_companies_mas_nao_distribui_ainda_toma_403(): void
+    {
+        $c = $this->cenario();
+
+        $setor = Setor::firstOrCreate(
+            ['slug' => 'so-empresas-154'],
+            ['nome' => 'Só Empresas 154', 'active' => true]
+        );
+        SetorPermissao::firstOrCreate(['setor_id' => $setor->id, 'permission_key' => 'core.empresas']);
+        $user = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $setor->membros()->attach($user->id, ['is_principal' => true, 'assigned_at' => now()]);
+
+        $this->actingAs($user)
+            ->post(route('coordenacao.distribuicao.distribuir', $c['empresa']), [
+                'analista_id'     => $c['analista']->id,
+                'estrategista_id' => $c['estrategista']->id,
+            ])
+            ->assertStatus(403);
+
+        $this->assertSame(
+            Company::ETAPA_AGUARDANDO_DISTRIBUICAO,
+            Company::findOrFail($c['empresa']->id)->etapa
+        );
     }
 
     public function test_quem_nao_tem_a_chave_recebe_403(): void

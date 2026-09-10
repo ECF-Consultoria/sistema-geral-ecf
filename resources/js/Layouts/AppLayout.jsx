@@ -316,19 +316,16 @@ const NAV_TREE = [
         ],
     },
 
-    // ── Grupo: Coordenação ───────────────────────────────────────────────────
-    // Fase 154 (DISTRIB-01..04) — a fila de distribuição. Grupo PRÓPRIO e chave
-    // PRÓPRIA (`coordenacao.distribuir`, D-G): distribuir é ato de Coordenação,
-    // e pendurar sob Comercial daria à Entrada o poder de escolher o time — a
-    // separação que o §10 do PDF estabelece. Posicionado antes de
-    // Administrativo porque segue a ordem do fluxo: Comercial → Coordenação.
-    {
-        group: 'Coordenação',
-        icon: UsersRound,
-        children: [
-            { label: 'Distribuição', routeName: 'coordenacao.distribuicao.index', page: 'Coordenacao/Distribuicao', icon: UsersRound, permission: 'coordenacao.distribuir' },
-        ],
-    },
+    // ── Grupo: Coordenação — REMOVIDO do menu na Fase 157 (D-D) ─────────────
+    // A distribuição passou a ser ato do LÍDER do setor Performance, dentro da
+    // aba Distribuição de `/companies`. Duas telas fazendo o mesmo divergem com
+    // o tempo, então só uma fica no menu.
+    //
+    // A rota `coordenacao.distribuicao.*` e o controller continuam VIVOS e
+    // acessíveis por URL — mesma disciplina da D-16 da Fase 151 com
+    // `admin.empresas`: apagar tela junto com mudança de navegação mistura dois
+    // riscos. A página até reusa o mesmo `LinhaDistribuicao` da aba nova, então
+    // não há caminho divergente enquanto ela existir.
 
     // ── Grupo: Administrativo ────────────────────────────────────────────────
     // Phase 56 v13.0: grupo Polos (que ficava aqui) foi absorvido pelo grupo

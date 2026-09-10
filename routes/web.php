@@ -1550,6 +1550,19 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos,comercial.ent
 Route::middleware(['auth', 'verified', 'permission:coordenacao.distribuir'])
     ->prefix('coordenacao/distribuicao')->name('coordenacao.distribuicao.')->group(function () {
         Route::get('/', [CoordenacaoDistribuicaoController::class, 'index'])->name('index');
+    });
+
+// Fase 157 (D-C) — o POST de distribuir saiu do grupo acima e passou a aceitar
+// TAMBÉM quem alcança `/companies`, porque a distribuição virou a aba de lá e o
+// LÍDER do setor Performance é o dono do ato — e liderança não é expressável em
+// middleware de permissão.
+//
+// O middleware aqui é a primeira barreira (larga de propósito); quem decide de
+// verdade é `DistribuicaoService::podeDistribuir()`, chamado no controller e
+// compartilhado pelas duas portas. Sem isso o líder via a fila e tomava 403 no
+// botão — foi o que o teste da Fase 157 pegou.
+Route::middleware(['auth', 'verified', 'permission:coordenacao.distribuir,core.empresas'])
+    ->prefix('coordenacao/distribuicao')->name('coordenacao.distribuicao.')->group(function () {
         Route::post('/{company}', [CoordenacaoDistribuicaoController::class, 'distribuir'])->name('distribuir');
     });
 

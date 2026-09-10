@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\Setor;
 use App\Models\User;
+use App\Support\Permissions;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -28,6 +29,44 @@ class DistribuicaoService
 
     public function __construct(private EtapaTransicaoService $etapas)
     {
+    }
+
+    /**
+     * Slug do setor cujo LÍDER distribui (Fase 157, D-B). Casa com
+     * `servicos.setor = 'performance'`.
+     */
+    public const SETOR_DA_LIDERANCA = 'performance';
+
+    /**
+     * Quem pode distribuir — **fonte única** das duas portas (Fase 157).
+     *
+     * Existe aqui, e não em cada controller, porque a Fase 157 criou um segundo
+     * caminho para o mesmo ato (a aba de `/companies`, além da tela da
+     * Coordenação). Duas checagens divergiriam, e a divergência apareceria como
+     * "vejo a fila mas o botão dá 403" — que foi exatamente o que o teste pegou
+     * antes de isto existir.
+     *
+     * Três caminhos, nesta ordem: admin; líder do setor Performance (o dono do
+     * ato desde a Fase 157); e quem tem a chave `coordenacao.distribuir` da
+     * Fase 154, preservada para não tirar acesso de quem já a tinha.
+     */
+    public function podeDistribuir(?User $usuario): bool
+    {
+        if ($usuario === null) {
+            return false;
+        }
+
+        if ($usuario->isAdmin()) {
+            return true;
+        }
+
+        $setorId = Setor::where('slug', self::SETOR_DA_LIDERANCA)->value('id');
+
+        if ($setorId !== null && $usuario->isLiderDe($setorId)) {
+            return true;
+        }
+
+        return $usuario->hasPermission(Permissions::COORDENACAO_DISTRIBUIR);
     }
 
     /**
