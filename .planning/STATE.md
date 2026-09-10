@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 139-09-PLAN.md
-last_updated: "2026-09-10T02:00:00.000Z"
+stopped_at: 139-10 Task 1 concluida — Tasks 2 e 3 sao gate humano BLOQUEANTE
+last_updated: "2026-09-10T03:00:00.000Z"
 last_activity: 2026-09-10
 progress:
   total_phases: 7
@@ -1618,6 +1618,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-10T03:00:00.000Z
+Stopped at: 139-10 Task 1 concluida (`5d839ece`) — regressao final verde e igual a baseline; `139-REGRESSAO-FINAL.md` gravado. **Tasks 2 e 3 sao `checkpoint:human-verify` com `gate="blocking"` e a fase PARA aqui.** Ambiente preparado no localhost: servidor em `http://127.0.0.1:8139`, empresa com contrato id=418, empresa isenta id=419, usuario so-`comercial.entrada` `entrada139@ecfconsultoria.com.br` / `Entrada@139` (id=50, setor `conferencia-entrada-139`). NADA DEPLOYADO.
 Last session: 2026-09-10T02:00:00.000Z
 Stopped at: Completed 139-09-PLAN.md — a fase virou tela: 2 componentes novos, checklist na ficha, "Abrir" na listagem Entrada (commits `cf2d5e09`, `9d969ece`, `b6e17f0f`); build verde e as 2 páginas no manifest do Vite; backend 92/364 sem regressão
 Last session: 2026-09-10T01:00:00.000Z
