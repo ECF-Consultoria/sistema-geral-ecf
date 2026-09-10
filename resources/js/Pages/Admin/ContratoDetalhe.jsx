@@ -502,37 +502,12 @@ export default function ContratoDetalhe({
 
 
 
-                    {/* Checklist administrativo (Fase 152) — o RETRATO do que
-                        falta, logo abaixo da geração do contrato.
-
-                        A ordem é decisão do usuário e tem razão de negócio: a
-                        primeira coisa que o Administrativo precisa é do
-                        CONTRATO. Pedir para conferir um checklist cujos três
-                        primeiros itens dependem de um contrato que ainda não
-                        existe é pedir na ordem errada.
-
-                        O checklist NÃO gera contrato — os itens do grupo
-                        Contrato têm "Ver contrato", que abre o documento. A
-                        geração fica no bloco acima, como o outro dev construiu.
-
-                        ⚠️ A guarda condicional abaixo é OBRIGATÓRIA e já foi
-                        perdida uma vez num reorder. Sem ela o fechamento no fim
-                        do bloco vira TEXTO na tela, e o build passa — JSX aceita
-                        esses caracteres como conteúdo. Se aparecer um fechamento
-                        solto na ficha, é isto. */}
-                    {checklist && (
-                        <CardChecklistAdministrativo
-                            checklist={checklist}
-                            companyId={company.id}
-                            podeVerContrato={pode_ver_contrato}
-                            podeFinalizar={pode_finalizar}
-                            admanRegisterUrl={adman_register_url}
-                            mensagemBoasVindas={mensagem_boas_vindas}
-                            contratoAcesso={contratoAcesso}
-                        />
-                    )}
-
-                    {/* Formulário de completar cadastro (ADM-01) */}
+                    {/* Formulário de completar cadastro (ADM-01) — fica COLADO
+                        no bloco de geração acima, e a vizinhança é o ponto: é
+                        aqui que se preenche o que o "Falta completar antes de
+                        gerar o contrato" acabou de listar. Separá-los mandava a
+                        pessoa procurar em outro lugar da página o campo que o
+                        bloco de cima tinha acabado de cobrar. */}
                     <Card>
                         <CardContent className="p-4">
                             <h2 className="text-white/85 text-[15px] font-semibold mb-3">Cadastro da empresa</h2>
@@ -761,6 +736,36 @@ export default function ContratoDetalhe({
                             </form>
                         </CardContent>
                     </Card>
+
+                    {/* Checklist administrativo (Fase 152) — o RETRATO do que
+                        falta, logo abaixo da geração do contrato.
+
+                        A ordem é decisão do usuário e tem razão de negócio: a
+                        primeira coisa que o Administrativo precisa é do
+                        CONTRATO. Pedir para conferir um checklist cujos três
+                        primeiros itens dependem de um contrato que ainda não
+                        existe é pedir na ordem errada.
+
+                        O checklist NÃO gera contrato — os itens do grupo
+                        Contrato têm "Ver contrato", que abre o documento. A
+                        geração fica no bloco acima, como o outro dev construiu.
+
+                        ⚠️ A guarda condicional abaixo é OBRIGATÓRIA e já foi
+                        perdida uma vez num reorder. Sem ela o fechamento no fim
+                        do bloco vira TEXTO na tela, e o build passa — JSX aceita
+                        esses caracteres como conteúdo. Se aparecer um fechamento
+                        solto na ficha, é isto. */}
+                    {checklist && (
+                        <CardChecklistAdministrativo
+                            checklist={checklist}
+                            companyId={company.id}
+                            podeVerContrato={pode_ver_contrato}
+                            podeFinalizar={pode_finalizar}
+                            admanRegisterUrl={adman_register_url}
+                            mensagemBoasVindas={mensagem_boas_vindas}
+                            contratoAcesso={contratoAcesso}
+                        />
+                    )}
 
                     {/* Plano 142-02 (D-03) — bloco novo: botão que leva à ficha exclusiva da
                         tabela de cobrança desta empresa, dentro do módulo de contratos (pedido
