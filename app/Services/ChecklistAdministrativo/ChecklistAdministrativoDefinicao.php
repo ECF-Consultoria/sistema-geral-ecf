@@ -97,6 +97,17 @@ class ChecklistAdministrativoDefinicao
             ],
             [
                 'ordem'      => 4,
+                'chave'      => 'boas_vindas_enviada',
+                'titulo'     => 'Boas-vindas enviada',
+                'grupo'      => self::GRUPO_ENTRADA,
+                'natureza'   => self::NATUREZA_MANUAL,
+                'auto_fonte' => null,
+                'ajuda'      => 'Vem logo após o contrato (decisão do usuário, 2026-09-10): é a mensagem que '
+                    . 'abre a relação com o cliente. Não existe sinal observável de que foi enviada — '
+                    . 'marcação manual, com autoria (D-13).',
+            ],
+            [
+                'ordem'      => 5,
                 'chave'      => 'grupo_whatsapp_criado',
                 'titulo'     => 'Grupo de WhatsApp criado',
                 'grupo'      => self::GRUPO_ENTRADA,
@@ -106,7 +117,7 @@ class ChecklistAdministrativoDefinicao
                     . 'com autoria (D-13).',
             ],
             [
-                'ordem'      => 5,
+                'ordem'      => 6,
                 'chave'      => 'email_colaborador_criado',
                 'titulo'     => 'E-mail colaborador criado',
                 'grupo'      => self::GRUPO_ENTRADA,
@@ -116,7 +127,7 @@ class ChecklistAdministrativoDefinicao
                     . 'Marcação manual, com autoria (D-13).',
             ],
             [
-                'ordem'      => 6,
+                'ordem'      => 7,
                 'chave'      => 'link_adman_entregue',
                 'titulo'     => 'Link Adman entregue',
                 'grupo'      => self::GRUPO_ENTRADA,
@@ -127,7 +138,7 @@ class ChecklistAdministrativoDefinicao
                     . 'observar (D-04). Marcação manual, com autoria.',
             ],
             [
-                'ordem'      => 7,
+                'ordem'      => 8,
                 'chave'      => 'grant_consultoria_ml',
                 'titulo'     => 'Grant da consultoria (OAuth Mercado Livre)',
                 'grupo'      => self::GRUPO_ENTRADA,
@@ -138,7 +149,7 @@ class ChecklistAdministrativoDefinicao
                     . '(D-05).',
             ],
             [
-                'ordem'      => 8,
+                'ordem'      => 9,
                 'chave'      => 'conexao_ecf_gerada',
                 'titulo'     => 'Conexão com o sistema ECF gerada',
                 'grupo'      => self::GRUPO_ENTRADA,
@@ -146,16 +157,6 @@ class ChecklistAdministrativoDefinicao
                 'auto_fonte' => self::AUTO_FONTE_CONEXAO_ECF,
                 'ajuda'      => 'Fecha pela existência do link de conexão com o sistema ECF da empresa, '
                     . 'gerado de forma idempotente (D-14).',
-            ],
-            [
-                'ordem'      => 9,
-                'chave'      => 'boas_vindas_enviada',
-                'titulo'     => 'Boas-vindas enviada',
-                'grupo'      => self::GRUPO_ENTRADA,
-                'natureza'   => self::NATUREZA_MANUAL,
-                'auto_fonte' => null,
-                'ajuda'      => 'Não existe sinal observável de que a mensagem de boas-vindas foi enviada. '
-                    . 'Marcação manual, com autoria (D-13).',
             ],
         ];
     }

@@ -38,12 +38,14 @@ class ChecklistDefinicaoCatalogoTest extends TestCase
             'contrato_revisado',
             'contrato_enviado',
             'contrato_assinado',
+            // Decisão do usuário (2026-09-10): boas-vindas vem logo após o
+            // contrato, não no fim — é a mensagem que abre a relação.
+            'boas_vindas_enviada',
             'grupo_whatsapp_criado',
             'email_colaborador_criado',
             'link_adman_entregue',
             'grant_consultoria_ml',
             'conexao_ecf_gerada',
-            'boas_vindas_enviada',
         ], ChecklistAdministrativoDefinicao::chaves(true));
     }
 
@@ -58,10 +60,10 @@ class ChecklistDefinicaoCatalogoTest extends TestCase
 
         $manual = [
             'contrato_revisado',
+            'boas_vindas_enviada',
             'grupo_whatsapp_criado',
             'email_colaborador_criado',
             'link_adman_entregue',
-            'boas_vindas_enviada',
         ];
 
         foreach ($auto as $chave) {

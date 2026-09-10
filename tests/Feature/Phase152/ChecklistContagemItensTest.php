@@ -166,12 +166,15 @@ class ChecklistContagemItensTest extends TestCase
         $this->assertSame(['contrato_revisado', 'contrato_enviado', 'contrato_assinado'], $chavesContrato);
         $this->assertSame(
             [
+                // Decisão do usuário (2026-09-10): boas-vindas subiu para logo
+                // após o contrato. Para empresa ISENTA, que não tem grupo
+                // Contrato (D-07), o efeito é virar o PRIMEIRO item da lista.
+                'boas_vindas_enviada',
                 'grupo_whatsapp_criado',
                 'email_colaborador_criado',
                 'link_adman_entregue',
                 'grant_consultoria_ml',
                 'conexao_ecf_gerada',
-                'boas_vindas_enviada',
             ],
             $chavesEntrada
         );
