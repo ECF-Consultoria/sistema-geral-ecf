@@ -65,6 +65,7 @@ export default function ContratoDetalhe({
     pode_ver_contrato = false,
     pode_finalizar = { permitido: false, requisito_faltante: null },
     adman_register_url = null,
+    mensagem_boas_vindas = null,
 }) {
     const { flash } = usePage().props;
 
@@ -353,6 +354,7 @@ export default function ContratoDetalhe({
                             podeVerContrato={pode_ver_contrato}
                             podeFinalizar={pode_finalizar}
                             admanRegisterUrl={adman_register_url}
+                            mensagemBoasVindas={mensagem_boas_vindas}
                         />
                     )}
 

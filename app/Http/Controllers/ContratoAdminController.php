@@ -10,6 +10,7 @@ use App\Models\ContratoLiberacao;
 use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Models\User;
+use App\Services\BoasVindas\MensagemBoasVindasService;
 use App\Services\ChecklistAdministrativo\ChecklistAdministrativoDefinicao;
 use App\Services\ChecklistAdministrativo\ChecklistAdministrativoService;
 use App\Services\ChecklistAdministrativo\ChecklistEtapaSincronizadorService;
@@ -539,6 +540,9 @@ class ContratoAdminController extends Controller
         // `sincronizarEtapaChecklist()`, que serve também os endpoints.
         ChecklistAdministrativoService $checklist,
         FinalizarEntradaAdministrativaService $finalizar,
+        // Fase 153 — irmão dos dois acima, mesma razão: nenhum deles injeta o
+        // outro em ciclo. Este não depende de nenhum serviço do checklist.
+        MensagemBoasVindasService $boasVindas,
     ): \Inertia\Response {
         $company->loadMissing('contratosServico.servico');
 
@@ -648,6 +652,13 @@ class ContratoAdminController extends Controller
             // D-04 — link fixo e igual para todas as empresas, servido do
             // backend. Nunca hard-coded no JSX.
             'adman_register_url' => config('services.adman.register_url'),
+            // Fase 153 (COMUNIC-01) — a mensagem já montada com os dados desta
+            // empresa, pronta para copiar. Montada no SERVIDOR (D-B): o caminho
+            // análogo do Polos substitui os placeholders no JSX, sem teste, e é
+            // justamente onde um link errado tem consequência fora do sistema.
+            // Traz `pendencias` quando algum bloco ficaria vazio — a tela avisa
+            // em vez de entregar texto quebrado.
+            'mensagem_boas_vindas' => $boasVindas->paraEmpresa($company),
             'company' => [
                 'id'                => $company->id,
                 'name'              => $company->name,

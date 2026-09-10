@@ -84,7 +84,7 @@ const copiarParaAreaDeTransferencia = async (texto) => {
     }
 };
 
-export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl }) {
+export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, mensagemBoasVindas = null }) {
     const form = useForm({});
 
     // Fallback de ambiente sem `navigator.clipboard`: em vez de o botão não
@@ -169,6 +169,18 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl }
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap justify-end">
+                    {/* Item 9 — a mensagem vem MONTADA do servidor (Fase 153,
+                        D-B). O botão só copia; nada é remontado aqui. Fica
+                        desabilitado quando o servidor acusou pendência, para
+                        ninguém enviar ao cliente um texto com bloco vazio. */}
+                    {item.chave === 'boas_vindas_enviada' && mensagemBoasVindas?.texto && (
+                        <BotaoCopiar
+                            onCopiar={() => copiarParaAreaDeTransferencia(mensagemBoasVindas.texto)}
+                            rotulo="Copiar mensagem"
+                            disabled={!mensagemBoasVindas.pronta}
+                        />
+                    )}
+
                     {/* Item 7 — copiar, jamais abrir (D-05, comentário acima). */}
                     {item.chave === 'grant_consultoria_ml' && !concluido && (
                         <BotaoCopiar onCopiar={copiarLinkOauthMl} rotulo="Copiar link de autorização" />
@@ -233,6 +245,42 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl }
             )}
 
             {item.ajuda && <p className="text-[12px] text-white/25 italic">{item.ajuda}</p>}
+
+            {/* Item 9 — a mensagem pronta, visível na própria linha (COMUNIC-01).
+                Quando o servidor acusou pendência, o que aparece é O QUE FALTA,
+                não o texto pela metade: mesmo princípio do `requisito_faltante`
+                do FINALIZAR. */}
+            {item.chave === 'boas_vindas_enviada' && mensagemBoasVindas && (
+                <div className="space-y-2 pt-1">
+                    {!mensagemBoasVindas.pronta && (
+                        <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 space-y-1">
+                            <p className="text-[12px] font-semibold text-amber-300">
+                                A mensagem ainda não está pronta para enviar:
+                            </p>
+                            {mensagemBoasVindas.pendencias.map((p) => (
+                                <p key={p} className="text-[12px] text-amber-300/80">— {p}</p>
+                            ))}
+                        </div>
+                    )}
+
+                    {mensagemBoasVindas.template_servico_nome && (
+                        <p className="text-[11px] text-white/30">
+                            Texto do serviço {mensagemBoasVindas.template_servico_nome}
+                        </p>
+                    )}
+
+                    <textarea
+                        readOnly
+                        value={mensagemBoasVindas.texto}
+                        rows={10}
+                        onFocus={(e) => e.target.select()}
+                        className={cn(
+                            'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
+                            'px-3 py-2 text-[12px] text-white/70 leading-relaxed resize-y'
+                        )}
+                    />
+                </div>
+            )}
 
             {/* Fallback: navegador sem clipboard (contexto não-seguro). Melhor
                 revelar a URL para seleção manual do que um botão que não faz

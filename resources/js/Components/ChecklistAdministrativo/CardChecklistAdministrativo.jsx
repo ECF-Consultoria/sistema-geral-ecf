@@ -26,6 +26,7 @@ export default function CardChecklistAdministrativo({
     podeVerContrato = false,
     podeFinalizar = { permitido: false, requisito_faltante: null },
     admanRegisterUrl = null,
+    mensagemBoasVindas = null,
 }) {
     const form = useForm({});
 
@@ -65,6 +66,7 @@ export default function CardChecklistAdministrativo({
                                 item={item}
                                 companyId={companyId}
                                 admanRegisterUrl={admanRegisterUrl}
+                                mensagemBoasVindas={mensagemBoasVindas}
                             />
                         ))}
                     </div>
