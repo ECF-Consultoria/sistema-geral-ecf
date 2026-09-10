@@ -11,6 +11,7 @@ import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { IMaskInput } from 'react-imask';
 import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, RotateCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
 import CardChecklistAdministrativo from '@/Components/ChecklistAdministrativo/CardChecklistAdministrativo';
+import TimelineEntrada from '@/Components/FluxoEntrada/TimelineEntrada';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
 import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO, MONTAGEM_TRAVADA_AVISO } from '@/lib/contratoStatus';
 
@@ -66,6 +67,8 @@ export default function ContratoDetalhe({
     pode_finalizar = { permitido: false, requisito_faltante: null },
     adman_register_url = null,
     mensagem_boas_vindas = null,
+    timeline = [],
+    duracao_por_etapa = [],
 }) {
     const { flash } = usePage().props;
 
@@ -357,6 +360,12 @@ export default function ContratoDetalhe({
                             mensagemBoasVindas={mensagem_boas_vindas}
                         />
                     )}
+
+                    {/* Fase 156 (HIST-01/02/03) — abaixo do checklist: primeiro o
+                        que FALTA fazer, depois o que JÁ aconteceu. A timeline não
+                        é recortada por permissão de módulo (D-E): são datas,
+                        etapas e quem agiu, sem envelope, signatário ou valor. */}
+                    <TimelineEntrada eventos={timeline} duracoes={duracao_por_etapa} />
 
                     {/* Ponto focal ORIGINAL do bloco de contrato (131-UI-SPEC.md):
                         quando há pendência, o bloco de "falta completar" + botão

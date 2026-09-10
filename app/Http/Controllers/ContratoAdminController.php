@@ -23,6 +23,7 @@ use App\Services\Contratos\ContratoDadosMinimosService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\ContratoPdfService;
+use App\Services\FluxoEntrada\TimelineEntradaService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use App\Support\Permissions;
 use Illuminate\Http\RedirectResponse;
@@ -543,6 +544,8 @@ class ContratoAdminController extends Controller
         // Fase 153 — irmão dos dois acima, mesma razão: nenhum deles injeta o
         // outro em ciclo. Este não depende de nenhum serviço do checklist.
         MensagemBoasVindasService $boasVindas,
+        // Fase 156 — leitura pura de dado que as fases 150-155 já gravam.
+        TimelineEntradaService $timeline,
     ): \Inertia\Response {
         $company->loadMissing('contratosServico.servico');
 
@@ -659,6 +662,18 @@ class ContratoAdminController extends Controller
             // Traz `pendencias` quando algum bloco ficaria vazio — a tela avisa
             // em vez de entregar texto quebrado.
             'mensagem_boas_vindas' => $boasVindas->paraEmpresa($company),
+            // Fase 156 (HIST-01/02/03) — a timeline do fluxo de entrada e o
+            // tempo em cada etapa. Só fontes DURÁVEIS: o activity_log é podado
+            // em 365 dias (`config/activitylog.php`), e foi por isso que a Fase
+            // 150 criou a tabela de transições. Lê-lo aqui faria a timeline de
+            // uma empresa antiga mudar sozinha.
+            //
+            // NÃO é recortada por permissão de módulo, ao contrário da seção
+            // Contrato: são datas, nomes de etapa e quem agiu — nenhum envelope,
+            // signatário ou valor. Se um dia trouxer, o recorte volta a ser
+            // necessário.
+            'timeline'          => $timeline->paraEmpresa($company),
+            'duracao_por_etapa' => $timeline->duracaoPorEtapa($company),
             'company' => [
                 'id'                => $company->id,
                 'name'              => $company->name,
