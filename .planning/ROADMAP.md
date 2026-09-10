@@ -2271,7 +2271,7 @@ Plans:
 
 **Plans:** sem planos GSD — conduzida como **trabalho direto** (`CLAUDE.md` → "GSD por RISCO"): feature nova em módulo existente, migration CRIA tabela em vez de alterar tabela com dado em produção. As decisões de desenho estão em `.planning/phases/153-mensagem-de-boas-vindas-generalizada-v23-0/153-DECISOES.md`, escritas ANTES do código; os testes vieram no mesmo commit. 25 testes / 81 assertions.
 
-### Phase 154: Distribuição pela Coordenação e chegada aos responsáveis (v23.0)
+### Phase 154: Distribuição pela Coordenação e chegada aos responsáveis (v23.0) — ✅ COMPLETA (trabalho direto)
 
 **Goal:** A Coordenação vê a fila de quem terminou o Administrativo e tem contrato assinado, distribui analista e estrategista com um clique registrando quem distribuiu, e os dois responsáveis recebem a empresa automaticamente com destaque de novo cliente.
 **Requirements**: DISTRIB-01, DISTRIB-02, DISTRIB-03, DISTRIB-04, RESP-01, RESP-02
@@ -2285,7 +2285,7 @@ Plans:
   3. Confirmar distribuição grava analista, estrategista, o coordenador logado que confirmou, e a data/hora — e move a empresa para a etapa "Aguardando Onboarding" (DISTRIB-03, DISTRIB-04)
   4. Assim que a distribuição é confirmada, a empresa aparece automaticamente em Minhas Empresas do analista e do estrategista escolhidos, com destaque visual de "novo cliente" e a indicação "onboarding pendente" — sem nenhuma ação adicional de ninguém (RESP-01, RESP-02)
 
-**Plans:** TBD
+**Plans:** sem planos GSD — **trabalho direto** (`CLAUDE.md` → "GSD por RISCO"). A fase **não tem migration nenhuma**: reusa o enum de `company_users.role` e a linha de transição 5→6 como auditoria, então não altera tabela com dado em produção. Decisões em `.planning/phases/154-distribuicao-pela-coordenacao-v23-0/154-DECISOES.md`, escritas ANTES do código. 24 testes / 74 assertions.
 
 ### Phase 155: Onboarding plugado na máquina de estados (v23.0)
 

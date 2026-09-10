@@ -4,11 +4,11 @@ milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
 stopped_at: Completed 152-10-PLAN.md — FASE 139 COMPLETA (10/10)
-last_updated: "2026-09-10T05:00:00.000Z"
+last_updated: "2026-09-10T06:00:00.000Z"
 last_activity: 2026-09-10
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 30
   completed_plans: 30
   percent: 100
@@ -91,6 +91,8 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 > já foram executadas em paralelo por outra sessão.
 
 ## Current Position
+
+Phase: 154 (distribuicao-pela-coordenacao-v23-0) — **COMPLETA** (trabalho direto, sem planos GSD e SEM MIGRATION)
 
 Phase: 153 (mensagem-de-boas-vindas-generalizada-v23-0) — **COMPLETA** (trabalho direto, sem planos GSD)
 
@@ -1647,6 +1649,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-10T06:00:00.000Z
+Stopped at: **Fase 154 COMPLETA** (distribuição pela Coordenação). Trabalho direto, **zero migration** — reusa `company_users.role` e a transição 5→6 como auditoria. Commits `92758f19` (motor+13 testes), `e8796d2f` (fila+rota), `b8180781` (RESP-01/02). Chave nova `coordenacao.distribuir`. 24 testes / 74 assertions; regressão 150+151+152+153+131 em 369/1366. **NADA DEPLOYADO** — 2 migrations novas fora de produção (das fases 152 e 153).
 Last session: 2026-09-10T05:00:00.000Z
 Stopped at: **Fase 153 COMPLETA** (mensagem de boas-vindas por serviço) — conduzida como trabalho direto por `CLAUDE.md` (GSD por RISCO); decisões em `153-DECISOES.md` ANTES do código. Commits `6cb90942` (motor+11 testes), `246f11b2` (payload+UI), `40557508` (tela de edição). 25 testes / 81 assertions na fase; regressão 150+151+152+131 em 344/1285, idêntica ao pré-fase. **NADA DEPLOYADO** — agora são 2 migrations novas fora de produção.
 Last session: 2026-09-10T04:00:00.000Z

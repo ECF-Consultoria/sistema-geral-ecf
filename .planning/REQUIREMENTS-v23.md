@@ -130,15 +130,15 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### DISTRIB — Distribuição pela Coordenação (§7)
 
-- [ ] **DISTRIB-01**: A Coordenação vê a fila de empresas que concluíram o Administrativo, têm contrato assinado e ainda não têm responsáveis operacionais
-- [ ] **DISTRIB-02**: Os seletores de analista e de estrategista listam apenas colaborador ativo e habilitado para a função
-- [ ] **DISTRIB-03**: Confirmar distribuição registra analista, estrategista, **o coordenador que distribuiu**, data e horário
-- [ ] **DISTRIB-04**: Confirmar distribuição move a empresa para a etapa `Aguardando Onboarding`
+- [x] **DISTRIB-01**: A Coordenação vê a fila de empresas que concluíram o Administrativo, têm contrato assinado e ainda não têm responsáveis operacionais
+- [x] **DISTRIB-02**: Os seletores de analista e de estrategista listam apenas colaborador ativo e habilitado para a função
+- [x] **DISTRIB-03**: Confirmar distribuição registra analista, estrategista, **o coordenador que distribuiu**, data e horário
+- [x] **DISTRIB-04**: Confirmar distribuição move a empresa para a etapa `Aguardando Onboarding`
 
 ### RESP — Chegada ao analista e ao estrategista (§8)
 
-- [ ] **RESP-01**: Depois da distribuição, a empresa aparece automaticamente em Minhas Empresas dos dois responsáveis
-- [ ] **RESP-02**: A empresa aparece com destaque visual de novo cliente e a informação de onboarding pendente
+- [x] **RESP-01**: Depois da distribuição, a empresa aparece automaticamente em Minhas Empresas dos dois responsáveis
+- [x] **RESP-02**: A empresa aparece com destaque visual de novo cliente e a informação de onboarding pendente
 
 ### ONBRD — Onboarding dentro da máquina de estados (§9)
 
