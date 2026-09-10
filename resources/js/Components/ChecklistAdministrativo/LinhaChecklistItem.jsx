@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useForm } from '@inertiajs/react';
 import axios from 'axios';
-import { CheckCircle2, Copy, Zap } from 'lucide-react';
+import { ArrowDown, CheckCircle2, Copy, Zap } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -150,6 +150,23 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, 
         return copiou;
     };
 
+    /**
+     * Item 2 — leva ao bloco que de fato ENVIA o contrato (Fase 157).
+     *
+     * Quem envia é o Administrativo (§3 do PDF: "Revisar o contrato; enviar ao
+     * cliente; acompanhar a assinatura"), e a ação vive no bloco de geração,
+     * mais abaixo na mesma ficha. Sem este atalho, quem lê de cima para baixo
+     * encontrava "Contrato enviado" pendente antes de saber que existe um botão
+     * para resolvê-lo — os outros itens não têm esse problema porque a ação
+     * mora na própria linha.
+     *
+     * Rola em vez de duplicar o bloco: motivo de bloqueio, dados faltantes e
+     * congelamento de emissão continuam num lugar só.
+     */
+    const irParaGeracaoDoContrato = () => {
+        document.getElementById('gerar-contrato')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
     const feitoEm = dataCurta(item.feito_em);
     const autoEm = dataCurta(item.auto_em);
 
@@ -179,6 +196,15 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, 
                             rotulo="Copiar mensagem"
                             disabled={!mensagemBoasVindas.pronta}
                         />
+                    )}
+
+                    {/* Item 2 — quem envia o contrato é o Administrativo (§3).
+                        O botão leva ao bloco de geração, na mesma ficha. */}
+                    {item.chave === 'contrato_enviado' && !concluido && (
+                        <Button size="sm" variant="outline" onClick={irParaGeracaoDoContrato}>
+                            <ArrowDown size={13} className="mr-1.5" />
+                            Ir para geração do contrato
+                        </Button>
                     )}
 
                     {/* Item 7 — copiar, jamais abrir (D-05, comentário acima). */}

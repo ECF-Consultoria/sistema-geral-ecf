@@ -424,6 +424,17 @@ export default function ContratoDetalhe({
                         etapas e quem agiu, sem envelope, signatário ou valor. */}
                     <TimelineEntrada eventos={timeline} duracoes={duracao_por_etapa} />
 
+                    {/* Âncora do bloco de contrato (Fase 157).
+                        O item "Contrato enviado" do checklist rola até aqui: sem
+                        isso, quem lê a ficha de cima para baixo via o item
+                        pendente ANTES de encontrar o botão que o resolve. Os
+                        outros itens não têm esse problema porque a ação mora na
+                        própria linha ("Copiar link", "Gerar conexão") — o grupo
+                        Contrato era o único que apontava para fora sem dizer
+                        para onde. `scroll-mt-24` compensa o cabeçalho fixo,
+                        mesmo padrão de `DetalheOnboarding`. */}
+                    <div id="gerar-contrato" className="scroll-mt-24" />
+
                     {/* Ponto focal ORIGINAL do bloco de contrato (131-UI-SPEC.md):
                         quando há pendência, o bloco de "falta completar" + botão
                         desabilitado, adjacentes (D-03). Quando não há, o botão ativo
