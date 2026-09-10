@@ -8,6 +8,7 @@ use App\Models\ContratoServico;
 use App\Models\Goal;
 use App\Models\Onboarding;
 use App\Models\Servico;
+use App\Models\Setor;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
@@ -81,6 +82,57 @@ class CompanyController extends Controller
      * mostra "Serviço" (badges dos contratos ativos). A lógica de cache foi
      * removida junto pra não deixar código órfão / não despachar jobs sem uso.
      */
+    /**
+     * Slug do setor cujo LÍDER enxerga todas as empresas de `/companies`
+     * (Fase 157, D-B).
+     *
+     * Casa com `servicos.setor = 'performance'`, que é o valor que o catálogo
+     * de serviços já usava — a linha em `setores` foi criada pela migration
+     * `2026_09_10_140000_seed_setor_performance` justamente para os dois
+     * vocabulários passarem a se encontrar.
+     */
+    private const SETOR_DA_LIDERANCA = 'performance';
+
+    /**
+     * O usuário deve ver apenas as empresas em que está vinculado? (D-A)
+     *
+     * `true` só para quem tem cargo `analista` ou `estrategista` e **não** é
+     * admin nem líder do setor Performance.
+     *
+     * A régua é sobre CARGO, não sobre "não-admin": quem não tem nenhum dos
+     * dois cargos (ex.: um consultor de outro setor, um financeiro) continua
+     * vendo o que via. Restringir por exclusão em vez de por cargo tiraria
+     * acesso de gente que o pedido não menciona.
+     *
+     * O líder é a exceção explícita — ele precisa ver tudo para distribuir. O
+     * Luiz é líder E estrategista; a regra de líder vence, e a visão "só as
+     * minhas" fica disponível para ele pelo filtro da tela.
+     */
+    private function deveFiltrarPelaPropriaCarteira(?User $usuario): bool
+    {
+        if ($usuario === null || $usuario->isAdmin()) {
+            return false;
+        }
+
+        if ($this->ehLiderDaPerformance($usuario)) {
+            return false;
+        }
+
+        return $usuario->cargoDesempenhoSlug() !== null;
+    }
+
+    /** Líder do setor Performance — quem distribui (D-B). */
+    private function ehLiderDaPerformance(?User $usuario): bool
+    {
+        if ($usuario === null) {
+            return false;
+        }
+
+        $setorId = Setor::where('slug', self::SETOR_DA_LIDERANCA)->value('id');
+
+        return $setorId !== null && $usuario->isLiderDe($setorId);
+    }
+
     public function index(Request $request, AcessosDoPortalService $acessosPortal)
     {
         // Phase 18 W5-T4 — Filtro opcional por cust_id_status. Aceita apenas
@@ -127,6 +179,11 @@ class CompanyController extends Controller
         // para evitar dupla contagem com /mlb/empresas (Polos/Publicacao/etc).
         // Aplicado como query base — tanto lista quanto contadores (`pendCounts`)
         // refletem o mesmo conjunto.
+        // Fase 157 (D-A) — lido AQUI, antes da query, porque o filtro de
+        // visibilidade por vínculo precisa dele. Antes era declarado só
+        // depois, quando servia apenas à aba Onboarding.
+        $usuario = $request->user();
+
         $companies = Company::with([
                 // Fase 89 Plan 02 (CART-08): reapontado para as relações
                 // filtradas por setor performance — a coluna Analista/
@@ -171,6 +228,29 @@ class CompanyController extends Controller
                       $qs->where('setor', Servico::SETOR_PERFORMANCE)
                   )
             )
+            // ─── Fase 157 (D-A) — VISIBILIDADE POR VÍNCULO ─────────────────
+            //
+            // Até aqui `/companies` mostrava TODAS as empresas de Performance
+            // para qualquer um com acesso à tela. Passa a mostrar só as do
+            // próprio usuário para quem tem cargo `analista` ou `estrategista`.
+            //
+            // ⚠️ Isto MUDA o que usuários atuais enxergam — quem via ~180
+            // empresas passa a ver só as suas. Foi pedido na letra ("vai
+            // aparecer apenas as empresas destinadas pra ele"), e está anotado
+            // aqui porque alguém vai estranhar antes de lembrar que foi pedido.
+            //
+            // Quem NÃO é filtrado, e por quê:
+            //  - admin: vê tudo, como sempre;
+            //  - líder do setor Performance: precisa ver tudo para distribuir;
+            //  - quem não tem nenhum dos dois cargos: comportamento inalterado
+            //    — a regra é sobre analista/estrategista, não sobre "não-admin".
+            ->when(
+                $this->deveFiltrarPelaPropriaCarteira($usuario),
+                fn ($q) => $q->whereHas(
+                    'users',
+                    fn ($qu) => $qu->where('users.id', $usuario->id)
+                )
+            )
             ->when($custIdStatusFilter, fn($q) => $q->where('cust_id_status', $custIdStatusFilter))
             // Fase 150 Plano 07 (ETAPA-05) — depois do when($custIdStatusFilter)
             // e depois do whereDoesntHave/whereHas acima: preservar a tela
@@ -202,7 +282,6 @@ class CompanyController extends Controller
         // Duas travas, na mesma ordem do painel:
         //  1. sem `core.onboarding`, o bloco não é montado (a aba some);
         //  2. não-admin só vê onboarding das empresas da própria carteira.
-        $usuario = $request->user();
         $podeVerOnboarding = $usuario->hasPermission(\App\Support\Permissions::CORE_ONBOARDING);
         // A sub-aba "Acessos do portal" é admin-only, e não por simetria com
         // o resto: as ESCRITAS dela (PortalUsuarioController) estão sob
