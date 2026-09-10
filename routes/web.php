@@ -1,6 +1,7 @@
 <?php
 
 use Inertia\Inertia;
+use App\Http\Controllers\BoasVindasTemplateController;
 use App\Http\Controllers\ContratoAdminController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
@@ -1501,6 +1502,21 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos,comercial.ent
     Route::post('/empresa/{company}/checklist/conexao-ecf',      [ContratoAdminController::class, 'gerarConexaoEcfChecklist'])->name('checklist.conexao-ecf');
     Route::post('/empresa/{company}/finalizar-entrada',          [ContratoAdminController::class, 'finalizarEntradaAdministrativa'])->name('finalizar-entrada');
 });
+
+// ─── Boas-vindas: textos por serviço (Fase 153, COMUNIC-03) ──────────────────
+// Mesma permissão em OR da ficha (D-17 da Fase 152), pelo mesmo motivo: quem
+// opera a Entrada precisa ajustar o texto que envia. NENHUMA chave nova (D-09).
+//
+// Deliberadamente FORA da tela de Padrões do MLB: aquela é gated por
+// publication_role, guarda a mensagem do Polos (que a D-A manda deixar intacta),
+// e o salvarPadroes() dela substitui o JSON inteiro — chave nova ali some no
+// próximo save.
+Route::middleware(['auth', 'verified', 'permission:admin.contratos,comercial.entrada'])
+    ->prefix('administrativo/boas-vindas')->name('admin.boas-vindas.')->group(function () {
+        Route::get('/',                 [BoasVindasTemplateController::class, 'index'])->name('index');
+        Route::post('/',                [BoasVindasTemplateController::class, 'salvar'])->name('salvar');
+        Route::delete('/{servico}',     [BoasVindasTemplateController::class, 'remover'])->name('remover');
+    });
 
 // ─── Comercial · Entrada (Fase 151, COMERC-01/02/03, D-15) ───────────────────
 // Grupo NOVO, irmão do de `admin.contratos.*` acima — não entrou no grupo
