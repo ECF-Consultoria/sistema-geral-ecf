@@ -2360,6 +2360,38 @@ como provável erro de cadastro.
 
 ---
 
+### Phase 142: O cadastro da tabela progressiva vai para o contrato
+
+**Goal:** Tornar utilizável o cadastro da tabela progressiva. O usuário pediu a fase com estas
+palavras: *"a parte do cadastro de tabela progressiva pelo sistema deve melhorar bastante, acho que
+deve haver uma fase só para isso"*.
+
+**Os quatro pedidos** (detalhe em `142-CONTEXT.md`):
+
+| pedido | hoje |
+|---|---|
+| mostrar as faixas da tabela própria | mostra só a frase "Tabela própria desta empresa" |
+| máscara de dinheiro nos campos | valores crus (`499999.99`), fáceis de errar por um zero |
+| cadastro dentro de `/administrativo/contratos/empresa/{id}`, em página exclusiva | vive dentro do fechamento |
+| fechamento continua mostrando tabela e faixa, sem cadastrar/editar | cadastra e edita por ali |
+
+**A dívida que esta fase paga:** o "só mostra a frase" foi decisão consciente do plano `137-09` — o
+backend não expunha as linhas da tabela própria, e o executor preferiu abrir o formulário em branco
+com aviso a preenchê-lo com valores adivinhados que poderiam sobrescrever preço real. O custo aceito
+era "quem edita redigita tudo", e na época havia **zero** tabelas próprias.
+
+**Depois da Fase 141 são 169** — 168 delas marcadas como presumidas, todas esperando conferência
+contra o contrato real. O que era dívida barata virou o gargalo do trabalho que vem pela frente.
+
+**Uma decisão para o planejamento:** a tela de conferência das propostas lidas do Clicksign
+(`/administrativo/contratos/tabelas`, Fase 140) já vive no módulo de contratos e faz coisa parecida.
+Duas telas que cadastram tabela em lugares diferentes é como este problema começou — decidir se
+convivem, se uma leva à outra, ou se viram a mesma coisa.
+
+Plans: a planejar
+
+---
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
@@ -2380,3 +2412,5 @@ como provável erro de cadastro.
 *Roadmap atualizado: 2026-09-09 - **Fase 141 (A tabela progressiva passa a ser da empresa e do grupo)** anexada. Origem: correcao de premissa feita pelo usuario em 2026-09-09 olhando o fechamento em producao. Ela atravessa as Fases 137/138/139 e muda o CALCULO da mensalidade, nao a tela. Regras: a tabela e da empresa ou do grupo, nunca do servico; o faturamento das plataformas com tabela e SOMADO para achar UMA faixa; Mentoria nao entra na soma por nao ter tabela; a mensalidade e o valor da faixa, entao a soma de mensalidades deixa de existir. Caso que abriu a fase: BARAOSHOP faturou R$ 488.262,90, caiu na faixa 1 de R$ 3.000 e a tela cobra R$ 5.500, porque soma o contrato de Shopee. Problema de transicao: 127 de 201 empresas sao classificadas hoje pela tabela do servico e NENHUMA tem tabela propria — aplicar a regra sem mais nada esvazia o fechamento. O caminho existe por causa da Fase 140, que leu 85 contratos do Clicksign (49 com tabela, 29 de valor fixo) e cuja tela de conferencia ja esta construida. A tela de cadastro e fase propria, a pedido do usuario. Fases 1-140 preservadas.*
 
 *Roadmap atualizado: 2026-09-10 - **Fase 141 FECHADA.** Virada em produção (2026-09-09/10, commit `e98e25ed`): 168 empresas materializadas com tabela própria presumida (`origem='presumida_servico'`), delta ANTES×DEPOIS apresentado e aprovado pelo usuário (total a receber R$ 2.486.700,91 → R$ 736.450,97 — a queda é a correção da fórmula antiga que somava contrato à faixa, confirmada pelo usuário com o caso Camillo Parts R$ 522.500,00 → R$ 12.000,00, faixa 7 para faixa 7, "Mudam de faixa: 0"), chave `fechamento_tabela_por_empresa_ativa` ligada, e agosto/2026 reconsolidado sob a regra nova a pedido explícito do usuário (soma de faixas R$ 460.500,00 → R$ 466.500,00, 127 → 129 empresas com faixa). Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Quick260909`: 553 testes / 2642 asserções / 0 falhas. Números completos, procedimento de rollback sem deploy e pendências (168 tabelas presumidas ainda sem conferência contra o contrato real, 32 empresas sem tabela, 3 contratos de R$ 250.000 a investigar) em `.planning/learnings/fechamento-tabela-por-empresa.md`. Fases 1-141 preservadas.*
+
+*Roadmap atualizado: 2026-09-10 - **Fase 142 (O cadastro da tabela progressiva vai para o contrato)** anexada. Pedido do usuario em 2026-09-09 olhando o fechamento em producao, com quatro itens: mostrar as faixas da tabela propria (hoje sai so a frase), mascara de dinheiro nos campos, mover o cadastro para dentro da pagina de contrato da empresa em pagina exclusiva, e deixar o fechamento so de leitura. O primeiro item e divida consciente do plano 137-09, que preferiu formulario em branco com aviso a valores adivinhados que sobrescreveriam preco real — custo aceito quando havia ZERO tabelas proprias. Depois da Fase 141 sao 169, das quais 168 presumidas esperando conferencia, entao a divida virou gargalo. Fases 1-141 preservadas.*
