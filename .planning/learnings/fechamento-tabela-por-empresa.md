@@ -200,3 +200,40 @@ voltar a contar no denominador.
 ---
 *Registrado em 2026-09-10, ao fechar o plano 141-07. Números medidos em produção pelo orquestrador
 (subagente de execução não alcança produção — `plink`/`pscp`/`deploy.sh` bloqueados por desenho).*
+
+## 9. Fechamento virou só leitura de tabela — duas armadilhas de teste-como-grep que já morderam
+
+Plano `142-04` (2026-09-10) tirou toda capacidade de escrita de `TabelaFaixasSection.jsx`
+(fechamento) — quem cadastra vai para a ficha do contrato (`admin.contratos.tabela.show`). Duas
+armadilhas encontradas ao escrever a suíte de trava, que valem para qualquer plano futuro que use
+a receita "ler o `.jsx` como texto puro" (o projeto não tem test runner de JS):
+
+**a) Docblock explicando o que foi removido pode quebrar a própria trava que documenta a
+remoção.** Um teste que verifica `assertStringNotContainsString('router.post', $conteudo)` no
+arquivo INTEIRO (sem filtrar comentário) falha se o docblock do componente mencionar `router.post`
+para explicar historicamente o que existia antes. A escolha certa depende do que a trava quer
+garantir: se é "não pode aparecer como texto que o usuário lê", filtrar comentário antes (receita
+`removerComentarios()` já usada pelas Fases 139/142 para o jargão) é correto. Se é "não pode
+sobrar NENHUM vestígio de código, nem em comentário explicativo" (o caso aqui — o risco real é
+alguém reintroduzir o formulário lendo o comentário errado), a resposta certa é reescrever o
+docblock para parafrasear (`"diálogos de formulário"` em vez de `` `FaixaFormDialog` ``) em vez de
+enfraquecer o teste.
+
+**b) A convenção de contagem por substring `'<NomeDoComponente '` (com espaço, uma linha só)
+quebra silenciosamente se o JSX for formatado com os props em múltiplas linhas.** A suíte
+`Phase139TabelaProgressivaFielTest::a_subcomponente_e_reaproveitada_nos_dois_blocos_grupo_e_servico`
+mede `substr_count($conteudo, '<TabelaProgressivaFaixas ')` em todo o projeto e exige ≥2. Escrever
+`<TabelaProgressivaFaixas\n    faixas={...}` (props na linha seguinte, comum ao formatar JSX mais
+legível) derruba a contagem para as ocorrências que ainda estão em uma linha só, sem nenhum erro
+de build ou de lint — só o teste que mede reuso quebra. Ao usar um componente que já tem essa
+convenção de trava no projeto, manter o primeiro prop na mesma linha da tag de abertura.
+
+**c) O número de referência de gate escrito num `PLAN.md` fica desatualizado assim que outro plano
+da mesma fase roda antes dele.** O `142-04-PLAN.md` foi escrito citando "antes: 553 testes / 2642
+asserções" — mas os planos `142-01/02/03` já tinham rodado e mudado esse número para 598/2809
+antes da execução do `142-04` começar. Sempre que o número de referência de um plano parecer
+baixo demais, desconfiar e checar o SUMMARY do plano anterior da mesma fase antes de reportar
+regressão que não existe.
+
+---
+*Seção 9 registrada em 2026-09-10, ao fechar o plano 142-04.*
