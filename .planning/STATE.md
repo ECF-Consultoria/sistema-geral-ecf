@@ -130,8 +130,27 @@ Precisa ser liberada por setor depois do deploy, senão a fila de distribuição
 evidência por reconsulta ao banco. As fases 153-156 são trabalho direto e não têm gate — a
 conferência visual delas **não foi feita** e está declarada como pendente abaixo.
 
+**Conferência visual de 2026-09-10 — o que ela cobriu, na letra:**
+
+O usuário aprovou a conferência das telas das Fases 153-156, com o menu já
+acrescentado (Comercial › Boas-vindas e Coordenação › Distribuição) e a base já
+integrada com `origin/main`.
+
+**Cobertura real, conferida por reconsulta ao banco depois do "aprovado":**
+
+| Parte | Situação |
+|---|---|
+| Renderização das telas (ficha, timeline, fila, edição de textos) | aprovada — **não deixa rastro no banco**, então a evidência é o relato |
+| Salvar template de boas-vindas | **NÃO exercitado** — `boas_vindas_templates` continua vazia |
+| Confirmar uma distribuição | **NÃO exercitado** — a 418 segue em `aguardando_distribuicao`, sem responsáveis |
+
+Os dois caminhos que mudam dado seguem cobertos por teste automatizado
+(`EdicaoTemplatesTest`, `DistribuicaoRotaTest`) — é lacuna de verificação
+HUMANA, não de implementação, e está declarada aqui em vez de a milestone se
+dizer conferida ponta a ponta.
+
 **O que falta antes de considerar a milestone entregue:**
-1. Conferência visual das telas das Fases 153-156 (nenhuma foi aberta no navegador).
+1. ~~Conferência visual das telas das Fases 153-156~~ — **FEITA em 2026-09-10**, com a ressalva de cobertura acima (2 caminhos de escrita não exercitados à mão).
 2. Decisão de deploy — 2 migrations novas e 1 chave de permissão a liberar.
 3. A v22.0 continua **NÃO fechada**: Fase 133 e o plano `133-05` seguem abertos desde 19/08.
 
