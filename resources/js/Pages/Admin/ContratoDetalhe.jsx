@@ -11,7 +11,6 @@ import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { IMaskInput } from 'react-imask';
 import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, RotateCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
 import CardChecklistAdministrativo from '@/Components/ChecklistAdministrativo/CardChecklistAdministrativo';
-import TimelineEntrada from '@/Components/FluxoEntrada/TimelineEntrada';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
 import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO, MONTAGEM_TRAVADA_AVISO } from '@/lib/contratoStatus';
 
@@ -357,6 +356,31 @@ export default function ContratoDetalhe({
         });
     }
 
+    /**
+     * Fase 157 — o que o botão "Ver contrato" do checklist deve ABRIR.
+     *
+     * O checklist não gera contrato; ele dá acesso ao que existe. Ordem de
+     * preferência: o PDF assinado (evidência final), senão o painel da Clicksign
+     * (onde se acompanha e revisa). Sem nenhum dos dois, `null` — e a tela cai
+     * para levar até a lista de contratos, que ao menos mostra o estado.
+     *
+     * `tem_pdf_assinado` vem do backend porque a rota devolve 404 quando o
+     * arquivo não está em disco, e botão que leva a 404 é pior que botão nenhum.
+     */
+    const contratoAcesso = (() => {
+        const assinado = contratos.find((c) => c.tem_pdf_assinado);
+
+        if (assinado) {
+            return { url: route('contratos.pdf-assinado', assinado.id), rotulo: 'Ver contrato assinado' };
+        }
+
+        if (painel_clicksign_url) {
+            return { url: painel_clicksign_url, rotulo: 'Abrir na Clicksign' };
+        }
+
+        return null;
+    })();
+
     const contratoParaLiberar        = contratos.find((c) => c.id === liberarContratoId) ?? null;
     const mostrarDestaqueLiberacao   = contratoParaLiberar && CAUSAS_DE_DESTAQUE.includes(contratoParaLiberar.causa);
     const podeConfirmarLiberacao     = Boolean(liberarForm.data.motivo_slug)
@@ -398,6 +422,32 @@ export default function ContratoDetalhe({
                             <p className="font-semibold">Aguarde um pouco antes de reenviar</p>
                             <p className="mt-0.5 text-amber-300/80">{flash.aviso}</p>
                         </div>
+                    )}
+
+                    {/* Fase 157 — ORDEM CORRIGIDA depois da conferência.
+                        Antes era Checklist → Timeline → Gerar contrato, e isso
+                        pedia para marcar itens de Contrato ANTES de oferecer a
+                        ação que os resolve — com o histórico inteiro no meio do
+                        caminho. A ordem agora segue o trabalho: a AÇÃO de
+                        contrato primeiro, depois o RETRATO (checklist), depois o
+                        cadastro, e o histórico por último — que é o que já
+                        aconteceu, não o que falta fazer.
+
+                        ⚠️ A guarda condicional abaixo é OBRIGATÓRIA e já foi
+                        perdida uma vez num reorder. Sem ela o fechamento no fim
+                        do bloco vira TEXTO na tela, e o build passa — JSX aceita
+                        esses caracteres como conteúdo. Se aparecer um fechamento
+                        solto na ficha, é isto. */}
+                    {checklist && (
+                        <CardChecklistAdministrativo
+                            checklist={checklist}
+                            companyId={company.id}
+                            podeVerContrato={pode_ver_contrato}
+                            podeFinalizar={pode_finalizar}
+                            admanRegisterUrl={adman_register_url}
+                            mensagemBoasVindas={mensagem_boas_vindas}
+                            contratoAcesso={contratoAcesso}
+                        />
                     )}
 
                     {/* Âncora do bloco de contrato (Fase 157).
@@ -473,23 +523,6 @@ export default function ContratoDetalhe({
                         </div>
                     )}
 
-                    {/* Fase 157 — ORDEM CORRIGIDA depois da conferência.
-                        Antes era Checklist → Timeline → Gerar contrato, e isso
-                        pedia para marcar itens de Contrato ANTES de oferecer a
-                        ação que os resolve — com o histórico inteiro no meio do
-                        caminho. A ordem agora segue o trabalho: a AÇÃO de
-                        contrato primeiro, depois o RETRATO (checklist), depois o
-                        cadastro, e o histórico por último — que é o que já
-                        aconteceu, não o que falta fazer. */}
-                        <CardChecklistAdministrativo
-                            checklist={checklist}
-                            companyId={company.id}
-                            podeVerContrato={pode_ver_contrato}
-                            podeFinalizar={pode_finalizar}
-                            admanRegisterUrl={adman_register_url}
-                            mensagemBoasVindas={mensagem_boas_vindas}
-                        />
-                    )}
 
 
 
@@ -1077,16 +1110,7 @@ export default function ContratoDetalhe({
                         </CardContent>
                     </Card>
 
-                    {/* Fase 156 (HIST-01/02/03) — o HISTÓRICO fica por ÚLTIMO, e
-                        a posição é decisão de leitura: acima está o que FALTA
-                        fazer (contrato, checklist, cadastro); aqui está o que JÁ
-                        aconteceu. Estava entre o checklist e o bloco de contrato,
-                        obrigando a rolar todo o passado para alcançar a próxima
-                        ação.
 
-                        NÃO é recortada por permissão de módulo (D-E): são datas,
-                        etapas e quem agiu — sem envelope, signatário ou valor. */}
-                    <TimelineEntrada eventos={timeline} duracoes={duracao_por_etapa} />
                 </div>
             </main>
 

@@ -84,7 +84,7 @@ const copiarParaAreaDeTransferencia = async (texto) => {
     }
 };
 
-export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, mensagemBoasVindas = null }) {
+export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, mensagemBoasVindas = null, contratoAcesso = null }) {
     const form = useForm({});
 
     // Fallback de ambiente sem `navigator.clipboard`: em vez de o botão não
@@ -151,16 +151,25 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, 
     };
 
     /**
-     * Itens do grupo Contrato — leva à LISTA de contratos da empresa, onde se
-     * revisa o envelope: status, signatários e as ações de reenviar, cancelar
-     * ou refazer (Fase 157).
+     * Itens do grupo Contrato — ABRE o contrato para revisar (Fase 157).
      *
-     * ⚠️ O checklist **não gera** contrato. A geração fica exatamente como está
-     * no sistema hoje, no bloco próprio construído na Fase 131 — este atalho só
-     * dá ACESSO ao que já existe. Decisão do usuário: manter o fluxo de contrato
-     * como está e encaixar o fluxo de entrada em volta dele.
+     * Abre o PDF assinado quando existe; senão o painel da Clicksign, onde se
+     * acompanha o envelope. Sem nenhum dos dois não há documento para mostrar, e
+     * aí o botão apenas leva à lista de contratos da empresa, que ao menos diz
+     * em que estado ele está — rolar a página era tudo o que ele fazia antes, e
+     * o usuário reportou justamente isso.
+     *
+     * ⚠️ O checklist **não gera** contrato. A geração fica no bloco próprio,
+     * como sempre esteve — decisão do usuário de manter o fluxo de contrato
+     * como o outro dev construiu e encaixar o fluxo de entrada em volta.
      */
     const verContrato = () => {
+        if (contratoAcesso?.url) {
+            window.open(contratoAcesso.url, '_blank', 'noopener');
+
+            return;
+        }
+
         document.getElementById('contratos-da-empresa')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
@@ -200,7 +209,7 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, 
                     {item.grupo === 'contrato' && (
                         <Button size="sm" variant="outline" onClick={verContrato}>
                             <FileText size={13} className="mr-1.5" />
-                            Ver contrato
+                            {contratoAcesso?.rotulo ?? 'Ver contrato'}
                         </Button>
                     )}
 

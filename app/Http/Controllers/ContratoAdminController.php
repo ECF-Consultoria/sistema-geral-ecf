@@ -792,6 +792,11 @@ class ContratoAdminController extends Controller
                     'ja_tentou_antes'                   => $c->id !== ($idMaisAntigoPorServico[$c->servico_id] ?? $c->id),
                     'enviado_em'                         => $c->enviado_em?->toIso8601String(),
                     'assinado_em'                        => $c->assinado_em?->toIso8601String(),
+                    // Fase 157 — o checklist precisa saber se há documento para
+                    // ABRIR. A rota `contratos.pdf-assinado` devolve 404 quando o
+                    // arquivo não está em disco, e um botão que leva a 404 é pior
+                    // que botão nenhum.
+                    'tem_pdf_assinado'                   => filled($c->pdf_assinado_path),
                     'liberado_em'                        => $c->liberado_em?->toIso8601String(),
                     // D-10 — a UI usa este booleano para decidir se ainda
                     // oferece "Liberar manualmente" nesta linha.
