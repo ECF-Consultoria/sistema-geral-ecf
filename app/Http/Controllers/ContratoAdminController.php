@@ -10,6 +10,10 @@ use App\Models\ContratoLiberacao;
 use App\Models\ContratoServico;
 use App\Models\Servico;
 use App\Models\User;
+use App\Services\ChecklistAdministrativo\ChecklistAdministrativoDefinicao;
+use App\Services\ChecklistAdministrativo\ChecklistAdministrativoService;
+use App\Services\ChecklistAdministrativo\ChecklistEtapaSincronizadorService;
+use App\Services\ChecklistAdministrativo\FinalizarEntradaAdministrativaService;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\CongelamentoEmissaoService;
 use App\Services\Clicksign\ContratoClicksignService;
@@ -19,6 +23,7 @@ use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\ContratoPdfService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
+use App\Support\Permissions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -503,8 +508,14 @@ class ContratoAdminController extends Controller
      * A tela NÃO recalcula elegibilidade — `pode_gerar_contrato` e `faltantes`
      * vêm prontos do backend, únicas fontes: `ContratoDadosMinimosService` e
      * `GatilhoContratoAdministrativoService`.
+     *
+     * Fase 139 Plano 08 (D-08/D-17) — esta ficha passou a ser a ficha ÚNICA,
+     * aberta também pela listagem Comercial › Entrada. A rota aceita as duas
+     * permissões em OR; é AQUI que a permissão de MÓDULO recorta o payload
+     * (`$podeVerContrato` abaixo).
      */
     public function show(
+        Request $request,
         Company $company,
         ContratoDadosMinimosService $dados,
         GatilhoContratoAdministrativoService $gatilho,
@@ -515,6 +526,19 @@ class ContratoAdminController extends Controller
         // que mostra na tela o texto EFETIVO atual (override ou composto)
         // do campo editável de {{plano_parcelas}}.
         ContratoPdfService $pdfDados,
+        // Fase 139 Plano 08 (D-15) — os DOIS serviços do checklist entram aqui
+        // como IRMÃOS, lado a lado, exatamente porque nenhum deles pode injetar
+        // o outro em ciclo. `ChecklistAdministrativoService` NÃO recebe o
+        // sincronizador no construtor: isso fecharia
+        // `ChecklistAdministrativoService → ChecklistEtapaSincronizadorService →
+        // ChecklistAdministrativoService`, o container lançaria
+        // `CircularDependencyException` e derrubaria esta própria action com
+        // 500. A orquestração é responsabilidade do CHAMADOR, não dos serviços
+        // (defendido em runtime por `ChecklistDirigeEtapaTest`, caso 10). O
+        // terceiro irmão, o sincronizador, é resolvido dentro do funil
+        // `sincronizarEtapaChecklist()`, que serve também os endpoints.
+        ChecklistAdministrativoService $checklist,
+        FinalizarEntradaAdministrativaService $finalizar,
     ): \Inertia\Response {
         $company->loadMissing('contratosServico.servico');
 
@@ -580,7 +604,50 @@ class ContratoAdminController extends Controller
         // mesmo serviço já é, por definição, uma tentativa seguinte.
         $idMaisAntigoPorServico = $contratos->groupBy('servico_id')->map(fn ($grupo) => $grupo->min('id'));
 
+        // ─── Checklist administrativo (Fase 139 Plano 08) ────────────────────
+        //
+        // A permissão de ROTA (D-17) abre esta ficha para quem tem
+        // `admin.contratos` OU `comercial.entrada`. A permissão de MÓDULO
+        // decide o que aparece dentro dela. Sem este recorte, a mudança de
+        // rota viraria vazamento: até a Fase 138 só quem tinha
+        // `admin.contratos` alcançava este payload, que carrega envelopes e
+        // SIGNATÁRIOS. A T-131-04-04 já limita o signatário a
+        // id/nome/papel/situacao — este gating é a defesa NOVA, não uma
+        // redundância dela.
+        $podeVerContrato = $request->user()->hasPermission(Permissions::ADMIN_CONTRATOS);
+
+        // Ordem obrigatória: montar o checklist PRIMEIRO (é a chamada que roda
+        // e persiste o resultado dos 4 resolvers automáticos), sincronizar a
+        // etapa DEPOIS, e só então perguntar `podeFinalizar()` — que precisa
+        // enxergar a empresa já na etapa certa.
+        //
+        // Por que o `show()` sincroniza: o degrau 2→3 depende de um evento
+        // EXTERNO — o webhook do Clicksign gravando `enviado_em` — que não
+        // passa por nenhuma ação do checklist. O carregamento da ficha é o
+        // único momento em que o sistema observa esse fato.
+        $checklistPayload = $checklist->paraEmpresa($company);
+        $this->sincronizarEtapaChecklist($request, $company);
+
+        // Sem `admin.contratos`, o grupo Contrato inteiro sai do payload.
+        // O `progresso` continua sendo o da empresa INTEIRA de propósito: é a
+        // régua do FINALIZAR, não uma métrica da seção visível. O usuário de
+        // Entrada vê a barra completa e o `requisito_faltante` textual, mas não
+        // vê os itens contratuais.
+        if (! $podeVerContrato) {
+            unset($checklistPayload['grupos'][ChecklistAdministrativoDefinicao::GRUPO_CONTRATO]);
+        }
+
         return Inertia::render('Admin/ContratoDetalhe', [
+            'checklist'         => $checklistPayload,
+            'pode_ver_contrato' => $podeVerContrato,
+            // Array `['permitido', 'requisito_faltante']` inteiro — o front usa
+            // os dois: um desabilita o botão, o outro explica por quê. A régua
+            // é a MESMA que recusa o POST em `finalizarEntradaAdministrativa()`;
+            // o botão nunca decide sozinho (ADMIN-05).
+            'pode_finalizar'    => $finalizar->podeFinalizar($company),
+            // D-04 — link fixo e igual para todas as empresas, servido do
+            // backend. Nunca hard-coded no JSX.
+            'adman_register_url' => config('services.adman.register_url'),
             'company' => [
                 'id'                => $company->id,
                 'name'              => $company->name,
@@ -625,8 +692,14 @@ class ContratoAdminController extends Controller
             // misturar com `faltantes`, ver docblock de
             // faltantesDaConfiguracaoEcf()).
             'configuracao_ecf_faltante' => $dados->faltantesDaConfiguracaoEcf(),
-            'pode_gerar_contrato'       => $podeGerarContrato,
-            'motivo_bloqueio'           => $motivoBloqueio,
+            // Fase 139 Plano 08 (T-139-08-01) — as três props de conteúdo
+            // contratual chegam NEUTRALIZADAS para quem não tem
+            // `admin.contratos`. `company`, `contratos_servico` e `faltantes`
+            // continuam para os dois perfis: a listagem Entrada já exibe
+            // empresa, serviços e pendências de cadastro — não há exposição
+            // nova ali.
+            'pode_gerar_contrato'       => $podeVerContrato ? $podeGerarContrato : false,
+            'motivo_bloqueio'           => $podeVerContrato ? $motivoBloqueio : null,
             // Plano 131-05 (CLICK-10/D-13) — URL do PAINEL da Clicksign (não a
             // API), derivada de CLICKSIGN_ENV (plano 131-01). É o destino real
             // do CTA "Registrar e ir para a Clicksign" — nunca hardcodar no
@@ -638,7 +711,7 @@ class ContratoAdminController extends Controller
             // desta tela para alimentar o select do modal "Liberar
             // manualmente".
             'motivos_manuais' => ContratoLiberacao::MOTIVOS_MANUAIS_LABELS,
-            'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico, $pdfDados) {
+            'contratos' => ! $podeVerContrato ? [] : $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico, $pdfDados) {
                 return [
                     'id'                                => $c->id,
                     'servico_id'                        => $c->servico_id,
@@ -690,6 +763,32 @@ class ContratoAdminController extends Controller
                 ];
             })->values(),
         ]);
+    }
+
+    /**
+     * Fase 139 Plano 08 (D-15) — o ÚNICO ponto do sistema que invoca
+     * `ChecklistEtapaSincronizadorService::sincronizar()`.
+     *
+     * Existe como funil, e não é cerimônia: **todo** caminho que fecha ou
+     * reabre um item precisa sincronizar a etapa, senão a D-15 morre em
+     * silêncio — a empresa fica presa na etapa 1, o FINALIZAR nunca habilita, e
+     * não aparece erro nenhum na tela. Com o funil, o endpoint novo que alguém
+     * acrescentar amanhã ou passa por aqui (e sincroniza) ou fica de fora do
+     * padrão de forma visível na revisão.
+     *
+     * O sincronizador é resolvido pelo container AQUI, e não injetado no
+     * construtor nem em cada action, para que a forma seja a MESMA em todos os
+     * chamadores — `show()`, os três endpoints de mutação e o FINALIZAR. Não
+     * misturar as duas formas.
+     *
+     * `refresh()` antes de sincronizar porque a mutação imediatamente anterior
+     * (ou o webhook do Clicksign) pode ter mudado o estado no banco sem passar
+     * pelo objeto em memória desta requisição.
+     */
+    private function sincronizarEtapaChecklist(Request $request, Company $company): void
+    {
+        app(ChecklistEtapaSincronizadorService::class)
+            ->sincronizar($company->refresh(), $request->user());
     }
 
     /**
