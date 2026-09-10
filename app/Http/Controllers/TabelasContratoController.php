@@ -7,9 +7,12 @@ use App\Models\ContratoTabelaProposta;
 use App\Models\EmpresaFaixaFaturamento;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Fechamento\GravarTabelaEmpresaService;
+use App\Services\Fechamento\ValidadorTabelaFaixas;
+use App\Support\FaixaFaturamento;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 /**
@@ -119,9 +122,20 @@ class TabelasContratoController extends Controller
      * vínculo errado grava a tabela de uma empresa em outra e ninguém revisa depois). `company_id`
      * é obrigatório e existente nesta requisição, nunca herdado silenciosamente do que a leitura
      * automática chutou.
+     *
+     * ⚠️ Quick 260910-l7k — antes de gravar, a tabela lida passa por DUAS portas que não existiam:
+     * (1) o teto lido do contrato entra na convenção da casa (`FaixaFaturamento::tetoGravado()`) e
+     * (2) a tabela inteira passa pela MESMA validação do cadastro manual
+     * (`ValidadorTabelaFaixas`). Sem isso, duas tabelas malformadas entraram em produção por aqui —
+     * a faixa aberta (a que pega o MAIOR faturamento) com o MENOR preço da tabela. Tabela que não
+     * passa não grava NADA e a proposta segue pendente.
      */
-    public function confirmar(Request $request, ContratoTabelaProposta $proposta, GravarTabelaEmpresaService $servico): RedirectResponse
-    {
+    public function confirmar(
+        Request $request,
+        ContratoTabelaProposta $proposta,
+        GravarTabelaEmpresaService $servico,
+        ValidadorTabelaFaixas $validador,
+    ): RedirectResponse {
         $data = $request->validate([
             'company_id' => ['required', 'integer', 'exists:companies,id'],
         ]);
@@ -131,9 +145,34 @@ class TabelasContratoController extends Controller
             abort(422, 'Este contrato já foi conferido — não é possível confirmar de novo.');
         }
 
+        // ── Normaliza e valida ANTES de qualquer escrita (quick 260910-l7k) ──
+        // Só o ramo de TABELA: valor fixo/indefinido/ilegível não têm faixa nenhuma para conferir.
+        $faixasNormalizadas = [];
+
+        if ($proposta->tipo_cobranca === ContratoTabelaProposta::TIPO_TABELA) {
+            $faixasNormalizadas = $this->normalizarTetos($proposta->faixas ?? []);
+
+            $erros = $faixasNormalizadas === []
+                ? [['campo' => 'faixas', 'mensagem' => 'A leitura não encontrou nenhuma faixa.']]
+                : $validador->erros($faixasNormalizadas);
+
+            if ($erros !== []) {
+                // Detalhe técnico fica no log; quem confere lê a mensagem sem jargão.
+                Log::warning(
+                    "[TabelasContrato] Confirmação recusada — tabela lida do contrato não passa na validação "
+                    ."(proposta {$proposta->id}, empresa {$data['company_id']}): {$erros[0]['mensagem']}"
+                );
+
+                abort(422, 'A tabela que a leitura automática encontrou neste contrato não fecha: '
+                    .'os valores de uma linha para a outra estão fora de ordem. Nada foi gravado. '
+                    .'Confira o contrato e cadastre a tabela desta empresa à mão, na ficha dela — '
+                    .'ou descarte esta leitura.');
+            }
+        }
+
         $avisoCnpj = null;
 
-        DB::transaction(function () use ($data, $proposta, $request, $servico, &$avisoCnpj) {
+        DB::transaction(function () use ($data, $proposta, $request, $servico, $faixasNormalizadas, &$avisoCnpj) {
             $company = Company::findOrFail($data['company_id']);
 
             // ── All-or-nothing (D-13 da Fase 137) ──────────────────────────
@@ -143,7 +182,7 @@ class TabelasContratoController extends Controller
             if ($proposta->tipo_cobranca === ContratoTabelaProposta::TIPO_TABELA) {
                 $servico->gravar(
                     $company,
-                    $proposta->faixas ?? [],
+                    $faixasNormalizadas,
                     EmpresaFaixaFaturamento::ORIGEM_CONTRATO,
                     null,
                     $request->user(),
@@ -218,6 +257,33 @@ class TabelasContratoController extends Controller
         $proposta->save();
 
         return back()->with('success', 'Descartado. Nada foi gravado na cobrança desta empresa.');
+    }
+
+    /**
+     * Põe o teto lido do contrato na convenção da casa (quick 260910-l7k).
+     *
+     * O parser guarda o teto LITERAL do contrato ("Até R$ 500.000,00"); a cobrança grava
+     * R$ 499.999,99, porque `FechamentoFaixaResolver::classificar()` classifica com
+     * `limite_superior >= faturamento`. As duas formas dizem a mesma coisa — a conversão acontece
+     * aqui, na borda da confirmação, nunca dentro do motor de cobrança.
+     *
+     * Só o `limite_superior` muda: `ordem`, `valor` e `valor_e_piso` passam intactos.
+     *
+     * @param  array<int, array<string, mixed>>  $faixas
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizarTetos(array $faixas): array
+    {
+        return array_values(array_map(function ($faixa) {
+            $faixa = is_array($faixa) ? $faixa : [];
+            $teto  = $faixa['limite_superior'] ?? null;
+
+            $faixa['limite_superior'] = FaixaFaturamento::tetoGravado(
+                ($teto === null || $teto === '') ? null : (float) $teto
+            );
+
+            return $faixa;
+        }, $faixas));
     }
 
     /**
