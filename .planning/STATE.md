@@ -4,11 +4,11 @@ milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
 stopped_at: Completed 152-10-PLAN.md — FASE 139 COMPLETA (10/10)
-last_updated: "2026-09-10T07:00:00.000Z"
+last_updated: "2026-09-10T08:00:00.000Z"
 last_activity: 2026-09-10
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 30
   completed_plans: 30
   percent: 100
@@ -91,6 +91,38 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 > já foram executadas em paralelo por outra sessão.
 
 ## Current Position
+
+Phase: 156 (historico-e-sla-v23-0) — **COMPLETA** (trabalho direto, sem migration e sem gravar nada)
+
+### 🏁 MILESTONE v23.0 — TODAS AS 7 FASES COMPLETAS
+
+**150-156 fechadas, 31 de 31 requirements marcados** em `REQUIREMENTS-v23.md`.
+Regressão final: **806 testes / 3505 assertions**, verde.
+
+| Fase | Como foi conduzida | Migration |
+|---|---|---|
+| 150 Máquina de estados | GSD (11 planos) | 2 (companies + transições) |
+| 151 Comercial na etapa | GSD (9 planos) | 2 (colunas em companies) |
+| 152 Checklist administrativo | GSD (10 planos) | 1 (checklist_administrativo_itens) |
+| 153 Mensagem de boas-vindas | trabalho direto | 1 (boas_vindas_templates) |
+| 154 Distribuição | trabalho direto | **0** |
+| 155 Onboarding na máquina | trabalho direto | **0** |
+| 156 Histórico e SLA | trabalho direto | **0** |
+
+⚠️ **NADA DEPLOYADO.** Migrations fora de produção: `checklist_administrativo_itens` (152) e
+`boas_vindas_templates` (153). As da 150/151 já rodaram no MariaDB local, **não em produção**.
+
+⚠️ **Uma chave de permissão nova em toda a milestone:** `coordenacao.distribuir` (Fase 154).
+Precisa ser liberada por setor depois do deploy, senão a fila de distribuição fica inacessível.
+
+**Gate humano cumprido:** só a Fase 152 tinha checkpoint bloqueante, aprovado em 2026-09-10 com
+evidência por reconsulta ao banco. As fases 153-156 são trabalho direto e não têm gate — a
+conferência visual delas **não foi feita** e está declarada como pendente abaixo.
+
+**O que falta antes de considerar a milestone entregue:**
+1. Conferência visual das telas das Fases 153-156 (nenhuma foi aberta no navegador).
+2. Decisão de deploy — 2 migrations novas e 1 chave de permissão a liberar.
+3. A v22.0 continua **NÃO fechada**: Fase 133 e o plano `133-05` seguem abertos desde 19/08.
 
 Phase: 155 (onboarding-na-maquina-de-estados-v23-0) — **COMPLETA** (trabalho direto; a régua do onboarding NÃO foi tocada, VERSAO segue 17)
 
@@ -1651,6 +1683,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-10T08:00:00.000Z
+Stopped at: **MILESTONE v23.0 COMPLETA** — Fase 156 (timeline + SLA) fechada em `03cff780`. 7 fases, 31/31 requirements, **806 testes / 3505 assertions** verdes. Timeline lê SÓ fontes duráveis (o activity_log é podado em 365 dias). **NADA DEPLOYADO**: 2 migrations fora de produção e a chave `coordenacao.distribuir` a liberar por setor. **Conferência visual das Fases 153-156 NÃO foi feita.**
 Last session: 2026-09-10T07:00:00.000Z
 Stopped at: **Fase 155 COMPLETA** (onboarding move a etapa). Commit `6d12e4e6`. `DefinicaoOnboarding` intocada (VERSAO 17), com teste-guarda. **Medição que corrigiu o desenho:** o guard do ONBRD-04 sem a condição de empresa legada quebrava **136 testes** das Fases 135/OnboardingEmCompanies — a trava passou a valer só dentro do fluxo novo (`etapa` não-nula). Regressão de **795 testes / 3419 assertions** verde. **NADA DEPLOYADO** — 2 migrations fora de produção (152 e 153). Resta a Fase 156 (SLA).
 Last session: 2026-09-10T06:00:00.000Z

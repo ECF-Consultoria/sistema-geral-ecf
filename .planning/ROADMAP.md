@@ -2304,7 +2304,7 @@ Plans:
 
 **Plans:** sem planos GSD — **trabalho direto** (`CLAUDE.md` → "GSD por RISCO"), sem migration. `DefinicaoOnboarding` **não foi tocada** e a `VERSAO` continua 17, com teste que falha se alguém a reescrever (ONBRD-03). Decisões em `.planning/phases/155-onboarding-na-maquina-de-estados-v23-0/155-DECISOES.md`. 10 testes / 24 assertions; regressão de 795 testes incluindo as suítes de onboarding.
 
-### Phase 156: Histórico e rastreabilidade para SLA (v23.0)
+### Phase 156: Histórico e rastreabilidade para SLA (v23.0) — ✅ COMPLETA (trabalho direto)
 
 **Goal:** Toda empresa tem uma timeline datada, do momento em que chega do HubSpot até entrar em operação, que permite ver quanto tempo ela passou em cada etapa — a base para medir SLA e apontar gargalo.
 **Requirements**: HIST-01, HIST-02, HIST-03
@@ -2317,7 +2317,7 @@ Plans:
   2. A timeline de uma empresa que passou pelo fluxo completo mostra, no mínimo, os 7 eventos do exemplo do §12 — recebida do HubSpot, contrato enviado, contrato assinado, administrativo concluído, analista definido, estrategista definido, enviada para onboarding (HIST-02)
   3. É possível ler, para qualquer empresa, quanto tempo ela passou em cada etapa — dado suficiente para apontar gargalo sem abrir o banco (HIST-03)
 
-**Plans:** TBD
+**Plans:** sem planos GSD — **trabalho direto**, sem migration e **sem gravar nada**: a timeline é leitura agregada do que as Fases 150-155 já registram. Decisões em `.planning/phases/156-historico-e-sla-v23-0/156-DECISOES.md`. 11 testes / 86 assertions.
 
 > **Fora de escopo desta milestone (Future Requirements do `REQUIREMENTS-v23.md`):** criar o grupo de WhatsApp via API do Digisac, provisionar e-mail colaborador automaticamente, enviar a mensagem de boas-vindas pelo sistema (o PDF pede "pronta para copiar", não envio automático), painel de SLA agregado (HIST-03 entrega o dado por empresa, o painel é produto separado), e a segunda parte da especificação funcional (o PDF se declara "a primeira parte"). **Fora de escopo declarado pelo PDF:** o Trello não integra este fluxo. **Fora de escopo por já estar entregue:** reconstruir a ingestão do HubSpot ou a assinatura de contrato (D5); reescrever `DefinicaoOnboarding` (ONBRD-03); fechar a v22.0 — a Fase 133 e o plano `133-05` seguem abertos, são trabalho daquela milestone.
 

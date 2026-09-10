@@ -149,9 +149,9 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### HIST — Histórico e rastreabilidade (§12)
 
-- [ ] **HIST-01**: Cada empresa tem uma timeline de entrada com data, horário, ação e usuário responsável por evento
-- [ ] **HIST-02**: A timeline registra, no mínimo, os 7 eventos do exemplo do §12 — recebida do HubSpot, contrato enviado, contrato assinado, administrativo concluído, analista definido, estrategista definido, enviada para onboarding
-- [ ] **HIST-03**: É possível ler quanto tempo a empresa passou em cada etapa, para medir SLA e identificar gargalo
+- [x] **HIST-01**: Cada empresa tem uma timeline de entrada com data, horário, ação e usuário responsável por evento
+- [x] **HIST-02**: A timeline registra, no mínimo, os 7 eventos do exemplo do §12 — recebida do HubSpot, contrato enviado, contrato assinado, administrativo concluído, analista definido, estrategista definido, enviada para onboarding
+- [x] **HIST-03**: É possível ler quanto tempo a empresa passou em cada etapa, para medir SLA e identificar gargalo
 
 ---
 
