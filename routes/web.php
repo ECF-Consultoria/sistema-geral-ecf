@@ -3,6 +3,7 @@
 use Inertia\Inertia;
 use App\Http\Controllers\ContratoAdminController;
 use App\Http\Controllers\TabelasContratoController;
+use App\Http\Controllers\TabelaEmpresaContratoController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\EcfWebhookController;
@@ -1484,6 +1485,18 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     Route::get('/tabelas', [TabelasContratoController::class, 'index'])->name('tabelas.index');
     Route::post('/tabelas/{proposta}/confirmar', [TabelasContratoController::class, 'confirmar'])->name('tabelas.confirmar');
     Route::post('/tabelas/{proposta}/descartar', [TabelasContratoController::class, 'descartar'])->name('tabelas.descartar');
+
+    // Plano 142-02 (D-03) — ficha PERMANENTE da tabela de cobrança de uma empresa (ou do grupo
+    // dela), dentro do módulo de contratos, distinta da caixa de entrada `/tabelas` acima (ver
+    // `<decisao_de_projeto>` do 142-01-PLAN.md). MESMO grupo de permissão, de propósito — nunca
+    // um grupo novo nem `role:admin` (é a armadilha central deste plano: rota nova apontando pra
+    // fora daqui reabriria o 403 no botão Salvar para quem só tem `admin.contratos`).
+    // Rotas: admin.contratos.tabela.show/salvar/remover/grupo.salvar/grupo.remover.
+    Route::get('/empresa/{company}/tabela', [TabelaEmpresaContratoController::class, 'show'])->name('tabela.show');
+    Route::post('/empresa/{company}/tabela', [TabelaEmpresaContratoController::class, 'salvar'])->name('tabela.salvar');
+    Route::delete('/empresa/{company}/tabela', [TabelaEmpresaContratoController::class, 'remover'])->name('tabela.remover');
+    Route::post('/grupo/{grupo}/tabela', [TabelaEmpresaContratoController::class, 'salvarGrupo'])->name('tabela.grupo.salvar');
+    Route::delete('/grupo/{grupo}/tabela', [TabelaEmpresaContratoController::class, 'removerGrupo'])->name('tabela.grupo.remover');
 });
 
 // ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────
