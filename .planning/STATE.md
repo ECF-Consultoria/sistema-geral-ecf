@@ -4,11 +4,11 @@ milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
 stopped_at: Completed 152-10-PLAN.md — FASE 139 COMPLETA (10/10)
-last_updated: "2026-09-10T04:00:00.000Z"
+last_updated: "2026-09-10T05:00:00.000Z"
 last_activity: 2026-09-10
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 30
   completed_plans: 30
   percent: 100
@@ -91,6 +91,10 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 > já foram executadas em paralelo por outra sessão.
 
 ## Current Position
+
+Phase: 153 (mensagem-de-boas-vindas-generalizada-v23-0) — **COMPLETA** (trabalho direto, sem planos GSD)
+
+A Fase 152 (checklist administrativo) segue COMPLETA (10/10) — registro preservado abaixo.
 
 Phase: 152 (checklist-administrativo-trava-de-finaliza-o-v23-0) — **COMPLETA (10/10)**
 Plan: 10 of 10 — **TODOS EXECUTADOS; os 2 gates humanos do 152-10 foram APROVADOS em 2026-09-10.** Execução iniciada em 2026-09-09 por `/gsd:execute-phase 152`. **152-01 concluído**
@@ -1643,6 +1647,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-10T05:00:00.000Z
+Stopped at: **Fase 153 COMPLETA** (mensagem de boas-vindas por serviço) — conduzida como trabalho direto por `CLAUDE.md` (GSD por RISCO); decisões em `153-DECISOES.md` ANTES do código. Commits `6cb90942` (motor+11 testes), `246f11b2` (payload+UI), `40557508` (tela de edição). 25 testes / 81 assertions na fase; regressão 150+151+152+131 em 344/1285, idêntica ao pré-fase. **NADA DEPLOYADO** — agora são 2 migrations novas fora de produção.
 Last session: 2026-09-10T04:00:00.000Z
 Stopped at: Completed 152-10-PLAN.md — **FASE 139 COMPLETA (10/10)**. Regressao final igual a baseline (`5d839ece`); os 2 gates humanos APROVADOS com evidencia por reconsulta ao banco: a empresa 418 registrou os 4 degraus da D-15 em `company_etapa_transicoes` (1→2 por marcacao na tela, 2→3 e 3→4 por ABERTURA da ficha observando evento externo, 4→5 pelo clique no FINALIZAR) e terminou em `aguardando_distribuicao`, fora da listagem Entrada e dentro da Contrato. ADMIN-01..06 marcados em `REQUIREMENTS-v23.md`. **NADA DEPLOYADO** — 1 migration nova fora de producao.
 Last session: 2026-09-10T03:00:00.000Z

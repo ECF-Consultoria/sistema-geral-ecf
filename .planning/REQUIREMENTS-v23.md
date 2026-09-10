@@ -124,9 +124,9 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### COMUNIC — Mensagem de boas-vindas (§4)
 
-- [ ] **COMUNIC-01**: O sistema monta a mensagem de boas-vindas preenchida com os dados da empresa, pronta para o Administrativo copiar
-- [ ] **COMUNIC-02**: A mensagem contém os 6 blocos do §4 — boas-vindas, e-mail colaborador, link da ADMA, link/Grant da consultoria, link de conexão com o sistema e orientações das conexões que o cliente precisa fazer
-- [ ] **COMUNIC-03**: A mensagem funciona para qualquer serviço, não só Polos, e o texto padrão é editável sem deploy
+- [x] **COMUNIC-01**: O sistema monta a mensagem de boas-vindas preenchida com os dados da empresa, pronta para o Administrativo copiar
+- [x] **COMUNIC-02**: A mensagem contém os 6 blocos do §4 — boas-vindas, e-mail colaborador, link da ADMA, link/Grant da consultoria, link de conexão com o sistema e orientações das conexões que o cliente precisa fazer
+- [x] **COMUNIC-03**: A mensagem funciona para qualquer serviço, não só Polos, e o texto padrão é editável sem deploy
 
 ### DISTRIB — Distribuição pela Coordenação (§7)
 

@@ -2254,7 +2254,7 @@ Plans:
 
 - [x] 152-10-PLAN.md — Regressão final contra a baseline e os dois checkpoints humanos de conferência visual
 
-### Phase 153: Mensagem de boas-vindas generalizada (v23.0)
+### Phase 153: Mensagem de boas-vindas generalizada (v23.0) — ✅ COMPLETA (trabalho direto)
 
 **Goal:** O item "Gerar mensagem de boas-vindas" do módulo **Entrada** tem uma mensagem pronta, preenchida com os dados reais da empresa, para qualquer serviço contratado — não só Polos — editável direto no painel sem depender de deploy.
 **Requirements**: COMUNIC-01, COMUNIC-02, COMUNIC-03
@@ -2269,7 +2269,7 @@ Plans:
   2. A mensagem contém os 6 blocos do §4 — boas-vindas, e-mail colaborador, link da ADMA, link/Grant da consultoria, link de conexão com o sistema, orientações sobre as conexões que o cliente precisa fazer — e nenhum bloco fica vazio quando o dado correspondente já existe (COMUNIC-02)
   3. Uma empresa de um serviço diferente de Polos recebe a mesma mensagem corretamente preenchida, e um admin edita o texto padrão direto em Padrões Globais, sem precisar de deploy (COMUNIC-03)
 
-**Plans:** TBD
+**Plans:** sem planos GSD — conduzida como **trabalho direto** (`CLAUDE.md` → "GSD por RISCO"): feature nova em módulo existente, migration CRIA tabela em vez de alterar tabela com dado em produção. As decisões de desenho estão em `.planning/phases/153-mensagem-de-boas-vindas-generalizada-v23-0/153-DECISOES.md`, escritas ANTES do código; os testes vieram no mesmo commit. 25 testes / 81 assertions.
 
 ### Phase 154: Distribuição pela Coordenação e chegada aos responsáveis (v23.0)
 
