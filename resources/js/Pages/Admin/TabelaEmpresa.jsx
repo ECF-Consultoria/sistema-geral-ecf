@@ -7,6 +7,7 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { CampoDinheiro } from '@/Components/ui/campo-dinheiro';
 import TabelaProgressivaFaixas from '@/Components/Fechamento/TabelaProgressivaFaixas';
+import { valorExibidoNoCampo, tetoGravado, indiceDeGravacao } from '@/lib/faixasFaturamento';
 import { ArrowLeft, Building2, Plus, Trash2, AlertTriangle, FileCheck2 } from 'lucide-react';
 
 /**
@@ -263,6 +264,16 @@ function linhaVaziaFaixa(ordem) {
  * `modelosDePartida` (só usado pelo bloco 4) preenche as linhas com o
  * catálogo de um serviço, SEM salvar — é só ponto de partida, precisa ser
  * conferido contra o contrato antes de salvar.
+ *
+ * ⚠️ Quick 260910 — o campo de Faturamento de cada linha mostra e recebe o
+ * valor REDONDO do contrato ("até 500.000" / "a partir de 500.000"), nunca
+ * mais o teto cru gravado (",99"). `linhas` continua guardando o valor
+ * gravado (`limite_superior` sempre ",99") — a conversão mora inteira em
+ * `lib/faixasFaturamento.js` e acontece só na exibição/digitação deste
+ * campo (`aoMudarFaturamento`). A primeira linha grava nela mesma; todas as
+ * outras (inclusive a última, sem teto) gravam o valor digitado na LINHA
+ * ANTERIOR — é a única que funciona ao contrário das outras, e por isso é a
+ * mais fácil de errar (`indiceDeGravacao`, testado isolado).
  */
 function FormularioFaixas({ linhasIniciais, onSalvar, onRemover, rotuloRemover = 'Apagar tabela', modelosDePartida = [], avisoAntesDeSalvar = null }) {
     const [linhas, setLinhas] = useState(() =>
@@ -283,6 +294,17 @@ function FormularioFaixas({ linhasIniciais, onSalvar, onRemover, rotuloRemover =
             if (campo === 'limite_superior' && valor !== null) nova.valor_e_piso = false;
             return nova;
         }));
+    }
+
+    // Quick 260910 — a pessoa digita o valor REDONDO na linha `idx`
+    // (lib/faixasFaturamento.js decide se isso é "até" — só a primeira linha
+    // — ou "a partir de", todas as outras); `indiceDeGravacao` diz em QUAL
+    // linha do array esse valor efetivamente é gravado (a própria, só na
+    // primeira; a linha ANTERIOR, em todas as outras). Reaproveita
+    // `atualizarLinha` pra manter a mesma regra de limpar "valor é piso"
+    // quando a linha-alvo deixa de estar sem teto.
+    function aoMudarFaturamento(idx, valorRedondo) {
+        atualizarLinha(indiceDeGravacao(idx), 'limite_superior', tetoGravado(valorRedondo));
     }
 
     function adicionarLinha() {
@@ -369,11 +391,11 @@ function FormularioFaixas({ linhasIniciais, onSalvar, onRemover, rotuloRemover =
                                 />
                             </div>
                             <div className="space-y-1">
-                                <Label className="text-[12px]">Faturamento até</Label>
+                                <Label className="text-[12px]">{idx === 0 ? 'Faturamento até' : 'Faturamento a partir de'}</Label>
                                 <CampoDinheiro
-                                    valor={linha.limite_superior}
-                                    onChange={(v) => atualizarLinha(idx, 'limite_superior', v)}
-                                    placeholder="Sem limite superior"
+                                    valor={valorExibidoNoCampo(linhas, idx)}
+                                    onChange={(v) => aoMudarFaturamento(idx, v)}
+                                    placeholder={idx === 0 ? 'Sem limite superior' : 'Digite o valor'}
                                 />
                             </div>
                             <div className="space-y-1">

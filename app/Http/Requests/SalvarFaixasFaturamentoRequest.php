@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Services\Fechamento\ValidadorTabelaFaixas;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -19,6 +20,11 @@ use Illuminate\Foundation\Http\FormRequest;
  * `withValidator()` aplicando UMA regra composta por vez, parando no
  * primeiro conflito encontrado (mesma disciplina: mensagem única, sem spam
  * de erros).
+ *
+ * ⚠️ Quick 260910-l7k — as regras compostas SAÍRAM daqui para
+ * `App\Services\Fechamento\ValidadorTabelaFaixas` (mesmas regras, mesma ordem, mesmas mensagens).
+ * Estavam presas ao FormRequest, e por isso a confirmação da leitura automática dos contratos
+ * gravava tabela sem validar nada. Este `withValidator()` agora só delega e mapeia os erros.
  *
  * Regras compostas, aplicadas nesta ordem (cada uma retorna cedo se falhar):
  *  (a) `ordem` não pode repetir.
@@ -84,88 +90,11 @@ class SalvarFaixasFaturamentoRequest extends FormRequest
                 return;
             }
 
-            $itens = collect($bruto)
-                ->values()
-                ->map(function ($item, int $idx) {
-                    $limite = $item['limite_superior'] ?? null;
-
-                    return [
-                        'idx'             => $idx,
-                        'ordem'           => isset($item['ordem']) ? (int) $item['ordem'] : null,
-                        'limite_superior' => ($limite === null || $limite === '') ? null : (float) $limite,
-                        'valor_e_piso'    => filter_var($item['valor_e_piso'] ?? false, FILTER_VALIDATE_BOOLEAN),
-                    ];
-                })
-                ->sortBy('ordem')
-                ->values();
-
-            // ── (a) ordem não pode repetir ────────────────────────────────
-            $ordens = $itens->pluck('ordem');
-            if ($ordens->unique()->count() !== $ordens->count()) {
-                $v->errors()->add(
-                    'faixas',
-                    'Cada faixa precisa de uma ordem única — há ordens repetidas na tabela.'
-                );
-
-                return;
-            }
-
-            // ── (b) no máximo uma faixa sem teto, e ela é a última ────────
-            $semTeto = $itens->filter(fn ($i) => $i['limite_superior'] === null)->values();
-
-            if ($semTeto->count() > 1) {
-                foreach ($semTeto as $item) {
-                    $v->errors()->add(
-                        "faixas.{$item['idx']}.limite_superior",
-                        'Apenas uma faixa pode ficar sem limite superior (sem teto) — a de maior ordem.'
-                    );
-                }
-
-                return;
-            }
-
-            if ($semTeto->count() === 1) {
-                $maiorOrdem = $itens->max('ordem');
-
-                if ($semTeto->first()['ordem'] !== $maiorOrdem) {
-                    $v->errors()->add(
-                        "faixas.{$semTeto->first()['idx']}.limite_superior",
-                        'A faixa sem limite superior precisa ser a de maior ordem (a última da tabela).'
-                    );
-
-                    return;
-                }
-            }
-
-            // ── (b2) valor_e_piso só na faixa sem teto ────────────────────
-            $pisoComTeto = $itens->first(fn ($i) => $i['valor_e_piso'] === true && $i['limite_superior'] !== null);
-
-            if ($pisoComTeto !== null) {
-                $v->errors()->add(
-                    "faixas.{$pisoComTeto['idx']}.valor_e_piso",
-                    'Só a faixa sem limite superior pode ser marcada como "valor é piso" — numa faixa com teto o valor ficaria ambíguo na cobrança.'
-                );
-
-                return;
-            }
-
-            // ── (c) limite_superior estritamente crescente na ordem ──────
-            $anterior = null;
-
-            foreach ($itens as $item) {
-                if ($anterior !== null
-                    && $anterior['limite_superior'] !== null
-                    && $item['limite_superior'] !== null
-                    && $item['limite_superior'] <= $anterior['limite_superior']) {
-                    $v->errors()->add(
-                        "faixas.{$item['idx']}.limite_superior",
-                        "Essa faixa se sobrepõe à faixa {$anterior['ordem']}. Ajuste o limite antes de salvar."
-                    );
-
-                    return;
-                }
-
-                $anterior = $item;
+            // As regras compostas vivem em `ValidadorTabelaFaixas` desde o quick 260910-l7k —
+            // aqui só o mapeamento {campo, mensagem} -> erros do validador. O serviço já para no
+            // primeiro conflito e já aponta para o índice ORIGINAL do payload.
+            foreach (app(ValidadorTabelaFaixas::class)->erros($bruto) as $erro) {
+                $v->errors()->add($erro['campo'], $erro['mensagem']);
             }
         });
     }

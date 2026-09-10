@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { rotuloFaturamento } from '@/lib/faixasFaturamento';
 
 /**
  * `TabelaProgressivaFaixas` — a ÚNICA definição da grade da tabela
@@ -18,6 +19,16 @@ import { cn } from '@/lib/utils';
  * superfície interna (`ecf-card-2`), caixa com raio 12px. Fonte e paleta
  * continuam as do projeto (font-mono do Tailwind, tokens ecf-*) — decisão
  * do usuário, não a fonte mono do handoff.
+ *
+ * ⚠️ Quick 260910 — a coluna "Faturamento" de cada linha usa
+ * `rotuloFaturamento` (`lib/faixasFaturamento.js`), não mais o teto cru da
+ * própria linha: a primeira mostra "até" o teto redondo, todas as outras
+ * (inclusive a última, sem teto) mostram "a partir de" o teto da linha
+ * ANTERIOR — a mesma lógica do contrato ("Até R$ 500.000,00" / "A partir de
+ * R$ 500.000,00"). O cabeçalho continua "Faturamento até" (trava do
+ * Phase139TabelaProgressivaFielTest) mesmo as linhas variando o rótulo — a
+ * mesma ambiguidade que já existe no contrato. `limite_superior` continua
+ * gravado com ",99"; a conversão para redondo acontece só aqui, na leitura.
  */
 
 const fmtBRL = (n) => n == null ? '—'
@@ -55,7 +66,7 @@ export default function TabelaProgressivaFaixas({ faixas, faixaOrdemAtual, notaR
                         >
                             <span className={cn('font-semibold', atual ? 'text-ecf-yellow' : 'text-white/70')}>{f.ordem}ª</span>
                             <span className={atual ? 'text-ecf-yellow' : 'text-white/70'}>
-                                {f.limite_superior != null ? fmtBRL(f.limite_superior) : 'acima'}
+                                {rotuloFaturamento(faixas, i)}
                             </span>
                             <span className={cn('text-right font-semibold', atual ? 'text-ecf-yellow' : 'text-emerald-400/80')}>
                                 {fmtValorFaixa(f.valor, f.valor_e_piso)}
