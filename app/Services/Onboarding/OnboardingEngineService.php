@@ -22,6 +22,18 @@ use Illuminate\Support\Facades\Log;
  * Molde de estilo: AdmanService (métodos por responsabilidade, docblock
  * descrevendo o shape de retorno) e DiagnoseCustId (classificação por
  * resultado, sem booleano solto).
+ *
+ * ─── Fase 155: o onboarding passa a refletir na etapa da empresa ───────────
+ *
+ * A régua NÃO muda. `DefinicaoOnboarding` continua na VERSAO 17 e nada aqui a
+ * reescreve — a Fase 155 mexe no **gatilho** e na leitura de etapa em volta do
+ * motor (ONBRD-03). Dois pontos, e só dois: o ramo que liga o onboarding em
+ * {@see self::definirResponsaveis()} e a conclusão em
+ * {@see self::avaliarConclusaoDoOnboarding()}.
+ *
+ * O acoplamento é **one-way**: este service conhece `EtapaTransicaoService`, e
+ * aquele nunca pode conhecer onboarding. E toda escrita de etapa passa por
+ * `transicionar()` — nenhum `update(['etapa' => ...])` nasce aqui.
  */
 class OnboardingEngineService
 {
@@ -172,11 +184,39 @@ class OnboardingEngineService
         Onboarding $onboarding,
         ?User $estrategista,
         ?User $analista,
+        ?User $por = null,
     ): Onboarding {
         if ($estrategista === null && $analista === null) {
             throw new \DomainException(
                 "Onboarding {$onboarding->id} precisa de ao menos um responsável — "
                 . 'estrategista ou analista (R-02).'
+            );
+        }
+
+        // ONBRD-04 (Fase 155, D-B) — só bloqueia quando faltam OS DOIS
+        // responsáveis da EMPRESA, leitura literal do "e" do requisito. Empresa
+        // legada que hoje tem só `consultor` vinculado continua rodando
+        // onboarding normalmente; depois da Fase 154 toda empresa distribuída
+        // tem os dois, então na prática a trava só pega quem nunca passou pela
+        // distribuição — que é o alvo.
+        //
+        // A checagem vale só quando ESTA chamada iniciaria o onboarding. Ajustar
+        // papel de um onboarding que já corre não passa por aqui.
+        //
+        // ⚠️ E vale só para empresa DENTRO do fluxo novo (`etapa` não-nula).
+        // Empresa legada (`etapa` NULL) precede a máquina de estados e nunca
+        // passou pela Coordenação — travá-la seria quebrar onboarding que roda
+        // hoje para cumprir uma regra que não existia quando ela nasceu.
+        // Medido: o guard sem esta condição quebrava 136 testes das Fases 135 e
+        // OnboardingEmCompanies, todos com `companies.etapa` NULL. É a mesma
+        // disciplina de "empresa legada nunca é carimbada" (D-05 da Fase 150,
+        // D-14 da 151), aplicada agora à trava e não só à escrita.
+        if ($onboarding->status === Onboarding::STATUS_RASCUNHO
+            && $onboarding->company?->etapa !== null
+            && ! $this->empresaTemResponsavelOperacional($onboarding)) {
+            throw new \DomainException(
+                'Esta empresa ainda não tem analista nem estrategista definidos. '
+                . 'A Coordenação precisa distribuí-la antes de iniciar o onboarding.'
             );
         }
 
@@ -213,6 +253,15 @@ class OnboardingEngineService
         // papel num onboarding que já está correndo.
         if ($ligouAgora) {
             $this->reavaliar($onboarding);
+
+            // ONBRD-01 — a empresa entra em "Onboarding em andamento" assim que
+            // QUALQUER onboarding dela começa (D-A). O ator é quem chamou; o
+            // engine não conhece a sessão.
+            $this->moverEtapaDaEmpresa(
+                $onboarding,
+                \App\Models\Company::ETAPA_ONBOARDING_ANDAMENTO,
+                $por
+            );
         }
 
         activity('onboarding')
@@ -710,5 +759,109 @@ class OnboardingEngineService
             ->performedOn($onboarding)
             ->withProperties(['status' => Onboarding::STATUS_CONCLUIDO])
             ->log('Onboarding concluído');
+
+        // ONBRD-02 (D-A) — a empresa só sai para "Onboarding concluído" quando
+        // o ÚLTIMO onboarding dela acabar. Avançar no primeiro afirmaria algo
+        // falso com serviço ainda em andamento, e a Fase 156 mediria SLA errado.
+        if ($this->empresaTemOnboardingPendente($onboarding)) {
+            return;
+        }
+
+        // D-C — as duas transições no mesmo ato, cada uma com sua linha de
+        // histórico. A etapa 8 dura milissegundos, e isso é honesto: ela é um
+        // marco, não um período de trabalho.
+        //
+        // Sem ator de sessão aqui: a conclusão pode vir de um resolver
+        // automático rodando no agendador. Usa a conta de sistema (D-D).
+        $ator = $this->atorDeSistema();
+
+        $this->moverEtapaDaEmpresa($onboarding, \App\Models\Company::ETAPA_ONBOARDING_CONCLUIDO, $ator);
+        $this->moverEtapaDaEmpresa($onboarding, \App\Models\Company::ETAPA_EM_OPERACAO, $ator);
+    }
+
+    /**
+     * A empresa deste onboarding tem analista OU estrategista vinculado?
+     * (ONBRD-04, D-B — só a ausência dos DOIS bloqueia.)
+     *
+     * Olha `company_users`, que é onde a Fase 154 grava a distribuição — não os
+     * slots do próprio onboarding, que são outra coisa.
+     */
+    private function empresaTemResponsavelOperacional(Onboarding $onboarding): bool
+    {
+        return \Illuminate\Support\Facades\DB::table('company_users')
+            ->where('company_id', $onboarding->company_id)
+            ->whereIn('role', ['analista', 'estrategista'])
+            ->exists();
+    }
+
+    /** Ainda há onboarding não-concluído nesta empresa, além deste? (D-A) */
+    private function empresaTemOnboardingPendente(Onboarding $onboarding): bool
+    {
+        return Onboarding::where('company_id', $onboarding->company_id)
+            ->where('id', '!=', $onboarding->id)
+            ->naoConcluido()
+            ->exists();
+    }
+
+    /**
+     * Conta de sistema para transições sem sessão (D-D) — a mesma não-logável
+     * criada na Fase 151, resolvida por `config('services.hubspot.webhook_user_id')`.
+     *
+     * Devolve `null` quando não está configurada, e quem chama **pula** a
+     * transição em vez de atribuí-la a um admin qualquer: atribuir a uma pessoa
+     * uma transição que ela não fez é o histórico falso que a D-14 proíbe. É a
+     * Fase 156 que vai ler essas linhas.
+     */
+    private function atorDeSistema(): ?User
+    {
+        $id = config('services.hubspot.webhook_user_id');
+
+        return $id ? User::find($id) : null;
+    }
+
+    /**
+     * Move a etapa da EMPRESA do onboarding, sempre por
+     * `EtapaTransicaoService::transicionar()` — nunca `update()` direto.
+     *
+     * O service é resolvido aqui, e não injetado no construtor, por uma razão
+     * concreta: **41 chamadas em 8 arquivos de teste de outras fases** fazem
+     * `new OnboardingEngineService()` sem argumentos. Um parâmetro obrigatório
+     * quebraria a suíte da Fase 135 inteira, que nada tem a ver com esta
+     * mudança. Mesmo padrão do funil da Fase 152.
+     *
+     * **O onboarding nunca falha porque a etapa foi recusada.** Empresa legada
+     * com `etapa` NULL, ou em etapa que não permite o destino, apenas registra
+     * warning e segue: o onboarding é o processo real; a etapa é o retrato dele.
+     */
+    private function moverEtapaDaEmpresa(Onboarding $onboarding, string $destino, ?User $por): void
+    {
+        if ($por === null) {
+            Log::warning(
+                "[Onboarding] transição de etapa para {$destino} PULADA no onboarding {$onboarding->id} "
+                . '— sem ator (conta de sistema não configurada em services.hubspot.webhook_user_id). '
+                . 'A etapa fica para trás de propósito: histórico atribuído a quem não agiu é pior.'
+            );
+
+            return;
+        }
+
+        $company = $onboarding->company;
+
+        if ($company === null || $company->etapa === null) {
+            // Empresa legada nunca é carimbada — D-05 da Fase 150, D-14 da 151.
+            return;
+        }
+
+        $resultado = app(\App\Services\FluxoEntrada\EtapaTransicaoService::class)
+            ->transicionar($company, $destino, $por);
+
+        if ($resultado['status'] !== 'transicionado') {
+            Log::warning('[Onboarding] transição de etapa recusada', [
+                'onboarding_id' => $onboarding->id,
+                'company_id'    => $company->id,
+                'destino'       => $destino,
+                'resultado'     => $resultado,
+            ]);
+        }
     }
 }
