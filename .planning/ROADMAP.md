@@ -2393,7 +2393,7 @@ convivem, se uma leva à outra, ou se viram a mesma coisa.
 Plans:
 - [x] 142-01-PLAN.md — expõe as LINHAS da tabela própria nas props e cria a porta única de escrita (`GravarTabelaEmpresaService`), com trilha de auditoria e a trava de "tabela copiada nunca sobrescreve tabela conferida". Registra a decisão de projeto sobre conviver com a tela da Fase 140.
 - [x] 142-02-PLAN.md — rotas, controller e autorização da página exclusiva dentro do módulo de contratos, mais o botão em `/administrativo/contratos/empresa/{id}`.
-- [ ] 142-03-PLAN.md — máscara de dinheiro (react-imask), grade da tabela virando componente compartilhado e a página `Admin/TabelaEmpresa.jsx` com o formulário abrindo preenchido com o que está gravado.
+- [x] 142-03-PLAN.md — máscara de dinheiro (react-imask), grade da tabela virando componente compartilhado e a página `Admin/TabelaEmpresa.jsx` com o formulário abrindo preenchido com o que está gravado.
 - [ ] 142-04-PLAN.md — fechamento passa a mostrar as faixas da tabela própria e deixa de cadastrar/editar; retarget das travas antigas e gate ampliado com checkpoint humano.
 
 ---

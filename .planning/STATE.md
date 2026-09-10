@@ -951,6 +951,35 @@ incidente relatado no bloco do 142-01 acima) — este parágrafo é a única alt
 Sem deploy — subagente sem acesso a produção/`.env`/`plink`/`pscp`; `artisan migrate` local não
 rodado (nenhuma migration neste plano).
 
+142-03 concluído (D-01/D-02/D-03) — a máscara de dinheiro, a grade compartilhada e a página
+exclusiva `Admin/TabelaEmpresa.jsx`. `resources/js/lib/dinheiro.js` (opções do `react-imask`,
+`formatarDinheiro`, `paraTextoDeCampo`) + `Components/ui/campo-dinheiro.jsx` (`CampoDinheiro` lê
+`mask.typedValue` do próprio imask — nunca `parseFloat` de string mascarada, que é exatamente o
+caminho onde o separador de milhar viraria parte do número). `TabelaProgressivaFaixas` saiu de
+dentro de `TabelaFaixasSection.jsx` para `Components/Fechamento/TabelaProgressivaFaixas.jsx`
+(byte a byte, mesma densidade da Fase 139) e ganhou `notaRodape` opcional para o plano 04; a suíte
+`Phase139TabelaProgressivaFielTest` foi retargetada e FORTALECIDA — "uma definição"/"cabeçalho
+único" agora vale para o projeto inteiro, não só o arquivo antigo. `TabelaEmpresa.jsx` (430
+linhas): formulário abre com `tabela_empresa`/`tabela_grupo` — as linhas GRAVADAS, nunca a tabela
+do serviço fazendo as vezes da tabela da empresa (dívida do 137-09 paga por completo); a tabela do
+serviço só entra por clique explícito em "Começar a partir da tabela de X", sem salvar sozinha;
+confirmação obrigatória ao salvar por cima de uma tabela vinda do contrato; link cruzado para
+`admin.contratos.tabelas.index` com a copy "parece ser desta empresa" (nunca "é"); copy sem
+nenhuma das oito palavras banidas (as sete da Fase 139 + "presumida" do 142-CONTEXT). Testes novos:
+`Phase142FichaTabelaUiTest` (11 — CampoDinheiro sem `type="number"` cru, `mask.typedValue` sem
+`parseFloat`, estado inicial, aviso antigo do 137-09 ausente, grade importada não redefinida, as
+quatro rotas certas nunca as antigas, link cruzado, jargão, escala do Tailwind). CSS compilado
+conferido por script Node (`fs.readFileSync`, nunca `grep` do shell — colchetes escapam mal):
+`grid-cols-[80px_1fr_160px]`, `px-[18px]`, `text-[13px]`, `border-white/[0.06]` confirmados
+presentes no build depois de limpar `node_modules/.vite` + `public/build` (checagem inicial com
+`node -e` inline deu falso negativo por escaping de shell — refeita como script de arquivo).
+Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Phase142|Quick260909`:
+**598 testes / 2809 asserções / 0 falhas** (bate exatamente com +11/+32 sobre o baseline do 142-02,
+zero regressão). Last activity: 2026-09-10 — 142-03 executado (`142-03-SUMMARY.md`). `gsd-sdk
+query state.advance-plan` NÃO foi executado nesta sessão (mesma instrução explícita dos blocos
+142-01/142-02 acima) — este parágrafo é a única alteração de `STATE.md`. Sem deploy — subagente
+sem acesso a produção/`.env`/`plink`/`pscp`; nenhuma migration neste plano.
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING
