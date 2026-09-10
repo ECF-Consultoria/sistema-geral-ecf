@@ -98,6 +98,18 @@ class Permissions
      */
     public const COMERCIAL_ENTRADA           = 'comercial.entrada';
 
+    /**
+     * Fase 154 (DISTRIB-01..04, D-G) — a Coordenação distribui analista e
+     * estrategista para a empresa que terminou o Administrativo.
+     *
+     * Chave PRÓPRIA de propósito: distribuir é ato de Coordenação, não de
+     * Administrativo (`admin.contratos`) nem de Comercial (`comercial.entrada`).
+     * Reusar uma daquelas daria à Entrada o poder de escolher o time — que é
+     * exatamente a separação que o §10 do PDF estabelece. Fora de `role:admin`,
+     * pelo mesmo motivo das outras duas: liberável por setor sem deploy.
+     */
+    public const COORDENACAO_DISTRIBUIR      = 'coordenacao.distribuir';
+
     /** Acesso ao dashboard de líder do(s) setor(es) liderado(s). */
     public const LIDERANCA_DASHBOARD_SETOR = 'lideranca.dashboard_setor';
     /** Permissão de criar/editar/remover metas no(s) setor(es) liderado(s). */
@@ -197,7 +209,10 @@ class Permissions
             ],
             'Comercial' => [
                 ['key' => self::COMERCIAL_CADASTRAR_EMPRESA, 'label' => 'Cadastro de Empresas', 'description' => 'Cadastrar novas empresas pelo setor Comercial'],
-                ['key' => self::COMERCIAL_ENTRADA, 'label' => 'Entrada', 'description' => 'Módulo Entrada — empresas em fluxo de entrada (checklist chega na Fase 152)'],
+                ['key' => self::COMERCIAL_ENTRADA, 'label' => 'Entrada', 'description' => 'Módulo Entrada — empresas em fluxo de entrada, com o checklist administrativo'],
+            ],
+            'Coordenação' => [
+                ['key' => self::COORDENACAO_DISTRIBUIR, 'label' => 'Distribuir empresas', 'description' => 'Fila de distribuição: define analista e estrategista da empresa que concluiu o Administrativo'],
             ],
             'Liderança (automático para líderes)' => [
                 ['key' => self::LIDERANCA_DASHBOARD_SETOR, 'label' => 'Dashboard do setor', 'description' => 'Visualiza o(s) setor(es) que lidera'],
