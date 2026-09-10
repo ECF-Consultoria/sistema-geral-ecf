@@ -2214,7 +2214,7 @@ Plans:
 > - Critério 2 — o nome é **Adman**, não ADMA, e o link é **fixo e igual para todas as empresas**, em `config('services.adman.register_url')`; o item 6 é manual (D-04). O "Grant da consultoria" é o **OAuth do Mercado Livre**, nada a ver com `SyncGrantsFromSftp`, e fecha somente quando o cliente **conectou** (`ml_tokens.status = active`), nunca quando o link foi gerado (D-05).
 > - Além dos ADMIN-01..06 — o progresso do checklist passa a **dirigir as etapas 2, 3 e 4** da máquina de estados da Fase 137, por `EtapaTransicaoService` (D-15). Sem isso o FINALIZAR nasceria morto, porque a etapa 5 só é alcançável a partir da 4.
 
-**Plans:** 7/10 plans executed (10 planos em 9 waves)
+**Plans:** 8/10 plans executed (10 planos em 9 waves)
 
 Plans:
 **Wave 1**
@@ -2244,7 +2244,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 139-08-PLAN.md — Rota da ficha em OR (`admin.contratos,comercial.entrada`) e os 4 endpoints do checklist, com a seção Contrato gated por módulo (D-08/D-09/D-17)
+- [x] 139-08-PLAN.md — Rota da ficha em OR (`admin.contratos,comercial.entrada`) e os 4 endpoints do checklist, com a seção Contrato gated por módulo (D-08/D-09/D-17)
 
 **Wave 8** *(blocked on Wave 7 completion)*
 

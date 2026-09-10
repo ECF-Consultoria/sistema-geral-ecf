@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 139-07-PLAN.md
-last_updated: "2026-09-10T00:00:00.000Z"
+stopped_at: Completed 139-08-PLAN.md
+last_updated: "2026-09-10T01:00:00.000Z"
 last_activity: 2026-09-10
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 30
-  completed_plans: 27
-  percent: 90
+  completed_plans: 28
+  percent: 93
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -93,7 +93,7 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 ## Current Position
 
 Phase: 139 (checklist-administrativo-trava-de-finaliza-o-v23-0) — EXECUTING
-Plan: 8 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
+Plan: 9 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
 (baseline 137/138 100% verde — 123 testes, 444 assertions, `139-BASELINE-TESTES.md`;
 `config('services.adman.register_url')` publicada com o link fixo do Adman, D-04, provada por
 `tests/Unit/Phase139/AdmanRegisterUrlConfigTest.php`; `REQUIREMENTS-v23.md` registra as exceções
@@ -852,6 +852,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 139 P05 | 35min | 3 tasks | 4 files |
 | Phase 139 P06 | 25min | 2 tasks | 3 files |
 | Phase 139 P07 | 35min | 2 tasks | 2 files |
+| Phase 139 P08 | 50min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1616,6 +1617,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-10T01:00:00.000Z
+Stopped at: Completed 139-08-PLAN.md — camada HTTP: ficha única em OR (D-17), payload gated por módulo (T-139-08-01) e os 4 endpoints por funil único que sempre sincroniza a etapa (commits `4a3d2fea`, `7402db7d`, `80908116`); fase 92/364, regressão 131+137+138 245/910 com a parte 137/138 idêntica à baseline
 Last session: 2026-09-10T00:00:00.000Z
 Stopped at: Completed 139-07-PLAN.md — `ChecklistEtapaSincronizadorService` (a régua da D-15) com Task 1 retomada de sessão anterior e Task 2 provada e commitada nesta (commits `2f44342d`, `3dd5718`); suíte da fase 68/68, regressão 137/138 idêntica à baseline (123/444)
 Last session: 2026-09-09T20:36:55.645Z
@@ -1775,3 +1778,9 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 139]: 139-07: o salto 2→4 da empresa isenta (D-07) sai da ORDEM de checagem em proximoDestino() — a etapa 4 e avaliada ANTES do avanco 2→3 — e nao de um ramo especial; a tabela TRANSICOES_PERMITIDAS da Fase 137 ja previa a aresta
 - [Phase 139]: 139-07: o sincronizador so AVANCA — desmarcar item na etapa 4 nao devolve a empresa a 3. Reversibilidade e Deferred no CONTEXT.md; motivo automatico de retrocesso escreveria no historico uma decisao que ninguem tomou
 - [Phase 139]: 139-07: grafo de injecao one-way defendido em RUNTIME e nao so por grep — o teste resolve os tres servicos pelo container e falha nomeando CircularDependencyException, regressao que nao aparece em php -l e derruba com 500 toda rota que type-hinte qualquer um dos tres
+- [Phase 139]: 139-08: D-17 implementada — admin.contratos.show saiu do grupo permission:admin.contratos e virou rota solta com o OR das duas chaves; nenhuma chave de permissao nova (D-09), Permissions.php nao foi tocado
+- [Phase 139]: 139-08: a permissao de ROTA abre a ficha, a de MODULO recorta o payload — sem admin.contratos o grupo contrato sai do checklist e contratos/pode_gerar_contrato/motivo_bloqueio vem neutralizados (T-139-08-01). As duas camadas sao necessarias
+- [Phase 139]: 139-08: o progresso do checklist continua sendo o da empresa INTEIRA para o perfil de Entrada, de proposito — e a regua do FINALIZAR, nao uma metrica da secao visivel
+- [Phase 139]: 139-08: sincronizarEtapaChecklist() e o UNICO chamador de sincronizar() no sistema, verificado por grep como gate de plano (=1). show() sincroniza porque o degrau 2→3 depende do webhook do Clicksign gravando enviado_em — evento externo que nenhuma acao de checklist observa
+- [Phase 139]: 139-08: finalizarEntradaAdministrativa() sincroniza ANTES de finalizar. O mesmo cenario e 'recusado' no service (caso 5 do 139-06) e 'finalizado' pela rota, de proposito — nao 'corrigir' um dos dois
+- [Phase 139]: 139-08: IDOR removido por construcao — {company} por route-model-binding e {chave} contra catalogo fechado; nenhum id de linha de checklist atravessa a fronteira HTTP
