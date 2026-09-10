@@ -792,6 +792,175 @@ class ContratoAdminController extends Controller
     }
 
     /**
+     * Guarda comum dos endpoints do checklist (Fase 139 Plano 08).
+     *
+     * Duas checagens, nesta ordem:
+     *
+     * 1. **Chave contra o catálogo fechado** (T-139-08-04). A `{chave}` é
+     *    segmento de URL, não corpo — `$request->validate()` não a alcança, e a
+     *    checagem explícita é obrigatória. Usa `chaves(true)` (as 9) de
+     *    propósito: se a empresa for isenta, o service ainda recusa com
+     *    `DomainException`; o que esta linha impede é chave INVENTADA virar
+     *    linha no banco.
+     * 2. **Recorte por grupo** (D-09). A rota está em OR (D-17) porque a ficha
+     *    é única — a MESMA rota serve os dois grupos de itens. É aqui, e só
+     *    aqui, que item do grupo Contrato passa a exigir `admin.contratos`.
+     */
+    private function guardaChecklist(Request $request, ?string $chave): void
+    {
+        if ($chave !== null) {
+            abort_unless(in_array($chave, ChecklistAdministrativoDefinicao::chaves(true), true), 404);
+
+            $item = ChecklistAdministrativoDefinicao::item($chave);
+
+            if (($item['grupo'] ?? null) === ChecklistAdministrativoDefinicao::GRUPO_CONTRATO
+                && ! $request->user()->hasPermission(Permissions::ADMIN_CONTRATOS)) {
+                abort(403, 'Você não tem permissão para agir nos itens de Contrato.');
+            }
+        }
+    }
+
+    /**
+     * Funil de mutação do checklist (Fase 139 Plano 08, D-15, T-139-08-09).
+     *
+     * Não é cerimônia: **todo** caminho que fecha ou reabre item precisa
+     * sincronizar a etapa depois, senão a D-15 morre em silêncio — a empresa
+     * fica presa na etapa 1, o FINALIZAR nunca habilita, e não há erro nenhum
+     * na tela para denunciar. Com o funil, o endpoint novo que alguém
+     * acrescentar amanhã ou passa por aqui (e sincroniza) ou fica de fora do
+     * padrão de forma visível na revisão. A garantia complementar é o teste:
+     * cada endpoint de mutação tem um caso que afirma o avanço da etapa.
+     *
+     * No ramo de exceção **não** sincroniza — nada mudou, e sincronizar ali
+     * gravaria transição de etapa a partir de uma ação recusada.
+     *
+     * Só chaves de flash já compartilhadas por `HandleInertiaRequests`
+     * (`success`, `error`): chave nova não chega ao front sem uma linha nova
+     * naquele middleware — armadilha já paga uma vez neste projeto.
+     */
+    private function executarMutacaoChecklist(Request $request, Company $company, \Closure $mutacao, string $sucesso): RedirectResponse
+    {
+        try {
+            $mutacao();
+        } catch (\DomainException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        $this->sincronizarEtapaChecklist($request, $company);
+
+        return back()->with('success', $sucesso);
+    }
+
+    /**
+     * ADMIN-04 — marca um item manual como concluído.
+     *
+     * O ator é **sempre** `$request->user()`. Nenhum endpoint desta fase lê
+     * `user_id`/`feito_por` do corpo (disciplina T-137-02): autoria vinda do
+     * cliente é autoria forjável, e o histórico da Fase 143 mede exatamente
+     * quem fez o quê.
+     *
+     * O parâmetro `$forcar` de `concluirManualmente()` **não** é exposto por
+     * HTTP nesta fase — item automático não se marca à mão pela tela.
+     */
+    public function concluirItemChecklist(Request $request, Company $company, string $chave): RedirectResponse
+    {
+        $this->guardaChecklist($request, $chave);
+
+        $checklist = app(ChecklistAdministrativoService::class);
+
+        return $this->executarMutacaoChecklist(
+            $request,
+            $company,
+            fn () => $checklist->concluirManualmente($company, $chave, $request->user()),
+            'Item marcado como concluído.'
+        );
+    }
+
+    /**
+     * ADMIN-04 — desmarca um item concluído manualmente, zerando a autoria.
+     *
+     * Passa pelo mesmo funil mesmo sabendo que o sincronizador só AVANÇA (o
+     * plano 139-07 prova que desmarcar na etapa 4 não devolve à 3): o valor
+     * aqui é o caminho único, não o efeito.
+     */
+    public function reabrirItemChecklist(Request $request, Company $company, string $chave): RedirectResponse
+    {
+        $this->guardaChecklist($request, $chave);
+
+        $checklist = app(ChecklistAdministrativoService::class);
+
+        return $this->executarMutacaoChecklist(
+            $request,
+            $company,
+            fn () => $checklist->reabrirItem($company, $chave, $request->user()),
+            'Item desmarcado.'
+        );
+    }
+
+    /**
+     * ADMIN-03/D-14 — gera a conexão com o sistema ECF (o `OnboardingLink` do
+     * item 8), de forma idempotente: chamar duas vezes devolve o link que já
+     * existe, nunca cria um segundo.
+     *
+     * Sem `{chave}`: o item 8 é do grupo Entrada, então a permissão da rota já
+     * basta e a guarda não tem grupo a recortar.
+     */
+    public function gerarConexaoEcfChecklist(Request $request, Company $company): RedirectResponse
+    {
+        $this->guardaChecklist($request, null);
+
+        $checklist = app(ChecklistAdministrativoService::class);
+
+        return $this->executarMutacaoChecklist(
+            $request,
+            $company,
+            fn () => $checklist->gerarConexaoEcf($company, $request->user()),
+            'Conexão com o sistema ECF gerada.'
+        );
+    }
+
+    /**
+     * ADMIN-05/ADMIN-06 — o botão FINALIZAR ENTRADA ADMINISTRATIVA.
+     *
+     * ⚠️ **Sincroniza ANTES de finalizar, e a ordem é essencial.** A empresa
+     * pode estar na etapa 2 ou 3 quando o usuário clica, e
+     * `EtapaTransicaoService::TRANSICOES_PERMITIDAS` só permite chegar na 5
+     * vindo da 4. Sincronizar primeiro é o que leva a empresa até a 4 pela
+     * régua da D-15, com uma linha de histórico por degrau — em vez de o
+     * clique "pular" etapas sem deixar rastro.
+     *
+     * Isto **não** contradiz o caso 5 de `FinalizarTransicaoEtapaTest` (plano
+     * 139-06), que afirma `recusado` para a mesma situação: lá se testa
+     * `finalizar()` sozinho, no nível de service; aqui é a rota, que sincroniza
+     * antes. Não "corrigir" um dos dois.
+     *
+     * A régua é reavaliada no servidor por `finalizar()` — o `pode_finalizar`
+     * do payload desabilita o botão, mas nunca é o que decide.
+     */
+    public function finalizarEntradaAdministrativa(Request $request, Company $company): RedirectResponse
+    {
+        $this->sincronizarEtapaChecklist($request, $company);
+
+        $resultado = app(FinalizarEntradaAdministrativaService::class)
+            ->finalizar($company->refresh(), $request->user());
+
+        if ($resultado['status'] === 'finalizado') {
+            return back()->with('success', 'Entrada administrativa finalizada. Empresa movida para Aguardando Distribuição.');
+        }
+
+        if ($resultado['status'] === 'recusado') {
+            return back()->with('error', $resultado['requisito_faltante']);
+        }
+
+        Log::error('[Checklist] falha ao finalizar entrada administrativa', [
+            'company_id' => $company->id,
+            'resultado'  => $resultado,
+        ]);
+
+        return back()->with('error', 'Não foi possível finalizar agora. Tente novamente.');
+    }
+
+    /**
      * ADM-01 — o Administrativo completa aqui o que o Comercial deixou pela
      * metade: CNPJ, e-mail do cliente, nome de quem assina, razão social e
      * endereço da empresa (Quick 260819-guy, endereço em 5 campos separados
