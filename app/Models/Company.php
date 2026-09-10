@@ -17,15 +17,15 @@ class Company extends Model
 {
     use HasFactory, LogsActivity;
 
-    // ─── Fase 137 (plano 02, D-01) — os 9 status da máquina de estados do
+    // ─── Fase 150 (plano 02, D-01) — os 9 status da máquina de estados do
     // fluxo de entrada de novas empresas (§10 do PDF v23.0). Primeiro grupo
     // de constantes de domínio deste model — não copiar padrão de outro
-    // model, este é o precedente. As Fases 138-143 consomem estas mesmas
+    // model, este é o precedente. As Fases 151-143 consomem estas mesmas
     // constantes; não redeclarar os valores em outro lugar.
     //
     // O valor da etapa 9 é DELIBERADAMENTE igual à chave `em_operacao` que
     // `CompanyController` já expõe hoje (payload calculado, linha ~227) — a
-    // Fase 142 troca a FONTE (derivado → esta coluna) sem trocar o NOME, o
+    // Fase 155 troca a FONTE (derivado → esta coluna) sem trocar o NOME, o
     // que evita quebrar quem já lê `em_operacao` no front.
     public const ETAPA_AGUARDANDO_ADMINISTRATIVO = 'aguardando_administrativo';
     public const ETAPA_ADMINISTRATIVO_ANDAMENTO  = 'administrativo_andamento';
@@ -39,8 +39,8 @@ class Company extends Model
 
     /**
      * Ordem canônica do §10 — índice 0 = etapa 1, índice 8 = etapa 9. Fonte
-     * única das opções de filtro (Fase 137-07) e da tabela de transições
-     * permitidas do serviço único (Fase 137-03, D-12/D-14).
+     * única das opções de filtro (Fase 150-07) e da tabela de transições
+     * permitidas do serviço único (Fase 150-03, D-12/D-14).
      */
     public const ETAPAS = [
         self::ETAPA_AGUARDANDO_ADMINISTRATIVO,
@@ -54,18 +54,18 @@ class Company extends Model
         self::ETAPA_EM_OPERACAO,
     ];
 
-    // ─── `status` × `etapa` (Fase 137, D-02) — duas colunas de nome
+    // ─── `status` × `etapa` (Fase 150, D-02) — duas colunas de nome
     // parecido, propósitos diferentes. Sem esta nota a próxima sessão
     // escolhe a coluna errada:
     // - `status`: contrato ativo/inativo, string livre, escrita por
     //   `ComercialController`. NÃO é etapa do fluxo de entrada. Medido na
     //   base local: 128 `ativo` / 52 `pendente` — o `pendente` vem de
     //   `ComercialController.php:594`, não de contrato inativo.
-    // - `etapa`: etapa do fluxo de entrada (§10 do PDF v23.0, Fase 137),
+    // - `etapa`: etapa do fluxo de entrada (§10 do PDF v23.0, Fase 150),
     //   escrita SÓ pelo serviço de transição (`EtapaTransicaoService`,
-    //   Fase 137-03/D-12) — nunca via controller/update em massa.
+    //   Fase 150-03/D-12) — nunca via controller/update em massa.
 
-    // ─── Pendência PARALELA (Fase 137, plano 04, ETAPA-04, D-17/D-18/D-19) ──
+    // ─── Pendência PARALELA (Fase 150, plano 04, ETAPA-04, D-17/D-18/D-19) ──
     //
     // Pendência comunica um bloqueio A UMA PESSOA (ex.: "Contrato não
     // assinado") e convive com QUALQUER etapa, inclusive `etapa` `NULL`. Os
@@ -95,7 +95,7 @@ class Company extends Model
 
     /**
      * ÚNICO ponto de leitura de pendência por QUERY (D-19) — existe porque o
-     * filtro `?com_pendencia=1` do plano 137-07 precisa filtrar no servidor,
+     * filtro `?com_pendencia=1` do plano 150-07 precisa filtrar no servidor,
      * e sem este scope o controller leria `pendencia_aberta` direto, o que
      * D-19 proíbe (mesmo molde de `PolosController::desconsideraDaMeta()`).
      */
@@ -122,9 +122,9 @@ class Company extends Model
      * pendência está nessa lista, logo o gate administrativo NÃO dispara de
      * carona. Registrado aqui para quem mexer em `CAMPOS_GATILHO` depois.
      *
-     * @param  string  $motivo  Texto livre digitado por um humano (T-137-05:
+     * @param  string  $motivo  Texto livre digitado por um humano (T-150-05:
      *                          renderizado por React, que escapa por padrão)
-     * @param  User    $por     Tipado, nunca um id cru (T-137-13) — todo
+     * @param  User    $por     Tipado, nunca um id cru (T-150-13) — todo
      *                          chamador deve passar `$request->user()`/
      *                          `auth()->user()`, nunca `user_id` do corpo
      *                          da requisição
@@ -171,14 +171,14 @@ class Company extends Model
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
         'cust_id_status', 'marketplace',
         'segment', 'active', 'status', 'notes', 'email_cliente', 'telefone',
-        // Fase 137 (plano 02, ETAPA-01) — precisa estar em $fillable para o
-        // `EtapaTransicaoService` (Fase 137-03) gravar via Eloquent. A ÚNICA
+        // Fase 150 (plano 02, ETAPA-01) — precisa estar em $fillable para o
+        // `EtapaTransicaoService` (Fase 150-03) gravar via Eloquent. A ÚNICA
         // classe autorizada a gravar este campo é aquele serviço (D-12) —
         // estar aqui é a superfície de mass assignment que o teste de
-        // regressão do plano 137-06 fecha (nenhum controller pode gravar
+        // regressão do plano 150-06 fecha (nenhum controller pode gravar
         // `etapa` por update em massa).
         'etapa',
-        // Fase 137 (plano 04, ETAPA-04, D-17) — pendência PARALELA à etapa,
+        // Fase 150 (plano 04, ETAPA-04, D-17) — pendência PARALELA à etapa,
         // declarada à mão, nunca derivada. As ÚNICAS classes autorizadas a
         // gravar estes 4 campos são `declararPendencia()`/`resolverPendencia()`
         // abaixo (D-19) — nenhum controller grava por update em massa.
@@ -217,7 +217,7 @@ class Company extends Model
         // Quick task 260805-eqk — Notes do deal (espelho do HubSpot) + origem
         // do lead vinda do contato principal.
         'hubspot_notas', 'origem_lead',
-        // Fase 138 (plano 03, COMERC-02, D-09) — responsável comercial e data
+        // Fase 151 (plano 03, COMERC-02, D-09) — responsável comercial e data
         // da venda. `hubspot_owner_id`/`hubspot_owner_nome` são espelho do
         // HubSpot (reescritos a cada processamento, como `hubspot_notas`/
         // `hubspot_observacao`); `data_venda` é a data de fechamento do deal.
@@ -237,14 +237,14 @@ class Company extends Model
         // v15.5 — Timestamps do mapeamento Digisac.
         'digisac_group_mapped_at'   => 'datetime',
         'digisac_group_verified_at' => 'datetime',
-        // Fase 137 (plano 04, ETAPA-04) — pendência paralela.
+        // Fase 150 (plano 04, ETAPA-04) — pendência paralela.
         'pendencia_aberta' => 'boolean',
         'pendencia_em'     => 'datetime',
         // Phase 111 — snapshot bruto das propriedades HubSpot (HUB-SCHEMA-01).
         'hubspot_snapshot' => 'array',
         // Quick task 260805-eqk — lista de Notes do deal [{id, body, timestamp}].
         'hubspot_notas'    => 'array',
-        // Fase 138 (plano 03, COMERC-02, D-09) — data de fechamento do deal.
+        // Fase 151 (plano 03, COMERC-02, D-09) — data de fechamento do deal.
         'data_venda' => 'date',
     ];
 

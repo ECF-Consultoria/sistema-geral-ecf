@@ -2,7 +2,7 @@
 created: 2026-08-19T17:40:00.000Z
 title: Grant padrão do polo Serra Gaúcha está sob a chave antiga Bento Gonçalves
 area: polos
-resolves_phase: 140
+resolves_phase: 153
 files:
   - app/Models/MlbConfiguracao.php:66-82
   - app/Models/MlbImplementacao.php:83-88

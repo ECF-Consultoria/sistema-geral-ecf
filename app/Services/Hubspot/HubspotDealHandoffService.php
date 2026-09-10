@@ -210,7 +210,7 @@ class HubspotDealHandoffService
      * — e **dia errado aqui vira dia de vencimento errado num contrato
      * assinado**, que é caro de desfazer.
      *
-     * Fase 138 Plano 04 (COMERC-02, D-09) — visibilidade elevada para `public`
+     * Fase 151 Plano 04 (COMERC-02, D-09) — visibilidade elevada para `public`
      * porque `HubspotWebhookController::criarEmpresa()` e o comando
      * `hubspot:backfill-owner-venda` reusam esta MESMA rotina para converter
      * `closedate` em `companies.data_venda`, em vez de um `Carbon::parse` novo

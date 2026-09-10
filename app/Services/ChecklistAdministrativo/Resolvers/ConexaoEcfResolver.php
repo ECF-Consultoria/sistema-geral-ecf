@@ -9,14 +9,14 @@ use App\Services\ChecklistAdministrativo\ChecklistAdministrativoDefinicao;
 use App\Services\ChecklistAdministrativo\ChecklistResolverResultado;
 
 /**
- * Resolver do item 8 — "Conexão com o sistema ECF gerada" (Fase 139, D-14).
+ * Resolver do item 8 — "Conexão com o sistema ECF gerada" (Fase 152, D-14).
  *
  * Leitura pura de EXISTÊNCIA da linha de conexão da empresa — nunca cria
  * nada.
  *
  * ⚠️ Decisão explícita do planejador: este resolver NÃO chama o método de
  * fábrica idempotente do serviço de link de onboarding (o que o
- * `139-PATTERNS.md` cita como análogo), embora aquele método também seja
+ * `152-PATTERNS.md` cita como análogo), embora aquele método também seja
  * seguro de chamar (é `firstOrCreate`, sem rede). O motivo é o efeito
  * colateral, não o custo: chamar um `firstOrCreate` de dentro de um
  * resolver que roda a cada carregamento da ficha CRIARIA a linha e
@@ -25,7 +25,7 @@ use App\Services\ChecklistAdministrativo\ChecklistResolverResultado;
  * são gerados pelo próprio checklist, que marca o item ao gerar"). A D-14
  * continua valendo na letra — "fecha por existência, não por clique" — mas
  * quem CRIA a linha é a ação explícita do usuário (endpoint do plano
- * 139-08, que sim chama aquele método de fábrica); este resolver só
+ * 152-08, que sim chama aquele método de fábrica); este resolver só
  * observa. A idempotência medida pela D-14 é o que permite o botão daquele
  * endpoint ser acionado quantas vezes for, sem duplicar nada.
  */

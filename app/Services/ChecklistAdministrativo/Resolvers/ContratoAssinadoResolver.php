@@ -12,7 +12,7 @@ use App\Services\ChecklistAdministrativo\ChecklistResolverResultado;
 use Illuminate\Support\Collection;
 
 /**
- * Resolver do item 3 — "Contrato assinado" (Fase 139, D-16, D-18).
+ * Resolver do item 3 — "Contrato assinado" (Fase 152, D-16, D-18).
  *
  * A condição por serviço é um OR de DUAS fontes (D-16):
  * (a) envelope vigente com `assinado_em !== null` OU `status ===

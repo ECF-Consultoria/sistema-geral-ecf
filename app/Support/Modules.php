@@ -138,7 +138,7 @@ class Modules
     // ═══ Comercial ═══
     public const COMERCIAL_CADASTRAR_EMPRESA  = 'comercial.cadastrar_empresa';
     public const COMERCIAL_HUBSPOT_LINE_ITEMS = 'comercial.hubspot_line_items';
-    /** Fase 138 (COMERC-01/02/03, D-15) — módulo Entrada, casca da listagem de empresas em fluxo de entrada. */
+    /** Fase 151 (COMERC-01/02/03, D-15) — módulo Entrada, casca da listagem de empresas em fluxo de entrada. */
     public const COMERCIAL_ENTRADA            = 'comercial.entrada';
 
     // ═══ Liderança ═══

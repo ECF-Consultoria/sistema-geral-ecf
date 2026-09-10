@@ -6,7 +6,7 @@ import { Button } from '@/Components/ui/button';
 import { cn } from '@/lib/utils';
 
 /**
- * LinhaChecklistItem — uma linha do checklist administrativo (Fase 139).
+ * LinhaChecklistItem — uma linha do checklist administrativo (Fase 152).
  *
  * Componente REAL, nunca re-export puro: arquivo que só reexporta sai do
  * manifest do Vite e a página morre em runtime sem falhar o build

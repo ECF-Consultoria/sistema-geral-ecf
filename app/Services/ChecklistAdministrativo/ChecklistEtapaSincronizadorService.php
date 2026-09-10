@@ -9,16 +9,16 @@ use App\Services\FluxoEntrada\EtapaTransicaoService;
 use Illuminate\Support\Facades\Log;
 
 /**
- * ChecklistEtapaSincronizadorService — Fase 139 Plano 07. A régua da D-15:
+ * ChecklistEtapaSincronizadorService — Fase 152 Plano 07. A régua da D-15:
  * traduz o PROGRESSO do checklist administrativo em transições de etapa
  * 1→2, 2→3 e 2/3→4, sempre por {@see EtapaTransicaoService::transicionar()}.
  *
  * Razão de existir: até este plano, nenhum chamador de produção escrevia as
  * etapas 2, 3 ou 4 de `companies.etapa` — só a etapa 1
- * (`HubspotWebhookController` e `ComercialController`, Fase 138). Como
+ * (`HubspotWebhookController` e `ComercialController`, Fase 151). Como
  * `EtapaTransicaoService::TRANSICOES_PERMITIDAS` só permite chegar em
  * `aguardando_distribuicao` (5) vindo de `administrativo_concluido` (4), o
- * FINALIZAR do plano 139-06 nasceria morto sem esta classe: não haveria
+ * FINALIZAR do plano 152-06 nasceria morto sem esta classe: não haveria
  * como a empresa alcançar a etapa 4. Esta classe é o TERCEIRO chamador de
  * produção de `EtapaTransicaoService`, e a única a escrever as etapas
  * intermediárias.
@@ -32,10 +32,10 @@ use Illuminate\Support\Facades\Log;
  * — e derrubaria com 500 toda rota que type-hinte qualquer um dos três
  * serviços, incluindo `ContratoAdminController::show()`. Se um dia parecer
  * necessário que `ChecklistAdministrativoService` "avise" a etapa, a
- * resposta certa é o CHAMADOR orquestrar os dois (é o que o plano 139-08
+ * resposta certa é o CHAMADOR orquestrar os dois (é o que o plano 152-08
  * faz), nunca a injeção recíproca.
  *
- * Quem DISPARA `sincronizar()` é a camada HTTP do plano 139-08 — esta
+ * Quem DISPARA `sincronizar()` é a camada HTTP do plano 152-08 — esta
  * classe nunca é chamada de dentro de `ChecklistAdministrativoService` nem
  * de `FinalizarEntradaAdministrativaService`.
  */
@@ -44,7 +44,7 @@ class ChecklistEtapaSincronizadorService
     /**
      * As quatro etapas do vocabulário de `Company::ETAPAS` que este service
      * conhece — espelhadas aqui (não só referenciadas por `Company::`)
-     * porque o contrato de saída do plano 139-07 as nomeia explicitamente.
+     * porque o contrato de saída do plano 152-07 as nomeia explicitamente.
      */
     public const ETAPA_AGUARDANDO_ADMINISTRATIVO = Company::ETAPA_AGUARDANDO_ADMINISTRATIVO;
     public const ETAPA_ADMINISTRATIVO_ANDAMENTO = Company::ETAPA_ADMINISTRATIVO_ANDAMENTO;
@@ -55,7 +55,7 @@ class ChecklistEtapaSincronizadorService
      * As etapas sob responsabilidade deste sincronizador — 1, 2 e 3. Etapa 4
      * em diante (inclusive) é fora de escopo: a 4→5 é do
      * {@see FinalizarEntradaAdministrativaService}, e as etapas posteriores
-     * são das Fases 141/142.
+     * são das Fases 154/142.
      */
     private const ETAPAS_SOB_RESPONSABILIDADE = [
         self::ETAPA_AGUARDANDO_ADMINISTRATIVO,
@@ -79,14 +79,14 @@ class ChecklistEtapaSincronizadorService
      *
      * **Só AVANÇA — nunca retrocede.** Desmarcar um item depois de a
      * empresa ter chegado à etapa 4 NÃO a devolve para a 3: a
-     * reversibilidade está registrada como Deferred no `139-CONTEXT.md` (não
+     * reversibilidade está registrada como Deferred no `152-CONTEXT.md` (não
      * discutida com o usuário), e `EtapaTransicaoService::podeTransicionar()`
      * já recusa retrocesso sem motivo explícito por desenho — inventar aqui
      * um motivo automático seria escrever no histórico uma decisão que
      * ninguém tomou.
      *
      * Guardas, nesta ordem:
-     * 1. **Legado** (D-14 da Fase 138 / D-05 da Fase 137): `etapa === null`
+     * 1. **Legado** (D-14 da Fase 151 / D-05 da Fase 150): `etapa === null`
      *    nunca é carimbada — devolve sem tocar em nada. Derivar etapa de
      *    estado externo é exatamente o que a máquina de estados existe para
      *    impedir.

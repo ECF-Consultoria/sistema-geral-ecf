@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Log;
  *   4. fetchAssociatedContactId($dealId)    — primeiro contato associado
  *   5. fetchContact($id, $props)            — propriedades do contato
  *
- * Fase 138 Plano 03 (COMERC-02, D-08) — busca do owner (responsável comercial):
+ * Fase 151 Plano 03 (COMERC-02, D-08) — busca do owner (responsável comercial):
  *   6. fetchOwner($ownerId)                 — GET /crm/v3/owners/{id}, resiliente
  *
  * Token: Bearer de Private App (config('services.hubspot.access_token')).
@@ -624,7 +624,7 @@ class HubspotApiClient
     }
 
     /**
-     * Fase 138 Plano 03 (COMERC-02, D-08) — GET /crm/v3/owners/{id}.
+     * Fase 151 Plano 03 (COMERC-02, D-08) — GET /crm/v3/owners/{id}.
      *
      * Busca o owner (usuário HubSpot) para resolver o responsável comercial
      * do deal. Resiliente por desenho, no mesmo padrão de
@@ -637,7 +637,7 @@ class HubspotApiClient
      * Shape oficial da resposta em sucesso: `id`, `email`, `firstName`,
      * `lastName`, `userId`, `archived`.
      *
-     * IMPORTANTE (T-138-06): o warning carrega apenas `owner_id` + status
+     * IMPORTANTE (T-151-06): o warning carrega apenas `owner_id` + status
      * HTTP — NUNCA o token nem a mensagem crua da exceção.
      *
      * @return array{id?: string, email?: string, firstName?: string, lastName?: string, userId?: int, archived?: bool}|null

@@ -10,13 +10,13 @@ use Illuminate\Support\Str;
 /**
  * hubspot:criar-usuario-sistema — cria (uma única vez) a conta de sistema
  * "Sistema HubSpot", ator da transição de nascimento na etapa 1 quando o
- * webhook do HubSpot roda sem sessão autenticada (Fase 138, COMERC-01/D-17).
+ * webhook do HubSpot roda sem sessão autenticada (Fase 151, COMERC-01/D-17).
  *
  * `EtapaTransicaoService::transicionar()` exige um `User` real e não-nulo
  * (tipo estrito) — a D-17 travou a saída: nunca tornar o parâmetro nullable
- * (reabriria um serviço que a Fase 137 fechou/testou), nunca apontar para um
- * admin real (geraria histórico falso na timeline da Fase 143, o mesmo
- * problema que D-14 desta fase e D-05 da Fase 137 proíbem). A saída é uma
+ * (reabriria um serviço que a Fase 150 fechou/testou), nunca apontar para um
+ * admin real (geraria histórico falso na timeline da Fase 156, o mesmo
+ * problema que D-14 desta fase e D-05 da Fase 150 proíbem). A saída é uma
  * conta dedicada, resolvida por `config('services.hubspot.webhook_user_id')`.
  *
  * Idempotente: se o e-mail canônico já existe, não cria outro — imprime o id
@@ -51,7 +51,7 @@ class HubspotCriarUsuarioSistema extends Command
     protected $signature = 'hubspot:criar-usuario-sistema
         {--apply : Cria de verdade. Sem esta flag o comando só mostra o que faria}';
 
-    protected $description = 'Cria (idempotente) a conta de sistema "Sistema HubSpot", ator da transição de nascimento do webhook (Fase 138, D-17)';
+    protected $description = 'Cria (idempotente) a conta de sistema "Sistema HubSpot", ator da transição de nascimento do webhook (Fase 151, D-17)';
 
     public function handle(): int
     {
@@ -92,7 +92,7 @@ class HubspotCriarUsuarioSistema extends Command
         // negam por não ser admin e não ter setor.
 
         $this->info("Conta de sistema criada — id={$user->id}.");
-        $this->line('Coloque esta linha no .env (local E na VPS, antes do primeiro deploy da Fase 138):');
+        $this->line('Coloque esta linha no .env (local E na VPS, antes do primeiro deploy da Fase 151):');
         $this->line("HUBSPOT_WEBHOOK_USER_ID={$user->id}");
         $this->warn(
             'Registre esta conta onde ela não vire login esquecido — precedente direto: o usuário '
@@ -113,7 +113,7 @@ class HubspotCriarUsuarioSistema extends Command
     }
 
     /**
-     * Escreve/atualiza o registro por escrito da conta, para o plano 138-09
+     * Escreve/atualiza o registro por escrito da conta, para o plano 151-09
      * preencher o `id_vps:` depois de criar a mesma conta na VPS.
      */
     private function registrarDocumentacao(int $userId): void
@@ -121,13 +121,13 @@ class HubspotCriarUsuarioSistema extends Command
         $caminho = base_path('.planning/phases/138-rea-comercial-conectada-etapa-v23-0/138-CONTA-SISTEMA-HUBSPOT.md');
 
         $conteudo = <<<MD
-        # Fase 138 — Conta de sistema "Sistema HubSpot" (D-17)
+        # Fase 151 — Conta de sistema "Sistema HubSpot" (D-17)
 
         Ator da transição de nascimento na etapa 1 quando o webhook do HubSpot roda
         sem sessão autenticada. Criada por `php artisan hubspot:criar-usuario-sistema --apply`.
 
         - **id_local:** {$userId}
-        - **id_vps:** (preencher no plano 138-09, depois de rodar o mesmo comando na VPS)
+        - **id_vps:** (preencher no plano 151-09, depois de rodar o mesmo comando na VPS)
         - **email:** sistema.hubspot@ecfconsultoria.com.br
         - **criado_em:** {$this->agora()}
         - **role:** consultor (menor valor do enum — nunca admin)

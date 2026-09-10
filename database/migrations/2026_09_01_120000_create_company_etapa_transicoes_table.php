@@ -5,12 +5,12 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Fase 137 (plano 03, D-16 — Opção B) — histórico append-only de transição de
+ * Fase 150 (plano 03, D-16 — Opção B) — histórico append-only de transição de
  * `companies.etapa`. Molde: `company_manager_history` (Fase 108).
  *
  * Por que tabela dedicada em vez de `spatie/laravel-activitylog`:
  * `config/activitylog.php` tem `delete_records_older_than_days => 365`, e este
- * histórico é o insumo que a Fase 143 usa para medir SLA ao longo do tempo — um
+ * histórico é o insumo que a Fase 156 usa para medir SLA ao longo do tempo — um
  * pipeline de retenção que apaga linhas antigas por padrão é risco desalinhado
  * com o propósito do dado. `motivo` e `retrocesso` (D-15) são conceitos de
  * primeira classe desta máquina de estados, não `properties` genérico de diff.
@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Schema;
  * empresa legada parte de `NULL` (D-03 — o backfill nunca carimba etapa
  * intermediária). Log imutável: só `created_at`, sem `updated_at`.
  *
- * Fase 137 (plano 09, gap closure G2 / CR-02 do `137-REVIEW.md`) — `user_id`
+ * Fase 150 (plano 09, gap closure G2 / CR-02 do `150-REVIEW.md`) — `user_id`
  * é o AUTOR da transição, não o dono do registro: um único colaborador pode
  * ter movimentado dezenas de empresas. `UserController::forceDestroy()`
  * (linha 436) já é rota admin ativa e faz `$user->forceDelete()` — hard

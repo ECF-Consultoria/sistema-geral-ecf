@@ -9,7 +9,7 @@ use App\Services\ChecklistAdministrativo\ChecklistResolverResultado;
 
 /**
  * Resolver do item 7 — "Grant da consultoria (OAuth Mercado Livre)"
- * (Fase 139, D-05).
+ * (Fase 152, D-05).
  *
  * Cópia quase literal de
  * {@see \App\Services\Onboarding\Resolvers\MlTokenAtivoResolver} — mesma

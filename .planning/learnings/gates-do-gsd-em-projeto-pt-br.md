@@ -1,6 +1,6 @@
 # Os gates do GSD medem errado neste projeto (planos em pt-BR + REQUIREMENTS.md parado na v17)
 
-Descoberto em 2026-09-01, planejando a Fase 137. Os dois gates automáticos do
+Descoberto em 2026-09-01, planejando a Fase 150. Os dois gates automáticos do
 `/gsd-plan-phase` reportaram falha grave numa fase que estava correta. Nenhum dos dois
 é dedutível do código do projeto — são detalhes do SDK do GSD cruzados com duas
 convenções nossas.
@@ -10,7 +10,7 @@ convenções nossas.
 
 ## 1. `check.decision-coverage-plan` só enxerga cabeçalho em inglês
 
-O gate é **BLOQUEANTE** — recusa marcar a fase como planejada. Na Fase 137 ele acusou
+O gate é **BLOQUEANTE** — recusa marcar a fase como planejada. Na Fase 150 ele acusou
 **20 de 23 decisões do CONTEXT "não cobertas"**, enquanto o `gsd-plan-checker`, lendo os
 mesmos arquivos, confirmava 23/23. O checker estava certo.
 
@@ -54,7 +54,7 @@ O `gsd-tools.cjs gap-analysis` (passo 13e) tem o caminho **fixo** em
 `DESEMP-*`, `MENU-01`. Os requirements de verdade estão em `REQUIREMENTS-v23.md`
 (e antes, `-v18`, `-v21`, `-v22`).
 
-Na Fase 137 ele reportou **"22 of 22 items not covered"** — 22 requirements de outra
+Na Fase 150 ele reportou **"22 of 22 items not covered"** — 22 requirements de outra
 milestone, nenhum deles da fase. O gate é **não-bloqueante**, então o estrago é só
 confundir quem lê. A cobertura real (6/6 ETAPA-01..06) tem de ser conferida à mão contra
 `REQUIREMENTS-v23.md`.
@@ -68,7 +68,7 @@ só ausência silenciosa dos REQ-IDs certos.
 
 O passo 5.6 roda `grep -iE "UI|interface|frontend|component|layout|page|screen|view|form|..."`
 na seção da fase, **sem fronteira de palavra**. Em pt-BR isso casa com `req**ui**sito`,
-`seg**ui**r`, `in**form**ações`. Na Fase 137 deu 5 falsos positivos e o workflow queria
+`seg**ui**r`, `in**form**ações`. Na Fase 150 deu 5 falsos positivos e o workflow queria
 exigir `UI-SPEC.md`.
 
 Sinal confiável no lugar do grep: o campo **`**UI hint:** yes`** que o próprio ROADMAP
@@ -86,10 +86,10 @@ Os três problemas acima são do ferramental, não do plano.
 
 O `STATE.md` já carregava um aviso escrito sobre `state.advance-plan`. O
 `state.record-session` — usado pelo passo `update_state` do `discuss-phase` — tem
-problemas próprios. Medidos rodando uma vez, na sessão de contexto da Fase 138:
+problemas próprios. Medidos rodando uma vez, na sessão de contexto da Fase 151:
 
 1. **Achata o `last_activity` para só a data.** A linha descritiva anterior
-   (`2026-09-02 -- Phase 137 Plan 11 concluído ... FASE 137 COMPLETA, 11/11 planos`)
+   (`2026-09-02 -- Phase 150 Plan 11 concluído ... FASE 137 COMPLETA, 11/11 planos`)
    virou `last_activity: 2026-09-02`. O registro do que foi feito **se perde**, e é
    justamente o campo que a próxima sessão lê para saber onde parou.
 
@@ -99,7 +99,7 @@ problemas próprios. Medidos rodando uma vez, na sessão de contexto da Fase 138
    `8 inserções / 6 deleções` para uma atualização que deveria ser de 3 linhas.
 
 3. **Sobrescreve o topo da pilha do `Session Continuity` em vez de empilhar.** A
-   entrada mais recente (137-11) foi **substituída** pela nova, em vez de a nova
+   entrada mais recente (150-11) foi **substituída** pela nova, em vez de a nova
    entrar acima dela. As entradas mais antigas ficaram intactas — ou seja, o histórico
    perde exatamente o registro anterior, sempre.
 
@@ -112,20 +112,20 @@ sintoma barato.
 
 ---
 
-## 5. Como RECUPERAR um `STATE.md` que o `state.*` truncou (medido 2026-09-02, Fase 138)
+## 5. Como RECUPERAR um `STATE.md` que o `state.*` truncou (medido 2026-09-02, Fase 151)
 
 O §4 diz para fazer backup antes de rodar. Quando ninguém fez, ainda dá para recuperar — e sem
 adivinhar uma linha sequer.
 
 **A assinatura do dano é específica:** a ferramenta **não** apaga a linha inteira. Ela substitui o
 **início** de uma linha longa e deixa a cauda pendurada como linha órfã, sem cabeça, no meio do
-arquivo. Na Fase 138 encontramos três órfãs de uma vez:
+arquivo. Na Fase 151 encontramos três órfãs de uma vez:
 
 ```
-Phase: 138                                                    <- cabeça nova
+Phase: 151                                                    <- cabeça nova
 completos + 4/4 planos de gap closure concluídos — ...**      <- cauda órfã da linha antiga
 Plan: Not started                                             <- cabeça nova
-em `137-BASELINE-TESTES.md`); 137-02 concluído (...          <- cauda órfã da linha antiga
+em `150-BASELINE-TESTES.md`); 150-02 concluído (...          <- cauda órfã da linha antiga
 ```
 
 **Como achar:** procure linha que comece em minúscula, ou por `)`/`**`, logo depois de uma linha
@@ -139,7 +139,7 @@ git log --oneline -8 -- .planning/STATE.md
 git show <sha-bom>:.planning/STATE.md | sed -n '/^## Current Position/,+6p'
 ```
 
-Na Fase 138 o commit ruim foi `cea0be5f` (`phase.complete` ao fechar a 137) e o bom, `a7fe1376`.
+Na Fase 151 o commit ruim foi `cea0be5f` (`phase.complete` ao fechar a 137) e o bom, `a7fe1376`.
 As três linhas voltaram na letra. **Reconstruir de memória é pior que não reconstruir** — o texto
 perdido é justamente o registro do que foi feito, e um resumo aproximado apaga o original de vez.
 
@@ -152,14 +152,14 @@ estado corrente.
 O §1 descreve o campo de visão estreito do matcher, e continua valendo: os `D-NN` precisam estar
 dentro de `must_haves.truths` no frontmatter.
 
-O que **não** é verdade é que o gate esteja quebrado neste worktree. Na Fase 138 o planner reportou
+O que **não** é verdade é que o gate esteja quebrado neste worktree. Na Fase 151 o planner reportou
 que ele devolvia `total: 0` / `"CONTEXT.md missing"`, e concluiu que a resolução de caminho estava
 quebrada. Não estava — ele foi invocado sem o segundo argumento. Com os dois caminhos explícitos:
 
 ```bash
 gsd-sdk query check.decision-coverage-plan \
   ".planning/phases/138-.../" \
-  ".planning/phases/138-.../138-CONTEXT.md"
+  ".planning/phases/138-.../151-CONTEXT.md"
 # => {"passed": true, "total": 17, "covered": 17, "uncovered": []}
 ```
 
@@ -168,14 +168,14 @@ aceitá-la de um subagente, rode o comando você mesmo com os argumentos complet
 
 ## 7. O `gap-analysis` do passo 13e segue medindo a milestone errada (reconfirmado 2026-09-02)
 
-Rodado na Fase 138, devolveu **"22 of 22 items not covered"** — os mesmos `CART-*`, `CTX-*`,
+Rodado na Fase 151, devolveu **"22 of 22 items not covered"** — os mesmos `CART-*`, `CTX-*`,
 `DESEMP-*`, `MENU-01` da v17 que o §2 já descrevia, nenhum deles desta fase. Não-bloqueante, mas
 **não use a saída dele como sinal**: confira a cobertura à mão contra o `REQUIREMENTS-v<milestone>.md`
 certo, ou pelo `check.decision-coverage-plan` do §6.
 
-## 8. `roadmap.update-plan-progress` calcula certo mas sobrescreve a linha `**Plans:**` inteira (medido 2026-09-09, fechamento da Fase 138)
+## 8. `roadmap.update-plan-progress` calcula certo mas sobrescreve a linha `**Plans:**` inteira (medido 2026-09-09, fechamento da Fase 151)
 
-Ao fechar o plano 138-09, `gsd-sdk query roadmap.update-plan-progress 138` devolveu o JSON certo
+Ao fechar o plano 151-09, `gsd-sdk query roadmap.update-plan-progress 138` devolveu o JSON certo
 (`plan_count: 9, summary_count: 9, status: "Complete", complete: true`) — o cálculo em si está
 correto. O problema é **o que ele escreve de volta no `ROADMAP.md`**: substitui a linha inteira
 `**Plans:** ...` por um texto genérico fixo (`**Plans:** 9/9 plans complete`), **sem preservar**

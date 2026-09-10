@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * HubspotOwnerResolver — resolve o nome de exibição do responsável comercial
- * a partir do `hubspot_owner_id` do deal (Fase 138 Plano 03, COMERC-02, D-08).
+ * a partir do `hubspot_owner_id` do deal (Fase 151 Plano 03, COMERC-02, D-08).
  *
  * Classe pequena, um propósito só: dado um owner id, devolve o nome (ou
  * `null`). Nunca lança — `HubspotApiClient::fetchOwner()` já é resiliente por

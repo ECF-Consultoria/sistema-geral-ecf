@@ -11,13 +11,13 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Inertia\Inertia;
 
 /**
- * ComercialEntradaController — Fase 138 (COMERC-01/02/03, D-01/D-02/D-06/
+ * ComercialEntradaController — Fase 151 (COMERC-01/02/03, D-01/D-02/D-06/
  * D-07/D-11/D-12/D-14).
  *
  * Módulo Entrada dentro da Área Comercial: lista as empresas em fluxo de
  * entrada com os 8 campos mínimos do §2. É a CASCA (D-06) — o checklist dos
  * 8 itens do módulo (grupo de WhatsApp, e-mail colaborador, links, mensagem
- * de boas-vindas etc.) chega na Fase 139.
+ * de boas-vindas etc.) chega na Fase 152.
  *
  * A separação entre esta lista e a lista Contrato (`ContratoAdminController`)
  * é por PROCESSO PENDENTE, nunca por `companies.etapa` (D-05) — a mesma
@@ -85,7 +85,7 @@ class ComercialEntradaController extends Controller
         $todasEmpresas = $query->get();
 
         // Duas pendências, NUNCA somadas (D-11):
-        // - pendencia_fluxo (a da Fase 137, lida só por pendenciaAberta());
+        // - pendencia_fluxo (a da Fase 150, lida só por pendenciaAberta());
         // - pendencias_cadastro (as comerciais, D-13 cobre as DUAS portas).
         //
         // Atenção medida: calcular() devolve [] para empresa que não é de
@@ -179,7 +179,7 @@ class ComercialEntradaController extends Controller
                 'contrato_badge'     => $contratoBadge,
                 // D-11 — duas pendências, chaves separadas e NUNCA somadas.
                 // pendencia_fluxo é lida SÓ pelo ponto único pendenciaAberta()
-                // (D-19 da Fase 137) — nenhum controller lê a coluna bruta direto.
+                // (D-19 da Fase 150) — nenhum controller lê a coluna bruta direto.
                 'pendencia_fluxo' => [
                     'aberta' => $c->pendenciaAberta(),
                     'motivo' => $c->pendencia_motivo,

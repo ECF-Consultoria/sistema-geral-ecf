@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Fase 137 (plano 04, ETAPA-04, D-17/D-18) — pendência PARALELA à etapa:
+ * Fase 150 (plano 04, ETAPA-04, D-17/D-18) — pendência PARALELA à etapa:
  * um sinalizador declarado à mão que convive com qualquer etapa e nunca a
  * move. Não confundir com os portões que impedem avanço (ETAPA-06,
  * derivados dentro do `EtapaTransicaoService`) — pendência comunica um
@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * D-18 travou a cardinalidade (uma pendência aberta por vez: booleano +
  * motivo + autor + timestamp) e deixou o lugar físico em aberto. Decisão
- * de planejamento do 137-04-PLAN.md: 4 colunas em `companies`, não tabela
+ * de planejamento do 150-04-PLAN.md: 4 colunas em `companies`, não tabela
  * própria — mesma forma do precedente `problema`/`problema_desconsidera_meta`
  * em `mlb_empresas` que o ROADMAP (D6) mandou seguir. Motivo completo no
  * objective do plano.
@@ -32,9 +32,9 @@ use Illuminate\Support\Facades\Schema;
  * FK de `pendencia_por` precisa ser solta ANTES do `dropColumn`, senão o
  * rollback falha nesta base — `dropColumn` sozinho não remove a constraint.
  *
- * Timestamp fixo `130000`: depois de `110000` (coluna `etapa`, plano 137-02)
- * e `120000` (tabela de transições, plano 137-03), que nascem em planos
- * paralelos na mesma wave — reservado desde o 137-02-SUMMARY.md.
+ * Timestamp fixo `130000`: depois de `110000` (coluna `etapa`, plano 150-02)
+ * e `120000` (tabela de transições, plano 150-03), que nascem em planos
+ * paralelos na mesma wave — reservado desde o 150-02-SUMMARY.md.
  */
 return new class extends Migration
 {
@@ -47,7 +47,7 @@ return new class extends Migration
                 ->constrained('users')->nullOnDelete();
             $table->timestamp('pendencia_em')->nullable()->after('pendencia_por');
 
-            // WHERE pendencia_aberta = ? — usado pelo filtro ?com_pendencia=1 do plano 137-07.
+            // WHERE pendencia_aberta = ? — usado pelo filtro ?com_pendencia=1 do plano 150-07.
             $table->index('pendencia_aberta');
         });
     }

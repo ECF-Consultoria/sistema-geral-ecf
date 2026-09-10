@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Fase 139 Plano 02 (D-10) — Cria a tabela de persistência do checklist
+ * Fase 152 Plano 02 (D-10) — Cria a tabela de persistência do checklist
  * administrativo: `checklist_administrativo_itens`.
  *
  * Molde: database/migrations/2026_08_11_120100_create_onboardings_tables.php
@@ -39,7 +39,7 @@ return new class extends Migration
                     ->cascadeOnDelete();
 
                 $table->string('chave', 60)
-                    ->comment('Slug do item no catálogo fechado em código (App\\Services\\ChecklistAdministrativo\\ChecklistAdministrativoDefinicao, plano 139-03). Renomear o RÓTULO de um item nunca pode trocar a chave.');
+                    ->comment('Slug do item no catálogo fechado em código (App\\Services\\ChecklistAdministrativo\\ChecklistAdministrativoDefinicao, plano 152-03). Renomear o RÓTULO de um item nunca pode trocar a chave.');
 
                 $table->string('status', 24)
                     ->default('aberto')

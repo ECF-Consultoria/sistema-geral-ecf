@@ -6,7 +6,7 @@ use App\Models\Company;
 use App\Services\ChecklistAdministrativo\ChecklistResolverResultado;
 
 /**
- * Contrato dos resolvers automáticos do checklist administrativo (Fase 139,
+ * Contrato dos resolvers automáticos do checklist administrativo (Fase 152,
  * D-10) — o catálogo fechado de "como o sistema sabe que aconteceu" para os
  * 4 itens `auto` de {@see \App\Services\ChecklistAdministrativo\ChecklistAdministrativoDefinicao}.
  *

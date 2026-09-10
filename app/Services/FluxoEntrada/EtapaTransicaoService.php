@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Fase 137 (plano 03) — o ponto ÚNICO de escrita de `companies.etapa`
+ * Fase 150 (plano 03) — o ponto ÚNICO de escrita de `companies.etapa`
  * (D-12). Espelha o precedente já existente em
  * `App\Services\Contratos\GatilhoContratoAdministrativoService`: um par
  * puro/efeito, `podeTransicionar()` × `transicionar()`, onde a MESMA régua
@@ -19,16 +19,16 @@ use Illuminate\Support\Facades\Log;
  * ⚠️ Este serviço NÃO tem chamador de produção nesta fase, de propósito —
  * é o precedente literal do `App\Services\Operacional\EmpresaOperacionalRouter`
  * (Fase 124): "separa o risco de escrever o service novo do risco de trocar
- * o caminho de produção". Quem pluga gatilho real é a Fase 138 (webhook →
- * etapa 1), a Fase 139 (FINALIZAR → etapa 5), a Fase 141 (distribuição →
- * etapa 6) e a Fase 142 (onboarding → 7/8/9). A prova desta fase é o teste
- * unitário (`tests/Unit/Phase137/EtapaTransicaoServiceTest.php`), não uma
+ * o caminho de produção". Quem pluga gatilho real é a Fase 151 (webhook →
+ * etapa 1), a Fase 152 (FINALIZAR → etapa 5), a Fase 154 (distribuição →
+ * etapa 6) e a Fase 155 (onboarding → 7/8/9). A prova desta fase é o teste
+ * unitário (`tests/Unit/Phase150/EtapaTransicaoServiceTest.php`), não uma
  * rota.
  *
  * A etapa NUNCA é derivada de estado externo (D-11): quem detém o estado
  * externo (Clicksign, motor de onboarding, tela da Coordenação) é quem
  * chama `transicionar()`. Se a etapa fosse derivada, ela não estaria
- * realmente armazenada, e a Fase 143 (HIST-03, "quanto tempo em cada
+ * realmente armazenada, e a Fase 156 (HIST-03, "quanto tempo em cada
  * etapa") não teria o instante real da transição — só um recálculo.
  *
  * Regra de domínio DECLARADA aqui, mas NÃO implementada nesta fase
@@ -37,7 +37,7 @@ use Illuminate\Support\Facades\Log;
  * dois serviços tem dois onboardings, e a etapa é uma só, em `companies`.
  * **Manda o onboarding mais atrasado** — a empresa só chega em
  * `onboarding_concluido` quando TODOS os onboardings considerados
- * concluírem. Quem liga onboarding a etapa é a Fase 142; o recorte exato de
+ * concluírem. Quem liga onboarding a etapa é a Fase 155; o recorte exato de
  * "onboardings considerados" nasce lá, dentro deste MESMO serviço, nunca ad
  * hoc num controller.
  */
@@ -52,7 +52,7 @@ class EtapaTransicaoService
      * depender do cast implícito.
      *
      * Requisitos externos por destino (ex.: "destino 4 exige contrato
-     * assinado") são das Fases 138-142 e entram AQUI dentro, na checagem de
+     * assinado") são das Fases 151-142 e entram AQUI dentro, na checagem de
      * `podeTransicionar()` — nunca num controller.
      */
     private const TRANSICOES_PERMITIDAS = [
@@ -134,7 +134,7 @@ class EtapaTransicaoService
         // 4. Avanço: precisa estar na tabela explícita de transições
         // permitidas a partir da origem atual (D-14). Requisitos externos
         // por destino específico (ex.: "destino 4 exige contrato assinado")
-        // são das Fases 138-142 e entrariam AQUI, nunca num controller.
+        // são das Fases 151-142 e entrariam AQUI, nunca num controller.
         $origemChave = $company->etapa ?? '';
         $destinosAceitos = self::TRANSICOES_PERMITIDAS[$origemChave] ?? [];
         $origemLabel = $company->etapa ?? '(sem etapa)';
@@ -164,7 +164,7 @@ class EtapaTransicaoService
      * transição é recusada.
      *
      * D-13: recebe o `User` que agiu e o registra como ator da linha de
-     * histórico. ⚠️ Segurança (T-137-02): o parâmetro é tipado `User`, NÃO
+     * histórico. ⚠️ Segurança (T-150-02): o parâmetro é tipado `User`, NÃO
      * `int` — todo chamador futuro deve passar `$request->user()` /
      * `auth()->user()`, NUNCA um `user_id` cru vindo do corpo da
      * requisição.
@@ -174,9 +174,9 @@ class EtapaTransicaoService
      * é automático.
      *
      * Escrita da coluna + criação do histórico dentro de UMA transação
-     * (T-137-11): não existe etapa gravada sem linha de histórico.
+     * (T-150-11): não existe etapa gravada sem linha de histórico.
      *
-     * ⚠️ WR-01 (`137-REVIEW.md`) / T-137-31/T-137-32 (plano 137-10):
+     * ⚠️ WR-01 (`150-REVIEW.md`) / T-150-31/T-150-32 (plano 150-10):
      * `podeTransicionar()` é reavaliado DUAS vezes — uma vez cedo, sobre o
      * `$company` que o chamador passou (só para devolver a recusa rápida
      * sem abrir transação quando o caso é óbvio), e de novo AQUI DENTRO,
@@ -184,8 +184,8 @@ class EtapaTransicaoService
      * decide o que é gravado. O motivo: duas chamadas concorrentes para a
      * MESMA empresa — o webhook do Clicksign reentregue por timeout (Fase
      * 138) e o duplo-clique em "Finalizar" antes do primeiro round-trip
-     * terminar (Fase 139) são os dois cenários concretos citados no
-     * `137-REVIEW.md` — podiam ler o mesmo `etapa` "antigo" em memória,
+     * terminar (Fase 152) são os dois cenários concretos citados no
+     * `150-REVIEW.md` — podiam ler o mesmo `etapa` "antigo" em memória,
      * ambas passar na régua, e ambas escrever, quebrando o invariante do
      * docblock da classe ("não existe etapa mudada sem linha de
      * histórico" pressupõe uma única escrita por vez). A correção segue os
@@ -213,7 +213,7 @@ class EtapaTransicaoService
     {
         try {
             return DB::transaction(function () use ($company, $etapaDestino, $por, $motivo) {
-                // Relê e trava a linha DENTRO da transação (T-137-31) — a
+                // Relê e trava a linha DENTRO da transação (T-150-31) — a
                 // decisão abaixo nunca usa o `$company` recebido por
                 // parâmetro, só esta instância travada.
                 $travada = Company::whereKey($company->id)->lockForUpdate()->first();
@@ -258,7 +258,7 @@ class EtapaTransicaoService
 
                 $etapaAnterior = $travada->etapa;
 
-                // Pitfall 6 (137-RESEARCH.md): grava SÓ `etapa` neste
+                // Pitfall 6 (150-RESEARCH.md): grava SÓ `etapa` neste
                 // update(). `Company` tem
                 // #[ObservedBy(CompanyGatilhoContratoObserver::class)], que
                 // reage a `wasChanged(CAMPOS_GATILHO)` com
@@ -266,7 +266,7 @@ class EtapaTransicaoService
                 // `etapa` não está nessa lista, então gravar só `etapa` é
                 // seguro — o gate administrativo não dispara de carona. Se
                 // algum dia a transição precisar gravar outro campo (ex.:
-                // dados de onboarding na Fase 142), isso vai num `save()`
+                // dados de onboarding na Fase 155), isso vai num `save()`
                 // SEPARADO, nunca neste mesmo update().
                 $travada->update(['etapa' => $etapaDestino]);
 
@@ -309,16 +309,16 @@ class EtapaTransicaoService
 
     /**
      * Escrita em MASSA de `Company::ETAPA_EM_OPERACAO`, exclusiva do
-     * backfill legado do plano 137-05 (ETAPA-02). Existe por um motivo
+     * backfill legado do plano 150-05 (ETAPA-02). Existe por um motivo
      * específico: o Success Criteria 2 desta fase exige que não haja outro
      * ponto do código gravando `companies.etapa` — e o backfill precisa
      * escrever em massa. A escrita mora AQUI, nesta mesma classe; o
-     * comando do plano 137-05 só decide QUAIS ids (balde 1 do D-04).
+     * comando do plano 150-05 só decide QUAIS ids (balde 1 do D-04).
      *
      * ⚠️ Deliberadamente NÃO gera histórico em `company_etapa_transicoes`.
      * Backfill não é transição do fluxo — carimbar centenas de linhas de
      * histórico com data de hoje criaria duração fictícia no painel de
-     * gargalo da Fase 143 (mesmo raciocínio de D-05). Este método é
+     * gargalo da Fase 156 (mesmo raciocínio de D-05). Este método é
      * exclusivo do backfill legado; nenhuma fase futura deve chamá-lo para
      * transição normal — use `transicionar()`.
      */

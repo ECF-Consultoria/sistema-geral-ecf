@@ -6,14 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Fase 137 (plano 03, D-16 — Opção B) — registro imutável de cada transição
+ * Fase 150 (plano 03, D-16 — Opção B) — registro imutável de cada transição
  * de `companies.etapa`. Gravado exclusivamente por
  * `App\Services\FluxoEntrada\EtapaTransicaoService::transicionar()`, dentro
  * da mesma transação que grava a coluna — não existe etapa mudada sem linha
  * de histórico (exceção deliberada: `carimbarBackfill()` não gera histórico,
  * ver docblock do serviço).
  *
- * Append-only, sem `updated_at`. É o insumo bruto que a Fase 143 (HIST-01/02/03)
+ * Append-only, sem `updated_at`. É o insumo bruto que a Fase 156 (HIST-01/02/03)
  * consome para montar a timeline e medir SLA por etapa — o índice composto
  * `(company_id, created_at)` é exatamente a consulta que aquela fase precisa.
  */
@@ -43,11 +43,11 @@ class CompanyEtapaTransicao extends Model
     }
 
     /**
-     * Fase 137 (plano 09, gap closure G2) — pode devolver `null`. A FK de
+     * Fase 150 (plano 09, gap closure G2) — pode devolver `null`. A FK de
      * `user_id` é `nullOnDelete()`: quando o ator é removido permanentemente
      * (`UserController::forceDestroy()`), a linha de histórico sobrevive e só
      * a referência ao ator se perde. `null` aqui é estado ESPERADO, não
-     * corrupção de dado — quem consumir (Fase 143) deve renderizar algo como
+     * corrupção de dado — quem consumir (Fase 156) deve renderizar algo como
      * "usuário removido", nunca assumir objeto.
      */
     public function user(): BelongsTo

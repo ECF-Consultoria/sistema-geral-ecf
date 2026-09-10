@@ -58,7 +58,7 @@ export default function ContratoDetalhe({
     painel_clicksign_url = null,
     motivos_manuais = {},
     contratos = [],
-    // Fase 139 Plano 09 — props do checklist administrativo. Defaults
+    // Fase 152 Plano 09 — props do checklist administrativo. Defaults
     // defensivos: a página não pode quebrar se for renderizada por um caminho
     // que ainda não envie estas chaves.
     checklist = null,
@@ -339,7 +339,7 @@ export default function ContratoDetalhe({
                         </div>
                     )}
 
-                    {/* Fase 139 Plano 09 (D-08) — o checklist vem ACIMA do bloco de
+                    {/* Fase 152 Plano 09 (D-08) — o checklist vem ACIMA do bloco de
                         geração de contrato, e a ordem é decisão desta fase: o
                         checklist é o novo ponto focal da ficha (é ele que a pessoa
                         vem conferir antes de finalizar a entrada administrativa), e

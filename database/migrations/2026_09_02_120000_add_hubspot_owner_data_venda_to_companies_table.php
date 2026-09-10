@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Fase 138 (plano 03, COMERC-02, D-08/D-09) — três colunas ADITIVAS em
+ * Fase 151 (plano 03, COMERC-02, D-08/D-09) — três colunas ADITIVAS em
  * `companies` para o campo "responsável comercial" e a data da venda, que
  * hoje não existem no sistema.
  *
@@ -13,13 +13,13 @@ use Illuminate\Support\Facades\Schema;
  * `hubspot_owner_nome` — nome de exibição resolvido por `HubspotOwnerResolver`.
  * `data_venda`         — data de fechamento do deal (`closedate`), como `date`
  *   (não `dateTime`): medido em `HubspotDealHandoffService::parseDataHubspot()`
- *   que a property chega como string `'Y-m-d'`, e a Fase 143 vai ler isto
+ *   que a property chega como string `'Y-m-d'`, e a Fase 156 vai ler isto
  *   como evento datado.
  *
  * Puramente ADITIVA — nenhuma coluna existente de `companies` (~500 registros
  * em produção) é tocada, nenhuma ganha `default()`, nenhum índice é criado e
  * nenhum backfill roda aqui: o retroativo (D-10) é comando manual do plano
- * 138-04. Cada coluna entra dentro do próprio `Schema::hasColumn` (molde da
+ * 151-04. Cada coluna entra dentro do próprio `Schema::hasColumn` (molde da
  * migration `2026_07_24_111001_add_hubspot_fields_to_companies_table.php`,
  * Fase 111), e o `down()` percorre as três num `foreach` — nunca mistura
  * criação de coluna com rename no mesmo `up()`/`down()`, o anti-padrão já
@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\Schema;
  * citado também no docblock de `2026_09_01_110000_add_etapa_to_companies_table.php`).
  *
  * Baseline pré-migration exigida pelo `CLAUDE.md` já registrada pelo plano
- * 138-01 em `.planning/phases/138-.../138-BASELINE-TESTES.md` antes desta
+ * 151-01 em `.planning/phases/138-.../151-BASELINE-TESTES.md` antes desta
  * migration ser criada — gate cumprido.
  */
 return new class extends Migration

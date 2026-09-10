@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * etapa:backfill — migra as ~500 empresas já cadastradas para a máquina de
- * estados da Fase 137 (ETAPA-02), em EXATAMENTE dois baldes (D-04, travado):
+ * estados da Fase 150 (ETAPA-02), em EXATAMENTE dois baldes (D-04, travado):
  *
  *  1. Empresa que satisfaz o cálculo atual de "em operação"
  *     (`analistaPerformance()` OU `estrategistaPerformance()` não vazio,
@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Log;
  * ou `Onboarding.status` (D-05): carimbar etapa 7 numa empresa que hoje
  * aparece em "Empresas" seria exatamente como a tela a perde quando a Fase
  * 142 passar a ler `etapa`; etapa intermediária afirma um histórico que não
- * aconteceu; e a Fase 143 mede SLA por tempo em etapa, então etapa deduzida
+ * aconteceu; e a Fase 156 mede SLA por tempo em etapa, então etapa deduzida
  * vira duração fictícia no painel de gargalo.
  *
  * A colisão "distribuir já é em operação" é ACEITA para o legado (D-06):
@@ -43,7 +43,7 @@ use Illuminate\Support\Facades\Log;
  * `.planning/learnings/desempenho-bonificacao.md` §4/§10.1 (já custou caro
  * confiar em consolidação "bem-sucedida" na tela sem ter gravado o esperado)
  * exige reconsulta direta ao banco (D-08) — ver
- * `137-BACKFILL-CONTAGENS.md`, que registra essa reconsulta.
+ * `150-BACKFILL-CONTAGENS.md`, que registra essa reconsulta.
  */
 class EtapaBackfill extends Command
 {
@@ -66,11 +66,11 @@ class EtapaBackfill extends Command
         ));
 
         // Balde 1 — reusa EXATAMENTE as relações do model (Pitfall 5,
-        // 137-RESEARCH.md): o papel de analista na pivot `company_users` é
+        // 150-RESEARCH.md): o papel de analista na pivot `company_users` é
         // `consultor`, NUNCA o slug do cargo. Reescrever esta query à mão
         // filtrando pelo slug do cargo devolveria zero linhas silenciosamente.
         //
-        // ⚠️ WR-02 (`137-REVIEW.md`) / T-137-33 (plano 137-10): `companies.name`
+        // ⚠️ WR-02 (`150-REVIEW.md`) / T-150-33 (plano 150-10): `companies.name`
         // NÃO tem `unique()` no schema. A versão antiga deste `pluck()` usava
         // `name` como segundo argumento — CHAVE do array retornado — e duas
         // empresas homônimas no balde 1 colapsavam numa só: a primeira

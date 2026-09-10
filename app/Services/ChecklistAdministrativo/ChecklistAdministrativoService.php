@@ -15,7 +15,7 @@ use App\Services\ChecklistAdministrativo\Resolvers\MlOAuthConectadoResolver;
 use App\Services\Onboarding\OnboardingLinkService;
 
 /**
- * ChecklistAdministrativoService — Fase 139 Plano 05. Coração de leitura e
+ * ChecklistAdministrativoService — Fase 152 Plano 05. Coração de leitura e
  * escrita do checklist administrativo: monta o checklist de uma empresa
  * (D-07), roda os 4 resolvers automáticos e persiste o resultado, calcula o
  * progresso a partir do catálogo (D-10) e permite marcar/desmarcar
@@ -24,8 +24,8 @@ use App\Services\Onboarding\OnboardingLinkService;
  *
  * ⚠️ Este service NÃO transiciona `companies.etapa` e nunca vai transicionar.
  * A régua que dirige a etapa pelo progresso do checklist mora na camada
- * dedicada de sincronização (plano 139-07) e é disparada pela camada HTTP
- * (plano 139-08) — nunca por dentro deste arquivo. O motivo é estrutural: o
+ * dedicada de sincronização (plano 152-07) e é disparada pela camada HTTP
+ * (plano 152-08) — nunca por dentro deste arquivo. O motivo é estrutural: o
  * sincronizador precisa LER este service, então se este service recebesse o
  * sincronizador no construtor o grafo de injeção fecharia ciclo. Por isso
  * `paraEmpresa()` recebe só `Company $company` — nenhum ator, nenhuma
@@ -125,7 +125,7 @@ class ChecklistAdministrativoService
     /**
      * Progresso do checklist — mesmo contrato de props `{feitos, total,
      * percentual}` de `ProgressoBarra.jsx`, para o componente ser reusado
-     * por import direto (plano 139-09) em vez de duplicado.
+     * por import direto (plano 152-09) em vez de duplicado.
      *
      * **O denominador vem do catálogo, nunca da tabela** (D-10). A fórmula
      * aqui é mais simples que a do motor de Onboarding: lá o denominador é
@@ -166,8 +166,8 @@ class ChecklistAdministrativoService
      *
      * `$forcar` existe por paridade com o molde do motor de Onboarding
      * (`OnboardingEngineService::concluirManualmente()`), mesma disciplina
-     * T-137-02 de nunca aceitar ator cru — mas **não é exposto por HTTP
-     * nesta fase**: o controller do plano 139-08 nunca encaminha este
+     * T-150-02 de nunca aceitar ator cru — mas **não é exposto por HTTP
+     * nesta fase**: o controller do plano 152-08 nunca encaminha este
      * parâmetro.
      */
     public function concluirManualmente(Company $company, string $chave, User $usuario, bool $forcar = false): ChecklistAdministrativoItem

@@ -1440,7 +1440,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
 // D-10: esta tela ABSORVEU a liberação manual da Fase 130 (plano 131-06) —
 // `liberacao-manual` abaixo é a ação nova; a rota antiga foi removida (ver
 // bloco acima).
-// Fase 139 Plano 08 (D-17/D-08/D-09) — a ficha da empresa saiu do grupo abaixo
+// Fase 152 Plano 08 (D-17/D-08/D-09) — a ficha da empresa saiu do grupo abaixo
 // e passou a aceitar as DUAS permissões em OR. Motivo: `admin.contratos.show` é
 // a ficha ÚNICA (D-08) aberta pelas duas listagens — a do Administrativo
 // (`admin.contratos.index`) e a do Comercial › Entrada (`comercial.entrada.index`).
@@ -1463,7 +1463,7 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     Route::get('/', [ContratoAdminController::class, 'index'])->name('index');
     // Plano 131-04 (D-01/ADM-01/ADM-02/UI-02) — detalhe da empresa: onde o
     // Administrativo completa o cadastro e dispara a geração do contrato.
-    // (A rota `show` mora acima, fora deste grupo — Fase 139 Plano 08, D-17.)
+    // (A rota `show` mora acima, fora deste grupo — Fase 152 Plano 08, D-17.)
     Route::patch('/empresa/{company}/cadastro', [ContratoAdminController::class, 'atualizarCadastro'])->name('cadastro');
     Route::post('/empresa/{company}/gerar',     [ContratoAdminController::class, 'gerarContrato'])    ->name('gerar');
     // Plano 131-05 (CLICK-07/CLICK-10, D-13) — reenviar aviso e registrar
@@ -1481,7 +1481,7 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     Route::post('/liberacao-manual', [ContratoAdminController::class, 'liberarManual'])->name('liberacao-manual');
 });
 
-// ─── Checklist administrativo (Fase 139 Plano 08, ADMIN-01/03/04/05/06) ──────
+// ─── Checklist administrativo (Fase 152 Plano 08, ADMIN-01/03/04/05/06) ──────
 // Grupo IRMÃO do de `admin.contratos.*` acima, com a mesma permissão em OR da
 // ficha (D-17): as ações do checklist são disparadas de dentro da ficha única, e
 // o usuário de Entrada precisa poder agir nos 6 itens do grupo Entrada.
@@ -1494,7 +1494,7 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
 // (`ChecklistAdministrativoDefinicao::chaves()`) no controller, e o `{company}`
 // vem por route-model-binding — NENHUM id de linha de checklist atravessa a
 // fronteira HTTP. Isso remove por construção a classe de IDOR apontada em
-// `139-RESEARCH.md` (V4/Security Domain): não há id de recurso para adulterar.
+// `152-RESEARCH.md` (V4/Security Domain): não há id de recurso para adulterar.
 Route::middleware(['auth', 'verified', 'permission:admin.contratos,comercial.entrada'])->prefix('administrativo/contratos')->name('admin.contratos.')->group(function () {
     Route::post('/empresa/{company}/checklist/{chave}/concluir', [ContratoAdminController::class, 'concluirItemChecklist'])->name('checklist.concluir');
     Route::post('/empresa/{company}/checklist/{chave}/reabrir',  [ContratoAdminController::class, 'reabrirItemChecklist']) ->name('checklist.reabrir');
@@ -1502,7 +1502,7 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos,comercial.ent
     Route::post('/empresa/{company}/finalizar-entrada',          [ContratoAdminController::class, 'finalizarEntradaAdministrativa'])->name('finalizar-entrada');
 });
 
-// ─── Comercial · Entrada (Fase 138, COMERC-01/02/03, D-15) ───────────────────
+// ─── Comercial · Entrada (Fase 151, COMERC-01/02/03, D-15) ───────────────────
 // Grupo NOVO, irmão do de `admin.contratos.*` acima — não entrou no grupo
 // `comercial.*` (routes/web.php:684-687, `permission:comercial.cadastrar_empresa`)
 // porque herdaria a permissão de CADASTRO, contra a D-15 (Entrada precisa de

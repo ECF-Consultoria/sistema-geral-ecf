@@ -6,7 +6,7 @@ import LinhaChecklistItem from '@/Components/ChecklistAdministrativo/LinhaCheckl
 
 /**
  * CardChecklistAdministrativo — os 9 itens do §5 na ficha da empresa
- * (Fase 139, ADMIN-01/ADMIN-03/ADMIN-04/ADMIN-05).
+ * (Fase 152, ADMIN-01/ADMIN-03/ADMIN-04/ADMIN-05).
  *
  * Componente REAL, nunca re-export puro (ver `LinhaChecklistItem.jsx`).
  *

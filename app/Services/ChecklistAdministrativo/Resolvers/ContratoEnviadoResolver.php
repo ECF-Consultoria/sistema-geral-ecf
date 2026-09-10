@@ -11,7 +11,7 @@ use App\Services\ChecklistAdministrativo\ChecklistResolverResultado;
 use Illuminate\Support\Collection;
 
 /**
- * Resolver do item 2 — "Contrato enviado" (Fase 139, D-03).
+ * Resolver do item 2 — "Contrato enviado" (Fase 152, D-03).
  *
  * Leitura pura de `contrato_assinaturas.enviado_em`, agregada por SERVIÇO
  * (D-18: "manda o mais atrasado" — com 2+ serviços que exigem contrato, o
@@ -53,7 +53,7 @@ class ContratoEnviadoResolver implements ChecklistResolver
         // Universo vazio nunca é "concluído" — é exatamente o modo de falha
         // "vazio lido como zero" que o value object de 3 estados existe para
         // evitar. Na prática o grupo Contrato nem é montado neste caso
-        // (D-07, plano 139-05).
+        // (D-07, plano 152-05).
         if ($servicos->isEmpty()) {
             return ChecklistResolverResultado::indeterminado('empresa sem serviço que exija contrato');
         }

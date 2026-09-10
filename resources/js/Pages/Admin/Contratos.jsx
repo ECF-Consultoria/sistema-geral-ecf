@@ -20,10 +20,10 @@ import {
     MONTAGEM_TRAVADA_TITULO,
 } from '@/lib/contratoStatus';
 
-// ─── Plano 138-06 (COMERC-02, D-12) — rótulos das 7 pendências comerciais.
+// ─── Plano 151-06 (COMERC-02, D-12) — rótulos das 7 pendências comerciais.
 // Mesmo bloco de Comercial/EmpresasListagem.jsx (não há enum compartilhado
 // entre PHP e JS no projeto — a sincronia é manual, por convenção). São 7
-// chaves, não 8 (Pitfall 5 do RESEARCH da Fase 138).
+// chaves, não 8 (Pitfall 5 do RESEARCH da Fase 151).
 const PENDENCIAS_LABELS = {
     sem_servico:             'Sem serviço',
     sem_valor:               'Sem valor',
@@ -34,7 +34,7 @@ const PENDENCIAS_LABELS = {
     possivel_duplicidade:    'Possível duplicidade',
 };
 
-// ─── Fase 137 Plano 07 (ETAPA-05) — rótulos das 9 etapas do fluxo de entrada
+// ─── Fase 150 Plano 07 (ETAPA-05) — rótulos das 9 etapas do fluxo de entrada
 // (§10 do PDF v23.0). Fonte de verdade é `Company::ETAPAS`
 // (app/Models/Company.php) — mesmo bloco de Pages/Companies/Index.jsx, para
 // as duas telas não divergirem no vocabulário.
@@ -203,7 +203,7 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Empresa</TableHead>
-                                        {/* Plano 138-06 (COMERC-02) — 6 colunas novas dos 8 campos
+                                        {/* Plano 151-06 (COMERC-02) — 6 colunas novas dos 8 campos
                                             mínimos do §2 (2 já existiam: Empresa e Serviço). */}
                                         <TableHead className="text-[11px] uppercase tracking-wide">CNPJ</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Setor</TableHead>

@@ -4,7 +4,7 @@ namespace App\Services\ChecklistAdministrativo;
 
 /**
  * ChecklistAdministrativoDefinicao — o catálogo fechado dos 9 itens do
- * checklist administrativo (Fase 139, D-01/D-03), a lista dos estados
+ * checklist administrativo (Fase 152, D-01/D-03), a lista dos estados
  * terminais do §5 da especificação — não os 12 passos intermediários do §3.
  *
  * Diferença estrutural em relação a
@@ -210,7 +210,7 @@ class ChecklistAdministrativoDefinicao
 
     /**
      * Só os slugs dos itens aplicáveis, para uso em `Rule::in()` na validação
-     * de requisição (T-139-03-01).
+     * de requisição (T-152-03-01).
      *
      * @return array<int, string>
      */

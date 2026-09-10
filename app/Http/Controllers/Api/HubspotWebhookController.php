@@ -276,7 +276,7 @@ class HubspotWebhookController extends Controller
             // $company pode nao contar com eles).
             $company->refresh();
 
-            // ── Fase 138 (COMERC-01/D-13) — nascimento na etapa 1 ───────────────
+            // ── Fase 151 (COMERC-01/D-13) — nascimento na etapa 1 ───────────────
             // MESMO refresh() acima serve as duas chamadas. FORA da transaction,
             // mesma disciplina do gate administrativo logo acima: nunca desfazer
             // a Company ja commitada por causa de uma falha na transicao.
@@ -412,7 +412,7 @@ class HubspotWebhookController extends Controller
             $tentativasContrato = $this->contarTentativasContrato($lineItems, $deal['properties'] ?? [], $propsDeal);
             $contratosIgnorados = max(0, $tentativasContrato - $contratosCriados);
 
-            // ── Fase 138 (COMERC-01/D-13) — nascimento na etapa 1 ───────────────
+            // ── Fase 151 (COMERC-01/D-13) — nascimento na etapa 1 ───────────────
             // reprocessarEvento() NAO chama o gate administrativo em lugar
             // nenhum acima — e o segundo call site que precisa nascer na etapa
             // 1, senao uma empresa que so existe por replay nunca ganharia
@@ -467,14 +467,14 @@ class HubspotWebhookController extends Controller
     }
 
     /**
-     * Fase 138 (COMERC-01/D-13/D-17) — faz a empresa nascer na etapa 1
+     * Fase 151 (COMERC-01/D-13/D-17) — faz a empresa nascer na etapa 1
      * ("aguardando administrativo"), chamada pelos DOIS caminhos de produção
      * do webhook que criam/enriquecem `Company` (`processar()` e
      * `reprocessarEvento()`).
      *
      * O ator é a conta de sistema "Sistema HubSpot", resolvida por
      * `User::find(config('services.hubspot.webhook_user_id'))` — NUNCA a
-     * partir do payload da requisição, nunca um `user_id` cru (T-137-02).
+     * partir do payload da requisição, nunca um `user_id` cru (T-150-02).
      * Ator ausente/inexistente é caso TRATADO, nunca um `TypeError`/500: loga
      * e retorna sem transicionar, deixando `etapa` NULL (mesmo efeito do
      * fallback legado da D-14).
@@ -835,14 +835,14 @@ class HubspotWebhookController extends Controller
             // e sempre o retrato do ULTIMO evento processado; o historico do
             // evento anterior fica preservado em hubspot_eventos.payload.
             //
-            // ── Fase 138 Plano 04 (COMERC-02, D-08/D-09) — responsavel comercial
+            // ── Fase 151 Plano 04 (COMERC-02, D-08/D-09) — responsavel comercial
             // e data da venda. Chave de config com fallback literal — mesmo
             // padrao de `$propsDeal['email_envio_contrato']` acima — porque
             // testes legados (Phase34HubspotWebhookTest) sobrescrevem
             // `services.hubspot.props.deal` com um array parcial sem `owner_id`
             // nem `closedate`. Owner ausente/arquivado/sem escopo OAuth resolve
             // para null (HubspotOwnerResolver/fetchOwner ja sao resilientes por
-            // desenho, plano 138-03) — nenhum try/catch novo aqui esconderia
+            // desenho, plano 151-03) — nenhum try/catch novo aqui esconderia
             // regressao no proprio resolver.
             $ownerIdRaw   = $dprops[$propsDeal['owner_id'] ?? 'hubspot_owner_id'] ?? null;
             $ownerIdFinal = ($ownerIdRaw !== null && (string) $ownerIdRaw !== '') ? (string) $ownerIdRaw : null;
@@ -857,7 +857,7 @@ class HubspotWebhookController extends Controller
             // enriquecerEmpresaExistente(). Caso concreto que motivou a regra:
             // a Metalform ganhou uma nota em 03/08 DEPOIS de a empresa ja
             // existir — sob a regra antiga essa nota nunca apareceria no ECF.
-            // Fase 138 plano 04 — `hubspot_owner_id`/`hubspot_owner_nome`/
+            // Fase 151 plano 04 — `hubspot_owner_id`/`hubspot_owner_nome`/
             // `data_venda` entram na MESMA disciplina: reescritos a cada
             // processamento (owner muda quando o deal troca de vendedor),
             // atravessando os DOIS ramos (criacao e match forte) que passam

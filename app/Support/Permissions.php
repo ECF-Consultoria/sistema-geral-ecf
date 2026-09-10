@@ -90,11 +90,11 @@ class Permissions
     /** Cadastrar novas empresas pelo setor Comercial (acesso por setor, não automático para líderes). */
     public const COMERCIAL_CADASTRAR_EMPRESA = 'comercial.cadastrar_empresa';
     /**
-     * Fase 138 (COMERC-01/02/03, D-15) — módulo Entrada: casca da listagem de
+     * Fase 151 (COMERC-01/02/03, D-15) — módulo Entrada: casca da listagem de
      * empresas em fluxo de entrada (etapas 1 a 4 do §10). Chave PRÓPRIA,
      * liberável por setor sem deploy — nunca reusar `COMERCIAL_CADASTRAR_EMPRESA`
      * (D-15 é explícita: Entrada precisa de permissão independente da de
-     * cadastro). O checklist dos 8 itens do módulo chega na Fase 139.
+     * cadastro). O checklist dos 8 itens do módulo chega na Fase 152.
      */
     public const COMERCIAL_ENTRADA           = 'comercial.entrada';
 
@@ -197,7 +197,7 @@ class Permissions
             ],
             'Comercial' => [
                 ['key' => self::COMERCIAL_CADASTRAR_EMPRESA, 'label' => 'Cadastro de Empresas', 'description' => 'Cadastrar novas empresas pelo setor Comercial'],
-                ['key' => self::COMERCIAL_ENTRADA, 'label' => 'Entrada', 'description' => 'Módulo Entrada — empresas em fluxo de entrada (checklist chega na Fase 139)'],
+                ['key' => self::COMERCIAL_ENTRADA, 'label' => 'Entrada', 'description' => 'Módulo Entrada — empresas em fluxo de entrada (checklist chega na Fase 152)'],
             ],
             'Liderança (automático para líderes)' => [
                 ['key' => self::LIDERANCA_DASHBOARD_SETOR, 'label' => 'Dashboard do setor', 'description' => 'Visualiza o(s) setor(es) que lidera'],

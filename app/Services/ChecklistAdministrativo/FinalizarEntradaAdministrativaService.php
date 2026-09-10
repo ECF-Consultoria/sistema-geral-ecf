@@ -9,7 +9,7 @@ use App\Services\FluxoEntrada\EtapaTransicaoService;
 use Illuminate\Support\Facades\Log;
 
 /**
- * FinalizarEntradaAdministrativaService — Fase 139 Plano 06. A trava do
+ * FinalizarEntradaAdministrativaService — Fase 152 Plano 06. A trava do
  * botão FINALIZAR ENTRADA ADMINISTRATIVA (ADMIN-05) e o efeito que move a
  * empresa da etapa 4 para a 5 pela única porta permitida (ADMIN-06).
  *
@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Log;
  *
  * ⚠️ Este service depende só de {@see ChecklistAdministrativoService} e de
  * {@see EtapaTransicaoService}. Ele NÃO conhece a camada de sincronização
- * de etapa do plano 139-07, que por sua vez depende DELE — a direção é
+ * de etapa do plano 152-07, que por sua vez depende DELE — a direção é
  * one-way e mantém o grafo de injeção acíclico (mesma disciplina já
  * documentada em `ChecklistAdministrativoService.php:25-32`).
  */
@@ -174,7 +174,7 @@ class FinalizarEntradaAdministrativaService
      *    empresa ainda não estar na etapa 4: a tabela de transições
      *    permitidas só deixa chegar na etapa 5 vindo da 4, e quem leva a
      *    empresa até lá é a camada de sincronização de etapa do plano
-     *    139-07, chamada PELO CONTROLLER antes deste método (plano 139-08).
+     *    152-07, chamada PELO CONTROLLER antes deste método (plano 152-08).
      *    Este service não chama aquela camada: ela já é dependente DELE, e
      *    a injeção recíproca fecharia ciclo no container. A orquestração é
      *    do chamador — aqui só se propaga a recusa.

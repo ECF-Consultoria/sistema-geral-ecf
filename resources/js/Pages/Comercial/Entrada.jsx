@@ -9,10 +9,10 @@ import { ListChecks, Search, Webhook, ChevronLeft, ChevronRight } from 'lucide-r
 import { cn, formatDate } from '@/lib/utils';
 import { rotuloContrato, classeContrato, formatarHaDias, SEM_CONTRATO, SEM_CONTRATO_LABEL } from '@/lib/contratoStatus';
 
-// ─── Plano 138-08 (COMERC-02, D-11) — rótulos das 7 pendências comerciais.
+// ─── Plano 151-08 (COMERC-02, D-11) — rótulos das 7 pendências comerciais.
 // Mesmo bloco de Comercial/EmpresasListagem.jsx e Admin/Contratos.jsx — o
 // projeto não tem enum compartilhado entre PHP e JS, a sincronia é manual.
-// São 7 chaves, não 8 (Pitfall 5 do RESEARCH da Fase 138) — não inventar
+// São 7 chaves, não 8 (Pitfall 5 do RESEARCH da Fase 151) — não inventar
 // uma oitava aqui.
 const PENDENCIAS_LABELS = {
     sem_servico:             'Sem serviço',
@@ -24,7 +24,7 @@ const PENDENCIAS_LABELS = {
     possivel_duplicidade:    'Possível duplicidade',
 };
 
-// ─── Fase 137 (ETAPA-05) — rótulos das 9 etapas do fluxo de entrada (§10 do
+// ─── Fase 150 (ETAPA-05) — rótulos das 9 etapas do fluxo de entrada (§10 do
 // PDF v23.0). Fonte de verdade é `Company::ETAPAS` (app/Models/Company.php)
 // — mesmo bloco de Admin/Contratos.jsx e Pages/Companies/Index.jsx, para as
 // telas não divergirem no vocabulário.
@@ -79,13 +79,13 @@ function ContratoBadge({ badge }) {
 }
 
 /**
- * Comercial/Entrada.jsx — Fase 138 Plano 08 (COMERC-02, D-01/D-02/D-06/D-11).
+ * Comercial/Entrada.jsx — Fase 151 Plano 08 (COMERC-02, D-01/D-02/D-06/D-11).
  *
  * Módulo Entrada dentro da Área Comercial: lista as empresas em fluxo de
  * entrada (etapas 1 a 4 do §10) com os 8 campos mínimos do §2.
  *
- * ### O checklist chegou — e não mora aqui (Fase 139)
- * Esta tela continua sendo LISTAGEM. O checklist administrativo é da Fase 139,
+ * ### O checklist chegou — e não mora aqui (Fase 152)
+ * Esta tela continua sendo LISTAGEM. O checklist administrativo é da Fase 152,
  * são **9** itens (a lista do §5, D-01) e não 8 como esta nota dizia antes, e
  * quem os mostra e opera é a ficha `admin.contratos.show`, alcançada pela ação
  * "Abrir" de cada linha (D-08). A ficha é ÚNICA para os dois módulos: a rota
@@ -135,13 +135,13 @@ export default function Entrada({ companies, filters = {}, resumo = {} }) {
                     </h1>
 
                     {/* D-06 — nada finge estar pronto: um bloco de texto avisando que
-                        o checklist chega na Fase 139 é aceitável, um controle morto
+                        o checklist chega na Fase 152 é aceitável, um controle morto
                         (botão/coluna/ícone) não é. Sem controle interativo aqui. */}
                     <p className="text-[13px] text-white/50 max-w-3xl">
                         Empresas em fluxo de entrada — do momento em que a venda é fechada até a
                         conclusão de todo o processo administrativo (§10, etapas 1 a 4). Os itens
                         do checklist do módulo (grupo de WhatsApp, e-mail do colaborador, links,
-                        mensagem de boas-vindas) chegam na Fase 139; esta tela ainda é só a
+                        mensagem de boas-vindas) chegam na Fase 152; esta tela ainda é só a
                         listagem.
                     </p>
 

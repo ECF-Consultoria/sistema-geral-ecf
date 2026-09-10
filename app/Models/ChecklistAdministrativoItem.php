@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * ChecklistAdministrativoItem — Fase 139 Plano 02 (D-10). Um item do
+ * ChecklistAdministrativoItem — Fase 152 Plano 02 (D-10). Um item do
  * checklist administrativo obrigatório, ancorado direto em `company_id`.
  *
  * D-10 — copia o SHAPE do motor de Onboarding (`OnboardingPasso`), nunca a
@@ -29,7 +29,7 @@ class ChecklistAdministrativoItem extends Model
     // não produz `checklist_administrativo_itens` — declarar explicitamente.
     protected $table = 'checklist_administrativo_itens';
 
-    // $fillable explícito — nunca $guarded = [] (mass assignment, T-139-02-01).
+    // $fillable explícito — nunca $guarded = [] (mass assignment, T-152-02-01).
     protected $fillable = [
         'company_id',
         'chave',

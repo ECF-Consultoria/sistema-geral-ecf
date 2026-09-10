@@ -99,14 +99,14 @@ class CompanyController extends Controller
             $sort = null;
         }
 
-        // Fase 137 Plano 07 (ETAPA-05, D-21) — filtro server-side por etapa,
+        // Fase 150 Plano 07 (ETAPA-05, D-21) — filtro server-side por etapa,
         // mesmo padrão de allow-list com fallback null silencioso já usado
         // acima para cust_id_status: valor fora do domínio vira null e o
         // when() correspondente vira no-op, preservando o comportamento
         // anterior (D-22 exige que a visão SEM filtro continue idêntica).
         //
         // `sem_etapa` é o sentinela de primeira classe (D-22): depois do
-        // backfill do plano 137-05 a maioria das linhas legadas fica com
+        // backfill do plano 150-05 a maioria das linhas legadas fica com
         // `etapa` NULL, e sem esta opção o filtro por etapa concreta
         // devolveria quase nada — parecendo bug em vez de comportamento
         // esperado do legado.
@@ -115,12 +115,12 @@ class CompanyController extends Controller
             $etapaFilter = null;
         }
 
-        // Fase 137 Plano 07 (ETAPA-05, D-23) — filtro de pendência,
+        // Fase 150 Plano 07 (ETAPA-05, D-23) — filtro de pendência,
         // INDEPENDENTE do filtro de etapa (nunca um item dentro da lista de
         // etapas — misturar os dois reintroduziria pendência como status
         // principal, contra a D6 do ROADMAP). $request->boolean() coage
         // qualquer entrada para bool, então nenhuma string arbitrária chega
-        // ao builder (T-137-19).
+        // ao builder (T-150-19).
         $comPendenciaFilter = $request->boolean('com_pendencia');
 
         // Phase 35 Plan 35-01 (D-03) — exclui empresas com MlbEmpresa associada
@@ -172,7 +172,7 @@ class CompanyController extends Controller
                   )
             )
             ->when($custIdStatusFilter, fn($q) => $q->where('cust_id_status', $custIdStatusFilter))
-            // Fase 137 Plano 07 (ETAPA-05) — depois do when($custIdStatusFilter)
+            // Fase 150 Plano 07 (ETAPA-05) — depois do when($custIdStatusFilter)
             // e depois do whereDoesntHave/whereHas acima: preservar a tela
             // (Success Criteria nº 1) é preservar o recorte inteiro, não só
             // o filtro final. `sem_etapa` vira whereNull; etapa concreta vira
@@ -258,15 +258,15 @@ class CompanyController extends Controller
                 // Mesma regua que NpsController ja aplica ("sem estrategista
                 // atribuido, a empresa ainda nao entrou na operacao").
                 'em_operacao'      => ! ($c->analistaPerformance->isEmpty() && $c->estrategistaPerformance->isEmpty()),
-                // Fase 137 Plano 07 (ETAPA-05) — expõe a etapa da máquina de
-                // estados (§10) e a pendência paralela (plano 137-04) para o
+                // Fase 150 Plano 07 (ETAPA-05) — expõe a etapa da máquina de
+                // estados (§10) e a pendência paralela (plano 150-04) para o
                 // filtro server-side desta tela. `em_operacao` acima CONTINUA
                 // sendo o derivado atual — esta fase acrescenta, não
-                // substitui; a troca de fonte é da Fase 142.
+                // substitui; a troca de fonte é da Fase 155.
                 //
                 // Chave `tem_pendencia`, e NÃO o nome cru da coluna (que o
                 // gate estático D-19 em EtapaPendenciaParaleloTest.php, plano
-                // 137-04, proíbe fora de Company.php — mesmo como chave de
+                // 150-04, proíbe fora de Company.php — mesmo como chave de
                 // array que só lê via pendenciaAberta(), o ponto único
                 // autorizado) DE PROPÓSITO.
                 'etapa'          => $c->etapa,
@@ -392,7 +392,7 @@ class CompanyController extends Controller
             'filters'        => [
                 'cust_id_status' => $custIdStatusFilter,
                 'sort'           => $sort,
-                // Fase 137 Plano 07 (ETAPA-05) — ecoa o estado dos dois
+                // Fase 150 Plano 07 (ETAPA-05) — ecoa o estado dos dois
                 // filtros novos para o <select>/toggle da tela sincronizar.
                 'etapa'          => $etapaFilter,
                 'com_pendencia'  => $comPendenciaFilter,
@@ -878,7 +878,7 @@ class CompanyController extends Controller
 
     public function update(Request $request, Company $company)
     {
-        // Fase 137 (plano 06, ETAPA-03 / D-12) — NÃO acrescente `etapa` nem
+        // Fase 150 (plano 06, ETAPA-03 / D-12) — NÃO acrescente `etapa` nem
         // nenhuma chave `pendencia_*` a esta lista. `companies.etapa` é
         // gravado EXCLUSIVAMENTE por `App\Services\FluxoEntrada\EtapaTransicaoService`
         // (ETAPA-03/D-12); pendência é gravada por `Company::declararPendencia()`
@@ -890,7 +890,7 @@ class CompanyController extends Controller
         // escrita — sem erro, sem log, toda edição manual de empresa
         // passaria a poder pular etapas do fluxo.
         //
-        // Quem cobra: `tests/Feature/Phase137/EtapaPontoUnicoTest.php`
+        // Quem cobra: `tests/Feature/Phase150/EtapaPontoUnicoTest.php`
         // quebra se isso acontecer — a varredura estática nomeia o arquivo
         // e a linha. Um PR que acrescente chave nova a esta validação
         // precisa passar por lá antes de mergear.

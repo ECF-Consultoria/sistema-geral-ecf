@@ -70,15 +70,15 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### COMERC — Área Comercial, entrada da empresa (§1, §2)
 
-- [x] **COMERC-01**: Empresa criada pelo webhook de venda ganha nasce na etapa `Aguardando Administrativo` sem cadastro manual. Fechado pelo plano 138-07: `EtapaTransicaoService` ligado aos dois call sites de produção do webhook (`processar()` e `reprocessarEvento()`) e ao cadastro manual (`ComercialController::store()`), com ator de sistema "Sistema HubSpot" (D-17) resolvido por `config('services.hubspot.webhook_user_id')` — ausência/inexistência degrada para "sem etapa" com log, nunca 500. `ComercEtapaNascimentoWebhookTest`/`ComercEtapaNascimentoCadastroManualTest` provam os dois caminhos por reconsulta ao banco.
-- [x] **COMERC-02**: As listagens **Contrato** e **Entrada** da Área Comercial exibem, cada uma, os 8 campos mínimos do §2 (nome, serviço contratado, setor/segmento, origem da venda, responsável comercial e data da venda, informações principais do cliente, status do contrato e pendências, demais dados comerciais do HubSpot). São **duas** listas separadas por processo pendente, não por etapa — a mesma empresa pode aparecer nas duas (Fase 138, D-04/D-05). Fechado pelos planos 138-05 (Entrada) e 138-06 (Contrato) — as duas pontas verificadas lado a lado antes de marcar.
-- [x] **COMERC-03**: A empresa permanece visível na listagem **Entrada** até entrar na etapa `Aguardando Distribuição` — continua aparecendo enquanto está em `Administrativo Concluído`, para não ficar órfã entre o Comercial e a Coordenação (Fase 138, D-07). ⚠️ **A listagem Contrato não tem corte por etapa** (decisão do usuário, 2026-09-02): o universo dela é estado de contrato, não etapa — cortá-la na etapa 5 esconderia empresa em operação com contrato ativo. Ver a nota do bloco da Fase 138 no `ROADMAP.md`. Fechado pelo plano 138-05: `ComercVisibilidadeAteEtapa5Test` prova a fronteira nos dois sentidos.
+- [x] **COMERC-01**: Empresa criada pelo webhook de venda ganha nasce na etapa `Aguardando Administrativo` sem cadastro manual. Fechado pelo plano 151-07: `EtapaTransicaoService` ligado aos dois call sites de produção do webhook (`processar()` e `reprocessarEvento()`) e ao cadastro manual (`ComercialController::store()`), com ator de sistema "Sistema HubSpot" (D-17) resolvido por `config('services.hubspot.webhook_user_id')` — ausência/inexistência degrada para "sem etapa" com log, nunca 500. `ComercEtapaNascimentoWebhookTest`/`ComercEtapaNascimentoCadastroManualTest` provam os dois caminhos por reconsulta ao banco.
+- [x] **COMERC-02**: As listagens **Contrato** e **Entrada** da Área Comercial exibem, cada uma, os 8 campos mínimos do §2 (nome, serviço contratado, setor/segmento, origem da venda, responsável comercial e data da venda, informações principais do cliente, status do contrato e pendências, demais dados comerciais do HubSpot). São **duas** listas separadas por processo pendente, não por etapa — a mesma empresa pode aparecer nas duas (Fase 151, D-04/D-05). Fechado pelos planos 151-05 (Entrada) e 151-06 (Contrato) — as duas pontas verificadas lado a lado antes de marcar.
+- [x] **COMERC-03**: A empresa permanece visível na listagem **Entrada** até entrar na etapa `Aguardando Distribuição` — continua aparecendo enquanto está em `Administrativo Concluído`, para não ficar órfã entre o Comercial e a Coordenação (Fase 151, D-07). ⚠️ **A listagem Contrato não tem corte por etapa** (decisão do usuário, 2026-09-02): o universo dela é estado de contrato, não etapa — cortá-la na etapa 5 esconderia empresa em operação com contrato ativo. Ver a nota do bloco da Fase 151 no `ROADMAP.md`. Fechado pelo plano 151-05: `ComercVisibilidadeAteEtapa5Test` prova a fronteira nos dois sentidos.
 
 ### ADMIN — Checklist administrativo e trava de finalização (§3, §5)
 
-- [x] **ADMIN-01**: Dentro do cadastro da empresa existe checklist visual com os itens obrigatórios, agrupados nos dois módulos da Área Comercial — **Contrato** e **Entrada** (a fusão Estrutura+Comunicação decidida na Fase 138, D-02). ⚠️ Quantos itens o checklist controla — os **12** do §3 ou os **9** do §5 — é decisão explícita da Fase 139, não dedução
+- [x] **ADMIN-01**: Dentro do cadastro da empresa existe checklist visual com os itens obrigatórios, agrupados nos dois módulos da Área Comercial — **Contrato** e **Entrada** (a fusão Estrutura+Comunicação decidida na Fase 151, D-02). ⚠️ Quantos itens o checklist controla — os **12** do §3 ou os **9** do §5 — é decisão explícita da Fase 152, não dedução
 - [x] **ADMIN-02**: Os quatro itens do grupo Contrato refletem o estado real do envelope Clicksign entregue na v22.0 — sem marcação manual paralela e sem reimplementar assinatura (D5)
-  > **Duas exceções explícitas (Fase 139, D-19):**
+  > **Duas exceções explícitas (Fase 152, D-19):**
   > 1. **D-06 — "Contrato revisado" é marcação MANUAL, com autoria.** Revisar um
   >    contrato é ato humano e não deixa rastro digital; nenhum dos 7 estados do
   >    envelope (`rascunho`, `aguardando_assinaturas`, `assinado`, `recusado`,
@@ -99,7 +99,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
   > v22.0 — nenhuma delas reintroduz lógica de assinatura, e a D5 da milestone
   > segue intacta.
 - [x] **ADMIN-03**: Link ADMA, link de conexão com o sistema ECF e Grant da consultoria são gerados pelo próprio checklist, que marca o item ao gerar (D3)
-  > **Correção de premissa (Fase 139, D-04/D-05/D-14):** o texto original acima
+  > **Correção de premissa (Fase 152, D-04/D-05/D-14):** o texto original acima
   > está errado em dois pontos — fica preservado sem reescrita; a correção
   > entra aqui, no mesmo padrão da nota do ADMIN-02.
   > 1. **O nome é Adman, não ADMA** (correção do usuário, 2026-09-09).
@@ -197,36 +197,36 @@ Reconhecidos, fora desta milestone:
 
 | REQ-ID | Fase |
 |--------|------|
-| ETAPA-01 | Fase 137 |
-| ETAPA-02 | Fase 137 |
-| ETAPA-03 | Fase 137 |
-| ETAPA-04 | Fase 137 |
-| ETAPA-05 | Fase 137 |
-| ETAPA-06 | Fase 137 |
-| COMERC-01 | Fase 138 |
-| COMERC-02 | Fase 138 |
-| COMERC-03 | Fase 138 |
-| ADMIN-01 | Fase 139 |
-| ADMIN-02 | Fase 139 |
-| ADMIN-03 | Fase 139 |
-| ADMIN-04 | Fase 139 |
-| ADMIN-05 | Fase 139 |
-| ADMIN-06 | Fase 139 |
-| COMUNIC-01 | Fase 140 |
-| COMUNIC-02 | Fase 140 |
-| COMUNIC-03 | Fase 140 |
-| DISTRIB-01 | Fase 141 |
-| DISTRIB-02 | Fase 141 |
-| DISTRIB-03 | Fase 141 |
-| DISTRIB-04 | Fase 141 |
-| RESP-01 | Fase 141 |
-| RESP-02 | Fase 141 |
-| ONBRD-01 | Fase 142 |
-| ONBRD-02 | Fase 142 |
-| ONBRD-03 | Fase 142 |
-| ONBRD-04 | Fase 142 |
-| HIST-01 | Fase 143 |
-| HIST-02 | Fase 143 |
-| HIST-03 | Fase 143 |
+| ETAPA-01 | Fase 150 |
+| ETAPA-02 | Fase 150 |
+| ETAPA-03 | Fase 150 |
+| ETAPA-04 | Fase 150 |
+| ETAPA-05 | Fase 150 |
+| ETAPA-06 | Fase 150 |
+| COMERC-01 | Fase 151 |
+| COMERC-02 | Fase 151 |
+| COMERC-03 | Fase 151 |
+| ADMIN-01 | Fase 152 |
+| ADMIN-02 | Fase 152 |
+| ADMIN-03 | Fase 152 |
+| ADMIN-04 | Fase 152 |
+| ADMIN-05 | Fase 152 |
+| ADMIN-06 | Fase 152 |
+| COMUNIC-01 | Fase 153 |
+| COMUNIC-02 | Fase 153 |
+| COMUNIC-03 | Fase 153 |
+| DISTRIB-01 | Fase 154 |
+| DISTRIB-02 | Fase 154 |
+| DISTRIB-03 | Fase 154 |
+| DISTRIB-04 | Fase 154 |
+| RESP-01 | Fase 154 |
+| RESP-02 | Fase 154 |
+| ONBRD-01 | Fase 155 |
+| ONBRD-02 | Fase 155 |
+| ONBRD-03 | Fase 155 |
+| ONBRD-04 | Fase 155 |
+| HIST-01 | Fase 156 |
+| HIST-02 | Fase 156 |
+| HIST-03 | Fase 156 |
 
 **Cobertura:** 31/31 requirements mapeados. Nenhum órfão, nenhuma duplicidade — cada REQ-ID em exatamente uma fase.

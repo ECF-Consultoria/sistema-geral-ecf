@@ -74,9 +74,9 @@ class ContratoAdminController extends Controller
         // no client. Empresa cujo único serviço é isento (Polos) nunca
         // entra aqui.
         //
-        // Plano 138-06 (COMERC-02) — o `->with('hubspotEventos')` e o
+        // Plano 151-06 (COMERC-02) — o `->with('hubspotEventos')` e o
         // `->withExists('hubspotEventoOrigem')` abaixo são eager load NOVO
-        // para os 8 campos do §2 (evitar N+1 dentro do foreach, T-138-23) —
+        // para os 8 campos do §2 (evitar N+1 dentro do foreach, T-151-23) —
         // não mudam o UNIVERSO da query: o filtro por contratosServico ativo
         // logo abaixo é o mesmo de sempre, mesma contagem de linhas.
         $companiesQuery = Company::query()
@@ -100,7 +100,7 @@ class ContratoAdminController extends Controller
 
         $companies = $companiesQuery->get();
 
-        // (2b) Plano 138-06 (COMERC-02, D-11) — duas pendências, NUNCA
+        // (2b) Plano 151-06 (COMERC-02, D-11) — duas pendências, NUNCA
         // somadas, calculadas uma vez por EMPRESA antes do loop de linhas e
         // guardadas num mapa indexado por company_id (nunca como atributo
         // dinâmico homônimo à chave do payload, pra não confundir grep de
@@ -146,7 +146,7 @@ class ContratoAdminController extends Controller
         // pessoa preenche as datas de cada uma.
         $linhas = collect();
         foreach ($companies as $company) {
-            // Plano 138-06 (D-12) — setor ECF da empresa, mesma derivação de
+            // Plano 151-06 (D-12) — setor ECF da empresa, mesma derivação de
             // ComercialController::listagem()/ComercialEntradaController::index():
             // primeiro `servico->setor` não nulo entre os contratosServico
             // ATIVOS. Calculado uma vez por EMPRESA (não por linha/grupo) —
@@ -234,7 +234,7 @@ class ContratoAdminController extends Controller
                         'contrato_id'                => $contrato->id,
                         'company_id'                 => $company->id,
                         'company_nome'                => $company->name,
-                        // Plano 138-06 (COMERC-02) — os 8 campos mínimos do
+                        // Plano 151-06 (COMERC-02) — os 8 campos mínimos do
                         // §2 + etapa, mesmo vocabulário de chave que
                         // ComercialEntradaController::index() usa, para o
                         // front não precisar de dois vocabulários.
@@ -252,7 +252,7 @@ class ContratoAdminController extends Controller
                         'nome_contato'                 => $company->nome_contato,
                         // D-11 — duas pendências, chaves separadas e NUNCA
                         // somadas. A pendência do fluxo é lida SÓ pelo ponto
-                        // único pendenciaAberta() (D-19 da Fase 137) — nunca
+                        // único pendenciaAberta() (D-19 da Fase 150) — nunca
                         // ler o atributo bruto do model direto aqui.
                         'pendencia_fluxo' => [
                             'aberta' => $company->pendenciaAberta(),
@@ -295,7 +295,7 @@ class ContratoAdminController extends Controller
                         'contrato_id'                => null,
                         'company_id'                 => $company->id,
                         'company_nome'                => $company->name,
-                        // Plano 138-06 (COMERC-02) — mesmas chaves novas do
+                        // Plano 151-06 (COMERC-02) — mesmas chaves novas do
                         // ramo com contrato acima; nenhuma pode faltar aqui,
                         // senão o front recebe `undefined` neste ramo.
                         'company_cnpj'                => $company->cnpj,
@@ -509,7 +509,7 @@ class ContratoAdminController extends Controller
      * vêm prontos do backend, únicas fontes: `ContratoDadosMinimosService` e
      * `GatilhoContratoAdministrativoService`.
      *
-     * Fase 139 Plano 08 (D-08/D-17) — esta ficha passou a ser a ficha ÚNICA,
+     * Fase 152 Plano 08 (D-08/D-17) — esta ficha passou a ser a ficha ÚNICA,
      * aberta também pela listagem Comercial › Entrada. A rota aceita as duas
      * permissões em OR; é AQUI que a permissão de MÓDULO recorta o payload
      * (`$podeVerContrato` abaixo).
@@ -526,7 +526,7 @@ class ContratoAdminController extends Controller
         // que mostra na tela o texto EFETIVO atual (override ou composto)
         // do campo editável de {{plano_parcelas}}.
         ContratoPdfService $pdfDados,
-        // Fase 139 Plano 08 (D-15) — os DOIS serviços do checklist entram aqui
+        // Fase 152 Plano 08 (D-15) — os DOIS serviços do checklist entram aqui
         // como IRMÃOS, lado a lado, exatamente porque nenhum deles pode injetar
         // o outro em ciclo. `ChecklistAdministrativoService` NÃO recebe o
         // sincronizador no construtor: isso fecharia
@@ -604,12 +604,12 @@ class ContratoAdminController extends Controller
         // mesmo serviço já é, por definição, uma tentativa seguinte.
         $idMaisAntigoPorServico = $contratos->groupBy('servico_id')->map(fn ($grupo) => $grupo->min('id'));
 
-        // ─── Checklist administrativo (Fase 139 Plano 08) ────────────────────
+        // ─── Checklist administrativo (Fase 152 Plano 08) ────────────────────
         //
         // A permissão de ROTA (D-17) abre esta ficha para quem tem
         // `admin.contratos` OU `comercial.entrada`. A permissão de MÓDULO
         // decide o que aparece dentro dela. Sem este recorte, a mudança de
-        // rota viraria vazamento: até a Fase 138 só quem tinha
+        // rota viraria vazamento: até a Fase 151 só quem tinha
         // `admin.contratos` alcançava este payload, que carrega envelopes e
         // SIGNATÁRIOS. A T-131-04-04 já limita o signatário a
         // id/nome/papel/situacao — este gating é a defesa NOVA, não uma
@@ -692,7 +692,7 @@ class ContratoAdminController extends Controller
             // misturar com `faltantes`, ver docblock de
             // faltantesDaConfiguracaoEcf()).
             'configuracao_ecf_faltante' => $dados->faltantesDaConfiguracaoEcf(),
-            // Fase 139 Plano 08 (T-139-08-01) — as três props de conteúdo
+            // Fase 152 Plano 08 (T-152-08-01) — as três props de conteúdo
             // contratual chegam NEUTRALIZADAS para quem não tem
             // `admin.contratos`. `company`, `contratos_servico` e `faltantes`
             // continuam para os dois perfis: a listagem Entrada já exibe
@@ -766,7 +766,7 @@ class ContratoAdminController extends Controller
     }
 
     /**
-     * Fase 139 Plano 08 (D-15) — o ÚNICO ponto do sistema que invoca
+     * Fase 152 Plano 08 (D-15) — o ÚNICO ponto do sistema que invoca
      * `ChecklistEtapaSincronizadorService::sincronizar()`.
      *
      * Existe como funil, e não é cerimônia: **todo** caminho que fecha ou
@@ -792,11 +792,11 @@ class ContratoAdminController extends Controller
     }
 
     /**
-     * Guarda comum dos endpoints do checklist (Fase 139 Plano 08).
+     * Guarda comum dos endpoints do checklist (Fase 152 Plano 08).
      *
      * Duas checagens, nesta ordem:
      *
-     * 1. **Chave contra o catálogo fechado** (T-139-08-04). A `{chave}` é
+     * 1. **Chave contra o catálogo fechado** (T-152-08-04). A `{chave}` é
      *    segmento de URL, não corpo — `$request->validate()` não a alcança, e a
      *    checagem explícita é obrigatória. Usa `chaves(true)` (as 9) de
      *    propósito: se a empresa for isenta, o service ainda recusa com
@@ -821,7 +821,7 @@ class ContratoAdminController extends Controller
     }
 
     /**
-     * Funil de mutação do checklist (Fase 139 Plano 08, D-15, T-139-08-09).
+     * Funil de mutação do checklist (Fase 152 Plano 08, D-15, T-152-08-09).
      *
      * Não é cerimônia: **todo** caminho que fecha ou reabre item precisa
      * sincronizar a etapa depois, senão a D-15 morre em silêncio — a empresa
@@ -855,8 +855,8 @@ class ContratoAdminController extends Controller
      * ADMIN-04 — marca um item manual como concluído.
      *
      * O ator é **sempre** `$request->user()`. Nenhum endpoint desta fase lê
-     * `user_id`/`feito_por` do corpo (disciplina T-137-02): autoria vinda do
-     * cliente é autoria forjável, e o histórico da Fase 143 mede exatamente
+     * `user_id`/`feito_por` do corpo (disciplina T-150-02): autoria vinda do
+     * cliente é autoria forjável, e o histórico da Fase 156 mede exatamente
      * quem fez o quê.
      *
      * O parâmetro `$forcar` de `concluirManualmente()` **não** é exposto por
@@ -880,7 +880,7 @@ class ContratoAdminController extends Controller
      * ADMIN-04 — desmarca um item concluído manualmente, zerando a autoria.
      *
      * Passa pelo mesmo funil mesmo sabendo que o sincronizador só AVANÇA (o
-     * plano 139-07 prova que desmarcar na etapa 4 não devolve à 3): o valor
+     * plano 152-07 prova que desmarcar na etapa 4 não devolve à 3): o valor
      * aqui é o caminho único, não o efeito.
      */
     public function reabrirItemChecklist(Request $request, Company $company, string $chave): RedirectResponse
@@ -930,7 +930,7 @@ class ContratoAdminController extends Controller
      * clique "pular" etapas sem deixar rastro.
      *
      * Isto **não** contradiz o caso 5 de `FinalizarTransicaoEtapaTest` (plano
-     * 139-06), que afirma `recusado` para a mesma situação: lá se testa
+     * 152-06), que afirma `recusado` para a mesma situação: lá se testa
      * `finalizar()` sozinho, no nível de service; aqui é a rota, que sincroniza
      * antes. Não "corrigir" um dos dois.
      *

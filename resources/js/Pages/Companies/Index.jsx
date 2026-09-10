@@ -115,7 +115,7 @@ function PendenciaBadges({ pendencias }) {
     );
 }
 
-// ─── Fase 137 Plano 07 (ETAPA-05) — rótulos das 9 etapas do fluxo de entrada
+// ─── Fase 150 Plano 07 (ETAPA-05) — rótulos das 9 etapas do fluxo de entrada
 // (§10 do PDF v23.0). Fonte de verdade é `Company::ETAPAS`
 // (app/Models/Company.php) — não há enum compartilhado entre PHP e JS no
 // projeto, a sincronia é manual. Ordem espelha a ordem canônica do model.
@@ -189,18 +189,18 @@ export default function Companies({ companies, users, estrategistas = [], analis
     // Phase 35 Plan 35-01 (D-02) — sort por created_at na aba Pendencias.
     // Backend so honra valores 'nova_recente'|'nova_antiga'; '' (default) cai no orderBy('name').
     const sortFilter = filters.sort || '';
-    // Fase 137 Plano 07 (ETAPA-05) — dois filtros novos, independentes entre
+    // Fase 150 Plano 07 (ETAPA-05) — dois filtros novos, independentes entre
     // si e dos demais (D-23). Lidos da mesma prop `filters` que o backend já
     // devolve para cust_id_status/sort.
     const etapaFilter = filters.etapa || '';
     const comPendenciaFilter = !!filters.com_pendencia;
 
-    // Fase 137 Plano 07 (ETAPA-05, D-21) — filtros server-side por query
+    // Fase 150 Plano 07 (ETAPA-05, D-21) — filtros server-side por query
     // param, nunca `Array.filter` de cliente (o contra-exemplo é `em_operacao`
     // logo abaixo, que continua derivado e filtrado no cliente só porque a
-    // Fase 142 é quem troca essa fonte, não esta).
+    // Fase 155 é quem troca essa fonte, não esta).
     //
-    // Fase 137 Plano 11 (gap closure WR-03) — montador ÚNICO de query.
+    // Fase 150 Plano 11 (gap closure WR-03) — montador ÚNICO de query.
     // Antes, cada um dos quatro handlers montava `params` do zero e só
     // reenviava o(s) filtro(s) que ele próprio conhecia — o comentário que
     // ficava aqui ("cada handler PRESERVA o outro filtro já ativo") era
@@ -480,9 +480,9 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                 <option value="">Todas as empresas</option>
                                 <option value="invalido">Apenas Cust ID Inválido</option>
                             </select>
-                            {/* Fase 137 Plano 07 (ETAPA-05, D-21/D-22) — filtro server-side por
+                            {/* Fase 150 Plano 07 (ETAPA-05, D-21/D-22) — filtro server-side por
                                 etapa. "Sem etapa (legado)" é a SEGUNDA opção, de propósito: depois
-                                do backfill (plano 137-05) é ela quem devolve a maioria das empresas
+                                do backfill (plano 150-05) é ela quem devolve a maioria das empresas
                                 — enterrá-la no fim faria o filtro parecer quebrado. */}
                             <select
                                 value={etapaFilter}
@@ -496,7 +496,7 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                     <option key={valor} value={valor}>{label}</option>
                                 ))}
                             </select>
-                            {/* Fase 137 Plano 07 (ETAPA-05, D-23) — pendência é eixo INDEPENDENTE
+                            {/* Fase 150 Plano 07 (ETAPA-05, D-23) — pendência é eixo INDEPENDENTE
                                 da etapa, nunca um item dentro do seletor acima. */}
                             <button
                                 type="button"

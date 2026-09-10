@@ -10,9 +10,9 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * hubspot:backfill-owner-venda — retroativo manual (Fase 138 Plano 04,
+ * hubspot:backfill-owner-venda — retroativo manual (Fase 151 Plano 04,
  * COMERC-02, D-10) das colunas `hubspot_owner_id`/`hubspot_owner_nome`/
- * `data_venda` (Fase 138 plano 03) para o acervo de empresas que já vieram
+ * `data_venda` (Fase 151 plano 03) para o acervo de empresas que já vieram
  * do HubSpot ANTES desta fase existir.
  *
  * Por que `hubspot:reenriquecer-handoff` / `hubspot:reprocess-event` NÃO
@@ -38,7 +38,7 @@ use Illuminate\Support\Facades\Log;
  *     nunca um `Carbon::parse` novo e paralelo.
  *
  *  2. `hubspot_owner_id`/`hubspot_owner_nome` — COM custo de API. A
- *     property de owner é NOVA (Fase 138 plano 03) — nenhum snapshot
+ *     property de owner é NOVA (Fase 151 plano 03) — nenhum snapshot
  *     antigo a contém. Exige um `fetchDeal()` de verdade por empresa com
  *     `hubspot_deal_id`; o nome é resolvido pelo `HubspotOwnerResolver`
  *     (cache de 7 dias — a ECF tem poucos vendedores, então N empresas
@@ -47,18 +47,18 @@ use Illuminate\Support\Facades\Log;
  *
  * Empresa sem `hubspot_deal_id` (cadastro manual do Comercial) NUNCA entra
  * na passagem 2 — ela nunca teve deal no HubSpot, logo nunca terá owner
- * (138-RESEARCH.md, Pitfall 2). Contada à parte em `sem_deal_id`, para
+ * (151-RESEARCH.md, Pitfall 2). Contada à parte em `sem_deal_id`, para
  * ninguém reportar isso como bug depois.
  *
  * Este comando não escreve no campo de estágio da máquina de estados da
- * Fase 137 (D-14 desta fase / D-05 da 137): ele lê um dado que sempre
+ * Fase 150 (D-14 desta fase / D-05 da 150): ele lê um dado que sempre
  * existiu no HubSpot e não afirma histórico nenhum — diferente do comando
- * de migração de estágio da Fase 137 (que carimba estágio), aqui não há
+ * de migração de estágio da Fase 150 (que carimba estágio), aqui não há
  * carimbo de espécie alguma.
  *
  * Seguro por construção:
  *  - **Dry-run é o padrão.** Sem `--apply` o comando só mostra o que faria
- *    (mesmo molde do comando de migração de estágio da Fase 137).
+ *    (mesmo molde do comando de migração de estágio da Fase 150).
  *  - `chunkById(100)` nas DUAS passagens — nunca `get()` na tabela inteira.
  *
  * ⚠️ O STDOUT desta execução NÃO é prova
@@ -71,7 +71,7 @@ class HubspotBackfillOwnerVenda extends Command
     protected $signature = 'hubspot:backfill-owner-venda
         {--apply : Grava de verdade. Sem esta flag o comando só mostra o que faria}';
 
-    protected $description = 'Retroativo da Fase 138 das colunas hubspot_owner_id/hubspot_owner_nome/data_venda para o acervo já vindo do HubSpot (dry-run por padrão)';
+    protected $description = 'Retroativo da Fase 151 das colunas hubspot_owner_id/hubspot_owner_nome/data_venda para o acervo já vindo do HubSpot (dry-run por padrão)';
 
     /** Tamanho do lote nas duas passagens — nunca `get()` na tabela inteira. */
     private const CHUNK = 100;
@@ -215,7 +215,7 @@ class HubspotBackfillOwnerVenda extends Command
                         $deal = $api->fetchDeal((string) $company->hubspot_deal_id, [$ownerIdKey, $closedateKey]);
                     } catch (\Throwable $e) {
                         $falhas++;
-                        // T-138-14 — só company_id/hubspot_deal_id/mensagem de
+                        // T-151-14 — só company_id/hubspot_deal_id/mensagem de
                         // erro (sem token, sem corpo de resposta cru).
                         Log::channel('ecf-webhooks')->warning('[HubspotBackfillOwnerVenda] falha ao buscar deal — empresa pulada, varredura continua', [
                             'company_id'      => $company->id,
