@@ -2190,7 +2190,7 @@ Plans:
 
 - [x] 151-09-PLAN.md — Checkpoints humanos finais: conta de sistema não-logável em local e VPS, render das duas listagens, regressão contra a baseline (D-01/D-15/D-16/D-17) [wave 4] — os dois checkpoints humanos foram aprovados; suíte reexecutada nesta sessão (252 tests/921 assertions, OK), sem regressão contra a baseline do 151-01. Ver `151-09-SUMMARY.md`
 
-### Phase 152: Checklist administrativo + trava de finalização (v23.0)
+### Phase 152: Checklist administrativo + trava de finalização (v23.0) — ✅ COMPLETA (10/10, gate humano aprovado)
 
 **Goal:** Dentro do cadastro da empresa existe um checklist com os 9 itens do §5 — o que o sistema já sabe gerar se marca sozinho, o grupo Contrato só reflete o Clicksign já entregue, e o botão FINALIZAR ENTRADA ADMINISTRATIVA só libera quando tudo está pronto, movendo a empresa para o marketplace do contrato.
 **Requirements**: ADMIN-01, ADMIN-02, ADMIN-03, ADMIN-04, ADMIN-05, ADMIN-06
