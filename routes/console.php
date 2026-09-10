@@ -100,6 +100,18 @@ Schedule::job(new \App\Jobs\SyncPolosFaturamentoJob)
     ->name('sync-polos-faturamento-d1')
     ->withoutOverlapping();
 
+// Congela o roster de polos do mês corrente (quem está ativo e em que fase). Roda 23:40
+// BRT, tarde o bastante para pegar as mudanças de fase do dia — inclusive a cascata que o
+// time faz na virada do mês (M0→M1→…→M4→Encerrado). Sem isso o mês fechado precisa ser
+// INFERIDO depois, e nenhuma fonte descreve o passado: o cadastro ao vivo já avançou de
+// fase e o CSV da Comercial lista toda a base de sellers, não só o programa.
+// updateOrCreate por (mes, cust_id) → rodar todo dia só reescreve o mês corrente.
+Schedule::command('polos:congelar-roster --apply')
+    ->dailyAt('23:40')
+    ->timezone('America/Sao_Paulo')
+    ->name('congelar-roster-polos')
+    ->withoutOverlapping();
+
 // Sincroniza faturamento bruto mensal via Adman — depois do adman:sync D-1
 Schedule::command('adman:sync-faturamento')
     ->dailyAt('11:30')

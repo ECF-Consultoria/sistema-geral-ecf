@@ -314,3 +314,152 @@ POLOS não-arquivadas. Existe `php artisan polos:audit-faturamento` (read-only).
 `polos:warm` tem **orçamento de 1500s** a ~7s/empresa: quem não couber fica sem snapshot e
 conta **R$ 0 sem erro visível**. Conferir cobertura antes de concluir qualquer coisa:
 `roster M1–M4` vs `COUNT(*) de polos_faturamento_snapshots WHERE mes=...`.
+
+---
+
+## 12. A virada do mês reescrevia o passado — e a métrica tinha trocado sem ninguém decidir (2026-09-02)
+
+Em 48h agosto/2026 foi lido de quatro jeitos: R$ 2,74 mi, R$ 4,73 mi, R$ 4,83 mi e
+R$ 5,52 mi. Nenhum era erro de cálculo — eram quatro definições diferentes convivendo.
+Quatro correções empilhadas resolveram, e cada uma tem uma lição que não é dedutível do
+código.
+
+### 12.1 O time avança TODAS as fases na virada — e o painel lia o passado com elas
+
+Em 01/09 a cascata rodou à mão em uma hora: **M0→M1 100, M1→M2 82, M2→M3 54, M3→M4 37,
+M4→Encerrado 43** (324 mudanças, `activity_log`). Como `montarAtivosDoMes()` usava o
+cadastro AO VIVO para mês "parcial", agosto passou a ser somado com as fases de setembro
+e as 43 empresas que eram M4 (R$ 3,1 mi) sumiram por estarem em `Encerrado`.
+
+**Gatilho:** o CSV publica o mês recém-encerrado DUAS vezes — agosto veio com 547 linhas
+`FECHADO` e 547 `PARCIAL`. A regra era `$mapa[$mes] = ... || $parcial`, então uma linha
+parcial vencia todas as fechadas. Hoje: o mês é fechado assim que aparece **qualquer**
+linha `FECHADO`. A janela se abria em toda virada e ia acumulando — medido no mesmo dia,
+julho daria R$ 1,04 mi em vez de R$ 2,71 mi e junho R$ 167 mil em vez de R$ 1,46 mi.
+
+### 12.2 O CSV da Comercial não é o roster do programa
+
+A reconstrução de mês fechado pegava todo seller com `MESES_NO_PROGRAMA` 1/2/3 e chamava
+de M2/M3/M4: **185 "ativos" contra os 133 da planilha**. As 40 excedentes são apelidos
+crus do ML (`PISA20240413123113`, `DACA20240228101723`) que nunca foram onboardadas —
+sem snapshot, entravam no gráfico como "Não vendeu" e derrubavam o "no alvo" de 57,7%
+para 43,8%. **Não venderam zero: nunca foram medidas.** Distinguir as duas coisas importa
+mais que o total, porque o total não muda (ausente soma R$ 0) mas o percentual afunda.
+
+### 12.3 A correção definitiva: congelar o roster, não inferi-lo
+
+`polos_roster_snapshots` + `polos:congelar-roster` (agendado 23:40 BRT). O mês fechado lê
+o próprio roster; a reconstrução do CSV virou fallback para o histórico antigo.
+
+**Receita de backfill, que vale para qualquer módulo:** `--do-log` reconstrói um mês
+passado partindo do estado ATUAL e desfazendo, do mais recente para o mais antigo, todo
+evento do `activity_log` posterior ao fim do mês (revertendo para `properties.old`), e
+descartando quem foi criado depois do corte. Validado contra agosto: 134 ativos
+reconstruídos (M2=54 M3=37 M4=43) contra os 133 da planilha. Reverter `arquivado_em`
+junto é obrigatório — arquivar é evento de HOJE e não apaga o mês (§11).
+
+### 12.4 O filtro de Móveis trouxe de carona uma troca de métrica
+
+Revertido em 02/09 para o gross da conta. O filtro (raiz `MLB1574`) **não estava bugado** —
+a resolução de categoria acerta, JHOLP MIX MAGAZINE é mesmo 99% Pet Shop. O problema era
+outro, em três camadas:
+
+- **A Adman só entrega `netBilling` POR ITEM**; o gross existe só no total da conta. Para
+  fatiar por categoria foi preciso trocar de métrica junto. Dos ~13% de queda, **~11
+  pontos são gross→net e só ~3 são categoria** — a Lutz Home Decor é 100% móvel e mesmo
+  assim aparecia R$ 74 mil menor.
+- **Os limiares M2=1.000/M3=4.000/M4=8.000 vêm da planilha** ("defaults da planilha",
+  D-07), que sempre usou gross, e ninguém os recalibrou. A meta ficou ~13% mais difícil
+  por efeito colateral; a Negri Decor ficou a **R$ 49** do limiar por isso.
+- **A planilha de Evolução NÃO filtra categoria.** Testado linha a linha: JHOLP entra lá
+  com R$ 50.818 (a conta inteira), não com os R$ 396 de móveis; Inova magazine, Millenium
+  e Marjorie batem com o gross até o real. Quando alguém disser "a planilha só pega
+  móveis", peça a JHOLP: é o caso que separa as duas hipóteses em 30 segundos.
+
+Com gross, agosto reproduz a planilha com **0,1% de resíduo** (R$ 5.524.153 × R$ 5.060.135;
+a diferença de R$ 464 mil é 98,9% a Spinella subnotificada NA PLANILHA — §11.3).
+`faturamento_moveis` segue calculado e virou a coluna **"% móveis"** da exportação:
+"vende ração num polo moveleiro" é decisão de ROSTER, não de métrica.
+
+### 12.5 Armadilha de teste: `vendor` junctionado faz o app bootar na árvore errada
+
+Já sabíamos que junction de `vendor` atrapalha (o autoloader guarda paths absolutos). O
+modo novo é pior porque **os testes passam a medir um Frankenstein**:
+`Application::inferBasePath()` deriva o base path do diretório do autoloader REGISTRADO —
+com `vendor` apontando para o checkout principal, o app boota com o basePath **dele**
+(sem os comandos e migrations do worktree) enquanto as classes vêm do worktree pelo
+`autoload_psr4`. Sintoma: `artisan list` enxerga o comando novo, mas o teste diz
+`CommandNotFoundException`, e a migration nova vira `no such table`.
+
+Solução: `APP_BASE_PATH="C:/caminho/do/worktree" php vendor/bin/phpunit ...`.
+
+Dois avisos de higiene: rodar `composer dump-autoload` de dentro do worktree **reescreve o
+autoloader do checkout principal** apontando para `/tmp` — restaure com um `dump-autoload`
+rodado do principal e confirme com `grep baseDir vendor/composer/autoload_psr4.php`. E o
+`platform_check.php` do repo pode estar desatualizado mascarando que o `vendor/` instalado
+já exige PHP mais novo que o da máquina; se o dump quebrar tudo com "requires PHP >= 8.3",
+use `--ignore-platform-reqs`.
+
+### 12.6 Miscelânea que custou tempo
+
+- **`created_at` não é fillable no `MlbEmpresa`.** O Eloquent carimba `now()` e descarta o
+  valor passado — em teste de backfill toda empresa "nasce hoje" e some do mês passado.
+  Gravar à parte com `DB::table()->update()`.
+- **Baseline da suíte de Polos em `origin/main`: 2 erros + 9 falhas** (`PolosFaturamentoSnapshotTest`,
+  `PainelRespostasChecklistTest`, `PolosPpaTest`). Medir com as mudanças em `git stash`
+  antes de caçar regressão.
+- **`deploy.sh` exit 1 com "Network error: Software caused connection abort"** depois dos
+  caches = queda do plink, não falha do deploy. Conferir por `git log -1`, `stat -c %U app`
+  e o uptime dos workers antes de refazer.
+
+---
+
+## 8. Fase nova no painel são SETE lugares — e o sétimo é o que reverte (2026-09-09)
+
+Acrescentar um valor à coluna **Fase** parece uma linha em `MlbImplementacao::ONB_FASE_OPCOES`.
+Não é. "Desistência" (09/09/2026) precisou de:
+
+`ONB_FASE_OPCOES` (model) · `ORDEM_FASE`, `FASES_TERMINAIS`, `COR_FASE`/`BADGE_FASE`,
+`TONE_FASE`, `VAL_NEG` (`Polos/Painel.jsx`) · `FASES_TERMINAIS` de `lib/polosEntrantes.js` ·
+`ONB_FASE_OPCOES`/`negativos` de `Mlb/OnboardingFicha.jsx` · `DEFAULT_STATUS` de
+`Mlb/Empresas.jsx` — **e `SyncPolosPlanilha::FASE_MAP`**.
+
+O `FASE_MAP` é o que morde. Ele fundia `'DESISTÊNCIA' => 'Churn'` e
+`'PROTOCOLO CHURN' => 'Churn'`: a planilha já trazia as duas palavras, a tela oferecia as
+fases separadas, e **todo `polos:sync-planilha --apply` desfazia calado** o que o time
+marcava. Não há erro, log nem contador — a fase simplesmente volta para Churn no próximo
+sync. É o mesmo estrago que "Aceite no Projeto" e "Encaminhar Comercial" já tinham sofrido
+(§ do CHANGELOG da planilha V2).
+
+**Regra:** fase que a UI oferece separada NUNCA pode estar fundida no `FASE_MAP`. Ao
+adicionar uma, conferir `mb_strtoupper` da grafia da planilha — com e sem acento.
+
+Fase terminal (`FASES_TERMINAIS`) também muda comportamento: entra no `confirm` da edição
+em massa e sai do escopo M1–M4 do AutoFiltro. "Desistência" é terminal, como Churn.
+
+## 9. O "% da meta" de /polos/empresas está travado em 100 de propósito (2026-09-09)
+
+A meta por empresa é **limiar de entrada** (D-13: M2=1.000, M3=4.000, M4=8.000), não alvo
+proporcional. Dividir faturamento por limiar produzia números como **MS Decor 2.104,2%** e
+**LGN Móveis 1.016,7%** — a coluna deixava de informar. Desde 09/09/2026 a exibição é
+`Math.min(pct, 100)`, com o valor real no `title` e uma seta ↑ marcando o estouro.
+
+O que **não** mudou, e não deve mudar junto: `agregarPorPolo()` segue devolvendo o `pct`
+cru, a **ordenação da tabela usa o cru** (senão o topo da lista embaralha em empates de
+100%), e o `pct` do POLO continua sem teto — ali o problema é outro, e está no §5.
+
+## 10. Comentários de performance: cust_id + mês, nunca `mlb_empresa_id` (2026-09-09)
+
+`polos_comentarios` (migration `2026_09_09_140000`) guarda a explicação do número do mês
+("caiu porque ficou sem estoque na S3"), visível só em `/polos/empresas`.
+
+A chave é **`cust_id` normalizado + `mes`**. Amarrar em `mlb_empresas.id` parece mais
+correto e é a armadilha: a lista da tela é montada por cust normalizado e, em **mês
+fechado**, o roster vem do CSV/`polos_roster_snapshots` — não há `MlbEmpresa` garantida do
+outro lado (§3: das 285 POLOS ativas, 3 têm `company_id`). O comentário sumiria exatamente
+nos meses históricos, que é quando alguém volta para entender o que aconteceu.
+
+Duas decisões que parecem redundância e não são: `autor_nome` é **snapshot** ao lado do
+`user_id` (autoria não pode virar "—" quando o usuário é desativado), e `editado_em` é
+coluna **explícita** em vez de comparar `updated_at != created_at` — qualquer `touch()`
+futuro marcaria o comentário como editado sem ninguém ter editado nada.

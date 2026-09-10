@@ -55,6 +55,15 @@ class Servico extends Model
         // `fillable` o mass assignment da tela administrativa (Módulo
         // Serviços) falharia em silêncio.
         'contrato_junto_com_servico_id',
+        // Fase 141 Plano 01 (D-02/D-04) — este serviço é cobrado por tabela
+        // progressiva de faturamento? Esta coluna — não a existência de
+        // linhas em `servico_faixas_faturamento` — passa a ser a resposta
+        // OFICIAL: Mentoria, por exemplo, pode ganhar faixas cadastradas no
+        // futuro sem que isso volte a valer como tabela aplicável. Sem
+        // `fillable` o mass assignment da futura tela de serviços falharia
+        // em silêncio — armadilha recorrente já registrada nos comentários
+        // acima.
+        'usa_tabela_progressiva',
     ];
 
     protected $casts = [
@@ -62,6 +71,7 @@ class Servico extends Model
         'ativo'                              => 'boolean',
         'exige_contrato'                    => 'boolean',
         'clicksign_assinatura_posicionada'  => 'boolean',
+        'usa_tabela_progressiva'            => 'boolean',
     ];
 
     // ─── Constants de tipo de cobrança ──────────────────────────────────────
@@ -197,6 +207,17 @@ class Servico extends Model
     public function servicoDono(): BelongsTo
     {
         return $this->belongsTo(Servico::class, 'contrato_junto_com_servico_id');
+    }
+
+    /**
+     * Fase 137 (D-01) — tabela progressiva de faturamento deste serviço.
+     * Uma empresa herda esta tabela por padrão; se ela tiver linhas em
+     * `EmpresaFaixaFaturamento` (D-13), essa exceção substitui a tabela
+     * inteira do serviço, nunca linha a linha.
+     */
+    public function faixasFaturamento(): HasMany
+    {
+        return $this->hasMany(ServicoFaixaFaturamento::class);
     }
 
     /**

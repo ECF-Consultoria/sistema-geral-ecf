@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -41,6 +42,17 @@ use Inertia\Inertia;
  * Empresa fora disso nunca produz linha de Desempenho e não teria por que
  * aparecer aqui. A guarda contra `company_id` arbitrário é `active = true`
  * (T-136-06), aplicada no FormRequest, não um filtro por vínculo.
+ *
+ * ### Filtros de marketplace e de colaborador (2026-09-02) são RECORTE DE TELA
+ * `index()` aceita `fonte` e `colaborador` só para esconder linha de quem está
+ * olhando — nenhum dos dois é escopo de permissão, e por isso NÃO existem no
+ * `StoreMetricaManualRequest`: o admin continua podendo lançar em qualquer
+ * empresa ativa do universo, filtrada na tela ou não. O filtro por colaborador
+ * recorta o par `(empresa, canal)`, não a empresa inteira — conta atendida no
+ * Mercado Livre por um profissional e na Shopee por outro mostra, na carteira
+ * de cada um, só a linha do canal dele. `fontes`/`multi_canal` seguem contando
+ * TODOS os vínculos da empresa, para o selo "2 canais" continuar avisando que
+ * existe outra linha atendida por outra pessoa.
  *
  * ### D-09 REVOGADO em 2026-08-31 — competência consolidada TAMBÉM é editável
  * A trava original deixava o mês read-only assim que existisse pelo menos uma
@@ -102,8 +114,13 @@ class DesempenhoMetricasManuaisController extends Controller
     public function index(Request $request)
     {
         $dados = $request->validate([
-            'mes'   => ['nullable', 'regex:/^\d{4}-\d{2}$/'],
-            'busca' => ['nullable', 'string', 'max:100'],
+            'mes'         => ['nullable', 'regex:/^\d{4}-\d{2}$/'],
+            'busca'       => ['nullable', 'string', 'max:100'],
+            // Recortes da grade (2026-09-02). Nenhum dos dois muda o UNIVERSO
+            // — só escondem linha. O que a tela deixa lançar continua sendo
+            // decidido pelo FormRequest, que não conhece filtro nenhum.
+            'fonte'       => ['nullable', Rule::in(array_keys(self::FONTE_LABELS))],
+            'colaborador' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $mes = ! empty($dados['mes'])
@@ -112,22 +129,34 @@ class DesempenhoMetricasManuaisController extends Controller
 
         $busca = trim((string) ($dados['busca'] ?? ''));
 
+        // String vazia já chega como null (middleware `ConvertEmptyStringsToNull`),
+        // mas o cast explícito evita que '0' ou ' ' virem filtro fantasma.
+        $fonteFiltro = $dados['fonte'] ?? null;
+        $colaborador = isset($dados['colaborador']) ? (int) $dados['colaborador'] : null;
+
         $meses       = $this->mesesDoSeletor($mes);
         $consolidada = (bool) ($meses->firstWhere('valor', $mes->format('Y-m'))['consolidada'] ?? false);
 
-        $empresas = $this->montarEmpresas($mes, $busca);
+        $empresas = $this->montarEmpresas($mes, $busca, $fonteFiltro, $colaborador);
 
         return Inertia::render('Desempenho/MetricasManuais', [
-            'mes'         => $mes->format('Y-m'),
-            'mes_label'   => $this->mesExtenso($mes),
-            'meses'       => $meses->values(),
-            'consolidada' => $consolidada,
-            'busca'       => $busca,
-            'empresas'    => $empresas,
+            'mes'           => $mes->format('Y-m'),
+            'mes_label'     => $this->mesExtenso($mes),
+            'meses'         => $meses->values(),
+            'consolidada'   => $consolidada,
+            'busca'         => $busca,
+            // Filtros ativos + as opções de cada um. `colaboradores` é
+            // derivado do MESMO universo da grade: quem aparece no seletor
+            // sempre tem pelo menos uma linha para mostrar.
+            'fonte'         => $fonteFiltro,
+            'colaborador'   => $colaborador,
+            'fontes'        => $this->fontesDoSeletor(),
+            'colaboradores' => $this->colaboradoresDoSeletor(),
+            'empresas'      => $empresas,
             // Espelho JS das whitelists canônicas — a tela não redigita as
             // strings de métrica nem de tipo (o model é a única fonte).
-            'metricas'    => DesempenhoMetricaManual::METRICAS,
-            'tipos'       => DesempenhoMetricaManual::TIPOS,
+            'metricas'      => DesempenhoMetricaManual::METRICAS,
+            'tipos'         => DesempenhoMetricaManual::TIPOS,
         ]);
     }
 
@@ -279,14 +308,35 @@ class DesempenhoMetricasManuaisController extends Controller
      * (empresa, papel) desde a Fase 76 — uma por serviço — e sem ele a mesma
      * empresa apareceria duplicada na grade.
      *
+     * `$fonteFiltro` e `$colaboradorId` são recorte de exibição sobre esse
+     * universo (ver o docblock da classe), aplicados em dois pontos
+     * diferentes de propósito: a EMPRESA sai da consulta quando não é da
+     * carteira do colaborador (não vale carregar model nem lançamento de quem
+     * não vai aparecer), mas o CANAL é filtrado só na hora de montar a linha
+     * — `fontes`/`multi_canal` precisam continuar enxergando o canal
+     * escondido.
+     *
      * @return array<int, array<string, mixed>>
      */
-    private function montarEmpresas(Carbon $mes, string $busca): array
-    {
+    private function montarEmpresas(
+        Carbon $mes,
+        string $busca,
+        ?string $fonteFiltro = null,
+        ?int $colaboradorId = null
+    ): array {
         // Mesma lista consumida pelo `StoreMetricaManualRequest` ao validar se
         // a empresa atende o canal escolhido — uma constante só, para grade e
         // validação nunca divergirem sobre o que conta como canal.
         $setoresElegiveis = Servico::SETORES_FINANCEIROS;
+
+        // Carteira do colaborador filtrado: os pares `(empresa, canal)` que
+        // ELE atende. `null` = sem filtro; `ids` vazio = filtraram alguém sem
+        // carteira financeira nenhuma, e aí a grade é vazia mesmo.
+        $carteira = $colaboradorId !== null ? $this->carteiraDoColaborador($colaboradorId) : null;
+
+        if ($carteira !== null && $carteira['ids'] === []) {
+            return [];
+        }
 
         $vinculos = DB::table('company_users as cu')
             ->join('servicos as s', 's.id', '=', 'cu.servico_id')
@@ -294,6 +344,10 @@ class DesempenhoMetricasManuaisController extends Controller
             ->where('c.active', true)
             ->whereIn('s.setor', $setoresElegiveis)
             ->when($busca !== '', fn ($q) => $q->where('c.name', 'like', '%' . $busca . '%'))
+            // Recorte por carteira só na EMPRESA. Os vínculos dos OUTROS
+            // profissionais da mesma empresa continuam vindo — é deles que
+            // saem `fontes` e `multi_canal`.
+            ->when($carteira !== null, fn ($q) => $q->whereIn('cu.company_id', $carteira['ids']))
             ->distinct()
             ->select('c.id as company_id', 'c.name as company_name', 's.setor as setor')
             ->get();
@@ -347,7 +401,7 @@ class DesempenhoMetricasManuaisController extends Controller
         // rendendo exatamente uma linha, como antes.
         $linhas = $companies
             ->sortBy(fn (Company $company) => mb_strtolower((string) $company->name))
-            ->flatMap(function (Company $company) use ($mes, $lancamentos, $fontesPorEmpresa, &$periodo) {
+            ->flatMap(function (Company $company) use ($mes, $lancamentos, $fontesPorEmpresa, $fonteFiltro, $carteira, &$periodo) {
                 // Fallback para o vencedor do desempate só quando a empresa não
                 // tem nenhuma fonte elegível mapeada — caso de borda que não
                 // deveria chegar aqui, mas não vale devolver linha sem canal.
@@ -357,12 +411,125 @@ class DesempenhoMetricasManuaisController extends Controller
                     return [];
                 }
 
-                return collect($fontesDaEmpresa)->map(fn (string $fonte) => $this->linhaDaCelula(
+                // Quais canais viram LINHA. A lista completa continua indo
+                // para `linhaDaCelula()` em `$fontesDaEmpresa`: o canal
+                // escondido pelo filtro ainda existe, e o selo "2 canais" tem
+                // de seguir dizendo isso.
+                $fontesVisiveis = collect($fontesDaEmpresa)
+                    ->when(
+                        $fonteFiltro !== null,
+                        fn (Collection $fontes) => $fontes->filter(fn (string $f) => $f === $fonteFiltro)
+                    )
+                    ->when(
+                        $carteira !== null,
+                        fn (Collection $fontes) => $fontes->filter(
+                            fn (string $f) => isset($carteira['pares']["{$company->id}:{$f}"])
+                        )
+                    );
+
+                return $fontesVisiveis->map(fn (string $fonte) => $this->linhaDaCelula(
                     $company, $fonte, $fontesDaEmpresa, $mes, $lancamentos, $periodo
                 ))->all();
             });
 
         return $linhas->values()->all();
+    }
+
+    // === Opcoes e recorte dos filtros ======================================
+
+    /**
+     * Opções do seletor de marketplace — os mesmos dois canais que a grade
+     * sabe montar, com o rótulo humano de `FONTE_LABELS`.
+     *
+     * @return array<int, array{valor: string, label: string}>
+     */
+    private function fontesDoSeletor(): array
+    {
+        return collect(self::FONTE_LABELS)
+            ->map(fn (string $label, string $valor) => ['valor' => $valor, 'label' => $label])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Quem pode ser filtrado como colaborador.
+     *
+     * A consulta é a MESMA que define o universo da grade (empresa ativa +
+     * vínculo em setor financeiramente elegível), só que agrupada por
+     * usuário: quem aparece no seletor tem, por construção, pelo menos uma
+     * linha para mostrar — filtro que devolve grade vazia seria defeito de
+     * tela, não resposta.
+     *
+     * Sem filtro por `users.active`: profissional desligado continua dono dos
+     * vínculos na pivot, e escondê-lo do seletor tornaria a carteira dele
+     * inalcançável. Ele vem marcado `ativo = false` para a tela poder avisar.
+     *
+     * `role` também não entra: a grade não filtra por papel (consultor,
+     * estrategista e analista entram igual), e filtrar aqui esconderia
+     * empresa que a grade mostra.
+     *
+     * @return array<int, array{id: int, nome: string, ativo: bool, total_empresas: int}>
+     */
+    private function colaboradoresDoSeletor(): array
+    {
+        return DB::table('company_users as cu')
+            ->join('servicos as s', 's.id', '=', 'cu.servico_id')
+            ->join('companies as c', 'c.id', '=', 'cu.company_id')
+            ->join('users as u', 'u.id', '=', 'cu.user_id')
+            ->where('c.active', true)
+            ->whereIn('s.setor', Servico::SETORES_FINANCEIROS)
+            ->groupBy('u.id', 'u.name', 'u.active')
+            ->orderBy('u.name')
+            // `COUNT(DISTINCT company_id)`: a pivot tem uma linha por serviço
+            // desde a Fase 76, e um `COUNT(*)` diria "12 empresas" onde há 7.
+            ->select('u.id', 'u.name', 'u.active', DB::raw('COUNT(DISTINCT cu.company_id) as total_empresas'))
+            ->get()
+            ->map(fn ($linha) => [
+                'id'             => (int) $linha->id,
+                'nome'           => (string) $linha->name,
+                'ativo'          => (bool) $linha->active,
+                'total_empresas' => (int) $linha->total_empresas,
+            ])
+            ->all();
+    }
+
+    /**
+     * Carteira financeira de UM colaborador, no formato que o recorte da
+     * grade consome.
+     *
+     * `pares` é indexado por `"{company_id}:{fonte}"` porque o recorte é por
+     * PAR, não por empresa: quem atende a Shopee de uma conta que também tem
+     * Mercado Livre não deve ver a linha do outro canal como se fosse dele.
+     * `ids` existe para a consulta de vínculos poder cortar empresa fora da
+     * carteira antes de carregar model e lançamento.
+     *
+     * @return array{ids: array<int, int>, pares: array<string, bool>}
+     */
+    private function carteiraDoColaborador(int $userId): array
+    {
+        $linhas = DB::table('company_users as cu')
+            ->join('servicos as s', 's.id', '=', 'cu.servico_id')
+            ->join('companies as c', 'c.id', '=', 'cu.company_id')
+            ->where('c.active', true)
+            ->whereIn('s.setor', Servico::SETORES_FINANCEIROS)
+            ->where('cu.user_id', $userId)
+            ->distinct()
+            ->select('cu.company_id', 's.setor')
+            ->get();
+
+        $ids   = [];
+        $pares = [];
+
+        foreach ($linhas as $linha) {
+            $companyId       = (int) $linha->company_id;
+            $ids[$companyId] = $companyId;
+
+            // Tradução setor → canal pelo método único do model — redigitar o
+            // ternário aqui era exatamente o defeito que D-10 corrigiu.
+            $pares[$companyId . ':' . Servico::fonteFinanceiraDoSetor($linha->setor)] = true;
+        }
+
+        return ['ids' => array_values($ids), 'pares' => $pares];
     }
 
     /**

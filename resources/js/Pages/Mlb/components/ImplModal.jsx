@@ -249,8 +249,20 @@ function DadosView({ impl, checklist, erp_opcoes, integrador_opcoes }) {
         if (tipo === 'select_opcoes') {
             return <span className="text-white/50 text-[11px]">{dado.valor || '—'}</span>;
         }
+        if (tipo === 'canais_venda') {
+            // Canais em que vende + faixa de faturamento. `canal` (string) é o formato de
+            // escolha única do início de 02/09/2026. A faixa só existe para quem vende
+            // fora do ML, então some quando não há resposta.
+            const lista = Array.isArray(dado.canais) ? dado.canais : (dado.canal ? [dado.canal] : []);
+            const canais = lista.map(c => (c === 'Outro' ? `Outro: ${dado.outro || '—'}` : c)).join(', ');
+            return <span className="text-white/50 text-[11px]">{canais || '—'}{dado.valor ? <span className="ml-2 text-white/30">· {dado.valor}</span> : null}</span>;
+        }
         if (tipo === 'texto') {
             return <span className="text-white/50 text-[11px]">{dado.acesso || '—'}</span>;
+        }
+        if (tipo === 'observacao') {
+            // Campo opcional: sem texto o item pode estar feito assim mesmo.
+            return <span className="text-white/50 text-[11px] whitespace-pre-line">{dado.observacao || '—'}</span>;
         }
         if (tipo === 'link_admin') {
             const url = linksAdmin[id];

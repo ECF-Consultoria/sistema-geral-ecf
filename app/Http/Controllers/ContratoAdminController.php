@@ -8,6 +8,7 @@ use App\Models\ContratoAssinatura;
 use App\Models\ContratoAssinaturaSignatario;
 use App\Models\ContratoLiberacao;
 use App\Models\ContratoServico;
+use App\Models\EmpresaFaixaFaturamento;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\BoasVindas\MensagemBoasVindasService;
@@ -23,6 +24,7 @@ use App\Services\Contratos\ContratoDadosMinimosService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\ContratoPdfService;
+use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\FluxoEntrada\TimelineEntradaService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use App\Support\Permissions;
@@ -546,6 +548,9 @@ class ContratoAdminController extends Controller
         MensagemBoasVindasService $boasVindas,
         // Fase 156 — leitura pura de dado que as fases 150-155 já gravam.
         TimelineEntradaService $timeline,
+        // Plano 142-02 (D-03) — só para `tabela_resumo` abaixo, alimentar o botão novo que leva
+        // até a ficha da tabela de cobrança sem a tela recalcular nada.
+        FechamentoFaixaResolver $resolverFaixa,
     ): \Inertia\Response {
         $company->loadMissing('contratosServico.servico');
 
@@ -644,6 +649,21 @@ class ContratoAdminController extends Controller
             unset($checklistPayload['grupos'][ChecklistAdministrativoDefinicao::GRUPO_CONTRATO]);
         }
 
+        // Plano 142-02 (D-03) — resumo pequeno para o botão "Tabela de cobrança" saber o que
+        // dizer sem a tela recalcular nada. `origem_aplicada` é quem cobra HOJE (grupo vence
+        // sobre a própria, Fase 138); `procedencia` é da tabela PRÓPRIA da empresa
+        // especificamente (manual/contrato/presumida_servico/null) — as duas podem divergir
+        // quando quem cobra é o grupo.
+        $tabelaAplicada = $resolverFaixa->paraEmpresa($company);
+        $procedenciaPropria = EmpresaFaixaFaturamento::where('company_id', $company->id)->value('origem');
+
+        $tabelaResumo = [
+            'tem_tabela'        => $tabelaAplicada !== null,
+            'quantidade_faixas' => $tabelaAplicada !== null ? $tabelaAplicada['faixas']->count() : 0,
+            'procedencia'       => $procedenciaPropria,
+            'origem_aplicada'   => $tabelaAplicada['origem'] ?? null,
+        ];
+
         return Inertia::render('Admin/ContratoDetalhe', [
             'checklist'         => $checklistPayload,
             'pode_ver_contrato' => $podeVerContrato,
@@ -737,6 +757,16 @@ class ContratoAdminController extends Controller
             // desta tela para alimentar o select do modal "Liberar
             // manualmente".
             'motivos_manuais' => ContratoLiberacao::MOTIVOS_MANUAIS_LABELS,
+            // Plano 142-02 (D-03) — alimenta o bloco "Tabela de cobrança" e o botão que leva à
+            // ficha exclusiva (`admin.contratos.tabela.show`).
+            //
+            // ⚠️ RECORTADO no merge de 2026-09-10 (Fase 152, D-17). Quando este
+            // bloco foi escrito, só quem tinha `admin.contratos` alcançava esta
+            // ficha; a Fase 152 abriu a rota também para `comercial.entrada`.
+            // Faixa de cobrança é dado contratual — segue a mesma régua de
+            // `contratos`/`pode_gerar_contrato`: a permissão de ROTA abre a
+            // ficha, a de MÓDULO decide o que aparece dentro dela.
+            'tabela_resumo' => $podeVerContrato ? $tabelaResumo : null,
             'contratos' => ! $podeVerContrato ? [] : $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico, $pdfDados) {
                 return [
                     'id'                                => $c->id,

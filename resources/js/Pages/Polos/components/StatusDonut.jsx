@@ -5,6 +5,7 @@ import { PieChart } from 'echarts/charts';
 import { TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { STATUS_META, STATUS_ORDEM } from './statusMeta';
+import { cn } from '@/lib/utils';
 
 // Registro tree-shakeable: pizza/donut + tooltip (mesmo conjunto do RoseChart).
 echarts.use([PieChart, TooltipComponent, CanvasRenderer]);
@@ -29,6 +30,12 @@ echarts.use([PieChart, TooltipComponent, CanvasRenderer]);
  *   borda       : espessura do separador (default 2; num anel de 460px use 5-6)
  *   raio        : [interno, externo] do anel (default ['62%','88%'])
  *   interativo  : false desliga tooltip e realce de fatia — na parede não há mouse
+ *
+ * onSelecionar : callback(chaveDoStatus) — recebe a CHAVE crua ('Sim' | 'Em progresso' |
+ *                'Não' | 'Problema'), não o rótulo. Ligado, o anel, a barra compacta e o
+ *                número central viram alvos de clique (o centro filtra 'Sim' = quem bateu
+ *                a meta). Desligado (default), o donut segue puramente informativo — é o
+ *                caso do Modo TV, onde não há mouse.
  */
 export default function StatusDonut({
     statusDist = { total: 0 },
@@ -40,7 +47,9 @@ export default function StatusDonut({
     borda = 2,
     raio = ['62%', '88%'],
     interativo = true,
+    onSelecionar = null,
 }) {
+    const clicavel = typeof onSelecionar === 'function';
     const total      = statusDist.total ?? 0;
     const pctNoAlvo  = total > 0 ? Math.round(((statusDist['Sim'] ?? 0) / total) * 100) : 0;
 
@@ -65,15 +74,21 @@ export default function StatusDonut({
             itemStyle: { borderRadius: 6, borderColor: corFundo, borderWidth: borda },
             emphasis: interativo ? { scale: true, scaleSize: 6 } : { scale: false },
             silent: !interativo,
+            cursor: clicavel ? 'pointer' : 'default',
             data: STATUS_ORDEM
                 .map((k) => ({
                     value: statusDist[k] ?? 0,
                     name: STATUS_META[k].label,
+                    // Chave crua junto do dado: o clique volta com `params.data.statusKey`.
+                    // Traduzir o rótulo de volta pra chave daria um mapa reverso a mais
+                    // para desincronizar — e 'Não' já é rótulo E chave, o que esconderia
+                    // o erro justamente no status mais comum.
+                    statusKey: k,
                     itemStyle: { color: STATUS_META[k].cor },
                 }))
                 .filter((d) => d.value > 0),
         }],
-    }), [statusDist, interativo, raio, corFundo, borda]);
+    }), [statusDist, interativo, raio, corFundo, borda, clicavel]);
 
     // Variante compacta: barra 100% empilhada fina (sem canvas)
     if (compacto) {
@@ -85,9 +100,11 @@ export default function StatusDonut({
                     return (
                         <div
                             key={k}
-                            className="h-full first:rounded-l-full last:rounded-r-full"
+                            role={clicavel ? 'button' : undefined}
+                            onClick={clicavel ? () => onSelecionar(k) : undefined}
+                            className={cn('h-full first:rounded-l-full last:rounded-r-full', clicavel && 'cursor-pointer')}
                             style={{ width: `${(v / total) * 100}%`, background: STATUS_META[k].cor }}
-                            title={`${STATUS_META[k].label}: ${v}`}
+                            title={`${STATUS_META[k].label}: ${v}${clicavel ? ' · clique para ver as empresas' : ''}`}
                         />
                     );
                 })}
@@ -112,15 +129,25 @@ export default function StatusDonut({
                 lazyUpdate
                 style={{ height, width: '100%' }}
                 opts={{ renderer: 'canvas' }}
+                onEvents={clicavel ? { click: (p) => { if (p?.data?.statusKey) onSelecionar(p.data.statusKey); } } : undefined}
             />
-            {/* Número central: % de empresas "No alvo" */}
+            {/* Número central: % de empresas "No alvo". Clicável, leva a quem BATEU a meta —
+                o miolo do donut cobre o furo do anel, então sem isto a área mais óbvia do
+                gráfico seria a única morta. `pointer-events-none` no wrapper e `auto` só no
+                botão: o resto do miolo continua deixando o anel receber o hover. */}
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className="font-display font-extrabold leading-none tabular-nums text-emerald-400"
-                      style={{ fontSize: fonteCentro }}>
-                    {pctNoAlvo}%
-                </span>
-                <span className="mt-1 uppercase leading-none tracking-wider text-white/40"
-                      style={{ fontSize: fonteRotulo }}>No alvo</span>
+                <button type="button" disabled={!clicavel}
+                        onClick={clicavel ? () => onSelecionar('Sim') : undefined}
+                        title={clicavel ? 'Ver as empresas que bateram a meta' : undefined}
+                        className={cn('pointer-events-auto flex flex-col items-center rounded-xl px-3 py-1 transition',
+                            clicavel ? 'cursor-pointer hover:bg-white/[0.04]' : 'cursor-default')}>
+                    <span className="font-display font-extrabold leading-none tabular-nums text-emerald-400"
+                          style={{ fontSize: fonteCentro }}>
+                        {pctNoAlvo}%
+                    </span>
+                    <span className="mt-1 uppercase leading-none tracking-wider text-white/40"
+                          style={{ fontSize: fonteRotulo }}>No alvo</span>
+                </button>
             </div>
         </div>
     );

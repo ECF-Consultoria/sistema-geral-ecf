@@ -78,7 +78,6 @@ class RelatorioFechamentoMail extends Mailable
             'mes_label'       => $mesLabel,
             'mes_selecionado' => '',
             'gerado_em'       => $geradoEm,
-            'filtro_recebido' => '',
         ])->render();
 
         // Substitui a URL do logo pela versão base64 para funcionar sem rede

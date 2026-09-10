@@ -25,7 +25,9 @@ class MlbImplementacaoConteudoTest extends TestCase
      */
     public function test_itens_de_acao_pura_sempre_liberam(): void
     {
-        foreach (['link_fixo', 'link_admin', 'gmail', 'instrucoes', 'instrucoes_link', 'checkbox', 'select_opcoes'] as $tipo) {
+        // 'observacao' (Observações sobre publicação) entra aqui por ser OPCIONAL: escrever
+        // marca o item sozinho, mas quem não tem observação precisa poder concluir na mão.
+        foreach (['link_fixo', 'link_admin', 'gmail', 'instrucoes', 'instrucoes_link', 'checkbox', 'select_opcoes', 'observacao'] as $tipo) {
             $this->assertTrue(
                 MlbImplementacao::itemTemConteudo($tipo, []),
                 "Tipo de ação pura '{$tipo}' deveria liberar o check mesmo vazio"

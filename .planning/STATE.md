@@ -1,5 +1,17 @@
 ---
 gsd_state_version: 1.0
+milestone: v22.0
+milestone_name: Administrativo + Clicksign
+status: verifying
+stopped_at: Phase 137 context gathered
+last_updated: "2026-09-02T18:34:53.394Z"
+last_activity: 2026-08-19 — chave `administrativo_bloqueio_ativo` LIGADA em produção; 133-05 desbloqueado
+progress:
+  total_phases: 14
+  completed_phases: 10
+  total_plans: 92
+  completed_plans: 89
+  percent: 71
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
@@ -11,8 +23,7 @@ progress:
   completed_phases: 7
   total_plans: 30
   completed_plans: 30
-  percent: 100
----
+  percent: 100---
 
 > ⚠️ **Correção manual do frontmatter acima (150-08/150-09/150-10/150-11), ver `<process_note>`
 > do executor:** `state.advance-plan` do `gsd-tools.cjs` zera `progress.percent`,
@@ -424,6 +435,878 @@ local. Um push da `main` cheia levaria a fase junto e o `migrate --force` criari
 prod antes do gate humano. Deploy só depois do gate, e com autorização explícita.
 **Current focus:** Phase 127 — service administrativo de contrato — orquestração (v22.0)
 **Current focus:** Phase 132 — cutover-sandbox-produ-o-checkpoint-humano-v22-0
+
+## Posição paralela — Fase 137 (Fechamento mensal — faturamento por empresa/grupo) — EM EXECUÇÃO
+
+**Mesma disciplina dos blocos 135/136 acima:** Fase 137 fora de milestone (v22.0 segue sendo a
+136-133), rodando em paralelo — inclusive duas sessões simultâneas na MESMA árvore, uma no plano
+137-01 e outra no 137-02. `## Current Position` acima pertence à Fase 133 e não foi tocado.
+
+Phase: 137 (fechamento-mensal-faturamento-por-empresa-grupo-contra-a-tab) — EXECUTING
+Plan: 01 de 10 executado (137-01 — schema de faixas). 137-02 (schema de snapshots) executado em
+paralelo por outra sessão no mesmo intervalo — ver `137-02-SUMMARY.md`. Wave 2: 137-03 (resolver de
+faixas + rollup ML/Shopee) executado sozinho por esta sessão — ver `137-03-SUMMARY.md`. Wave 3:
+137-05 (writer + os dois comandos Artisan) executado sozinho por esta sessão — ver
+`137-05-SUMMARY.md`.
+Status: 137-01 concluído — migrations `servico_faixas_faturamento`/`empresa_faixas_faturamento` +
+seed das 3 tabelas medidas (Gestão/Brigada/Gestão de ADS Shopee, D-02b) + models auditáveis.
+137-03 concluído — `FechamentoFaixaResolver` (D-01/D-05/D-13) e `FechamentoRollupService`
+(D-06/D-07) criados em `app/Services/Fechamento/`, TDD, gate `Phase122|Phase136|Phase137` em
+156 testes / 836 asserções / 0 falhas (era 138/787 antes deste plano).
+137-05 concluído — `FechamentoSnapshotWriter` (upsert+prune em transação, trava de congelamento
+que EXIGE `--motivo=` para reconsolidar, D-12 revisado — divergência deliberada do molde do
+Desempenho, que ignora a trava em silêncio) + comando `fechamento:consolidar-mes` (empresa e
+grupo do Comercial via `CompanyGroup`, faixa da SOMA para o grupo, `parent_company_id` fora de
+qualquer agregação — D-08/D-09/D-10 — gate de cobertura mínima 0,7 antes de persistir) + comando
+read-only `fechamento:verificar-consolidacao --json` (5 classes de inconsistência, veredito só
+pelo exit code). Gate `Phase122|Phase136|Phase137`: **184 testes / 926 asserções / 0 falhas**
+(era 156/836 antes deste plano). `AdminFechamentoControllerTest`: 5/16 falhando, pré-existente e
+documentado (endpoint ainda não migrado para o novo schema — fora do escopo deste plano).
+⚠️ Coordenador apontou lacuna de cobertura pós-execução (2026-09-03): `valor_faixa_e_piso` era
+usado só como fixture, nunca reconsultado no snapshot gravado — risco real, porque a wave 5
+(PDF/email) lê esse campo pra decidir "a partir de R$ 12.000" vs valor fechado. 3 testes
+adicionados (empresa na faixa-piso, contraponto em faixa normal, grupo cuja soma cai no piso);
+nenhum bug encontrado no código de produção, só lacuna de teste — commit `120410e6`.
+Last activity: 2026-09-03 — 137-05 executado (writer + 2 comandos Artisan, wave 3 sozinha) +
+cobertura de valor_faixa_e_piso adicionada a pedido do coordenador.
+
+Achados fora de escopo (não corrigidos, registrados em `137-.../deferred-items.md`):
+`AdminFechamentoControllerTest` tem 5/16 falhas pré-existentes (endpoint gutted na Fase 14 +
+janela móvel de 30 dias do D-06, ainda não substituída); `App\Models\BonusFaixa` (Fase 74) nunca
+grava `activity_log` por faltar `->logFillable()` em `LogOptions::defaults()` — mesmo bug que foi
+corrigido nos 2 models novos deste plano.
+
+137-06 concluído (executor em paralelo com o 137-07 na mesma wave 4, sem sobreposição de
+arquivos) — `SalvarFaixasFaturamentoRequest` (validação da régua inteira: ordens únicas, no
+máximo uma faixa sem teto e ela precisa ser a última, `valor_e_piso` restrito à faixa sem teto,
+limites estritamente crescentes com a mensagem literal de sobreposição do UI-SPEC) +
+`FechamentoController` com CRUD all-or-nothing das faixas por serviço/empresa (D-04/D-13) e
+`fecharCompetencia`/`refazerCompetencia` delegando para `fechamento:consolidar-mes` pelo EXIT
+CODE (D-11/D-12) + 5 rotas novas dentro do grupo `administrativo` existente (12 rotas
+`admin.financeiro.*` no total, nenhuma das 7 antigas alterada). 2 commits (`2b7f6945` Tarefas
+1+2, `eb5fc3fc` Tarefa 3). Gate `Phase122|Phase136|Phase137`: **209 testes / 1009 asserções / 0
+falhas** (era 184/926 antes deste plano — +25 testes/+83 asserções, todos novos, sem regressão).
+`AdminFechamentoControllerTest` seguiu 5/16 falhando (pré-existente, não tocado por este plano —
+`AdminController.php` é do 137-07). Last activity: 2026-09-03 — 137-06 executado (FormRequest +
+controller + rotas, wave 4).
+
+137-07 concluído (mesma wave 4, sem sobreposição de arquivos com o 137-06) — **é o plano que mata
+o acumulativo**, o pedido original do usuário. `AdminController::fechamento()` reescrito: janela
+móvel de 30 dias (`Carbon::now()->subDays(30)`) trocada por `FechamentoRollupService::janela()`
+(mês-calendário fechado, D-06); bifurcação explícita competência-fechada (lê
+`fechamento_snapshots`/`fechamento_grupo_snapshots`, nunca recalcula) x competência-aberta (rollup
++ `FechamentoFaixaResolver` ao vivo, mesma precedência de estado do comando
+`fechamento:consolidar-mes`); agregação de grupo migrada de `parent_company_id` para
+`CompanyGroup` (D-08/D-09/D-10 — soma das membros define a faixa); progressão sem coluna
+acumulada (D-06), lida do histórico congelado; props novas: `faturamento_ml/shopee`,
+`faixa_ordem/label/limite_inferior/superior`, `tabela_origem/servico_nome`,
+`valor_faixa_e_piso`, `competencia_fechada(_em)`, `faixas_por_servico`. `self::FAIXAS` e os 3
+helpers antigos (`calcularFaixa`/`faixaNumero`/`faixaLabel`) permanecem no arquivo só para
+`gerarRelatorio()`/`gerarRelatorioGeral()` (migram no plano 08) — `fechamento()` não os referencia
+mais. 3 commits (`bc7deaaa` controller, `5da32cde` suítes + `Phase137FinanceiroPropsTest` nova,
+`e6035976` fix de regressão + deferred-items). Gate `Phase122|Phase136|Phase137`: **219 testes /
+1068 asserções / 0 falhas** (era 209/1009 antes deste plano — +10 testes/+59 asserções, todos
+novos, sem regressão).
+
+Achado durante execução (Rule 1, fora dos `files_modified` do plano):
+`Phase14AdminControllerCobrancaTest::test_cobranca_mensal_legacy_e_novo_modelo_batem_para_empresa_com_additional_service`
+regrediu (empresa fixture só tinha contratos Polos/Treinamento, nenhum "dono de tabela" sob D-01)
+— corrigido com um contrato Gestão, mesmo padrão usado nas 2 suítes do `files_modified`. Baseline
+medida por `git show HEAD:...` temporário (nunca `git stash`, ver disciplina de árvore
+compartilhada): a falha pré-existente `AdminFechamentoControllerTest::test_empresa_ok_recebe_periodo_coberto`
+(documentada como "sensível à janela móvel" em `deferred-items.md`) **virou verde** sem eu tocar
+nela — é exatamente a correção de D-06 se manifestando. `AdminFechamentoControllerTest` agora tem
+4/16 falhas pré-existentes (era 5/16), as 4 restantes ligadas a `service_type`/`contract_start`/
+`contract_end` (Fase 14 Plano 14-06 — fora do escopo). Last activity: 2026-09-03 — 137-07 executado
+(controller de fechamento + 3 suítes, wave 4).
+
+137-09 concluído (wave 5; **outro executor rodou o 137-08 EM PARALELO na mesma janela**, sem
+sobreposição de arquivos — 137-08 mexeu em `AdminController.php`/`EnviarRelatorioFechamentoJob.php`/
+blades, este plano não encostou em nenhum dos três). `Financeiro.jsx`: `FAIXAS_LIMITES`/
+`FAIXA_NOMES` (espelho hardcoded da constante `FAIXAS` apagada no 137-08) saíram; `FaixaProgresso`
+passa a ler `faixa_limite_inferior/superior`/`faixa_label` do backend; `faixaNome()` deriva o rótulo
+por regex a partir da chave crua (`faixa_N`/`maxima`) em vez de mapa fixo — a tabela agora é dinâmica
+por serviço/empresa. 4 componentes novos de estado de ausência
+(`AusenciaTabelaPendencia`/`AusenciaFaturamentoBadge`/`FaturamentoCombinadoBreakdown`/
+`GrupoServicosDivergentesBanner`) — nenhum usa `ecf-yellow` (accent reservado a ação/status,
+ausência de dado não é nenhum dos dois). `fmtValorFaixa()` prefixa "a partir de" onde
+`valor_faixa_e_piso` é verdadeiro (linha, accordion, listagem da tabela) — sem isso a última faixa
+de Gestão/Brigada apareceria como preço fechado. Novo `resources/js/Pages/Admin/Financeiro/
+TabelaFaixasSection.jsx`: cadastro manual da tabela por empresa/serviço (D-04), sempre all-or-nothing
+(`{ faixas: [...] }`, D-13), 3 estados (herda do serviço / exceção própria / A DEFINIR) + edição
+bloqueada com `competencia_fechada`. **Gap documentado, não contornado**: `AdminController::
+fechamento()` não expõe as LINHAS da exceção própria de uma empresa nem a contagem de empresas por
+serviço — corrigir exigiria tocar `AdminController.php`, fora do `files_modified` deste plano e em
+edição paralela pelo 137-08; "Substituir tabela própria" abre formulário em branco com aviso
+explícito em vez de fingir mostrar valores desatualizados (risco real: sobrescrever tabela real com
+números plausíveis-mas-errados). 3 commits (`d33e07c8` Tarefa 1, `e4557be3` Tarefa 2, `729af224`
+Tarefa 3). Gate `Phase122|Phase136|Phase137`: **226 testes / 1115 asserções / 0 falhas** (era
+219/1068 antes deste plano — +7 testes/+47 asserções, todos novos, sem regressão). `npm run build`
+verde nas 3 tarefas. Last activity: 2026-09-03 — 137-09 executado (estados de ausência + cadastro
+manual de faixas, wave 5).
+
+137-08 concluído (wave 5; rodou EM PARALELO com o 137-09 na mesma janela, sem sobreposição de
+arquivos — 137-08 mexeu em `AdminController.php`/`EnviarRelatorioFechamentoJob.php`/3 blades de
+relatório, 137-09 mexeu só em `Financeiro.jsx`/JSX novo). Migrou os TRÊS últimos consumidores do
+fechamento — `gerarRelatorio()`, `gerarRelatorioGeral()`, `EnviarRelatorioFechamentoJob` — pra
+ler a mesma fonte central que `fechamento()` (plano 07) já usa: reusa
+`fechamentoDadosPorEmpresaAoVivo()`/`Congelados()` e `fechamentoAgregarGruposAoVivo()`/`Congelados()`
+em vez de recalcular, então a paridade numérica com `/financeiro` é garantida por construção.
+Apagou as DUAS cópias da constante `FAIXAS` (`AdminController` e `EnviarRelatorioFechamentoJob`) —
+`grep -c "FAIXAS"` retorna 0 nos dois arquivos. Fechou o gap pré-existente D-05: o job somava SÓ
+`adman_metrics` e nunca incluiu Shopee — agora usa `FechamentoRollupService::porEmpresa()` (ML+Shopee)
+tanto ao vivo quanto no congelado. `parent_company_id` não agrupa mais em nenhum dos três
+(`gerarRelatorio()` usa `CompanyGroup`-irmãs como vinculadas; `gerarRelatorioGeral()`/job usam a
+MESMA regra de âncora de `fechamento()` — maior faturamento, empate pelo menor id). `valor_e_piso`
+chegou às três superfícies com o prefixo "a partir de" (D-02b) — implementado em TODOS os pontos de
+exibição de mensalidade em cada view (não só o mínimo), porque a faixa-piso também precisa aparecer
+certa quando a empresa está dentro de um grupo. **Achado fora de escopo, não corrigido**:
+`app/Console/Commands/Phase14VerificarCobranca.php` é código morto da Fase 14 (já concluída) com
+sua PRÓPRIA cópia de `FAIXAS`/`calcularFaixa()` — não está nos `files_modified` deste plano nem nos
+"três consumidores restantes" que o objetivo lista; candidato a remoção numa limpeza futura. Rule 1:
+`Phase14BladeRefactorTest` TEST 2 (fixture pai+filha só com `parent_company_id`) ganhou um
+`CompanyGroup` pra preservar a intenção original do teste sob D-08 (senão a filha some do relatório,
+quebrando o teste não por bug mas por incompatibilidade estrutural com a fase). 3 commits (`41af03cc`
+Tarefa 1, `29261bc4` Tarefa 2, `bc49c176` Tarefa 3). Gate `Phase122|Phase136|Phase137`: **233 testes
+/ 1177 asserções / 0 falhas** (medido depois do 137-09 já mesclado — 226/1115 + os 7 testes/62
+asserções deste plano = 233/1177, bate exato). `AdminFechamentoControllerTest` continua 4/16
+falhas pré-existentes, inalterado. Last activity: 2026-09-03 — 137-08 executado (relatórios PDF/
+e-mail migrados pra fonte central, wave 5).
+
+## Posição paralela — Fase 138 (Tabela do grupo e aviso de mudança de faixa) — FASE CONCLUÍDA (6/6 planos)
+
+**Mesma disciplina dos blocos 135/136/137 acima:** Fase 138 fora de milestone, rodando em
+paralelo — duas sessões simultâneas na MESMA árvore, uma no plano 138-01 e outra no 138-02, sem
+sobreposição de `files_modified` (138-01: migration+model+resolver da tabela do grupo; 138-02:
+colunas de `fechamento_snapshots`, enum `Categoria`, Notification nova, `Notificacoes/Index.jsx`).
+`## Current Position` (Fase 132/133) não foi tocado.
+
+138-01 concluído — migration `grupo_faixas_faturamento` (índice `gff_grupo_ordem_unq`,
+idempotente, molde literal de `empresa_faixas_faturamento`), model `GrupoFaixaFaturamento` com
+`LogsActivity`/`logFillable()` conferido, e `FechamentoFaixaResolver` ampliado: degrau de grupo
+como PRIMEIRO passo em `paraEmpresa()` (grupo vence exceção própria e tabela de serviço) +
+`paraGrupo(CompanyGroup $grupo, ?Company $ancora)` novo (tabela própria do grupo, ou delega pra
+`paraEmpresa($ancora)` e marca `herdada_de_company_id`/`herdada_de_company_name` — mata a herança
+invisível de D-01). Shape de retorno ganhou 4 chaves novas (`grupo_id`, `grupo_nome`,
+`herdada_de_company_id`, `herdada_de_company_name`) sempre presentes, mantendo as 4 antigas com o
+mesmo significado — `ConsolidarMesFechamento`/`AdminController` (consumidores da Fase 137)
+continuam válidos sem alteração. Ciclo TDD: RED (`4bdf4776`) → GREEN (`277fb7f9`). Precedência
+final D-01: **grupo → empresa → serviço**. Gate `Phase122|Phase136|Phase137|Phase138`: **248
+testes / 1289 asserções / 0 falhas** (era 241/1220 antes deste plano — +7 testes/+69 asserções,
+todos novos, sem regressão). 3 commits (`171f378a` migration+model, `4bdf4776` teste RED,
+`277fb7f9` implementação GREEN). Last activity: 2026-09-03 — 138-01 executado (fundação de
+leitura/escrita da tabela de grupo). Consumo pelo comando de fechamento, writer e tela fica para
+os planos 03/04/06.
+
+138-02 concluído — colunas `notificado_em`/`notificado_faixa_ordem` em `fechamento_snapshots` e
+`fechamento_grupo_snapshots` (migration `2026_09_03_120002`, idempotente, sem FK/índice novo),
+`Categoria::FAIXA_ALTERADA` no enum, `FaixaAlteradaNotification` (molde de
+`MetaAtingidaNotification`: automática, `autorUserId: null`, `url: null`) e rótulo "Mudança de
+faixa" (ícone `ArrowUpDown`, `text-amber-400`) em `Notificacoes/Index.jsx`. Este plano NÃO dispara
+nada — só a infraestrutura; quem decide e dispara é o plano 05. Premissa de D-03 travada por
+teste: `FechamentoSnapshotWriter::sync()` com `motivo` (reconsolidação) preserva as duas colunas
+porque `$dados` (payload do comando) nunca as inclui — prova de que "Refazer fechamento" não apaga
+a marca de "já avisei". Teste próprio: `Phase138AvisoFaixaSchemaTest`, **4 testes / 15 asserções**.
+Gate combinado `Phase122|Phase136|Phase137|Phase138`: **252 testes / 1304 asserções / 0 falhas**
+(era 248/1289 antes deste plano — +4 testes/+15 asserções, todos novos). Gate original
+`Phase122|Phase136|Phase137` reconferido isoladamente: **241/1220/0 falhas, inalterado**. `npm run
+build` sem erro. 3 commits (`d248b9d5` migration+models, `f581e620` categoria+notification+jsx,
+`c3e5f59f` teste). Last activity: 2026-09-03 — 138-02 executado (infraestrutura do aviso de
+mudança de faixa + trava de idempotência). Decisão de disparo (subida/queda, destinatários,
+condição de re-aviso) fica para o plano 05.
+
+138-03 concluído — `ConsolidarMesFechamento` (Passo 5, grupos) passa a resolver a tabela do grupo
+explicitamente via `FechamentoFaixaResolver::paraGrupo($ancora->grupo, $ancora)`, com fallback
+defensivo para `$faixaPorEmpresa[$ancora->id]` só se `$ancora->grupo` vier nulo. Decisão declarada
+(nota do plan-checker, opção **a**): manter `paraGrupo()` explícito por legibilidade — embora
+`paraEmpresa()` já embuta o degrau de grupo e por isso `$faixaPorEmpresa[$ancora->id]` já
+traz `origem='grupo'` quando a tabela do grupo existe (mesmo resultado, uma query a mais por
+grupo, 15 grupos hoje) — e travar a concordância entre os dois caminhos com teste, para que uma
+mudança de precedência num deles nunca divirja em silêncio do outro. `empresa_ancora_id` continua
+SEMPRE preenchido (identidade da linha, usada por
+`AdminController::fechamentoAgregarGruposCongelados`); "herdada de quem" é derivado de
+`tabela_origem`, não coluna nova. `tabelas_divergentes` não precisou de tratamento especial — como
+todo membro de um grupo com tabela própria já resolve `origem='grupo'` (Fase 138-01), o conjunto de
+pares colapsa sozinho. Teste novo: `Phase138ConsolidarGrupoTabelaTest` (2 testes: grupo sem tabela
+mantém comportamento de âncora; grupo com tabela vence, zera divergência entre membros e propaga
+`origem='grupo'` também às linhas de empresa-membro), **2 testes / 23 asserções**. Gate combinado
+`Phase122|Phase136|Phase137|Phase138`: **254 testes / 1327 asserções / 0 falhas** (era 252/1304
+antes deste plano — +2 testes/+23 asserções, todos novos, sem regressão). 2 commits (`ec723916`
+Passo 5 + docblock, `cc4d94e4` teste). Last activity: 2026-09-03 — 138-03 executado (comando de
+fechamento honra a tabela do grupo). Não tocou `AdminController.php` (fora do escopo — plano 138-04
+roda em paralelo nesse arquivo).
+
+138-04 concluído — `AdminController::fechamento()` alinhado à precedência final D-01 nos DOIS
+ramos, mais a herança visível pedida pela Fase 138 (herança invisível era metade do defeito
+original). Ramo AO VIVO (`fechamentoAgregarGruposAoVivo`): troca `paraEmpresa($ancora)` por
+`paraGrupo($ancora->grupo, $ancora)` (fallback defensivo pra `paraEmpresa` só se `$ancora->grupo`
+vier nulo); `tabelas_divergentes` não precisou de caso especial pelo mesmo motivo do 138-03 (o
+degrau de grupo do 138-01 já colapsa o conjunto de pares sozinho). Ramo CONGELADO
+(`fechamentoAgregarGruposCongelados`): NÃO recalcula — deriva as chaves novas de `$s->tabela_origem`
+e `$s->empresa_ancora_id`, buscando o nome entre os `$membros` já carregados (sem query nova), mesma
+disciplina D-11. Duas chaves novas, sempre presentes nos dois ramos: `tabela_grupo_nome` (nome do
+grupo, só quando `tabela_origem === 'grupo'`) e `tabela_herdada_de_nome` (nome da empresa de quem a
+tabela foi herdada, só quando NÃO é `'grupo'` — nunca as duas preenchidas juntas). Catálogo novo
+`fechamentoFaixasPorGrupo()` (2 queries fixas — uma pra faixas, uma pra nomes de grupo — nunca uma
+por grupo, T-138-11) exposto como prop `faixas_por_grupo` ao lado de `faixas_por_servico`. Teste
+novo `Phase138FinanceiroGrupoPropsTest`: **6 testes / 50 asserções**, cobrindo os 5 casos do plano
+— (a) mês aberto sem tabela de grupo → herança visível; (b) mês aberto com tabela de grupo → sem
+herança, faixa aplicada é a do grupo; (c) mês fechado, duas variantes (com/sem tabela de grupo),
+incluindo a prova de que cadastrar tabela de grupo DEPOIS do fechamento não muda a origem já
+congelada; (d) `faixas_por_grupo` lista só grupo com tabela própria; (e) não-regressão das chaves
+da Fase 137. Gate combinado `Phase122|Phase136|Phase137|Phase138`: **260 testes / 1377 asserções /
+0 falhas** (era 254/1327 antes deste plano — +6 testes/+50 asserções, todos novos, sem regressão).
+3 commits (`614df90b` ramo ao vivo, `bdfec959` ramo congelado + catálogo, `7c21737c` teste). Last
+activity: 2026-09-03 — 138-04 executado (props de grupo do fechamento, nos dois ramos). Não tocou
+`ConsolidarMesFechamento.php` (fora do escopo — plano 138-03 rodou em paralelo nesse arquivo).
+Consumo pela tela (`TabelaFaixasSection.jsx`/cadastro) fica para o plano 06.
+
+138-05 concluído — `FechamentoFaixaNotifier` (novo) + chamada dele no Passo 8 de
+`fechamento:consolidar-mes`, logo após o `writer->sync()`. Avisa os admins quando empresa/grupo
+muda de faixa (D-02, subida E queda), com seleção idempotente por
+`notificado_em`/`notificado_faixa_ordem` (D-03) e envio agregado (uma notificação por rodada, nunca
+uma por empresa — 127 empresas `ok` em produção). **Correção obrigatória do plan-checker**: a trava
+de idempotência só cobre execução sequencial; duas execuções de verdade em paralelo podiam ambas
+selecionar antes de qualquer uma carimbar. Fechada com `Cache::lock('fechamento:notificar:{mes}',
+60)` NÃO-bloqueante, guardando seleção + leitura da competência anterior + envio + carimbo como
+bloco único — escolhida em vez de `lockForUpdate()` nas linhas porque a seleção também lê a
+competência ANTERIOR (fora do escopo de um lock de linha) para montar a copy "3ª → 4ª faixa".
+Chamada no comando isolada em `try/catch (\Throwable)`: falha ao avisar loga `[Fechamento]` e NUNCA
+altera o exit code (é ele que `FechamentoController` usa pra devolver 409 na tela). Teste novo
+`Phase138AvisoMudancaFaixaTest`: **9 testes / 46 asserções**, cobrindo os 8 casos do `<behavior>`
+mais o teste obrigatório de concorrência (lock ocupado → 0 processamento; lock liberado → processa
+normal). Gate combinado `Phase122|Phase136|Phase137|Phase138`: **276 testes / 1452 asserções / 0
+falhas** (o número de testes "antes deste plano" no momento da medição já incluía o trabalho
+paralelo do plano 138-06, que rodou concorrentemente em `FechamentoController.php`/
+`TabelaFaixasSection.jsx`/`Financeiro.jsx` — sem sobreposição de arquivos com este plano). 2 commits
+(`dd019204` serviço + teste, `f6d64438` chamada no comando). Last activity: 2026-09-03 — 138-05
+executado (o aviso de mudança de faixa passa a existir de ponta a ponta, com trava de concorrência).
+Consumo/verificação visual da tela de notificações não faz parte deste plano (rótulo já entregue
+pelo 138-02).
+
+138-06 concluído — CRUD completo da tabela de faixas de um grupo pela tela (`/administrativo/financeiro`):
+duas rotas novas (`POST`/`DELETE /financeiro/faixas/grupo/{grupo}`, `admin.financeiro.faixas.grupo`
+/ `.remover`) sob `role:admin`, e `FechamentoController::salvarFaixasGrupo()`/`removerFaixasGrupo()`
+espelhando exatamente a forma dos métodos de empresa (all-or-nothing, `SalvarFaixasFaturamentoRequest`
+reaproveitado sem FormRequest novo). `TabelaFaixasSection.jsx` ganhou o 4º bloco, exclusivo de linha
+de grupo (`empresa.tipo === 'grupo'`), renderizado ANTES dos três estados por empresa que já
+existiam (que continuam intactos, editando a tabela da empresa que mais faturou quando o grupo
+herda): (A) grupo com tabela própria — selo "Tabela deste grupo" + lista somente leitura +
+"Substituir"/"Voltar a usar a tabela da empresa"; (B) grupo sem tabela própria — frase nomeando a
+empresa de quem a tabela foi herdada (`tabela_herdada_de_nome`) + explicação sem jargão de por que
+isso muda sozinho + "Criar tabela do grupo". `Financeiro.jsx` encadeia `faixas_por_grupo` por dois
+níveis (`FechamentoList` → `FechamentoAccordion` → `TabelaFaixasSection`, mesmo molde de
+`faixas_por_servico`) e o rótulo de "Composição do grupo" ganhou o terceiro caso ("tabela do
+grupo"). Nem a tela nem os comentários pt-BR do próprio JSX usam "âncora" — trocado por "a empresa
+do grupo que mais faturou no mês" também no código, travado por teste. `Phase138FaixasGrupoCrudTest`:
+**7 testes / 29 asserções**. Gate combinado `Phase122|Phase136|Phase137|Phase138`: **276 testes /
+1452 asserções / 0 falhas** (mesma contagem do 138-05 — sem sobreposição de arquivos entre os dois
+planos paralelos). 3 commits de código (`745aec1b` rotas+CRUD, `41ef6c91` tela, `a01cc390` teste).
+Checkpoint humano bloqueante (Tarefa 4): ambiente local tem 0 grupos cadastrados, então a
+conferência visual foi feita em PRODUÇÃO pelo orquestrador após o deploy da Fase 138 inteira —
+migrations 138-01/138-02 rodaram no MariaDB sem erro (`grupo_faixas_faturamento` criada com 0
+linhas; colunas `notificado_em`/`notificado_faixa_ordem` presentes em `fechamento_snapshots` [201
+linhas] e `fechamento_grupo_snapshots` [15 linhas]; 0 notificações de faixa disparadas até a
+conferência), copy sem jargão confirmada por leitura do JSX. **Aprovado pelo usuário em 2026-09-04**
+("Aprovado"). Last activity: 2026-09-04 — 138-06 executado e aprovado, fechando D-01 pela ponta da
+UI. **Com este plano, os 6 planos da Fase 138 estão concluídos — fase encerrada.** Observação
+operacional deixada no SUMMARY: os 201 snapshots de agosto/2026 em produção estão com
+`notificado_em` NULL (gravados antes de o aviso existir) — o primeiro "Refazer fechamento" rodado
+para agosto vai comparar contra julho e disparar o aviso inicial para todo mundo que mudou de
+faixa; efeito de primeira carga esperado, não bug.
+
+## Posição paralela — Fase 139 (Redesenho da tela de fechamento) — EM EXECUÇÃO (6/7 planos — falta 139-06)
+
+**Mesma disciplina dos blocos 135/136/137/138 acima:** Fase 139 fora de milestone, rodando em
+paralelo. `## Current Position` (Fase 132/133) não foi tocado.
+
+139-01 concluído — `FechamentoComparativoService` (novo, `App\Services\Fechamento`) lê o
+fechamento congelado do MÊS ANTERIOR em 1 consulta por granularidade
+(`anterioresPorEmpresa()`/`anterioresPorGrupo()`, filtro `origem = consolidar_mes`), sem N+1.
+As quatro chaves que o design pede (D-04) — `faixa_ordem_anterior`, `valor_faixa_anterior`,
+`subiu_de_faixa`, `ganho_faixa` — passaram a existir nos **cinco** array literais de linha de
+`AdminController::fechamento()` (empresa ao vivo; empresa congelada, dois literais —
+snapshot ausente/presente; grupo ao vivo; grupo congelado). Ramo AO VIVO mantém o fallback
+antigo (rollup do mês anterior classificado na MESMA tabela) só quando não há snapshot; ramo
+CONGELADO nunca recalcula (D-11) — sem linha no mês anterior os dois ficam `null` e
+`subiu_de_faixa` é `false`. A consulta de `FechamentoGrupoSnapshot::query()` que rodava DENTRO
+do `foreach ($porGrupo` de `fechamentoAgregarGruposAoVivo` virou 1 leitura antes do laço (mesmo
+N+1 que o serviço elimina). `subiu_de_faixa`/`ganho_faixa` centralizados em
+`fechamentoDerivarUpgrade()` (privado) pra nunca divergir entre os cinco literais — histórico da
+fase é "dado morreu no último trecho" 3 vezes antes desta. `ganho_faixa` nunca é `0` no lugar de
+`null` (zero = "subiu e não mudou de preço", diferente de "não sabemos"). Teste novo
+`Phase139ComparativoFaixaTest`: **12 testes / 76 asserções** — 7 unitários do serviço isolado
+(virada de ano, origem != consolidar_mes, faixa_ordem null, exatamente 1 query por método) + 5
+via HTTP (presença das 4 chaves em toda linha; empresa que sobe de faixa com os MESMOS valores
+ao vivo × congelado; desceu de faixa nunca vira ganho; sem fechamento anterior é null/null/
+false/null; linha de grupo ao vivo × congelada). Gate `Phase122|Phase136|Phase137|Phase138|
+Phase139`: **288 testes / 1528 asserções / 0 falhas** (era 276/1452 antes deste plano —
++12 testes/+76 asserções, todos novos, sem regressão). 3 commits (`bd1fca7b` serviço + teste
+unitário, `7b4112cb` controller, `53463172` teste HTTP). Last activity: 2026-09-04 — 139-01
+executado (o risco número 1 da fase, D-04, resolvido e travado por teste). Sem deploy — próximos
+planos (02-07) consomem estas chaves na reescrita da tela (`Financeiro.jsx`).
+
+139-02 concluído — prop `totais` (D-01/D-04 item 3) chega na resposta de
+`AdminController::fechamento()`, nos DOIS ramos (ao vivo e congelado). Novo
+`FechamentoComparativoService::totalCobrancaDoMesAnterior()` soma `cobranca_mensal` das linhas
+de GRUPO + linhas de EMPRESA sem grupo do mês anterior (sem dobrar quem está em grupo); devolve
+`fechado=false, total=null` quando o mês anterior nunca fechou (nunca `0.0`), e `fechado=true,
+total=0.0` quando fechou só com `cobranca_mensal` null — no máximo 2 consultas (`SUM(CASE WHEN
+company_group_id IS NULL THEN cobranca_mensal ELSE 0 END)` resolve existência + soma na mesma
+query). Novo `AdminController::fechamentoTotais()` (privado) monta as 11 chaves somando sobre as
+MESMAS linhas de `$dadosPorId` já agregadas por grupo (nunca consulta paralela — T-139-05):
+`total_a_receber`, `total_e_piso`, `empresas_com_cobranca`, `empresas_sem_valor_definido`,
+`faturamento_gerado`, `mes_anterior_fechado`, `mes_anterior_total`, `variacao`,
+`upgrades_quantidade`, `upgrades_ganho_total`, `upgrades_ganho_parcial`. `cobranca_mensal`/
+`faturamento` null NUNCA vira zero na soma (D-05) — linha `sem_tabela` some da soma mas conta em
+`empresas_sem_valor_definido`. `total_e_piso` é OR de todas as linhas somadas. A chave morta
+`cobranca_mensal_grupo` continua não existindo em `app/` (grep confirma 0 ocorrências) — o total
+novo nunca a usa. Teste novo `Phase139TotaisFechamentoTest`: **14 testes / 56 asserções** — 5
+unitários do serviço (soma sem dobrar grupo, não-fechado→null, fechado-em-zero, ≤2 queries,
+virada de ano) + 9 via HTTP (11 chaves presentes; soma exata de 3 empresas; grupo conta 1 vez;
+`sem_tabela` fora da soma mas nomeado; faixa-piso marca `total_e_piso`; mês anterior nunca
+fechado→variação null; mês anterior fechado→variação exata; competência corrente fechada bate
+com o ramo aberto; upgrades batem com as linhas que subiram). Gate `Phase122|Phase136|Phase137|
+Phase138|Phase139`: **302 testes / 1584 asserções / 0 falhas** (era 288/1528 antes deste plano —
++14 testes/+56 asserções, todos novos, sem regressão). 3 commits (`e3a87cb1` serviço + teste
+unitário, `b24e52cb` controller, `58b0b9e1` teste HTTP). Last activity: 2026-09-04 — 139-02
+executado. Sem deploy — próximos planos (03-06) consomem `totais` na reescrita da tela
+(`Financeiro.jsx`).
+
+139-03 concluído — cabeçalho e os três widgets do topo de `Financeiro.jsx` reescritos.
+Removidos `GraficoCobranca`, `GraficoFaixas`, `MiniPie`, `ChartCard`, `TOOLTIP_STYLE`,
+`TotalConsolidado` e o import do `recharts` (nenhum componente do arquivo usa mais a
+biblioteca). `StatusCompetenciaBadge` virou pill com pontinho de 6px (âmbar em "Em aberto",
+esmeralda em "Fechado" — palavras e data de fechamento não mudaram); ações reordenadas
+(seletor de mês, sincronizar, gerar relatórios, ação primária por último) no formato
+secundário/primário do handoff — `RefazerFechamentoDialog` manteve a cor vermelha/destrutiva
+de propósito (ação corretiva sobre mês fechado, semanticamente distinta de "Fechar o mês"), só
+padding/radius foram alinhados. Três widgets novos, todos lendo só a prop `totais` (T-139-07,
+nada recalculado no front): `TotalAReceberCard` (métrica herói `font-mono tabular-nums`,
+prefixo "a partir de" quando `total_e_piso`, os três estados de ausência do rodapé escritos por
+extenso); `SubiramDeFaixaCard` (card em destaque, lista de atalhos ordenada por `ganho_faixa`
+desc, "no mínimo" quando `upgrades_ganho_parcial`, card nunca some mesmo com 0 upgrades);
+`ServicosContratadosBar` (substitui `GraficoServico`/donut — barra empilhada + legenda
+reaproveitando a MESMA agregação por `servico_nome` e o balde "Sem contratos"; denominador da
+barra inclui o balde, mas o rótulo "N contratos ativos" do topo exclui — empresa sem contrato
+não é contrato). `filtroChip`/`empresaFocada` elevados ao componente de página com o handler
+`focarEmpresaSubiuFaixa` já ligado ao widget de upgrades, prontos pro Plano 04 consumir nos
+chips de filtro e na abertura automática da linha. 1 desvio auto-corrigido (Rule 1): 4 classes
+Tailwind fora da escala padrão (`px-4.5`, `gap-4.5`, `py-5.5`) não geravam CSS nenhum em
+silêncio — trocadas por valores arbitrários em px (`px-[18px]`, `gap-[18px]`, `py-[22px]`),
+confirmado no CSS compilado. Gate `Phase122|Phase136|Phase137|Phase138|Phase139`: **302 testes
+/ 1584 asserções / 0 falhas** — idêntico ao baseline do 139-02 (nenhuma regressão). 3 commits
+(`71604c6c` remoção dos widgets antigos, `e81dc8a5` cabeçalho + Total a receber, `cbad2b49`
+Subiram de faixa + Serviços contratados). Last activity: 2026-09-04 — 139-03 executado. Sem
+deploy — próximos planos (04-07) seguem na reescrita da tela: filtros em chip, lista de
+empresas em 4 colunas e área expandida.
+
+139-04 concluído — lista de empresas reescrita: cabeçalho de colunas, `FechamentoRow` em grid
+de 4 colunas (empresa / faturamento do mês / faixa aplicada com barra de progresso /
+mensalidade), chips de filtro (`Todas as empresas` / `Subiram de faixa` / `Sem integração` /
+`Maiores mensalidades`) consumindo `filtroChip`/`empresaFocada` elevados no 139-03, busca
+combinada, e dois estados vazios distintos ("nenhuma empresa cadastrada" vs. "filtro sem
+resultado"). `empresaFocada` passou a ser objeto novo a cada clique (`{ id }`, não o id cru) —
+clicar duas vezes seguidas no mesmo atalho do widget de upgrades reabre a linha em vez de ser
+ignorado. `FaixaProgresso` evoluída pro formato compacto de linha (mesmo nome, reaproveitada
+também na área expandida). `ServiceBadge` perdeu a pintura `ecf-yellow` (Color Contract — accent
+reservado a ação/status). 2 desvios auto-corrigidos (ambos Rule 1): "Total do grupo" na área
+expandida lia a mesma prop fantasma `cobranca_mensal_grupo` da `FechamentoRow` (sempre
+renderizava vazio) — trocada por `cobranca_mensal`, que já é o total do grupo na linha-âncora
+(`AdminController::fechamento()` ~linha 801); e dois comentários explicativos meus citavam
+literalmente as strings proibidas pelos testes de contrato (`cobranca_mensal_grupo`, `"Fat. do
+mês"`) — os testes fazem busca crua no arquivo inteiro, sem diferenciar comentário de copy
+renderizada, reescritos sem a substring. Responsivo abaixo de ~820px (breakpoint arbitrário,
+não padrão do Tailwind) confirmado no CSS compilado. Gate `Phase122|Phase136|Phase137|Phase138|
+Phase139`: **302 testes / 1584 asserções / 0 falhas** — idêntico ao baseline (nenhuma
+regressão); 1 teste flaky pré-existente identificado (`Phase138AvisoMudancaFaixaTest`, colisão
+de nome via Faker na suíte cheia, não relacionado — nenhum arquivo PHP tocado). 2 commits
+(`3f8e708c` chips/busca/foco, `0493f7cf` cabeçalho/linha/estado vazio). Last activity:
+2026-09-04 — 139-04 executado. Sem deploy — `RecebidoToggle` segue definido sem chamador
+(migra para a área expandida no plano 05); planos 05-07 seguem com a área expandida.
+
+139-05 concluído — área expandida da empresa (`FechamentoAccordion`) reescrita em três passos:
+"1 · Faturou no mês" (valor ou `AusenciaFaturamentoBadge`, breakdown Mercado Livre + Shopee só
+quando as duas plataformas têm dado), "2 · Faixa do contrato" (faixa + intervalo, ou
+`AusenciaTabelaPendencia variant="full"` com link para `#tabela-faixas-{id}` quando
+`estado === 'sem_tabela'`) e "3 · Mensalidade a cobrar" (valor + sub-linha dizendo de onde a
+empresa veio quando mudou de faixa — "Na faixa anterior, eram R$ X" [+ganho em verde], "Subiu de
+faixa neste mês", "Desceu de faixa — antes eram R$ X" em âmbar, "Mesma faixa do mês passado", ou
+nada). Composição do grupo, `TabelaFaixasSection` e `ContratosSection` preservados na ordem do
+plano; nova barra de ações reúne "Ver progressão", "Gerar relatório PDF" e `RecebidoToggle`
+(agora com rótulo "Marcar como recebido"/"Recebido" em vez do círculo sem texto — migrou da
+linha pra cá, como o 139-04 já previa). `TabelaFaixasSection` ganhou a prop `faixaOrdemAtual`
+(int|null): a linha cuja `ordem` bate, nas duas listas somente leitura que já existiam (serviço e
+grupo), ganha `bg-ecf-yellow/10` — sem criar uma segunda tabela. Cabeçalho das colunas e rótulo
+do bloco ("Tabela progressiva · {nome}") no formato do handoff; última faixa mostra "acima" em
+vez de "Sem limite superior". 1 desvio auto-corrigido (Rule 2): o aviso de bloqueio do
+`TabelaFaixasSection` ("Competência fechada — ...") ainda tinha a palavra proibida pelo CONTEXT —
+as duas correções obrigatórias do plan-checker só citavam `FecharCompetenciaButton`, mas é a
+mesma regra; reescrito para "Este mês está fechado — a tabela não pode ser alterada.". Prop
+fantasma `cobranca_mensal_grupo` (corrigida no 139-04) confirmada em 0 ocorrências, não
+reintroduzida. Gate `Phase122|Phase136|Phase137|Phase138|Phase139`: **302 testes / 1584
+asserções / 0 falhas** — idêntico ao baseline (nenhuma regressão). 2 commits (`0d595c48` os três
+passos + RecebidoToggle + copy sem "competência", `b000dd84` destaque da faixa atual na tabela
+progressiva). Last activity: 2026-09-04 — 139-05 executado. Sem deploy — planos 06-07 seguem
+(gate de contrato adicional e fechamento da fase).
+
+139-07 concluído — marcador de "recebido" removido dos seis pontos onde vivia: tela
+(`RecebidoToggle` — que TINHA chamador ativo na área expandida desde o 139-05, ao contrário do
+que o prompt de execução indicava —, filtro "Pagamento", contagens Recebidas/Pendentes),
+`AdminController` (`toggleRecebido()`, leitura de `FechamentoRecebido`, 5 emissões da chave
+`'recebido'` nas 2 fontes de dados + 2 agregações de grupo, filtro `?recebido=` do relatório
+geral), rota `POST /financeiro/{company}/recebido`, job de e-mail
+(`EnviarRelatorioFechamentoJob` — leitura, chave, totais `total_recebido`/`total_pendente`) e
+quatro blades. Decisão do usuário (2026-09-04, dado medido): marcador usado 1 vez em produção
+(abril/2026) e nunca mais — sai de tudo, não só da tela, senão o e-mail/PDFs ficam informando
+"tudo pendente" pra sempre. `fechamento_recebidos`/`FechamentoRecebido` preservados — linha
+histórica intacta, sem migration de drop. 2 desvios auto-corrigidos (ambos Rule 1/2): o mapa de
+interfaces do plano listava `relatorio-geral-pdf.blade.php` como um dos "dois PDFs", mas esse
+arquivo está ÓRFÃO (nenhum `view()` aponta pra ele) — a view REAL usada pelo dropdown "Gerar
+relatórios" E pelo anexo PDF do e-mail (via Browsershot) é `admin/relatorio-geral.blade.php`, e
+o corpo do e-mail é `emails/relatorio-fechamento.blade.php` — nenhum dos dois estava mapeado;
+ambos limpos junto (senão o e-mail real de produção continuaria com o defeito que motivou a
+fase); e `Phase137CompetenciaEndpointTest` afirmava explicitamente que a rota removida "continua
+presente" — assert invertido com o motivo documentado. Trava nova `Phase139SemMarcadorRecebidoTest`:
+**10 testes / 30 asserções** — por comportamento visível/emitido (rotas, chaves de prop, HTML
+renderizado), nunca pela string solta, porque a tabela/model devem continuar existindo. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139`: **312 testes / 1614 asserções / 0 falhas** (era
+302/1584 antes deste plano — +10 testes/+30 asserções, todos novos, sem regressão).
+`Phase138AvisoMudancaFaixaTest` (flaky pré-existente) confirmado passando isolado — não é
+regressão. 3 commits (`f2811636` tela+controller+rota, `5ed80d1e` job+mail+quatro blades,
+`bdbb6127` trava de teste). Last activity: 2026-09-04 — 139-07 executado (6/7 planos concluídos;
+139-06 segue pendente, fora da dependência deste plano — `depends_on: ["139-05"]`). Sem deploy.
+
+## Posição paralela — Fase 140 (Extrair tabelas progressivas do Clicksign) — EM EXECUÇÃO (140-04 concluído; 140-03 sem SUMMARY formal — ver nota abaixo)
+
+**Mesma disciplina dos blocos 135/136/137/138/139 acima:** Fase 140 fora de milestone, rodando em
+paralelo (140-02 executado por outra sessão na MESMA árvore, ao mesmo tempo que 140-01). `##
+Current Position` (Fase 132/133) não foi tocado.
+
+Origem: `140-CONTEXT.md`, investigação de viabilidade de 2026-09-08 (autorizada pelo usuário) —
+127 empresas cobram por tabela ASSUMIDA (quick 260904-jpn/kwz), cadastro manual da Fase 137 segue
+com zero registros. Medido contra a conta de produção Clicksign: 429 envelopes, 123 de gestão de
+ADS, 85 candidatos fechados. Estratégia acordada (D-06): primeiro um comando de LEITURA que só
+gera relatório — sem tela, sem escrita — para o usuário avaliar a qualidade do casamento antes de
+construir a tela de conferência e a escrita auditada.
+
+140-01 concluído (TAB-01) — `ClicksignClient` ganhou `listarEnvelopes()` (GET /envelopes paginado,
+molde de `listarModelos()`) e `listarDocumentos()` (GET /envelopes/{id}/documents), os dois pelo
+`enviar()` existente, sem inventar filtro de servidor não medido. Novo
+`AcervoContratosClicksignService` (injeta `ClicksignClient` + `$pausaMs=3500` no construtor):
+`envelopesDeGestaoDeAds()` pagina 100/página até página vazia/curta (sem contador total — `enviar()`
+descarta `meta`/`links`), filtra localmente por `pareceGestaoDeAds()` (normaliza e exige "gestao" E
+"ads" no nome — não "prestação de serviços", que pega contrato de FUNCIONÁRIO, medido com a
+Jessica) e por situação (default só `closed`); `baixarArquivo()` chama `listarDocumentos()` e baixa
+na MESMA execução pela cadeia `links.files.original → attributes.files.original → …signed →
+…ziped`, nunca guarda/loga/devolve o link (janela de ~299s, D-02, MEDIDO); link ou documento
+ausente devolve `['ok'=>false,'motivo'=>...]`, nunca lança exceção. Pausa `usleep($pausaMs*1000)`
+antes de cada chamada ao client (0 nos testes) — a conta aceita 20 chamadas/min e uma varredura
+completa passa de 130. TDD: 2 tarefas, 4 commits RED→GREEN (`c44eaf77`/`99c57da2` client,
+`f5411cbf`/`a7816bb1` serviço). Testes novos: `Phase140AcervoClientTest` (5) +
+`Phase140AcervoColetaTest` (14) = 19 testes / 47 asserções, todos com `Http::fake()` (zero chamada
+real — subagente não tem acesso à conta de produção). Gate `Phase122|Phase136|Phase137|Phase138|
+Phase139|Phase140`: **367 testes / 1812 asserções / 0 falhas** (era 348/1765 antes deste plano —
++19 testes/+47 asserções, sem regressão; o flaky pré-existente `Phase138AvisoMudancaFaixaTest` não
+tropeçou nesta rodada). Este plano **não lê PDF, não casa com empresa e não escreve no banco** —
+para no binário, por desenho (140-02 cobre a extração de texto/parser de tabela). Last activity:
+2026-09-08 — 140-01 executado (`140-01-SUMMARY.md`). Sem deploy.
+
+140-02 concluído (TAB-02, TAB-03, TAB-04) — rodou em paralelo ao 140-01, na MESMA árvore, outra
+sessão. `composer require smalot/pdfparser` (PHP puro — poppler exigiria pacote de sistema na VPS,
+que nem executor nem teste alcançam; decisão registrada no docblock). Novo
+`ExtratorTextoContratoService::extrair()`: detecta formato pelo CABEÇALHO do binário (`%PDF`/`PK`),
+nunca pela extensão; ZIP lê a primeira entrada `.pdf` em memória com `getFromName()` — **nunca**
+o método de extração-para-disco do `ZipArchive` (zip-slip, T-140-05); guarda de tamanho antes de
+abrir (binário inteiro E entrada descomprimida do ZIP, via `statIndex`); todo `\Throwable` vira
+motivo em pt-BR, nunca propaga (rodada de ~123 contratos não pode morrer no arquivo 7). Novo
+`TabelaProgressivaContratoParser::analisar()`: um único reconhecedor de "marcos" por linha cobre as
+TRÊS formas medidas no CONTEXT (D-04) — abreviada (`-100M`/`+1MM`, M=mil MM=milhão, travado por
+teste dedicado), por extenso (`até 100 mil`/`a partir de 1 milhão`) e nova (`Até R$500.000,00`) — só
+a leitura do número muda entre elas. **Valor fixo tem prioridade de exclusão sobre detecção de
+tabela (D-03)**: é exatamente aqui que o sistema classificava contrato de valor fixo como faixa
+progressiva antes desta fase. Mínimo de 3 marcos para aceitar como tabela — texto com 1-2 nunca vira
+tabela pela metade, cai em `indefinido` com aviso. CNPJ: ignora o da ECF (`config('services.
+clicksign.cnpj_ecf')`, com fallback pro primeiro quando a config não existe); razão social só sai
+quando há sufixo de pessoa jurídica reconhecido perto do CNPJ — sem isso, `null` (nunca palpite que
+vira cadastro). Retorno no mesmo shape de `EmpresaFaixaFaturamento` (`ordem`, `limite_superior`,
+`valor`, `valor_e_piso`) para o 140-05 gravar sem tradutor. Fixtures **fictícias** (nome/CNPJ
+inventados; formatos e valores das 7 faixas da notação nova batem com a semeadura da Fase 137; os 4
+pontos medidos da notação antiga — 100 mil→R$2.250/R$3.000, 500 mil→R$4.500, 1 milhão→R$6.000,
+15 milhões→R$25.000 — usados literalmente; faixas intermediárias 5-11, não medidas no CONTEXT, são
+progressão sintética só para completar 12 linhas). TDD: 2 tarefas, 4 commits RED→GREEN
+(`b0307ee6`/`518002e1` extrator, `f0e15ed2`/`2a97b64f` parser) + 1 fix (`b9a6a028`, docblock que
+citava o nome do método proibido e derrubava o próprio grep de verificação). Testes novos:
+`Phase140ExtratorTextoTest` (7) + `Phase140TabelaProgressivaParserTest` (11) = 18 testes / 96
+asserções. Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: **385 testes / 1908
+asserções / 0 falhas** (era 348/1765 antes deste plano — +37 testes/+143 asserções, somando 140-01 e
+140-02, sem regressão; flaky pré-existente `Phase138AvisoMudancaFaixaTest` não tropeçou). Este plano
+**não fala com a Clicksign e não escreve no banco** — entra binário, sai estrutura (140-03 cobre o
+comando de leitura + relatório). Last activity: 2026-09-08 — 140-02 executado
+(`140-02-SUMMARY.md`). Sem deploy.
+
+⚠️ **Correção pós-deploy no 140-01 (2026-09-08).** A primeira rodada real em produção
+(`clicksign:extrair-tabelas`, deploy `764d228f`) falhou na primeira chamada: `size exceeds maximum
+page size of 50`. `ClicksignClient::listarEnvelopes()` e `AcervoContratosClicksignService` usavam
+`100` por página — número nunca medido contra a API (a sondagem manual de 2026-09-08 tinha usado
+`30`, que funciona mas não é o teto). `Http::fake()` não pega esse tipo de limite porque um mock
+aceita qualquer tamanho de página — só a chamada real expôs o defeito, exatamente por isso o plano
+previu ensaio real antes da varredura completa. Correção (commit `91397bf2`): nova constante
+`ClicksignClient::ENVELOPES_TAMANHO_MAXIMO_PAGINA = 50` (com o incidente e a data no docblock, para
+não "otimizar" de volta pra 100 sem medir de novo); `listarEnvelopes()` agora faz
+`min($porPagina, 50)` — clamping em código, não só o default; `AcervoContratosClicksignService`
+passou a referenciar a constante do client em vez de duplicar o número. 4 testes novos travando o
+teto em dois níveis (client e serviço). Gate `Phase122|Phase136|Phase137|Phase138|Phase139|
+Phase140`: **402 testes / 1981 asserções / 0 falhas** (baseline do coordenador, árvore limpa:
+398/1974 — +4 testes/+7 asserções, sem regressão). Detalhe completo em
+`140-01-SUMMARY.md` § "Defeito encontrado em produção e correção". **Ainda não deployado por esta
+sessão** — falta o coordenador deployar `91397bf2` e repetir o ensaio real.
+
+⚠️ **140-03 não tem `140-03-SUMMARY.md` no repositório, mas a varredura completa que ele cobre já
+rodou de verdade em produção antes deste plano.** O checkpoint do 140-03 (que bloqueava o 140-04)
+foi respondido diretamente pelo usuário no prompt do 140-04, com os números MEDIDOS da rodada real
+completa contra os 85 contratos fechados, substituindo os números do `140-CONTEXT.md` original
+(que eram de uma amostra de 14): **49 tabelas lidas, 29 valor fixo, 4 indefinidos, 3 números
+ilegíveis, 0 casamentos com segurança**. Fica pendente para o coordenador reconciliar
+`140-03-SUMMARY.md` (ou registrar por que ele não existe) — não fiz isso aqui porque está fora do
+escopo do 140-04 e a tarefa já veio autorizada a prosseguir.
+
+140-04 concluído (TAB-07) — tabela `contrato_tabela_propostas` + model `ContratoTabelaProposta`
+(auditável, `LogsActivity` log `tabela_proposta`) + opção `--gravar` no comando
+`clicksign:extrair-tabelas`. Proposta ≠ cobrança confirmada: `company_id` é sempre o PALPITE de
+`EmpresaPalpiteService`, nunca uma empresa confirmada (D-05 — zero casamentos com segurança na
+rodada real); vira dado de cobrança só depois de confirmação humana no 140-05. Schema comporta os
+dois formatos medidos (29 valor fixo, `faixas` nulo; 49 tabela, `valor_fixo` nulo) e o caso de
+pagamento escalonado (`valor_fixo` nulo, valores no `motivo`, nunca uma média inventada) e o aviso
+de valor implausível (limite de R$15 bilhões — o parser nunca corrige, só sinaliza; guardado no
+`motivo` para conferência). `tipo_cobranca` (`string(16)`) normaliza `numeros_ilegiveis` do parser
+(17 caracteres, não caberia) e "arquivo não legível" para o mesmo valor `ilegivel`. `--gravar`
+grava/atualiza por `clicksign_envelope_id` (índice único `ctp_envelope_unq`) e NUNCA sobrescreve
+proposta já `confirmada`/`descartada` (T-140-14/T-140-15) — a rodada pode repetir sem duplicar nem
+apagar conferência humana. Escrita restrita a esta ÚNICA tabela: `empresa_faixas_faturamento`,
+`grupo_faixas_faturamento` e `companies` seguem intocadas, coberto por teste dedicado. Três
+armadilhas de MariaDB respeitadas (índices curtos nomeados à mão, `nullable()` antes de
+`constrained()->nullOnDelete()`, nenhuma coluna de tipo enumerado fechado). TDD: 2 tarefas, 4
+commits RED→GREEN (`a1c398d5`/`76c7f417` schema, `263bb07f`/`0da662c4` `--gravar`). Testes novos:
+`Phase140PropostaSchemaTest` (8) + `Phase140GravarPropostasTest` (6) = 14 testes / 61 asserções,
+`Http::fake()`/`Storage::fake()` (zero chamada real). Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: **444 testes / 2165 asserções / 0
+falhas** (era 430/2104 antes deste plano — +14 testes/+61 asserções, sem regressão; flaky
+pré-existente `Phase138AvisoMudancaFaixaTest` não tropeçou). Last activity: 2026-09-09 — 140-04
+executado (`140-04-SUMMARY.md`). Sem deploy — subagente sem acesso a produção, sem `.env`, sem
+chamada real à API (item de trava do próprio plano).
+
+## Posição paralela — Fase 141 (Tabela progressiva por empresa e grupo) — EM EXECUÇÃO
+
+**Mesma disciplina dos blocos 135-140 acima:** Fase 141 fora de milestone, rodando em paralelo
+(141-01/141-02/141-03 executados por sessões diferentes na MESMA árvore, ao mesmo tempo). `##
+Current Position` (Fase 132/133) não foi tocado.
+
+Origem: `141-CONTEXT.md` — correção de modelagem do usuário em 2026-09-09, olhando o fechamento em
+produção. D-01: a tabela progressiva é da EMPRESA ou do GRUPO, nunca do serviço — se a empresa tem
+Gestão + Gestão de ADS Shopee, é UMA tabela só e o faturamento das duas plataformas é SOMADO antes
+de classificar a faixa. D-02: só faturamento de serviço COM tabela entra na soma — Mentoria não tem
+tabela progressiva, confirmado pelo usuário. D-03: a mensalidade passa a ser só o valor da faixa
+(motivou a fase — BARAOSHOP agosto/2026: tela mostrava R$5.500 = faixa R$3.000 + contrato Shopee
+R$2.500, quando deveria ser só R$3.000 pela faixa do faturamento somado). ⚠️ Muda **quanto a ECF
+cobra dos clientes** — cada decisão aqui vira fatura.
+
+141-01 concluído (TPE-01) — `servicos.usa_tabela_progressiva` (migration idempotente, guard
+`Schema::hasColumn`, `default(false)` DELIBERADO: na dúvida, um serviço NÃO entra na soma, nunca
+infla cobrança) com backfill ligando `true` só para `servico_id` já presente em
+`servico_faixas_faturamento` (Gestão, Gestão de ADS Shopee, Brigada — Mentoria continua `false`).
+Coluna entra no `$fillable`/`$casts` do model `Servico`, auditável via `activity_log`
+(`LogsActivity` já existente). `FechamentoRollupService` ganha `plataformasElegiveis(Company)`:
+resolve, a partir dos contratos ATIVOS da empresa, quais plataformas (`ml`/`shopee`) têm serviço
+contratado com `usa_tabela_progressiva=true` — critério em OU (não `elseif`) entre `plataforma`
+(texto manual, pode trazer as duas no mesmo campo) e `setor` (enum, rede de segurança), mesmo
+espírito do comentário de `FechamentoFaixaResolver::escolherServicoCandidato()`. `porEmpresa()`
+ganha o parâmetro opt-in `somenteContratadas` (default `false`, nenhum chamador atual muda de
+comportamento — os 4 call-sites reais continuam com 2 argumentos, confirmado por `grep -rn
+"porEmpresa(" app/`): ligado, zera para `null` o lado NÃO elegível ANTES de somar o total (nunca
+soma e depois subtrai) e recalcula `faturamento_total` pela mesma regra de sempre (ausência ≠
+faturou zero). Toda resposta ganha a chave `plataformas_consideradas` (`['ml','shopee']` no modo
+atual, subconjunto elegível no modo novo) — é o que a tela do plano 141-06 vai usar para explicar
+por que um faturamento não entrou. Guard: `somenteContratadas=true` sem `$companies` lança
+`InvalidArgumentException` em vez de considerar tudo elegível silenciosamente. TDD: 2 tarefas, 2
+commits (`2d9a2f07` coluna/backfill, `3ef58eba` rollup). Testes novos:
+`Phase141ServicoTabelaSchemaTest` (5) + `Phase141ElegibilidadePlataformaTest` (10) = 15 testes / 37
+asserções — cobrem os 3 casos do must_have (Mentoria-only não soma nada mesmo com métrica ML;
+Gestão+Shopee soma as duas; Gestão-only não soma métrica Shopee avulsa) mais contrato inativo,
+modo desligado byte a byte igual ao de hoje (só com a chave nova) e o guard de exceção. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141`: **506 testes / 2379 asserções /
+0 falhas** (baseline pré-141 medido pelo coordenador: 477/2318 — a diferença além dos +15/+37
+deste plano vem dos planos irmãos 141-02/141-03, que já tinham commitado na mesma árvore quando o
+gate rodou; sem regressão, nenhuma falha). ⚠️ **Nada foi ligado ainda** — `somenteContratadas`
+continua `false` em todos os call-sites reais; é o plano 141-03 quem liga, atrás da flag de corte.
+⚠️ Nota para quem ligar: o rollup é chamado DUAS vezes (competência atual + mês anterior, para a
+comparação de faixa) — `somenteContratadas` precisa ir `true` nas DUAS chamadas, senão a
+comparação fica assimétrica e a Fase 138 dispara aviso falso de mudança de faixa. Last activity:
+2026-09-09 — 141-01 executado (`141-01-SUMMARY.md`). Sem deploy — subagente sem acesso a
+produção/`.env` (trava do próprio plano); migration só validada via `RefreshDatabase` (SQLite),
+nunca rodada contra MySQL local ou produção.
+
+141-02 concluído (TPE-02/TPE-03/TPE-07) — as duas peças que mudam o VALOR cobrado, ainda sem
+nenhum consumidor ligado. `App\Services\Fechamento\FechamentoRegraTabela::ativa()` lê
+`configuracoes.fechamento_tabela_por_empresa_ativa` (default `'0'`, só `'1'` liga), memoizado por
+instância (1 consulta em 100 chamadas, provado por `DB::getQueryLog()`), com `esquecer()` para
+re-leitura; nasce e permanece DESLIGADA, mesmo padrão de
+`EmpresaOperacionalRouter::CHAVE_BLOQUEIO` (Fase 124) — ligar em produção é decisão do plano
+141-07. `CobrancaCalculator::mensalidade(?array $classificacao, iterable $contratos): ?float`
+(D-03) devolve **só o valor da faixa** quando `$classificacao` existe, e cai para a soma dos
+contratos mensais ativos (helper `contratosMensaisElegiveis()` extraído, reusado por `novo()` sem
+mudar o comportamento dele) quando não há tabela — zero contratos elegíveis devolve `null`, nunca
+`0.0` (distinção por lista vazia, não por soma > 0, para não confundir "nenhum contrato" com "um
+contrato de R$ 0,00"). Teste prova o caso concreto lado a lado: `novo()` = R$5.500,00 (faixa
+R$3.000 + contrato Shopee R$2.500, a fórmula de hoje) e `mensalidade()` = R$3.000,00 (só a faixa,
+a fórmula nova) para a MESMA composição de dados do BARAOSHOP. `FechamentoSnapshot::ESTADO_VALOR_FIXO
+= 'valor_fixo'` acrescentado (coluna `estado` é `string(20)`, sem migration) para a empresa sem
+tabela progressiva nenhuma (Mentoria, os 29 contratos de valor fixo da Fase 140) — resultado
+NORMAL, não pendência, diferente de `ESTADO_SEM_TABELA`. TDD: 2 tarefas, 4 commits RED→GREEN
+(`30f9c833`/`591674be` interruptor, `b4700ca8`/`5b7d7ede` `mensalidade()`+estado). Testes novos:
+`Phase141RegraTabelaFlagTest` (5) + `Phase141MensalidadeCalculatorTest` (7) = 12 testes. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Quick260909`: **477 testes / 2318
+asserções / 0 falhas** — idêntico ao baseline informado antes de começar, zero regressão.
+`grep -rn "FechamentoRegraTabela\|CobrancaCalculator::mensalidade" app/` confirma: só as próprias
+definições, nenhum consumidor ainda — quem liga é o plano 141-03. Falha pré-existente e alheia a
+este plano: `Phase14VerificarCobrancaTest::test_aborta_com_divergencia` (listada como não-minha no
+prompt de execução; `legacy()`/`novo()` seguem com comportamento idêntico ao de antes). Last
+activity: 2026-09-09 — 141-02 executado (`141-02-SUMMARY.md`). Sem deploy — subagente sem acesso a
+produção/`.env` (trava do próprio plano).
+
+141-03 concluído (TPE-05/TPE-06) — **a ponte de transição**, NÃO a flag que liga o modo novo (as
+notas do 141-01 e do 141-02 acima previram errado quem faria isso; 141-03 não toca em
+`FechamentoRollupService`, `FechamentoRegraTabela` nem `CobrancaCalculator` — quem liga é outro
+plano da fase, ainda não executado nesta árvore no momento em que este parágrafo foi escrito). O
+que 141-03 entrega: coluna `origem` (+`servico_origem_id`, sem FK de propósito) em
+`empresa_faixas_faturamento`, com as constantes `EmpresaFaixaFaturamento::ORIGEM_MANUAL` /
+`ORIGEM_CONTRATO` / `ORIGEM_PRESUMIDA_SERVICO`; os dois pontos de escrita existentes
+(`FechamentoController::salvarFaixasEmpresa()`, `TabelasContratoController::confirmar()`) passam a
+carimbar a procedência certa; e o comando `fechamento:materializar-tabelas` (dry-run por padrão,
+`--aplicar` grava, `--json` para conferência) — copia, para as 127 empresas hoje classificadas por
+`origem='servico'` no `FechamentoFaixaResolver`, essa mesma tabela como tabela própria carimbada
+`presumida_servico`, com os MESMOS valores (nenhuma cobrança muda por causa dele). Idempotente:
+guard de existência checado DENTRO da transação de cada empresa; empresa com tabela própria (de
+qualquer origem) ou classificada por grupo nunca é tocada; nenhuma linha de
+`fechamento_snapshots`/`fechamento_grupo_snapshots` é lida ou escrita (D-11 preservado). TDD: 2
+tarefas, 2 commits (`73d8c4fc` procedência, `8fda8a44` comando) — teste escrito e confirmado
+falhando (RED) antes da implementação em ambas, mas commitado junto com a implementação verde num
+único `feat` por tarefa (árvore compartilhada tornava reescrita de histórico arriscada). Testes
+novos: `Phase141ProcedenciaTabelaTest` (4) + `Phase141MaterializarTabelasTest` (7) = 11 testes / 44
+asserções. Gate do plano `Phase141|Phase137|Phase140`: 270 testes / 1143 asserções / 0 falhas.
+Gate do coordenador `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Quick260909`: **477
+testes / 2318 asserções / 0 falhas** — idêntico ao baseline, sem regressão (não inclui Phase141
+porque "Phase140" não casa como substring de "Phase141" no filtro do PHPUnit). ⚠️ Pendência para
+quem executar 141-06 (tela): `AdminController::fechamentoTabelaConfirmada()` (fora dos
+`files_modified` deste plano) ainda devolve `true` para QUALQUER tabela `'propria'` — sem tratar
+`origem='presumida_servico'` lá, as tabelas materializadas por este comando apareceriam como
+CONFIRMADAS na tela, reintroduzindo em silêncio o problema que a Fase 141 existe para resolver.
+`TabelaPresumidaBadge`/`TabelaPresumidaAviso` já existem na tela e devem ser reaproveitados, não
+recriados. Last activity: 2026-09-09 — 141-03 executado (`141-03-SUMMARY.md`). Sem deploy —
+subagente sem acesso a produção/`.env`/`plink`/`pscp` (trava do próprio plano); comando de
+materialização NUNCA rodado contra produção (é checkpoint humano do plano 141-07).
+
+141-04 concluído (TPE-01/TPE-02/TPE-03/TPE-04/TPE-08) — **o plano que liga o interruptor**: tudo
+antes dele construiu peças desligadas, a partir daqui o motor resolve a faixa sem a tabela do
+serviço e a consolidação usa a regra nova, os dois atrás da flag (que continua nascendo desligada —
+ninguém ligou em produção). `FechamentoFaixaResolver::paraEmpresa()` retorna `null` direto (nunca
+mais cai no degrau do serviço) quando a flag está ligada e não há tabela de grupo/própria; shape
+ganha a 9ª chave `procedencia` (`manual`/`contrato`/`presumida_servico` só quando
+`origem='propria'`). `paraGrupo()` não precisou de nenhuma linha de código nova — por já delegar
+para `paraEmpresa($ancora)`, a herança do grupo já para de encontrar o serviço quando a flag liga.
+`ConsolidarMesFechamento` lê `$regraNova` UMA vez no início de `handle()` e passa
+`somenteContratadas: $regraNova` nas DUAS chamadas de `porEmpresa()` (competência atual E mês
+anterior — a armadilha que o 141-01 avisou: só uma inventaria evolução de faixa falsa); estado ganha
+precedência nova (`ESTADO_VALOR_FIXO` antes de `ESTADO_SEM_FATURAMENTO` quando não há régua mas há
+contrato mensal ativo, para empresa E grupo); cobrança usa `CobrancaCalculator::mensalidade()` (só o
+valor da faixa) com a flag ligada, `novo()` (fórmula antiga) com a flag desligada, byte a byte. Gate
+de cobertura de faturamento passa a excluir `ESTADO_VALOR_FIXO` do denominador (além de
+`ESTADO_SEM_INTEGRACAO`) — a segunda armadilha avisada pelo orquestrador: sem essa exclusão, um
+punhado de empresas sem plataforma elegível (Mentoria e afins) derrubaria a cobertura abaixo de 0,7
+e recusaria o fechamento de TODO MUNDO, efeito colateral puro da regra nova. Cenário BARAOSHOP
+provado ponta a ponta com valores reais: **ANTES R$5.500,00** (faixa R$3.000 + contrato Shopee
+R$2.500, o bug que abriu a Fase 141) → **DEPOIS R$3.000,00** (só a faixa, classificada sobre a soma
+R$488.262,90 das duas plataformas) — dois métodos de teste separados (não dois `artisan()` no mesmo
+método), porque o console Kernel de teste memoiza a instância do comando entre chamadas de
+`$this->artisan()` dentro do MESMO método, e `FechamentoRegraTabela::ativa()` é memoizado por
+instância — ligar a flag no meio do mesmo método leria o valor ANTIGO (falso positivo de teste;
+produção não tem esse problema, cada `artisan` é processo novo). Trava D-11 (Fase 137) reprovada sob
+a regra nova: congela com a flag desligada, liga a flag, cadastra tabela de empresa e altera
+métricas de origem, reconsulta direta a `fechamento_snapshots`/`fechamento_grupo_snapshots` prova
+que nada se move, e reconsolidar sem `--motivo=` continua recusado mesmo com a flag ligada. TDD: 3
+tarefas, 3 commits (`9a9a1905` resolver, `992149d9` comando, `d4427952` trava) — teste escrito e
+confirmado antes da implementação em cada tarefa, commit final junta teste+implementação (mesmo
+padrão pragmático do 141-01/02/03, árvore compartilhada). Testes novos: `Phase141ResolverCutoverTest`
+(7) + `Phase141ConsolidarRegraNovaTest` (7) + `Phase141CongeladoNaoMudaTest` (1) = 15 testes. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Quick260909`: **528 testes / 2481
+asserções / 0 falhas** (baseline informado 513/2408 — bate exatamente com +15 testes/+73 asserções
+deste plano, zero regressão). ⚠️ Pendência explícita para quem executar 141-06: `AdminController`
+(os 5 literais de linha — empresa ao vivo, congelada com/sem snapshot, grupo ao vivo, grupo
+congelado) **NÃO foi tocado** — fora dos `files_modified` deste plano; a tela administrativa ainda
+calcula pela fórmula antiga mesmo com a flag ligada, só o motor (resolver+comando) mudou. Last
+activity: 2026-09-09 — 141-04 executado (`141-04-SUMMARY.md`). Sem deploy — subagente sem acesso a
+produção/`.env`/`plink`/`pscp` (trava do próprio plano); `artisan migrate` local NUNCA rodado (trava
+do próprio plano — banco local ~31 migrations atrás e vazio de dado real).
+
+141-05 concluído (TPE-07) — `fechamento:comparar-mensalidade --mes= [--json] [--todas]`: comando de
+leitura pura que calcula os dois lados (ANTES/DEPOIS) no MESMO processo via
+`FechamentoRegraTabela::forcar(?bool)` (nunca toca `configuracoes`), espelhando os mesmos passos de
+`ConsolidarMesFechamento`. Rodapé com total a receber ANTES/DEPOIS/diferença, quantas sobem/descem/
+ficam iguais/mudam de faixa, quantas ficam sem régua (com nomes) e as 10 maiores quedas/altas.
+Achado real em produção (competência 2026-08, ANTES da materialização do 141-03 — ordem errada de
+propósito, só para testar o comparador): toda empresa caía para `sem_tabela`, e a seção "Maiores
+altas" chegou a listar diferenças NEGATIVAS (bug de sinal, corrigido em `a168b9f6`) — lição que
+motivou a ordem materializar→conferir→comparar→ligar documentada em
+`.planning/learnings/fechamento-tabela-por-empresa.md`. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Quick260909`: 553 testes / 2642
+asserções / 0 falhas. Commits `bc0e26e8` (feat) e `a168b9f6` (fix). Last activity: 2026-09-09 —
+141-05 executado (`141-05-SUMMARY.md`). Sem deploy.
+
+141-06 concluído (TPE-02/TPE-03/TPE-06) — os CINCO ramos de montagem de linha de
+`AdminController::fechamento()` (empresa ao vivo, empresa congelada com/sem snapshot, grupo ao vivo,
+grupo congelado) passam a usar `CobrancaCalculator::mensalidade()` sob a flag, com o estado
+`valor_fixo` e a procedência da tabela (`presumida_servico` marcada como não confirmada) chegando à
+tela; o paliativo do quick `260909-lge` que explicava "faixa + contrato" saiu, porque a soma deixa
+de existir. Commit `eb45a3e5`. ⚠️ **Pendência do coordenador**: o checkpoint visual (Task 3,
+`checkpoint:human-verify`) foi aprovado pelo usuário em 2026-09-10 ("Ao que parece está certo"),
+mas **falta o `141-06-SUMMARY.md` formal** — mesma classe de pendência já registrada para o
+`140-03-SUMMARY.md`. Last activity: 2026-09-10 — aprovação verbal do checkpoint; SUMMARY não
+gerado nesta sessão (fora do escopo do registro do 141-07).
+
+141-07 concluído (TPE-05/TPE-07) — **a virada em produção**, com gate humano em cada degrau (Tasks 1
+e 2 executadas pelo orquestrador, nunca pelo subagente — `plink`/`pscp`/`deploy.sh` bloqueados por
+desenho). Deploy do commit `e98e25ed`, 0 migrations pendentes. `fechamento:materializar-tabelas
+--aplicar`: 168 empresas materializadas com tabela própria `origem='presumida_servico'` (1 já tinha
+própria, 32 continuam sem tabela, 0 falhas) — conferido por reconsulta ao banco:
+`empresa_faixas_faturamento` foi de 7 linhas/1 empresa para 1.207 linhas/169 empresas; a soma
+congelada de agosto NÃO mudou com a materialização (permaneceu R$ 460.500,00/127 empresas — o
+objetivo do passo). `fechamento:comparar-mensalidade --mes=2026-08` (rodado DEPOIS da
+materialização): total a receber ANTES R$ 2.486.700,91 → DEPOIS R$ 736.450,97 (diferença
+-R$ 1.750.249,94; 0 sobem, 71 descem, 128 ficam iguais, **0 mudam de faixa** — a queda vem de parar
+de somar contrato à faixa, não de faixa mudando). Maior queda isolada: grupo Camillo Parts,
+R$ 522.500,00 → R$ 12.000,00, faixa 7 para faixa 7. **Usuário confirmou a queda como correção**, não
+regressão ("essa queda do exemplo que vc trouxe da camillo é esperada, o total a receber de antes da
+camillo era exorbitante") — decisão `ligar-agora`. Chave `fechamento_tabela_por_empresa_ativa`
+ligada, confirmada por reconsulta e por `FechamentoRegraTabela::ativa()`. Agosto/2026 reconsolidado
+sob a regra nova a pedido explícito do usuário ("está fechado mas fechado do jeito errado... precisa
+está certo"), via `fechamento:consolidar-mes --motivo=`: soma de `valor_faixa` R$ 460.500,00 →
+R$ 466.500,00 (129 empresas com faixa, eram 127) — alta de faixas e queda de total a receber não são
+contraditórias (ver `fechamento-tabela-por-empresa.md` §4). 4ª reconsolidação registrada com
+`snapshot_anterior` de 158.215 bytes (fechamento antigo recuperável). Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Quick260909`: **553 testes / 2642
+asserções / 0 falhas** (idêntico ao medido no 141-05, sem regressão). Task 3 (registro): aprendizado
+`.planning/learnings/fechamento-tabela-por-empresa.md` criado (por que a tabela do serviço virou
+semente/modelo de partida, o que `origem='presumida_servico'` significa e por que nunca é
+confirmada, a ordem obrigatória materializar→conferir→comparar→ligar, rollback sem deploy via
+`Configuracao::set(...,'0')`, por que competência congelada exige `--motivo=` para mudar, a
+armadilha do gate de cobertura excluindo `valor_fixo` do denominador) + referenciado em `CLAUDE.md`.
+**Fase 141 FECHADA.** Pendências que sobrevivem: as 168 tabelas presumidas seguem sem conferência
+humana contra o contrato real (tela da Fase 140), as 32 empresas sem tabela (maioria cadastro de
+teste pelo nome) e os 3 contratos de R$ 250.000 (GENUINEAUTOMOTIVE, Lenonn Milani, CAMILLOPARTS
+FILIAL RS) reportados ao usuário como provável erro de cadastro, não investigados nesta fase. Last
+activity: 2026-09-10 — 141-07 executado (`141-07-SUMMARY.md`). Ações de produção (materializar,
+comparar, ligar a flag, reconsolidar agosto) executadas pelo orquestrador; este registro (Task 3)
+executado pelo subagente executor.
+
+## Posição paralela — Fase 142 (Cadastro da tabela progressiva no contrato) — EM EXECUÇÃO
+
+⚠️ **Mesma disciplina dos blocos 135-141 acima:** Fase 142 fora de milestone, rodando em paralelo
+nesta árvore compartilhada. `## Current Position` (Fase 132/133) não foi tocado. `gsd-sdk query
+state.advance-plan` foi rodado e **descartado** nesta sessão — ele avançou o contador de Plan da
+Fase 133 (4→5), que não é o que esta execução fechou; o comando parece assumir "fase/plano atual"
+por heurística e não reconheceu a Fase 142 como posição corrente numa árvore com várias fases fora
+de milestone em paralelo. Revertido via `cp` do backup antes de qualquer commit — nenhuma alteração
+indevida chegou a ser commitada. Registro manual aditivo aqui, como nos blocos anteriores.
+
+Origem: `142-CONTEXT.md` — pedido do usuário em 2026-09-10, olhando o fechamento em produção
+("a parte do cadastro de tabela progressiva pelo sistema deve melhorar bastante"). ⚠️ **A regra
+nova está ligada em produção desde 2026-09-09** (Fase 141) e agosto/2026 já foi refeito sob ela —
+esta fase edita cobrança viva de 169 empresas, não rascunho.
+
+142-01 concluído (D-01, DEC-TELAS) — paga a dívida do `137-09` (tela mostrava só "Tabela própria
+desta empresa", sem as faixas) e fecha um buraco de auditoria achado na leitura do código:
+`EmpresaFaixaFaturamento::where(...)->delete()` é delete de query builder, não dispara evento de
+model, então `LogsActivity` nunca via as linhas apagadas — quem substituía a tabela de uma empresa
+deixava rastro só das linhas novas. `GravarTabelaEmpresaService::gravar()`/`remover()` — porta
+única de escrita, com a trava de precedência do D-05 da Fase 141 (`presumida_servico` nunca
+sobrescreve `manual`/`contrato`, `\RuntimeException` sem alterar nada) e UMA entrada de
+`activity_log` (`log_name='faixa_faturamento_tabela'`) por gravação, com `antes`/`depois` da tabela
+inteira, causer e `feito_de`. `FechamentoController::salvarFaixasEmpresa()`/`removerFaixasEmpresa()`
+e `TabelasContratoController::confirmar()` religados ao serviço, contrato HTTP e mensagens de flash
+intocados. Props de `/administrativo/financeiro` ganham `tabela_faixas`/`tabela_faixas_e_de_hoje`
+nos dois ramos (ao vivo/congelado), por empresa e por grupo — só preenchido quando origem='propria'
+(servico/grupo já têm catálogo em faixas_por_servico/faixas_por_grupo). Achado durante a Tarefa 3:
+a implementação inicial gerava 2 consultas a `empresa_faixas_faturamento` no ramo congelado (a nova
+leitura de linhas + a `MIN(origem)` que já existia desde a Fase 141 para `procedencia_tabela`) —
+corrigido reaproveitando a mesma leitura em lote para as duas necessidades, removendo a consulta
+duplicada dos 3 chamadores (`fechamento()`, relatório PDF individual, relatório PDF geral). TDD:
+Tarefa 1 com commit `test` (RED) seguido de `feat` (GREEN) — `77ec1ab3`/`368d49ee`; Tarefa 2
+`a76afed3` (refactor); Tarefa 3 `2bd43bcf` (feat). Testes novos: `Phase142GravarTabelaEmpresaTest`
+(14) + `Phase142FaixasProprasNasPropsTest` (4) = 18 testes / 87 asserções. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Phase142|Quick260909`: **571
+testes / 2729 asserções / 0 falhas** (baseline pré-142 informado 553/2642 — bate exatamente com
++18/+87 deste plano, zero regressão). Last activity: 2026-09-10 — 142-01 executado
+(`142-01-SUMMARY.md`). Sem deploy — subagente sem acesso a produção/`.env`/`plink`/`pscp` (trava do
+próprio plano); `artisan migrate` local não rodado (nenhuma migration neste plano).
+
+142-02 concluído (D-03) — rotas, controller e autorização da página exclusiva de cadastro da
+tabela, dentro do módulo `admin.contratos`, mais o botão em `ContratoDetalhe.jsx`. Armadilha
+central do plano (e a razão de existir da Tarefa 3): `admin.contratos` é permissão de SETOR, fora
+de `role:admin` de propósito, mas `SalvarFaixasFaturamentoRequest::authorize()` exige `isAdmin()`
+— apontar a ficha nova para as rotas antigas de `/financeiro/faixas/*` abriria a tela para quem tem
+a permissão e devolveria 403 no botão Salvar. `SalvarFaixasContratoRequest` HERDA a classe-mãe e
+sobrescreve só `authorize()` (`isAdmin() OU hasPermission('admin.contratos')`) — zero linha de
+validação de faixa reescrita. Cinco rotas novas (`admin.contratos.tabela.show/salvar/remover/
+grupo.salvar/grupo.remover`) no MESMO grupo de permissão, nunca `role:admin`; rotas antigas
+`admin.financeiro.faixas.*` intocadas (rollback). `TabelaEmpresaContratoController::show()` monta
+props achatadas (`tabela_empresa`, `procedencia_empresa`, `tabela_grupo`, `tabela_aplicada` via
+`FechamentoFaixaResolver`, `modelos_de_partida`, `leitura_pendente` — link cruzado com a caixa de
+entrada da Fase 140); `salvar()`/`remover()` passam pela porta única `GravarTabelaEmpresaService`
+(142-01), `feito_de='contrato_ficha'`; grupo não passa pela porta única (`GrupoFaixaFaturamento`
+não tem coluna de origem) — lógica replicada de `FechamentoController::salvarFaixasGrupo`, com
+comentário apontando o gêmeo. `ContratoAdminController::show()` ganha `tabela_resumo`
+(`tem_tabela`/`quantidade_faixas`/`procedencia`/`origem_aplicada`); `ContratoDetalhe.jsx` ganha o
+Card "Tabela de cobrança" com texto por estado, sem jargão (`npm run build` ok, sem classe
+Tailwind fora da escala). Testes novos: `Phase142FichaTabelaControllerTest` (9, via `X-Inertia`
+header — `Admin/TabelaEmpresa.jsx` só existe no plano 03, mesmo padrão de
+`Phase58/DashboardShellsBackendTest`) + `Phase142FichaTabelaPermissaoTest` (7, trava a armadilha
+central: permissão de setor abre E salva com a MESMA permissão) = 16 testes / 48 asserções. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Phase142|Quick260909`: **587
+testes / 2777 asserções / 0 falhas** (bate exatamente com +16/+48 sobre o baseline do 142-01, zero
+regressão). Last activity: 2026-09-10 — 142-02 executado (`142-02-SUMMARY.md`). `gsd-sdk query
+state.advance-plan` NÃO foi executado nesta sessão (instrução explícita do plano, por causa do
+incidente relatado no bloco do 142-01 acima) — este parágrafo é a única alteração de `STATE.md`.
+Sem deploy — subagente sem acesso a produção/`.env`/`plink`/`pscp`; `artisan migrate` local não
+rodado (nenhuma migration neste plano).
+
+142-03 concluído (D-01/D-02/D-03) — a máscara de dinheiro, a grade compartilhada e a página
+exclusiva `Admin/TabelaEmpresa.jsx`. `resources/js/lib/dinheiro.js` (opções do `react-imask`,
+`formatarDinheiro`, `paraTextoDeCampo`) + `Components/ui/campo-dinheiro.jsx` (`CampoDinheiro` lê
+`mask.typedValue` do próprio imask — nunca `parseFloat` de string mascarada, que é exatamente o
+caminho onde o separador de milhar viraria parte do número). `TabelaProgressivaFaixas` saiu de
+dentro de `TabelaFaixasSection.jsx` para `Components/Fechamento/TabelaProgressivaFaixas.jsx`
+(byte a byte, mesma densidade da Fase 139) e ganhou `notaRodape` opcional para o plano 04; a suíte
+`Phase139TabelaProgressivaFielTest` foi retargetada e FORTALECIDA — "uma definição"/"cabeçalho
+único" agora vale para o projeto inteiro, não só o arquivo antigo. `TabelaEmpresa.jsx` (430
+linhas): formulário abre com `tabela_empresa`/`tabela_grupo` — as linhas GRAVADAS, nunca a tabela
+do serviço fazendo as vezes da tabela da empresa (dívida do 137-09 paga por completo); a tabela do
+serviço só entra por clique explícito em "Começar a partir da tabela de X", sem salvar sozinha;
+confirmação obrigatória ao salvar por cima de uma tabela vinda do contrato; link cruzado para
+`admin.contratos.tabelas.index` com a copy "parece ser desta empresa" (nunca "é"); copy sem
+nenhuma das oito palavras banidas (as sete da Fase 139 + "presumida" do 142-CONTEXT). Testes novos:
+`Phase142FichaTabelaUiTest` (11 — CampoDinheiro sem `type="number"` cru, `mask.typedValue` sem
+`parseFloat`, estado inicial, aviso antigo do 137-09 ausente, grade importada não redefinida, as
+quatro rotas certas nunca as antigas, link cruzado, jargão, escala do Tailwind). CSS compilado
+conferido por script Node (`fs.readFileSync`, nunca `grep` do shell — colchetes escapam mal):
+`grid-cols-[80px_1fr_160px]`, `px-[18px]`, `text-[13px]`, `border-white/[0.06]` confirmados
+presentes no build depois de limpar `node_modules/.vite` + `public/build` (checagem inicial com
+`node -e` inline deu falso negativo por escaping de shell — refeita como script de arquivo).
+Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Phase142|Quick260909`:
+**598 testes / 2809 asserções / 0 falhas** (bate exatamente com +11/+32 sobre o baseline do 142-02,
+zero regressão). Last activity: 2026-09-10 — 142-03 executado (`142-03-SUMMARY.md`). `gsd-sdk
+query state.advance-plan` NÃO foi executado nesta sessão (mesma instrução explícita dos blocos
+142-01/142-02 acima) — este parágrafo é a única alteração de `STATE.md`. Sem deploy — subagente
+sem acesso a produção/`.env`/`plink`/`pscp`; nenhuma migration neste plano.
 
 ## Current Position
 
@@ -901,6 +1784,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 133 P01 | 35min | 2 tasks | 3 files |
 | Phase 133 P02 | ~40min | 3 tasks | 3 files |
 | Phase 133 P03 | ~30min | 2 tasks | 3 files |
+| Phase 138-tabela-do-grupo-e-aviso-de-mudanca-de-faixa P06 | ~90min | 4 tasks | 5 files |
 | Phase 150 P01 | 40min | 2 tasks | 1 files |
 | Phase 150 P02 | 25min | 2 tasks | 3 files |
 | Phase 151 P01 | 6min | 2 tasks | 1 files |
@@ -919,7 +1803,6 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 152 P08 | 50min | 3 tasks | 4 files |
 | Phase 152 P09 | 40min | 3 tasks | 4 files |
 | Phase 152 P10 | 45min | 3 tasks | 2 files |
-
 ## Accumulated Context
 
 ### Roadmap Evolution
@@ -1557,6 +2440,11 @@ None.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 260909-e8n | **Fechamento so lista quem e cobrado — e o que representa dinheiro nunca some.** Usuario apontou quatro coisas na tela de fechamento; a investigacao contra producao (competencia 2026-08, 201 empresas ativas) respondeu as quatro. (1) "Fechado em 03/09/2026" com filtro de agosto NAO era bug: e a data em que o fechamento foi executado (snapshot gerado 03/09 14:59), e o periodo apurado sempre foi 01/08-31/08 — a copy e que mostrava so a data de execucao. Prop nova `periodo` e o banner passa a dizer "Periodo 01/08/2026 a 31/08/2026 · fechado em 03/09/2026". (2) "Sem dados" em 69 de 201 empresas: TODAS sem `adman_account_id` e sem `ml_store_id`, 61 delas com `status = pendente` (cadastros de onboarding e de teste). (3) Corte de escopo pedido (polos / sem servico / pendente) implementado em `fechamentoRemoverForaDeEscopo()`, aplicado na tela E no PDF do relatorio geral, ANTES da agregacao por grupo. ⚠️ **O achado que mudou o desenho:** o filtro literal esconderia 5 empresas que FATURAM — tres clientes Shopee com `status = pendente` desatualizado e R$ 2.000/mes de cobranca cada (Ale Pecas, Tuki Pet, RAVENA), ALCOMERCIOEIMPORTACAO (R$ 167.443, sem contrato) e Interior Magazine (R$ 204.427, contratos inativos, DENTRO do grupo Utilar — sair mudaria a soma do grupo de R$ 3.299.903 para R$ 3.095.476 e poderia derrubar a faixa cobrada do grupo inteiro). Usuario escolheu TRAVA DE SEGURANCA: o filtro nunca esconde linha com faturamento apurado, cobranca calculada, membro de `CompanyGroup` ou com `parent_company_id`. (4) Badge "Sem integracao" seguia `!has_adman` (so olha Adman/ML) enquanto o estado da linha ja considerava Shopee — as tres empresas so-Shopee apareciam marcadas "sem integracao" com 31 dias de faturamento na coluna ao lado; passa a seguir `estado === 'sem_integracao'`. Mais escala tipografica um degrau acima na tela toda. 7 testes novos (`Quick260909\FechamentoEscopoDaListaTest`) cobrem as tres regras de corte e as tres travas. As 6 falhas que sobram na suite de fechamento sao PRE-EXISTENTES (exigem colunas `service_type`/`contract_*` removidas pela migration `2026_05_27_100003`). ⚠️ **PENDENTE, causa ja diagnosticada, conserto NAO autorizado:** `SyncAdmanCompanyJob` falhou **95 vezes em agosto** (59 `Adman API erro 500`, 35 `rate limit 429 apos 3 tentativas`), de 2 a 8 por dia, TODO dia — e nada reprocessa (nao existe backfill de lacunas de `adman_metrics` no projeto). Resultado: 21 empresas fecharam agosto com 28-30 dias em vez de 31, cada dia faltando subtraindo faturamento real e podendo derrubar a faixa cobrada. Correlacao confirmada: sync roda em D para o dado de D-1, 8 falhas em 04/08 = dia 03/08 furado em 6 empresas. Ver SUMMARY para o proximo passo sugerido. | 2026-09-09 | `ee45f792`, `bd0ad9a3` | `.planning/quick/260909-e8n-fechamento-escopo-e-legibilidade/` |
+| 260909-lge | **Escopo do fechamento amplia de "so exclui Polos" para "so entra performance+shopee" — e a mensalidade composta ganha a conta explicada.** Quatro pedidos do usuario olhando a tela em producao. (1) Filtro por servico na listagem: JA EXISTIA (Fase 14, `FiltroBarra`/`servicosNomes`), confirmado sem recriar. (2) Servicos repetidos numa linha de grupo ("Gestao Gestao Gestao…"): `ServiceBadge` passa a agrupar por nome com a quantidade ao lado ("Gestao 5") — problema era so de renderizacao, a uniao de contratos do grupo ja dedupava por `id` de contrato, nao por nome. (3) Escopo do fechamento: `fechamentoRemoverForaDeEscopo()` trocou o hardcoded `setor !== SETOR_POLOS` por `Servico::SETORES_FINANCEIROS` (performance+shopee, constante ja existente, reaproveitada). **A tensao do plano** (setor manda sobre "tem faturamento" vs. trava de grupo inegociavel) resolvida distinguindo dois motivos de fora-de-escopo: empresa SEM NENHUM contrato ativo mantem a valvula de dinheiro completa (dinheiro OU grupo OU hierarquia, comportamento intacto do 260909-e8n); empresa COM contrato ativo mas de setor fora do escopo (Publicacao/Polos/Outros) tem a valvula de dinheiro DESLIGADA — so grupo/hierarquia seguram a linha, porque tirar membro de grupo muda a soma e pode derrubar a faixa do grupo inteiro (caso real Interior Magazine/Utilar, ja documentado no 260909-e8n). (4) Composicao da mensalidade: novo `MensalidadeComposicaoBreakdown` no accordion mostra "{servico da faixa} (faixa) R$ X + {outro servico} R$ Y = R$ total" quando ha contrato mensal de valor fixo somando a faixa (caso medido: Baraoshop, faixa 1 = R$ 3.000 + Gestao de ADS Shopee R$ 2.500 = R$ 5.500, a tela so mostrava R$ 5.500 sem explicar) — so renderiza quando a soma bate exatamente com `cobranca_mensal` (D-05), nenhum calculo novo, paliativo de proposito ate a fase da tabela progressiva por empresa/grupo. ⚠️ **Efeito colateral corrigido:** 2 testes da Phase 14 quebraram porque usavam contrato de Publicacao SEM faturamento so como exemplo generico de "empresa com 1 contrato" — trocado para Gestao (performance), preservando o que os testes realmente verificam. Tambem removida 1 asercao morta (`service_type`, coluna ja dropada pelo Plan 14-06, achado pre-existente so exposto pelo fix anterior). `Phase13ComercialTest` (10 falhas, mesma causa raiz `service_type`, endpoint `/comercial/empresas` nunca atualizado) NAO e regressao deste quick, ficou fora do escopo dos arquivos tocados, registrado em `deferred-items.md`. 12 testes novos/ajustados (`Quick260909\FechamentoEscopoAmpliadoTest` + 2 fixtures de Phase 14 corrigidas). Gate `Phase122\|136\|137\|138\|139\|140`: 465/2281/0 -> 465/2281/0 (mesmo total — troca de teste por teste em Phase14, sem regressao nem crescimento no gate formal). | 2026-09-09 | `a946571c`, `56786bfe`, `27673f64`, `55f5b842` | `.planning/quick/260909-fechamento-filtros-e-escopo/` |
+| 260904-kwz | **A tela diz quando a tabela de faixas foi assumida, nao confirmada.** Usuario corrigiu premissa do sistema: "nao sao todas empresas que tem tabela progressiva, sao so as que tem contrato com tabela progressiva ou as que nos cadastrarmos manualmente pelo sistema" — o sistema fazia o contrario, aplicando a tabela do SERVICO a toda empresa com aquele servico. Medido em producao: 201 empresas no fechamento de agosto, 167 com tabela vinda do servico, 0 cadastros manuais, 3 contratos assinados no sistema — 127 empresas com mensalidade sem nenhum dos dois, R$ 460.500/mes sem confirmacao. Usuario escolheu tornar a origem visivel SEM tirar o valor (nao aplicar a regra estrita, nao cadastrar tudo de uma vez). **Regra:** tabela tem confirmacao quando (a) cadastro manual (`tabela_origem` 'propria'/'grupo') OU (b) a empresa DONA da tabela (a propria, ou a ancora quando a linha e de grupo sem tabela propria) tem `ContratoAssinatura` com `status='assinado'`; senao foi so presumida a partir do servico — o que NAO E ERRO (`tabela_confirmada` fica `null`, nunca `false`, quando nao ha tabela nenhuma — nao confunde com "A DEFINIR"). **Backend:** `fechamentoTabelaConfirmada()` extraida pros CINCO literais de linha (empresa ao vivo, congelada com/sem snapshot, grupo ao vivo/congelado) nunca divergirem — mesmo raciocinio de `fechamentoDerivarUpgrade()`; `fechamentoCompanyIdsComContratoAssinado()` consulta em massa ANTES do laco (sem N+1), reaproveitada pelos 3 endpoints que montam linha de fechamento; `totais.tabelas_assumidas` conta o topo da tela. **Frontend:** selo discreto (nunca amber/alarme) na linha, link direto pro cadastro que ja existe no accordion, aviso do topo com "Ver quais" ligando um chip de filtro novo — copy sem jargao (nunca lastro/origem/snapshot/competencia/reconsolidacao/rollup/ancora/faixa piso como texto visivel). ⚠️ Descoberto so na primeira rodada do gate (nao na leitura inicial do arquivo): ha DOIS outros call sites das mesmas 4 funcoes privadas (`gerarRelatorio()`/`gerarRelatorioGeral()`, os PDFs) que tambem precisaram do parametro novo — 10 falhas de `ArgumentCountError` na primeira rodada, corrigidas. 13 testes novos (`Phase139LastroTabelaTest`) cobrem os dois caminhos, o `null` vs `false`, contrato de OUTRA empresa nao vaza confirmacao, grupo herda da ancora, contador bate com a contagem real, sem N+1, e cobertura no ramo congelado por reconsulta ao banco (contrato assinado DEPOIS do fechamento passa a confirmar a competencia ja congelada, sem recalcular o valor — D-11). Gate `Phase122\|136\|137\|138\|139`: 335/1717/0 -> 348/1765/0 (13 testes novos, zero regressao). | 2026-09-04 | `dedabd96`, `254cc766`, `32d58193` | `.planning/quick/260904-lastro-da-tabela-progressiva/` |
+| 260904-jpn | **Tabela progressiva da area expandida (Fechamento) fica fiel a `design_handoff_fechamento/Fechamento.dc.html`.** Usuario conferiu a tela em producao e relatou "fontes pequenas, a tabela progressiva nao esta igual, seja mais fidedigno a referencia". Causa raiz era estrutural: `TabelaFaixasSection.jsx` tinha DUAS copias divergentes de `<table>` (bloco do grupo da Fase 138 e bloco do servico da Fase 137), ambas com metade da densidade da referencia (texto 11px em vez de 13px, padding 6px/10px em vez de 12px/18px, `<table>` de larguras automaticas em vez de grid `80px 1fr 160px`, "Faturamento ate" alinhada a direita em vez de esquerda, raio 8-10px em vez de 12px). **Correcao:** extraida subcomponente unica `TabelaProgressivaFaixas`, usada nos dois lugares; grid/padding/texto/raio/alinhamento agora batem com a referencia; `Financeiro.jsx` ganhou o padding lateral certo da area expandida (20px -> 22px, os tres cards de passo ja batiam). ⚠️ Decisao do usuario NAO reaberta: fonte continua `font-mono` do Tailwind (nao a fonte mono do handoff), paleta continua nos tokens `ecf-*` — so espacamento/tamanho/estrutura mudaram. Novo teste `Phase139TabelaProgressivaFielTest` (13 testes/23 assercoes) trava a subcomponente unica, a densidade exata e a ausencia da armadilha de classes Tailwind fora de escala (`px-4.5` etc, ja mordeu dois executores anteriores desta fase) — confirmado por script Node lendo o CSS compilado, nao grep do shell. Gate `Phase122\|136\|137\|138\|139`: 322/1694/0 -> 335/1717/0 (so o incremento do teste novo, zero regressao). | 2026-09-04 | `5e290eb0`, `2df1142e`, `6d05fd11` | `.planning/quick/260904-jpn-tabela-progressiva-fiel-a-referencia/` |
+| 260903-la4 | **"Refazer fechamento" e "Fechar" salvavam certinho mas a tela nao dava nenhum sinal.** Producao 2026-09-03: usuario clicou "Refazer fechamento" de agosto 3 vezes achando que tinha falhado — medido no servidor: **funcionou as tres vezes** (3x HTTP 200, 3 linhas em `fechamento_reconsolidacoes`, 201 snapshots reescritos). Causa: o handler de sucesso do `axios.post()` so tinha `.then(() => router.reload())` — dialogo continuava aberto com o motivo antigo, sem confirmacao nenhuma. **Correcao (so frontend, backend nao tocado):** os dois handlers agora fecham o dialogo/limpam o campo e guardam a `message` que o proprio backend ja devolve num estado local, exibido como confirmacao com o MESMO visual do toast global do `AppLayout` (sem tocar nele — as acoes respondem por axios/JSON, nao por `flash` do Inertia). **Verificado no codigo-fonte do Inertia** (nao suposto): `router.reload()` usa `preserveState: true` por padrao, entao o componente NAO remonta e o estado local sobrevive ao reload naturalmente — dispensa qualquer mudanca de backend para "sobreviver" ao reload. Carimbo "Fechado em {data}" ja atualizava sozinho (recalculado do banco em toda request, confirmado por leitura de `AdminController.php`), sem precisar de codigo novo. | 2026-09-03 | `b2c78cb0`, `3f6c7d9e` | `.planning/quick/260903-la4-refazer-fechamento-sem-aviso/` |
 | 260901-gj7 | **Venda combinada Mercado Livre + Shopee gera UM contrato, nao dois.** `iniciarParaEmpresa()` fazia `groupBy(servico_id)` e criava um contrato por servico; empresa com Gestao (6) + Gestao de ADS Shopee (9) receberia DOIS contratos, cada um nomeando so a sua plataforma. Nunca aconteceu: zero empresas tinham contrato de mais de um servico. **O que ja funcionava sozinho:** `{{plataformas}}` (quick 260825-fn0) concatena as plataformas DISTINTAS do snapshot — bastou os dois servicos cairem no mesmo contrato para imprimir "Mercado Livre e Shopee", sem tocar na variavel. E o modelo de Gestao NAO usa `{{valor_mensal}}`, entao a soma dos dois nao aparece impressa (sem decisao de dinheiro). **Implementacao:** coluna `servicos.contrato_junto_com_servico_id` (nullable, FK auto-referenciada, `nullable()` ANTES do `nullOnDelete()` — sem isso o MariaDB recusa com 1830 e o SQLite dos testes nao pega). Semantica: quando este servico aparece junto com X, os dois compartilham UM contrato que pertence a X, e X define o modelo Clicksign e o `servico_id` gravado. A chave do laco vira o servico DONO, **so quando o dono tambem esta ativo na empresa** — ⚠️ Shopee SOZINHO continua com contrato e modelo proprios, e esse e o teste de regressao mais importante. Ordenacao de fases do escalonado segue POR SERVICO (o grupo so concatena as ja ordenadas, dono primeiro); ambiguidade em qualquer membro barra o grupo inteiro. A lista tinha o mesmo groupBy e ganhou a mesma regra — sem isso o Shopee viraria linha "aguardando administrativo" ETERNA de um contrato que nunca existiria. ⚠️ PENDENTE: apontar Shopee (9) -> Gestao (6) em producao pos-deploy; enquanto a coluna estiver vazia nada muda. | 2026-09-01 | `d3773be0`, `556fe7cd`, `56497969` | `.planning/quick/260901-gj7-contrato-combinado/` |
 | 260825-ixp | **"Refazer contrato" perdia a frase do parcelamento que a pessoa escreveu.** Defeito introduzido no MESMO dia. O Administrativo editou a frase na tela (Maderatto), salvou, clicou em Refazer — e a frase nao apareceu. Medido: contrato 23 (novo) com `plano_parcelas_texto` NULL, contratos 21 e 22 (cancelados) com o texto. **Causa:** a coluna vive em `contrato_assinaturas` (quick 260824-bte) — o que esta certo, e texto que AQUELE contrato congelou — mas `refazer()` (quick 260825-dap) cria um ContratoAssinatura NOVO, que nasce null. E o fluxo natural e justamente editar -> refazer: com o envelope ja criado, editar nao muda nada na Clicksign, entao o refazer era o UNICO caminho para a edicao valer, e era exatamente onde ela se perdia. **Correcao:** `refazer()` transporta o texto do antigo para o novo do MESMO `servico_id` (dispararSeElegivel pode criar varios, so o correspondente herda), LITERAL (sem recompor — quem manda e o que a pessoa escreveu), e null continua null. Activity log ganhou `plano_parcelas_transportado`. ⚠️ LICAO: os testes do refazer cobriam o que ele DEVERIA fazer (cancelar, fechar o antigo, criar o novo) — nenhum perguntava O QUE O CONTRATO NOVO HERDA DO ANTIGO. A interacao entre os dois quicks so apareceu quando alguem usou os dois em sequencia, que e o uso normal. | 2026-08-25 | `579f9735` | `.planning/quick/260825-ixp-refazer-preserva-plano-parcelas/` |
 | 260825-fn0 | **A plataforma do contrato sai do servico, em vez de estar fixa.** O modelo de Gestao citava "Mercado Livre e Shopee" em **11 paragrafos** (objeto, escopo, tabela de faturamento, confidencialidade, limitacao de responsabilidade) e nem todo cliente contrata as duas — contrato assinado dizendo que a ECF gere plataforma nao contratada e exposicao juridica. **Regra definida pelo usuario:** a plataforma vem do SERVICO do item de linha (Gestao de Ads = Mercado Livre; Gestao Shopee = Shopee). **Modelo v5** gerado: 11 ocorrencias viraram `{{plataformas}}`, zero sobra, e as tags de assinatura foram para ACIMA do nome de cada empresa (antes abaixo do CNPJ — o Administrativo informou que e onde a assinatura costuma ficar). **Codigo:** coluna `servicos.plataforma` (nullable, migration nao preenche ninguem); a plataforma entra no `servicos_snapshot` CONGELADO na criacao do contrato (D-04, nunca da tabela ao vivo); `resolverPlataformas()` concatena as DISTINTAS (duas fases do mesmo servico aparecem uma vez); o `mapa()` so le a chave pronta e a classe segue PURA (T-126-40, verificado por teste estatico). ⚠️ **Ausencia e VISIVEL**: servico sem plataforma ou contrato antigo sem a chave imprime `A DEFINIR` e entra em `campos_pendentes` — a Clicksign nao acusa variavel nao preenchida, entao a visibilidade tem que vir de nos (licao do `plano_parcelas`, quick 260821-m9h). Regressao evitada: os helpers `contratoComSnapshot()` dos testes montavam snapshot sem a chave, o que quebraria assercoes de lista EXATA de `campos_pendentes`. Medido apos: 16 variaveis emitidas. ⚠️ PENDENTE FORA DO CODIGO: (1) subir o .docx v5; (2) preencher `plataforma` dos servicos em producao; (3) conferir que o produto do HubSpot ("Gestao Shopee") casa com o servico do banco ("Gestao de ADS Shopee", id 9). | 2026-08-25 | `46a1c959`, `0f717b68`, `4a126bdb` | `.planning/quick/260825-fn0-plataforma-do-servico/` |
@@ -1683,6 +2571,112 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-08T17:30:00Z
+Stopped at: Correção 4 do 140-02 — a correção do .docx (defeito 3) funcionou muito bem em produção:
+ilegíveis caíram de 19 para 3, tabelas lidas subiram de 33 para 47 (de 85 contratos). Investigados
+os 28 que ainda saíam "não deu para entender", em dois grupos, quatro formatos novos. GRUPO 1 (valor
+fixo em formatos novos, `analisarValorFixo()` generalizado): pagamento escalonado (2 valores de
+parcela diferentes no mesmo contrato — `valor_fixo` fica `null` e o aviso LISTA os valores, nunca
+inventa média nem escolhe um em silêncio) e valor anual dividido em parcelas (extrai o valor DA
+PARCELA, não o total anual). GRUPO 2 (tabela em notações novas, `extrairPontoDeLimiar()`): notação de
+sinais (`-`/`+` com "R$" opcional — falta em algumas linhas do MESMO contrato — e sufixo `/mês` ou
+`/mes` sem acento) e notação de intervalo fechado (`De X a Y` traz o teto explícito na própria linha,
+`De X` sozinho é faixa aberta; tolerância a "Ate" sem acento, medido no texto real). Guarda nova:
+seção "Bônus de Performance" logo depois de uma tabela é cortada ANTES de procurar marcos (senão vira
+faixa espúria e rouba a posição de última-faixa-aberta). Reordenada a prioridade do `analisar()`:
+TABELA agora é checada ANTES de valor fixo (era o contrário, decisão original do D-03) — um contrato
+pode ter tabela de verdade E texto de parcelas ao mesmo tempo (MAXIGOLD), e quando a tabela é
+reconhecida de verdade ela vence; verificado contra toda a suíte anterior que a troca não reabre o
+bug original (nenhum valor-fixo conhecido produz marcos por acidente). Aviso de valor implausível
+(`avisarValoresImplausiveis()`, sem alterar o número): um contrato real tinha limite de "R$ 15
+bilhões" (quase certamente ponto a mais em vez de vírgula NO PRÓPRIO CONTRATO) — o parser nunca
+corrige, só sinaliza acima de R$ 1 bilhão para conferência humana. TDD: 2 commits RED→GREEN
+(`c6c6484b` test, `8024a118` feat) — RED confirmado revertendo temporariamente para o commit
+anterior (7 falhas). Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: 430 testes / 2104
+asserções / 0 falhas (baseline 423/2061 antes desta correção). Sem deploy — sem acesso a produção
+nesta sessão. Coordenador vai deployar e rodar a varredura completa de novo.
+Last session: 2026-09-08T17:00:00Z
+Stopped at: Corrigido o defeito 3 do 140-02 — varredura COMPLETA em produção (85 contratos, não mais
+a amostra de 10) achou 33 tabelas lidas, 7 valor fixo, 23 "não deu para entender" e 19 "não deu para
+ler o arquivo" (todas com o mesmo motivo, todas contratos de 2026). Causa: esses envelopes foram
+gerados a partir do MODELO da Clicksign — o arquivo `original` que sobe é o `.docx` (Word, OOXML) que
+ela usa para montar o PDF depois, não um PDF em si. `.docx` é um ZIP (mesmo cabeçalho `PK`), mas o
+extrator só sabia procurar `.pdf` dentro de ZIP, nunca reconhecia que o ZIP podia SER um `.docx`.
+Corrigido: detecção por CONTEÚDO (`[Content_Types].xml` + `word/document.xml` no índice do ZIP, via
+`locateName()`, sem ler conteúdo), checada antes da busca por `.pdf`; lê só a entrada
+`word/document.xml` (194–251 KB medidos), nunca o pacote de mídia embutido; concatena `<w:t>`
+rastreando se está dentro de `<w:tbl>` (dentro de tabela, `</w:tr>` fecha linha e `</w:tc>` separa
+células da mesma linha — cada célula do Word é seu próprio parágrafo, então `</w:p>` sozinho
+quebraria uma linha de tabela em duas). Bug encontrado ao escrever o teste: `<w:t[^>]*>` sem
+fronteira de palavra casava por engano `<w:tc>`/`<w:tr>`/`<w:tbl>`/`<w:tab>` (w:t é prefixo de
+todos), vazando marcação XML pro texto — corrigido com `\b` após o nome de cada tag. Continua
+proibido o método de extração-para-disco do `ZipArchive` (zip-slip, T-140-05). NÃO misturado com os
+23 "não deu para entender" (outro problema, fora de escopo, por pedido explícito do coordenador).
+TDD: 2 commits RED→GREEN (`ee0a1570` test, `7f68b1c7` fix) — RED confirmado revertendo temporariamente
+para o commit anterior. Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: 423 testes /
+2061 asserções / 0 falhas (baseline 419/2036 antes desta correção). Sem deploy — sem acesso a
+produção nesta sessão. Coordenador vai deployar e rodar a varredura completa de novo.
+Last session: 2026-09-08T16:35:00Z
+Stopped at: Corrigido o defeito 2 do 140-02 que sobrou da correção anterior — `numeros_ilegiveis`
+nunca era emitido em produção (deploy `f8a41be4`, segunda rodada real de 10 contratos). O CNPJ por
+rótulo (correção anterior) funcionou perfeitamente (CNPJ/razão social do cliente certos nas 4
+empresas conferidas). Causa raiz: a checagem exigia `count($marcos) === 0` antes de rodar a detecção
+de dígitos apagados — mas o contrato inteiro (não só o parágrafo do valor) pode ter outra cláusula
+com dígitos legíveis (ex.: multa de rescisão) que bate por acidente no reconhecedor de marcos,
+produzindo 1-2 marcos espúrios que já bastavam para pular a checagem inteira e cair no `indefinido`
+genérico. Removida a exigência de zero marcos — o sinal de dígitos apagados agora tem precedência
+sobre "poucos marcos, talvez tabela incompleta". Correção defensiva adicional: regex trocou `\s*`
+por `[^\d,.]{0,10}` no preenchimento entre R$/./., — cobre espaço não-quebra (U+00A0) e ausência
+total de filler, não só espaço ASCII comum (não confirmável contra produção, mas defensável sem
+acesso). TDD: 2 commits RED→GREEN (`3f279f35` test, `43d41c9e` fix) — RED confirmado revertendo
+temporariamente para o commit anterior e reproduzindo o `indefinido` incorreto. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: 419 testes / 2036 asserções / 0 falhas (o
+coordenador mediu 417/2031 antes desta correção, em árvore limpa). Dependência aberta para o 140-03
+(não tocado): `TIPO_LABEL` do comando ainda precisa de entrada para `numeros_ilegiveis` virar frase
+no relatório, mas isso não bloqueia mais a contagem do resumo. Sem deploy — sem acesso a produção
+nesta sessão.
+Last session: 2026-09-08T16:10:00Z
+Stopped at: Corrigidos os dois defeitos pós-deploy do 140-02 reportados pelo coordenador na rodada
+real (`clicksign:extrair-tabelas --limite=10`, deploy `1f53bfa6`). Defeito 1: CNPJ/razão social
+saíam sempre da ECF, nunca do cliente — a extração pegava "o primeiro CNPJ do documento" (sem
+`cnpj_ecf` configurado em produção, a exclusão por config nunca disparava) e a ordem ECF/cliente
+varia entre contratos (DESK DESIGN: ECF primeiro; ALUMEN: cliente primeiro). Corrigido para ler por
+RÓTULO ("CONTRATANTE:"/"...doravante denominada CONTRATANTE", buscando o CNPJ na direção certa —
+à frente do rótulo com dois-pontos, atrás do rótulo sem), com rede de segurança
+(`CNPJS_ECF_CONHECIDOS`, hardcoded — CNPJ público da própria ECF, já versionado desde a Fase 126)
+que descarta o CNPJ mesmo se o rótulo falhar. Defeito 2: contratos antigos (ago/2025,
+`contrato_gestao_ads_meli_*`) têm os dígitos apagados no PDF (`R$  .   ,   ` em vez de valor real) —
+problema de fonte no documento, não do parser. Saíam como "não deu para entender a cobrança"
+(indefinido genérico); ganharam tipo próprio `numeros_ilegiveis` com aviso explícito "precisa abrir
+o contrato à mão". Decisão registrada: NÃO se tentou ler o valor por extenso ("três mil reais") e
+converter em número — risco de acertar por acaso e errar sem parecer errado, para poucos contratos
+afetados, não compensa (acertividade > praticidade quando o dado vira cobrança). TDD: 2 commits
+RED→GREEN (`025be6f1` test, `539d3731` fix). Gate `Phase122|Phase136|Phase137|Phase138|Phase139|
+Phase140`: 414 testes / 2011 asserções / 0 falhas (era 402/1981 antes desta correção — inclui
+trabalho concorrente do 140-03/140-04 em paralelo). ⚠️ Dependência aberta para o 140-03 (não tocado
+por este plano): `TIPO_LABEL` do comando `clicksign:extrair-tabelas` precisa de uma entrada para
+`numeros_ilegiveis` para o novo tipo virar frase honesta no relatório em vez do nome cru da
+constante. Sem deploy — sem acesso a produção nesta sessão.
+Last session: 2026-09-08T15:44:00Z
+Stopped at: Corrigido defeito pós-deploy do 140-01 (commit `91397bf2`) — teto real de página do
+Clicksign é 50, não 100 (achado na rodada real de produção pelo coordenador, deploy `764d228f`);
+`ClicksignClient::ENVELOPES_TAMANHO_MAXIMO_PAGINA` + clamp + 4 testes novos travando o teto em dois
+níveis. Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140`: 402 testes / 1981 asserções /
+0 falhas. Ainda não deployado por esta sessão — sem acesso a produção.
+Last session: 2026-09-08T15:20:33Z
+Stopped at: Completed 140-02-PLAN.md (ExtratorTextoContratoService — PDF/ZIP → texto — e
+TabelaProgressivaContratoParser — texto → tipo de cobrança + faixas + CNPJ + razão social; rodou em
+paralelo ao 140-01, wave 1 da Fase 140 completa; 140-03 é o próximo, wave 2, com checkpoint humano)
+Last session: 2026-09-08T15:03:57Z
+Stopped at: Completed 140-01-PLAN.md (ClicksignClient::listarEnvelopes()/listarDocumentos() +
+AcervoContratosClicksignService — varredura paginada, filtro de gestão de ADS e download imediato
+do binário; 140-02 roda em paralelo, fora da dependência deste plano)
+Last session: 2026-09-04T12:42:05-03:00
+Stopped at: Completed 139-07-PLAN.md (marcador de recebido removido dos seis pontos; trava de teste criada; 139-06 segue pendente, fora da dependência deste plano)
+Last session: 2026-09-04T00:00:00.000Z
+Stopped at: Completed 138-06-PLAN.md (checkpoint humano aprovado — "Aprovado" — fase 138 concluída, 6/6 planos)
+Last session: 2026-09-02T18:34:53.366Z
+Stopped at: Phase 137 context gathered
 Last session: 2026-09-10T08:00:00.000Z
 Stopped at: **MILESTONE v23.0 COMPLETA** — Fase 156 (timeline + SLA) fechada em `03cff780`. 7 fases, 31/31 requirements, **806 testes / 3505 assertions** verdes. Timeline lê SÓ fontes duráveis (o activity_log é podado em 365 dias). **NADA DEPLOYADO**: 2 migrations fora de produção e a chave `coordenacao.distribuir` a liberar por setor. **Conferência visual das Fases 153-156 NÃO foi feita.**
 Last session: 2026-09-10T07:00:00.000Z
@@ -1724,8 +2718,7 @@ Stopped at: Completed 150-04-PLAN.md
 Last session: 2026-09-01T19:27:04Z
 Stopped at: Completed 150-03-PLAN.md
 Last session: 2026-09-01T19:18:39.629Z
-Stopped at: Completed 150-02-PLAN.md
-Last session: 2026-08-18T21:34:08.162Z
+Stopped at: Completed 150-02-PLAN.mdLast session: 2026-08-18T21:34:08.162Z
 Stopped at: Completed 133-03-PLAN.md
 Last session: 2026-08-10T21:59:33.127Z
 Stopped at: Completed 126-09-PLAN.md

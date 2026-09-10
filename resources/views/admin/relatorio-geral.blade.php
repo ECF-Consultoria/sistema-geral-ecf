@@ -3,9 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Relatório de Fechamento — {{ $mes_label }}
-        @if ($filtro_recebido === 'sim') — Recebidos @elseif ($filtro_recebido === 'nao') — Pendentes @endif
-    </title>
+    <title>Relatório de Fechamento — {{ $mes_label }}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -92,31 +90,12 @@
             justify-content: space-between;
             align-items: center;
         }
-        .badge-rec { font-size: 9px; font-weight: 700; color: #065f46; background: #d1fae5; border: 1px solid #6ee7b7; padding: 1px 6px; border-radius: 8px; }
-        .badge-pen { font-size: 9px; font-weight: 700; color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; padding: 1px 6px; border-radius: 8px; }
-
         /* ── Bloco por empresa ───────────────────────────── */
         .company-block {
             page-break-before: always;
             page-break-inside: avoid;
         }
         .company-content { padding: 18px 28px 28px; }
-
-        /* ── Status badge ────────────────────────────────── */
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            padding: 3px 9px;
-            border-radius: 20px;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 14px;
-        }
-        .status-recebido { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
-        .status-pendente  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 
         /* ── Seções ──────────────────────────────────────── */
         .section { margin-bottom: 14px; }
@@ -250,6 +229,15 @@
 </head>
 <body>
 
+@php
+    // Fase 137 (D-02b) — a última faixa de Gestão/Brigada é PISO ("a partir
+    // de"), não valor fechado; sem o prefixo o Administrativo cobraria a
+    // menos de quem faturou mais que o teto da tabela.
+    $fmtPiso = fn ($valor, $piso) => $valor
+        ? (($piso ? 'a partir de ' : '') . 'R$ ' . number_format($valor, 0, ',', '.'))
+        : '—';
+@endphp
+
 @if (count($relatorios) === 0)
     <div class="header-dark">
         <div class="logo-pill"><img src="{{ asset('images/logo.png') }}" alt="ECF Consultoria"></div>
@@ -274,17 +262,10 @@
 
 <div class="cover-content">
     @php
-        $totalRecebidos    = collect($relatorios)->where('recebido', true)->count();
-        $totalPendentes    = collect($relatorios)->where('recebido', false)->count();
         $totalMensalidades = collect($relatorios)->sum('total_mensalidade');
     @endphp
 
-    <h2 class="cover-title">
-        @if ($filtro_recebido === 'sim') Empresas Recebidas
-        @elseif ($filtro_recebido === 'nao') Empresas Pendentes
-        @else Fechamento — Todas as Empresas
-        @endif
-    </h2>
+    <h2 class="cover-title">Fechamento — Todas as Empresas</h2>
     <p class="cover-sub">{{ $mes_label }} · {{ count($relatorios) }} empresa{{ count($relatorios) !== 1 ? 's' : '' }}</p>
 
     <div class="cover-stats">
@@ -292,16 +273,6 @@
             <div class="num">{{ count($relatorios) }}</div>
             <div class="lbl">Neste relatório</div>
         </div>
-        @if (!$filtro_recebido)
-        <div class="cover-stat green">
-            <div class="num">{{ $totalRecebidos }}</div>
-            <div class="lbl">Recebidas</div>
-        </div>
-        <div class="cover-stat amber">
-            <div class="num">{{ $totalPendentes }}</div>
-            <div class="lbl">Pendentes</div>
-        </div>
-        @endif
         <div class="cover-stat">
             <div class="num">R$ {{ number_format($totalMensalidades, 0, ',', '.') }}</div>
             <div class="lbl">Total mensalidades</div>
@@ -313,11 +284,6 @@
         @foreach ($relatorios as $r)
         <div class="indice-row">
             <span>{{ $r['company']->name }}</span>
-            @if ($r['recebido'])
-                <span class="badge-rec">✓ Recebido</span>
-            @else
-                <span class="badge-pen">⏳ Pendente</span>
-            @endif
         </div>
         @endforeach
     </div>
@@ -339,19 +305,13 @@
 
     <div class="company-content">
 
-        @if ($r['recebido'])
-            <div class="status-badge status-recebido">✓ Pagamento recebido</div>
-        @else
-            <div class="status-badge status-pendente">⏳ Pagamento pendente</div>
-        @endif
-
         {{-- Dados da empresa --}}
         <div class="section">
             <div class="section-title">Dados da empresa</div>
             <div class="fields-grid">
                 <div class="field" style="grid-column:span 3">
                     <label>Nome</label>
-                    <span style="font-size:16px; font-weight:800">{{ $company->name }}</span>
+                    <span style="font-size:16px; font-weight:800">{{ $r['titulo'] ?? $company->name }}</span>
                 </div>
                 <div class="field">
                     <label>CNPJ</label>
@@ -401,7 +361,7 @@
                     <tbody>
                         <tr>
                             <td>
-                                <strong>{{ $company->name }}</strong>
+                                <strong>{{ $r['titulo'] ?? $company->name }}</strong>
                                 @if ($company->cnpj)<span class="cnpj-sub">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $company->cnpj)) }}</span>@endif
                             </td>
                             <td>@if ($r['faturamento'] !== null) {{ 'R$ '.number_format($r['faturamento'],0,',','.') }} @else <span class="sem-dados">Sem dados</span> @endif</td>
@@ -410,7 +370,7 @@
                                 {{-- Phase 14 (Frente B): cobranca_mensal agrega faixa + contratos ativos
                                      mensais (CobrancaCalculator::novo). Bloco legacy de
                                      additional_service / additional_service_price removido. --}}
-                                @if (!empty($r['cobranca_mensal']))R$ {{ number_format($r['cobranca_mensal'],0,',','.') }}@else —@endif
+                                {{ $fmtPiso($r['cobranca_mensal'] ?? null, $r['valor_e_piso'] ?? false) }}
                             </td>
                         </tr>
                         @foreach ($r['vinculadas'] as $v)
@@ -423,7 +383,7 @@
                             <td>@if ($v['faixa_label']) <span class="faixa-badge">{{ $v['faixa_label'] }}</span> @else — @endif</td>
                             <td class="right">
                                 {{-- Phase 14 (Frente B): cobranca_mensal já agrega faixa + contratos da filha. --}}
-                                @if (!empty($v['cobranca_mensal']))R$ {{ number_format($v['cobranca_mensal'],0,',','.') }}@else —@endif
+                                {{ $fmtPiso($v['cobranca_mensal'] ?? null, $v['valor_e_piso'] ?? false) }}
                             </td>
                         </tr>
                         @endforeach
@@ -447,7 +407,7 @@
                         <tr>
                             <td>{{ 'R$ '.number_format($r['faturamento'],0,',','.') }}</td>
                             <td>@if ($r['faixa_label']) <span class="faixa-badge">{{ $r['faixa_label'] }}</span> @else — @endif</td>
-                            <td class="right"><span class="valor-destaque">{{ $r['cobranca_mensal'] ? 'R$ '.number_format($r['cobranca_mensal'],0,',','.') : '—' }}</span></td>
+                            <td class="right"><span class="valor-destaque">{{ $fmtPiso($r['cobranca_mensal'] ?? null, $r['valor_e_piso'] ?? false) }}</span></td>
                         </tr>
                     </tbody>
                 </table>
@@ -458,7 +418,7 @@
                      contratos ativos mensais via CobrancaCalculator::novo. --}}
                 <div class="total-box">
                     <span class="label">Mensalidade a cobrar</span>
-                    <span class="value">R$ {{ number_format($r['cobranca_mensal'],0,',','.') }}</span>
+                    <span class="value">{{ $fmtPiso($r['cobranca_mensal'] ?? null, $r['valor_e_piso'] ?? false) }}</span>
                 </div>
                 @endif
             @else

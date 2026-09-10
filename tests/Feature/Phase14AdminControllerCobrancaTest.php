@@ -69,6 +69,32 @@ class Phase14AdminControllerCobrancaTest extends TestCase
     }
 
     /**
+     * Fase 137 (D-01) — a faixa deixou de vir da constante `FAIXAS` e passou
+     * a depender de a empresa ter contrato ativo com um serviço "dono de
+     * tabela" (setor financeiro OU plataforma preenchida). A migration
+     * `2026_09_02_100003_seed_faixas_faturamento_iniciais` já semeia as 7
+     * faixas de "Gestão" (criada pelo catálogo base da Fase 14) — este
+     * helper só ajusta `plataforma`/`setor` para o serviço virar candidato
+     * no resolver, mesmo padrão de `Phase137FaixaResolverTest`.
+     */
+    private function vincularGestao(Company $company): ContratoServico
+    {
+        $servico = Servico::firstOrCreate(
+            ['nome' => 'Gestão'],
+            ['valor_padrao' => 0, 'tipo_cobranca' => Servico::TIPO_MENSAL, 'ativo' => true]
+        );
+        $servico->update(['plataforma' => 'Mercado Livre', 'setor' => Servico::SETOR_PERFORMANCE]);
+
+        return ContratoServico::create([
+            'company_id'       => $company->id,
+            'servico_id'       => $servico->id,
+            'valor_contratado' => 0,
+            'data_contratacao' => Carbon::now()->toDateString(),
+            'ativo'            => true,
+        ]);
+    }
+
+    /**
      * TEST 1 — Golden: cobranca_mensal calculada pelo refator bate com a fórmula legacy.
      *
      * Cenário: empresa com additional_service_price=200 (legacy) + 1 contrato mensal
@@ -106,6 +132,10 @@ class Phase14AdminControllerCobrancaTest extends TestCase
         ]);
         $this->criarContrato($empresa, 'Polos', 0.0);
         $this->criarContrato($empresa, 'Treinamento', 200.00);
+        // Fase 137 (D-01): nem Polos nem Treinamento são "dono de tabela"
+        // (nem plataforma nem setor financeiro) — sem isso a empresa cai em
+        // 'sem_tabela' e a faixa (4.500) nunca entra na soma.
+        $this->vincularGestao($empresa);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
@@ -205,7 +235,12 @@ class Phase14AdminControllerCobrancaTest extends TestCase
             'service_type'     => ['publicacao'],
         ]);
         // Sem faturamento — estado 'sem_dados', mas as props ainda têm contratos.
-        $this->criarContrato($empresa, 'Publicação', 0.0);
+        // Quick 260909-lge: o serviço de fixture trocou de 'Publicação' para
+        // 'Gestão' — Publicação saiu do escopo do fechamento (setor
+        // performance/shopee manda) e a empresa deixaria de aparecer na
+        // lista, o que quebraria o que este teste realmente verifica (o
+        // SHAPE da prop `servicos_contratados`, não o escopo).
+        $this->vincularGestao($empresa);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
@@ -213,17 +248,20 @@ class Phase14AdminControllerCobrancaTest extends TestCase
 
         $companies = $response->viewData('page')['props']['companies'];
         $this->assertCount(1, $companies);
-        // Chave nova: array com ao menos 1 contrato (Publicação)
+        // Chave nova: array com ao menos 1 contrato (Gestão)
         $this->assertIsArray($companies[0]['servicos_contratados']);
         $this->assertCount(1, $companies[0]['servicos_contratados']);
-        $this->assertEquals('Publicação', $companies[0]['servicos_contratados'][0]['servico_nome']);
+        $this->assertEquals('Gestão', $companies[0]['servicos_contratados'][0]['servico_nome']);
         $this->assertEqualsWithDelta(
             0.0,
             (float) $companies[0]['servicos_contratados'][0]['valor_contratado'],
             0.01,
-            'valor_contratado do contrato deve ser 0 (servico de classificação Polos/Publicação/etc).',
+            'valor_contratado do contrato deve ser 0 (serviço cobrado pela faixa, não valor fixo).',
         );
-        // Chaves legacy permanecem (coexistência) — Plan 14-06 remove
-        $this->assertArrayHasKey('service_type', $companies[0]);
+        // A chave legacy 'service_type' foi dropada da tabela `companies`
+        // pela migration `2026_05_27_100003_drop_legacy_service_columns_from_companies`
+        // (Plan 14-06 já rodou) — a asserção que checava a coexistência
+        // dela nas props não se aplica mais; achado pré-existente, não
+        // causado pelo Quick 260909-lge, removido daqui por já estar morto.
     }
 }

@@ -136,12 +136,19 @@ class Phase14BladeRefactorTest extends TestCase
     {
         $admin = $this->criarAdmin();
 
+        // Fase 137 (D-08): o "grupo" do relatório passa a ser o
+        // `CompanyGroup` do Comercial — `parent_company_id` não participa
+        // mais da agregação financeira. O grupo aqui só recria o cenário
+        // original do teste (pai + vinculada) sob a régua nova.
+        $grupo = \App\Models\CompanyGroup::create(['name' => 'Grupo Blade Teste']);
+
         $pai = Company::create([
             'name'             => 'Pai do Grupo',
             'cnpj'             => '22222222000022',
             'active'           => true,
             'adman_account_id' => 'ACC-BLADE-PAI',
             'service_type'     => [],
+            'company_group_id' => $grupo->id,
         ]);
         $this->registrarFaturamento($pai, 600_000.00);
         $this->criarContrato($pai, 'Polos');
@@ -153,6 +160,7 @@ class Phase14BladeRefactorTest extends TestCase
             'adman_account_id'  => 'ACC-BLADE-FILHA',
             'service_type'      => [],
             'parent_company_id' => $pai->id,
+            'company_group_id'  => $grupo->id,
         ]);
         $this->registrarFaturamento($filha, 600_000.00);
         $this->criarContrato($filha, 'Assessoria');

@@ -4,6 +4,8 @@ use Inertia\Inertia;
 use App\Http\Controllers\BoasVindasTemplateController;
 use App\Http\Controllers\CoordenacaoDistribuicaoController;
 use App\Http\Controllers\ContratoAdminController;
+use App\Http\Controllers\TabelasContratoController;
+use App\Http\Controllers\TabelaEmpresaContratoController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\EcfWebhookController;
@@ -21,6 +23,7 @@ use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanyGroupController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DesempenhoMetricasManuaisController;
+use App\Http\Controllers\FechamentoController;
 use App\Http\Controllers\Dev\SugadoresMlOnboardingController;
 use App\Http\Controllers\DevController;
 use App\Http\Controllers\DevModulosController;
@@ -1243,6 +1246,11 @@ Route::middleware(['auth', 'verified'])
          Route::post('/sync', [PolosController::class, 'sync'])->name('sync');
          // Detalhe semanal de 1 empresa (AJAX, sob demanda ao clicar no card).
          Route::get('/empresa/{cust}/semanal', [PolosController::class, 'semanal'])->name('empresa.semanal');
+         // Comentários de performance por empresa/mês — usados SÓ na tela /polos/empresas.
+         // Editar/apagar é do autor (ou admin); o gate fino está no controller.
+         Route::post('/comentarios',                [PolosController::class, 'comentarioStore'])->name('comentarios.store');
+         Route::put('/comentarios/{comentario}',    [PolosController::class, 'comentarioUpdate'])->name('comentarios.update');
+         Route::delete('/comentarios/{comentario}', [PolosController::class, 'comentarioDestroy'])->name('comentarios.destroy');
      });
 
 // ─── Análise por Empresa via ECF Drive (Phase 25) ────────────────────────────
@@ -1406,8 +1414,17 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     Route::get('/financeiro/relatorio-geral',         [AdminController::class, 'gerarRelatorioGeral'])->name('financeiro.relatorio.geral');
     Route::post('/financeiro/relatorio-geral/enviar', [AdminController::class, 'enviarRelatorioGeral'])->name('financeiro.relatorio.enviar');
     Route::post('/financeiro/sync-faturamento',       [AdminController::class, 'syncFaturamento'])->name('financeiro.sync');
+    // ─── Fechamento mensal (Fase 137, D-04/D-11/D-12) — ANTES de
+    // /financeiro/{company} pelo mesmo motivo do comentário acima: rota
+    // específica precisa vir antes do parâmetro dinâmico.
+    Route::post('/financeiro/competencia/fechar',     [FechamentoController::class, 'fecharCompetencia'])->name('financeiro.competencia.fechar');
+    Route::post('/financeiro/competencia/refazer',    [FechamentoController::class, 'refazerCompetencia'])->name('financeiro.competencia.refazer');
+    Route::post('/financeiro/faixas/servico/{servico}',        [FechamentoController::class, 'salvarFaixasServico'])->name('financeiro.faixas.servico');
+    Route::post('/financeiro/faixas/empresa/{company}',        [FechamentoController::class, 'salvarFaixasEmpresa'])->name('financeiro.faixas.empresa');
+    Route::delete('/financeiro/faixas/empresa/{company}',      [FechamentoController::class, 'removerFaixasEmpresa'])->name('financeiro.faixas.empresa.remover');
+    Route::post('/financeiro/faixas/grupo/{grupo}',             [FechamentoController::class, 'salvarFaixasGrupo'])->name('financeiro.faixas.grupo');
+    Route::delete('/financeiro/faixas/grupo/{grupo}',           [FechamentoController::class, 'removerFaixasGrupo'])->name('financeiro.faixas.grupo.remover');
     Route::patch('/financeiro/{company}',             [AdminController::class, 'updateFechamento'])->name('financeiro.update');
-    Route::post('/financeiro/{company}/recebido',     [AdminController::class, 'toggleRecebido'])->name('financeiro.recebido');
     Route::get('/financeiro/{company}/relatorio',     [AdminController::class, 'gerarRelatorio'])->name('financeiro.relatorio');
     Route::get('/inventario',              [AdminController::class, 'inventario'])->name('inventario');
 
@@ -1481,6 +1498,27 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     // Plano 131-06 (D-10) — absorve ContratoLiberacaoManualController::store()
     // (Fase 130). Ação disparada de dentro do detalhe da empresa.
     Route::post('/liberacao-manual', [ContratoAdminController::class, 'liberarManual'])->name('liberacao-manual');
+
+    // Plano 140-05 (TAB-08/TAB-09) — tela de conferência das tabelas de cobrança lidas do
+    // Clicksign (140-01/02/03/04) e a confirmação auditada que grava
+    // empresa_faixas_faturamento/companies. MESMO grupo de permissão acima, de propósito — nunca
+    // um grupo novo nem role:admin (T-140-19).
+    // Rotas: admin.contratos.tabelas.index, admin.contratos.tabelas.confirmar, admin.contratos.tabelas.descartar.
+    Route::get('/tabelas', [TabelasContratoController::class, 'index'])->name('tabelas.index');
+    Route::post('/tabelas/{proposta}/confirmar', [TabelasContratoController::class, 'confirmar'])->name('tabelas.confirmar');
+    Route::post('/tabelas/{proposta}/descartar', [TabelasContratoController::class, 'descartar'])->name('tabelas.descartar');
+
+    // Plano 142-02 (D-03) — ficha PERMANENTE da tabela de cobrança de uma empresa (ou do grupo
+    // dela), dentro do módulo de contratos, distinta da caixa de entrada `/tabelas` acima (ver
+    // `<decisao_de_projeto>` do 142-01-PLAN.md). MESMO grupo de permissão, de propósito — nunca
+    // um grupo novo nem `role:admin` (é a armadilha central deste plano: rota nova apontando pra
+    // fora daqui reabriria o 403 no botão Salvar para quem só tem `admin.contratos`).
+    // Rotas: admin.contratos.tabela.show/salvar/remover/grupo.salvar/grupo.remover.
+    Route::get('/empresa/{company}/tabela', [TabelaEmpresaContratoController::class, 'show'])->name('tabela.show');
+    Route::post('/empresa/{company}/tabela', [TabelaEmpresaContratoController::class, 'salvar'])->name('tabela.salvar');
+    Route::delete('/empresa/{company}/tabela', [TabelaEmpresaContratoController::class, 'remover'])->name('tabela.remover');
+    Route::post('/grupo/{grupo}/tabela', [TabelaEmpresaContratoController::class, 'salvarGrupo'])->name('tabela.grupo.salvar');
+    Route::delete('/grupo/{grupo}/tabela', [TabelaEmpresaContratoController::class, 'removerGrupo'])->name('tabela.grupo.remover');
 });
 
 // ─── Checklist administrativo (Fase 152 Plano 08, ADMIN-01/03/04/05/06) ──────

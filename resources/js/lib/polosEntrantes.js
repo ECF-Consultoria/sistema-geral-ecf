@@ -134,7 +134,7 @@ export function diasCorridosNaCompetencia(ym, hoje = new Date()) {
  * divergência entre abas: a "Visão geral" contava churn na meta de entrantes enquanto
  * a aba "Entrantes (M0)" e o Modo TV não contavam.
  */
-export const FASES_TERMINAIS = ['Encerrado', 'Protocolo Churn', 'Churn'];
+export const FASES_TERMINAIS = ['Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
 
 /** true quando a empresa está numa fase terminal (churn/encerrado). */
 export function ehFaseTerminal(empresa) {

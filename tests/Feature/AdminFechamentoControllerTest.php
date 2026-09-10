@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\AdmanMetric;
 use App\Models\Company;
+use App\Models\ContratoServico;
+use App\Models\Servico;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,10 +20,47 @@ class AdminFechamentoControllerTest extends TestCase
         return User::factory()->create(['role' => 'admin']);
     }
 
+    /**
+     * Fase 137 (D-01) — a faixa deixou de vir da constante `FAIXAS` e passou
+     * a depender de a empresa ter contrato ativo com um serviço "dono de
+     * tabela" (setor financeiro OU plataforma preenchida). A migration
+     * `2026_09_02_100003_seed_faixas_faturamento_iniciais` já semeia as 7
+     * faixas de "Gestão" (criada pelo catálogo base da Fase 14) — este
+     * helper só ajusta `plataforma`/`setor` para o serviço virar candidato
+     * no resolver, mesmo padrão de `Phase137FaixaResolverTest`.
+     */
+    private function criarServicoGestao(): Servico
+    {
+        $servico = Servico::firstOrCreate(
+            ['nome' => 'Gestão'],
+            ['valor_padrao' => 0, 'tipo_cobranca' => Servico::TIPO_MENSAL, 'ativo' => true]
+        );
+        $servico->update(['plataforma' => 'Mercado Livre', 'setor' => Servico::SETOR_PERFORMANCE]);
+
+        return $servico->refresh();
+    }
+
+    /** Vincula a empresa ao serviço "dono de tabela" com um contrato ativo. */
+    private function vincularGestao(Company $company): ContratoServico
+    {
+        $servico = $this->criarServicoGestao();
+
+        return ContratoServico::create([
+            'company_id'       => $company->id,
+            'servico_id'       => $servico->id,
+            'valor_contratado' => 0,
+            'data_contratacao' => Carbon::now()->toDateString(),
+            'ativo'            => true,
+        ]);
+    }
+
     public function test_fechamento_retorna_empresas_ativas_com_has_adman(): void
     {
         $admin = $this->criarAdmin();
-        Company::create(['name' => 'Empresa A', 'cnpj' => '11111111111111', 'active' => true, 'adman_account_id' => '123']);
+        // Quick 260909-e8n: sem contrato de servico ativo a empresa sai do
+        // escopo do fechamento — o vinculo mantem o que este teste afirma.
+        $company = Company::create(['name' => 'Empresa A', 'cnpj' => '11111111111111', 'active' => true, 'adman_account_id' => '123']);
+        $this->vincularGestao($company);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
@@ -36,7 +75,8 @@ class AdminFechamentoControllerTest extends TestCase
     public function test_empresa_sem_adman_recebe_has_adman_false(): void
     {
         $admin = $this->criarAdmin();
-        Company::create(['name' => 'Empresa B', 'cnpj' => '22222222222222', 'active' => true]);
+        $company = Company::create(['name' => 'Empresa B', 'cnpj' => '22222222222222', 'active' => true]);
+        $this->vincularGestao($company);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
@@ -132,6 +172,7 @@ class AdminFechamentoControllerTest extends TestCase
     {
         $admin   = $this->criarAdmin();
         $company = Company::create(['name' => 'Empresa OK', 'cnpj' => '10000000000001', 'active' => true, 'adman_account_id' => 'ACC001']);
+        $this->vincularGestao($company);
 
         AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->startOfMonth()->toDateString(), 'revenue' => 500000.00, 'synced_at' => now(), 'raw_data' => []]);
         AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->toDateString(),                  'revenue' => 500000.00, 'synced_at' => now(), 'raw_data' => []]);
@@ -150,6 +191,7 @@ class AdminFechamentoControllerTest extends TestCase
     {
         $admin   = $this->criarAdmin();
         $company = Company::create(['name' => 'Empresa Periodo', 'cnpj' => '10000000000002', 'active' => true, 'adman_account_id' => 'ACC002']);
+        $this->vincularGestao($company);
 
         $inicio = Carbon::now()->startOfMonth();
         $fim    = Carbon::now();
@@ -170,14 +212,18 @@ class AdminFechamentoControllerTest extends TestCase
     public function test_empresa_sem_dados_recebe_estado_sem_dados(): void
     {
         $admin   = $this->criarAdmin();
-        Company::create(['name' => 'Empresa Sem Dados', 'cnpj' => '10000000000003', 'active' => true, 'adman_account_id' => 'ACC003']);
+        $company = Company::create(['name' => 'Empresa Sem Dados', 'cnpj' => '10000000000003', 'active' => true, 'adman_account_id' => 'ACC003']);
+        $this->vincularGestao($company);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
         $response->assertOk();
+        // Fase 137 (D-06): o estado antigo 'sem_dados' virou 'sem_faturamento'
+        // (mesma precedência do comando fechamento:consolidar-mes) — empresa
+        // com integração mas sem métrica no mês-calendário fechado.
         $response->assertInertia(fn ($page) => $page
             ->component('Admin/Financeiro')
-            ->where('companies.0.estado', 'sem_dados')
+            ->where('companies.0.estado', 'sem_faturamento')
             ->where('companies.0.faturamento', null)
             ->where('companies.0.faixa', null)
         );
@@ -186,7 +232,8 @@ class AdminFechamentoControllerTest extends TestCase
     public function test_empresa_sem_adman_recebe_estado_sem_integracao(): void
     {
         $admin   = $this->criarAdmin();
-        Company::create(['name' => 'Empresa Sem Adman', 'cnpj' => '10000000000004', 'active' => true]);
+        $company = Company::create(['name' => 'Empresa Sem Adman', 'cnpj' => '10000000000004', 'active' => true]);
+        $this->vincularGestao($company);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
@@ -202,6 +249,7 @@ class AdminFechamentoControllerTest extends TestCase
     {
         $admin   = $this->criarAdmin();
         $company = Company::create(['name' => 'Empresa 300k', 'cnpj' => '10000000000005', 'active' => true, 'adman_account_id' => 'ACC005']);
+        $this->vincularGestao($company);
 
         AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->toDateString(), 'revenue' => 300000.00, 'synced_at' => now(), 'raw_data' => []]);
 
@@ -219,6 +267,7 @@ class AdminFechamentoControllerTest extends TestCase
     {
         $admin   = $this->criarAdmin();
         $company = Company::create(['name' => 'Empresa 700k', 'cnpj' => '10000000000006', 'active' => true, 'adman_account_id' => 'ACC006']);
+        $this->vincularGestao($company);
 
         AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->toDateString(), 'revenue' => 700000.00, 'synced_at' => now(), 'raw_data' => []]);
 
@@ -236,6 +285,7 @@ class AdminFechamentoControllerTest extends TestCase
     {
         $admin   = $this->criarAdmin();
         $company = Company::create(['name' => 'Empresa 5.5M', 'cnpj' => '10000000000007', 'active' => true, 'adman_account_id' => 'ACC007']);
+        $this->vincularGestao($company);
 
         AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->toDateString(), 'revenue' => 5500000.00, 'synced_at' => now(), 'raw_data' => []]);
 
@@ -253,15 +303,20 @@ class AdminFechamentoControllerTest extends TestCase
     {
         $admin   = $this->criarAdmin();
         $company = Company::create(['name' => 'Empresa Mes Anterior', 'cnpj' => '10000000000008', 'active' => true, 'adman_account_id' => 'ACC008']);
+        $this->vincularGestao($company);
 
         AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->subMonth()->toDateString(), 'revenue' => 1000000.00, 'synced_at' => now(), 'raw_data' => []]);
 
         $response = $this->actingAs($admin)->get('/administrativo/financeiro');
 
         $response->assertOk();
+        // Prova dupla de D-06: a métrica do mês anterior não conta (mês-
+        // calendário fechado, nunca janela móvel) — e o estado 'sem_dados'
+        // virou 'sem_faturamento' (Fase 137, mesma precedência do comando
+        // fechamento:consolidar-mes).
         $response->assertInertia(fn ($page) => $page
             ->component('Admin/Financeiro')
-            ->where('companies.0.estado', 'sem_dados')
+            ->where('companies.0.estado', 'sem_faturamento')
         );
     }
 }

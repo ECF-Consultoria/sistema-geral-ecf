@@ -33,4 +33,7 @@ enum Categoria: string
 
     /** Signal crítico do ECF Drive para empresa da nossa carteira — `signal.detected` com severity=critical (Phase 29). */
     case ALERTA_ECF     = 'alerta_ecf';
+
+    /** Disparada pelo fechamento mensal quando uma empresa ou grupo muda de faixa de cobrança (Fase 138, D-02). */
+    case FAIXA_ALTERADA = 'faixa_alterada';
 }

@@ -38,8 +38,14 @@ class SyncPolosPlanilha extends Command
         // Fase PRÓPRIA pelo mesmo motivo de "Aceite no Projeto": fundir num vizinho apagaria a
         // contagem do funil de entrada.
         'ENCAMINHAR COMERCIAL' => 'Encaminhar Comercial',
-        'CHRUN' => 'Churn', 'CHURN' => 'Churn', 'PROTOCOLO CHURN' => 'Churn',
-        'DESISTÊNCIA' => 'Churn', 'DESISTENCIA' => 'Churn', 'ENCERRADO' => 'Encerrado',
+        'CHRUN' => 'Churn', 'CHURN' => 'Churn',
+        // "Protocolo Churn" e "Desistência" existem como fase PRÓPRIA no painel desde
+        // 2026-09-09. Enquanto este mapa as fundia em 'Churn', todo `--apply` desfazia
+        // calado o que o time marcou na tela — o mesmo estrago que "Aceite no Projeto"
+        // e "Encaminhar Comercial" já tinham sofrido. Fundir fase que a UI oferece
+        // separada é sempre reversão silenciosa de dado.
+        'PROTOCOLO CHURN' => 'Protocolo Churn',
+        'DESISTÊNCIA' => 'Desistência', 'DESISTENCIA' => 'Desistência', 'ENCERRADO' => 'Encerrado',
     ];
 
     /**

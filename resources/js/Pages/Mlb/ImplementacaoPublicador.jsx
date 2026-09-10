@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { router } from '@inertiajs/react';
 import axios from 'axios';
 import { cn } from '@/lib/utils';
-import { Copy, Check, RefreshCw, Maximize2, X } from 'lucide-react';
+import { Copy, Check, RefreshCw, Maximize2, X, MessageSquare } from 'lucide-react';
 import {
     produtosPreenchidos,
     mesclarPrecificacaoComPlanilha,
@@ -527,7 +527,10 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
     const erp   = itens.erp   ?? {};
     const integ = itens.integrador_logistico ?? {};
     const hub   = itens.hub   ?? {};
-    const pmass = itens.publicar_em_massa ?? {};
+    // "Publicar em Massa?" (select) virou "Observações sobre publicação" (texto livre) em
+    // 02/09/2026. A chave do item continua `publicar_em_massa` — ver o comentário no
+    // CHECKLIST do MlbImplementacao. O texto novo mora em `.observacao`.
+    const obsPub = String(itens.publicar_em_massa?.observacao ?? '').trim();
 
     const thCls = "text-left px-3 py-2 text-white/30 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap";
     const tdCls = "px-3 py-2 text-white/70 text-[12px]";
@@ -570,6 +573,22 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
 
             <div className="max-w-6xl mx-auto px-5 py-6 space-y-6">
 
+                {/* Observações do cliente sobre a publicação. Primeiro bloco da tela de
+                    propósito: é instrução direta de quem vai ter os anúncios publicados,
+                    e enterrá-la numa linha de "Dados Gerais" é o mesmo que não mostrar.
+                    Some inteira quando não há observação. */}
+                {obsPub && (
+                    <div className="rounded-2xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] p-5">
+                        <div className="flex items-center gap-2 mb-3">
+                            <MessageSquare size={15} className="text-ecf-yellow shrink-0" />
+                            <h2 className="text-ecf-yellow font-bold text-[14px]">Observações sobre publicação</h2>
+                        </div>
+                        {/* whitespace-pre-line: o cliente digita em textarea e as quebras de
+                            linha fazem parte da instrução. */}
+                        <p className="text-white/80 text-[13px] leading-relaxed whitespace-pre-line">{obsPub}</p>
+                    </div>
+                )}
+
                 {/* Dados Gerais */}
                 <SectionCard title="Dados Gerais">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
@@ -581,7 +600,6 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                                 mora em .valor e o texto opcional continua em .acesso. */}
                             <InfoRow label="HUB" value={hub.valor === 'Outro' ? `Outro: ${hub.outro}` : hub.valor} />
                             <InfoRow label="Acesso HUB" value={hub.acesso} />
-                            <InfoRow label="Publicar em Massa" value={pmass.valor} />
                         </div>
                         <div>
                             <InfoRow label="Conta Mercado Livre" value={itens.conta_ml?.feito ? 'Acesso confirmado' : 'Pendente'} />

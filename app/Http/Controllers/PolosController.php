@@ -18,6 +18,8 @@ use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\PoloFaturamentoSnapshot;
 use App\Models\PoloMetaEntrada;
+use App\Models\PoloRosterSnapshot;
+use App\Models\PolosComentario;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
@@ -409,6 +411,11 @@ class PolosController extends Controller
                     'reuniao_onboarding'       => $impl?->reuniao_onboarding,
                     // ── Valores do onboarding (edição inline tipo planilha; null sem ficha) ──
                     'acesso_colaborador'       => $impl?->acesso_colaborador,
+                    // Dois e-mails distintos e ambos buscáveis na barra do painel: `gmail` é a
+                    // conta do ML cadastrada NA EMPRESA (existe sem ficha) e `gmail_colaborador`
+                    // é o acesso que a ECF usa (mora na ficha). Quem procura pelo endereço do
+                    // cliente não sabe em qual dos dois ele foi digitado.
+                    'gmail'                    => $e->gmail,
                     'gmail_colaborador'        => $impl?->gmail_colaborador,
                     'grupo_whatsapp'           => $impl ? (bool) $impl->grupo_whatsapp : null,
                     // Link do grupo de WhatsApp (coluna "Link do Whats"; quick 260810-dv6).
@@ -425,6 +432,16 @@ class PolosController extends Controller
                     'integradora'              => $impl?->integradora,
                     'places'                   => $impl?->places,
                     'erp'                      => $impl?->erp,
+                    // ── Respostas do CLIENTE no link do Onboarding (moram no JSON, não em
+                    // coluna). Somente leitura no Painel: quem responde é o cliente, a
+                    // equipe só vê e filtra. Ver MlbImplementacao::respostaChecklist().
+                    'produtos_perfil'          => $impl?->respostaChecklist('produtos_perfil'),
+                    // Canal + faixa: o item virou duas perguntas em 02/09/2026 e
+                    // respostaChecklist() só devolveria a faixa.
+                    'canais_faturamento'       => $impl?->respostaCanaisVenda(),
+                    // Texto livre do item "Observações sobre publicação" (mora em
+                    // `observacao`, não em `valor` — ver observacaoPublicacao()).
+                    'obs_publicacao'           => $impl?->observacaoPublicacao(),
                     'data_solicitacao'         => $impl?->data_solicitacao?->format('Y-m-d'),
                     // Data de cadastro/entrada da empresa no sistema (automática; existe sem ficha).
                     'data_cadastro'            => $e->created_at?->format('Y-m-d'),
@@ -596,6 +613,8 @@ class PolosController extends Controller
             ['key' => 'grupo_whatsapp',      'label' => 'Grupo WhatsApp',      'tipo' => 'texto'],
             ['key' => 'link_whatsapp',       'label' => 'Link do Whats',       'tipo' => 'texto'],
             ['key' => 'reuniao_onboarding',  'label' => 'Reunião onboarding',  'tipo' => 'texto'],
+            // Resposta do cliente no link do Onboarding (JSON, não coluna).
+            ['key' => 'canais_faturamento',  'label' => 'Outros canais',       'tipo' => 'texto'],
             ['key' => 'data_solicitacao',    'label' => 'Data solicitação',    'tipo' => 'data'],
             // ── Produtos ──
             ['key' => 'planilha_produtos',   'label' => 'Planilha produtos',   'tipo' => 'texto'],
@@ -604,10 +623,14 @@ class PolosController extends Controller
             ['key' => 'decola',              'label' => 'Decola',              'tipo' => 'texto'],
             ['key' => 'campanha_criada',     'label' => 'Campanha',            'tipo' => 'texto'],
             ['key' => 'central_promocao',    'label' => 'Central de Promoção', 'tipo' => 'texto'],
+            // Resposta do cliente no link do Onboarding (JSON, não coluna).
+            ['key' => 'obs_publicacao',      'label' => 'Obs. publicação',     'tipo' => 'texto'],
             // ── Logística ──
             ['key' => 'contextos_logistica', 'label' => 'Contextos logística', 'tipo' => 'texto'],
             ['key' => 'me1',                 'label' => 'ME1',                 'tipo' => 'texto'],
             ['key' => 'integradora',         'label' => 'Integradora',         'tipo' => 'texto'],
+            // Resposta do cliente no link do Onboarding — é o que decide o ME1.
+            ['key' => 'produtos_perfil',     'label' => 'Perfil produtos',     'tipo' => 'texto'],
             ['key' => 'places',              'label' => 'Places',              'tipo' => 'texto'],
             ['key' => 'erp',                 'label' => 'ERP',                 'tipo' => 'texto'],
         ];
@@ -617,6 +640,9 @@ class PolosController extends Controller
             $cols[] = ['key' => 'fin_meta',        'label' => 'Meta',        'tipo' => 'dinheiro'];
             $cols[] = ['key' => 'fin_pct',         'label' => '% da meta',   'tipo' => 'percentual'];
             $cols[] = ['key' => 'fin_ads',         'label' => 'ADS',         'tipo' => 'dinheiro'];
+            // Fatia de Casa/Móveis no gross — sinaliza quem não vende móvel num polo
+            // moveleiro. NÃO entra em meta/status: é insumo de curadoria de roster.
+            $cols[] = ['key' => 'fin_pct_moveis', 'label' => '% móveis',    'tipo' => 'percentual'];
             $cols[] = ['key' => 'fin_status',      'label' => 'Status',      'tipo' => 'texto'];
         }
 
@@ -730,6 +756,11 @@ class PolosController extends Controller
 
         // ── Financeiro (admin): cust_norm → números do cockpit ──
         $fin = [];
+        // cust_norm → fatia de Casa/Móveis (MLB1574) sobre o gross, em %. O painel mede
+        // gross (ver faturamentoAdmanDoMes), então esta é a única visão de "essa empresa
+        // vende móvel mesmo?" — a pergunta é de ROSTER, e é aqui na planilha que o time
+        // decide quem fica no programa. JHOLP MIX MAGAZINE sai com 0,8% (99% Pet Shop).
+        $pctMoveis = [];
         if ($isAdmin) {
             try {
                 $cockpit = $this->montarCockpit($data['mes'] ?? null);
@@ -747,14 +778,27 @@ class PolosController extends Controller
                         $fin[$k] = $emp;
                     }
                 }
+
+                $mesFin = (string) ($cockpit['mesSelecionado'] ?? '');
+                if ($mesFin !== '' && $fin !== []) {
+                    $ativosFin = array_map(fn ($k) => ['cust_id' => $k], array_keys($fin));
+                    $moveis    = $this->faturamentoMoveisDoMes($ativosFin, $mesFin);
+                    foreach ($fin as $k => $emp) {
+                        $gross = (float) ($emp['faturamento'] ?? 0);
+                        // Sem gross não há fração possível — coluna vazia em vez de 0%,
+                        // que se leria como "não vende móvel".
+                        $pctMoveis[$k] = $gross > 0 ? round(100 * ((float) ($moveis[$k] ?? 0)) / $gross, 1) : null;
+                    }
+                }
             } catch (\Throwable $ex) {
                 // Planilha sem financeiro > download quebrado: o operacional é o essencial.
                 Log::warning('[Polos] Exportação sem bloco financeiro: ' . $ex->getMessage());
-                $fin = [];
+                $fin       = [];
+                $pctMoveis = [];
             }
         }
 
-        $linhas = $empresas->map(function ($e) use ($fin) {
+        $linhas = $empresas->map(function ($e) use ($fin, $pctMoveis) {
             $impl  = $e->implementacao;
             $prazo = $impl?->infoPrazo();
             $f     = $fin[CustId::normaliza((string) ($e->cust_id ?? ''))] ?? [];
@@ -782,6 +826,7 @@ class PolosController extends Controller
                 'grupo_whatsapp'      => $simNao($impl ? (bool) $impl->grupo_whatsapp : null),
                 'link_whatsapp'       => $impl?->link_whatsapp,
                 'reuniao_onboarding'  => $impl?->reuniao_onboarding,
+                'canais_faturamento'  => $impl?->respostaCanaisVenda(),
                 'data_solicitacao'    => $impl?->data_solicitacao?->format('Y-m-d'),
                 'planilha_produtos'   => $impl?->planilha_produtos,
                 'listagem'            => $impl?->listagem,
@@ -789,15 +834,18 @@ class PolosController extends Controller
                 'decola'              => $impl?->decola,
                 'campanha_criada'     => $simNao($impl ? (bool) $impl->campanha_criada : null),
                 'central_promocao'    => $impl?->central_promocao,
+                'obs_publicacao'      => $impl?->observacaoPublicacao(),
                 'contextos_logistica' => $impl?->contextos_logistica,
                 'me1'                 => $impl?->me1,
                 'integradora'         => $impl?->integradora,
+                'produtos_perfil'     => $impl?->respostaChecklist('produtos_perfil'),
                 'places'              => $impl?->places,
                 'erp'                 => $impl?->erp,
                 'fin_faturamento'     => $f['faturamento'] ?? null,
                 'fin_meta'            => $f['meta'] ?? null,
                 'fin_pct'             => $f['pct'] ?? null,
                 'fin_ads'             => $f['ads'] ?? null,
+                'fin_pct_moveis'      => $pctMoveis[CustId::normaliza((string) ($e->cust_id ?? ''))] ?? null,
                 'fin_status'          => isset($f['status']) ? (self::EXPORT_STATUS_META_LABEL[$f['status']] ?? $f['status']) : null,
             ];
         })->all();
@@ -1200,9 +1248,17 @@ class PolosController extends Controller
      * lista plana de TODAS as empresas ativas (todos os polos) do mês, com status,
      * faturamento vs meta, ads e problema. Abre numa aba própria (mais espaço).
      */
-    public function todasEmpresas(): \Inertia\Response
+    public function todasEmpresas(Request $request): \Inertia\Response
     {
         $this->checkFaturamentoAccess();
+
+        // Status vindo do clique numa fatia da "Distribuição de status" (/polos e Cockpit).
+        // Só chaves conhecidas: query string é entrada do usuário, e um valor livre viraria
+        // um chip que não filtra nada — a tela diria "0 empresas" sem explicar por quê.
+        $statusInicial = $request->query('status');
+        if (! in_array($statusInicial, ['Sim', 'Em progresso', 'Não', 'Problema', 'ads'], true)) {
+            $statusInicial = null;
+        }
 
         $vazio = [
             'empresas'       => [],
@@ -1214,6 +1270,8 @@ class PolosController extends Controller
             'totais'         => ['faturamento' => 0, 'meta' => 0, 'pct' => 0, 'ativos' => 0],
             // Limites de ADS defensivos: garante shape consistente no frontend mesmo sem dados.
             'adsLimites'     => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
+            'comentarios'    => (object) [],
+            'statusInicial'  => $statusInicial,
             'erro'           => null,
         ];
 
@@ -1251,6 +1309,11 @@ class PolosController extends Controller
                     'ativos'      => count($empresas),
                 ],
                 'adsLimites'     => $d['adsLimites'],
+                // Comentarios de performance do mes, agrupados por cust_id. Vem junto com a
+                // pagina (volume pequeno) em vez de um fetch por linha aberta: sem isso, abrir
+                // 20 empresas seriam 20 idas ao servidor para mostrar 3 frases.
+                'comentarios'    => $this->comentariosDoMes($d['mesSel'], $request->user()),
+                'statusInicial'  => $statusInicial,
                 'erro'           => null,
             ]);
         } catch (\Throwable $e) {
@@ -1259,6 +1322,102 @@ class PolosController extends Controller
                 'erro' => 'Não foi possível buscar dados do ECF Drive. Tente em alguns segundos.',
             ]));
         }
+    }
+
+    // ═══ Comentários de performance (/polos/empresas) ═══
+    // Ver o docblock da migration polos_comentarios para as decisões de schema.
+
+    /**
+     * Comentários do mês agrupados por cust_id, no shape que a tela consome.
+     *
+     * `pode_editar` é resolvido AQUI e não no front: a regra (autor ou admin) é a mesma
+     * que os endpoints aplicam, e derivar isso no JSX abriria caminho para a tela mostrar
+     * um lápis que o servidor recusa.
+     *
+     * @return array<string, array<int, array<string,mixed>>>
+     */
+    private function comentariosDoMes(?string $mes, ?User $user): array
+    {
+        if ($mes === null || $mes === '') {
+            return [];
+        }
+
+        return PolosComentario::with('autor:id,name')
+            ->where('mes', $mes)
+            ->orderBy('created_at')
+            ->get()
+            ->groupBy('cust_id')
+            ->map(fn ($grupo) => $grupo->map(fn (PolosComentario $c) => [
+                'id'          => $c->id,
+                'texto'       => $c->texto,
+                'autor'       => $c->autorNome(),
+                'criado_em'   => $c->created_at?->format('d/m/Y H:i'),
+                'editado_em'  => $c->editado_em?->format('d/m/Y H:i'),
+                'pode_editar' => $this->podeMexerNoComentario($user, $c),
+            ])->values()->all())
+            ->all();
+    }
+
+    /** Só o autor mexe no próprio comentário; admin mexe em qualquer um (moderação). */
+    private function podeMexerNoComentario(?User $user, PolosComentario $comentario): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        return $user->isAdmin() || $comentario->user_id === $user->id;
+    }
+
+    public function comentarioStore(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+
+        $dados = $request->validate([
+            'cust_id' => ['required', 'string', 'max:50'],
+            'mes'     => ['required', 'string', 'regex:/^[0-9]{6}$/'],
+            'texto'   => ['required', 'string', 'max:5000'],
+        ]);
+
+        $user = $request->user();
+
+        PolosComentario::create([
+            // Normaliza na escrita: a lista da tela é montada por cust normalizado, e um
+            // comentário gravado com o cru nunca mais reencontraria a própria empresa.
+            'cust_id'    => CustId::normaliza($dados['cust_id']),
+            'mes'        => $dados['mes'],
+            'user_id'    => $user->id,
+            'autor_nome' => $user->name,
+            'texto'      => trim($dados['texto']),
+        ]);
+
+        return back()->with('success', 'Comentário adicionado.');
+    }
+
+    public function comentarioUpdate(Request $request, PolosComentario $comentario): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+        abort_unless($this->podeMexerNoComentario($request->user(), $comentario), 403, 'Só o autor pode editar este comentário.');
+
+        $dados = $request->validate([
+            'texto' => ['required', 'string', 'max:5000'],
+        ]);
+
+        $comentario->update([
+            'texto'      => trim($dados['texto']),
+            'editado_em' => now(),
+        ]);
+
+        return back()->with('success', 'Comentário atualizado.');
+    }
+
+    public function comentarioDestroy(Request $request, PolosComentario $comentario): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+        abort_unless($this->podeMexerNoComentario($request->user(), $comentario), 403, 'Só o autor pode apagar este comentário.');
+
+        $comentario->delete();
+
+        return back()->with('success', 'Comentário removido.');
     }
 
     /**
@@ -1481,22 +1640,61 @@ class PolosController extends Controller
     }
 
     /**
-     * Faturamento POR CATEGORIA "Casa, Móveis e Decoração" (raiz ML MLB1574) do mês,
-     * por cust_id normalizado. SUBSTITUI o gross total da conta — o /polos passa a
-     * contar SÓ Móveis em todo o painel.
+     * Faturamento GROSS da conta (todas as categorias) do mês, por cust_id normalizado.
      *
-     * Fonte: coluna `faturamento_moveis` do PoloFaturamentoSnapshot, computada pelo
-     * SyncPolosFaturamentoJob a partir do netBilling por item do /performance (Adman
-     * entrega o categoryId; a raiz vem da API pública do ML). Diferente do gross, o
-     * valor por categoria NÃO tem cache ao vivo — a frescura é a do último warm (cron
-     * 13:00 + botão "Sincronizar"), igual ao ADS. Cust_id sem snapshot → ausência no
-     * mapa (o chamador trata como R$0). NUNCA quebra o /polos.
+     * Entre 260707 e 260902 o painel servia `faturamento_moveis` — só a raiz MLB1574,
+     * em netBilling por item. A intenção era não dar meta batida a quem não vende móvel
+     * (JHOLP MIX MAGAZINE é 99% Pet Shop; Primus Haus, 83% Acessórios para Veículos).
+     * Foi revertido por três motivos medidos:
+     *
+     *  1. Os limiares M2=1.000 / M3=4.000 / M4=8.000 vêm da planilha, que sempre usou
+     *     gross ("defaults da planilha", D-07). Ninguém os recalibrou quando o insumo
+     *     virou Móveis-net — a meta ficou ~13% mais difícil sem decisão de produto.
+     *  2. Fatiar por categoria obrigou a trocar de métrica junto: a Adman só entrega
+     *     netBilling POR ITEM (o gross existe só no total da conta). Dos ~13% de queda,
+     *     ~11 pontos são gross→net e só ~3 são categoria — a Lutz Home Decor é 100%
+     *     móvel e mesmo assim aparecia R$ 74 mil menor.
+     *  3. A planilha de Evolução, referência do time, NÃO filtra categoria: traz a JHOLP
+     *     com R$ 50.818 (a conta inteira), não com os R$ 396 de móveis dela.
+     *
+     * Com gross o painel reproduz a planilha com 0,1% de resíduo. O caso "vende ração num
+     * polo moveleiro" continua real, mas é decisão de ROSTER (quem entra no programa) e
+     * não de métrica — por isso `faturamento_moveis` segue sendo calculado e gravado pelo
+     * job, exposto como "% móveis" na exportação do painel.
+     *
+     * Fonte: coluna `faturamento` do PoloFaturamentoSnapshot. Cust_id sem snapshot →
+     * ausência no mapa (o chamador trata como R$0). NUNCA quebra o /polos.
      *
      * @param  array<array<string,mixed>>  $ativos  Ativos (toArray)
      * @param  string  $mesSel  TIM_MONTH_ID 'YYYYMM' do mês exibido
-     * @return array<string,float>  [cust_id normalizado => faturamento Móveis (net)]
+     * @return array<string,float>  [cust_id normalizado => faturamento gross da conta]
      */
     private function faturamentoAdmanDoMes(array $ativos, string $mesSel): array
+    {
+        return $this->colunaDoSnapshot($ativos, $mesSel, 'faturamento');
+    }
+
+    /**
+     * Faturamento só da raiz "Casa, Móveis e Decoração" (MLB1574), em netBilling por item.
+     * NÃO alimenta meta nem status — serve para expor "% móveis" e sinalizar empresa que
+     * não vende móvel num polo moveleiro (decisão de roster). Ver faturamentoAdmanDoMes().
+     *
+     * @param  array<array<string,mixed>>  $ativos
+     * @return array<string,float>  [cust_id normalizado => faturamento Móveis (net)]
+     */
+    private function faturamentoMoveisDoMes(array $ativos, string $mesSel): array
+    {
+        return $this->colunaDoSnapshot($ativos, $mesSel, 'faturamento_moveis');
+    }
+
+    /**
+     * Lê uma coluna de valor do PoloFaturamentoSnapshot para os ativos do mês.
+     * Defensiva: falha de leitura devolve [] em vez de quebrar o /polos.
+     *
+     * @param  array<array<string,mixed>>  $ativos
+     * @return array<string,float>
+     */
+    private function colunaDoSnapshot(array $ativos, string $mesSel, string $coluna): array
     {
         try {
             $custIds = collect($ativos)
@@ -1510,10 +1708,9 @@ class PolosController extends Controller
                 return [];
             }
 
-            // Faturamento de Móveis vive SÓ no snapshot (sem cache ao vivo por categoria).
             $snaps = PoloFaturamentoSnapshot::where('mes', $mesSel)
                 ->whereIn('cust_id', $custIds)
-                ->pluck('faturamento_moveis', 'cust_id');
+                ->pluck($coluna, 'cust_id');
 
             $out = [];
             foreach ($custIds as $id) {
@@ -1524,8 +1721,8 @@ class PolosController extends Controller
 
             return $out;
         } catch (\Throwable $e) {
-            // Defensiva: falha de leitura NÃO quebra /polos.
-            Log::warning('[Polos] Falha ao ler faturamento (Móveis) do snapshot: ' . $e->getMessage());
+            Log::warning("[Polos] Falha ao ler '{$coluna}' do snapshot: " . $e->getMessage());
+
             return [];
         }
     }
@@ -1540,15 +1737,30 @@ class PolosController extends Controller
      */
     private function listarMeses(array $linhas): array
     {
-        $mapa = []; // value(YYYYMM) => parcial(bool)
+        // Um mês é FECHADO assim que aparece QUALQUER linha 'FECHADO' dele — nunca pelo
+        // inverso. Na virada do mês a origem publica o mês recém-encerrado DUAS vezes: as
+        // linhas definitivas 'FECHADO' e as antigas 'PARCIAL' convivem no mesmo CSV
+        // (agosto/2026 chegou com 547 de cada). A regra anterior era `|| $parcial`, então
+        // uma única linha parcial vencia todas as fechadas e o mês seguia "corrente".
+        //
+        // Isso não é cosmético: `montarAtivosDoMes()` usa o roster AO VIVO quando o mês é
+        // parcial, e o time avança todas as fases na virada (M0→M1→…→M4→Encerrado, 324
+        // mudanças em 01/09/2026). Agosto passou a ser somado com as fases de setembro e
+        // as 43 empresas que eram M4 sumiram do total — R$ 4,73 mi viraram R$ 2,74 mi.
+        // O mês corrente continua parcial pela injeção logo abaixo, que é o caso legítimo.
+        $temFechado = []; // value(YYYYMM) => viu ao menos uma linha FECHADO
         foreach ($linhas as $row) {
             $mes = trim((string) ($row['TIM_MONTH_ID'] ?? $row['tim_month_id'] ?? ''));
             if ($mes === '') {
                 continue;
             }
-            $comp    = strtoupper(trim((string) ($row['COMPARATIVO'] ?? $row['comparativo'] ?? '')));
-            $parcial = $comp !== '' && $comp !== 'FECHADO';
-            $mapa[$mes] = ($mapa[$mes] ?? false) || $parcial;
+            $comp = strtoupper(trim((string) ($row['COMPARATIVO'] ?? $row['comparativo'] ?? '')));
+            $temFechado[$mes] = ($temFechado[$mes] ?? false) || $comp === 'FECHADO';
+        }
+
+        $mapa = []; // value(YYYYMM) => parcial(bool)
+        foreach ($temFechado as $mes => $fechado) {
+            $mapa[$mes] = ! $fechado;
         }
 
         // O eixo de meses NÃO deve depender do CSV para o mês corrente. A Comercial
@@ -1632,13 +1844,39 @@ class PolosController extends Controller
                 ->toArray();
         }
 
-        // Mês fechado: reconstrói o roster histórico a partir do CSV daquele mês.
+        // Mês fechado: o roster CONGELADO é a fonte preferencial — é o único que descreve
+        // o mês em vez de inferi-lo. Gravado por `polos:congelar-roster` (diário no mês
+        // corrente; --do-log no backfill). Mês sem snapshot cai na reconstrução do CSV
+        // abaixo, que continua valendo para o histórico antigo.
+        $congelado = PoloRosterSnapshot::where('mes', $mesSel)->get();
+        if ($congelado->isNotEmpty()) {
+            return $congelado->map(fn ($r) => $r->paraAtivo())->all();
+        }
+
+        // Fallback: reconstrói o roster histórico a partir do CSV daquele mês.
         $faseDeMeses = static fn (int $m): ?string => match ($m) {
             1       => 'M2',
             2       => 'M3',
             3       => 'M4',
             default => null, // 0 = M1 (excluído); >=4 = já saiu do programa
         };
+
+        // O CSV da Comercial lista TODO seller da base, não só quem entrou no programa —
+        // o roster de Polos é curado à mão no MlbEmpresa (Kanban). Sem este cruzamento a
+        // reconstrução inventava ativos: agosto/2026 vinha com 185 empresas contra as 133
+        // da planilha, e as 40 excedentes (apelidos crus do ML, tipo 'PISA20240413123113')
+        // nunca tiveram snapshot — entravam no gráfico como "Não vendeu" e derrubavam o
+        // "no alvo" de 57,7% para 43,8%. Elas não venderam zero: nunca foram medidas.
+        //
+        // Inclui arquivadas de propósito: arquivar é evento de HOJE e não apaga o fato de
+        // a empresa ter sido ativa no mês consultado (a Spinella Decor foi arquivada por
+        // engano em 18/07 faturando ~R$ 900 mil/mês — filtrar por arquivado_em aqui
+        // reintroduziria o mesmo buraco no histórico).
+        $curadas = MlbEmpresa::where('projeto', 'POLOS')
+            ->pluck('cust_id')
+            ->map(fn ($c) => CustId::normaliza((string) $c))
+            ->filter(fn ($c) => $c !== '')
+            ->flip();
 
         $ativos = [];
         foreach ($linhasMes as $row) {
@@ -1651,6 +1889,10 @@ class PolosController extends Controller
             $id = CustId::normaliza((string) ($row['CUS_CUST_ID_SEL'] ?? $row['cus_cust_id_sel'] ?? ''));
             if ($id === '' || isset($ativos[$id])) {
                 continue; // ignora linha sem cust_id e deduplica por empresa
+            }
+
+            if (! $curadas->has($id)) {
+                continue; // seller da base da Comercial que nunca entrou no programa
             }
 
             $nome = trim((string) ($row['CUS_NICKNAME'] ?? $row['cus_nickname'] ?? ''));

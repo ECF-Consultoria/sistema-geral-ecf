@@ -220,7 +220,9 @@ class ChecklistCatalogos260901Test extends TestCase
         $porId = array_column(MlbImplementacao::CHECKLIST, null, 'id');
 
         $this->assertSame('select_opcoes', $porId['produtos_perfil']['tipo']);
-        $this->assertSame('select_opcoes', $porId['canais_faturamento']['tipo']);
+        // canais_faturamento virou 'canais_venda' em 02/09/2026 (ganhou a pergunta do
+        // canal). Continua se marcando sozinho — ver CanaisVendaTest.
+        $this->assertSame('canais_venda', $porId['canais_faturamento']['tipo']);
 
         // HUB é 'select' (não 'select_opcoes') para MANTER a trava anti-check-vazio.
         $this->assertSame('select', $porId['hub']['tipo']);

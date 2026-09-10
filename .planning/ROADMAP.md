@@ -2073,7 +2073,331 @@ Plans:
 >
 > **Fora de escopo, nao planejado:** recalibrar reguas; reconsolidar competencias fechadas (a fase entrega so o relatorio read-only de impacto, D-11); mudar a agregacao (faturamento usa mediana, margem usa media — de proposito); mexer no piso de NPS; corrigir o lock global por mes do `WarmDesempenhoDispatcher`.
 
-## Milestone v23.0 — Fluxo de Entrada de Novas Empresas (Fases 150-143)
+### Phase 137: Fechamento mensal — faturamento por empresa/grupo contra a tabela progressiva
+
+**Goal:** Dar ao Administrativo uma tela de fechamento que responda, para cada empresa e cada GRUPO, qual foi o faturamento do mês fechado e em que faixa da tabela progressiva isso o coloca — subiu, manteve ou caiu. É a contrapartida operacional dos contratos das Fases 124-133: o contrato define a tabela, o fechamento a aplica. A rotina real é executada no primeiro dia útil do mês, referente ao mês anterior (em 01/09 fecha-se agosto), e cobre empresas de Mercado Livre **e** Shopee.
+
+Quatro coisas precisam mudar em relação ao que existe hoje em `/financeiro` (`AdminController::fechamento()`):
+
+1. **Janela fechada, sem acumulativo.** Hoje o mês corrente usa janela MÓVEL de 30 dias (`Carbon::now()->subDays(30)`) e só meses passados usam mês-calendário. O usuário pediu explicitamente que "não deve ter acumulativo — o valor mostrado deve ser de janelas fechadas, mês a mês".
+
+2. **Grupos vêm do Comercial.** A tela tem uma função de grupos própria e antiga; o Comercial já tem grupos de empresas cadastrados e em uso. Manter duas fontes de verdade para a mesma coisa é o problema a eliminar. O faturamento do grupo é a SOMA das empresas-irmãs, e é a soma que determina a faixa (exemplo do usuário: grupo Lyam, duas empresas).
+
+3. **A tabela progressiva vira dado estruturado.** Hoje ela só existe como TEXTO dentro dos modelos `.docx` da Clicksign — e são tabelas DIFERENTES por serviço (Gestão/ML, Shopee, Brigada). Sem as faixas como dado, não há como calcular faixa nenhuma.
+
+4. **Cadastro manual da tabela por empresa.** A geração de contrato pelo sistema é recente; a maioria das empresas já existentes está em contrato de tabela progressiva sem que o sistema saiba disso. Precisa haver um jeito de lançar as faixas de uma empresa "como se estivesse fazendo contrato, mas só para o sistema saber as faixas" — incluindo empresas com tabela antiga ou fora do padrão, que existem e são legítimas.
+
+**Requirements**: D-01, D-02, D-02b, D-04 a D-13 (decisões travadas em `137-CONTEXT.md` — a fase não tem REQ-IDs no `REQUIREMENTS.md` raiz, que parou na v17.0; a unidade de rastreabilidade é o D-ID, mesma convenção da Fase 136). D-03 saiu do escopo: ficou obsoleto com a correção de D-02.
+**Depends on:** Phase 136 (nenhuma dependência de código conhecida; ordem de fila)
+**Plans:** 4/9 plans executed
+
+Plans:
+- [x] 137-01-PLAN.md — Schema e models das faixas de faturamento (por serviço e por empresa) + seed das três tabelas medidas (D-02b)
+- [x] 137-02-PLAN.md — Schema e models do snapshot congelado por competência + auditoria de reconsolidação
+- [x] 137-03-PLAN.md — FechamentoFaixaResolver (herança serviço→empresa) e FechamentoRollupService (ML+Shopee em mês-calendário)
+- [x] 137-05-PLAN.md — Writer idempotente + comandos `fechamento:consolidar-mes` e `fechamento:verificar-consolidacao`
+- [x] 137-06-PLAN.md — FechamentoController: cadastro manual das faixas e ações de fechar/refazer competência
+- [x] 137-07-PLAN.md — `AdminController::fechamento()` migrado: mês-calendário, grupos do Comercial e leitura do congelado
+- [x] 137-08-PLAN.md — Relatórios PDF e email mensal na fonte central; constante `FAIXAS` apagada das duas cópias
+- [x] 137-09-PLAN.md — UI: tabela de faixas por empresa, estados de ausência visível e composição ML+Shopee
+- [x] 137-10-PLAN.md — UI: status/fechar/refazer competência, fim do acumulado e checkpoint humano conferindo as três tabelas contra o contrato
+
+> **Estado atual medido (2026-09-02, antes de qualquer plano):** a tela é a rota `/financeiro`, `AdminController::fechamento()` (~linha 126). Existem também `EnviarRelatorioFechamentoJob`, `RelatorioFechamentoMail` e o model `FechamentoRecebido` — precisam ser mapeados antes de qualquer mudança, porque a fase mexe no que eles produzem.
+>
+> **Perguntas do discuss-phase — todas fechadas em 2026-09-02** (`137-CONTEXT.md`, D-01 a D-13): o faturamento sai de `adman_metrics` + `shopee_metrics` somados na mesma janela de mês-calendário (D-05/D-06/D-07); a tabela mora por serviço com exceção por empresa, all-or-nothing (D-01/D-13); empresa sem tabela aparece como `A DEFINIR` com CTA de cadastro, nunca R$ 0 (D-04); e o fechamento vira registro congelado por competência, com reconsolidação permitida mediante motivo registrado (D-11/D-12).
+
+### Phase 138: Tabela do grupo e aviso de mudança de faixa
+
+**Goal:** Fechar as duas lacunas que o uso real do fechamento revelou no primeiro dia (2026-09-03),
+depois que agosto foi fechado em produção com 201 empresas e 15 grupos.
+
+**1. Grupo passa a ter tabela própria.** Hoje o grupo NÃO tem tabela: ele é classificado pela tabela
+da empresa-âncora — o membro que mais faturou no mês, com desempate por menor id
+(`ConsolidarMesFechamento`, ~linha 271). Funciona enquanto as irmãs compartilham a mesma tabela, mas
+tem dois defeitos: um grupo que negociou tabela própria não tem onde registrá-la, e se as irmãs têm
+tabelas diferentes **quem manda muda de mês para mês**, silenciosamente, conforme quem faturou mais.
+
+Decisão do usuário (2026-09-03): criar tabela de grupo cadastrável pela tela, com precedência:
+
+```
+1. tabela própria do GRUPO      <- nova
+2. tabela própria da EMPRESA    <- já existe (empresa_faixas_faturamento)
+3. tabela do SERVIÇO (padrão)   <- já existe (servico_faixas_faturamento)
+```
+
+**2. Aviso de mudança de faixa para os admins.** Pedido do usuário. O dado já é calculado: o
+snapshot grava `evolucao` comparando a competência com a anterior — falta só notificar a partir dele.
+
+Decisão do usuário (2026-09-03): avisar **nos dois sentidos, subida e queda**. Queda de faixa
+significa cobrar menos, e é exatamente o tipo de mudança que ninguém percebe sozinha. Entrar/sair de
+`A DEFINIR` fica de fora por ora — com 74 empresas hoje sem faixa, viraria ruído.
+
+**Origem:** uso real do fechamento de agosto/2026, no mesmo dia do deploy da Fase 137.
+
+**Estado medido em produção (2026-09-03, agosto fechado):** 201 empresas no snapshot — 127 `ok`,
+69 `sem_integracao`, 4 `sem_tabela`, 1 `sem_faturamento`. 15 grupos, todos conferidos por `SELECT`
+(0 divergências entre a soma das empresas e o snapshot do grupo). Apenas 1 empresa cai na faixa
+aberta.
+
+**Dependências:** Fase 137 completa e em produção. Reusa `FechamentoFaixaResolver`,
+`FechamentoRollupService`, `FechamentoSnapshotWriter` e o `FechamentoController` — nenhum deles é
+reescrito.
+
+**Plans:** 6 plans em 3 waves (wave 1: 01 e 02 em paralelo · wave 2: 03 e 04 em paralelo · wave 3:
+05 e 06 em paralelo)
+
+Plans:
+- [x] 138-01-PLAN.md — Tabela do grupo: migration, model e precedência no `FechamentoFaixaResolver`
+- [x] 138-02-PLAN.md — Idempotência do aviso (`notificado_em`/`notificado_faixa_ordem`), categoria `faixa_alterada` e rótulo na tela de notificações
+- [x] 138-03-PLAN.md — `fechamento:consolidar-mes` classifica o grupo pela tabela do grupo, com âncora como fallback rastreável
+- [x] 138-04-PLAN.md — Props da tela de fechamento: tabela do grupo e herança visível nos ramos aberto e fechado
+- [x] 138-05-PLAN.md — `FechamentoFaixaNotifier`: aviso agregado de subida e queda de faixa, com trava contra o "Refazer"
+- [x] 138-06-PLAN.md — CRUD e tela da tabela do grupo (checkpoint humano de conferência visual)
+
+**Fase 138 concluída em 2026-09-04** — 6/6 planos entregues, checkpoint humano do plano 06 aprovado
+pelo usuário ("Aprovado") após conferência em produção (deploy feito pelo orquestrador; o ambiente
+local tem 0 grupos cadastrados e não permitiria abrir o accordion de grupo). D-01 fechado: grupo pode
+ter tabela própria cadastrável pela tela, com precedência grupo → empresa → serviço, e a herança da
+tabela da empresa que mais faturou no mês agora é visível na tela (antes era silenciosa). D-02/D-03
+fechados: aviso de mudança de faixa (subida e queda) com trava de idempotência sequencial + lock de
+concorrência. Gate final `Phase122|Phase136|Phase137|Phase138`: 276 testes / 1452 asserções / 0
+falhas. Ver `138-06-SUMMARY.md` para a observação operacional sobre o primeiro "Refazer" de
+agosto/2026 disparar o aviso inicial (efeito de primeira carga, esperado).
+
+---
+
+### Phase 139: Redesenho da tela de Fechamento
+
+**Goal:** Tornar a tela de fechamento simples e intuitiva. O usuário usou o resultado das Fases 137 e
+138 em produção e disse: "as coisas estão funcionando, mas a UI/UX está difícil de entender — tem
+que ser mais simples e intuitivo". Ele produziu um handoff de design completo
+(`design_handoff_fechamento/`) e pediu que fosse desenvolvido.
+
+O redesenho reduz a tela a três perguntas: **quanto vamos receber**, **quem subiu de faixa**, e
+**como esse valor foi calculado** para cada empresa.
+
+**Decisões do usuário (2026-09-04), detalhadas em `139-CONTEXT.md`:**
+
+| widget | decisão |
+|---|---|
+| Serviços contratados | manter (barra empilhada no lugar do donut) |
+| Tipo de cobrança | remover |
+| Distribuição de faixas | remover |
+| Total consolidado | reduzir a "Total a receber" |
+| Subiram de faixa | criar, em destaque |
+
+O Total consolidado encolhe porque o sistema **não sabe se o cliente pagou**: na captura de
+produção, "Recebido", "Inadimplente" e "A receber" estão os três vazios ("0 pagadores com dados") —
+um terço da tela ocupado por informação que não existe.
+
+**Fidelidade visual (D-02):** estrutura, hierarquia, widgets e comportamento seguem o design com
+fidelidade; **cores e tipografia continuam as do ECF Admin** (tokens `ecf-*`). A paleta do handoff é
+próxima mas não idêntica à do projeto, e adotá-la faria esta tela destoar de todas as outras. A
+fonte mono para números foi oferecida ao usuário e recusada.
+
+**O risco da fase (D-04):** quatro dados que o design pede **não existem hoje** — `faixa_ordem_anterior`
+exposta como prop, a mensalidade da faixa anterior (base do ganho do upgrade), os totais do widget
+"Total a receber" (incluindo mês anterior, variação e faturamento gerado), e a reconstrução da ordem
+anterior no ramo congelado, onde o snapshot guarda só `evolucao`.
+
+**Regressão zero (D-05):** `Financeiro.jsx` tem ~1300 linhas e concentra trabalho das Fases 137/138
+verificado em produção — estados de ausência distintos, composição ML+Shopee, "a partir de" na faixa
+sem teto, a tabela de grupo com a frase de herança, o estado da competência com fechar/refazer e a
+confirmação de sucesso, e a trava que impede a palavra "acumulado" de voltar.
+
+**Achado do planejamento (2026-09-04):** `TotalConsolidado` filtra por `cobranca_mensal_grupo`, prop
+que o backend **nunca emitiu** — é por isso que o widget mostra "0 pagadores com dados" e os três
+valores vazios na captura de produção. O total novo é somado no backend, sobre as mesmas linhas que a
+tela lista.
+
+**Plans:** 6 planos em 6 waves (sequenciais: os dois primeiros mexem em `AdminController.php`, os
+três seguintes em `Financeiro.jsx` — sem sobreposição de arquivo entre planos de waves diferentes não
+haveria como paralelizar sem conflito). Backend primeiro: uma tela redesenhada esperando dado
+inexistente é o pior ponto de partida possível.
+
+Plans:
+- [x] 139-01-PLAN.md — Faixa anterior e ganho do upgrade nos quatro caminhos de montagem de linha (`FechamentoComparativoService`)
+- [x] 139-02-PLAN.md — Prop `totais`: total a receber, mês passado, variação, faturamento gerado e os números dos upgrades
+- [x] 139-03-PLAN.md — Cabeçalho e os três widgets do topo (Total a receber, Subiram de faixa, Serviços contratados)
+- [x] 139-04-PLAN.md — Lista em quatro colunas com barra de progresso, filtros em chips e estado vazio
+- [x] 139-05-PLAN.md — Área expandida em três passos e tabela progressiva com a faixa atual destacada
+- [ ] 139-06-PLAN.md — Trava de contrato da UI, build, gate e conferência humana em produção (checkpoint)
+- [x] 139-07-PLAN.md — Remove o marcador de "recebido" dos seis pontos onde vivia (tela, controller, rota, e-mail mensal, dois PDFs) — plano emergente, decisão do usuário em 2026-09-04 após medição em produção (usado 1 vez, nunca mais)
+
+---
+
+### Phase 140: Extrair as tabelas progressivas dos contratos do Clicksign
+
+**Goal:** Parar de cobrar por tabela assumida. Hoje 127 empresas têm mensalidade calculada por uma
+tabela que o sistema herdou do serviço, sem contrato nem cadastro que a confirme — R$ 460.500/mês sem
+lastro. O cadastro manual existe desde a Fase 137 e **nunca foi usado**; digitar ~124 tabelas à mão é
+o caminho óbvio e o mais caro.
+
+Esta fase lê os contratos que já existem no Clicksign e transforma cada um numa proposta conferível.
+
+**Origem:** o usuário levantou a possibilidade ("isso pode consultar no Clicksign") e autorizou a
+investigação, feita em 2026-09-08 contra a conta de produção. Os achados estão medidos no
+`140-CONTEXT.md` e não devem ser re-medidos.
+
+**O que a investigação estabeleceu:**
+
+| achado | consequência |
+|---|---|
+| 429 envelopes, **123** de gestão de ADS | o material existe |
+| PDFs baixáveis, com **CNPJ e razão social** no texto | a leitura é viável |
+| **nem todo contrato tem tabela** — 6 de 11 são valor fixo | o sistema classifica em faixa quem não deveria |
+| **DESK DESIGN tem tabela de 12 faixas** começando em R$ 2.250 | a "tabela fora do padrão" existe e já custa dinheiro |
+| só **10 de 201** empresas têm CNPJ | a chave exata de casamento não existe |
+| casamento por nome: **9 de 14**, com falsos positivos plausíveis | escrita automática está fora |
+
+O caso DESK DESIGN é o argumento da fase: o contrato dela diz R$ 2.250 abaixo de 100 mil, e o sistema
+cobra R$ 3.000 por assumir a tabela padrão.
+
+**Estratégia acordada (D-06):** começar pelo **comando de leitura que gera só um relatório** — sem
+tela, sem escrita. O usuário confere a qualidade real do casamento nas 123 linhas e decide se vale
+construir a tela de conferência e a escrita auditada. Só a segunda etapa grava, e sempre com
+confirmação humana do vínculo.
+
+**Decisão de implementação em aberto:** não há extrator de PDF no servidor (`pdftotext`, `PyPDF2` e
+`pymupdf` ausentes) e o `dompdf` do projeto só gera. Escolher entre adicionar uma biblioteca de
+leitura ou instalar poppler.
+
+**Requisitos (locais desta fase, não existem no REQUIREMENTS raiz):**
+
+| ID | O que é |
+|---|---|
+| TAB-01 | Listar e baixar os contratos do Clicksign dentro da validade do link (D-01, D-02) — ✅ concluído em 140-01 (2026-09-08) |
+| TAB-02 | Ler o texto do contrato mesmo quando o arquivo vier como ZIP (D-02) — ✅ concluído em 140-02 (2026-09-08) |
+| TAB-03 | Reconhecer as duas notações de tabela progressiva (D-04) — ✅ concluído em 140-02 (2026-09-08) |
+| TAB-04 | Distinguir contrato com tabela de contrato de valor fixo (D-03) — ✅ concluído em 140-02 (2026-09-08) |
+| TAB-05 | Palpite de empresa com grau de confiança honesto, sem falso positivo com cara de acerto (D-05) |
+| TAB-06 | Relatório conferível, fora do repositório (D-06) |
+| TAB-07 | Guardar o que foi lido, para conferir depois sem re-ler (D-06) — ✅ concluído em 140-04 (2026-09-09) |
+| TAB-08 | Tela de conferência sem jargão e sem falsa certeza (D-06) |
+| TAB-09 | Escrita só depois de confirmação humana, gravando faixas + CNPJ + razão social (D-05, D-06) |
+
+**Plans:** 5 plans em 4 waves. ⚠️ Corte duro entre relatório e o resto: as waves 3 e 4 só começam
+depois de o usuário aprovar a rodada real do relatório (checkpoint do 140-03).
+
+Plans:
+- [x] 140-01-PLAN.md — wave 1 — ler o acervo do Clicksign: listar envelopes, filtrar gestão de ADS, baixar o arquivo dentro dos 299s
+- [x] 140-02-PLAN.md — wave 1 — ler o texto do contrato (PDF e ZIP) e extrair tabela, valor fixo, CNPJ e razão social
+- [ ] 140-03-PLAN.md — wave 2 — palpite de empresa com confiança honesta + comando `clicksign:extrair-tabelas` (só relatório) + **checkpoint: rodada real e decisão de continuar** — ⚠️ a rodada real completa já rodou em produção (85 contratos, 49 tabelas, 29 valor fixo, 0 casamentos com segurança) e o checkpoint foi respondido pelo usuário no prompt do 140-04, mas falta `140-03-SUMMARY.md` formal — pendência do coordenador
+- [x] 140-04-PLAN.md — wave 3 — guardar as propostas lidas (`--gravar`), sem tocar em cobrança
+- [ ] 140-05-PLAN.md — wave 4 — tela de conferência + confirmação auditada que grava a tabela e completa o cadastro
+
+---
+
+### Phase 141: A tabela progressiva passa a ser da empresa e do grupo
+
+**Goal:** Corrigir a premissa que atravessa as Fases 137, 138 e 139. O usuário, olhando o fechamento
+em produção em 2026-09-09, estabeleceu que **a tabela progressiva é da empresa ou do grupo — nunca do
+serviço** — e que o faturamento das plataformas é **somado** para achar **uma única** faixa.
+
+Não é ajuste de tela: muda como a mensalidade é calculada.
+
+**O caso que abriu a fase:** BARAOSHOP VARIEDADES faturou R$ 488.262,90 em agosto, caiu na faixa 1,
+cujo valor é R$ 3.000 — e a tela cobra **R$ 5.500**. A regra atual é *"faixa + soma dos contratos
+mensais"*, então soma R$ 3.000 da faixa com R$ 2.500 do contrato de Shopee. Pela regra nova, soma-se
+**faturamento**, não **mensalidade**: as duas plataformas somam, dão uma faixa, e é ela que se cobra.
+
+**As regras, como o usuário as definiu (detalhe em `141-CONTEXT.md`):**
+
+| regra | consequência |
+|---|---|
+| tabela é da empresa/grupo | `servico_faixas_faturamento` deixa de ser régua aplicável |
+| faturamento das plataformas soma | ML + Shopee viram um número só para achar a faixa |
+| Mentoria **não** entra na soma | serviço sem tabela não contribui faturamento |
+| mensalidade = valor da faixa | a soma de mensalidades deixa de existir |
+| sem tabela → valor do contrato | é o caso dos 29 contratos de valor fixo já identificados |
+
+**O problema de transição:** hoje **127 das 201 empresas** são classificadas pela tabela do serviço, e
+**nenhuma** tem tabela própria cadastrada. Aplicar a regra sem mais nada esvazia o fechamento.
+
+**O caminho existe por causa da Fase 140:** a leitura dos contratos do Clicksign produziu 85
+propostas em produção — **49 com tabela** e 29 de valor fixo — e a tela de conferência já está
+construída. As 49 viram tabelas de empresa, que é a única forma que passa a valer. As 18 réguas
+distintas medidas ali confirmam que a tabela é mesmo por empresa: duas divergem já na terceira faixa,
+e quem fatura R$ 2,5 milhões paga R$ 6.000 numa e R$ 7.500 na outra.
+
+**Fora de escopo:** a tela de cadastro (mostrar as faixas, máscara de dinheiro, mover para a página
+de contrato da empresa, fechamento só leitura) é fase própria, a pedido do usuário.
+
+**Requirements:** [TPE-01, TPE-02, TPE-03, TPE-04, TPE-05, TPE-06, TPE-07, TPE-08] — definidos nesta
+fase (o `REQUIREMENTS.md` da raiz parou na v17.0):
+
+| ID | Requisito |
+|----|-----------|
+| TPE-01 | Só entra na soma o faturamento de plataforma em que a empresa tem serviço contratado que é cobrado por tabela progressiva (Mentoria fica fora) |
+| TPE-02 | A mensalidade é o valor da faixa, e só isso — a soma de mensalidades deixa de existir |
+| TPE-03 | Empresa sem tabela progressiva cobra o valor fixo do contrato, em estado visível na tela |
+| TPE-04 | A tabela aplicável é da empresa ou do grupo; a do serviço deixa de ser régua |
+| TPE-05 | A tabela do serviço vira modelo de partida do cadastro e semente da materialização das tabelas presumidas |
+| TPE-06 | Toda tabela de empresa carrega procedência: cadastro manual, contrato assinado ou presumida do serviço — presumida nunca conta como confirmada |
+| TPE-07 | A virada é comandada por flag desligada por padrão, com comparação ANTES × DEPOIS em produção e gate humano |
+| TPE-08 | Competência já congelada não muda quando a regra vira (D-11 da Fase 137) |
+
+**Plans:** 7 plans em 4 waves
+
+Plans:
+- [x] 141-01-PLAN.md — Elegibilidade de plataforma: `servicos.usa_tabela_progressiva` + rollup que só soma plataforma contratada (wave 1)
+- [x] 141-02-PLAN.md — Flag de corte `fechamento_tabela_por_empresa_ativa` + `CobrancaCalculator::mensalidade()` + estado `valor_fixo` (wave 1)
+- [x] 141-03-PLAN.md — Transição: procedência da tabela da empresa + comando `fechamento:materializar-tabelas` (wave 1)
+- [x] 141-04-PLAN.md — Virada da régua no motor: resolver sem a tabela do serviço + consolidação pela regra nova (wave 2)
+- [x] 141-05-PLAN.md — `fechamento:comparar-mensalidade`: o delta ANTES × DEPOIS que precede a virada (wave 3)
+- [x] 141-06-PLAN.md — Os cinco ramos da tela de Fechamento + remoção do paliativo da composição (wave 3)
+- [x] 141-07-PLAN.md — Virada em produção com gate humano e registro dos números reais (wave 4)
+
+**Fase 141 FECHADA em 2026-09-10.** Virada real em produção: 168 empresas ganharam tabela própria
+presumida (materialização), delta ANTES×DEPOIS conferido pelo usuário (total a receber caiu de
+R$ 2.486.700,91 para R$ 736.450,97 — queda validada como correção, não regressão), chave
+`fechamento_tabela_por_empresa_ativa` ligada, e agosto/2026 reconsolidado sob a regra nova a pedido
+explícito do usuário. Números completos e procedimento de rollback em
+`.planning/learnings/fechamento-tabela-por-empresa.md`. Pendências que sobrevivem à fase: as 168
+tabelas presumidas seguem sem conferência contra o contrato real (tela da Fase 140), 32 empresas
+sem tabela (maioria cadastro de teste) e 3 contratos com valor de R$ 250.000 reportados ao usuário
+como provável erro de cadastro.
+
+---
+
+### Phase 142: O cadastro da tabela progressiva vai para o contrato
+
+**Goal:** Tornar utilizável o cadastro da tabela progressiva. O usuário pediu a fase com estas
+palavras: *"a parte do cadastro de tabela progressiva pelo sistema deve melhorar bastante, acho que
+deve haver uma fase só para isso"*.
+
+**Os quatro pedidos** (detalhe em `142-CONTEXT.md`):
+
+| pedido | hoje |
+|---|---|
+| mostrar as faixas da tabela própria | mostra só a frase "Tabela própria desta empresa" |
+| máscara de dinheiro nos campos | valores crus (`499999.99`), fáceis de errar por um zero |
+| cadastro dentro de `/administrativo/contratos/empresa/{id}`, em página exclusiva | vive dentro do fechamento |
+| fechamento continua mostrando tabela e faixa, sem cadastrar/editar | cadastra e edita por ali |
+
+**A dívida que esta fase paga:** o "só mostra a frase" foi decisão consciente do plano `137-09` — o
+backend não expunha as linhas da tabela própria, e o executor preferiu abrir o formulário em branco
+com aviso a preenchê-lo com valores adivinhados que poderiam sobrescrever preço real. O custo aceito
+era "quem edita redigita tudo", e na época havia **zero** tabelas próprias.
+
+**Depois da Fase 141 são 169** — 168 delas marcadas como presumidas, todas esperando conferência
+contra o contrato real. O que era dívida barata virou o gargalo do trabalho que vem pela frente.
+
+**Uma decisão para o planejamento:** a tela de conferência das propostas lidas do Clicksign
+(`/administrativo/contratos/tabelas`, Fase 140) já vive no módulo de contratos e faz coisa parecida.
+Duas telas que cadastram tabela em lugares diferentes é como este problema começou — decidir se
+convivem, se uma leva à outra, ou se viram a mesma coisa.
+
+**Plans:** 2/4 plans executed
+
+Plans:
+- [x] 142-01-PLAN.md — expõe as LINHAS da tabela própria nas props e cria a porta única de escrita (`GravarTabelaEmpresaService`), com trilha de auditoria e a trava de "tabela copiada nunca sobrescreve tabela conferida". Registra a decisão de projeto sobre conviver com a tela da Fase 140.
+- [x] 142-02-PLAN.md — rotas, controller e autorização da página exclusiva dentro do módulo de contratos, mais o botão em `/administrativo/contratos/empresa/{id}`.
+- [x] 142-03-PLAN.md — máscara de dinheiro (react-imask), grade da tabela virando componente compartilhado e a página `Admin/TabelaEmpresa.jsx` com o formulário abrindo preenchido com o que está gravado.
+- [ ] 142-04-PLAN.md — fechamento passa a mostrar as faixas da tabela própria e deixa de cadastrar/editar; retarget das travas antigas e gate ampliado com checkpoint humano.
+
+---
+## Milestone v23.0 — Fluxo de Entrada de Novas Empresas (Fases 150-156)
 
 **Plano canônico:** `.planning/seeds/fluxo-entrada-novas-empresas-260901.md` (transcrição fiel do PDF *Fluxo de Entrada de Novas Empresas*, ECF Consultoria, 01/09/2026, + levantamento técnico contra `origin/main` `695711f5`) · **Requirements:** `.planning/REQUIREMENTS-v23.md` · **Pesquisa:** não executada — decisão D0, o PDF já é a especificação funcional e o cruzamento com o código foi feito na abertura.
 
@@ -2320,7 +2644,6 @@ Plans:
 **Plans:** sem planos GSD — **trabalho direto**, sem migration e **sem gravar nada**: a timeline é leitura agregada do que as Fases 150-155 já registram. Decisões em `.planning/phases/156-historico-e-sla-v23-0/156-DECISOES.md`. 11 testes / 86 assertions.
 
 > **Fora de escopo desta milestone (Future Requirements do `REQUIREMENTS-v23.md`):** criar o grupo de WhatsApp via API do Digisac, provisionar e-mail colaborador automaticamente, enviar a mensagem de boas-vindas pelo sistema (o PDF pede "pronta para copiar", não envio automático), painel de SLA agregado (HIST-03 entrega o dado por empresa, o painel é produto separado), e a segunda parte da especificação funcional (o PDF se declara "a primeira parte"). **Fora de escopo declarado pelo PDF:** o Trello não integra este fluxo. **Fora de escopo por já estar entregue:** reconstruir a ingestão do HubSpot ou a assinatura de contrato (D5); reescrever `DefinicaoOnboarding` (ONBRD-03); fechar a v22.0 — a Fase 133 e o plano `133-05` seguem abertos, são trabalho daquela milestone.
-
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
@@ -2330,4 +2653,17 @@ Plans:
 
 *Roadmap atualizado: 2026-08-07 — Milestone v22.0 (Administrativo + Clicksign) anexada: 10 fases (124-133) cobrindo os 39 REQ-IDs (FLUXO/DADOS/CLICK/PDF/REDE/UI) do REQUIREMENTS-v22.md, derivadas do plano canonico `plano-administrativo-clicksign.md` e corrigidas pela pesquisa (STACK/FEATURES/ARCHITECTURE/PITFALLS). Ordem de construcao dita pelo PITFALLS.md: extracao pura de services + kill switch inerte (124) -> schema (125) -> client+PDF (126) -> service de orquestracao com REDE-05 na mesma fase que gera o envelope (127) -> gatilhos em modo observacao/REDE-06 (128) -> webhook com GATE A1 bloqueante do HMAC (129) -> rede de seguranca REDE-02/03/04 (130) -> tela administrativa (131) -> cutover checkpoint humano dedicado (132) -> liga o bloqueio com checkpoint humano (133). Bloqueio nasce atras da flag `Configuracao.administrativo_bloqueio_ativo` desligada por padrao desde a Fase 124 ate a Fase 133 — nenhuma fase intermediaria muda o roteamento operacional observavel. Decisoes em aberto A1-A4 atribuidas as fases 129 (A1 bloqueante, A3) e 127 (A2) e 128 (A4). Fases 1-123 preservadas.*
 
+*Roadmap atualizado: 2026-09-02 — **Fase 137 (Fechamento mensal)** anexada. Origem: brief do usuario em 02/09, logo apos declarar a parte de contratos concluida. E a contrapartida operacional das Fases 124-133: o contrato define a tabela progressiva, o fechamento a aplica. Quatro mudancas pedidas sobre a tela `/financeiro` existente: (1) acabar com o acumulativo — hoje o mes corrente usa janela MOVEL de 30 dias e so meses passados usam mes-calendario; (2) parar de manter grupos proprios e reusar os grupos de empresas do Comercial, ja cadastrados; (3) transformar a tabela progressiva em DADO estruturado (hoje so existe como texto nos .docx da Clicksign, e sao tabelas diferentes por servico: Gestao/ML, Shopee e Brigada); (4) permitir cadastrar a tabela de uma empresa a mao, porque a geracao de contrato pelo sistema e recente e a maioria das empresas existentes esta em tabela progressiva sem o sistema saber — incluindo tabelas antigas/fora do padrao, que sao legitimas. Fase NAO planejada: as decisoes de modelagem (onde mora a tabela, override por empresa, se o fechamento vira registro congelado por competencia) ficaram explicitamente para o discuss-phase. Fases 1-136 preservadas.*
+
+*Roadmap atualizado: 2026-09-03 — **Fase 138 (Tabela do grupo e aviso de mudanca de faixa)** anexada. Origem: uso real do fechamento no mesmo dia em que a Fase 137 foi para producao e agosto/2026 foi fechado. Duas lacunas que so o uso revelou: (1) grupo nao tem tabela propria — e classificado pela tabela da empresa que mais faturou no mes, entao grupo com tabela negociada nao tem onde registra-la e, se as irmas divergem, o criterio muda de mes para mes sem aviso; (2) nao ha notificacao quando uma empresa muda de faixa, embora o snapshot ja calcule `evolucao`. Decisoes do usuario em 2026-09-03: tabela de grupo com precedencia sobre a da empresa, e aviso nos DOIS sentidos (subida e queda — queda significa cobrar menos). Entrar/sair de `A DEFINIR` fica fora por ora, para nao virar ruido com as 74 empresas hoje sem faixa. Fases 1-137 preservadas.*
+
+*Roadmap atualizado: 2026-09-04 - **Fase 139 (Redesenho da tela de Fechamento)** anexada. Origem: o usuario usou a tela em producao depois das Fases 137 e 138 e disse que a UI/UX estava dificil de entender. Ele produziu um handoff de design completo em `design_handoff_fechamento/` (README com tokens e comportamento, prototipo HTML e captura da tela atual) e pediu que fosse desenvolvido. Cinco decisoes de widget dele: manter Servicos contratados, remover Tipo de cobranca e Distribuicao de faixas, reduzir o Total consolidado a 'Total a receber' (o sistema nao sabe se o cliente pagou) e criar um widget em destaque para as empresas que subiram de faixa. Decisao de fidelidade tomada em 2026-09-04: estrutura e comportamento do design com fidelidade, cores e tipografia do ECF Admin — a paleta do handoff e proxima mas nao identica a do projeto e faria a tela destoar das outras. Fases 1-138 preservadas.*
+
+*Roadmap atualizado: 2026-09-08 - **Fase 140 (Extrair as tabelas progressivas do Clicksign)** anexada. Origem: depois da Fase 139 ficou medido que 127 empresas cobram por tabela assumida (R$ 460.500/mes sem lastro) e que o cadastro manual da Fase 137 nunca foi usado. O usuario levantou consultar o Clicksign e autorizou a investigacao, feita em 2026-09-08 contra a conta de producao: 429 envelopes, 123 de gestao de ADS, PDFs baixaveis com CNPJ e razao social no texto. Dois achados mudaram o desenho: nem todo contrato tem tabela progressiva (6 de 11 da amostra sao valor fixo) e existe tabela fora do padrao em uso — DESK DESIGN com 12 faixas comecando em R$ 2.250, contra os R$ 3.000 que o sistema cobra por assumir a tabela padrao. O casamento com a empresa e o elo fraco: so 10 de 201 empresas tem CNPJ, e o casamento por nome acerta 9 de 14 com falsos positivos plausiveis (GRAFICA ADHARA -> Filipe Adada), entao escrita automatica ficou FORA por decisao. Estrategia acordada: primeiro um comando de leitura que gera so relatorio, sem tela e sem escrita; a tela de conferencia e a escrita auditada dependem de o relatorio se mostrar bom. Fases 1-139 preservadas.*
+
+*Roadmap atualizado: 2026-09-09 - **Fase 141 (A tabela progressiva passa a ser da empresa e do grupo)** anexada. Origem: correcao de premissa feita pelo usuario em 2026-09-09 olhando o fechamento em producao. Ela atravessa as Fases 137/138/139 e muda o CALCULO da mensalidade, nao a tela. Regras: a tabela e da empresa ou do grupo, nunca do servico; o faturamento das plataformas com tabela e SOMADO para achar UMA faixa; Mentoria nao entra na soma por nao ter tabela; a mensalidade e o valor da faixa, entao a soma de mensalidades deixa de existir. Caso que abriu a fase: BARAOSHOP faturou R$ 488.262,90, caiu na faixa 1 de R$ 3.000 e a tela cobra R$ 5.500, porque soma o contrato de Shopee. Problema de transicao: 127 de 201 empresas sao classificadas hoje pela tabela do servico e NENHUMA tem tabela propria — aplicar a regra sem mais nada esvazia o fechamento. O caminho existe por causa da Fase 140, que leu 85 contratos do Clicksign (49 com tabela, 29 de valor fixo) e cuja tela de conferencia ja esta construida. A tela de cadastro e fase propria, a pedido do usuario. Fases 1-140 preservadas.*
+
+*Roadmap atualizado: 2026-09-10 - **Fase 141 FECHADA.** Virada em produção (2026-09-09/10, commit `e98e25ed`): 168 empresas materializadas com tabela própria presumida (`origem='presumida_servico'`), delta ANTES×DEPOIS apresentado e aprovado pelo usuário (total a receber R$ 2.486.700,91 → R$ 736.450,97 — a queda é a correção da fórmula antiga que somava contrato à faixa, confirmada pelo usuário com o caso Camillo Parts R$ 522.500,00 → R$ 12.000,00, faixa 7 para faixa 7, "Mudam de faixa: 0"), chave `fechamento_tabela_por_empresa_ativa` ligada, e agosto/2026 reconsolidado sob a regra nova a pedido explícito do usuário (soma de faixas R$ 460.500,00 → R$ 466.500,00, 127 → 129 empresas com faixa). Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Quick260909`: 553 testes / 2642 asserções / 0 falhas. Números completos, procedimento de rollback sem deploy e pendências (168 tabelas presumidas ainda sem conferência contra o contrato real, 32 empresas sem tabela, 3 contratos de R$ 250.000 a investigar) em `.planning/learnings/fechamento-tabela-por-empresa.md`. Fases 1-141 preservadas.*
+
+*Roadmap atualizado: 2026-09-10 - **Fase 142 (O cadastro da tabela progressiva vai para o contrato)** anexada. Pedido do usuario em 2026-09-09 olhando o fechamento em producao, com quatro itens: mostrar as faixas da tabela propria (hoje sai so a frase), mascara de dinheiro nos campos, mover o cadastro para dentro da pagina de contrato da empresa em pagina exclusiva, e deixar o fechamento so de leitura. O primeiro item e divida consciente do plano 137-09, que preferiu formulario em branco com aviso a valores adivinhados que sobrescreveriam preco real — custo aceito quando havia ZERO tabelas proprias. Depois da Fase 141 sao 169, das quais 168 presumidas esperando conferencia, entao a divida virou gargalo. Fases 1-141 preservadas.*
 *Roadmap atualizado: 2026-09-01 — Milestone v23.0 (Fluxo de Entrada de Novas Empresas) anexada: 7 fases (137-143) cobrindo os 31 REQ-IDs (ETAPA/COMERC/ADMIN/COMUNIC/DISTRIB/RESP/ONBRD/HIST) do REQUIREMENTS-v23.md, derivadas do PDF `.planning/seeds/fluxo-entrada-novas-empresas-260901.md` — pesquisa de domínio deliberadamente pulada (D0). Ordem dita pelo próprio fluxo do PDF: máquina de estados dos 9 status (137, fundação) → Comercial religado à etapa (138) → checklist administrativo + trava de finalização (139) → mensagem de boas-vindas generalizada (140) → distribuição da Coordenação + chegada aos responsáveis, DISTRIB e RESP fundidos numa fatia vertical só (141) → onboarding plugado na máquina de estados (142) → histórico e SLA por último, porque depende de toda transição anterior já emitir evento (143). Fase 150 mexe em migration sobre `companies` com dado de produção (~500 registros) e por isso é fase GSD obrigatória, com baseline de testes e VERIFICATION — sinalizado explicitamente na própria fase. D5 travada na abertura: HubSpot e Clicksign se integram, nunca se reconstroem — nenhuma fase desta milestone cria cliente de assinatura, webhook de contrato ou ingestão de deal ganho; o grupo Contrato do checklist (Fase 152) só lê o estado entregue pelas Fases 126/127/129/132 da v22.0. `phases.clear` NÃO foi executado — Fases 1-136 preservadas, incluindo os três blocos de "Posição paralela" com gate humano aberto (Fases 133, 135, 136) da v22.0/avulsas, seguindo a convenção de anexar milestones deste roadmap.*

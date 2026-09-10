@@ -110,3 +110,52 @@ phpunit --filter "Onboarding|MlbImplementacao|Precificacao|Checkin|SyncPolos|Syn
 ```
 
 453 testes, 1 falha (a de `Serra Gaúcha`) em 2026-09-01.
+
+## 6. O autosave gravava o JSON INTEIRO — dois PATCH em paralelo se apagavam
+
+`onChange(id, campo, valor, true)` dispara um `axios.patch` por campo, e
+`salvarItem()` faz `$impl->update(['dados' => $dados])` com o **JSON inteiro**. Dois
+salvamentos disparados no mesmo tick corriam soltos: cada um lia `dados`, mexia na sua
+chave e regravava tudo — o último a chegar ao banco desfazia o campo do outro.
+
+Estava assim desde sempre em `select_opcoes`, que manda `valor` e `feito` juntos:
+
+```js
+onChange(item.id, 'valor', v, true);
+onChange(item.id, 'feito', selecionado, true);   // corria em paralelo
+```
+
+Nunca deu problema visível ali porque `itemTemConteudo('select_opcoes')` cai no
+`default: return true` — se `valor` se perdia, `feito` ficava e o item seguia marcado.
+Um item com **mais de dois campos** e trava de conteúdo no servidor (`canais_venda`:
+canais + faixa + texto do "Outro" + feito) transforma a mesma corrida em 422 mudo ou em
+resposta comida.
+
+Correção: `onChange` devolve a promise (`return axios.patch(...)`, e
+`Promise.resolve()` quando `doSave` é falso) e os chamadores encadeiam. Quem
+acrescentar campo a este checklist precisa encadear também — o padrão vale para o
+arquivo todo, não só para o item novo.
+
+## 7. Trocar o formato de uma resposta já respondida exige ler os dois
+
+`canais_faturamento` virou escolha única (`canal`, string) na manhã de 02/09/2026 e
+múltipla escolha (`canais`, lista) no mesmo dia. Entre um deploy e outro **uma ficha de
+cliente já tinha respondido** (565, 'Shopee').
+
+`mesclarItensPadrao()` não converte nada: `array_merge` acrescenta `canais => []` e
+mantém `canal => 'Shopee'` intacto. Ler só a chave nova daria lista vazia — a resposta
+sumiria da tela do cliente, a coluna do Painel esvaziaria e `itemTemConteudo()` voltaria
+a exigir preenchimento de um item que o cliente já tinha fechado. Sem erro em lugar
+nenhum.
+
+`MlbImplementacao::canaisSelecionados()` lê as duas formas, com a nova tendo
+precedência. Antes de trocar o formato de um campo do checklist, **medir no banco de
+produção quantas fichas já responderam** — o item pode ter dias de vida e já ter dado.
+
+## 8. A resposta do checklist tem consumidor fora da ficha
+
+Desde 01/09 o Painel Polos tem colunas que leem respostas do JSON via
+`respostaChecklist($id)` — que enxerga **só `dados.itens.<id>.valor`**. Item que passa a
+ter mais de uma resposta precisa de um acessor próprio (`respostaCanaisVenda()`), senão
+a coluna continua mostrando o campo velho e a resposta nova não aparece para o time.
+Os call-sites ficam em `PolosController` (grade e exportação — são dois).

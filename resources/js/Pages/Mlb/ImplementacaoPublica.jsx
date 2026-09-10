@@ -19,6 +19,13 @@ import {
     llEfetivo as llEfetivoLib,
 } from '@/lib/precificacaoProdutos';
 
+// Placeholder dos dropdowns do checklist — vale como "ainda não respondeu".
+const SELECIONE = 'Selecione uma opção...';
+
+// Espelha MlbImplementacao::CANAL_NENHUM. Não há enum compartilhado entre PHP e JS
+// neste projeto: as duas pontas são mantidas em sincronia à mão.
+const CANAL_NENHUM = 'Não vendo em outros canais';
+
 // ─── CustomSelect — dropdown cross-browser sem seta dupla ────────────────────
 
 function CustomSelect({ value, onChange, opcoes, className = '', small = false }) {
@@ -1769,19 +1776,184 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
         );
     }
 
-    // Select com opções livres (Publicar em Massa)
+    // Observações sobre publicação — textarea livre e OPCIONAL. Escrever já marca o item
+    // como feito; o checkbox continua visível (ver ChecklistItem) para quem não tem
+    // observação nenhuma poder concluir na mão.
+    if (tipo === 'observacao') {
+        // Persiste o texto e, só então, o 'feito'. Encadeado pelo mesmo motivo do
+        // select_opcoes: cada PATCH relê e reescreve o item, e em paralelo o texto
+        // poderia chegar depois do 'feito' e sobrescrevê-lo.
+        const persistir = valor => {
+            clearTimeout(debRef.current.observacao);
+            const salvou = onChange(item.id, 'observacao', valor, true);
+            const temTexto = String(valor ?? '').trim() !== '';
+            return temTexto && !dado?.feito
+                ? salvou.then(() => onChange(item.id, 'feito', true, true))
+                : salvou;
+        };
+
+        // Debounce próprio (não o handleText genérico): o autosave por inatividade também
+        // precisa marcar o item, senão quem digita e fecha a aba sem tirar o foco salva o
+        // texto e deixa o item pendente.
+        const digitar = valor => {
+            onChange(item.id, 'observacao', valor, false);
+            clearTimeout(debRef.current.observacao);
+            debRef.current.observacao = setTimeout(() => persistir(valor), 800);
+        };
+
+        return (
+            <div className="mt-3">
+                <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">Observação</label>
+                <textarea
+                    value={dado?.observacao ?? ''}
+                    onChange={e => digitar(e.target.value)}
+                    onBlur={e => persistir(e.target.value)}
+                    rows={4}
+                    placeholder="Ex.: produtos que não devem ser anunciados, prioridade de publicação, prazos, detalhes de estoque..."
+                    className="w-full px-3 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 transition-colors resize-none"
+                />
+                <p className="mt-1.5 text-white/25 text-[11px]">
+                    Opcional. Ao escrever, o item é concluído automaticamente.
+                </p>
+            </div>
+        );
+    }
+
+    // Select com opções livres (Perfil dos Produtos)
     if (tipo === 'select_opcoes') {
         return (
             <div className="mt-3">
                 <CustomSelect
                     value={dado?.valor ?? ''}
                     onChange={v => {
-                        const selecionado = v !== '' && v !== 'Selecione uma opção...';
-                        onChange(item.id, 'valor', v, true);
-                        onChange(item.id, 'feito', selecionado, true);
+                        const selecionado = v !== '' && v !== SELECIONE;
+                        // Encadeado: os dois PATCH reescrevem o JSON inteiro de `dados`,
+                        // então em paralelo o 'feito' poderia gravar por cima do 'valor'.
+                        onChange(item.id, 'valor', v, true)
+                            .then(() => onChange(item.id, 'feito', selecionado, true));
                     }}
-                    opcoes={['Selecione uma opção...', ...item.opcoes]}
+                    opcoes={[SELECIONE, ...item.opcoes]}
                 />
+            </div>
+        );
+    }
+
+    // Outros Canais de Venda — duas perguntas no mesmo item: em QUAIS canais vende
+    // (múltipla escolha) e, só para quem vende em algum, a faixa de faturamento. Sem
+    // checkbox (igual a select_opcoes): o item se marca sozinho quando as respostas
+    // necessárias estão dadas.
+    if (tipo === 'canais_venda') {
+        // `canal` (string) é o formato da manhã de 02/09, quando a pergunta era de
+        // escolha única — ficha já respondida não pode perder a resposta.
+        const canais = Array.isArray(dado?.canais)
+            ? dado.canais
+            : (dado?.canal ? [dado.canal] : []);
+        const faixa = dado?.valor ?? '';
+        const outro = dado?.outro ?? '';
+        const naoVende = canais.includes(CANAL_NENHUM);
+
+        // Espelha MlbImplementacao::itemTemConteudo('canais_venda') — mantê-los em sincronia.
+        const completo = (cs, f, o) => {
+            if (cs.length === 0) return false;
+            if (cs.includes(CANAL_NENHUM)) return true;
+            if (cs.includes('Outro') && String(o ?? '').trim() === '') return false;
+            return f !== '';
+        };
+
+        function alternarCanal(op) {
+            // "Não vendo em outros canais" é exclusivo — não convive com canal marcado.
+            const cs = op === CANAL_NENHUM
+                ? (naoVende ? [] : [CANAL_NENHUM])
+                : (canais.includes(op)
+                    ? canais.filter(c => c !== op)
+                    : [...canais.filter(c => c !== CANAL_NENHUM), op]);
+
+            // Faixa e "outro" só existem para quem os respondeu: desmarcar apaga o que
+            // deixou de fazer sentido, senão a ficha guarda "não vendo em outros canais"
+            // com uma faixa antiga do lado.
+            const f = (cs.length === 0 || cs.includes(CANAL_NENHUM)) ? '' : faixa;
+            const o = cs.includes('Outro') ? outro : '';
+
+            let p = onChange(item.id, 'canais', cs, true);
+            if (o !== outro) p = p.then(() => onChange(item.id, 'outro', o, true));
+            if (f !== faixa) p = p.then(() => onChange(item.id, 'valor', f, true));
+            p.then(() => onChange(item.id, 'feito', completo(cs, f, o), true));
+        }
+
+        function setFaixa(v) {
+            const f = v === SELECIONE ? '' : v;
+            onChange(item.id, 'valor', f, true)
+                .then(() => onChange(item.id, 'feito', completo(canais, f, outro), true));
+        }
+
+        function setOutro(v) {
+            onChange(item.id, 'outro', v, true)
+                .then(() => onChange(item.id, 'feito', completo(canais, faixa, v), true));
+        }
+
+        return (
+            <div className="mt-3 space-y-3">
+                <div>
+                    <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">
+                        Canais em que vende <span className="text-white/25 normal-case tracking-normal">(pode marcar mais de um)</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                        {(item.opcoes_canal ?? []).map(op => {
+                            const marcado = canais.includes(op);
+                            return (
+                                <button
+                                    key={op}
+                                    type="button"
+                                    onClick={() => alternarCanal(op)}
+                                    className={cn(
+                                        'flex items-center gap-2 px-3 py-2 rounded-xl border text-[13px] transition-all',
+                                        marcado
+                                            ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200'
+                                            : 'border-white/[0.08] bg-white/[0.03] text-white/60 hover:border-white/20'
+                                    )}
+                                >
+                                    <span className={cn(
+                                        'w-4 h-4 rounded border-2 flex items-center justify-center shrink-0',
+                                        marcado ? 'border-emerald-400 bg-emerald-400' : 'border-white/25'
+                                    )}>
+                                        {marcado && <Check size={10} className="text-white" />}
+                                    </span>
+                                    {op}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {canais.includes('Outro') && (
+                    <div>
+                        <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">
+                            Qual canal?
+                        </label>
+                        <input
+                            type="text"
+                            value={outro}
+                            onChange={e => onChange(item.id, 'outro', e.target.value, false)}
+                            onBlur={e => setOutro(e.target.value)}
+                            placeholder="Nome do canal..."
+                            className="w-full h-10 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
+                        />
+                    </div>
+                )}
+
+                {/* Quem não vende fora do Mercado Livre não tem faturamento a informar. */}
+                {canais.length > 0 && !naoVende && (
+                    <div>
+                        <label className="text-white/40 text-[11px] font-medium uppercase tracking-wider block mb-1.5">
+                            Faixa de faturamento nesses canais
+                        </label>
+                        <CustomSelect
+                            value={faixa}
+                            onChange={setFaixa}
+                            opcoes={[SELECIONE, ...(item.opcoes ?? [])]}
+                        />
+                    </div>
+                )}
             </div>
         );
     }
@@ -1838,6 +2010,15 @@ function itemTemConteudo(item, dado = {}) {
             return String(dado.acesso ?? '').trim() !== '';
         case 'link':  // URL digitada pelo cliente
             return String(dado.link ?? '').trim() !== '';
+        case 'canais_venda': { // Outros Canais de Venda — canais + (se vende) faixa
+            const canais = Array.isArray(dado.canais)
+                ? dado.canais
+                : (dado.canal ? [dado.canal] : []); // formato de escolha única (02/09 cedo)
+            if (canais.length === 0) return false;
+            if (canais.includes(CANAL_NENHUM)) return true;
+            if (canais.includes('Outro') && String(dado.outro ?? '').trim() === '') return false;
+            return String(dado.valor ?? '').trim() !== '';
+        }
         case 'produtos': // ≥ 1 produto com SKU ou nome
             return (dado.produtos ?? []).some(
                 p => String(p.sku ?? '').trim() !== '' || String(p.produto ?? '').trim() !== ''
@@ -1846,6 +2027,7 @@ function itemTemConteudo(item, dado = {}) {
             return (dado.produtos ?? []).some(p => String(p.custo ?? '').trim() !== '');
         default:
             // ação pura (link/gmail/instruções/checkbox/select_opcoes): nada a preencher.
+            // 'observacao' também cai aqui — é OPCIONAL, ver MlbImplementacao::itemTemConteudo.
             return true;
     }
 }
@@ -1929,8 +2111,11 @@ function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, 
                 <ItemInput item={item} dado={dado} linksAdmin={linksAdmin} onChange={onChange} />
             )}
 
-            {/* Checkbox de feito — oculto para select_opcoes (feito se selecionou algo) */}
-            {item.tipo !== 'select_opcoes' && (
+            {/* Checkbox de feito — oculto onde a própria resposta marca o item
+                (select_opcoes e canais_venda). `observacao` também se marca sozinha ao
+                escrever, mas MANTÉM o checkbox: o campo é opcional e quem não tem nada a
+                observar precisa de um jeito de concluir o item. */}
+            {item.tipo !== 'select_opcoes' && item.tipo !== 'canais_venda' && (
                 <div className="mt-4 pt-3 border-t border-white/[0.06]">
                     <label className={cn('flex items-center gap-2.5 group w-fit', podeMarcar ? 'cursor-pointer' : 'cursor-not-allowed')}>
                         <div
@@ -1945,9 +2130,10 @@ function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, 
                         </div>
                         <span className={cn('text-[13px] font-medium transition-colors',
                             feito ? 'text-emerald-300' : podeMarcar ? 'text-white/40 group-hover:text-white/60' : 'text-white/25')}>
-                            {item.id === 'certificado_a1'    ? 'Sim, possuo Certificado A1'
-                             : item.id === 'publicar_em_massa' ? 'Confirmar'
-                             : 'Marcar como feito'}
+                            {item.id === 'certificado_a1' ? 'Sim, possuo Certificado A1'
+                             : (item.tipo === 'observacao' && String(dado?.observacao ?? '').trim() === '')
+                                ? 'Não tenho observações'
+                                : 'Marcar como feito'}
                         </span>
                     </label>
                     {/* Aviso enquanto o item não tem o conteúdo mínimo preenchido */}
@@ -2008,16 +2194,19 @@ export default function ImplementacaoPublica({ impl, checklist, prazo_data = '',
         saveTimer.current = setTimeout(() => setSaveStatus('idle'), 2000);
     }
 
+    // Devolve SEMPRE uma promise para que o chamador possa encadear duas gravações do
+    // mesmo item (ex.: 'canal' e depois 'feito'). Cada PATCH lê e reescreve o JSON de
+    // `dados` INTEIRO — dois em paralelo e o último a gravar apaga o campo do outro.
     const onChange = useCallback((id, campo, valor, doSave) => {
         setDadosLocais(prev => ({
             ...prev,
             itens: { ...prev.itens, [id]: { ...prev.itens[id], [campo]: valor } },
         }));
 
-        if (!doSave) return;
+        if (!doSave) return Promise.resolve();
 
         setSaveStatus('saving');
-        axios.patch(route('implementacao.salvar', impl.token), { id, campo, valor })
+        return axios.patch(route('implementacao.salvar', impl.token), { id, campo, valor })
             .then(res => { setProgresso(res.data.progresso); showSaved(); })
             .catch(() => {
                 setSaveStatus('error');

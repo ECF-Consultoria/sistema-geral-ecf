@@ -70,6 +70,9 @@ class MlbImplementacao extends Model
     //   texto           — textarea
     //   select          — ERP / Integrador (opções fixas com "Outro")
     //   select_opcoes   — dropdown com opções definidas em item.opcoes
+    //   canais_venda    — duas perguntas no mesmo item: canal que mais vende (item.opcoes_canal)
+    //                     + faixa de faturamento (item.opcoes), esta só se vende em algum
+    //   observacao      — textarea livre e OPCIONAL; escrever já marca o item como feito
     //   produtos        — tabela inline de produtos
     //   instrucoes      — texto de instrução + checkbox
     //   instrucoes_link — texto de instrução + botão de link fixo + checkbox
@@ -95,9 +98,11 @@ class MlbImplementacao extends Model
      * → "Aceite no Projeto" = aceitou, ainda entrando (pré-M0; espelha a planilha) → M0 = entrada
      * efetiva → M1..M4 → Encerrado/Churn = saída. "Protocolo Churn" = protocolo de
      * retenção aberto — a empresa ainda está no polo, mas em processo de saída.
+     * "Desistência" = saída por decisão do próprio cliente (planilha V2 já usava a palavra;
+     * até 2026-09-09 o sync a fundia em Churn e a distinção se perdia).
      */
     public const ONB_FASE_OPCOES = [
-        'Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Churn',
+        'Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn',
     ];
 
     /** Status de entrada da empresa no projeto (funil — planilha V2, coluna "status de entrada") */
@@ -300,18 +305,16 @@ class MlbImplementacao extends Model
             'descricao'   => 'Como são os produtos que você pretende vender no Mercado Livre?',
         ],
         [
-            'id'          => 'canais_faturamento',
-            'titulo'      => 'Outros Canais de Venda',
-            'tipo'        => 'select_opcoes',
-            'opcoes'      => [
-                'Até 50k',
-                'De 50 a 100k',
-                'De 100 a 500k',
-                'Acima de 500k',
-                'Não vendo em outros canais',
-            ],
-            'tem_tutorial'=> false,
-            'descricao'   => 'Você já vende em outros canais? Se sim, qual a faixa de faturamento?',
+            'id'           => 'canais_faturamento',
+            'titulo'       => 'Outros Canais de Venda',
+            // Duas perguntas no mesmo item (pedido de 02/09/2026): QUAL canal vende mais e,
+            // só para quem vende em algum, a faixa de faturamento. Era 'select_opcoes' com a
+            // faixa sozinha — a faixa continua em `valor` para não quebrar quem já lê o campo.
+            'tipo'         => 'canais_venda',
+            'opcoes_canal' => self::CANAL_VENDA_OPCOES,
+            'opcoes'       => self::CANAL_FAIXA_OPCOES,
+            'tem_tutorial' => false,
+            'descricao'    => 'Você já vende em outros canais? Se sim, em quais e qual a faixa de faturamento?',
         ],
         [
             'id'          => 'hub',
@@ -327,17 +330,18 @@ class MlbImplementacao extends Model
             'descricao'   => 'Qual HUB de integração a empresa utiliza? Informe também o acesso',
         ],
         [
+            // O `id` continua `publicar_em_massa` DE PROPÓSITO. A pergunta era
+            // "Publicar em Massa?" (select de 4 opções) até 02/09/2026 e virou um campo
+            // livre de observações. Trocar o id criaria uma chave órfã em `dados.itens`
+            // das fichas já salvas — e `progresso()` conta `count($itens)`, então a órfã
+            // entraria no denominador e nenhuma dessas fichas voltaria a fechar 100%.
+            // O texto novo mora em `observacao`; o `valor` do select antigo fica no JSON,
+            // intocado e sem ser renderizado em lugar nenhum.
             'id'          => 'publicar_em_massa',
-            'titulo'      => 'Publicar em Massa?',
-            'tipo'        => 'select_opcoes',
-            'opcoes'      => [
-                'Sim',
-                'Não',
-                'Todos os meus produtos já estão publicados',
-                'Meu HUB / ERP ainda não está completo para publicar em massa',
-            ],
+            'titulo'      => 'Observações sobre publicação',
+            'tipo'        => 'observacao',
             'tem_tutorial'=> false,
-            'descricao'   => 'A empresa deseja publicar anúncios em massa',
+            'descricao'   => 'Alguma observação sobre a publicação dos seus anúncios? (opcional)',
         ],
         [
             'id'          => 'planilha_produtos',
@@ -401,8 +405,26 @@ class MlbImplementacao extends Model
         ],
     ];
 
+    /**
+     * ERP do CHECKLIST público (≠ ONB_ERP_OPCOES, que é a coluna do Painel Polos).
+     * Lista revista pelo comercial em 2026-09-02: saíram SAP, Netsuite, TOTVS e Omie
+     * (nenhuma ficha em 509 usava) e entraram Anymarket, Tray, LojaHub e Shopping de
+     * Preços. 'Tiny ERP' virou 'Tiny' — as 10 fichas com o texto antigo foram migradas
+     * no mesmo deploy: o <select> do link do cliente é nativo e controlado, então um
+     * valor fora da lista aparece EM BRANCO para o cliente (o 'feito' continua marcado,
+     * porque itemTemConteudo só exige valor ≠ '---' — o cliente é que perde a resposta
+     * ao encostar no campo). 'Outro' ficou (47 fichas) porque é ele que abre o campo
+     * de texto livre.
+     */
     public const ERP_OPCOES = [
-        'Em Contratação', 'Tiny ERP', 'Bling', 'SAP', 'Netsuite', 'TOTVS', 'Omie', 'Outro',
+        'Bling',
+        'Tiny',
+        'Anymarket',
+        'Tray',
+        'LojaHub',
+        'Shopping de Preços',
+        'Em Contratação',
+        'Outro',
     ];
 
     /**
@@ -421,6 +443,37 @@ class MlbImplementacao extends Model
         // Empresa que não usa integrador — despacha tudo pelo Mercado Envios (quick 260804)
         'Enviarei Apenas pelo Mercado Envios',
         'Outro',
+    ];
+
+    /**
+     * Sentinela do item "Outros Canais de Venda": quem escolhe isto não vende fora do
+     * Mercado Livre, então a pergunta da faixa de faturamento deixa de existir para ele.
+     * Era uma opção da FAIXA até 02/09/2026 — mudou de pergunta, não sumiu.
+     */
+    public const CANAL_NENHUM = 'Não vendo em outros canais';
+
+    /**
+     * Canais em que o cliente vende, fora o Mercado Livre (pedido de 02/09/2026).
+     * Múltipla escolha: quem vende em Shopee e Amazon marca os dois.
+     * A lista é a do time comercial; 'Outro' abre campo de texto (mesmo padrão do ERP)
+     * para não obrigar quem vende em Shein/Netshoes a escolher um canal errado.
+     */
+    public const CANAL_VENDA_OPCOES = [
+        self::CANAL_NENHUM,
+        'Shopee',
+        'Amazon',
+        'Madeira Madeira',
+        'Magalu',
+        'Web Continental',
+        'Outro',
+    ];
+
+    /** Faixa de faturamento nos outros canais — só perguntada a quem vende em algum. */
+    public const CANAL_FAIXA_OPCOES = [
+        'Até 50k',
+        'De 50 a 100k',
+        'De 100 a 500k',
+        'Acima de 500k',
     ];
 
     /** HUB de integração usado pelo cliente (item "HUB" do checklist público). */
@@ -460,11 +513,18 @@ class MlbImplementacao extends Model
                 'erp'                  => ['valor' => '---', 'outro' => '', 'acesso' => '', 'feito' => false],
                 'integrador_logistico' => ['valor' => '---', 'outro' => '', 'feito' => false],
                 'produtos_perfil'      => ['valor' => '', 'feito' => false],
-                'canais_faturamento'   => ['valor' => '', 'feito' => false],
+                // 'valor' = faixa de faturamento (chave original, preservada); 'canais' e
+                // 'outro' são a pergunta acrescentada em 02/09/2026. Ficha respondida
+                // enquanto a pergunta era de escolha única guarda 'canal' (string) —
+                // canaisSelecionados() lê as duas formas.
+                'canais_faturamento'   => ['canais' => [], 'outro' => '', 'valor' => '', 'feito' => false],
                 // 'acesso' preservado: o HUB era textarea livre até 2026-09-01 e 3 fichas
                 // têm texto salvo ali.
                 'hub'                  => ['valor' => '---', 'outro' => '', 'acesso' => '', 'feito' => false],
-                'publicar_em_massa'    => ['valor' => '', 'feito' => false],
+                // 'valor' = resposta do antigo select "Publicar em Massa?" (chave original,
+                // preservada e não renderizada); 'observacao' é o campo livre que o
+                // substituiu em 02/09/2026 e é o que o publicador lê.
+                'publicar_em_massa'    => ['valor' => '', 'observacao' => '', 'feito' => false],
                 'planilha_produtos'    => ['produtos' => [], 'feito' => false],
                 'drive_imagens'        => ['feito' => false],
                 'precificacao' => [
@@ -630,6 +690,20 @@ class MlbImplementacao extends Model
             case 'link': // URL digitada pelo cliente
                 return trim((string) ($dado['link'] ?? '')) !== '';
 
+            case 'canais_venda': // Outros Canais de Venda — canais + (se vende) faixa
+                $canais = self::canaisSelecionados($dado);
+                if ($canais === []) {
+                    return false;
+                }
+                // Quem não vende em outro canal já respondeu tudo o que havia para responder.
+                if (in_array(self::CANAL_NENHUM, $canais, true)) {
+                    return true;
+                }
+                if (in_array('Outro', $canais, true) && trim((string) ($dado['outro'] ?? '')) === '') {
+                    return false;
+                }
+                return trim((string) ($dado['valor'] ?? '')) !== '';
+
             case 'produtos': // Planilha de Produtos — ao menos 1 produto com SKU ou nome
                 foreach (($dado['produtos'] ?? []) as $p) {
                     if (trim((string) ($p['sku'] ?? '')) !== '' || trim((string) ($p['produto'] ?? '')) !== '') {
@@ -649,6 +723,11 @@ class MlbImplementacao extends Model
             default:
                 // link_fixo, link_admin, gmail, instrucoes, instrucoes_link,
                 // checkbox, select_opcoes — ação pura, nada a preencher.
+                //
+                // `observacao` cai aqui de propósito: o campo é OPCIONAL. Escrever marca o
+                // item sozinho, mas quem não tem observação nenhuma precisa poder marcar na
+                // mão — travar o check aqui deixaria toda ficha sem observação presa abaixo
+                // de 100% para sempre.
                 return true;
         }
     }
@@ -862,6 +941,100 @@ class MlbImplementacao extends Model
         $dados['itens'] = $itens;
 
         return $dados;
+    }
+
+    /**
+     * Resposta do cliente a um item `select`/`select_opcoes` do CHECKLIST.
+     *
+     * Existe para o Painel Polos exibir e FILTRAR respostas que moram no JSON
+     * (`dados.itens.<id>.valor`) lado a lado com as colunas de `mlb_implementacoes`, sem
+     * que a tela precise saber dessa diferença de origem.
+     *
+     * Lê direto do JSON, sem passar por mesclarItensPadrao(): chave ausente e chave no
+     * padrão dão o MESMO resultado (null), e o merge reconstrói dadosPadrao() a cada
+     * chamada — caro no Painel, que chama isto 2x por empresa em ~500 linhas.
+     *
+     * @return string|null null para não respondido e para a sentinela '---' dos selects.
+     */
+    public function respostaChecklist(string $id): ?string
+    {
+        $valor = trim((string) ($this->dados['itens'][$id]['valor'] ?? ''));
+
+        return ($valor === '' || $valor === '---') ? null : $valor;
+    }
+
+    /**
+     * Canais marcados no item "Outros Canais de Venda", normalizados para lista.
+     *
+     * Aceita o formato ANTIGO (`canal`, string única): a pergunta nasceu de escolha
+     * única em 02/09/2026 e virou múltipla escolha no mesmo dia, com ficha de cliente
+     * já respondida no banco. Ignorar a chave antiga apagaria a resposta da tela.
+     *
+     * @param array $dado dados.itens.canais_faturamento
+     * @return string[]
+     */
+    public static function canaisSelecionados(array $dado): array
+    {
+        $canais = is_array($dado['canais'] ?? null) ? $dado['canais'] : [];
+
+        $canais = array_values(array_filter(
+            array_map(fn ($c) => trim((string) $c), $canais),
+            fn ($c) => $c !== ''
+        ));
+
+        if ($canais !== []) {
+            return $canais;
+        }
+
+        $legado = trim((string) ($dado['canal'] ?? ''));
+
+        return $legado === '' ? [] : [$legado];
+    }
+
+    /**
+     * Resposta do item "Outros Canais de Venda" para a coluna homônima do Painel Polos.
+     *
+     * O item passou a ter DUAS respostas em 02/09/2026 (canais + faixa) e
+     * `respostaChecklist()` só enxerga `valor` — a coluna "Outros canais" mostraria a
+     * faixa e nunca os canais, que é justamente o que o time pediu para ver.
+     *
+     * Formato: "Shopee, Amazon · De 50 a 100k" · "Outro: Shein · Até 50k" ·
+     * "Não vendo em outros canais" (sozinho — quem não vende não tem faixa) · null.
+     * Ficha antiga, que respondeu quando só havia a faixa, devolve só a faixa.
+     */
+    public function respostaCanaisVenda(): ?string
+    {
+        $item   = $this->dados['itens']['canais_faturamento'] ?? [];
+        $item   = is_array($item) ? $item : [];
+        $faixa  = trim((string) ($item['valor'] ?? ''));
+        $canais = self::canaisSelecionados($item);
+
+        $outro  = trim((string) ($item['outro'] ?? ''));
+        $canais = array_map(
+            fn ($c) => $c === 'Outro' ? ($outro === '' ? 'Outro' : 'Outro: ' . $outro) : $c,
+            $canais
+        );
+
+        $naoVende = in_array(self::CANAL_NENHUM, $canais, true);
+        $partes   = array_filter([implode(', ', $canais), $naoVende ? '' : $faixa]);
+
+        return $partes === [] ? null : implode(' · ', $partes);
+    }
+
+    /**
+     * Observação que o cliente escreveu no item "Observações sobre publicação".
+     *
+     * Método próprio (e não `respostaChecklist('publicar_em_massa')`) porque o texto mora
+     * em `observacao`, não em `valor` — `valor` guarda a resposta do select "Publicar em
+     * Massa?" que o item era até 02/09/2026 e que NÃO deve reaparecer em tela nenhuma.
+     *
+     * @return string|null null quando não há observação (o Painel mostra "—").
+     */
+    public function observacaoPublicacao(): ?string
+    {
+        $texto = trim((string) ($this->dados['itens']['publicar_em_massa']['observacao'] ?? ''));
+
+        return $texto === '' ? null : $texto;
     }
 
     public function progresso(): array
