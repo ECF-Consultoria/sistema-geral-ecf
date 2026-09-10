@@ -187,3 +187,63 @@ SUMMARY.
 qualquer verbo `roadmap.*`/`state.*`, e `diff` depois, **antes** de commitar. Se a linha `**Plans:**`
 carregava uma anotação manual (aviso de deploy, pendência, ressalva de escopo), ela precisa ser
 reencaixada à mão no texto novo — o verbo não faz merge, faz substituição total da linha.
+
+## 9. Numeração de fase COLIDE entre sessões paralelas — e ninguém avisa (medido 2026-09-10)
+
+Duas sessões de Claude Code, em máquinas diferentes, abriram milestones diferentes e **as duas
+numeraram a partir da 137**. Ninguém errou: cada uma leu o `ROADMAP.md` que tinha à mão, viu que a
+última fase era a 136, e continuou dali. O `/gsd-new-milestone` não tem como saber o que a outra
+máquina está fazendo.
+
+Descoberto por acaso, ao medir a divergência antes de planejar a fase seguinte:
+
+```bash
+git rev-list --left-right --count origin/main...HEAD
+# 228   157   ← 228 commits de origin/main que faltavam aqui
+
+git ls-tree -d --name-only origin/main .planning/phases/ | grep -E "/1(3[7-9]|4[0-3])-"
+```
+
+O resultado mostrou, em `origin/main`, `137-fechamento-mensal-...`, `138-tabela-do-grupo-...`,
+`139-redesenho-da-tela-...`, `140-extrair-tabelas-progressivas-do-clicksign` e
+`141-tabela-progressiva-por-empresa-e-grupo` — todas de um milestone financeiro, nenhuma relação
+com o Fluxo de Entrada que ocupava os mesmos números aqui.
+
+**O que a colisão quebra, em ordem de dor:**
+
+1. `ROADMAP.md` e `STATE.md` conflitam textualmente no merge — os dois lados **anexaram** blocos, e
+   o `git` não tem como saber que "Phase 140" de um não é "Phase 140" do outro.
+2. Os diretórios `tests/Feature/PhaseNNN` **fundem em silêncio**. Aqui não houve conflito de arquivo
+   porque o outro dev prefixa as classes (`Phase137CompetenciaEndpointTest`) e este lado usa nome de
+   domínio (`EtapaBackfillTest`) — mas `phpunit tests/Feature/Phase139` passaria a rodar **dois
+   milestones**, e todo comando de regressão escrito nos planos viraria mentira sem falhar.
+3. Referência cruzada em prosa ("ver Fase 138") passa a apontar para a coisa errada, e isso não
+   falha em lugar nenhum — só confunde quem ler daqui a seis meses.
+
+**Correção aplicada:** renumerar o milestone mais novo para uma faixa livre (137-143 → **150-156**),
+com folga deliberada para a outra sessão crescer.
+
+**Como renumerar sem quebrar nada:**
+
+- `git mv` para pastas e arquivos — o git detecta os renames e **preserva o histórico** de cada um.
+- Substituição **DIRIGIDA, nunca cega** no número. `s/139/152/g` corrompe CNPJ (`13.913.913/...`),
+  nome de fixture (`ZZ Conferência 139`) e qualquer valor que só contenha os dígitos. Os padrões que
+  cobrem o caso real: `Phase139`, `Fase 139`, `Fases 139`, `Phase: 139`, `T-139-`, `139-\d\d`,
+  `139-(PLAN|SUMMARY|CONTEXT|RESEARCH|...)`, `phase: 139-<slug>`, `resolves_phase: 139`.
+- **O plural e a forma com dois-pontos escapam** de `\bFase 139\b`: `Fases 138/139` e `Phase: 139`
+  precisam de padrão próprio. Foram os dois últimos resíduos a aparecer aqui.
+- Varrer **todos** os diretórios, não só `.planning/`: os comentários de `app/`, `database/`,
+  `routes/` e `resources/js/` citam número de fase o tempo todo.
+- Provar que **nenhuma lógica mudou**:
+  `git diff --cached -U0 -- app/ | grep '^+' | grep -vE '^\+\s*(\*|//|#)'` tem que sair **vazio**.
+- Rodar a suíte inteira e o `npm run build` **depois** da renumeração, não antes.
+
+**O que NÃO renomear:** dado gravado em banco. As empresas-fixture `ZZ Conferência 139` continuaram
+com esse nome de propósito — mudar só o texto do documento criaria referência a uma linha que não
+existe.
+
+**Como evitar da próxima vez:** antes de `/gsd-new-milestone`, rodar
+`git ls-tree -d --name-only origin/main .planning/phases/ | tail -20` e escolher uma faixa que não
+colida — não basta olhar o `ROADMAP.md` local. E medir `rev-list --left-right` **antes de planejar**,
+que é a mesma disciplina que já evitou planejar a etapa Contrato do zero com o Clicksign inteiro
+pronto em `origin/main`.
