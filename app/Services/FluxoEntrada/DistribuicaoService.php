@@ -178,6 +178,57 @@ class DistribuicaoService
     }
 
     /**
+     * Marcadores de chegada da empresa na carteira do responsável
+     * (RESP-02): "novo cliente" e "onboarding pendente".
+     *
+     * **Os dois DERIVAM, nenhum vira coluna** (D-F):
+     *
+     * - `novo_cliente` sai da data da transição 5→6 — a distribuição — dentro da
+     *   janela de {@see self::DIAS_NOVO_CLIENTE} dias. Uma coluna `is_novo`
+     *   precisaria de alguém para desligar, e ficaria acesa para sempre no dia
+     *   em que esse alguém esquecesse.
+     * - `onboarding_pendente` sai da própria `etapa`. A Fase 155 é dona do
+     *   onboarding; aqui só se lê o estado.
+     *
+     * Uma consulta só para todas as empresas — nada de N+1 no dashboard.
+     *
+     * @param  array<int, int>  $companyIds
+     * @return array<int, array{novo_cliente: bool, onboarding_pendente: bool}>
+     */
+    public function marcadores(array $companyIds): array
+    {
+        if ($companyIds === []) {
+            return [];
+        }
+
+        $distribuidasEm = DB::table('company_etapa_transicoes')
+            ->whereIn('company_id', $companyIds)
+            ->where('etapa_nova', Company::ETAPA_AGUARDANDO_ONBOARDING)
+            ->groupBy('company_id')
+            ->pluck(DB::raw('MAX(created_at) as em'), 'company_id');
+
+        $etapas = Company::whereIn('id', $companyIds)->pluck('etapa', 'id');
+
+        $limite = now()->subDays(self::DIAS_NOVO_CLIENTE);
+        $saida  = [];
+
+        foreach ($companyIds as $id) {
+            $em = $distribuidasEm[$id] ?? null;
+
+            $saida[$id] = [
+                'novo_cliente' => $em !== null && \Illuminate\Support\Carbon::parse($em)->greaterThanOrEqualTo($limite),
+                'onboarding_pendente' => in_array(
+                    $etapas[$id] ?? null,
+                    [Company::ETAPA_AGUARDANDO_ONBOARDING, Company::ETAPA_ONBOARDING_ANDAMENTO],
+                    true
+                ),
+            ];
+        }
+
+        return $saida;
+    }
+
+    /**
      * Idempotente por (empresa, serviço, função): distribuir de novo troca o
      * responsável em vez de acumular linha.
      */

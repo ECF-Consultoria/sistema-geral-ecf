@@ -382,6 +382,59 @@ class DistribuicaoServiceTest extends TestCase
         ]);
     }
 
+    // ─── RESP-02 — os marcadores derivam, nada de coluna ───────────────────
+
+    public function test_marcadores_acendem_apos_a_distribuicao(): void
+    {
+        $setor = $this->setor('publicacao', 'Publicação');
+        $analista = $this->colaborador($this->cargo($setor, 'analista'), 'Analista');
+        $estrat   = $this->colaborador($this->cargo($setor, 'estrategista'), 'Estrategista');
+
+        $empresa = $this->empresa();
+        $this->vincularServico($empresa, $this->servico('Publicação 154', 'publicacao'));
+
+        // Antes: nem novo, nem onboarding pendente.
+        $antes = $this->svc()->marcadores([$empresa->id]);
+        $this->assertFalse($antes[$empresa->id]['novo_cliente']);
+        $this->assertFalse($antes[$empresa->id]['onboarding_pendente']);
+
+        $this->svc()->distribuir($empresa->fresh(), $analista->id, $estrat->id, $this->coordenador());
+
+        $depois = $this->svc()->marcadores([$empresa->id]);
+        $this->assertTrue($depois[$empresa->id]['novo_cliente'], 'recém-distribuída conta como novo cliente.');
+        $this->assertTrue($depois[$empresa->id]['onboarding_pendente'], 'etapa 6 é onboarding pendente.');
+    }
+
+    public function test_novo_cliente_apaga_depois_da_janela(): void
+    {
+        $setor = $this->setor('publicacao', 'Publicação');
+        $analista = $this->colaborador($this->cargo($setor, 'analista'), 'Analista');
+        $estrat   = $this->colaborador($this->cargo($setor, 'estrategista'), 'Estrategista');
+
+        $empresa = $this->empresa();
+        $this->vincularServico($empresa, $this->servico('Publicação 154', 'publicacao'));
+        $this->svc()->distribuir($empresa->fresh(), $analista->id, $estrat->id, $this->coordenador());
+
+        // Envelhece a linha de transição para além da janela.
+        CompanyEtapaTransicao::where('company_id', $empresa->id)
+            ->where('etapa_nova', Company::ETAPA_AGUARDANDO_ONBOARDING)
+            ->update(['created_at' => now()->subDays(DistribuicaoService::DIAS_NOVO_CLIENTE + 1)]);
+
+        $m = $this->svc()->marcadores([$empresa->id]);
+
+        $this->assertFalse(
+            $m[$empresa->id]['novo_cliente'],
+            'passada a janela, o selo de novo cliente apaga sozinho — é o motivo de derivar em vez de guardar coluna.'
+        );
+        // Mas "onboarding pendente" continua: depende da etapa, não do tempo.
+        $this->assertTrue($m[$empresa->id]['onboarding_pendente']);
+    }
+
+    public function test_marcadores_com_lista_vazia_nao_quebra(): void
+    {
+        $this->assertSame([], $this->svc()->marcadores([]));
+    }
+
     /** RESP-01 — o vínculo é o que faz a empresa aparecer na carteira dos dois. */
     public function test_apos_distribuir_a_empresa_esta_na_carteira_dos_dois(): void
     {

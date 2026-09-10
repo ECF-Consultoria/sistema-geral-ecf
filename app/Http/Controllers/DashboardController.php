@@ -1636,6 +1636,9 @@ class DashboardController extends Controller
         // $user->companies() quando nao e admin).
         $npsPendentes = $this->npsPending->forCarteira($user);
 
+        $marcadoresChegada = app(\App\Services\FluxoEntrada\DistribuicaoService::class)
+            ->marcadores($companies->pluck('id')->all());
+
         return Inertia::render('Dashboard/User', [
             'stats' => [
                 'total_companies' => $companies->count(),
@@ -1645,12 +1648,20 @@ class DashboardController extends Controller
                 'total_revenue' => $metrics->sum('revenue'),
             ],
             'period' => $period,
+            // Fase 154 (RESP-02) — os dois marcadores DERIVAM (D-F): "novo
+            // cliente" da data da distribuição (transição 5→6, janela de 14
+            // dias) e "onboarding pendente" da própria etapa. Nenhum vira
+            // coluna: `is_novo` precisaria de alguém para desligar, e ficaria
+            // acesa para sempre no dia em que esse alguém esquecesse. Uma
+            // consulta só para toda a carteira — nada de N+1 aqui.
             'companies' => $companies->map(fn($c) => [
                 'id' => $c->id,
                 'name' => $c->name,
                 'tacos' => $tacos30dByCompany[$c->id] ?? $c->latestMetrics?->tacos,
                 'revenue' => (float) ($revenue30dByCompany[$c->id] ?? 0),
                 'goals' => $c->goals->where('active', true)->values(),
+                'novo_cliente' => $marcadoresChegada[$c->id]['novo_cliente'] ?? false,
+                'onboarding_pendente' => $marcadoresChegada[$c->id]['onboarding_pendente'] ?? false,
             ]),
             'my_surveys' => $myNpsSurveys,
             'my_ppas' => $myPpas,
