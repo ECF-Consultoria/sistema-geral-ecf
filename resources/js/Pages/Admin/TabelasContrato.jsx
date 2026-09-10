@@ -8,6 +8,7 @@ import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { FileSearch, Search, AlertTriangle, ChevronLeft, ChevronRight, CheckCircle2, HelpCircle } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
+import { rotuloFaturamento } from '@/lib/faixasFaturamento';
 
 /**
  * Admin/TabelasContrato.jsx — Fase 140 Plano 05 (TAB-08/TAB-09, D-05/D-06).
@@ -69,7 +70,12 @@ function ListaFaixas({ faixas }) {
                     key={f.ordem ?? i}
                     className={cn('grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-[12px] font-mono', i > 0 && 'border-t border-white/[0.04]')}
                 >
-                    <span className="text-white/60">{f.limite_superior != null ? `até ${fmtBRL(f.limite_superior)}` : 'acima disso'}</span>
+                    {/* Quick 260910 — mesma convenção de TabelaProgressivaFaixas: a
+                        primeira linha mostra o teto redondo ("até"), as demais (inclusive
+                        a última, sem teto) mostram "a partir de" o teto da linha anterior —
+                        a mesma lógica do contrato. Duas telas mostrando a mesma tabela em
+                        convenções diferentes seria pior que o problema original. */}
+                    <span className="text-white/60">{rotuloFaturamento(faixas, i)}</span>
                     <span className="text-emerald-400/80 font-semibold">
                         {f.valor_e_piso ? 'a partir de ' : ''}{fmtBRL(f.valor)}
                     </span>
