@@ -5,7 +5,12 @@ import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Plus, Trash2, Lock, Table2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+// Fase 142 Plano 03 — a grade da tabela progressiva mudou de endereço para
+// `Components/Fechamento/TabelaProgressivaFaixas`, componente compartilhado
+// com a ficha nova da empresa (`Pages/Admin/TabelaEmpresa.jsx`). A Fase 139
+// já pagou o preço de ter esse markup em duas cópias divergentes — criar uma
+// quarta cópia dentro da página nova seria repetir o erro no mesmo mês.
+import TabelaProgressivaFaixas from '@/Components/Fechamento/TabelaProgressivaFaixas';
 
 /**
  * TabelaFaixasSection — bloco de cadastro manual da tabela de faixas
@@ -41,16 +46,6 @@ import { cn } from '@/lib/utils';
  * com aviso explícito de que a tabela inteira precisa ser preenchida de
  * novo (D-13 é all-or-nothing de qualquer forma).
  */
-
-const fmtBRL = (n) => n == null ? '—'
-    : Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL',
-        minimumFractionDigits: 0, maximumFractionDigits: 0 });
-
-// Prefixa "a partir de" quando a faixa é piso — mesma disciplina de
-// Financeiro.jsx (137-09 Tarefa 1): nunca mostrar o valor seco de uma
-// faixa aberta, isso faria o Administrativo cobrar a menos.
-const fmtValorFaixa = (valor, isPiso) => valor == null ? null
-    : (isPiso ? `a partir de ${fmtBRL(valor)}` : fmtBRL(valor));
 
 function linhaVaziaFaixa(ordem) {
     return { ordem, limite_superior: '', valor: '', valor_e_piso: false };
@@ -198,51 +193,6 @@ function FaixaFormDialog({ open, title, aviso, faixasIniciais, onClose, onSalvar
                 </DialogFooter>
             </DialogContent>
         </Dialog>
-    );
-}
-
-// ─── Tabela progressiva (Fase 139 Plano 06, correção 260904-jpn) ─────────
-// Densidade fiel a `design_handoff_fechamento/Fechamento.dc.html`: grade
-// `80px 1fr 160px` com gap 16px (não tabela HTML de larguras automáticas),
-// linhas 12px/18px de padding a 13px de texto, cabeçalho 10px/18px sobre a
-// superfície interna (`ecf-card-2`), caixa com raio 12px. Antes desta
-// correção esse markup existia em DUAS cópias divergentes (bloco do grupo
-// e bloco do serviço) — agora é uma subcomponente só, usada nos dois
-// lugares. Fonte e paleta continuam as do projeto (font-mono do Tailwind,
-// tokens ecf-*) — decisão do usuário, não a fonte mono do handoff.
-function TabelaProgressivaFaixas({ faixas, faixaOrdemAtual }) {
-    const colunas = 'grid grid-cols-[80px_1fr_160px] gap-4';
-
-    return (
-        <div className="rounded-xl border border-white/[0.06] overflow-hidden">
-            <div className={cn(colunas, 'px-[18px] py-2.5 bg-ecf-card-2 text-white/40 text-[12px] font-semibold uppercase tracking-[0.05em]')}>
-                <span>Faixa</span>
-                <span>Faturamento até</span>
-                <span className="text-right">Mensalidade</span>
-            </div>
-            {faixas.map((f, i) => {
-                const atual = faixaOrdemAtual != null && f.ordem === faixaOrdemAtual;
-                return (
-                    <div
-                        key={f.ordem}
-                        className={cn(
-                            colunas,
-                            'items-center px-[18px] py-3 font-mono text-[14px]',
-                            i > 0 && 'border-t border-white/[0.03]',
-                            atual && 'bg-ecf-yellow/10',
-                        )}
-                    >
-                        <span className={cn('font-semibold', atual ? 'text-ecf-yellow' : 'text-white/70')}>{f.ordem}ª</span>
-                        <span className={atual ? 'text-ecf-yellow' : 'text-white/70'}>
-                            {f.limite_superior != null ? fmtBRL(f.limite_superior) : 'acima'}
-                        </span>
-                        <span className={cn('text-right font-semibold', atual ? 'text-ecf-yellow' : 'text-emerald-400/80')}>
-                            {fmtValorFaixa(f.valor, f.valor_e_piso)}
-                        </span>
-                    </div>
-                );
-            })}
-        </div>
     );
 }
 
