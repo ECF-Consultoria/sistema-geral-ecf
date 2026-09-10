@@ -424,32 +424,6 @@ export default function ContratoDetalhe({
                         </div>
                     )}
 
-                    {/* Fase 157 — ORDEM CORRIGIDA depois da conferência.
-                        Antes era Checklist → Timeline → Gerar contrato, e isso
-                        pedia para marcar itens de Contrato ANTES de oferecer a
-                        ação que os resolve — com o histórico inteiro no meio do
-                        caminho. A ordem agora segue o trabalho: a AÇÃO de
-                        contrato primeiro, depois o RETRATO (checklist), depois o
-                        cadastro, e o histórico por último — que é o que já
-                        aconteceu, não o que falta fazer.
-
-                        ⚠️ A guarda condicional abaixo é OBRIGATÓRIA e já foi
-                        perdida uma vez num reorder. Sem ela o fechamento no fim
-                        do bloco vira TEXTO na tela, e o build passa — JSX aceita
-                        esses caracteres como conteúdo. Se aparecer um fechamento
-                        solto na ficha, é isto. */}
-                    {checklist && (
-                        <CardChecklistAdministrativo
-                            checklist={checklist}
-                            companyId={company.id}
-                            podeVerContrato={pode_ver_contrato}
-                            podeFinalizar={pode_finalizar}
-                            admanRegisterUrl={adman_register_url}
-                            mensagemBoasVindas={mensagem_boas_vindas}
-                            contratoAcesso={contratoAcesso}
-                        />
-                    )}
-
                     {/* Âncora do bloco de contrato (Fase 157).
                         O item "Contrato enviado" do checklist rola até aqui: sem
                         isso, quem lê a ficha de cima para baixo via o item
@@ -526,6 +500,37 @@ export default function ContratoDetalhe({
 
 
 
+
+
+                    {/* Checklist administrativo (Fase 152) — o RETRATO do que
+                        falta, logo abaixo da geração do contrato.
+
+                        A ordem é decisão do usuário e tem razão de negócio: a
+                        primeira coisa que o Administrativo precisa é do
+                        CONTRATO. Pedir para conferir um checklist cujos três
+                        primeiros itens dependem de um contrato que ainda não
+                        existe é pedir na ordem errada.
+
+                        O checklist NÃO gera contrato — os itens do grupo
+                        Contrato têm "Ver contrato", que abre o documento. A
+                        geração fica no bloco acima, como o outro dev construiu.
+
+                        ⚠️ A guarda condicional abaixo é OBRIGATÓRIA e já foi
+                        perdida uma vez num reorder. Sem ela o fechamento no fim
+                        do bloco vira TEXTO na tela, e o build passa — JSX aceita
+                        esses caracteres como conteúdo. Se aparecer um fechamento
+                        solto na ficha, é isto. */}
+                    {checklist && (
+                        <CardChecklistAdministrativo
+                            checklist={checklist}
+                            companyId={company.id}
+                            podeVerContrato={pode_ver_contrato}
+                            podeFinalizar={pode_finalizar}
+                            admanRegisterUrl={adman_register_url}
+                            mensagemBoasVindas={mensagem_boas_vindas}
+                            contratoAcesso={contratoAcesso}
+                        />
+                    )}
 
                     {/* Formulário de completar cadastro (ADM-01) */}
                     <Card>
