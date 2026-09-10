@@ -820,6 +820,66 @@ activity: 2026-09-09 — 141-04 executado (`141-04-SUMMARY.md`). Sem deploy — 
 produção/`.env`/`plink`/`pscp` (trava do próprio plano); `artisan migrate` local NUNCA rodado (trava
 do próprio plano — banco local ~31 migrations atrás e vazio de dado real).
 
+141-05 concluído (TPE-07) — `fechamento:comparar-mensalidade --mes= [--json] [--todas]`: comando de
+leitura pura que calcula os dois lados (ANTES/DEPOIS) no MESMO processo via
+`FechamentoRegraTabela::forcar(?bool)` (nunca toca `configuracoes`), espelhando os mesmos passos de
+`ConsolidarMesFechamento`. Rodapé com total a receber ANTES/DEPOIS/diferença, quantas sobem/descem/
+ficam iguais/mudam de faixa, quantas ficam sem régua (com nomes) e as 10 maiores quedas/altas.
+Achado real em produção (competência 2026-08, ANTES da materialização do 141-03 — ordem errada de
+propósito, só para testar o comparador): toda empresa caía para `sem_tabela`, e a seção "Maiores
+altas" chegou a listar diferenças NEGATIVAS (bug de sinal, corrigido em `a168b9f6`) — lição que
+motivou a ordem materializar→conferir→comparar→ligar documentada em
+`.planning/learnings/fechamento-tabela-por-empresa.md`. Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Quick260909`: 553 testes / 2642
+asserções / 0 falhas. Commits `bc0e26e8` (feat) e `a168b9f6` (fix). Last activity: 2026-09-09 —
+141-05 executado (`141-05-SUMMARY.md`). Sem deploy.
+
+141-06 concluído (TPE-02/TPE-03/TPE-06) — os CINCO ramos de montagem de linha de
+`AdminController::fechamento()` (empresa ao vivo, empresa congelada com/sem snapshot, grupo ao vivo,
+grupo congelado) passam a usar `CobrancaCalculator::mensalidade()` sob a flag, com o estado
+`valor_fixo` e a procedência da tabela (`presumida_servico` marcada como não confirmada) chegando à
+tela; o paliativo do quick `260909-lge` que explicava "faixa + contrato" saiu, porque a soma deixa
+de existir. Commit `eb45a3e5`. ⚠️ **Pendência do coordenador**: o checkpoint visual (Task 3,
+`checkpoint:human-verify`) foi aprovado pelo usuário em 2026-09-10 ("Ao que parece está certo"),
+mas **falta o `141-06-SUMMARY.md` formal** — mesma classe de pendência já registrada para o
+`140-03-SUMMARY.md`. Last activity: 2026-09-10 — aprovação verbal do checkpoint; SUMMARY não
+gerado nesta sessão (fora do escopo do registro do 141-07).
+
+141-07 concluído (TPE-05/TPE-07) — **a virada em produção**, com gate humano em cada degrau (Tasks 1
+e 2 executadas pelo orquestrador, nunca pelo subagente — `plink`/`pscp`/`deploy.sh` bloqueados por
+desenho). Deploy do commit `e98e25ed`, 0 migrations pendentes. `fechamento:materializar-tabelas
+--aplicar`: 168 empresas materializadas com tabela própria `origem='presumida_servico'` (1 já tinha
+própria, 32 continuam sem tabela, 0 falhas) — conferido por reconsulta ao banco:
+`empresa_faixas_faturamento` foi de 7 linhas/1 empresa para 1.207 linhas/169 empresas; a soma
+congelada de agosto NÃO mudou com a materialização (permaneceu R$ 460.500,00/127 empresas — o
+objetivo do passo). `fechamento:comparar-mensalidade --mes=2026-08` (rodado DEPOIS da
+materialização): total a receber ANTES R$ 2.486.700,91 → DEPOIS R$ 736.450,97 (diferença
+-R$ 1.750.249,94; 0 sobem, 71 descem, 128 ficam iguais, **0 mudam de faixa** — a queda vem de parar
+de somar contrato à faixa, não de faixa mudando). Maior queda isolada: grupo Camillo Parts,
+R$ 522.500,00 → R$ 12.000,00, faixa 7 para faixa 7. **Usuário confirmou a queda como correção**, não
+regressão ("essa queda do exemplo que vc trouxe da camillo é esperada, o total a receber de antes da
+camillo era exorbitante") — decisão `ligar-agora`. Chave `fechamento_tabela_por_empresa_ativa`
+ligada, confirmada por reconsulta e por `FechamentoRegraTabela::ativa()`. Agosto/2026 reconsolidado
+sob a regra nova a pedido explícito do usuário ("está fechado mas fechado do jeito errado... precisa
+está certo"), via `fechamento:consolidar-mes --motivo=`: soma de `valor_faixa` R$ 460.500,00 →
+R$ 466.500,00 (129 empresas com faixa, eram 127) — alta de faixas e queda de total a receber não são
+contraditórias (ver `fechamento-tabela-por-empresa.md` §4). 4ª reconsolidação registrada com
+`snapshot_anterior` de 158.215 bytes (fechamento antigo recuperável). Gate
+`Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Quick260909`: **553 testes / 2642
+asserções / 0 falhas** (idêntico ao medido no 141-05, sem regressão). Task 3 (registro): aprendizado
+`.planning/learnings/fechamento-tabela-por-empresa.md` criado (por que a tabela do serviço virou
+semente/modelo de partida, o que `origem='presumida_servico'` significa e por que nunca é
+confirmada, a ordem obrigatória materializar→conferir→comparar→ligar, rollback sem deploy via
+`Configuracao::set(...,'0')`, por que competência congelada exige `--motivo=` para mudar, a
+armadilha do gate de cobertura excluindo `valor_fixo` do denominador) + referenciado em `CLAUDE.md`.
+**Fase 141 FECHADA.** Pendências que sobrevivem: as 168 tabelas presumidas seguem sem conferência
+humana contra o contrato real (tela da Fase 140), as 32 empresas sem tabela (maioria cadastro de
+teste pelo nome) e os 3 contratos de R$ 250.000 (GENUINEAUTOMOTIVE, Lenonn Milani, CAMILLOPARTS
+FILIAL RS) reportados ao usuário como provável erro de cadastro, não investigados nesta fase. Last
+activity: 2026-09-10 — 141-07 executado (`141-07-SUMMARY.md`). Ações de produção (materializar,
+comparar, ligar a flag, reconsolidar agosto) executadas pelo orquestrador; este registro (Task 3)
+executado pelo subagente executor.
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING

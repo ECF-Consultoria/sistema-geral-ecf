@@ -2344,9 +2344,19 @@ Plans:
 - [x] 141-02-PLAN.md — Flag de corte `fechamento_tabela_por_empresa_ativa` + `CobrancaCalculator::mensalidade()` + estado `valor_fixo` (wave 1)
 - [x] 141-03-PLAN.md — Transição: procedência da tabela da empresa + comando `fechamento:materializar-tabelas` (wave 1)
 - [x] 141-04-PLAN.md — Virada da régua no motor: resolver sem a tabela do serviço + consolidação pela regra nova (wave 2)
-- [ ] 141-05-PLAN.md — `fechamento:comparar-mensalidade`: o delta ANTES × DEPOIS que precede a virada (wave 3)
-- [ ] 141-06-PLAN.md — Os cinco ramos da tela de Fechamento + remoção do paliativo da composição (wave 3)
-- [ ] 141-07-PLAN.md — Virada em produção com gate humano e registro dos números reais (wave 4)
+- [x] 141-05-PLAN.md — `fechamento:comparar-mensalidade`: o delta ANTES × DEPOIS que precede a virada (wave 3)
+- [x] 141-06-PLAN.md — Os cinco ramos da tela de Fechamento + remoção do paliativo da composição (wave 3)
+- [x] 141-07-PLAN.md — Virada em produção com gate humano e registro dos números reais (wave 4)
+
+**Fase 141 FECHADA em 2026-09-10.** Virada real em produção: 168 empresas ganharam tabela própria
+presumida (materialização), delta ANTES×DEPOIS conferido pelo usuário (total a receber caiu de
+R$ 2.486.700,91 para R$ 736.450,97 — queda validada como correção, não regressão), chave
+`fechamento_tabela_por_empresa_ativa` ligada, e agosto/2026 reconsolidado sob a regra nova a pedido
+explícito do usuário. Números completos e procedimento de rollback em
+`.planning/learnings/fechamento-tabela-por-empresa.md`. Pendências que sobrevivem à fase: as 168
+tabelas presumidas seguem sem conferência contra o contrato real (tela da Fase 140), 32 empresas
+sem tabela (maioria cadastro de teste) e 3 contratos com valor de R$ 250.000 reportados ao usuário
+como provável erro de cadastro.
 
 ---
 
@@ -2368,3 +2378,5 @@ Plans:
 *Roadmap atualizado: 2026-09-08 - **Fase 140 (Extrair as tabelas progressivas do Clicksign)** anexada. Origem: depois da Fase 139 ficou medido que 127 empresas cobram por tabela assumida (R$ 460.500/mes sem lastro) e que o cadastro manual da Fase 137 nunca foi usado. O usuario levantou consultar o Clicksign e autorizou a investigacao, feita em 2026-09-08 contra a conta de producao: 429 envelopes, 123 de gestao de ADS, PDFs baixaveis com CNPJ e razao social no texto. Dois achados mudaram o desenho: nem todo contrato tem tabela progressiva (6 de 11 da amostra sao valor fixo) e existe tabela fora do padrao em uso — DESK DESIGN com 12 faixas comecando em R$ 2.250, contra os R$ 3.000 que o sistema cobra por assumir a tabela padrao. O casamento com a empresa e o elo fraco: so 10 de 201 empresas tem CNPJ, e o casamento por nome acerta 9 de 14 com falsos positivos plausiveis (GRAFICA ADHARA -> Filipe Adada), entao escrita automatica ficou FORA por decisao. Estrategia acordada: primeiro um comando de leitura que gera so relatorio, sem tela e sem escrita; a tela de conferencia e a escrita auditada dependem de o relatorio se mostrar bom. Fases 1-139 preservadas.*
 
 *Roadmap atualizado: 2026-09-09 - **Fase 141 (A tabela progressiva passa a ser da empresa e do grupo)** anexada. Origem: correcao de premissa feita pelo usuario em 2026-09-09 olhando o fechamento em producao. Ela atravessa as Fases 137/138/139 e muda o CALCULO da mensalidade, nao a tela. Regras: a tabela e da empresa ou do grupo, nunca do servico; o faturamento das plataformas com tabela e SOMADO para achar UMA faixa; Mentoria nao entra na soma por nao ter tabela; a mensalidade e o valor da faixa, entao a soma de mensalidades deixa de existir. Caso que abriu a fase: BARAOSHOP faturou R$ 488.262,90, caiu na faixa 1 de R$ 3.000 e a tela cobra R$ 5.500, porque soma o contrato de Shopee. Problema de transicao: 127 de 201 empresas sao classificadas hoje pela tabela do servico e NENHUMA tem tabela propria — aplicar a regra sem mais nada esvazia o fechamento. O caminho existe por causa da Fase 140, que leu 85 contratos do Clicksign (49 com tabela, 29 de valor fixo) e cuja tela de conferencia ja esta construida. A tela de cadastro e fase propria, a pedido do usuario. Fases 1-140 preservadas.*
+
+*Roadmap atualizado: 2026-09-10 - **Fase 141 FECHADA.** Virada em produção (2026-09-09/10, commit `e98e25ed`): 168 empresas materializadas com tabela própria presumida (`origem='presumida_servico'`), delta ANTES×DEPOIS apresentado e aprovado pelo usuário (total a receber R$ 2.486.700,91 → R$ 736.450,97 — a queda é a correção da fórmula antiga que somava contrato à faixa, confirmada pelo usuário com o caso Camillo Parts R$ 522.500,00 → R$ 12.000,00, faixa 7 para faixa 7, "Mudam de faixa: 0"), chave `fechamento_tabela_por_empresa_ativa` ligada, e agosto/2026 reconsolidado sob a regra nova a pedido explícito do usuário (soma de faixas R$ 460.500,00 → R$ 466.500,00, 127 → 129 empresas com faixa). Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Quick260909`: 553 testes / 2642 asserções / 0 falhas. Números completos, procedimento de rollback sem deploy e pendências (168 tabelas presumidas ainda sem conferência contra o contrato real, 32 empresas sem tabela, 3 contratos de R$ 250.000 a investigar) em `.planning/learnings/fechamento-tabela-por-empresa.md`. Fases 1-141 preservadas.*
