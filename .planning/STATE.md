@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v23.0
 milestone_name: Fluxo de Entrada de Novas Empresas
 status: executing
-stopped_at: Completed 139-08-PLAN.md
-last_updated: "2026-09-10T01:00:00.000Z"
+stopped_at: Completed 139-09-PLAN.md
+last_updated: "2026-09-10T02:00:00.000Z"
 last_activity: 2026-09-10
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 30
-  completed_plans: 28
-  percent: 93
+  completed_plans: 29
+  percent: 97
 ---
 
 > ⚠️ **Correção manual do frontmatter acima (137-08/137-09/137-10/137-11), ver `<process_note>`
@@ -93,7 +93,7 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 ## Current Position
 
 Phase: 139 (checklist-administrativo-trava-de-finaliza-o-v23-0) — EXECUTING
-Plan: 9 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
+Plan: 10 of 10 — execução iniciada em 2026-09-09 por `/gsd:execute-phase 139`. **139-01 concluído**
 (baseline 137/138 100% verde — 123 testes, 444 assertions, `139-BASELINE-TESTES.md`;
 `config('services.adman.register_url')` publicada com o link fixo do Adman, D-04, provada por
 `tests/Unit/Phase139/AdmanRegisterUrlConfigTest.php`; `REQUIREMENTS-v23.md` registra as exceções
@@ -853,6 +853,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 139 P06 | 25min | 2 tasks | 3 files |
 | Phase 139 P07 | 35min | 2 tasks | 2 files |
 | Phase 139 P08 | 50min | 3 tasks | 4 files |
+| Phase 139 P09 | 40min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1617,6 +1618,8 @@ None.
 
 ## Session Continuity
 
+Last session: 2026-09-10T02:00:00.000Z
+Stopped at: Completed 139-09-PLAN.md — a fase virou tela: 2 componentes novos, checklist na ficha, "Abrir" na listagem Entrada (commits `cf2d5e09`, `9d969ece`, `b6e17f0f`); build verde e as 2 páginas no manifest do Vite; backend 92/364 sem regressão
 Last session: 2026-09-10T01:00:00.000Z
 Stopped at: Completed 139-08-PLAN.md — camada HTTP: ficha única em OR (D-17), payload gated por módulo (T-139-08-01) e os 4 endpoints por funil único que sempre sincroniza a etapa (commits `4a3d2fea`, `7402db7d`, `80908116`); fase 92/364, regressão 131+137+138 245/910 com a parte 137/138 idêntica à baseline
 Last session: 2026-09-10T00:00:00.000Z
@@ -1784,3 +1787,8 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 139]: 139-08: sincronizarEtapaChecklist() e o UNICO chamador de sincronizar() no sistema, verificado por grep como gate de plano (=1). show() sincroniza porque o degrau 2→3 depende do webhook do Clicksign gravando enviado_em — evento externo que nenhuma acao de checklist observa
 - [Phase 139]: 139-08: finalizarEntradaAdministrativa() sincroniza ANTES de finalizar. O mesmo cenario e 'recusado' no service (caso 5 do 139-06) e 'finalizado' pela rota, de proposito — nao 'corrigir' um dos dois
 - [Phase 139]: 139-08: IDOR removido por construcao — {company} por route-model-binding e {chave} contra catalogo fechado; nenhum id de linha de checklist atravessa a fronteira HTTP
+- [Phase 139]: 139-09: D-05 no cliente — o item 7 COPIA o link do OAuth (axios.post em ml.oauth.initiate + clipboard), nenhuma forma de navegar ate a URL existe no arquivo. Abrir autorizaria a conta ML do proprio usuario ECF logado; o callback de Company sobrescreve o token sem a trava de divergencia que so o fluxo de Polos tem
+- [Phase 139]: 139-09: ADMIN-05 no cliente — o FINALIZAR usa disabled lido de pode_finalizar.permitido e exibe requisito_faltante do servidor; o componente NUNCA recalcula a regua a partir de checklist.progresso
+- [Phase 139]: 139-09: ProgressoBarra reusada por IMPORT direto entre modulos (o backend devolve o mesmo contrato {feitos,total,percentual} justamente para isso) — duas barras parecidas eventualmente arredondam diferente
+- [Phase 139]: 139-09: o checklist vem ACIMA do bloco de geracao de contrato na ficha — decisao desta fase: o checklist e o novo ponto focal e gerar contrato virou acao pontual dentro de um dos 9 itens
+- [Phase 139]: 139-09: docblock que enuncia uma proibicao NAO pode citar o identificador proibido em prosa — o grep de auditoria do proprio plano nao distingue comentario de codigo. Terceira reincidencia na fase (139-02/03/04)
