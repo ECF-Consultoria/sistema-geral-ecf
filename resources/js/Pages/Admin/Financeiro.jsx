@@ -440,9 +440,9 @@ function AusenciaTabelaPendencia({ variant = 'compact', href }) {
 
     // variant="full" (Fase 139, passo 2 da área expandida) — ocupa o card
     // inteiro no lugar de "Faixa do contrato" quando a empresa ainda não tem
-    // tabela nenhuma. O botão é um link interno (href="#...") que pula
-    // direto para a seção de cadastro que `TabelaFaixasSection` já expõe
-    // mais abaixo no mesmo accordion.
+    // tabela nenhuma. Fase 142 Plano 04 (D-04/D-03) — o botão deixou de
+    // pular para a seção de cadastro do próprio accordion (que não cadastra
+    // mais nada) e passou a levar para a ficha exclusiva no contrato.
     return (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-[18px] py-4 flex flex-col gap-1.5">
             <p className="text-amber-400 text-[14px] font-semibold flex items-center gap-1.5">
@@ -453,12 +453,12 @@ function AusenciaTabelaPendencia({ variant = 'compact', href }) {
                 Cadastre a tabela de faturamento desta empresa para ela entrar no fechamento.
             </p>
             {href && (
-                <a
+                <Link
                     href={href}
                     className="mt-1 inline-flex items-center gap-1.5 text-[12px] font-semibold text-white/70 bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 px-3 h-7 rounded-lg transition-colors w-fit"
                 >
                     Cadastrar tabela de faixas
-                </a>
+                </Link>
             )}
         </div>
     );
@@ -1060,7 +1060,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                     </div>
 
                     {empresa.estado === 'sem_tabela' ? (
-                        <AusenciaTabelaPendencia variant="full" href={`#tabela-faixas-${empresa.id}`} />
+                        <AusenciaTabelaPendencia variant="full" href={route('admin.contratos.tabela.show', empresa.id)} />
                     ) : empresa.estado === 'valor_fixo' ? (
                         <ValorFixoContratoNota variant="full" />
                     ) : (
@@ -1139,17 +1139,16 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                     </>
                 )}
 
-                {/* Tabela progressiva com a faixa atual destacada + cadastro
-                    manual da tabela de faixas (Fase 137 Plano 09 / Fase 139
-                    Tarefa 2) — não desenhada para empresa-filha: a tabela
-                    aplicável a um grupo é sempre a da empresa que consolida
-                    o grupo (linha do grupo). */}
+                {/* Tabela progressiva com a faixa atual destacada, só de
+                    leitura desde a Fase 142 Plano 04 (D-04) — quem cadastra
+                    é levado para a ficha do contrato. Não desenhada para
+                    empresa-filha: a tabela aplicável a um grupo é sempre a
+                    da empresa que consolida o grupo (linha do grupo). */}
                 {!empresa.is_filha && (
                     <TabelaFaixasSection
                         empresa={empresa}
                         faixasPorServico={faixasPorServico}
                         faixasPorGrupo={faixasPorGrupo}
-                        competenciaFechada={competenciaFechada}
                         faixaOrdemAtual={empresa.faixa_ordem}
                     />
                 )}
