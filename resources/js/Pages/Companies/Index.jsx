@@ -333,6 +333,12 @@ export default function Companies({ companies, users, estrategistas = [], analis
 
     // ── Filtro por tag de pendência + seleção/ações em massa ─────────────────
     const [pendenciaFilter, setPendenciaFilter] = useState('');
+    // ⚠️ SEM UI desde 2026-09-11. Este bloco (seleção por linha + atribuir
+    // em massa) era usado só pela lista "Empresas com pendência" da aba
+    // Distribuição, removida a pedido do usuário. Os handlers ficam porque a
+    // lógica é correta e religar a funcionalidade é voltar a renderizar a barra
+    // e as checkboxes — não há nada a reescrever. Se ficar claro que ninguém
+    // quer o atribuir em massa de volta, apagar daqui até `bulkAssign` inteiro.
     const [selectedIds, setSelectedIds] = useState(() => new Set());
 
     const pendentesView = pendenciaFilter
@@ -683,116 +689,15 @@ export default function Companies({ companies, users, estrategistas = [], analis
                             </div>
                         )}
 
-                        <div className="pt-2 border-t border-white/[0.06]">
-                            <h2 className="text-white font-semibold text-[15px]">Empresas com pendência</h2>
-                            <p className="text-[12px] text-white/40 mb-3">
-                                Já distribuídas ou fora do fluxo de entrada, mas com algo faltando no cadastro.
-                            </p>
-                        </div>
+                        {/* A lista de "Empresas com pendência" foi REMOVIDA desta
+                            aba em 2026-09-11, a pedido do usuário: a Distribuição
+                            mostra a fila e nada mais.
 
-                        {/* Barra de ações em massa (aparece com seleção) */}
-                        {selectedIds.size > 0 && (
-                            <div className="flex items-center gap-3 flex-wrap rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] px-4 py-2.5">
-                                <span className="text-[13px] text-white/85 font-medium">{selectedIds.size} selecionada(s)</span>
-                                <div className="h-4 w-px bg-white/10" />
-                                <select
-                                    value=""
-                                    onChange={e => { if (e.target.value) bulkAssign('consultor', Number(e.target.value)); e.target.value = ''; }}
-                                    className="h-9 pl-3 pr-8 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[13px] text-white/80 cursor-pointer focus:outline-none focus:border-ecf-yellow/40"
-                                >
-                                    <option value="">Atribuir Analista…</option>
-                                    {analistasOptions.map(u => <option key={u.id} value={u.id} className="bg-[#0f1116]">{u.name}</option>)}
-                                </select>
-                                <select
-                                    value=""
-                                    onChange={e => { if (e.target.value) bulkAssign('estrategista', Number(e.target.value)); e.target.value = ''; }}
-                                    className="h-9 pl-3 pr-8 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[13px] text-white/80 cursor-pointer focus:outline-none focus:border-ecf-yellow/40"
-                                >
-                                    <option value="">Atribuir Estrategista…</option>
-                                    {estrategistasOptions.map(u => <option key={u.id} value={u.id} className="bg-[#0f1116]">{u.name}</option>)}
-                                </select>
-                                <Button size="sm" variant="outline" className="gap-1.5 text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300" onClick={bulkDelete}>
-                                    <Trash2 className="h-3.5 w-3.5" /> Excluir selecionadas
-                                </Button>
-                                <button onClick={clearSelection} className="text-[12px] text-white/40 hover:text-white ml-auto">limpar seleção</button>
-                            </div>
-                        )}
-
-                        <Card>
-                            <CardContent className="p-0">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="w-10">
-                                                <input type="checkbox" checked={allViewSelected} onChange={toggleSelectAll} className="accent-ecf-yellow w-4 h-4 cursor-pointer align-middle" title="Selecionar todas" />
-                                            </TableHead>
-                                            <TableHead>Empresa</TableHead>
-                                            <TableHead>Pendências</TableHead>
-                                            <TableHead>Responsáveis</TableHead>
-                                            <TableHead className="text-right">Ações</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {pendentesView.map(c => (
-                                            <TableRow key={c.id} className={cn(selectedIds.has(c.id) && 'bg-ecf-yellow/[0.04]')}>
-                                                <TableCell>
-                                                    <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} className="accent-ecf-yellow w-4 h-4 cursor-pointer align-middle" />
-                                                </TableCell>
-                                                <TableCell className="font-medium">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        {c.name}
-                                                        {/* Phase 72 Plan 03 v15.0 — Badge NPS pendente na aba Pendências */}
-                                                        <NpsPendingBadge companyId={c.id} pendentes={npsPendentesList} variant="compact" />
-                                                        {c.grupo && <GrupoBadge grupo={c.grupo} />}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell><PendenciaBadges pendencias={c.pendencias} /></TableCell>
-                                                <TableCell className="text-xs text-white/60">
-                                                    {c.estrategista?.name || c.consultor?.name
-                                                        ? [c.estrategista?.name, c.consultor?.name].filter(Boolean).join(' · ')
-                                                        : <span className="text-white/30">ninguém</span>}
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex justify-end gap-1">
-                                                        {/* Phase 34 Plan 34-03 (D-06) — botao "Marcar como visto"
-                                                            so aparece quando a empresa esta com pendencia empresa_nova
-                                                            e o user atual eh admin. Click chama POST /companies/{id}/marcar-visto
-                                                            e remove a pendencia inline (preserveScroll preserva posicao na lista). */}
-                                                        {(c.pendencias || []).includes('empresa_nova') && isAdmin && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => marcarVisto(c)}
-                                                                title="Marcar empresa como vista (sai da lista de pendencias)"
-                                                                className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/15"
-                                                            >
-                                                                <Check className="h-4 w-4" />
-                                                            </button>
-                                                        )}
-                                                        {/* Phase 37 Plan 37-06 (REQ-37-07) — botao inline "Servico"
-                                                            removido junto com a pendencia sem_servico. Atribuicao de servico
-                                                            agora vive em /comercial/empresas/listagem + /comercial/empresas/{id}/atribuir-servico. */}
-                                                        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => openEdit(c)}>
-                                                            <Pencil className="h-3.5 w-3.5" /> Resolver
-                                                        </Button>
-                                                        <Button size="icon" variant="ghost" title="Excluir empresa" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => destroy(c)}>
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                        {pendentesView.length === 0 && (
-                                            <TableRow>
-                                                <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
-                                                    <Check className="h-8 w-8 mx-auto mb-2 text-emerald-400/60" />
-                                                    {pendenciaFilter ? 'Nenhuma empresa com essa pendência.' : 'Nenhuma empresa com pendências. Tudo em dia!'}
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
+                            Foi junto o que vivia dentro dela — a seleção por
+                            linha e a barra de "Atribuir Analista/Estrategista"
+                            em massa, que só existiam aqui. Os 5 cards de
+                            pendência seguem na aba Empresas, onde foram postos
+                            na Fase 157. */}
                     </>
                 )}
 
