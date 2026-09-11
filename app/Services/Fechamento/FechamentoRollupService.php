@@ -4,11 +4,15 @@ namespace App\Services\Fechamento;
 
 use App\Models\AdmanMetric;
 use App\Models\Company;
+use App\Models\FechamentoSnapshot;
 use App\Models\Servico;
 use App\Models\ShopeeMetric;
+use App\Services\AdmanService;
 use App\Services\Metrics\MetricPeriodResolver;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 /**
@@ -39,11 +43,40 @@ use InvalidArgumentException;
  * 137-RESEARCH.md §1). Fonte é a soma direta do faturamento diário de
  * `adman_metrics`, mesmo padrão que `AdminController::fechamento()` já usa
  * para mês passado.
+ *
+ * Quick 260911-eph — a soma diária deixa de ser a única fonte possível:
+ * `porEmpresa()` ganha `$faturamentoDaApi` (OPT-IN, default `false`, quem
+ * liga é SÓ `ConsolidarMesFechamento`). Motivo, medido em produção e não
+ * presumido: cada linha de `adman_metrics` é escrita uma vez, na manhã
+ * seguinte, e nunca mais revisitada — a Adman aplica ajustes retroativos
+ * (devoluções, conciliação) que não voltam para o nosso banco. DESK DESIGN,
+ * agosto/2026, com os 31 dias presentes (não é buraco de sync): SUM =
+ * R$ 167.537,54 contra R$ 170.363,19 no `/performance`. Na população
+ * Adman-driven inteira a subcontagem é sistemática (+3,4%, 34 de 48
+ * empresas divergindo).
+ *
+ * ⚠️ O RECORTE que define o escopo: empresa `is_ml_driven` (token ML ativo)
+ * NÃO usa a API. Para ela o `adman_metrics` é preenchido pelo sync do ML e
+ * a conta Adman fica abandonada — o `/performance` não é régua. LAURA LAR
+ * tem R$ 2,7 milhões em agosto na nossa base e a conta Adman dela devolve
+ * R$ 12.966; aplicar a API nela destruiria o número certo. Empresa sem
+ * `cust_id` também fica de fora (não há o que chamar). Shopee nunca muda —
+ * continua vindo de `shopee_metrics`.
  */
 class FechamentoRollupService
 {
-    public function __construct(private MetricPeriodResolver $periodResolver)
-    {
+    /**
+     * Pausa entre chamadas consecutivas ao `/performance` da Adman, em
+     * microssegundos. São ~48 empresas por consolidação e a API já teve
+     * incidente de rate-limit neste projeto (o gap de sync de 2026-06-12/13
+     * atingiu 78% das empresas). Ritmo deliberado, não otimização pendente.
+     */
+    private const PAUSA_ENTRE_CHAMADAS_API = 200_000;
+
+    public function __construct(
+        private MetricPeriodResolver $periodResolver,
+        private AdmanService $admanService,
+    ) {
     }
 
     /**
@@ -151,10 +184,30 @@ class FechamentoRollupService
      * `['ml', 'shopee']` (o que o método de fato considera hoje), no modo
      * novo vale o retorno de `plataformasElegiveis()` para aquela empresa.
      *
+     * Quick 260911-eph: `$faturamentoDaApi` (default `false`, modo atual
+     * intocado — nenhuma chamada HTTP) troca a fonte do `faturamento_ml`
+     * pelo `/performance` da Adman nas empresas que NÃO são `is_ml_driven`
+     * e têm `cust_id`. Exige `$companies` pela mesma razão que
+     * `$somenteContratadas`: é de lá que vêm `cust_id` e o token ML.
+     *
+     * ⚠️ **Só mês FECHADO.** Com a chave ligada numa competência que é o mês
+     * corrente, a API é ignorada e vale a soma diária: a janela do mês
+     * corrente vai do dia 1 até HOJE, e pedir `/performance` de mês
+     * incompleto compara coisa diferente a cada hora do dia.
+     *
+     * ⚠️ **Fallback nunca silencioso.** API que falha ou devolve `null` cai
+     * para o `SUM(revenue)` com fonte `soma_diaria_fallback` e um
+     * `Log::warning` nomeando empresa e competência — um mês inteiro em
+     * fallback não pode ter a cara de um mês normal.
+     *
+     * `faturamento_fonte` vai em TODO resultado ('api' | 'soma_diaria' |
+     * 'soma_diaria_fallback'); com a chave desligada é sempre
+     * `soma_diaria`.
+     *
      * @param  Collection<int, Company>|null  $companies
-     * @return array<int, array{faturamento_ml: float|null, faturamento_shopee: float|null, faturamento_total: float|null, plataformas_consideradas: array<int, string>}>
+     * @return array<int, array{faturamento_ml: float|null, faturamento_shopee: float|null, faturamento_total: float|null, plataformas_consideradas: array<int, string>, faturamento_fonte: string}>
      */
-    public function porEmpresa(string $mes, ?Collection $companies = null, bool $somenteContratadas = false): array
+    public function porEmpresa(string $mes, ?Collection $companies = null, bool $somenteContratadas = false, bool $faturamentoDaApi = false): array
     {
         if ($somenteContratadas && $companies === null) {
             throw new InvalidArgumentException(
@@ -162,9 +215,29 @@ class FechamentoRollupService
             );
         }
 
+        if ($faturamentoDaApi && $companies === null) {
+            throw new InvalidArgumentException(
+                'porEmpresa(): faturamentoDaApi=true exige $companies informado — é de lá que vêm o cust_id e o token ML que decidem quem pode usar a API da Adman.'
+            );
+        }
+
         $janela = $this->janela($mes);
         $inicio = $janela['inicio'];
         $fim    = $janela['fim'];
+
+        // ⚠️ Mês corrente NUNCA usa a API, mesmo com a chave ligada — a
+        // janela vai até hoje e o `/performance` de mês incompleto muda de
+        // resposta a cada hora. A checagem é sobre `$mes`, não sobre a
+        // janela, para espelhar exatamente a regra de `janela()` acima.
+        $usarApi = $faturamentoDaApi && $mes !== Carbon::now()->format('Y-m');
+
+        // Uma query para todos os tokens — o acessor `is_ml_driven` lê
+        // `mlToken` e faria N+1 no laço de ~201 empresas sem isto. Guard de
+        // tipo porque `$companies` é tipado como coleção genérica; só a
+        // Eloquent Collection tem `loadMissing()`.
+        if ($usarApi && $companies instanceof EloquentCollection) {
+            $companies->loadMissing('mlToken');
+        }
 
         $mlQuery = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
             ->whereNotNull('revenue')
@@ -199,9 +272,14 @@ class FechamentoRollupService
 
         $resultado = [];
 
+        // Conta só as chamadas EFETIVAMENTE feitas — o ritmo é entre
+        // chamadas, não entre empresas (empresa ML-driven não gasta pausa).
+        $chamadasApiFeitas = 0;
+
         foreach ($idsParaMontar as $companyId) {
             $faturamentoMl     = $porEmpresaMl->has($companyId) ? (float) $porEmpresaMl[$companyId]->faturamento : null;
             $faturamentoShopee = $porEmpresaShopee->has($companyId) ? (float) $porEmpresaShopee[$companyId]->faturamento : null;
+            $faturamentoFonte  = FechamentoSnapshot::FONTE_SOMA_DIARIA;
 
             if ($somenteContratadas) {
                 $plataformasConsideradas = $this->plataformasElegiveis($companiesPorId[$companyId]);
@@ -221,6 +299,73 @@ class FechamentoRollupService
                 $plataformasConsideradas = ['ml', 'shopee'];
             }
 
+            // ── Quick 260911-eph — a fonte do lado ML ─────────────────────
+            // Só entra aqui se a chave está ligada, a competência é mês
+            // fechado E o lado ML conta para esta empresa (com o recorte por
+            // contrato ligado, não adianta chamar a API de quem não tem
+            // plataforma ML elegível — o valor seria zerado logo abaixo).
+            if ($usarApi && in_array('ml', $plataformasConsideradas, true)) {
+                $company = $companiesPorId[$companyId] ?? null;
+
+                if ($company !== null && $this->podeUsarApiDaAdman($company)) {
+                    if ($chamadasApiFeitas > 0) {
+                        usleep(self::PAUSA_ENTRE_CHAMADAS_API);
+                    }
+                    $chamadasApiFeitas++;
+
+                    $valorApi = $this->admanService->fetchGrossBilling(
+                        (string) $company->cust_id,
+                        $inicio->toDateString(),
+                        $fim->toDateString(),
+                    );
+
+                    if ($valorApi === null) {
+                        // Fallback JAMAIS silencioso: o número continua
+                        // saindo (a soma diária), mas sabendo-se que o certo
+                        // era outro. O gate do comando conta estes casos.
+                        $faturamentoFonte = FechamentoSnapshot::FONTE_SOMA_DIARIA_FALLBACK;
+
+                        Log::warning(
+                            "[Fechamento] Faturamento da API indisponível para a empresa {$company->id} ({$company->name}) "
+                            ."na competência {$mes} — caindo para a soma diária de adman_metrics.",
+                            [
+                                'company_id'  => (int) $company->id,
+                                'cust_id'     => (string) $company->cust_id,
+                                'competencia' => $mes,
+                                'janela'      => $inicio->toDateString().'..'.$fim->toDateString(),
+                                'fonte'       => FechamentoSnapshot::FONTE_SOMA_DIARIA_FALLBACK,
+                            ]
+                        );
+                    } else {
+                        // A API é a régua para esta empresa, inclusive quando
+                        // devolve MENOS que a soma diária (é justamente o que
+                        // ajuste retroativo de devolução faz) e inclusive
+                        // quando a nossa soma não existe (sync que pulou
+                        // dias). Zero explícito vindo da Adman é resposta,
+                        // não ausência — mas zero contra soma positiva é
+                        // suspeita de conta abandonada sem token ML, então
+                        // fica registrado sem alterar o número (mudar a
+                        // política aqui seria inventar régua nova num valor
+                        // que vira cobrança).
+                        if ($valorApi == 0.0 && $faturamentoMl !== null && $faturamentoMl > 0.0) {
+                            Log::warning(
+                                "[Fechamento] API da Adman devolveu faturamento ZERO para a empresa {$company->id} ({$company->name}) "
+                                ."na competência {$mes}, mas a soma diária é {$faturamentoMl} — conferir se a conta Adman foi abandonada.",
+                                [
+                                    'company_id'   => (int) $company->id,
+                                    'cust_id'      => (string) $company->cust_id,
+                                    'competencia'  => $mes,
+                                    'soma_diaria'  => $faturamentoMl,
+                                ]
+                            );
+                        }
+
+                        $faturamentoMl    = (float) $valorApi;
+                        $faturamentoFonte = FechamentoSnapshot::FONTE_API;
+                    }
+                }
+            }
+
             // "Sem faturamento" e "faturou zero" são estados diferentes —
             // total só existe quando pelo menos um dos dois lados existe.
             $faturamentoTotal = ($faturamentoMl !== null || $faturamentoShopee !== null)
@@ -232,9 +377,36 @@ class FechamentoRollupService
                 'faturamento_shopee'        => $faturamentoShopee,
                 'faturamento_total'         => $faturamentoTotal,
                 'plataformas_consideradas'  => $plataformasConsideradas,
+                'faturamento_fonte'         => $faturamentoFonte,
             ];
         }
 
         return $resultado;
+    }
+
+    /**
+     * Quick 260911-eph — esta empresa pode ter o faturamento lido do
+     * `/performance` da Adman?
+     *
+     * Dois cortes, os dois obrigatórios:
+     *
+     * 1. `is_ml_driven` (token ML ativo) → **não**. O cutover Adman→ML fez o
+     *    sistema PARAR de chamar a Adman para essas empresas; o
+     *    `adman_metrics` delas é preenchido pelo sync do ML e a conta Adman
+     *    fica abandonada, devolvendo um valor que não tem relação com o
+     *    faturamento real (LAURA LAR: R$ 2,7 milhões na nossa base contra
+     *    R$ 12.966 na conta Adman). Aplicar a API aqui destrói o número
+     *    certo — este corte é a diferença entre corrigir 3,4% e apagar
+     *    milhões.
+     * 2. Sem `cust_id` → **não**, não há o que chamar (são quase todas
+     *    empresas de teste).
+     */
+    private function podeUsarApiDaAdman(Company $company): bool
+    {
+        if ($company->is_ml_driven) {
+            return false;
+        }
+
+        return $company->cust_id !== null;
     }
 }

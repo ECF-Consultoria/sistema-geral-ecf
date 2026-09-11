@@ -8,6 +8,7 @@ use App\Models\Servico;
 use App\Models\ShopeeMetric;
 use App\Services\Fechamento\FechamentoFaixaNotifier;
 use App\Services\Fechamento\FechamentoFaixaResolver;
+use App\Services\Fechamento\FechamentoFonteFaturamento;
 use App\Services\Fechamento\FechamentoRegraTabela;
 use App\Services\Fechamento\FechamentoRollupService;
 use App\Services\Fechamento\FechamentoSnapshotWriter;
@@ -79,6 +80,20 @@ use Illuminate\Support\Facades\Log;
  *   congelado (D-11 da Fase 137); só muda o que o fechamento calcula dali
  *   pra frente.
  *
+ * Quick 260911-eph (chave `FechamentoFonteFaturamento::CHAVE`, nasce
+ * desligada) — a FONTE do faturamento de ML do mês fechado:
+ * - com a chave ligada e competência FECHADA, `porEmpresa()` recebe
+ *   `faturamentoDaApi: true` nas DUAS chamadas (competência e mês anterior);
+ *   competência em curso deixa as duas em `false`. Misturar as fontes entre
+ *   os dois meses fabricaria mudança de faixa falsa — a API é
+ *   sistematicamente ~3,4% maior que a soma diária.
+ * - a classificação NÃO muda: `FechamentoFaixaResolver` e
+ *   `CobrancaCalculator` seguem intocados. O que muda é de onde vem o
+ *   número que eles classificam.
+ * - cada linha grava `faturamento_fonte` ('api' | 'soma_diaria' |
+ *   'soma_diaria_fallback') e o Passo 6b recusa o congelamento quando mais
+ *   da metade das empresas Adman-driven caiu no fallback.
+ *
  * Fase 138 (D-02 + D-03) — Passo 8, logo após o congelamento do Passo 7:
  * avisa os admins quando uma empresa ou grupo mudou de faixa nesta
  * competência (`FechamentoFaixaNotifier`, subida E queda). Idempotente por
@@ -113,12 +128,26 @@ class ConsolidarMesFechamento extends Command
      */
     private const COBERTURA_MINIMA_FATURAMENTO = 0.7;
 
+    /**
+     * Quick 260911-eph — fração MÁXIMA de empresas Adman-driven que pode ter
+     * caído em `soma_diaria_fallback` sem que o mês perca a credibilidade.
+     *
+     * Por que este gate existe além do de cobertura: o fallback continua
+     * PRODUZINDO número (a soma diária de sempre), então a cobertura não cai
+     * um ponto sequer — um mês inteiro em fallback tem exatamente a cara de
+     * um mês normal. Acima deste teto o mês consolidado seria o mês antigo
+     * com cara de novo, e quem olhasse o snapshot depois não teria como
+     * saber. Nada é gravado e o comando sai com exit code 1.
+     */
+    private const FALLBACK_MAXIMO_API = 0.5;
+
     public function __construct(
         private FechamentoRollupService $rollupService,
         private FechamentoFaixaResolver $faixaResolver,
         private FechamentoSnapshotWriter $writer,
         private FechamentoFaixaNotifier $faixaNotifier,
         private FechamentoRegraTabela $regra,
+        private FechamentoFonteFaturamento $fonteFaturamento,
     ) {
         parent::__construct();
     }
@@ -186,9 +215,26 @@ class ConsolidarMesFechamento extends Command
         // competência atual e mês anterior. Recortar só a atual compararia
         // réguas diferentes entre os dois meses e inventaria evolução de
         // faixa falsa (Fase 138 dispara aviso aos admins com base nisso).
+        //
+        // Quick 260911-eph: `faturamentoDaApi` segue a MESMA disciplina das
+        // duas chamadas, e pelo mesmo motivo elevado ao quadrado — a API é
+        // sistematicamente ~3,4% maior que a soma diária, então usá-la só na
+        // competência atual e não no mês anterior fabricaria "subiu de
+        // faixa" que não aconteceu, e o Passo 8 avisaria os admins de uma
+        // mudança inventada por diferença de fonte.
+        //
+        // A regra de mês fechado: consolidar o mês CORRENTE nunca usa a API
+        // (janela até hoje, resposta diferente a cada hora) — e aí as duas
+        // chamadas ficam em `false`, inclusive a do mês anterior, que é
+        // fechado. Manter as duas iguais vale mais do que aproveitar a fonte
+        // boa numa delas. Quando a competência é mês fechado, o mês anterior
+        // também é — por definição.
+        $mesFechado       = $mesLabel !== Carbon::now()->format('Y-m');
+        $faturamentoDaApi = $mesFechado && $this->fonteFaturamento->ativa();
+
         $mesAnterior     = $mes->copy()->subMonthNoOverflow()->startOfMonth();
-        $rollupAtual     = $this->rollupService->porEmpresa($mesLabel, $companies, somenteContratadas: $regraNova);
-        $rollupAnterior  = $this->rollupService->porEmpresa($mesAnterior->format('Y-m'), $companies, somenteContratadas: $regraNova);
+        $rollupAtual     = $this->rollupService->porEmpresa($mesLabel, $companies, somenteContratadas: $regraNova, faturamentoDaApi: $faturamentoDaApi);
+        $rollupAnterior  = $this->rollupService->porEmpresa($mesAnterior->format('Y-m'), $companies, somenteContratadas: $regraNova, faturamentoDaApi: $faturamentoDaApi);
 
         // Empresas com pelo menos uma linha em shopee_metrics (qualquer
         // data) — usado só para decidir "tem integração", não para o
@@ -206,7 +252,15 @@ class ConsolidarMesFechamento extends Command
 
         foreach ($companies as $company) {
             try {
-                $fatAtual = $rollupAtual[$company->id] ?? ['faturamento_ml' => null, 'faturamento_shopee' => null, 'faturamento_total' => null];
+                $fatAtual = $rollupAtual[$company->id] ?? [
+                    'faturamento_ml'     => null,
+                    'faturamento_shopee' => null,
+                    'faturamento_total'  => null,
+                    // Empresa que nem apareceu no rollup não teve fonte
+                    // nenhuma consultada — vale a soma diária (vazia), nunca
+                    // 'api'.
+                    'faturamento_fonte'  => FechamentoSnapshot::FONTE_SOMA_DIARIA,
+                ];
 
                 $temIntegracao = $company->cust_id !== null || $companyIdsComShopee->has($company->id);
 
@@ -305,6 +359,8 @@ class ConsolidarMesFechamento extends Command
                     'faturamento_ml'         => $fatAtual['faturamento_ml'],
                     'faturamento_shopee'     => $fatAtual['faturamento_shopee'],
                     'faturamento_total'      => $fatAtual['faturamento_total'],
+                    // Quick 260911-eph — de onde veio o número desta linha.
+                    'faturamento_fonte'      => $fatAtual['faturamento_fonte'] ?? FechamentoSnapshot::FONTE_SOMA_DIARIA,
                     'company_group_id'       => $company->company_group_id,
                     'servico_id'             => $faixaData['servico_id'] ?? null,
                     'tabela_origem'          => $faixaData['origem'] ?? null,
@@ -529,6 +585,55 @@ class ConsolidarMesFechamento extends Command
             return self::FAILURE;
         }
 
+        // ── Passo 6b — gate da FONTE do faturamento (quick 260911-eph) ────
+        // O gate de cobertura acima não enxerga este problema: o fallback
+        // devolve a soma diária, então a cobertura fica idêntica à de um mês
+        // saudável. Aqui o denominador é só quem TENTOU a API (as empresas
+        // Adman-driven com cust_id) — quem nunca tentou (ML-driven, sem
+        // cust_id, ou a chave desligada) não entra na conta e portanto nunca
+        // derruba o fechamento.
+        $fontes = [
+            FechamentoSnapshot::FONTE_API                  => 0,
+            FechamentoSnapshot::FONTE_SOMA_DIARIA          => 0,
+            FechamentoSnapshot::FONTE_SOMA_DIARIA_FALLBACK => 0,
+        ];
+
+        foreach ($linhasEmpresa as $linha) {
+            $fonte = $linha['faturamento_fonte'] ?? FechamentoSnapshot::FONTE_SOMA_DIARIA;
+            if (array_key_exists($fonte, $fontes)) {
+                $fontes[$fonte]++;
+            }
+        }
+
+        $tentativasApi = $fontes[FechamentoSnapshot::FONTE_API] + $fontes[FechamentoSnapshot::FONTE_SOMA_DIARIA_FALLBACK];
+        $fallbacks     = $fontes[FechamentoSnapshot::FONTE_SOMA_DIARIA_FALLBACK];
+
+        $resumoFontes = sprintf(
+            'fonte do faturamento: %d api · %d soma diária · %d fallback',
+            $fontes[FechamentoSnapshot::FONTE_API],
+            $fontes[FechamentoSnapshot::FONTE_SOMA_DIARIA],
+            $fallbacks,
+        );
+
+        if ($tentativasApi > 0 && $fallbacks > $tentativasApi * self::FALLBACK_MAXIMO_API) {
+            Log::error("[Fechamento] Fonte do faturamento degradada na competência {$mesLabel} — congelamento RECUSADO.", [
+                'mes_referencia' => $mesStr,
+                'tentativas_api' => $tentativasApi,
+                'fallbacks'      => $fallbacks,
+                'teto'           => self::FALLBACK_MAXIMO_API,
+                'fontes'         => $fontes,
+            ]);
+
+            $this->error(sprintf(
+                '[Fechamento] %d de %d empresas Adman-driven caíram no fallback da soma diária (teto: %.0f%%) — a Adman não respondeu o suficiente para confiar neste mês. Congelamento RECUSADO, nada foi gravado.',
+                $fallbacks,
+                $tentativasApi,
+                self::FALLBACK_MAXIMO_API * 100,
+            ));
+
+            return self::FAILURE;
+        }
+
         // ── Passo 7 — congela via writer ──────────────────────────────────
         $motivo = $this->option('motivo');
         $por    = $this->option('por') !== null ? (int) $this->option('por') : null;
@@ -566,7 +671,7 @@ class ConsolidarMesFechamento extends Command
         }
 
         $this->info(sprintf(
-            '[Fechamento] Competência %s — empresas: %d linhas (podadas: %d) · grupos: %d linhas (podados: %d)%s · aviso de faixa: %d empresa(s)/%d grupo(s)/%d notificação(ões)',
+            '[Fechamento] Competência %s — empresas: %d linhas (podadas: %d) · grupos: %d linhas (podados: %d)%s · aviso de faixa: %d empresa(s)/%d grupo(s)/%d notificação(ões) · %s',
             $mesLabel,
             $resultado['empresas_upserted'],
             $resultado['empresas_pruned'],
@@ -576,6 +681,21 @@ class ConsolidarMesFechamento extends Command
             $resumoAviso['empresas'],
             $resumoAviso['grupos'],
             $resumoAviso['notificacoes'],
+            $resumoFontes,
+        ));
+
+        // A contagem por fonte também vai numa linha própria, com o porquê
+        // de a API estar (ou não) em jogo — sem isso, "0 api" tanto pode ser
+        // "a chave está desligada" quanto "a Adman não respondeu a ninguém",
+        // e as duas leituras pedem ações opostas. Texto é conveniência
+        // operacional; a conferência oficial continua sendo a reconsulta à
+        // coluna `faturamento_fonte` do snapshot.
+        $this->info(sprintf(
+            '[Fechamento] Fonte do faturamento de ML: %s (chave %s=%s, competência %s).',
+            $resumoFontes,
+            FechamentoFonteFaturamento::CHAVE,
+            $this->fonteFaturamento->ativa() ? '1' : '0',
+            $mesFechado ? 'fechada' : 'em curso — API nunca é usada',
         ));
 
         // O exit code precisa refletir a falha real: qualquer empresa que
