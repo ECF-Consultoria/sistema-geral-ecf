@@ -32,7 +32,13 @@ class FechamentoComparativoService
      * mesma trava usada por `AdminController::fechamento()` para decidir
      * se uma competência está fechada).
      *
-     * @return array<int, array{faixa_ordem: int|null, valor_faixa: float|null}>
+     * Quick 260911-kio (T3) — `faturamento_total` entrou na MESMA leitura
+     * (uma coluna a mais no `get()`, nunca uma segunda consulta) para a
+     * tela poder marcar queda brusca de faturamento também na competência
+     * já congelada, sem recalcular nada (D-11 segue intocado: isto é o que
+     * FOI congelado no mês anterior, lido como está).
+     *
+     * @return array<int, array{faixa_ordem: int|null, valor_faixa: float|null, faturamento_total: float|null}>
      */
     public function anterioresPorEmpresa(string $mesReferenciaStr): array
     {
@@ -41,11 +47,12 @@ class FechamentoComparativoService
         return FechamentoSnapshot::query()
             ->whereDate('mes_referencia', $mesAnteriorStr)
             ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
-            ->get(['company_id', 'faixa_ordem', 'valor_faixa'])
+            ->get(['company_id', 'faixa_ordem', 'valor_faixa', 'faturamento_total'])
             ->keyBy('company_id')
             ->map(fn (FechamentoSnapshot $s) => [
-                'faixa_ordem' => $s->faixa_ordem !== null ? (int) $s->faixa_ordem : null,
-                'valor_faixa' => $s->valor_faixa !== null ? (float) $s->valor_faixa : null,
+                'faixa_ordem'       => $s->faixa_ordem !== null ? (int) $s->faixa_ordem : null,
+                'valor_faixa'       => $s->valor_faixa !== null ? (float) $s->valor_faixa : null,
+                'faturamento_total' => $s->faturamento_total !== null ? (float) $s->faturamento_total : null,
             ])
             ->all();
     }

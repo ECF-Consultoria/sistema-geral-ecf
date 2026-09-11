@@ -868,6 +868,18 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
                                 ↑ subiu de faixa
                             </span>
                         )}
+                        {/* Quick 260911-kio (T3) — o irmão simétrico da tag
+                            de subida. Vermelho (não âmbar): âmbar nesta tela
+                            é pendência de cadastro; isto é a loja parando de
+                            vender, que é outra coisa. */}
+                        {empresa.queda_brusca && (
+                            <span
+                                className="text-[12px] font-semibold px-2 py-0.5 rounded-md bg-red-500/15 text-red-400"
+                                title="Faturou menos da metade do mês passado. Abra a linha para ver mês a mês."
+                            >
+                                ↓ caiu mais da metade
+                            </span>
+                        )}
                         {empresa.estado === 'sem_integracao' && <IntegrationBadge />}
                         {empresa.tabela_confirmada === false && <TabelaPresumidaBadge />}
                         {empresa.filhas?.length > 0 && (
@@ -1519,6 +1531,9 @@ const FILTROS_INICIAL = { busca: '', servico_nome: '' };
 const CHIPS_FILTRO = [
     { key: 'todos',            label: 'Todas as empresas'      },
     { key: 'subiu',            label: 'Subiram de faixa'       },
+    // Quick 260911-kio (T3) — sem o chip a marca de queda continua
+    // dependendo de alguém rolar 200 linhas até topar com ela.
+    { key: 'queda',            label: 'Caíram mais da metade'  },
     { key: 'sem_integracao',   label: 'Sem integração'         },
     { key: 'topo',             label: 'Maiores mensalidades'   },
     // Quick 260904-kwz — tabela presumida a partir do serviço, sem
@@ -1811,6 +1826,8 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
 
         if (filtroChip === 'subiu') {
             lista = lista.filter(e => e.subiu_de_faixa === true);
+        } else if (filtroChip === 'queda') {
+            lista = lista.filter(e => e.queda_brusca === true);
         } else if (filtroChip === 'sem_integracao') {
             lista = lista.filter(e => e.has_adman === false || e.estado === 'sem_integracao');
         } else if (filtroChip === 'tabela_presumida') {
