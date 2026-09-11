@@ -46,6 +46,35 @@ class FechamentoSnapshot extends Model
      */
     public const ESTADO_VALOR_FIXO = 'valor_fixo';
 
+    /**
+     * Quick 260911-eph — de onde veio o faturamento congelado nesta linha
+     * (coluna `faturamento_fonte`, `string(32)` nullable).
+     *
+     * `FONTE_API`: o `/performance` da Adman (grossBilling do intervalo) —
+     * o mesmo número que a dashboard da Adman mostra, já com os ajustes
+     * retroativos que nunca voltam para `adman_metrics`.
+     *
+     * `FONTE_SOMA_DIARIA`: SUM(adman_metrics.revenue) dos dias do mês — o
+     * comportamento de sempre. É o valor de empresas ML-driven (token ML
+     * ativo, conta Adman abandonada — o `/performance` delas NÃO é régua),
+     * de empresas sem `cust_id`, e de qualquer competência consolidada com
+     * a fonte nova desligada.
+     *
+     * `FONTE_SOMA_DIARIA_FALLBACK`: a API foi tentada e não respondeu —
+     * o número é o da soma diária, mas sabendo-se que o certo era outro.
+     * Existe separado de `FONTE_SOMA_DIARIA` justamente porque o fallback
+     * continua produzindo número: sem essa distinção, um mês inteiro em
+     * fallback teria exatamente a cara de um mês normal.
+     *
+     * `null` (linhas anteriores a esta coluna) significa "não sei" — nunca
+     * "foi soma diária".
+     */
+    public const FONTE_API = 'api';
+
+    public const FONTE_SOMA_DIARIA = 'soma_diaria';
+
+    public const FONTE_SOMA_DIARIA_FALLBACK = 'soma_diaria_fallback';
+
     protected $fillable = [
         'company_id',
         'mes_referencia',
@@ -53,6 +82,7 @@ class FechamentoSnapshot extends Model
         'faturamento_ml',
         'faturamento_shopee',
         'faturamento_total',
+        'faturamento_fonte',
         'company_group_id',
         'servico_id',
         'tabela_origem',

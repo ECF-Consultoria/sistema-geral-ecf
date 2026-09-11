@@ -133,6 +133,16 @@ class FechamentoSnapshotWriter
             $companyId   = (int) $companyId;
             $idsAtuais[] = $companyId;
 
+            // O payload da linha é gravado como veio do comando — quem decide
+            // o conteúdo é `ConsolidarMesFechamento`, aqui só persiste. Quick
+            // 260911-eph: é por este caminho que `faturamento_fonte` ('api' |
+            // 'soma_diaria' | 'soma_diaria_fallback') chega ao snapshot; a
+            // coluna está no `$fillable` de `FechamentoSnapshot`, então
+            // trafega no `fill()` abaixo sem tratamento especial. Chave que
+            // NÃO esteja no fillable é descartada em SILÊNCIO pelo Eloquent —
+            // é por isso que `notificado_em`/`notificado_faixa_ordem`
+            // sobrevivem à reconsolidação (não vêm no `$linha`), e é por isso
+            // que coluna nova sem fillable não gravaria nada nem avisaria.
             $dados               = $linha;
             $dados['origem']     = $origem;
             $dados['gerado_em']  = now();
