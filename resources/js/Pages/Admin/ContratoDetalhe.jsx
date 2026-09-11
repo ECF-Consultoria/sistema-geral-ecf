@@ -389,7 +389,7 @@ export default function ContratoDetalhe({
         && !liberarForm.processing;
 
     return (
-        <AppLayout title={`Adm · Contrato — ${company.name}`}>
+        <AppLayout title={`Adm · Entrada — ${company.name}`}>
             <main className="p-6">
                 <div className="space-y-6 max-w-4xl">
                     {/* Cabeçalho */}

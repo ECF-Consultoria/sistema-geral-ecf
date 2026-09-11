@@ -81,7 +81,7 @@ class ChecklistAdministrativoService
 
         $titulos = [
             ChecklistAdministrativoDefinicao::GRUPO_CONTRATO => 'Contrato',
-            ChecklistAdministrativoDefinicao::GRUPO_ENTRADA  => 'Entrada',
+            ChecklistAdministrativoDefinicao::GRUPO_ENTRADA  => 'Estrutura e Comunicação',
         ];
 
         $grupos = [];

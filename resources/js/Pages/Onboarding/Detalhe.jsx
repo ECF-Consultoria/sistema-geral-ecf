@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Activity, Handshake, KeyRound, Link2, Quote } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import CabecalhoOnboarding from '@/Components/Onboarding/Painel/CabecalhoOnboarding';
 import ProximaAcaoDestaque from '@/Components/Onboarding/Painel/ProximaAcaoDestaque';
 import Responsabilidades from '@/Components/Onboarding/Painel/Responsabilidades';
@@ -45,6 +46,26 @@ import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
  *
  * Nenhuma regra nova: os quatro leem o que o backend já persistia.
  *
+ * ### O que mudou em 11/09 — de cockpit para LISTA
+ * O negócio pediu o desenho do portal de Polos: "simples e muito funcional".
+ * O fluxo virou uma coluna única numerada (ver `FluxoOnboarding`) e a coluna
+ * lateral deixou de existir.
+ *
+ * Os dois blocos do topo ficaram, porque respondem a pergunta pela qual a
+ * tela existe e foram a correção de uma reclamação real ("tudo jogado lá"):
+ * `CabecalhoOnboarding` (quem é a empresa, em que pé está) e
+ * `ProximaAcaoDestaque` (o que trava agora, com o motivo).
+ *
+ * Tudo que respondia "como está indo" — portal do cliente, acessos que o
+ * cliente vê, atividade recente, contexto da venda e responsabilidades —
+ * virou MODAL numa barra logo abaixo do topo. São blocos de consulta: lidos
+ * uma vez, e empilhados na tela custavam rolagem em toda visita. Um clique
+ * continua sendo a mesma tela; o que se ganhou foi a lista sem concorrência.
+ *
+ * `ContextoDaVenda` saiu de `extras.informacoes_cliente` por isso. A regra de
+ * 19/08 — "revisar SPIN exige tê-lo na MESMA tela, senão vira procurar em
+ * outra" — continua valendo: o modal abre por cima da lista, não navega.
+ *
  * ### O que fica FORA das etapas
  * `AcessoDoClienteAoPortal` — é ferramenta, não passo. A pergunta que ele
  * responde ("o
@@ -74,6 +95,10 @@ export default function Detalhe({
     const verPendencia = (passo) =>
         setFoco({ etapa: passo.etapa ?? 'outros', passoId: passo.id, nonce: Date.now() });
 
+    // Qual consulta está aberta (`null` = nenhuma). Um estado só: duas dessas
+    // caixas abertas ao mesmo tempo não faria sentido nenhum.
+    const [consulta, setConsulta] = useState(null);
+
     // Cada assunto entregue à etapa a que pertence. Chave = `etapa` do passo,
     // exatamente como o backend a grava — é o que garante que o formulário e
     // os itens que ele fecha apareçam juntos.
@@ -94,12 +119,6 @@ export default function Detalhe({
                 onboardingId={onboarding.id}
                 contatos={respostas?.contatos ?? []}
             />
-        ),
-
-        // O que o Comercial já coletou. Revisar SPIN e contexto exige tê-los na
-        // MESMA tela — senão "revisar" vira "procurar em outra" (§3).
-        informacoes_cliente: (
-            <ContextoDaVenda spin={onboarding.spin} contexto={onboarding.contexto} />
         ),
 
         mapeamento: mapeamento ? (
@@ -123,7 +142,7 @@ export default function Detalhe({
         <AppLayout title="Detalhe do onboarding">
             <Head title={`Onboarding — ${onboarding.empresa.nome}`} />
 
-            <div className="space-y-5 max-w-[1500px]">
+            <div className="space-y-5 max-w-3xl">
                 {/* Volta para o COCKPIT (aba Onboarding de /companies), que é a
                     lista de onde se chega aqui desde 20/08. O painel antigo em
                     `/onboarding` continua existindo, mas não é mais o caminho
@@ -146,41 +165,75 @@ export default function Detalhe({
                     aoVerPendencia={verPendencia}
                 />
 
-                <Responsabilidades responsabilidades={responsabilidades} />
-
-                {/* Fluxo à esquerda porque é onde se TRABALHA; a coluna da
-                    direita responde "como está indo", que se consulta menos e
-                    pode descer no empilhamento em telas estreitas. */}
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
-                    <div className="xl:col-span-2 min-w-0">
-                        <FluxoOnboarding
-                            passos={passos}
-                            onboardingId={onboarding.id}
-                            confirmacoes={respostas?.confirmacoes ?? {}}
-                            extras={extras}
-                            foco={foco}
-                        />
-                    </div>
-
-                    <aside className="space-y-5 min-w-0 xl:sticky xl:top-4">
-                        <AcessoDoClienteAoPortal companyId={onboarding.empresa.id} link={link} />
-
-                        {/* O que o CLIENTE vê no portal desta empresa. Fica na
-                            coluna de ferramentas, junto do link do portal, pelo
-                            mesmo motivo: responde "o cliente consegue seguir?",
-                            não é passo de nenhuma etapa. */}
-                        {acessos && (
-                            <BlocoAcessos
-                                rota={route('onboarding.acessos.empresa', onboarding.id)}
-                                valores={acessos}
-                                titulo="Acessos que o cliente vê"
-                                ajuda="Link do App ECF e e-mail para o convite, desta empresa."
-                            />
-                        )}
-                        <AtividadeRecente atividade={atividade} />
-                    </aside>
+                {/* As consultas. Ficam numa barra de uma linha só para não
+                    disputar espaço com a lista — que é onde se trabalha. */}
+                <div className="flex flex-wrap gap-2">
+                    {[
+                        { chave: 'portal',      rotulo: 'Portal do cliente',  icone: Link2 },
+                        { chave: 'acessos',     rotulo: 'Acessos do cliente', icone: KeyRound,  oculto: !acessos },
+                        { chave: 'contexto',    rotulo: 'Contexto da venda',  icone: Quote },
+                        { chave: 'responsaveis', rotulo: 'De quem é a bola',  icone: Handshake },
+                        { chave: 'atividade',   rotulo: 'Atividade recente',  icone: Activity },
+                    ].filter((b) => !b.oculto).map(({ chave, rotulo, icone: Icone }) => (
+                        <button
+                            key={chave}
+                            type="button"
+                            onClick={() => setConsulta(chave)}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-[12px] text-white/60 hover:text-white hover:border-white/20 transition-colors"
+                        >
+                            <Icone size={13} /> {rotulo}
+                        </button>
+                    ))}
                 </div>
+
+                <FluxoOnboarding
+                    passos={passos}
+                    onboardingId={onboarding.id}
+                    confirmacoes={respostas?.confirmacoes ?? {}}
+                    extras={extras}
+                    foco={foco}
+                />
             </div>
+
+            <Dialog open={consulta !== null} onOpenChange={(aberto) => !aberto && setConsulta(null)}>
+                <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {{
+                                portal:       'Portal do cliente',
+                                acessos:      'Acessos que o cliente vê',
+                                contexto:     'Contexto da venda',
+                                responsaveis: 'De quem é a bola',
+                                atividade:    'Atividade recente',
+                            }[consulta] ?? ''}
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {consulta === 'portal' && (
+                        <AcessoDoClienteAoPortal companyId={onboarding.empresa.id} link={link} />
+                    )}
+
+                    {consulta === 'acessos' && acessos && (
+                        <BlocoAcessos
+                            rota={route('onboarding.acessos.empresa', onboarding.id)}
+                            valores={acessos}
+                            titulo="Acessos que o cliente vê"
+                            ajuda="Link do App ECF e e-mail para o convite, desta empresa."
+                        />
+                    )}
+
+                    {consulta === 'contexto' && (
+                        <ContextoDaVenda spin={onboarding.spin} contexto={onboarding.contexto} />
+                    )}
+
+                    {consulta === 'responsaveis' && (
+                        <Responsabilidades responsabilidades={responsabilidades} />
+                    )}
+
+                    {consulta === 'atividade' && <AtividadeRecente atividade={atividade} />}
+                </DialogContent>
+            </Dialog>
+
         </AppLayout>
     );
 }
