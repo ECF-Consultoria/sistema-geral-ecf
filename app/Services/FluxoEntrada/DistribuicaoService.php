@@ -4,11 +4,14 @@ namespace App\Services\FluxoEntrada;
 
 use App\Models\Company;
 use App\Models\ContratoServico;
+use App\Models\Onboarding;
 use App\Models\Setor;
 use App\Models\User;
+use App\Services\Onboarding\OnboardingEngineService;
 use App\Support\Permissions;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * DistribuicaoService — a fila da Coordenação e o ato de distribuir
@@ -216,11 +219,84 @@ class DistribuicaoService
             ];
         }
 
+        // Só depois da transição: `distribuir()` recusa no topo qualquer empresa
+        // fora de `aguardando_distribuicao`, então aqui a etapa é 6 por
+        // construção. Empresa já distribuída NÃO passa por esta porta — para
+        // essas existe `fluxo:reconciliar-onboarding`.
+        $this->entregarAoOnboarding($company, $analistaId, $estrategistaId, $por);
+
         return [
             'status'              => 'distribuido',
             'requisito_faltante'  => null,
             'servicos_vinculados' => count($servicoIds),
         ];
+    }
+
+    /**
+     * D-157-B — a distribuição ENTREGA os responsáveis escolhidos ao onboarding
+     * da empresa, em vez de parar na pivot.
+     *
+     * Sem isto a escolha do líder morria em `company_users` e alguém tinha de
+     * reescrevê-la à mão dentro do onboarding. Medido em produção na empresa
+     * 428: distribuída para Gustavo enquanto o onboarding seguia dizendo
+     * Danilo — duas telas, dois donos, e nenhuma das duas errada sozinha.
+     *
+     * Três caminhos, um por status:
+     *
+     * - `rascunho`: `definirResponsaveis()` liga o onboarding e é o próprio
+     *   engine quem move a empresa 6→7. Nada a reconciliar aqui.
+     * - `andamento`: os slots são atualizados, mas o engine NÃO toca na etapa
+     *   — ele só a move na virada rascunho→andamento, que neste caso já
+     *   passou. É exatamente o caso que deixava a empresa presa em "Aguardando
+     *   Onboarding" com onboarding correndo havia três semanas; daí a
+     *   reconciliação explícita no fim.
+     * - `concluido`: intocado. O engine recusa, e recusa certo.
+     *
+     * Falha aqui **não** derruba a distribuição: a pivot e a etapa 5→6 já
+     * estão gravadas e corretas. Fica no log, e a tela do onboarding segue
+     * sendo o caminho manual.
+     */
+    private function entregarAoOnboarding(Company $company, int $analistaId, int $estrategistaId, User $por): void
+    {
+        $onboardings = Onboarding::where('company_id', $company->id)
+            ->where('status', '!=', Onboarding::STATUS_CONCLUIDO)
+            ->get();
+
+        if ($onboardings->isEmpty()) {
+            return;
+        }
+
+        $analista     = User::find($analistaId);
+        $estrategista = User::find($estrategistaId);
+        $engine       = app(OnboardingEngineService::class);
+
+        foreach ($onboardings as $onboarding) {
+            try {
+                $engine->definirResponsaveis($onboarding, $estrategista, $analista, $por);
+            } catch (\Throwable $e) {
+                Log::error('[Distribuicao] onboarding nao recebeu os responsaveis', [
+                    'company_id'    => $company->id,
+                    'onboarding_id' => $onboarding->id,
+                    'erro'          => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Reconciliação do `andamento` pré-existente: se algum onboarding está
+        // correndo e a empresa ficou em 6, a verdade é 7.
+        $company->refresh();
+
+        if ($company->etapa !== Company::ETAPA_AGUARDANDO_ONBOARDING) {
+            return;
+        }
+
+        $correndo = Onboarding::where('company_id', $company->id)
+            ->where('status', Onboarding::STATUS_ANDAMENTO)
+            ->exists();
+
+        if ($correndo) {
+            $this->etapas->transicionar($company, Company::ETAPA_ONBOARDING_ANDAMENTO, $por);
+        }
     }
 
     /**
