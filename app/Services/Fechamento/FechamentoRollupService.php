@@ -385,28 +385,71 @@ class FechamentoRollupService
     }
 
     /**
-     * Quick 260911-eph — esta empresa pode ter o faturamento lido do
+     * Quick 260911-jpx — esta empresa pode ter o faturamento lido do
      * `/performance` da Adman?
      *
-     * Dois cortes, os dois obrigatórios:
+     * O corte NÃO é o token ML. É a conta Adman apontar para a MESMA loja do
+     * ML. O quick anterior (260911-eph) inferiu a regra de UM caso só — a
+     * LAURA LAR — e concluiu "empresa `ml_driven` tem conta Adman
+     * abandonada". Errado: o que a LAURA LAR tem de especial não é o token
+     * ML, é a conta Adman apontar para outra loja.
      *
-     * 1. `is_ml_driven` (token ML ativo) → **não**. O cutover Adman→ML fez o
-     *    sistema PARAR de chamar a Adman para essas empresas; o
-     *    `adman_metrics` delas é preenchido pelo sync do ML e a conta Adman
-     *    fica abandonada, devolvendo um valor que não tem relação com o
-     *    faturamento real (LAURA LAR: R$ 2,7 milhões na nossa base contra
-     *    R$ 12.966 na conta Adman). Aplicar a API aqui destrói o número
-     *    certo — este corte é a diferença entre corrigir 3,4% e apagar
-     *    milhões.
-     * 2. Sem `cust_id` → **não**, não há o que chamar (são quase todas
+     *   | empresa     | adman_account_id | ml_store_id |                 |
+     *   |-------------|------------------|-------------|-----------------|
+     *   | DESK DESIGN | 51493328         | 51493328    | mesma loja      |
+     *   | LAURA LAR   | 273196837        | 433720509   | contas distintas|
+     *
+     * Medição em produção (2026-09-11) das 60 empresas `ml_driven` que têm
+     * conta Adman:
+     *
+     *   | grupo          | empresas | o que a API devolve                   |
+     *   |----------------|----------|---------------------------------------|
+     *   | ids IGUAIS     | 58       | 53 entre -1% e +15% (ajuste retroativo)|
+     *   | ids DIFERENTES | 2        | MAXIGOLD +2118%, LAURA LAR -99,5%     |
+     *
+     * As duas únicas anomalias são exatamente as de id trocado — o corte por
+     * `is_ml_driven` jogava fora 58 empresas boas para se proteger de 2, e
+     * deixava de fora justamente a DESK DESIGN, o caso que originou o
+     * trabalho (R$ 167.537,54 na soma diária contra R$ 170.363,19 na Adman).
+     *
+     * Os três cortes de hoje:
+     *
+     * 1. Sem `cust_id` → **não**, não há o que chamar (são quase todas
      *    empresas de teste).
+     * 2. Não `ml_driven` → **sim**, caminho Adman puro, inalterado. São 53
+     *    empresas em cobrança viva; este ramo não se toca.
+     * 3. `ml_driven` → **só** quando `adman_account_id` e `ml_store_id`
+     *    estão os dois preenchidos e são IGUAIS.
+     *
+     * Duas armadilhas travadas de propósito:
+     *
+     * - Comparação como STRING com `===`. Os dois campos são texto; `==`
+     *   faria coerção numérica e `'051' == '51'` daria true. Id com zero à
+     *   esquerda (ou espaço) é outra loja, não a mesma.
+     * - `filled()` nos dois lados. São 16 empresas `ml_driven` em produção
+     *   com token ML e sem conta Adman própria; sem o `filled()`,
+     *   `null === null` viraria "pode usar" e elas chamariam a API à toa.
+     *
+     * Efeito medido em agosto/2026, autorizado pelo usuário em 2026-09-11:
+     * 51 → ~109 empresas pela API, +R$ 1.016.802,46 de faturamento somado e
+     * 2 empresas mudando de faixa (CAMILLO PARTS MATRIZ e LUCCAUTO.COM,
+     * R$ 3.000 → R$ 4.500). A régua de classificação em si
+     * (`FechamentoFaixaResolver`, `CobrancaCalculator`) não foi tocada —
+     * muda só QUEM pode ler o faturamento da API.
      */
     private function podeUsarApiDaAdman(Company $company): bool
     {
-        if ($company->is_ml_driven) {
-            return false;
+        if ($company->cust_id === null) {
+            return false;                       // nada a chamar
         }
 
-        return $company->cust_id !== null;
+        if (! $company->is_ml_driven) {
+            return true;                        // caminho Adman puro, inalterado
+        }
+
+        // ml_driven: só quando a conta Adman acompanha A MESMA loja do ML.
+        return filled($company->adman_account_id)
+            && filled($company->ml_store_id)
+            && (string) $company->adman_account_id === (string) $company->ml_store_id;
     }
 }

@@ -472,6 +472,34 @@ function AusenciaFaturamentoBadge() {
     );
 }
 
+// Quick 260911-kio (T1) — Mentoria e afins (`estado === 'valor_fixo'`): a
+// empresa é cobrada pelo valor combinado em contrato, então o que ela
+// faturou não entra na conta que define a mensalidade. Antes deste ramo a
+// coluna "Faturamento do mês" caía no genérico e imprimia traço mudo, e a
+// área expandida chegava a escrever "Sem faturamento neste mês" numa
+// empresa que faturou (BOX LISBOA: R$ 115.965 em agosto) — quem confere
+// lia as duas coisas como defeito. Resultado NORMAL, nunca pendência: sem
+// âmbar e sem triângulo, mesma disciplina de `ValorFixoContratoNota`.
+function FaturamentoNaoDefineMensalidade({ variant = 'compact' }) {
+    if (variant === 'compact') {
+        return (
+            <span className="flex flex-col gap-0.5 min-w-0">
+                <span className="text-white/50 text-[14px] font-medium">Não define a mensalidade</span>
+                <span className="text-white/30 text-[12px]">Esta empresa paga o valor combinado em contrato</span>
+            </span>
+        );
+    }
+
+    return (
+        <span className="flex flex-col gap-1">
+            <span className="text-[18px] font-semibold text-white/70">Não define a mensalidade</span>
+            <span className="text-white/40 text-[12px]">
+                Esta empresa paga o valor combinado em contrato — o que ela fatura não muda quanto ela paga.
+            </span>
+        </span>
+    );
+}
+
 // Fase 141 (D-03) — empresa sem tabela progressiva nenhuma, mas com
 // contrato de valor combinado (`estado === 'valor_fixo'`, o caso de
 // Mentoria). Resultado NORMAL, nunca pendência — por isso não usa a cara
@@ -767,16 +795,20 @@ function CabecalhoColunas() {
     );
 }
 
-// Coluna "Faturamento do mês" — os três estados nunca podem virar R$ 0 nem
+// Coluna "Faturamento do mês" — os quatro estados nunca podem virar R$ 0 nem
 // traço mudo (D-05): sem tabela ainda mostra o valor apurado (o problema é
-// não saber a faixa, não o faturamento em si); sem faturamento e sem
-// integração são estados nomeados e distintos entre si.
+// não saber a faixa, não o faturamento em si); sem faturamento, sem
+// integração e mensalidade combinada em contrato são estados nomeados e
+// distintos entre si.
 function ColunaFaturamento({ empresa }) {
     if (empresa.estado === 'sem_faturamento') {
         return <AusenciaFaturamentoBadge />;
     }
     if (empresa.estado === 'sem_integracao') {
         return <span className="text-white/30 text-[16px]">sem dados</span>;
+    }
+    if (empresa.estado === 'valor_fixo') {
+        return <FaturamentoNaoDefineMensalidade variant="compact" />;
     }
     return (
         <span className="font-mono tabular-nums text-[16px] text-white/75">
@@ -834,6 +866,18 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
                         {empresa.subiu_de_faixa && (
                             <span className="text-[12px] font-semibold px-2 py-0.5 rounded-md bg-ecf-yellow/15 text-ecf-yellow">
                                 ↑ subiu de faixa
+                            </span>
+                        )}
+                        {/* Quick 260911-kio (T3) — o irmão simétrico da tag
+                            de subida. Vermelho (não âmbar): âmbar nesta tela
+                            é pendência de cadastro; isto é a loja parando de
+                            vender, que é outra coisa. */}
+                        {empresa.queda_brusca && (
+                            <span
+                                className="text-[12px] font-semibold px-2 py-0.5 rounded-md bg-red-500/15 text-red-400"
+                                title="Faturou menos da metade do mês passado. Abra a linha para ver mês a mês."
+                            >
+                                ↓ caiu mais da metade
                             </span>
                         )}
                         {empresa.estado === 'sem_integracao' && <IntegrationBadge />}
@@ -1073,7 +1117,15 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="bg-black/30 border border-white/[0.06] rounded-xl px-[18px] py-4 flex flex-col gap-1.5">
                         <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-white/30">1 · Faturou no mês</span>
-                        {empresa.faturamento == null ? (
+                        {/* Quick 260911-kio (T1) — a ordem importa: sem o
+                            primeiro ramo, uma empresa de valor combinado em
+                            contrato (que pode ter faturado alto, só que fora
+                            da conta da mensalidade) era descrita como "Sem
+                            faturamento neste mês", o que é simplesmente
+                            falso. */}
+                        {empresa.estado === 'valor_fixo' && empresa.faturamento == null ? (
+                            <FaturamentoNaoDefineMensalidade variant="full" />
+                        ) : empresa.faturamento == null ? (
                             <AusenciaFaturamentoBadge />
                         ) : (
                             <span className="text-[24px] font-semibold font-mono tabular-nums text-white">{fmtBRL(empresa.faturamento)}</span>
@@ -1232,8 +1284,63 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
     );
 }
 
-function FechamentoList({ empresas, totalGeral, mesSelecionado, faixasPorServico, faixasPorGrupo, competenciaFechada, regraNovaAtiva = false, empresaFocada, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+// Quick 260911-kio (T2) — as empresas sem integração nenhuma saem da lista
+// principal e vêm para cá: 54 delas em produção (2026-09-11), cadastro novo
+// sem token e sem id, contra 25 lojas que são pequenas de verdade. O
+// problema é que essas 54 somam R$ 168 mil de cobrança, e empresa cobrada e
+// invisível é o tipo de sumiço silencioso que este projeto já pagou caro —
+// por isso a seção NÃO some: fica fechada, diz quantas são e quanto delas
+// vem, e abre com um clique.
+//
+// ⚠️ Isto é recorte de EXIBIÇÃO, não de dado. Nenhuma empresa sai do
+// fechamento, do relatório nem do total a receber — só muda onde ela
+// aparece na tela.
+function SemIntegracaoRecolhidas({ empresas, aberta, onToggle, children }) {
+    // Soma feita sobre EXATAMENTE as linhas que esta seção esconde (nunca
+    // uma consulta paralela nem uma chave que o backend não emite) —
+    // `cobranca_mensal` null fica de fora, igual a soma do topo faz.
+    const somaCobranca = empresas.reduce(
+        (acc, e) => e.cobranca_mensal != null ? acc + Number(e.cobranca_mensal) : acc,
+        0,
+    );
+
+    return (
+        <div className="rounded-[14px] border border-white/[0.08] bg-white/[0.02] overflow-hidden">
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={aberta}
+                className="w-full text-left px-5 py-4 flex flex-wrap items-center justify-between gap-3 hover:bg-white/[0.03] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/60 focus-visible:ring-inset"
+            >
+                <span className="flex items-center gap-2.5 min-w-0">
+                    <ChevronDown
+                        size={14}
+                        className={cn('shrink-0 text-white/30 transition-transform duration-200', aberta && 'rotate-180')}
+                    />
+                    <span className="text-white/60 text-[15px] font-medium">
+                        {empresas.length} {empresas.length === 1 ? 'empresa sem integração' : 'empresas sem integração'}
+                    </span>
+                    <span className="text-white/30 text-[13px]">
+                        {empresas.length === 1 ? 'não tem faturamento para mostrar' : 'não têm faturamento para mostrar'}
+                    </span>
+                </span>
+                <span className="text-white/40 text-[13px] shrink-0 whitespace-nowrap">
+                    {fmtBRL(somaCobranca)}/mês — já contados no total acima
+                </span>
+            </button>
+
+            {aberta && (
+                <div className="px-3 pb-3 pt-1 flex flex-col gap-2 border-t border-white/[0.06]">
+                    {children}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function FechamentoList({ empresas, recolhidas = [], totalGeral, mesSelecionado, faixasPorServico, faixasPorGrupo, competenciaFechada, regraNovaAtiva = false, empresaFocada, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const [aberta, setAberta] = useState(null);
+    const [recolhidasAbertas, setRecolhidasAbertas] = useState(false);
 
     // Atalho do widget "Subiram de faixa" (Fase 139 §2b): `empresaFocada` é
     // sempre um objeto NOVO a cada clique — reage por referência, não por
@@ -1246,6 +1353,44 @@ function FechamentoList({ empresas, totalGeral, mesSelecionado, faixasPorServico
 
     function toggleEmpresa(id) {
         setAberta(prev => prev === id ? null : id);
+    }
+
+    // Uma única função de linha para os dois lugares (lista principal e
+    // seção recolhida): quem for recolhido continua sendo a MESMA linha,
+    // com a mesma área expandida e o mesmo estado de abertura — só muda
+    // onde ela é desenhada.
+    function renderLinha(empresa) {
+        const expandida = aberta === empresa.id;
+
+        return (
+            <div
+                key={empresa.id}
+                className={cn(
+                    'rounded-[14px] border bg-white/[0.02] overflow-hidden transition-colors',
+                    expandida ? 'border-white/20' : 'border-white/[0.08]',
+                )}
+            >
+                <FechamentoRow
+                    empresa={empresa}
+                    expandida={expandida}
+                    onToggle={() => toggleEmpresa(empresa.id)}
+                />
+                {expandida && (
+                    <FechamentoAccordion
+                        empresa={empresa}
+                        mesSelecionado={mesSelecionado}
+                        faixasPorServico={faixasPorServico}
+                        faixasPorGrupo={faixasPorGrupo}
+                        competenciaFechada={competenciaFechada}
+                        regraNovaAtiva={regraNovaAtiva}
+                        onClose={() => setAberta(null)}
+                        onAdicionarContrato={onAdicionarContrato}
+                        onEditarContrato={onEditarContrato}
+                        onDesativarContrato={onDesativarContrato}
+                    />
+                )}
+            </div>
+        );
     }
 
     // "Nenhuma empresa ativa cadastrada" — não há empresa nenhuma no
@@ -1262,7 +1407,10 @@ function FechamentoList({ empresas, totalGeral, mesSelecionado, faixasPorServico
         );
     }
 
-    if (empresas.length === 0) {
+    // A seção recolhida também conta como "encontrou alguém" — dizer
+    // "nenhuma empresa" com 54 linhas guardadas na gaveta logo abaixo seria
+    // a própria mentira que este quick existe para não cometer.
+    if (empresas.length === 0 && recolhidas.length === 0) {
         return (
             <div className="p-12 text-center text-[15px] text-white/30 border border-dashed border-white/[0.08] rounded-[14px]">
                 Nenhuma empresa encontrada com esses filtros.
@@ -1272,38 +1420,17 @@ function FechamentoList({ empresas, totalGeral, mesSelecionado, faixasPorServico
 
     return (
         <div className="flex flex-col gap-2">
-            {empresas.map(empresa => {
-                const expandida = aberta === empresa.id;
-                return (
-                    <div
-                        key={empresa.id}
-                        className={cn(
-                            'rounded-[14px] border bg-white/[0.02] overflow-hidden transition-colors',
-                            expandida ? 'border-white/20' : 'border-white/[0.08]',
-                        )}
-                    >
-                        <FechamentoRow
-                            empresa={empresa}
-                            expandida={expandida}
-                            onToggle={() => toggleEmpresa(empresa.id)}
-                        />
-                        {expandida && (
-                            <FechamentoAccordion
-                                empresa={empresa}
-                                mesSelecionado={mesSelecionado}
-                                faixasPorServico={faixasPorServico}
-                                faixasPorGrupo={faixasPorGrupo}
-                                competenciaFechada={competenciaFechada}
-                                regraNovaAtiva={regraNovaAtiva}
-                                onClose={() => setAberta(null)}
-                                onAdicionarContrato={onAdicionarContrato}
-                                onEditarContrato={onEditarContrato}
-                                onDesativarContrato={onDesativarContrato}
-                            />
-                        )}
-                    </div>
-                );
-            })}
+            {empresas.map(renderLinha)}
+
+            {recolhidas.length > 0 && (
+                <SemIntegracaoRecolhidas
+                    empresas={recolhidas}
+                    aberta={recolhidasAbertas}
+                    onToggle={() => setRecolhidasAbertas(v => !v)}
+                >
+                    {recolhidas.map(renderLinha)}
+                </SemIntegracaoRecolhidas>
+            )}
         </div>
     );
 }
@@ -1479,6 +1606,9 @@ const FILTROS_INICIAL = { busca: '', servico_nome: '' };
 const CHIPS_FILTRO = [
     { key: 'todos',            label: 'Todas as empresas'      },
     { key: 'subiu',            label: 'Subiram de faixa'       },
+    // Quick 260911-kio (T3) — sem o chip a marca de queda continua
+    // dependendo de alguém rolar 200 linhas até topar com ela.
+    { key: 'queda',            label: 'Caíram mais da metade'  },
     { key: 'sem_integracao',   label: 'Sem integração'         },
     { key: 'topo',             label: 'Maiores mensalidades'   },
     // Quick 260904-kwz — tabela presumida a partir do serviço, sem
@@ -1771,6 +1901,8 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
 
         if (filtroChip === 'subiu') {
             lista = lista.filter(e => e.subiu_de_faixa === true);
+        } else if (filtroChip === 'queda') {
+            lista = lista.filter(e => e.queda_brusca === true);
         } else if (filtroChip === 'sem_integracao') {
             lista = lista.filter(e => e.has_adman === false || e.estado === 'sem_integracao');
         } else if (filtroChip === 'tabela_presumida') {
@@ -1789,6 +1921,28 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
 
         return lista;
     }, [companies, filtros, filtroChip]);
+
+    // Quick 260911-kio (T2) — a lista principal mostra quem tem dado; quem
+    // não tem integração nenhuma vai para a seção recolhida no fim.
+    //
+    // ⚠️ O corte é por `estado === 'sem_integracao'` e SÓ por ele — nunca
+    // por `has_adman === false`, que o chip usa por folga histórica e que
+    // pega junto as empresas só de Shopee (essas TÊM integração e TÊM
+    // faturamento; escondê-las seria o oposto do objetivo).
+    //
+    // ⚠️ Com o chip "Sem integração" ligado nada é recolhido: quem escolheu
+    // ver essas empresas precisa vê-las na lista, não dentro de uma gaveta
+    // fechada.
+    const { principais, recolhidas } = useMemo(() => {
+        if (filtroChip === 'sem_integracao') {
+            return { principais: filtradas, recolhidas: [] };
+        }
+
+        return {
+            principais: filtradas.filter(e => e.estado !== 'sem_integracao'),
+            recolhidas: filtradas.filter(e => e.estado === 'sem_integracao'),
+        };
+    }, [filtradas, filtroChip]);
 
     // ─── Modal de contrato (Add/Edit) — Phase 14 / Plan 14-05 ────────────────
     // State global da página: armazena empresa + contrato (ou null para novo).
@@ -1927,7 +2081,8 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                         />
                         <CabecalhoColunas />
                         <FechamentoList
-                            empresas={filtradas}
+                            empresas={principais}
+                            recolhidas={recolhidas}
                             totalGeral={companies.length}
                             mesSelecionado={mes_selecionado}
                             faixasPorServico={faixas_por_servico}

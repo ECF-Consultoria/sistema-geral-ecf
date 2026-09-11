@@ -341,6 +341,48 @@ class AdminController extends Controller
         return ['subiu_de_faixa' => $subiu, 'ganho_faixa' => $ganho];
     }
 
+    /** Quick 260911-kio (T3) — faturou menos da METADE do mês anterior. */
+    private const FECHAMENTO_QUEDA_FATOR = 0.5;
+
+    /**
+     * Quick 260911-kio (T3) — piso do MÊS ANTERIOR para a marca de queda
+     * existir. Sem ele, R$ 200 caindo para R$ 50 vira alarme: a marca
+     * gritaria com ruído de loja minúscula e viraria barulho de fundo.
+     */
+    private const FECHAMENTO_QUEDA_PISO_MES_ANTERIOR = 10_000.0;
+
+    /**
+     * Quick 260911-kio (T3) — o irmão simétrico de `subiu_de_faixa`: a
+     * empresa desabou de faturamento e hoje isso passa despercebido no meio
+     * de 200 linhas. Dois casos medidos em produção (2026-09-11), os dois
+     * COBRADOS e com as duas fontes concordando (não é sync quebrado — a
+     * loja parou mesmo): MOVELOVEOFICIAL (R$ 494.502 em julho → R$ 22.493 em
+     * agosto → R$ 0 em setembro, cobrando R$ 4.000) e ARMONARE (R$ 112.467 →
+     * R$ 6.782 → R$ 0, cobrando R$ 3.000).
+     *
+     * Extraído pelo mesmo motivo de `fechamentoDerivarUpgrade()`: a chave
+     * sai nos CINCO literais de linha e eles não podem divergir entre si.
+     *
+     * ⚠️ Faturamento atual `null` NUNCA marca. `null` é ausência de dado
+     * (empresa sem integração, sem métrica no mês), não é "faturou zero" —
+     * tratá-lo como zero transformaria toda falha de leitura em alarme de
+     * queda, exatamente a confusão que o D-05 proíbe. Zero MEDIDO (0.0, que
+     * é o que o rollup devolve quando há métrica somando zero) marca
+     * normalmente: é o caso do setembro das duas empresas acima.
+     */
+    private function fechamentoDerivarQuedaBrusca(?float $faturamentoAtual, ?float $faturamentoAnterior): bool
+    {
+        if ($faturamentoAtual === null || $faturamentoAnterior === null) {
+            return false;
+        }
+
+        if ($faturamentoAnterior < self::FECHAMENTO_QUEDA_PISO_MES_ANTERIOR) {
+            return false;
+        }
+
+        return $faturamentoAtual < $faturamentoAnterior * self::FECHAMENTO_QUEDA_FATOR;
+    }
+
     /**
      * Quick 260904-kwz — a tabela aplicada tem confirmação (cadastro manual
      * OU contrato assinado no sistema) ou foi só presumida a partir do
@@ -750,6 +792,16 @@ class AdminController extends Controller
 
             $upgrade = $this->fechamentoDerivarUpgrade($classificacao['ordem'] ?? null, $classificacao['valor'] ?? null, $ordemAnterior, $valorFaixaAnterior);
 
+            // Quick 260911-kio (T3) — queda brusca. Lê o `$rollupAnterior`
+            // que este método JÁ calculou lá em cima (nenhuma consulta
+            // nova) — e não o snapshot congelado, porque aqui a competência
+            // está aberta e a comparação precisa ser entre os dois meses
+            // apurados pela MESMA régua.
+            $quedaBrusca = $this->fechamentoDerivarQuedaBrusca(
+                $fatAtual['faturamento_total'],
+                $rollupAnterior[$c->id]['faturamento_total'] ?? null,
+            );
+
             // Fase 141 (D-03): com a regra nova, a mensalidade é o valor da
             // FAIXA e só isso — `mensalidade()` já devolve null quando não
             // há nem faixa nem contrato mensal. Com a flag desligada, a
@@ -824,6 +876,8 @@ class AdminController extends Controller
                 'valor_faixa_anterior'  => $valorFaixaAnterior,
                 'subiu_de_faixa'        => $upgrade['subiu_de_faixa'],
                 'ganho_faixa'           => $upgrade['ganho_faixa'],
+                // Quick 260911-kio (T3) — literal 1 de 5.
+                'queda_brusca'          => $quedaBrusca,
             ];
         }
 
@@ -925,6 +979,10 @@ class AdminController extends Controller
                     'valor_faixa_anterior'  => null,
                     'subiu_de_faixa'        => false,
                     'ganho_faixa'           => null,
+                    // Quick 260911-kio (T3) — literal 2 de 5. Sem linha
+                    // nesta competência não há faturamento deste mês pra
+                    // comparar com nada; `false` é a resposta honesta.
+                    'queda_brusca'          => false,
                 ];
 
                 continue;
@@ -934,6 +992,15 @@ class AdminController extends Controller
             $valorFaixaAnterior = $anterioresPorEmpresa[$c->id]['valor_faixa'] ?? null;
             $valorMensalAtual   = $s->valor_faixa !== null ? (float) $s->valor_faixa : null;
             $upgrade            = $this->fechamentoDerivarUpgrade($s->faixa_ordem, $valorMensalAtual, $ordemAnterior, $valorFaixaAnterior);
+
+            // Quick 260911-kio (T3) — os dois lados vêm do que FOI
+            // congelado (este snapshot e o do mês anterior, já lido em
+            // `$anterioresPorEmpresa` — mesma consulta, uma coluna a mais).
+            // Nada é recalculado ao vivo aqui (D-11).
+            $quedaBrusca = $this->fechamentoDerivarQuedaBrusca(
+                $s->faturamento_total !== null ? (float) $s->faturamento_total : null,
+                $anterioresPorEmpresa[$c->id]['faturamento_total'] ?? null,
+            );
 
             $dadosPorId[$c->id] = [
                 'id'                    => $c->id,
@@ -996,6 +1063,8 @@ class AdminController extends Controller
                 'valor_faixa_anterior'  => $valorFaixaAnterior,
                 'subiu_de_faixa'        => $upgrade['subiu_de_faixa'],
                 'ganho_faixa'           => $upgrade['ganho_faixa'],
+                // Quick 260911-kio (T3) — literal 3 de 5.
+                'queda_brusca'          => $quedaBrusca,
             ];
         }
 
@@ -1228,6 +1297,14 @@ class AdminController extends Controller
                 'valor_faixa_anterior'  => $valorFaixaAnteriorGrupo,
                 'subiu_de_faixa'        => $upgradeGrupo['subiu_de_faixa'],
                 'ganho_faixa'           => $upgradeGrupo['ganho_faixa'],
+                // Quick 260911-kio (T3) — literal 4 de 5. A chave SAI (a
+                // tela lê a mesma propriedade em toda linha; faltar em uma
+                // é como nasceu a chave fantasma desta tela), mas grupo
+                // ficou FORA do escopo do quick de propósito: a soma do
+                // grupo mistura empresas que podem ter entrado e saído
+                // entre os dois meses, então "caiu pela metade" ali pode
+                // ser só composição diferente, não loja parando.
+                'queda_brusca'          => false,
             ];
         }
 
@@ -1370,6 +1447,10 @@ class AdminController extends Controller
                 'valor_faixa_anterior'  => $valorFaixaAnteriorGrupo,
                 'subiu_de_faixa'        => $upgradeGrupo['subiu_de_faixa'],
                 'ganho_faixa'           => $upgradeGrupo['ganho_faixa'],
+                // Quick 260911-kio (T3) — literal 5 de 5. Mesmo motivo do
+                // ramo ao vivo de grupo: a chave sai, o valor é sempre
+                // `false` porque grupo está fora do escopo deste quick.
+                'queda_brusca'          => false,
             ];
         }
 

@@ -237,3 +237,75 @@ regressão que não existe.
 
 ---
 *Seção 9 registrada em 2026-09-10, ao fechar o plano 142-04.*
+
+---
+
+## 10. Faturamento do mês fechado: a soma dos dias envelhece, e o corte certo é o ID da loja
+
+**Descoberto em 2026-09-11**, quando o usuário conferiu a DESK DESIGN contra a tela da Adman.
+
+### O problema
+
+O fechamento somava as linhas diárias de `adman_metrics`. Cada linha é escrita **uma vez**, na manhã
+seguinte (`ref=2026-08-01` → `updated_at=2026-08-02 11:20`), e **nunca revisitada**. A Adman aplica
+ajustes retroativos (devoluções, conciliação) que não voltam para o nosso banco.
+
+| DESK DESIGN, agosto/2026 | |
+|---|---|
+| `SUM(adman_metrics.revenue)` dos 31 dias | R$ 167.537,54 |
+| `/performance` grossBilling do intervalo | **R$ 170.363,19** |
+
+Os 31 dias estavam **todos presentes** — não era buraco de sync, eram os valores envelhecendo. Isso
+já estava escrito em `AdmanService::fetchGrossBilling()`: *"a Adman aplica ajustes retroativos que
+não voltam para o nosso DB; chamar /performance com range = exatamente o que a dashboard mostra"*.
+A Fase 137 rejeitou a **tabela** `company_monthly_revenues` (valor rolling obsoleto) e o **endpoint**
+saiu de cena junto, sem decisão própria.
+
+### ⚠️ O corte que parece certo e está errado
+
+O primeiro recorte foi *"empresa `is_ml_driven` fica de fora"*, inferido de **um** caso: a LAURA LAR
+tem R$ 2,7 milhões na nossa base e a conta Adman devolve R$ 12.966.
+
+**A conclusão estava errada.** O que a LAURA LAR tem de especial não é o token ML:
+
+| empresa | `adman_account_id` | `ml_store_id` | |
+|---|---|---|---|
+| DESK DESIGN | 51493328 | **51493328** | mesma loja → a API vale |
+| LAURA LAR | 273196837 | **433720509** | contas diferentes → a API mente |
+
+Medição das 60 `ml_driven` com conta Adman:
+
+| grupo | empresas | o que a API devolve |
+|---|---|---|
+| **ids IGUAIS** | **58** | 53 entre −1% e +15% — assinatura de ajuste retroativo |
+| **ids DIFERENTES** | **2** | MAXIGOLD +2118%, LAURA LAR −99,5% |
+
+**As duas únicas anomalias eram exatamente as de id trocado.** O corte por `is_ml_driven` jogava fora
+58 empresas boas para se proteger de 2. A regra que vale está em
+`FechamentoRollupService::podeUsarApiDaAdman()`: `ml_driven` só usa a API quando
+`adman_account_id === ml_store_id` (comparação **como string** — `'051' == '51'` é `true` em PHP).
+
+> **A lição que passa deste caso:** uma anomalia de −99% não prova a regra que a explica. Antes de
+> transformar um caso em recorte, meça a população inteira e veja se a fronteira que você imaginou é
+> mesmo a que separa os dois grupos.
+
+### O que a correção custou em dinheiro
+
++R$ 1.016.802,46 de faturamento em agosto e **2 empresas mudando de faixa** — CAMILLO PARTS MATRIZ e
+LUCCAUTO.COM, ambas passando de R$ 3.000 para R$ 4.500 por terem cruzado os R$ 500.000. Eram
+subcobranças reais, de R$ 1.500/mês cada.
+
+### Armadilhas operacionais
+
+- **A tela não pode chamar a API.** São ~109 empresas; a fonte nova é **opt-in** (`$faturamentoDaApi`)
+  e só a consolidação liga. Mês fechado na tela lê o snapshot congelado, então recebe o número
+  corrigido sem chamada nenhuma.
+- **As DUAS chamadas de `porEmpresa()` precisam da mesma fonte.** `ConsolidarMesFechamento` chama
+  duas vezes (competência e mês anterior, para o aviso de faixa). A API é ~3,4% maior que a soma
+  diária: misturar as fontes entre os dois meses **fabrica mudança de faixa que não houve**.
+- **Chave atrás de `configuracoes`, não de opção de CLI.** O botão "Refazer fechamento" da tela chama
+  o mesmo comando — com opção de linha de comando, um "Refazer" reescreveria o mês com o número
+  **antigo**, em silêncio.
+- **Mês corrente nunca usa a API** (janela incompleta dá resposta diferente a cada hora).
+- **Rode fora da janela do sync das ~11h.** O sync diário já leva 429 da Adman; se metade cair em
+  fallback o comando recusa gravar (e está certo em recusar).
