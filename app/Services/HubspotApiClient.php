@@ -18,6 +18,9 @@ use Illuminate\Support\Facades\Log;
  *   4. fetchAssociatedContactId($dealId)    — primeiro contato associado
  *   5. fetchContact($id, $props)            — propriedades do contato
  *
+ * Fase 151 Plano 03 (COMERC-02, D-08) — busca do owner (responsável comercial):
+ *   6. fetchOwner($ownerId)                 — GET /crm/v3/owners/{id}, resiliente
+ *
  * Token: Bearer de Private App (config('services.hubspot.access_token')).
  * Base: https://api.hubapi.com (fixa).
  *
@@ -618,5 +621,43 @@ class HubspotApiClient
         }
 
         return $out;
+    }
+
+    /**
+     * Fase 151 Plano 03 (COMERC-02, D-08) — GET /crm/v3/owners/{id}.
+     *
+     * Busca o owner (usuário HubSpot) para resolver o responsável comercial
+     * do deal. Resiliente por desenho, no mesmo padrão de
+     * `fetchAssociatedCompanyId()` (nunca `fetchCompany()`): qualquer erro
+     * HTTP devolve `null` em vez de lançar — owner arquivado, removido, ou o
+     * escopo OAuth `crm.objects.owners.read` ausente (NÃO CONFIRMADO na
+     * conta da ECF, ver 138-HUBSPOT-MEDICOES.md, devolveria 403) não podem
+     * derrubar o fluxo de listagem nem o processamento do webhook.
+     *
+     * Shape oficial da resposta em sucesso: `id`, `email`, `firstName`,
+     * `lastName`, `userId`, `archived`.
+     *
+     * IMPORTANTE (T-151-06): o warning carrega apenas `owner_id` + status
+     * HTTP — NUNCA o token nem a mensagem crua da exceção.
+     *
+     * @return array{id?: string, email?: string, firstName?: string, lastName?: string, userId?: int, archived?: bool}|null
+     */
+    public function fetchOwner(string $ownerId): ?array
+    {
+        $res = Http::withToken($this->token)
+            ->get(self::BASE . "/crm/v3/owners/{$ownerId}");
+
+        if (!$res->ok()) {
+            Log::channel('ecf-webhooks')->warning(
+                '[HubSpot] fetchOwner: falha ao buscar owner',
+                [
+                    'owner_id' => $ownerId,
+                    'status'   => $res->status(),
+                ]
+            );
+            return null;
+        }
+
+        return $res->json();
     }
 }

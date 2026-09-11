@@ -7,7 +7,8 @@ import {
     BarChart2, LineChart, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
     Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart, EyeOff,
-    FileSignature, PencilLine
+    FileSignature, PencilLine,
+    MessageSquareText, UsersRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
@@ -233,6 +234,43 @@ const NAV_TREE = [
             // com `?tab=grupos` (o helper de menu acima usa routeParams pra alimentar
             // Ziggy; segments fora do path viram query string automaticamente).
             { label: 'Grupos', routeName: 'comercial.empresas.listagem', routeParams: { tab: 'grupos' }, page: 'Comercial/EmpresasListagem', matchUrl: ({ path, query }) => path.startsWith('/comercial/empresas/listagem') && query.get('tab') === 'grupos', icon: ListChecks, permission: 'comercial.cadastrar_empresa' },
+            // ── Administrativo dentro do Comercial ───────────────────────
+            // O Administrativo foi ABSORVIDO pela Área Comercial em dois
+            // módulos (Fase 151, seed `151-153-admin-no-comercial-dois-modulos`):
+            // Contrato e Entrada. O seed desenhou a lista PLANA; este divider
+            // foi acrescentado depois, a pedido do usuário, porque sem ele os
+            // dois itens ficam soltos entre os do Comercial sem dizer de onde
+            // vieram.
+            //
+            // Divider e NÃO sub-grupo aninhado: o menu não suporta aninhamento
+            // — é exatamente para isso que o divider existe (ver o comentário
+            // do grupo Mercado Livre, que usa o mesmo para 'Polos'). Some
+            // sozinho quando nenhum item abaixo dele é visível por permissão
+            // (lógica de divider órfão, ajuste UAT 2026-07-07).
+            { divider: 'Administrativo' },
+            // Fase 151 Plano 08 (D-15/reorganização) — item 'Contrato' MOVIDO
+            // do grupo Administrativo para cá. routeName/page/permission
+            // IDÊNTICOS ao que já existia — só o label mudou de 'Contratos'
+            // para 'Contrato' (D-02/D-03) e o grupo de menu mudou. Rota,
+            // `ContratoAdminController` e `Pages/Admin/Contratos.jsx` NÃO
+            // mudaram de lugar nem de conteúdo. A permission admin.contratos
+            // foi preservada de propósito (D-15) — trocar por
+            // 'comercial.cadastrar_empresa' ou reempacotar sob `role:admin`
+            // deixaria `ContratoAdminPermissaoTest` vermelho.
+            { label: 'Contrato', routeName: 'admin.contratos.index', page: 'Admin/Contratos', icon: FileSignature, permission: 'admin.contratos' },
+            // Fase 151 Plano 08 (COMERC-02, D-01/D-02) — módulo NOVO Entrada:
+            // casca da listagem de empresas em fluxo de entrada (etapas 1-4
+            // do §10). Permission própria `comercial.entrada` (D-15) — não
+            // reusa `comercial.cadastrar_empresa`. Checklist chega na Fase 152.
+            { label: 'Entrada', routeName: 'comercial.entrada.index', page: 'Comercial/Entrada', icon: ListChecks, permission: 'comercial.entrada' },
+            // Fase 153 (COMUNIC-03) — textos da mensagem de boas-vindas, um por
+            // serviço mais um genérico. Mesma permissão em OR da ficha (D-17):
+            // quem opera a Entrada precisa ajustar o texto que envia.
+            { label: 'Boas-vindas', routeName: 'admin.boas-vindas.index', page: 'Admin/BoasVindasTemplates', icon: MessageSquareText, permission: ['admin.contratos', 'comercial.entrada'] },
+            // Fecha o bloco Administrativo: o que vem abaixo é do Comercial de
+            // novo. Sem este divider, 'Onboarding' e 'Serviços' apareceriam
+            // como se fossem do Administrativo.
+            { divider: 'Comercial' },
             // Fase 135 Plano 12 — painel operacional do onboarding geral por
             // serviço. Gate DEDICADO `core.onboarding` (Plano 09) — NÃO
             // reutiliza a permission do item "Onboarding" de Polos (grupo
@@ -278,6 +316,17 @@ const NAV_TREE = [
         ],
     },
 
+    // ── Grupo: Coordenação — REMOVIDO do menu na Fase 157 (D-D) ─────────────
+    // A distribuição passou a ser ato do LÍDER do setor Performance, dentro da
+    // aba Distribuição de `/companies`. Duas telas fazendo o mesmo divergem com
+    // o tempo, então só uma fica no menu.
+    //
+    // A rota `coordenacao.distribuicao.*` e o controller continuam VIVOS e
+    // acessíveis por URL — mesma disciplina da D-16 da Fase 151 com
+    // `admin.empresas`: apagar tela junto com mudança de navegação mistura dois
+    // riscos. A página até reusa o mesmo `LinhaDistribuicao` da aba nova, então
+    // não há caminho divergente enquanto ela existir.
+
     // ── Grupo: Administrativo ────────────────────────────────────────────────
     // Phase 56 v13.0: grupo Polos (que ficava aqui) foi absorvido pelo grupo
     // Mercado Livre no topo — usa divider visual `{ divider: 'Polos' }`.
@@ -285,8 +334,19 @@ const NAV_TREE = [
         group: 'Administrativo',
         icon: Shield,
         children: [
-            { label: 'Empresas',   routeName: 'admin.empresas',   page: 'Admin/Empresas',   icon: Building2,    permission: 'admin.empresas' },
-            { label: 'Contratos',  routeName: 'admin.contratos.index', page: 'Admin/Contratos', icon: FileSignature, permission: 'admin.contratos' },
+            // Fase 151 Plano 08 (D-16) — item 'Empresas' SAIU do menu nesta
+            // fase. Rota `admin.empresas`, `AdminController::empresas()`/
+            // `updateEmpresa()` e `Pages/Admin/Empresas.jsx` continuam vivos
+            // e acessíveis por URL direta — `updateEmpresa()` zera campos
+            // omitidos no payload, o mesmo modo de falha que já apagou a
+            // coluna "Link do Whats" no Painel Polos, então apagar a tela
+            // junto com a mudança de navegação misturaria dois riscos. A
+            // remoção real é trabalho próprio (ver 151-CONTEXT.md D-16).
+            //
+            // Fase 151 Plano 08 (D-15) — item 'Contratos' MOVIDO para o
+            // grupo Comercial (label agora 'Contrato', D-02/D-03). Ver o
+            // comentário no grupo Comercial acima — rota/controller/página
+            // não mudaram de lugar.
             { label: 'Relatório',  routeName: 'admin.relatorio',  page: 'Admin/Relatorio',  icon: FileBarChart, permission: 'admin.relatorio' },
             { label: 'Fechamento', routeName: 'admin.financeiro', page: 'Admin/Financeiro', icon: Banknote,     permission: 'admin.financeiro' },
             { label: 'Inventário', routeName: 'admin.inventario', page: 'Admin/Inventario', icon: Package2,     permission: 'admin.inventario' },
@@ -445,6 +505,13 @@ export default function AppLayout({ children, title }) {
         // Gate de visibilidade por módulo — Dev vê tudo; demais não veem os ocultos.
         if (!isAdminDev && rotaOculta(item.routeName)) return false;
         if (item.excludeRoles?.some(r => effectiveRoles.has(r))) return false;
+        // `permission` aceita ARRAY = OR entre chaves (Fase 152, D-17 em diante):
+        // há rotas servidas por `permission:a,b` no backend, e usar só uma das
+        // chaves aqui esconderia o item de metade de quem pode abri-lo.
+        if (Array.isArray(item.permission)) {
+            return item.permission.some(p => permissions.includes(p));
+        }
+
         return item.permission ? permissions.includes(item.permission) : true;
     };
 

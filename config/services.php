@@ -40,6 +40,12 @@ return [
     'adman' => [
         'base_url' => env('ADMAN_BASE_URL', 'https://api.adman.com.br/v1'),
         'api_key'  => env('ADMAN_API_KEY', ''),
+        // Fase 139 (ADMIN-03, D-04) — link de cadastro/indicação do Adman,
+        // FIXO e idêntico para todas as empresas: não há geração por empresa,
+        // e o AdmanService é somente leitura (só puxa métricas). Trocar o
+        // código `ref` em produção é edição de `.env` na VPS — sem deploy e
+        // sem mudança de código.
+        'register_url' => env('ADMAN_REGISTER_URL', 'https://app.ad-man.io/register?ref=588D0DD78C4F'),
     ],
 
     'adman_mcp' => [
@@ -121,6 +127,16 @@ return [
         'client_secret'          => env('HUBSPOT_CLIENT_SECRET'),
         'access_token'           => env('HUBSPOT_ACCESS_TOKEN'),
         'stage_fechado_ganho_id' => env('HUBSPOT_STAGE_FECHADO_GANHO_ID', 'closedwon'),
+        // Fase 138 (COMERC-01/D-17) — o `User` que o webhook usa como ATOR da
+        // transição de nascimento em `EtapaTransicaoService::transicionar()`.
+        // O webhook não roda sob sessão autenticada (não há `$request->user()`
+        // ali), então o ator precisa vir de config, resolvido por
+        // `User::find(...)` — nunca de payload. SEM DEFAULT de propósito:
+        // chave ausente é caso TRATADO (log + empresa fica sem etapa), nunca
+        // erro. Aponta pra conta dedicada "Sistema HubSpot" criada por
+        // `hubspot:criar-usuario-sistema --apply` — nunca um admin real (D-17
+        // proíbe: geraria histórico falso na timeline da Fase 143).
+        'webhook_user_id'        => env('HUBSPOT_WEBHOOK_USER_ID'),
         'props' => [
             // Phase 111 Plan 111-01 (HUB-API-01) — deal/company/contact ganham
             // props ampliadas do handoff Comercial v20.0 (só ADICIONA chaves;
@@ -179,6 +195,11 @@ return [
                 // Por isso VENCE os dois na cadeia do `email_cliente`
                 // (Api/HubspotWebhookController, resolução de `$emailFinal`).
                 'email_envio_contrato' => env('HUBSPOT_PROP_DEAL_EMAIL_ENVIO_CONTRATO', 'email_para_envio_do_contrato'),
+                // Fase 138 (plano 03, D-08) — id do owner do deal. Property PADRÃO
+                // do HubSpot, mas o valor abaixo foi ASSUMIDO, NÃO MEDIDO (401 sem
+                // token local, autorizado pelo usuário em 2026-09-02; medição real
+                // pendente do plano 138-09 na VPS — ver 138-HUBSPOT-MEDICOES.md).
+                'owner_id'           => env('HUBSPOT_PROP_DEAL_OWNER_ID', 'hubspot_owner_id'),
             ],
             'company' => [
                 'name'          => env('HUBSPOT_PROP_COMPANY_NAME', 'name'),

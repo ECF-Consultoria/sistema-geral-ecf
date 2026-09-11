@@ -12,7 +12,76 @@ progress:
   total_plans: 92
   completed_plans: 89
   percent: 71
----
+milestone: v23.0
+milestone_name: Fluxo de Entrada de Novas Empresas
+status: executing
+stopped_at: Completed 152-10-PLAN.md — FASE 139 COMPLETA (10/10)
+last_updated: "2026-09-10T08:00:00.000Z"
+last_activity: 2026-09-10
+progress:
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 30
+  completed_plans: 30
+  percent: 100---
+
+> ⚠️ **Correção manual do frontmatter acima (150-08/150-09/150-10/150-11), ver `<process_note>`
+> do executor:** `state.advance-plan` do `gsd-tools.cjs` zera `progress.percent`,
+> recomputa contra totais GLOBAIS do projeto (não desta fase) e corrompe
+> `milestone_name` com um em-dash espúrio. `total_plans`/`completed_plans`
+> acima contam os 7 planos originais da Fase 150 + os 4 planos de gap
+> closure (150-08..150-11) — **11/11 concluídos**, fase 150 fechada por
+> completo. Não rodar `state.advance-plan` sem reconferir o resultado à mão.
+> **Reincidiu no fechamento do 151-08** (mesma sessão, 2026-09-03): o comando
+> zerou `progress.percent` para `14` (cálculo global, não desta fase/milestone)
+> depois de `completed_plans` ir de 18 para 19 — corrigido à mão de volta para
+> `95` (`round(19/20*100)`) antes de commitar.
+> **Reincidiu de novo no fechamento do 152-01** (2026-09-09): `completed_plans` foi de 20 para
+> 21 corretamente, mas `percent` ficou parado em `29` (não recomputado desta vez — mesmo assim
+> errado, porque 29 nunca bateu com `completed_plans/total_plans` deste milestone). Corrigido à
+> mão para `70` (`round(21/30*100)`). **Adicionalmente**, esta mesma execução sobrescreveu, sem
+> relação nenhuma com o campo que deveria mudar, a linha solta `Status: Executing Phase 152 — 10
+> planos em 9 waves.` (dentro do bloco histórico "Fase 150 — COMPLETA", não da seção "Current
+> Position" no topo) para o texto genérico `Status: Ready to execute` — restaurada à mão abaixo.
+> O padrão bate com o §5 do learning `gates-do-gsd-em-projeto-pt-br.md`: o comando não erra só o
+> campo que deveria tocar, erra também um campo qualquer que combine com o mesmo regex em outro
+> lugar do arquivo.
+> **Reincidiu de novo no fechamento do 152-03** (2026-09-09): `completed_plans` foi de 22 para 23
+> corretamente, mas `percent` foi recomputado GLOBAL (`29`) em vez de `round(23/30*100)` desta
+> milestone — corrigido à mão para `77`. A MESMA linha solta `Status: Executing Phase 152 — 10
+> planos em 9 waves.` foi sobrescrita outra vez para o texto genérico `Status: Ready to execute` —
+> restaurada à mão de novo. Terceira vez que este exato par de campos é corrompido pelo mesmo
+> comando; ver `.planning/learnings/gates-do-gsd-em-projeto-pt-br.md` §4/§8.
+> **Reincidiu de novo no fechamento do 152-04** (2026-09-09): `completed_plans` foi de 23 para 24
+> corretamente, mas `percent` foi recomputado GLOBAL (`29`) em vez de `round(24/30*100)` desta
+> milestone — corrigido à mão para `80`. Desta vez a linha solta `Status: Executing Phase 152 — 10
+> planos em 9 waves.` **não** foi tocada (conferido por grep antes de commitar) — o padrão de dano
+> não é 100% determinístico execução a execução, o que reforça a disciplina: NUNCA commitar um
+> resultado de `state.*`/`roadmap.*` sem ler o diff inteiro primeiro. Quarta vez que `percent` é
+> corrompido pelo mesmo comando.
+> **Reincidiu de novo no fechamento do 152-05** (2026-09-09): `completed_plans` foi de 24 para 25
+> corretamente, mas `percent` foi recomputado GLOBAL (`29`) em vez de `round(25/30*100)` desta
+> milestone — corrigido à mão para `83`. A linha solta `Status: Executing Phase 152 — 10 planos em
+> 9 waves.` foi sobrescrita de novo para o texto genérico `Status: Ready to execute` — restaurada à
+> mão mais uma vez. Quinta vez que `percent` é corrompido pelo mesmo comando; terceira vez que a
+> mesma linha solta é atingida junto.
+> **Reincidiu de novo no fechamento do 152-06** (2026-09-09): `completed_plans` foi de 25 para 26
+> corretamente, mas `percent` foi recomputado GLOBAL (`29`) em vez de `round(26/30*100)` desta
+> milestone — corrigido à mão para `87`. A linha solta `Status: Executing Phase 152 — 10 planos em
+> 9 waves.` foi sobrescrita de novo para `Status: Ready to execute` — restaurada à mão mais uma vez.
+> `state.record-session` também repetiu o dano do §4 do learning (sobrescreve o topo da pilha do
+> Session Continuity em vez de empilhar): a entrada da 152-05 foi substituída pela da 152-06 em vez
+> de ficar abaixo dela — restaurada à mão logo abaixo da nova entrada. Sexta vez que `percent` é
+> corrompido pelo mesmo comando; quarta vez que a mesma linha solta é atingida junto.
+> **Fechamento do 152-07 (2026-09-10) — nenhum handler `state.*`/`roadmap.*` foi executado.**
+> Depois de seis reincidências seguidas do mesmo dano, este fechamento editou `STATE.md` e
+> `ROADMAP.md` **à mão**: frontmatter (`stopped_at`, `last_updated`, `last_activity`,
+> `completed_plans` 26→27, `percent` `round(27/30*100)`=`90`), `Plan: 7 of 10` → `8 of 10`,
+> uma linha em Performance Metrics, quatro em Decisions, uma entrada empilhada no topo de Session
+> Continuity, e dois pontos no ROADMAP. `git diff --numstat` conferido ANTES do commit: nenhuma
+> linha solta de outra fase tocada, a anotação `10 planos em 9 waves` intacta, e a pilha do
+> Session Continuity empilhada em vez de sobrescrita. Custo: ~2 min. É mais barato que auditar o
+> estrago do handler, e não há sétima reincidência para registrar.
 
 # Project State
 
@@ -21,7 +90,9 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 133 — liga-o-bloqueio-ativa-o-real-v22-0
+**Current focus:** Phase 152 — checklist-administrativo-trava-de-finaliza-o-v23-0 — **EM
+EXECUÇÃO** (10 planos em 9 waves, planejada em 2026-09-09). Anterior: Fase 151 — Área Comercial
+conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current Position.
 
 > ⚠️ **Não é a 134.** O `phase.complete` apontou 134 ao fechar a 132, mas isso é artefato da
 > ferramenta: a **Fase 133 tem `Plans: TBD`** e nenhum diretório, então foi pulada na busca pela
@@ -31,6 +102,282 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 > já foram executadas em paralelo por outra sessão.
 
 ## Current Position
+
+Phase: 156 (historico-e-sla-v23-0) — **COMPLETA** (trabalho direto, sem migration e sem gravar nada)
+
+### 🏁 MILESTONE v23.0 — TODAS AS 7 FASES COMPLETAS
+
+**150-156 fechadas, 31 de 31 requirements marcados** em `REQUIREMENTS-v23.md`.
+Regressão final: **806 testes / 3505 assertions**, verde.
+
+| Fase | Como foi conduzida | Migration |
+|---|---|---|
+| 150 Máquina de estados | GSD (11 planos) | 2 (companies + transições) |
+| 151 Comercial na etapa | GSD (9 planos) | 2 (colunas em companies) |
+| 152 Checklist administrativo | GSD (10 planos) | 1 (checklist_administrativo_itens) |
+| 153 Mensagem de boas-vindas | trabalho direto | 1 (boas_vindas_templates) |
+| 154 Distribuição | trabalho direto | **0** |
+| 155 Onboarding na máquina | trabalho direto | **0** |
+| 156 Histórico e SLA | trabalho direto | **0** |
+
+⚠️ **NADA DEPLOYADO.** Migrations fora de produção: `checklist_administrativo_itens` (152) e
+`boas_vindas_templates` (153). As da 150/151 já rodaram no MariaDB local, **não em produção**.
+
+⚠️ **Uma chave de permissão nova em toda a milestone:** `coordenacao.distribuir` (Fase 154).
+Precisa ser liberada por setor depois do deploy, senão a fila de distribuição fica inacessível.
+
+**Gate humano cumprido:** só a Fase 152 tinha checkpoint bloqueante, aprovado em 2026-09-10 com
+evidência por reconsulta ao banco. As fases 153-156 são trabalho direto e não têm gate — a
+conferência visual delas **não foi feita** e está declarada como pendente abaixo.
+
+**Conferência visual de 2026-09-10 — o que ela cobriu, na letra:**
+
+O usuário aprovou a conferência das telas das Fases 153-156, com o menu já
+acrescentado (Comercial › Boas-vindas e Coordenação › Distribuição) e a base já
+integrada com `origin/main`.
+
+**Cobertura real, conferida por reconsulta ao banco depois do "aprovado":**
+
+| Parte | Situação |
+|---|---|
+| Renderização das telas (ficha, timeline, fila, edição de textos) | aprovada — **não deixa rastro no banco**, então a evidência é o relato |
+| Salvar template de boas-vindas | **NÃO exercitado** — `boas_vindas_templates` continua vazia |
+| Confirmar uma distribuição | **NÃO exercitado** — a 418 segue em `aguardando_distribuicao`, sem responsáveis |
+
+Os dois caminhos que mudam dado seguem cobertos por teste automatizado
+(`EdicaoTemplatesTest`, `DistribuicaoRotaTest`) — é lacuna de verificação
+HUMANA, não de implementação, e está declarada aqui em vez de a milestone se
+dizer conferida ponta a ponta.
+
+**O que falta antes de considerar a milestone entregue:**
+1. ~~Conferência visual das telas das Fases 153-156~~ — **FEITA em 2026-09-10**, com a ressalva de cobertura acima (2 caminhos de escrita não exercitados à mão).
+2. Decisão de deploy — 2 migrations novas e 1 chave de permissão a liberar.
+3. A v22.0 continua **NÃO fechada**: Fase 133 e o plano `133-05` seguem abertos desde 19/08.
+
+Phase: 155 (onboarding-na-maquina-de-estados-v23-0) — **COMPLETA** (trabalho direto; a régua do onboarding NÃO foi tocada, VERSAO segue 17)
+
+Phase: 154 (distribuicao-pela-coordenacao-v23-0) — **COMPLETA** (trabalho direto, sem planos GSD e SEM MIGRATION)
+
+Phase: 153 (mensagem-de-boas-vindas-generalizada-v23-0) — **COMPLETA** (trabalho direto, sem planos GSD)
+
+A Fase 152 (checklist administrativo) segue COMPLETA (10/10) — registro preservado abaixo.
+
+Phase: 152 (checklist-administrativo-trava-de-finaliza-o-v23-0) — **COMPLETA (10/10)**
+Plan: 10 of 10 — **TODOS EXECUTADOS; os 2 gates humanos do 152-10 foram APROVADOS em 2026-09-10.** Execução iniciada em 2026-09-09 por `/gsd:execute-phase 152`. **152-01 concluído**
+(baseline 137/138 100% verde — 123 testes, 444 assertions, `152-BASELINE-TESTES.md`;
+`config('services.adman.register_url')` publicada com o link fixo do Adman, D-04, provada por
+`tests/Unit/Phase152/AdmanRegisterUrlConfigTest.php`; `REQUIREMENTS-v23.md` registra as exceções
+D-06/D-16 sob o ADMIN-02 e a correção D-04/D-05/D-14 sob o ADMIN-03, D-19). Commits `35f9d193`,
+`c0b68597`, `a83c7706`; SUMMARY em `152-01-SUMMARY.md`. Sem deviations.
+**152-02 concluído** (tabela `checklist_administrativo_itens` ancorada em `company_id`, D-10, com
+índice unique nomeado à mão `cai_company_chave_unique` — rodada e conferida contra o MariaDB local
+via `SHOW INDEX`/`SHOW COLUMNS`; model `ChecklistAdministrativoItem` com catálogo fechado de 2
+status, D-02, e `feitoPor()->withTrashed()`, D-11). Commits `3b90803d`, `33e7c9b7`; SUMMARY em
+`152-02-SUMMARY.md`. Regressão 137/138/139 — 128 testes, 457 assertions, OK. Desvio: docblocks
+explicativos citavam literalmente `nao_aplicavel`/`onboarding_id`/`template_passo_id` para
+descrever o que NÃO existe — reescritos sem os identificadores literais para satisfazer a
+verificação por grep do próprio plano (ver `152-02-SUMMARY.md`, seção Deviations).
+**152-03 concluído** (interface `App\Contracts\ChecklistResolver` sem método de assincronismo;
+value object `ChecklistResolverResultado` de 3 estados — `concluido`/`nao_coletado`/`indeterminado`
+— cópia do molde de `OnboardingResolverResultado` sem os ramos de coleta assíncrona; catálogo
+fechado `ChecklistAdministrativoDefinicao` com os 9 itens do §5 na ordem D-03, `itens(false)`
+devolvendo só os 6 do grupo Entrada para serviço isento, D-07). Commits `697195e4`, `c2dcddcc`,
+`1dad3cf8`; SUMMARY em `152-03-SUMMARY.md`. Regressão 137/138 — 123 testes, 444 assertions, OK
+(idêntica à baseline); `tests/Unit/Phase152` completo — 12 testes, 71 assertions, OK. Sem
+deviations.
+**152-04 concluído** (os 4 resolvers automáticos — `ContratoEnviadoResolver`/item 2,
+`ContratoAssinadoResolver`/item 3 com OR entre envelope assinado e `ContratoLiberacao::
+existeParaServico()`, D-16, agregado "manda o mais atrasado" por serviço, D-18;
+`MlOAuthConectadoResolver`/item 7 fecha só com `ml_tokens.status=active`, D-05;
+`ConexaoEcfResolver`/item 8 fecha por existência de `onboarding_links`, sem nunca criar a linha,
+D-14). Commits `efbedccf`, `242d91e7`, `4ec544c4`; SUMMARY em `152-04-SUMMARY.md`. Regressão
+137/138/139 — 151 testes, 547 assertions, OK (era 135/515 no fechamento do 152-03, +16 testes/+32
+assertions deste plano). Desvio: docblock de `MlOAuthConectadoResolver` citava literalmente
+`buildAuthUrl`/`MercadoLivreService` para explicar o que o resolver NÃO faz — reescrito em prosa
+sem os identificadores para não colidir com o grep de auditoria do próprio plano (mesma lição do
+152-02/152-03; ver `152-04-SUMMARY.md`, seção Deviations).
+
+### Fase 151 — COMPLETA (9/9) · registro preservado
+
+Phase: 151 (rea-comercial-conectada-etapa-v23-0) — **COMPLETA (9/9)**
+Plan: 9 of 9 — **151-09 concluído em 2026-09-09** (checkpoints humanos finais da fase, `wave 4`,
+`autonomous: false`). Task 1 (`8df94867`) reexecutou a suíte da fase contra a baseline pré-migration
+sem regressão nova; Task 2 (`883479d5`, checkpoint aprovado) confirmou a conta de sistema
+`sistema.hubspot@ecfconsultoria.com.br` (id local 49) não-logável por reconsulta ao banco +
+`ComercAtorSistemaTest`; Task 3 (`30f39ab2`, checkpoint aprovado) confirmou por screenshot do
+usuário o render real de `/comercial/entrada` e `/administrativo/contratos` — os 8 campos do §2,
+as duas pendências em colunas separadas nas duas telas, a fronteira D-07 (empresas de etapa 5,
+ids 412/417, existem no banco e não aparecem na Entrada) e a não-regressão da listagem Contrato
+(empresa `asdadassdsad`, id 55, `em_operacao`, segue visível — sem corte por etapa). Suíte
+reexecutada nesta sessão de fechamento: `tests/Unit/Phase151 tests/Feature/Phase151
+tests/Feature/Phase131 tests/Unit/Phase150 tests/Feature/Phase150` → **252 tests, 921 assertions,
+OK**. Ver `151-09-SUMMARY.md` para a lista completa das 3 pendências obrigatórias da VPS (conta de
+sistema, property de owner, escopo `crm.objects.owners.read`) — nenhuma delas executada, **nenhum
+deploy foi autorizado**. **FASE 138 FECHADA — 9/9 planos.** COMERC-01/02/03 completos.
+
+> ⚠️ **O bloco da Fase 150 abaixo foi restaurado à mão em 2026-09-02.** O commit `cea0be5f`
+> (`phase.complete`/`state.record-session`) truncou o **início** de três linhas longas e deixou
+> as caudas órfãs — as frases "completos + 4/4 planos…", "em `150-BASELINE-TESTES.md`);…" e
+> "planos (7 originais + 4 de gap closure).**" ficaram penduradas sem cabeça, e o `last_activity`
+> foi achatado para só a data. Texto recuperado de `git show a7fe1376:.planning/STATE.md`. São os
+> danos nº 1 e nº 2 do `.planning/learnings/gates-do-gsd-em-projeto-pt-br.md` §4 — **não rodar
+> `state.*` sem ler o diff inteiro antes de commitar.**
+
+### Fase 150 — COMPLETA (11/11) · histórico restaurado
+
+Phase: 150 (m-quina-de-estados-os-9-status-de-companies-etapa-v23-0) — **7/7 planos originais
+completos + 4/4 planos de gap closure concluídos — FASE 137 COMPLETA (11/11)**
+Plan: 11 of 11 (7 originais + 150-08 + 150-09 + 150-10 + 150-11) — 150-01 concluído (ambiente de teste destravado + baseline pré-migration registrada
+em `150-BASELINE-TESTES.md`); 150-02 concluído (`companies.etapa` aditiva + 9 constantes `ETAPA_*`
+no model `Company`, ETAPA-01 fechado); 150-03 concluído (`EtapaTransicaoService` — único ponto de
+escrita de `companies.etapa`, tabela `company_etapa_transicoes` de histórico append-only, ETAPA-03
+e ETAPA-06 fechados; serviço ainda SEM chamador de produção, de propósito); 150-04 concluído
+(4 colunas de pendência paralela em `companies` + `Company::pendenciaAberta()`/
+`scopeComPendenciaAberta()`/`declararPendencia()`/`resolverPendencia()`, ETAPA-04 fechado, provado
+por teste que marcar/desmarcar pendência nunca move `etapa`); 150-05 concluído (comando
+`etapa:backfill` em dois baldes — D-04 — dry-run por padrão, ETAPA-02 fechado; executado DE
+VERDADE contra o MariaDB local: 180 empresas, 1 no balde 1 (`em_operacao`), 179 em `NULL`,
+conferido por reconsulta SQL direta em `150-BACKFILL-CONTAGENS.md`; payload de `GET /companies`
+provado idêntico antes/depois por teste — Success Criteria nº 1 preservado); 150-06 concluído
+(`EtapaPontoUnicoTest` — `PUT /companies/{company}` provado incapaz de mover `etapa`/`pendencia_*`
+por mass assignment, T-150-01/T-150-14 fechados; varredura estática de `app/` escopada por corpo
+de função — não por linha nem arquivo inteiro — provada ativa por injeção temporária de violação;
+aviso-guarda deixado em `CompanyController::update()`; Success Criteria nº 2 da fase fechado.
+Deviation Rule 1: o padrão cru `'etapa' =>` do plano falso-positivava contra ~10 usos legítimos de
+`OnboardingPasso::etapa`, coluna homônima sem relação com `companies.etapa` — redesenhado para
+escopo por corpo de função, ver `150-06-SUMMARY.md`); **150-07 concluído** (dois filtros
+server-side independentes em `/companies` — `?etapa=` allow-list + sentinela `sem_etapa` de
+primeira classe, e `?com_pendencia=` via `comPendenciaAberta()` — ETAPA-05 fechado; verificação
+humana real aprovada pelo usuário na tela; payload usa `tem_pendencia` em vez de `pendencia_aberta`
+para não colidir com o gate estático D-19 do 150-04; ver `150-07-SUMMARY.md` para os dois achados
+da verificação — `.env` do worktree apontava pro build de `ecf_admin` e a suíte Feature completa
+segue não-terminável neste ambiente, ambos documentados como dívida explícita, não regressão desta
+fase). **As 6 Success Criteria e os 6 requirements (ETAPA-01..06) da Fase 150 estão fechados.**
+**150-08 concluído** (gap closure G1 CRITICAL do `150-VERIFICATION.md`/`150-REVIEW.md` CR-01: o
+gate estático `EtapaPontoUnicoTest.php` Grupo 2, que o próprio verificador provou contornável por
+injeção real de código em 3 formas — nome de variável diferente de `$company`, array de update
+montado indiretamente, `DB::table('companies')->update()` — foi reescrito com 3 regras avaliadas
+sobre código já limpo de comentário: Regra A roda no ARQUIVO inteiro sem exigir o nome literal
+`$company`; Regra B cobre `$var['etapa'] = ...` combinada a um detector de escrita em `Company`
+ampliado com `DB::table('companies')` e um guard por ARQUIVO (não por corpo, porque
+`corposDeFuncao()` descarta a assinatura da função); Regra C mantém a proteção contra o falso
+positivo de `OnboardingPasso::etapa` do 150-06. Escopo estendido a `database/migrations/`. As 3
+sondas de bypass + 1 sonda de regressão + 1 sonda de falso positivo de comentário foram injetadas
+de verdade, uma de cada vez, e produziram exatamente o veredito esperado — evidência em
+`150-08-SUMMARY.md`. Suíte da fase 46/46 verde, baseline 24/24 verde, árvore confirmada limpa após
+cada sonda removida. `EXCECOES_REGRA_A` nasce vazia — zero falsos positivos na árvore atual.
+Faltam 3 planos de gap closure planejados e não executados: 150-09 (G2), 150-10 (G4+G5+G6),
+150-11 (G3) — ver `ROADMAP.md` Wave 5-6).
+**150-09 concluído** (gap closure G2 CRITICAL do `150-VERIFICATION.md`/`150-REVIEW.md` CR-02: a FK
+`company_etapa_transicoes.user_id` estava `cascadeOnDelete()`, enquanto a FK irmã
+`companies.pendencia_por` — mesma fase, mesmo conceito de ator — já usava `nullOnDelete()`.
+`UserController::forceDestroy()` faz hard delete real; a divergência apagava em cascata o
+histórico de TODAS as empresas que o usuário removido já tinha movimentado, não só as dele.
+Corrigida a migration ORIGINAL (`2026_09_01_120000_...`) in-place — `user_id` agora `nullable()`
+
++ `nullOnDelete()` — via ciclo local `migrate:rollback --step=2` + `migrate` no MariaDB
+
+compartilhado `ecf_admin`, protegido por asserção SQL do nome exato das 2 migrations nos 2 maiores
+batches (antes e depois, T-150-30). Schema real reconferido por `SHOW CREATE TABLE`: `user_id`
+`DEFAULT NULL` + `ON DELETE SET NULL`; `company_id` preservado em `CASCADE`. Backfill intacto:
+180/1/179, idêntico a `150-BACKFILL-CONTAGENS.md`. Prova comportamental nova
+(`EtapaHistoricoAtorTest`, 4 testes) com prova por regressão dirigida — revertida a migration para
+`cascadeOnDelete()` sem `nullable()`, 2 dos 4 testes falharam como esperado; reversão desfeita e
+conferida byte-idêntica ao commit. Suíte da fase 50/50 verde, baseline 24/24 verde — evidência em
+`150-09-SUMMARY.md`. Faltava 1 plano de gap closure: 150-10 (G4+G5+G6).
+**150-10 concluído** (gap closure G4 WARNING + G5 WARNING + G6 docs do `150-REVIEW.md`: G4/WR-01 —
+`EtapaTransicaoService::transicionar()` decidia sobre `$company` em memória ANTES de
+`DB::transaction()` abrir, sem `lockForUpdate()` nem re-leitura — TOCTOU latente hoje, mas a Fase
+138 pluga um webhook (reentrega/retry concorrente) como primeiro chamador real. Corrigido seguindo
+os dois precedentes do projeto (`CompanyScoreSnapshotWriter::sync()` D-122-08 e
+`DesempenhoMetricasManuaisController::salvar()`): a avaliação antiga fora da transação foi REMOVIDA
+por completo, e `podeTransicionar()` passa a decidir sobre `Company::whereKey($id)->lockForUpdate()
+->first()`, relido DENTRO da closure. Empresa removida entre a chamada e o lock devolve `erro` sem
+exceção vazar; o objeto `Company` do chamador é sincronizado após sucesso. Docblock documenta que
+`lockForUpdate()` é no-op no SQLite dos testes — a suíte prova re-leitura de estado divergente
+memória-vs-banco, não serialização de concorrência real (só o MariaDB de produção prova isso). G5/
+WR-02 — `EtapaBackfill` usava `pluck('id', 'name')` sobre `companies.name`, que não tem
+`unique()`; colisão de nome colapsava duas empresas do balde 1 numa só, descartando a primeira em
+silêncio (invisível localmente: só 1/180 cai no balde 1; produção tem ~500). Trocado para
+`pluck('id')`; amostra do dry-run passou a ser consulta separada. G6 — `150-01-PLAN.md` declarava
+`requirements: [ETAPA-01, ETAPA-02]` sem ter tocado `app/`/`database/`; zerado para `requirements: []`
+com comentário de justificativa — `ETAPA-01` segue coberto por 150-02, `ETAPA-02` por 150-05/150-10,
+nenhum dos 6 IDs órfão (conferido por grep). Prova dirigida para os dois fixes de código: revertida
+cada correção via cópia de arquivo (nunca `git checkout`/`stash`, proibidos neste worktree), os
+testes novos FALHARAM como esperado, reversão desfeita. Suíte da fase 55/55 verde
+(50 anteriores + 4 do serviço + 1 do backfill), baseline 24/24 verde, gate estático
+`EtapaPontoUnicoTest.php` 4/4 verde — evidência em `150-10-SUMMARY.md`. Falta 1 plano de gap
+closure: 150-11 (G3).
+**150-11 concluído** (gap closure G3 WARNING do `150-REVIEW.md` WR-03: os quatro handlers de
+filtro de `/companies` — `aplicarCustIdFilter`, `aplicarSort`, `aplicarEtapaFilter`,
+`aplicarComPendenciaFilter` — montavam a query do zero e cada um esquecia os outros; escolher
+etapa apagava `cust_id_status` em silêncio, escolher Cust ID apagava etapa/pendência, trocar a
+ordenação na aba Pendências apagava etapa e pendência. O backend já suportava os três
+combinados desde 150-07 — a limitação era inteiramente do cliente. Corrigido com um único
+montador `aplicarFiltros(overrides)`: parte dos filtros ATIVOS, aplica `overrides` por cima,
+remove chaves vazias, e é o ÚNICO ponto do arquivo que chama `router.get(route('companies.index'))`
+— os quatro handlers viraram invólucros finos, mesma assinatura pública. `aplicarSort` deixou de
+fixar `tab: 'pendencias'` na marra e passa a herdar a aba corrente (melhoria deliberada, mesmo
+resultado hoje). Combinação tripla provada no backend (2 testes novos de interseção
+`cust_id_status`+`etapa`+`com_pendencia`) e a centralização travada por gate estático que já foi
+visto FALHANDO por prova dirigida (handler revertido temporariamente para montar `router.get`
+por conta própria). Suíte da fase 58/58 verde, baseline 24/24 verde. **Verificação humana
+aprovada** — o usuário combinou os três filtros na tela real e produziu a URL
+`?cust_id_status=invalido&etapa=sem_etapa&tab=empresas` como evidência do passo que falhava
+antes; ver `150-11-SUMMARY.md`.
+Status: Executing Phase 152 — 10 planos em 9 waves.
+
+**Histórico do planejamento da 138 (cabeça restaurada à mão):** plano aprovado pelo
+`gsd-plan-checker` com 0 blockers; os 5 warnings foram fechados (arestas `depends_on` de 151-06
+e 151-07, Open Questions do RESEARCH marcadas resolvidas, frontmatter do VALIDATION aprovado, e a
+tensão D-06 × SC#4 escalada e decidida pelo usuário). Cobertura de decisões **17/17**
+(`check.decision-coverage-plan`), requirements COMERC-01/02/03 cobertos.
+
+**Histórico da 137 (restaurado):** Fase 150 — TODOS os 6 gaps fechados (G1+G2+G3+G4+G5+G6).
+**FASE 137 COMPLETA — 11/11 planos (7 originais + 4 de gap closure).** As 6 Success Criteria e os 6 requirements
+(ETAPA-01..06) seguem fechados desde 150-07; os 4 gap closure endureceram garantias que já
+tinham sido reivindicadas, sem reabrir requirement nenhum.
+~~Próxima fase da milestone (138 — Área Comercial conectada à etapa) ainda **não foi planejada**
+(`Plans: TBD` no ROADMAP) — requer `/gsd-plan-phase 151` antes de qualquer execução.~~
+**FEITO em 2026-09-02 — a Fase 151 está planejada, 9 planos no ROADMAP.**
+Last activity (137, restaurado): 2026-09-02 -- Phase 150 Plan 11 concluído, G3/WR-03 fechado (commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA (11/11)
+
+> ⚠️ **Esta abertura foi feita à mão, não pelo `state.milestone-switch`.** O handler do SDK
+> reescreve o "Current Position" inteiro, e neste arquivo havia **três** posições vivas com gate
+> humano aberto (Fases 133, 135 e 136). Elas estão preservadas nos blocos "Posição paralela"
+> abaixo. Pelo mesmo motivo, `phases.clear` **não foi executado** — as 72 pastas em
+> `.planning/phases/` seguem intactas, incluindo as 124-136.
+>
+> A numeração de fases da v23.0 **continua a partir da 137**.
+>
+> ⚠️ **RENUMERADA em 2026-09-10: 137-143 → 150-156.** A numeração original colidia
+> com a de OUTRA sessão que já está em `origin/main` — aquele dev usou 137-141 para
+> um milestone diferente (fechamento mensal, tabelas progressivas do Clicksign).
+> Medido: `git ls-tree -d origin/main .planning/phases/` lista
+> `137-fechamento-mensal-...`, `138-tabela-do-grupo-...`, `139-redesenho-da-tela-...`,
+> `140-extrair-tabelas-progressivas-do-clicksign` e `141-tabela-progressiva-por-empresa-e-grupo`.
+> Sem renumerar, "Fase 140" significaria duas coisas depois do merge, e `ROADMAP.md`
+> e este arquivo conflitariam de forma ilegível para os dois lados.
+>
+> Renomeados junto: as 3 pastas de fase, os 86 arquivos dentro delas, o seed
+> `151-153-admin-no-comercial-dois-modulos-260902.md`, e **os diretórios de teste**
+> (`tests/{Feature,Unit}/Phase137|138|139` → `Phase150|151|152`, com os 34 namespaces).
+> Os testes tinham de mover: os nomes de ARQUIVO não colidiam (o outro dev prefixa
+> `Phase137...`, nós usamos nome de domínio), mas `phpunit tests/Feature/Phase139`
+> passaria a rodar dois milestones e os comandos de regressão escritos nos planos
+> virariam mentira.
+>
+> **NÃO renomeado de propósito:** as empresas-fixture `ZZ Conferência 139` (ids 418/419)
+> no MariaDB local. O nome está gravado no banco; mudar o texto do documento sem mudar
+> a linha criaria referência a algo que não existe.
+>
+> Prova de que nada quebrou: **344 testes / 1285 assertions verdes** e `npm run build`
+> verde com as 2 páginas no manifest, DEPOIS da renumeração.
+
+## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
+
+**Preservado em 2026-09-01 na abertura da v23.0.** Este bloco era o "Current Position" até aqui.
+A v22.0 tem **10 de 13 fases** concluídas e **não** passou por `/gsd:complete-milestone`.
 
 Phase: 133 (liga-o-bloqueio-ativa-o-real-v22-0) — EXECUTING (chave LIGADA, aguardando prova do 133-05)
 Plan: 4 of 5 — 133-04 concluído com decisão **`ligar-agora`** no checkpoint da Task 2 (a resposta
@@ -48,7 +395,7 @@ prova; FLUXO-09 já é `Done` desde o 133-02. **A milestone v22.0 NÃO está fec
 `.planning/todos/pending/260818-ficha-operacional-nao-criada-na-liberacao.md` — na prova do gate
 #10 a `ContratoLiberacao` nasceu mas a ficha operacional (`MlbEmpresa`) não foi criada. Provável
 que seja esperado (empresa fictícia sem loja ML), mas **não confirmado**.
-Last activity: 2026-08-19 — chave `administrativo_bloqueio_ativo` LIGADA em produção; 133-05 desbloqueado
+Last activity: 2026-09-09
 
 ## Posição paralela — Fase 136 (Métricas manuais por empresa/mês) — AGUARDANDO GATE HUMANO
 
@@ -1203,7 +1550,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 
 **Velocity:**
 
-- Total plans completed: 99
+- Total plans completed: 110
 - Average duration: ~15 min/plan
 - Total execution time: ~1.5 hours
 
@@ -1236,6 +1583,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | 126 | 12 | - | - |
 | 127 | 7 | - | - |
 | 132 | 4 | - | - |
+| 137 | 11 | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
@@ -1456,7 +1804,24 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 133 P02 | ~40min | 3 tasks | 3 files |
 | Phase 133 P03 | ~30min | 2 tasks | 3 files |
 | Phase 138-tabela-do-grupo-e-aviso-de-mudanca-de-faixa P06 | ~90min | 4 tasks | 5 files |
-
+| Phase 150 P01 | 40min | 2 tasks | 1 files |
+| Phase 150 P02 | 25min | 2 tasks | 3 files |
+| Phase 151 P01 | 6min | 2 tasks | 1 files |
+| Phase 151 P02 | 6min | 3 tasks | 1 files |
+| Phase 151 P03 | 20min | 2 tasks | 8 files |
+| Phase 151 P04 | ~50min | 2 tasks | 6 files |
+| Phase 151 P05 | 35min | 3 tasks | 8 files |
+| Phase 151 P08 | 35min | 3 tasks | 3 files |
+| Phase 151 P09 | ~90min (inclui espera de aprovação humana nos 2 checkpoints) | 3 tasks | 1 files |
+| Phase 152 P02 | 14min | 2 tasks | 3 files |
+| Phase 152 P03 | 20min | 3 tasks | 4 files |
+| Phase 152 P04 | 25min | 3 tasks | 8 files |
+| Phase 152 P05 | 35min | 3 tasks | 4 files |
+| Phase 152 P06 | 25min | 2 tasks | 3 files |
+| Phase 152 P07 | 35min | 2 tasks | 2 files |
+| Phase 152 P08 | 50min | 3 tasks | 4 files |
+| Phase 152 P09 | 40min | 3 tasks | 4 files |
+| Phase 152 P10 | 45min | 3 tasks | 2 files |
 ## Accumulated Context
 
 ### Roadmap Evolution
@@ -2335,7 +2700,48 @@ Last session: 2026-09-04T00:00:00.000Z
 Stopped at: Completed 138-06-PLAN.md (checkpoint humano aprovado — "Aprovado" — fase 138 concluída, 6/6 planos)
 Last session: 2026-09-02T18:34:53.366Z
 Stopped at: Phase 137 context gathered
-Last session: 2026-08-18T21:34:08.162Z
+Last session: 2026-09-10T08:00:00.000Z
+Stopped at: **MILESTONE v23.0 COMPLETA** — Fase 156 (timeline + SLA) fechada em `03cff780`. 7 fases, 31/31 requirements, **806 testes / 3505 assertions** verdes. Timeline lê SÓ fontes duráveis (o activity_log é podado em 365 dias). **NADA DEPLOYADO**: 2 migrations fora de produção e a chave `coordenacao.distribuir` a liberar por setor. **Conferência visual das Fases 153-156 NÃO foi feita.**
+Last session: 2026-09-10T07:00:00.000Z
+Stopped at: **Fase 155 COMPLETA** (onboarding move a etapa). Commit `6d12e4e6`. `DefinicaoOnboarding` intocada (VERSAO 17), com teste-guarda. **Medição que corrigiu o desenho:** o guard do ONBRD-04 sem a condição de empresa legada quebrava **136 testes** das Fases 135/OnboardingEmCompanies — a trava passou a valer só dentro do fluxo novo (`etapa` não-nula). Regressão de **795 testes / 3419 assertions** verde. **NADA DEPLOYADO** — 2 migrations fora de produção (152 e 153). Resta a Fase 156 (SLA).
+Last session: 2026-09-10T06:00:00.000Z
+Stopped at: **Fase 154 COMPLETA** (distribuição pela Coordenação). Trabalho direto, **zero migration** — reusa `company_users.role` e a transição 5→6 como auditoria. Commits `92758f19` (motor+13 testes), `e8796d2f` (fila+rota), `b8180781` (RESP-01/02). Chave nova `coordenacao.distribuir`. 24 testes / 74 assertions; regressão 150+151+152+153+131 em 369/1366. **NADA DEPLOYADO** — 2 migrations novas fora de produção (das fases 152 e 153).
+Last session: 2026-09-10T05:00:00.000Z
+Stopped at: **Fase 153 COMPLETA** (mensagem de boas-vindas por serviço) — conduzida como trabalho direto por `CLAUDE.md` (GSD por RISCO); decisões em `153-DECISOES.md` ANTES do código. Commits `6cb90942` (motor+11 testes), `246f11b2` (payload+UI), `40557508` (tela de edição). 25 testes / 81 assertions na fase; regressão 150+151+152+131 em 344/1285, idêntica ao pré-fase. **NADA DEPLOYADO** — agora são 2 migrations novas fora de produção.
+Last session: 2026-09-10T04:00:00.000Z
+Stopped at: Completed 152-10-PLAN.md — **FASE 139 COMPLETA (10/10)**. Regressao final igual a baseline (`5d839ece`); os 2 gates humanos APROVADOS com evidencia por reconsulta ao banco: a empresa 418 registrou os 4 degraus da D-15 em `company_etapa_transicoes` (1→2 por marcacao na tela, 2→3 e 3→4 por ABERTURA da ficha observando evento externo, 4→5 pelo clique no FINALIZAR) e terminou em `aguardando_distribuicao`, fora da listagem Entrada e dentro da Contrato. ADMIN-01..06 marcados em `REQUIREMENTS-v23.md`. **NADA DEPLOYADO** — 1 migration nova fora de producao.
+Last session: 2026-09-10T03:00:00.000Z
+Stopped at: 152-10 Task 1 concluida (`5d839ece`) — regressao final verde e igual a baseline; `152-REGRESSAO-FINAL.md` gravado. **Tasks 2 e 3 sao `checkpoint:human-verify` com `gate="blocking"` e a fase PARA aqui.** Ambiente preparado no localhost: servidor em `http://127.0.0.1:8139`, empresa com contrato id=418, empresa isenta id=419, usuario so-`comercial.entrada` `entrada139@ecfconsultoria.com.br` / `Entrada@139` (id=50, setor `conferencia-entrada-139`). NADA DEPLOYADO.
+Last session: 2026-09-10T02:00:00.000Z
+Stopped at: Completed 152-09-PLAN.md — a fase virou tela: 2 componentes novos, checklist na ficha, "Abrir" na listagem Entrada (commits `cf2d5e09`, `9d969ece`, `b6e17f0f`); build verde e as 2 páginas no manifest do Vite; backend 92/364 sem regressão
+Last session: 2026-09-10T01:00:00.000Z
+Stopped at: Completed 152-08-PLAN.md — camada HTTP: ficha única em OR (D-17), payload gated por módulo (T-152-08-01) e os 4 endpoints por funil único que sempre sincroniza a etapa (commits `4a3d2fea`, `7402db7d`, `80908116`); fase 92/364, regressão 131+137+138 245/910 com a parte 137/138 idêntica à baseline
+Last session: 2026-09-10T00:00:00.000Z
+Stopped at: Completed 152-07-PLAN.md — `ChecklistEtapaSincronizadorService` (a régua da D-15) com Task 1 retomada de sessão anterior e Task 2 provada e commitada nesta (commits `2f44342d`, `3dd5718`); suíte da fase 68/68, regressão 137/138 idêntica à baseline (123/444)
+Last session: 2026-09-09T20:36:55.645Z
+Stopped at: Completed 152-06-PLAN.md
+Last session: 2026-09-09T20:09:24.038Z
+Stopped at: Completed 152-05-PLAN.md
+Last session: 2026-09-03T21:17:01.000Z
+Stopped at: Completed 151-06-PLAN.md — listagem Contrato ganha os 8 campos do §2, COMERC-02 fechado por completo (commits `551117d0`, `f8e4044b`); fechamento (SUMMARY/STATE/ROADMAP/REQUIREMENTS) feito por agente de closeout porque o executor original morreu por erro de stream da API após commitar as duas tasks
+Last session: 2026-09-02T20:14:25.367Z
+Stopped at: Completed 151-05-PLAN.md
+Last session: 2026-09-02T13:20:35Z
+Stopped at: Completed 150-11-PLAN.md — gap closure G3 (WARNING) fechado, checkpoint humano aprovado (commits `add870ca`, `afbe85e0`) — FASE 137 COMPLETA (11/11 planos)
+Last session: 2026-09-02T12:34:59Z
+Stopped at: Completed 150-08-PLAN.md — gap closure G1 (CRITICAL) fechado (commits `2a1aa606`, `ff5e2ee1`); 150-09/10/11 pendentes
+Last session: 2026-09-01T20:51:36Z
+Stopped at: Completed 150-07-PLAN.md — FASE 137 COMPLETA (7/7 planos)
+Last session: 2026-09-01T20:05:00Z
+Stopped at: Completed 150-06-PLAN.md
+Last session: 2026-09-01T19:55:00Z
+Stopped at: Completed 150-05-PLAN.md
+Last session: 2026-09-01T19:37:49Z
+Stopped at: Completed 150-04-PLAN.md
+Last session: 2026-09-01T19:27:04Z
+Stopped at: Completed 150-03-PLAN.md
+Last session: 2026-09-01T19:18:39.629Z
+Stopped at: Completed 150-02-PLAN.mdLast session: 2026-08-18T21:34:08.162Z
 Stopped at: Completed 133-03-PLAN.md
 Last session: 2026-08-10T21:59:33.127Z
 Stopped at: Completed 126-09-PLAN.md
@@ -2418,3 +2824,68 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 ## Operator Next Steps
 
 - Start the next milestone with /gsd-new-milestone
+
+## Decisions
+
+- [Phase 150]: 150-01: caminho npm-build usado em vez do atalho public/hot para destravar o ambiente de teste Inertia deste worktree; ambiente fica destravado de forma persistente para os planos 150-02..07 (node_modules/ e public/build/ ficam no worktree, gitignored)
+- [Phase 150]: 150-01: suíte completa (`php artisan test`) dividida em Unit (capturado por inteiro) + Feature (não capturável neste ambiente — trava numa cascata de timeout de rede real via Guzzle após ~300s); baseline registrada em `150-BASELINE-TESTES.md` com a recomendação de nunca depender do `artisan test` completo nos planos seguintes
+- [Phase 150]: 150-03: D-16 implementado como tabela dedicada `company_etapa_transicoes` (não `spatie/laravel-activitylog`) — o pacote tem `delete_records_older_than_days=365`, risco desalinhado com o insumo de SLA que a Fase 156 vai consumir
+- [Phase 150]: 150-03: chave `null` de origem em `EtapaTransicaoService::TRANSICOES_PERMITIDAS` é escrita explicitamente como `''` no código-fonte (PHP funde chave `null` de array em string vazia) — documentado em comentário para não depender de cast implícito
+- [Phase 150]: 150-03: checagem de retrocesso em `podeTransicionar()` é posicional (compara índices em `Company::ETAPAS`) e roda ANTES da tabela explícita de avanços — cobre qualquer retrocesso, não só os pares listados na tabela
+- [Phase 150]: 150-04: D-18 implementado como 4 colunas em `companies` (não tabela própria) — sem necessidade de histórico de pendências passadas nesta fase, e o filtro server-side da ETAPA-05 vira um `where` sem join
+- [Phase 150]: 150-04: gate de D-19 (nenhuma leitura direta de `pendencia_aberta` fora de `Company.php`) implementado como teste Feature (`File::allFiles()` + `assertEmpty`), não como regra de análise estática externa — mantém a prova na mesma suíte PHPUnit já rodada a cada task
+- [Phase 150]: 150-04: comparação de path no gate estático usa `realpath()`, não igualdade de string direta — `File::allFiles()` (Symfony Finder) e `base_path()` não colidem por string simples neste ambiente Windows
+- [Phase 150]: 150-05: `etapa:backfill` sem `--limite`/`--servico` (diferente do molde `OnboardingBackfillContratos`) — os dois baldes de D-04 não admitem execução parcial, um filtro parcial criaria a chance de deixar metade da base carimbada
+- [Phase 150]: 150-05: amostra do dry-run limitada a 20 linhas na tabela impressa, com aviso quando o balde 1 for maior — evita estourar o terminal quando produção tiver ~500 empresas
+- [Phase 150]: 150-05: backfill executado DE VERDADE contra o MariaDB local (não só documentado) — 180 empresas, 1 no balde 1 (id 55, `em_operacao`), 179 em `NULL`; contagens em `150-BACKFILL-CONTAGENS.md` vieram de `DB::table(...)` num tinker separado da execução do comando (D-08), nunca do stdout do próprio `etapa:backfill`
+- [Phase 150]: 150-06 (Rule 1 — bug no desenho do plano): o padrão de varredura estática descrito literalmente no plano (`'etapa' =>` cru em qualquer `.php` de `app/`, exceto 3 arquivos nomeados) falso-positiva contra ~10 usos legítimos de `OnboardingPasso::etapa` — coluna homônima, sem relação com `companies.etapa`, em 5 arquivos de `app/Console/Commands` e `app/Services/Onboarding` e `app/Http/Controllers/OnboardingController.php`; implementado ao pé da letra o teste nasceria vermelho no repositório atual, contradizendo o próprio acceptance criteria do plano. Redesenhado para escopo por CORPO DE FUNÇÃO (via `token_get_all()` + balanceamento de chaves): `'etapa' =>` só conta como violação quando o mesmo corpo também contém uma chamada de escrita reconhecida no model `Company`; `$company->etapa =` continua sinalizando sozinho. Ver `150-06-SUMMARY.md`
+- [Phase 150]: 150-06: gate estático provado ativo por injeção temporária de uma violação real (`'etapa' => 'nullable|string'` em `CompanyController::update()`), não só por leitura de código — confirmado que a suíte falha nomeando arquivo:linha, revertido antes do commit de produção (disciplina "comprove desfazendo e refazendo" do próprio plano)
+- [Phase 150]: 150-07 (Rule 1 — bug de nomenclatura): payload de `/companies` expõe `tem_pendencia`, não `pendencia_aberta` — o nome óbvio colidiria com o gate estático de `EtapaPendenciaParaleloTest.php` (150-04, D-19), que recusa a string crua da coluna fora de `Company.php`; leitura continua exclusivamente por `Company::comPendenciaAberta()`/`pendenciaAberta()`
+- [Phase 150]: 150-07: Task 3 (`<action>` pedia `php artisan test` completo contra a baseline) rodou o subset seguro (`tests/Unit/Phase150 tests/Feature/Phase150` + as duas suítes baseline de `/companies`, 70/70 verde) em vez da suíte completa — `150-BASELINE-TESTES.md` (150-01, ANTES de qualquer código desta fase) já havia medido que `--testsuite=Feature` não termina neste worktree (trava em timeout de rede de 300s); nesta sessão 4 suítes candidatas foram sondadas à parte e passaram limpas (28/28), mas o teste exato que trava não foi isolado — dívida explícita registrada em `150-07-SUMMARY.md` para sobreviver ao `/gsd:verify-work`
+- [Phase 150]: 150-07: verificação humana real (Task 3) encontrou e o orquestrador corrigiu um `.env` de worktree com `APP_URL`/`ASSET_URL` apontando para `/ecf_admin/public` (copiado de outro checkout) — causava tela branca em toda navegação por servir HTML do manifest do Vite deste worktree mas apontar o navegador pro build do OUTRO; corrigido para `/ecf_fluxo_entrada/public`, `.env` não é versionado, correção não commitada e não deve ser revertida
+- [Phase 150]: **FASE 137 COMPLETA** — 150-07 fecha ETAPA-05, o último dos 6 requirements (`ETAPA-01`..`ETAPA-06`); as 6 Success Criteria do ROADMAP para a Fase 150 estão todas satisfeitas. Próxima fase da milestone v23.0 (138 — Área Comercial conectada à etapa) ainda não foi planejada
+- [Phase 150]: 150-08 (gap closure G1, CRITICAL): gate estático `EtapaPontoUnicoTest.php` Grupo 2 reescrito — Regra A (atribuição direta `->etapa = ...`) deixou de exigir o nome literal `$company` e passou a rodar sobre o ARQUIVO inteiro (não por corpo de função); Regra B nova cobre `$var['etapa'] = ...` montado indiretamente; detector de escrita em `Company` ganhou `DB::table('companies')` e um guard avaliado por ARQUIVO (não por corpo — `corposDeFuncao()` descarta a assinatura da função, então um parâmetro `Company $empresa` some do texto varrido); comentários (`T_COMMENT`/`T_DOC_COMMENT`) neutralizados antes de qualquer regex rodar; escopo estendido a `database/migrations/`. As 3 sondas de bypass do `150-VERIFICATION.md` + 1 sonda de regressão + 1 sonda de falso positivo de comentário foram injetadas de verdade (uma por vez, sempre removendo a anterior) e produziram exatamente o veredito esperado; árvore confirmada limpa ao final. `EXCECOES_REGRA_A` nasce vazia — zero falsos positivos medidos na árvore atual, incluindo o pior caso (`CompanyController::index()`, ~354 linhas). Suíte da fase 46/46 verde, baseline `/companies` 24/24 verde. Nenhum deviation — plano executado exatamente como escrito. Restam 150-09 (G2), 150-10 (G4+G5+G6) e 150-11 (G3), planejados e não executados
+- [Phase 151-01]: Baseline de testes escrita antes da migration de 3 colunas em companies (151-03); crescimento 285->307 na suite Unit atribuido ao crescimento organico da Fase 150, nao regressao
+- [Phase 151-02]: property_owner_nome_interno assumida como hubspot_owner_id (nao medida) com autorizacao explicita do usuario; medicao real fica pendencia obrigatoria do plano 151-09 na VPS
+- [Phase 151-02]: escopo OAuth crm.objects.owners.read fica NAO CONFIRMADO (usuario sem acesso ao painel HubSpot); verificacao carregada para o plano 151-09 pos-primeiro-deploy
+- [Phase 151]: 151-03: 3 colunas aditivas em companies (hubspot_owner_id, hubspot_owner_nome, data_venda) + HubspotOwnerResolver com cache de 7 dias — Property de owner assumida (nao medida) com autorizacao do usuario 260902; medicao real fica pendente do plano 151-09 na VPS
+- [Phase 151]: 151-04: parseDataHubspot() elevado de private para public em HubspotDealHandoffService — webhook e comando de backfill reusam a mesma rotina de conversao de data do HubSpot
+- [Phase 151]: 151-04: hubspot:backfill-owner-venda em dry-run nao dispara fetchDeal na passagem de owner (custo de API por natureza) — so a passagem de data_venda (sem custo) itera de verdade em dry-run
+- [Phase 151]: COMERC-02 fechado por completo no plano 151-06: `ContratoAdminController::index()` ganhou os 8 campos do §2 + etapa nos dois ramos (com contrato e SEM_CONTRATO), com o mesmo vocabulário de chave da listagem Entrada (151-05) — as DUAS listagens agora expõem os 8 campos. Query do universo do Contrato não mudou (whereHas('contratosServico' idêntico antes/depois) e NÃO ganhou corte por etapa (D-06/D-07 preservadas)
+- [Phase 151]: Entrada.jsx criado já no plano 151-05 como página real, não re-export — sem página existente a rota nunca responde 200 (manifest do Vite); 151-08 estende com filtros/acoes
+- [Phase 151]: 151-06 fechado por um agente de CLOSEOUT, não pelo executor original — o executor commitou as duas tasks (551117d0, f8e4044b) e morreu por erro de stream da API antes de escrever o SUMMARY/atualizar STATE/ROADMAP/REQUIREMENTS. Todo critério de aceite foi reconferido do zero contra o disco (grep, diff dos commits, suíte re-executada: 171 testes/678 assertions OK) antes de fechar — ver `151-06-SUMMARY.md`
+- [Phase 151]: 151-07: COMERC-01 fechado por completo — conta de sistema "Sistema HubSpot" criada por `hubspot:criar-usuario-sistema --apply` (id local 49; senha aleatória de 64 caracteres descartada na criação é o que de fato bloqueia login, não `active=false` — o login deste projeto não checa `users.active`), resolvida por `config('services.hubspot.webhook_user_id')` (sem default). `HubspotWebhookController::nascerNaEtapa1()` chamado nos DOIS call sites de produção (`processar()` e `reprocessarEvento()` — este último não chamava o gate administrativo e ficaria sem etapa em replay). `ComercialController::store()` chama o mesmo serviço com `$request->user()` como ator. Ator ausente/inexistente: log + empresa sem etapa, nunca TypeError/500. `EtapaTransicaoService` não foi tocado (D-17). 17 testes novos (Phase151), suíte completa `tests/Feature/Phase151` 57/57 verde, `tests/Unit/Phase150`+`tests/Feature/Phase150`+`Phase34HubspotWebhookTest`+`ContratoAdminPermissaoTest` 68/68 verde
+- [Phase 151]: 151-07: `HUBSPOT_WEBHOOK_USER_ID=49` setado no `.env` LOCAL deste worktree (não versionado); a mesma conta precisa ser criada na VPS e `id_vps:` preenchido em `138-CONTA-SISTEMA-HUBSPOT.md` antes do primeiro deploy da Fase 151 (pendência explícita do plano 151-09)
+- [Phase 151]: 151-08: Coluna 'Pendencias' unica na tabela Entrada (nao duas colunas), seguindo o padrao ja em producao de Admin/Contratos.jsx
+- [Phase 151]: 151-09 FECHA A FASE (9/9 planos). Task 1: suite da fase reexecutada sem regressao contra a baseline do 151-01 (252 tests/921 assertions, `tests/Unit/Phase151 tests/Feature/Phase151 tests/Feature/Phase131 tests/Unit/Phase150 tests/Feature/Phase150`); as ~10 falhas antigas de Polos permanecem identicas a baseline (mesmos nomes/causas), nao sao regressao desta fase. Task 2 (checkpoint aprovado): usuario dispensou a tentativa manual de login pela tela e aceitou `ComercAtorSistemaTest` (4 senhas via `Auth::attempt`) como prova de nao-logabilidade da conta `sistema.hubspot@ecfconsultoria.com.br` (id local 49); escopo OAuth `crm.objects.owners.read` fica NAO CONFIRMADO por decisao do usuario ("deixar anotada para o deploy"). Task 3 (checkpoint aprovado): render real de `/comercial/entrada` e `/administrativo/contratos` verificado por screenshot do usuario — 8 campos do §2, duas pendencias em colunas separadas nas DUAS telas, fronteira D-07 confirmada (empresas etapa 5, ids 412/417, existem no banco e nao aparecem na Entrada), Contrato sem corte por etapa confirmado pela empresa `asdadassdsad` (id 55, `em_operacao`) continuar visivel. Nenhuma correcao de codigo foi necessaria nesta fase de fechamento. **3 pendencias obrigatorias da VPS antes do deploy** (nenhuma executada): (1) `hubspot:criar-usuario-sistema --apply` na VPS + apontar `HUBSPOT_WEBHOOK_USER_ID` la; (2) `hubspot:inspect-properties --objects=deals` na VPS para medir o nome real da property de owner; (3) confirmar escopo `crm.objects.owners.read` no Private App de producao. Detalhamento completo em `138-CONTA-SISTEMA-HUBSPOT.md` e `151-09-SUMMARY.md`. Fixtures locais `[TESTE 151-09]` (ids 408-417) NAO removidas — fora do escopo deste plano.
+- [Phase 152]: D-10 implementado: checklist_administrativo_itens ancorada em company_id direto, nunca em onboarding_id/contrato_servico_id — só o shape do motor de Onboarding foi copiado, nunca a hospedagem
+- [Phase 152]: D-02 implementado: catalogo fechado de status com 2 valores (aberto/concluido) — estado nao_aplicavel excluido do model, da migration e de todo comentario/docblock
+- [Phase 152]: D-11 implementado: feitoPor()->withTrashed() copiado de Pendencia::abertaPor()/corrigidaPor() (nao de OnboardingPasso::feitoPor(), que nao usa withTrashed()) — autoria sobrevive a soft delete do usuario, provado por teste
+- [Phase 152]: 152-03: catálogo fechado ChecklistAdministrativoDefinicao com os 9 itens do §5 (D-01/D-03); itens(false) filtra o grupo Contrato por montagem condicional (D-07), sem estado não aplicável (D-02)
+- [Phase 152]: 152-03: ChecklistResolver e ChecklistResolverResultado copiam o molde do motor de Onboarding sem os ramos de coleta assíncrona — os 4 resolvers desta fase são síncronos (D-10)
+- [Phase 152]: 152-04: ContratoAssinadoResolver fecha por OR entre envelope assinado e ContratoLiberacao::existeParaServico() (D-16), agregado manda-o-mais-atrasado por servico (D-18) — testado isoladamente com a via manual chamada direto em EmpresaOperacionalRouter::liberarEmpresa()
+- [Phase 152]: 152-04: MlOAuthConectadoResolver e ConexaoEcfResolver fecham itens 7 e 8 por leitura pura (ml_tokens.status=active, D-05; existencia de onboarding_links, D-14) — nenhum dos 4 resolvers da task escreve em contrato_assinaturas/contrato_liberacoes/onboarding_links, provado por reconsulta ao banco e Http::assertNothingSent() (D5 da milestone)
+- [Phase 152]: 152-05: ChecklistAdministrativoService.paraEmpresa() monta 9/6 itens por montagem condicional (D-07), roda e persiste os 4 resolvers automaticos a cada chamada, calcula progresso pelo catalogo (D-10, imune a chave orfa), e marca/desmarca manualmente com autoria em par (D-11), recusando item automatico (D-13) e gerando a conexao ECF de forma idempotente sem segunda fonte de verdade (D-14)
+- [Phase 152]: 152-06: podeFinalizar() considera contrato assinado satisfeito por AUSENCIA do grupo Contrato quando exige_contrato=false (D-07) — nenhuma leitura de ContratoAssinatura para empresa isenta
+- [Phase 152]: 152-06: marketplaceDestino() desempata is_primary duplicado por orderBy(id) (menor id vence) e loga warning; Company::primaryMarketplace() nao e alterado, e compartilhado por outros modulos (D-12)
+- [Phase 152]: 152-06: finalizar() so chama EtapaTransicaoService::transicionar() — nenhum update([etapa =>]) direto neste arquivo, comprovado por grep de auditoria (ADMIN-06)
+- [Phase 152]: 152-06: FinalizarEntradaAdministrativaService nao conhece a camada de sincronizacao de etapa do plano 152-07 — grafo de injecao acíclico preservado por construcao
+- [Phase 152]: 152-07: D-15 implementada — 1→2 quando progresso feitos>=1; 2→3 quando exige_contrato e o item contrato_enviado esta concluido; 2/3→4 quando podeFinalizar permitido. Toda transicao por EtapaTransicaoService::transicionar(), nenhuma escrita direta em companies.etapa
+- [Phase 152]: 152-07: o salto 2→4 da empresa isenta (D-07) sai da ORDEM de checagem em proximoDestino() — a etapa 4 e avaliada ANTES do avanco 2→3 — e nao de um ramo especial; a tabela TRANSICOES_PERMITIDAS da Fase 150 ja previa a aresta
+- [Phase 152]: 152-07: o sincronizador so AVANCA — desmarcar item na etapa 4 nao devolve a empresa a 3. Reversibilidade e Deferred no CONTEXT.md; motivo automatico de retrocesso escreveria no historico uma decisao que ninguem tomou
+- [Phase 152]: 152-07: grafo de injecao one-way defendido em RUNTIME e nao so por grep — o teste resolve os tres servicos pelo container e falha nomeando CircularDependencyException, regressao que nao aparece em php -l e derruba com 500 toda rota que type-hinte qualquer um dos tres
+- [Phase 152]: 152-08: D-17 implementada — admin.contratos.show saiu do grupo permission:admin.contratos e virou rota solta com o OR das duas chaves; nenhuma chave de permissao nova (D-09), Permissions.php nao foi tocado
+- [Phase 152]: 152-08: a permissao de ROTA abre a ficha, a de MODULO recorta o payload — sem admin.contratos o grupo contrato sai do checklist e contratos/pode_gerar_contrato/motivo_bloqueio vem neutralizados (T-152-08-01). As duas camadas sao necessarias
+- [Phase 152]: 152-08: o progresso do checklist continua sendo o da empresa INTEIRA para o perfil de Entrada, de proposito — e a regua do FINALIZAR, nao uma metrica da secao visivel
+- [Phase 152]: 152-08: sincronizarEtapaChecklist() e o UNICO chamador de sincronizar() no sistema, verificado por grep como gate de plano (=1). show() sincroniza porque o degrau 2→3 depende do webhook do Clicksign gravando enviado_em — evento externo que nenhuma acao de checklist observa
+- [Phase 152]: 152-08: finalizarEntradaAdministrativa() sincroniza ANTES de finalizar. O mesmo cenario e 'recusado' no service (caso 5 do 152-06) e 'finalizado' pela rota, de proposito — nao 'corrigir' um dos dois
+- [Phase 152]: 152-08: IDOR removido por construcao — {company} por route-model-binding e {chave} contra catalogo fechado; nenhum id de linha de checklist atravessa a fronteira HTTP
+- [Phase 152]: 152-09: D-05 no cliente — o item 7 COPIA o link do OAuth (axios.post em ml.oauth.initiate + clipboard), nenhuma forma de navegar ate a URL existe no arquivo. Abrir autorizaria a conta ML do proprio usuario ECF logado; o callback de Company sobrescreve o token sem a trava de divergencia que so o fluxo de Polos tem
+- [Phase 152]: 152-09: ADMIN-05 no cliente — o FINALIZAR usa disabled lido de pode_finalizar.permitido e exibe requisito_faltante do servidor; o componente NUNCA recalcula a regua a partir de checklist.progresso
+- [Phase 152]: 152-09: ProgressoBarra reusada por IMPORT direto entre modulos (o backend devolve o mesmo contrato {feitos,total,percentual} justamente para isso) — duas barras parecidas eventualmente arredondam diferente
+- [Phase 152]: 152-09: o checklist vem ACIMA do bloco de geracao de contrato na ficha — decisao desta fase: o checklist e o novo ponto focal e gerar contrato virou acao pontual dentro de um dos 9 itens
+- [Phase 152]: 152-09: docblock que enuncia uma proibicao NAO pode citar o identificador proibido em prosa — o grep de auditoria do proprio plano nao distingue comentario de codigo. Terceira reincidencia na fase (152-02/03/04)
+- [Phase 152]: 152-10: gate humano conferido contra o BANCO, nunca contra o relato da tela. O usuario reportou a mensagem "A empresa ja esta na etapa aguardando_distribuicao" como falha; o historico mostrou que a transicao ja tinha acontecido e a mensagem vinha de um SEGUNDO clique — a trava de duplicidade funcionando. Neste sistema texto de erro aparece no caminho FELIZ, e so o historico distingue "falhou" de "ja deu certo"
+- [Phase 152]: 152-10: o ramo D-16 (contrato_assinado fechando por ContratoLiberacao, sem envelope assinado) NAO foi conferido visualmente — o usuario nao tinha dado real de liberacao e preencher motivo inventado gravaria justificativa falsa. Segue coberto so por ContratoAssinadoPorLiberacaoTest. Lacuna de VERIFICACAO declarada, nao de implementacao
+- [Phase 152]: 152-10: ASSET_URL fixo no .env do worktree (caminho do Apache) faz `artisan serve` servir HTML apontando para a porta 80; com o Apache desligado a tela vem BRANCA sem erro nenhum. Correcao: ASSET_URL VAZIO, que faz o Laravel derivar do request e funciona nos dois. Backup em .env.bak-139
+- [Phase 152]: 152-10: fixtures do gate MANTIDAS no MariaDB local e documentadas com o passo a passo de remocao — empresas 418/419 e usuario 50 (`entrada139@ecfconsultoria.com.br`, setor `conferencia-entrada-139`). Escrito porque o usuario de review da Shopee (users.id=30) segue em PRODUCAO desde 16/07 por ninguem ter anotado

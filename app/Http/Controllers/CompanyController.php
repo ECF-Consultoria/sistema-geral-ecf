@@ -8,6 +8,7 @@ use App\Models\ContratoServico;
 use App\Models\Goal;
 use App\Models\Onboarding;
 use App\Models\Servico;
+use App\Models\Setor;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
@@ -81,6 +82,57 @@ class CompanyController extends Controller
      * mostra "Serviço" (badges dos contratos ativos). A lógica de cache foi
      * removida junto pra não deixar código órfão / não despachar jobs sem uso.
      */
+    /**
+     * Slug do setor cujo LÍDER enxerga todas as empresas de `/companies`
+     * (Fase 157, D-B).
+     *
+     * Casa com `servicos.setor = 'performance'`, que é o valor que o catálogo
+     * de serviços já usava — a linha em `setores` foi criada pela migration
+     * `2026_09_10_140000_seed_setor_performance` justamente para os dois
+     * vocabulários passarem a se encontrar.
+     */
+    private const SETOR_DA_LIDERANCA = 'performance';
+
+    /**
+     * O usuário deve ver apenas as empresas em que está vinculado? (D-A)
+     *
+     * `true` só para quem tem cargo `analista` ou `estrategista` e **não** é
+     * admin nem líder do setor Performance.
+     *
+     * A régua é sobre CARGO, não sobre "não-admin": quem não tem nenhum dos
+     * dois cargos (ex.: um consultor de outro setor, um financeiro) continua
+     * vendo o que via. Restringir por exclusão em vez de por cargo tiraria
+     * acesso de gente que o pedido não menciona.
+     *
+     * O líder é a exceção explícita — ele precisa ver tudo para distribuir. O
+     * Luiz é líder E estrategista; a regra de líder vence, e a visão "só as
+     * minhas" fica disponível para ele pelo filtro da tela.
+     */
+    private function deveFiltrarPelaPropriaCarteira(?User $usuario): bool
+    {
+        if ($usuario === null || $usuario->isAdmin()) {
+            return false;
+        }
+
+        if ($this->ehLiderDaPerformance($usuario)) {
+            return false;
+        }
+
+        return $usuario->cargoDesempenhoSlug() !== null;
+    }
+
+    /** Líder do setor Performance — quem distribui (D-B). */
+    private function ehLiderDaPerformance(?User $usuario): bool
+    {
+        if ($usuario === null) {
+            return false;
+        }
+
+        $setorId = Setor::where('slug', self::SETOR_DA_LIDERANCA)->value('id');
+
+        return $setorId !== null && $usuario->isLiderDe($setorId);
+    }
+
     public function index(Request $request, AcessosDoPortalService $acessosPortal)
     {
         // Phase 18 W5-T4 — Filtro opcional por cust_id_status. Aceita apenas
@@ -99,10 +151,39 @@ class CompanyController extends Controller
             $sort = null;
         }
 
+        // Fase 150 Plano 07 (ETAPA-05, D-21) — filtro server-side por etapa,
+        // mesmo padrão de allow-list com fallback null silencioso já usado
+        // acima para cust_id_status: valor fora do domínio vira null e o
+        // when() correspondente vira no-op, preservando o comportamento
+        // anterior (D-22 exige que a visão SEM filtro continue idêntica).
+        //
+        // `sem_etapa` é o sentinela de primeira classe (D-22): depois do
+        // backfill do plano 150-05 a maioria das linhas legadas fica com
+        // `etapa` NULL, e sem esta opção o filtro por etapa concreta
+        // devolveria quase nada — parecendo bug em vez de comportamento
+        // esperado do legado.
+        $etapaFilter = $request->input('etapa');
+        if (!in_array($etapaFilter, [...Company::ETAPAS, 'sem_etapa'], true)) {
+            $etapaFilter = null;
+        }
+
+        // Fase 150 Plano 07 (ETAPA-05, D-23) — filtro de pendência,
+        // INDEPENDENTE do filtro de etapa (nunca um item dentro da lista de
+        // etapas — misturar os dois reintroduziria pendência como status
+        // principal, contra a D6 do ROADMAP). $request->boolean() coage
+        // qualquer entrada para bool, então nenhuma string arbitrária chega
+        // ao builder (T-150-19).
+        $comPendenciaFilter = $request->boolean('com_pendencia');
+
         // Phase 35 Plan 35-01 (D-03) — exclui empresas com MlbEmpresa associada
         // para evitar dupla contagem com /mlb/empresas (Polos/Publicacao/etc).
         // Aplicado como query base — tanto lista quanto contadores (`pendCounts`)
         // refletem o mesmo conjunto.
+        // Fase 157 (D-A) — lido AQUI, antes da query, porque o filtro de
+        // visibilidade por vínculo precisa dele. Antes era declarado só
+        // depois, quando servia apenas à aba Onboarding.
+        $usuario = $request->user();
+
         $companies = Company::with([
                 // Fase 89 Plan 02 (CART-08): reapontado para as relações
                 // filtradas por setor performance — a coluna Analista/
@@ -147,7 +228,39 @@ class CompanyController extends Controller
                       $qs->where('setor', Servico::SETOR_PERFORMANCE)
                   )
             )
+            // ─── Fase 157 (D-A) — VISIBILIDADE POR VÍNCULO ─────────────────
+            //
+            // Até aqui `/companies` mostrava TODAS as empresas de Performance
+            // para qualquer um com acesso à tela. Passa a mostrar só as do
+            // próprio usuário para quem tem cargo `analista` ou `estrategista`.
+            //
+            // ⚠️ Isto MUDA o que usuários atuais enxergam — quem via ~180
+            // empresas passa a ver só as suas. Foi pedido na letra ("vai
+            // aparecer apenas as empresas destinadas pra ele"), e está anotado
+            // aqui porque alguém vai estranhar antes de lembrar que foi pedido.
+            //
+            // Quem NÃO é filtrado, e por quê:
+            //  - admin: vê tudo, como sempre;
+            //  - líder do setor Performance: precisa ver tudo para distribuir;
+            //  - quem não tem nenhum dos dois cargos: comportamento inalterado
+            //    — a regra é sobre analista/estrategista, não sobre "não-admin".
+            ->when(
+                $this->deveFiltrarPelaPropriaCarteira($usuario),
+                fn ($q) => $q->whereHas(
+                    'users',
+                    fn ($qu) => $qu->where('users.id', $usuario->id)
+                )
+            )
             ->when($custIdStatusFilter, fn($q) => $q->where('cust_id_status', $custIdStatusFilter))
+            // Fase 150 Plano 07 (ETAPA-05) — depois do when($custIdStatusFilter)
+            // e depois do whereDoesntHave/whereHas acima: preservar a tela
+            // (Success Criteria nº 1) é preservar o recorte inteiro, não só
+            // o filtro final. `sem_etapa` vira whereNull; etapa concreta vira
+            // where('etapa', ...); pendência passa pelo scope do model — D-19
+            // proíbe ler a coluna de pendência direto no controller.
+            ->when($etapaFilter === 'sem_etapa', fn($q) => $q->whereNull('etapa'))
+            ->when($etapaFilter !== null && $etapaFilter !== 'sem_etapa', fn($q) => $q->where('etapa', $etapaFilter))
+            ->when($comPendenciaFilter, fn($q) => $q->comPendenciaAberta())
             ->when($sort, function ($q) use ($sort) {
                 // Quando sort por created_at solicitado, prioriza essa ordenacao.
                 // Sem sort, mantem alfabetico por nome (comportamento legado).
@@ -169,7 +282,6 @@ class CompanyController extends Controller
         // Duas travas, na mesma ordem do painel:
         //  1. sem `core.onboarding`, o bloco não é montado (a aba some);
         //  2. não-admin só vê onboarding das empresas da própria carteira.
-        $usuario = $request->user();
         $podeVerOnboarding = $usuario->hasPermission(\App\Support\Permissions::CORE_ONBOARDING);
         // A sub-aba "Acessos do portal" é admin-only, e não por simetria com
         // o resto: as ESCRITAS dela (PortalUsuarioController) estão sob
@@ -225,6 +337,19 @@ class CompanyController extends Controller
                 // Mesma regua que NpsController ja aplica ("sem estrategista
                 // atribuido, a empresa ainda nao entrou na operacao").
                 'em_operacao'      => ! ($c->analistaPerformance->isEmpty() && $c->estrategistaPerformance->isEmpty()),
+                // Fase 150 Plano 07 (ETAPA-05) — expõe a etapa da máquina de
+                // estados (§10) e a pendência paralela (plano 150-04) para o
+                // filtro server-side desta tela. `em_operacao` acima CONTINUA
+                // sendo o derivado atual — esta fase acrescenta, não
+                // substitui; a troca de fonte é da Fase 155.
+                //
+                // Chave `tem_pendencia`, e NÃO o nome cru da coluna (que o
+                // gate estático D-19 em EtapaPendenciaParaleloTest.php, plano
+                // 150-04, proíbe fora de Company.php — mesmo como chave de
+                // array que só lê via pendenciaAberta(), o ponto único
+                // autorizado) DE PROPÓSITO.
+                'etapa'          => $c->etapa,
+                'tem_pendencia'  => $c->pendenciaAberta(),
                 // Contratos ativos: payload mínimo para a coluna Serviço (badges + tooltip)
                 'contratos_servico' => $c->contratosServico->map(fn($ct) => [
                     'id'               => $ct->id,
@@ -332,6 +457,33 @@ class CompanyController extends Controller
             ->orderBy('nome')
             ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
 
+        // Fase 157 — a fila do líder. `DistribuicaoService` é REUSADO inteiro
+        // (mesma régua de elegibilidade, mesmo desempate determinístico, mesma
+        // transição 5→6): o que muda é quem chama e de onde, nunca a régua.
+        $podeDistribuir   = $usuario->isAdmin() || $this->ehLiderDaPerformance($usuario);
+        $filaDistribuicao = [];
+
+        if ($podeDistribuir) {
+            $distribuicao = app(\App\Services\FluxoEntrada\DistribuicaoService::class);
+
+            $filaDistribuicao = $distribuicao->fila()->map(function (Company $c) use ($distribuicao) {
+                $elegiveis = $distribuicao->elegiveis($c);
+
+                return [
+                    'id'   => $c->id,
+                    'name' => $c->name,
+                    'cnpj' => $c->cnpj,
+                    'servicos' => $c->contratosServico
+                        ->where('ativo', true)
+                        ->map(fn (ContratoServico $cs) => $cs->servico?->nome)
+                        ->filter()->values()->all(),
+                    'analistas'       => $elegiveis['analistas'],
+                    'estrategistas'   => $elegiveis['estrategistas'],
+                    'motivo_abertura' => $elegiveis['motivo_abertura'],
+                ];
+            })->values()->all();
+        }
+
         return Inertia::render('Companies/Index', [
             'companies'            => $companies,
             'users'                => $users,
@@ -346,11 +498,29 @@ class CompanyController extends Controller
             'filters'        => [
                 'cust_id_status' => $custIdStatusFilter,
                 'sort'           => $sort,
+                // Fase 150 Plano 07 (ETAPA-05) — ecoa o estado dos dois
+                // filtros novos para o <select>/toggle da tela sincronizar.
+                'etapa'          => $etapaFilter,
+                'com_pendencia'  => $comPendenciaFilter,
             ],
             // A aba Onboarding só existe para quem tem a permission dedicada —
             // esconder no front é cosmético; o que protege é o bloco vazio
             // acima, montado no servidor.
             'pode_ver_onboarding' => $podeVerOnboarding,
+
+            // ─── Fase 157 (D-C/D-D) — a aba Distribuição, do LÍDER ───────────
+            //
+            // Substitui a antiga aba Pendências. Não é troca arbitrária: um dos
+            // 5 tipos de pendência era `sem_responsavel`, que é exatamente o que
+            // a distribuição resolve. Os outros quatro viraram filtro na aba
+            // Empresas, onde os badges já apareciam — nada some, muda de lugar.
+            //
+            // `fila_distribuicao` só é montada para quem pode distribuir: para
+            // os demais é lista vazia, e o custo (uma consulta de elegíveis POR
+            // empresa) nem é pago. Esconder no front é cosmético; o que protege
+            // é este bloco.
+            'pode_distribuir'    => $podeDistribuir,
+            'fila_distribuicao'  => $filaDistribuicao,
             // Onboarding NASCE do contrato (Observer), nunca de um botão. O
             // cockpit não oferece "criar onboarding": oferece o caminho real,
             // que é cadastrar a empresa/contrato. Sem esta flag o botão
@@ -828,6 +998,22 @@ class CompanyController extends Controller
 
     public function update(Request $request, Company $company)
     {
+        // Fase 150 (plano 06, ETAPA-03 / D-12) — NÃO acrescente `etapa` nem
+        // nenhuma chave `pendencia_*` a esta lista. `companies.etapa` é
+        // gravado EXCLUSIVAMENTE por `App\Services\FluxoEntrada\EtapaTransicaoService`
+        // (ETAPA-03/D-12); pendência é gravada por `Company::declararPendencia()`
+        // / `Company::resolverPendencia()` (ETAPA-04/D-19).
+        //
+        // Por que o aviso existe: as duas colunas estão em `$fillable`
+        // (necessário para o serviço/model gravarem via Eloquent), então
+        // acrescentar a chave aqui bastaria para furar o ponto único de
+        // escrita — sem erro, sem log, toda edição manual de empresa
+        // passaria a poder pular etapas do fluxo.
+        //
+        // Quem cobra: `tests/Feature/Phase150/EtapaPontoUnicoTest.php`
+        // quebra se isso acontecer — a varredura estática nomeia o arquivo
+        // e a linha. Um PR que acrescente chave nova a esta validação
+        // precisa passar por lá antes de mergear.
         $data = $request->validate([
             'name'             => 'required|string|max:255',
             'cnpj'             => 'nullable|string|max:18',

@@ -60,7 +60,20 @@ export default function UserDashboard({ stats, period, companies, my_surveys, my
                             {companies.map(c => (
                                 <div key={c.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                                     <div>
-                                        <p className="text-sm font-medium">{c.name}</p>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <p className="text-sm font-medium">{c.name}</p>
+                                            {/* Fase 154 (RESP-02) — a empresa chega aqui
+                                                sozinha assim que a Coordenação distribui.
+                                                Os dois selos são DERIVADOS no backend
+                                                (data da distribuição e etapa), nunca uma
+                                                coluna que alguém precise desligar. */}
+                                            {c.novo_cliente && (
+                                                <Badge variant="success" className="text-[10px]">Novo cliente</Badge>
+                                            )}
+                                            {c.onboarding_pendente && (
+                                                <Badge variant="warning" className="text-[10px]">Onboarding pendente</Badge>
+                                            )}
+                                        </div>
                                         {c.goals?.length > 0 && (
                                             <p className="text-xs text-muted-foreground">{c.goals.length} meta(s) ativa(s)</p>
                                         )}

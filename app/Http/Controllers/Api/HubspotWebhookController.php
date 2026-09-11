@@ -8,13 +8,16 @@ use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
 use App\Models\HubspotLineItemMapping;
 use App\Models\Servico;
+use App\Models\User;
 use App\Notifications\EmpresaHubspotPendenteNotification;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
+use App\Services\FluxoEntrada\EtapaTransicaoService;
 use App\Services\Hubspot\HubspotCompanyMatcher;
 use App\Services\Hubspot\HubspotContactSelector;
 use App\Services\Hubspot\HubspotDealHandoffService;
 use App\Services\Hubspot\HubspotHandoffData;
 use App\Services\Hubspot\HubspotNameNormalizer;
+use App\Services\Hubspot\HubspotOwnerResolver;
 use App\Services\HubspotApiClient;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use App\Support\AudienciaComercial;
@@ -272,6 +275,13 @@ class HubspotWebhookController extends Controller
             // registros criados dentro da transaction (a colecao em memoria de
             // $company pode nao contar com eles).
             $company->refresh();
+
+            // ── Fase 151 (COMERC-01/D-13) — nascimento na etapa 1 ───────────────
+            // MESMO refresh() acima serve as duas chamadas. FORA da transaction,
+            // mesma disciplina do gate administrativo logo acima: nunca desfazer
+            // a Company ja commitada por causa de uma falha na transicao.
+            $this->nascerNaEtapa1($company);
+
             app(GatilhoContratoAdministrativoService::class)->dispararSeElegivel($company);
         } catch (\Throwable $e) {
             $evento->update([
@@ -402,6 +412,16 @@ class HubspotWebhookController extends Controller
             $tentativasContrato = $this->contarTentativasContrato($lineItems, $deal['properties'] ?? [], $propsDeal);
             $contratosIgnorados = max(0, $tentativasContrato - $contratosCriados);
 
+            // ── Fase 151 (COMERC-01/D-13) — nascimento na etapa 1 ───────────────
+            // reprocessarEvento() NAO chama o gate administrativo em lugar
+            // nenhum acima — e o segundo call site que precisa nascer na etapa
+            // 1, senao uma empresa que so existe por replay nunca ganharia
+            // etapa. refresh() proprio aqui (nao reusa nenhum de cima) porque
+            // um refresh() ANTES de calcular $empresaJaExistia zeraria
+            // wasRecentlyCreated e corromperia o resumo do replay.
+            $company->refresh();
+            $this->nascerNaEtapa1($company);
+
             $evento->update([
                 'status'            => 'processado',
                 'company_id_criada' => $company->id,
@@ -443,6 +463,47 @@ class HubspotWebhookController extends Controller
                 'empresas_enriquecidas' => 0,
                 'warnings'              => array_merge($warnings, [$e->getMessage()]),
             ];
+        }
+    }
+
+    /**
+     * Fase 151 (COMERC-01/D-13/D-17) — faz a empresa nascer na etapa 1
+     * ("aguardando administrativo"), chamada pelos DOIS caminhos de produção
+     * do webhook que criam/enriquecem `Company` (`processar()` e
+     * `reprocessarEvento()`).
+     *
+     * O ator é a conta de sistema "Sistema HubSpot", resolvida por
+     * `User::find(config('services.hubspot.webhook_user_id'))` — NUNCA a
+     * partir do payload da requisição, nunca um `user_id` cru (T-150-02).
+     * Ator ausente/inexistente é caso TRATADO, nunca um `TypeError`/500: loga
+     * e retorna sem transicionar, deixando `etapa` NULL (mesmo efeito do
+     * fallback legado da D-14).
+     *
+     * `transicionar()` já engole `\Throwable` internamente e nunca lança —
+     * nenhum `try/catch` aqui, que só esconderia regressão no próprio
+     * serviço. `'recusado'` é desfecho ESPERADO (evento reentregue, ou
+     * `hubspot:reprocess-event` sobre empresa que já nasceu) — só `'erro'` é
+     * anômalo e vira log.
+     */
+    private function nascerNaEtapa1(Company $company): void
+    {
+        $porSistema = User::find(config('services.hubspot.webhook_user_id'));
+
+        if ($porSistema === null) {
+            Log::channel('ecf-webhooks')->error('[HubSpot Webhook] HUBSPOT_WEBHOOK_USER_ID não configurado ou usuário não existe — empresa NÃO transicionada para etapa 1', [
+                'company_id' => $company->id,
+            ]);
+
+            return;
+        }
+
+        $resultado = app(EtapaTransicaoService::class)->transicionar($company, Company::ETAPA_AGUARDANDO_ADMINISTRATIVO, $porSistema);
+
+        if (!in_array($resultado['status'], ['transicionado', 'recusado'], true)) {
+            Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] transição de nascimento com status inesperado', [
+                'company_id' => $company->id,
+                'resultado'  => $resultado,
+            ]);
         }
     }
 
@@ -774,15 +835,39 @@ class HubspotWebhookController extends Controller
             // e sempre o retrato do ULTIMO evento processado; o historico do
             // evento anterior fica preservado em hubspot_eventos.payload.
             //
+            // ── Fase 151 Plano 04 (COMERC-02, D-08/D-09) — responsavel comercial
+            // e data da venda. Chave de config com fallback literal — mesmo
+            // padrao de `$propsDeal['email_envio_contrato']` acima — porque
+            // testes legados (Phase34HubspotWebhookTest) sobrescrevem
+            // `services.hubspot.props.deal` com um array parcial sem `owner_id`
+            // nem `closedate`. Owner ausente/arquivado/sem escopo OAuth resolve
+            // para null (HubspotOwnerResolver/fetchOwner ja sao resilientes por
+            // desenho, plano 151-03) — nenhum try/catch novo aqui esconderia
+            // regressao no proprio resolver.
+            $ownerIdRaw   = $dprops[$propsDeal['owner_id'] ?? 'hubspot_owner_id'] ?? null;
+            $ownerIdFinal = ($ownerIdRaw !== null && (string) $ownerIdRaw !== '') ? (string) $ownerIdRaw : null;
+            $ownerNome    = app(HubspotOwnerResolver::class)->resolverNome($ownerIdFinal);
+
+            $closedateRaw = $dprops[$propsDeal['closedate'] ?? 'closedate'] ?? null;
+            $dataVenda    = app(HubspotDealHandoffService::class)->parseDataHubspot($closedateRaw);
+
             // Quick task 260805-eqk — `hubspot_notas` e `hubspot_observacao`
             // entram AQUI de proposito: sao ESPELHO do HubSpot, nao input
             // humano, e por isso ficam FORA da regra "so preenche se vazio" do
             // enriquecerEmpresaExistente(). Caso concreto que motivou a regra:
             // a Metalform ganhou uma nota em 03/08 DEPOIS de a empresa ja
             // existir — sob a regra antiga essa nota nunca apareceria no ECF.
+            // Fase 151 plano 04 — `hubspot_owner_id`/`hubspot_owner_nome`/
+            // `data_venda` entram na MESMA disciplina: reescritos a cada
+            // processamento (owner muda quando o deal troca de vendedor),
+            // atravessando os DOIS ramos (criacao e match forte) que passam
+            // por este update.
             $company->update([
                 'hubspot_notas'      => $notes,
                 'hubspot_observacao' => $observacaoNotes,
+                'hubspot_owner_id'   => $ownerIdFinal,
+                'hubspot_owner_nome' => $ownerNome,
+                'data_venda'         => $dataVenda,
                 'hubspot_snapshot' => [
                     'deal'               => $dprops,
                     'company'            => $hubCompany['properties'] ?? null,

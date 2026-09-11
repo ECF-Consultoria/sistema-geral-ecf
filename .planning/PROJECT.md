@@ -15,7 +15,65 @@ Dar ao admin visibilidade total sobre operações internas: o sync Adman, o fech
 financeiro de cada empresa e a comunicação interna (notificações de metas e mensagens
 manuais) — sem precisar de acesso direto ao servidor.
 
-## Current Milestone: v22.0 Administrativo + Clicksign
+## Current Milestone: v23.0 Fluxo de Entrada de Novas Empresas
+
+**Goal:** Um único cadastro de empresa atravessa HubSpot → Comercial → Administrativo →
+Coordenação → Onboarding → Em operação, com etapa e status explícitos, checklist obrigatório
+por etapa, travas que impedem avanço incompleto, e histórico datado por evento para medir SLA.
+
+**Fonte do escopo:** `.planning/seeds/fluxo-entrada-novas-empresas-260901.md` — transcrição fiel
+do PDF *Fluxo de Entrada de Novas Empresas* (ECF Consultoria, 01/09/2026), acrescida de um
+levantamento técnico contra o código de `origin/main` em `695711f5`. O documento se declara
+**"a primeira parte da especificação funcional"**: haverá continuação.
+
+**Target features (fases a partir da 137):**
+
+- **Máquina de estados dos 9 status (§10)** — a fundação. Pendência é sinalizador **paralelo**,
+  nunca status principal (mesmo padrão já validado em Polos, ver
+  `.planning/learnings/painel-polos-status-e-meta.md`).
+- **Checklist administrativo completo + trava de finalização (§3, §5)** — grupo **Contrato**
+  *integra* o Clicksign da v22.0; grupo **Estrutura** amarra peças hoje soltas (grupo WhatsApp,
+  e-mail colaborador, link ADMA, Grant da consultoria, link ECF); grupo **Comunicação** fecha
+  com o envio. Botão FINALIZAR ENTRADA ADMINISTRATIVA só habilita com todos os obrigatórios
+  concluídos **e** contrato assinado.
+- **Mensagem de boas-vindas generalizada (§4)** — hoje existe só para Polos e vive **salva no
+  banco** (Padrões Globais), não em código.
+- **Tela de distribuição da Coordenação (§7)** — analista + estrategista, com registro de
+  **quem** distribuiu, data e hora.
+- **Chegada ao responsável (§8)** — empresa aparece em Minhas Empresas com selo NOVA.
+- **Onboarding plugado na máquina de estados (§9)** — reusa `DefinicaoOnboarding` (VERSAO 17) e
+  a Fase 135; muda o gatilho e os status, não a régua.
+- **Histórico e rastreabilidade para SLA (§12)** — timeline por empresa com data, hora, ação e
+  usuário, sobre a base `spatie/laravel-activitylog` já instalada.
+- **Área Comercial com o mínimo do §2** — completar o que a listagem de Empresas Ganhas ainda
+  não exibe.
+
+**Key context:**
+
+- **HubSpot (§1) e Clicksign (§3-Contrato) já estão construídos — integrar, nunca reconstruir.**
+  A v22.0 entregou "contrato assinado é a porta de entrada do operacional"; este PDF generaliza
+  aquilo para o pipeline inteiro. A Fase 131 já entregou a tela administrativa de contratos.
+- **Três conflitos com o sistema atual, a decidir no discuss/plan de cada fase:**
+  1. `em_operacao` hoje é **derivado**, não status — `CompanyController.php:179` calcula
+     `tem analista OU tem estrategista`. O PDF quer "Em operação" como status **9**, depois do
+     onboarding concluído. A aba "Empresas" de `/companies` **esconde quem não está
+     `em_operacao`**, então a semântica nova muda o que aquela tela lista.
+  2. `companies.status` **já existe** com outro significado (string livre, default `'ativo'`,
+     backfill em produção pela migration `2026_05_25_100001`). Reusá-la para os 9 status é
+     migration em tabela com dado em produção → **fase GSD obrigatória** pelo `CLAUDE.md`.
+  3. §6 diz "passa para **Mercado Livre** → Empresas", mas o sistema é multi-marketplace desde
+     a v13.0 (`company_marketplaces`). Decidir se o destino é ML literal ou o marketplace do
+     contrato.
+- **A v22.0 permanece formalmente ABERTA** — Fase 133 executando, plano `133-05` pendente
+  (verificação de 48h em produção + primeiro cadastro real de Polos). O bloqueio está ligado em
+  produção desde 19/08. As Fases 134/135/136 são avulsas e também aguardam gate humano. Por isso
+  o `STATE.md` foi editado à mão nesta abertura e `phases.clear` **não** foi executado.
+- Trabalho no worktree `C:\xampp\htdocs\ecf_fluxo_entrada`, branch `feat/fluxo-entrada-empresas`,
+  base `origin/main` `695711f5`. Árvore compartilhada com outras sessões.
+- **Fora de escopo declarado pelo PDF:** o Trello não integra este fluxo.
+- pt-BR em tudo
+
+## Milestone anterior (AINDA ABERTA — 10/13 fases): v22.0 Administrativo + Clicksign
 
 **Goal:** Contrato assinado passa a ser a porta de entrada do operacional. Hoje a empresa vai direto do fechamento comercial para o setor operacional; passa a existir uma etapa administrativa no meio — gerar contrato, enviar pela Clicksign, aguardar a assinatura de todas as partes e só então liberar.
 
@@ -170,11 +228,22 @@ manuais) — sem precisar de acesso direto ao servidor.
 - ✓ **CROSS-02**: Publicação confirmed transversal via grep + suite dinâmica — Phase 59
 - ✓ **CROSS-03**: Zero regressão (delta = 0 vs baseline 955 tests) — Phase 59
 
-### Active (v15.0 — NPS Templates)
+### Active (v23.0 — Fluxo de Entrada de Novas Empresas)
 
 <!-- Escopo do milestone atual. REQ-IDs definidos em `.planning/REQUIREMENTS.md`. -->
 
-Categorias-alvo: **NPS-A** (schema + modelos + seed retroativo), **NPS-B** (backend regras), **NPS-C** (UI configuração), **NPS-D** (formulário público), **NPS-E** (dashboards + pendências), **NPS-F** (limpeza legado + testes).
+Categorias-alvo: **ETAPA** (máquina de estados dos 9 status + pendência paralela),
+**ADMIN** (checklist administrativo + trava de finalização), **COMUNIC** (boas-vindas
+generalizada), **DISTRIB** (distribuição pela Coordenação), **RESP** (chegada ao analista e
+estrategista), **ONBRD** (onboarding plugado na máquina de estados), **HIST** (histórico e SLA),
+**COMERC** (Área Comercial — mínimo do §2).
+
+### Aberta em paralelo (v22.0 — Administrativo + Clicksign)
+
+<!-- 10/13 fases. Fase 133 EXECUTING, plano 133-05 pendente. Não fechada por /gsd:complete-milestone. -->
+
+Requirements `FLUXO-01` e `FLUXO-02` seguem `Pending` até a prova em produção do `133-05`.
+`FLUXO-09` está `Done` desde o `133-02`. Ver `.planning/REQUIREMENTS-v22.md`.
 
 ### Paused (v14.0 — Confiabilidade + Polish)
 
@@ -276,4 +345,12 @@ Este documento evolui a cada transição de fase e marco de milestone.
 4. Atualizar Context com estado atual
 
 ---
-*Last updated: 2026-07-07 — **Milestone v15.0 (NPS Templates) aberta.** v14.0 pausada mid-flight com 3/8 entregues (Phase 60/61/62 verified; 63 planejada não executada; 64-67 sem plans). Escopo v15.0: reescrita completa do módulo NPS baseado em modelos configuráveis de formulário, com pesos ajustáveis por opção, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator. Deploy gate ativo.*
+*Last updated: 2026-09-01 — **Milestone v23.0 (Fluxo de Entrada de Novas Empresas) aberta**, a
+partir do PDF de especificação funcional de 01/09/2026 transcrito em
+`.planning/seeds/fluxo-entrada-novas-empresas-260901.md`. Escopo: o pipeline inteiro de entrada,
+de HubSpot a "Em operação", sobre um cadastro único de empresa — máquina de estados de 9 status,
+checklist administrativo com trava, distribuição pela Coordenação e histórico para SLA. HubSpot e
+Clicksign entram como peças a integrar, não a reconstruir. **v22.0 permanece aberta** (10/13,
+Fase 133 executando, `133-05` pendente desde 19/08); Fases 134/135/136 avulsas aguardando gate
+humano. Numeração de fases continua a partir da 137. Trabalho no worktree
+`ecf_fluxo_entrada`, branch `feat/fluxo-entrada-empresas`.*

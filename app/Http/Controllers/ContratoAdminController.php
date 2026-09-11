@@ -11,15 +11,23 @@ use App\Models\ContratoServico;
 use App\Models\EmpresaFaixaFaturamento;
 use App\Models\Servico;
 use App\Models\User;
+use App\Services\BoasVindas\MensagemBoasVindasService;
+use App\Services\ChecklistAdministrativo\ChecklistAdministrativoDefinicao;
+use App\Services\ChecklistAdministrativo\ChecklistAdministrativoService;
+use App\Services\ChecklistAdministrativo\ChecklistEtapaSincronizadorService;
+use App\Services\ChecklistAdministrativo\FinalizarEntradaAdministrativaService;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\CongelamentoEmissaoService;
 use App\Services\Clicksign\ContratoClicksignService;
+use App\Services\Comercial\PendenciasComerciaisService;
 use App\Services\Contratos\ContratoDadosMinimosService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\ContratoPdfService;
 use App\Services\Fechamento\FechamentoFaixaResolver;
+use App\Services\FluxoEntrada\TimelineEntradaService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
+use App\Support\Permissions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -58,18 +66,32 @@ class ContratoAdminController extends Controller
      * contrato dentro do limiar), com resumo de 7 contagens, filtro por
      * situação e busca por empresa.
      */
-    public function index(Request $request, ContratosPresosService $presos, EmpresaOperacionalRouter $router): \Inertia\Response
-    {
+    public function index(
+        Request $request,
+        ContratosPresosService $presos,
+        EmpresaOperacionalRouter $router,
+        PendenciasComerciaisService $pendencias,
+    ): \Inertia\Response {
         // (1) Universo (D9 — isenção, ver Servico::exigeContrato()): empresas
         // ATIVAS com ao menos um ContratoServico ATIVO cujo serviço exige
         // contrato. Filtrado NO BACKEND, antes de paginar — nunca escondido
         // no client. Empresa cujo único serviço é isento (Polos) nunca
         // entra aqui.
+        //
+        // Plano 151-06 (COMERC-02) — o `->with('hubspotEventos')` e o
+        // `->withExists('hubspotEventoOrigem')` abaixo são eager load NOVO
+        // para os 8 campos do §2 (evitar N+1 dentro do foreach, T-151-23) —
+        // não mudam o UNIVERSO da query: o filtro por contratosServico ativo
+        // logo abaixo é o mesmo de sempre, mesma contagem de linhas.
         $companiesQuery = Company::query()
             ->where('active', true)
             ->whereHas('contratosServico', fn ($q) => $q->where('ativo', true)
                 ->whereHas('servico', fn ($s) => $s->where('exige_contrato', true)))
-            ->with(['contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico')]);
+            ->with([
+                'contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico'),
+                'hubspotEventos'   => fn ($q) => $q->orderByDesc('id')->limit(3),
+            ])
+            ->withExists(['hubspotEventoOrigem']);
 
         // (2) Busca por empresa — SQL, com binding (nunca concatenado).
         $q = $request->input('q');
@@ -81,6 +103,27 @@ class ContratoAdminController extends Controller
         }
 
         $companies = $companiesQuery->get();
+
+        // (2b) Plano 151-06 (COMERC-02, D-11) — duas pendências, NUNCA
+        // somadas, calculadas uma vez por EMPRESA antes do loop de linhas e
+        // guardadas num mapa indexado por company_id (nunca como atributo
+        // dinâmico homônimo à chave do payload, pra não confundir grep de
+        // auditoria com o ponto de leitura real). Mesma disciplina de
+        // ComercialController::listagem()/ComercialEntradaController::index():
+        // calcular() devolve [] para empresa que não é de origem HubSpot
+        // (REQ-37-10, guarda no topo do próprio serviço) — sem este `if`,
+        // cadastro manual apareceria sempre com pendências de cadastro
+        // vazias, por desenho do serviço, não porque está tudo certo.
+        // calcularUniversais() cobre o mesmo universo de qualquer origem
+        // (Fase 128, D-01).
+        $companies->each(function (Company $c) {
+            $c->is_origem_hubspot = (bool) ($c->hubspot_evento_origem_exists ?? false);
+        });
+        $pendenciasDeCadastroPorEmpresa = $companies->mapWithKeys(
+            fn (Company $c) => [$c->id => $c->is_origem_hubspot
+                ? $pendencias->calcular($c)
+                : $pendencias->calcularUniversais($c)]
+        );
 
         // (3) Contratos de TODAS as empresas do universo, numa única query,
         // indexados por "company_id:servico_id", pegando o de maior id
@@ -107,6 +150,18 @@ class ContratoAdminController extends Controller
         // pessoa preenche as datas de cada uma.
         $linhas = collect();
         foreach ($companies as $company) {
+            // Plano 151-06 (D-12) — setor ECF da empresa, mesma derivação de
+            // ComercialController::listagem()/ComercialEntradaController::index():
+            // primeiro `servico->setor` não nulo entre os contratosServico
+            // ATIVOS. Calculado uma vez por EMPRESA (não por linha/grupo) —
+            // não depende do serviço-dono do grupo abaixo, e sim do conjunto
+            // inteiro de serviços ativos da empresa. O `industry` do HubSpot
+            // fica onde já está (hubspot_snapshot.company), nunca aqui.
+            $setorDominanteDaEmpresa = $company->contratosServico
+                ->map(fn ($ct) => optional($ct->servico)->setor)
+                ->filter()
+                ->first();
+
             // Quick 260901-gj7 (Tarefa 3) — mesma regra de dono da Tarefa 2
             // (`ContratoClicksignService::iniciarParaEmpresa()`): sem isto, o
             // par (empresa, Shopee) aparece aqui como uma linha
@@ -183,8 +238,33 @@ class ContratoAdminController extends Controller
                         'contrato_id'                => $contrato->id,
                         'company_id'                 => $company->id,
                         'company_nome'                => $company->name,
+                        // Plano 151-06 (COMERC-02) — os 8 campos mínimos do
+                        // §2 + etapa, mesmo vocabulário de chave que
+                        // ComercialEntradaController::index() usa, para o
+                        // front não precisar de dois vocabulários.
+                        'company_cnpj'                => $company->cnpj,
                         'servico_id'                  => $contratoServico->servico_id,
                         'servico_nome'                => $contratoServico->servico?->nome,
+                        'setor_dominante'              => $setorDominanteDaEmpresa,
+                        'origem'                       => $company->is_origem_hubspot ? 'hubspot' : 'manual',
+                        // Responsável comercial (D-08) — null é NORMAL para
+                        // cadastro manual: nunca teve deal, nunca terá owner.
+                        'hubspot_owner_nome'           => $company->hubspot_owner_nome,
+                        'data_venda'                   => optional($company->data_venda)->format('Y-m-d'),
+                        'email_cliente'                => $company->email_cliente,
+                        'telefone'                     => $company->telefone,
+                        'nome_contato'                 => $company->nome_contato,
+                        // D-11 — duas pendências, chaves separadas e NUNCA
+                        // somadas. A pendência do fluxo é lida SÓ pelo ponto
+                        // único pendenciaAberta() (D-19 da Fase 150) — nunca
+                        // ler o atributo bruto do model direto aqui.
+                        'pendencia_fluxo' => [
+                            'aberta' => $company->pendenciaAberta(),
+                            'motivo' => $company->pendencia_motivo,
+                            'em'     => optional($company->pendencia_em)->toIso8601String(),
+                        ],
+                        'pendencias_cadastro'          => $pendenciasDeCadastroPorEmpresa[$company->id],
+                        'etapa'                        => $company->etapa,
                         'status'                       => $contrato->status,
                         'dias_parado'                  => $presos->diasParado($contrato),
                         'causa'                        => $presos->causa($contrato),
@@ -219,8 +299,26 @@ class ContratoAdminController extends Controller
                         'contrato_id'                => null,
                         'company_id'                 => $company->id,
                         'company_nome'                => $company->name,
+                        // Plano 151-06 (COMERC-02) — mesmas chaves novas do
+                        // ramo com contrato acima; nenhuma pode faltar aqui,
+                        // senão o front recebe `undefined` neste ramo.
+                        'company_cnpj'                => $company->cnpj,
                         'servico_id'                  => $contratoServico->servico_id,
                         'servico_nome'                => $contratoServico->servico?->nome,
+                        'setor_dominante'              => $setorDominanteDaEmpresa,
+                        'origem'                       => $company->is_origem_hubspot ? 'hubspot' : 'manual',
+                        'hubspot_owner_nome'           => $company->hubspot_owner_nome,
+                        'data_venda'                   => optional($company->data_venda)->format('Y-m-d'),
+                        'email_cliente'                => $company->email_cliente,
+                        'telefone'                     => $company->telefone,
+                        'nome_contato'                 => $company->nome_contato,
+                        'pendencia_fluxo' => [
+                            'aberta' => $company->pendenciaAberta(),
+                            'motivo' => $company->pendencia_motivo,
+                            'em'     => optional($company->pendencia_em)->toIso8601String(),
+                        ],
+                        'pendencias_cadastro'          => $pendenciasDeCadastroPorEmpresa[$company->id],
+                        'etapa'                        => $company->etapa,
                         'status'                       => self::SEM_CONTRATO,
                         'dias_parado'                  => (int) $company->created_at->diffInDays(now()),
                         'causa'                        => null,
@@ -414,8 +512,14 @@ class ContratoAdminController extends Controller
      * A tela NÃO recalcula elegibilidade — `pode_gerar_contrato` e `faltantes`
      * vêm prontos do backend, únicas fontes: `ContratoDadosMinimosService` e
      * `GatilhoContratoAdministrativoService`.
+     *
+     * Fase 152 Plano 08 (D-08/D-17) — esta ficha passou a ser a ficha ÚNICA,
+     * aberta também pela listagem Comercial › Entrada. A rota aceita as duas
+     * permissões em OR; é AQUI que a permissão de MÓDULO recorta o payload
+     * (`$podeVerContrato` abaixo).
      */
     public function show(
+        Request $request,
         Company $company,
         ContratoDadosMinimosService $dados,
         GatilhoContratoAdministrativoService $gatilho,
@@ -426,6 +530,24 @@ class ContratoAdminController extends Controller
         // que mostra na tela o texto EFETIVO atual (override ou composto)
         // do campo editável de {{plano_parcelas}}.
         ContratoPdfService $pdfDados,
+        // Fase 152 Plano 08 (D-15) — os DOIS serviços do checklist entram aqui
+        // como IRMÃOS, lado a lado, exatamente porque nenhum deles pode injetar
+        // o outro em ciclo. `ChecklistAdministrativoService` NÃO recebe o
+        // sincronizador no construtor: isso fecharia
+        // `ChecklistAdministrativoService → ChecklistEtapaSincronizadorService →
+        // ChecklistAdministrativoService`, o container lançaria
+        // `CircularDependencyException` e derrubaria esta própria action com
+        // 500. A orquestração é responsabilidade do CHAMADOR, não dos serviços
+        // (defendido em runtime por `ChecklistDirigeEtapaTest`, caso 10). O
+        // terceiro irmão, o sincronizador, é resolvido dentro do funil
+        // `sincronizarEtapaChecklist()`, que serve também os endpoints.
+        ChecklistAdministrativoService $checklist,
+        FinalizarEntradaAdministrativaService $finalizar,
+        // Fase 153 — irmão dos dois acima, mesma razão: nenhum deles injeta o
+        // outro em ciclo. Este não depende de nenhum serviço do checklist.
+        MensagemBoasVindasService $boasVindas,
+        // Fase 156 — leitura pura de dado que as fases 150-155 já gravam.
+        TimelineEntradaService $timeline,
         // Plano 142-02 (D-03) — só para `tabela_resumo` abaixo, alimentar o botão novo que leva
         // até a ficha da tabela de cobrança sem a tela recalcular nada.
         FechamentoFaixaResolver $resolverFaixa,
@@ -494,6 +616,39 @@ class ContratoAdminController extends Controller
         // mesmo serviço já é, por definição, uma tentativa seguinte.
         $idMaisAntigoPorServico = $contratos->groupBy('servico_id')->map(fn ($grupo) => $grupo->min('id'));
 
+        // ─── Checklist administrativo (Fase 152 Plano 08) ────────────────────
+        //
+        // A permissão de ROTA (D-17) abre esta ficha para quem tem
+        // `admin.contratos` OU `comercial.entrada`. A permissão de MÓDULO
+        // decide o que aparece dentro dela. Sem este recorte, a mudança de
+        // rota viraria vazamento: até a Fase 151 só quem tinha
+        // `admin.contratos` alcançava este payload, que carrega envelopes e
+        // SIGNATÁRIOS. A T-131-04-04 já limita o signatário a
+        // id/nome/papel/situacao — este gating é a defesa NOVA, não uma
+        // redundância dela.
+        $podeVerContrato = $request->user()->hasPermission(Permissions::ADMIN_CONTRATOS);
+
+        // Ordem obrigatória: montar o checklist PRIMEIRO (é a chamada que roda
+        // e persiste o resultado dos 4 resolvers automáticos), sincronizar a
+        // etapa DEPOIS, e só então perguntar `podeFinalizar()` — que precisa
+        // enxergar a empresa já na etapa certa.
+        //
+        // Por que o `show()` sincroniza: o degrau 2→3 depende de um evento
+        // EXTERNO — o webhook do Clicksign gravando `enviado_em` — que não
+        // passa por nenhuma ação do checklist. O carregamento da ficha é o
+        // único momento em que o sistema observa esse fato.
+        $checklistPayload = $checklist->paraEmpresa($company);
+        $this->sincronizarEtapaChecklist($request, $company);
+
+        // Sem `admin.contratos`, o grupo Contrato inteiro sai do payload.
+        // O `progresso` continua sendo o da empresa INTEIRA de propósito: é a
+        // régua do FINALIZAR, não uma métrica da seção visível. O usuário de
+        // Entrada vê a barra completa e o `requisito_faltante` textual, mas não
+        // vê os itens contratuais.
+        if (! $podeVerContrato) {
+            unset($checklistPayload['grupos'][ChecklistAdministrativoDefinicao::GRUPO_CONTRATO]);
+        }
+
         // Plano 142-02 (D-03) — resumo pequeno para o botão "Tabela de cobrança" saber o que
         // dizer sem a tela recalcular nada. `origem_aplicada` é quem cobra HOJE (grupo vence
         // sobre a própria, Fase 138); `procedencia` é da tabela PRÓPRIA da empresa
@@ -510,6 +665,41 @@ class ContratoAdminController extends Controller
         ];
 
         return Inertia::render('Admin/ContratoDetalhe', [
+            'checklist'         => $checklistPayload,
+            'pode_ver_contrato' => $podeVerContrato,
+            // Array `['permitido', 'requisito_faltante']` inteiro — o front usa
+            // os dois: um desabilita o botão, o outro explica por quê. A régua
+            // é a MESMA que recusa o POST em `finalizarEntradaAdministrativa()`;
+            // o botão nunca decide sozinho (ADMIN-05).
+            'pode_finalizar'    => $finalizar->podeFinalizar($company),
+            // D-04 — link fixo e igual para todas as empresas, servido do
+            // backend. Nunca hard-coded no JSX.
+            'adman_register_url' => config('services.adman.register_url'),
+            // Fase 157 — o link do Portal do Cliente, exibido no próprio item
+            // do checklist. `null` enquanto ninguém gerou: a linha mostra o
+            // botão "Gerar conexão" nesse caso, e o campo só aparece depois.
+            'portal_cliente_url' => ($tokenPortal = \App\Models\OnboardingLink::where('company_id', $company->id)->value('token'))
+                ? route('portal.inicio', $tokenPortal)
+                : null,
+            // Fase 153 (COMUNIC-01) — a mensagem já montada com os dados desta
+            // empresa, pronta para copiar. Montada no SERVIDOR (D-B): o caminho
+            // análogo do Polos substitui os placeholders no JSX, sem teste, e é
+            // justamente onde um link errado tem consequência fora do sistema.
+            // Traz `pendencias` quando algum bloco ficaria vazio — a tela avisa
+            // em vez de entregar texto quebrado.
+            'mensagem_boas_vindas' => $boasVindas->paraEmpresa($company),
+            // Fase 156 (HIST-01/02/03) — a timeline do fluxo de entrada e o
+            // tempo em cada etapa. Só fontes DURÁVEIS: o activity_log é podado
+            // em 365 dias (`config/activitylog.php`), e foi por isso que a Fase
+            // 150 criou a tabela de transições. Lê-lo aqui faria a timeline de
+            // uma empresa antiga mudar sozinha.
+            //
+            // NÃO é recortada por permissão de módulo, ao contrário da seção
+            // Contrato: são datas, nomes de etapa e quem agiu — nenhum envelope,
+            // signatário ou valor. Se um dia trouxer, o recorte volta a ser
+            // necessário.
+            'timeline'          => $timeline->paraEmpresa($company),
+            'duracao_por_etapa' => $timeline->duracaoPorEtapa($company),
             'company' => [
                 'id'                => $company->id,
                 'name'              => $company->name,
@@ -554,8 +744,14 @@ class ContratoAdminController extends Controller
             // misturar com `faltantes`, ver docblock de
             // faltantesDaConfiguracaoEcf()).
             'configuracao_ecf_faltante' => $dados->faltantesDaConfiguracaoEcf(),
-            'pode_gerar_contrato'       => $podeGerarContrato,
-            'motivo_bloqueio'           => $motivoBloqueio,
+            // Fase 152 Plano 08 (T-152-08-01) — as três props de conteúdo
+            // contratual chegam NEUTRALIZADAS para quem não tem
+            // `admin.contratos`. `company`, `contratos_servico` e `faltantes`
+            // continuam para os dois perfis: a listagem Entrada já exibe
+            // empresa, serviços e pendências de cadastro — não há exposição
+            // nova ali.
+            'pode_gerar_contrato'       => $podeVerContrato ? $podeGerarContrato : false,
+            'motivo_bloqueio'           => $podeVerContrato ? $motivoBloqueio : null,
             // Plano 131-05 (CLICK-10/D-13) — URL do PAINEL da Clicksign (não a
             // API), derivada de CLICKSIGN_ENV (plano 131-01). É o destino real
             // do CTA "Registrar e ir para a Clicksign" — nunca hardcodar no
@@ -569,8 +765,15 @@ class ContratoAdminController extends Controller
             'motivos_manuais' => ContratoLiberacao::MOTIVOS_MANUAIS_LABELS,
             // Plano 142-02 (D-03) — alimenta o bloco "Tabela de cobrança" e o botão que leva à
             // ficha exclusiva (`admin.contratos.tabela.show`).
-            'tabela_resumo' => $tabelaResumo,
-            'contratos' => $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico, $pdfDados) {
+            //
+            // ⚠️ RECORTADO no merge de 2026-09-10 (Fase 152, D-17). Quando este
+            // bloco foi escrito, só quem tinha `admin.contratos` alcançava esta
+            // ficha; a Fase 152 abriu a rota também para `comercial.entrada`.
+            // Faixa de cobrança é dado contratual — segue a mesma régua de
+            // `contratos`/`pode_gerar_contrato`: a permissão de ROTA abre a
+            // ficha, a de MÓDULO decide o que aparece dentro dela.
+            'tabela_resumo' => $podeVerContrato ? $tabelaResumo : null,
+            'contratos' => ! $podeVerContrato ? [] : $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico, $pdfDados) {
                 return [
                     'id'                                => $c->id,
                     'servico_id'                        => $c->servico_id,
@@ -595,6 +798,11 @@ class ContratoAdminController extends Controller
                     'ja_tentou_antes'                   => $c->id !== ($idMaisAntigoPorServico[$c->servico_id] ?? $c->id),
                     'enviado_em'                         => $c->enviado_em?->toIso8601String(),
                     'assinado_em'                        => $c->assinado_em?->toIso8601String(),
+                    // Fase 157 — o checklist precisa saber se há documento para
+                    // ABRIR. A rota `contratos.pdf-assinado` devolve 404 quando o
+                    // arquivo não está em disco, e um botão que leva a 404 é pior
+                    // que botão nenhum.
+                    'tem_pdf_assinado'                   => filled($c->pdf_assinado_path),
                     'liberado_em'                        => $c->liberado_em?->toIso8601String(),
                     // D-10 — a UI usa este booleano para decidir se ainda
                     // oferece "Liberar manualmente" nesta linha.
@@ -622,6 +830,203 @@ class ContratoAdminController extends Controller
                 ];
             })->values(),
         ]);
+    }
+
+    /**
+     * Fase 152 Plano 08 (D-15) — o ÚNICO ponto do sistema que invoca
+     * `ChecklistEtapaSincronizadorService::sincronizar()`.
+     *
+     * Existe como funil, e não é cerimônia: **todo** caminho que fecha ou
+     * reabre um item precisa sincronizar a etapa, senão a D-15 morre em
+     * silêncio — a empresa fica presa na etapa 1, o FINALIZAR nunca habilita, e
+     * não aparece erro nenhum na tela. Com o funil, o endpoint novo que alguém
+     * acrescentar amanhã ou passa por aqui (e sincroniza) ou fica de fora do
+     * padrão de forma visível na revisão.
+     *
+     * O sincronizador é resolvido pelo container AQUI, e não injetado no
+     * construtor nem em cada action, para que a forma seja a MESMA em todos os
+     * chamadores — `show()`, os três endpoints de mutação e o FINALIZAR. Não
+     * misturar as duas formas.
+     *
+     * `refresh()` antes de sincronizar porque a mutação imediatamente anterior
+     * (ou o webhook do Clicksign) pode ter mudado o estado no banco sem passar
+     * pelo objeto em memória desta requisição.
+     */
+    private function sincronizarEtapaChecklist(Request $request, Company $company, bool $adotarSeLegado = false): void
+    {
+        app(ChecklistEtapaSincronizadorService::class)
+            ->sincronizar($company->refresh(), $request->user(), $adotarSeLegado);
+    }
+
+    /**
+     * Guarda comum dos endpoints do checklist (Fase 152 Plano 08).
+     *
+     * Duas checagens, nesta ordem:
+     *
+     * 1. **Chave contra o catálogo fechado** (T-152-08-04). A `{chave}` é
+     *    segmento de URL, não corpo — `$request->validate()` não a alcança, e a
+     *    checagem explícita é obrigatória. Usa `chaves(true)` (as 9) de
+     *    propósito: se a empresa for isenta, o service ainda recusa com
+     *    `DomainException`; o que esta linha impede é chave INVENTADA virar
+     *    linha no banco.
+     * 2. **Recorte por grupo** (D-09). A rota está em OR (D-17) porque a ficha
+     *    é única — a MESMA rota serve os dois grupos de itens. É aqui, e só
+     *    aqui, que item do grupo Contrato passa a exigir `admin.contratos`.
+     */
+    private function guardaChecklist(Request $request, ?string $chave): void
+    {
+        if ($chave !== null) {
+            abort_unless(in_array($chave, ChecklistAdministrativoDefinicao::chaves(true), true), 404);
+
+            $item = ChecklistAdministrativoDefinicao::item($chave);
+
+            if (($item['grupo'] ?? null) === ChecklistAdministrativoDefinicao::GRUPO_CONTRATO
+                && ! $request->user()->hasPermission(Permissions::ADMIN_CONTRATOS)) {
+                abort(403, 'Você não tem permissão para agir nos itens de Contrato.');
+            }
+        }
+    }
+
+    /**
+     * Funil de mutação do checklist (Fase 152 Plano 08, D-15, T-152-08-09).
+     *
+     * Não é cerimônia: **todo** caminho que fecha ou reabre item precisa
+     * sincronizar a etapa depois, senão a D-15 morre em silêncio — a empresa
+     * fica presa na etapa 1, o FINALIZAR nunca habilita, e não há erro nenhum
+     * na tela para denunciar. Com o funil, o endpoint novo que alguém
+     * acrescentar amanhã ou passa por aqui (e sincroniza) ou fica de fora do
+     * padrão de forma visível na revisão. A garantia complementar é o teste:
+     * cada endpoint de mutação tem um caso que afirma o avanço da etapa.
+     *
+     * No ramo de exceção **não** sincroniza — nada mudou, e sincronizar ali
+     * gravaria transição de etapa a partir de uma ação recusada.
+     *
+     * Só chaves de flash já compartilhadas por `HandleInertiaRequests`
+     * (`success`, `error`): chave nova não chega ao front sem uma linha nova
+     * naquele middleware — armadilha já paga uma vez neste projeto.
+     */
+    private function executarMutacaoChecklist(Request $request, Company $company, \Closure $mutacao, string $sucesso): RedirectResponse
+    {
+        try {
+            $mutacao();
+        } catch (\DomainException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        // Agir no checklist ADOTA a empresa legada (etapa NULL) para dentro do
+        // fluxo — ver o docblock de `sincronizar()`. Abrir a ficha não adota.
+        $this->sincronizarEtapaChecklist($request, $company, true);
+
+        return back()->with('success', $sucesso);
+    }
+
+    /**
+     * ADMIN-04 — marca um item manual como concluído.
+     *
+     * O ator é **sempre** `$request->user()`. Nenhum endpoint desta fase lê
+     * `user_id`/`feito_por` do corpo (disciplina T-150-02): autoria vinda do
+     * cliente é autoria forjável, e o histórico da Fase 156 mede exatamente
+     * quem fez o quê.
+     *
+     * O parâmetro `$forcar` de `concluirManualmente()` **não** é exposto por
+     * HTTP nesta fase — item automático não se marca à mão pela tela.
+     */
+    public function concluirItemChecklist(Request $request, Company $company, string $chave): RedirectResponse
+    {
+        $this->guardaChecklist($request, $chave);
+
+        $checklist = app(ChecklistAdministrativoService::class);
+
+        return $this->executarMutacaoChecklist(
+            $request,
+            $company,
+            fn () => $checklist->concluirManualmente($company, $chave, $request->user()),
+            'Item marcado como concluído.'
+        );
+    }
+
+    /**
+     * ADMIN-04 — desmarca um item concluído manualmente, zerando a autoria.
+     *
+     * Passa pelo mesmo funil mesmo sabendo que o sincronizador só AVANÇA (o
+     * plano 152-07 prova que desmarcar na etapa 4 não devolve à 3): o valor
+     * aqui é o caminho único, não o efeito.
+     */
+    public function reabrirItemChecklist(Request $request, Company $company, string $chave): RedirectResponse
+    {
+        $this->guardaChecklist($request, $chave);
+
+        $checklist = app(ChecklistAdministrativoService::class);
+
+        return $this->executarMutacaoChecklist(
+            $request,
+            $company,
+            fn () => $checklist->reabrirItem($company, $chave, $request->user()),
+            'Item desmarcado.'
+        );
+    }
+
+    /**
+     * ADMIN-03/D-14 — gera a conexão com o sistema ECF (o `OnboardingLink` do
+     * item 8), de forma idempotente: chamar duas vezes devolve o link que já
+     * existe, nunca cria um segundo.
+     *
+     * Sem `{chave}`: o item 8 é do grupo Entrada, então a permissão da rota já
+     * basta e a guarda não tem grupo a recortar.
+     */
+    public function gerarConexaoEcfChecklist(Request $request, Company $company): RedirectResponse
+    {
+        $this->guardaChecklist($request, null);
+
+        $checklist = app(ChecklistAdministrativoService::class);
+
+        return $this->executarMutacaoChecklist(
+            $request,
+            $company,
+            fn () => $checklist->gerarConexaoEcf($company, $request->user()),
+            'Link do Portal do Cliente gerado.'
+        );
+    }
+
+    /**
+     * ADMIN-05/ADMIN-06 — o botão FINALIZAR ENTRADA ADMINISTRATIVA.
+     *
+     * ⚠️ **Sincroniza ANTES de finalizar, e a ordem é essencial.** A empresa
+     * pode estar na etapa 2 ou 3 quando o usuário clica, e
+     * `EtapaTransicaoService::TRANSICOES_PERMITIDAS` só permite chegar na 5
+     * vindo da 4. Sincronizar primeiro é o que leva a empresa até a 4 pela
+     * régua da D-15, com uma linha de histórico por degrau — em vez de o
+     * clique "pular" etapas sem deixar rastro.
+     *
+     * Isto **não** contradiz o caso 5 de `FinalizarTransicaoEtapaTest` (plano
+     * 152-06), que afirma `recusado` para a mesma situação: lá se testa
+     * `finalizar()` sozinho, no nível de service; aqui é a rota, que sincroniza
+     * antes. Não "corrigir" um dos dois.
+     *
+     * A régua é reavaliada no servidor por `finalizar()` — o `pode_finalizar`
+     * do payload desabilita o botão, mas nunca é o que decide.
+     */
+    public function finalizarEntradaAdministrativa(Request $request, Company $company): RedirectResponse
+    {
+        $this->sincronizarEtapaChecklist($request, $company, true);
+
+        $resultado = app(FinalizarEntradaAdministrativaService::class)
+            ->finalizar($company->refresh(), $request->user());
+
+        if ($resultado['status'] === 'finalizado') {
+            return back()->with('success', 'Entrada administrativa finalizada. Empresa movida para Aguardando Distribuição.');
+        }
+
+        if ($resultado['status'] === 'recusado') {
+            return back()->with('error', $resultado['requisito_faltante']);
+        }
+
+        Log::error('[Checklist] falha ao finalizar entrada administrativa', [
+            'company_id' => $company->id,
+            'resultado'  => $resultado,
+        ]);
+
+        return back()->with('error', 'Não foi possível finalizar agora. Tente novamente.');
     }
 
     /**

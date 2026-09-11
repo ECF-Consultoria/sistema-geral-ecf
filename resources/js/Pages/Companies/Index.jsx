@@ -15,6 +15,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 // Phase 72 Plan 03 v15.0 — Badge NPS pendente na coluna Empresa da listagem/pendências
 import NpsPendingBadge from '@/Components/Nps/NpsPendingBadge';
+import LinhaDistribuicao from '@/Components/FluxoEntrada/LinhaDistribuicao';
 // Phase 37 Plan 37-06 (REQ-37-07) — GruposManager removido daqui; aba Grupos
 // migrou para /comercial/empresas/listagem (Plan 37-05). Briefcase removido
 // junto pois o botao "Servico" inline tambem nao aparece mais (pendencia
@@ -115,6 +116,22 @@ function PendenciaBadges({ pendencias }) {
     );
 }
 
+// ─── Fase 150 Plano 07 (ETAPA-05) — rótulos das 9 etapas do fluxo de entrada
+// (§10 do PDF v23.0). Fonte de verdade é `Company::ETAPAS`
+// (app/Models/Company.php) — não há enum compartilhado entre PHP e JS no
+// projeto, a sincronia é manual. Ordem espelha a ordem canônica do model.
+const ETAPA_LABELS = {
+    aguardando_administrativo: 'Aguardando Administrativo',
+    administrativo_andamento:  'Administrativo em Andamento',
+    aguardando_assinatura:     'Aguardando Assinatura',
+    administrativo_concluido:  'Administrativo Concluído',
+    aguardando_distribuicao:   'Aguardando Distribuição',
+    aguardando_onboarding:     'Aguardando Onboarding',
+    onboarding_andamento:      'Onboarding em Andamento',
+    onboarding_concluido:      'Onboarding Concluído',
+    em_operacao:               'Em Operação',
+};
+
 // ─── Badge do Grupo (cor custom do grupo) ───────────────────────────────────
 function GrupoBadge({ grupo }) {
     if (!grupo) return null;
@@ -129,7 +146,7 @@ function GrupoBadge({ grupo }) {
     );
 }
 
-export default function Companies({ companies, users, estrategistas = [], analistas = [], grupos = [], servico_counts = [], servicos_disponiveis = [], filters = {}, nps_pendentes = [] }) {
+export default function Companies({ companies, users, estrategistas = [], analistas = [], grupos = [], servico_counts = [], servicos_disponiveis = [], filters = {}, nps_pendentes = [], pode_distribuir = false, fila_distribuicao = [] }) {
     // Phase 72 Plan 03 v15.0 — Guard defensivo pra prop `nps_pendentes` (Plan 72-02 injection)
     const npsPendentesList = nps_pendentes ?? [];
     // Phase 34 Plan 34-03 — admin check para botao "Marcar como visto" (D-06)
@@ -164,7 +181,7 @@ export default function Companies({ companies, users, estrategistas = [], analis
         // ?tab=onboarding de quem não tem a permission cai em 'empresas': sem
         // isto o deep-link deixaria a pessoa numa tela em branco — a aba não
         // renderiza e nenhuma outra assume.
-        const abas = ['empresas', 'pendencias', ...(podeVerOnboarding ? ['onboarding'] : [])];
+        const abas = ['empresas', ...(pode_distribuir ? ['distribuicao'] : []), ...(podeVerOnboarding ? ['onboarding'] : [])];
         return abas.includes(t) ? t : 'empresas';
     });
     const [search, setSearch] = useRemember('', 'companies-index-search');
@@ -173,18 +190,67 @@ export default function Companies({ companies, users, estrategistas = [], analis
     // Phase 35 Plan 35-01 (D-02) — sort por created_at na aba Pendencias.
     // Backend so honra valores 'nova_recente'|'nova_antiga'; '' (default) cai no orderBy('name').
     const sortFilter = filters.sort || '';
+    // Fase 150 Plano 07 (ETAPA-05) — dois filtros novos, independentes entre
+    // si e dos demais (D-23). Lidos da mesma prop `filters` que o backend já
+    // devolve para cust_id_status/sort.
+    const etapaFilter = filters.etapa || '';
+    const comPendenciaFilter = !!filters.com_pendencia;
 
-    const aplicarCustIdFilter = (valor) => {
-        router.get(route('companies.index'), valor ? { cust_id_status: valor } : {}, { preserveState: true, preserveScroll: true });
+    // Fase 150 Plano 07 (ETAPA-05, D-21) — filtros server-side por query
+    // param, nunca `Array.filter` de cliente (o contra-exemplo é `em_operacao`
+    // logo abaixo, que continua derivado e filtrado no cliente só porque a
+    // Fase 155 é quem troca essa fonte, não esta).
+    //
+    // Fase 150 Plano 11 (gap closure WR-03) — montador ÚNICO de query.
+    // Antes, cada um dos quatro handlers montava `params` do zero e só
+    // reenviava o(s) filtro(s) que ele próprio conhecia — o comentário que
+    // ficava aqui ("cada handler PRESERVA o outro filtro já ativo") era
+    // verdade só para o par etapa/pendência; escolher um Cust ID apagava
+    // etapa/pendência, escolher etapa apagava Cust ID, e trocar a ordenação
+    // na aba Pendências apagava etapa E pendência. `aplicarFiltros()` é o
+    // ÚNICO ponto do arquivo que chama `router.get(...)` contra a rota
+    // `companies.index` (ver gate estático em EtapaFiltroListagemTest): ele parte dos
+    // filtros ATUALMENTE ativos, aplica por cima o `overrides` de quem
+    // chamou, remove chaves vazias/desligadas e reenvia tudo. Os quatro
+    // handlers abaixo viraram invólucros finos — mesma assinatura pública,
+    // sem montar nada por conta própria.
+    const aplicarFiltros = (overrides) => {
+        const params = {
+            ...(custIdStatusFilter ? { cust_id_status: custIdStatusFilter } : {}),
+            ...(etapaFilter ? { etapa: etapaFilter } : {}),
+            ...(comPendenciaFilter ? { com_pendencia: 1 } : {}),
+            ...(sortFilter ? { sort: sortFilter } : {}),
+            ...(tab ? { tab } : {}),
+            ...overrides,
+        };
+        Object.keys(params).forEach(key => {
+            if (params[key] === undefined || params[key] === '' || params[key] === false) {
+                delete params[key];
+            }
+        });
+        router.get(route('companies.index'), params, { preserveState: true, preserveScroll: true });
     };
 
-    // Phase 35 Plan 35-01 (D-02) — aplica/limpa ?sort= preservando o tab=pendencias na URL.
+    const aplicarCustIdFilter = (valor) => {
+        aplicarFiltros({ cust_id_status: valor || undefined });
+    };
+
+    // Phase 35 Plan 35-01 (D-02) — aplica/limpa ?sort=. Antes fixava
+    // `tab: 'pendencias'` na marra; agora herda a aba CORRENTE do montador
+    // único — mesmo resultado hoje (o controle só renderiza dentro da aba
+    // Pendências), e passa a sobreviver a um refresh vindo dos outros três
+    // controles sem precisar do literal. Melhoria deliberada (WR-03), não
+    // efeito colateral.
     const aplicarSort = (valor) => {
-        const params = {};
-        if (custIdStatusFilter) params.cust_id_status = custIdStatusFilter;
-        if (valor) params.sort = valor;
-        params.tab = 'pendencias';
-        router.get(route('companies.index'), params, { preserveState: true, preserveScroll: true });
+        aplicarFiltros({ sort: valor || undefined });
+    };
+
+    const aplicarEtapaFilter = (valor) => {
+        aplicarFiltros({ etapa: valor || undefined });
+    };
+
+    const aplicarComPendenciaFilter = (ativo) => {
+        aplicarFiltros({ com_pendencia: ativo ? 1 : undefined });
     };
 
     const [open, setOpen] = useState(false);
@@ -267,6 +333,12 @@ export default function Companies({ companies, users, estrategistas = [], analis
 
     // ── Filtro por tag de pendência + seleção/ações em massa ─────────────────
     const [pendenciaFilter, setPendenciaFilter] = useState('');
+    // ⚠️ SEM UI desde 2026-09-11. Este bloco (seleção por linha + atribuir
+    // em massa) era usado só pela lista "Empresas com pendência" da aba
+    // Distribuição, removida a pedido do usuário. Os handlers ficam porque a
+    // lógica é correta e religar a funcionalidade é voltar a renderizar a barra
+    // e as checkboxes — não há nada a reescrever. Se ficar claro que ninguém
+    // quer o atribuir em massa de volta, apagar daqui até `bulkAssign` inteiro.
     const [selectedIds, setSelectedIds] = useState(() => new Set());
 
     const pendentesView = pendenciaFilter
@@ -375,7 +447,13 @@ export default function Companies({ companies, users, estrategistas = [], analis
 
     const TABS = [
         { key: 'empresas',   label: `Empresas (${totalAtivas})` },
-        { key: 'pendencias', label: `Pendências (${pendentes.length})` },
+        // Fase 157 (D-C) — a aba Pendências virou Distribuição, e é do LÍDER.
+        // Os 5 cards de pendência mudaram para a aba Empresas: `sem_responsavel`
+        // é resolvido pela própria distribuição, e os outros quatro continuam
+        // acessíveis lá, onde os badges já apareciam.
+        ...(pode_distribuir
+            ? [{ key: 'distribuicao', label: `Distribuição (${fila_distribuicao.length})` }]
+            : []),
         ...(podeVerOnboarding
             ? [{ key: 'onboarding', label: `Onboarding (${emOnboarding.length})` }]
             : []),
@@ -404,6 +482,43 @@ export default function Companies({ companies, users, estrategistas = [], analis
                 {/* ══════════════ ABA EMPRESAS ══════════════ */}
                 {tab === 'empresas' && (
                     <>
+                        {/* Cards clicáveis — filtram a lista por tipo de pendência */}
+                        <div className="flex flex-wrap items-center gap-3">
+                            {Object.entries(PENDENCIAS).map(([key, cfg]) => (
+                                <button
+                                    key={key}
+                                    onClick={() => togglePendenciaFilter(key)}
+                                    className={cn('rounded-xl border px-4 py-3 flex items-center gap-3 transition-all', cfg.cls,
+                                        pendenciaFilter === key ? 'ring-2 ring-white/40' : 'opacity-90 hover:opacity-100')}
+                                    title={`Mostrar só empresas com: ${cfg.label}`}
+                                >
+                                    <span className="text-2xl font-bold tabular-nums">{pendCounts[key]}</span>
+                                    <span className="text-[12px] font-medium leading-tight text-left">{cfg.label}</span>
+                                </button>
+                            ))}
+                            {pendenciaFilter && (
+                                <button onClick={() => togglePendenciaFilter(pendenciaFilter)} className="text-[12px] text-white/50 hover:text-white underline">
+                                    limpar filtro
+                                </button>
+                            )}
+                            {/* Phase 35 Plan 35-01 (D-02) — sort por created_at so quando filtro=empresa_nova.
+                                Outras pendencias mantem ordem alfabetica (padrao do backend). */}
+                            {pendenciaFilter === 'empresa_nova' && (
+                                <div className="ml-auto flex items-center gap-2">
+                                    <span className="text-[12px] text-white/40">Ordenar:</span>
+                                    <select
+                                        value={sortFilter}
+                                        onChange={e => aplicarSort(e.target.value)}
+                                        className="h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 cursor-pointer"
+                                        title="Ordenar empresas novas por data de cadastro"
+                                    >
+                                        <option value="">Padrão (nome)</option>
+                                        <option value="nova_recente">Mais recente primeiro</option>
+                                        <option value="nova_antiga">Mais antiga primeiro</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
                         <div className="flex items-center gap-2 flex-wrap">
                             <Input placeholder="Buscar empresa..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-sm" />
                             <select
@@ -415,6 +530,33 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                 <option value="">Todas as empresas</option>
                                 <option value="invalido">Apenas Cust ID Inválido</option>
                             </select>
+                            {/* Fase 150 Plano 07 (ETAPA-05, D-21/D-22) — filtro server-side por
+                                etapa. "Sem etapa (legado)" é a SEGUNDA opção, de propósito: depois
+                                do backfill (plano 150-05) é ela quem devolve a maioria das empresas
+                                — enterrá-la no fim faria o filtro parecer quebrado. */}
+                            <select
+                                value={etapaFilter}
+                                onChange={e => aplicarEtapaFilter(e.target.value)}
+                                className="h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 cursor-pointer"
+                                title="Filtrar por etapa do fluxo de entrada"
+                            >
+                                <option value="">Todas as etapas</option>
+                                <option value="sem_etapa">Sem etapa (legado)</option>
+                                {Object.entries(ETAPA_LABELS).map(([valor, label]) => (
+                                    <option key={valor} value={valor}>{label}</option>
+                                ))}
+                            </select>
+                            {/* Fase 150 Plano 07 (ETAPA-05, D-23) — pendência é eixo INDEPENDENTE
+                                da etapa, nunca um item dentro do seletor acima. */}
+                            <button
+                                type="button"
+                                onClick={() => aplicarComPendenciaFilter(!comPendenciaFilter)}
+                                title="Filtrar por empresas com pendência aberta"
+                                className={cn('inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] border transition-colors',
+                                    comPendenciaFilter ? 'bg-ecf-yellow/15 border-ecf-yellow/40 text-ecf-yellow' : 'bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white/90')}
+                            >
+                                Com pendência
+                            </button>
                         </div>
 
                         {/* Chips de filtro por serviço com contagem total */}
@@ -515,149 +657,47 @@ export default function Companies({ companies, users, estrategistas = [], analis
                 )}
 
                 {/* ══════════════ ABA PENDÊNCIAS ══════════════ */}
-                {tab === 'pendencias' && (
+                {tab === 'distribuicao' && (
                     <>
-                        {/* Cards clicáveis — filtram a lista por tipo de pendência */}
-                        <div className="flex flex-wrap items-center gap-3">
-                            {Object.entries(PENDENCIAS).map(([key, cfg]) => (
-                                <button
-                                    key={key}
-                                    onClick={() => togglePendenciaFilter(key)}
-                                    className={cn('rounded-xl border px-4 py-3 flex items-center gap-3 transition-all', cfg.cls,
-                                        pendenciaFilter === key ? 'ring-2 ring-white/40' : 'opacity-90 hover:opacity-100')}
-                                    title={`Mostrar só empresas com: ${cfg.label}`}
-                                >
-                                    <span className="text-2xl font-bold tabular-nums">{pendCounts[key]}</span>
-                                    <span className="text-[12px] font-medium leading-tight text-left">{cfg.label}</span>
-                                </button>
-                            ))}
-                            {pendenciaFilter && (
-                                <button onClick={() => togglePendenciaFilter(pendenciaFilter)} className="text-[12px] text-white/50 hover:text-white underline">
-                                    limpar filtro
-                                </button>
-                            )}
-                            {/* Phase 35 Plan 35-01 (D-02) — sort por created_at so quando filtro=empresa_nova.
-                                Outras pendencias mantem ordem alfabetica (padrao do backend). */}
-                            {pendenciaFilter === 'empresa_nova' && (
-                                <div className="ml-auto flex items-center gap-2">
-                                    <span className="text-[12px] text-white/40">Ordenar:</span>
-                                    <select
-                                        value={sortFilter}
-                                        onChange={e => aplicarSort(e.target.value)}
-                                        className="h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 cursor-pointer"
-                                        title="Ordenar empresas novas por data de cadastro"
-                                    >
-                                        <option value="">Padrão (nome)</option>
-                                        <option value="nova_recente">Mais recente primeiro</option>
-                                        <option value="nova_antiga">Mais antiga primeiro</option>
-                                    </select>
+                        {/* ─── Fila de distribuição (Fase 157) ──────────────────
+                            Empresas que concluíram o Administrativo e ainda não
+                            têm analista nem estrategista. Confirmar vincula os
+                            dois em todos os serviços ativos e move a empresa
+                            para Aguardando Onboarding — mesmo ato do service,
+                            só que aqui é o LÍDER quem faz. */}
+                        {fila_distribuicao.length > 0 ? (
+                            <div className="space-y-3">
+                                <div>
+                                    <h2 className="text-white font-semibold text-[15px]">Aguardando distribuição</h2>
+                                    <p className="text-[12px] text-white/40">
+                                        Concluíram o Administrativo e ainda não têm responsáveis definidos.
+                                    </p>
                                 </div>
-                            )}
-                        </div>
 
-                        {/* Barra de ações em massa (aparece com seleção) */}
-                        {selectedIds.size > 0 && (
-                            <div className="flex items-center gap-3 flex-wrap rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] px-4 py-2.5">
-                                <span className="text-[13px] text-white/85 font-medium">{selectedIds.size} selecionada(s)</span>
-                                <div className="h-4 w-px bg-white/10" />
-                                <select
-                                    value=""
-                                    onChange={e => { if (e.target.value) bulkAssign('consultor', Number(e.target.value)); e.target.value = ''; }}
-                                    className="h-9 pl-3 pr-8 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[13px] text-white/80 cursor-pointer focus:outline-none focus:border-ecf-yellow/40"
-                                >
-                                    <option value="">Atribuir Analista…</option>
-                                    {analistasOptions.map(u => <option key={u.id} value={u.id} className="bg-[#0f1116]">{u.name}</option>)}
-                                </select>
-                                <select
-                                    value=""
-                                    onChange={e => { if (e.target.value) bulkAssign('estrategista', Number(e.target.value)); e.target.value = ''; }}
-                                    className="h-9 pl-3 pr-8 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[13px] text-white/80 cursor-pointer focus:outline-none focus:border-ecf-yellow/40"
-                                >
-                                    <option value="">Atribuir Estrategista…</option>
-                                    {estrategistasOptions.map(u => <option key={u.id} value={u.id} className="bg-[#0f1116]">{u.name}</option>)}
-                                </select>
-                                <Button size="sm" variant="outline" className="gap-1.5 text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300" onClick={bulkDelete}>
-                                    <Trash2 className="h-3.5 w-3.5" /> Excluir selecionadas
-                                </Button>
-                                <button onClick={clearSelection} className="text-[12px] text-white/40 hover:text-white ml-auto">limpar seleção</button>
+                                {fila_distribuicao.map(emp => (
+                                    <LinhaDistribuicao key={emp.id} empresa={emp} />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] px-4 py-6 text-center">
+                                <p className="text-[13px] text-white/60 font-semibold">
+                                    Nenhuma empresa aguardando distribuição.
+                                </p>
+                                <p className="text-[12px] text-white/30 mt-1">
+                                    Elas aparecem aqui assim que o Administrativo finaliza a entrada.
+                                </p>
                             </div>
                         )}
 
-                        <Card>
-                            <CardContent className="p-0">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="w-10">
-                                                <input type="checkbox" checked={allViewSelected} onChange={toggleSelectAll} className="accent-ecf-yellow w-4 h-4 cursor-pointer align-middle" title="Selecionar todas" />
-                                            </TableHead>
-                                            <TableHead>Empresa</TableHead>
-                                            <TableHead>Pendências</TableHead>
-                                            <TableHead>Responsáveis</TableHead>
-                                            <TableHead className="text-right">Ações</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {pendentesView.map(c => (
-                                            <TableRow key={c.id} className={cn(selectedIds.has(c.id) && 'bg-ecf-yellow/[0.04]')}>
-                                                <TableCell>
-                                                    <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} className="accent-ecf-yellow w-4 h-4 cursor-pointer align-middle" />
-                                                </TableCell>
-                                                <TableCell className="font-medium">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        {c.name}
-                                                        {/* Phase 72 Plan 03 v15.0 — Badge NPS pendente na aba Pendências */}
-                                                        <NpsPendingBadge companyId={c.id} pendentes={npsPendentesList} variant="compact" />
-                                                        {c.grupo && <GrupoBadge grupo={c.grupo} />}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell><PendenciaBadges pendencias={c.pendencias} /></TableCell>
-                                                <TableCell className="text-xs text-white/60">
-                                                    {c.estrategista?.name || c.consultor?.name
-                                                        ? [c.estrategista?.name, c.consultor?.name].filter(Boolean).join(' · ')
-                                                        : <span className="text-white/30">ninguém</span>}
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex justify-end gap-1">
-                                                        {/* Phase 34 Plan 34-03 (D-06) — botao "Marcar como visto"
-                                                            so aparece quando a empresa esta com pendencia empresa_nova
-                                                            e o user atual eh admin. Click chama POST /companies/{id}/marcar-visto
-                                                            e remove a pendencia inline (preserveScroll preserva posicao na lista). */}
-                                                        {(c.pendencias || []).includes('empresa_nova') && isAdmin && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => marcarVisto(c)}
-                                                                title="Marcar empresa como vista (sai da lista de pendencias)"
-                                                                className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/15"
-                                                            >
-                                                                <Check className="h-4 w-4" />
-                                                            </button>
-                                                        )}
-                                                        {/* Phase 37 Plan 37-06 (REQ-37-07) — botao inline "Servico"
-                                                            removido junto com a pendencia sem_servico. Atribuicao de servico
-                                                            agora vive em /comercial/empresas/listagem + /comercial/empresas/{id}/atribuir-servico. */}
-                                                        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => openEdit(c)}>
-                                                            <Pencil className="h-3.5 w-3.5" /> Resolver
-                                                        </Button>
-                                                        <Button size="icon" variant="ghost" title="Excluir empresa" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => destroy(c)}>
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                        {pendentesView.length === 0 && (
-                                            <TableRow>
-                                                <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
-                                                    <Check className="h-8 w-8 mx-auto mb-2 text-emerald-400/60" />
-                                                    {pendenciaFilter ? 'Nenhuma empresa com essa pendência.' : 'Nenhuma empresa com pendências. Tudo em dia!'}
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
+                        {/* A lista de "Empresas com pendência" foi REMOVIDA desta
+                            aba em 2026-09-11, a pedido do usuário: a Distribuição
+                            mostra a fila e nada mais.
+
+                            Foi junto o que vivia dentro dela — a seleção por
+                            linha e a barra de "Atribuir Analista/Estrategista"
+                            em massa, que só existiam aqui. Os 5 cards de
+                            pendência seguem na aba Empresas, onde foram postos
+                            na Fase 157. */}
                     </>
                 )}
 

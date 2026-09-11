@@ -17,6 +17,142 @@ class Company extends Model
 {
     use HasFactory, LogsActivity;
 
+    // ─── Fase 150 (plano 02, D-01) — os 9 status da máquina de estados do
+    // fluxo de entrada de novas empresas (§10 do PDF v23.0). Primeiro grupo
+    // de constantes de domínio deste model — não copiar padrão de outro
+    // model, este é o precedente. As Fases 151-143 consomem estas mesmas
+    // constantes; não redeclarar os valores em outro lugar.
+    //
+    // O valor da etapa 9 é DELIBERADAMENTE igual à chave `em_operacao` que
+    // `CompanyController` já expõe hoje (payload calculado, linha ~227) — a
+    // Fase 155 troca a FONTE (derivado → esta coluna) sem trocar o NOME, o
+    // que evita quebrar quem já lê `em_operacao` no front.
+    public const ETAPA_AGUARDANDO_ADMINISTRATIVO = 'aguardando_administrativo';
+    public const ETAPA_ADMINISTRATIVO_ANDAMENTO  = 'administrativo_andamento';
+    public const ETAPA_AGUARDANDO_ASSINATURA     = 'aguardando_assinatura';
+    public const ETAPA_ADMINISTRATIVO_CONCLUIDO  = 'administrativo_concluido';
+    public const ETAPA_AGUARDANDO_DISTRIBUICAO   = 'aguardando_distribuicao';
+    public const ETAPA_AGUARDANDO_ONBOARDING     = 'aguardando_onboarding';
+    public const ETAPA_ONBOARDING_ANDAMENTO      = 'onboarding_andamento';
+    public const ETAPA_ONBOARDING_CONCLUIDO      = 'onboarding_concluido';
+    public const ETAPA_EM_OPERACAO               = 'em_operacao';
+
+    /**
+     * Ordem canônica do §10 — índice 0 = etapa 1, índice 8 = etapa 9. Fonte
+     * única das opções de filtro (Fase 150-07) e da tabela de transições
+     * permitidas do serviço único (Fase 150-03, D-12/D-14).
+     */
+    public const ETAPAS = [
+        self::ETAPA_AGUARDANDO_ADMINISTRATIVO,
+        self::ETAPA_ADMINISTRATIVO_ANDAMENTO,
+        self::ETAPA_AGUARDANDO_ASSINATURA,
+        self::ETAPA_ADMINISTRATIVO_CONCLUIDO,
+        self::ETAPA_AGUARDANDO_DISTRIBUICAO,
+        self::ETAPA_AGUARDANDO_ONBOARDING,
+        self::ETAPA_ONBOARDING_ANDAMENTO,
+        self::ETAPA_ONBOARDING_CONCLUIDO,
+        self::ETAPA_EM_OPERACAO,
+    ];
+
+    // ─── `status` × `etapa` (Fase 150, D-02) — duas colunas de nome
+    // parecido, propósitos diferentes. Sem esta nota a próxima sessão
+    // escolhe a coluna errada:
+    // - `status`: contrato ativo/inativo, string livre, escrita por
+    //   `ComercialController`. NÃO é etapa do fluxo de entrada. Medido na
+    //   base local: 128 `ativo` / 52 `pendente` — o `pendente` vem de
+    //   `ComercialController.php:594`, não de contrato inativo.
+    // - `etapa`: etapa do fluxo de entrada (§10 do PDF v23.0, Fase 150),
+    //   escrita SÓ pelo serviço de transição (`EtapaTransicaoService`,
+    //   Fase 150-03/D-12) — nunca via controller/update em massa.
+
+    // ─── Pendência PARALELA (Fase 150, plano 04, ETAPA-04, D-17/D-18/D-19) ──
+    //
+    // Pendência comunica um bloqueio A UMA PESSOA (ex.: "Contrato não
+    // assinado") e convive com QUALQUER etapa, inclusive `etapa` `NULL`. Os
+    // portões que impedem avanço de etapa são outra coisa — continuam
+    // derivados dentro de `EtapaTransicaoService` (ETAPA-06). Confundir os
+    // dois é o bug histórico documentado em
+    // `.planning/learnings/painel-polos-status-e-meta.md` §1: até 05/08/2026
+    // `mlb_empresas.problema` tinha precedência sobre o status ali, e a
+    // correção foi promover a decisão a um ponto único
+    // (`PolosController::desconsideraDaMeta()`). D-19 copia essa mesma
+    // disciplina aqui: `pendenciaAberta()` (por instância) e
+    // `scopeComPendenciaAberta()` (por query) são os ÚNICOS pontos
+    // autorizados a ler `pendencia_aberta` — nenhum controller, componente
+    // ou query lê a coluna direto.
+
+    /**
+     * Existe pendência aberta nesta empresa? ÚNICO ponto de decisão de
+     * leitura por instância (D-19). Hoje o corpo é só o cast booleano da
+     * coluna — a razão de existir não é a complexidade de agora, é garantir
+     * que, quando a regra mudar, exista UM lugar para mudá-la. Nenhum
+     * controller/componente/query deve ler `pendencia_aberta` direto.
+     */
+    public function pendenciaAberta(): bool
+    {
+        return (bool) $this->pendencia_aberta;
+    }
+
+    /**
+     * ÚNICO ponto de leitura de pendência por QUERY (D-19) — existe porque o
+     * filtro `?com_pendencia=1` do plano 150-07 precisa filtrar no servidor,
+     * e sem este scope o controller leria `pendencia_aberta` direto, o que
+     * D-19 proíbe (mesmo molde de `PolosController::desconsideraDaMeta()`).
+     */
+    public function scopeComPendenciaAberta($query)
+    {
+        return $query->where('pendencia_aberta', true);
+    }
+
+    /**
+     * Abre (ou substitui) a pendência única desta empresa. NÃO toca `etapa`
+     * — é a garantia por construção da ETAPA-04: marcar pendência não pode
+     * mover a etapa. Um campo derivado poderia virar sozinho quando dado
+     * alheio mudasse; um campo gravado, não (D-17).
+     *
+     * Cardinalidade travada por D-18: uma pendência aberta por vez. Chamar
+     * isto numa empresa que já tem pendência aberta SUBSTITUI motivo, autor
+     * e timestamp — não acumula. Múltiplas pendências simultâneas exigiriam
+     * mudança de schema e estão em Deferred Ideas.
+     *
+     * Gravar estes 4 campos dispara `Company::updated()` e portanto
+     * `CompanyGatilhoContratoObserver::updated()` — mas o observer só age
+     * quando `wasChanged(CompanyGatilhoContratoObserver::CAMPOS_GATILHO)`,
+     * hoje `['email_cliente', 'cnpj', 'nome_contato']`, e nenhum campo de
+     * pendência está nessa lista, logo o gate administrativo NÃO dispara de
+     * carona. Registrado aqui para quem mexer em `CAMPOS_GATILHO` depois.
+     *
+     * @param  string  $motivo  Texto livre digitado por um humano (T-150-05:
+     *                          renderizado por React, que escapa por padrão)
+     * @param  User    $por     Tipado, nunca um id cru (T-150-13) — todo
+     *                          chamador deve passar `$request->user()`/
+     *                          `auth()->user()`, nunca `user_id` do corpo
+     *                          da requisição
+     */
+    public function declararPendencia(string $motivo, User $por): void
+    {
+        $this->update([
+            'pendencia_aberta' => true,
+            'pendencia_motivo' => $motivo,
+            'pendencia_por'    => $por->id,
+            'pendencia_em'     => now(),
+        ]);
+    }
+
+    /**
+     * Fecha a pendência aberta, limpando os quatro campos. NÃO toca `etapa`
+     * — mesma garantia de `declararPendencia()` (D-17).
+     */
+    public function resolverPendencia(): void
+    {
+        $this->update([
+            'pendencia_aberta' => false,
+            'pendencia_motivo' => null,
+            'pendencia_por'    => null,
+            'pendencia_em'     => null,
+        ]);
+    }
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
@@ -35,6 +171,18 @@ class Company extends Model
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
         'cust_id_status', 'marketplace',
         'segment', 'active', 'status', 'notes', 'email_cliente', 'telefone',
+        // Fase 150 (plano 02, ETAPA-01) — precisa estar em $fillable para o
+        // `EtapaTransicaoService` (Fase 150-03) gravar via Eloquent. A ÚNICA
+        // classe autorizada a gravar este campo é aquele serviço (D-12) —
+        // estar aqui é a superfície de mass assignment que o teste de
+        // regressão do plano 150-06 fecha (nenhum controller pode gravar
+        // `etapa` por update em massa).
+        'etapa',
+        // Fase 150 (plano 04, ETAPA-04, D-17) — pendência PARALELA à etapa,
+        // declarada à mão, nunca derivada. As ÚNICAS classes autorizadas a
+        // gravar estes 4 campos são `declararPendencia()`/`resolverPendencia()`
+        // abaixo (D-19) — nenhum controller grava por update em massa.
+        'pendencia_aberta', 'pendencia_motivo', 'pendencia_por', 'pendencia_em',
         // Quick 260819-guy — razão social (nome jurídico, distinto de `name`
         // que é o nome fantasia) e endereço, completados pelo Administrativo
         // na tela de contrato (ADM-01). Alimentam variáveis do modelo `.docx`
@@ -69,6 +217,11 @@ class Company extends Model
         // Quick task 260805-eqk — Notes do deal (espelho do HubSpot) + origem
         // do lead vinda do contato principal.
         'hubspot_notas', 'origem_lead',
+        // Fase 151 (plano 03, COMERC-02, D-09) — responsável comercial e data
+        // da venda. `hubspot_owner_id`/`hubspot_owner_nome` são espelho do
+        // HubSpot (reescritos a cada processamento, como `hubspot_notas`/
+        // `hubspot_observacao`); `data_venda` é a data de fechamento do deal.
+        'hubspot_owner_id', 'hubspot_owner_nome', 'data_venda',
     ];
 
     protected $casts = [
@@ -84,10 +237,15 @@ class Company extends Model
         // v15.5 — Timestamps do mapeamento Digisac.
         'digisac_group_mapped_at'   => 'datetime',
         'digisac_group_verified_at' => 'datetime',
+        // Fase 150 (plano 04, ETAPA-04) — pendência paralela.
+        'pendencia_aberta' => 'boolean',
+        'pendencia_em'     => 'datetime',
         // Phase 111 — snapshot bruto das propriedades HubSpot (HUB-SCHEMA-01).
         'hubspot_snapshot' => 'array',
         // Quick task 260805-eqk — lista de Notes do deal [{id, body, timestamp}].
         'hubspot_notas'    => 'array',
+        // Fase 151 (plano 03, COMERC-02, D-09) — data de fechamento do deal.
+        'data_venda' => 'date',
     ];
 
     /**

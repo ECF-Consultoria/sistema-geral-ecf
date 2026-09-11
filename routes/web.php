@@ -1,6 +1,8 @@
 <?php
 
 use Inertia\Inertia;
+use App\Http\Controllers\BoasVindasTemplateController;
+use App\Http\Controllers\CoordenacaoDistribuicaoController;
 use App\Http\Controllers\ContratoAdminController;
 use App\Http\Controllers\TabelasContratoController;
 use App\Http\Controllers\TabelaEmpresaContratoController;
@@ -8,6 +10,7 @@ use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\EcfWebhookController;
 use App\Http\Controllers\ComercialController;
+use App\Http\Controllers\ComercialEntradaController;
 use App\Http\Controllers\ConcentracaoController;
 use App\Http\Controllers\EmpresaAnaliseEcfController;
 use App\Http\Controllers\Admin\CargoController;
@@ -1456,11 +1459,30 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
 // D-10: esta tela ABSORVEU a liberação manual da Fase 130 (plano 131-06) —
 // `liberacao-manual` abaixo é a ação nova; a rota antiga foi removida (ver
 // bloco acima).
+// Fase 152 Plano 08 (D-17/D-08/D-09) — a ficha da empresa saiu do grupo abaixo
+// e passou a aceitar as DUAS permissões em OR. Motivo: `admin.contratos.show` é
+// a ficha ÚNICA (D-08) aberta pelas duas listagens — a do Administrativo
+// (`admin.contratos.index`) e a do Comercial › Entrada (`comercial.entrada.index`).
+// Sem o OR, quem tem só `comercial.entrada` toma 403 ao clicar "Abrir" na
+// listagem Entrada e a D-08 vira letra morta. `EnsurePermission` já aceita N
+// chaves em OR nativamente (docblock do middleware) — NENHUMA chave de permissão
+// nova é criada (D-09), as duas já são liberáveis por setor sem deploy.
+//
+// ⚠️ A permissão de ROTA abre a ficha; a permissão de MÓDULO decide o que
+// aparece DENTRO dela. `ContratoAdminController::show()` neutraliza `contratos`,
+// `pode_gerar_contrato`/`motivo_bloqueio` e remove o grupo `contrato` do
+// checklist para quem não tem `admin.contratos`. Esse gating de payload NÃO pode
+// ser removido sem reabrir um vazamento de dado contratual (envelopes e
+// signatários) para o perfil de Entrada.
+Route::middleware(['auth', 'verified', 'permission:admin.contratos,comercial.entrada'])
+    ->get('/administrativo/contratos/empresa/{company}', [ContratoAdminController::class, 'show'])
+    ->name('admin.contratos.show');
+
 Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('administrativo/contratos')->name('admin.contratos.')->group(function () {
     Route::get('/', [ContratoAdminController::class, 'index'])->name('index');
     // Plano 131-04 (D-01/ADM-01/ADM-02/UI-02) — detalhe da empresa: onde o
     // Administrativo completa o cadastro e dispara a geração do contrato.
-    Route::get('/empresa/{company}',            [ContratoAdminController::class, 'show'])            ->name('show');
+    // (A rota `show` mora acima, fora deste grupo — Fase 152 Plano 08, D-17.)
     Route::patch('/empresa/{company}/cadastro', [ContratoAdminController::class, 'atualizarCadastro'])->name('cadastro');
     Route::post('/empresa/{company}/gerar',     [ContratoAdminController::class, 'gerarContrato'])    ->name('gerar');
     // Plano 131-05 (CLICK-07/CLICK-10, D-13) — reenviar aviso e registrar
@@ -1497,6 +1519,79 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     Route::delete('/empresa/{company}/tabela', [TabelaEmpresaContratoController::class, 'remover'])->name('tabela.remover');
     Route::post('/grupo/{grupo}/tabela', [TabelaEmpresaContratoController::class, 'salvarGrupo'])->name('tabela.grupo.salvar');
     Route::delete('/grupo/{grupo}/tabela', [TabelaEmpresaContratoController::class, 'removerGrupo'])->name('tabela.grupo.remover');
+});
+
+// ─── Checklist administrativo (Fase 152 Plano 08, ADMIN-01/03/04/05/06) ──────
+// Grupo IRMÃO do de `admin.contratos.*` acima, com a mesma permissão em OR da
+// ficha (D-17): as ações do checklist são disparadas de dentro da ficha única, e
+// o usuário de Entrada precisa poder agir nos 6 itens do grupo Entrada.
+//
+// O recorte fino é feito DENTRO do controller (`guardaChecklist()`): item do
+// grupo `contrato` exige `admin.contratos`, senão 403 (D-09). Ele não pode ser
+// feito aqui porque a MESMA rota serve os dois grupos de itens.
+//
+// A `{chave}` é sempre validada contra o catálogo fechado
+// (`ChecklistAdministrativoDefinicao::chaves()`) no controller, e o `{company}`
+// vem por route-model-binding — NENHUM id de linha de checklist atravessa a
+// fronteira HTTP. Isso remove por construção a classe de IDOR apontada em
+// `152-RESEARCH.md` (V4/Security Domain): não há id de recurso para adulterar.
+Route::middleware(['auth', 'verified', 'permission:admin.contratos,comercial.entrada'])->prefix('administrativo/contratos')->name('admin.contratos.')->group(function () {
+    Route::post('/empresa/{company}/checklist/{chave}/concluir', [ContratoAdminController::class, 'concluirItemChecklist'])->name('checklist.concluir');
+    Route::post('/empresa/{company}/checklist/{chave}/reabrir',  [ContratoAdminController::class, 'reabrirItemChecklist']) ->name('checklist.reabrir');
+    Route::post('/empresa/{company}/checklist/conexao-ecf',      [ContratoAdminController::class, 'gerarConexaoEcfChecklist'])->name('checklist.conexao-ecf');
+    Route::post('/empresa/{company}/finalizar-entrada',          [ContratoAdminController::class, 'finalizarEntradaAdministrativa'])->name('finalizar-entrada');
+});
+
+// ─── Coordenação · Distribuição (Fase 154, DISTRIB-01..04) ───────────────────
+// Chave PRÓPRIA `coordenacao.distribuir` (D-G): distribuir é ato de Coordenação,
+// e reusar admin.contratos/comercial.entrada daria à Entrada o poder de escolher
+// o time — a separação que o §10 do PDF estabelece. FORA de role:admin pelo mesmo
+// motivo das outras: liberável por setor sem deploy.
+Route::middleware(['auth', 'verified', 'permission:coordenacao.distribuir'])
+    ->prefix('coordenacao/distribuicao')->name('coordenacao.distribuicao.')->group(function () {
+        Route::get('/', [CoordenacaoDistribuicaoController::class, 'index'])->name('index');
+    });
+
+// Fase 157 (D-C) — o POST de distribuir saiu do grupo acima e passou a aceitar
+// TAMBÉM quem alcança `/companies`, porque a distribuição virou a aba de lá e o
+// LÍDER do setor Performance é o dono do ato — e liderança não é expressável em
+// middleware de permissão.
+//
+// O middleware aqui é a primeira barreira (larga de propósito); quem decide de
+// verdade é `DistribuicaoService::podeDistribuir()`, chamado no controller e
+// compartilhado pelas duas portas. Sem isso o líder via a fila e tomava 403 no
+// botão — foi o que o teste da Fase 157 pegou.
+Route::middleware(['auth', 'verified', 'permission:coordenacao.distribuir,core.empresas'])
+    ->prefix('coordenacao/distribuicao')->name('coordenacao.distribuicao.')->group(function () {
+        Route::post('/{company}', [CoordenacaoDistribuicaoController::class, 'distribuir'])->name('distribuir');
+    });
+
+// ─── Boas-vindas: textos por serviço (Fase 153, COMUNIC-03) ──────────────────
+// Mesma permissão em OR da ficha (D-17 da Fase 152), pelo mesmo motivo: quem
+// opera a Entrada precisa ajustar o texto que envia. NENHUMA chave nova (D-09).
+//
+// Deliberadamente FORA da tela de Padrões do MLB: aquela é gated por
+// publication_role, guarda a mensagem do Polos (que a D-A manda deixar intacta),
+// e o salvarPadroes() dela substitui o JSON inteiro — chave nova ali some no
+// próximo save.
+Route::middleware(['auth', 'verified', 'permission:admin.contratos,comercial.entrada'])
+    ->prefix('administrativo/boas-vindas')->name('admin.boas-vindas.')->group(function () {
+        Route::get('/',                 [BoasVindasTemplateController::class, 'index'])->name('index');
+        Route::post('/',                [BoasVindasTemplateController::class, 'salvar'])->name('salvar');
+        Route::delete('/{servico}',     [BoasVindasTemplateController::class, 'remover'])->name('remover');
+    });
+
+// ─── Comercial · Entrada (Fase 151, COMERC-01/02/03, D-15) ───────────────────
+// Grupo NOVO, irmão do de `admin.contratos.*` acima — não entrou no grupo
+// `comercial.*` (routes/web.php:684-687, `permission:comercial.cadastrar_empresa`)
+// porque herdaria a permissão de CADASTRO, contra a D-15 (Entrada precisa de
+// chave própria, liberável por setor sem deploy, independente do cadastro).
+// Também não entrou em `role:admin` pelo MESMO motivo documentado acima para
+// `admin.contratos` (linhas 1434-1441): se a rota ficasse sob `role:admin`,
+// um usuário que recebesse `comercial.entrada` via setor continuaria batendo
+// 403 — a D-15 viraria letra morta (ComercEntradaPermissaoRotaTest cobre isso).
+Route::middleware(['auth', 'verified', 'permission:comercial.entrada'])->prefix('comercial/entrada')->name('comercial.entrada.')->group(function () {
+    Route::get('/', [ComercialEntradaController::class, 'index'])->name('index');
 });
 
 // ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────

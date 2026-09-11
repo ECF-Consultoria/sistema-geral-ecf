@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { IMaskInput } from 'react-imask';
 import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, RotateCcw, ChevronDown, ChevronRight, Unlock } from 'lucide-react';
+import CardChecklistAdministrativo from '@/Components/ChecklistAdministrativo/CardChecklistAdministrativo';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
 import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO, MONTAGEM_TRAVADA_AVISO } from '@/lib/contratoStatus';
 
@@ -57,8 +58,25 @@ export default function ContratoDetalhe({
     painel_clicksign_url = null,
     motivos_manuais = {},
     contratos = [],
+    // Fase 152 Plano 09 — props do checklist administrativo. Defaults
+    // defensivos: a página não pode quebrar se for renderizada por um caminho
+    // que ainda não envie estas chaves.
+    checklist = null,
+    pode_ver_contrato = false,
+    pode_finalizar = { permitido: false, requisito_faltante: null },
+    adman_register_url = null,
+    portal_cliente_url = null,
+    mensagem_boas_vindas = null,
+    timeline = [],
+    duracao_por_etapa = [],
     // Plano 142-02 (D-03) — resumo da tabela de cobrança, alimenta o bloco novo abaixo do
     // "Cadastro da empresa". `null` degrada para o texto de "sem tabela ainda".
+    //
+    // Desde o merge de 2026-09-10 chega `null` também para quem NÃO tem
+    // `admin.contratos` (Fase 152, D-17): a rota passou a admitir
+    // `comercial.entrada`, e faixa de cobrança é dado contratual. O bloco já
+    // degradava para "sem tabela ainda", então o perfil de Entrada vê a mesma
+    // tela de empresa sem tabela — sem quebrar.
     tabela_resumo = null,
 }) {
     const { flash } = usePage().props;
@@ -339,6 +357,31 @@ export default function ContratoDetalhe({
         });
     }
 
+    /**
+     * Fase 157 — o que o botão "Ver contrato" do checklist deve ABRIR.
+     *
+     * O checklist não gera contrato; ele dá acesso ao que existe. Ordem de
+     * preferência: o PDF assinado (evidência final), senão o painel da Clicksign
+     * (onde se acompanha e revisa). Sem nenhum dos dois, `null` — e a tela cai
+     * para levar até a lista de contratos, que ao menos mostra o estado.
+     *
+     * `tem_pdf_assinado` vem do backend porque a rota devolve 404 quando o
+     * arquivo não está em disco, e botão que leva a 404 é pior que botão nenhum.
+     */
+    const contratoAcesso = (() => {
+        const assinado = contratos.find((c) => c.tem_pdf_assinado);
+
+        if (assinado) {
+            return { url: route('contratos.pdf-assinado', assinado.id), rotulo: 'Ver contrato assinado' };
+        }
+
+        if (painel_clicksign_url) {
+            return { url: painel_clicksign_url, rotulo: 'Abrir na Clicksign' };
+        }
+
+        return null;
+    })();
+
     const contratoParaLiberar        = contratos.find((c) => c.id === liberarContratoId) ?? null;
     const mostrarDestaqueLiberacao   = contratoParaLiberar && CAUSAS_DE_DESTAQUE.includes(contratoParaLiberar.causa);
     const podeConfirmarLiberacao     = Boolean(liberarForm.data.motivo_slug)
@@ -382,10 +425,21 @@ export default function ContratoDetalhe({
                         </div>
                     )}
 
-                    {/* Ponto focal da tela (131-UI-SPEC.md): quando há pendência, o
-                        bloco de "falta completar" + botão desabilitado, adjacentes
-                        (D-03). Quando não há, o botão ativo sozinho — nunca os dois
-                        ao mesmo tempo. */}
+                    {/* Âncora do bloco de contrato (Fase 157).
+                        O item "Contrato enviado" do checklist rola até aqui: sem
+                        isso, quem lê a ficha de cima para baixo via o item
+                        pendente ANTES de encontrar o botão que o resolve. Os
+                        outros itens não têm esse problema porque a ação mora na
+                        própria linha ("Copiar link", "Gerar conexão") — o grupo
+                        Contrato era o único que apontava para fora sem dizer
+                        para onde. `scroll-mt-24` compensa o cabeçalho fixo,
+                        mesmo padrão de `DetalheOnboarding`. */}
+                    <div id="gerar-contrato" className="scroll-mt-24" />
+
+                    {/* Ponto focal ORIGINAL do bloco de contrato (131-UI-SPEC.md):
+                        quando há pendência, o bloco de "falta completar" + botão
+                        desabilitado, adjacentes (D-03). Quando não há, o botão ativo
+                        sozinho — nunca os dois ao mesmo tempo. */}
                     {!pode_gerar_contrato && motivo_bloqueio === 'emissao_congelada' ? (
                         // Fase 132 Plano 01 (D-07) — bloco PRÓPRIO: com a
                         // emissão congelada, ninguém gera contrato para
@@ -444,7 +498,17 @@ export default function ContratoDetalhe({
                         </div>
                     )}
 
-                    {/* Formulário de completar cadastro (ADM-01) */}
+
+
+
+
+
+                    {/* Formulário de completar cadastro (ADM-01) — fica COLADO
+                        no bloco de geração acima, e a vizinhança é o ponto: é
+                        aqui que se preenche o que o "Falta completar antes de
+                        gerar o contrato" acabou de listar. Separá-los mandava a
+                        pessoa procurar em outro lugar da página o campo que o
+                        bloco de cima tinha acabado de cobrar. */}
                     <Card>
                         <CardContent className="p-4">
                             <h2 className="text-white/85 text-[15px] font-semibold mb-3">Cadastro da empresa</h2>
@@ -674,6 +738,37 @@ export default function ContratoDetalhe({
                         </CardContent>
                     </Card>
 
+                    {/* Checklist administrativo (Fase 152) — o RETRATO do que
+                        falta, logo abaixo da geração do contrato.
+
+                        A ordem é decisão do usuário e tem razão de negócio: a
+                        primeira coisa que o Administrativo precisa é do
+                        CONTRATO. Pedir para conferir um checklist cujos três
+                        primeiros itens dependem de um contrato que ainda não
+                        existe é pedir na ordem errada.
+
+                        O checklist NÃO gera contrato — os itens do grupo
+                        Contrato têm "Ver contrato", que abre o documento. A
+                        geração fica no bloco acima, como o outro dev construiu.
+
+                        ⚠️ A guarda condicional abaixo é OBRIGATÓRIA e já foi
+                        perdida uma vez num reorder. Sem ela o fechamento no fim
+                        do bloco vira TEXTO na tela, e o build passa — JSX aceita
+                        esses caracteres como conteúdo. Se aparecer um fechamento
+                        solto na ficha, é isto. */}
+                    {checklist && (
+                        <CardChecklistAdministrativo
+                            checklist={checklist}
+                            companyId={company.id}
+                            podeVerContrato={pode_ver_contrato}
+                            podeFinalizar={pode_finalizar}
+                            admanRegisterUrl={adman_register_url}
+                            portalClienteUrl={portal_cliente_url}
+                            mensagemBoasVindas={mensagem_boas_vindas}
+                            contratoAcesso={contratoAcesso}
+                        />
+                    )}
+
                     {/* Plano 142-02 (D-03) — bloco novo: botão que leva à ficha exclusiva da
                         tabela de cobrança desta empresa, dentro do módulo de contratos (pedido
                         do usuário: "acho que no contrato fica mais adequado"). Texto vem pronto
@@ -714,6 +809,13 @@ export default function ContratoDetalhe({
                             </CardContent>
                         </Card>
                     )}
+
+                    {/* Âncora dos itens de Contrato do checklist (Fase 157).
+                        O checklist NÃO gera contrato — a geração fica como o
+                        outro dev construiu, no bloco próprio. Daqui o checklist
+                        só dá ACESSO ao contrato para revisar: envelope, status,
+                        signatários e as ações de reenviar/cancelar/refazer. */}
+                    <div id="contratos-da-empresa" className="scroll-mt-24" />
 
                     {/* Lista dos contratos desta empresa. */}
                     <Card>
@@ -1019,6 +1121,8 @@ export default function ContratoDetalhe({
                             </Table>
                         </CardContent>
                     </Card>
+
+
                 </div>
             </main>
 

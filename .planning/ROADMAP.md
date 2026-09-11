@@ -2397,7 +2397,253 @@ Plans:
 - [ ] 142-04-PLAN.md — fechamento passa a mostrar as faixas da tabela própria e deixa de cadastrar/editar; retarget das travas antigas e gate ampliado com checkpoint humano.
 
 ---
+## Milestone v23.0 — Fluxo de Entrada de Novas Empresas (Fases 150-156)
 
+**Plano canônico:** `.planning/seeds/fluxo-entrada-novas-empresas-260901.md` (transcrição fiel do PDF *Fluxo de Entrada de Novas Empresas*, ECF Consultoria, 01/09/2026, + levantamento técnico contra `origin/main` `695711f5`) · **Requirements:** `.planning/REQUIREMENTS-v23.md` · **Pesquisa:** não executada — decisão D0, o PDF já é a especificação funcional e o cruzamento com o código foi feito na abertura.
+
+**Goal:** Um único cadastro de empresa atravessa HubSpot → Comercial → Administrativo → Coordenação → Onboarding → Em operação, com etapa e status explícitos, checklist obrigatório por etapa, travas que impedem avanço incompleto, e histórico datado por evento para medir SLA.
+
+**Decisões travadas (usuário, 2026-09-01):** D0 sem pesquisa de domínio nesta abertura · D1 os 9 status moram em `companies.etapa`, coluna **nova** e aditiva — `companies.status` fica exatamente como está (string livre, default `'ativo'`, semântica de contrato ativo/inativo) · D2 "Em operação" vira a etapa 9, atingida só depois do onboarding concluído; o cálculo hoje derivado em `CompanyController.php:179` (`tem analista OU tem estrategista`) sobrevive como fallback para quem não tiver etapa — a aba "Empresas" de `/companies` passa a listar coisa diferente, de propósito · D3 o checklist gera e marca sozinho o que o sistema já sabe fazer (link ADMA, link/conexão ECF via `OnboardingLinkService::paraEmpresa`, Grant da consultoria); o resto (grupo de WhatsApp, e-mail colaborador, envio da mensagem) é marcação manual com registro de quem e quando · D4 o destino do §6 é resolvido por `company_marketplaces` (N:N da v13.0), não "Mercado Livre" literal — hoje produz o mesmo resultado visível (126 meli / 0 shopee / 0 amazon) · D5 **HubSpot e Clicksign se integram, nunca se reconstroem** — `HubspotWebhookController`/`HubspotDealHandoffService` (§1) e o grupo Contrato inteiro entregue pelas Fases 126/127/129/132 + a tela da Fase 131 (§3) são consumidos, nunca recriados · D6 pendência é sinalizador paralelo à etapa, nunca status principal — precedente direto: o flag `problema_desconsidera_meta` do Painel Polos, que tem um único ponto de decisão (`PolosController::desconsideraDaMeta()`) e nunca deixa a leitura direta do flag se espalhar (`.planning/learnings/painel-polos-status-e-meta.md` §1).
+
+**Reuso já identificado (não construir do zero):** `HubspotWebhookController` + `HubspotDealHandoffService` + `HubspotCompanyMatcher` (§1) · Clicksign das Fases 126/127/129/132 (`ClicksignClient`, `ContratoClicksignService`, `ClicksignWebhookController`) e a tela administrativa da Fase 131 (grupo Contrato do §3) · `DefinicaoOnboarding` (VERSAO 17) + `OnboardingEngineService` (§9) · os dois responsáveis (analista/estrategista) já no schema, entregues pela Fase 135 · `spatie/laravel-activitylog` já aplicado a `Company` (base do §12) · `companies.ml_link_url`/`ml_link_generated_at`, `OnboardingLinkService::paraEmpresa`, `company_grants`/`SyncGrantsFromSftp` (peças soltas do §5 a amarrar num checklist, não recriar).
+
+**Risco central:** `companies.etapa` nasce ao lado de `companies.status`, que já significa outra coisa (string livre, default `'ativo'`, migration `2026_05_25_100001` com backfill em produção) sobre uma tabela com ~500 registros reais. A Fase 150 mexe em **migration sobre tabela com dado de produção** e por isso é fase GSD obrigatória (baseline de testes + `VERIFICATION.md`) pelo próprio `CLAUDE.md` — ver o alerta na própria fase. `em_operacao` hoje é lido ao vivo pela aba "Empresas" de `/companies` em produção; o backfill da Fase 150 precisa preservar 100% do que essa tela mostra hoje antes de a Fase 155 tratar o cálculo derivado como fallback secundário.
+
+**Ordem de construção:** a máquina de estados (137) é fundação — nada mais tem onde gravar etapa sem ela. Comercial (138) é o primeiro ponto de entrada real na etapa. Administrativo (139) depende de haver empresa chegando em `Aguardando Administrativo` (138) e do grupo Contrato já entregue pela v22.0 (D5). Comunicação (140) monta a mensagem com dado que o checklist administrativo já gera (139). Distribuição+Responsáveis (141) só existe depois do Administrativo concluir e mover a empresa (139). Onboarding (142) depende dos responsáveis estarem definidos (141). Histórico (143) fecha por último porque precisa que todo evento das fases 150-142 já esteja acontecendo para ter o que listar na timeline.
+
+### Phase 150: Máquina de estados — os 9 status de `companies.etapa` (v23.0) — ✅ COMPLETA (11/11 — G1+G2+G3+G4+G5+G6 fechados)
+
+**Goal:** Cada empresa carrega uma etapa própria entre os 9 status do §10, gravada e transicionada por um único serviço central, com pendência declarável em paralelo sem nunca sobrescrever a etapa — e as ~500 empresas já cadastradas migram sem quebrar o que a tela "Empresas" de `/companies` mostra hoje.
+**Requirements**: ETAPA-01, ETAPA-02, ETAPA-03, ETAPA-04, ETAPA-05, ETAPA-06
+**Depends on:** Nada (fundação)
+
+> ⚠️ **Migration em tabela com dado de produção — fase GSD obrigatória.** `ETAPA-01` cria `companies.etapa` e `ETAPA-02` faz backfill sobre a tabela `companies` com ~500 registros reais em produção. Pelo `CLAUDE.md` (§ "GSD obrigatório — `/gsd-plan-phase` → `/gsd-execute-phase`"), esta fase **não** é trabalho direto: exige baseline de testes antes da migration e `VERIFICATION.md` ao final. Ler `.planning/learnings/painel-polos-status-e-meta.md` antes de desenhar o ponto único de decisão de transição (ETAPA-03) — é o mesmo padrão que já existe para `problema_desconsidera_meta`.
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Toda empresa tem uma etapa entre as 9 do §10 visível no cadastro: as ~500 já cadastradas recebem etapa no backfill, quem já estava em operação (analista OU estrategista, cálculo atual) entra direto na etapa 9, e quem ficar sem etapa continua resolvido pelo cálculo antigo como fallback — a tela "Empresas" de `/companies` não perde nenhuma empresa que mostra hoje (ETAPA-01, ETAPA-02, D2)
+  2. Não existe outro ponto do código que grave `companies.etapa` além de um único serviço de transição — toda mudança de etapa, de qualquer controller ou job, passa por ele (ETAPA-03)
+  3. Uma empresa pode ter pendência marcada (ex.: "Contrato não assinado") permanecendo na mesma etapa — marcar ou desmarcar pendência nunca move a etapa (ETAPA-04, D6)
+  4. Pelo menos uma listagem existente pode ser filtrada por etapa e, separadamente, por "com pendência" (ETAPA-05)
+  5. Tentar avançar uma etapa sem os requisitos cumpridos é recusado com uma mensagem que nomeia o requisito faltante (ex.: "contrato não assinado"), nunca um erro genérico (ETAPA-06)
+
+**Plans:** 11/11 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 150-01-PLAN.md — Ambiente de teste Inertia + baseline verde registrada antes da migration [wave 0]
+- [x] 150-02-PLAN.md — ETAPA-01: coluna `companies.etapa` (nullable, sem default) + as 9 constantes no model `Company` [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 150-03-PLAN.md — ETAPA-06 + ETAPA-03: `EtapaTransicaoService` (par puro/efeito) + tabela `company_etapa_transicoes` (D-16 = tabela dedicada) [wave 2]
+- [x] 150-04-PLAN.md — ETAPA-04: pendência paralela declarada em 4 colunas de `companies` (D-18 = colunas) + ponto único de leitura [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 150-05-PLAN.md — ETAPA-02: comando `etapa:backfill` em dois baldes + contagens por reconsulta ao banco [wave 3]
+- [x] 150-06-PLAN.md — ETAPA-03: regressão de segurança do ponto único de escrita + varredura estática de `app/` [wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 150-07-PLAN.md — ETAPA-05: filtros server-side por etapa e por pendência em `/companies` + checkpoint humano [wave 4]
+
+**Wave 5 — gap closure** *(achados CRITICAL de `150-VERIFICATION.md` e `150-REVIEW.md`)*
+
+- [x] 150-08-PLAN.md — G1: fecha os 3 bypasses do gate estático do ponto único de escrita de `companies.etapa` [wave 5]
+- [x] 150-09-PLAN.md — G2: histórico de etapa sobrevive à exclusão permanente do ator (`ON DELETE SET NULL`) [wave 5]
+
+**Wave 6 — gap closure** *(blocked on Wave 5 completion)*
+
+- [x] 150-10-PLAN.md — G4 + G5 + G6: `transicionar()` decide sobre a linha travada · backfill chaveado por id · frontmatter de 150-01 [wave 6]
+- [x] 150-11-PLAN.md — G3: filtros de `/companies` deixam de se apagar entre si + checkpoint humano [wave 6]
+
+### Phase 151: Área Comercial conectada à etapa + reorganização em Contrato e Entrada (v23.0) — ✅ COMPLETA (9/9)
+
+**Goal:** A venda marcada GANHA no HubSpot chega na Área Comercial já na etapa "Aguardando Administrativo", sem cadastro manual, e o Comercial passa a ser a única casa da gestão de entrada — com as listagens **Contrato** e **Entrada** exibindo os 8 campos mínimos do §2, e a empresa saindo de lá só quando entra em "Aguardando Distribuição".
+**Requirements**: COMERC-01, COMERC-02, COMERC-03
+**Depends on:** Fase 150
+**UI hint:** yes
+
+> 🔁 **Reorganização decidida em 2026-09-02, depois deste ROADMAP escrito.** O Administrativo é absorvido pela Área Comercial em dois módulos, **Contrato** e **Entrada**. Enunciado na letra, mapa arquivo-a-arquivo e armadilhas medidas em `.planning/seeds/151-153-admin-no-comercial-dois-modulos-260902.md`; decisões travadas em `151-CONTEXT.md`. Esta fase entrega **a casca** — navegação, as duas listagens e o nascimento na etapa 1; os itens de checklist dentro dos módulos são a Fase 152.
+>
+> ⚠️ **Não existe aba "Empresas Ganhas".** Contrato e Entrada **são** as listagens (D-04), separadas por **processo pendente, não por etapa** (D-05): a mesma empresa pode estar nas duas ao mesmo tempo, e por isso separar as duas listas por `companies.etapa` está **proibido**.
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Uma venda marcada GANHA no HubSpot chega na Área Comercial já na etapa "Aguardando Administrativo", sem nenhum cadastro manual adicional — e o cadastro manual do próprio Comercial (`ComercialController::store`) nasce na mesma etapa, pelo mesmo `EtapaTransicaoService` (COMERC-01, D-13)
+  2. As listagens **Contrato** e **Entrada** mostram, cada uma, por empresa, os 8 campos mínimos do §2 — nome, serviço contratado, setor/segmento (setor ECF, D-12), origem da venda, responsável comercial e data da venda (buscados no HubSpot, D-08/D-09), informações principais do cliente, status do contrato e existência de pendências, demais dados comerciais do HubSpot (COMERC-02)
+  3. Pendência do fluxo (a declarada na Fase 150) e pendências do cadastro (as **7** de `PendenciasComerciaisService`, contadas no serviço real em 2026-09-02 — o "8" do §2 estava errado) aparecem em colunas separadas e nomeadas — nunca somadas num número só (COMERC-02, D-11)
+  4. Uma empresa some da listagem **Entrada** só no instante em que entra na etapa "Aguardando Distribuição" — continua visível enquanto está em "Administrativo Concluído" (COMERC-03, D-07). **A listagem Contrato não tem corte por etapa** — ver a nota abaixo
+  5. `Administrativo › Contratos` vira o módulo **Contrato** dentro do Comercial preservando a permission própria `admin.contratos` (o `ContratoAdminPermissaoTest` da Fase 131 segue verde), `Administrativo › Empresas` sai do menu sem que rota/controller sejam apagados, e o módulo **Entrada** existe como casca com chave de permissão própria no catálogo (D-15, D-16)
+
+> ⚠️ **A listagem Contrato NÃO tem corte por etapa — divergência deliberada do SC#4** (decisão do
+> usuário em 2026-09-02, tensão levantada pelo `gsd-plan-checker`). O universo da tela da Fase 131
+> é `active = true` **E** ter `ContratoServico` ativo cujo serviço exige contrato
+> (`ContratoAdminController::index()`, linhas 66-70) — `companies.etapa` **não entra na query**.
+> Aplicar ali o corte da etapa 5 removeria da visão do Administrativo toda empresa já em operação
+> com contrato ativo (renovação, recontratação, cancelamento), quebrando uma tela que já está em
+> produção. **Contrato é ferramenta administrativa contínua: o critério de saída dela é o estado do
+> contrato, não a etapa.** O corte da etapa 5 (D-07/COMERC-03) vale só para a listagem **Entrada**.
+
+**Plans:** 9/9 plans complete — Fase 151 COMPLETA. Deploy NÃO autorizado — ver `151-09-SUMMARY.md` § "Pendências obrigatórias para a VPS" antes de subir.
+
+Plans:
+**Wave 0** *(medições antes de qualquer código — gate do `CLAUDE.md`)*
+
+- [x] 151-01-PLAN.md — Baseline de testes registrada antes da migration das 3 colunas (D-09) [wave 0]
+- [x] 151-02-PLAN.md — Checkpoint humano: nome interno da property de owner medido na conta HubSpot real + escopo `crm.objects.owners.read` (D-08) [wave 0] — **⚠️ NÃO medido de fato**: credencial ausente no `.env` local (401) impediu a medição real; `hubspot_owner_id` foi ASSUMIDO com autorização explícita do usuário, e o escopo `crm.objects.owners.read` ficou `NÃO CONFIRMADO`. Ambas viram pendência obrigatória do plano 151-09, a medir na VPS. Ver `138-HUBSPOT-MEDICOES.md` e `151-02-SUMMARY.md`
+
+**Wave 1** *(blocked on Wave 0 completion)*
+
+- [x] 151-03-PLAN.md — COMERC-02: colunas `hubspot_owner_id`/`hubspot_owner_nome`/`data_venda` + property no config + `fetchOwner()` + `HubspotOwnerResolver` (D-08/D-09/D-12) [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 151-04-PLAN.md — COMERC-02: webhook persiste owner e data da venda nos dois ramos + comando de retroativo com dry-run (D-10/D-14) [wave 2]
+- [x] 151-05-PLAN.md — COMERC-02 + COMERC-03: módulo Entrada — permission própria, módulo, rota, `ComercialEntradaController` com os 8 campos e as duas pendências separadas (D-02/D-04/D-05/D-06/D-07/D-11/D-12/D-15) [wave 2]
+- [x] 151-06-PLAN.md — COMERC-02: listagem Contrato ganha os 8 campos do §2 e a etapa, sem mudar a query do universo (D-03/D-06/D-11) [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 151-07-PLAN.md — COMERC-01: ator de sistema "Sistema HubSpot" (D-17) + nascimento na etapa 1 nas duas portas, webhook e cadastro manual (D-13/D-14) [wave 3]
+- [x] 151-08-PLAN.md — COMERC-02: navegação reorganizada — `Entrada.jsx`, Contrato movido para o Comercial e `admin.empresas` fora do menu (D-01/D-02/D-15/D-16) [wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 151-09-PLAN.md — Checkpoints humanos finais: conta de sistema não-logável em local e VPS, render das duas listagens, regressão contra a baseline (D-01/D-15/D-16/D-17) [wave 4] — os dois checkpoints humanos foram aprovados; suíte reexecutada nesta sessão (252 tests/921 assertions, OK), sem regressão contra a baseline do 151-01. Ver `151-09-SUMMARY.md`
+
+### Phase 152: Checklist administrativo + trava de finalização (v23.0) — ✅ COMPLETA (10/10, gate humano aprovado)
+
+**Goal:** Dentro do cadastro da empresa existe um checklist com os 9 itens do §5 — o que o sistema já sabe gerar se marca sozinho, o grupo Contrato só reflete o Clicksign já entregue, e o botão FINALIZAR ENTRADA ADMINISTRATIVA só libera quando tudo está pronto, movendo a empresa para o marketplace do contrato.
+**Requirements**: ADMIN-01, ADMIN-02, ADMIN-03, ADMIN-04, ADMIN-05, ADMIN-06
+**Depends on:** Fases 150, 138
+**UI hint:** yes
+
+> 🔒 **D5 — nada aqui reconstrói assinatura.** O grupo Contrato **lê** o estado do envelope Clicksign entregue pelas Fases 126/127/129/132 (`ContratoClicksignService`, `ClicksignWebhookController`) e pela tela da Fase 131. Nenhum plano desta fase cria cliente HTTP de assinatura, webhook de contrato novo, ou lógica paralela de "contrato assinado" — só leitura do estado que já existe.
+
+> ✅ **Contagem FECHADA em 2026-09-09 — valem os 9 itens do §5** (D-01 do `152-CONTEXT.md`). Os 3 excluídos do §3 (`acompanhar a assinatura`, `gerar mensagem de boas-vindas`, `inserir todos os links necessários`) são passos intermediários que desembocam em item já controlado. Para serviço isento de contrato o checklist nasce com **6** itens — o grupo Contrato não existe (D-07), em vez de existir marcado "não aplicável" (proibido pela D-02).
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Os módulos **Contrato** e **Entrada** da Área Comercial mostram o checklist da empresa, cada item com estado Pendente/Concluído — os 4 itens de Contrato mudam sozinhos conforme o envelope Clicksign avança (revisado → enviado → assinado), sem nenhuma marcação manual nesse grupo (ADMIN-01, ADMIN-02)
+  2. Clicar para gerar o link ADMA, a conexão com o sistema ECF ou o Grant da consultoria dispara a geração real pelos serviços já existentes (`ml_link_url`, `OnboardingLinkService::paraEmpresa`, `SyncGrantsFromSftp`) e marca o item sozinho quando termina (ADMIN-03)
+  3. Marcar manualmente "Grupo de WhatsApp criado", "E-mail colaborador criado" ou "Boas-vindas enviada" registra quem marcou e quando, visível ao reabrir o item (ADMIN-04)
+  4. O botão FINALIZAR ENTRADA ADMINISTRATIVA fica desabilitado enquanto qualquer item obrigatório está pendente ou o contrato não está assinado, e habilita no instante em que o último requisito é cumprido — nunca antes (ADMIN-05)
+  5. Clicar em FINALIZAR ENTRADA ADMINISTRATIVA move a mesma empresa (mesmo `company_id`, nenhum cadastro novo) para a etapa "Aguardando Distribuição" e para o módulo do marketplace do contrato, resolvido por `company_marketplaces` (ADMIN-06, D4)
+
+> ⚠️ **Correções do `152-CONTEXT.md` aos critérios 1 e 2 acima** (decisões travadas com o usuário em 2026-09-09; o texto original fica preservado, mas **quem verifica esta fase mede pelas correções**):
+> - Critério 1 — o grupo Contrato tem **3** itens, não 4, e o item "Contrato revisado" é **marcação manual com autoria** (D-06), exceção registrada junto ao ADMIN-02 em `REQUIREMENTS-v23.md` (D-19). "Contrato assinado" fecha por assinatura **ou** por `ContratoLiberacao` (D-16), e com 2+ envelopes manda o mais atrasado (D-18). As duas seções aparecem numa **ficha única** aberta pelas duas listagens (D-08/D-17), não em duas telas.
+> - Critério 2 — o nome é **Adman**, não ADMA, e o link é **fixo e igual para todas as empresas**, em `config('services.adman.register_url')`; o item 6 é manual (D-04). O "Grant da consultoria" é o **OAuth do Mercado Livre**, nada a ver com `SyncGrantsFromSftp`, e fecha somente quando o cliente **conectou** (`ml_tokens.status = active`), nunca quando o link foi gerado (D-05).
+> - Além dos ADMIN-01..06 — o progresso do checklist passa a **dirigir as etapas 2, 3 e 4** da máquina de estados da Fase 150, por `EtapaTransicaoService` (D-15). Sem isso o FINALIZAR nasceria morto, porque a etapa 5 só é alcançável a partir da 4.
+
+**Plans:** 10/10 plans executed (10 planos em 9 waves) — **FASE COMPLETA**
+
+Plans:
+**Wave 1**
+
+- [x] 152-01-PLAN.md — Baseline de testes 137/138, link fixo do Adman em `config/services.php`/`.env.example` (D-04) e registro das exceções ao ADMIN-02 em `REQUIREMENTS-v23.md` (D-19)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 152-02-PLAN.md — Migration `checklist_administrativo_itens` ancorada em `company_id` e model com autoria `withTrashed` (D-10/D-11)
+- [x] 152-03-PLAN.md — Contrato de resolver, value object de 3 estados e catálogo fechado dos 9 itens, com montagem condicional do grupo Contrato (D-01/D-03/D-07)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 152-04-PLAN.md — Os 4 resolvers automáticos (itens 2, 3, 7 e 8), com a segunda fonte do item 3 (D-16) e a agregação de múltiplos envelopes (D-18)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 152-05-PLAN.md — `ChecklistAdministrativoService`: montagem, progresso com denominador do catálogo e marcação manual com autoria (D-07/D-10/D-11/D-13)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 152-06-PLAN.md — `FinalizarEntradaAdministrativaService`: régua pura da trava (ADMIN-05) e transição 4→5 com destino determinístico (ADMIN-06/D-12)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 152-07-PLAN.md — `ChecklistEtapaSincronizadorService`: o progresso dirige as etapas 2, 3 e 4, incluindo o salto 2→4 da empresa isenta (D-15)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [x] 152-08-PLAN.md — Rota da ficha em OR (`admin.contratos,comercial.entrada`) e os 4 endpoints do checklist, com a seção Contrato gated por módulo (D-08/D-09/D-17)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [x] 152-09-PLAN.md — UI: componentes do checklist, seção em `ContratoDetalhe.jsx`, ação "Abrir" em `Entrada.jsx` e `npm run build` (D-05 — copiar link, nunca abrir)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [x] 152-10-PLAN.md — Regressão final contra a baseline e os dois checkpoints humanos de conferência visual
+
+### Phase 153: Mensagem de boas-vindas generalizada (v23.0) — ✅ COMPLETA (trabalho direto)
+
+**Goal:** O item "Gerar mensagem de boas-vindas" do módulo **Entrada** tem uma mensagem pronta, preenchida com os dados reais da empresa, para qualquer serviço contratado — não só Polos — editável direto no painel sem depender de deploy.
+**Requirements**: COMUNIC-01, COMUNIC-02, COMUNIC-03
+**Depends on:** Fase 152
+**UI hint:** yes
+
+> 🔁 **Sobrevive inteira à reorganização da Fase 151** (decisão do usuário, 2026-09-02). "Gerar mensagem de boas-vindas" é um dos 8 itens do módulo **Entrada**, e a Fase 152 entrega o *item de checklist*; esta fase continua dona do **motor** da mensagem — os 6 blocos do §4, funcionar para qualquer serviço, e o texto padrão editável sem deploy. Mesma separação de risco da D-01 da Fase 151: checklist + trava do FINALIZAR é um risco, motor de template é outro.
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Abrir o item "Boas-vindas" do checklist mostra uma mensagem já preenchida com os dados da empresa aberta, pronta para copiar (COMUNIC-01)
+  2. A mensagem contém os 6 blocos do §4 — boas-vindas, e-mail colaborador, link da ADMA, link/Grant da consultoria, link de conexão com o sistema, orientações sobre as conexões que o cliente precisa fazer — e nenhum bloco fica vazio quando o dado correspondente já existe (COMUNIC-02)
+  3. Uma empresa de um serviço diferente de Polos recebe a mesma mensagem corretamente preenchida, e um admin edita o texto padrão direto em Padrões Globais, sem precisar de deploy (COMUNIC-03)
+
+**Plans:** sem planos GSD — conduzida como **trabalho direto** (`CLAUDE.md` → "GSD por RISCO"): feature nova em módulo existente, migration CRIA tabela em vez de alterar tabela com dado em produção. As decisões de desenho estão em `.planning/phases/153-mensagem-de-boas-vindas-generalizada-v23-0/153-DECISOES.md`, escritas ANTES do código; os testes vieram no mesmo commit. 25 testes / 81 assertions.
+
+### Phase 154: Distribuição pela Coordenação e chegada aos responsáveis (v23.0) — ✅ COMPLETA (trabalho direto)
+
+**Goal:** A Coordenação vê a fila de quem terminou o Administrativo e tem contrato assinado, distribui analista e estrategista com um clique registrando quem distribuiu, e os dois responsáveis recebem a empresa automaticamente com destaque de novo cliente.
+**Requirements**: DISTRIB-01, DISTRIB-02, DISTRIB-03, DISTRIB-04, RESP-01, RESP-02
+**Depends on:** Fase 152
+**UI hint:** yes
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. A fila de distribuição da Coordenação lista só empresas com Administrativo concluído, contrato assinado, e ainda sem analista/estrategista definidos (DISTRIB-01)
+  2. Os seletores de analista e de estrategista mostram só colaborador ativo e habilitado para a função — ninguém inativo ou sem a habilitação aparece (DISTRIB-02)
+  3. Confirmar distribuição grava analista, estrategista, o coordenador logado que confirmou, e a data/hora — e move a empresa para a etapa "Aguardando Onboarding" (DISTRIB-03, DISTRIB-04)
+  4. Assim que a distribuição é confirmada, a empresa aparece automaticamente em Minhas Empresas do analista e do estrategista escolhidos, com destaque visual de "novo cliente" e a indicação "onboarding pendente" — sem nenhuma ação adicional de ninguém (RESP-01, RESP-02)
+
+**Plans:** sem planos GSD — **trabalho direto** (`CLAUDE.md` → "GSD por RISCO"). A fase **não tem migration nenhuma**: reusa o enum de `company_users.role` e a linha de transição 5→6 como auditoria, então não altera tabela com dado em produção. Decisões em `.planning/phases/154-distribuicao-pela-coordenacao-v23-0/154-DECISOES.md`, escritas ANTES do código. 24 testes / 74 assertions.
+
+### Phase 155: Onboarding plugado na máquina de estados (v23.0) — ✅ COMPLETA (trabalho direto)
+
+**Goal:** O motor de onboarding por serviço, já entregue na Fase 135, passa a nascer e avançar junto com a etapa da empresa — sem recriar a régua — e trava quem não tem os dois responsáveis definidos.
+**Requirements**: ONBRD-01, ONBRD-02, ONBRD-03, ONBRD-04
+**Depends on:** Fase 154
+
+> 🔒 Ler `.planning/learnings/onboarding-regua-congelada.md` antes de planejar: mudar a definição de onboarding não alcança quem já roda. `DefinicaoOnboarding` (VERSAO 17) é **reusada**, nunca reescrita — esta fase muda o gatilho e a leitura de etapa em volta dela, não o motor.
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Iniciar o onboarding move a etapa de "Aguardando Onboarding" para "Onboarding em andamento" (ONBRD-01)
+  2. Concluir todas as atividades previstas do onboarding move a etapa para "Onboarding concluído" e, na sequência, para "Em operação" (ONBRD-02)
+  3. O checklist de onboarding aberto continua sendo o gerado por `DefinicaoOnboarding`/`OnboardingEngineService` conforme o serviço contratado — nenhuma tela ou tabela nova de checklist nasce nesta fase (ONBRD-03)
+  4. Tentar iniciar o onboarding de uma empresa sem analista e sem estrategista definidos é recusado (ONBRD-04)
+
+**Plans:** sem planos GSD — **trabalho direto** (`CLAUDE.md` → "GSD por RISCO"), sem migration. `DefinicaoOnboarding` **não foi tocada** e a `VERSAO` continua 17, com teste que falha se alguém a reescrever (ONBRD-03). Decisões em `.planning/phases/155-onboarding-na-maquina-de-estados-v23-0/155-DECISOES.md`. 10 testes / 24 assertions; regressão de 795 testes incluindo as suítes de onboarding.
+
+### Phase 156: Histórico e rastreabilidade para SLA (v23.0) — ✅ COMPLETA (trabalho direto)
+
+**Goal:** Toda empresa tem uma timeline datada, do momento em que chega do HubSpot até entrar em operação, que permite ver quanto tempo ela passou em cada etapa — a base para medir SLA e apontar gargalo.
+**Requirements**: HIST-01, HIST-02, HIST-03
+**Depends on:** Fases 150, 138, 139, 140, 141, 142 (precisa que toda transição das fases anteriores já esteja emitindo evento para ter o que listar)
+**UI hint:** yes
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Abrir uma empresa mostra uma timeline com data, horário, ação e usuário responsável por cada evento relevante do fluxo de entrada, sobre a base `spatie/laravel-activitylog` já aplicada a `Company` (HIST-01)
+  2. A timeline de uma empresa que passou pelo fluxo completo mostra, no mínimo, os 7 eventos do exemplo do §12 — recebida do HubSpot, contrato enviado, contrato assinado, administrativo concluído, analista definido, estrategista definido, enviada para onboarding (HIST-02)
+  3. É possível ler, para qualquer empresa, quanto tempo ela passou em cada etapa — dado suficiente para apontar gargalo sem abrir o banco (HIST-03)
+
+**Plans:** sem planos GSD — **trabalho direto**, sem migration e **sem gravar nada**: a timeline é leitura agregada do que as Fases 150-155 já registram. Decisões em `.planning/phases/156-historico-e-sla-v23-0/156-DECISOES.md`. 11 testes / 86 assertions.
+
+> **Fora de escopo desta milestone (Future Requirements do `REQUIREMENTS-v23.md`):** criar o grupo de WhatsApp via API do Digisac, provisionar e-mail colaborador automaticamente, enviar a mensagem de boas-vindas pelo sistema (o PDF pede "pronta para copiar", não envio automático), painel de SLA agregado (HIST-03 entrega o dado por empresa, o painel é produto separado), e a segunda parte da especificação funcional (o PDF se declara "a primeira parte"). **Fora de escopo declarado pelo PDF:** o Trello não integra este fluxo. **Fora de escopo por já estar entregue:** reconstruir a ingestão do HubSpot ou a assinatura de contrato (D5); reescrever `DefinicaoOnboarding` (ONBRD-03); fechar a v22.0 — a Fase 133 e o plano `133-05` seguem abertos, são trabalho daquela milestone.
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
@@ -2420,3 +2666,4 @@ Plans:
 *Roadmap atualizado: 2026-09-10 - **Fase 141 FECHADA.** Virada em produção (2026-09-09/10, commit `e98e25ed`): 168 empresas materializadas com tabela própria presumida (`origem='presumida_servico'`), delta ANTES×DEPOIS apresentado e aprovado pelo usuário (total a receber R$ 2.486.700,91 → R$ 736.450,97 — a queda é a correção da fórmula antiga que somava contrato à faixa, confirmada pelo usuário com o caso Camillo Parts R$ 522.500,00 → R$ 12.000,00, faixa 7 para faixa 7, "Mudam de faixa: 0"), chave `fechamento_tabela_por_empresa_ativa` ligada, e agosto/2026 reconsolidado sob a regra nova a pedido explícito do usuário (soma de faixas R$ 460.500,00 → R$ 466.500,00, 127 → 129 empresas com faixa). Gate `Phase122|Phase136|Phase137|Phase138|Phase139|Phase140|Phase141|Quick260909`: 553 testes / 2642 asserções / 0 falhas. Números completos, procedimento de rollback sem deploy e pendências (168 tabelas presumidas ainda sem conferência contra o contrato real, 32 empresas sem tabela, 3 contratos de R$ 250.000 a investigar) em `.planning/learnings/fechamento-tabela-por-empresa.md`. Fases 1-141 preservadas.*
 
 *Roadmap atualizado: 2026-09-10 - **Fase 142 (O cadastro da tabela progressiva vai para o contrato)** anexada. Pedido do usuario em 2026-09-09 olhando o fechamento em producao, com quatro itens: mostrar as faixas da tabela propria (hoje sai so a frase), mascara de dinheiro nos campos, mover o cadastro para dentro da pagina de contrato da empresa em pagina exclusiva, e deixar o fechamento so de leitura. O primeiro item e divida consciente do plano 137-09, que preferiu formulario em branco com aviso a valores adivinhados que sobrescreveriam preco real — custo aceito quando havia ZERO tabelas proprias. Depois da Fase 141 sao 169, das quais 168 presumidas esperando conferencia, entao a divida virou gargalo. Fases 1-141 preservadas.*
+*Roadmap atualizado: 2026-09-01 — Milestone v23.0 (Fluxo de Entrada de Novas Empresas) anexada: 7 fases (137-143) cobrindo os 31 REQ-IDs (ETAPA/COMERC/ADMIN/COMUNIC/DISTRIB/RESP/ONBRD/HIST) do REQUIREMENTS-v23.md, derivadas do PDF `.planning/seeds/fluxo-entrada-novas-empresas-260901.md` — pesquisa de domínio deliberadamente pulada (D0). Ordem dita pelo próprio fluxo do PDF: máquina de estados dos 9 status (137, fundação) → Comercial religado à etapa (138) → checklist administrativo + trava de finalização (139) → mensagem de boas-vindas generalizada (140) → distribuição da Coordenação + chegada aos responsáveis, DISTRIB e RESP fundidos numa fatia vertical só (141) → onboarding plugado na máquina de estados (142) → histórico e SLA por último, porque depende de toda transição anterior já emitir evento (143). Fase 150 mexe em migration sobre `companies` com dado de produção (~500 registros) e por isso é fase GSD obrigatória, com baseline de testes e VERIFICATION — sinalizado explicitamente na própria fase. D5 travada na abertura: HubSpot e Clicksign se integram, nunca se reconstroem — nenhuma fase desta milestone cria cliente de assinatura, webhook de contrato ou ingestão de deal ganho; o grupo Contrato do checklist (Fase 152) só lê o estado entregue pelas Fases 126/127/129/132 da v22.0. `phases.clear` NÃO foi executado — Fases 1-136 preservadas, incluindo os três blocos de "Posição paralela" com gate humano aberto (Fases 133, 135, 136) da v22.0/avulsas, seguindo a convenção de anexar milestones deste roadmap.*

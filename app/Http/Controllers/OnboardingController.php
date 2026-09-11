@@ -389,7 +389,10 @@ class OnboardingController extends Controller
             : null;
 
         try {
-            $this->engine->definirResponsaveis($onboarding, $estrategista, $analista);
+            // Fase 155 (D-D) — o 4º argumento é o ATOR da transição de etapa
+            // 6→7. O engine não conhece a sessão; quem chama informa. Sempre
+            // `$request->user()`, nunca id vindo do corpo.
+            $this->engine->definirResponsaveis($onboarding, $estrategista, $analista, $request->user());
         } catch (\DomainException $e) {
             // A mensagem cai no campo do analista porque é o papel operacional
             // e o primeiro que a tela oferece — sem isso o erro fica órfão de
