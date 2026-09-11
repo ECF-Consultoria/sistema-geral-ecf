@@ -4,8 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\ContratoAssinatura;
+use App\Models\OnboardingLink;
+use App\Services\BoasVindas\MensagemBoasVindasService;
+use App\Services\ChecklistAdministrativo\ChecklistAdministrativoDefinicao;
+use App\Services\ChecklistAdministrativo\ChecklistAdministrativoService;
+use App\Services\ChecklistAdministrativo\ChecklistEtapaSincronizadorService;
+use App\Services\ChecklistAdministrativo\FinalizarEntradaAdministrativaService;
 use App\Services\Comercial\PendenciasComerciaisService;
 use App\Services\Contratos\ContratosPresosService;
+use App\Services\FluxoEntrada\TimelineEntradaService;
+use App\Support\Permissions;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Inertia\Inertia;
@@ -207,5 +216,146 @@ class ComercialEntradaController extends Controller
             'companies' => $paginator,
             'filters'   => $filters,
         ]);
+    }
+
+    /**
+     * A ficha da ENTRADA de uma empresa — onde o checklist administrativo é
+     * trabalhado e de onde a entrada é finalizada.
+     *
+     * ### Por que ela existe (11/09)
+     * O checklist nasceu dentro da ficha de Contrato (Fase 152, D-08: "ficha
+     * ÚNICA" aberta pelas duas listagens). Na prática confundiu: dos 9 itens,
+     * só 3 são de contrato — os outros 6 são o que o PDF do fluxo chama de
+     * "Estrutura e Comunicação" (grupo de WhatsApp, e-mail colaborador, link
+     * Adman, grant do ML, Portal do Cliente). Ler tudo isso sob o título
+     * "Contrato" fez o usuário pedir a separação; a ficha de Contrato voltou a
+     * ser só o contrato.
+     *
+     * ### O que NÃO mudou
+     * Os endpoints de AÇÃO continuam em `ContratoAdminController`, sob os nomes
+     * `admin.contratos.checklist.*` e `admin.contratos.finalizar-entrada`.
+     * Renomeá-los seria churn sem ganho para quem usa, e uma classe inteira de
+     * 404 silencioso; as rotas já aceitam as DUAS permissões em OR desde a Fase
+     * 152, que era o que de fato importava. O recorte fino segue em
+     * `guardaChecklist()`: item do grupo `contrato` exige `admin.contratos`.
+     *
+     * ### Ordem obrigatória (a mesma da ficha antiga)
+     * Montar o checklist PRIMEIRO — é a chamada que roda e persiste os 4
+     * resolvers automáticos —, sincronizar a etapa DEPOIS, e só então perguntar
+     * `podeFinalizar()`, que precisa enxergar a empresa já na etapa certa.
+     *
+     * Por que uma LEITURA sincroniza: o degrau 2→3 depende de um evento
+     * EXTERNO (o webhook do Clicksign gravando `enviado_em`) que não passa por
+     * ação nenhuma do checklist. Abrir a ficha é o único momento em que o
+     * sistema observa esse fato.
+     */
+    public function show(
+        Request $request,
+        Company $company,
+        ChecklistAdministrativoService $checklist,
+        FinalizarEntradaAdministrativaService $finalizar,
+        MensagemBoasVindasService $boasVindas,
+        TimelineEntradaService $timeline,
+    ) {
+        $podeVerContrato = $request->user()->hasPermission(Permissions::ADMIN_CONTRATOS);
+
+        $checklistPayload = $checklist->paraEmpresa($company);
+        $this->sincronizarEtapa($request, $company);
+
+        // Sem `admin.contratos`, o grupo Contrato inteiro sai do payload. O
+        // `progresso` continua sendo o da empresa INTEIRA de propósito: é a
+        // régua do FINALIZAR, não uma métrica da seção visível.
+        if (! $podeVerContrato) {
+            unset($checklistPayload['grupos'][ChecklistAdministrativoDefinicao::GRUPO_CONTRATO]);
+        }
+
+        return \Inertia\Inertia::render('Comercial/EntradaFicha', [
+            'company' => [
+                'id'   => $company->id,
+                'name' => $company->name,
+                'cnpj' => $company->cnpj,
+            ],
+            'checklist'         => $checklistPayload,
+            'pode_ver_contrato' => $podeVerContrato,
+            // Array inteiro: um campo desabilita o botão, o outro explica por
+            // quê. Mesma régua que recusa o POST (ADMIN-05) — o botão nunca
+            // decide sozinho.
+            'pode_finalizar'    => $finalizar->podeFinalizar($company),
+            'adman_register_url' => config('services.adman.register_url'),
+            'portal_cliente_url' => ($token = OnboardingLink::where('company_id', $company->id)->value('token'))
+                ? route('portal.inicio', $token)
+                : null,
+            'mensagem_boas_vindas' => $boasVindas->paraEmpresa($company),
+            // Pré-computado no servidor, ao contrário da ficha antiga que
+            // mandava a lista inteira de envelopes e decidia no JSX. Aqui só
+            // atravessa {url, rotulo}, e só para quem pode ver contrato.
+            'contrato_acesso'   => $podeVerContrato ? $this->contratoAcesso($company) : null,
+            // É da ficha de Contrato que o contrato é GERADO — o checklist não
+            // gera nada. Link só para quem tem a permissão.
+            'ficha_contrato_url' => $podeVerContrato ? route('admin.contratos.show', $company->id) : null,
+            // Fase 156 (HIST-01/02/03) — a história do fluxo de entrada, que
+            // mudou de ficha junto com o checklist: é ESTA a ficha da entrada.
+            //
+            // ⚠️ Hoje NÃO é renderizada: o bloco "Histórico do fluxo de entrada"
+            // foi removido da tela a pedido do usuário, e `TimelineEntrada.jsx`
+            // está sem uso. O payload fica porque a fonte é durável de propósito
+            // (`company_etapa_transicoes`, criada justamente porque o
+            // activity_log é podado em 365 dias) e religar a seção é uma linha.
+            // Se a decisão virar "não queremos mesmo", some daqui e o componente
+            // vai junto.
+            //
+            // NÃO é recortada por permissão de módulo, ao contrário do grupo
+            // Contrato: são datas, nomes de etapa e quem agiu — nenhum envelope,
+            // signatário ou valor.
+            'timeline'          => $timeline->paraEmpresa($company),
+            'duracao_por_etapa' => $timeline->duracaoPorEtapa($company),
+        ]);
+    }
+
+    /**
+     * Onde "Ver contrato" leva: o PDF assinado quando existe em disco, senão o
+     * painel da Clicksign, senão nada.
+     *
+     * `pdf_assinado_path` preenchido é a condição porque a rota do PDF devolve
+     * 404 quando o arquivo não está lá, e botão que leva a 404 é pior que botão
+     * nenhum.
+     *
+     * @return array{url: string, rotulo: string}|null
+     */
+    private function contratoAcesso(Company $company): ?array
+    {
+        $assinado = ContratoAssinatura::where('company_id', $company->id)
+            ->whereNotNull('pdf_assinado_path')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($assinado !== null) {
+            return ['url' => route('contratos.pdf-assinado', $assinado->id), 'rotulo' => 'Ver contrato assinado'];
+        }
+
+        $painel = config('services.clicksign.painel_url');
+
+        return $painel ? ['url' => $painel, 'rotulo' => 'Abrir na Clicksign'] : null;
+    }
+
+    /**
+     * Espelha `ContratoAdminController::sincronizarEtapaChecklist()` no caminho
+     * de LEITURA. `adotarSeLegado = false`: abrir uma ficha NUNCA carimba
+     * empresa legada — só agir sobre o checklist faz isso (D-05 da Fase 150).
+     *
+     * Nunca lança: a ficha tem de abrir mesmo que a reconciliação falhe. Trocar
+     * um desalinhamento de etapa por uma tela inacessível seria pior.
+     */
+    private function sincronizarEtapa(Request $request, Company $company): void
+    {
+        try {
+            app(ChecklistEtapaSincronizadorService::class)
+                ->sincronizar($company->refresh(), $request->user(), false);
+        } catch (\Throwable $e) {
+            Log::warning('[Entrada] reconciliação de etapa na abertura da ficha falhou', [
+                'company_id' => $company->id,
+                'erro'       => $e->getMessage(),
+            ]);
+        }
     }
 }

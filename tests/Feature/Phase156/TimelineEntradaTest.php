@@ -304,13 +304,19 @@ class TimelineEntradaTest extends TestCase
         return $u;
     }
 
+    /**
+     * 11/09 — a ficha passou a ser `comercial.entrada.show`: a história do fluxo
+     * de entrada acompanhou o checklist quando ele saiu da ficha de Contrato.
+     * As duas permissões continuam recebendo, sem recorte — são datas e nomes
+     * de etapa, nunca dado contratual.
+     */
     public function test_a_timeline_chega_no_payload_da_ficha_para_os_dois_perfis(): void
     {
         $r = $this->fluxoCompleto();
 
         foreach ([Permissions::ADMIN_CONTRATOS, Permissions::COMERCIAL_ENTRADA] as $chave) {
             $props = $this->actingAs($this->userComPermissaoViaSetor($chave))
-                ->get(route('admin.contratos.show', $r['empresa']))
+                ->get(route('comercial.entrada.show', $r['empresa']))
                 ->assertOk()
                 ->viewData('page')['props'];
 

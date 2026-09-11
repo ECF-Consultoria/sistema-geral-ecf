@@ -102,7 +102,7 @@ class MensagemNaFichaTest extends TestCase
     /** @return array<string, mixed> */
     private function props(User $user, Company $empresa): array
     {
-        $r = $this->actingAs($user)->get(route('admin.contratos.show', $empresa));
+        $r = $this->actingAs($user)->get(route('comercial.entrada.show', $empresa));
         $r->assertOk();
 
         return $r->viewData('page')['props'];

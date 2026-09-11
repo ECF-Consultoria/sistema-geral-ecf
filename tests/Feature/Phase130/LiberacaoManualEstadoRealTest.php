@@ -212,6 +212,19 @@ class LiberacaoManualEstadoRealTest extends TestCase
                 // clicksign_signer_key seguem proibidos aqui (T-130-04-05 /
                 // T-131-04-04), por mais que a prop cresça.
                 'erro_mensagem', 'ja_tentou_antes',
+                // `plano_parcelas_efetivo` e `plano_parcelas_texto` entraram
+                // pela quick 260824-bte (frase do parcelamento editável na
+                // tela); `tem_pdf_assinado` entrou na Fase 157, para o botao
+                // "Ver contrato" nao oferecer um documento que nao esta em
+                // disco. As tres sao derivadas do proprio contrato — valor,
+                // texto de parcelamento e presenca de arquivo. Nenhuma carrega
+                // PII de signatario, que e o que esta lista protege.
+                //
+                // As tres ficaram FORA desta lista por esquecimento de quem as
+                // adicionou, e o teste esteve vermelho desde entao: e
+                // exatamente para isso que a lista e EXATA. E-mail, CPF e
+                // clicksign_signer_key seguem proibidos.
+                'plano_parcelas_efetivo', 'plano_parcelas_texto', 'tem_pdf_assinado',
             ];
 
             $this->assertEqualsCanonicalizing($chavesEsperadas, array_keys($primeiroContrato));

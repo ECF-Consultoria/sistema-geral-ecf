@@ -1,5 +1,5 @@
 import { useForm } from '@inertiajs/react';
-import { RefreshCw, Lock, Zap, AlertTriangle, CheckCircle2, MinusCircle } from 'lucide-react';
+import { Check, RefreshCw, Lock, Zap, AlertTriangle, CheckCircle2, MinusCircle } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { cn } from '@/lib/utils';
 import DonoBadge from './DonoBadge';
@@ -117,7 +117,33 @@ function EstadoPasso({ passo }) {
 }
 
 /** Uma linha do passo — título, dono, selo de automação, estado, dependências, condição, ação. */
-export function LinhaPasso({ passo, onboardingId, confirmacao }) {
+/**
+ * Selo numerado do passo — número, ✓ ou cadeado no mesmo lugar.
+ *
+ * Veio do cabeçalho de etapa quando a tela virou lista plana: o número passou
+ * a ser a única marcação de ordem que sobrou, e é por ele que se conta "quanto
+ * falta" sem abrir nada. Mesmo desenho do checklist do portal de Polos.
+ */
+function SeloPasso({ numero, status }) {
+    const concluido = status === 'concluido' || status === 'nao_aplicavel';
+    const bloqueado = status === 'bloqueado';
+
+    return (
+        <span
+            aria-hidden="true"
+            className={cn(
+                'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 text-[10px] font-bold tabular-nums',
+                concluido ? 'border-emerald-400 bg-emerald-400 text-ecf-bg'
+                    : bloqueado ? 'border-white/10 text-white/25'
+                        : 'border-ecf-yellow/50 text-ecf-yellow',
+            )}
+        >
+            {concluido ? <Check size={12} /> : bloqueado ? <Lock size={10} /> : String(numero).padStart(2, '0')}
+        </span>
+    );
+}
+
+export function LinhaPasso({ passo, onboardingId, confirmacao, num = null }) {
     const form = useForm({});
 
     const concluirManualmente = () => {
@@ -149,6 +175,7 @@ export function LinhaPasso({ passo, onboardingId, confirmacao }) {
         >
             <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
+                    {num !== null && <SeloPasso numero={num} status={passo.status} />}
                     <span className="text-white font-semibold text-[14px]">{passo.titulo}</span>
                     <DonoBadge dono={passo.dono} setor={passo.setor} />
                     <NaturezaBadge natureza={passo.natureza} />
