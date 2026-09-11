@@ -210,20 +210,25 @@ class ChecklistAcessoPorEntradaTest extends TestCase
         $this->assertFalse($props['pode_gerar_contrato']);
         $this->assertNull($props['motivo_bloqueio']);
 
-        $this->assertArrayNotHasKey(
-            ChecklistAdministrativoDefinicao::GRUPO_CONTRATO,
-            $props['checklist']['grupos'],
-            'O grupo Contrato do checklist não pode chegar a quem não tem admin.contratos (D-09).'
-        );
-        $this->assertArrayHasKey(ChecklistAdministrativoDefinicao::GRUPO_ENTRADA, $props['checklist']['grupos']);
-
-        // O progresso continua sendo o da empresa INTEIRA de propósito — é a
-        // régua do FINALIZAR, não uma métrica da seção visível.
-        $this->assertSame(9, $props['checklist']['progresso']['total']);
-
         // As props que os dois perfis compartilham continuam chegando.
         $this->assertSame($empresa->id, $props['company']['id']);
         $this->assertNotEmpty($props['contratos_servico']);
+
+        // O checklist mudou de ficha (11/09) — mas o recorte é o MESMO.
+        $daEntrada = $this->propsDaFichaEntrada($user, $empresa);
+
+        $this->assertFalse($daEntrada['pode_ver_contrato']);
+        $this->assertNull($daEntrada['contrato_acesso'], 'Acesso ao documento é dado contratual.');
+        $this->assertArrayNotHasKey(
+            ChecklistAdministrativoDefinicao::GRUPO_CONTRATO,
+            $daEntrada['checklist']['grupos'],
+            'O grupo Contrato do checklist não pode chegar a quem não tem admin.contratos (D-09).'
+        );
+        $this->assertArrayHasKey(ChecklistAdministrativoDefinicao::GRUPO_ENTRADA, $daEntrada['checklist']['grupos']);
+
+        // O progresso continua sendo o da empresa INTEIRA de propósito — é a
+        // régua do FINALIZAR, não uma métrica da seção visível.
+        $this->assertSame(9, $daEntrada['checklist']['progresso']['total']);
     }
 
     // ─── Caso 9 — quem tem admin.contratos vê tudo ──────────────────────────
@@ -239,7 +244,10 @@ class ChecklistAcessoPorEntradaTest extends TestCase
 
         $this->assertTrue($props['pode_ver_contrato']);
         $this->assertNotEmpty($props['contratos'], 'Quem tem admin.contratos continua vendo os envelopes.');
-        $this->assertArrayHasKey(ChecklistAdministrativoDefinicao::GRUPO_CONTRATO, $props['checklist']['grupos']);
+
+        $daEntrada = $this->propsDaFichaEntrada($user, $empresa);
+
+        $this->assertArrayHasKey(ChecklistAdministrativoDefinicao::GRUPO_CONTRATO, $daEntrada['checklist']['grupos']);
     }
 
     // ─── Caso 10 — D-04: o link do Adman vem do servidor ────────────────────
@@ -248,7 +256,7 @@ class ChecklistAcessoPorEntradaTest extends TestCase
     {
         $user = $this->userComPermissaoViaSetor(Permissions::COMERCIAL_ENTRADA);
 
-        $props = $this->propsDaFicha($user, $this->empresaComContrato());
+        $props = $this->propsDaFichaEntrada($user, $this->empresaComContrato());
 
         $this->assertSame(config('services.adman.register_url'), $props['adman_register_url']);
         $this->assertNotEmpty($props['adman_register_url']);
@@ -260,7 +268,7 @@ class ChecklistAcessoPorEntradaTest extends TestCase
     {
         $user = $this->userComPermissaoViaSetor(Permissions::ADMIN_CONTRATOS);
 
-        $props = $this->propsDaFicha($user, $this->empresaComContrato());
+        $props = $this->propsDaFichaEntrada($user, $this->empresaComContrato());
 
         $this->assertArrayHasKey('permitido', $props['pode_finalizar']);
         $this->assertArrayHasKey('requisito_faltante', $props['pode_finalizar']);
@@ -302,6 +310,25 @@ class ChecklistAcessoPorEntradaTest extends TestCase
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page->component('Admin/ContratoDetalhe'));
+
+        return $response->viewData('page')['props'];
+    }
+
+    /**
+     * A ficha da ENTRADA — casa do checklist administrativo desde 11/09.
+     *
+     * O checklist saiu da ficha de Contrato porque dos 9 itens só 3 são
+     * contratuais; os outros 6 são "Estrutura e Comunicação" no PDF do fluxo.
+     * A régua de permissão NÃO mudou: as duas rotas aceitam as mesmas duas
+     * chaves em OR, e o recorte do grupo `contrato` continua sendo feito pelo
+     * `$podeVerContrato` do controller.
+     */
+    private function propsDaFichaEntrada(User $user, Company $empresa): array
+    {
+        $response = $this->actingAs($user)->get(route('comercial.entrada.show', $empresa));
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page->component('Comercial/EntradaFicha'));
 
         return $response->viewData('page')['props'];
     }

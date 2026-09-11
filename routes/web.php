@@ -1594,6 +1594,18 @@ Route::middleware(['auth', 'verified', 'permission:comercial.entrada'])->prefix(
     Route::get('/', [ComercialEntradaController::class, 'index'])->name('index');
 });
 
+// A ficha da Entrada (11/09) — casa do checklist administrativo, que saiu da
+// ficha de Contrato a pedido do usuário: dos 9 itens só 3 são contratuais.
+//
+// FORA do grupo acima, com as duas permissões em OR, pelo MESMO motivo que
+// `admin.contratos.show` está fora do dele (Fase 152, D-17): quem tem só
+// `admin.contratos` precisa alcançar o checklist, e quem tem só
+// `comercial.entrada` também. Nenhuma chave nova (D-09). O recorte de payload
+// é feito DENTRO de `show()`, por `$podeVerContrato`.
+Route::middleware(['auth', 'verified', 'permission:comercial.entrada,admin.contratos'])
+    ->get('/comercial/entrada/empresa/{company}', [ComercialEntradaController::class, 'show'])
+    ->name('comercial.entrada.show');
+
 // ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────
 Route::middleware(['auth', 'verified', 'permission:lideranca.dashboard_setor'])->prefix('lideranca')->name('lideranca.')->group(function () {
     Route::get('/setor', [LiderancaController::class, 'indexOrFirst'])->name('index');

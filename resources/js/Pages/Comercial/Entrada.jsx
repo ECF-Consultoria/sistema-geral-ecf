@@ -263,7 +263,7 @@ export default function Entrada({ companies, filters = {}, resumo = {} }) {
                                                 de propósito: uma ficha só, um caminho só. */}
                                             <TableCell onClick={(e) => e.stopPropagation()}>
                                                 <Link
-                                                    href={route('admin.contratos.show', c.id)}
+                                                    href={route('comercial.entrada.show', c.id)}
                                                     onClick={(e) => e.stopPropagation()}
                                                     className="text-[12px] text-white/50 hover:text-white/80 hover:underline"
                                                 >

@@ -11,7 +11,6 @@ use App\Models\ContratoServico;
 use App\Models\EmpresaFaixaFaturamento;
 use App\Models\Servico;
 use App\Models\User;
-use App\Services\BoasVindas\MensagemBoasVindasService;
 use App\Services\ChecklistAdministrativo\ChecklistAdministrativoDefinicao;
 use App\Services\ChecklistAdministrativo\ChecklistAdministrativoService;
 use App\Services\ChecklistAdministrativo\ChecklistEtapaSincronizadorService;
@@ -25,7 +24,6 @@ use App\Services\Contratos\ContratosPresosService;
 use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\ContratoPdfService;
 use App\Services\Fechamento\FechamentoFaixaResolver;
-use App\Services\FluxoEntrada\TimelineEntradaService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use App\Support\Permissions;
 use Illuminate\Http\RedirectResponse;
@@ -542,12 +540,6 @@ class ContratoAdminController extends Controller
         // terceiro irmão, o sincronizador, é resolvido dentro do funil
         // `sincronizarEtapaChecklist()`, que serve também os endpoints.
         ChecklistAdministrativoService $checklist,
-        FinalizarEntradaAdministrativaService $finalizar,
-        // Fase 153 — irmão dos dois acima, mesma razão: nenhum deles injeta o
-        // outro em ciclo. Este não depende de nenhum serviço do checklist.
-        MensagemBoasVindasService $boasVindas,
-        // Fase 156 — leitura pura de dado que as fases 150-155 já gravam.
-        TimelineEntradaService $timeline,
         // Plano 142-02 (D-03) — só para `tabela_resumo` abaixo, alimentar o botão novo que leva
         // até a ficha da tabela de cobrança sem a tela recalcular nada.
         FechamentoFaixaResolver $resolverFaixa,
@@ -637,18 +629,15 @@ class ContratoAdminController extends Controller
         // EXTERNO — o webhook do Clicksign gravando `enviado_em` — que não
         // passa por nenhuma ação do checklist. O carregamento da ficha é o
         // único momento em que o sistema observa esse fato.
-        $checklistPayload = $checklist->paraEmpresa($company);
+        // 11/09 — a ficha NÃO monta mais o checklist: ele mudou de casa para
+        // `ComercialEntradaController::show()`. A sincronização de etapa
+        // continua aqui porque o degrau 2→3 depende do webhook do Clicksign
+        // gravando `enviado_em`, e esta ficha é a que o Administrativo abre
+        // enquanto persegue a assinatura.
         $this->sincronizarEtapaChecklist($request, $company);
 
         // Sem `admin.contratos`, o grupo Contrato inteiro sai do payload.
         // O `progresso` continua sendo o da empresa INTEIRA de propósito: é a
-        // régua do FINALIZAR, não uma métrica da seção visível. O usuário de
-        // Entrada vê a barra completa e o `requisito_faltante` textual, mas não
-        // vê os itens contratuais.
-        if (! $podeVerContrato) {
-            unset($checklistPayload['grupos'][ChecklistAdministrativoDefinicao::GRUPO_CONTRATO]);
-        }
-
         // Plano 142-02 (D-03) — resumo pequeno para o botão "Tabela de cobrança" saber o que
         // dizer sem a tela recalcular nada. `origem_aplicada` é quem cobra HOJE (grupo vence
         // sobre a própria, Fase 138); `procedencia` é da tabela PRÓPRIA da empresa
@@ -665,21 +654,11 @@ class ContratoAdminController extends Controller
         ];
 
         return Inertia::render('Admin/ContratoDetalhe', [
-            'checklist'         => $checklistPayload,
             'pode_ver_contrato' => $podeVerContrato,
-            // Array `['permitido', 'requisito_faltante']` inteiro — o front usa
-            // os dois: um desabilita o botão, o outro explica por quê. A régua
-            // é a MESMA que recusa o POST em `finalizarEntradaAdministrativa()`;
-            // o botão nunca decide sozinho (ADMIN-05).
-            'pode_finalizar'    => $finalizar->podeFinalizar($company),
-            // D-04 — link fixo e igual para todas as empresas, servido do
-            // backend. Nunca hard-coded no JSX.
-            'adman_register_url' => config('services.adman.register_url'),
-            // Fase 157 — o link do Portal do Cliente, exibido no próprio item
-            // do checklist. `null` enquanto ninguém gerou: a linha mostra o
-            // botão "Gerar conexão" nesse caso, e o campo só aparece depois.
-            'portal_cliente_url' => ($tokenPortal = \App\Models\OnboardingLink::where('company_id', $company->id)->value('token'))
-                ? route('portal.inicio', $tokenPortal)
+            // Link para a ficha de Entrada, que é onde o checklist mora desde
+            // 11/09. Só para quem alcança a rota.
+            'ficha_entrada_url' => $request->user()->hasPermission(Permissions::COMERCIAL_ENTRADA) || $podeVerContrato
+                ? route('comercial.entrada.show', $company->id)
                 : null,
             // Fase 153 (COMUNIC-01) — a mensagem já montada com os dados desta
             // empresa, pronta para copiar. Montada no SERVIDOR (D-B): o caminho
@@ -687,19 +666,6 @@ class ContratoAdminController extends Controller
             // justamente onde um link errado tem consequência fora do sistema.
             // Traz `pendencias` quando algum bloco ficaria vazio — a tela avisa
             // em vez de entregar texto quebrado.
-            'mensagem_boas_vindas' => $boasVindas->paraEmpresa($company),
-            // Fase 156 (HIST-01/02/03) — a timeline do fluxo de entrada e o
-            // tempo em cada etapa. Só fontes DURÁVEIS: o activity_log é podado
-            // em 365 dias (`config/activitylog.php`), e foi por isso que a Fase
-            // 150 criou a tabela de transições. Lê-lo aqui faria a timeline de
-            // uma empresa antiga mudar sozinha.
-            //
-            // NÃO é recortada por permissão de módulo, ao contrário da seção
-            // Contrato: são datas, nomes de etapa e quem agiu — nenhum envelope,
-            // signatário ou valor. Se um dia trouxer, o recorte volta a ser
-            // necessário.
-            'timeline'          => $timeline->paraEmpresa($company),
-            'duracao_por_etapa' => $timeline->duracaoPorEtapa($company),
             'company' => [
                 'id'                => $company->id,
                 'name'              => $company->name,
