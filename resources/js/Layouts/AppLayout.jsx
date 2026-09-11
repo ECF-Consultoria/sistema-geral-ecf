@@ -234,43 +234,6 @@ const NAV_TREE = [
             // com `?tab=grupos` (o helper de menu acima usa routeParams pra alimentar
             // Ziggy; segments fora do path viram query string automaticamente).
             { label: 'Grupos', routeName: 'comercial.empresas.listagem', routeParams: { tab: 'grupos' }, page: 'Comercial/EmpresasListagem', matchUrl: ({ path, query }) => path.startsWith('/comercial/empresas/listagem') && query.get('tab') === 'grupos', icon: ListChecks, permission: 'comercial.cadastrar_empresa' },
-            // ── Administrativo dentro do Comercial ───────────────────────
-            // O Administrativo foi ABSORVIDO pela Área Comercial em dois
-            // módulos (Fase 151, seed `151-153-admin-no-comercial-dois-modulos`):
-            // Contrato e Entrada. O seed desenhou a lista PLANA; este divider
-            // foi acrescentado depois, a pedido do usuário, porque sem ele os
-            // dois itens ficam soltos entre os do Comercial sem dizer de onde
-            // vieram.
-            //
-            // Divider e NÃO sub-grupo aninhado: o menu não suporta aninhamento
-            // — é exatamente para isso que o divider existe (ver o comentário
-            // do grupo Mercado Livre, que usa o mesmo para 'Polos'). Some
-            // sozinho quando nenhum item abaixo dele é visível por permissão
-            // (lógica de divider órfão, ajuste UAT 2026-07-07).
-            { divider: 'Administrativo' },
-            // Fase 151 Plano 08 (D-15/reorganização) — item 'Contrato' MOVIDO
-            // do grupo Administrativo para cá. routeName/page/permission
-            // IDÊNTICOS ao que já existia — só o label mudou de 'Contratos'
-            // para 'Contrato' (D-02/D-03) e o grupo de menu mudou. Rota,
-            // `ContratoAdminController` e `Pages/Admin/Contratos.jsx` NÃO
-            // mudaram de lugar nem de conteúdo. A permission admin.contratos
-            // foi preservada de propósito (D-15) — trocar por
-            // 'comercial.cadastrar_empresa' ou reempacotar sob `role:admin`
-            // deixaria `ContratoAdminPermissaoTest` vermelho.
-            { label: 'Contrato', routeName: 'admin.contratos.index', page: 'Admin/Contratos', icon: FileSignature, permission: 'admin.contratos' },
-            // Fase 151 Plano 08 (COMERC-02, D-01/D-02) — módulo NOVO Entrada:
-            // casca da listagem de empresas em fluxo de entrada (etapas 1-4
-            // do §10). Permission própria `comercial.entrada` (D-15) — não
-            // reusa `comercial.cadastrar_empresa`. Checklist chega na Fase 152.
-            { label: 'Entrada', routeName: 'comercial.entrada.index', page: 'Comercial/Entrada', icon: ListChecks, permission: 'comercial.entrada' },
-            // Fase 153 (COMUNIC-03) — textos da mensagem de boas-vindas, um por
-            // serviço mais um genérico. Mesma permissão em OR da ficha (D-17):
-            // quem opera a Entrada precisa ajustar o texto que envia.
-            { label: 'Boas-vindas', routeName: 'admin.boas-vindas.index', page: 'Admin/BoasVindasTemplates', icon: MessageSquareText, permission: ['admin.contratos', 'comercial.entrada'] },
-            // Fecha o bloco Administrativo: o que vem abaixo é do Comercial de
-            // novo. Sem este divider, 'Onboarding' e 'Serviços' apareceriam
-            // como se fossem do Administrativo.
-            { divider: 'Comercial' },
             // Fase 135 Plano 12 — painel operacional do onboarding geral por
             // serviço. Gate DEDICADO `core.onboarding` (Plano 09) — NÃO
             // reutiliza a permission do item "Onboarding" de Polos (grupo
@@ -343,10 +306,28 @@ const NAV_TREE = [
             // junto com a mudança de navegação misturaria dois riscos. A
             // remoção real é trabalho próprio (ver 151-CONTEXT.md D-16).
             //
-            // Fase 151 Plano 08 (D-15) — item 'Contratos' MOVIDO para o
-            // grupo Comercial (label agora 'Contrato', D-02/D-03). Ver o
-            // comentário no grupo Comercial acima — rota/controller/página
-            // não mudaram de lugar.
+            // Fase 151 Plano 08 (D-15) tinha movido 'Contratos' para o grupo
+            // Comercial; em 11/09 ele voltou para cá com 'Entrada' e
+            // 'Boas-vindas' — ver o bloco logo abaixo.
+            // 11/09 — Contrato, Entrada e Boas-vindas VOLTARAM da Área
+            // Comercial para cá, a pedido do usuário. A Fase 151 (D-15) os
+            // tinha movido para o Comercial sob um divider 'Administrativo';
+            // na prática eles são trabalho do Administrativo e é aqui que se
+            // procura por eles.
+            //
+            // routeName, page e permission IDÊNTICOS — só o grupo de menu
+            // mudou. Nenhuma rota, controller ou página mudou de lugar, e
+            // `ContratoAdminPermissaoTest` / `ComercEntradaPermissaoRotaTest`
+            // seguem valendo: trocar qualquer permission aqui os deixa
+            // vermelhos.
+            { label: 'Contrato',    routeName: 'admin.contratos.index',   page: 'Admin/Contratos',           icon: FileSignature,     permission: 'admin.contratos' },
+            // `page` como array: a listagem e a ficha da Entrada acendem o
+            // mesmo item — a ficha nasceu em 11/09 e é a casa do checklist
+            // administrativo.
+            { label: 'Entrada',     routeName: 'comercial.entrada.index', page: ['Comercial/Entrada', 'Comercial/EntradaFicha'], icon: ListChecks, permission: 'comercial.entrada' },
+            // Mesma permissão em OR da ficha (D-17): quem opera a Entrada
+            // precisa ajustar o texto que envia.
+            { label: 'Boas-vindas', routeName: 'admin.boas-vindas.index', page: 'Admin/BoasVindasTemplates', icon: MessageSquareText, permission: ['admin.contratos', 'comercial.entrada'] },
             { label: 'Relatório',  routeName: 'admin.relatorio',  page: 'Admin/Relatorio',  icon: FileBarChart, permission: 'admin.relatorio' },
             { label: 'Fechamento', routeName: 'admin.financeiro', page: 'Admin/Financeiro', icon: Banknote,     permission: 'admin.financeiro' },
             { label: 'Inventário', routeName: 'admin.inventario', page: 'Admin/Inventario', icon: Package2,     permission: 'admin.inventario' },
