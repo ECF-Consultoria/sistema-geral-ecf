@@ -472,6 +472,34 @@ function AusenciaFaturamentoBadge() {
     );
 }
 
+// Quick 260911-kio (T1) — Mentoria e afins (`estado === 'valor_fixo'`): a
+// empresa é cobrada pelo valor combinado em contrato, então o que ela
+// faturou não entra na conta que define a mensalidade. Antes deste ramo a
+// coluna "Faturamento do mês" caía no genérico e imprimia traço mudo, e a
+// área expandida chegava a escrever "Sem faturamento neste mês" numa
+// empresa que faturou (BOX LISBOA: R$ 115.965 em agosto) — quem confere
+// lia as duas coisas como defeito. Resultado NORMAL, nunca pendência: sem
+// âmbar e sem triângulo, mesma disciplina de `ValorFixoContratoNota`.
+function FaturamentoNaoDefineMensalidade({ variant = 'compact' }) {
+    if (variant === 'compact') {
+        return (
+            <span className="flex flex-col gap-0.5 min-w-0">
+                <span className="text-white/50 text-[14px] font-medium">Não define a mensalidade</span>
+                <span className="text-white/30 text-[12px]">Esta empresa paga o valor combinado em contrato</span>
+            </span>
+        );
+    }
+
+    return (
+        <span className="flex flex-col gap-1">
+            <span className="text-[18px] font-semibold text-white/70">Não define a mensalidade</span>
+            <span className="text-white/40 text-[12px]">
+                Esta empresa paga o valor combinado em contrato — o que ela fatura não muda quanto ela paga.
+            </span>
+        </span>
+    );
+}
+
 // Fase 141 (D-03) — empresa sem tabela progressiva nenhuma, mas com
 // contrato de valor combinado (`estado === 'valor_fixo'`, o caso de
 // Mentoria). Resultado NORMAL, nunca pendência — por isso não usa a cara
@@ -767,16 +795,20 @@ function CabecalhoColunas() {
     );
 }
 
-// Coluna "Faturamento do mês" — os três estados nunca podem virar R$ 0 nem
+// Coluna "Faturamento do mês" — os quatro estados nunca podem virar R$ 0 nem
 // traço mudo (D-05): sem tabela ainda mostra o valor apurado (o problema é
-// não saber a faixa, não o faturamento em si); sem faturamento e sem
-// integração são estados nomeados e distintos entre si.
+// não saber a faixa, não o faturamento em si); sem faturamento, sem
+// integração e mensalidade combinada em contrato são estados nomeados e
+// distintos entre si.
 function ColunaFaturamento({ empresa }) {
     if (empresa.estado === 'sem_faturamento') {
         return <AusenciaFaturamentoBadge />;
     }
     if (empresa.estado === 'sem_integracao') {
         return <span className="text-white/30 text-[16px]">sem dados</span>;
+    }
+    if (empresa.estado === 'valor_fixo') {
+        return <FaturamentoNaoDefineMensalidade variant="compact" />;
     }
     return (
         <span className="font-mono tabular-nums text-[16px] text-white/75">
@@ -1073,7 +1105,15 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="bg-black/30 border border-white/[0.06] rounded-xl px-[18px] py-4 flex flex-col gap-1.5">
                         <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-white/30">1 · Faturou no mês</span>
-                        {empresa.faturamento == null ? (
+                        {/* Quick 260911-kio (T1) — a ordem importa: sem o
+                            primeiro ramo, uma empresa de valor combinado em
+                            contrato (que pode ter faturado alto, só que fora
+                            da conta da mensalidade) era descrita como "Sem
+                            faturamento neste mês", o que é simplesmente
+                            falso. */}
+                        {empresa.estado === 'valor_fixo' && empresa.faturamento == null ? (
+                            <FaturamentoNaoDefineMensalidade variant="full" />
+                        ) : empresa.faturamento == null ? (
                             <AusenciaFaturamentoBadge />
                         ) : (
                             <span className="text-[24px] font-semibold font-mono tabular-nums text-white">{fmtBRL(empresa.faturamento)}</span>
