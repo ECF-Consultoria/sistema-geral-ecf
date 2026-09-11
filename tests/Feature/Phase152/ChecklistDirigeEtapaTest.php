@@ -325,6 +325,62 @@ class ChecklistDirigeEtapaTest extends TestCase
         ]);
     }
 
+    // ─── Adoção de empresa legada (2026-09-11) ─────────────────────────────
+
+    /**
+     * Medido em produção: as 202 empresas existentes têm `etapa` nula. O
+     * checklist fechava 100% e o FINALIZAR morria com "Transição não permitida
+     * de '(sem etapa)'" — a regra de não carimbar legado funcionando como
+     * escrita, num cenário que ela deixava sem saída.
+     *
+     * Agir no checklist passa a ADOTAR a empresa: transição de nascimento com o
+     * ator e o instante reais. Não é backfill — não inventa etapas que ela não
+     * viveu; registra que entrou no fluxo agora.
+     */
+    public function test_agir_no_checklist_adota_empresa_legada_para_dentro_do_fluxo(): void
+    {
+        $empresa = $this->empresaCompleta(['etapa' => null]);
+        $this->vincularServico($empresa, $this->servicoComContrato());
+        $usuario = $this->usuario();
+
+        $this->checklistService()->concluirManualmente($empresa, 'grupo_whatsapp_criado', $usuario);
+
+        $r = $this->sincronizador()->sincronizar($empresa->fresh(), $usuario, true);
+
+        // Nasceu na etapa 1 e, com um item já feito, subiu para a 2 na mesma
+        // chamada — a cadeia continua depois da adoção.
+        $this->assertSame(Company::ETAPA_ADMINISTRATIVO_ANDAMENTO, Company::findOrFail($empresa->id)->etapa);
+
+        $nascimento = CompanyEtapaTransicao::where('company_id', $empresa->id)
+            ->whereNull('etapa_anterior')
+            ->first();
+
+        $this->assertNotNull($nascimento, 'a adoção precisa deixar a linha de nascimento.');
+        $this->assertSame($usuario->id, $nascimento->user_id, 'o ator é quem agiu, não uma conta genérica.');
+        $this->assertSame(Company::ETAPA_AGUARDANDO_ADMINISTRATIVO, $nascimento->etapa_nova);
+    }
+
+    /**
+     * A trava que impede a adoção de virar efeito colateral de leitura: `show()`
+     * sincroniza a cada carregamento, e ABRIR uma empresa não pode mudar dado
+     * dela. O padrão do parâmetro é `false` por isso.
+     */
+    public function test_sem_adocao_explicita_a_empresa_legada_segue_intocada(): void
+    {
+        $empresa = $this->empresaCompleta(['etapa' => null]);
+        $this->vincularServico($empresa, $this->servicoComContrato());
+        $usuario = $this->usuario();
+
+        $this->checklistService()->concluirManualmente($empresa, 'grupo_whatsapp_criado', $usuario);
+
+        // Sem o terceiro argumento — é como `show()` chama.
+        $r = $this->sincronizador()->sincronizar($empresa->fresh(), $usuario);
+
+        $this->assertSame([], $r['transicoes']);
+        $this->assertNull(Company::findOrFail($empresa->id)->etapa);
+        $this->assertSame(0, CompanyEtapaTransicao::where('company_id', $empresa->id)->count());
+    }
+
     // ─── Caso 8 — idempotência: 2ª chamada sem mudança não cria transição ──
 
     public function test_segunda_chamada_sem_mudanca_nao_cria_nova_transicao(): void

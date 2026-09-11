@@ -100,11 +100,47 @@ class ChecklistEtapaSincronizadorService
      *
      * @return array{transicoes: array<int, string>, etapa_final: ?string}
      */
-    public function sincronizar(Company $company, User $por): array
+    public function sincronizar(Company $company, User $por, bool $adotarSeLegado = false): array
     {
-        // Guarda de legado — empresa sem etapa nunca é carimbada.
+        // ─── Empresa legada (`etapa` NULL) ───────────────────────────────
+        //
+        // Com `$adotarSeLegado`, ela ENTRA no fluxo agora: transição de
+        // nascimento com o ator e o instante REAIS. Isso não contraria a regra
+        // de não carimbar legado — a regra existe para impedir BACKFILL
+        // retroativo, que inventaria etapas que a empresa nunca viveu e
+        // estragaria o SLA da timeline. Dizer "entrou no fluxo hoje, por
+        // fulano" é verdade, não invenção.
+        //
+        // ⚠️ O parâmetro é `false` por padrão de propósito: `show()` sincroniza
+        // a cada carregamento da ficha, e ABRIR uma empresa não pode mudar dado
+        // dela. Só os caminhos de AÇÃO (marcar/desmarcar item, gerar conexão,
+        // FINALIZAR) passam `true`.
+        //
+        // Sem isto, medido em produção: as 202 empresas existentes têm etapa
+        // nula, o checklist fechava 100% e o FINALIZAR morria com
+        // "Transição não permitida de '(sem etapa)'" — regra funcionando como
+        // escrita, num cenário que ela deixava sem saída.
         if ($company->etapa === null) {
-            return ['transicoes' => [], 'etapa_final' => null];
+            if (! $adotarSeLegado) {
+                return ['transicoes' => [], 'etapa_final' => null];
+            }
+
+            $nascimento = $this->etapas->transicionar(
+                $company,
+                self::ETAPA_AGUARDANDO_ADMINISTRATIVO,
+                $por
+            );
+
+            if ($nascimento['status'] !== 'transicionado') {
+                Log::warning('[Checklist] adoção de empresa legada recusada', [
+                    'company_id' => $company->id,
+                    'resultado'  => $nascimento,
+                ]);
+
+                return ['transicoes' => [], 'etapa_final' => null];
+            }
+
+            $company->refresh();
         }
 
         // Guarda de escopo — a 4→5 é do FinalizarEntradaAdministrativaService,

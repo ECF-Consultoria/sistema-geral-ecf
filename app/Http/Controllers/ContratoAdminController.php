@@ -852,10 +852,10 @@ class ContratoAdminController extends Controller
      * (ou o webhook do Clicksign) pode ter mudado o estado no banco sem passar
      * pelo objeto em memória desta requisição.
      */
-    private function sincronizarEtapaChecklist(Request $request, Company $company): void
+    private function sincronizarEtapaChecklist(Request $request, Company $company, bool $adotarSeLegado = false): void
     {
         app(ChecklistEtapaSincronizadorService::class)
-            ->sincronizar($company->refresh(), $request->user());
+            ->sincronizar($company->refresh(), $request->user(), $adotarSeLegado);
     }
 
     /**
@@ -913,7 +913,9 @@ class ContratoAdminController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        $this->sincronizarEtapaChecklist($request, $company);
+        // Agir no checklist ADOTA a empresa legada (etapa NULL) para dentro do
+        // fluxo — ver o docblock de `sincronizar()`. Abrir a ficha não adota.
+        $this->sincronizarEtapaChecklist($request, $company, true);
 
         return back()->with('success', $sucesso);
     }
@@ -1006,7 +1008,7 @@ class ContratoAdminController extends Controller
      */
     public function finalizarEntradaAdministrativa(Request $request, Company $company): RedirectResponse
     {
-        $this->sincronizarEtapaChecklist($request, $company);
+        $this->sincronizarEtapaChecklist($request, $company, true);
 
         $resultado = app(FinalizarEntradaAdministrativaService::class)
             ->finalizar($company->refresh(), $request->user());

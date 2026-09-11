@@ -422,18 +422,71 @@ class ChecklistEndpointsTest extends TestCase
         $this->assertSame(Company::ETAPA_AGUARDANDO_ADMINISTRATIVO, $this->etapaDe($empresaB));
     }
 
-    // ─── Caso 12 — legado: etapa NULL marca item mas nunca é carimbada ──────
+    // ─── Empresa legada: ADOTADA ao agir (mudança de 2026-09-11) ────────────
 
-    public function test_empresa_legada_marca_item_mas_nunca_ganha_etapa(): void
+    /**
+     * ⚠️ Este teste afirmava o CONTRÁRIO até 2026-09-11 ("nunca ganha etapa").
+     * A regra mudou por decisão do usuário, depois de a produção provar que ela
+     * deixava sem saída: as 202 empresas existentes têm etapa nula, o checklist
+     * fechava 100% e o FINALIZAR morria com "Transição não permitida de
+     * '(sem etapa)'".
+     *
+     * Agir no checklist passa a ADOTAR a empresa. Não é backfill — não inventa
+     * etapas que ela não viveu; registra que entrou no fluxo agora, com o ator
+     * e o instante reais.
+     */
+    public function test_marcar_item_adota_empresa_legada_para_dentro_do_fluxo(): void
     {
         $empresa = $this->empresaComServico(['etapa' => null]);
+        $user    = $this->admin();
 
-        $this->actingAs($this->admin())->post(
+        $this->actingAs($user)->post(
             route('admin.contratos.checklist.concluir', ['company' => $empresa, 'chave' => 'grupo_whatsapp_criado'])
         )->assertStatus(302)->assertSessionHas('success');
 
-        $this->assertSame(1, ChecklistAdministrativoItem::where('company_id', $empresa->id)->count());
+        $this->assertSame(Company::ETAPA_ADMINISTRATIVO_ANDAMENTO, $this->etapaDe($empresa));
+
+        $nascimento = CompanyEtapaTransicao::where('company_id', $empresa->id)
+            ->whereNull('etapa_anterior')
+            ->firstOrFail();
+
+        $this->assertSame($user->id, $nascimento->user_id, 'o ator é quem agiu, não uma conta genérica.');
+    }
+
+    /**
+     * A trava que impede a adoção de virar efeito colateral de LEITURA: `show()`
+     * sincroniza a cada carregamento, e abrir uma empresa não pode mudar dado
+     * dela.
+     */
+    public function test_abrir_a_ficha_de_empresa_legada_nao_a_adota(): void
+    {
+        $empresa = $this->empresaComServico(['etapa' => null]);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.contratos.show', $empresa))
+            ->assertOk();
+
         $this->assertNull($this->etapaDe($empresa));
         $this->assertSame(0, CompanyEtapaTransicao::where('company_id', $empresa->id)->count());
+    }
+
+    /**
+     * O cenário REAL que travou na VPS: empresa legada com checklist completo,
+     * FINALIZAR morrendo. Agora ele adota e conclui na mesma requisição.
+     */
+    public function test_finalizar_em_empresa_legada_adota_e_conclui(): void
+    {
+        $empresa = $this->empresaComServico(['etapa' => null]);
+        $user    = $this->admin();
+
+        $this->completarGrupoContrato($empresa, $user);
+        $this->completarGrupoEntrada($empresa, $user);
+
+        $this->actingAs($user)
+            ->post(route('admin.contratos.finalizar-entrada', $empresa))
+            ->assertStatus(302)
+            ->assertSessionHas('success');
+
+        $this->assertSame(Company::ETAPA_AGUARDANDO_DISTRIBUICAO, $this->etapaDe($empresa));
     }
 }
