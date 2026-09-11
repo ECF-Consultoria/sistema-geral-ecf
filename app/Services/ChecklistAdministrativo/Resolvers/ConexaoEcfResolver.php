@@ -9,7 +9,8 @@ use App\Services\ChecklistAdministrativo\ChecklistAdministrativoDefinicao;
 use App\Services\ChecklistAdministrativo\ChecklistResolverResultado;
 
 /**
- * Resolver do item 8 — "Conexão com o sistema ECF gerada" (Fase 152, D-14).
+ * Resolver do item "Portal do Cliente" — chave `conexao_ecf_gerada` (Fase 152,
+ * D-14). O título mudou em 2026-09-11; a CHAVE não, para não orfanar linha.
  *
  * Leitura pura de EXISTÊNCIA da linha de conexão da empresa — nunca cria
  * nada.
@@ -38,7 +39,7 @@ class ConexaoEcfResolver implements ChecklistResolver
 
     public function label(): string
     {
-        return 'Conexão com o sistema ECF gerada';
+        return 'Portal do Cliente';
     }
 
     public function ajuda(): string

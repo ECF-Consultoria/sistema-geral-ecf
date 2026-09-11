@@ -675,6 +675,12 @@ class ContratoAdminController extends Controller
             // D-04 — link fixo e igual para todas as empresas, servido do
             // backend. Nunca hard-coded no JSX.
             'adman_register_url' => config('services.adman.register_url'),
+            // Fase 157 — o link do Portal do Cliente, exibido no próprio item
+            // do checklist. `null` enquanto ninguém gerou: a linha mostra o
+            // botão "Gerar conexão" nesse caso, e o campo só aparece depois.
+            'portal_cliente_url' => ($tokenPortal = \App\Models\OnboardingLink::where('company_id', $company->id)->value('token'))
+                ? route('portal.inicio', $tokenPortal)
+                : null,
             // Fase 153 (COMUNIC-01) — a mensagem já montada com os dados desta
             // empresa, pronta para copiar. Montada no SERVIDOR (D-B): o caminho
             // análogo do Polos substitui os placeholders no JSX, sem teste, e é
@@ -976,7 +982,7 @@ class ContratoAdminController extends Controller
             $request,
             $company,
             fn () => $checklist->gerarConexaoEcf($company, $request->user()),
-            'Conexão com o sistema ECF gerada.'
+            'Link do Portal do Cliente gerado.'
         );
     }
 

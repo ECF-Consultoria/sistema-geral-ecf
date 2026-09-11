@@ -26,6 +26,7 @@ export default function CardChecklistAdministrativo({
     podeVerContrato = false,
     podeFinalizar = { permitido: false, requisito_faltante: null },
     admanRegisterUrl = null,
+    portalClienteUrl = null,
     mensagemBoasVindas = null,
     contratoAcesso = null,
 }) {
@@ -67,6 +68,7 @@ export default function CardChecklistAdministrativo({
                                 item={item}
                                 companyId={companyId}
                                 admanRegisterUrl={admanRegisterUrl}
+                                portalClienteUrl={portalClienteUrl}
                                 mensagemBoasVindas={mensagemBoasVindas}
                                 contratoAcesso={contratoAcesso}
                             />

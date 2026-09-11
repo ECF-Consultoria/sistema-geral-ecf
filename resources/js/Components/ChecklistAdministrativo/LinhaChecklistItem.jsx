@@ -84,7 +84,7 @@ const copiarParaAreaDeTransferencia = async (texto) => {
     }
 };
 
-export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, mensagemBoasVindas = null, contratoAcesso = null }) {
+export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, mensagemBoasVindas = null, contratoAcesso = null, portalClienteUrl = null }) {
     const form = useForm({});
 
     // Fallback de ambiente sem `navigator.clipboard`: em vez de o botão não
@@ -223,7 +223,17 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, 
                         <BotaoCopiar onCopiar={copiarLinkAdman} disabled={!admanRegisterUrl} />
                     )}
 
-                    {/* Item 8 — geração idempotente (D-14): clicar duas vezes não cria dois links. */}
+                    {/* Portal do Cliente — copiar o endereço que o cliente usa.
+                        Só aparece depois de gerado; antes disso o botão ao lado
+                        é o de gerar. */}
+                    {item.chave === 'conexao_ecf_gerada' && portalClienteUrl && (
+                        <BotaoCopiar
+                            onCopiar={() => copiarParaAreaDeTransferencia(portalClienteUrl)}
+                            rotulo="Copiar link do portal"
+                        />
+                    )}
+
+                    {/* Geração idempotente (D-14): clicar duas vezes não cria dois links. */}
                     {item.chave === 'conexao_ecf_gerada' && !concluido && (
                         <Button size="sm" variant="outline" onClick={gerarConexaoEcf} disabled={form.processing}>
                             Gerar conexão
@@ -274,6 +284,21 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, 
             )}
             {concluido && autoEm && (
                 <p className="text-[11px] text-white/35">Confirmado automaticamente em {autoEm}</p>
+            )}
+
+            {/* O endereço à vista, para conferir e copiar sem abrir outra tela.
+                Somente-leitura e auto-seleção ao foco — é link sem senha, quem
+                tem a URL entra, então não vira campo editável por engano. */}
+            {item.chave === 'conexao_ecf_gerada' && portalClienteUrl && (
+                <input
+                    readOnly
+                    value={portalClienteUrl}
+                    onFocus={(e) => e.target.select()}
+                    className={cn(
+                        'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
+                        'px-2.5 py-1.5 text-[12px] text-white/70 font-mono'
+                    )}
+                />
             )}
 
             {item.ajuda && <p className="text-[12px] text-white/25 italic">{item.ajuda}</p>}

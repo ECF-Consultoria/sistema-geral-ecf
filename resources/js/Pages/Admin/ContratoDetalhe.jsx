@@ -65,6 +65,7 @@ export default function ContratoDetalhe({
     pode_ver_contrato = false,
     pode_finalizar = { permitido: false, requisito_faltante: null },
     adman_register_url = null,
+    portal_cliente_url = null,
     mensagem_boas_vindas = null,
     timeline = [],
     duracao_por_etapa = [],
@@ -762,6 +763,7 @@ export default function ContratoDetalhe({
                             podeVerContrato={pode_ver_contrato}
                             podeFinalizar={pode_finalizar}
                             admanRegisterUrl={adman_register_url}
+                            portalClienteUrl={portal_cliente_url}
                             mensagemBoasVindas={mensagem_boas_vindas}
                             contratoAcesso={contratoAcesso}
                         />

@@ -260,7 +260,7 @@ class ChecklistAdministrativoService
         activity('checklist-administrativo')
             ->performedOn($company)
             ->withProperties(['chave' => ChecklistAdministrativoDefinicao::AUTO_FONTE_CONEXAO_ECF, 'por' => $usuario->id])
-            ->log('Conexão com o sistema ECF gerada');
+            ->log('Link do Portal do Cliente gerado');
 
         return $link;
     }

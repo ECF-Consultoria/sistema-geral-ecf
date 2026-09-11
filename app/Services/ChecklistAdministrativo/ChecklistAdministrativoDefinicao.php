@@ -150,13 +150,22 @@ class ChecklistAdministrativoDefinicao
             ],
             [
                 'ordem'      => 9,
+                // ⚠️ A `chave` continua `conexao_ecf_gerada` de propósito — só o
+                // TÍTULO mudou (2026-09-11, pedido do usuário). Trocar a chave
+                // deixaria órfã toda linha já gravada em
+                // `checklist_administrativo_itens`, e a ficha nunca mais
+                // fecharia 100%. Aqui o título é lido do catálogo a cada render
+                // (a tabela não o guarda), então renomear alcança todo mundo na
+                // hora — diferente do checklist de Onboarding, onde o título
+                // congela no nascimento.
                 'chave'      => 'conexao_ecf_gerada',
-                'titulo'     => 'Conexão com o sistema ECF gerada',
+                'titulo'     => 'Portal do Cliente',
                 'grupo'      => self::GRUPO_ENTRADA,
                 'natureza'   => self::NATUREZA_AUTO,
                 'auto_fonte' => self::AUTO_FONTE_CONEXAO_ECF,
-                'ajuda'      => 'Fecha pela existência do link de conexão com o sistema ECF da empresa, '
-                    . 'gerado de forma idempotente (D-14).',
+                'ajuda'      => 'O endereço sem senha por onde o cliente entra no sistema da ECF: acompanha '
+                    . 'o onboarding, preenche o que precisamos e autoriza o acesso à conta do Mercado '
+                    . 'Livre. Fecha pela existência do link, gerado de forma idempotente (D-14).',
             ],
         ];
     }
