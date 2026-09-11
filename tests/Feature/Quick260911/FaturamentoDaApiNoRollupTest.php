@@ -19,11 +19,19 @@ use Tests\TestCase;
  * Quick 260911-eph — o faturamento do mês FECHADO passa a vir do
  * `/performance` da Adman, não da soma dos dias de `adman_metrics`.
  *
+ * Quick 260911-jpx CORRIGIU o recorte: o corte não é o token ML, é a conta
+ * Adman apontar para a MESMA loja do ML (`adman_account_id ===
+ * ml_store_id`). Ver o docblock de `FechamentoRollupService::
+ * podeUsarApiDaAdman()` para a medição em produção que sustenta isso.
+ *
  * O que cada teste protege:
  *  - a correção em si (empresa Adman-driven lê da API);
- *  - o RECORTE que impede a correção de virar destruição (empresa
- *    `is_ml_driven` tem conta Adman abandonada — LAURA LAR, R$ 2,7 milhões
- *    na nossa base contra R$ 12.966 na Adman);
+ *  - o RECORTE que impede a correção de virar destruição: empresa
+ *    `ml_driven` só lê da API quando os dois ids batem (DESK DESIGN,
+ *    51493328 nos dois) e fica fora quando a conta Adman aponta para outra
+ *    loja (LAURA LAR, 273196837 contra 433720509 — R$ 2,7 milhões na nossa
+ *    base contra R$ 12.966 na Adman);
+ *  - a comparação como STRING: `'051'` e `'51'` NÃO são a mesma loja;
  *  - a regressão zero dos chamadores atuais (default `false` = ZERO chamada
  *    HTTP — a tela de fechamento renderiza a cada carregamento);
  *  - o fallback nunca silencioso.
@@ -52,18 +60,25 @@ class FaturamentoDaApiNoRollupTest extends TestCase
         ]);
     }
 
-    private function empresaAdmanDriven(string $custId = 'CUST-123'): Company
+    private function empresaAdmanDriven(string $custId = 'CUST-123', ?string $mlStoreId = null): Company
     {
-        return Company::factory()->create(['adman_account_id' => $custId]);
+        return Company::factory()->create([
+            'adman_account_id' => $custId,
+            'ml_store_id'      => $mlStoreId,
+        ]);
     }
 
     /**
-     * Empresa com token ML ATIVO — `is_ml_driven` true. O sistema parou de
-     * chamar a Adman para ela no cutover; a conta Adman está abandonada.
+     * Empresa com token ML ATIVO — `is_ml_driven` true. Os DOIS ids são
+     * explícitos porque é a relação entre eles (e não o token) que decide se
+     * a API da Adman pode ser lida.
      */
-    private function empresaMlDriven(string $custId = 'CUST-ML'): Company
+    private function empresaMlDriven(?string $admanAccountId = 'CUST-ML', ?string $mlStoreId = 'CUST-ML'): Company
     {
-        $company = Company::factory()->create(['adman_account_id' => $custId]);
+        $company = Company::factory()->create([
+            'adman_account_id' => $admanAccountId,
+            'ml_store_id'      => $mlStoreId,
+        ]);
 
         MlToken::create([
             'company_id'    => $company->id,
@@ -102,15 +117,22 @@ class FaturamentoDaApiNoRollupTest extends TestCase
         $this->assertSame(FechamentoSnapshot::FONTE_API, $resultado[$company->id]['faturamento_fonte']);
     }
 
+    /**
+     * Quick 260911-jpx — este teste SUBSTITUI o
+     * `empresa_ml_driven_nao_chama_a_api_e_fica_na_soma_diaria` do quick
+     * anterior, que codificava a regra errada ("empresa `ml_driven` nunca
+     * chama a API"). O que tira a LAURA LAR da API não é o token ML: é a
+     * conta Adman apontar para OUTRA loja (273196837 contra 433720509).
+     */
     #[Test]
-    public function empresa_ml_driven_nao_chama_a_api_e_fica_na_soma_diaria(): void
+    public function empresa_ml_driven_com_ids_diferentes_nao_chama_a_api_e_fica_na_soma_diaria(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-11'));
 
-        $company = $this->empresaMlDriven();
+        $company = $this->empresaMlDriven(admanAccountId: '273196837', mlStoreId: '433720509');
 
         // O caso LAURA LAR: a nossa base tem o número certo (sync do ML) e a
-        // conta Adman abandonada devolveria uma fração disso.
+        // conta Adman de outra loja devolveria uma fração disso (-99,5%).
         AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 2_700_000.00]);
 
         $this->fakeApi(12_966.00);
@@ -124,6 +146,141 @@ class FaturamentoDaApiNoRollupTest extends TestCase
         Http::assertNothingSent();
         $this->assertEqualsWithDelta(2_700_000.00, $resultado[$company->id]['faturamento_ml'], 0.001);
         $this->assertSame(FechamentoSnapshot::FONTE_SOMA_DIARIA, $resultado[$company->id]['faturamento_fonte']);
+    }
+
+    /**
+     * O caso DESK DESIGN — a empresa que originou o trabalho e que o corte
+     * antigo (por `is_ml_driven`) deixava de fora. Token ML ativo, mas a
+     * conta Adman acompanha a MESMA loja: 51493328 dos dois lados.
+     */
+    #[Test]
+    public function empresa_ml_driven_com_ids_iguais_le_o_faturamento_da_api(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-11'));
+
+        $company = $this->empresaMlDriven(admanAccountId: '51493328', mlStoreId: '51493328');
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 167_537.54]);
+
+        $this->fakeApi(170_363.19);
+
+        $resultado = app(FechamentoRollupService::class)->porEmpresa(
+            '2026-08',
+            Company::whereKey($company->id)->get(),
+            faturamentoDaApi: true,
+        );
+
+        $this->assertEqualsWithDelta(170_363.19, $resultado[$company->id]['faturamento_ml'], 0.001);
+        $this->assertSame(FechamentoSnapshot::FONTE_API, $resultado[$company->id]['faturamento_fonte']);
+    }
+
+    /**
+     * 16 empresas em produção: token ML ativo e nenhuma conta Adman própria.
+     * `cust_id` cai no `ml_store_id`, então o primeiro corte não as pega — é
+     * o `filled($company->adman_account_id)` que segura.
+     */
+    #[Test]
+    public function empresa_ml_driven_sem_adman_account_id_nao_chama_a_api(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-11'));
+
+        $company = $this->empresaMlDriven(admanAccountId: null, mlStoreId: '51493328');
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 33_000.00]);
+
+        $this->fakeApi(99_999.00);
+
+        $resultado = app(FechamentoRollupService::class)->porEmpresa(
+            '2026-08',
+            Company::whereKey($company->id)->get(),
+            faturamentoDaApi: true,
+        );
+
+        Http::assertNothingSent();
+        $this->assertEqualsWithDelta(33_000.00, $resultado[$company->id]['faturamento_ml'], 0.001);
+        $this->assertSame(FechamentoSnapshot::FONTE_SOMA_DIARIA, $resultado[$company->id]['faturamento_fonte']);
+    }
+
+    /** O lado oposto: conta Adman sem loja ML cadastrada. `null === null` não vira "pode usar". */
+    #[Test]
+    public function empresa_ml_driven_sem_ml_store_id_nao_chama_a_api(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-11'));
+
+        $company = $this->empresaMlDriven(admanAccountId: '51493328', mlStoreId: null);
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 21_000.00]);
+
+        $this->fakeApi(99_999.00);
+
+        $resultado = app(FechamentoRollupService::class)->porEmpresa(
+            '2026-08',
+            Company::whereKey($company->id)->get(),
+            faturamentoDaApi: true,
+        );
+
+        Http::assertNothingSent();
+        $this->assertEqualsWithDelta(21_000.00, $resultado[$company->id]['faturamento_ml'], 0.001);
+        $this->assertSame(FechamentoSnapshot::FONTE_SOMA_DIARIA, $resultado[$company->id]['faturamento_fonte']);
+    }
+
+    /**
+     * A comparação é de STRING com `===`: `'051'` e `'51'` são lojas
+     * diferentes, e `' 51'` também. Com `==` o PHP coagiria para número e as
+     * três daria "mesma loja" — a empresa leria o faturamento de outra conta.
+     */
+    #[Test]
+    public function ids_que_so_parecem_iguais_nao_sao_a_mesma_loja(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-11'));
+
+        foreach ([['051', '51'], [' 51', '51']] as [$admanAccountId, $mlStoreId]) {
+            $company = $this->empresaMlDriven($admanAccountId, $mlStoreId);
+
+            AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 7_000.00]);
+
+            $this->fakeApi(99_999.00);
+
+            $resultado = app(FechamentoRollupService::class)->porEmpresa(
+                '2026-08',
+                Company::whereKey($company->id)->get(),
+                faturamentoDaApi: true,
+            );
+
+            Http::assertNothingSent();
+            $this->assertEqualsWithDelta(7_000.00, $resultado[$company->id]['faturamento_ml'], 0.001);
+            $this->assertSame(
+                FechamentoSnapshot::FONTE_SOMA_DIARIA,
+                $resultado[$company->id]['faturamento_fonte'],
+                "'{$admanAccountId}' e '{$mlStoreId}' não podem ser tratados como a mesma loja."
+            );
+        }
+    }
+
+    /**
+     * Regressão do ramo que NÃO se toca: sem token ML, a empresa lê da API
+     * como sempre leu — mesmo com os dois ids diferentes. São 53 empresas em
+     * cobrança viva por este caminho.
+     */
+    #[Test]
+    public function empresa_sem_token_ml_le_da_api_mesmo_com_ids_diferentes(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-11'));
+
+        $company = $this->empresaAdmanDriven(custId: '273196837', mlStoreId: '433720509');
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 15_000.00]);
+
+        $this->fakeApi(18_500.00);
+
+        $resultado = app(FechamentoRollupService::class)->porEmpresa(
+            '2026-08',
+            Company::whereKey($company->id)->get(),
+            faturamentoDaApi: true,
+        );
+
+        $this->assertEqualsWithDelta(18_500.00, $resultado[$company->id]['faturamento_ml'], 0.001);
+        $this->assertSame(FechamentoSnapshot::FONTE_API, $resultado[$company->id]['faturamento_fonte']);
     }
 
     #[Test]
