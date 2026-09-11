@@ -787,11 +787,28 @@ function ColunaFaturamento({ empresa }) {
 
 function FechamentoRow({ empresa, expandida, onToggle }) {
     return (
-        <button
-            type="button"
+        // Era um <button>, virou <div role="button"> porque o nome da empresa
+        // agora e uma ancora (<Link>) e ancora dentro de botao e HTML invalido.
+        // Tudo que o <button> dava de graca (foco, Enter/Espaco) esta reposto a
+        // mao aqui embaixo. `text-left` foi mantido de proposito: o resto da
+        // arvore ja conta com ele.
+        <div
+            role="button"
+            tabIndex={0}
+            aria-expanded={expandida}
             onClick={onToggle}
+            onKeyDown={(e) => {
+                // So responde quando o foco esta na propria linha. Sem isso, o
+                // Enter em cima do link do nome navegaria E expandiria a linha.
+                if (e.target !== e.currentTarget) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onToggle();
+                }
+            }}
             className={cn(
-                'w-full text-left transition-colors hover:bg-white/[0.04] px-5 py-[18px]',
+                'w-full text-left cursor-pointer transition-colors hover:bg-white/[0.04] px-5 py-[18px]',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/60 focus-visible:ring-inset',
                 'flex flex-col gap-3',
                 'min-[820px]:grid min-[820px]:grid-cols-[minmax(0,1.5fr)_1fr_1.3fr_0.9fr_28px] min-[820px]:gap-5 min-[820px]:items-center',
             )}
@@ -799,7 +816,19 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
             {/* Empresa */}
             <div className="min-w-0 flex items-start justify-between gap-3 min-[820px]:block">
                 <div className="min-w-0">
-                    <p className="text-white text-[17px] font-semibold tracking-[-0.01em] truncate">{empresa.name}</p>
+                    {/* O nome abre a ficha da empresa. stopPropagation para o
+                        clique nao expandir a linha junto com a navegacao. Sem
+                        target="_blank": ctrl+clique ja abre em aba nova e o
+                        clique simples preserva o botao Voltar. */}
+                    <p className="text-white text-[17px] font-semibold tracking-[-0.01em] truncate">
+                        <Link
+                            href={route('companies.show', empresa.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="hover:text-ecf-yellow hover:underline underline-offset-2 transition-colors rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/60"
+                        >
+                            {empresa.name}
+                        </Link>
+                    </p>
                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                         <ServiceBadge servicos_contratados={empresa.servicos_contratados} />
                         {empresa.subiu_de_faixa && (
@@ -873,7 +902,7 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
                 size={14}
                 className={cn('hidden min-[820px]:block text-white/30 transition-transform duration-200 justify-self-end', expandida && 'rotate-180')}
             />
-        </button>
+        </div>
     );
 }
 
@@ -1110,7 +1139,17 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                             {[empresa, ...empresa.filhas].map((e, i) => (
                                 <div key={e.id} className={cn('flex items-center justify-between px-3 py-2', i > 0 && 'border-t border-white/[0.03]')}>
                                     <span className="text-white/60 text-[13px]">
-                                        {i === 0 ? `${e.name} (este)` : `↳ ${e.name}`}
+                                        {/* Aqui nao existe o problema do <button> da linha da
+                                            listagem — e so um <div>, entao basta o link. Na linha
+                                            de indice 0 so o NOME vira link, o "(este)" fica fora. */}
+                                        {i > 0 && '↳ '}
+                                        <Link
+                                            href={route('companies.show', e.id)}
+                                            className="hover:text-ecf-yellow hover:underline underline-offset-2 transition-colors rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/60"
+                                        >
+                                            {e.name}
+                                        </Link>
+                                        {i === 0 && ' (este)'}
                                         {e.tabela_origem && (
                                             <span className="text-white/30 text-[12px] ml-1.5">
                                                 ({e.tabela_origem === 'grupo'
