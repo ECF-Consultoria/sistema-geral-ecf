@@ -155,7 +155,39 @@ class DefinicaoOnboarding
      * `AUTO_FONTE_ANALISTA_DEFINIDO` e o resolver dele continuam no código, de
      * propósito — as linhas antigas ainda os referenciam enquanto existirem.
      */
-    public const VERSAO = 18;
+    /**
+     * ### v19 (14/09) — os "explicados" deixam de esperar a reunião
+     *
+     * Os sete itens de publicidade e ADMAN dependiam de `reuniao_realizada`. A
+     * precedência era de PROCESSO, não técnica: nada impede registrar que algo
+     * foi explicado antes de alguém marcar que a reunião aconteceu — na prática
+     * é o contrário, porque quem está explicando está NA reunião.
+     *
+     * Três coisas quebravam por causa dela:
+     *
+     * 1. No portal, `reuniao_realizada` é interno e nem aparece. O cliente lia
+     *    "Liberamos assim que..." apontando para algo invisível, e o card caía
+     *    na frase genérica porque o título de passo interno não vaza (§ da
+     *    T-135-11-02).
+     * 2. A equipe, operando o portal DURANTE a reunião, não conseguia registrar
+     *    o que tinha acabado de explicar.
+     * 3. Uma pendência segurava todas as outras. O pedido do negócio foi
+     *    literal: "às vezes uma pendência precisa ser deixada e avançar as
+     *    outras".
+     *
+     * Os dois irmãos que não estão no portal — `publicidade_operacao_explicada`
+     * e `adman_funcionamento_explicado` — perderam a dependência junto. São da
+     * mesma família e deixá-los presos criaria comportamento diferente entre
+     * itens idênticos, sem razão que alguém consiga explicar depois.
+     *
+     * `reuniao_realizada` continua existindo e continua sendo cobrada — só não
+     * é mais porteira.
+     *
+     * Quem JÁ está rodando segue com a dependência antiga até alguém rodar
+     * `onboarding:sincronizar-dependencias --apply`: `depende_de` é COPIADO no
+     * nascimento do passo.
+     */
+    public const VERSAO = 19;
 
     /**
      * As chaves que o PORTAL opera — a régua de quem aparece lá, no lugar do
@@ -691,7 +723,7 @@ class DefinicaoOnboarding
                 'titulo'     => 'Processo de publicidade explicado',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -704,7 +736,7 @@ class DefinicaoOnboarding
                 'titulo'     => 'Uso do investimento em publicidade explicado',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -717,7 +749,7 @@ class DefinicaoOnboarding
                 'titulo'     => 'Operação da publicidade explicada',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -730,7 +762,7 @@ class DefinicaoOnboarding
                 'titulo'     => 'Responsabilidades de publicidade alinhadas',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -743,7 +775,7 @@ class DefinicaoOnboarding
                 'titulo'     => 'Uso da ADMAN explicado ao cliente',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -756,7 +788,7 @@ class DefinicaoOnboarding
                 'titulo'     => 'Funcionamento da ADMAN explicado',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,
@@ -769,7 +801,7 @@ class DefinicaoOnboarding
                 'titulo'     => 'Responsabilidades sobre a ADMAN alinhadas',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
-                'depende_de' => ['reuniao_realizada'],
+                'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
                 'condicao'   => null,

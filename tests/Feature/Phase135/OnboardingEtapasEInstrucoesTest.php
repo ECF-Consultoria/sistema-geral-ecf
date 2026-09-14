@@ -211,7 +211,7 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
     #[Test]
     public function a_versao_da_definicao_acompanha_a_receita_vigente(): void
     {
-        $this->assertSame(18, DefinicaoOnboarding::VERSAO);
+        $this->assertSame(19, DefinicaoOnboarding::VERSAO);
 
         $onboarding = $this->onboardingEmAndamento(Company::factory()->create());
         $this->assertSame(DefinicaoOnboarding::VERSAO, $onboarding->definicao_versao);
