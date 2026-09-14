@@ -161,12 +161,12 @@ class OnboardingEngineDependenciasTest extends TestCase
         // acesso dentro da Adman são plataformas diferentes, e nenhuma precisa
         // do nosso grant para acontecer. O cadeado só adiava trabalho que o
         // cliente já podia fazer em paralelo.
+        // v20 — saíram da régua `planilha_custos_adman`,
+        // `grant_consultoria_adman` e `custos_app_ecf`, que estavam nesta
+        // lista. Os que sobraram nascem do mesmo jeito.
         $semDependencia = [
             'grant_sistema_ecf',
             'acesso_colaborador_ml',
-            'planilha_custos_adman',
-            'grant_consultoria_adman',
-            'custos_app_ecf',
             'reuniao_realizada',
         ];
         foreach ($semDependencia as $chave) {
@@ -176,8 +176,8 @@ class OnboardingEngineDependenciasTest extends TestCase
         }
 
         // v10 — `excluir_anuncios_inativos` e `grant_de_ads` também saíram.
+        // v20 — e `metricas_da_conta`, que era o outro dependente do grant.
         $comDependencia = [
-            'metricas_da_conta',
             'anuncios_ativos_inativos',
         ];
         foreach ($comDependencia as $chave) {
@@ -317,7 +317,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $passo = $this->passo($onboarding, 'planilha_custos_adman');
+        $passo = $this->passo($onboarding, 'grant_sistema_ecf');
         $this->assertNull($passo->valor);
         $this->assertSame(0, $passo->tentativas);
 
@@ -339,7 +339,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $passo = $this->passo($onboarding, 'planilha_custos_adman');
+        $passo = $this->passo($onboarding, 'grant_sistema_ecf');
 
         $engine->aplicarResultado($passo, OnboardingResolverResultado::naoColetado('cust_id vazio'));
 
@@ -356,7 +356,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $passo = $this->passo($onboarding, 'planilha_custos_adman');
+        $passo = $this->passo($onboarding, 'grant_sistema_ecf');
 
         $engine->aplicarResultado($passo, OnboardingResolverResultado::naoColetado(
             'sync disparado',
@@ -376,7 +376,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $passo = $this->passo($onboarding, 'planilha_custos_adman');
+        $passo = $this->passo($onboarding, 'grant_sistema_ecf');
         $engine->aplicarResultado($passo, OnboardingResolverResultado::naoColetado(
             'sync disparado',
             [OnboardingResolverResultado::CHAVE_COLETA_EM_ANDAMENTO => true]
@@ -403,7 +403,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $passo = $this->passo($onboarding, 'planilha_custos_adman');
+        $passo = $this->passo($onboarding, 'grant_sistema_ecf');
 
         $engine->aplicarResultado($passo, OnboardingResolverResultado::naoColetado(
             'sync disparado',
@@ -434,7 +434,7 @@ class OnboardingEngineDependenciasTest extends TestCase
         $engine = new OnboardingEngineService();
         $engine->reavaliar($onboarding);
 
-        $passo = $this->passo($onboarding, 'planilha_custos_adman');
+        $passo = $this->passo($onboarding, 'grant_sistema_ecf');
         $usuario = User::factory()->create();
 
         $this->expectException(\DomainException::class);
@@ -459,8 +459,8 @@ class OnboardingEngineDependenciasTest extends TestCase
     // ─── Regra 8: conclusão do onboarding ──────────────────────────────────
 
     /**
-     * v10 — eram 12 passos obrigatórios + 1 condicional; a régua agora tem 9 e
-     * nenhum condicional. Os passos com `auto_fonte` fecham por
+     * v10 — eram 12 passos obrigatórios + 1 condicional. Depois da v20 a régua
+     * tem 9 e nenhum condicional. Os passos com `auto_fonte` fecham por
      * `aplicarResultado()`, nunca na mão.
      *
      * @test
@@ -473,14 +473,13 @@ class OnboardingEngineDependenciasTest extends TestCase
 
         $usuario = User::factory()->create();
 
+        // v20 — a régua encolheu para 9. Saíram daqui os três da Adman
+        // (`planilha_custos_adman`, `grant_consultoria_adman`,
+        // `custos_app_ecf`) e `metricas_da_conta`.
         $engine->aplicarResultado($this->passo($onboarding, 'grant_sistema_ecf'), OnboardingResolverResultado::concluido(['token' => 'ativo']));
-        $engine->aplicarResultado($this->passo($onboarding, 'planilha_custos_adman'), OnboardingResolverResultado::concluido(['adman_account_id' => '123']));
-        $engine->aplicarResultado($this->passo($onboarding, 'grant_consultoria_adman'), OnboardingResolverResultado::concluido(['grant' => 'ativo']));
 
         $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
-        $engine->concluirManualmente($this->passo($onboarding, 'custos_app_ecf'), $usuario);
 
-        $engine->aplicarResultado($this->passo($onboarding, 'metricas_da_conta'), OnboardingResolverResultado::concluido(['faturamento' => 1000]));
         $engine->aplicarResultado($this->passo($onboarding, 'anuncios_ativos_inativos'), OnboardingResolverResultado::concluido(['inativos' => 0]));
 
         // v14: `agendar_reuniao_onboarding` saiu da régua — a reunião fechou de
@@ -519,14 +518,13 @@ class OnboardingEngineDependenciasTest extends TestCase
 
         $usuario = User::factory()->create();
 
+        // v20 — a régua encolheu para 9. Saíram daqui os três da Adman
+        // (`planilha_custos_adman`, `grant_consultoria_adman`,
+        // `custos_app_ecf`) e `metricas_da_conta`.
         $engine->aplicarResultado($this->passo($onboarding, 'grant_sistema_ecf'), OnboardingResolverResultado::concluido(['token' => 'ativo']));
-        $engine->aplicarResultado($this->passo($onboarding, 'planilha_custos_adman'), OnboardingResolverResultado::concluido(['adman_account_id' => '123']));
-        $engine->aplicarResultado($this->passo($onboarding, 'grant_consultoria_adman'), OnboardingResolverResultado::concluido(['grant' => 'ativo']));
 
         $engine->concluirManualmente($this->passo($onboarding, 'acesso_colaborador_ml'), $usuario);
-        $engine->concluirManualmente($this->passo($onboarding, 'custos_app_ecf'), $usuario);
 
-        $engine->aplicarResultado($this->passo($onboarding, 'metricas_da_conta'), OnboardingResolverResultado::concluido(['faturamento' => 1000]));
         $engine->aplicarResultado($this->passo($onboarding, 'anuncios_ativos_inativos'), OnboardingResolverResultado::concluido(['inativos' => 0]));
         // v14: `agendar_reuniao_onboarding` saiu da régua — a reunião passou a
         // nascer sem dependência nenhuma, aberta desde o início do andamento.

@@ -640,13 +640,22 @@ class OnboardingPublicoController extends Controller
             'telefone' => ['nullable', 'string', 'max:30'],
         ]);
 
-        $chave = $data['papel'] === OnboardingContato::PAPEL_PARTICIPANTE
-            ? 'participantes_reuniao_cadastrados'
-            : 'ponto_contato_definido';
-
+        // O portão era `whereHas('passos', chave)` — a empresa só podia cadastrar
+        // pessoas se o onboarding dela tivesse o item de checklist correspondente.
+        //
+        // Na v20 `ponto_contato_definido` e `participantes_reuniao_cadastrados`
+        // saíram da régua: a resposta passou a morar no cartão "Resumo do
+        // cliente", e o item de checklist só cobrava um clique a mais de quem
+        // tinha acabado de preencher o formulário. Com a régua nova, o portão
+        // antigo devolvia 422 para TODO MUNDO — e o bloco de contatos do portal,
+        // que continua existindo, morria calado.
+        //
+        // O que o portão protege de verdade é escrever em empresa errada, e isso
+        // vem do `company_id` do link. Cadastrar pessoa não depende de existir
+        // passo: os contatos alimentam o convite das reuniões e o resumo do
+        // cliente, que seguem de pé.
         $onboardings = Onboarding::where('company_id', $link->company_id)
             ->naoConcluido()
-            ->whereHas('passos', fn ($q) => $q->where('chave', $chave))
             ->get();
 
         abort_if($onboardings->isEmpty(), 422, 'Este item não está disponível agora.');
@@ -700,19 +709,14 @@ class OnboardingPublicoController extends Controller
      * de já tê-lo posto como participante à mão) produziria dois convites para
      * o mesmo e-mail.
      *
-     * Só roda se o onboarding tiver o passo de participantes: um onboarding
-     * que não pede participantes não deve ganhar a linha de tabela.
+     * A guarda "só roda se o onboarding tiver o passo de participantes" CAIU na
+     * v20, junto com o passo. Ela dizia "um onboarding que não pede
+     * participantes não deve ganhar a linha" — e depois da v20 nenhum pede,
+     * então ela desligava o espelho para todo mundo. Quem pede participantes
+     * hoje é a reunião, que continua existindo.
      */
     private function garantirParticipante(Onboarding $onboarding, array $data): void
     {
-        $temPasso = OnboardingPasso::where('onboarding_id', $onboarding->id)
-            ->where('chave', 'participantes_reuniao_cadastrados')
-            ->exists();
-
-        if (! $temPasso) {
-            return;
-        }
-
         $jaExiste = OnboardingContato::where('onboarding_id', $onboarding->id)
             ->where('papel', OnboardingContato::PAPEL_PARTICIPANTE)
             ->where('nome', $data['nome'])

@@ -59,9 +59,40 @@ class OnboardingMapeamentoTest extends TestCase
         return $onboarding->fresh();
     }
 
+    /**
+     * Recria a linha de `metricas_da_conta`.
+     *
+     * O passo SAIU da régua na v20 — foi substituído pela Fotografia da Conta —,
+     * mas continua existindo em todo onboarding nascido antes do deploy: a
+     * definição é COPIADA no nascimento, e é isso que impede o processo de
+     * mudar debaixo de quem está no meio dele.
+     *
+     * `OnboardingMapeamentoService` precisa seguir lendo os dois lados enquanto
+     * houver um onboarding assim. Montar a linha aqui é o que mantém esse
+     * comportamento coberto depois que ele deixou de nascer sozinho.
+     */
+    private function comPassoDeMetricas(Onboarding $onboarding): OnboardingPasso
+    {
+        return OnboardingPasso::create([
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 8,
+            'etapa'         => OnboardingPasso::ETAPA_MAPEAMENTO,
+            'natureza'      => OnboardingPasso::NATUREZA_ACAO,
+            'chave'         => 'metricas_da_conta',
+            'titulo'        => 'Métricas da conta',
+            'dono'          => OnboardingPasso::DONO_SISTEMA,
+            'depende_de'    => ['grant_sistema_ecf'],
+            'sla_dias'      => 3,
+            'auto_fonte'    => OnboardingPasso::AUTO_FONTE_METRICAS,
+            'status'        => OnboardingPasso::STATUS_BLOQUEADO,
+        ]);
+    }
+
     /** Deixa os passos do mapeamento concluídos com um apurado conhecido. */
     private function comApurado(Onboarding $onboarding, array $metricas = [], array $acervo = []): void
     {
+        $this->comPassoDeMetricas($onboarding);
+
         $onboarding->passos()->where('chave', 'metricas_da_conta')->update([
             'status' => OnboardingPasso::STATUS_CONCLUIDO,
             'valor'  => json_encode(array_merge([
@@ -148,6 +179,7 @@ class OnboardingMapeamentoTest extends TestCase
     {
         $onboarding = $this->onboardingEmAndamento();
 
+        $this->comPassoDeMetricas($onboarding);
         $onboarding->passos()->where('chave', 'metricas_da_conta')->update([
             'status' => OnboardingPasso::STATUS_INDETERMINADO,
         ]);
@@ -172,7 +204,9 @@ class OnboardingMapeamentoTest extends TestCase
     {
         $onboarding = $this->onboardingEmAndamento();
 
-        // Recém-criado: metricas_da_conta depende do grant e nasce bloqueado.
+        // Recém-criado: `anuncios_ativos_inativos` depende do grant e nasce
+        // bloqueado. Era `metricas_da_conta` até a v20 — os dois nascem do
+        // mesmo jeito, e o que se mede aqui é o estado da visão, não a chave.
         $this->assertSame('bloqueado', $this->service()->visao($onboarding)['estado']);
     }
 
@@ -186,6 +220,7 @@ class OnboardingMapeamentoTest extends TestCase
     {
         $onboarding = $this->onboardingEmAndamento();
 
+        $this->comPassoDeMetricas($onboarding);
         $onboarding->passos()->where('chave', 'anuncios_ativos_inativos')
             ->update(['status' => OnboardingPasso::STATUS_ABERTO]);
         $onboarding->passos()->where('chave', 'metricas_da_conta')
@@ -235,6 +270,10 @@ class OnboardingMapeamentoTest extends TestCase
         Queue::fake();
 
         $onboarding = $this->onboardingEmAndamento();
+        // Os DOIS lados: `metricas_da_conta` saiu da régua na v20 e só existe
+        // em quem nasceu antes — é justamente quem precisa que a sincronização
+        // continue alcançando os dois.
+        $this->comPassoDeMetricas($onboarding);
         $onboarding->passos()->whereIn('chave', OnboardingMapeamentoService::CHAVES_APURADAS)->update([
             'status'     => OnboardingPasso::STATUS_ABERTO,
             'updated_at' => now()->subHour(),

@@ -186,8 +186,44 @@ class DefinicaoOnboarding
      * Quem JÁ está rodando segue com a dependência antiga até alguém rodar
      * `onboarding:sincronizar-dependencias --apply`: `depende_de` é COPIADO no
      * nascimento do passo.
+     *
+     * v20 — a régua encolhe de 18 para 9 passos. O negócio decidiu, em 14/09,
+     * que o onboarding é conduzido pelo PORTAL do cliente, em reunião com a
+     * tela compartilhada, e que "o que não está no portal pode descartar, já
+     * que não vamos mais usar essas etapas".
+     *
+     * Saíram NOVE:
+     *
+     * - `planilha_custos_adman`, `grant_consultoria_adman` e `custos_app_ecf` —
+     *   os três que o negócio já tinha tirado do portal por não saber explicar
+     *   do que tratam. Item que ninguém sabe explicar não vira cobrança;
+     * - `metricas_da_conta` — substituído pela Fotografia da Conta, que
+     *   responde a mesma pergunta ("como está a conta?") com faturamento de 13
+     *   semanas e o corte de quando a ECF entrou;
+     * - `ponto_contato_definido` e `participantes_reuniao_cadastrados` — a
+     *   resposta mora no cartão "Resumo do cliente" da ficha, preenchida por
+     *   `BlocoContatos`. O item de checklist só cobrava um clique a mais de
+     *   quem acabou de preencher o formulário;
+     * - `publicidade_operacao_explicada`, `adman_funcionamento_explicado` e
+     *   `adman_preenchimento_interno` — os irmãos internos dos que ficaram.
+     *
+     * FICOU `reuniao_realizada`, por escolha explícita do negócio: é o registro
+     * de que a call aconteceu, e é o que o cartão "Agenda" mostra. É o único
+     * passo da régua que não é operado no portal.
+     *
+     * O que se perde junto, e é consciente: com `metricas_da_conta` fora,
+     * ninguém mais apura reputação, medalha de parceiro e Full da conta. O
+     * faturamento continua, pela Fotografia. A MAQUINARIA fica de pé —
+     * `MetricasContaResolver`, `OnboardingMapeamentoService` e as rotas de
+     * sincronizar/confirmar seguem existindo, como em v10 se fez com o
+     * relatório inicial: apagar junto tornaria a volta atrás caríssima.
+     *
+     * Quem JÁ está rodando continua com os 18 até alguém rodar
+     * `onboarding:remover-passos-fora-da-regua --apply` — a definição é COPIADA
+     * no nascimento, e é isso que impede o processo de mudar debaixo de quem
+     * está no meio dele.
      */
-    public const VERSAO = 19;
+    public const VERSAO = 20;
 
     /**
      * As chaves que o PORTAL opera — a régua de quem aparece lá, no lugar do
@@ -221,11 +257,10 @@ class DefinicaoOnboarding
         // Retrato da conta — o cliente ACOMPANHA, não preenche. Era
         // `dono=sistema` e por isso nunca apareceu para ele.
         //
-        // `metricas_da_conta` SAIU em 14/09: foi substituído, junto com a ficha
-        // de mapeamento, pela Fotografia da Conta — um retrato de faturamento
-        // dos últimos 90 dias, com o corte de quando a ECF começou a operar.
-        // Dois blocos que diziam "como está a conta" de formas diferentes
-        // viraram um.
+        // `metricas_da_conta` saiu da RÉGUA inteira na v20, substituído pela
+        // Fotografia da Conta — um retrato de faturamento de 13 semanas, com o
+        // corte de quando a ECF começou a operar. Dois blocos que diziam "como
+        // está a conta" de formas diferentes viraram um.
         'anuncios_ativos_inativos',
         // Os "explicados": eram `dono=interno`. Entram porque são exatamente o
         // que se faz COM o cliente na chamada — explicar e alinhar. Todos têm
@@ -239,28 +274,22 @@ class DefinicaoOnboarding
     ];
 
     /**
-     * ⚠️ SAÍRAM do portal em 14/09, e a ausência é deliberada:
+     * ⚠️ A lista acima é hoje a régua INTEIRA menos um.
      *
-     * - `ponto_contato_definido` e `participantes_reuniao_cadastrados` eram
-     *   `dono=cliente` e portanto apareciam lá. São trabalho INTERNO — quem
-     *   cadastra é a ECF, com o que o cliente responde na reunião.
-     * - `analista_definido` já é resolvido pela distribuição (Fase 154): pedir
-     *   de novo no onboarding é perguntar o que o sistema já sabe.
-     * - `planilha_custos_adman`, `grant_consultoria_adman` e `custos_app_ecf`
-     *   eram `dono=cliente` e portanto já apareciam. SAÍRAM em 14/09: o negócio
-     *   não lembra do que cada um trata — se é link, se é explicação nossa na
-     *   reunião, se é coisa que o cliente faz sozinho — e pediu que ficassem
-     *   fora até isso ser confirmado. Item que ninguém sabe explicar não tem o
-     *   que fazer na frente do cliente. Os passos continuam existindo e
-     *   continuam cobráveis na ficha interna.
-     * - `reuniao_realizada`, `publicidade_operacao_explicada`,
-     *   `adman_funcionamento_explicado` e `adman_preenchimento_interno` não
-     *   foram citados na decisão — ou repetem outro item, ou não são assunto
-     *   de portal. Ficam na ficha interna até o negócio decidir se seguem
-     *   existindo.
+     * Em 14/09 o negócio decidiu descartar tudo o que não é operado no portal
+     * — v20. Dos dezoito passos sobraram nove: os oito acima e
+     * `reuniao_realizada`, mantido por escolha explícita como registro de que
+     * a call aconteceu.
      *
-     * Nada disso muda a régua: os passos continuam nascendo e continuam sendo
-     * fechados onde sempre foram. Só não aparecem no portal.
+     * A distinção continua valendo e NÃO virou redundante: `apareceNoPortal()`
+     * é o que faz a ficha interna marcar quais itens mudam de estado sem
+     * ninguém tocar nela. E é lista fechada — passo novo não entra no portal
+     * por herdar `dono=cliente`, que foi como `ponto_contato_definido` foi
+     * parar na frente do cliente sendo trabalho interno.
+     *
+     * `analista_definido` saiu antes, na v18: é resolvido pela distribuição
+     * (Fase 154), e pedi-lo de novo no onboarding era perguntar o que o
+     * sistema já sabe.
      */
     public static function apareceNoPortal(string $chave): bool
     {
@@ -314,25 +343,10 @@ class DefinicaoOnboarding
             . 'e envie o convite para o e-mail que combinamos com você. Isso dá à nossa equipe acesso operacional '
             . 'à conta, sem compartilhar sua senha. Quando terminar, marque este item como feito.',
 
-        'planilha_custos_adman' => 'Dentro da Adman, vincule a planilha de custos da sua conta. '
-            . 'É ela que permite calcular sua margem real por anúncio. '
-            . 'Assim que o vínculo existir, detectamos automaticamente — você não precisa avisar.',
 
-        'grant_consultoria_adman' => 'Dentro da Adman, conceda acesso à ECF Consultoria. '
-            . 'Sem esse acesso não conseguimos ler seus custos e seu faturamento pela Adman. '
-            . 'Assim que você concluir, detectamos automaticamente — você não precisa avisar.',
 
-        'ponto_contato_definido' => 'Diga quem devemos acionar no dia a dia: nome, e-mail e telefone. '
-            . 'É esta a pessoa que vamos procurar quando precisarmos de uma decisão ou de um dado. '
-            . 'Você pode indicar outra pessoa depois, quando quiser.',
 
-        'participantes_reuniao_cadastrados' => 'Cadastre quem vai participar das reuniões, com o Gmail de cada um. '
-            . 'É para esses e-mails que enviamos o convite e a recorrência no calendário — sem o Gmail, '
-            . 'a pessoa não recebe os encontros. Pode incluir quantas pessoas quiser.',
 
-        'custos_app_ecf' => 'Preencha os custos dos seus produtos no App ECF. '
-            . 'São eles que transformam faturamento em margem — sem os custos, conseguimos mostrar quanto você '
-            . 'vendeu, mas não quanto sobrou. Quando terminar, marque este item como feito.',
     ];
 
     /**
@@ -564,68 +578,6 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 5,
-                'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
-                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
-                'chave'      => 'planilha_custos_adman',
-                'titulo'     => 'Planilha de custos ADMAN',
-                // v6 — passa a ser do CLIENTE: é ele quem concede/vincula a
-                // conta na Adman. O `auto_fonte` não muda: o sistema segue
-                // detectando sozinho quando o vínculo existe (D-19).
-                'dono'       => OnboardingPasso::DONO_CLIENTE,
-                'setor_id'   => null,
-                'depende_de' => null,
-                'sla_dias'   => 5,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_ADMAN_ACCOUNT_ID,
-                'condicao'   => null,
-            ],
-            [
-                'ordem'      => 6,
-                'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
-                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
-                'chave'      => 'grant_consultoria_adman',
-                'titulo'     => 'Grant com a Consultoria (Adman)',
-                // v6 — só o cliente concede o grant à Consultoria dentro da
-                // Adman. A sonda continua sendo quem confirma.
-                //
-                // v9 — depende do GRANT COM O SISTEMA, não mais da planilha de
-                // custos. É a ordem que o negócio pratica: o cliente autoriza
-                // o sistema primeiro e só então concede à Consultoria. Amarrar
-                // na planilha punha um passo de cadastro no meio de dois
-                // passos de acesso.
-                'dono'       => OnboardingPasso::DONO_CLIENTE,
-                'setor_id'   => null,
-                // v17 — SEM dependencia do OAuth. Convidar colaborador no Mercado
-                // Livre e conceder acesso dentro da Adman sao acoes de plataformas
-                // diferentes: nenhuma delas precisa do nosso grant para acontecer.
-                // A dependencia so produzia cadeado e a frase "Liberamos assim que
-                // ... estiver concluido" num item que o cliente ja podia fazer,
-                // empurrando para depois um trabalho que cabia em paralelo.
-                'depende_de' => [],
-                'sla_dias'   => 5,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_ADMAN_GRANT,
-                'condicao'   => null,
-            ],
-            [
-                'ordem'      => 8,
-                'etapa'      => OnboardingPasso::ETAPA_MAPEAMENTO,
-                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
-                'chave'      => 'metricas_da_conta',
-                'titulo'     => 'Métricas da conta',
-                'dono'       => OnboardingPasso::DONO_SISTEMA,
-                'setor_id'   => null,
-                // v8 — depende SÓ do grant do Mercado Livre. A Adman não tem
-                // a ver com montar a ficha da conta: ela entra apenas no
-                // faturamento, e `MetricasContaResolver` já conclui sem ela
-                // (sem `cust_id`, `faturamento_3_meses` cai em `nao_obtidos`
-                // e o resto é apurado normalmente). Amarrar a ficha ao
-                // cadastro na Adman travava tudo por um dado acessório.
-                'depende_de' => ['grant_sistema_ecf'],
-                'sla_dias'   => 1,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_METRICAS,
-                'condicao'   => null,
-            ],
-            [
                 'ordem'      => 9,
                 'etapa'      => OnboardingPasso::ETAPA_MAPEAMENTO,
                 'natureza'   => OnboardingPasso::NATUREZA_ACAO,
@@ -636,27 +588,6 @@ class DefinicaoOnboarding
                 'depende_de' => ['grant_sistema_ecf'],
                 'sla_dias'   => 1,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_ACERVO,
-                'condicao'   => null,
-            ],
-            [
-                // v16 (21/08) — saiu de `mapeamento` para `acessos`. Era o
-                // ÚNICO passo `dono=cliente` da etapa de mapeamento, e no
-                // portal ele aparecia sob "Mapeamento da conta" logo acima da
-                // ficha automática de mesmo nome — o cliente lia dois blocos
-                // homônimos e um deles pedia trabalho dele. Aqui ele fica ao
-                // lado de `planilha_custos_adman`, que é a outra metade do
-                // mesmo assunto (custo do produto), e a etapa `mapeamento`
-                // volta a ser só o que o SISTEMA apura sozinho.
-                'ordem'      => 7,
-                'etapa'      => OnboardingPasso::ETAPA_ACESSOS,
-                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
-                'chave'      => 'custos_app_ecf',
-                'titulo'     => 'Custos no App ECF',
-                'dono'       => OnboardingPasso::DONO_CLIENTE,
-                'setor_id'   => null,
-                'depende_de' => null,
-                'sla_dias'   => 5,
-                'auto_fonte' => null,
                 'condicao'   => null,
             ],
             [
@@ -684,42 +615,6 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                // §13.2 pergunta ao CLIENTE quem será o ponto de contato — é ele
-                // quem sabe. Continua preenchível por nós na call (mesma tabela,
-                // mesma tela interna); `dono=cliente` decide de quem o painel
-                // cobra e o que aparece no portal.
-                'ordem'      => 24,
-                'etapa'      => OnboardingPasso::ETAPA_RESPONSAVEIS,
-                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
-                'chave'      => 'ponto_contato_definido',
-                'titulo'     => 'Ponto de contato do cliente definido',
-                'dono'       => OnboardingPasso::DONO_CLIENTE,
-                'setor_id'   => null,
-                'depende_de' => [],
-                'sla_dias'   => 5,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_PONTO_CONTATO,
-                'condicao'   => null,
-            ],
-            [
-                // Um item so para participantes e Gmails: o resolver exige e-mail em
-                // todos, entao 'cadastrados' e 'com gmail' sempre responderiam a mesma
-                // coisa.
-                'ordem'      => 25,
-                'etapa'      => OnboardingPasso::ETAPA_RESPONSAVEIS,
-                'natureza'   => OnboardingPasso::NATUREZA_PERGUNTA,
-                'chave'      => 'participantes_reuniao_cadastrados',
-                'titulo'     => 'Participantes das reuniões cadastrados',
-                // §16: "uma etapa específica para SOLICITAR os Gmails das
-                // pessoas do cliente que participarão das reuniões". Quem sabe
-                // quem vai participar é o cliente.
-                'dono'       => OnboardingPasso::DONO_CLIENTE,
-                'setor_id'   => null,
-                'depende_de' => [],
-                'sla_dias'   => 5,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_PARTICIPANTES,
-                'condicao'   => null,
-            ],
-            [
                 'ordem'      => 30,
                 'etapa'      => OnboardingPasso::ETAPA_PUBLICIDADE,
                 'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
@@ -738,19 +633,6 @@ class DefinicaoOnboarding
                 'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
                 'chave'      => 'publicidade_investimento_explicado',
                 'titulo'     => 'Uso do investimento em publicidade explicado',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => [],
-                'sla_dias'   => 3,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
-                'condicao'   => null,
-            ],
-            [
-                'ordem'      => 32,
-                'etapa'      => OnboardingPasso::ETAPA_PUBLICIDADE,
-                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
-                'chave'      => 'publicidade_operacao_explicada',
-                'titulo'     => 'Operação da publicidade explicada',
                 'dono'       => OnboardingPasso::DONO_INTERNO,
                 'setor_id'   => null,
                 'depende_de' => [],
@@ -785,19 +667,6 @@ class DefinicaoOnboarding
                 'condicao'   => null,
             ],
             [
-                'ordem'      => 35,
-                'etapa'      => OnboardingPasso::ETAPA_ADMAN,
-                'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
-                'chave'      => 'adman_funcionamento_explicado',
-                'titulo'     => 'Funcionamento da ADMAN explicado',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => [],
-                'sla_dias'   => 3,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
-                'condicao'   => null,
-            ],
-            [
                 'ordem'      => 36,
                 'etapa'      => OnboardingPasso::ETAPA_ADMAN,
                 'natureza'   => OnboardingPasso::NATUREZA_REUNIAO,
@@ -808,29 +677,6 @@ class DefinicaoOnboarding
                 'depende_de' => [],
                 'sla_dias'   => 3,
                 'auto_fonte' => OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
-                'condicao'   => null,
-            ],
-            [
-                // Sec.10 do documento: quem preenche as informacoes da ADMAN e o
-                // ANALISTA, e a responsabilidade nao se divide com o Estrategista.
-                //
-                // Este passo NAO reverte a v6: `planilha_custos_adman` e
-                // `grant_consultoria_adman` continuam `dono=cliente`, porque criar a
-                // conta e conceder o grant sao atos que so o dono da conta pode fazer.
-                // O que a Sec.10 descreve e o trabalho INTERNO que vem DEPOIS do acesso
-                // concedido - por isso depende do grant.
-                //
-                // Manual: nao existe sinal no banco que diga 'a conta foi parametrizada'.
-                'ordem'      => 37,
-                'etapa'      => OnboardingPasso::ETAPA_ADMAN,
-                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
-                'chave'      => 'adman_preenchimento_interno',
-                'titulo'     => 'Informações da ADMAN preenchidas pelo Analista',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => ['grant_consultoria_adman'],
-                'sla_dias'   => 5,
-                'auto_fonte' => null,
                 'condicao'   => null,
             ],
         ];

@@ -67,7 +67,7 @@ class AplicarPassosNovosTest extends TestCase
     public function dry_run_e_o_padrao_e_nao_grava_nada(): void
     {
         $onboarding = $this->onboardingNovo();
-        $this->removerPasso($onboarding, 'custos_app_ecf');
+        $this->removerPasso($onboarding, 'acesso_colaborador_ml');
 
         $antes = $onboarding->passos()->count();
 
@@ -82,7 +82,7 @@ class AplicarPassosNovosTest extends TestCase
     public function apply_insere_apenas_a_chave_que_falta(): void
     {
         $onboarding = $this->onboardingNovo();
-        $this->removerPasso($onboarding, 'custos_app_ecf');
+        $this->removerPasso($onboarding, 'acesso_colaborador_ml');
 
         $antes = $onboarding->passos()->count();
 
@@ -90,7 +90,7 @@ class AplicarPassosNovosTest extends TestCase
 
         $this->assertSame($antes + 1, $onboarding->passos()->count());
         $this->assertNotNull(
-            OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', 'custos_app_ecf')->first()
+            OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', 'acesso_colaborador_ml')->first()
         );
     }
 
@@ -104,7 +104,7 @@ class AplicarPassosNovosTest extends TestCase
     public function rodar_duas_vezes_nao_duplica_nem_estoura(): void
     {
         $onboarding = $this->onboardingNovo();
-        $this->removerPasso($onboarding, 'custos_app_ecf');
+        $this->removerPasso($onboarding, 'acesso_colaborador_ml');
 
         $this->artisan('onboarding:aplicar-passos-novos --apply')->assertSuccessful();
         $depoisDaPrimeira = $onboarding->passos()->count();
@@ -114,7 +114,7 @@ class AplicarPassosNovosTest extends TestCase
         $this->assertSame($depoisDaPrimeira, $onboarding->passos()->count());
         $this->assertSame(
             1,
-            OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', 'custos_app_ecf')->count()
+            OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', 'acesso_colaborador_ml')->count()
         );
     }
 
@@ -127,7 +127,7 @@ class AplicarPassosNovosTest extends TestCase
     public function nao_reescreve_passo_que_ja_existe(): void
     {
         $onboarding = $this->onboardingNovo();
-        $this->removerPasso($onboarding, 'custos_app_ecf');
+        $this->removerPasso($onboarding, 'acesso_colaborador_ml');
 
         $intocado = OnboardingPasso::where('onboarding_id', $onboarding->id)
             ->where('chave', 'grant_sistema_ecf')
@@ -199,7 +199,7 @@ class AplicarPassosNovosTest extends TestCase
     public function onboarding_concluido_nao_e_reaberto_por_padrao(): void
     {
         $onboarding = $this->onboardingNovo();
-        $this->removerPasso($onboarding, 'custos_app_ecf');
+        $this->removerPasso($onboarding, 'acesso_colaborador_ml');
         $onboarding->update(['status' => Onboarding::STATUS_CONCLUIDO]);
 
         $antes = $onboarding->passos()->count();
@@ -220,14 +220,14 @@ class AplicarPassosNovosTest extends TestCase
     public function definicao_versao_nao_sobe_por_padrao(): void
     {
         $onboarding = $this->onboardingNovo();
-        $this->removerPasso($onboarding, 'custos_app_ecf');
+        $this->removerPasso($onboarding, 'acesso_colaborador_ml');
 
         DB::table('onboardings')->where('id', $onboarding->id)->update(['definicao_versao' => 7]);
 
         $this->artisan('onboarding:aplicar-passos-novos --apply')->assertSuccessful();
         $this->assertSame(7, $onboarding->fresh()->definicao_versao);
 
-        $this->artisan('onboarding:aplicar-passos-novos --apply --carimbar-versao --chave=custos_app_ecf')
+        $this->artisan('onboarding:aplicar-passos-novos --apply --carimbar-versao --chave=acesso_colaborador_ml')
             ->assertSuccessful();
     }
 
@@ -237,17 +237,17 @@ class AplicarPassosNovosTest extends TestCase
         $alvo = $this->onboardingNovo();
         $outro = $this->onboardingNovo();
 
-        $this->removerPasso($alvo, 'custos_app_ecf');
-        $this->removerPasso($outro, 'custos_app_ecf');
+        $this->removerPasso($alvo, 'acesso_colaborador_ml');
+        $this->removerPasso($outro, 'acesso_colaborador_ml');
 
         $this->artisan('onboarding:aplicar-passos-novos --apply --company='.$alvo->company_id)
             ->assertSuccessful();
 
         $this->assertNotNull(
-            OnboardingPasso::where('onboarding_id', $alvo->id)->where('chave', 'custos_app_ecf')->first()
+            OnboardingPasso::where('onboarding_id', $alvo->id)->where('chave', 'acesso_colaborador_ml')->first()
         );
         $this->assertNull(
-            OnboardingPasso::where('onboarding_id', $outro->id)->where('chave', 'custos_app_ecf')->first(),
+            OnboardingPasso::where('onboarding_id', $outro->id)->where('chave', 'acesso_colaborador_ml')->first(),
             'O filtro por empresa vazou para outra empresa.'
         );
     }

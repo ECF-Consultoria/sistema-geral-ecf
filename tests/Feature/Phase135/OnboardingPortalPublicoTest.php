@@ -318,12 +318,12 @@ class OnboardingPortalPublicoTest extends TestCase
         $onboarding = $this->onboardingDeGestaoEmAndamento($company);
         $link = $this->linkService()->paraEmpresa($company);
 
-        $response = $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'custos_app_ecf']);
+        $response = $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'acesso_colaborador_ml']);
 
         $response->assertRedirect();
         $response->assertSessionHasNoErrors();
 
-        $passo = OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', 'custos_app_ecf')->firstOrFail();
+        $passo = OnboardingPasso::where('onboarding_id', $onboarding->id)->where('chave', 'acesso_colaborador_ml')->firstOrFail();
         $this->assertSame(OnboardingPasso::STATUS_CONCLUIDO, $passo->status);
     }
 

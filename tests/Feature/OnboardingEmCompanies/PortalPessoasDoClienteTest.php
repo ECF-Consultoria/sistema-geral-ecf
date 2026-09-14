@@ -111,15 +111,20 @@ class PortalPessoasDoClienteTest extends TestCase
         $this->assertArrayNotHasKey('participantes_reuniao_cadastrados', $porChave->all());
     }
 
-    /** @test */
-    public function cliente_cadastra_participante_e_o_item_fecha_na_hora(): void
+    /**
+     * v20 — este teste media o item de checklist fechando na hora.
+     * `participantes_reuniao_cadastrados` saiu da régua, então o que sobrou é o
+     * que sempre foi o essencial: o cadastro GRAVA, pelo link do cliente.
+     *
+     * O portão do endpoint deixou de exigir o passo junto com a v20: exigi-lo
+     * passaria a devolver 422 para todo mundo, e o bloco de contatos do portal
+     * — que continua existindo — morreria calado.
+     *
+     * @test
+     */
+    public function cliente_cadastra_participante_pelo_link(): void
     {
         [, $onboarding, $token] = $this->cenario();
-
-        $this->assertSame(
-            OnboardingPasso::STATUS_ABERTO,
-            $this->passo($onboarding, 'participantes_reuniao_cadastrados')->status
-        );
 
         $this->post(route('onboarding.publico.pessoas', $token), [
             'papel' => 'participante_reuniao',
@@ -127,11 +132,12 @@ class PortalPessoasDoClienteTest extends TestCase
             'email' => 'joana@gmail.com',
         ])->assertRedirect();
 
-        $this->assertSame(
-            OnboardingPasso::STATUS_CONCLUIDO,
-            $this->passo($onboarding, 'participantes_reuniao_cadastrados')->status,
-            'O item não fechou na hora — o cliente veria pendente por até 10 minutos.'
-        );
+        $contato = OnboardingContato::where('onboarding_id', $onboarding->id)
+            ->where('papel', OnboardingContato::PAPEL_PARTICIPANTE)
+            ->firstOrFail();
+
+        $this->assertSame('Joana Cliente', $contato->nome);
+        $this->assertSame('joana@gmail.com', $contato->email);
     }
 
     /**
@@ -150,8 +156,9 @@ class PortalPessoasDoClienteTest extends TestCase
         ])->assertSessionHasErrors('email');
 
         $this->assertSame(
-            OnboardingPasso::STATUS_ABERTO,
-            $this->passo($onboarding, 'participantes_reuniao_cadastrados')->status
+            0,
+            OnboardingContato::where('onboarding_id', $onboarding->id)->count(),
+            'recusado é recusado: nada pode ter sido gravado'
         );
     }
 
@@ -167,10 +174,12 @@ class PortalPessoasDoClienteTest extends TestCase
             'telefone' => '11999998888',
         ])->assertRedirect();
 
-        $this->assertSame(
-            OnboardingPasso::STATUS_CONCLUIDO,
-            $this->passo($onboarding, 'ponto_contato_definido')->status
-        );
+        $contato = OnboardingContato::where('onboarding_id', $onboarding->id)
+            ->where('papel', OnboardingContato::PAPEL_PONTO_CONTATO)
+            ->firstOrFail();
+
+        $this->assertSame('11999998888', $contato->telefone);
+        $this->assertNull($contato->email);
     }
 
     /**
@@ -197,12 +206,6 @@ class PortalPessoasDoClienteTest extends TestCase
         $this->assertCount(1, $participantes);
         $this->assertSame('Fulano Contato', $participantes->first()->nome);
         $this->assertSame('fulano@empresa.com', $participantes->first()->email);
-
-        // E o item de participantes fecha junto, sem novo cadastro.
-        $this->assertSame(
-            OnboardingPasso::STATUS_CONCLUIDO,
-            $this->passo($onboarding, 'participantes_reuniao_cadastrados')->status
-        );
     }
 
     /**

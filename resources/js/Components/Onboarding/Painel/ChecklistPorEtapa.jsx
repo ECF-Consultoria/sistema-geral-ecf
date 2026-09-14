@@ -113,10 +113,17 @@ function Linha({ passo, aoAbrir }) {
                 {passo.titulo}
             </span>
 
-            {/* Um passo operado no portal muda de estado sem ninguém tocar
-                nesta tela. Sem a marca, o item pareceria fechar sozinho. */}
-            {passo.no_portal && (
-                <Link2 size={12} className="text-white/25 shrink-0" aria-label="Operado no portal do cliente" />
+            {/* Marca-se a EXCEÇÃO, não a regra. Depois da v20 quase toda a
+                régua é conduzida no portal — pôr o selo nos oito seria ruído
+                de tela. O que o operador precisa distinguir é o item que o
+                cliente NÃO vê, porque esse só fecha aqui. */}
+            {! passo.no_portal && (
+                <span
+                    className="shrink-0 rounded px-1.5 py-[1px] text-[10px] uppercase tracking-wide text-white/40 bg-white/[0.06]"
+                    title="Não aparece para o cliente — só fecha por aqui"
+                >
+                    interno
+                </span>
             )}
 
             {passo.vencido && (
@@ -213,7 +220,10 @@ export default function ChecklistPorEtapa({ passos = [], aoAbrirPasso }) {
             </div>
 
             <p className="mt-3.5 flex items-center gap-1.5 text-[11px] text-white/30">
-                <Link2 size={11} /> operado no portal do cliente · clique num item para ver e agir
+                <Link2 size={11} />
+                a régua é conduzida no portal do cliente — o que estiver marcado
+                <span className="rounded px-1 py-[1px] text-[10px] uppercase tracking-wide text-white/40 bg-white/[0.06]">interno</span>
+                só fecha aqui · clique num item para ver e agir
             </p>
         </section>
     );

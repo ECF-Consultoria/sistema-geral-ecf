@@ -237,8 +237,17 @@ class RespostaFechaNaHoraTest extends TestCase
         ]);
     }
 
-    /** @test */
-    public function adicionar_contato_fecha_o_item_na_hora(): void
+    /**
+     * v20 — `ponto_contato_definido` saiu da régua: a resposta passou a morar
+     * no cartão "Resumo do cliente" da ficha, e o item de checklist só cobrava
+     * um clique a mais de quem tinha acabado de preencher o formulário.
+     *
+     * O que continua sendo verdade, e é o que este teste mede agora: a escrita
+     * pela ficha interna grava a LINHA, com papel e e-mail.
+     *
+     * @test
+     */
+    public function adicionar_contato_grava_a_linha(): void
     {
         $this->admin();
         $onboarding = $this->onboardingEmAndamento();
@@ -249,19 +258,28 @@ class RespostaFechaNaHoraTest extends TestCase
             'email' => 'fulano@cliente.test',
         ])->assertRedirect();
 
-        $this->assertSame(
-            OnboardingPasso::STATUS_CONCLUIDO,
-            $this->passo($onboarding, 'ponto_contato_definido')->status
-        );
+        $this->assertDatabaseHas('onboarding_contatos', [
+            'onboarding_id' => $onboarding->id,
+            'papel'         => 'ponto_de_contato',
+            'nome'          => 'Fulano da Silva',
+            'email'         => 'fulano@cliente.test',
+        ]);
     }
 
     /**
-     * Participante sem e-mail não fecha o item — o objetivo do §16 é mandar
-     * convite, e sem e-mail não há convite.
+     * Participante sem e-mail continua sendo aceito pela ficha INTERNA e
+     * continua sendo um problema: o objetivo do §16 é mandar convite, e sem
+     * e-mail não há convite. Quem avisa disso hoje é o cartão "Resumo do
+     * cliente" ("3 cadastrados · 1 sem e-mail"), não mais um item de checklist
+     * — `participantes_reuniao_cadastrados` saiu da régua na v20.
+     *
+     * A escrita pela ficha aceita de propósito: o analista cadastra o que o
+     * cliente respondeu na reunião e corre atrás do Gmail depois. Quem RECUSA
+     * é o portal, onde é o próprio cliente quem digita.
      *
      * @test
      */
-    public function participante_sem_email_mantem_o_item_aberto(): void
+    public function participante_sem_email_e_aceito_pela_ficha_interna(): void
     {
         $this->admin();
         $onboarding = $this->onboardingEmAndamento();
@@ -271,23 +289,11 @@ class RespostaFechaNaHoraTest extends TestCase
             'nome'  => 'Sem Email',
         ])->assertRedirect();
 
-        $this->assertSame(
-            OnboardingPasso::STATUS_ABERTO,
-            $this->passo($onboarding, 'participantes_reuniao_cadastrados')->status
-        );
-
-        // Com e-mail, fecha.
-        $this->post(route('onboarding.contatos.salvar', $onboarding), [
-            'papel' => 'participante_reuniao',
-            'nome'  => 'Com Email',
-            'email' => 'com@cliente.test',
-        ])->assertRedirect();
-
-        $this->assertSame(
-            OnboardingPasso::STATUS_ABERTO,
-            $this->passo($onboarding, 'participantes_reuniao_cadastrados')->status,
-            'Um participante sem e-mail ainda impede o fechamento.'
-        );
+        $this->assertDatabaseHas('onboarding_contatos', [
+            'onboarding_id' => $onboarding->id,
+            'nome'          => 'Sem Email',
+            'email'         => null,
+        ]);
     }
 
     /**

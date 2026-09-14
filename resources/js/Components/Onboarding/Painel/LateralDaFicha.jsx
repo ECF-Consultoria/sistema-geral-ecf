@@ -161,15 +161,27 @@ export function DiagnosticoDaConta({ mapeamento, aoAbrir }) {
 
     const numero = (v) => (typeof v === 'number' ? v.toLocaleString('pt-BR') : null);
 
+    // Faturamento, reputação e medalha vinham do passo `metricas_da_conta`,
+    // que saiu da régua na v20 (a Fotografia da Conta responde a mesma
+    // pergunta). Onde ele nunca rodou, as três linhas seriam travessões
+    // permanentes — e travessão permanente é lido como falha de coleta.
+    const temFichaDaConta = [conta.faturamento_3_meses, conta.reputacao_level, conta.medalha_parceiro]
+        .some((v) => v !== null && v !== undefined);
+
     return (
         <CartaoLateral icone={BarChart3} titulo="Diagnóstico da conta" acao="Detalhes" aoAgir={aoAbrir}>
             {legenda && <p className="text-[11.5px] text-white/35 mb-2 leading-relaxed">{legenda}</p>}
 
             <Campo rotulo="Anúncios ativos" valor={numero(anuncios.ativos)} />
             <Campo rotulo="Anúncios inativos" valor={numero(anuncios.inativos)} />
-            <Campo rotulo="Faturamento 3 meses" valor={brl(conta.faturamento_3_meses)} />
-            <Campo rotulo="Reputação" valor={conta.reputacao_level} />
-            <Campo rotulo="Programa de parceiro" valor={conta.medalha_parceiro} />
+
+            {temFichaDaConta && (
+                <>
+                    <Campo rotulo="Faturamento 3 meses" valor={brl(conta.faturamento_3_meses)} />
+                    <Campo rotulo="Reputação" valor={conta.reputacao_level} />
+                    <Campo rotulo="Programa de parceiro" valor={conta.medalha_parceiro} />
+                </>
+            )}
         </CartaoLateral>
     );
 }
