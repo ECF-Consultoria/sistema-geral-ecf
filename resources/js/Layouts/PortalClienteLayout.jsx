@@ -109,12 +109,24 @@ export default function PortalClienteLayout({ empresa, modulos = [], titulo, chi
     const equipe = !! usePage().props.usuario?.equipe;
 
     return (
-        <div className={cn('min-h-screen bg-ecf-bg', !equipe && 'lg:flex')}>
+        <div className="min-h-screen bg-ecf-bg">
             <Head title={titulo ? `${titulo} · ${empresa?.nome}` : `Portal · ${empresa?.nome}`} />
 
             {equipe && <FaixaDeEquipe empresa={empresa} />}
 
-            <div className={cn(equipe && 'lg:flex')}>
+            {/* O `lg:flex` mora SEMPRE aqui, no wrapper que de fato envolve
+                `aside` + `main`. Antes ele era condicional: com `equipe` ficava
+                aqui, e sem `equipe` ia para o container de fora — que tem este
+                div como único filho. O resultado era que, no acesso POR TOKEN
+                (todo cliente que entra pelo link, onde `equipe` é sempre falso),
+                `aside` e `main` empilhavam como blocos. Como o `aside` tem
+                `lg:min-h-screen`, o conteúdo ia parar uma tela inteira abaixo:
+                a página parecia vazia e o console não acusava nada, porque nada
+                havia quebrado — estava fora da vista.
+
+                A faixa de equipe continua acima das duas colunas por ficar
+                FORA deste div, que era o motivo de o wrapper existir. */}
+            <div className="lg:flex">
 
             <aside className="lg:w-[248px] lg:shrink-0 lg:min-h-screen bg-[#0b1220] border-b lg:border-b-0 lg:border-r border-white/[0.06]">
                 <div className="lg:sticky lg:top-0 p-4 lg:p-5">
