@@ -12,11 +12,11 @@ use App\Models\Servico;
 use App\Models\ServicoFaixaFaturamento;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Fechamento\GravarTabelaEmpresaService;
+use App\Services\Fechamento\GravarTabelaGrupoService;
 use App\Support\Permissions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 /**
@@ -163,31 +163,129 @@ class TabelaEmpresaContratoController extends Controller
     }
 
     /**
-     * POST /administrativo/contratos/grupo/{grupo}/tabela — substitui a tabela INTEIRA do grupo.
+     * GET /administrativo/contratos/grupo/{grupo}/tabela — a ficha da tabela de cobrança de um
+     * GRUPO (Fase 143 Plano 03, T2).
      *
-     * `GrupoFaixaFaturamento` não tem coluna de origem (não ganha uma nesta fase) — por isso não
-     * passa por `GravarTabelaEmpresaService`, que é a porta de `empresa_faixas_faturamento`. Mesma
-     * lógica de `FechamentoController::salvarFaixasGrupo`, extraída aqui porque controller não
-     * chama controller. O gêmeo em `FechamentoController` continua existindo para a rota antiga
-     * (`admin.financeiro.faixas.grupo`) e os testes da Fase 138 — as duas cópias precisam morrer
-     * juntas se um dia essa rota antiga sair.
+     * ⚠️ **Por que esta página precisou existir.** Até aqui, a tabela de um grupo só era editável
+     * de dentro da ficha de uma empresa-membro (`Admin/TabelaEmpresa.jsx`, bloco 5). Isso não
+     * alcança o caso que abriu a Fase 143: o grupo que fica POR CIMA dos outros pode não ter
+     * empresa nenhuma pendurada direto nele — e é justamente a tabela dele que governa a cobrança
+     * de todas as empresas abaixo. Sem esta página, essa tabela era inalcançável pela tela.
+     *
+     * Props ACHATADAS, mesma disciplina de `show()` — nunca o model inteiro.
      */
-    public function salvarGrupo(SalvarFaixasContratoRequest $request, CompanyGroup $grupo): RedirectResponse
+    public function showGrupo(CompanyGroup $grupo, FechamentoFaixaResolver $resolver): \Inertia\Response
     {
-        $this->gravarFaixasGrupo($grupo, $request->validated('faixas'));
+        $grupo->loadMissing('pai');
 
-        return back()->with('success', 'Tabela do grupo salva.');
+        // As linhas GRAVADAS deste grupo — nunca uma reconstrução.
+        $tabelaGrupo = GrupoFaixaFaturamento::where('company_group_id', $grupo->id)
+            ->ordenadas()
+            ->get();
+
+        $subgrupos = CompanyGroup::where('parent_id', $grupo->id)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        // As empresas que esta tabela alcança: as do próprio grupo MAIS as dos grupos pendurados
+        // nele. É o número que a pessoa precisa ver antes de salvar — 10 empresas, não 2.
+        $idsDoConjunto = $subgrupos->pluck('id')->push($grupo->id)->all();
+
+        $empresas = Company::whereIn('company_group_id', $idsDoConjunto)
+            ->orderBy('name')
+            ->get(['id', 'name', 'company_group_id', 'active']);
+
+        $nomePorGrupoId = $subgrupos->pluck('name', 'id')->put($grupo->id, $grupo->name);
+
+        // Qual tabela de fato governa este conjunto hoje. Sem âncora de propósito: a pergunta
+        // aqui é "existe tabela cadastrada neste grupo ou no grupo em que ele está?", não "o que
+        // a empresa que mais faturou emprestaria" — essa herança é assunto da ficha de empresa.
+        $queVale = $resolver->paraGrupo($grupo, null);
+
+        return Inertia::render('Admin/TabelaGrupo', [
+            'grupo' => [
+                'id'   => $grupo->id,
+                'name' => $grupo->name,
+                'pai'  => $grupo->pai === null ? null : [
+                    'id'   => $grupo->pai->id,
+                    'name' => $grupo->pai->name,
+                ],
+            ],
+            'tabela_grupo'   => $this->achatarFaixas($tabelaGrupo),
+            'tabela_que_vale' => $queVale === null ? null : [
+                'grupo_id'   => $queVale['grupo_id'],
+                'grupo_nome' => $queVale['grupo_nome'],
+                'faixas'     => $this->achatarFaixas($queVale['faixas']),
+            ],
+            'subgrupos' => $subgrupos
+                ->map(fn (CompanyGroup $g) => [
+                    'id'             => $g->id,
+                    'name'           => $g->name,
+                    'empresas_count' => $empresas->where('company_group_id', $g->id)->count(),
+                ])
+                ->values()
+                ->all(),
+            'empresas' => $empresas
+                ->map(fn (Company $c) => [
+                    'id'         => $c->id,
+                    'name'       => $c->name,
+                    'grupo_nome' => $nomePorGrupoId[$c->company_group_id] ?? null,
+                    'ativa'      => (bool) $c->active,
+                ])
+                ->values()
+                ->all(),
+            'modelos_de_partida' => $this->modelosDePartida(),
+        ]);
     }
 
     /**
-     * DELETE /administrativo/contratos/grupo/{grupo}/tabela — apaga a tabela própria do grupo.
-     * Mesmo gêmeo de `FechamentoController::removerFaixasGrupo`, mesma justificativa acima.
+     * POST /administrativo/contratos/grupo/{grupo}/tabela — substitui a tabela INTEIRA do grupo,
+     * pela porta única `GravarTabelaGrupoService` (Fase 143 Plano 03, T1).
+     *
+     * ⚠️ Até a Fase 143 isto era um `delete()` de query builder seguido de `create()` em laço,
+     * sem uma única chamada a `activity()` no arquivo inteiro: **a tabela anterior evaporava sem
+     * registro**. Com a árvore de grupos, a tabela de um grupo-pai governa a cobrança de todas as
+     * empresas abaixo dele (10, no caso que abriu a fase) — trocar isso sem rastro é trocar a
+     * mensalidade de dez clientes sem ninguém saber quem fez nem qual era o valor anterior.
+     *
+     * `GrupoFaixaFaturamento` não tem coluna de origem (não ganha uma nesta fase) — por isso a
+     * porta é a do grupo, e não `GravarTabelaEmpresaService` (que é a de
+     * `empresa_faixas_faturamento`, com a trava de precedência das três origens).
      */
-    public function removerGrupo(Request $request, CompanyGroup $grupo): RedirectResponse
+    public function salvarGrupo(SalvarFaixasContratoRequest $request, CompanyGroup $grupo, GravarTabelaGrupoService $servico): RedirectResponse
+    {
+        $resultado = $servico->gravar(
+            $grupo,
+            $request->validated('faixas'),
+            $request->user(),
+            'contrato_ficha',
+        );
+
+        $response = back()->with('success', 'Tabela do grupo salva.');
+
+        // Aviso neutro — não é erro; a pessoa pode ter substituído de propósito. O que ela
+        // precisa ver é o TAMANHO do que acabou de mudar.
+        if ($resultado['substituiu'] === true && $resultado['empresas_governadas'] > 0) {
+            $response = $response->with(
+                'aviso',
+                $resultado['empresas_governadas'] === 1
+                    ? 'A tabela que estava aqui foi substituída. Ela vale para 1 empresa.'
+                    : "A tabela que estava aqui foi substituída. Ela vale para {$resultado['empresas_governadas']} empresas."
+            );
+        }
+
+        return $response;
+    }
+
+    /**
+     * DELETE /administrativo/contratos/grupo/{grupo}/tabela — apaga a tabela própria do grupo,
+     * pela mesma porta única (que registra a trilha com `depois = []`).
+     */
+    public function removerGrupo(Request $request, CompanyGroup $grupo, GravarTabelaGrupoService $servico): RedirectResponse
     {
         abort_unless($this->podeMexerNaTabela($request), 403);
 
-        GrupoFaixaFaturamento::where('company_group_id', $grupo->id)->delete();
+        $servico->remover($grupo, $request->user(), 'contrato_ficha');
 
         return back()->with('success', 'Grupo voltou a usar a tabela da empresa.');
     }
@@ -200,29 +298,6 @@ class TabelaEmpresaContratoController extends Controller
     {
         return $request->user()?->isAdmin() === true
             || $request->user()?->hasPermission(Permissions::ADMIN_CONTRATOS) === true;
-    }
-
-    /**
-     * All-or-nothing (D-13 da Fase 137), mesma disciplina de
-     * `FechamentoController::salvarFaixasGrupo` — delete + create numa transação.
-     *
-     * @param  array<int, array{ordem:int, limite_superior?:float|null, valor:float, valor_e_piso?:bool}>  $faixas
-     */
-    private function gravarFaixasGrupo(CompanyGroup $grupo, array $faixas): void
-    {
-        DB::transaction(function () use ($grupo, $faixas) {
-            GrupoFaixaFaturamento::where('company_group_id', $grupo->id)->delete();
-
-            foreach ($faixas as $faixa) {
-                GrupoFaixaFaturamento::create([
-                    'company_group_id' => $grupo->id,
-                    'ordem'             => $faixa['ordem'],
-                    'limite_superior'   => $faixa['limite_superior'] ?? null,
-                    'valor'             => $faixa['valor'],
-                    'valor_e_piso'      => $faixa['valor_e_piso'] ?? false,
-                ]);
-            }
-        });
     }
 
     /**

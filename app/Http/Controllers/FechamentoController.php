@@ -6,10 +6,10 @@ use App\Http\Requests\SalvarFaixasFaturamentoRequest;
 use App\Models\Company;
 use App\Models\CompanyGroup;
 use App\Models\EmpresaFaixaFaturamento;
-use App\Models\GrupoFaixaFaturamento;
 use App\Models\Servico;
 use App\Models\ServicoFaixaFaturamento;
 use App\Services\Fechamento\GravarTabelaEmpresaService;
+use App\Services\Fechamento\GravarTabelaGrupoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
@@ -127,21 +127,13 @@ class FechamentoController extends Controller
      * `origem = 'grupo'` e ignorar tanto a tabela da empresa-âncora quanto
      * a do serviço.
      */
-    public function salvarFaixasGrupo(SalvarFaixasFaturamentoRequest $request, CompanyGroup $grupo)
+    public function salvarFaixasGrupo(SalvarFaixasFaturamentoRequest $request, CompanyGroup $grupo, GravarTabelaGrupoService $servico)
     {
-        DB::transaction(function () use ($request, $grupo) {
-            GrupoFaixaFaturamento::where('company_group_id', $grupo->id)->delete();
-
-            foreach ($request->validated('faixas') as $faixa) {
-                GrupoFaixaFaturamento::create([
-                    'company_group_id' => $grupo->id,
-                    'ordem'             => $faixa['ordem'],
-                    'limite_superior'   => $faixa['limite_superior'] ?? null,
-                    'valor'             => $faixa['valor'],
-                    'valor_e_piso'      => $faixa['valor_e_piso'] ?? false,
-                ]);
-            }
-        });
+        // Fase 143 Plano 03 (T1): passou a delegar para a porta unica. Antes disto, o
+        // `delete()` de query builder abaixo apagava a tabela anterior sem disparar evento de
+        // model nenhum — ou seja, sem rastro. Mesma correcao ja feita no caminho de EMPRESA
+        // (`removerFaixasEmpresa` acima) e no gemeo do modulo de contratos.
+        $servico->gravar($grupo, $request->validated('faixas'), $request->user(), 'fechamento');
 
         return back()->with('success', 'Tabela do grupo salva.');
     }
@@ -152,11 +144,11 @@ class FechamentoController extends Controller
      * Sem FormRequest (não há payload a validar) — guard próprio via
      * `abort_unless`, mesma forma de `removerFaixasEmpresa`.
      */
-    public function removerFaixasGrupo(Request $request, CompanyGroup $grupo)
+    public function removerFaixasGrupo(Request $request, CompanyGroup $grupo, GravarTabelaGrupoService $servico)
     {
         abort_unless($request->user()?->isAdmin() === true, 403);
 
-        GrupoFaixaFaturamento::where('company_group_id', $grupo->id)->delete();
+        $servico->remover($grupo, $request->user(), 'fechamento');
 
         return back()->with('success', 'Grupo voltou a usar a tabela da empresa.');
     }
