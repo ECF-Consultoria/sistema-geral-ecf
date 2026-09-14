@@ -65,7 +65,8 @@ use Illuminate\Support\Facades\Log;
  *   reencontrar a linha no ramo congelado) — intocado.
  * - ⚠️ Grupo SEM pai É a própria raiz. Enquanto os 15 grupos de hoje
  *   estiverem com `parent_id` nulo — e nesta entrega ninguém ganha pai — o
- *   resultado é IDÊNTICO ao de antes (`Phase143RegressaoSemPaiTest`).
+ *   resultado é IDÊNTICO ao de antes
+ *   (`Phase143ConsolidarPelaRaizTest::sem_nenhum_pai_o_fechamento_sai_exatamente_como_hoje_quatro_linhas()`).
  * - ⛔ O NPS não sente nada: `nps_group_surveys` e a cobertura de grupo
  *   continuam olhando `company_group_id` da empresa, não a raiz.
  *

@@ -45,7 +45,8 @@ use Illuminate\Support\Collection;
  * grupo → empresa → serviço para **raiz → subgrupo → empresa → serviço**.
  * Grupo SEM pai é a própria raiz, então para os 15 grupos de hoje (todos
  * com `parent_id` nulo) nada muda — regressão zero, provada em
- * `Phase143RegressaoSemPaiTest`. Ver `degrauDaArvoreDeGrupos()`.
+ * `Phase143ResolverPrecedenciaTest::grupo_sem_pai_resolve_exatamente_como_antes()`.
+ * Ver `degrauDaArvoreDeGrupos()`.
  *
  * **Com a flag `FechamentoRegraTabela::CHAVE` LIGADA (Fase 141, D-01/D-04)
  * — regra NOVA, definitiva:**
