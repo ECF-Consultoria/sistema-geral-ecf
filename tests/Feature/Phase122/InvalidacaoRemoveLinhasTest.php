@@ -254,11 +254,14 @@ class InvalidacaoRemoveLinhasTest extends TestCase
      */
     private function criarUserComCargoAnalista(): User
     {
-        $setorId = DB::table('setores')->insertGetId([
-            'nome' => 'Performance', 'slug' => 'performance-122-p04',
-            'active' => true, 'is_system' => false,
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
+        // O setor "Performance" já vem semeado por migration e `setores.nome`
+        // é UNIQUE — reusa o que existir; só cria se ainda não houver.
+        $setorId = (int) (DB::table('setores')->where('nome', 'Performance')->value('id')
+            ?? DB::table('setores')->insertGetId([
+                'nome' => 'Performance', 'slug' => 'performance-122-p04',
+                'active' => true, 'is_system' => false,
+                'created_at' => now(), 'updated_at' => now(),
+            ]));
         $cargoId = DB::table('cargos')->insertGetId([
             'setor_id' => $setorId, 'nome' => 'Analista', 'slug' => 'analista',
             'active' => true, 'ordem' => 1,
