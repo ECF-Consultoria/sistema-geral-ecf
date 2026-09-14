@@ -53,6 +53,15 @@ const ROTAS = {
         porToken: null,
         autenticada: 'portal.auth.onboarding.confirmacao',
     },
+    // Mesma natureza da confirmação: registro da equipe, sem porta anônima.
+    'onboarding.relatorio': {
+        porToken: null,
+        autenticada: 'portal.auth.onboarding.relatorio',
+    },
+    'onboarding.investimento': {
+        porToken: null,
+        autenticada: 'portal.auth.onboarding.investimento',
+    },
 };
 
 /**

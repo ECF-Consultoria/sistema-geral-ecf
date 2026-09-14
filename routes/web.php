@@ -202,6 +202,12 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     // outro ator). A rota por token existiria só para receber 422.
     Route::post('/onboarding/confirmacao', [OnboardingPublicoController::class, 'responderConfirmacao'])
         ->name('portal.auth.onboarding.confirmacao');
+    // Blocos operados pela EQUIPE no portal (14/09). Só autenticadas, pelo
+    // mesmo motivo da confirmação: são registro nosso, o cliente lê.
+    Route::put('/onboarding/relatorio', [OnboardingPublicoController::class, 'salvarRelatorioPortal'])
+        ->name('portal.auth.onboarding.relatorio');
+    Route::put('/onboarding/investimento', [OnboardingPublicoController::class, 'salvarInvestimentoPortal'])
+        ->name('portal.auth.onboarding.investimento');
     Route::get('/onboarding/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
         ->name('portal.auth.onboarding.conectar-ml');
 

@@ -163,6 +163,181 @@ function LinkAppEcf({ url }) {
 
 // ─── Card de um passo (1 por `chave`, nunca por onboarding_passo) ───────────
 
+const CAMPOS_ANOTACAO = [
+    ['pontos_atencao',  'Pontos de atenção'],
+    ['oportunidades',   'Oportunidades'],
+    ['proximos_passos', 'Próximos passos'],
+];
+
+const CAMPOS_INVESTIMENTO = [
+    ['investimento_disponivel',      'Disponível para investir'],
+    ['investimento_mensal_previsto', 'Previsto por mês'],
+    ['investimento_publicidade',     'Em publicidade'],
+];
+
+/**
+ * Anotações da reunião — nossas, e o cliente lê.
+ *
+ * NÃO é o relatório inicial da tela interna: lá existe um botão que GERA um
+ * documento a partir dos dados da conta. Aqui é ponto de anotação, e só. A
+ * decisão de 14/09 foi explícita quanto a isso — "nem precisamos do botão
+ * gerar relatório".
+ *
+ * O cliente vê o que ficou escrito; quem escreve é a equipe. Bloco sem nada
+ * escrito não aparece para o cliente: um título seguido de vazio faria parecer
+ * que a reunião não rendeu nada.
+ */
+function BlocoAnotacoes({ bloco, token, ehEquipe }) {
+    const [campos, setCampos] = useState(() => ({ ...bloco.relatorio }));
+    const [salvando, setSalvando] = useState(false);
+
+    const temConteudo = CAMPOS_ANOTACAO.some(([k]) => (bloco.relatorio?.[k] ?? '').trim() !== '');
+
+    if (! ehEquipe && ! temConteudo) return null;
+
+    function salvar() {
+        if (salvando) return;
+        setSalvando(true);
+        router.put(
+            rotaDoPortal('onboarding.relatorio', token),
+            { onboarding_id: bloco.onboarding_id, ...campos },
+            { preserveScroll: true, onFinish: () => setSalvando(false) },
+        );
+    }
+
+    return (
+        <section className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-3">
+            <h2 className="text-white font-display font-bold text-[15px]">
+                Anotações da reunião{bloco.rotulo ? ` · ${bloco.rotulo}` : ''}
+            </h2>
+
+            {CAMPOS_ANOTACAO.map(([chave, rotulo]) => (
+                <div key={chave} className="space-y-1">
+                    <p className="text-white/45 text-[12px] font-semibold">{rotulo}</p>
+
+                    {ehEquipe ? (
+                        <textarea
+                            value={campos[chave] ?? ''}
+                            onChange={(e) => setCampos((a) => ({ ...a, [chave]: e.target.value }))}
+                            rows={3}
+                            className={cn(
+                                'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
+                                'px-3 py-2 text-[12px] text-white/80 leading-relaxed resize-y',
+                            )}
+                        />
+                    ) : (
+                        <p className="text-white/60 text-[12.5px] leading-relaxed whitespace-pre-wrap">
+                            {(bloco.relatorio?.[chave] ?? '').trim() || '—'}
+                        </p>
+                    )}
+                </div>
+            ))}
+
+            {ehEquipe && (
+                <button
+                    type="button"
+                    onClick={salvar}
+                    disabled={salvando}
+                    className="px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg text-[12px] font-semibold disabled:opacity-40"
+                >
+                    {salvando ? 'Salvando…' : 'Salvar anotações'}
+                </button>
+            )}
+        </section>
+    );
+}
+
+/** O investimento do cliente, registrado por nós na reunião. */
+function BlocoInvestimentoPortal({ bloco, token, ehEquipe }) {
+    const [dados, setDados] = useState(() => ({ ...bloco.investimento }));
+    const [salvando, setSalvando] = useState(false);
+
+    const temConteudo = Object.values(bloco.investimento ?? {}).some(
+        (v) => v !== null && v !== '' && v !== undefined
+    );
+
+    if (! ehEquipe && ! temConteudo) return null;
+
+    function salvar() {
+        if (salvando) return;
+        setSalvando(true);
+        router.put(
+            rotaDoPortal('onboarding.investimento', token),
+            { onboarding_id: bloco.onboarding_id, ...dados },
+            { preserveScroll: true, onFinish: () => setSalvando(false) },
+        );
+    }
+
+    const brl = (v) =>
+        v === null || v === '' || v === undefined
+            ? '—'
+            : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    return (
+        <section className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-3">
+            <h2 className="text-white font-display font-bold text-[15px]">
+                Investimento{bloco.rotulo ? ` · ${bloco.rotulo}` : ''}
+            </h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {CAMPOS_INVESTIMENTO.map(([chave, rotulo]) => (
+                    <div key={chave} className="space-y-1">
+                        <p className="text-white/45 text-[12px]">{rotulo}</p>
+
+                        {ehEquipe ? (
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={dados[chave] ?? ''}
+                                onChange={(e) => setDados((a) => ({ ...a, [chave]: e.target.value }))}
+                                className={cn(
+                                    'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
+                                    'px-2.5 py-1.5 text-[12px] text-white/80 tabular-nums',
+                                )}
+                            />
+                        ) : (
+                            <p className="text-white text-[13px] font-semibold tabular-nums">
+                                {brl(bloco.investimento?.[chave])}
+                            </p>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            <div className="space-y-1">
+                <p className="text-white/45 text-[12px]">Observações</p>
+                {ehEquipe ? (
+                    <textarea
+                        value={dados.observacoes ?? ''}
+                        onChange={(e) => setDados((a) => ({ ...a, observacoes: e.target.value }))}
+                        rows={2}
+                        className={cn(
+                            'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
+                            'px-3 py-2 text-[12px] text-white/80 leading-relaxed resize-y',
+                        )}
+                    />
+                ) : (
+                    <p className="text-white/60 text-[12.5px] leading-relaxed whitespace-pre-wrap">
+                        {(bloco.investimento?.observacoes ?? '').trim() || '—'}
+                    </p>
+                )}
+            </div>
+
+            {ehEquipe && (
+                <button
+                    type="button"
+                    onClick={salvar}
+                    disabled={salvando}
+                    className="px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg text-[12px] font-semibold disabled:opacity-40"
+                >
+                    {salvando ? 'Salvando…' : 'Salvar investimento'}
+                </button>
+            )}
+        </section>
+    );
+}
+
 const RESPOSTA_ROTULO = {
     sim:      'Sim',
     nao:      'Não',
@@ -713,6 +888,7 @@ export default function Publico({
     mapeamentos = [],
     pessoas = {},
     responsaveis = [],
+    blocos_operacao = [],
 }) {
     // Quem está operando. Vem das props da PÁGINA, do mesmo lugar que o
     // layout lê para decidir a faixa âmbar — nunca de uma prop própria, senão
@@ -863,6 +1039,17 @@ export default function Publico({
                                         rotaConfirmar={rotaDoPortal('onboarding.mapeamento.confirmar', token)}
                                     />
                                 ))}
+                            </Fragment>
+                        ))}
+
+                        {/* Os blocos operados na reunião. Ficam DEPOIS da lista
+                            porque são registro do que foi conversado, não tarefa
+                            a fazer — e para o cliente sozinho eles só aparecem
+                            quando têm conteúdo. */}
+                        {blocos_operacao.map((bloco) => (
+                            <Fragment key={bloco.onboarding_id}>
+                                <BlocoAnotacoes bloco={bloco} token={token} ehEquipe={ehEquipe} />
+                                <BlocoInvestimentoPortal bloco={bloco} token={token} ehEquipe={ehEquipe} />
                             </Fragment>
                         ))}
 

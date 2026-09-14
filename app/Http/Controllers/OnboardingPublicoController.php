@@ -6,6 +6,9 @@ use App\Models\Company;
 use App\Models\Onboarding;
 use App\Models\OnboardingConfirmacao;
 use App\Models\OnboardingContato;
+use App\Models\OnboardingInvestimento;
+use App\Models\OnboardingRelatorio;
+use App\Models\User;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingMapeamento;
 use App\Models\OnboardingPasso;
@@ -91,6 +94,7 @@ class OnboardingPublicoController extends Controller
                     ->paraEmpresa($company),
             ],
             'passos'   => $this->linkService->passosDoPortal($company),
+            'blocos_operacao' => $this->blocosDeOperacao($company),
             // Agrupadas por papel para a tela não precisar filtrar. Deduplicadas
             // por (papel, nome, e-mail): a mesma pessoa é gravada em cada
             // onboarding da empresa, e o cliente não tem por que ver o próprio
@@ -217,6 +221,191 @@ class OnboardingPublicoController extends Controller
             ->log("Item \"{$data['chave']}\" respondido no portal");
 
         return back()->with('success', 'Resposta registrada.');
+    }
+
+    /**
+     * O onboarding do corpo da requisição, provado como sendo DESTA empresa.
+     *
+     * Sem esta checagem o portal aceitaria um `onboarding_id` de qualquer
+     * empresa — a posse do token (ou da sessão) prova de quem é a EMPRESA,
+     * nunca de quem é o onboarding que veio no corpo.
+     */
+    /**
+     * Os blocos que a EQUIPE opera no portal, um por onboarding em andamento.
+     *
+     * Um por onboarding, e não um por empresa, porque relatório e investimento
+     * são registros DAQUELE onboarding — e uma empresa pode ter mais de um
+     * serviço rodando ao mesmo tempo. O rótulo com o nome do serviço só aparece
+     * quando há mais de um, mesma convenção que `MapeamentoInicial` já usa no
+     * portal.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function blocosDeOperacao(Company $company): array
+    {
+        $onboardings = Onboarding::where('company_id', $company->id)
+            ->emAndamento()
+            ->with('servico:id,nome')
+            ->orderBy('id')
+            ->get();
+
+        return $onboardings
+            ->map(function (Onboarding $onboarding) use ($onboardings) {
+                $relatorio = OnboardingRelatorio::where('onboarding_id', $onboarding->id)->first();
+                $investimento = OnboardingInvestimento::where('onboarding_id', $onboarding->id)->first();
+
+                return [
+                    'onboarding_id' => $onboarding->id,
+                    'servico'       => $onboarding->servico?->nome,
+                    'rotulo'        => $onboardings->count() > 1 ? $onboarding->servico?->nome : null,
+                    // Só os três campos de ANOTAÇÃO. O relatório interno tem
+                    // mais coisa (e um botão de gerar); no portal ele é ponto
+                    // de anotação compartilhada, nada mais.
+                    'relatorio'     => [
+                        'pontos_atencao'  => $relatorio?->pontos_atencao,
+                        'oportunidades'   => $relatorio?->oportunidades,
+                        'proximos_passos' => $relatorio?->proximos_passos,
+                    ],
+                    'investimento'  => [
+                        'investimento_disponivel'      => $investimento?->investimento_disponivel,
+                        'investimento_mensal_previsto' => $investimento?->investimento_mensal_previsto,
+                        'investimento_publicidade'     => $investimento?->investimento_publicidade,
+                        'observacoes'                  => $investimento?->observacoes,
+                    ],
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function onboardingDaEmpresa(OnboardingLink $link, int $onboardingId): Onboarding
+    {
+        $onboarding = Onboarding::where('id', $onboardingId)
+            ->where('company_id', $link->company_id)
+            ->first();
+
+        abort_unless($onboarding !== null, 404);
+
+        return $onboarding;
+    }
+
+    /**
+     * Os blocos operados pela EQUIPE no portal exigem ator da equipe.
+     *
+     * Mesma régua da confirmação, pelo mesmo motivo: relatório, investimento e
+     * contatos são registro NOSSO. O cliente lê o que ficou combinado; quem
+     * escreve somos nós, na reunião, autenticados.
+     */
+    private function exigirEquipe(?string $token): User
+    {
+        $ator = $this->atorDaRequisicao($token);
+
+        abort_unless(
+            ($ator?->equipe ?? false) && $ator->modelo instanceof User,
+            403,
+            'Este bloco é preenchido pela equipe da ECF.'
+        );
+
+        return $ator->modelo;
+    }
+
+    /** As anotações da reunião, que o cliente também vê (14/09). */
+    public function salvarRelatorioPortal(Request $request, ?string $token = null)
+    {
+        $link = $this->linkDaRequisicao($token);
+        $membro = $this->exigirEquipe($token);
+
+        $data = $request->validate([
+            'onboarding_id'   => ['required', 'integer'],
+            'pontos_atencao'  => ['nullable', 'string', 'max:5000'],
+            'oportunidades'   => ['nullable', 'string', 'max:5000'],
+            'proximos_passos' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $onboarding = $this->onboardingDaEmpresa($link, $data['onboarding_id']);
+
+        $relatorio = OnboardingRelatorio::firstOrNew(['onboarding_id' => $onboarding->id]);
+
+        // `dados` é NOT NULL no schema — é o retrato factual que o relatório
+        // INTERNO monta a partir da conta. Aqui ninguém gera retrato nenhum: o
+        // portal é ponto de anotação, e a decisão de 14/09 foi explícita em não
+        // levar o "gerar relatório" para lá. Linha nova nasce com o retrato
+        // vazio, e quem gerar o relatório de verdade depois preenche por cima.
+        if (! $relatorio->exists) {
+            $relatorio->dados = [];
+            // `gerado_em` também é NOT NULL. Do portal não se GERA nada — a
+            // linha só nasce agora para a anotação ter onde morar —, mas o
+            // schema pede a data e mentir com uma data antiga seria pior.
+            $relatorio->gerado_em = now();
+        }
+
+        $relatorio->fill(collect($data)->only(['pontos_atencao', 'oportunidades', 'proximos_passos'])->all());
+        $relatorio->atualizado_por = $membro->id;
+        $relatorio->save();
+
+        activity('onboarding')
+            ->performedOn($link)
+            ->withProperties(['onboarding_id' => $onboarding->id, 'ator' => $membro->name])
+            ->log('Anotações da reunião atualizadas no portal');
+
+        return back()->with('success', 'Anotações salvas.');
+    }
+
+    /** O investimento do cliente, registrado na reunião (14/09). */
+    public function salvarInvestimentoPortal(Request $request, ?string $token = null)
+    {
+        $link = $this->linkDaRequisicao($token);
+        $membro = $this->exigirEquipe($token);
+
+        $data = $request->validate([
+            'onboarding_id'                => ['required', 'integer'],
+            // `nullable` + `min:0`: zero é um valor INFORMADO ("não vai
+            // investir agora"), diferente de não ter respondido.
+            'investimento_disponivel'      => ['nullable', 'numeric', 'min:0'],
+            'investimento_mensal_previsto' => ['nullable', 'numeric', 'min:0'],
+            'investimento_publicidade'     => ['nullable', 'numeric', 'min:0'],
+            'observacoes'                  => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $onboarding = $this->onboardingDaEmpresa($link, $data['onboarding_id']);
+
+        OnboardingInvestimento::updateOrCreate(
+            ['onboarding_id' => $onboarding->id],
+            collect($data)->except('onboarding_id')->all() + [
+                'informado_em'    => now(),
+                'informado_por'   => $membro->id,
+                // O canal continua sendo a call: o que mudou é a TELA em que a
+                // equipe está, não como o dado foi obtido.
+                'informado_canal' => 'interno_call',
+            ]
+        );
+
+        // Os passos de investimento fecham pelos resolvers, como no lado
+        // interno — nunca por escrita direta de status.
+        $factory = app(\App\Services\Onboarding\OnboardingResolverFactory::class);
+        $engine  = app(\App\Services\Onboarding\OnboardingEngineService::class);
+
+        $passos = OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->whereIn('auto_fonte', [
+                OnboardingPasso::AUTO_FONTE_INVESTIMENTO,
+                OnboardingPasso::AUTO_FONTE_INVESTIMENTO_PUBLICIDADE,
+            ])
+            ->get();
+
+        foreach ($passos as $passo) {
+            $resolver = $factory->for($passo->auto_fonte);
+
+            if (! $resolver->assincrono()) {
+                $engine->aplicarResultado($passo, $resolver->resolver($onboarding, $passo));
+            }
+        }
+
+        activity('onboarding')
+            ->performedOn($link)
+            ->withProperties(['onboarding_id' => $onboarding->id, 'ator' => $membro->name])
+            ->log('Investimento registrado no portal');
+
+        return back()->with('success', 'Investimento registrado.');
     }
 
     public function desmarcarPasso(Request $request, ?string $token = null)
@@ -575,6 +764,7 @@ class OnboardingPublicoController extends Controller
                 ...app(\App\Services\Onboarding\OnboardingAcessosService::class)->paraEmpresa($company),
             ],
             'passos'   => $this->linkService->passosDoPortal($company),
+            'blocos_operacao' => $this->blocosDeOperacao($company),
             'pessoas'  => OnboardingContato::whereIn(
                     'onboarding_id',
                     Onboarding::where('company_id', $company->id)->naoConcluido()->pluck('id')
