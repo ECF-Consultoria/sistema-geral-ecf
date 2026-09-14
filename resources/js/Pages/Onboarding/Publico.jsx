@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import PessoasDoCliente from '@/Components/Onboarding/PessoasDoCliente';
 import { router, usePage } from '@inertiajs/react';
 import {
@@ -442,6 +442,15 @@ function BlocoConfirmacao({ passo, token, ehEquipe }) {
     const [obs, setObs] = useState(registrada?.observacoes ?? '');
     const [salvando, setSalvando] = useState(false);
 
+    // Resincroniza o campo com o que foi GRAVADO. `useState` só lê o valor
+    // inicial uma vez, e as props do Inertia trocam a cada resposta salva —
+    // sem isto o campo seguiria mostrando o texto antigo depois de alguém
+    // responder o mesmo item de novo, ou o texto de outra sessão da equipe.
+    // `respondido_em` é o gatilho por ser o que muda a cada gravação.
+    useEffect(() => {
+        setObs(registrada?.observacoes ?? '');
+    }, [registrada?.respondido_em, registrada?.observacoes]);
+
     function responder(resposta) {
         if (salvando) return;
         setSalvando(true);
@@ -454,19 +463,30 @@ function BlocoConfirmacao({ passo, token, ehEquipe }) {
 
     return (
         <div className="w-full space-y-2">
+            {/* O que ficou REGISTRADO, para os dois lados. Antes isto só
+                aparecia para o cliente: a equipe via a observação apenas dentro
+                do campo de edição, o que é ambíguo — texto em textarea parece
+                rascunho não salvo, não registro gravado. */}
             {registrada && (
-                <p className="text-white/50 text-[12px]">
-                    <span className="text-white/80 font-semibold">
-                        {RESPOSTA_ROTULO[registrada.resposta] ?? registrada.resposta}
-                    </span>
-                    {registrada.respondido_por && ` · registrado por ${registrada.respondido_por}`}
-                </p>
-            )}
+                <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 space-y-1">
+                    <p className="text-white/50 text-[12px]">
+                        <span className="text-white/85 font-semibold">
+                            {RESPOSTA_ROTULO[registrada.resposta] ?? registrada.resposta}
+                        </span>
+                        {registrada.respondido_por && ` · ${registrada.respondido_por}`}
+                        {registrada.respondido_em && ` · ${new Date(registrada.respondido_em).toLocaleDateString('pt-BR', {
+                            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                        })}`}
+                    </p>
 
-            {registrada?.observacoes && ! ehEquipe && (
-                <p className="text-white/45 text-[12px] leading-relaxed whitespace-pre-wrap">
-                    {registrada.observacoes}
-                </p>
+                    {registrada.observacoes ? (
+                        <p className="text-white/60 text-[12px] leading-relaxed whitespace-pre-wrap">
+                            {registrada.observacoes}
+                        </p>
+                    ) : (
+                        <p className="text-white/25 text-[12px] italic">Sem observação.</p>
+                    )}
+                </div>
             )}
 
             {! registrada && ! ehEquipe && (
@@ -481,7 +501,7 @@ function BlocoConfirmacao({ passo, token, ehEquipe }) {
                         value={obs}
                         onChange={(e) => setObs(e.target.value)}
                         rows={3}
-                        placeholder="Observação da conversa (opcional)"
+                        placeholder={registrada ? 'Editar a observação' : 'Observação da conversa (opcional)'}
                         className={cn(
                             'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
                             'px-3 py-2 text-[12px] text-white/80 leading-relaxed resize-y',
