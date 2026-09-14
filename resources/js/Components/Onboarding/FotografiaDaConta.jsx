@@ -4,7 +4,7 @@ import {
     Area, AreaChart, CartesianGrid, ReferenceArea, ReferenceLine,
     ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { Camera, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
+import { RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { rotaDoPortal } from '@/lib/rotasDoPortal';
 
@@ -71,7 +71,12 @@ function Balao({ active, payload }) {
 }
 
 /**
- * Fotografia da Conta — faturamento do Mercado Livre nas últimas 13 semanas.
+ * Snapshot — faturamento do Mercado Livre nas últimas 13 semanas.
+ *
+ * O bloco se chamava "Fotografia da Conta" e virou "Snapshot" em 14/09, por
+ * pedido do negócio. Só o RÓTULO mudou: componente, arquivo, tabela, rota e
+ * prop seguem `fotografia*` — renomear tudo isso mexeria em backend, migration
+ * e testes para ganhar nada na tela.
  *
  * ### O que o desenho tenta responder
  * Uma pergunta só: "a conta melhorou depois que a ECF entrou?". Por isso a
@@ -114,16 +119,13 @@ export default function FotografiaDaConta({ fotografia, token, ehEquipe, rota = 
             className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.10] bg-white/[0.04] px-3 py-1.5 text-[12px] text-white/75 hover:text-white transition-colors disabled:opacity-40"
         >
             <RefreshCw size={13} className={cn(coletando && 'animate-spin')} />
-            {coletando ? 'Buscando…' : fotografia ? 'Atualizar' : 'Tirar fotografia'}
+            {coletando ? 'Buscando…' : fotografia ? 'Atualizar' : 'Gerar snapshot'}
         </button>
     );
 
     const cabecalho = (extra = null) => (
         <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-                <Camera size={16} className="text-white/40 shrink-0" />
-                <h2 className="text-white font-display font-bold text-[15px]">Fotografia da Conta</h2>
-            </div>
+            <h2 className="text-white font-display font-bold text-[15px]">Snapshot</h2>
             {extra ?? botao}
         </div>
     );
@@ -138,7 +140,7 @@ export default function FotografiaDaConta({ fotografia, token, ehEquipe, rota = 
             <section className={moldura}>
                 {cabecalho()}
                 <p className="text-white/40 text-[12.5px] leading-relaxed">
-                    Nenhuma fotografia ainda. Ela busca o faturamento das últimas 13 semanas
+                    Nenhum snapshot ainda. Ele busca o faturamento das últimas 13 semanas
                     direto do Mercado Livre e mostra como a conta estava antes de começarmos.
                 </p>
             </section>
