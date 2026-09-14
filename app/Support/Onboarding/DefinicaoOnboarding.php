@@ -186,12 +186,6 @@ class DefinicaoOnboarding
         // Acessos — o cliente age, e o sistema confirma sozinho.
         'grant_sistema_ecf',
         'acesso_colaborador_ml',
-        // Os três da ADMAN seguem exatamente como estavam (já eram
-        // `dono=cliente`): ninguém pediu mudança neles, e o negócio ainda vai
-        // confirmar do que cada um trata antes de qualquer redesenho.
-        'planilha_custos_adman',
-        'grant_consultoria_adman',
-        'custos_app_ecf',
         // Retrato da conta — o cliente ACOMPANHA, não preenche. Eram
         // `dono=sistema` e por isso nunca apareceram para ele; agora aparecem
         // porque é sobre eles que se conversa na reunião.
@@ -216,6 +210,13 @@ class DefinicaoOnboarding
      *   cadastra é a ECF, com o que o cliente responde na reunião.
      * - `analista_definido` já é resolvido pela distribuição (Fase 154): pedir
      *   de novo no onboarding é perguntar o que o sistema já sabe.
+     * - `planilha_custos_adman`, `grant_consultoria_adman` e `custos_app_ecf`
+     *   eram `dono=cliente` e portanto já apareciam. SAÍRAM em 14/09: o negócio
+     *   não lembra do que cada um trata — se é link, se é explicação nossa na
+     *   reunião, se é coisa que o cliente faz sozinho — e pediu que ficassem
+     *   fora até isso ser confirmado. Item que ninguém sabe explicar não tem o
+     *   que fazer na frente do cliente. Os passos continuam existindo e
+     *   continuam cobráveis na ficha interna.
      * - `reuniao_realizada`, `publicidade_operacao_explicada`,
      *   `adman_funcionamento_explicado` e `adman_preenchimento_interno` não
      *   foram citados na decisão — ou repetem outro item, ou não são assunto

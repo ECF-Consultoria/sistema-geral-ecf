@@ -276,22 +276,35 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
 
     // ─── Ação do cliente para os passos da Adman ────────────────────────────
 
+    /**
+     * 14/09 — os três da ADMAN SAÍRAM do portal.
+     *
+     * O teste anterior provava que eles ofereciam ação de `instrucao` em vez de
+     * "você não precisa fazer nada". A regra de mapeamento continua existindo e
+     * continua correta; o que mudou é que não há mais card deles na frente do
+     * cliente. O negócio não sabe dizer do que cada um trata — se é link, se é
+     * explicação nossa na reunião — e pediu que ficassem fora até confirmar.
+     *
+     * A ausência fica coberta aqui para ninguém os devolver ao portal sem essa
+     * conversa ter acontecido.
+     */
     #[Test]
-    public function passos_da_adman_oferecem_acao_de_instrucao_nunca_nenhuma(): void
+    public function os_tres_itens_da_adman_ficaram_fora_do_portal(): void
     {
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
 
-        $payload = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
-            ->keyBy('chave');
+        $chaves = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
+            ->pluck('chave')
+            ->all();
 
-        $this->assertSame(OnboardingLinkService::ACAO_INSTRUCAO, $payload['planilha_custos_adman']['acao']);
-        $this->assertSame(OnboardingLinkService::ACAO_INSTRUCAO, $payload['grant_consultoria_adman']['acao']);
+        $this->assertNotContains('planilha_custos_adman', $chaves);
+        $this->assertNotContains('grant_consultoria_adman', $chaves);
+        $this->assertNotContains('custos_app_ecf', $chaves);
 
-        // Os outros três não regrediram.
-        $this->assertSame(OnboardingLinkService::ACAO_OAUTH_ML, $payload['grant_sistema_ecf']['acao']);
-        $this->assertSame(OnboardingLinkService::ACAO_MARCAR, $payload['acesso_colaborador_ml']['acao']);
-        $this->assertSame(OnboardingLinkService::ACAO_MARCAR, $payload['custos_app_ecf']['acao']);
+        // Os que o negócio pediu continuam lá — a remoção foi cirúrgica.
+        $this->assertContains('grant_sistema_ecf', $chaves);
+        $this->assertContains('acesso_colaborador_ml', $chaves);
     }
 
     /**
@@ -399,9 +412,6 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
             [
                 'grant_sistema_ecf',
                 'acesso_colaborador_ml',
-                'planilha_custos_adman',
-                'grant_consultoria_adman',
-                'custos_app_ecf',
                 'metricas_da_conta',
                 'anuncios_ativos_inativos',
                 'publicidade_processo_explicado',
@@ -432,7 +442,7 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         // não apareceria. O caso é montado sobre um passo REAL do portal,
         // que é mais fiel de qualquer forma.
         OnboardingPasso::where('onboarding_id', $onboarding->id)
-            ->where('chave', 'custos_app_ecf')
+            ->where('chave', 'acesso_colaborador_ml')
             ->update([
                 'depende_de' => json_encode(['grant_sistema_ecf']),
                 'status'     => OnboardingPasso::STATUS_BLOQUEADO,
@@ -443,11 +453,11 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
 
         $this->assertSame(
             OnboardingPasso::STATUS_BLOQUEADO,
-            $payload['custos_app_ecf']['status']
+            $payload['acesso_colaborador_ml']['status']
         );
         $this->assertSame(
             'Grant com o Sistema ECF (OAuth)',
-            $payload['custos_app_ecf']['depende_de_titulo'],
+            $payload['acesso_colaborador_ml']['depende_de_titulo'],
             'O cliente precisa saber QUAL item libera o que está cadeado.'
         );
     }
@@ -463,15 +473,16 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         $company = Company::factory()->create();
         $onboarding = $this->onboardingEmAndamento($company);
 
-        // `custos_app_ecf` é do cliente e não depende de nada; passa a depender
-        // de um passo INTERNO para provar que o título dele não escapa.
+        // `acesso_colaborador_ml` é do cliente e não depende de nada; passa a
+        // depender de um passo INTERNO para provar que o título dele não escapa.
+        // (Era `custos_app_ecf`, que saiu do portal em 14/09.)
         $onboarding->passos()
-            ->where('chave', 'custos_app_ecf')
+            ->where('chave', 'acesso_colaborador_ml')
             ->update(['depende_de' => json_encode(['confirmacao_pagamento'])]);
 
         $payload = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->keyBy('chave');
 
-        $this->assertNull($payload['custos_app_ecf']['depende_de_titulo']);
+        $this->assertNull($payload['acesso_colaborador_ml']['depende_de_titulo']);
     }
 }

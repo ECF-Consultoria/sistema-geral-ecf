@@ -128,7 +128,9 @@ class OnboardingConectarMlTest extends TestCase
 
         $this->assertSame(OnboardingLinkService::ACAO_OAUTH_ML, $porChave['grant_sistema_ecf']['acao']);
         $this->assertSame(OnboardingLinkService::ACAO_MARCAR, $porChave['acesso_colaborador_ml']['acao']);
-        $this->assertSame(OnboardingLinkService::ACAO_MARCAR, $porChave['custos_app_ecf']['acao']);
+        // `custos_app_ecf` saiu do portal em 14/09 (ver CHAVES_NO_PORTAL) e por
+        // isso deixou de ser veículo de teste aqui. O mapeamento da ação dele
+        // não mudou — só não há mais card para exercitá-lo.
     }
 
     #[Test]
@@ -136,14 +138,18 @@ class OnboardingConectarMlTest extends TestCase
     {
         $company = $this->empresaComOnboardingEmAndamento();
 
-        // Um passo `dono=cliente` com auto_fonte que não é nem OAuth nem ficha:
+        // Um passo do portal com auto_fonte que não é nem OAuth nem ficha:
         // antes do mapeamento explícito, a tela mostraria "Autorizar acesso".
-        OnboardingPasso::where('chave', 'custos_app_ecf')
+        //
+        // O veículo era `custos_app_ecf`, que saiu do portal em 14/09; passou a
+        // ser `acesso_colaborador_ml`, que continua lá e serve ao mesmo
+        // propósito — o que se prova é o MAPEAMENTO, não a chave.
+        OnboardingPasso::where('chave', 'acesso_colaborador_ml')
             ->whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id))
             ->update(['auto_fonte' => OnboardingPasso::AUTO_FONTE_ACERVO]);
 
         $porChave = collect(app(OnboardingLinkService::class)->passosDoPortal($company))->keyBy('chave');
 
-        $this->assertSame(OnboardingLinkService::ACAO_NENHUMA, $porChave['custos_app_ecf']['acao']);
+        $this->assertSame(OnboardingLinkService::ACAO_NENHUMA, $porChave['acesso_colaborador_ml']['acao']);
     }
 }
