@@ -154,6 +154,47 @@ class SimuladorGrupoCobrancaService
     }
 
     /**
+     * O retrato de HOJE, para TODOS os grupos — as mesmas linhas de cobrança
+     * que a competência `$mes` produziria se fosse congelada agora, sem
+     * nenhuma mudança de hierarquia (Fase 143, plano 04, T1).
+     *
+     * ## Por que ele existe, e por que não é uma conta nova
+     * A tela de montagem (`Admin/GruposCobranca.jsx`) precisa mostrar, antes
+     * de qualquer seleção, **quantas empresas e quanto de cobrança** cada
+     * grupo representa — é o que dá noção de escala a quem vai juntar
+     * grupos. Esse número tem de ser o MESMO que a prévia mostra depois e o
+     * MESMO que o fechamento congela. Por isso aqui não há nem soma própria
+     * nem régua própria: é `calcularLado()`, o mesmo método que serve os
+     * dois lados de `simular()`, chamado com a árvore REAL (o `parent_id`
+     * que está no banco). Uma segunda conta na listagem seria o jeito mais
+     * fácil de a tela dizer R$ 33.500 e a fatura sair outra coisa.
+     *
+     * ⚠️ PURO como o resto da classe — não grava nada.
+     *
+     * @return array{linhas: array<int, array>, total_cobranca: float}
+     */
+    public function estadoAtual(string $mes): array
+    {
+        $todosOsGrupos = CompanyGroup::query()->get()->keyBy('id');
+
+        $pais   = $todosOsGrupos->mapWithKeys(fn (CompanyGroup $g) => [$g->id => $g->parent_id]);
+        $raizes = $this->mapaDeRaizes($pais);
+
+        // Todas as empresas que estão em algum grupo — mesmo recorte de
+        // `simular()` (ativas), para as duas telas contarem igual.
+        $companies = Company::where('active', true)
+            ->whereNotNull('company_group_id')
+            ->with(['contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico')])
+            ->get();
+
+        $regraNova = $this->regra->ativa();
+
+        $rollup = $this->rollupService->porEmpresa($mes, $companies, somenteContratadas: $regraNova);
+
+        return $this->calcularLado($companies, $todosOsGrupos, $pais, $raizes, $rollup, $regraNova);
+    }
+
+    /**
      * Mapa `id do grupo => id da raiz` a partir de um mapa de `parent_id`.
      * Um nível só (D-05 do CONTEXT), então a raiz é o pai ou o próprio id —
      * a mesma conta de `CompanyGroup::raizId()`, sem caminhada.

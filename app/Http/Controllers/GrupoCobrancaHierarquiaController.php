@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Company;
 use App\Models\CompanyGroup;
+use App\Models\GrupoFaixaFaturamento;
 use App\Services\Fechamento\SimuladorGrupoCobrancaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -11,6 +13,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
 
 /**
  * GrupoCobrancaHierarquiaController — pendura e despendura grupos na árvore
@@ -54,6 +57,161 @@ class GrupoCobrancaHierarquiaController extends Controller
 
     public function __construct(private SimuladorGrupoCobrancaService $simulador)
     {
+    }
+
+    /**
+     * GET /administrativo/contratos/grupos — a tela onde o grupo de cobrança
+     * é montado (Fase 143, plano 04, T1).
+     *
+     * ## Por que esta tela é a razão de ser da fase
+     * O usuário foi explícito (143-CONTEXT, D-06): *"vamos desenvolver a
+     * correção para que, caso existam outros casos, seja possível resolver
+     * pela UI"*. Só conhecemos o caso MPozenato, e **não dá para achar os
+     * outros por dado** — 145 das 203 empresas estão sem CNPJ cadastrado.
+     * A montagem é curadoria humana: sem esta tela, a fase inteira vira uma
+     * migration manual disfarçada.
+     *
+     * ## O que as props precisam entregar
+     * Cada grupo vem com **quantas empresas** e **quanto de cobrança** — é
+     * o que dá noção de escala antes de mexer. Os números vêm de
+     * `SimuladorGrupoCobrancaService::estadoAtual()`, que é a MESMA máquina
+     * da prévia e do fechamento; nenhuma soma própria mora aqui.
+     *
+     * `tem_tabela_propria` é o que permite à tela avisar, ANTES de juntar,
+     * que o grupo de cobrança ainda não tem tabela: montar sem ela faz a
+     * cobrança seguir uma tabela copiada do serviço e cair mais do que
+     * deveria (R$ 12.000 em vez de R$ 21.000, no caso real).
+     */
+    public function index(Request $request): \Inertia\Response
+    {
+        $dados = $request->validate([
+            'mes' => ['nullable', 'date_format:Y-m'],
+        ]);
+
+        $mes = $dados['mes'] ?? $this->competenciaPadrao();
+
+        $grupos = CompanyGroup::query()->orderBy('name')->get();
+
+        // Uma query para as contagens — nunca uma consulta por linha dentro
+        // do laço. Mesmo recorte de empresa do simulador (ativas), para a
+        // contagem da tela não divergir da contagem da cobrança.
+        $empresasPorGrupo = Company::where('active', true)
+            ->whereNotNull('company_group_id')
+            ->selectRaw('company_group_id, COUNT(*) as total')
+            ->groupBy('company_group_id')
+            ->pluck('total', 'company_group_id');
+
+        // Quem tem tabela cadastrada em si mesmo — uma query.
+        $comTabelaPropria = GrupoFaixaFaturamento::query()
+            ->select('company_group_id')
+            ->distinct()
+            ->pluck('company_group_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $estado = $this->simulador->estadoAtual($mes);
+        $linhas = collect($estado['linhas'])->keyBy('company_group_id');
+
+        $filhosPorPai = $grupos->groupBy('parent_id');
+
+        $lista = $grupos
+            ->whereNull('parent_id')
+            ->map(function (CompanyGroup $grupo) use ($filhosPorPai, $empresasPorGrupo, $comTabelaPropria, $linhas) {
+                $dentro = ($filhosPorPai[$grupo->id] ?? collect())
+                    ->sortBy('name')
+                    ->map(fn (CompanyGroup $filho) => [
+                        'id'                 => $filho->id,
+                        'nome'               => $filho->name,
+                        'empresas_count'     => (int) ($empresasPorGrupo[$filho->id] ?? 0),
+                        'tem_tabela_propria' => in_array($filho->id, $comTabelaPropria, true),
+                    ])
+                    ->values()
+                    ->all();
+
+                $empresasDoConjunto = (int) ($empresasPorGrupo[$grupo->id] ?? 0)
+                    + collect($dentro)->sum('empresas_count');
+
+                $linha = $linhas[$grupo->id] ?? null;
+
+                return [
+                    'id'                 => $grupo->id,
+                    'nome'               => $grupo->name,
+                    'cor'                => $grupo->color,
+                    'empresas_count'     => $empresasDoConjunto,
+                    'tem_tabela_propria' => in_array($grupo->id, $comTabelaPropria, true),
+                    'dentro'             => $dentro,
+                    // Os números da cobrança de hoje — ausentes quando o
+                    // grupo não tem nenhuma empresa ativa (e por isso
+                    // nenhuma linha de cobrança).
+                    'faturamento_total'      => $linha['faturamento_total'] ?? null,
+                    'cobranca_mensal'        => $linha['cobranca_mensal'] ?? null,
+                    'faixa_label'            => $linha['faixa_label'] ?? null,
+                    'procedencia'            => $linha['procedencia'] ?? null,
+                    'tabela_origem'          => $linha['tabela_origem'] ?? null,
+                    'tabela_grupo_nome'      => $linha['tabela_grupo_nome'] ?? null,
+                    'tabela_servico_nome'    => $linha['tabela_servico_nome'] ?? null,
+                    'tabela_herdada_de_nome' => $linha['tabela_herdada_de_nome'] ?? null,
+                ];
+            })
+            ->sortBy([
+                fn (array $a, array $b) => count($b['dentro']) <=> count($a['dentro']),
+                fn (array $a, array $b) => strcasecmp($a['nome'], $b['nome']),
+            ])
+            ->values()
+            ->all();
+
+        return Inertia::render('Admin/GruposCobranca', [
+            'mes'            => $mes,
+            'grupos'         => $lista,
+            'total_cobranca' => $estado['total_cobranca'],
+        ]);
+    }
+
+    /**
+     * POST /administrativo/contratos/grupos — cria um grupo de cobrança
+     * VAZIO (Fase 143, plano 04, T1).
+     *
+     * ## Por que criar vem antes de juntar, e por que isso não fere a regra
+     * da prévia obrigatória
+     * A regra da fase é "nada que mude cobrança é gravado sem a prévia na
+     * frente". Um grupo recém-criado não tem empresa nenhuma e não tem
+     * nenhum grupo dentro dele: ele não produz linha de cobrança, não entra
+     * em `fechamento:consolidar-mes` e não muda a fatura de ninguém. O que
+     * muda cobrança é pendurar grupos nele — e *isso* continua exigindo a
+     * prévia.
+     *
+     * A ordem é obrigatória por outro motivo, aliás: a tela precisa oferecer
+     * o cadastro da tabela do grupo de cobrança ANTES de juntar (senão a
+     * cobrança cai mais do que deveria), e não é possível cadastrar tabela
+     * para um grupo que ainda não existe.
+     *
+     * ⚠️ Rota PRÓPRIA, dentro de `admin.contratos`, e não a
+     * `company-groups.store` já existente: aquela está sob `role:admin`, e
+     * quem recebeu `admin.contratos` por setor levaria 403 no meio do fluxo
+     * — a mesma armadilha que a Fase 142 pagou para fechar.
+     */
+    public function criar(Request $request): RedirectResponse
+    {
+        $dados = $request->validate([
+            'name'  => ['required', 'string', 'max:120'],
+            'color' => ['nullable', 'string', 'max:9'],
+        ]);
+
+        $grupo = CompanyGroup::create([
+            'name'  => $dados['name'],
+            'color' => ($dados['color'] ?? null) ?: '#ffe600',
+        ]);
+
+        activity(self::LOG_NAME)
+            ->causedBy($request->user())
+            ->performedOn($grupo)
+            ->withProperties(['depois' => [['id' => $grupo->id, 'nome' => $grupo->name, 'parent_id' => null]]])
+            ->log("Grupo de cobrança \"{$grupo->name}\" criado, ainda sem nenhum grupo dentro dele.");
+
+        return back()->with(
+            'success',
+            "Grupo de cobrança \"{$grupo->name}\" criado. Cadastre a tabela dele antes de juntar os grupos."
+        );
     }
 
     /**

@@ -1567,6 +1567,19 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     Route::get('/grupos/hierarquia/previa', [GrupoCobrancaHierarquiaController::class, 'previa'])->name('grupos.hierarquia.previa');
     Route::post('/grupos/hierarquia', [GrupoCobrancaHierarquiaController::class, 'pendurar'])->name('grupos.hierarquia.pendurar');
     Route::delete('/grupos/hierarquia', [GrupoCobrancaHierarquiaController::class, 'despendurar'])->name('grupos.hierarquia.despendurar');
+
+    // Plano 143-04 (T1) — a TELA onde o grupo de cobrança é montado, e a criação de um grupo de
+    // cobrança novo. É a tela que decide se a Fase 143 vale alguma coisa: só conhecemos um caso
+    // (MPozenato) e não dá para achar os outros por dado (145 das 203 empresas sem CNPJ), então a
+    // montagem é curadoria humana feita aqui — sem esta tela a fase vira migration manual.
+    //
+    // ⚠️ `grupos.criar` é rota PRÓPRIA de propósito, e não a `company-groups.store` já existente:
+    // aquela está sob `role:admin`, e quem recebeu `admin.contratos` por setor levaria 403 no meio
+    // do fluxo (a mesma armadilha que a Fase 142 pagou para fechar). Criar um grupo VAZIO não muda
+    // cobrança nenhuma — quem muda é pendurar, e isso exige a prévia.
+    // Rotas: admin.contratos.grupos.index, admin.contratos.grupos.criar.
+    Route::get('/grupos', [GrupoCobrancaHierarquiaController::class, 'index'])->name('grupos.index');
+    Route::post('/grupos', [GrupoCobrancaHierarquiaController::class, 'criar'])->name('grupos.criar');
 });
 
 // ─── Checklist administrativo (Fase 152 Plano 08, ADMIN-01/03/04/05/06) ──────
