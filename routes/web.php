@@ -52,6 +52,7 @@ use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PortalAuthController;
 use App\Http\Controllers\PortalClienteController;
 use App\Http\Controllers\PpaColunaController;
+use App\Http\Controllers\PortalCalculadoraController;
 use App\Http\Controllers\PortalPpaController;
 use App\Http\Controllers\PortalEquipeController;
 use App\Http\Controllers\PortalUsuarioController;
@@ -178,6 +179,9 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     Route::get('/inicio',     [PortalClienteController::class, 'inicioAutenticado'])->name('portal.auth.inicio');
     Route::get('/onboarding', [OnboardingPublicoController::class, 'workspaceAutenticado'])->name('portal.auth.onboarding');
     Route::get('/ppa',        [PortalPpaController::class, 'indexAutenticado'])->name('portal.auth.ppa');
+    // Calculadora de Custo (14/09) — não grava nada, então não há régua de
+    // quem pode: os dois lados calculam.
+    Route::get('/calculadora', [PortalCalculadoraController::class, 'indexAutenticado'])->name('portal.auth.calculadora');
 
     // ── Escritas do Onboarding, autenticadas ─────────────────────────
     //
@@ -198,6 +202,20 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->name('portal.auth.onboarding.mapeamento.confirmar');
     Route::post('/onboarding/pessoas', [OnboardingPublicoController::class, 'salvarPessoa'])
         ->name('portal.auth.onboarding.pessoas');
+    // 14/09 — os itens conduzidos na reunião. Só aqui, e NÃO na porta por
+    // token: quem registra é a equipe autenticada (o service recusa qualquer
+    // outro ator). A rota por token existiria só para receber 422.
+    Route::post('/onboarding/confirmacao', [OnboardingPublicoController::class, 'responderConfirmacao'])
+        ->name('portal.auth.onboarding.confirmacao');
+    // Blocos operados pela EQUIPE no portal (14/09). Só autenticadas, pelo
+    // mesmo motivo da confirmação: são registro nosso, o cliente lê.
+    Route::put('/onboarding/relatorio', [OnboardingPublicoController::class, 'salvarRelatorioPortal'])
+        ->name('portal.auth.onboarding.relatorio');
+    Route::put('/onboarding/investimento', [OnboardingPublicoController::class, 'salvarInvestimentoPortal'])
+        ->name('portal.auth.onboarding.investimento');
+    // A coleta gasta treze chamadas à API do Mercado Livre — só a equipe.
+    Route::post('/onboarding/fotografia', [OnboardingPublicoController::class, 'tirarFotografia'])
+        ->name('portal.auth.onboarding.fotografia');
     Route::get('/onboarding/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
         ->name('portal.auth.onboarding.conectar-ml');
 
@@ -278,6 +296,8 @@ Route::prefix('portal-cliente/{token}')->middleware('portal.dominio')->group(fun
     // ── Módulo Onboarding ──────────────────────────────────────────────────
     Route::get('/onboarding', [OnboardingPublicoController::class, 'workspace'])
         ->name('portal.onboarding');
+    Route::get('/calculadora', [PortalCalculadoraController::class, 'index'])
+        ->name('portal.calculadora');
     Route::patch('/onboarding/passo', [OnboardingPublicoController::class, 'marcarFeito'])
         ->middleware('throttle:20,1')
         ->name('onboarding.publico.passo');
@@ -1170,6 +1190,11 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
         // Data e hora da reunião — a volta da informação que o cliente pediu.
         Route::post('/onboarding/{onboarding}/reuniao', [OnboardingController::class, 'agendarReuniao'])
             ->name('onboarding.reuniao.agendar');
+        // Retrato de faturamento pelo lado de dentro — o mesmo que o portal
+        // oferece ao cliente, para a ficha não precisar mandar ninguém ao
+        // portal só para apertar "Atualizar".
+        Route::post('/onboarding/{onboarding}/fotografia', [OnboardingController::class, 'tirarFotografia'])
+            ->name('onboarding.fotografia.coletar');
         // Mapeamento inicial pelo lado de quem opera: "Sincronizar agora" (em
         // vez de esperar o cron de 10 min) e conferência assistida em call.
         Route::post('/onboarding/{onboarding}/mapeamento/sincronizar', [OnboardingController::class, 'sincronizarMapeamento'])

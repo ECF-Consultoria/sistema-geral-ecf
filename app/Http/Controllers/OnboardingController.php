@@ -13,6 +13,7 @@ use App\Models\OnboardingMapeamento;
 use App\Models\OnboardingPasso;
 use App\Models\OnboardingRelatorio;
 use App\Models\User;
+use App\Services\Onboarding\FotografiaContaService;
 use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
 use App\Services\Onboarding\OnboardingMapeamentoService;
@@ -20,6 +21,7 @@ use App\Services\Onboarding\OnboardingResolverFactory;
 use App\Services\Onboarding\OnboardingAcessosService;
 use App\Services\Onboarding\OnboardingSituacaoService;
 use App\Services\Onboarding\RelatorioInicialService;
+use App\Support\Onboarding\DefinicaoOnboarding;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
@@ -211,6 +213,10 @@ class OnboardingController extends Controller
             ],
             'link'        => $link,
             'mapeamento'  => app(OnboardingMapeamentoService::class)->visao($onboarding),
+            // O mesmo retrato que o cliente ve no portal. E por EMPRESA, nao
+            // por onboarding: a conta do Mercado Livre e uma so, ainda que a
+            // empresa tenha contratado dois servicos.
+            'fotografia'  => app(FotografiaContaService::class)->paraPortal($onboarding->company),
 
             // ─── Cockpit (20/08) ────────────────────────────────────────────
             // Quatro leituras que a tela ja tinha os dados para dar e nao dava:
@@ -225,6 +231,36 @@ class OnboardingController extends Controller
             'linha_do_tempo'    => $this->linhaDoTempoPayload($onboarding),
             'atividade'         => $this->atividadePayload($onboarding, $passos, $link['ultimo_acesso']),
         ]);
+    }
+
+    /**
+     * POST /onboarding/{onboarding}/fotografia — tira o retrato de faturamento
+     * pelo lado de dentro.
+     *
+     * A mesma coleta que o portal oferece. Existe aqui porque a ficha interna
+     * MOSTRA a fotografia: um retrato visivelmente velho sem botao de atualizar
+     * obrigaria a abrir o portal so para apertar um botao.
+     *
+     * `coletar()` nunca lanca — falha de rede vira linha com `erro`, que a tela
+     * exibe. Por isso nao ha try/catch aqui.
+     */
+    public function tirarFotografia(Request $request, Onboarding $onboarding, FotografiaContaService $service)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $foto = $service->coletar($onboarding->company, $request->user());
+
+        activity('onboarding')
+            ->performedOn($onboarding)
+            ->withProperties(['ator' => $request->user()->name, 'erro' => $foto->erro])
+            ->log('Fotografia da Conta coletada na ficha interna');
+
+        return back()->with(
+            $foto->erro ? 'error' : 'success',
+            $foto->erro
+                ? 'Não consegui falar com o Mercado Livre: '.$foto->erro
+                : 'Fotografia atualizada.'
+        );
     }
 
     /**
@@ -1155,6 +1191,15 @@ class OnboardingController extends Controller
             // a tela precisa saber se ESTE item aceita resposta Sim/Não, não
             // qual resolver o fecha.
             'aceita_confirmacao' => $passo->auto_fonte === OnboardingPasso::AUTO_FONTE_CONFIRMACAO,
+            // Desde 14/09 uma parte da regua e operada NO PORTAL, com o cliente
+            // na chamada. A ficha interna precisa dizer quais sao esses itens:
+            // sem a marca, quem abre esta tela nao tem como saber por que o
+            // item mudou sozinho — nem onde ir para mexer nele.
+            //
+            // Le a definicao VIVA, nao a copia congelada no nascimento: quem
+            // opera onde e decisao de produto de hoje, nao contrato do
+            // onboarding (ao contrario de `etapa`/`dono`/`sla_dias`).
+            'no_portal' => DefinicaoOnboarding::apareceNoPortal($passo->chave),
         ];
 
         if ($passo->status === OnboardingPasso::STATUS_AGUARDANDO_COLETA) {

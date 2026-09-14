@@ -64,6 +64,23 @@ class OnboardingRelatorioInicialTest extends TestCase
         $onboarding = $engine->criarParaContrato($contrato);
         $engine->confirmarResponsavel($onboarding, User::factory()->create());
 
+        // Passo das métricas como um onboarding pré-v20 o carrega. Ele saiu da
+        // régua quando a Fotografia da Conta o substituiu, mas o relatório
+        // inicial lê o `valor` dele — e o relatório só existe justamente nos
+        // onboardings antigos, que ainda têm os dois.
+        OnboardingPasso::create([
+            'onboarding_id' => $onboarding->id,
+            'ordem'         => 8,
+            'etapa'         => OnboardingPasso::ETAPA_MAPEAMENTO,
+            'chave'         => 'metricas_da_conta',
+            'titulo'        => 'Métricas da conta',
+            'dono'          => OnboardingPasso::DONO_SISTEMA,
+            'depende_de'    => ['grant_sistema_ecf'],
+            'sla_dias'      => 3,
+            'auto_fonte'    => OnboardingPasso::AUTO_FONTE_METRICAS,
+            'status'        => OnboardingPasso::STATUS_ABERTO,
+        ]);
+
         // Passo do relatório como um onboarding pré-v10 o carrega. `auto_fonte`
         // preservado: é o que garante que ninguém o feche na mão (D-19) e o que
         // o resolver procura para fechá-lo.

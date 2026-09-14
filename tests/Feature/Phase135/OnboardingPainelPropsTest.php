@@ -269,9 +269,10 @@ class OnboardingPainelPropsTest extends TestCase
         $this->withoutVite();
         $onboarding = $this->onboardingEmAndamento();
 
-        // 'custos_app_ecf': sla_dias=5, sem depende_de — já nasce aberto pelo
-        // reavaliar() de confirmarResponsavel(); força 6 dias parado (> SLA).
-        $this->passo($onboarding, 'custos_app_ecf')->update([
+        // 'acesso_colaborador_ml': sla_dias=3, sem depende_de — já nasce aberto
+        // pelo reavaliar() de confirmarResponsavel(); força 6 dias parados
+        // (> SLA). Era `custos_app_ecf` até a v20.
+        $this->passo($onboarding, 'acesso_colaborador_ml')->update([
             'status'        => OnboardingPasso::STATUS_ABERTO,
             'disponivel_em' => now()->subDays(6),
         ]);
@@ -281,7 +282,7 @@ class OnboardingPainelPropsTest extends TestCase
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->component('Onboarding/Painel')
-            ->where('empresas.0.onboardings.0.passo_que_trava.chave', 'custos_app_ecf')
+            ->where('empresas.0.onboardings.0.passo_que_trava.chave', 'acesso_colaborador_ml')
             ->where('empresas.0.onboardings.0.passo_que_trava.dias_parado', 6)
             ->where('empresas.0.onboardings.0.passo_que_trava.vencido', true)
             ->where('empresas.0.onboardings.0.situacao', 'vencido')
@@ -294,12 +295,13 @@ class OnboardingPainelPropsTest extends TestCase
         $this->withoutVite();
         $onboarding = $this->onboardingEmAndamento();
 
-        // 'planilha_custos_adman' (ordem 3) fica com MENOS dias parado que
-        // 'custos_app_ecf' (ordem 10) — prova que ordem não decide o empate.
-        $this->passo($onboarding, 'planilha_custos_adman')->update([
+        // 'grant_sistema_ecf' (ordem 3) fica com MENOS dias parado que
+        // 'acesso_colaborador_ml' (ordem 4) — prova que ordem não decide o
+        // empate. Eram os dois da Adman até a v20.
+        $this->passo($onboarding, 'grant_sistema_ecf')->update([
             'status' => OnboardingPasso::STATUS_ABERTO, 'disponivel_em' => now()->subDays(2),
         ]);
-        $this->passo($onboarding, 'custos_app_ecf')->update([
+        $this->passo($onboarding, 'acesso_colaborador_ml')->update([
             'status' => OnboardingPasso::STATUS_ABERTO, 'disponivel_em' => now()->subDays(4),
         ]);
 
@@ -308,7 +310,7 @@ class OnboardingPainelPropsTest extends TestCase
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->component('Onboarding/Painel')
-            ->where('empresas.0.onboardings.0.passo_que_trava.chave', 'custos_app_ecf')
+            ->where('empresas.0.onboardings.0.passo_que_trava.chave', 'acesso_colaborador_ml')
             ->where('empresas.0.onboardings.0.passo_que_trava.dias_parado', 4)
         );
     }
@@ -420,7 +422,7 @@ class OnboardingPainelPropsTest extends TestCase
         // prova a tradução de chave para título legível.
         $this->assertSame(
             ['Grant com o Sistema ECF (OAuth)'],
-            $passos['metricas_da_conta']['depende_de'],
+            $passos['anuncios_ativos_inativos']['depende_de'],
         );
         // v10 — nenhum passo da régua tem `condicao`: o único condicional era
         // `excluir_anuncios_inativos`, que saiu. A TRADUÇÃO segue no controller

@@ -9,8 +9,8 @@ import RespostaConfirmacao from './RespostaConfirmacao';
 const DONO_LABEL = { cliente: 'cliente', interno: 'interno', sistema: 'sistema' };
 
 // A ordem das etapas e a contagem por etapa moraram aqui até 19/08 — foram
-// para `FluxoOnboarding`, que é quem agrupa. SC-11 (porcentagem não é a
-// resposta da tela) segue valendo lá: o "3/5" da etapa é orientação de
+// para `ChecklistPorEtapa`, que é quem agrupa. SC-11 (porcentagem não é a
+// resposta da tela) segue valendo lá: o "2 de 4" da etapa é orientação de
 // leitura, e o cabeçalho e o painel continuam respondendo por situação.
 
 /**
@@ -236,10 +236,10 @@ export function LinhaPasso({ passo, onboardingId, confirmacao, num = null }) {
 }
 
 /*
- * O agrupamento por etapa NÃO mora mais aqui — quem monta as etapas numeradas,
- * com o formulário do assunto junto dos passos dele, é `FluxoOnboarding`. Este
- * módulo ficou sendo o desenho de UMA linha de passo (`LinhaPasso` e os
- * estados que ela usa), que é o que os dois lados compartilham.
+ * O agrupamento por etapa NÃO mora mais aqui — quem monta os cartões de etapa é
+ * `ChecklistPorEtapa`. Este módulo ficou sendo o desenho de UM passo em
+ * detalhe (`LinhaPasso` e os estados que ela usa), que desde 14/09 é o que o
+ * modal da ficha interna abre ao clicar numa linha do checklist.
  *
  * Manter aqui uma segunda lista de etapas era garantir que as duas ordens
  * divergissem: a ordem do processo mudou em 19/08 (agendamento passou a ser o

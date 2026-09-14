@@ -53,7 +53,7 @@ class OnboardingPortalAjudaDoPassoTest extends TestCase
     /** @return array<string, array<string, mixed>> */
     private function payloadPorChave(Company $company): array
     {
-        return collect(app(OnboardingLinkService::class)->passosDoCliente($company))
+        return collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->keyBy('chave')
             ->all();
     }
@@ -71,7 +71,7 @@ class OnboardingPortalAjudaDoPassoTest extends TestCase
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
 
-        $payload = app(OnboardingLinkService::class)->passosDoCliente($company);
+        $payload = app(OnboardingLinkService::class)->passosDoPortal($company);
 
         $this->assertNotEmpty($payload);
 
@@ -94,7 +94,20 @@ class OnboardingPortalAjudaDoPassoTest extends TestCase
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
 
-        foreach ($this->payloadPorChave($company) as $chave => $item) {
+        // Mesmo critério do portão da instrução (14/09): passo a passo é
+        // material de autoatendimento, e só é exigido de quem o cliente
+        // resolve sozinho. Item conduzido na reunião (`confirmar`) e item de
+        // acompanhamento (`nenhuma`) ficam fora do portão.
+        $exigemAjuda = collect($this->payloadPorChave($company))->reject(
+            fn (array $item) => in_array($item['acao'], [
+                OnboardingLinkService::ACAO_CONFIRMAR,
+                OnboardingLinkService::ACAO_NENHUMA,
+            ], true)
+        );
+
+        $this->assertNotEmpty($exigemAjuda, 'nenhum passo acionável chegou — o portão ficaria vazio');
+
+        foreach ($exigemAjuda as $chave => $item) {
             $ajuda = $item['passo_a_passo'];
 
             $this->assertIsArray($ajuda, "O passo \"{$chave}\" chega ao cliente sem passo a passo");

@@ -105,7 +105,7 @@ class OnboardingGrupoBoasVindasTest extends TestCase
     {
         $onboarding = $this->onboardingEmAndamento();
 
-        $chaves = collect(app(OnboardingLinkService::class)->passosDoCliente($onboarding->company))
+        $chaves = collect(app(OnboardingLinkService::class)->passosDoPortal($onboarding->company))
             ->pluck('chave')
             ->all();
 

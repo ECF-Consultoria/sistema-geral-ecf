@@ -87,7 +87,7 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         );
         $this->assertSame(
             OnboardingPasso::ETAPA_MAPEAMENTO,
-            $onboarding->passos()->where('chave', 'metricas_da_conta')->value('etapa')
+            $onboarding->passos()->where('chave', 'anuncios_ativos_inativos')->value('etapa')
         );
         $this->assertSame(
             OnboardingPasso::ETAPA_AGENDAMENTO,
@@ -113,14 +113,14 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
     {
         $onboarding = $this->onboardingEmAndamento(Company::factory()->create());
 
-        $passo = $onboarding->passos()->where('chave', 'custos_app_ecf')->firstOrFail();
+        $passo = $onboarding->passos()->where('chave', 'acesso_colaborador_ml')->firstOrFail();
         $passo->update(['etapa' => 'administrativo']);
 
         $this->engine()->reavaliar($onboarding->fresh());
 
         $this->assertSame(
             'administrativo',
-            $onboarding->passos()->where('chave', 'custos_app_ecf')->value('etapa'),
+            $onboarding->passos()->where('chave', 'acesso_colaborador_ml')->value('etapa'),
             'reavaliar() não pode reescrever a etapa congelada no nascimento'
         );
     }
@@ -132,17 +132,13 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
     {
         $onboarding = $this->onboardingEmAndamento(Company::factory()->create());
 
-        // v16 — `custos_app_ecf` entrou aqui, vindo de `mapeamento`. Era o
-        // único passo `dono=cliente` daquela etapa, e no portal ele abria um
-        // bloco "Mapeamento da conta" logo acima da ficha automática de mesmo
-        // nome. Aqui ele fecha a sequência ao lado de `planilha_custos_adman`,
-        // que é a outra metade do mesmo assunto.
+        // v20 — a etapa encolheu de cinco para DOIS. `planilha_custos_adman`,
+        // `grant_consultoria_adman` e `custos_app_ecf` saíram da régua: o
+        // negócio não soube dizer do que cada um trata e mandou descartar.
+        // Os dois que ficaram são os únicos acessos que só o cliente concede.
         $acessos = [
             'grant_sistema_ecf',
             'acesso_colaborador_ml',
-            'planilha_custos_adman',
-            'grant_consultoria_adman',
-            'custos_app_ecf',
         ];
 
         foreach ($acessos as $chave) {
@@ -198,20 +194,24 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
     {
         $onboarding = $this->onboardingEmAndamento(Company::factory()->create());
 
+        // v20 — os dois exemplos originais (`planilha_custos_adman` e
+        // `grant_consultoria_adman`) saíram da régua. O que a D-19 diz
+        // continua valendo e se mede no que sobrou: `grant_sistema_ecf` é
+        // `dono=cliente` E confirmado pelo sistema ao mesmo tempo.
         $this->assertSame(
-            OnboardingPasso::AUTO_FONTE_ADMAN_ACCOUNT_ID,
-            $onboarding->passos()->where('chave', 'planilha_custos_adman')->value('auto_fonte')
+            OnboardingPasso::AUTO_FONTE_ML_TOKEN,
+            $onboarding->passos()->where('chave', 'grant_sistema_ecf')->value('auto_fonte')
         );
         $this->assertSame(
-            OnboardingPasso::AUTO_FONTE_ADMAN_GRANT,
-            $onboarding->passos()->where('chave', 'grant_consultoria_adman')->value('auto_fonte')
+            OnboardingPasso::DONO_CLIENTE,
+            $onboarding->passos()->where('chave', 'grant_sistema_ecf')->value('dono')
         );
     }
 
     #[Test]
     public function a_versao_da_definicao_acompanha_a_receita_vigente(): void
     {
-        $this->assertSame(17, DefinicaoOnboarding::VERSAO);
+        $this->assertSame(20, DefinicaoOnboarding::VERSAO);
 
         $onboarding = $this->onboardingEmAndamento(Company::factory()->create());
         $this->assertSame(DefinicaoOnboarding::VERSAO, $onboarding->definicao_versao);
@@ -225,11 +225,26 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
 
-        $payload = app(OnboardingLinkService::class)->passosDoCliente($company);
+        $payload = app(OnboardingLinkService::class)->passosDoPortal($company);
 
         $this->assertNotEmpty($payload);
 
-        foreach ($payload as $item) {
+        // 14/09 — o portão vale para o passo em que o cliente precisa AGIR.
+        // Os itens que entraram no portal para serem CONDUZIDOS na reunião
+        // (`confirmar`) e os de acompanhamento (`nenhuma`) não pedem instrução
+        // de autoatendimento: ninguém está sozinho na tela quando eles são
+        // tratados. Afrouxar aqui seria esconder falta de texto; o critério é
+        // a ação, e ele continua exigindo texto de todos os que a têm.
+        $exigemInstrucao = collect($payload)->reject(
+            fn (array $item) => in_array($item['acao'], [
+                OnboardingLinkService::ACAO_CONFIRMAR,
+                OnboardingLinkService::ACAO_NENHUMA,
+            ], true)
+        );
+
+        $this->assertNotEmpty($exigemInstrucao, 'nenhum passo acionável chegou — o portão ficaria vazio');
+
+        foreach ($exigemInstrucao as $item) {
             $this->assertNotNull(
                 $item['instrucao'],
                 "O passo \"{$item['chave']}\" chega ao cliente sem instrução nenhuma"
@@ -261,52 +276,51 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
 
     // ─── Ação do cliente para os passos da Adman ────────────────────────────
 
-    #[Test]
-    public function passos_da_adman_oferecem_acao_de_instrucao_nunca_nenhuma(): void
-    {
-        $company = Company::factory()->create();
-        $this->onboardingEmAndamento($company);
-
-        $payload = collect(app(OnboardingLinkService::class)->passosDoCliente($company))
-            ->keyBy('chave');
-
-        $this->assertSame(OnboardingLinkService::ACAO_INSTRUCAO, $payload['planilha_custos_adman']['acao']);
-        $this->assertSame(OnboardingLinkService::ACAO_INSTRUCAO, $payload['grant_consultoria_adman']['acao']);
-
-        // Os outros três não regrediram.
-        $this->assertSame(OnboardingLinkService::ACAO_OAUTH_ML, $payload['grant_sistema_ecf']['acao']);
-        $this->assertSame(OnboardingLinkService::ACAO_MARCAR, $payload['acesso_colaborador_ml']['acao']);
-        $this->assertSame(OnboardingLinkService::ACAO_MARCAR, $payload['custos_app_ecf']['acao']);
-    }
-
     /**
-     * D-19 com a linha no lugar certo.
+     * 14/09 — os três da ADMAN SAÍRAM do portal, e na v20 saíram da régua.
      *
-     * A regra original barrava o cliente em QUALQUER passo automático. Só que
-     * os passos da Adman são `instrucao`: a ação acontece fora do nosso
-     * alcance e, sem cadastro Adman, o sistema NUNCA vai detectar. O cliente
-     * lia "detectamos automaticamente" e ficava preso para sempre.
+     * O teste anterior provava que eles ofereciam ação de `instrucao` em vez de
+     * "você não precisa fazer nada". A regra de mapeamento continua existindo e
+     * continua correta; o que mudou é que não há mais card deles na frente do
+     * cliente. O negócio não sabe dizer do que cada um trata — se é link, se é
+     * explicação nossa na reunião — e pediu que ficassem fora até confirmar.
      *
-     * A linha correta não é "tem auto_fonte", é "o sistema consegue confirmar
-     * isto sozinho de forma confiável". Ele pode DECLARAR o que fez fora
-     * daqui — e a declaração fica marcada como declaração.
+     * A ausência fica coberta aqui para ninguém os devolver ao portal sem essa
+     * conversa ter acontecido.
      */
     #[Test]
-    public function cliente_declara_o_passo_da_adman_e_fica_registrado_como_declaracao(): void
+    public function os_tres_itens_da_adman_ficaram_fora_do_portal(): void
     {
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
-        $link = app(OnboardingLinkService::class)->paraEmpresa($company);
 
-        $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'planilha_custos_adman'])
-            ->assertSessionHasNoErrors();
+        $chaves = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
+            ->pluck('chave')
+            ->all();
 
-        $passo = OnboardingPasso::where('chave', 'planilha_custos_adman')->firstOrFail();
+        $this->assertNotContains('planilha_custos_adman', $chaves);
+        $this->assertNotContains('grant_consultoria_adman', $chaves);
+        $this->assertNotContains('custos_app_ecf', $chaves);
 
-        $this->assertSame(OnboardingPasso::STATUS_CONCLUIDO, $passo->status);
-        $this->assertTrue($passo->valor['declarado_pelo_cliente'] ?? false);
-        $this->assertTrue($passo->valor['concluido_manualmente'] ?? false);
+        // Os que o negócio pediu continuam lá — a remoção foi cirúrgica.
+        $this->assertContains('grant_sistema_ecf', $chaves);
+        $this->assertContains('acesso_colaborador_ml', $chaves);
     }
+
+    /*
+     * v20 — SAIU daqui o teste `cliente_declara_o_passo_da_adman_...`.
+     *
+     * Ele provava a linha certa da D-19: o cliente PODE declarar um passo
+     * automático quando o sistema não tem como confirmá-lo sozinho (era o caso
+     * dos três da Adman, cuja ação acontece fora do nosso alcance), e a
+     * declaração fica marcada como declaração.
+     *
+     * A regra continua em `OnboardingLinkService`. O que sumiu foi o CASO: os
+     * três passos saíram da régua, e nenhum dos nove que sobraram é
+     * `auto_fonte` + inconfirmável. Montar um passo falso só para manter o
+     * teste testaria a montagem, não o processo — e no dia em que a régua
+     * voltar a ter um item dessa natureza, ele volta com o teste junto.
+     */
 
     /**
      * O que a D-19 protege de verdade continua protegido: o OAuth do Mercado
@@ -337,17 +351,20 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         $this->onboardingEmAndamento($company);
         $link = app(OnboardingLinkService::class)->paraEmpresa($company);
 
-        $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'planilha_custos_adman'])
+        // v20 — era `planilha_custos_adman`. `acesso_colaborador_ml` é agora
+        // o único passo do portal que o cliente marca com a própria mão: sem
+        // `auto_fonte`, é ele quem diz que convidou o colaborador.
+        $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'acesso_colaborador_ml'])
             ->assertSessionHasNoErrors();
         $this->assertSame(
             OnboardingPasso::STATUS_CONCLUIDO,
-            OnboardingPasso::where('chave', 'planilha_custos_adman')->value('status')
+            OnboardingPasso::where('chave', 'acesso_colaborador_ml')->value('status')
         );
 
-        $this->patch(route('onboarding.publico.passo.desmarcar', $link->token), ['chave' => 'planilha_custos_adman'])
+        $this->patch(route('onboarding.publico.passo.desmarcar', $link->token), ['chave' => 'acesso_colaborador_ml'])
             ->assertSessionHasNoErrors();
 
-        $passo = OnboardingPasso::where('chave', 'planilha_custos_adman')->firstOrFail();
+        $passo = OnboardingPasso::where('chave', 'acesso_colaborador_ml')->firstOrFail();
         $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passo->status);
         $this->assertNull($passo->feito_em);
         $this->assertArrayNotHasKey('declarado_pelo_cliente', $passo->valor ?? []);
@@ -373,32 +390,32 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
 
-        $chaves = collect(app(OnboardingLinkService::class)->passosDoCliente($company))
+        $chaves = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->pluck('chave')
             ->all();
 
+        // Ordem = `ordem` do passo, que é a do catálogo. A lista mudou em
+        // 14/09 com `CHAVES_NO_PORTAL`: saíram os dois de cadastro de pessoas
+        // e entraram o retrato da conta e os "explicados".
         $this->assertSame(
             [
                 'grant_sistema_ecf',
                 'acesso_colaborador_ml',
-                'planilha_custos_adman',
-                'grant_consultoria_adman',
-                'custos_app_ecf',
-                // Fluxo de 19/08 — ordem 24 e 25, depois dos acessos: o que
-                // destrava a automação vem primeiro, e informar pessoas não
-                // depende de nada.
-                'ponto_contato_definido',
-                'participantes_reuniao_cadastrados',
+                'anuncios_ativos_inativos',
+                'publicidade_processo_explicado',
+                'publicidade_investimento_explicado',
+                'publicidade_responsabilidades_alinhadas',
+                'adman_uso_explicado',
+                'adman_responsabilidades_alinhadas',
             ],
-            $chaves,
-            'O cliente precisa receber "autorize o acesso" antes do que depende dele'
+            $chaves
         );
     }
 
     /**
      * v17 — nenhum passo do cliente depende mais de outro passo VISÍVEL a ele:
      * os dois grants perderam a dependência do OAuth. O mecanismo continua no
-     * código (`passosDoCliente()` traduz `depende_de` em `depende_de_titulo`)
+     * código (`passosDoPortal()` traduz `depende_de` em `depende_de_titulo`)
      * e vale para a próxima régua que o use, então o caso é MONTADO aqui em
      * vez de a cobertura ser apagada junto com a dependência.
      */
@@ -408,28 +425,27 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         $company = Company::factory()->create();
         $onboarding = $this->onboardingEmAndamento($company);
 
-        OnboardingPasso::create([
-            'onboarding_id' => $onboarding->id,
-            'ordem'         => 99,
-            'etapa'         => OnboardingPasso::ETAPA_ACESSOS,
-            'natureza'      => OnboardingPasso::NATUREZA_ACAO,
-            'chave'         => 'passo_dependente_de_teste',
-            'titulo'        => 'Passo que espera o grant',
-            'dono'          => OnboardingPasso::DONO_CLIENTE,
-            'depende_de'    => ['grant_sistema_ecf'],
-            'status'        => OnboardingPasso::STATUS_BLOQUEADO,
-        ]);
+        // 14/09 — o portal passou a ter lista FECHADA de chaves, então não dá
+        // mais para montar o caso com uma chave inventada: ela simplesmente
+        // não apareceria. O caso é montado sobre um passo REAL do portal,
+        // que é mais fiel de qualquer forma.
+        OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->where('chave', 'acesso_colaborador_ml')
+            ->update([
+                'depende_de' => json_encode(['grant_sistema_ecf']),
+                'status'     => OnboardingPasso::STATUS_BLOQUEADO,
+            ]);
 
-        $payload = collect(app(OnboardingLinkService::class)->passosDoCliente($company))
+        $payload = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->keyBy('chave');
 
         $this->assertSame(
             OnboardingPasso::STATUS_BLOQUEADO,
-            $payload['passo_dependente_de_teste']['status']
+            $payload['acesso_colaborador_ml']['status']
         );
         $this->assertSame(
             'Grant com o Sistema ECF (OAuth)',
-            $payload['passo_dependente_de_teste']['depende_de_titulo'],
+            $payload['acesso_colaborador_ml']['depende_de_titulo'],
             'O cliente precisa saber QUAL item libera o que está cadeado.'
         );
     }
@@ -445,15 +461,16 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         $company = Company::factory()->create();
         $onboarding = $this->onboardingEmAndamento($company);
 
-        // `custos_app_ecf` é do cliente e não depende de nada; passa a depender
-        // de um passo INTERNO para provar que o título dele não escapa.
+        // `acesso_colaborador_ml` é do cliente e não depende de nada; passa a
+        // depender de um passo INTERNO para provar que o título dele não escapa.
+        // (Era `custos_app_ecf`, que saiu do portal em 14/09.)
         $onboarding->passos()
-            ->where('chave', 'custos_app_ecf')
+            ->where('chave', 'acesso_colaborador_ml')
             ->update(['depende_de' => json_encode(['confirmacao_pagamento'])]);
 
-        $payload = collect(app(OnboardingLinkService::class)->passosDoCliente($company))
+        $payload = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->keyBy('chave');
 
-        $this->assertNull($payload['custos_app_ecf']['depende_de_titulo']);
+        $this->assertNull($payload['acesso_colaborador_ml']['depende_de_titulo']);
     }
 }

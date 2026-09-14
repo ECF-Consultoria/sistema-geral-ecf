@@ -92,6 +92,31 @@ class OnboardingRemoverPassosForaDaRegua extends Command
         'agenda_quinzenal_definida',
         'participantes_convidados',
 
+        // ─── Saiu na v18 (14/09) — a distribuição (Fase 154) já resolve quem
+        // é o analista; pedir de novo no onboarding é perguntar o que o
+        // sistema já sabe. Não estava nesta lista, então continuava ABERTO em
+        // quem nasceu antes, sem definição que o recriasse — a mesma pendência
+        // eterna por esquecimento descrita no bloco de legado lá embaixo.
+        'analista_definido',
+
+        // ─── Saíram na v20 (14/09) — o onboarding passou a ser conduzido
+        // pelo PORTAL do cliente, e o negócio descartou tudo o que não é
+        // operado lá ────────────────────────────────────────────────────
+        // Os três que ninguém soube explicar do que tratam:
+        'planilha_custos_adman',
+        'grant_consultoria_adman',
+        'custos_app_ecf',
+        // Substituído pela Fotografia da Conta:
+        'metricas_da_conta',
+        // A resposta mora no cartão "Resumo do cliente", preenchida por
+        // `BlocoContatos` — o item só cobrava um clique a mais:
+        'ponto_contato_definido',
+        'participantes_reuniao_cadastrados',
+        // Os irmãos internos dos "explicados" que ficaram no portal:
+        'publicidade_operacao_explicada',
+        'adman_funcionamento_explicado',
+        'adman_preenchimento_interno',
+
         // ─── Legado: já tinham saído da régua em versões anteriores e
         // continuavam vivos em quem nasceu antes ────────────────────────
         // Não estavam nesta lista, então nenhum comando os alcançava: eles

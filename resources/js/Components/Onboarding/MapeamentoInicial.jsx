@@ -126,14 +126,24 @@ export default function MapeamentoInicial({
 
     const medalhaConta = conta.medalha_conta;
 
+    // A ficha da conta (apelido, faturamento, Full, reputação, medalha) vinha
+    // TODA do passo `metricas_da_conta`, que saiu da régua na v20 — foi
+    // substituído pela Fotografia da Conta. Sem o passo, esses campos são seis
+    // travessões permanentes, que é pior do que não mostrar: parecem falha de
+    // coleta. Marketplace e anúncios continuam, porque vêm de outras fontes.
+    const temFichaDaConta = [
+        conta.nickname, conta.faturamento_3_meses, conta.full_ativo,
+        conta.reputacao_level, medalhaConta,
+    ].some((v) => v !== null && v !== undefined);
+
     return (
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-4">
             <div className="flex items-start justify-between gap-3 flex-wrap">
                 {/*
                   * O card NÃO tem título próprio. Os dois pontos de entrada já
                   * o renderizam dentro de uma seção chamada "Mapeamento da
-                  * conta" — o bloco da etapa no portal e o `FluxoOnboarding`
-                  * no painel interno. Repetir o nome aqui fazia a tela mostrar
+                  * conta" — o bloco da etapa no portal e o modal da ficha
+                  * interna. Repetir o nome aqui fazia a tela mostrar
                   * o mesmo título duas vezes seguidas (21/08).
                   */}
                 <div>
@@ -143,7 +153,7 @@ export default function MapeamentoInicial({
                     <p className="text-white/40 text-[12px]">
                         {contexto === 'cliente'
                             ? 'Confira se está tudo certo e complete o que faltar.'
-                            : 'Conferência assistida — o canal fica registrado.'}
+                            : 'Conferimos juntos e registramos o que ficou combinado.'}
                     </p>
                 </div>
 
@@ -179,8 +189,11 @@ export default function MapeamentoInicial({
             {pronto && (
                 <>
                     <div>
-                        <Campo rotulo="Conta" valor={conta.nickname} aviso={naoObtidos.includes('nickname')} />
+                        {temFichaDaConta && (
+                            <Campo rotulo="Conta" valor={conta.nickname} aviso={naoObtidos.includes('nickname')} />
+                        )}
                         <Campo rotulo="Marketplace" valor={conta.marketplace} />
+                        {temFichaDaConta && (<>
                         <Campo
                             rotulo="Faturamento (3 meses)"
                             /*
@@ -210,6 +223,7 @@ export default function MapeamentoInicial({
                             rotulo="Medalha da conta"
                             valor={medalhaConta?.medalha_atual_nome ?? (medalhaConta ? 'Ainda não é MercadoLíder' : null)}
                         />
+                        </>)}
                         <Campo rotulo="Anúncios ativos" valor={anuncios.ativos} />
                         <Campo rotulo="Anúncios inativos" valor={anuncios.inativos} />
                     </div>

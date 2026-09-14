@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\DB;
  * `dono=cliente`, porque o cliente passou a poder se informar pelo portal e
  * confirmar sozinho.
  *
- * `passosDoCliente()` filtra por `dono=cliente`. Sem este comando, a régua
+ * `passosDoPortal()` filtra por `dono=cliente`. Sem este comando, a régua
  * nova valeria só para empresas que entrarem depois do deploy, e todo cliente
  * já em andamento continuaria sem ver as seções — a feature ficaria invisível
  * exatamente para quem já está no processo.

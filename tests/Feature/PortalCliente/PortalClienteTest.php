@@ -88,7 +88,7 @@ class PortalClienteTest extends TestCase
     // ─── A moldura do portal ────────────────────────────────────────────────
 
     #[Test]
-    public function inicio_responde_e_traz_os_tres_modulos_na_ordem(): void
+    public function inicio_responde_e_traz_os_modulos_na_ordem(): void
     {
         $company = $this->empresa();
 
@@ -97,11 +97,14 @@ class PortalClienteTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Portal/Inicio')
                 ->where('modulo', 'inicio')
+                // A Calculadora de Custo entrou em 14/09, entre Onboarding e
+                // PPA — a ordem é a de DEFINICOES em `ModulosPortal`.
                 ->where('modulos.0.chave', 'inicio')
                 ->where('modulos.1.chave', 'onboarding')
-                ->where('modulos.2.chave', 'ppa')
+                ->where('modulos.2.chave', 'calculadora')
+                ->where('modulos.3.chave', 'ppa')
                 ->where('modulos.0.ativo', true)
-                ->where('modulos.2.ativo', false)
+                ->where('modulos.3.ativo', false)
             );
     }
 
@@ -121,7 +124,7 @@ class PortalClienteTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->where('modulos', fn ($modulos) => collect($modulos)
                     ->pluck('chave')
-                    ->diff(['inicio', 'onboarding', 'ppa'])
+                    ->diff(['inicio', 'onboarding', 'calculadora', 'ppa'])
                     ->isEmpty()
                 )
             );
@@ -465,8 +468,8 @@ class PortalClienteTest extends TestCase
         $this->get(route('portal.onboarding', $this->token($company)))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->where('modulos.2.chave', 'ppa')
-                ->where('modulos.2.badge', 2)
+                ->where('modulos.3.chave', 'ppa')
+                ->where('modulos.3.badge', 2)
             );
     }
 
@@ -482,6 +485,6 @@ class PortalClienteTest extends TestCase
 
         $this->get(route('portal.inicio', $this->token($company)))
             ->assertOk()
-            ->assertInertia(fn ($page) => $page->where('modulos.2.badge', null));
+            ->assertInertia(fn ($page) => $page->where('modulos.3.badge', null));
     }
 }

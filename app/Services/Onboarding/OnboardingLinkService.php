@@ -4,6 +4,7 @@ namespace App\Services\Onboarding;
 
 use App\Models\Company;
 use App\Models\Onboarding;
+use App\Models\OnboardingConfirmacao;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
 use App\Support\Onboarding\DefinicaoOnboarding;
@@ -20,7 +21,7 @@ use Illuminate\Support\Str;
  * D-08) e o cliente não pode receber dois links.
  *
  * Consequência direta: a unidade de exibição do portal não é
- * `onboarding_passos`, é a `chave` (D-10) — {@see self::passosDoCliente()}
+ * `onboarding_passos`, é a `chave` (D-10) — {@see self::passosDoPortal()}
  * agrupa por ela de propósito, mesmo a v1 só tendo o template de Gestão
  * para colidir consigo mesma.
  */
@@ -66,11 +67,15 @@ class OnboardingLinkService
      *   onboarding_passo_ids: array<int, int>,
      * }>
      */
-    public function passosDoCliente(Company $company): array
+    public function passosDoPortal(Company $company): array
     {
         $passos = OnboardingPasso::query()
             ->whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id)->emAndamento())
-            ->where('dono', OnboardingPasso::DONO_CLIENTE)
+            // 14/09 — era `where('dono', DONO_CLIENTE)`. O portal virou a tela
+            // de OPERAÇÃO do onboarding (analista e cliente juntos), então
+            // quem aparece aqui é decisão explícita do catálogo, não
+            // consequência de a quem o passo pertence.
+            ->whereIn('chave', DefinicaoOnboarding::CHAVES_NO_PORTAL)
             ->with('onboarding.servico')
             // Sem isto a ordem dos cards fica por conta do banco: o cliente
             // podia receber "marque os custos" antes de "autorize o acesso",
@@ -127,10 +132,124 @@ class OnboardingLinkService
                         ->values()
                         ->all(),
                     'onboarding_passo_ids' => $grupo->pluck('id')->values()->all(),
+                    // A resposta registrada deste item, quando existe (14/09).
+                    // Vai junto do passo, e não num mapa à parte, porque a tela
+                    // renderiza os dois no mesmo card — separar obrigaria o JSX
+                    // a cruzar por chave, que é exatamente o tipo de junção que
+                    // some quando alguém renomeia uma delas.
+                    'confirmacao'          => $this->confirmacaoDoGrupo($grupo),
                 ];
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * A resposta registrada para esta chave, se houver.
+     *
+     * Uma empresa pode ter o mesmo item em mais de um onboarding (D-10). A
+     * mais RECENTE vence: a régua é a mesma de qualquer agregação por chave
+     * aqui — o portal mostra um card só, e mostrar a resposta antiga seria
+     * dizer ao cliente que a conversa de hoje não aconteceu.
+     *
+     * @param  Collection<int, OnboardingPasso>  $grupo
+     * @return array{resposta: string, observacoes: ?string, respondido_em: ?string, respondido_por: ?string}|null
+     */
+    private function confirmacaoDoGrupo(Collection $grupo): ?array
+    {
+        $confirmacao = OnboardingConfirmacao::query()
+            ->whereIn('onboarding_id', $grupo->pluck('onboarding_id')->unique())
+            ->where('chave', $grupo->first()->chave)
+            ->with('respondidoPor:id,name')
+            ->orderByDesc('respondido_em')
+            ->first();
+
+        if ($confirmacao === null) {
+            return null;
+        }
+
+        return [
+            'resposta'       => $confirmacao->resposta,
+            'observacoes'    => $confirmacao->observacoes,
+            'respondido_em'  => $confirmacao->respondido_em?->toIso8601String(),
+            // Nome só quando quem respondeu é da ECF. Resposta dada pelo
+            // cliente autenticado não tem linha em `users` para apontar, e
+            // inventar um nome aqui seria pior que a ausência.
+            'respondido_por' => $confirmacao->respondidoPor?->name,
+        ];
+    }
+
+    /**
+     * Registra a resposta de um item de confirmação, pelo portal (14/09).
+     *
+     * ### Por que exige a EQUIPE
+     * Os cinco "explicados" que entraram no portal são `dono=interno`. A
+     * guarda de `marcarFeitoPorChave()` existe por causa de um incidente real
+     * verificado em 21/08: sem ela, qualquer um de posse do token fechava
+     * passo interno com um PATCH cru, sem sessão e sem deixar marca. Levar
+     * esses passos para o portal sem repetir a guarda reabriria exatamente
+     * aquele buraco.
+     *
+     * O cliente VÊ o item e a resposta registrada — é sobre ele que a conversa
+     * acontece. Quem REGISTRA é a ECF, autenticada, e é por isso que a decisão
+     * de 14/09 escolheu o modo equipe.
+     *
+     * Escreve em TODOS os onboardings da empresa que têm a chave (D-10), do
+     * mesmo jeito que as outras escritas por chave.
+     *
+     * @return int quantos onboardings receberam a resposta
+     */
+    public function responderConfirmacaoPorChave(
+        Company $company,
+        string $chave,
+        string $resposta,
+        ?string $observacoes,
+        ?AtorDoPortal $ator,
+    ): int {
+        if (! ($ator?->equipe ?? false)) {
+            throw new \DomainException(
+                'Este item é registrado pela equipe da ECF durante a reunião.'
+            );
+        }
+
+        if (! DefinicaoOnboarding::apareceNoPortal($chave)) {
+            throw new \DomainException('Este item não é operado pelo portal.');
+        }
+
+        $passos = OnboardingPasso::query()
+            ->where('chave', $chave)
+            ->where('auto_fonte', OnboardingPasso::AUTO_FONTE_CONFIRMACAO)
+            ->whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id)->emAndamento())
+            ->with('onboarding')
+            ->get();
+
+        if ($passos->isEmpty()) {
+            throw new \DomainException('Este item não existe no onboarting desta empresa.');
+        }
+
+        $usuarioId = $ator->modelo instanceof \App\Models\User ? $ator->modelo->id : null;
+
+        foreach ($passos as $passo) {
+            OnboardingConfirmacao::updateOrCreate(
+                ['onboarding_id' => $passo->onboarding_id, 'chave' => $chave],
+                [
+                    'resposta'       => $resposta,
+                    'observacoes'    => $observacoes,
+                    'respondido_em'  => now(),
+                    'respondido_por' => $usuarioId,
+                ]
+            );
+
+            // O passo fecha (ou reabre) pelo RESOLVER, nunca por escrita
+            // direta de status — a mesma disciplina do lado interno.
+            $resolver = app(\App\Services\Onboarding\OnboardingResolverFactory::class)
+                ->for(OnboardingPasso::AUTO_FONTE_CONFIRMACAO);
+
+            app(\App\Services\Onboarding\OnboardingEngineService::class)
+                ->aplicarResultado($passo, $resolver->resolver($passo->onboarding, $passo));
+        }
+
+        return $passos->count();
     }
 
     /**
@@ -192,7 +311,7 @@ class OnboardingLinkService
      * Reuniões de onboarding da empresa, uma por onboarding em andamento.
      *
      * Não é um passo: o passo `agendar_reuniao_onboarding` é `dono=interno` e
-     * por isso nunca apareceria em {@see self::passosDoCliente()}. O cliente
+     * por isso nunca apareceria em {@see self::passosDoPortal()}. O cliente
      * precisa de um lugar para PEDIR a reunião e para VER a data marcada, e é
      * isso que este bloco entrega.
      *
@@ -324,6 +443,22 @@ class OnboardingLinkService
      * cliente" (§16 do fluxo de 19/08).
      */
     public const ACAO_PESSOAS = 'pessoas';
+    /**
+     * O item é CONDUZIDO na reunião e fica registrado com uma resposta e uma
+     * observação (14/09).
+     *
+     * São os "explicados" — processo de publicidade, uso do investimento,
+     * responsabilidades, ADMAN. Todos têm `auto_fonte=confirmacao_respondida`
+     * e antes caíam em `nenhuma`, que renderiza "você não precisa fazer nada"
+     * — leitura errada para um item cuja razão de existir é justamente ser
+     * conversado e registrado ali.
+     *
+     * Não é `marcar`: marcar é o cliente declarando que fez algo fora daqui.
+     * Aqui a ação acontece NA tela, e o que fica gravado é a resposta mais a
+     * observação — em `onboarding_confirmacoes`, que já existia com
+     * `resposta`, `observacoes`, `respondido_por` e `respondido_em`.
+     */
+    public const ACAO_CONFIRMAR = 'confirmar';
     /** Nada a fazer: o sistema resolve sozinho, o cliente só acompanha. */
     public const ACAO_NENHUMA = 'nenhuma';
 
@@ -348,6 +483,7 @@ class OnboardingLinkService
             OnboardingPasso::AUTO_FONTE_ADMAN_GRANT       => self::ACAO_INSTRUCAO,
             OnboardingPasso::AUTO_FONTE_PONTO_CONTATO     => self::ACAO_PESSOAS,
             OnboardingPasso::AUTO_FONTE_PARTICIPANTES     => self::ACAO_PESSOAS,
+            OnboardingPasso::AUTO_FONTE_CONFIRMACAO       => self::ACAO_CONFIRMAR,
             default                                       => self::ACAO_NENHUMA,
         };
     }

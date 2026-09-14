@@ -154,8 +154,9 @@ class OnboardingPainelAcoesTest extends TestCase
         $this->assertNotNull($onboarding->iniciado_em);
 
         // Os passos sem depende_de destravam na hora. Eram 5 (135-04-PLAN.md);
-        // v10 removeu `mensagem_boas_vindas` e `confirmacao_pagamento` da régua.
-        foreach (['grant_sistema_ecf', 'planilha_custos_adman', 'custos_app_ecf'] as $chave) {
+        // v10 removeu `mensagem_boas_vindas` e `confirmacao_pagamento` da régua,
+        // e a v20 levou `planilha_custos_adman` e `custos_app_ecf`.
+        foreach (['grant_sistema_ecf', 'acesso_colaborador_ml'] as $chave) {
             $passo = $this->passo($onboarding, $chave);
             $this->assertSame(OnboardingPasso::STATUS_ABERTO, $passo->status, "passo {$chave} deveria estar aberto");
             $this->assertNotNull($passo->disponivel_em, "passo {$chave} deveria ter disponivel_em carimbado");
@@ -163,8 +164,9 @@ class OnboardingPainelAcoesTest extends TestCase
 
         // Passo com dependência continua bloqueado. v17: os dois grants
         // deixaram de depender do OAuth, então quem sobra com dependência é a
-        // coleta automática — que de fato só roda depois do grant.
-        $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $this->passo($onboarding, 'metricas_da_conta')->status);
+        // coleta automática — que de fato só roda depois do grant. Era
+        // `metricas_da_conta`; na v20 sobrou o acervo.
+        $this->assertSame(OnboardingPasso::STATUS_BLOQUEADO, $this->passo($onboarding, 'anuncios_ativos_inativos')->status);
     }
 
     #[Test]
@@ -221,8 +223,9 @@ class OnboardingPainelAcoesTest extends TestCase
         $admin = $this->admin();
         $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
 
-        // 'custos_app_ecf': dono=cliente, sem auto_fonte — passo manual, já aberto.
-        $passo = $this->passo($onboarding, 'custos_app_ecf');
+        // 'acesso_colaborador_ml': dono=cliente, sem auto_fonte — passo
+        // manual, já aberto. Era `custos_app_ecf` até a v20.
+        $passo = $this->passo($onboarding, 'acesso_colaborador_ml');
 
         $response = $this->actingAs($admin)->post(route('onboarding.passos.concluir', $passo));
 
@@ -255,7 +258,7 @@ class OnboardingPainelAcoesTest extends TestCase
         $onboarding = $this->onboardingEmRascunho();
         $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
 
-        $passo = $this->passo($onboarding, 'planilha_custos_adman');
+        $passo = $this->passo($onboarding, 'grant_sistema_ecf');
         $admin = $this->admin();
 
         $this->actingAs($admin)
@@ -276,7 +279,7 @@ class OnboardingPainelAcoesTest extends TestCase
         $onboarding = $this->onboardingEmRascunho();
         $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
 
-        $passo = $this->passo($onboarding, 'planilha_custos_adman');
+        $passo = $this->passo($onboarding, 'grant_sistema_ecf');
         $admin = $this->admin();
 
         $this->actingAs($admin)->post(route('onboarding.passos.concluir', $passo))->assertSessionHasNoErrors();
@@ -297,7 +300,7 @@ class OnboardingPainelAcoesTest extends TestCase
         $onboarding = $this->onboardingEmRascunho();
         $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
 
-        $passo = $this->passo($onboarding, 'custos_app_ecf');
+        $passo = $this->passo($onboarding, 'acesso_colaborador_ml');
 
         $this->actingAs($this->admin())
             ->post(route('onboarding.passos.reabrir', $passo))
@@ -311,7 +314,7 @@ class OnboardingPainelAcoesTest extends TestCase
     {
         $onboarding = $this->onboardingEmRascunho();
         $this->engine()->confirmarResponsavel($onboarding, User::factory()->create());
-        $passo = $this->passo($onboarding, 'custos_app_ecf');
+        $passo = $this->passo($onboarding, 'acesso_colaborador_ml');
 
         $foraDaCarteira = $this->userComPermissaoPainel();
 

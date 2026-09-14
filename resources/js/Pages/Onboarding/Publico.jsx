@@ -1,11 +1,11 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import PessoasDoCliente from '@/Components/Onboarding/PessoasDoCliente';
-import { router } from '@inertiajs/react';
+import FotografiaDaConta from '@/Components/Onboarding/FotografiaDaConta';
+import { router, usePage } from '@inertiajs/react';
 import {
     AlertTriangle, CalendarDays, Check, CheckCircle2, ExternalLink, Lock,
     RefreshCw, Zap,
 } from 'lucide-react';
-import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
 import {
     PassoAPassoBtn,
     PassoAPassoModal,
@@ -48,7 +48,15 @@ import { rotaDoPortal } from '@/lib/rotasDoPortal';
 // antes destes), e os contatos vêm logo em seguida. O motivo é o mesmo dos
 // dois lados do sistema — quem conduz o processo somos nós: marcamos a data,
 // dizemos quem precisa estar, e só então pedimos os acessos.
-const ETAPAS_ORDEM = ['responsaveis', 'acessos', 'mapeamento', 'agendamento', 'administrativo', 'outros'];
+// A ordem em que o cliente encontra os blocos. `publicidade` e `adman`
+// entraram em 14/09, junto com os itens que passaram a ser conduzidos na
+// reunião — sem elas os cinco "explicados" SUMIAM da tela, e o progresso
+// contava 10 enquanto apareciam 4. Era exatamente a armadilha que o comentário
+// abaixo previa.
+const ETAPAS_ORDEM = [
+    'responsaveis', 'acessos', 'mapeamento', 'publicidade', 'adman',
+    'agendamento', 'administrativo', 'outros',
+];
 
 const ETAPA_LABELS = {
     responsaveis:   { titulo: 'Seus contatos',            ajuda: 'Quem devemos acionar no dia a dia e quem participa das reuniões.' },
@@ -163,7 +171,369 @@ function LinkAppEcf({ url }) {
 
 // ─── Card de um passo (1 por `chave`, nunca por onboarding_passo) ───────────
 
-function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onPlay, onOpenPassoAPasso, pessoas = {}, emailColaborador = null, appEcfLink = null }) {
+const PAPEIS_CONTATO = [
+    ['ponto_de_contato',    'Ponto de contato',         'Quem acionamos no dia a dia.'],
+    ['participante_reuniao', 'Participantes das reuniões', 'Quem recebe o convite dos encontros.'],
+];
+
+/**
+ * Contatos do cliente, no portal (14/09).
+ *
+ * ### Por que existe, se os passos saíram
+ * `ponto_contato_definido` e `participantes_reuniao_cadastrados` deixaram de
+ * ser itens do portal na mesma decisão — são cadastro INTERNO, não tarefa que
+ * se cobra do cliente numa lista. Mas o negócio pediu os CONTATOS no portal, e
+ * as duas coisas não se contradizem: o que saiu foi a cobrança em forma de
+ * checklist; o que entra é o bloco onde a informação vive e é conferida junto
+ * com o cliente na reunião.
+ *
+ * Escrita é da equipe, leitura é dos dois — mesma régua dos outros blocos. O
+ * endpoint é o `onboarding.pessoas` que já existia e já funcionava nos dois
+ * modos; nada de rota nova.
+ *
+ * Sem ninguém cadastrado e sem ser equipe, o bloco não aparece: uma lista vazia
+ * no portal do cliente não informa nada e ainda parece defeito.
+ */
+function BlocoContatosPortal({ pessoas, token, ehEquipe }) {
+    const temAlguem = PAPEIS_CONTATO.some(([papel]) => (pessoas?.[papel] ?? []).length > 0);
+
+    if (! ehEquipe && ! temAlguem) return null;
+
+    return (
+        <section className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-4">
+            <h2 className="text-white font-display font-bold text-[15px]">Contatos</h2>
+
+            {PAPEIS_CONTATO.map(([papel, rotulo, ajuda]) => {
+                const doPapel = pessoas?.[papel] ?? [];
+
+                if (! ehEquipe && doPapel.length === 0) return null;
+
+                return (
+                    <div key={papel} className="space-y-1.5">
+                        <div>
+                            <p className="text-white/70 text-[13px] font-semibold">{rotulo}</p>
+                            <p className="text-white/35 text-[12px]">{ajuda}</p>
+                        </div>
+
+                        {ehEquipe ? (
+                            <PessoasDoCliente
+                                token={token}
+                                papel={papel}
+                                pessoas={doPapel}
+                                // O ponto de contato entra também como
+                                // participante: sugerir quem já está cadastrado
+                                // evita redigitar os mesmos dados.
+                                sugestoes={papel === 'participante_reuniao' ? (pessoas?.ponto_de_contato ?? []) : []}
+                            />
+                        ) : (
+                            <ul className="space-y-1">
+                                {doPapel.map((pessoa) => (
+                                    <li key={pessoa.id} className="flex flex-wrap items-center gap-2 text-[13px]">
+                                        <span className="text-white/85">{pessoa.nome}</span>
+                                        {pessoa.funcao && <span className="text-white/35 text-[12px]">{pessoa.funcao}</span>}
+                                        {pessoa.email && <span className="text-white/55 text-[12px]">{pessoa.email}</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                );
+            })}
+        </section>
+    );
+}
+
+const CAMPOS_ANOTACAO = [
+    ['pontos_atencao',  'Pontos de atenção'],
+    ['oportunidades',   'Oportunidades'],
+    ['proximos_passos', 'Próximos passos'],
+];
+
+const CAMPOS_INVESTIMENTO = [
+    ['investimento_disponivel',      'Disponível para investir'],
+    ['investimento_mensal_previsto', 'Previsto por mês'],
+    ['investimento_publicidade',     'Em publicidade'],
+];
+
+/**
+ * Anotações da reunião — nossas, e o cliente lê.
+ *
+ * NÃO é o relatório inicial da tela interna: lá existe um botão que GERA um
+ * documento a partir dos dados da conta. Aqui é ponto de anotação, e só. A
+ * decisão de 14/09 foi explícita quanto a isso — "nem precisamos do botão
+ * gerar relatório".
+ *
+ * O cliente vê o que ficou escrito; quem escreve é a equipe. Bloco sem nada
+ * escrito não aparece para o cliente: um título seguido de vazio faria parecer
+ * que a reunião não rendeu nada.
+ */
+function BlocoAnotacoes({ bloco, token, ehEquipe }) {
+    const [campos, setCampos] = useState(() => ({ ...bloco.relatorio }));
+    const [salvando, setSalvando] = useState(false);
+
+    const temConteudo = CAMPOS_ANOTACAO.some(([k]) => (bloco.relatorio?.[k] ?? '').trim() !== '');
+
+    if (! ehEquipe && ! temConteudo) return null;
+
+    function salvar() {
+        if (salvando) return;
+        setSalvando(true);
+        router.put(
+            rotaDoPortal('onboarding.relatorio', token),
+            { onboarding_id: bloco.onboarding_id, ...campos },
+            { preserveScroll: true, onFinish: () => setSalvando(false) },
+        );
+    }
+
+    return (
+        <section className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-3">
+            <h2 className="text-white font-display font-bold text-[15px]">
+                Anotações da reunião{bloco.rotulo ? ` · ${bloco.rotulo}` : ''}
+            </h2>
+
+            {CAMPOS_ANOTACAO.map(([chave, rotulo]) => (
+                <div key={chave} className="space-y-1">
+                    <p className="text-white/45 text-[12px] font-semibold">{rotulo}</p>
+
+                    {ehEquipe ? (
+                        <textarea
+                            value={campos[chave] ?? ''}
+                            onChange={(e) => setCampos((a) => ({ ...a, [chave]: e.target.value }))}
+                            rows={3}
+                            className={cn(
+                                'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
+                                'px-3 py-2 text-[12px] text-white/80 leading-relaxed resize-y',
+                            )}
+                        />
+                    ) : (
+                        <p className="text-white/60 text-[12.5px] leading-relaxed whitespace-pre-wrap">
+                            {(bloco.relatorio?.[chave] ?? '').trim() || '—'}
+                        </p>
+                    )}
+                </div>
+            ))}
+
+            {ehEquipe && (
+                <button
+                    type="button"
+                    onClick={salvar}
+                    disabled={salvando}
+                    className="px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg text-[12px] font-semibold disabled:opacity-40"
+                >
+                    {salvando ? 'Salvando…' : 'Salvar anotações'}
+                </button>
+            )}
+        </section>
+    );
+}
+
+/** O investimento do cliente, registrado por nós na reunião. */
+function BlocoInvestimentoPortal({ bloco, token, ehEquipe }) {
+    const [dados, setDados] = useState(() => ({ ...bloco.investimento }));
+    const [salvando, setSalvando] = useState(false);
+
+    const temConteudo = Object.values(bloco.investimento ?? {}).some(
+        (v) => v !== null && v !== '' && v !== undefined
+    );
+
+    if (! ehEquipe && ! temConteudo) return null;
+
+    function salvar() {
+        if (salvando) return;
+        setSalvando(true);
+        router.put(
+            rotaDoPortal('onboarding.investimento', token),
+            { onboarding_id: bloco.onboarding_id, ...dados },
+            { preserveScroll: true, onFinish: () => setSalvando(false) },
+        );
+    }
+
+    const brl = (v) =>
+        v === null || v === '' || v === undefined
+            ? '—'
+            : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    return (
+        <section className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-3">
+            <h2 className="text-white font-display font-bold text-[15px]">
+                Investimento{bloco.rotulo ? ` · ${bloco.rotulo}` : ''}
+            </h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {CAMPOS_INVESTIMENTO.map(([chave, rotulo]) => (
+                    <div key={chave} className="space-y-1">
+                        <p className="text-white/45 text-[12px]">{rotulo}</p>
+
+                        {ehEquipe ? (
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={dados[chave] ?? ''}
+                                onChange={(e) => setDados((a) => ({ ...a, [chave]: e.target.value }))}
+                                className={cn(
+                                    'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
+                                    'px-2.5 py-1.5 text-[12px] text-white/80 tabular-nums',
+                                )}
+                            />
+                        ) : (
+                            <p className="text-white text-[13px] font-semibold tabular-nums">
+                                {brl(bloco.investimento?.[chave])}
+                            </p>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            <div className="space-y-1">
+                <p className="text-white/45 text-[12px]">Observações</p>
+                {ehEquipe ? (
+                    <textarea
+                        value={dados.observacoes ?? ''}
+                        onChange={(e) => setDados((a) => ({ ...a, observacoes: e.target.value }))}
+                        rows={2}
+                        className={cn(
+                            'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
+                            'px-3 py-2 text-[12px] text-white/80 leading-relaxed resize-y',
+                        )}
+                    />
+                ) : (
+                    <p className="text-white/60 text-[12.5px] leading-relaxed whitespace-pre-wrap">
+                        {(bloco.investimento?.observacoes ?? '').trim() || '—'}
+                    </p>
+                )}
+            </div>
+
+            {ehEquipe && (
+                <button
+                    type="button"
+                    onClick={salvar}
+                    disabled={salvando}
+                    className="px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg text-[12px] font-semibold disabled:opacity-40"
+                >
+                    {salvando ? 'Salvando…' : 'Salvar investimento'}
+                </button>
+            )}
+        </section>
+    );
+}
+
+const RESPOSTA_ROTULO = {
+    sim:      'Sim',
+    nao:      'Não',
+    pendente: 'Pendente',
+};
+
+/**
+ * Item CONDUZIDO na reunião — fica registrado com resposta e observação.
+ *
+ * ### Quem registra
+ * Só a equipe da ECF, autenticada. Estes itens são `dono=interno`: o cliente
+ * participa da conversa e vê o que ficou registrado, mas quem grava somos nós.
+ * A régua real está no servidor (`responderConfirmacaoPorChave()` recusa
+ * qualquer outro ator); aqui a tela só não oferece o que seria recusado.
+ *
+ * Sem resposta e sem ser equipe, o card não mostra formulário nenhum em vez de
+ * um "nada a fazer" — o item existe para ser conversado, e dizer ao cliente
+ * que não há nada ali seria a leitura errada.
+ */
+function BlocoConfirmacao({ passo, token, ehEquipe }) {
+    const registrada = passo.confirmacao;
+    const [obs, setObs] = useState(registrada?.observacoes ?? '');
+    const [salvando, setSalvando] = useState(false);
+
+    // Resincroniza o campo com o que foi GRAVADO. `useState` só lê o valor
+    // inicial uma vez, e as props do Inertia trocam a cada resposta salva —
+    // sem isto o campo seguiria mostrando o texto antigo depois de alguém
+    // responder o mesmo item de novo, ou o texto de outra sessão da equipe.
+    // `respondido_em` é o gatilho por ser o que muda a cada gravação.
+    useEffect(() => {
+        setObs(registrada?.observacoes ?? '');
+    }, [registrada?.respondido_em, registrada?.observacoes]);
+
+    function responder(resposta) {
+        if (salvando) return;
+        setSalvando(true);
+        router.post(
+            rotaDoPortal('onboarding.confirmacao', token),
+            { chave: passo.chave, resposta, observacoes: obs.trim() || null },
+            { preserveScroll: true, onFinish: () => setSalvando(false) },
+        );
+    }
+
+    return (
+        <div className="w-full space-y-2">
+            {/* O que ficou REGISTRADO, para os dois lados. Antes isto só
+                aparecia para o cliente: a equipe via a observação apenas dentro
+                do campo de edição, o que é ambíguo — texto em textarea parece
+                rascunho não salvo, não registro gravado. */}
+            {registrada && (
+                <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 space-y-1">
+                    <p className="text-white/50 text-[12px]">
+                        <span className="text-white/85 font-semibold">
+                            {RESPOSTA_ROTULO[registrada.resposta] ?? registrada.resposta}
+                        </span>
+                        {registrada.respondido_por && ` · ${registrada.respondido_por}`}
+                        {registrada.respondido_em && ` · ${new Date(registrada.respondido_em).toLocaleDateString('pt-BR', {
+                            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                        })}`}
+                    </p>
+
+                    {registrada.observacoes ? (
+                        <p className="text-white/60 text-[12px] leading-relaxed whitespace-pre-wrap">
+                            {registrada.observacoes}
+                        </p>
+                    ) : (
+                        <p className="text-white/25 text-[12px] italic">Sem observação.</p>
+                    )}
+                </div>
+            )}
+
+            {! registrada && ! ehEquipe && (
+                <p className="text-white/40 text-[12px]">
+                    Vamos tratar disto na reunião, junto com você.
+                </p>
+            )}
+
+            {ehEquipe && (
+                <>
+                    <textarea
+                        value={obs}
+                        onChange={(e) => setObs(e.target.value)}
+                        rows={3}
+                        placeholder={registrada ? 'Editar a observação' : 'Observação da conversa (opcional)'}
+                        className={cn(
+                            'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
+                            'px-3 py-2 text-[12px] text-white/80 leading-relaxed resize-y',
+                            'placeholder:text-white/25',
+                        )}
+                    />
+
+                    <div className="flex flex-wrap gap-2">
+                        {['sim', 'nao', 'pendente'].map((valor) => (
+                            <button
+                                key={valor}
+                                type="button"
+                                disabled={salvando}
+                                onClick={() => responder(valor)}
+                                className={cn(
+                                    'rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-40',
+                                    registrada?.resposta === valor
+                                        ? 'bg-ecf-yellow text-ecf-bg'
+                                        : 'border border-white/[0.10] bg-white/[0.03] text-white/70 hover:text-white',
+                                )}
+                            >
+                                {RESPOSTA_ROTULO[valor]}
+                            </button>
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
+function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onPlay, onOpenPassoAPasso, pessoas = {}, emailColaborador = null, appEcfLink = null, ehEquipe = false }) {
     const [marcando, setMarcando] = useState(false);
     const estado = ESTADO_CARD[passo.status] ?? ESTADO_CARD.aberto;
     const concluido = passo.status === 'concluido';
@@ -413,6 +783,10 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
                                 );
                             })()}
 
+                            {passo.acao === 'confirmar' && (
+                                <BlocoConfirmacao passo={passo} token={token} ehEquipe={ehEquipe} />
+                            )}
+
                             {passo.acao === 'nenhuma' && (
                                 <span className="text-white/40 text-[12px]">
                                     Nosso sistema verifica isso sozinho — você não precisa fazer nada.
@@ -504,7 +878,8 @@ function ReuniaoCard({ reuniao, varios }) {
 
 // ─── Progresso ────────────────────────────────────────────────────────────
 //
-// O que ENTRA na conta: passos do cliente + mapeamentos visíveis + reuniões.
+// O que ENTRA na conta: passos do portal + reuniões. O mapeamento saiu em
+// 14/09, junto com o bloco dele.
 // Contar só os passos faria a barra bater 100% com o mapeamento ainda por
 // conferir e a reunião ainda por marcar — o cliente leria "acabei" e pararia.
 // O portal de Polos não tem esse problema porque lá TUDO mora no checklist;
@@ -514,12 +889,17 @@ function ReuniaoCard({ reuniao, varios }) {
 // Mapeamento bloqueado não conta em lugar nenhum: ele nem aparece na tela
 // (depende do grant), e somar um item invisível ao denominador faria o cliente
 // perseguir um número que não tem como fechar.
-function calcularProgresso(passos, mapeamentos, reunioes) {
+/**
+ * A barra conta EXATAMENTE o que está desenhado na tela.
+ *
+ * O mapeamento saiu da contagem em 14/09 junto com o bloco dele. Contar o que
+ * não aparece foi como nasceu o "0/10 com 4 cards" — a barra vinha do backend
+ * e o desenho vinha de outro lugar. Quem sair da tela sai daqui no mesmo
+ * commit.
+ */
+function calcularProgresso(passos, reunioes) {
     const itens = [
         ...passos.map((p) => p.status === 'concluido'),
-        ...mapeamentos
-            .filter((m) => m.estado !== 'bloqueado')
-            .map((m) => Boolean(m.confirmacao?.confirmado)),
         // Reunião conta como feita quando já tem data na agenda — a bola volta
         // a ser nossa nesse momento. Esperar a reunião ACONTECER deixaria a
         // barra travada em 90% por dias, sem nada que o cliente possa fazer.
@@ -614,7 +994,14 @@ export default function Publico({
     mapeamentos = [],
     pessoas = {},
     responsaveis = [],
+    blocos_operacao = [],
+    fotografia = null,
 }) {
+    // Quem está operando. Vem das props da PÁGINA, do mesmo lugar que o
+    // layout lê para decidir a faixa âmbar — nunca de uma prop própria, senão
+    // uma tela nova nasce sem saber quem está na frente dela.
+    const ehEquipe = !! usePage().props.usuario?.equipe;
+
     const [conectandoChave, setConectandoChave] = useState(null);
     const [video, setVideo] = useState(null);
     const [passoAPasso, setPassoAPasso] = useState(null);
@@ -638,36 +1025,51 @@ export default function Publico({
         );
     }
 
-    // Bloqueado fica de fora da tela inteira: antes do grant `fetchUserInfo()`
-    // nem sai da porta, e um bloco de campos em branco pareceria erro nosso.
-    const mapeamentosVisiveis = mapeamentos.filter((m) => m.estado !== 'bloqueado');
-
-    // "Nada pendente" agora considera a reunião: um cliente que já cumpriu
-    // todos os passos mas ainda precisa marcar a conversa NÃO está sem nada a
-    // fazer. O mesmo vale para o mapeamento — ele é item de progresso desde
-    // sempre em `calcularProgresso`, e agora mora dentro do bloco da etapa.
-    const nadaPendente = passos.length === 0
-        && reunioes.length === 0
-        && mapeamentosVisiveis.length === 0;
+    // "Nada pendente" considera a reunião: um cliente que já cumpriu todos os
+    // passos mas ainda precisa marcar a conversa NÃO está sem nada a fazer.
+    //
+    // O mapeamento saiu desta conta em 14/09 pelo mesmo motivo que saiu do
+    // progresso: ele não é mais desenhado aqui, e o que não aparece na tela não
+    // pode decidir se a tela diz "há coisas pendentes".
+    const nadaPendente = passos.length === 0 && reunioes.length === 0;
     const passosTodosConcluidos = passos.length > 0 && passos.every((p) => p.status === 'concluido');
 
-    const progresso = calcularProgresso(passos, mapeamentos, reunioes);
+    const progresso = calcularProgresso(passos, reunioes);
 
     // Blocos na ordem fixa de ETAPAS_ORDEM, preservando dentro de cada um a
     // ordem que o backend já mandou (`ordem` do passo). Bloco vazio não vira
     // cabeçalho órfão.
+    // ⚠️ A REDE contra a armadilha acima. `ETAPAS_ORDEM` é espelho MANUAL de
+    // `OnboardingPasso::ETAPAS` — não há tipo compartilhado entre PHP e JS. Até
+    // 14/09, etapa que existisse no backend e faltasse aqui fazia o passo sumir
+    // da tela sem erro nenhum, porque o filtro só casava igualdade exata. Foi o
+    // que aconteceu com `publicidade` e `adman`.
+    //
+    // Agora o que não casa com etapa nenhuma conhecida cai no último bloco em
+    // vez de desaparecer. O sintoma passa a ser "apareceu fora de ordem", que
+    // se vê; o anterior era "não apareceu", que só se descobre conferindo
+    // contagem contra tela.
+    const etapasConhecidas = new Set(ETAPAS_ORDEM);
+    const etapaDoPasso = (p) => {
+        const etapa = p.etapa ?? 'outros';
+
+        return etapasConhecidas.has(etapa) ? etapa : 'outros';
+    };
+
     const blocos = ETAPAS_ORDEM
         .map((etapa) => ({
             etapa,
-            itens: passos.filter((p) => (p.etapa ?? 'outros') === etapa),
+            itens: passos.filter((p) => etapaDoPasso(p) === etapa),
             // O mapeamento da conta É a etapa `mapeamento` — vive DENTRO do
             // bloco dela. Antes era um segundo bloco logo abaixo, com o mesmo
             // título, e a tela mostrava "Mapeamento da conta" duas vezes
             // (21/08). O bloco existe mesmo sem passo nenhum na etapa: a ficha
             // da conta sozinha já justifica o cabeçalho.
-            mapas: etapa === 'mapeamento' ? mapeamentosVisiveis : [],
         }))
-        .filter(({ itens, mapas }) => itens.length > 0 || mapas.length > 0);
+        // Só passos decidem se a etapa existe. Antes um bloco sobrevivia só com
+        // a ficha de mapeamento — que não é mais desenhada aqui, e o bloco
+        // ficaria vazio.
+        .filter(({ itens }) => itens.length > 0);
 
     // Numeração 01, 02, 03… CONTÍNUA entre os blocos, como no checklist de
     // Polos: o cliente conta "quantos ainda faltam" pelo número, e reiniciar a
@@ -726,10 +1128,12 @@ export default function Publico({
                             01..NN corre de ponta a ponta e o cliente mede o que
                             falta contando, sem abrir nada.
 
-                            A ficha da conta (`MapeamentoInicial`) segue logo
-                            depois dos passos da etapa `mapeamento`, que é o
-                            lugar que ela ocupava dentro do bloco. */}
-                        {blocos.map(({ etapa, itens, mapas }) => (
+                            A ficha da conta (`MapeamentoInicial`) SAIU daqui
+                            em 14/09, junto com `metricas_da_conta`: os dois
+                            diziam "como está a conta" de formas diferentes e
+                            foram substituídos pela Fotografia da Conta. Ela
+                            continua existindo na ficha interna. */}
+                        {blocos.map(({ etapa, itens }) => (
                             <Fragment key={etapa}>
                                 {itens.map((passo) => (
                                     <PassoCard
@@ -744,20 +1148,28 @@ export default function Publico({
                                         onOpenPassoAPasso={setPassoAPasso}
                                         emailColaborador={empresa.email_colaborador}
                                         appEcfLink={empresa.app_ecf_link}
+                                        ehEquipe={ehEquipe}
                                     />
                                 ))}
+                            </Fragment>
+                        ))}
 
-                                {mapas.map((m) => (
-                                    <MapeamentoInicial
-                                        key={m.onboarding_id}
-                                        mapeamento={m}
-                                        contexto="cliente"
-                                        rotulo={mapas.length > 1 ? m.servico : null}
-                                        payloadExtra={{ onboarding_id: m.onboarding_id }}
-                                        rotaSincronizar={rotaDoPortal('onboarding.mapeamento.sincronizar', token)}
-                                        rotaConfirmar={rotaDoPortal('onboarding.mapeamento.confirmar', token)}
-                                    />
-                                ))}
+                        {/* Os blocos operados na reunião. Ficam DEPOIS da lista
+                            porque são registro do que foi conversado, não tarefa
+                            a fazer — e para o cliente sozinho eles só aparecem
+                            quando têm conteúdo. */}
+                        {/* A Fotografia abre os blocos: é o retrato sobre o
+                            qual a reunião acontece, e substituiu os dois itens
+                            que diziam "como está a conta" (Métricas da conta e
+                            a ficha de mapeamento). */}
+                        <FotografiaDaConta fotografia={fotografia} token={token} ehEquipe={ehEquipe} />
+
+                        <BlocoContatosPortal pessoas={pessoas} token={token} ehEquipe={ehEquipe} />
+
+                        {blocos_operacao.map((bloco) => (
+                            <Fragment key={bloco.onboarding_id}>
+                                <BlocoAnotacoes bloco={bloco} token={token} ehEquipe={ehEquipe} />
+                                <BlocoInvestimentoPortal bloco={bloco} token={token} ehEquipe={ehEquipe} />
                             </Fragment>
                         ))}
 
