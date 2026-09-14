@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
 import PessoasDoCliente from '@/Components/Onboarding/PessoasDoCliente';
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import {
     AlertTriangle, CalendarDays, Check, CheckCircle2, ExternalLink, Lock,
     RefreshCw, Zap,
@@ -163,7 +163,102 @@ function LinkAppEcf({ url }) {
 
 // ─── Card de um passo (1 por `chave`, nunca por onboarding_passo) ───────────
 
-function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onPlay, onOpenPassoAPasso, pessoas = {}, emailColaborador = null, appEcfLink = null }) {
+const RESPOSTA_ROTULO = {
+    sim:      'Sim',
+    nao:      'Não',
+    pendente: 'Pendente',
+};
+
+/**
+ * Item CONDUZIDO na reunião — fica registrado com resposta e observação.
+ *
+ * ### Quem registra
+ * Só a equipe da ECF, autenticada. Estes itens são `dono=interno`: o cliente
+ * participa da conversa e vê o que ficou registrado, mas quem grava somos nós.
+ * A régua real está no servidor (`responderConfirmacaoPorChave()` recusa
+ * qualquer outro ator); aqui a tela só não oferece o que seria recusado.
+ *
+ * Sem resposta e sem ser equipe, o card não mostra formulário nenhum em vez de
+ * um "nada a fazer" — o item existe para ser conversado, e dizer ao cliente
+ * que não há nada ali seria a leitura errada.
+ */
+function BlocoConfirmacao({ passo, token, ehEquipe }) {
+    const registrada = passo.confirmacao;
+    const [obs, setObs] = useState(registrada?.observacoes ?? '');
+    const [salvando, setSalvando] = useState(false);
+
+    function responder(resposta) {
+        if (salvando) return;
+        setSalvando(true);
+        router.post(
+            rotaDoPortal('onboarding.confirmacao', token),
+            { chave: passo.chave, resposta, observacoes: obs.trim() || null },
+            { preserveScroll: true, onFinish: () => setSalvando(false) },
+        );
+    }
+
+    return (
+        <div className="w-full space-y-2">
+            {registrada && (
+                <p className="text-white/50 text-[12px]">
+                    <span className="text-white/80 font-semibold">
+                        {RESPOSTA_ROTULO[registrada.resposta] ?? registrada.resposta}
+                    </span>
+                    {registrada.respondido_por && ` · registrado por ${registrada.respondido_por}`}
+                </p>
+            )}
+
+            {registrada?.observacoes && ! ehEquipe && (
+                <p className="text-white/45 text-[12px] leading-relaxed whitespace-pre-wrap">
+                    {registrada.observacoes}
+                </p>
+            )}
+
+            {! registrada && ! ehEquipe && (
+                <p className="text-white/40 text-[12px]">
+                    Vamos tratar disto na reunião, junto com você.
+                </p>
+            )}
+
+            {ehEquipe && (
+                <>
+                    <textarea
+                        value={obs}
+                        onChange={(e) => setObs(e.target.value)}
+                        rows={3}
+                        placeholder="Observação da conversa (opcional)"
+                        className={cn(
+                            'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
+                            'px-3 py-2 text-[12px] text-white/80 leading-relaxed resize-y',
+                            'placeholder:text-white/25',
+                        )}
+                    />
+
+                    <div className="flex flex-wrap gap-2">
+                        {['sim', 'nao', 'pendente'].map((valor) => (
+                            <button
+                                key={valor}
+                                type="button"
+                                disabled={salvando}
+                                onClick={() => responder(valor)}
+                                className={cn(
+                                    'rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-40',
+                                    registrada?.resposta === valor
+                                        ? 'bg-ecf-yellow text-ecf-bg'
+                                        : 'border border-white/[0.10] bg-white/[0.03] text-white/70 hover:text-white',
+                                )}
+                            >
+                                {RESPOSTA_ROTULO[valor]}
+                            </button>
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
+function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onPlay, onOpenPassoAPasso, pessoas = {}, emailColaborador = null, appEcfLink = null, ehEquipe = false }) {
     const [marcando, setMarcando] = useState(false);
     const estado = ESTADO_CARD[passo.status] ?? ESTADO_CARD.aberto;
     const concluido = passo.status === 'concluido';
@@ -413,6 +508,10 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
                                 );
                             })()}
 
+                            {passo.acao === 'confirmar' && (
+                                <BlocoConfirmacao passo={passo} token={token} ehEquipe={ehEquipe} />
+                            )}
+
                             {passo.acao === 'nenhuma' && (
                                 <span className="text-white/40 text-[12px]">
                                     Nosso sistema verifica isso sozinho — você não precisa fazer nada.
@@ -615,6 +714,11 @@ export default function Publico({
     pessoas = {},
     responsaveis = [],
 }) {
+    // Quem está operando. Vem das props da PÁGINA, do mesmo lugar que o
+    // layout lê para decidir a faixa âmbar — nunca de uma prop própria, senão
+    // uma tela nova nasce sem saber quem está na frente dela.
+    const ehEquipe = !! usePage().props.usuario?.equipe;
+
     const [conectandoChave, setConectandoChave] = useState(null);
     const [video, setVideo] = useState(null);
     const [passoAPasso, setPassoAPasso] = useState(null);
@@ -744,6 +848,7 @@ export default function Publico({
                                         onOpenPassoAPasso={setPassoAPasso}
                                         emailColaborador={empresa.email_colaborador}
                                         appEcfLink={empresa.app_ecf_link}
+                                        ehEquipe={ehEquipe}
                                     />
                                 ))}
 

@@ -143,7 +143,7 @@ export default function MapeamentoInicial({
                     <p className="text-white/40 text-[12px]">
                         {contexto === 'cliente'
                             ? 'Confira se está tudo certo e complete o que faltar.'
-                            : 'Conferência assistida — o canal fica registrado.'}
+                            : 'Conferimos juntos e registramos o que ficou combinado.'}
                     </p>
                 </div>
 

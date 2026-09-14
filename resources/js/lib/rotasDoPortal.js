@@ -45,6 +45,14 @@ const ROTAS = {
         porToken: 'portal.ppa.tarefa',
         autenticada: 'portal.auth.ppa.tarefa',
     },
+    // 14/09 — só existe autenticada, de propósito: os itens de confirmação são
+    // `dono=interno` e quem os registra é a equipe da ECF. `porToken: null` faz
+    // o helper abaixo falhar ALTO se alguém tentar chamá-la do modo anônimo,
+    // em vez de o Ziggy estourar por nome de rota inexistente longe daqui.
+    'onboarding.confirmacao': {
+        porToken: null,
+        autenticada: 'portal.auth.onboarding.confirmacao',
+    },
 };
 
 /**
@@ -64,6 +72,12 @@ export function rotaDoPortal(chave, token, params = []) {
     }
 
     const extras = Array.isArray(params) ? params : [params];
+
+    if (token && ! par.porToken) {
+        throw new Error(
+            `rotaDoPortal: "${chave}" não existe no modo por token — é ação da equipe autenticada.`
+        );
+    }
 
     return token
         ? route(par.porToken, [token, ...extras])

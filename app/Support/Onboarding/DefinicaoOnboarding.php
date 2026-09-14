@@ -133,7 +133,29 @@ class DefinicaoOnboarding
      * títulos antigos ficam como estão — reescrevê-los exigiria mexer no
      * congelamento, e ninguém pediu isso.
      */
-    public const VERSAO = 17;
+    /**
+     * ### v18 (14/09) — sai `analista_definido`
+     *
+     * O passo fechava sozinho quando o slot de analista do onboarding estava
+     * preenchido. Desde a Fase 154 quem preenche esse slot é a DISTRIBUIÇÃO,
+     * antes de o onboarding começar: o item nascia e fechava no mesmo instante,
+     * sem nunca ter sido trabalho de ninguém. Um checklist que se fecha sozinho
+     * na criação é ruído — ocupa linha no denominador do progresso e não diz
+     * nada a quem lê.
+     *
+     * Nada dependia dele (`depende_de` vazio em toda a régua), então a remoção
+     * não deixa passo esperando fantasma — a cascata que o
+     * `onboarding:remover-passos-fora-da-regua` existe para resolver não se
+     * aplica aqui.
+     *
+     * Quem JÁ está rodando mantém a linha até alguém rodar aquele comando com
+     * `--apply`. Ele é destrutivo (leva `feito_por`/`feito_em` junto) e por
+     * isso não roda sozinho: onboarding novo simplesmente nasce sem o passo.
+     *
+     * `AUTO_FONTE_ANALISTA_DEFINIDO` e o resolver dele continuam no código, de
+     * propósito — as linhas antigas ainda os referenciam enquanto existirem.
+     */
+    public const VERSAO = 18;
 
     /**
      * As chaves que o PORTAL opera — a régua de quem aparece lá, no lugar do
@@ -622,22 +644,6 @@ class DefinicaoOnboarding
                 // tinha criado com `confirmacao_pagamento`.
                 'sla_dias'   => 10,
                 'auto_fonte' => null,
-                'condicao'   => null,
-            ],
-            [
-                // Fecha sozinho quando o slot de analista do onboarding esta preenchido.
-                // O ato ja existia - a Coordenacao confirma o responsavel; faltava o item
-                // dizendo que ele e parte do checklist.
-                'ordem'      => 23,
-                'etapa'      => OnboardingPasso::ETAPA_RESPONSAVEIS,
-                'natureza'   => OnboardingPasso::NATUREZA_ACAO,
-                'chave'      => 'analista_definido',
-                'titulo'     => 'Analista responsável definido',
-                'dono'       => OnboardingPasso::DONO_INTERNO,
-                'setor_id'   => null,
-                'depende_de' => [],
-                'sla_dias'   => 2,
-                'auto_fonte' => OnboardingPasso::AUTO_FONTE_ANALISTA_DEFINIDO,
                 'condicao'   => null,
             ],
             [

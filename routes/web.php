@@ -197,6 +197,11 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->name('portal.auth.onboarding.mapeamento.confirmar');
     Route::post('/onboarding/pessoas', [OnboardingPublicoController::class, 'salvarPessoa'])
         ->name('portal.auth.onboarding.pessoas');
+    // 14/09 — os itens conduzidos na reunião. Só aqui, e NÃO na porta por
+    // token: quem registra é a equipe autenticada (o service recusa qualquer
+    // outro ator). A rota por token existiria só para receber 422.
+    Route::post('/onboarding/confirmacao', [OnboardingPublicoController::class, 'responderConfirmacao'])
+        ->name('portal.auth.onboarding.confirmacao');
     Route::get('/onboarding/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
         ->name('portal.auth.onboarding.conectar-ml');
 

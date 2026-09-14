@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\Onboarding;
+use App\Models\OnboardingConfirmacao;
 use App\Models\OnboardingContato;
 use App\Models\OnboardingLink;
 use App\Models\OnboardingMapeamento;
@@ -167,6 +168,55 @@ class OnboardingPublicoController extends Controller
     private function atorDaRequisicao(?string $token): ?\App\Support\Portal\AtorDoPortal
     {
         return $token === null ? \App\Support\Portal\PortalContexto::ator() : null;
+    }
+
+    /**
+     * Registra a resposta de um item de confirmação pelo portal (14/09).
+     *
+     * Mesmo método para as duas portas — por token e autenticada —, com
+     * `$token` nulo na segunda, exatamente como as outras escritas do portal.
+     * Duplicar garantiria que uma das cópias divergisse na primeira correção
+     * feita de um lado só.
+     *
+     * A régua de QUEM pode registrar mora no service, não aqui: ele exige ator
+     * da equipe, porque os itens de confirmação são `dono=interno` e o portal
+     * por token é anônimo. Ver o docblock de `responderConfirmacaoPorChave()`.
+     */
+    public function responderConfirmacao(Request $request, ?string $token = null)
+    {
+        $link = $this->linkDaRequisicao($token);
+
+        $data = $request->validate([
+            'chave'       => ['required', 'string', 'max:60'],
+            'resposta'    => ['required', 'string', Rule::in(OnboardingConfirmacao::RESPOSTAS)],
+            'observacoes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $ator = $this->atorDaRequisicao($token);
+
+        try {
+            $this->linkService->responderConfirmacaoPorChave(
+                $link->company,
+                $data['chave'],
+                $data['resposta'],
+                $data['observacoes'] ?? null,
+                $ator,
+            );
+        } catch (\DomainException $e) {
+            throw ValidationException::withMessages(['chave' => $e->getMessage()]);
+        }
+
+        activity('onboarding')
+            ->performedOn($link)
+            ->withProperties([
+                'chave'    => $data['chave'],
+                'resposta' => $data['resposta'],
+                'ip'       => $request->ip(),
+                'ator'     => $ator?->nome,
+            ])
+            ->log("Item \"{$data['chave']}\" respondido no portal");
+
+        return back()->with('success', 'Resposta registrada.');
     }
 
     public function desmarcarPasso(Request $request, ?string $token = null)
