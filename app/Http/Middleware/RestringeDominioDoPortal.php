@@ -91,6 +91,23 @@ class RestringeDominioDoPortal
         'portal/onboarding/mapeamento/confirmar',
         'portal/onboarding/pessoas',
         'portal/onboarding/conectar/ml',
+        // 14/09 — as escritas que o portal ganhou quando o onboarding passou a
+        // ser CONDUZIDO nele, em reunião com a tela compartilhada. Ficaram de
+        // fora da lista quando foram criadas, e por isso respondiam 404 no
+        // domínio do cliente enquanto funcionavam perfeitamente no localhost,
+        // onde `portal.dominio_cliente` é vazio e este middleware nem roda.
+        //
+        // O sintoma que denunciou: "Gerar snapshot" devolvia 404 Not Found.
+        // Junto com ele estavam mortas a resposta dos itens de confirmação, as
+        // anotações da reunião e o investimento — ou seja, tudo o que o
+        // negócio pediu para operar por lá.
+        'portal/onboarding/confirmacao',
+        'portal/onboarding/relatorio',
+        'portal/onboarding/investimento',
+        'portal/onboarding/fotografia',
+        // Módulo novo do menu lateral (Calculadora de Custo). Sem esta linha a
+        // própria PÁGINA não abre no domínio do cliente.
+        'portal/calculadora',
         'portal/ppa',
         'portal/ppa/tarefas/*',
         'portal/empresa',
