@@ -4,7 +4,7 @@ import { Input } from '@/Components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect } from 'react';
-import { FileSignature, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileSignature, Search, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 import { Badge } from '@/Components/ui/badge';
 import { cn, formatDate } from '@/lib/utils';
 import {
@@ -95,10 +95,21 @@ export default function Contratos({ linhas, filters = {}, resumo = {}, sem_contr
         <AppLayout title="Adm · Contratos">
             <main className="p-6">
                 <div className="space-y-4">
-                    <h1 className="text-xl font-semibold font-display text-white flex items-center gap-2">
-                        <FileSignature size={20} className="text-ecf-yellow" />
-                        Contratos
-                    </h1>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h1 className="text-xl font-semibold font-display text-white flex items-center gap-2">
+                            <FileSignature size={20} className="text-ecf-yellow" />
+                            Contratos
+                        </h1>
+                        {/* Fase 143 Plano 04 — caminho de entrada da tela onde o
+                            grupo de cobrança é montado. Sem link de entrada a tela
+                            nova não existe na prática. */}
+                        <Link
+                            href={route('admin.contratos.grupos.index')}
+                            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-white/70 bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 px-3 h-7 rounded-lg transition-colors"
+                        >
+                            <Layers size={13} /> Grupos de cobrança
+                        </Link>
+                    </div>
 
                     {/* Fase 133 Plano 03 (D-04) — faixa informativa sem card, que
                         aparece só com o interruptor ligado e some quando desligado.
