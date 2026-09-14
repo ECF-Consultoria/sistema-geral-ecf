@@ -47,16 +47,20 @@ class SetorShopeeSeedTest extends TestCase
     /** Cria o setor Performance (RBAC) + cargo analista e retorna [setorId, cargoId]. */
     private function criarSetorPerformanceComAnalista(): array
     {
-        $setorId = DB::table('setores')->insertGetId([
-            'nome'       => 'Performance',
-            'slug'       => 'performance',
-            'descricao'  => 'Setor de Performance (fixture de teste)',
-            'active'     => true,
-            'is_system'  => false,
-            'created_by' => null,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // O setor 'performance' já vem semeado por migration (slug e nome são
+        // UNIQUE) — reusa o que existir. O que a migration NÃO cria é o cargo
+        // analista, e é justamente ele que o wiring do Gustavo exige.
+        $setorId = (int) (DB::table('setores')->where('slug', 'performance')->value('id')
+            ?? DB::table('setores')->insertGetId([
+                'nome'       => 'Performance',
+                'slug'       => 'performance',
+                'descricao'  => 'Setor de Performance (fixture de teste)',
+                'active'     => true,
+                'is_system'  => false,
+                'created_by' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]));
 
         $cargoId = DB::table('cargos')->insertGetId([
             'setor_id'         => $setorId,
@@ -242,8 +246,17 @@ class SetorShopeeSeedTest extends TestCase
             'Gustavo deve ter a linha Shopee.'
         );
 
-        $temPerformance = DB::table('setores')->where('slug', 'performance')->exists();
-        $this->assertFalse($temPerformance, 'O cenário não deve ter setor Performance.');
+        // O setor 'performance' passou a existir por migration (2026_09_10), então
+        // a pré-condição deste cenário não é mais "o setor não existe" — é "não há
+        // cargo analista sob ele". É exatamente o que a migration do Shopee exige
+        // (`$performanceDisponivel = setor && cargoAnalista`) para criar a linha.
+        $setorPerformanceId = DB::table('setores')->where('slug', 'performance')->value('id');
+        $temAnalistaPerformance = $setorPerformanceId !== null
+            && DB::table('cargos')
+                ->where('setor_id', $setorPerformanceId)
+                ->where('slug', 'analista')
+                ->exists();
+        $this->assertFalse($temAnalistaPerformance, 'O cenário não deve ter cargo analista no setor Performance.');
 
         // Nenhuma linha extra além da Shopee.
         $this->assertSame(

@@ -188,7 +188,16 @@ class AdminController extends Controller
         $rawCompanies = Company::where('active', true)
             ->with([
                 'contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico'),
-                'grupo:id,name,color',
+                // Fase 143 (143-02, T1) — `parent_id` no SELECT e `grupo.pai`
+                // no eager loading são OBRIGATÓRIOS: `fechamentoAgregarGruposAoVivo()`
+                // agrupa por `CompanyGroup::raizId()` (que lê `parent_id`) e
+                // nomeia a linha pela raiz (`raiz()`, que usa a relação `pai`).
+                // Sem `parent_id` na lista de colunas o Eloquent não o traz,
+                // `raizId()` cairia no `?? id` e devolveria o SUBGRUPO em
+                // silêncio — a tela mostraria quatro linhas onde
+                // `fechamento:consolidar-mes` congela uma.
+                'grupo:id,name,color,parent_id',
+                'grupo.pai:id,name,color,parent_id',
             ])
             ->orderBy('name')
             ->get();
@@ -1091,9 +1100,20 @@ class AdminController extends Controller
             }
         }
 
+        // Fase 143 (143-02, T1): a chave de agregação é a RAIZ da árvore de
+        // grupos — a MESMA de `ConsolidarMesFechamento` (Passo 5) e a MESMA
+        // que `fechamento_grupo_snapshots.company_group_id` guarda. Agrupar
+        // por `company_group_id` cru aqui faria a TELA mostrar quatro linhas
+        // onde o comando congela UMA: a pessoa confere um número e o cliente
+        // recebe outro — divergência silenciosa entre o que se vê e o que se
+        // cobra (143-02-PLAN, T1).
+        //
+        // ⚠️ Grupo SEM pai É a própria raiz (`raizId()` devolve o próprio id,
+        // sem query): para os 15 grupos de hoje, todos com `parent_id` nulo,
+        // esta linha agrupa exatamente pelas mesmas chaves de antes.
         $porGrupo = $rawCompanies
             ->filter(fn (Company $c) => $c->company_group_id !== null && isset($dadosPorId[$c->id]))
-            ->groupBy('company_group_id');
+            ->groupBy(fn (Company $c) => $c->grupo?->raizId() ?? $c->company_group_id);
 
         // Fase 139 (D-04): leitura única ANTES do laço — substitui a consulta
         // de `FechamentoGrupoSnapshot::query()` que hoje roda uma vez por
@@ -1144,10 +1164,21 @@ class AdminController extends Controller
             // própria — fallback defensivo pra `paraEmpresa()` só se o
             // relacionamento de grupo vier nulo (não deveria acontecer aqui,
             // já estamos dentro do laço `$porGrupo`).
+            //
+            // Fase 143: `paraGrupo()` continua recebendo o grupo DIRETO da
+            // âncora (que pode ser um subgrupo) — ele resolve a árvore por
+            // dentro, raiz primeiro e subgrupo depois. Passar a raiz aqui
+            // perderia o 2º degrau quando só o subgrupo tem tabela.
             $grupo = $ancora->grupo;
             $faixaAncora = $grupo !== null
                 ? $this->faixaResolver->paraGrupo($grupo, $ancora)
                 : $this->faixaResolver->paraEmpresa($ancora);
+
+            // Fase 143 (143-02, T1): a IDENTIDADE da linha é a do grupo de
+            // COBRANÇA (a raiz), nunca a do subgrupo da âncora — a linha
+            // representa o cliente inteiro. Sem pai, `raiz()` devolve o
+            // próprio grupo e nada muda.
+            $grupoDeCobranca = $grupo?->raiz();
 
             $classificacaoGrupo = ($faixaAncora !== null && $faturamentoTotal !== null)
                 ? $this->faixaResolver->classificar($faturamentoTotal, $faixaAncora['faixas'])
@@ -1225,9 +1256,11 @@ class AdminController extends Controller
             $linhasFinais[$ancora->id] = [
                 'id'                    => $ancora->id,
                 'tipo'                  => 'grupo',
-                'name'                  => $grupo?->name,
+                'name'                  => $grupoDeCobranca?->name ?? $grupo?->name,
                 'company_group_id'      => $groupId,
-                'grupo'                 => $grupo ? ['id' => $grupo->id, 'name' => $grupo->name, 'color' => $grupo->color] : null,
+                'grupo'                 => $grupoDeCobranca
+                    ? ['id' => $grupoDeCobranca->id, 'name' => $grupoDeCobranca->name, 'color' => $grupoDeCobranca->color]
+                    : null,
                 'filhas'                => $linhasMembros->all(),
                 'servicos_contratados'  => $servicosContratadosUniao,
                 'has_adman'             => $membros->contains(fn (Company $c) => $c->cust_id !== null),
@@ -1330,9 +1363,16 @@ class AdminController extends Controller
             }
         }
 
+        // Fase 143 (143-02, T1): mesma chave do ramo AO VIVO e do comando —
+        // a RAIZ. Aqui a necessidade é ainda mais direta: `$snapshotsGrupo`
+        // abaixo é indexado por `fechamento_grupo_snapshots.company_group_id`,
+        // que desde o 143-01 guarda a RAIZ. Agrupar por `company_group_id`
+        // cru faria cada subgrupo procurar um snapshot que não existe (`$s`
+        // nulo) e a tela exibiria linhas de grupo vazias — faturamento,
+        // faixa e mensalidade todos em branco.
         $porGrupo = $rawCompanies
             ->filter(fn (Company $c) => $c->company_group_id !== null && isset($dadosPorId[$c->id]))
-            ->groupBy('company_group_id');
+            ->groupBy(fn (Company $c) => $c->grupo?->raizId() ?? $c->company_group_id);
 
         $snapshotsGrupo = FechamentoGrupoSnapshot::query()
             ->whereDate('mes_referencia', $mesReferenciaStr)
@@ -1355,8 +1395,12 @@ class AdminController extends Controller
                 return $lm;
             })->values()->all();
 
-            $ancoraId   = $s?->empresa_ancora_id ?? $membros->first()->id;
-            $grupoModel = $membros->first()->grupo;
+            $ancoraId = $s?->empresa_ancora_id ?? $membros->first()->id;
+            // Fase 143 (143-02, T1): o grupo exibido é o de COBRANÇA (a
+            // raiz), nunca o subgrupo do primeiro membro — `$groupId` já é a
+            // raiz, e nome/cor da linha têm de falar do mesmo grupo. Sem
+            // pai, `raiz()` devolve o próprio grupo.
+            $grupoModel = $membros->first()->grupo?->raiz();
 
             // Fase 138 (D-01): as duas chaves derivadas do snapshot, sem
             // recálculo (D-11) — `tabela_origem` já diz se a tabela é do
@@ -1560,7 +1604,22 @@ class AdminController extends Controller
             return collect();
         }
 
-        return Company::where('company_group_id', $company->company_group_id)
+        // Fase 143 (143-02, T1): "o grupo" do PDF individual é a ÁRVORE
+        // inteira do cliente — raiz mais os subgrupos pendurados nela —, não
+        // só o subgrupo desta empresa. Sem isso o PDF listaria 4 empresas
+        // enquanto a tela e a cobrança falam de 10, no mesmo mês.
+        //
+        // Uma query só: a raiz vem de `raizId()` (sem consulta) e os
+        // subgrupos saem de um `orWhere('parent_id', ...)`. Sem pai, o
+        // resultado é exatamente `[company_group_id]` — idêntico ao de antes.
+        $raizId = $company->grupo?->raizId() ?? $company->company_group_id;
+
+        $idsDaArvore = CompanyGroup::query()
+            ->where('id', $raizId)
+            ->orWhere('parent_id', $raizId)
+            ->pluck('id');
+
+        return Company::whereIn('company_group_id', $idsDaArvore)
             ->where('id', '!=', $company->id)
             ->where('active', true)
             ->with(['contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico')])
@@ -1693,13 +1752,18 @@ class AdminController extends Controller
         // N+1 ao calcular cobrança_mensal via CobrancaCalculator::novo.
         $company->load([
             'contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico'),
-            'grupo:id,name,color',
+            // Fase 143 (143-02, T1): `parent_id` e `grupo.pai` — o título e a
+            // lista de vinculadas abaixo falam do grupo de COBRANÇA (a raiz).
+            'grupo:id,name,color,parent_id',
+            'grupo.pai:id,name,color,parent_id',
         ]);
 
         // D-08 — o "grupo" do relatório é o CompanyGroup, nunca a
         // hierarquia legada de pai/filha (D-09).
         $vinculadasCompanies = $this->relatorioVinculadasDoGrupo($company);
-        $titulo              = $company->grupo->name ?? $company->name;
+        // Fase 143: o título é o do grupo de COBRANÇA (a raiz), nunca o do
+        // subgrupo — sem pai, `raiz()` devolve o próprio grupo.
+        $titulo              = $company->grupo?->raiz()?->name ?? $company->name;
 
         $todasEmpresas = collect([$company])->merge($vinculadasCompanies);
 
@@ -1787,7 +1851,11 @@ class AdminController extends Controller
         $query = Company::where('active', true)
             ->with([
                 'contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico'),
-                'grupo:id,name,color',
+                // Fase 143 (143-02, T1) — mesmo eager loading de `fechamento()`:
+                // este relatório passa pelo MESMO `fechamentoAgregarGruposAoVivo()`,
+                // e o PDF geral nunca pode divergir da tela.
+                'grupo:id,name,color,parent_id',
+                'grupo.pai:id,name,color,parent_id',
             ])
             ->orderBy('name');
 

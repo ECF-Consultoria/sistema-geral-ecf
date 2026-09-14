@@ -7,14 +7,15 @@ use App\Models\Company;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\NpsResponse;
 use App\Models\NpsSurvey;
+use App\Models\NpsTemplate;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Metrics\MetricsProviderFactory;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\FakeAdmanMargemDaFixture;
 use Tests\TestCase;
 
 /**
@@ -40,6 +41,7 @@ use Tests\TestCase;
 class ConsolidarMesDesempenhoCommandTest extends TestCase
 {
     use RefreshDatabase;
+    use FakeAdmanMargemDaFixture;
 
     private DesempenhoScoreServiceTestProviderStub $providerStub;
     private int $setorId;
@@ -75,28 +77,33 @@ class ConsolidarMesDesempenhoCommandTest extends TestCase
         $this->providerStub = new DesempenhoScoreServiceTestProviderStub();
         $this->app->instance(MetricsProviderFactory::class, $this->providerStub);
 
-        // Fase 102 (fix plan-checker — BLOCKER) — ISOLAMENTO HTTP OBRIGATÓRIO:
-        // este comando chama compute() direto (não computeCached()), que
-        // agora delega margem a AdmanMetricDiffService (HTTP quando a empresa
-        // tem adman_account_id). As empresas desta suite NÃO têm custId
-        // (var_margem_pct não é asserida aqui), então nenhum request real é
-        // esperado — o fake abaixo é defesa em profundidade.
-        Http::preventStrayRequests();
-        Http::fake([
-            '*/performance/*'       => Http::response([], 404),
-            '*/accounts/*/metrics*' => Http::response([], 404),
-        ]);
+        // ISOLAMENTO HTTP OBRIGATÓRIO — este comando chama compute() direto
+        // (não computeCached()), que delega margem ao AdmanMetricDiffService.
+        //
+        // Quick 260914-ly9 (2026-09-14) — o fake 404 saiu. O comentário antigo
+        // dizia que as empresas desta suíte "NÃO têm custId", mas
+        // `preencherDadosDaCarteira()` preenche `adman_account_id` desde a
+        // unificação de 2026-07-22: as empresas SÃO elegíveis a margem e,
+        // com a Adman respondendo 404, `margem_amostra.legado.cobertura` caía
+        // a 0,0 e o gate FIXMARG-03 RECUSAVA congelar o snapshot — 4 testes
+        // desta suíte morriam com "snapshot ausente". O gate está certo (é a
+        // proteção contra "a Adman mudou" virar bônus errado); a fixture é que
+        // deixara de produzir margem. Ver `desempenho-bonificacao.md` §10.1.
+        $this->fakeAdmanComMargemDaFixture();
 
         // Setor + cargos analista/estrategista (mesma fonte canônica dos
         // controllers de Performance — user_setores → cargos.slug).
-        $this->setorId = DB::table('setores')->insertGetId([
-            'nome'       => 'Performance',
-            'slug'       => 'performance-74-cmd',
-            'active'     => true,
-            'is_system'  => false,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // O setor "Performance" já vem semeado por migration e `setores.nome`
+        // é UNIQUE — reusa o que existir; só cria se ainda não houver.
+        $this->setorId = (int) (DB::table('setores')->where('nome', 'Performance')->value('id')
+            ?? DB::table('setores')->insertGetId([
+                'nome'       => 'Performance',
+                'slug'       => 'performance-74-cmd',
+                'active'     => true,
+                'is_system'  => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]));
         $this->cargoAnalistaId = DB::table('cargos')->insertGetId([
             'setor_id'   => $this->setorId,
             'nome'       => 'Analista',
@@ -234,8 +241,25 @@ class ConsolidarMesDesempenhoCommandTest extends TestCase
         // `$mesYm` (fechada) agora lê o NPS de M+1 (`computeNpsWindow()`,
         // 105-01), não mais do próprio `$mesYm`. 1 NpsResponse legacy —
         // score_analista int — com completed_at em M+1.
-        $mesNps = Carbon::parse($mesYm . '-01')->addMonthNoOverflow()->format('Y-m');
+        //
+        // Quick 260914-ly9 (2026-09-14) — `template_id` passou a ser
+        // OBRIGATÓRIO aqui. `notasLegado()` filtra por `->principal()` desde
+        // `299cf63e` (2026-07-13), e `NpsSurveyFactory` cria
+        // `template_id => null`, que NUNCA casa: o survey ficava invisível,
+        // `nps_medio` vinha null para todo mundo e os 3 users do teste de
+        // ranking empatavam na mesma nota. É defeito de FIXTURE, não de
+        // produção — `NpsDispararMensal`, `NpsController` e
+        // `NpsGrupoReplicacaoService` preenchem `template_id` em todos os
+        // caminhos. Sem resposta v15 (nenhum `NpsResponseAnswer`), o
+        // dual-path Phase 72/73 cai na coluna legacy `score_analista`, que é
+        // exatamente o que esta fixture exercita.
+        $mesNps      = Carbon::parse($mesYm . '-01')->addMonthNoOverflow()->format('Y-m');
+        $principalId = NpsTemplate::principalId();
+        $this->assertNotNull($principalId,
+            'Modelo NPS principal (is_default) precisa existir — vem semeado por migration.');
+
         $survey = NpsSurvey::factory()->for($c)->completed()->create([
+            'template_id'  => $principalId,
             'completed_at' => Carbon::parse($mesNps . '-10 09:00:00'),
         ]);
         NpsResponse::factory()->create([

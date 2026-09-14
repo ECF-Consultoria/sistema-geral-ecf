@@ -596,3 +596,61 @@ fakeada com 404 — o `calculated_fallback` local foi revogado pelo hotfix de
 Autorização para trazer dado de compensação (score/bônus por profissional) para o **banco local**, a fim de conferir tela com dado real, **não é** autorização para **versionar** esse resultado individual no histórico do git — são duas decisões diferentes, e a segunda exige consentimento à parte, mesmo com a primeira já dada. Aconteceu na Fase 123 (checkpoint 123-06): um commit gravou, num arquivo versionado, tabela nominal pareando profissional com faixa de bônus e nota final; foi corrigido por amend antes de ir mais longe no histórico.
 
 Regra prática para qualquer documento de checkpoint/verificação que toque dado real de bônus: **contadores de carteira por profissional (entraram/total) podem ser versionados** — é o dado que a tela exibe. **Nome pareado com faixa de bônus, nota final ou valor de bonificação, não** — refira-se a "o contemplado da faixa X" e aponte pra conferência no banco local de quem executa.
+
+---
+
+## A âncora do motor parou de vigiar a nota que paga bônus (descoberto em 2026-09-14)
+
+O `fixture carlos` de `Phase74\DesempenhoScoreServiceTest` é a âncora bloqueante do motor. O golden
+dele, **4,42**, é `nota_final_legado` — **metadado de auditoria**, não a nota oficial.
+
+Desde **2026-08-05** a nota que define faixa de bônus vem de `computeNotaFinalPorIndicador()` sobre
+`empresasScore`, e ali a margem é **`margem_var_pp` (pontos percentuais)**, não a variação relativa.
+Com a mesma fixture e a Adman respondendo:
+
+| | |
+|---|---|
+| `nota_final_legado` | 4,42 |
+| **`nota_final` (oficial)** | **3,72** → faixa `sem_bonus` |
+
+**Os dois estão certos.** +4,5% relativo = +0,9 p.p., e a mesma régua dá 5 pontos na primeira
+grandeza e 3 na segunda. A mudança é decisão travada (EMPS-03 / D2 da v21.0,
+`CompanyScoreService.php:555`).
+
+> ⛔ **A armadilha:** recalibrar 4,42 → 3,72 e seguir em frente **silencia o alarme em vez de
+> consertá-lo**. Quem mexer nesses goldens tem de travar `nota_final` (oficial) **além** do legado —
+> senão a suíte volta a ficar verde vigiando o número que não paga ninguém.
+
+### Por que ninguém viu por mais de um mês
+
+Os testes **não rodavam**. O `setUp()` deles morria numa colisão de `setores.nome` UNIQUE (uma
+migration de outra sessão passou a semear o setor "Performance" que 39 arquivos de teste também
+criavam). Vermelho escondido atrás de vermelho: quando o quick `260914-gmp` desbloqueou o `setUp()`,
+**35 falhas reais apareceram de uma vez**, 11 delas aqui.
+
+> **A lição que passa deste caso:** falha de `setUp()` não é ruído, é **cegueira**. Enquanto ela
+> dura, a suíte não está verde nem vermelha — está **muda**, e a cobertura que você acha que tem não
+> existe.
+
+### A assimetria que quebrou as 11 (hotfix `a413e823`, 2026-07-24)
+
+O fallback local da margem virou `null` ("nativo-ou-null") porque o cálculo local comparava baseline
+incompleto e divergia da Adman. **O faturamento manteve o fallback.** Fixtures que semeiam
+`adman_metrics` local e fakeiam a Adman com 404 passam em `var_faturamento_pct` e falham em
+`var_margem_pct` — **na mesma asserção do mesmo teste**.
+
+O `setUp()` dessas fixtures (`c270a714`, 20/07) afirma que o fake "sem `.diff`" força o fallback
+determinístico. O hotfix revogou essa premissa **4 dias depois**, e o comentário ficou mentindo.
+
+### Armadilhas de teste que custaram tempo aqui
+
+- **`Http::fake()` do `setUp()` tem precedência** sobre um segundo `Http::fake()`. Só
+  `Http::swap(new Factory($app['events']))` reseta — sem isso o stub novo é ignorado **em silêncio**.
+- **Mês em curso devolve `diff_pct` nulo POR DESIGN** (ramo `adman_janela_baseline`, `3e6d0eab`,
+  10/08). Teste de margem em mês corrente não volta ao verde com stub nenhum.
+- **`NpsSurveyFactory` cria `template_id => null`** e `notasLegado()` filtra por `->principal()` —
+  nunca casa, e `nps_medio` vem nulo para todo mundo (3 users com NPS 5/4/3 deram a mesma
+  `nota_final = 1.3333`). É defeito de factory: todo caminho de produção preenche `template_id`.
+- **`ConsolidarMesDesempenho.php:121` faz `ini_set('memory_limit','512M')` em runtime** e rebaixa o
+  teto do próprio processo PHPUnit — `-d memory_limit` do CLI é anulado. A suíte inteira não fecha
+  num processo só; rode por filtro ou em chunks.

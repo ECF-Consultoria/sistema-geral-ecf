@@ -31,10 +31,13 @@ class RelatorioBonificacaoTest extends TestCase
         DB::statement('PRAGMA foreign_keys = ON');
         Carbon::setTestNow(Carbon::parse('2026-08-15 10:00:00'));
 
-        $this->setorId = DB::table('setores')->insertGetId([
-            'nome' => 'Performance', 'slug' => 'performance-107', 'active' => true,
-            'is_system' => false, 'created_at' => now(), 'updated_at' => now(),
-        ]);
+        // O setor "Performance" já vem semeado por migration e `setores.nome`
+        // é UNIQUE — reusa o que existir; só cria se ainda não houver.
+        $this->setorId = (int) (DB::table('setores')->where('nome', 'Performance')->value('id')
+            ?? DB::table('setores')->insertGetId([
+                'nome' => 'Performance', 'slug' => 'performance-107', 'active' => true,
+                'is_system' => false, 'created_at' => now(), 'updated_at' => now(),
+            ]));
         $this->cargoAnalistaId = DB::table('cargos')->insertGetId([
             'setor_id' => $this->setorId, 'nome' => 'Analista', 'slug' => 'analista',
             'active' => true, 'ordem' => 1, 'created_at' => now(), 'updated_at' => now(),

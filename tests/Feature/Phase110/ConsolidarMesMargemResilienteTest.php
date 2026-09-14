@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\NpsResponse;
 use App\Models\NpsSurvey;
+use App\Models\NpsTemplate;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Metrics\MetricPeriodResolver;
@@ -14,9 +15,9 @@ use App\Services\Metrics\MetricsProviderFactory;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\FakeAdmanMargemDaFixture;
 use Tests\Feature\Phase74\DesempenhoScoreServiceTestProviderStub;
 use Tests\Feature\V16\CriaCenarioResponsaveis;
 use Tests\TestCase;
@@ -36,7 +37,7 @@ use Tests\TestCase;
  *     Log::error ACIONÁVEL (sem_snapshot_anterior=true, impacto_desemp08=true).
  *
  * Reusa o padrão de fixture do `Phase74/ConsolidarMesDesempenhoCommandTest`
- * (Carbon::setTestNow no cron mensal, provider stub, Http::fake obrigatório)
+ * (Carbon::setTestNow no cron mensal, provider stub, isolamento HTTP obrigatório)
  * + o trait `CriaCenarioResponsaveis` (v16.0) para montar vínculos
  * performance/Shopee sem depender de helpers privados de outra suite.
  *
@@ -46,6 +47,7 @@ class ConsolidarMesMargemResilienteTest extends TestCase
 {
     use RefreshDatabase;
     use CriaCenarioResponsaveis;
+    use FakeAdmanMargemDaFixture;
 
     private DesempenhoScoreServiceTestProviderStub $providerStub;
     private int $setorId;
@@ -67,24 +69,31 @@ class ConsolidarMesMargemResilienteTest extends TestCase
         $this->app->instance(MetricsProviderFactory::class, $this->providerStub);
 
         // O comando chama compute() PURO — delega margem/faturamento ao
-        // AdmanMetricDiffService (HTTP quando a empresa tem custId). As
-        // empresas "degradadas" desta suite NÃO têm custId (o objetivo é
-        // justamente simular ausência de amostra), então nenhum request
-        // real é esperado — o fake abaixo é defesa em profundidade.
-        Http::preventStrayRequests();
-        Http::fake([
-            '*/performance/*'       => Http::response([], 404),
-            '*/accounts/*/metrics*' => Http::response([], 404),
-        ]);
+        // AdmanMetricDiffService (HTTP quando a empresa tem custId).
+        //
+        // Quick 260914-ly9 (2026-09-14) — o fake 404 saiu. As empresas
+        // DEGRADADAS desta suíte de fato não têm custId (é assim que o cenário
+        // simula ausência de amostra e continua sendo), mas
+        // `criarEmpresaComMargemReal()` TEM custId: com a Adman em 404 ela
+        // também ficava sem margem, a cobertura do user "saudável" caía a 0,0
+        // e o gate FIXMARG-03 recusava congelar — os casos 2 e 4 (que existem
+        // justamente para provar que amostra BOA persiste) falhavam com
+        // "snapshot ausente". O stub abaixo devolve margem só para quem tem
+        // custId E linhas de `adman_metrics`, preservando a assimetria
+        // boa/degradada que esta suíte mede.
+        $this->fakeAdmanComMargemDaFixture();
 
-        $this->setorId = DB::table('setores')->insertGetId([
-            'nome'       => 'Performance',
-            'slug'       => 'performance-110-02',
-            'active'     => true,
-            'is_system'  => false,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // O setor "Performance" já vem semeado por migration e `setores.nome`
+        // é UNIQUE — reusa o que existir; só cria se ainda não houver.
+        $this->setorId = (int) (DB::table('setores')->where('nome', 'Performance')->value('id')
+            ?? DB::table('setores')->insertGetId([
+                'nome'       => 'Performance',
+                'slug'       => 'performance-110-02',
+                'active'     => true,
+                'is_system'  => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]));
         $this->cargoAnalistaId = DB::table('cargos')->insertGetId([
             'setor_id'   => $this->setorId,
             'nome'       => 'Analista',
@@ -187,8 +196,17 @@ class ConsolidarMesMargemResilienteTest extends TestCase
     /** NPS legacy — competência `$mesYm` (fechada) lê o M+1 (105-01). */
     private function seedNps(Company $c, int $nota, string $mesYm): void
     {
-        $mesNps = Carbon::parse($mesYm . '-01')->addMonthNoOverflow()->format('Y-m');
+        // Quick 260914-ly9 — `template_id` obrigatório: `notasLegado()` filtra
+        // por `->principal()` e a factory cria `template_id => null`, que nunca
+        // casa (defeito de fixture, não de produção). Ver a nota extensa em
+        // `Phase74/ConsolidarMesDesempenhoCommandTest::preencherDadosDaCarteira`.
+        $mesNps      = Carbon::parse($mesYm . '-01')->addMonthNoOverflow()->format('Y-m');
+        $principalId = NpsTemplate::principalId();
+        $this->assertNotNull($principalId,
+            'Modelo NPS principal (is_default) precisa existir — vem semeado por migration.');
+
         $survey = NpsSurvey::factory()->for($c)->completed()->create([
+            'template_id'  => $principalId,
             'completed_at' => Carbon::parse($mesNps . '-10 09:00:00'),
         ]);
         NpsResponse::factory()->create([

@@ -28,6 +28,7 @@ use App\Http\Controllers\Dev\SugadoresMlOnboardingController;
 use App\Http\Controllers\DevController;
 use App\Http\Controllers\DevModulosController;
 use App\Http\Controllers\GoalController;
+use App\Http\Controllers\GrupoCobrancaHierarquiaController;
 use App\Http\Controllers\LiderancaController;
 use App\Http\Controllers\MlbController;
 use App\Http\Controllers\MlbImplementacaoController;
@@ -1544,6 +1545,21 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     Route::delete('/empresa/{company}/tabela', [TabelaEmpresaContratoController::class, 'remover'])->name('tabela.remover');
     Route::post('/grupo/{grupo}/tabela', [TabelaEmpresaContratoController::class, 'salvarGrupo'])->name('tabela.grupo.salvar');
     Route::delete('/grupo/{grupo}/tabela', [TabelaEmpresaContratoController::class, 'removerGrupo'])->name('tabela.grupo.remover');
+
+    // Plano 143-02 (T3) — a árvore de COBRANÇA: pendurar um grupo em outro
+    // (`company_groups.parent_id`, Fase 143) e a prévia do impacto antes de
+    // decidir. MESMO grupo de permissão, de propósito — `admin.contratos` é a
+    // régua do módulo administrativo de contratos e nenhuma permissão nova é
+    // criada (D-09 da Fase 131). A tela é o plano 143-03; estas rotas são o
+    // que ela vai consumir.
+    //
+    // ⚠️ Pendurar um grupo muda quanto um cliente PAGA, e para baixo — por
+    // isso `previa` é leitura pura (não grava nada) e as duas rotas de
+    // escrita registram a decisão em `activity_log`.
+    // Rotas: admin.contratos.grupos.hierarquia.previa/pendurar/despendurar.
+    Route::get('/grupos/hierarquia/previa', [GrupoCobrancaHierarquiaController::class, 'previa'])->name('grupos.hierarquia.previa');
+    Route::post('/grupos/hierarquia', [GrupoCobrancaHierarquiaController::class, 'pendurar'])->name('grupos.hierarquia.pendurar');
+    Route::delete('/grupos/hierarquia', [GrupoCobrancaHierarquiaController::class, 'despendurar'])->name('grupos.hierarquia.despendurar');
 });
 
 // ─── Checklist administrativo (Fase 152 Plano 08, ADMIN-01/03/04/05/06) ──────

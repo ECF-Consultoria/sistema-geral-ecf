@@ -49,14 +49,17 @@ class PortfolioSourceEnrichmentTest extends TestCase
 
         // Setor Performance + cargo Analista (via user_setores) — permite que
         // `renderCarteirasConsolidadas` monte a lista de analistas/estrategistas.
-        $this->setorId = DB::table('setores')->insertGetId([
-            'nome'       => 'Performance',
-            'slug'       => 'performance-61',
-            'active'     => true,
-            'is_system'  => false,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // O setor "Performance" já vem semeado por migration e `setores.nome`
+        // é UNIQUE — reusa o que existir; só cria se ainda não houver.
+        $this->setorId = (int) (DB::table('setores')->where('nome', 'Performance')->value('id')
+            ?? DB::table('setores')->insertGetId([
+                'nome'       => 'Performance',
+                'slug'       => 'performance-61',
+                'active'     => true,
+                'is_system'  => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]));
 
         $this->cargoAnalistaId = DB::table('cargos')->insertGetId([
             'setor_id'   => $this->setorId,
