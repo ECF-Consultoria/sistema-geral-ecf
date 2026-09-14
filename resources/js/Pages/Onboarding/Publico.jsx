@@ -163,6 +163,78 @@ function LinkAppEcf({ url }) {
 
 // ─── Card de um passo (1 por `chave`, nunca por onboarding_passo) ───────────
 
+const PAPEIS_CONTATO = [
+    ['ponto_de_contato',    'Ponto de contato',         'Quem acionamos no dia a dia.'],
+    ['participante_reuniao', 'Participantes das reuniões', 'Quem recebe o convite dos encontros.'],
+];
+
+/**
+ * Contatos do cliente, no portal (14/09).
+ *
+ * ### Por que existe, se os passos saíram
+ * `ponto_contato_definido` e `participantes_reuniao_cadastrados` deixaram de
+ * ser itens do portal na mesma decisão — são cadastro INTERNO, não tarefa que
+ * se cobra do cliente numa lista. Mas o negócio pediu os CONTATOS no portal, e
+ * as duas coisas não se contradizem: o que saiu foi a cobrança em forma de
+ * checklist; o que entra é o bloco onde a informação vive e é conferida junto
+ * com o cliente na reunião.
+ *
+ * Escrita é da equipe, leitura é dos dois — mesma régua dos outros blocos. O
+ * endpoint é o `onboarding.pessoas` que já existia e já funcionava nos dois
+ * modos; nada de rota nova.
+ *
+ * Sem ninguém cadastrado e sem ser equipe, o bloco não aparece: uma lista vazia
+ * no portal do cliente não informa nada e ainda parece defeito.
+ */
+function BlocoContatosPortal({ pessoas, token, ehEquipe }) {
+    const temAlguem = PAPEIS_CONTATO.some(([papel]) => (pessoas?.[papel] ?? []).length > 0);
+
+    if (! ehEquipe && ! temAlguem) return null;
+
+    return (
+        <section className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-4">
+            <h2 className="text-white font-display font-bold text-[15px]">Contatos</h2>
+
+            {PAPEIS_CONTATO.map(([papel, rotulo, ajuda]) => {
+                const doPapel = pessoas?.[papel] ?? [];
+
+                if (! ehEquipe && doPapel.length === 0) return null;
+
+                return (
+                    <div key={papel} className="space-y-1.5">
+                        <div>
+                            <p className="text-white/70 text-[13px] font-semibold">{rotulo}</p>
+                            <p className="text-white/35 text-[12px]">{ajuda}</p>
+                        </div>
+
+                        {ehEquipe ? (
+                            <PessoasDoCliente
+                                token={token}
+                                papel={papel}
+                                pessoas={doPapel}
+                                // O ponto de contato entra também como
+                                // participante: sugerir quem já está cadastrado
+                                // evita redigitar os mesmos dados.
+                                sugestoes={papel === 'participante_reuniao' ? (pessoas?.ponto_de_contato ?? []) : []}
+                            />
+                        ) : (
+                            <ul className="space-y-1">
+                                {doPapel.map((pessoa) => (
+                                    <li key={pessoa.id} className="flex flex-wrap items-center gap-2 text-[13px]">
+                                        <span className="text-white/85">{pessoa.nome}</span>
+                                        {pessoa.funcao && <span className="text-white/35 text-[12px]">{pessoa.funcao}</span>}
+                                        {pessoa.email && <span className="text-white/55 text-[12px]">{pessoa.email}</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                );
+            })}
+        </section>
+    );
+}
+
 const CAMPOS_ANOTACAO = [
     ['pontos_atencao',  'Pontos de atenção'],
     ['oportunidades',   'Oportunidades'],
@@ -1046,6 +1118,8 @@ export default function Publico({
                             porque são registro do que foi conversado, não tarefa
                             a fazer — e para o cliente sozinho eles só aparecem
                             quando têm conteúdo. */}
+                        <BlocoContatosPortal pessoas={pessoas} token={token} ehEquipe={ehEquipe} />
+
                         {blocos_operacao.map((bloco) => (
                             <Fragment key={bloco.onboarding_id}>
                                 <BlocoAnotacoes bloco={bloco} token={token} ehEquipe={ehEquipe} />
