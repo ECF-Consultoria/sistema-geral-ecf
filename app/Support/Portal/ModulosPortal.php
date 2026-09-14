@@ -40,6 +40,7 @@ class ModulosPortal
     public const INICIO     = 'inicio';
     public const ONBOARDING = 'onboarding';
     public const PPA        = 'ppa';
+    public const CALCULADORA = 'calculadora';
 
     /**
      * Os módulos na ordem em que aparecem no menu. `rota` é o nome da rota
@@ -59,6 +60,13 @@ class ModulosPortal
             'icone'     => 'list-checks',
             'rota'      => 'portal.onboarding',
             'rota_auth' => 'portal.auth.onboarding',
+        ],
+        self::CALCULADORA => [
+            'rotulo'    => 'Calculadora de Custo',
+            'descricao' => 'Descubra por quanto vender para fechar a conta.',
+            'icone'     => 'calculator',
+            'rota'      => 'portal.calculadora',
+            'rota_auth' => 'portal.auth.calculadora',
         ],
         self::PPA => [
             'rotulo'    => 'PPA',
@@ -118,7 +126,7 @@ class ModulosPortal
     private static function disponivel(string $chave, Company $company): bool
     {
         return match ($chave) {
-            self::INICIO, self::ONBOARDING, self::PPA => true,
+            self::INICIO, self::ONBOARDING, self::PPA, self::CALCULADORA => true,
             default => false,
         };
     }

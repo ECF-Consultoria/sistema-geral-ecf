@@ -1,5 +1,5 @@
 import { Link, Head, router, usePage } from '@inertiajs/react';
-import { ClipboardList, Eye, Home, LayoutGrid, ListChecks, LogOut } from 'lucide-react';
+import { Calculator, ClipboardList, Eye, Home, LayoutGrid, ListChecks, LogOut } from 'lucide-react';
 import LogoEmpresa from '@/Components/Portal/LogoEmpresa';
 import { cn } from '@/lib/utils';
 
@@ -29,6 +29,7 @@ const ICONES = {
     'home':           Home,
     'list-checks':    ListChecks,
     'clipboard-list': ClipboardList,
+    'calculator':     Calculator,
 };
 
 function ItemModulo({ modulo }) {

@@ -51,6 +51,7 @@ use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PortalAuthController;
 use App\Http\Controllers\PortalClienteController;
 use App\Http\Controllers\PpaColunaController;
+use App\Http\Controllers\PortalCalculadoraController;
 use App\Http\Controllers\PortalPpaController;
 use App\Http\Controllers\PortalEquipeController;
 use App\Http\Controllers\PortalUsuarioController;
@@ -177,6 +178,9 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     Route::get('/inicio',     [PortalClienteController::class, 'inicioAutenticado'])->name('portal.auth.inicio');
     Route::get('/onboarding', [OnboardingPublicoController::class, 'workspaceAutenticado'])->name('portal.auth.onboarding');
     Route::get('/ppa',        [PortalPpaController::class, 'indexAutenticado'])->name('portal.auth.ppa');
+    // Calculadora de Custo (14/09) — não grava nada, então não há régua de
+    // quem pode: os dois lados calculam.
+    Route::get('/calculadora', [PortalCalculadoraController::class, 'indexAutenticado'])->name('portal.auth.calculadora');
 
     // ── Escritas do Onboarding, autenticadas ─────────────────────────
     //
@@ -291,6 +295,8 @@ Route::prefix('portal-cliente/{token}')->middleware('portal.dominio')->group(fun
     // ── Módulo Onboarding ──────────────────────────────────────────────────
     Route::get('/onboarding', [OnboardingPublicoController::class, 'workspace'])
         ->name('portal.onboarding');
+    Route::get('/calculadora', [PortalCalculadoraController::class, 'index'])
+        ->name('portal.calculadora');
     Route::patch('/onboarding/passo', [OnboardingPublicoController::class, 'marcarFeito'])
         ->middleware('throttle:20,1')
         ->name('onboarding.publico.passo');
