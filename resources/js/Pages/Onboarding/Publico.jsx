@@ -1131,7 +1131,7 @@ export default function Publico({
                             A ficha da conta (`MapeamentoInicial`) SAIU daqui
                             em 14/09, junto com `metricas_da_conta`: os dois
                             diziam "como está a conta" de formas diferentes e
-                            foram substituídos pela Fotografia da Conta. Ela
+                            foram substituídos pelo Snapshot. Ele
                             continua existindo na ficha interna. */}
                         {blocos.map(({ etapa, itens }) => (
                             <Fragment key={etapa}>
