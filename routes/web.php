@@ -1189,6 +1189,11 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
         // Data e hora da reunião — a volta da informação que o cliente pediu.
         Route::post('/onboarding/{onboarding}/reuniao', [OnboardingController::class, 'agendarReuniao'])
             ->name('onboarding.reuniao.agendar');
+        // Retrato de faturamento pelo lado de dentro — o mesmo que o portal
+        // oferece ao cliente, para a ficha não precisar mandar ninguém ao
+        // portal só para apertar "Atualizar".
+        Route::post('/onboarding/{onboarding}/fotografia', [OnboardingController::class, 'tirarFotografia'])
+            ->name('onboarding.fotografia.coletar');
         // Mapeamento inicial pelo lado de quem opera: "Sincronizar agora" (em
         // vez de esperar o cron de 10 min) e conferência assistida em call.
         Route::post('/onboarding/{onboarding}/mapeamento/sincronizar', [OnboardingController::class, 'sincronizarMapeamento'])

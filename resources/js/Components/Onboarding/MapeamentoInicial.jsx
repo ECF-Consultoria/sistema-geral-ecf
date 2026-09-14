@@ -132,8 +132,8 @@ export default function MapeamentoInicial({
                 {/*
                   * O card NÃO tem título próprio. Os dois pontos de entrada já
                   * o renderizam dentro de uma seção chamada "Mapeamento da
-                  * conta" — o bloco da etapa no portal e o `FluxoOnboarding`
-                  * no painel interno. Repetir o nome aqui fazia a tela mostrar
+                  * conta" — o bloco da etapa no portal e o modal da ficha
+                  * interna. Repetir o nome aqui fazia a tela mostrar
                   * o mesmo título duas vezes seguidas (21/08).
                   */}
                 <div>

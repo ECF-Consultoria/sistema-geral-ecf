@@ -91,13 +91,16 @@ function Balao({ active, payload }) {
  * faria "o Mercado Livre recusou o token" parecer "seu cliente não vendeu
  * nada".
  */
-export default function FotografiaDaConta({ fotografia, token, ehEquipe }) {
+export default function FotografiaDaConta({ fotografia, token, ehEquipe, rota = null }) {
     const [coletando, setColetando] = useState(false);
 
+    // `rota` so e passada pela ficha INTERNA, que nao tem sessao de portal
+    // nenhuma. Sem ela, vale o caminho do portal — as duas portas dele ja
+    // resolvidas por `rotaDoPortal`.
     const tirar = () => {
         if (coletando) return;
         setColetando(true);
-        router.post(rotaDoPortal('onboarding.fotografia', token), {}, {
+        router.post(rota ?? rotaDoPortal('onboarding.fotografia', token), {}, {
             preserveScroll: true,
             onFinish: () => setColetando(false),
         });

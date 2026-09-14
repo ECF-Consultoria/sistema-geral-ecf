@@ -1,13 +1,23 @@
 import { useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft, Activity, Handshake, KeyRound, Link2, Quote } from 'lucide-react';
+import {
+    Activity, ArrowLeft, ExternalLink, FileText, Handshake, KeyRound,
+    Link2, MoreHorizontal, Quote,
+} from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import {
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/Components/ui/dropdown-menu';
 import CabecalhoOnboarding from '@/Components/Onboarding/Painel/CabecalhoOnboarding';
 import ProximaAcaoDestaque from '@/Components/Onboarding/Painel/ProximaAcaoDestaque';
+import ChecklistPorEtapa from '@/Components/Onboarding/Painel/ChecklistPorEtapa';
+import { LinhaPasso } from '@/Components/Onboarding/Painel/DetalheOnboarding';
+import {
+    AgendaResumo, DiagnosticoDaConta, ResumoDoCliente,
+} from '@/Components/Onboarding/Painel/LateralDaFicha';
 import Responsabilidades from '@/Components/Onboarding/Painel/Responsabilidades';
 import AtividadeRecente from '@/Components/Onboarding/Painel/AtividadeRecente';
-import FluxoOnboarding from '@/Components/Onboarding/Painel/FluxoOnboarding';
 import RelatorioInicial from '@/Components/Onboarding/RelatorioInicial';
 import ReuniaoBloco from '@/Components/Onboarding/Painel/ReuniaoBloco';
 import AcessoDoClienteAoPortal from '@/Components/Onboarding/Painel/AcessoDoClienteAoPortal';
@@ -17,62 +27,44 @@ import BlocoInvestimento from '@/Components/Onboarding/Painel/BlocoInvestimento'
 import BlocoContatos from '@/Components/Onboarding/Painel/BlocoContatos';
 import BlocoAgenda from '@/Components/Onboarding/Painel/BlocoAgenda';
 import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
+import FotografiaDaConta from '@/Components/Onboarding/FotografiaDaConta';
 
 /**
- * Onboarding/Detalhe — a página de UM onboarding.
+ * Onboarding/Detalhe — a FICHA interna de um onboarding.
  *
- * ### Por que ela foi remontada (19/08)
- * Antes, esta página empilhava nove blocos soltos e, no fim, a lista dos 27
- * passos agrupada por etapa. O efeito era o que o negócio descreveu como
- * "tudo jogado lá": o formulário de um assunto ficava longe do item de
- * checklist que ele fecha, e nada na tela dizia por onde começar.
+ * ### O que esta tela virou em 14/09
+ * Desde que o onboarding passou a ser conduzido pelo Portal do Cliente — em
+ * reunião, com a tela compartilhada —, esta página deixou de ser o lugar onde
+ * o trabalho acontece. O negócio a descreveu como "muito feio" e perguntou se
+ * não era melhor apagá-la.
  *
- * Cada bloco é ENTREGUE À SUA ETAPA (`extras`), e `FluxoOnboarding` monta as
- * etapas numeradas na ordem do processo — abrindo só a que tem trabalho
- * possível agora.
+ * Ela não foi apagada por um motivo concreto: **dez dos dezoito passos da
+ * régua não estão no portal**. São os internos — reunião realizada, os itens
+ * que só o Analista preenche, os três da ADMAN que o negócio ainda vai
+ * definir. Apagar esta tela deixaria esses dez sem nenhum lugar onde serem
+ * fechados.
  *
- * ### O que mudou em 20/08 — de página para COCKPIT
- * A ordem das etapas, as regras e os blocos continuam os mesmos. O que faltava
- * era a camada de cima: quem abria a tela ainda tinha de varrer o fluxo para
- * descobrir o que travava e de quem era a bola. Entraram, nesta ordem de
- * leitura:
+ * Então ela mudou de função, não de existência:
  *
- *  1. `CabecalhoOnboarding` — quem é a empresa, analista, produto, progresso e
- *     os três marcos reais da vida do onboarding;
- *  2. `ProximaAcaoDestaque` — a pergunta que a tela existe para responder,
- *     com o MOTIVO real e um botão que leva até a linha do passo;
- *  3. `Responsabilidades` — de quem é a bola, sem abrir etapa nenhuma;
- *  4. o fluxo (inalterado) e, ao lado, portal do cliente e atividade recente.
+ *  - **lê-se aqui**: em que pé está, o que trava, o que a conta mostra, o que
+ *    já foi respondido — inclusive o que o cliente respondeu no portal;
+ *  - **opera-se no portal**: o botão "Abrir o portal do cliente" é a ação
+ *    principal do topo, e cada item conduzido lá leva a marca de corrente;
+ *  - **o que só existe aqui** (os dez internos, contatos, agenda,
+ *    investimento, acessos) continua editável — a um clique de distância.
  *
- * Nenhuma regra nova: os quatro leem o que o backend já persistia.
+ * ### Por que os formulários saíram da lista
+ * A versão anterior empilhava, na mesma coluna estreita, 18 passos com quatro
+ * selos cada e seis formulários abertos. Cada bloco era defensável sozinho; o
+ * conjunto era uma coluna de dois metros. Agora a tela usa a largura toda:
+ * checklist à esquerda em cartões por etapa, respostas à direita em cartões de
+ * leitura, e todo formulário abre em modal — por cima, sem navegar, que era a
+ * razão de eles estarem na mesma tela desde 19/08.
  *
- * ### O que mudou em 11/09 — de cockpit para LISTA
- * O negócio pediu o desenho do portal de Polos: "simples e muito funcional".
- * O fluxo virou uma coluna única numerada (ver `FluxoOnboarding`) e a coluna
- * lateral deixou de existir.
- *
- * Os dois blocos do topo ficaram, porque respondem a pergunta pela qual a
- * tela existe e foram a correção de uma reclamação real ("tudo jogado lá"):
- * `CabecalhoOnboarding` (quem é a empresa, em que pé está) e
- * `ProximaAcaoDestaque` (o que trava agora, com o motivo).
- *
- * Tudo que respondia "como está indo" — portal do cliente, acessos que o
- * cliente vê, atividade recente, contexto da venda e responsabilidades —
- * virou MODAL numa barra logo abaixo do topo. São blocos de consulta: lidos
- * uma vez, e empilhados na tela custavam rolagem em toda visita. Um clique
- * continua sendo a mesma tela; o que se ganhou foi a lista sem concorrência.
- *
- * `ContextoDaVenda` saiu de `extras.informacoes_cliente` por isso. A regra de
- * 19/08 — "revisar SPIN exige tê-lo na MESMA tela, senão vira procurar em
- * outra" — continua valendo: o modal abre por cima da lista, não navega.
- *
- * ### O que fica FORA das etapas
- * `AcessoDoClienteAoPortal` — é ferramenta, não passo. A pergunta que ele
- * responde ("o
- * cliente já viu o que pedimos?") vale para a tela inteira, e enfiá-lo numa
- * etapa o esconderia justamente quando aquela etapa estivesse fechada. Ele foi
- * para a coluna lateral, junto da atividade recente, que responde a mesma
- * classe de pergunta.
+ * ### O que continua fora de qualquer etapa
+ * Portal do cliente, contexto da venda, de quem é a bola, atividade recente e
+ * relatório inicial. São consultas: lidas uma vez, e empilhadas custavam
+ * rolagem em toda visita. Foram para o menu "⋯" do topo.
  */
 export default function Detalhe({
     onboarding,
@@ -81,6 +73,7 @@ export default function Detalhe({
     reuniao = null,
     link = null,
     mapeamento = null,
+    fotografia = null,
     respostas = null,
     acessos = null,
     proxima_acao = null,
@@ -88,72 +81,100 @@ export default function Detalhe({
     linha_do_tempo = [],
     atividade = [],
 }) {
-    // `nonce` faz o mesmo passo poder ser focado duas vezes seguidas — sem ele
-    // o segundo clique em "Ver pendência" não rolaria a tela.
-    const [foco, setFoco] = useState(null);
+    // Qual caixa está aberta (`null` = nenhuma). Um estado só: duas abertas ao
+    // mesmo tempo não faria sentido nenhum.
+    const [caixa, setCaixa] = useState(null);
 
-    const verPendencia = (passo) =>
-        setFoco({ etapa: passo.etapa ?? 'outros', passoId: passo.id, nonce: Date.now() });
+    // O passo aberto no detalhe. Separado de `caixa` porque carrega o objeto
+    // inteiro, não uma chave.
+    const [passoAberto, setPassoAberto] = useState(null);
 
-    // Qual consulta está aberta (`null` = nenhuma). Um estado só: duas dessas
-    // caixas abertas ao mesmo tempo não faria sentido nenhum.
-    const [consulta, setConsulta] = useState(null);
+    // O passo vive no payload; guardar o objeto congelaria o estado dele no
+    // momento do clique — depois de concluir, o modal seguiria mostrando
+    // "aberto" até fechar e reabrir.
+    const passoAtual = passoAberto
+        ? passos.find((p) => p.id === passoAberto) ?? null
+        : null;
 
-    // Cada assunto entregue à etapa a que pertence. Chave = `etapa` do passo,
-    // exatamente como o backend a grava — é o que garante que o formulário e
-    // os itens que ele fecha apareçam juntos.
-    const extras = {
-        // A reunião ABRE o processo: nós marcamos a data e cobramos o cliente
-        // para ela. O relatório inicial mora aqui porque é o documento que a
-        // reunião existe para apresentar.
-        agendamento: (
-            <>
-                {reuniao && <ReuniaoBloco onboardingId={onboarding.id} reuniao={reuniao} />}
-                <BlocoAgenda onboardingId={onboarding.id} agenda={respostas?.agenda} />
-                {relatorio && <RelatorioInicial onboardingId={onboarding.id} relatorio={relatorio} />}
-            </>
-        ),
+    const consultas = [
+        { chave: 'portal',       rotulo: 'Portal do cliente',      icone: Link2 },
+        { chave: 'acessos',      rotulo: 'Acessos que o cliente vê', icone: KeyRound, oculto: ! acessos },
+        { chave: 'relatorio',    rotulo: 'Relatório inicial',      icone: FileText, oculto: ! relatorio },
+        { chave: 'contexto',     rotulo: 'Contexto da venda',      icone: Quote },
+        { chave: 'responsaveis', rotulo: 'De quem é a bola',       icone: Handshake },
+        { chave: 'atividade',    rotulo: 'Atividade recente',      icone: Activity },
+    ].filter((c) => ! c.oculto);
 
-        responsaveis: (
-            <BlocoContatos
-                onboardingId={onboarding.id}
-                contatos={respostas?.contatos ?? []}
-            />
-        ),
-
-        mapeamento: mapeamento ? (
-            <MapeamentoInicial
-                mapeamento={mapeamento}
-                contexto="interno"
-                rotaSincronizar={route('onboarding.mapeamento.sincronizar', onboarding.id)}
-                rotaConfirmar={route('onboarding.mapeamento.confirmar', onboarding.id)}
-            />
-        ) : null,
-
-        investimento: (
-            <BlocoInvestimento
-                onboardingId={onboarding.id}
-                investimento={respostas?.investimento}
-            />
-        ),
+    const TITULOS = {
+        resumo:       'Resumo do cliente',
+        agenda:       'Agenda e reunião de onboarding',
+        mapeamento:   'Mapeamento da conta',
+        portal:       'Portal do cliente',
+        acessos:      'Acessos que o cliente vê',
+        relatorio:    'Relatório inicial',
+        contexto:     'Contexto da venda',
+        responsaveis: 'De quem é a bola',
+        atividade:    'Atividade recente',
     };
 
     return (
         <AppLayout title="Detalhe do onboarding">
             <Head title={`Onboarding — ${onboarding.empresa.nome}`} />
 
-            <div className="space-y-5 max-w-3xl">
-                {/* Volta para o COCKPIT (aba Onboarding de /companies), que é a
-                    lista de onde se chega aqui desde 20/08. O painel antigo em
-                    `/onboarding` continua existindo, mas não é mais o caminho
-                    de ida — mandar a volta para lá deixaria o usuário numa
-                    tela diferente da que ele veio. */}
-                <Link
-                    href={route('companies.index', { tab: 'onboarding' })}
-                    className="inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-ecf-yellow transition-colors"
-                >
-                    <ArrowLeft size={13} /> Voltar aos onboardings
-                </Link>
+            <div className="space-y-4">
+                {/* ─── Barra de identificação e ações ───────────────────── */}
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    {/* Volta para o cockpit (aba Onboarding de /companies), que
+                        é a lista de onde se chega aqui desde 20/08. O painel
+                        antigo em `/onboarding` continua existindo, mas não é
+                        mais o caminho de ida. */}
+                    <Link
+                        href={route('companies.index', { tab: 'onboarding' })}
+                        className="inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-ecf-yellow transition-colors"
+                    >
+                        <ArrowLeft size={13} /> Voltar aos onboardings
+                    </Link>
+
+                    <div className="flex items-center gap-2">
+                        {/* A ação principal da tela desde que o onboarding
+                            passou a ser conduzido pelo portal. Abre no nome de
+                            quem clicou, e fica registrado. */}
+                        {link?.pode_entrar && (
+                            <a
+                                href={route('companies.portal.abrir', onboarding.empresa.id)}
+                                target="_blank"
+                                rel="noopener"
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-ecf-yellow px-3.5 py-2 text-[12.5px] font-semibold text-ecf-bg hover:bg-ecf-yellow/90 transition-colors"
+                                title="Abre o portal desta empresa no seu nome — é por lá que se conduz a reunião"
+                            >
+                                <ExternalLink size={13} /> Abrir o portal do cliente
+                            </a>
+                        )}
+
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="grid place-items-center h-9 w-9 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white/55 hover:text-white hover:border-white/20 transition-colors"
+                                    aria-label="Mais informações deste onboarding"
+                                >
+                                    <MoreHorizontal size={16} />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                                {consultas.map(({ chave, rotulo, icone: Icone }) => (
+                                    <DropdownMenuItem
+                                        key={chave}
+                                        onSelect={() => setCaixa(chave)}
+                                        className="gap-2 text-[13px]"
+                                    >
+                                        <Icone size={14} className="text-white/40" /> {rotulo}
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                </div>
 
                 <CabecalhoOnboarding onboarding={onboarding} linhaDoTempo={linha_do_tempo} />
 
@@ -162,58 +183,117 @@ export default function Detalhe({
                     situacaoLabel={onboarding.situacao_label}
                     passo={proxima_acao}
                     ultimoAcessoCliente={link?.ultimo_acesso ?? null}
-                    aoVerPendencia={verPendencia}
+                    aoVerPendencia={(passo) => setPassoAberto(passo.id)}
                 />
 
-                {/* As consultas. Ficam numa barra de uma linha só para não
-                    disputar espaço com a lista — que é onde se trabalha. */}
-                <div className="flex flex-wrap gap-2">
-                    {[
-                        { chave: 'portal',      rotulo: 'Portal do cliente',  icone: Link2 },
-                        { chave: 'acessos',     rotulo: 'Acessos do cliente', icone: KeyRound,  oculto: !acessos },
-                        { chave: 'contexto',    rotulo: 'Contexto da venda',  icone: Quote },
-                        { chave: 'responsaveis', rotulo: 'De quem é a bola',  icone: Handshake },
-                        { chave: 'atividade',   rotulo: 'Atividade recente',  icone: Activity },
-                    ].filter((b) => !b.oculto).map(({ chave, rotulo, icone: Icone }) => (
-                        <button
-                            key={chave}
-                            type="button"
-                            onClick={() => setConsulta(chave)}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-[12px] text-white/60 hover:text-white hover:border-white/20 transition-colors"
-                        >
-                            <Icone size={13} /> {rotulo}
-                        </button>
-                    ))}
+                {/* ─── O corpo: trabalho à esquerda, respostas à direita ── */}
+                <div className="grid gap-4 xl:grid-cols-3 items-start">
+                    <div className="xl:col-span-2">
+                        <ChecklistPorEtapa passos={passos} aoAbrirPasso={(p) => setPassoAberto(p.id)} />
+                    </div>
+
+                    <div className="space-y-4">
+                        <ResumoDoCliente
+                            onboarding={onboarding}
+                            mapeamento={mapeamento}
+                            contatos={respostas?.contatos ?? []}
+                            investimento={respostas?.investimento}
+                            aoEditar={() => setCaixa('resumo')}
+                        />
+
+                        <AgendaResumo
+                            reuniao={reuniao}
+                            agenda={respostas?.agenda}
+                            aoEditar={() => setCaixa('agenda')}
+                        />
+
+                        {mapeamento && (
+                            <DiagnosticoDaConta
+                                mapeamento={mapeamento}
+                                aoAbrir={() => setCaixa('mapeamento')}
+                            />
+                        )}
+                    </div>
                 </div>
 
-                <FluxoOnboarding
-                    passos={passos}
-                    onboardingId={onboarding.id}
-                    confirmacoes={respostas?.confirmacoes ?? {}}
-                    extras={extras}
-                    foco={foco}
+                {/* O mesmo retrato que o cliente vê no portal. Largura cheia
+                    porque é um gráfico: espremido numa coluna de um terço, as
+                    13 semanas viram borrão. */}
+                <FotografiaDaConta
+                    fotografia={fotografia}
+                    ehEquipe
+                    rota={route('onboarding.fotografia.coletar', onboarding.id)}
                 />
             </div>
 
-            <Dialog open={consulta !== null} onOpenChange={(aberto) => !aberto && setConsulta(null)}>
+            {/* ─── O passo, em detalhe ──────────────────────────────────── */}
+            <Dialog open={passoAtual !== null} onOpenChange={(aberto) => ! aberto && setPassoAberto(null)}>
                 <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>
-                            {{
-                                portal:       'Portal do cliente',
-                                acessos:      'Acessos que o cliente vê',
-                                contexto:     'Contexto da venda',
-                                responsaveis: 'De quem é a bola',
-                                atividade:    'Atividade recente',
-                            }[consulta] ?? ''}
-                        </DialogTitle>
+                        <DialogTitle>Passo do onboarding</DialogTitle>
                     </DialogHeader>
 
-                    {consulta === 'portal' && (
+                    {passoAtual && (
+                        <>
+                            <LinhaPasso
+                                passo={passoAtual}
+                                onboardingId={onboarding.id}
+                                confirmacao={respostas?.confirmacoes?.[passoAtual.chave]}
+                            />
+
+                            {passoAtual.no_portal && (
+                                <p className="flex items-start gap-1.5 text-[12px] text-white/40 leading-relaxed">
+                                    <Link2 size={13} className="shrink-0 mt-0.5" />
+                                    Este item é conduzido no portal do cliente, com ele na chamada. Dá
+                                    para resolver aqui também — o registro é o mesmo.
+                                </p>
+                            )}
+                        </>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* ─── As caixas: formulários e consultas ───────────────────── */}
+            <Dialog open={caixa !== null} onOpenChange={(aberto) => ! aberto && setCaixa(null)}>
+                <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>{TITULOS[caixa] ?? ''}</DialogTitle>
+                    </DialogHeader>
+
+                    {caixa === 'resumo' && (
+                        <div className="space-y-4">
+                            <BlocoContatos
+                                onboardingId={onboarding.id}
+                                contatos={respostas?.contatos ?? []}
+                            />
+                            <BlocoInvestimento
+                                onboardingId={onboarding.id}
+                                investimento={respostas?.investimento}
+                            />
+                        </div>
+                    )}
+
+                    {caixa === 'agenda' && (
+                        <div className="space-y-4">
+                            {reuniao && <ReuniaoBloco onboardingId={onboarding.id} reuniao={reuniao} />}
+                            <BlocoAgenda onboardingId={onboarding.id} agenda={respostas?.agenda} />
+                        </div>
+                    )}
+
+                    {caixa === 'mapeamento' && mapeamento && (
+                        <MapeamentoInicial
+                            mapeamento={mapeamento}
+                            contexto="interno"
+                            rotaSincronizar={route('onboarding.mapeamento.sincronizar', onboarding.id)}
+                            rotaConfirmar={route('onboarding.mapeamento.confirmar', onboarding.id)}
+                        />
+                    )}
+
+                    {caixa === 'portal' && (
                         <AcessoDoClienteAoPortal companyId={onboarding.empresa.id} link={link} />
                     )}
 
-                    {consulta === 'acessos' && acessos && (
+                    {caixa === 'acessos' && acessos && (
                         <BlocoAcessos
                             rota={route('onboarding.acessos.empresa', onboarding.id)}
                             valores={acessos}
@@ -222,18 +302,21 @@ export default function Detalhe({
                         />
                     )}
 
-                    {consulta === 'contexto' && (
+                    {caixa === 'relatorio' && relatorio && (
+                        <RelatorioInicial onboardingId={onboarding.id} relatorio={relatorio} />
+                    )}
+
+                    {caixa === 'contexto' && (
                         <ContextoDaVenda spin={onboarding.spin} contexto={onboarding.contexto} />
                     )}
 
-                    {consulta === 'responsaveis' && (
+                    {caixa === 'responsaveis' && (
                         <Responsabilidades responsabilidades={responsabilidades} />
                     )}
 
-                    {consulta === 'atividade' && <AtividadeRecente atividade={atividade} />}
+                    {caixa === 'atividade' && <AtividadeRecente atividade={atividade} />}
                 </DialogContent>
             </Dialog>
-
         </AppLayout>
     );
 }
