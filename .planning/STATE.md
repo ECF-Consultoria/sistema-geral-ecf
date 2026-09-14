@@ -1327,7 +1327,7 @@ query state.advance-plan` NÃO foi executado nesta sessão (mesma instrução ex
 142-01/142-02 acima) — este parágrafo é a única alteração de `STATE.md`. Sem deploy — subagente
 sem acesso a produção/`.env`/`plink`/`pscp`; nenhuma migration neste plano.
 
-## Posição paralela — Fase 143 (Grupo de cobrança acima dos subgrupos) — EM EXECUÇÃO (3/? planos)
+## Posição paralela — Fase 143 (Grupo de cobrança acima dos subgrupos) — CÓDIGO COMPLETO (4/4 planos)
 
 ⚠️ **Mesma disciplina dos blocos 135-142 acima:** Fase 143 fora de milestone, rodando em paralelo
 nesta árvore compartilhada (a outra sessão está na v23.0, fases 150-157). `## Current Position`
@@ -1497,6 +1497,54 @@ state.advance-plan` **NÃO** foi executado (instrução explícita do prompt). S
 sem acesso a produção/`.env`/`plink`/`pscp`; nenhuma migration neste plano.
 **`grupo_faixas_faturamento` continua ZERADA em produção e os 15 grupos seguem com `parent_id`
 nulo — nada mudou de cobrança nesta entrega.**
+
+143-04 concluído (T1-T3) — **a tela que monta o grupo de cobrança**, última peça de código da fase.
+`GET /administrativo/contratos/grupos` + `Pages/Admin/GruposCobranca.jsx`, na permissão do módulo
+(`admin.contratos`). **T1:** cada grupo aparece com quantas empresas, quanto faturou, quanto cobra
+por mês e de onde vem a tabela — números vindos de `SimuladorGrupoCobrancaService::estadoAtual()`
+(método novo que reusa `calcularLado()`, o mesmo dos dois lados de `simular()`), nunca de conta
+própria; há teste comparando a prop da tela com o retorno do simulador grupo a grupo. **T2 (o
+coração):** o botão que grava existe apenas DENTRO do bloco `{previa && (` — trava estrutural, não
+um `disabled` —, e um `useEffect([selecionados, destinoId])` **apaga a prévia** quando a seleção ou
+o destino mudam, para ninguém confirmar um arranjo lendo o número de outro. A prévia mostra hoje ×
+passaria a ser × a diferença **com sinal** em `text-3xl` mais o valor anualizado (caso real:
+R$ 33.500 → R$ 21.000, **−R$ 12.500/mês**, R$ 150 mil/ano), cada linha com a **procedência** da
+tabela no mesmo vocabulário de `TabelaEmpresa.jsx`/`ContratoDetalhe.jsx` (contrato / cadastro à mão
+/ cópia do serviço) — é o que separa R$ 21.000 de R$ 12.000. Destino sem tabela própria dispara
+aviso com todas as letras + botão "Cadastrar a tabela de X" (143-03) e exige reconhecimento
+explícito para prosseguir. **Queda é pintada como correção, nunca como erro** — teste proíbe
+`text-red` e `variant="destructive"` no arquivo. **T3:** a tela só oferece seleção a quem é cobrado
+sozinho, mas a regra continua no `saving()` do model e a mensagem pt-BR dele é exibida como está
+(teste com `"DRossi" já está dentro de outro grupo — a hierarquia tem um nível só.`).
+
+Decisões minhas registradas: **(a) criar o grupo e juntar viraram DOIS passos** — não por
+comodidade: a tela tem de oferecer o cadastro da tabela ANTES de juntar (senão a cobrança herda uma
+tabela copiada do serviço e cai mais do que deveria) e não existe cadastrar tabela de um grupo que
+ainda não existe; logo a única ordem coerente é criar → cadastrar a tabela → juntar. Criar um grupo
+VAZIO não muda cobrança nenhuma, provado por teste (`estadoAtual()` idêntico antes/depois e nenhuma
+empresa trocando de `company_group_id`). **(b) rota de criação PRÓPRIA** (`admin.contratos.grupos.criar`)
+e não a `company-groups.store` existente, que é `role:admin` e daria 403 em quem tem a permissão por
+setor — a armadilha que a Fase 142 pagou para fechar. **(c) desfazer também exige prévia** (o plano
+só fala de juntar, mas desfazer SOBE a cobrança — mesma decisão de dinheiro ao contrário).
+
+Gates (exit capturado ANTES de qualquer pipe, os dois `EXIT=0`):
+`Phase122|...|Phase143|Quick260909|Quick260910|Quick260911` → **797 testes / 3617 asserções /
+0 falhas / 0 errors** (era 772 no 143-03; +25 testes novos: 13 de página/rotas + 12 de travas de
+arquivo). `Phase74|Phase110` → **39 passando / 0 falhas** antes e depois. Suíte de NPS
+(`--filter="Nps|NPS"`, fora do gate): **614 / 0 errors / 8 failures / 606 passando — número por
+número e teste por teste idêntico ao baseline do 143-03**; nenhum teste de NPS mudou de resultado.
+`npm run build` ✓ em 43,49s, `GruposCobranca` no `manifest.json`, CSS conferido com `grep -F` sobre
+o seletor completo.
+
+Last activity: 2026-09-14 — 143-04 executado (`143-04-SUMMARY.md`), commits `e73c2706`, `b8ea57d8`.
+`gsd-sdk query state.advance-plan` **NÃO** foi executado (instrução explícita do prompt). Sem
+deploy, sem `.env`, sem migration. **Em produção nada mudou de cobrança: os 15 grupos seguem com
+`parent_id` nulo e `grupo_faixas_faturamento` segue zerada.** A fase está completa em CÓDIGO; o que
+falta é operação com gente, na ordem do CONTEXT: rodar a migration do `parent_id`, montar o caso
+MPozenato **pela tela** (criar o grupo → cadastrar a tabela → conferir a prévia → juntar) e
+consolidar a competência. Itens 3, 5, 6, 7, 8 e 9 do `deferred-items.md` seguem abertos — o de maior
+risco operacional é o **7** (`fechamento:consolidar-mes` reporta mudança de faixa por composição
+como se fosse desempenho).
 
 ## Current Position
 
