@@ -201,7 +201,11 @@ function ColunaOrdenavel({ campo, atual, aoOrdenar, children }) {
 function Responsavel({ papel, pessoa }) {
     return (
         <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-[10px] uppercase tracking-wide text-white/30 w-[42px] shrink-0">
+            {/* `truncate` não é decoração: sem `overflow-hidden` o rótulo
+                transborda a caixa de largura fixa e é DESENHADO POR CIMA do
+                avatar — foi o que "ANALISTA" fez em 42px. A largura cabe o
+                maior dos dois rótulos; o corte é a rede para o próximo. */}
+            <span className="text-[10px] uppercase tracking-wide text-white/30 w-[58px] shrink-0 truncate">
                 {papel}
             </span>
 
