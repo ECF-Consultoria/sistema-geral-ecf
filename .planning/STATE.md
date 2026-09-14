@@ -1327,7 +1327,7 @@ query state.advance-plan` NÃO foi executado nesta sessão (mesma instrução ex
 142-01/142-02 acima) — este parágrafo é a única alteração de `STATE.md`. Sem deploy — subagente
 sem acesso a produção/`.env`/`plink`/`pscp`; nenhuma migration neste plano.
 
-## Posição paralela — Fase 143 (Grupo de cobrança acima dos subgrupos) — EM EXECUÇÃO (2/? planos)
+## Posição paralela — Fase 143 (Grupo de cobrança acima dos subgrupos) — EM EXECUÇÃO (3/? planos)
 
 ⚠️ **Mesma disciplina dos blocos 135-142 acima:** Fase 143 fora de milestone, rodando em paralelo
 nesta árvore compartilhada (a outra sessão está na v23.0, fases 150-157). `## Current Position`
@@ -1440,6 +1440,63 @@ mudou por desempenho". Last activity: 2026-09-14 — 143-02 executado (`143-02-S
 `d22ae486`, `ef8cb50e`, `f66214cf`. Sem deploy — subagente sem acesso a produção/`.env`/`plink`/
 `pscp`. **A migration do `parent_id` continua sem rodar em produção, e os 15 grupos seguem com
 `parent_id` nulo — nada mudou de cobrança nesta entrega.**
+
+143-03 concluído (T1-T3) — a tabela do grupo ganhou **porta de escrita auditada** e **página
+própria**. **T1 (o motivo do plano):** `TabelaEmpresaContratoController::gravarFaixasGrupo()`
+apagava a tabela do grupo com `delete()` de query builder — que **não dispara evento de model** —
+e o arquivo inteiro tinha **zero** `activity()`: a tabela anterior evaporava sem registro. Com a
+árvore da Fase 143 isso governa a cobrança de todas as empresas abaixo do grupo (10 no caso
+MPozenato). Nasceu `GravarTabelaGrupoService`, gêmeo do de empresa (142-01): transação,
+all-or-nothing, **uma** entrada de `activity_log` por gravação com a tabela INTEIRA `antes` e
+`depois`, `log_name = faixa_faturamento_tabela_grupo`, sujeito o `CompanyGroup`. A mais que o
+gêmeo, a trilha grava `empresas_governadas` (grupo + grupos pendurados nele) — quem audita precisa
+do TAMANHO da decisão, não só do conteúdo. ⚠️ **Desvio (Regra 2):** o gêmeo em
+`FechamentoController::salvarFaixasGrupo/removerFaixasGrupo` (rota antiga `/financeiro/faixas/grupo`,
+viva) tinha **exatamente** o mesmo buraco na mesma tabela — entrou junto, e o docblock de lá já
+mandava as duas cópias morrerem juntas. **T2:** `GET admin.contratos.tabela.grupo.show` +
+`Pages/Admin/TabelaGrupo.jsx`, no MESMO grupo de permissão das rotas de escrita (quem salva precisa
+poder abrir). Antes disto a tabela de um grupo só era editável de dentro da ficha de uma
+empresa-membro, e o grupo que fica por cima pode não ter empresa nenhuma pendurada direto nele — a
+tabela que governa dez mensalidades era **inalcançável**. O bloco "Empresas que esta tabela vai
+cobrar" vem ANTES do formulário, com as empresas do grupo e as dos grupos de dentro **contadas e
+listadas uma a uma**; grupo que faz parte de outro avisa que quem manda é a tabela de lá e leva
+para ela. Copy travada em **11** termos banidos (os 8 das Fases 139/142 mais `raiz`, `árvore`,
+`precedência`). Grade, máscara de dinheiro e conversão de borda vêm do compartilhado, com teste
+proibindo segunda definição. **T3:** botão "Abrir a página do grupo X" na ficha da empresa — única
+alteração em `TabelaEmpresa.jsx`.
+
+Decisão minha registrada: **`FormularioFaixas` NÃO foi extraído** para componente compartilhado —
+`Phase142FichaTabelaUiTest` trava o TEXTO de `TabelaEmpresa.jsx` asserção por asserção e a extração
+quebraria aquele gate; segunda definição local, item **8** do `deferred-items.md` para ser feito de
+propósito com o teste atualizado junto. Item **9** novo: a página não mostra faturamento nem
+mensalidade resultante (o dado existe no `SimuladorGrupoCobrancaService`, mas isso é peça da tela
+de hierarquia, 143-04).
+
+Gates (exit capturado ANTES de qualquer pipe, os dois `EXIT=0`):
+`Phase122|...|Phase143|Quick260909|Quick260910|Quick260911` → baseline medido nesta sessão
+**736 passando / 0 falhas / 0 errors**, depois **772 passando / 3479 asserções / 0 falhas / 0
+errors** = 736 + **36 testes novos**. `Phase74|Phase110` → **39 passando / 0 falhas** antes e
+depois. ⚠️ O baseline não é mais "708 + 28 errors" do 143-02: os 28 errors de `setores.nome`
+sumiram (correção da OUTRA sessão).
+
+⚠️ **Suíte de NPS mudou de números — e a causa NÃO é este plano, provada por execução.** De
+614 / 47 errors / 4 failures (143-02) para **614 / 0 errors / 8 failures / 606 passando**: a outra
+sessão consertou a migration, 43 testes que erroravam passaram a passar e 4 passaram a FALHAR
+(estavam errorando, não passando). **Nenhum teste de NPS foi de passando para falhando.** Prova:
+restaurei os 3 arquivos PHP alterados ao commit `40b53589` (anterior ao meu primeiro commit) com
+`git checkout <base> -- <arquivos>` — **sem `git stash`** — e as 6 classes falharam igual (11
+falhas, incluindo as mesmas 8); depois `git checkout HEAD -- ...` e `git diff HEAD -- app/ routes/`
+voltou vazio. Reforço por grep: as 6 classes têm ZERO referências a `GrupoFaixaFaturamento`,
+`GravarTabelaGrupo`, `TabelaEmpresaContrato`, `FechamentoController`, `admin.contratos` ou
+`company_group`. Nenhuma foi consertada.
+
+`npm run build` ✓ em 46,54s; `Admin/TabelaGrupo.jsx` presente no `manifest.json`; CSS compilado
+conferido com `grep -F` sobre o seletor completo (6 classes, 1 ocorrência cada). Last activity:
+2026-09-14 — 143-03 executado (`143-03-SUMMARY.md`), commits `e073bf8d`, `6d1058d8`. `gsd-sdk query
+state.advance-plan` **NÃO** foi executado (instrução explícita do prompt). Sem deploy — subagente
+sem acesso a produção/`.env`/`plink`/`pscp`; nenhuma migration neste plano.
+**`grupo_faixas_faturamento` continua ZERADA em produção e os 15 grupos seguem com `parent_id`
+nulo — nada mudou de cobrança nesta entrega.**
 
 ## Current Position
 

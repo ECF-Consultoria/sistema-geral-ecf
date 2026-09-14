@@ -69,3 +69,31 @@ Se alguém pendurar um subgrupo entre duas competências, a linha do cliente
 muda de faturamento e de faixa por **composição**, não por desempenho — e o
 aviso de mudança de faixa (Passo 8) vai reportar como se fosse crescimento.
 Fora do escopo do 143-02; vale registrar antes de a árvore existir de verdade.
+
+### 8. `FormularioFaixas` tem duas definições (empresa e grupo)
+
+`Admin/TabelaGrupo.jsx` (143-03) traz uma segunda definição local do
+formulário de faixas, gêmea da que vive dentro de `Admin/TabelaEmpresa.jsx`.
+Extrair para `Components/Fechamento/FormularioFaixas.jsx` seria o certo —
+mas `Phase142FichaTabelaUiTest` trava o TEXTO de `TabelaEmpresa.jsx`
+asserção por asserção (`<CampoDinheiro`, `type="number"` contado, a
+importação da grade), e a extração quebraria aquele gate.
+
+⚠️ Não é uma duplicação qualquer: é o formulário que edita cobrança viva.
+O que importa, porém, **não** está duplicado — a conversão de borda (teto
+",99" ↔ valor redondo) mora inteira em `lib/faixasFaturamento.js` e a grade
+de leitura em `Components/Fechamento/TabelaProgressivaFaixas.jsx`; o que se
+repete é a fiação do formulário. A extração precisa ser feita de propósito,
+com `Phase142FichaTabelaUiTest` atualizado no mesmo commit.
+
+### 9. A página do grupo não mostra o faturamento nem a mensalidade resultante
+
+`Admin/TabelaGrupo.jsx` mostra as faixas e as empresas alcançadas, mas não
+diz quanto o conjunto faturou no último mês nem em que faixa isso cai —
+quem cadastra decide a tabela sem ver o número que ela vai produzir.
+
+O dado já existe pronto em `SimuladorGrupoCobrancaService` (143-02), que
+devolve faturamento, faixa e mensalidade por linha. Não entrou aqui porque o
+143-03-PLAN pede a página de CADASTRO da tabela, e o simulador é a peça da
+tela de montagem da hierarquia (143-04) — plugá-lo aqui misturaria as duas
+telas antes de o desenho da segunda existir.
