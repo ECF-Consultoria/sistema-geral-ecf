@@ -108,17 +108,19 @@ class PerformanceAutorizacaoTest extends Phase123TestCase
     #[Test]
     public function lider_do_setor_performance_ve_membro_da_equipe_200(): void
     {
-        // Setor NOVO com slug EXATO 'performance' — Permissions::AUTO_LIDERANCA_PERFORMANCE
+        // Setor com slug EXATO 'performance' — Permissions::AUTO_LIDERANCA_PERFORMANCE
         // (app/Models/User.php:236) checa o slug literal, não 'performance-123'
-        // (o setor default de Phase123TestCase).
-        $setorPerformanceId = DB::table('setores')->insertGetId([
-            'nome'       => 'Performance (líder)',
-            'slug'       => 'performance',
-            'active'     => true,
-            'is_system'  => false,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // (o setor default de Phase123TestCase). Esse setor já vem semeado por
+        // migration e slug/nome são UNIQUE: reusa o que existir.
+        $setorPerformanceId = (int) (DB::table('setores')->where('slug', 'performance')->value('id')
+            ?? DB::table('setores')->insertGetId([
+                'nome'       => 'Performance (líder)',
+                'slug'       => 'performance',
+                'active'     => true,
+                'is_system'  => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]));
 
         $lider  = User::factory()->create(['role' => 'consultor', 'active' => true]);
         $membro = $this->criarUserElegivel('Membro da Equipe');
@@ -157,14 +159,17 @@ class PerformanceAutorizacaoTest extends Phase123TestCase
     #[Test]
     public function lider_de_um_setor_nao_ve_desempenho_de_quem_nao_esta_sob_sua_lideranca_403(): void
     {
-        $setorPerformanceId = DB::table('setores')->insertGetId([
-            'nome'       => 'Performance (líder 2)',
-            'slug'       => 'performance',
-            'active'     => true,
-            'is_system'  => false,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // Mesma coisa do teste anterior: slug 'performance' já existe via
+        // migration (slug e nome são UNIQUE) — reusa em vez de recriar.
+        $setorPerformanceId = (int) (DB::table('setores')->where('slug', 'performance')->value('id')
+            ?? DB::table('setores')->insertGetId([
+                'nome'       => 'Performance (líder 2)',
+                'slug'       => 'performance',
+                'active'     => true,
+                'is_system'  => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]));
 
         $lider     = User::factory()->create(['role' => 'consultor', 'active' => true]);
         $foraDaEquipe = $this->criarUserElegivel('Fora da Equipe');

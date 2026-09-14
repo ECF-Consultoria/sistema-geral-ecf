@@ -43,8 +43,15 @@ abstract class Phase123TestCase extends TestCase
 
         Carbon::setTestNow(Carbon::parse('2026-08-15 10:00:00'));
 
+        // Aqui NÃO dá pra reusar o setor "Performance" semeado por migration
+        // (slug 'performance'): `PerformanceAutorizacaoTest` precisa que o setor
+        // desta base seja DIFERENTE do slug literal 'performance' — é assim que
+        // ela prova que um líder do Performance não enxerga quem está fora da
+        // equipe dele. Reusar aqui faria líder e não-membro caírem no mesmo
+        // setor e o 403 viraria 200. Então o que muda é só o `nome` (UNIQUE),
+        // mantendo o slug próprio.
         $this->setorId = DB::table('setores')->insertGetId([
-            'nome'       => 'Performance',
+            'nome'       => 'Performance 123',
             'slug'       => 'performance-123',
             'active'     => true,
             'is_system'  => false,
