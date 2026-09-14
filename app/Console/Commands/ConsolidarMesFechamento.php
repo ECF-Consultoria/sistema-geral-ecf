@@ -50,6 +50,26 @@ use Illuminate\Support\Facades\Log;
  * reencontrá-la no ramo congelado). "Herdada de quem" é derivado de
  * `tabela_origem`, nunca uma coluna nova.
  *
+ * Fase 143 (T3) — o Passo 5 agrega pela RAIZ da árvore de grupos
+ * (`company_groups.parent_id`), não mais por `company_group_id` cru:
+ * - `fechamento_grupo_snapshots.company_group_id` passa a guardar o id da
+ *   RAIZ — UMA linha por grupo de cobrança, nunca uma por subgrupo. É a
+ *   correção do caso que abriu a fase: MPozenato + DRossi + Gran Belo +
+ *   Lyam saíam em quatro linhas, somando R$ 33.500/mês, quando como um
+ *   cliente só (R$ 12,68 mi em ago/2026) a tabela cobra R$ 21.000.
+ * - `fechamento_snapshots.company_group_id` (linha de EMPRESA) guarda a
+ *   MESMA chave, pelo mesmo motivo: `fechamento:verificar-consolidacao`
+ *   casa membro com grupo por essa coluna.
+ * - `empresa_ancora_id` continua sendo a identidade da linha de grupo
+ *   (`AdminController::fechamentoAgregarGruposCongelados` a usa para
+ *   reencontrar a linha no ramo congelado) — intocado.
+ * - ⚠️ Grupo SEM pai É a própria raiz. Enquanto os 15 grupos de hoje
+ *   estiverem com `parent_id` nulo — e nesta entrega ninguém ganha pai — o
+ *   resultado é IDÊNTICO ao de antes
+ *   (`Phase143ConsolidarPelaRaizTest::sem_nenhum_pai_o_fechamento_sai_exatamente_como_hoje_quatro_linhas()`).
+ * - ⛔ O NPS não sente nada: `nps_group_surveys` e a cobertura de grupo
+ *   continuam olhando `company_group_id` da empresa, não a raiz.
+ *
  * Gate de qualidade (Passo 6, mesmo espírito do FIXMARG-03 do Desempenho):
  * cobertura de faturamento abaixo de `COBERTURA_MINIMA_FATURAMENTO` entre as
  * empresas com integração financeira NÃO grava nada e retorna exit code 1 —
@@ -205,7 +225,10 @@ class ConsolidarMesFechamento extends Command
         $companies = Company::where('active', true)
             ->with([
                 'contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico'),
-                'grupo',
+                // Fase 143: `grupo.pai` vem no eager loading porque o laço
+                // abaixo chama `CompanyGroup::raiz()` por empresa — sem ele
+                // seria uma consulta por empresa de subgrupo.
+                'grupo.pai',
             ])
             ->get();
 
@@ -361,7 +384,16 @@ class ConsolidarMesFechamento extends Command
                     'faturamento_total'      => $fatAtual['faturamento_total'],
                     // Quick 260911-eph — de onde veio o número desta linha.
                     'faturamento_fonte'      => $fatAtual['faturamento_fonte'] ?? FechamentoSnapshot::FONTE_SOMA_DIARIA,
-                    'company_group_id'       => $company->company_group_id,
+                    // Fase 143: a linha da empresa grava a RAIZ da árvore,
+                    // a MESMA chave da linha de grupo do Passo 5. Elas
+                    // PRECISAM casar: `fechamento:verificar-consolidacao`
+                    // reencontra os membros de um grupo por
+                    // `where('company_group_id', $grupoSnap->company_group_id)`
+                    // — se a empresa guardasse o subgrupo e o grupo a raiz,
+                    // toda linha de grupo viraria LINHAS_ORFAS e
+                    // DIVERGENCIA_CONTAGEM. Sem pai, raiz === grupo direto:
+                    // nada muda para os 15 grupos de hoje.
+                    'company_group_id'       => $company->grupo?->raizId() ?? $company->company_group_id,
                     'servico_id'             => $faixaData['servico_id'] ?? null,
                     'tabela_origem'          => $faixaData['origem'] ?? null,
                     'faixa_ordem'            => $classificacao['ordem'] ?? null,
@@ -386,9 +418,19 @@ class ConsolidarMesFechamento extends Command
         //    entra aqui — é a fonte antiga que D-08 revoga.
         $linhasPorEmpresaId = collect($linhasEmpresa)->keyBy('company_id');
 
+        // Fase 143 (T3): a chave de agregação é a RAIZ da árvore de grupos,
+        // não mais `company_group_id` cru. É a correção que faz o cliente
+        // com subgrupos (MPozenato + DRossi + Gran Belo + Lyam) sair em UMA
+        // linha de cobrança em vez de quatro — cobrar em pedaços faz o
+        // cliente pagar como quatro clientes médios e apaga o desconto por
+        // volume, que é a razão de existir da tabela progressiva.
+        //
+        // ⚠️ Grupo SEM pai É a própria raiz (`raizId()` devolve o próprio
+        // id, sem query): para os 15 grupos de hoje, todos com `parent_id`
+        // nulo, esta linha agrupa exatamente pelas mesmas chaves de antes.
         $gruposMembros = $companies
             ->filter(fn (Company $c) => $c->company_group_id !== null && $linhasPorEmpresaId->has($c->id))
-            ->groupBy('company_group_id');
+            ->groupBy(fn (Company $c) => $c->grupo?->raizId() ?? $c->company_group_id);
 
         $linhasGrupo = [];
 
@@ -438,9 +480,20 @@ class ConsolidarMesFechamento extends Command
             // que uma mudança de precedência num dos dois nunca divirja em
             // silêncio do outro — divergência silenciosa em tabela de
             // cobrança só aparece na fatura do cliente.
+            //
+            // Fase 143: a chamada continua recebendo o grupo DIRETO da
+            // âncora (que pode ser um subgrupo) porque `paraGrupo()` já
+            // resolve a árvore por dentro — raiz primeiro, subgrupo depois.
+            // Passar a raiz aqui perderia o 2º degrau quando só o subgrupo
+            // tem tabela.
             $faixaGrupo = $ancora->grupo !== null
                 ? $this->faixaResolver->paraGrupo($ancora->grupo, $ancora)
                 : ($faixaPorEmpresa[$ancora->id] ?? null); // defensivo: nunca deixar de gravar a linha
+
+            // Nome da linha de cobrança: o do grupo de COBRANÇA (a raiz),
+            // nunca o do subgrupo da âncora — a linha representa o cliente
+            // inteiro. Sem pai, `raiz()` devolve o próprio grupo.
+            $raizDoGrupo = $ancora->grupo?->raiz();
 
             $classificacaoGrupo = ($faixaGrupo !== null && $faturamentoTotal !== null)
                 ? $this->faixaResolver->classificar($faturamentoTotal, $faixaGrupo['faixas'])
@@ -520,7 +573,7 @@ class ConsolidarMesFechamento extends Command
 
             $linhasGrupo[] = [
                 'company_group_id'      => $groupId,
-                'grupo_name'            => $ancora->grupo?->name,
+                'grupo_name'            => $raizDoGrupo?->name,
                 'faturamento_ml'        => $faturamentoMl,
                 'faturamento_shopee'    => $faturamentoShopee,
                 'faturamento_total'     => $faturamentoTotal,

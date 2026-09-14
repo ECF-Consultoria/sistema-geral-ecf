@@ -38,11 +38,22 @@ use Illuminate\Support\Collection;
  *
  * ### paraEmpresa() — ordem de resolução
  *
+ * ### Fase 143 — o degrau de grupo virou ÁRVORE (raiz → subgrupo)
+ * `company_groups.parent_id` pendura um grupo em outro (um nível só). Onde
+ * abaixo se lê "tabela do GRUPO", leia **tabela da RAIZ e, só se ela não
+ * existir, tabela do subgrupo**. A precedência completa passou de
+ * grupo → empresa → serviço para **raiz → subgrupo → empresa → serviço**.
+ * Grupo SEM pai é a própria raiz, então para os 15 grupos de hoje (todos
+ * com `parent_id` nulo) nada muda — regressão zero, provada em
+ * `Phase143ResolverPrecedenciaTest::grupo_sem_pai_resolve_exatamente_como_antes()`.
+ * Ver `degrauDaArvoreDeGrupos()`.
+ *
  * **Com a flag `FechamentoRegraTabela::CHAVE` LIGADA (Fase 141, D-01/D-04)
  * — regra NOVA, definitiva:**
  * 1. **Tabela do GRUPO** (`GrupoFaixaFaturamento`) — se a empresa pertence a
- *    um grupo (`company_group_id`) e existe QUALQUER linha de faixa para
- *    esse grupo, ela vence sobre a tabela própria da empresa.
+ *    um grupo (`company_group_id`) e existe QUALQUER linha de faixa na
+ *    ÁRVORE desse grupo (raiz primeiro, subgrupo depois — Fase 143), ela
+ *    vence sobre a tabela própria da empresa.
  * 2. Tabela PRÓPRIA da empresa (`EmpresaFaixaFaturamento`) — se existir
  *    QUALQUER linha, ela vale inteira (D-13, all-or-nothing).
  * 3. Sem tabela de grupo nem própria: `null` — a tabela do SERVIÇO nunca
@@ -67,7 +78,9 @@ use Illuminate\Support\Collection;
  *    (estado "A DEFINIR", nunca faixa aproximada).
  *
  * ### paraGrupo() — tabela aplicável ao GRUPO (Fase 138, D-01)
- * 1. Tabela do próprio grupo, quando houver — `herdada_de_*` fica `null`.
+ * 1. Tabela da ÁRVORE do grupo — raiz primeiro, subgrupo depois (Fase 143);
+ *    `herdada_de_*` fica `null`, e `grupo_id`/`grupo_nome` apontam para o
+ *    dono real da tabela (a RAIZ quando foi dela que a tabela veio).
  * 2. Sem tabela de grupo: delega para `paraEmpresa($ancora)` e anexa
  *    `herdada_de_company_id`/`herdada_de_company_name` da âncora —
  *    `herdada_de_*` só é preenchido nesse caso, nunca quando a tabela do
@@ -91,21 +104,25 @@ class FechamentoFaixaResolver
     }
 
     /**
-     * Resolve a tabela de faixas aplicável a uma empresa (grupo → própria →
-     * serviço [só com a flag da Fase 141 desligada], D-01).
+     * Resolve a tabela de faixas aplicável a uma empresa (raiz do grupo →
+     * subgrupo → própria → serviço [só com a flag da Fase 141 desligada];
+     * D-01 da Fase 138 + a árvore da Fase 143).
      *
      * @return array{origem: string, servico_id: int|null, servico_nome: string|null, grupo_id: int|null, grupo_nome: string|null, herdada_de_company_id: int|null, herdada_de_company_name: string|null, faixas: Collection, procedencia: string|null}|null
      */
     public function paraEmpresa(Company $company): ?array
     {
         // Fase 138, D-01: tabela do GRUPO vence tudo abaixo dela.
+        // Fase 143: "o grupo" virou a ÁRVORE — raiz primeiro, subgrupo
+        // depois (uma query só para os dois degraus).
         if ($company->company_group_id !== null) {
-            $faixasDoGrupo = GrupoFaixaFaturamento::where('company_group_id', $company->company_group_id)
-                ->ordenadas()
-                ->get();
+            $faixasDaArvore = $this->degrauDaArvoreDeGrupos(
+                $company->grupo,
+                (int) $company->company_group_id
+            );
 
-            if ($faixasDoGrupo->isNotEmpty()) {
-                return $this->shapeGrupo($company->grupo, $faixasDoGrupo);
+            if ($faixasDaArvore !== null) {
+                return $faixasDaArvore;
             }
         }
 
@@ -160,20 +177,23 @@ class FechamentoFaixaResolver
     }
 
     /**
-     * Resolve a tabela de faixas aplicável a um GRUPO (Fase 138, D-01):
-     * tabela própria do grupo quando houver, senão a tabela da empresa
-     * âncora com a herança marcada explicitamente.
+     * Resolve a tabela de faixas aplicável a um GRUPO (Fase 138, D-01 +
+     * Fase 143): tabela da ÁRVORE do grupo quando houver (raiz antes do
+     * subgrupo), senão a tabela da empresa âncora com a herança marcada
+     * explicitamente.
      *
      * @return array{origem: string, servico_id: int|null, servico_nome: string|null, grupo_id: int|null, grupo_nome: string|null, herdada_de_company_id: int|null, herdada_de_company_name: string|null, faixas: Collection, procedencia: string|null}|null
      */
     public function paraGrupo(CompanyGroup $grupo, ?Company $ancora): ?array
     {
-        $faixasDoGrupo = GrupoFaixaFaturamento::where('company_group_id', $grupo->id)
-            ->ordenadas()
-            ->get();
+        // Fase 143: mesma árvore de `paraEmpresa()` — a tabela da RAIZ
+        // vence a do subgrupo. `$grupo` pode ser a raiz ou um subgrupo; nos
+        // dois casos o resultado é o mesmo, e num grupo sem pai (os 15 de
+        // hoje) isto é byte a byte o que era antes.
+        $faixasDaArvore = $this->degrauDaArvoreDeGrupos($grupo, (int) $grupo->id);
 
-        if ($faixasDoGrupo->isNotEmpty()) {
-            return $this->shapeGrupo($grupo, $faixasDoGrupo);
+        if ($faixasDaArvore !== null) {
+            return $faixasDaArvore;
         }
 
         if ($ancora === null) {
@@ -192,6 +212,63 @@ class FechamentoFaixaResolver
         $resultadoAncora['herdada_de_company_name'] = $ancora->name;
 
         return $resultadoAncora;
+    }
+
+    /**
+     * Degrau de GRUPO da precedência, com a árvore da Fase 143:
+     * **raiz → subgrupo**. Devolve `null` quando nenhum dos dois tem tabela
+     * (o chamador segue para o degrau de empresa).
+     *
+     * ⚠️ **`grupo_id`/`grupo_nome` identificam o DONO da tabela
+     * encontrada** — quando ela veio da raiz, é o id/nome da RAIZ que sai
+     * no shape, não o do subgrupo da empresa. Isso é deliberado: herança
+     * invisível é exatamente o defeito que a D-01 da Fase 138 veio
+     * corrigir, e quem lê a tela precisa conseguir dizer "esta tabela é do
+     * grupo-pai MPozenato", não achar que é do subgrupo DRossi.
+     *
+     * ⚠️ **Uma query só para os dois degraus.** Este método roda dentro do
+     * laço de ~200 empresas de `fechamento:consolidar-mes`; consultar raiz
+     * e subgrupo separadamente dobraria o número de consultas do laço.
+     * A resolução da raiz (`CompanyGroup::raizId()`/`raiz()`) não custa
+     * query nenhuma quando `parent_id` é nulo — que é o caso dos 15 grupos
+     * de hoje.
+     *
+     * @param  CompanyGroup|null  $grupo    o grupo direto (subgrupo ou raiz); `null` só
+     *                                      no caso defensivo de relação não carregável
+     * @param  int  $grupoId  id do grupo direto — sempre presente, mesmo sem o model
+     */
+    private function degrauDaArvoreDeGrupos(?CompanyGroup $grupo, int $grupoId): ?array
+    {
+        $raiz   = $grupo?->raiz();
+        $raizId = $raiz?->id !== null ? (int) $raiz->id : $grupoId;
+
+        $ids = array_values(array_unique([$raizId, $grupoId]));
+
+        $faixas = GrupoFaixaFaturamento::whereIn('company_group_id', $ids)
+            ->ordenadas()
+            ->get();
+
+        if ($faixas->isEmpty()) {
+            return null;
+        }
+
+        // 1º degrau — a tabela da RAIZ manda na cobrança do grupo inteiro.
+        $daRaiz = $faixas->where('company_group_id', $raizId)->values();
+
+        if ($daRaiz->isNotEmpty()) {
+            return $this->shapeGrupo($raiz ?? $grupo, $daRaiz);
+        }
+
+        // 2º degrau — sem tabela na raiz, vale a do subgrupo (e quando não
+        // há pai nenhum, raiz e subgrupo são o MESMO grupo: este degrau é o
+        // comportamento de sempre, intocado).
+        $doSubgrupo = $faixas->where('company_group_id', $grupoId)->values();
+
+        if ($doSubgrupo->isNotEmpty()) {
+            return $this->shapeGrupo($grupo, $doSubgrupo);
+        }
+
+        return null;
     }
 
     /**

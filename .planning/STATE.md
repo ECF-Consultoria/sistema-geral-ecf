@@ -1327,6 +1327,59 @@ query state.advance-plan` NÃO foi executado nesta sessão (mesma instrução ex
 142-01/142-02 acima) — este parágrafo é a única alteração de `STATE.md`. Sem deploy — subagente
 sem acesso a produção/`.env`/`plink`/`pscp`; nenhuma migration neste plano.
 
+## Posição paralela — Fase 143 (Grupo de cobrança acima dos subgrupos) — EM EXECUÇÃO (1/? planos)
+
+⚠️ **Mesma disciplina dos blocos 135-142 acima:** Fase 143 fora de milestone, rodando em paralelo
+nesta árvore compartilhada (a outra sessão está na v23.0, fases 150-157). `## Current Position`
+(Fase 132/133) não foi tocado. `gsd-sdk query state.advance-plan` **NÃO** foi executado — instrução
+explícita do prompt desta execução, pelo histórico de corrupção registrado no topo deste arquivo.
+Registro manual aditivo, como nos blocos anteriores.
+
+Origem: `143-CONTEXT.md` — o usuário conferindo o fechamento em 2026-09-14. Os grupos de hoje foram
+criados pensando em **NPS**, porque `nps_group_surveys` tem `unique(company_group_id, template_id,
+month_reference)`: um link por grupo/modelo/mês. Para mandar NPS a dois subgrupos no mesmo mês a
+única saída era cadastrar cada subgrupo como grupo separado — não foi erro de uso, **o sistema
+empurrou para lá** (D-01). Consequência: o fechamento cobra o cliente em pedaços e apaga o desconto
+por volume da tabela progressiva. ⚠️ **A correção DERRUBA a cobrança**: o caso MPozenato + DRossi +
+Gran Belo + Lyam (10 empresas, R$ 12.679.411,83 em ago/2026) sai de R$ 33.500/mês para R$ 21.000 —
+R$ 150 mil a R$ 258 mil por ano num cliente só. O usuário conhece e aceita a direção.
+
+143-01 concluído (T1-T4) — o motor, nada visível. `company_groups.parent_id` (migration aditiva,
+idempotente, `nullable()` antes de `nullOnDelete()` e índice `company_groups_parent_idx` de 25
+chars; o SQL foi compilado contra a gramática **MySQL** e conferido, não só contra o SQLite dos
+testes). `CompanyGroup` ganhou `pai()`/`subgrupos()`/`raiz()`/`raizId()`/`ehSubgrupo()` e a trava de
+UM nível **no `saving()` do model** (não só na tela): recusa apontar para si mesmo, pendurar em quem
+já tem pai e dar pai a quem já é pai — o ciclo `A→B→A` travaria a consolidação num laço infinito.
+`raizId()` é `parent_id ?? id`, **sem query**, porque roda dentro do laço de ~200 empresas (há teste
+medindo `DB::getQueryLog()` vazio). `FechamentoFaixaResolver::degrauDaArvoreDeGrupos()` resolve os
+dois degraus com UMA query e mudou a precedência para **raiz → subgrupo → empresa → serviço**;
+`classificar()` **não foi tocado** (a régua `limite_superior >= faturamento` classifica cobrança
+viva de 171 empresas, e há teste travando isso). `fechamento:consolidar-mes` agrega pela RAIZ, e a
+linha de EMPRESA grava a MESMA chave — foi desvio de Regra 2 além do plano, obrigatório porque
+`VerificarConsolidacaoFechamento:143` casa membro com grupo por essa coluna e chaves diferentes
+fariam toda linha de grupo virar `LINHAS_ORFAS`. Teste do caso real em factory: quatro grupos, 10
+empresas, tabela só na raiz → **UMA** linha de R$ 21.000 (e, sem pai, as mesmas quatro de hoje —
+regressão zero provada). ⛔ **O NPS não sentiu nada**: `nps_group_surveys`, a unicidade dela e
+`NpsGrupoCoberturaService` não foram abertos nem para edição; `companies.company_group_id` continua
+apontando para o subgrupo.
+
+Gate `Phase122|...|Phase143|Quick260909|Quick260910|Quick260911`: **707 testes / 3019 asserções /
+28 errors / 0 failures** — os 28 errors são TODOS `UNIQUE constraint failed: setores.nome` (a
+migration `seed_setor_performance` da outra sessão, alheia, não consertada aqui; conferido bloco a
+bloco: 28 blocos de erro, 28 casando `setores.nome`). 707 − 28 = **679 passando** = 656 do baseline
++ 23 testes novos. **Falhas novas atribuíveis a este plano: 0.** Conferência extra da suíte de NPS
+(`--filter="Nps|NPS"`): 614 testes, 47 errors (todos `setores.nome`) e 4 failures **alheias** —
+hash de token e política de `expires_at` (esperado hoje+7d, obtido fim do mês); os três arquivos
+têm zero referências a `CompanyGroup`/`company_group`, então a causalidade está excluída. Não
+consertadas, reportadas.
+
+Pendências registradas em `143/deferred-items.md` — ⚠️ a de maior risco: `AdminController::
+fechamentoAgregarGruposAoVivo()` e `CompararMensalidadeFechamento` **ainda agrupam por
+`company_group_id` cru**. Inofensivo hoje (ninguém tem pai), mas no dia em que a UI permitir montar
+a árvore a tela mostrará quatro linhas e o comando congelará uma. O plano 143-02 tem de começar por
+aí. Last activity: 2026-09-14 — 143-01 executado (`143-01-SUMMARY.md`). Sem deploy — subagente sem
+acesso a produção/`.env`/`plink`/`pscp`. **A migration do `parent_id` ainda não rodou em produção.**
+
 ## Current Position
 
 Phase: 132 (cutover-sandbox-produ-o-checkpoint-humano-v22-0) — EXECUTING

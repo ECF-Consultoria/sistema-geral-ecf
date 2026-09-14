@@ -2411,6 +2411,37 @@ Plans:
 
 **Ordem de construção:** a máquina de estados (137) é fundação — nada mais tem onde gravar etapa sem ela. Comercial (138) é o primeiro ponto de entrada real na etapa. Administrativo (139) depende de haver empresa chegando em `Aguardando Administrativo` (138) e do grupo Contrato já entregue pela v22.0 (D5). Comunicação (140) monta a mensagem com dado que o checklist administrativo já gera (139). Distribuição+Responsáveis (141) só existe depois do Administrativo concluir e mover a empresa (139). Onboarding (142) depende dos responsáveis estarem definidos (141). Histórico (143) fecha por último porque precisa que todo evento das fases 150-142 já esteja acontecendo para ter o que listar na timeline.
 
+### Phase 143: O grupo de cobrança acima dos subgrupos
+
+**Goal:** Fazer o fechamento cobrar pelo grupo econômico inteiro, sem quebrar o NPS. Hoje alguns
+`company_groups` são, na prática, **subgrupos** — e a cobrança sai fatiada.
+
+**A descoberta que reenquadra a fase:** o pessoal não errou, o sistema empurrou para lá. O link de
+NPS de grupo é `unique(company_group_id, template_id, month_reference)` — **um por grupo, por
+modelo, por mês** — e a cobertura já exclui empresa cuidada por outra pessoa. Para mandar NPS a dois
+subgrupos no mesmo mês, a única saída era cadastrá-los como grupos separados.
+
+**O caso concreto, medido em produção (2026-09-14):** o grupo MPozenato de verdade é
+MPozenato + DRossi + Gran Belo + Lyam — 10 empresas, R$ 12.679.411,83 em agosto, hoje cobradas em
+**quatro** mensalidades que somam **R$ 33.500**. Como um grupo só, cai para **R$ 21.000** (tabela do
+MPozenato, vinda de contrato) ou **R$ 12.000** (as presumidas). A correção **derruba** a cobrança em
+R$ 12.500 a R$ 21.500 por mês — direção que o usuário conhece e aceita.
+
+**A forma (D-03):** `parent_id` em `company_groups`. Os grupos de hoje **ficam com os mesmos ids** e
+viram subgrupos; o fechamento passa a agregar pela **raiz**. NPS não sente nada. Recusada a
+alternativa de grupos próprios do administrativo — a Fase 137 existiu para acabar com as duas listas.
+
+**Falta construir:** a tabela do grupo (`grupo_faixas_faturamento` existe no schema, está **zerada**
+e nunca teve UI) pelos dois caminhos que o usuário definiu — cadastro no administrativo e
+identificação do contrato no Clicksign com conferência humana na tela de match.
+
+**Escala desconhecida por dado:** 145 das 203 empresas estão sem CNPJ, então não dá para achar os
+outros casos automaticamente. A montagem é curadoria humana — a tela precisa resolver sozinha.
+
+Plans: a planejar
+
+---
+
 ### Phase 150: Máquina de estados — os 9 status de `companies.etapa` (v23.0) — ✅ COMPLETA (11/11 — G1+G2+G3+G4+G5+G6 fechados)
 
 **Goal:** Cada empresa carrega uma etapa própria entre os 9 status do §10, gravada e transicionada por um único serviço central, com pendência declarável em paralelo sem nunca sobrescrever a etapa — e as ~500 empresas já cadastradas migram sem quebrar o que a tela "Empresas" de `/companies` mostra hoje.
