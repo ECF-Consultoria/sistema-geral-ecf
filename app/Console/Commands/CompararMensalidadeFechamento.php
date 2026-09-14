@@ -109,6 +109,12 @@ class CompararMensalidadeFechamento extends Command
             ->with([
                 'contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico'),
                 'grupo',
+                // Fase 143 (143-02, T1): `grupo.pai` é obrigatório aqui —
+                // `linhaDeGrupo()` chama `CompanyGroup::raiz()` por grupo para
+                // nomear a linha de cobrança. Sem ele, cada grupo com pai
+                // custaria uma consulta a mais, duas vezes (os dois lados
+                // ANTES e DEPOIS rodam sobre a MESMA coleção).
+                'grupo.pai',
             ])
             ->get();
 
@@ -187,9 +193,20 @@ class CompararMensalidadeFechamento extends Command
 
         $linhasPorEmpresaId = collect($linhasEmpresa);
 
+        // Fase 143 (143-02, T1): a chave de agregação é a RAIZ da árvore de
+        // grupos — a MESMA de `ConsolidarMesFechamento` (Passo 5). Este
+        // comando é a ferramenta de conferência ANTES×DEPOIS que precede a
+        // montagem da árvore em produção (143-CONTEXT): se ele agrupasse por
+        // `company_group_id` cru, mostraria quatro linhas onde a
+        // consolidação congela uma — a conferência que deveria proteger a
+        // decisão é que estaria mentindo.
+        //
+        // ⚠️ Grupo SEM pai É a própria raiz (`raizId()` devolve o próprio id,
+        // sem query): para os 15 grupos de hoje, todos com `parent_id` nulo,
+        // esta linha agrupa exatamente pelas mesmas chaves de antes.
         $gruposMembros = $companies
             ->filter(fn (Company $c) => $c->company_group_id !== null && $linhasPorEmpresaId->has($c->id))
-            ->groupBy('company_group_id');
+            ->groupBy(fn (Company $c) => $c->grupo?->raizId() ?? $c->company_group_id);
 
         $linhasGrupo = [];
 
@@ -208,6 +225,10 @@ class CompararMensalidadeFechamento extends Command
      * de `calcularLado()` (ANTES e DEPOIS) nunca divergirem entre si por
      * acidente — e para não abrir uma QUARTA cópia desta montagem (já são
      * três: consolidação, tela administrativa, e este relatório).
+     *
+     * Fase 143 (143-02): `$groupId` é a RAIZ da árvore, não o
+     * `company_group_id` cru — e `$membros` traz as empresas de TODOS os
+     * subgrupos pendurados nela. Sem pai, raiz === grupo direto e nada muda.
      *
      * @param  Collection<int, Company>  $membros
      * @param  Collection<int, array>  $linhasPorEmpresaId
@@ -239,9 +260,19 @@ class CompararMensalidadeFechamento extends Command
             return $fatB <=> $fatA;
         })->first();
 
+        // Fase 143: a chamada continua recebendo o grupo DIRETO da âncora
+        // (que pode ser um subgrupo) porque `paraGrupo()` já resolve a árvore
+        // por dentro — raiz primeiro, subgrupo depois. Passar a raiz aqui
+        // perderia o 2º degrau quando só o subgrupo tem tabela.
         $faixaGrupo = $ancora->grupo !== null
             ? $this->faixaResolver->paraGrupo($ancora->grupo, $ancora)
             : ($faixaPorEmpresa[$ancora->id] ?? null); // defensivo: nunca deixar de montar a linha
+
+        // Nome da linha de cobrança: o do grupo de COBRANÇA (a raiz), nunca o
+        // do subgrupo da âncora — a linha representa o cliente inteiro, e é
+        // esse nome que a pessoa lê ao aprovar a mudança. Sem pai, `raiz()`
+        // devolve o próprio grupo.
+        $raizDoGrupo = $ancora->grupo?->raiz();
 
         $classificacaoGrupo = ($faixaGrupo !== null && $faturamentoTotal !== null)
             ? $this->faixaResolver->classificar($faturamentoTotal, $faixaGrupo['faixas'])
@@ -260,7 +291,7 @@ class CompararMensalidadeFechamento extends Command
 
         return [
             'company_group_id'   => $groupId,
-            'grupo_name'         => $ancora->grupo?->name,
+            'grupo_name'         => $raizDoGrupo?->name ?? $ancora->grupo?->name,
             'faturamento_total'  => $faturamentoTotal,
             'regua'              => $this->reguaLabel($faixaGrupo),
             'faixa_ordem'        => $classificacaoGrupo['ordem'] ?? null,
