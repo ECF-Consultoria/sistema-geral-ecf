@@ -322,4 +322,69 @@ class CompaniesOnboardingPayloadTest extends TestCase
 
         $this->assertSame(Onboarding::STATUS_RASCUNHO, $onboarding->fresh()->status);
     }
+
+    /**
+     * A coluna da aba Onboarding mostra os DOIS papéis desde 14/09 — antes só
+     * o analista aparecia, e metade da resposta ficava escondida.
+     *
+     * O que se trava aqui é o CONTRATO que ela consome: os dois responsáveis
+     * chegam na listagem, cada um com nome e `avatar_url`. Sem o avatar no
+     * payload a coluna cai nas iniciais para todo mundo sem erro nenhum — foi
+     * o que já aconteceu quando nenhuma projeção trazia a foto.
+     *
+     * @test
+     */
+    public function a_listagem_traz_os_dois_responsaveis_com_rosto(): void
+    {
+        $this->admin();
+        [$company, $onboarding] = $this->empresaComOnboarding();
+
+        $estrategista = User::factory()->create(['avatar_url' => 'avatars/estrat.webp']);
+        $analista = User::factory()->create(['avatar_url' => null]);
+
+        app(OnboardingEngineService::class)->definirResponsaveis($onboarding, $estrategista, $analista);
+
+        $this->get(route('companies.index'))
+            ->assertOk()
+            ->assertInertia(function (AssertableInertia $page) use ($company, $estrategista, $analista) {
+                $linha = $this->linhaDaEmpresa($page->toArray()['props']['companies'], $company->id);
+                $onb = $linha['onboardings'][0];
+
+                $this->assertSame($estrategista->name, $onb['responsavel_estrategista']['name']);
+                $this->assertSame('avatars/estrat.webp', $onb['responsavel_estrategista']['avatar_url']);
+
+                $this->assertSame($analista->name, $onb['responsavel_analista']['name']);
+                // Sem foto é um estado legítimo: a coluna cai nas iniciais.
+                $this->assertArrayHasKey('avatar_url', $onb['responsavel_analista']);
+                $this->assertNull($onb['responsavel_analista']['avatar_url']);
+            });
+    }
+
+    /**
+     * Sem estrategista a chave continua vindo, nula — a coluna escreve "sem
+     * definir" na linha dele em vez de sumir com a linha. Chave ausente faria
+     * o JSX ler `undefined` e desenhar a célula inteira torta.
+     *
+     * @test
+     */
+    public function sem_estrategista_a_chave_vem_nula_e_nao_ausente(): void
+    {
+        $this->admin();
+        [$company, $onboarding] = $this->empresaComOnboarding();
+
+        app(OnboardingEngineService::class)->definirResponsaveis(
+            $onboarding,
+            null,
+            User::factory()->create(),
+        );
+
+        $this->get(route('companies.index'))
+            ->assertOk()
+            ->assertInertia(function (AssertableInertia $page) use ($company) {
+                $onb = $this->linhaDaEmpresa($page->toArray()['props']['companies'], $company->id)['onboardings'][0];
+
+                $this->assertArrayHasKey('responsavel_estrategista', $onb);
+                $this->assertNull($onb['responsavel_estrategista']);
+            });
+    }
 }

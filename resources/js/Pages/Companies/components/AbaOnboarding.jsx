@@ -189,6 +189,35 @@ function ColunaOrdenavel({ campo, atual, aoOrdenar, children }) {
 }
 
 /**
+ * Um responsável da linha: papel, rosto e nome.
+ *
+ * Os DOIS papéis aparecem desde 14/09. Mostrar só o analista escondia metade
+ * da resposta — a distribuição (Fase 154) define os dois, e quem abre a lista
+ * para saber "de quem é esta empresa" precisa dos dois nomes.
+ *
+ * O papel vem escrito em cada linha em vez de virar duas colunas: são poucos
+ * caracteres, e duas colunas custariam largura numa tabela que já rola.
+ */
+function Responsavel({ papel, pessoa }) {
+    return (
+        <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-[10px] uppercase tracking-wide text-white/30 w-[42px] shrink-0">
+                {papel}
+            </span>
+
+            {pessoa ? (
+                <>
+                    <AvatarUsuario nome={pessoa.name} foto={pessoa.avatar_url} size={20} />
+                    <span className="text-[12.5px] text-white/80 truncate">{pessoa.name}</span>
+                </>
+            ) : (
+                <span className="text-[12.5px] text-white/25">sem definir</span>
+            )}
+        </div>
+    );
+}
+
+/**
  * Modal de responsáveis — estrategista e analista (R-01).
  *
  * Qualquer um dos dois já inicia o onboarding (R-02); por isso o botão fica
@@ -461,10 +490,19 @@ function CockpitOnboardings({    companies,
         [companies]
     );
 
-    /** Opções dos selects derivadas do que existe de fato — nunca hardcoded. */
-    const opcoesAnalistas = useMemo(() => {
+    /**
+     * Opções dos selects derivadas do que existe de fato — nunca hardcoded.
+     *
+     * Desde 14/09 a lista junta os DOIS papéis. Com a coluna mostrando
+     * estrategista e analista, um filtro que só conhecesse o analista deixaria
+     * de encontrar linhas visivelmente na tela.
+     */
+    const opcoesResponsaveis = useMemo(() => {
         const mapa = new Map();
-        linhas.forEach((l) => { if (l.analista) mapa.set(l.analista.id, l.analista); });
+        linhas.forEach((l) => {
+            if (l.analista) mapa.set(l.analista.id, l.analista);
+            if (l.estrategista) mapa.set(l.estrategista.id, l.estrategista);
+        });
         return [...mapa.values()].sort((a, b) => a.name.localeCompare(b.name));
     }, [linhas]);
 
@@ -493,7 +531,11 @@ function CockpitOnboardings({    companies,
                 if (!alvo.includes(q)) return false;
             }
 
-            if (analistaId && String(l.analista?.id) !== analistaId) return false;
+            // Vale para QUALQUER um dos dois papéis: a pessoa escolhida atende
+            // esta empresa, seja conduzindo ou como estrategista.
+            if (analistaId
+                && String(l.analista?.id) !== analistaId
+                && String(l.estrategista?.id) !== analistaId) return false;
             if (servicoNome && l.servico?.nome !== servicoNome) return false;
 
             if (limiteDias !== null) {
@@ -709,9 +751,9 @@ function CockpitOnboardings({    companies,
                     ))}
                 </select>
 
-                <select value={analistaId} onChange={comReset((e) => setAnalistaId(e.target.value))} className={classeSelect} title="Analista">
-                    <option value="">Analista · Todos</option>
-                    {opcoesAnalistas.map((u) => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                <select value={analistaId} onChange={comReset((e) => setAnalistaId(e.target.value))} className={classeSelect} title="Responsável — analista ou estrategista">
+                    <option value="">Responsável · Todos</option>
+                    {opcoesResponsaveis.map((u) => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
                 </select>
 
                 <select value={servicoNome} onChange={comReset((e) => setServicoNome(e.target.value))} className={classeSelect} title="Produto">
@@ -751,14 +793,19 @@ function CockpitOnboardings({    companies,
                     {/* Scroll horizontal controlado: em tela estreita a tabela
                         rola dentro do card, sem empurrar o layout da página. */}
                     <div className="overflow-x-auto">
-                        <Table className="min-w-[1080px]">
+                        <Table className="min-w-[1140px]">
                             <TableHeader>
                                 <TableRow>
                                     <ColunaOrdenavel campo="empresa" atual={ordem} aoOrdenar={ordenarPor}>Empresa</ColunaOrdenavel>
                                     <ColunaOrdenavel campo="situacao" atual={ordem} aoOrdenar={ordenarPor}>Status</ColunaOrdenavel>
                                     <ColunaOrdenavel campo="progresso" atual={ordem} aoOrdenar={ordenarPor}>Progresso</ColunaOrdenavel>
                                     <ColunaOrdenavel campo="atividades" atual={ordem} aoOrdenar={ordenarPor}>Atividades</ColunaOrdenavel>
-                                    <ColunaOrdenavel campo="analista" atual={ordem} aoOrdenar={ordenarPor}>Analista responsável</ColunaOrdenavel>
+                                    {/* Ordena pelo ANALISTA, que é quem conduz o dia a dia.
+                                        Ordenar por dois nomes ao mesmo tempo não
+                                        existe — e o estrategista costuma ser o mesmo
+                                        para muitas empresas, o que faria a ordenação
+                                        por ele quase não mexer na lista. */}
+                                    <ColunaOrdenavel campo="analista" atual={ordem} aoOrdenar={ordenarPor}>Responsáveis</ColunaOrdenavel>
                                     <ColunaOrdenavel campo="chegou" atual={ordem} aoOrdenar={ordenarPor}>Data de entrada</ColunaOrdenavel>
                                     <TableHead>Próxima ação</TableHead>
                                     <TableHead className="text-right">Ações</TableHead>
@@ -798,18 +845,10 @@ function CockpitOnboardings({    companies,
                                         </TableCell>
 
                                         <TableCell>
-                                            {l.analista ? (
-                                                <div className="flex items-center gap-2 min-w-0">
-                                                    <AvatarUsuario
-                                                        nome={l.analista.name}
-                                                        foto={l.analista.avatar_url}
-                                                        size={24}
-                                                    />
-                                                    <span className="text-[13px] text-white/80 truncate">{l.analista.name}</span>
-                                                </div>
-                                            ) : (
-                                                <span className="text-white/30 text-[13px]">Sem analista</span>
-                                            )}
+                                            <div className="space-y-1 min-w-0">
+                                                <Responsavel papel="Estrat." pessoa={l.estrategista} />
+                                                <Responsavel papel="Analista" pessoa={l.analista} />
+                                            </div>
                                         </TableCell>
 
                                         <TableCell className="text-[13px] text-white/70 whitespace-nowrap">
