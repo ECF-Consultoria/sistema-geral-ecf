@@ -48,7 +48,15 @@ import { rotaDoPortal } from '@/lib/rotasDoPortal';
 // antes destes), e os contatos vêm logo em seguida. O motivo é o mesmo dos
 // dois lados do sistema — quem conduz o processo somos nós: marcamos a data,
 // dizemos quem precisa estar, e só então pedimos os acessos.
-const ETAPAS_ORDEM = ['responsaveis', 'acessos', 'mapeamento', 'agendamento', 'administrativo', 'outros'];
+// A ordem em que o cliente encontra os blocos. `publicidade` e `adman`
+// entraram em 14/09, junto com os itens que passaram a ser conduzidos na
+// reunião — sem elas os cinco "explicados" SUMIAM da tela, e o progresso
+// contava 10 enquanto apareciam 4. Era exatamente a armadilha que o comentário
+// abaixo previa.
+const ETAPAS_ORDEM = [
+    'responsaveis', 'acessos', 'mapeamento', 'publicidade', 'adman',
+    'agendamento', 'administrativo', 'outros',
+];
 
 const ETAPA_LABELS = {
     responsaveis:   { titulo: 'Seus contatos',            ajuda: 'Quem devemos acionar no dia a dia e quem participa das reuniões.' },
@@ -1008,10 +1016,27 @@ export default function Publico({
     // Blocos na ordem fixa de ETAPAS_ORDEM, preservando dentro de cada um a
     // ordem que o backend já mandou (`ordem` do passo). Bloco vazio não vira
     // cabeçalho órfão.
+    // ⚠️ A REDE contra a armadilha acima. `ETAPAS_ORDEM` é espelho MANUAL de
+    // `OnboardingPasso::ETAPAS` — não há tipo compartilhado entre PHP e JS. Até
+    // 14/09, etapa que existisse no backend e faltasse aqui fazia o passo sumir
+    // da tela sem erro nenhum, porque o filtro só casava igualdade exata. Foi o
+    // que aconteceu com `publicidade` e `adman`.
+    //
+    // Agora o que não casa com etapa nenhuma conhecida cai no último bloco em
+    // vez de desaparecer. O sintoma passa a ser "apareceu fora de ordem", que
+    // se vê; o anterior era "não apareceu", que só se descobre conferindo
+    // contagem contra tela.
+    const etapasConhecidas = new Set(ETAPAS_ORDEM);
+    const etapaDoPasso = (p) => {
+        const etapa = p.etapa ?? 'outros';
+
+        return etapasConhecidas.has(etapa) ? etapa : 'outros';
+    };
+
     const blocos = ETAPAS_ORDEM
         .map((etapa) => ({
             etapa,
-            itens: passos.filter((p) => (p.etapa ?? 'outros') === etapa),
+            itens: passos.filter((p) => etapaDoPasso(p) === etapa),
             // O mapeamento da conta É a etapa `mapeamento` — vive DENTRO do
             // bloco dela. Antes era um segundo bloco logo abaixo, com o mesmo
             // título, e a tela mostrava "Mapeamento da conta" duas vezes
