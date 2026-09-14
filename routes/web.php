@@ -208,6 +208,9 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->name('portal.auth.onboarding.relatorio');
     Route::put('/onboarding/investimento', [OnboardingPublicoController::class, 'salvarInvestimentoPortal'])
         ->name('portal.auth.onboarding.investimento');
+    // A coleta gasta treze chamadas à API do Mercado Livre — só a equipe.
+    Route::post('/onboarding/fotografia', [OnboardingPublicoController::class, 'tirarFotografia'])
+        ->name('portal.auth.onboarding.fotografia');
     Route::get('/onboarding/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
         ->name('portal.auth.onboarding.conectar-ml');
 

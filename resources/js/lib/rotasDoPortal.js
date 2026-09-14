@@ -62,6 +62,10 @@ const ROTAS = {
         porToken: null,
         autenticada: 'portal.auth.onboarding.investimento',
     },
+    'onboarding.fotografia': {
+        porToken: null,
+        autenticada: 'portal.auth.onboarding.fotografia',
+    },
 };
 
 /**

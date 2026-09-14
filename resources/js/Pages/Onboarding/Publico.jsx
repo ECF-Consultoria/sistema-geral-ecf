@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import PessoasDoCliente from '@/Components/Onboarding/PessoasDoCliente';
+import FotografiaDaConta from '@/Components/Onboarding/FotografiaDaConta';
 import { router, usePage } from '@inertiajs/react';
 import {
     AlertTriangle, CalendarDays, Check, CheckCircle2, ExternalLink, Lock,
@@ -994,6 +995,7 @@ export default function Publico({
     pessoas = {},
     responsaveis = [],
     blocos_operacao = [],
+    fotografia = null,
 }) {
     // Quem está operando. Vem das props da PÁGINA, do mesmo lugar que o
     // layout lê para decidir a faixa âmbar — nunca de uma prop própria, senão
@@ -1156,6 +1158,12 @@ export default function Publico({
                             porque são registro do que foi conversado, não tarefa
                             a fazer — e para o cliente sozinho eles só aparecem
                             quando têm conteúdo. */}
+                        {/* A Fotografia abre os blocos: é o retrato sobre o
+                            qual a reunião acontece, e substituiu os dois itens
+                            que diziam "como está a conta" (Métricas da conta e
+                            a ficha de mapeamento). */}
+                        <FotografiaDaConta fotografia={fotografia} token={token} ehEquipe={ehEquipe} />
+
                         <BlocoContatosPortal pessoas={pessoas} token={token} ehEquipe={ehEquipe} />
 
                         {blocos_operacao.map((bloco) => (

@@ -95,6 +95,7 @@ class OnboardingPublicoController extends Controller
             ],
             'passos'   => $this->linkService->passosDoPortal($company),
             'blocos_operacao' => $this->blocosDeOperacao($company),
+            'fotografia' => app(\App\Services\Onboarding\FotografiaContaService::class)->paraPortal($company),
             // Agrupadas por papel para a tela não precisar filtrar. Deduplicadas
             // por (papel, nome, e-mail): a mesma pessoa é gravada em cada
             // onboarding da empresa, e o cliente não tem por que ver o próprio
@@ -406,6 +407,38 @@ class OnboardingPublicoController extends Controller
             ->log('Investimento registrado no portal');
 
         return back()->with('success', 'Investimento registrado.');
+    }
+
+    /**
+     * Tira uma Fotografia da Conta agora (14/09).
+     *
+     * Só a equipe: a coleta faz treze chamadas à API do Mercado Livre, e um
+     * botão anônimo seria um jeito de qualquer um com o link queimar a cota da
+     * conta do cliente.
+     *
+     * Nunca devolve erro de servidor quando o ML falha — o service grava a
+     * linha com `erro` e a tela conta o que houve. Botão que some com um 500
+     * genérico não diz nada a quem está na reunião.
+     */
+    public function tirarFotografia(Request $request, ?string $token = null)
+    {
+        $link = $this->linkDaRequisicao($token);
+        $membro = $this->exigirEquipe($token);
+
+        $foto = app(\App\Services\Onboarding\FotografiaContaService::class)
+            ->coletar($link->company, $membro);
+
+        activity('onboarding')
+            ->performedOn($link)
+            ->withProperties(['ator' => $membro->name, 'erro' => $foto->erro])
+            ->log('Fotografia da Conta coletada no portal');
+
+        return back()->with(
+            $foto->erro ? 'error' : 'success',
+            $foto->erro
+                ? 'Não consegui falar com o Mercado Livre: '.$foto->erro
+                : 'Fotografia atualizada.'
+        );
     }
 
     public function desmarcarPasso(Request $request, ?string $token = null)
@@ -765,6 +798,7 @@ class OnboardingPublicoController extends Controller
             ],
             'passos'   => $this->linkService->passosDoPortal($company),
             'blocos_operacao' => $this->blocosDeOperacao($company),
+            'fotografia' => app(\App\Services\Onboarding\FotografiaContaService::class)->paraPortal($company),
             'pessoas'  => OnboardingContato::whereIn(
                     'onboarding_id',
                     Onboarding::where('company_id', $company->id)->naoConcluido()->pluck('id')
