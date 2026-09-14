@@ -1327,7 +1327,7 @@ query state.advance-plan` NÃO foi executado nesta sessão (mesma instrução ex
 142-01/142-02 acima) — este parágrafo é a única alteração de `STATE.md`. Sem deploy — subagente
 sem acesso a produção/`.env`/`plink`/`pscp`; nenhuma migration neste plano.
 
-## Posição paralela — Fase 143 (Grupo de cobrança acima dos subgrupos) — EM EXECUÇÃO (1/? planos)
+## Posição paralela — Fase 143 (Grupo de cobrança acima dos subgrupos) — EM EXECUÇÃO (2/? planos)
 
 ⚠️ **Mesma disciplina dos blocos 135-142 acima:** Fase 143 fora de milestone, rodando em paralelo
 nesta árvore compartilhada (a outra sessão está na v23.0, fases 150-157). `## Current Position`
@@ -1373,12 +1373,73 @@ hash de token e política de `expires_at` (esperado hoje+7d, obtido fim do mês)
 têm zero referências a `CompanyGroup`/`company_group`, então a causalidade está excluída. Não
 consertadas, reportadas.
 
-Pendências registradas em `143/deferred-items.md` — ⚠️ a de maior risco: `AdminController::
-fechamentoAgregarGruposAoVivo()` e `CompararMensalidadeFechamento` **ainda agrupam por
-`company_group_id` cru**. Inofensivo hoje (ninguém tem pai), mas no dia em que a UI permitir montar
-a árvore a tela mostrará quatro linhas e o comando congelará uma. O plano 143-02 tem de começar por
-aí. Last activity: 2026-09-14 — 143-01 executado (`143-01-SUMMARY.md`). Sem deploy — subagente sem
-acesso a produção/`.env`/`plink`/`pscp`. **A migration do `parent_id` ainda não rodou em produção.**
+Pendências do 143-01 registradas em `143/deferred-items.md` — as duas de maior risco
+(`fechamentoAgregarGruposAoVivo()` e `CompararMensalidadeFechamento` agrupando por
+`company_group_id` cru) foram **fechadas pelo 143-02**, abaixo.
+
+143-02 concluído (T1-T3) — a agregação pela raiz em TODO lugar, e a prévia do impacto. Ainda sem
+tela (é o 143-03). **T1:** comecei pelo `CompararMensalidadeFechamento`, que é a ferramenta de
+conferência ANTES×DEPOIS da qual a aprovação em produção depende — se ela agrupa errado, a
+conferência que deveria proteger o usuário mostra o número errado. Junto entraram
+`fechamentoAgregarGruposAoVivo()` e **mais dois pontos que o plano não nomeava** (desvios de Regra
+2): o ramo **CONGELADO** (`fechamentoAgregarGruposCongelados()`), que indexa
+`fechamento_grupo_snapshots` pela RAIZ desde o 143-01 — agrupando por subgrupo, `$s` viria nulo e a
+tela exibiria linhas de grupo **em branco** numa competência fechada, que é justamente quando as
+pessoas olham; e `relatorioVinculadasDoGrupo()`, o PDF individual, que diria "DRossi, 4 empresas"
+no mês em que a tela e a cobrança falam de "MPozenato, 10". ⚠️ **A armadilha mais silenciosa da
+entrega:** os eager loadings do `AdminController` selecionam colunas explícitas
+(`grupo:id,name,color`) e `parent_id` não estava na lista — sem a coluna o Eloquent não a traz,
+`raizId()` cai no `?? id` e devolve o SUBGRUPO sem erro nenhum, e o teste de regressão-zero passaria
+feliz porque sem pai os dois coincidem. Corrigido nos quatro pontos de carregamento, com comentário.
+
+**T2:** `SimuladorGrupoCobrancaService::simular($grupoIds, $paiId, $mes)` — a prévia **PURA**
+(não grava snapshot, nem `parent_id`, nem log, nem a flag). A árvore hipotética é montada **em
+memória**: os `CompanyGroup` são CLONADOS (nunca mutados — model sujo circulando pela requisição
+viraria uma gravação acidental da hierarquia que ninguém aprovou), recebem o `parent_id` hipotético
+e a relação `pai` por `setRelation()`; as `Company` são clonadas com a relação `grupo` trocada. ⛔ A
+régua NÃO foi reimplementada: `paraGrupo()`/`classificar()` como estão, e a precedência de cobrança
+é a mesma do Passo 5 de `ConsolidarMesFechamento` (há teste travando que a chave de agregação e o
+faturamento da tela batem com o que o comando congela). Cada linha diz **de onde vem a tabela**
+(`tabela_origem`, `procedencia` manual/contrato/presumida_servico, `tabela_grupo_nome`,
+`tabela_herdada_de_nome`) e a composição (`subgrupos[]`) — dois testes cobrem exatamente os
+R$ 9.000/mês do caso real: âncora na raiz com tabela de **contrato** → R$ 21.000; âncora no subgrupo
+com tabela **presumida** → R$ 12.000. Caso MPozenato em factory: **4 linhas / R$ 33.500 → 1 linha /
+R$ 21.000, delta −R$ 12.500** (e o inverso ao despendurar).
+
+**T3:** três rotas no grupo `admin.contratos` existente — `grupos.hierarquia.previa` (GET, JSON,
+leitura pura), `.pendurar` (POST) e `.despendurar` (DELETE). **Nenhuma permissão nova** (D-09 da
+Fase 131): teste prova que quem recebe `admin.contratos` por setor pendura, e quem não tem leva 403
+nas três. A recusa vem do `saving()` do model (143-01) convertida em `ValidationException` — a
+mensagem pt-BR chega à tela sem tradução, e **nenhuma cópia da regra vive na rota** (4 testes: si
+mesmo, pai que já tem pai, grupo que já é pai, ciclo `A→B→A`). Transação: recusa no meio do lote não
+deixa metade pendurada nem escreve trilha. Trilha em `activity_log`
+(`log_name='grupo_cobranca_hierarquia'`, molde `GravarTabelaEmpresaService`): quem fez, antes/depois
+com `parent_id`, o pai, a competência — **e a prévia do impacto calculada ANTES da escrita** (depois
+seria o retrato do mundo já mudado, inútil para auditar a decisão). Competência padrão da prévia é o
+**mês anterior**, o último mês-calendário completo — o mês corrente ainda soma e cobraria a menos.
+
+**Regressão zero sem pai** provada em três caminhos independentes com o mesmo fixture: tela ao vivo
+(4 linhas, cada subgrupo com a sua soma), comparativo (4 linhas comparadas) e simulador (`antes ===
+depois`, `delta = 0.0`). ⛔ **O NPS não sentiu nada**: `NpsGrupoCoberturaService`, `NpsGroupSurvey` e
+a migration de `nps_group_surveys` não foram abertos; nenhuma empresa é remanejada de grupo (teste
+explícito na rota de pendurar).
+
+Gate `Phase122|...|Phase143|Quick260909|Quick260910|Quick260911` (exit capturado ANTES do pipe,
+`EXIT=2`): **736 testes / 3205 asserções / 28 errors / 0 failures** — os 28 errors são TODOS
+`UNIQUE constraint failed: setores.nome` (migration `seed_setor_performance` da outra sessão,
+alheia, não consertada; conferido bloco a bloco: 28 blocos, 28 casando). 736 − 28 = **708 passando**
+= 679 do 143-01 + **29 testes novos**. **Falhas novas atribuíveis a este plano: 0.** Suíte de NPS
+(`--filter="Nps|NPS"`): **614 testes / 47 errors / 4 failures — idêntico, número por número, ao
+baseline do 143-01**; as 4 failures são as mesmas já documentadas lá (Phase119 ×2, Phase31, Phase69),
+alheias. **Nenhum teste de NPS mudou de resultado.**
+
+Pendências restantes em `143/deferred-items.md` (itens 3, 5, 6 e 7): composição por subgrupo não é
+histórica no snapshot; as props do fechamento ainda não expõem `subgrupos[]`; a prévia é de uma
+competência só; e `fechamento:consolidar-mes` não distingue "faixa mudou por composição" de "faixa
+mudou por desempenho". Last activity: 2026-09-14 — 143-02 executado (`143-02-SUMMARY.md`), commits
+`d22ae486`, `ef8cb50e`, `f66214cf`. Sem deploy — subagente sem acesso a produção/`.env`/`plink`/
+`pscp`. **A migration do `parent_id` continua sem rodar em produção, e os 15 grupos seguem com
+`parent_id` nulo — nada mudou de cobrança nesta entrega.**
 
 ## Current Position
 
