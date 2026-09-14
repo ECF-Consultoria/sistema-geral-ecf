@@ -21,9 +21,9 @@ use App\Services\Metrics\UnifiedMetricsDto;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 use ReflectionMethod;
+use Tests\Concerns\FakeAdmanMargemDaFixture;
 use Tests\TestCase;
 
 /**
@@ -57,6 +57,7 @@ use Tests\TestCase;
 class DesempenhoScoreServiceTest extends TestCase
 {
     use RefreshDatabase;
+    use FakeAdmanMargemDaFixture;
 
     /**
      * Stub do provider factory bindado no container no setUp.
@@ -110,18 +111,24 @@ class DesempenhoScoreServiceTest extends TestCase
         $this->providerStub = new DesempenhoScoreServiceTestProviderStub();
         $this->app->instance(MetricsProviderFactory::class, $this->providerStub);
 
-        // Fase 102 (fix plan-checker — BLOCKER) — ISOLAMENTO HTTP OBRIGATÓRIO:
-        // computeVarMargem() passa a delegar a AdmanMetricDiffService::compute(),
-        // que faz HTTP real (fetchPerformance + fetchAccountMetricsDetailedCached)
-        // por empresa QUANDO ela tem adman_account_id preenchido.
-        // Http::preventStrayRequests() falha ALTO se algum request escapar do
-        // fake abaixo; o fake "sem .diff" força calculated_fallback
-        // DETERMINÍSTICO (o golden vem do fixture local, nunca de prod).
-        Http::preventStrayRequests();
-        Http::fake([
-            '*/performance/*'       => Http::response([], 404),
-            '*/accounts/*/metrics*' => Http::response([], 404),
-        ]);
+        // ISOLAMENTO HTTP OBRIGATÓRIO — `Http::preventStrayRequests()` falha
+        // ALTO se algum request escapar do fake.
+        //
+        // Quick 260914-ly9 (2026-09-14) — o fake "sem .diff" FOI SUBSTITUÍDO.
+        // O comentário que vivia aqui (commit c270a714, 20/07) dizia que o 404
+        // forçava o `calculated_fallback` local DETERMINÍSTICO da margem. Essa
+        // premissa foi revogada 4 dias depois pelo hotfix `a413e823` (24/07):
+        // a margem % virou "nativo-ou-null" e `fallbackMargemPct()` virou
+        // código morto. Fakear 404 deixou de exercitar o fallback e passou a
+        // exercitar apenas a AUSÊNCIA de margem — 11 testes desta suíte e da
+        // Phase110 caíram por isso, sem nenhum defeito de cálculo.
+        //
+        // O stub abaixo devolve `percentageMargin {value,diff,prev}` DERIVADO
+        // das mesmas linhas de `adman_metrics` que a fixture semeia — ver
+        // `Tests\Concerns\FakeAdmanMargemDaFixture`. O faturamento continua
+        // vindo do fallback local (`/performance/*` segue 404), então todos os
+        // goldens de `var_faturamento_pct` permanecem intocados.
+        $this->fakeAdmanComMargemDaFixture();
 
         // Setor Performance + cargos analista/estrategista — fonte canônica
         // do cargo do user (users.role é legacy; padrão das quicks 260610-f69).
@@ -560,17 +567,47 @@ class DesempenhoScoreServiceTest extends TestCase
     // ─── DESEMP-01 · Fixture Carlos — âncora bloqueante ─────────────────────
 
     #[Test]
-    public function test_fixture_carlos_retorna_nota_4_42_basico(): void
+    public function test_fixture_carlos_nota_oficial_3_72_sem_bonus_e_legado_4_42(): void
     {
-        // DESEMP-01 / Fase 102 (BON-01/02/03) — contra regressão silenciosa.
-        // Se este teste quebra, é sinal de que a matemática da engine v2
-        // divergiu da spec OU a integração com MetricPeriodResolver/
-        // AdmanMetricDiffService regrediu.
+        // DESEMP-01 — âncora bloqueante do motor de bonificação. Se este teste
+        // quebra, é sinal de que a matemática da engine divergiu da spec OU a
+        // integração com MetricPeriodResolver/AdmanMetricDiffService regrediu.
         //
-        // RECALIBRAÇÃO Fase 102: o golden NÃO É MAIS 4.08 (v17, baseline
-        // calendário + margem R$ absoluta). A baseline de mês fechado agora é
-        // janela-de-mesmo-tamanho e var_margem_pct vem do percentageMargin da
-        // Adman — aritmética completa no docblock de criarCarlosCompleto().
+        // ═══ DUAS NOTAS, DUAS GRANDEZAS — leia antes de "corrigir" qualquer
+        //     um dos dois goldens (quick 260914-ly9, 2026-09-14) ═══
+        //
+        // Este teste vigiava `nota_final` esperando 4,42. Desde 2026-08-05 o
+        // 4,42 deixou de ser a nota oficial e passou a ser `nota_final_legado`
+        // — METADADO de auditoria. A âncora do módulo que paga bônus estava
+        // olhando para o número errado havia mais de um mês, e o teste não
+        // acusava porque falhava antes, numa asserção de margem.
+        //
+        // Os DOIS números estão certos, e medem coisas diferentes:
+        //
+        //  `nota_final_legado` (4,42) — método antigo: aplica a régua UMA VEZ
+        //     sobre a % AGREGADA da carteira, e a margem ali é a variação
+        //     RELATIVA (`componentes.var_margem_pct`, o `.diff` nativo da
+        //     Adman). +4,50% relativo cai na faixa ">4%" → 5 pontos.
+        //     (4,25 + 4 + 5) / 3 = 4,4167 → 4,42.
+        //
+        //  `nota_final` (3,72) — método OFICIAL desde 2026-08-05
+        //     (`computeNotaFinalPorIndicador()` sobre `empresasScore`): aplica
+        //     a régua LOJA A LOJA e promedia depois, e a margem ali é em
+        //     PONTOS PERCENTUAIS (`margem_var_pp` = `diff_pp`, 20,90% − 20,00%
+        //     = +0,90 p.p.). A MESMA régua dá 3 pontos a +0,90 p.p.
+        //     (4,1667 + 4 + 3) / 3 = 3,7222 → 3,72.
+        //
+        // Não é bug nem regressão: é a decisão travada EMPS-03 / D2 da v21.0
+        // (`CompanyScoreService.php:555`), e o §0 do
+        // `.planning/learnings/desempenho-bonificacao.md` ("a nota mudou de
+        // MÉTODO em 2026-08-05") explica por quê. Régua-da-média ≠
+        // média-das-réguas. Quem for mexer aqui: mudar `nota_final` muda QUEM
+        // RECEBE BÔNUS; `nota_final_legado` não decide nada.
+        //
+        // O NPS também difere entre os dois caminhos pelo mesmo motivo: o
+        // legado promedia as 4 respostas ([5,4,4,4] → 4,25), o oficial
+        // promedia POR LOJA (empresa A tem duas respostas, 5 e 4 → 4,5; B e C
+        // têm 4) → (4,5 + 4 + 4) / 3 = 4,1667.
         $carlos = $this->criarCarlosCompleto();
 
         /** @var DesempenhoScoreService $service */
@@ -583,20 +620,37 @@ class DesempenhoScoreServiceTest extends TestCase
         $this->assertEqualsWithDelta(3.00, $result['componentes']['var_faturamento_pct'], 0.001,
             'Var faturamento Carlos permanece +3.00% — fixture uniforme, ratio independe do comprimento da janela.');
         $this->assertEqualsWithDelta(4.50, $result['componentes']['var_margem_pct'], 0.01,
-            'Var margem (Fase 102 · BON-03): (20,90%-20,00%)/20,00%×100 = +4,50% (percentageMargin, não mais R$).');
+            'Var margem RELATIVA (Fase 102 · BON-03): (20,90%-20,00%)/20,00%×100 = +4,50% (percentageMargin, não mais R$).');
+        $this->assertEqualsWithDelta(0.90, $result['componentes']['var_margem_pp'], 0.01,
+            'Var margem em PONTOS PERCENTUAIS: 20,90% − 20,00% = +0,90 p.p. — a MESMA fixture, outra grandeza. '
+            .'É este número (e não os +4,50% relativos) que alimenta a nota oficial.');
         $this->assertNull($result['componentes']['absenteismo_pct'],
             'Absenteísmo sempre null nesta phase (DESEMP-06).');
 
-        // Nota final — âncora RECALIBRADA pela régua nova (Fase 102).
-        // Cálculo: NPS 4.25 + régua_fat(+3%)=4pts + régua_margem(+4.5%)=5pts
-        //          → média = (4.25 + 4 + 5) / 3 = 4.4167 → round(2) = 4.42.
-        $this->assertEqualsWithDelta(4.42, $result['nota_final'], 0.01,
-            'Nota final Carlos = 4.42 (NPS 4.25 + régua_fat 4 + régua_margem 5 → média) — NOVO, não 4.08.');
+        // ── A NOTA OFICIAL — a que define faixa de bônus ──────────────────────
+        // Pontos por indicador (média das réguas por loja): NPS 4,1667 +
+        // faturamento 4 + margem 3 (régua sobre +0,90 p.p.) → 3,7222 → 3,72.
+        $this->assertEqualsWithDelta(4.1667, $result['pontos_componentes']['nps'], 0.001,
+            'Pontos de NPS por loja: (4,5 + 4 + 4)/3 = 4,1667 — não é o nps_medio 4,25 do legado.');
+        $this->assertSame(4.0, $result['pontos_componentes']['faturamento'],
+            'Pontos de faturamento: +3,00% em todas as 3 lojas → régua 4 pts em cada → média 4,0.');
+        $this->assertSame(3.0, $result['pontos_componentes']['margem'],
+            'Pontos de margem: +0,90 p.p. em todas as 3 lojas → régua 3 pts em cada → média 3,0. '
+            .'É AQUI que a nota oficial se separa do legado (que pontuou 5 com os +4,50% relativos).');
 
-        // Classificação — faixa básico ([4.00, 4.49]) — mesma faixa da v17,
-        // número interno diferente.
-        $this->assertSame('basico', $result['faixa_bonus'],
-            'Faixa Carlos permanece basico (4.42 dentro de [4.00, 4.49]).');
+        $this->assertEqualsWithDelta(3.72, $result['nota_final'], 0.01,
+            'NOTA OFICIAL Carlos = 3,72 — (4,1667 + 4 + 3)/3. É a nota que decide bônus.');
+        $this->assertSame('sem_bonus', $result['faixa_bonus'],
+            'Faixa OFICIAL = sem_bonus (3,72 está abaixo da fronteira de 4,00 do basico).');
+
+        // ── O metadado de auditoria — NÃO decide bônus ────────────────────────
+        $this->assertEqualsWithDelta(4.42, $result['nota_final_legado'], 0.01,
+            'nota_final_legado Carlos = 4,42 (NPS 4,25 + régua_fat 4 + régua_margem 5 sobre a % RELATIVA). '
+            .'Metadado de auditoria — se algum dia este número voltar a aparecer como `nota_final`, é regressão.');
+        $this->assertNotEqualsWithDelta($result['nota_final_legado'], $result['nota_final'], 0.01,
+            'As duas notas NÃO podem coincidir nesta fixture: é justamente a divergência entre variação '
+            .'relativa e pontos percentuais que a âncora existe para vigiar.');
+
         $this->assertFalse($result['sem_carteira']);
         $this->assertFalse($result['faixa_promovida']);
         $this->assertSame(3, $result['empresas_carteira']);
@@ -907,27 +961,50 @@ class DesempenhoScoreServiceTest extends TestCase
     public function test_var_margem_nao_inverte_sinal_quando_janela_atual_tem_dias_finais_sem_margem(): void
     {
         // Regressão · bug "Tomelin Aramados" (audit-ranking-margem-tomelin,
-        // 2026-07-10): mês EM CURSO, Adman atrasa profitMargin vs revenue —
-        // últimos dias da janela atual chegam com contribution_margin NULL
-        // (revenue presente). Sem o fix, SUM(margem) da janela atual (só 5
-        // dos 9 dias) era comparado contra a janela anterior COMPLETA (9
-        // dias), invertendo o sinal da variação (real: melhora diária de
-        // +50%; sem fix: aparecia como queda de ~-16,67%).
+        // 2026-07-10): mês EM CURSO, o sync local atrasa a margem vs o
+        // faturamento — os últimos dias da janela atual chegam com
+        // `contribution_margin` NULL (revenue presente). Sem proteção, a
+        // margem de 5 dos 9 dias era comparada contra a janela anterior
+        // COMPLETA (9 dias), invertendo o sinal da variação (real: melhora de
+        // +50% / +5 p.p.; sem proteção: aparecia como queda).
         //
-        // "Agora" congelado em 09/07 10:00 → mês de referência (julho) fica
-        // EM CURSO, janela atual = dia 1..9, janela anterior = dia 1..9 de
-        // junho (mesmo range relativo) — replica exatamente o cenário real.
+        // ═══ O QUE ESTE TESTE PROVA HOJE (quick 260914-ly9, 2026-09-14) ═══
+        // Ele vigiava `var_margem_pct` esperando +50,00%. Dois fatos mudaram:
+        //
+        //  1. O guard local que ele exercitava (`somasComGuards` aplicado à
+        //     margem, via `fallbackMargemPct`) virou CÓDIGO MORTO com o
+        //     hotfix `a413e823` (2026-07-24) — a margem % passou a ser
+        //     "nativo-ou-null" e nunca mais nasce de soma local. Continuar
+        //     cobrando aquele número seria cobrar um caminho que não existe.
+        //  2. Em mês EM CURSO, `var_margem_pct` (variação RELATIVA) é `null`
+        //     POR DESIGN desde `3e6d0eab` (2026-08-10): o ramo
+        //     `adman_janela_baseline` compara a margem % da janela atual
+        //     contra a da JANELA BASELINE do período, ambas lidas da Adman, e
+        //     expõe o resultado em PONTOS PERCENTUAIS (`diff_pp`), não em %
+        //     relativa. Ver `.planning/learnings/desempenho-bonificacao.md`
+        //     §0.00(b) — o `prev` nativo aponta para a janela imediatamente
+        //     anterior, e aceitá-lo daria o p.p. errado.
+        //
+        // O invariante do bug continua vigiado, na grandeza que hoje alimenta
+        // a nota: a janela atual vale 15,00% (margem 150×5 sobre faturamento
+        // 1.000×5 dos MESMOS dias) contra 10,00% da baseline (100×9 sobre
+        // 1.000×9) → **+5,00 p.p., positivo**. Se os dias finais sem margem
+        // voltassem a contaminar o denominador (margem de 5 dias dividida
+        // pelo faturamento de 9), a janela atual valeria 8,33% e o resultado
+        // seria **−1,67 p.p.** — negativo. A asserção de sinal abaixo
+        // discrimina exatamente esses dois mundos.
+        //
+        // "Agora" congelado em 09/07 10:00 → julho fica EM CURSO, janela atual
+        // = 01..09/07, baseline = 01..09/06 — o cenário real do bug.
         Carbon::setTestNow(Carbon::parse('2026-07-09 10:00:00'));
 
-        // Fase 102: custId necessário pro AdmanMetricDiffService não
-        // early-return (empty custId = emptyMetrics(), var_margem_pct=null).
-        // Mês EM CURSO (comparison_mode=same_interval_previous_month) — a
-        // baseline continua alinhada por dia (dia 1), Pitfall 1 NÃO se aplica
-        // aqui (só afeta mês FECHADO/previous_equal_length_window).
+        // custId necessário pro AdmanMetricDiffService não early-return
+        // (custId vazio = emptyMetrics(), margem sempre null).
         $u = $this->criarUserAnalista('Analista Margem Lag Adman');
         $c = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-LAG-ADMAN');
 
-        // Junho (janela anterior): 9 dias completos, margem 100/dia → soma 900.
+        // Junho (janela baseline): 9 dias completos, margem 100/dia sobre
+        // revenue 1.000/dia → margem % = 10,00%.
         for ($dia = 1; $dia <= 9; $dia++) {
             AdmanMetric::create([
                 'company_id'          => $c->id,
@@ -938,8 +1015,8 @@ class DesempenhoScoreServiceTest extends TestCase
         }
 
         // Julho (janela atual): dias 1-5 com margem 150/dia (melhora real de
-        // +50% vs junho); dias 6-9 com revenue sincronizado mas margem NULL
-        // (lag da Adman — cenário exato do bug).
+        // +50% / +5 p.p. vs junho); dias 6-9 com revenue sincronizado mas
+        // margem NULL (lag do sync — cenário exato do bug).
         for ($dia = 1; $dia <= 9; $dia++) {
             AdmanMetric::create([
                 'company_id'          => $c->id,
@@ -952,21 +1029,19 @@ class DesempenhoScoreServiceTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
 
-        // Fix: janela anterior recortada para os mesmos 5 dias comuns de
-        // margem (100×5=500 vs 150×5=750 — SUM(contribution_margin) próprio
-        // guard). Fase 102 (BON-03): o guard vive agora dentro de
-        // AdmanMetricDiffService::somasComGuards() (fonte única — este teste
-        // passou a provar o guard LÁ, não mais aqui). revenue tem seu PRÓPRIO
-        // recorte de dias-comuns (9 dias completos em ambas as janelas,
-        // nenhum NULL) → SUM(revenue)=9000 nos dois lados: pctAtual=
-        // 750/9000×100=8,3333%, pctAnterior=500/9000×100=5,5556% →
-        // (8,3333-5,5556)/5,5556×100=+50,00% — a razão percentageMargin
-        // coincide com a razão de margem R$ porque o denominador (revenue)
-        // é o MESMO nas duas janelas (750/500 = 1,5 → +50%, independente do
-        // valor absoluto do denominador comum).
-        $this->assertEqualsWithDelta(50.00, $r['componentes']['var_margem_pct'], 0.01,
-            'Dias finais sem margem na janela atual NÃO devem inverter o sinal da variação — '
-            .'o guard de dias-comuns (agora em AdmanMetricDiffService) recorta simetricamente (fix Tomelin).');
+        $this->assertEqualsWithDelta(5.00, $r['componentes']['var_margem_pp'], 0.01,
+            'Dias finais sem margem na janela atual NÃO devem inverter o sinal: 15,00% (atual) − 10,00% '
+            .'(baseline) = +5,00 p.p. Numerador e denominador saem dos MESMOS dias — se o faturamento dos '
+            .'9 dias fosse comparado contra a margem de 5, daria −1,67 p.p. (o bug Tomelin).');
+        $this->assertGreaterThan(0, $r['componentes']['var_margem_pp'],
+            'O SINAL é o coração desta regressão: a empresa melhorou a margem, a variação tem que ser positiva.');
+        $this->assertSame(5.0, $r['pontos_componentes']['margem'],
+            '+5,00 p.p. > 4 → 5 pontos de margem na nota oficial.');
+
+        $this->assertNull($r['componentes']['var_margem_pct'],
+            'Em mês EM CURSO a variação RELATIVA é null POR DESIGN (ramo `adman_janela_baseline`, 3e6d0eab '
+            .'2026-08-10) — o número do mês corrente só existe em p.p. Não "consertar" para devolver os '
+            .'+50,00% antigos: isso ressuscitaria a comparação contra o `prev` da janela errada.');
     }
 
     // ─── DESEMP-06 · Absenteísmo em standby ─────────────────────────────────
@@ -996,10 +1071,27 @@ class DesempenhoScoreServiceTest extends TestCase
         // Snapshot histórico de junho já com faixa intermediario.
         $this->criarSnapshotMensal($u, '2026-06-01', 'intermediario', 95);
 
-        // 3 empresas na carteira com faturamento/margem que geram nota_final
-        // dentro da faixa intermediario (4.50-4.99). Calibragem pós réguas 1-5:
-        //   NPS 5.00 + régua_fat(+4.75%) = 4 pts + régua_margem(+5.01%) = 5 pts
-        //   → média = (5 + 4 + 5) / 3 = 14/3 ≈ 4.67 (intermediario).
+        // ═══ FIXTURE REFEITA (quick 260914-ly9, 2026-09-14) ═══════════════════
+        // A fixture anterior (revenue +4,75%, margem 2200/10475) foi calibrada
+        // em 2026-07 para a nota LEGADA, onde a margem entrava como variação
+        // RELATIVA: +5,01% relativo → 5 pts → (5 + 4 + 5)/3 = 4,67.
+        //
+        // A nota oficial (desde 2026-08-05) pontua a margem em PONTOS
+        // PERCENTUAIS: aqueles mesmos números dão 21,0024% − 20,00% = +1,00
+        // p.p. → 3 pts → (5 + 4 + 3)/3 = 4,00. Isso é faixa `basico`, e uma
+        // nota em `basico` NÃO exerce a promoção que este teste existe para
+        // provar — o teste deixaria de testar DESEMP-08 e passaria a testar
+        // "basico não promove". Recalibrar o golden seria trocar o assunto do
+        // teste; por isso a FIXTURE foi refeita para produzir uma nota
+        // genuinamente `intermediario` sob a régua oficial:
+        //
+        //   NPS 5,00 por loja                                   → 5 pts
+        //   faturamento +6,00% (10.600/dia vs 10.000/dia) → >5% → 5 pts
+        //   margem 22,00% vs 20,00% = +2,00 p.p. → faixa (1;4]  → 4 pts
+        //   nota = (5 + 5 + 4) / 3 = 4,6667 → 4,67 → intermediario [4,50;4,99]
+        //
+        // O 4,67 do golden sobrevive por derivação da fixture nova, não por
+        // conversão à mão da fixture velha.
         $c1 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-PROMO-1');
         $c2 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-PROMO-2');
         $c3 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-PROMO-3');
@@ -1010,29 +1102,33 @@ class DesempenhoScoreServiceTest extends TestCase
         $this->mockNpsRespostaPrincipal($c2, '2026-08', 5);
         $this->mockNpsRespostaPrincipal($c3, '2026-08', 5);
 
-        // Var faturamento: 4.75% (revenue prev 10.000/dia → current 10.475/dia,
-        // ratio independe do comprimento da janela) → régua_fat 4 pts (1% a 5%).
-        //
-        // Fase 102 (BON-03) var_margem_pct: percentageMargin, não mais R$.
-        // pctBaseline = 2000/10000×100 = 20,00%; pctAtual = 2200/10475×100 =
-        // 21,0024% → diff = (21,0024-20,00)/20,00×100 = 5,0119% → round(2) =
-        // 5,01% → régua_margem(5,01%) = 5 pts (>4%, mesmo bucket do valor
-        // antigo +4,50%, mas NÚMERO diferente — não é a fórmula antiga).
+        // Valores CONSTANTES por dia — as razões independem do comprimento da
+        // janela: 10.600/10.000 = +6,00% de faturamento; margem % de
+        // 2.332,00/10.600 = 22,00% contra 2.000,00/10.000 = 20,00%.
         foreach ([$c1, $c2, $c3] as $c) {
             $this->mockAdmanDiario(
                 $c,
                 '2026-07',
-                revenueAtual: 10475,
+                revenueAtual: 10600,
                 revenueAnterior: 10000,
-                margemAtual: 2200,
-                margemAnterior: 2000,
+                margemAtual: 2332.00,
+                margemAnterior: 2000.00,
             );
         }
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
 
-        // Nota esperada pós réguas: (5.00 + 4 + 5) / 3 = 4.67 (intermediario natural).
+        // Conferência dos pontos por indicador antes da nota — se algum dia um
+        // destes três mudar de bucket, a mensagem aponta QUAL mudou em vez de
+        // só dizer "a nota não é 4,67".
+        $this->assertSame(5.0, $r['pontos_componentes']['nps'], 'NPS 5,00 por loja → 5 pts.');
+        $this->assertSame(5.0, $r['pontos_componentes']['faturamento'], 'Faturamento +6,00% → 5 pts (>5%).');
+        $this->assertSame(4.0, $r['pontos_componentes']['margem'], 'Margem +2,00 p.p. → 4 pts (faixa (1;4]).');
+        $this->assertEqualsWithDelta(2.00, $r['componentes']['var_margem_pp'], 0.01,
+            'A grandeza que a nota oficial pontua é p.p.: 22,00% − 20,00% = +2,00 p.p.');
+
+        // Nota esperada: (5 + 5 + 4) / 3 = 4.67 (intermediario natural).
         $this->assertEqualsWithDelta(4.67, $r['nota_final'], 0.01,
             'Nota Julho deve cair dentro da faixa intermediario (4.67 esperado após réguas 1-5).');
         $this->assertSame('maximo', $r['faixa_bonus'],
