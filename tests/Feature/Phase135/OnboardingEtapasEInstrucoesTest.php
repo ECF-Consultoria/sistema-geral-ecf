@@ -412,7 +412,6 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
             [
                 'grant_sistema_ecf',
                 'acesso_colaborador_ml',
-                'metricas_da_conta',
                 'anuncios_ativos_inativos',
                 'publicidade_processo_explicado',
                 'publicidade_investimento_explicado',

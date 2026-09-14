@@ -5,7 +5,6 @@ import {
     AlertTriangle, CalendarDays, Check, CheckCircle2, ExternalLink, Lock,
     RefreshCw, Zap,
 } from 'lucide-react';
-import MapeamentoInicial from '@/Components/Onboarding/MapeamentoInicial';
 import {
     PassoAPassoBtn,
     PassoAPassoModal,
@@ -878,7 +877,8 @@ function ReuniaoCard({ reuniao, varios }) {
 
 // ─── Progresso ────────────────────────────────────────────────────────────
 //
-// O que ENTRA na conta: passos do cliente + mapeamentos visíveis + reuniões.
+// O que ENTRA na conta: passos do portal + reuniões. O mapeamento saiu em
+// 14/09, junto com o bloco dele.
 // Contar só os passos faria a barra bater 100% com o mapeamento ainda por
 // conferir e a reunião ainda por marcar — o cliente leria "acabei" e pararia.
 // O portal de Polos não tem esse problema porque lá TUDO mora no checklist;
@@ -888,12 +888,17 @@ function ReuniaoCard({ reuniao, varios }) {
 // Mapeamento bloqueado não conta em lugar nenhum: ele nem aparece na tela
 // (depende do grant), e somar um item invisível ao denominador faria o cliente
 // perseguir um número que não tem como fechar.
-function calcularProgresso(passos, mapeamentos, reunioes) {
+/**
+ * A barra conta EXATAMENTE o que está desenhado na tela.
+ *
+ * O mapeamento saiu da contagem em 14/09 junto com o bloco dele. Contar o que
+ * não aparece foi como nasceu o "0/10 com 4 cards" — a barra vinha do backend
+ * e o desenho vinha de outro lugar. Quem sair da tela sai daqui no mesmo
+ * commit.
+ */
+function calcularProgresso(passos, reunioes) {
     const itens = [
         ...passos.map((p) => p.status === 'concluido'),
-        ...mapeamentos
-            .filter((m) => m.estado !== 'bloqueado')
-            .map((m) => Boolean(m.confirmacao?.confirmado)),
         // Reunião conta como feita quando já tem data na agenda — a bola volta
         // a ser nossa nesse momento. Esperar a reunião ACONTECER deixaria a
         // barra travada em 90% por dias, sem nada que o cliente possa fazer.
@@ -1018,20 +1023,16 @@ export default function Publico({
         );
     }
 
-    // Bloqueado fica de fora da tela inteira: antes do grant `fetchUserInfo()`
-    // nem sai da porta, e um bloco de campos em branco pareceria erro nosso.
-    const mapeamentosVisiveis = mapeamentos.filter((m) => m.estado !== 'bloqueado');
-
-    // "Nada pendente" agora considera a reunião: um cliente que já cumpriu
-    // todos os passos mas ainda precisa marcar a conversa NÃO está sem nada a
-    // fazer. O mesmo vale para o mapeamento — ele é item de progresso desde
-    // sempre em `calcularProgresso`, e agora mora dentro do bloco da etapa.
-    const nadaPendente = passos.length === 0
-        && reunioes.length === 0
-        && mapeamentosVisiveis.length === 0;
+    // "Nada pendente" considera a reunião: um cliente que já cumpriu todos os
+    // passos mas ainda precisa marcar a conversa NÃO está sem nada a fazer.
+    //
+    // O mapeamento saiu desta conta em 14/09 pelo mesmo motivo que saiu do
+    // progresso: ele não é mais desenhado aqui, e o que não aparece na tela não
+    // pode decidir se a tela diz "há coisas pendentes".
+    const nadaPendente = passos.length === 0 && reunioes.length === 0;
     const passosTodosConcluidos = passos.length > 0 && passos.every((p) => p.status === 'concluido');
 
-    const progresso = calcularProgresso(passos, mapeamentos, reunioes);
+    const progresso = calcularProgresso(passos, reunioes);
 
     // Blocos na ordem fixa de ETAPAS_ORDEM, preservando dentro de cada um a
     // ordem que o backend já mandou (`ordem` do passo). Bloco vazio não vira
@@ -1062,9 +1063,11 @@ export default function Publico({
             // título, e a tela mostrava "Mapeamento da conta" duas vezes
             // (21/08). O bloco existe mesmo sem passo nenhum na etapa: a ficha
             // da conta sozinha já justifica o cabeçalho.
-            mapas: etapa === 'mapeamento' ? mapeamentosVisiveis : [],
         }))
-        .filter(({ itens, mapas }) => itens.length > 0 || mapas.length > 0);
+        // Só passos decidem se a etapa existe. Antes um bloco sobrevivia só com
+        // a ficha de mapeamento — que não é mais desenhada aqui, e o bloco
+        // ficaria vazio.
+        .filter(({ itens }) => itens.length > 0);
 
     // Numeração 01, 02, 03… CONTÍNUA entre os blocos, como no checklist de
     // Polos: o cliente conta "quantos ainda faltam" pelo número, e reiniciar a
@@ -1123,10 +1126,12 @@ export default function Publico({
                             01..NN corre de ponta a ponta e o cliente mede o que
                             falta contando, sem abrir nada.
 
-                            A ficha da conta (`MapeamentoInicial`) segue logo
-                            depois dos passos da etapa `mapeamento`, que é o
-                            lugar que ela ocupava dentro do bloco. */}
-                        {blocos.map(({ etapa, itens, mapas }) => (
+                            A ficha da conta (`MapeamentoInicial`) SAIU daqui
+                            em 14/09, junto com `metricas_da_conta`: os dois
+                            diziam "como está a conta" de formas diferentes e
+                            foram substituídos pela Fotografia da Conta. Ela
+                            continua existindo na ficha interna. */}
+                        {blocos.map(({ etapa, itens }) => (
                             <Fragment key={etapa}>
                                 {itens.map((passo) => (
                                     <PassoCard
@@ -1142,18 +1147,6 @@ export default function Publico({
                                         emailColaborador={empresa.email_colaborador}
                                         appEcfLink={empresa.app_ecf_link}
                                         ehEquipe={ehEquipe}
-                                    />
-                                ))}
-
-                                {mapas.map((m) => (
-                                    <MapeamentoInicial
-                                        key={m.onboarding_id}
-                                        mapeamento={m}
-                                        contexto="cliente"
-                                        rotulo={mapas.length > 1 ? m.servico : null}
-                                        payloadExtra={{ onboarding_id: m.onboarding_id }}
-                                        rotaSincronizar={rotaDoPortal('onboarding.mapeamento.sincronizar', token)}
-                                        rotaConfirmar={rotaDoPortal('onboarding.mapeamento.confirmar', token)}
                                     />
                                 ))}
                             </Fragment>

@@ -218,10 +218,14 @@ class DefinicaoOnboarding
         // Acessos — o cliente age, e o sistema confirma sozinho.
         'grant_sistema_ecf',
         'acesso_colaborador_ml',
-        // Retrato da conta — o cliente ACOMPANHA, não preenche. Eram
-        // `dono=sistema` e por isso nunca apareceram para ele; agora aparecem
-        // porque é sobre eles que se conversa na reunião.
-        'metricas_da_conta',
+        // Retrato da conta — o cliente ACOMPANHA, não preenche. Era
+        // `dono=sistema` e por isso nunca apareceu para ele.
+        //
+        // `metricas_da_conta` SAIU em 14/09: foi substituído, junto com a ficha
+        // de mapeamento, pela Fotografia da Conta — um retrato de faturamento
+        // dos últimos 90 dias, com o corte de quando a ECF começou a operar.
+        // Dois blocos que diziam "como está a conta" de formas diferentes
+        // viraram um.
         'anuncios_ativos_inativos',
         // Os "explicados": eram `dono=interno`. Entram porque são exatamente o
         // que se faz COM o cliente na chamada — explicar e alinhar. Todos têm

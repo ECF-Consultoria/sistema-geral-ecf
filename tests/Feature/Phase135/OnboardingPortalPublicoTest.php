@@ -198,7 +198,6 @@ class OnboardingPortalPublicoTest extends TestCase
             'adman_uso_explicado',
             'anuncios_ativos_inativos',
             'grant_sistema_ecf',
-            'metricas_da_conta',
             'publicidade_investimento_explicado',
             'publicidade_processo_explicado',
             'publicidade_responsabilidades_alinhadas',
