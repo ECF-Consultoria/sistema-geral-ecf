@@ -1543,6 +1543,13 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     Route::get('/empresa/{company}/tabela', [TabelaEmpresaContratoController::class, 'show'])->name('tabela.show');
     Route::post('/empresa/{company}/tabela', [TabelaEmpresaContratoController::class, 'salvar'])->name('tabela.salvar');
     Route::delete('/empresa/{company}/tabela', [TabelaEmpresaContratoController::class, 'remover'])->name('tabela.remover');
+    // Plano 143-03 (T2) — a ficha da tabela de cobrança de um GRUPO, com página própria.
+    // ⚠️ Antes disto a tabela de um grupo só era editável de dentro da ficha de uma empresa
+    // -membro, e o grupo que fica POR CIMA dos outros pode não ter empresa nenhuma pendurada
+    // direto nele — a tabela que governa a cobrança de todas as empresas abaixo era
+    // INALCANÇÁVEL pela tela. MESMO grupo de permissão das rotas de escrita logo abaixo, de
+    // propósito: quem pode salvar precisa poder abrir.
+    Route::get('/grupo/{grupo}/tabela', [TabelaEmpresaContratoController::class, 'showGrupo'])->name('tabela.grupo.show');
     Route::post('/grupo/{grupo}/tabela', [TabelaEmpresaContratoController::class, 'salvarGrupo'])->name('tabela.grupo.salvar');
     Route::delete('/grupo/{grupo}/tabela', [TabelaEmpresaContratoController::class, 'removerGrupo'])->name('tabela.grupo.remover');
 

@@ -138,6 +138,14 @@ export default function TabelaEmpresa({
                                     Quem manda é a empresa do grupo que mais faturou no mês — se outra empresa
                                     passar na frente, a tabela muda junto.
                                 </p>
+                                {/* Fase 143 Plano 03 (T3) — caminho de entrada para a página
+                                    própria do grupo, onde dá para ver quais empresas esta tabela
+                                    alcança (as do grupo e as dos grupos que fazem parte dele). */}
+                                <Link href={route('admin.contratos.tabela.grupo.show', company.company_group_id)}>
+                                    <Button type="button" variant="outline">
+                                        Abrir a página do grupo{company.grupo_nome ? ` ${company.grupo_nome}` : ''}
+                                    </Button>
+                                </Link>
                                 {tabela_grupo != null && tabela_grupo.length === 0 && (
                                     <p className="text-white/40 text-[13px]">Este grupo não tem tabela própria cadastrada.</p>
                                 )}
