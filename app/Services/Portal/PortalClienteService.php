@@ -174,7 +174,7 @@ class PortalClienteService
      */
     private function pendenciasOnboarding(Company $company): int
     {
-        return collect($this->linkService->passosDoCliente($company))
+        return collect($this->linkService->passosDoPortal($company))
             ->where('status', 'aberto')
             ->count();
     }

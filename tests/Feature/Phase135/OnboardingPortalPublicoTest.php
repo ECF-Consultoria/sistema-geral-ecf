@@ -147,19 +147,19 @@ class OnboardingPortalPublicoTest extends TestCase
         $this->assertSame($primeiroToken, OnboardingLink::where('company_id', $company->id)->firstOrFail()->token);
     }
 
-    // ─── passosDoCliente(): agregação por chave (D-10) ──────────────────────
+    // ─── passosDoPortal(): agregação por chave (D-10) ──────────────────────
 
     #[Test]
     public function passos_do_cliente_agrega_mesma_chave_de_dois_onboardings_ativos_em_um_grupo_so(): void
     {
         $company = Company::factory()->create();
-        $this->onboardingSinteticoComPassoCliente($company, 'acesso_colaborador_generico', 'Serviço sintético A', null, OnboardingPasso::STATUS_ABERTO);
-        $this->onboardingSinteticoComPassoCliente($company, 'acesso_colaborador_generico', 'Serviço sintético B', null, OnboardingPasso::STATUS_ABERTO);
+        $this->onboardingSinteticoComPassoCliente($company, 'acesso_colaborador_ml', 'Serviço sintético A', null, OnboardingPasso::STATUS_ABERTO);
+        $this->onboardingSinteticoComPassoCliente($company, 'acesso_colaborador_ml', 'Serviço sintético B', null, OnboardingPasso::STATUS_ABERTO);
 
-        $grupos = $this->linkService()->passosDoCliente($company);
+        $grupos = $this->linkService()->passosDoPortal($company);
 
         $this->assertCount(1, $grupos);
-        $this->assertSame('acesso_colaborador_generico', $grupos[0]['chave']);
+        $this->assertSame('acesso_colaborador_ml', $grupos[0]['chave']);
         $this->assertCount(2, $grupos[0]['servicos']);
         $this->assertCount(2, $grupos[0]['onboarding_passo_ids']);
     }
@@ -170,37 +170,63 @@ class OnboardingPortalPublicoTest extends TestCase
         $company = Company::factory()->create();
         $this->onboardingDeGestaoEmRascunho($company);
 
-        $grupos = $this->linkService()->passosDoCliente($company);
+        $grupos = $this->linkService()->passosDoPortal($company);
 
         $this->assertSame([], $grupos);
     }
 
+    /**
+     * 14/09 — a régua do portal deixou de ser `dono=cliente` e passou a ser a
+     * lista fechada `DefinicaoOnboarding::CHAVES_NO_PORTAL`, porque o portal
+     * virou a tela onde o onboarding é OPERADO (analista e cliente juntos).
+     *
+     * Este teste é o cadeado dessa lista: passo novo não entra no portal por
+     * acidente, e item removido de lá não volta sem alguém decidir.
+     */
     #[Test]
-    public function passos_do_cliente_so_traz_passos_dono_cliente_do_template_de_gestao(): void
+    public function portal_traz_exatamente_as_chaves_declaradas_no_catalogo(): void
     {
         $company = Company::factory()->create();
         $this->onboardingDeGestaoEmAndamento($company);
 
-        $grupos = $this->linkService()->passosDoCliente($company);
-        $chaves = collect($grupos)->pluck('chave')->sort()->values()->all();
+        $chaves = collect($this->linkService()->passosDoPortal($company))
+            ->pluck('chave')->sort()->values()->all();
 
-        // v6 — os 4 acessos passaram a ser `dono=cliente`, então os dois da
-        // Adman entram nesta lista. Antes o cliente não via (nem era cobrado
-        // por) dois dos quatro acessos que só ele pode conceder.
-        // Fluxo de 19/08 — §13.2 e §16 pedem ao CLIENTE quem acionamos e quem
-        // participa das reuniões, então os dois itens entram nesta lista.
         $this->assertSame([
             'acesso_colaborador_ml',
+            'adman_responsabilidades_alinhadas',
+            'adman_uso_explicado',
+            'anuncios_ativos_inativos',
             'custos_app_ecf',
             'grant_consultoria_adman',
             'grant_sistema_ecf',
-            'participantes_reuniao_cadastrados',
+            'metricas_da_conta',
             'planilha_custos_adman',
-            'ponto_contato_definido',
+            'publicidade_investimento_explicado',
+            'publicidade_processo_explicado',
+            'publicidade_responsabilidades_alinhadas',
         ], $chaves);
     }
 
-    // ─── marcarFeitoPorChave(): conclusão em massa + D-19 ───────────────────
+    /**
+     * O que SAIU do portal em 14/09, e a ausência é o ponto do teste:
+     * `ponto_contato_definido` e `participantes_reuniao_cadastrados` eram
+     * `dono=cliente` e apareciam para ele, mas são cadastro INTERNO — a ECF
+     * preenche com o que o cliente responde na reunião.
+     */
+    #[Test]
+    public function cadastro_interno_de_pessoas_nao_aparece_mais_no_portal(): void
+    {
+        $company = Company::factory()->create();
+        $this->onboardingDeGestaoEmAndamento($company);
+
+        $chaves = collect($this->linkService()->passosDoPortal($company))->pluck('chave')->all();
+
+        $this->assertNotContains('ponto_contato_definido', $chaves);
+        $this->assertNotContains('participantes_reuniao_cadastrados', $chaves);
+        $this->assertNotContains('analista_definido', $chaves);
+        $this->assertNotContains('reuniao_realizada', $chaves);
+    }
 
     #[Test]
     public function marcar_feito_por_chave_conclui_os_passos_dos_dois_onboardings_ativos_e_devolve_2(): void

@@ -124,7 +124,7 @@ class OnboardingConectarMlTest extends TestCase
     {
         $company = $this->empresaComOnboardingEmAndamento();
 
-        $porChave = collect(app(OnboardingLinkService::class)->passosDoCliente($company))->keyBy('chave');
+        $porChave = collect(app(OnboardingLinkService::class)->passosDoPortal($company))->keyBy('chave');
 
         $this->assertSame(OnboardingLinkService::ACAO_OAUTH_ML, $porChave['grant_sistema_ecf']['acao']);
         $this->assertSame(OnboardingLinkService::ACAO_MARCAR, $porChave['acesso_colaborador_ml']['acao']);
@@ -142,7 +142,7 @@ class OnboardingConectarMlTest extends TestCase
             ->whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id))
             ->update(['auto_fonte' => OnboardingPasso::AUTO_FONTE_ACERVO]);
 
-        $porChave = collect(app(OnboardingLinkService::class)->passosDoCliente($company))->keyBy('chave');
+        $porChave = collect(app(OnboardingLinkService::class)->passosDoPortal($company))->keyBy('chave');
 
         $this->assertSame(OnboardingLinkService::ACAO_NENHUMA, $porChave['custos_app_ecf']['acao']);
     }

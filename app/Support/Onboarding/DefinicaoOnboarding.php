@@ -136,6 +136,79 @@ class DefinicaoOnboarding
     public const VERSAO = 17;
 
     /**
+     * As chaves que o PORTAL opera — a régua de quem aparece lá, no lugar do
+     * antigo `dono = cliente`.
+     *
+     * ### Por que deixou de ser `dono`
+     * O portal nasceu como "o que o cliente faz sozinho", e por isso filtrava
+     * por `dono`. A decisão de 14/09 mudou o uso: o onboarding passa a ser
+     * OPERADO no portal — analista e cliente juntos, na reunião, com a tela
+     * compartilhada, do mesmo jeito que o portal de Polos sempre funcionou.
+     * Com isso, "quem é o dono do passo" deixou de ser a mesma pergunta que
+     * "este passo aparece no portal", e usar uma como proxy da outra passou a
+     * dar resposta errada nos dois sentidos.
+     *
+     * `dono` continua existindo e continua significando o que sempre
+     * significou — de quem é a responsabilidade. Só não decide mais a
+     * visibilidade.
+     *
+     * ### Lista fechada, de propósito
+     * Passo novo NÃO entra no portal sozinho: entra aqui, por decisão. O
+     * inverso — herdar a visibilidade de um atributo — é como
+     * `ponto_contato_definido` foi parar na frente do cliente sendo trabalho
+     * interno.
+     *
+     * @var array<int, string>
+     */
+    public const CHAVES_NO_PORTAL = [
+        // Acessos — o cliente age, e o sistema confirma sozinho.
+        'grant_sistema_ecf',
+        'acesso_colaborador_ml',
+        // Os três da ADMAN seguem exatamente como estavam (já eram
+        // `dono=cliente`): ninguém pediu mudança neles, e o negócio ainda vai
+        // confirmar do que cada um trata antes de qualquer redesenho.
+        'planilha_custos_adman',
+        'grant_consultoria_adman',
+        'custos_app_ecf',
+        // Retrato da conta — o cliente ACOMPANHA, não preenche. Eram
+        // `dono=sistema` e por isso nunca apareceram para ele; agora aparecem
+        // porque é sobre eles que se conversa na reunião.
+        'metricas_da_conta',
+        'anuncios_ativos_inativos',
+        // Os "explicados": eram `dono=interno`. Entram porque são exatamente o
+        // que se faz COM o cliente na chamada — explicar e alinhar. Todos têm
+        // `auto_fonte=confirmacao_respondida`, então fecham por resposta
+        // registrada (com observação), nunca por checkbox solto.
+        'publicidade_processo_explicado',
+        'publicidade_investimento_explicado',
+        'publicidade_responsabilidades_alinhadas',
+        'adman_uso_explicado',
+        'adman_responsabilidades_alinhadas',
+    ];
+
+    /**
+     * ⚠️ SAÍRAM do portal em 14/09, e a ausência é deliberada:
+     *
+     * - `ponto_contato_definido` e `participantes_reuniao_cadastrados` eram
+     *   `dono=cliente` e portanto apareciam lá. São trabalho INTERNO — quem
+     *   cadastra é a ECF, com o que o cliente responde na reunião.
+     * - `analista_definido` já é resolvido pela distribuição (Fase 154): pedir
+     *   de novo no onboarding é perguntar o que o sistema já sabe.
+     * - `reuniao_realizada`, `publicidade_operacao_explicada`,
+     *   `adman_funcionamento_explicado` e `adman_preenchimento_interno` não
+     *   foram citados na decisão — ou repetem outro item, ou não são assunto
+     *   de portal. Ficam na ficha interna até o negócio decidir se seguem
+     *   existindo.
+     *
+     * Nada disso muda a régua: os passos continuam nascendo e continuam sendo
+     * fechados onde sempre foram. Só não aparecem no portal.
+     */
+    public static function apareceNoPortal(string $chave): bool
+    {
+        return in_array($chave, self::CHAVES_NO_PORTAL, true);
+    }
+
+    /**
      * Devolve os passos do serviço, ou `null` quando o serviço não tem
      * onboarding definido — o chamador trata `null` como "não gera onboarding",
      * nunca como lista vazia.

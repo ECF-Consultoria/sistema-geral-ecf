@@ -20,7 +20,7 @@ use Illuminate\Support\Str;
  * D-08) e o cliente não pode receber dois links.
  *
  * Consequência direta: a unidade de exibição do portal não é
- * `onboarding_passos`, é a `chave` (D-10) — {@see self::passosDoCliente()}
+ * `onboarding_passos`, é a `chave` (D-10) — {@see self::passosDoPortal()}
  * agrupa por ela de propósito, mesmo a v1 só tendo o template de Gestão
  * para colidir consigo mesma.
  */
@@ -66,11 +66,15 @@ class OnboardingLinkService
      *   onboarding_passo_ids: array<int, int>,
      * }>
      */
-    public function passosDoCliente(Company $company): array
+    public function passosDoPortal(Company $company): array
     {
         $passos = OnboardingPasso::query()
             ->whereHas('onboarding', fn ($q) => $q->where('company_id', $company->id)->emAndamento())
-            ->where('dono', OnboardingPasso::DONO_CLIENTE)
+            // 14/09 — era `where('dono', DONO_CLIENTE)`. O portal virou a tela
+            // de OPERAÇÃO do onboarding (analista e cliente juntos), então
+            // quem aparece aqui é decisão explícita do catálogo, não
+            // consequência de a quem o passo pertence.
+            ->whereIn('chave', DefinicaoOnboarding::CHAVES_NO_PORTAL)
             ->with('onboarding.servico')
             // Sem isto a ordem dos cards fica por conta do banco: o cliente
             // podia receber "marque os custos" antes de "autorize o acesso",
@@ -192,7 +196,7 @@ class OnboardingLinkService
      * Reuniões de onboarding da empresa, uma por onboarding em andamento.
      *
      * Não é um passo: o passo `agendar_reuniao_onboarding` é `dono=interno` e
-     * por isso nunca apareceria em {@see self::passosDoCliente()}. O cliente
+     * por isso nunca apareceria em {@see self::passosDoPortal()}. O cliente
      * precisa de um lugar para PEDIR a reunião e para VER a data marcada, e é
      * isso que este bloco entrega.
      *
@@ -324,6 +328,22 @@ class OnboardingLinkService
      * cliente" (§16 do fluxo de 19/08).
      */
     public const ACAO_PESSOAS = 'pessoas';
+    /**
+     * O item é CONDUZIDO na reunião e fica registrado com uma resposta e uma
+     * observação (14/09).
+     *
+     * São os "explicados" — processo de publicidade, uso do investimento,
+     * responsabilidades, ADMAN. Todos têm `auto_fonte=confirmacao_respondida`
+     * e antes caíam em `nenhuma`, que renderiza "você não precisa fazer nada"
+     * — leitura errada para um item cuja razão de existir é justamente ser
+     * conversado e registrado ali.
+     *
+     * Não é `marcar`: marcar é o cliente declarando que fez algo fora daqui.
+     * Aqui a ação acontece NA tela, e o que fica gravado é a resposta mais a
+     * observação — em `onboarding_confirmacoes`, que já existia com
+     * `resposta`, `observacoes`, `respondido_por` e `respondido_em`.
+     */
+    public const ACAO_CONFIRMAR = 'confirmar';
     /** Nada a fazer: o sistema resolve sozinho, o cliente só acompanha. */
     public const ACAO_NENHUMA = 'nenhuma';
 
@@ -348,6 +368,7 @@ class OnboardingLinkService
             OnboardingPasso::AUTO_FONTE_ADMAN_GRANT       => self::ACAO_INSTRUCAO,
             OnboardingPasso::AUTO_FONTE_PONTO_CONTATO     => self::ACAO_PESSOAS,
             OnboardingPasso::AUTO_FONTE_PARTICIPANTES     => self::ACAO_PESSOAS,
+            OnboardingPasso::AUTO_FONTE_CONFIRMACAO       => self::ACAO_CONFIRMAR,
             default                                       => self::ACAO_NENHUMA,
         };
     }

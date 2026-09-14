@@ -225,11 +225,26 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
 
-        $payload = app(OnboardingLinkService::class)->passosDoCliente($company);
+        $payload = app(OnboardingLinkService::class)->passosDoPortal($company);
 
         $this->assertNotEmpty($payload);
 
-        foreach ($payload as $item) {
+        // 14/09 — o portão vale para o passo em que o cliente precisa AGIR.
+        // Os itens que entraram no portal para serem CONDUZIDOS na reunião
+        // (`confirmar`) e os de acompanhamento (`nenhuma`) não pedem instrução
+        // de autoatendimento: ninguém está sozinho na tela quando eles são
+        // tratados. Afrouxar aqui seria esconder falta de texto; o critério é
+        // a ação, e ele continua exigindo texto de todos os que a têm.
+        $exigemInstrucao = collect($payload)->reject(
+            fn (array $item) => in_array($item['acao'], [
+                OnboardingLinkService::ACAO_CONFIRMAR,
+                OnboardingLinkService::ACAO_NENHUMA,
+            ], true)
+        );
+
+        $this->assertNotEmpty($exigemInstrucao, 'nenhum passo acionável chegou — o portão ficaria vazio');
+
+        foreach ($exigemInstrucao as $item) {
             $this->assertNotNull(
                 $item['instrucao'],
                 "O passo \"{$item['chave']}\" chega ao cliente sem instrução nenhuma"
@@ -267,7 +282,7 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
 
-        $payload = collect(app(OnboardingLinkService::class)->passosDoCliente($company))
+        $payload = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->keyBy('chave');
 
         $this->assertSame(OnboardingLinkService::ACAO_INSTRUCAO, $payload['planilha_custos_adman']['acao']);
@@ -373,10 +388,13 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
 
-        $chaves = collect(app(OnboardingLinkService::class)->passosDoCliente($company))
+        $chaves = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->pluck('chave')
             ->all();
 
+        // Ordem = `ordem` do passo, que é a do catálogo. A lista mudou em
+        // 14/09 com `CHAVES_NO_PORTAL`: saíram os dois de cadastro de pessoas
+        // e entraram o retrato da conta e os "explicados".
         $this->assertSame(
             [
                 'grant_sistema_ecf',
@@ -384,21 +402,22 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
                 'planilha_custos_adman',
                 'grant_consultoria_adman',
                 'custos_app_ecf',
-                // Fluxo de 19/08 — ordem 24 e 25, depois dos acessos: o que
-                // destrava a automação vem primeiro, e informar pessoas não
-                // depende de nada.
-                'ponto_contato_definido',
-                'participantes_reuniao_cadastrados',
+                'metricas_da_conta',
+                'anuncios_ativos_inativos',
+                'publicidade_processo_explicado',
+                'publicidade_investimento_explicado',
+                'publicidade_responsabilidades_alinhadas',
+                'adman_uso_explicado',
+                'adman_responsabilidades_alinhadas',
             ],
-            $chaves,
-            'O cliente precisa receber "autorize o acesso" antes do que depende dele'
+            $chaves
         );
     }
 
     /**
      * v17 — nenhum passo do cliente depende mais de outro passo VISÍVEL a ele:
      * os dois grants perderam a dependência do OAuth. O mecanismo continua no
-     * código (`passosDoCliente()` traduz `depende_de` em `depende_de_titulo`)
+     * código (`passosDoPortal()` traduz `depende_de` em `depende_de_titulo`)
      * e vale para a próxima régua que o use, então o caso é MONTADO aqui em
      * vez de a cobertura ser apagada junto com a dependência.
      */
@@ -408,28 +427,27 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
         $company = Company::factory()->create();
         $onboarding = $this->onboardingEmAndamento($company);
 
-        OnboardingPasso::create([
-            'onboarding_id' => $onboarding->id,
-            'ordem'         => 99,
-            'etapa'         => OnboardingPasso::ETAPA_ACESSOS,
-            'natureza'      => OnboardingPasso::NATUREZA_ACAO,
-            'chave'         => 'passo_dependente_de_teste',
-            'titulo'        => 'Passo que espera o grant',
-            'dono'          => OnboardingPasso::DONO_CLIENTE,
-            'depende_de'    => ['grant_sistema_ecf'],
-            'status'        => OnboardingPasso::STATUS_BLOQUEADO,
-        ]);
+        // 14/09 — o portal passou a ter lista FECHADA de chaves, então não dá
+        // mais para montar o caso com uma chave inventada: ela simplesmente
+        // não apareceria. O caso é montado sobre um passo REAL do portal,
+        // que é mais fiel de qualquer forma.
+        OnboardingPasso::where('onboarding_id', $onboarding->id)
+            ->where('chave', 'custos_app_ecf')
+            ->update([
+                'depende_de' => json_encode(['grant_sistema_ecf']),
+                'status'     => OnboardingPasso::STATUS_BLOQUEADO,
+            ]);
 
-        $payload = collect(app(OnboardingLinkService::class)->passosDoCliente($company))
+        $payload = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->keyBy('chave');
 
         $this->assertSame(
             OnboardingPasso::STATUS_BLOQUEADO,
-            $payload['passo_dependente_de_teste']['status']
+            $payload['custos_app_ecf']['status']
         );
         $this->assertSame(
             'Grant com o Sistema ECF (OAuth)',
-            $payload['passo_dependente_de_teste']['depende_de_titulo'],
+            $payload['custos_app_ecf']['depende_de_titulo'],
             'O cliente precisa saber QUAL item libera o que está cadeado.'
         );
     }
@@ -451,7 +469,7 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
             ->where('chave', 'custos_app_ecf')
             ->update(['depende_de' => json_encode(['confirmacao_pagamento'])]);
 
-        $payload = collect(app(OnboardingLinkService::class)->passosDoCliente($company))
+        $payload = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->keyBy('chave');
 
         $this->assertNull($payload['custos_app_ecf']['depende_de_titulo']);

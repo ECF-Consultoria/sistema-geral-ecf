@@ -78,12 +78,16 @@ class PortalPessoasDoClienteTest extends TestCase
     {
         [$company, , $token] = $this->cenario();
 
-        $chaves = collect(app(OnboardingLinkService::class)->passosDoCliente($company))
+        $chaves = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->pluck('chave')
             ->all();
 
-        $this->assertContains('ponto_contato_definido', $chaves);
-        $this->assertContains('participantes_reuniao_cadastrados', $chaves);
+        // 14/09 — INVERTIDO de propósito. Os dois eram `dono=cliente` e por
+        // isso apareciam no portal; a decisão de negócio é que são cadastro
+        // INTERNO: a ECF preenche com o que o cliente responde na reunião.
+        // O dado continua sendo coletado, só não é mais pedido na tela dele.
+        $this->assertNotContains('ponto_contato_definido', $chaves);
+        $this->assertNotContains('participantes_reuniao_cadastrados', $chaves);
     }
 
     /**
@@ -96,11 +100,15 @@ class PortalPessoasDoClienteTest extends TestCase
     {
         [$company] = $this->cenario();
 
-        $porChave = collect(app(OnboardingLinkService::class)->passosDoCliente($company))
+        $porChave = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->keyBy('chave');
 
-        $this->assertSame(OnboardingLinkService::ACAO_PESSOAS, $porChave['ponto_contato_definido']['acao']);
-        $this->assertSame(OnboardingLinkService::ACAO_PESSOAS, $porChave['participantes_reuniao_cadastrados']['acao']);
+        // A ação `pessoas` continua existindo e continua correta — o que mudou
+        // é ONDE ela é oferecida. Nenhum dos dois chega mais ao portal, então
+        // o que se prova aqui é a ausência; o mapeamento em si segue coberto
+        // por `acaoDoCliente()`.
+        $this->assertArrayNotHasKey('ponto_contato_definido', $porChave->all());
+        $this->assertArrayNotHasKey('participantes_reuniao_cadastrados', $porChave->all());
     }
 
     /** @test */

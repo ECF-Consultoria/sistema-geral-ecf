@@ -89,7 +89,7 @@ class OnboardingPublicoController extends Controller
                 ...app(\App\Services\Onboarding\OnboardingAcessosService::class)
                     ->paraEmpresa($company),
             ],
-            'passos'   => $this->linkService->passosDoCliente($company),
+            'passos'   => $this->linkService->passosDoPortal($company),
             // Agrupadas por papel para a tela não precisar filtrar. Deduplicadas
             // por (papel, nome, e-mail): a mesma pessoa é gravada em cada
             // onboarding da empresa, e o cliente não tem por que ver o próprio
@@ -524,7 +524,7 @@ class OnboardingPublicoController extends Controller
                 ...$contexto['empresa'],
                 ...app(\App\Services\Onboarding\OnboardingAcessosService::class)->paraEmpresa($company),
             ],
-            'passos'   => $this->linkService->passosDoCliente($company),
+            'passos'   => $this->linkService->passosDoPortal($company),
             'pessoas'  => OnboardingContato::whereIn(
                     'onboarding_id',
                     Onboarding::where('company_id', $company->id)->naoConcluido()->pluck('id')
