@@ -122,6 +122,14 @@ use Illuminate\Support\Facades\Log;
  * empresa de faixa gera. Rodada isolada em `try/catch`: falha ao avisar
  * NUNCA altera o exit code deste comando (ver comentário no Passo 8).
  *
+ * Fase 143 (143-05, T1) — o Passo 8 deixa de reportar como crescimento a
+ * linha de grupo cuja faixa mudou porque mudou QUEM faz parte do cliente
+ * (alguém juntou um grupo dentro de outro entre as duas competências). O
+ * notificador compara a composição congelada dos dois meses e devolve essas
+ * linhas em `composicao_mudou`; o resumo deste comando as imprime com
+ * quantas empresas entraram e saíram, para a supressão nunca ser silenciosa.
+ * Composição igual → comportamento idêntico ao de sempre.
+ *
 
  * O exit code reflete a falha real — qualquer empresa que estoure exceção
  * individual conta como falha e o comando termina com 1, mesmo tendo
@@ -715,7 +723,7 @@ class ConsolidarMesFechamento extends Command
         // verdade só o aviso é que não saiu. A idempotência (não avisar de
         // novo quando nada mudou) vive nas colunas `notificado_em`/
         // `notificado_faixa_ordem`, checadas pelo próprio notificador.
-        $resumoAviso = ['empresas' => 0, 'grupos' => 0, 'notificacoes' => 0];
+        $resumoAviso = ['empresas' => 0, 'grupos' => 0, 'notificacoes' => 0, 'composicao_mudou' => []];
 
         try {
             $resumoAviso = $this->faixaNotifier->notificar($mes);
@@ -736,6 +744,36 @@ class ConsolidarMesFechamento extends Command
             $resumoAviso['notificacoes'],
             $resumoFontes,
         ));
+
+        // ── Fase 143 (143-05, T1) — quem mudou de faixa por COMPOSIÇÃO ────
+        // O aviso não sai para essas linhas (dizer "subiu de faixa" quando o
+        // que mudou foi quem faz parte do cliente é mentira), mas o resumo
+        // TEM de dizer que houve mudança e de que tamanho — trocar uma
+        // mentira por uma omissão não resolveria nada. Sai como `warn` para
+        // destacar no terminal; não mexe no exit code (mesma disciplina do
+        // Passo 8).
+        if (! empty($resumoAviso['composicao_mudou'])) {
+            $detalhe = collect($resumoAviso['composicao_mudou'])->map(function (array $mudanca) {
+                $partes = [];
+
+                if ($mudanca['entraram'] > 0) {
+                    $partes[] = $mudanca['entraram'].($mudanca['entraram'] === 1 ? ' empresa entrou' : ' empresas entraram');
+                }
+
+                if ($mudanca['sairam'] > 0) {
+                    $partes[] = $mudanca['sairam'].($mudanca['sairam'] === 1 ? ' empresa saiu' : ' empresas saíram');
+                }
+
+                return $mudanca['nome'].' ('.implode(', ', $partes).')';
+            })->implode('; ');
+
+            $this->warn(sprintf(
+                '[Fechamento] %d cliente(s) mudaram de faixa em %s porque mudou QUEM faz parte deles, não o faturamento — aviso de mudança de faixa NÃO enviado para: %s.',
+                count($resumoAviso['composicao_mudou']),
+                $mesLabel,
+                $detalhe,
+            ));
+        }
 
         // A contagem por fonte também vai numa linha própria, com o porquê
         // de a API estar (ou não) em jogo — sem isso, "0 api" tanto pode ser

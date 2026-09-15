@@ -7,6 +7,7 @@ use App\Models\FechamentoSnapshot;
 use App\Models\User;
 use App\Notifications\FaixaAlteradaNotification;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -67,6 +68,32 @@ use Illuminate\Support\Facades\Notification;
  * que esta encontraria, então não há necessidade de esperar. Bloquear
  * aumentaria o tempo do comando `fechamento:consolidar-mes` sem trazer
  * nenhum aviso a mais.
+ *
+ * ── Fase 143 (143-05, T1) — quando a faixa mudou por COMPOSIÇÃO ──────────
+ * Desde a Fase 143 uma linha de grupo pode juntar vários grupos do cadastro
+ * (`company_groups.parent_id`). No dia em que alguém pendura um grupo dentro
+ * de outro, a linha daquele cliente muda de faturamento e de faixa porque
+ * mudou QUEM faz parte dele — não porque o cliente cresceu. No caso que abriu
+ * a fase isso acontece com 10 empresas de uma vez.
+ *
+ * Avisar "subiu de faixa" ali é mentira, e é a mentira mais cara possível:
+ * chega exatamente na hora em que o Administrativo está conferindo se a
+ * junção saiu certa. Então, antes de emitir, este serviço compara a
+ * COMPOSIÇÃO da linha (o conjunto de `company_id` gravado sob aquele grupo)
+ * entre a competência atual e a anterior, lendo os dois lados do que já está
+ * congelado em `fechamento_snapshots`. Composição diferente → a linha sai do
+ * aviso e entra em `composicao_mudou`, que o `fechamento:consolidar-mes`
+ * imprime no resumo, com quantas empresas entraram e saíram. Silenciar em
+ * silêncio seria só trocar uma mentira por uma omissão.
+ *
+ * ⚠️ Composição IGUAL → comportamento idêntico ao de sempre. Enquanto
+ * ninguém montar grupo dentro de grupo (os 15 grupos de produção seguem com
+ * `parent_id` nulo), nenhum aviso muda — é o que permite deployar sem medo.
+ *
+ * A linha suprimida NÃO é carimbada: não houve aviso, então `notificado_em`
+ * continua nulo. A idempotência do "Refazer fechamento" segue inteira — a
+ * comparação é determinística, então uma nova rodada da MESMA competência
+ * suprime de novo, sem ressuscitar nada.
  */
 class FechamentoFaixaNotifier
 {
@@ -93,13 +120,13 @@ class FechamentoFaixaNotifier
      * Ponto de entrada — chamado por `fechamento:consolidar-mes` (Passo 8)
      * logo após o `FechamentoSnapshotWriter::sync()` retornar com sucesso.
      *
-     * @return array{empresas: int, grupos: int, notificacoes: int}
+     * @return array{empresas: int, grupos: int, notificacoes: int, composicao_mudou: list<array{company_group_id: int, nome: string, entraram: int, sairam: int}>}
      */
     public function notificar(Carbon $mes): array
     {
         $mesStr = $mes->copy()->startOfMonth()->toDateString();
 
-        $resumoVazio = ['empresas' => 0, 'grupos' => 0, 'notificacoes' => 0];
+        $resumoVazio = ['empresas' => 0, 'grupos' => 0, 'notificacoes' => 0, 'composicao_mudou' => []];
 
         $lock = Cache::lock('fechamento:notificar:'.$mesStr, self::LOCK_TTL_SEGUNDOS);
 
@@ -122,11 +149,11 @@ class FechamentoFaixaNotifier
      * entre um e outro, a transação desfaz os dois, nunca fica carimbado
      * sem ter avisado.
      *
-     * @return array{empresas: int, grupos: int, notificacoes: int}
+     * @return array{empresas: int, grupos: int, notificacoes: int, composicao_mudou: list<array{company_group_id: int, nome: string, entraram: int, sairam: int}>}
      */
     private function processar(string $mesStr, Carbon $mes): array
     {
-        $resumo = ['empresas' => 0, 'grupos' => 0, 'notificacoes' => 0];
+        $resumo = ['empresas' => 0, 'grupos' => 0, 'notificacoes' => 0, 'composicao_mudou' => []];
 
         $linhasEmpresa = FechamentoSnapshot::query()
             ->whereDate('mes_referencia', $mesStr)
@@ -152,6 +179,17 @@ class FechamentoFaixaNotifier
             })
             ->get();
 
+        // Faixa anterior — UMA consulta por tabela na competência anterior.
+        // O mês anterior é calculado AQUI (e não lá embaixo, onde era antes)
+        // porque a comparação de composição da Fase 143 também precisa dele,
+        // e ela roda ANTES de qualquer envio.
+        $mesAnteriorStr = $mes->copy()->subMonthNoOverflow()->startOfMonth()->toDateString();
+
+        // Fase 143 (143-05, T1) — tira do aviso as linhas de grupo cuja faixa
+        // mudou porque mudou QUEM faz parte do cliente. O que sobra é o que
+        // de fato mudou de desempenho.
+        [$linhasGrupo, $resumo['composicao_mudou']] = $this->separarPorMudancaDeComposicao($linhasGrupo, $mesStr, $mesAnteriorStr);
+
         if ($linhasEmpresa->isEmpty() && $linhasGrupo->isEmpty()) {
             return $resumo;
         }
@@ -167,18 +205,16 @@ class FechamentoFaixaNotifier
             return $resumo;
         }
 
-        // Faixa anterior — UMA consulta por tabela na competência anterior,
-        // indexada por company_id/company_group_id (nunca uma consulta por
-        // linha). Só para enriquecer a mensagem com "3ª → 4ª faixa"; quando
-        // não existe snapshot anterior, o texto cai para "subiu de faixa".
-        $mesAnterior = $mes->copy()->subMonthNoOverflow()->startOfMonth();
-
+        // Faixa anterior — indexada por company_id/company_group_id (nunca
+        // uma consulta por linha). Só para enriquecer a mensagem com
+        // "3ª → 4ª faixa"; quando não existe linha anterior, o texto cai
+        // para "subiu de faixa".
         $ordemAnteriorPorEmpresa = FechamentoSnapshot::query()
-            ->whereDate('mes_referencia', $mesAnterior->toDateString())
+            ->whereDate('mes_referencia', $mesAnteriorStr)
             ->pluck('faixa_ordem', 'company_id');
 
         $ordemAnteriorPorGrupo = FechamentoGrupoSnapshot::query()
-            ->whereDate('mes_referencia', $mesAnterior->toDateString())
+            ->whereDate('mes_referencia', $mesAnteriorStr)
             ->pluck('faixa_ordem', 'company_group_id');
 
         $itens = [];
@@ -251,6 +287,82 @@ class FechamentoFaixaNotifier
         $resumo['notificacoes'] = $admins->count();
 
         return $resumo;
+    }
+
+    /**
+     * Fase 143 (143-05, T1) — separa as linhas de grupo em duas pilhas:
+     * as que podem virar aviso de mudança de faixa (a composição do cliente
+     * é a MESMA dos dois meses, então a faixa mudou por desempenho) e as que
+     * mudaram porque mudou quem faz parte do cliente.
+     *
+     * A composição é lida do que já está CONGELADO nas duas competências
+     * (`fechamento_snapshots.company_group_id`, que desde o 143-01 guarda o
+     * grupo de cobrança) — nunca do cadastro de hoje, que já estaria com a
+     * junção feita nos dois lados e não acusaria mudança nenhuma.
+     *
+     * São DUAS consultas no total (uma por competência), nunca uma por linha.
+     *
+     * ⚠️ Quando a competência anterior não tem nenhuma empresa registrada
+     * sob aquele grupo, não dá para comparar — a linha segue para o aviso,
+     * exatamente como antes desta fase. Calar um aviso legítimo por falta de
+     * dado seria pior do que o problema que este método resolve.
+     *
+     * @param  Collection<int, FechamentoGrupoSnapshot>  $linhasGrupo
+     * @return array{0: Collection<int, FechamentoGrupoSnapshot>, 1: list<array{company_group_id: int, nome: string, entraram: int, sairam: int}>}
+     */
+    private function separarPorMudancaDeComposicao(Collection $linhasGrupo, string $mesStr, string $mesAnteriorStr): array
+    {
+        if ($linhasGrupo->isEmpty()) {
+            return [$linhasGrupo, []];
+        }
+
+        $grupoIds = $linhasGrupo->pluck('company_group_id')->filter()->unique()->values();
+
+        $membrosPorGrupo = fn (string $mes) => FechamentoSnapshot::query()
+            ->whereDate('mes_referencia', $mes)
+            ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+            ->whereIn('company_group_id', $grupoIds)
+            ->get(['company_id', 'company_group_id'])
+            ->groupBy('company_group_id')
+            ->map(fn ($linhas) => $linhas->pluck('company_id')->map(fn ($id) => (int) $id)->unique()->sort()->values()->all());
+
+        $composicaoAtual    = $membrosPorGrupo($mesStr);
+        $composicaoAnterior = $membrosPorGrupo($mesAnteriorStr);
+
+        $paraAvisar = [];
+        $mudancas   = [];
+
+        foreach ($linhasGrupo as $linha) {
+            $chave    = (int) $linha->company_group_id;
+            $atual    = $composicaoAtual->get($chave, []);
+            $anterior = $composicaoAnterior->get($chave, []);
+
+            if ($anterior === [] || $atual === $anterior) {
+                $paraAvisar[] = $linha;
+
+                continue;
+            }
+
+            $nome = $linha->grupo_name ?? ('#'.$linha->company_group_id);
+
+            $mudancas[] = [
+                'company_group_id' => $chave,
+                'nome'             => (string) $nome,
+                'entraram'         => count(array_diff($atual, $anterior)),
+                'sairam'           => count(array_diff($anterior, $atual)),
+            ];
+
+            // Fica registrado no log também: quem investiga um mês depois
+            // não tem mais o stdout do comando.
+            Log::info("[Fechamento] {$nome} mudou de faixa em {$mesStr} porque mudou quem faz parte do cliente — aviso de mudança de faixa NÃO enviado.", [
+                'mes_referencia'   => $mesStr,
+                'company_group_id' => $chave,
+                'entraram'         => count(array_diff($atual, $anterior)),
+                'sairam'           => count(array_diff($anterior, $atual)),
+            ]);
+        }
+
+        return [collect($paraAvisar), $mudancas];
     }
 
     /**
