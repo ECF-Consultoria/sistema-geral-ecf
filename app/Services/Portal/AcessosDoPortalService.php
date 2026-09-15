@@ -29,6 +29,7 @@ class AcessosDoPortalService
             'usuarios' => $this->usuarios(),
             'empresas' => $this->empresas(),
             'grupos'   => $this->grupos(),
+            'login_url' => \App\Support\Portal\UrlDoPortal::para('portal.entrada'),
         ];
     }
 
@@ -74,12 +75,21 @@ class AcessosDoPortalService
         return Company::where('active', true)
             ->with('grupo:id,name')
             ->orderBy('name')
-            ->get(['id', 'name', 'company_group_id'])
+            ->get(['id', 'name', 'company_group_id', 'nome_contato', 'email_cliente', 'telefone', 'cargo_contato'])
             ->map(fn (Company $e) => [
                 'id'         => $e->id,
                 'nome'       => $e->name,
                 'grupo_id'   => $e->company_group_id,
                 'grupo_nome' => $e->grupo?->name,
+                // Só o contato do cliente; nunca o e-mail do colaborador ECF.
+                // São sugestões para revisão, não uma concessão automática.
+                'contato' => [
+                    'nome' => $e->nome_contato ?? '',
+                    'email' => filter_var(trim($e->email_cliente ?? ''), FILTER_VALIDATE_EMAIL)
+                        ? mb_strtolower(trim($e->email_cliente)) : '',
+                    'telefone' => $e->telefone ?? '',
+                    'cargo' => $e->cargo_contato ?? '',
+                ],
             ]);
     }
 

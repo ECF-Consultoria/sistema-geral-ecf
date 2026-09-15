@@ -11,11 +11,11 @@ use App\Models\OnboardingPasso;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
-use App\Services\Onboarding\OnboardingLinkService;
 use App\Services\Onboarding\OnboardingMapeamentoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
@@ -29,6 +29,7 @@ use Tests\TestCase;
  */
 class OnboardingMapeamentoTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     private function servicoDeGestao(): Servico
@@ -324,19 +325,22 @@ class OnboardingMapeamentoTest extends TestCase
     {
         $onboarding = $this->onboardingEmAndamento();
         $this->comApurado($onboarding);
-        $link = app(OnboardingLinkService::class)->paraEmpresa($onboarding->company);
 
-        $this->post(route('onboarding.publico.mapeamento.confirmar', $link->token), [
-            'onboarding_id'  => $onboarding->id,
-            'full_pontuacao' => 78,
-        ])->assertSessionHasNoErrors();
+        $this->entrarNoPortal($onboarding->company)
+            ->post(route('portal.auth.onboarding.mapeamento.confirmar'), [
+                'onboarding_id'  => $onboarding->id,
+                'full_pontuacao' => 78,
+            ])->assertSessionHasNoErrors();
 
         $mapa = OnboardingMapeamento::where('onboarding_id', $onboarding->id)->firstOrFail();
 
         $this->assertSame(OnboardingMapeamento::CANAL_CLIENTE_PORTAL, $mapa->confirmado_canal);
         $this->assertSame(78, $mapa->full_pontuacao);
         $this->assertNotNull($mapa->confirmado_em);
-        $this->assertNull($mapa->confirmado_por, 'Não há usuário autenticado no portal — inventar um mentiria');
+        // `confirmado_por` aponta para `users` — gente da ECF. O cliente logado
+        // é um PortalUsuario; gravar o id dele ali atribuiria a confirmação a
+        // um usuário interno que nunca a fez.
+        $this->assertNull($mapa->confirmado_por, 'Cliente do portal não é usuário interno — inventar um mentiria');
     }
 
     #[Test]
@@ -372,12 +376,12 @@ class OnboardingMapeamentoTest extends TestCase
     public function pontuacao_fora_de_zero_a_cem_e_rejeitada(): void
     {
         $onboarding = $this->onboardingEmAndamento();
-        $link = app(OnboardingLinkService::class)->paraEmpresa($onboarding->company);
 
-        $this->post(route('onboarding.publico.mapeamento.confirmar', $link->token), [
-            'onboarding_id'  => $onboarding->id,
-            'full_pontuacao' => 140,
-        ])->assertSessionHasErrors('full_pontuacao');
+        $this->entrarNoPortal($onboarding->company)
+            ->post(route('portal.auth.onboarding.mapeamento.confirmar'), [
+                'onboarding_id'  => $onboarding->id,
+                'full_pontuacao' => 140,
+            ])->assertSessionHasErrors('full_pontuacao');
     }
 
     #[Test]
@@ -389,17 +393,17 @@ class OnboardingMapeamentoTest extends TestCase
         $this->service()->confirmar($onboarding, 'telepatia');
     }
 
-    /** Token de uma empresa não confirma mapeamento de outra. */
+    /** A sessão de uma empresa não confirma mapeamento de outra. */
     #[Test]
-    public function token_nao_atravessa_para_outra_empresa(): void
+    public function sessao_nao_atravessa_para_outra_empresa(): void
     {
         $minha = $this->onboardingEmAndamento();
         $alheia = $this->onboardingEmAndamento();
-        $link = app(OnboardingLinkService::class)->paraEmpresa($minha->company);
 
-        $this->post(route('onboarding.publico.mapeamento.confirmar', $link->token), [
-            'onboarding_id' => $alheia->id,
-        ])->assertSessionHasErrors('onboarding_id');
+        $this->entrarNoPortal($minha->company)
+            ->post(route('portal.auth.onboarding.mapeamento.confirmar'), [
+                'onboarding_id' => $alheia->id,
+            ])->assertSessionHasErrors('onboarding_id');
 
         $this->assertSame(0, OnboardingMapeamento::where('onboarding_id', $alheia->id)->count());
     }
@@ -411,9 +415,9 @@ class OnboardingMapeamentoTest extends TestCase
     {
         $onboarding = $this->onboardingEmAndamento();
         $this->comApurado($onboarding);
-        $link = app(OnboardingLinkService::class)->paraEmpresa($onboarding->company);
 
-        $this->get(route('portal.onboarding', $link->token))
+        $this->entrarNoPortal($onboarding->company)
+            ->get(route('portal.auth.onboarding'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->has('mapeamentos', 1)

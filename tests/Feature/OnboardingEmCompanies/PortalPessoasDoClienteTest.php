@@ -6,27 +6,28 @@ use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\Onboarding;
 use App\Models\OnboardingContato;
-use App\Models\OnboardingLink;
 use App\Models\OnboardingPasso;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
  * O cliente informa, pelo portal, quem devemos acionar (§13.2) e quem
  * participa das reuniões com os Gmails (§16).
  *
- * A rota é PÚBLICA, por token, isenta de CSRF e sem sessão — o que faz dela
- * uma superfície de escrita anônima. Estes testes cobram os limites disso:
- * só adiciona (nunca apaga), o token só alcança a própria empresa, e
- * participante sem e-mail é recusado, porque o objetivo declarado do §16 é
- * enviar o convite.
+ * Até 15/09/2026 a rota era PÚBLICA, por token, sem sessão — uma superfície de
+ * escrita anônima. Desde então só a porta autenticada grava, e os limites que
+ * estes testes cobram continuam valendo por cima do login: só adiciona (nunca
+ * apaga), a sessão só alcança a própria empresa, e participante sem e-mail é
+ * recusado, porque o objetivo declarado do §16 é enviar o convite.
  */
 class PortalPessoasDoClienteTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     private function servicoDeGestao(): Servico
@@ -38,7 +39,7 @@ class PortalPessoasDoClienteTest extends TestCase
             ->firstOrFail();
     }
 
-    /** @return array{0:Company,1:Onboarding,2:string} */
+    /** @return array{0:Company,1:Onboarding} */
     private function cenario(): array
     {
         $company = Company::create([
@@ -61,9 +62,7 @@ class PortalPessoasDoClienteTest extends TestCase
         app(OnboardingEngineService::class)
             ->definirResponsaveis($onboarding, null, User::factory()->create());
 
-        $link = app(OnboardingLinkService::class)->paraEmpresa($company);
-
-        return [$company, $onboarding->fresh(), $link->token];
+        return [$company, $onboarding->fresh()];
     }
 
     private function passo(Onboarding $onboarding, string $chave): OnboardingPasso
@@ -76,7 +75,7 @@ class PortalPessoasDoClienteTest extends TestCase
     /** @test */
     public function os_dois_itens_chegam_ao_portal_do_cliente(): void
     {
-        [$company, , $token] = $this->cenario();
+        [$company] = $this->cenario();
 
         $chaves = collect(app(OnboardingLinkService::class)->passosDoPortal($company))
             ->pluck('chave')
@@ -114,7 +113,7 @@ class PortalPessoasDoClienteTest extends TestCase
     /**
      * v20 — este teste media o item de checklist fechando na hora.
      * `participantes_reuniao_cadastrados` saiu da régua, então o que sobrou é o
-     * que sempre foi o essencial: o cadastro GRAVA, pelo link do cliente.
+     * que sempre foi o essencial: o cadastro GRAVA, pelo portal do cliente.
      *
      * O portão do endpoint deixou de exigir o passo junto com a v20: exigi-lo
      * passaria a devolver 422 para todo mundo, e o bloco de contatos do portal
@@ -122,11 +121,11 @@ class PortalPessoasDoClienteTest extends TestCase
      *
      * @test
      */
-    public function cliente_cadastra_participante_pelo_link(): void
+    public function cliente_cadastra_participante_pelo_portal(): void
     {
-        [, $onboarding, $token] = $this->cenario();
+        [$company, $onboarding] = $this->cenario();
 
-        $this->post(route('onboarding.publico.pessoas', $token), [
+        $this->entrarNoPortal($company)->post(route('portal.auth.onboarding.pessoas'), [
             'papel' => 'participante_reuniao',
             'nome'  => 'Joana Cliente',
             'email' => 'joana@gmail.com',
@@ -148,9 +147,9 @@ class PortalPessoasDoClienteTest extends TestCase
      */
     public function participante_sem_email_e_recusado(): void
     {
-        [, $onboarding, $token] = $this->cenario();
+        [$company, $onboarding] = $this->cenario();
 
-        $this->post(route('onboarding.publico.pessoas', $token), [
+        $this->entrarNoPortal($company)->post(route('portal.auth.onboarding.pessoas'), [
             'papel' => 'participante_reuniao',
             'nome'  => 'Sem Email',
         ])->assertSessionHasErrors('email');
@@ -166,9 +165,9 @@ class PortalPessoasDoClienteTest extends TestCase
     /** @test */
     public function ponto_de_contato_sem_email_e_aceito(): void
     {
-        [, $onboarding, $token] = $this->cenario();
+        [$company, $onboarding] = $this->cenario();
 
-        $this->post(route('onboarding.publico.pessoas', $token), [
+        $this->entrarNoPortal($company)->post(route('portal.auth.onboarding.pessoas'), [
             'papel'    => 'ponto_de_contato',
             'nome'     => 'Fulano Contato',
             'telefone' => '11999998888',
@@ -190,9 +189,9 @@ class PortalPessoasDoClienteTest extends TestCase
     /** @test */
     public function ponto_de_contato_com_email_ja_entra_como_participante(): void
     {
-        [, $onboarding, $token] = $this->cenario();
+        [$company, $onboarding] = $this->cenario();
 
-        $this->post(route('onboarding.publico.pessoas', $token), [
+        $this->entrarNoPortal($company)->post(route('portal.auth.onboarding.pessoas'), [
             'papel'  => 'ponto_de_contato',
             'nome'   => 'Fulano Contato',
             'email'  => 'fulano@empresa.com',
@@ -216,9 +215,9 @@ class PortalPessoasDoClienteTest extends TestCase
     /** @test */
     public function ponto_de_contato_sem_email_nao_vira_participante(): void
     {
-        [, $onboarding, $token] = $this->cenario();
+        [$company, $onboarding] = $this->cenario();
 
-        $this->post(route('onboarding.publico.pessoas', $token), [
+        $this->entrarNoPortal($company)->post(route('portal.auth.onboarding.pessoas'), [
             'papel'    => 'ponto_de_contato',
             'nome'     => 'Fulano Contato',
             'telefone' => '11999998888',
@@ -236,7 +235,8 @@ class PortalPessoasDoClienteTest extends TestCase
     /** @test */
     public function espelho_do_ponto_de_contato_nao_duplica(): void
     {
-        [, $onboarding, $token] = $this->cenario();
+        [$company, $onboarding] = $this->cenario();
+        $cliente = $this->clienteDoPortal($company);
 
         $payload = [
             'papel' => 'ponto_de_contato',
@@ -244,8 +244,8 @@ class PortalPessoasDoClienteTest extends TestCase
             'email' => 'fulano@empresa.com',
         ];
 
-        $this->post(route('onboarding.publico.pessoas', $token), $payload)->assertRedirect();
-        $this->post(route('onboarding.publico.pessoas', $token), $payload)->assertRedirect();
+        $this->entrarNoPortal($company, $cliente)->post(route('portal.auth.onboarding.pessoas'), $payload)->assertRedirect();
+        $this->entrarNoPortal($company, $cliente)->post(route('portal.auth.onboarding.pessoas'), $payload)->assertRedirect();
 
         $this->assertSame(
             1,
@@ -259,10 +259,11 @@ class PortalPessoasDoClienteTest extends TestCase
     /** @test */
     public function cliente_cadastra_varios_participantes(): void
     {
-        [, $onboarding, $token] = $this->cenario();
+        [$company, $onboarding] = $this->cenario();
+        $cliente = $this->clienteDoPortal($company);
 
         foreach (['Ana', 'Bruno', 'Carla'] as $nome) {
-            $this->post(route('onboarding.publico.pessoas', $token), [
+            $this->entrarNoPortal($company, $cliente)->post(route('portal.auth.onboarding.pessoas'), [
                 'papel' => 'participante_reuniao',
                 'nome'  => $nome,
                 'email' => strtolower($nome).'@gmail.com',
@@ -278,17 +279,17 @@ class PortalPessoasDoClienteTest extends TestCase
     }
 
     /**
-     * O token vale para UMA empresa. Sem esta trava, um token válido escreveria
-     * no onboarding de outra empresa.
+     * A sessão vale para as empresas DA PESSOA. Sem esta trava, quem entrou
+     * na empresa A escreveria no onboarding de outra empresa.
      *
      * @test
      */
-    public function token_de_uma_empresa_nao_escreve_na_outra(): void
+    public function sessao_de_uma_empresa_nao_escreve_na_outra(): void
     {
-        [, $onboardingA, $tokenA] = $this->cenario();
+        [$companyA, $onboardingA] = $this->cenario();
         [, $onboardingB] = $this->cenario();
 
-        $this->post(route('onboarding.publico.pessoas', $tokenA), [
+        $this->entrarNoPortal($companyA)->post(route('portal.auth.onboarding.pessoas'), [
             'papel' => 'participante_reuniao',
             'nome'  => 'Da Empresa A',
             'email' => 'a@gmail.com',
@@ -298,27 +299,35 @@ class PortalPessoasDoClienteTest extends TestCase
         $this->assertSame(0, OnboardingContato::where('onboarding_id', $onboardingB->id)->count());
     }
 
-    /** Token inexistente é 404, nunca 500 nem escrita silenciosa. */
-    /** @test */
-    public function token_inexistente_da_404(): void
+    /**
+     * Sem login não grava — nem pela porta nova, nem pelo link antigo. Era a
+     * escrita anônima que o fim do token veio fechar.
+     *
+     * @test
+     */
+    public function sem_login_ninguem_grava_pessoa(): void
     {
-        $this->post(route('onboarding.publico.pessoas', 'token-que-nao-existe'), [
-            'papel' => 'participante_reuniao',
-            'nome'  => 'Ninguem',
-            'email' => 'x@gmail.com',
-        ])->assertNotFound();
+        [, $onboarding] = $this->cenario();
+
+        $payload = ['papel' => 'participante_reuniao', 'nome' => 'Ninguem', 'email' => 'x@gmail.com'];
+
+        $semLogin = $this->post(route('portal.auth.onboarding.pessoas'), $payload);
+        $this->assertFalse($semLogin->isSuccessful(), 'A porta autenticada aceitou escrita sem login.');
+
+        $this->post(route('onboarding.publico.pessoas', str_repeat('a', 48)), $payload)->assertStatus(410);
+
+        $this->assertSame(0, OnboardingContato::where('onboarding_id', $onboarding->id)->count());
     }
 
     /**
-     * A rota pública só ADICIONA. Não existe caminho de apagar por ali — este
-     * é um link sem senha, e apagar cadastro de terceiros é mais poder do que
-     * "informe quem participa".
+     * O portal só ADICIONA pessoa. Não existe caminho de apagar nem de
+     * sobrescrever pelo prefixo antigo — e desde 15/09/2026 as rotas que
+     * sobraram ali só redirecionam ou recusam, mas o cadeado fica: se alguém
+     * reabrir um DELETE sob `portal-cliente/`, isto quebra.
      *
-     * O prefixo é `portal-cliente/` desde 21/08/2026, quando o portal virou
-     * multimódulo. Isto NÃO é cosmético: com o prefixo antigo o filtro passou
-     * a devolver lista vazia (sobrou só o redirect 301 de compatibilidade), e
-     * as duas asserções passavam por vacuidade — o teste continuaria verde
-     * mesmo que alguém abrisse um DELETE público no portal.
+     * O prefixo é `portal-cliente/` desde 21/08/2026. Isto NÃO é cosmético: com
+     * o prefixo antigo o filtro passou a devolver lista vazia, e as duas
+     * asserções passavam por vacuidade.
      *
      * @test
      */

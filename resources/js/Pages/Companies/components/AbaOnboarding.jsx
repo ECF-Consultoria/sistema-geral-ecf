@@ -451,13 +451,13 @@ export default function AbaOnboarding({
 
             {sub === 'acessos'
                 ? <AcessosDoPortal dados={portalAcessos} />
-                : <CockpitOnboardings {...props} />}
+                : <CockpitOnboardings {...props} podeGerirPortal={podeGerirPortal} />}
         </div>
     );
 }
 
 /** O cockpit de todos os onboardings — a leitura original da aba. */
-function CockpitOnboardings({    companies,
+function CockpitOnboardings({    companies, podeGerirPortal = false,
     estrategistas,
     analistas,
     podeCadastrarEmpresa = false,
@@ -668,10 +668,6 @@ function CockpitOnboardings({    companies,
         a.download = `onboardings-${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
-    };
-
-    const copiarLinkDoCliente = (companyId) => {
-        router.post(route('onboarding.link.gerar', companyId), {}, { preserveScroll: true });
     };
 
     const classeSelect =
@@ -895,9 +891,11 @@ function CockpitOnboardings({    companies,
                                                                 <Eye size={13} className="mr-2" /> Ver o portal do cliente
                                                             </a>
                                                         </DropdownMenuItem>
-                                                        <DropdownMenuItem onClick={() => copiarLinkDoCliente(l.empresa.id)}>
-                                                            <Link2 size={13} className="mr-2" /> Gerar link do cliente
-                                                        </DropdownMenuItem>
+                                                        {podeGerirPortal && <DropdownMenuItem asChild>
+                                                            <Link href={route('companies.index', { tab: 'onboarding', sub: 'acessos', portal_company: l.empresa.id })}>
+                                                                <Link2 size={13} className="mr-2" /> Acessos do portal
+                                                            </Link>
+                                                        </DropdownMenuItem>}
                                                         <DropdownMenuSeparator />
                                                         <DropdownMenuItem asChild>
                                                             <Link href={route('companies.show', l.empresa.id)}>

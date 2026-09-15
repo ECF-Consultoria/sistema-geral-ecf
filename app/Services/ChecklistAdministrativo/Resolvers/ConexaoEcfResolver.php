@@ -4,32 +4,11 @@ namespace App\Services\ChecklistAdministrativo\Resolvers;
 
 use App\Contracts\ChecklistResolver;
 use App\Models\Company;
-use App\Models\OnboardingLink;
+use App\Models\PortalUsuario;
 use App\Services\ChecklistAdministrativo\ChecklistAdministrativoDefinicao;
 use App\Services\ChecklistAdministrativo\ChecklistResolverResultado;
 
-/**
- * Resolver do item "Portal do Cliente" — chave `conexao_ecf_gerada` (Fase 152,
- * D-14). O título mudou em 2026-09-11; a CHAVE não, para não orfanar linha.
- *
- * Leitura pura de EXISTÊNCIA da linha de conexão da empresa — nunca cria
- * nada.
- *
- * ⚠️ Decisão explícita do planejador: este resolver NÃO chama o método de
- * fábrica idempotente do serviço de link de onboarding (o que o
- * `152-PATTERNS.md` cita como análogo), embora aquele método também seja
- * seguro de chamar (é `firstOrCreate`, sem rede). O motivo é o efeito
- * colateral, não o custo: chamar um `firstOrCreate` de dentro de um
- * resolver que roda a cada carregamento da ficha CRIARIA a linha e
- * fecharia o item 8 sozinho na primeira renderização, para toda empresa,
- * tornando o item decorativo e violando o ADMIN-03 ("os itens automáticos
- * são gerados pelo próprio checklist, que marca o item ao gerar"). A D-14
- * continua valendo na letra — "fecha por existência, não por clique" — mas
- * quem CRIA a linha é a ação explícita do usuário (endpoint do plano
- * 152-08, que sim chama aquele método de fábrica); este resolver só
- * observa. A idempotência medida pela D-14 é o que permite o botão daquele
- * endpoint ser acionado quantas vezes for, sem duplicar nada.
- */
+/** O item é concluído quando há uma pessoa ativa autorizada para a empresa. */
 class ConexaoEcfResolver implements ChecklistResolver
 {
     public function chave(): string
@@ -44,18 +23,17 @@ class ConexaoEcfResolver implements ChecklistResolver
 
     public function ajuda(): string
     {
-        return 'Confere se já existe uma linha de conexão com o sistema ECF para a empresa — leitura '
-            . 'pura de existência, nunca gera a linha.';
+        return 'Confere se existe um contato ativo vinculado em Acessos do portal.';
     }
 
     public function resolver(Company $company): ChecklistResolverResultado
     {
-        $existe = OnboardingLink::where('company_id', $company->id)->exists();
+        $existe = PortalUsuario::ativos()->whereHas('empresas', fn ($q) => $q->where('companies.id', $company->id))->exists();
 
         if ($existe) {
-            return ChecklistResolverResultado::concluido(['token_existe' => true]);
+            return ChecklistResolverResultado::concluido(['acesso_ativo' => true]);
         }
 
-        return ChecklistResolverResultado::naoColetado('Conexão com o sistema ECF ainda não foi gerada');
+        return ChecklistResolverResultado::naoColetado('Nenhum contato ativo autorizado em Acessos do portal');
     }
 }

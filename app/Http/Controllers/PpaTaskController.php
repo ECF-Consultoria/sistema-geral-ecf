@@ -184,6 +184,7 @@ class PpaTaskController extends Controller
     {
         // Verifica que a tarefa pertence ao PPA do token
         $ppa = Ppa::where('workspace_token', $token)->firstOrFail();
+        abort_if($ppa->company_id, 410, 'Entre no portal com seu e-mail cadastrado.');
         abort_if($task->ppa_id !== $ppa->id, 403);
 
         $data = $request->validate([

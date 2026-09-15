@@ -90,14 +90,19 @@ class ChecklistGrupoEntradaAutoTest extends TestCase
 
     // ─── Item 8 — Caso 5: com OnboardingLink ───────────────────────────────
 
-    public function test_empresa_com_onboarding_link_fecha_item_8(): void
+    public function test_apenas_acesso_ativo_vinculado_fecha_item_8(): void
     {
         $empresa = $this->company();
         OnboardingLink::create(['company_id' => $empresa->id, 'token' => 'token-de-teste-152-04']);
 
         $resultado = (new ConexaoEcfResolver())->resolver($empresa->fresh());
 
-        $this->assertTrue($resultado->ehConcluido());
+        $this->assertTrue($resultado->ehNaoColetado(), 'Token antigo não é evidência de acesso.');
+        $usuario = \App\Models\PortalUsuario::create(['nome' => 'Cliente', 'email' => 'cliente@example.test', 'ativo' => true]);
+        $usuario->empresas()->attach($empresa->id);
+        $this->assertTrue((new ConexaoEcfResolver())->resolver($empresa)->ehConcluido());
+        $usuario->update(['ativo' => false]);
+        $this->assertTrue((new ConexaoEcfResolver())->resolver($empresa)->ehNaoColetado());
     }
 
     // ─── Item 8 — Caso 6: defesa do efeito colateral — nunca cria a linha ──

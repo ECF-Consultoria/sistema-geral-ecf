@@ -16,12 +16,15 @@ use Tests\TestCase;
 
 /**
  * Fase 152 Plano 05 (ADMIN-04, D-11, D-13, D-14) —
- * ChecklistAdministrativoService::concluirManualmente()/reabrirItem()/gerarConexaoEcf().
+ * ChecklistAdministrativoService::concluirManualmente()/reabrirItem().
  *
  * Autoria gravada e limpa SEMPRE em par, item automático recusa marcação
- * manual, chave desconhecida recusa antes de escrever, autoria sobrevive ao
- * desligamento do autor, e a conexão ECF é gerada de forma idempotente sem
- * marcar o item por uma segunda fonte de verdade.
+ * manual, chave desconhecida recusa antes de escrever e autoria sobrevive ao
+ * desligamento do autor.
+ *
+ * O item 8 ("Portal do Cliente") deixou de ser fechado pela geração de um link
+ * por token em 15/09/2026: o portal passou a exigir login, e a evidência de
+ * acesso é uma pessoa ATIVA vinculada à empresa em Acessos do portal.
  */
 class ChecklistMarcacaoManualAutoriaTest extends TestCase
 {
@@ -213,26 +216,30 @@ class ChecklistMarcacaoManualAutoriaTest extends TestCase
         $this->assertSame('Analista Desligado', $item['feito_por_nome']);
     }
 
-    // ─── Caso 7 — gerarConexaoEcf() é idempotente e não marca o item por segunda fonte (D-14) ──
+    // ─── Caso 7 — item 8 fecha por acesso ativo vinculado, nunca por link por token ──
 
-    public function test_gerar_conexao_ecf_duas_vezes_cria_uma_unica_linha_e_fecha_o_item_8(): void
+    public function test_item_8_ignora_link_por_token_e_fecha_com_acesso_ativo_vinculado(): void
     {
         $empresa = $this->empresaCompleta();
         $this->vincularServico($empresa, $this->servicoIsento());
-        $usuario = User::factory()->create(['role' => 'admin']);
 
-        $this->service()->gerarConexaoEcf($empresa, $usuario);
-        $this->service()->gerarConexaoEcf($empresa, $usuario);
-
-        $this->assertDatabaseCount('onboarding_links', 1);
-        $this->assertSame(1, OnboardingLink::where('company_id', $empresa->id)->count());
-
-        $payload = $this->service()->paraEmpresa($empresa->fresh());
-
-        $item = collect($payload['grupos']['entrada']['itens'])
+        $itemOito = fn () => collect($this->service()->paraEmpresa($empresa->fresh())['grupos']['entrada']['itens'])
             ->firstWhere('chave', 'conexao_ecf_gerada');
 
-        $this->assertNotNull($item);
-        $this->assertSame(ChecklistAdministrativoItem::STATUS_CONCLUIDO, $item['status']);
+        // Link antigo por token não é mais evidência de acesso: a posse do
+        // endereço deixou de abrir o portal.
+        OnboardingLink::create(['company_id' => $empresa->id, 'token' => 'token-legado-152-05-'.$empresa->id]);
+
+        $this->assertNotNull($itemOito());
+        $this->assertNotSame(ChecklistAdministrativoItem::STATUS_CONCLUIDO, $itemOito()['status']);
+
+        $acesso = \App\Models\PortalUsuario::create([
+            'nome'  => 'Cliente 152-05',
+            'email' => 'cliente-152-05-'.$empresa->id.'@example.test',
+            'ativo' => true,
+        ]);
+        $acesso->empresas()->attach($empresa->id);
+
+        $this->assertSame(ChecklistAdministrativoItem::STATUS_CONCLUIDO, $itemOito()['status']);
     }
 }

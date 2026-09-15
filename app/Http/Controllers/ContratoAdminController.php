@@ -944,14 +944,9 @@ class ContratoAdminController extends Controller
     {
         $this->guardaChecklist($request, null);
 
-        $checklist = app(ChecklistAdministrativoService::class);
-
-        return $this->executarMutacaoChecklist(
-            $request,
-            $company,
-            fn () => $checklist->gerarConexaoEcf($company, $request->user()),
-            'Link do Portal do Cliente gerado.'
-        );
+        return redirect()->route('companies.index', [
+            'tab' => 'onboarding', 'sub' => 'acessos', 'portal_company' => $company->id,
+        ]);
     }
 
     /**

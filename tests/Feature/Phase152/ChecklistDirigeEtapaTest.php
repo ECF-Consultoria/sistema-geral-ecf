@@ -7,7 +7,7 @@ use App\Models\CompanyEtapaTransicao;
 use App\Models\ContratoAssinatura;
 use App\Models\ContratoServico;
 use App\Models\MlToken;
-use App\Models\OnboardingLink;
+use App\Models\PortalUsuario;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\ChecklistAdministrativo\ChecklistAdministrativoService;
@@ -143,7 +143,10 @@ class ChecklistDirigeEtapaTest extends TestCase
             'connected_at'      => now(),
         ]);
 
-        OnboardingLink::create(['company_id' => $empresa->id, 'token' => 'token-sincronizador-152-07-' . $empresa->id]);
+        // Item 8 ("Portal do Cliente") fecha por pessoa ATIVA vinculada em
+        // Acessos do portal — o link por token deixou de valer em 15/09/2026.
+        $acessoPortal = PortalUsuario::create(['nome' => 'Cliente', 'email' => 'token-sincronizador-152-07.'.$empresa->id.'@example.test', 'ativo' => true]);
+        $acessoPortal->empresas()->attach($empresa->id, ['principal' => true]);
     }
 
     /** Completa os 3 itens do grupo Contrato — item 1 manual, 2/3 por envelope REALMENTE assinado. */

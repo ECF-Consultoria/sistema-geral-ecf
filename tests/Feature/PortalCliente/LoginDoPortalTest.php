@@ -7,7 +7,6 @@ use App\Models\PortalCodigoAcesso;
 use App\Models\PortalUsuario;
 use App\Models\User;
 use App\Notifications\PortalCodigoDeAcesso;
-use App\Services\Portal\PortalLoginService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use PHPUnit\Framework\Attributes\Test;
@@ -70,6 +69,28 @@ class LoginDoPortalTest extends TestCase
     }
 
     // ─── O fluxo que precisa funcionar ──────────────────────────────────────
+
+    #[Test]
+    public function entrar_com_codigo_descarta_contexto_anterior_da_equipe(): void
+    {
+        $empresa = $this->empresa();
+        $usuario = $this->usuario($empresa);
+        $codigo = $this->pedirCodigo($usuario);
+        $this->withSession(['portal_equipe_user_id' => 999])->post(route('portal.validar'), ['email' => $usuario->email, 'codigo' => $codigo])
+            ->assertRedirect(route('portal.auth.inicio'))->assertSessionMissing('portal_equipe_user_id');
+        $this->assertAuthenticatedAs($usuario, 'portal');
+    }
+
+    #[Test]
+    public function codigo_pedido_antes_de_revogar_o_ultimo_vinculo_nao_abre_sessao(): void
+    {
+        $usuario = $this->usuario($this->empresa());
+        $codigo = $this->pedirCodigo($usuario);
+        $usuario->empresas()->detach();
+        $this->post(route('portal.validar'), ['email' => $usuario->email, 'codigo' => $codigo])
+            ->assertSessionHasErrors('codigo')->assertSessionHas('portal_email', $usuario->email);
+        $this->assertGuest('portal');
+    }
 
     #[Test]
     public function cliente_entra_com_email_e_codigo(): void

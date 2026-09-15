@@ -12,21 +12,24 @@ use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
- * O link do portal precisa apontar para o dominio DO CLIENTE.
+ * O endereço do portal precisa apontar para o domínio DO CLIENTE.
  *
  * ### O defeito que isto fecha
- * `route('portal.inicio', $token)` monta a URL com o host da requisicao, e quem
- * gera o link esta sempre logado no admin. Medido em producao em 25/08/2026,
- * com o isolamento de dominio ja no ar: o link entregue ao cliente era
- * `admin.ecfconsultoria.com.br/portal-cliente/…`.
+ * `route()` monta a URL com o host da requisição, e quem copia o endereço está
+ * sempre logado no admin. Medido em produção em 25/08/2026, com o isolamento de
+ * domínio já no ar: o endereço entregue ao cliente era
+ * `admin.ecfconsultoria.com.br/…`.
  *
- * O efeito nao e cosmetico. O `RestringeDominioDoPortal` protege o endereco do
- * cliente — so as rotas do portal existem la. Mandando o cliente para o
- * endereco do admin, ele nunca chega na parte protegida.
+ * O efeito não é cosmético. O `RestringeDominioDoPortal` protege o endereço do
+ * cliente — só as rotas do portal existem lá. Mandando o cliente para o
+ * endereço do admin, ele nunca chega na parte protegida.
  *
- * ### E os links ja entregues?
- * Estao no WhatsApp dos clientes e nao ha como recolher. Por isso o dominio
- * antigo REDIRECIONA em vez de bloquear.
+ * ### E os links por token já entregues?
+ * Estão no WhatsApp dos clientes e não há como recolher. Até 15/09/2026 eles
+ * abriam o portal; desde então levam ao LOGIN, no domínio do cliente, sem
+ * carregar o token nem a query string adiante. A varredura completa — todas as
+ * rotas antigas, nos dois hosts, com token real e inventado — está em
+ * `PortalSemTokenTest`.
  */
 class DominioDoLinkTest extends TestCase
 {
@@ -48,26 +51,18 @@ class DominioDoLinkTest extends TestCase
         ]);
     }
 
-    private function link(?Company $empresa = null): OnboardingLink
-    {
-        return OnboardingLink::create([
-            'company_id' => ($empresa ?? $this->empresa())->id,
-            'token' => Str::random(48),
-        ]);
-    }
-
     // ─── A URL gerada ───────────────────────────────────────────────────
 
     #[Test]
-    public function o_link_sai_no_dominio_do_cliente(): void
+    public function o_endereco_de_login_sai_no_dominio_do_cliente(): void
     {
         $this->comDominio();
 
-        $url = UrlDoPortal::para('portal.inicio', 'abc123');
+        $url = UrlDoPortal::para('portal.entrada');
 
         $this->assertStringContainsString(self::DOMINIO, $url);
         $this->assertStringNotContainsString('admin.', $url);
-        $this->assertStringEndsWith('/portal-cliente/abc123', $url);
+        $this->assertStringEndsWith('/entrar', $url);
     }
 
     /** Sem dominio configurado (local), nada muda. */
@@ -76,7 +71,7 @@ class DominioDoLinkTest extends TestCase
     {
         config(['portal.dominio_cliente' => null]);
 
-        $this->assertSame(route('portal.inicio', 'abc123'), UrlDoPortal::para('portal.inicio', 'abc123'));
+        $this->assertSame(route('portal.entrada'), UrlDoPortal::para('portal.entrada'));
     }
 
     /** Caminho e query string sobrevivem — so o host muda. */
@@ -90,74 +85,37 @@ class DominioDoLinkTest extends TestCase
         $this->assertSame('https://'.self::DOMINIO.'/portal-cliente/xyz?code=123&state=abc', $trocada);
     }
 
-    // ─── O redirecionamento dos links antigos ───────────────────────────
+    // ─── Os links antigos ───────────────────────────────────────────────
 
     /**
-     * Link antigo, apontando para o host do admin, leva a pessoa ao dominio
-     * certo — em vez de 404 ou de servir o portal no lugar errado.
+     * Link antigo no host do admin leva ao login no domínio do cliente — e só
+     * isso. Nem o token nem a query string seguem adiante: um `?code=` do
+     * Mercado Livre colado num link velho não pode reaparecer em outro
+     * endereço, nem o token servir de prova de nada do outro lado.
      */
     #[Test]
-    public function link_no_host_do_admin_redireciona_para_o_do_cliente(): void
+    public function link_antigo_no_host_do_admin_leva_ao_login_do_cliente_sem_carregar_nada(): void
     {
         $this->comDominio();
-        $link = $this->link();
+        $link = OnboardingLink::create([
+            'company_id' => $this->empresa()->id,
+            'token'      => Str::random(48),
+        ]);
 
-        $this->get('http://admin.ecfconsultoria.com.br/portal-cliente/'.$link->token)
-            ->assertRedirect('http://'.self::DOMINIO.'/portal-cliente/'.$link->token);
-    }
+        foreach (['/portal-cliente/', '/onboarding-cliente/'] as $prefixo) {
+            $resposta = $this->get('http://admin.ecfconsultoria.com.br'.$prefixo.$link->token.'?code=SEGREDO&state=XYZ');
 
-    /** E o prefixo legado tambem — ele esta no WhatsApp de clientes antigos. */
-    #[Test]
-    public function o_prefixo_legado_tambem_e_levado(): void
-    {
-        $this->comDominio();
-        $link = $this->link();
-
-        $this->get('http://admin.ecfconsultoria.com.br/onboarding-cliente/'.$link->token)
-            ->assertRedirect('http://'.self::DOMINIO.'/onboarding-cliente/'.$link->token);
-    }
-
-    /**
-     * No dominio certo, NAO redireciona.
-     *
-     * E o teste que impede o laco infinito: se a condicao olhasse so "existe
-     * dominio configurado", toda requisicao se redirecionaria para si mesma.
-     */
-    #[Test]
-    public function no_dominio_do_cliente_nao_ha_redirecionamento(): void
-    {
-        $this->comDominio();
-        $link = $this->link();
-
-        $this->get('http://'.self::DOMINIO.'/portal-cliente/'.$link->token)
-            ->assertOk();
-    }
-
-    /** A query string atravessa o redirecionamento — o OAuth do ML depende disso. */
-    #[Test]
-    public function a_query_string_sobrevive_ao_redirecionamento(): void
-    {
-        $this->comDominio();
-        $link = $this->link();
-
-        $this->get('http://admin.ecfconsultoria.com.br/portal-cliente/'.$link->token.'?code=SEGREDO&state=XYZ')
-            ->assertRedirect('http://'.self::DOMINIO.'/portal-cliente/'.$link->token.'?code=SEGREDO&state=XYZ');
-    }
-
-    /** Sem dominio configurado, o portal responde no host que for. */
-    #[Test]
-    public function sem_dominio_configurado_nao_redireciona_nada(): void
-    {
-        config(['portal.dominio_cliente' => null]);
-        $link = $this->link();
-
-        $this->get('http://qualquer-host.test/portal-cliente/'.$link->token)->assertOk();
+            $resposta->assertRedirect('http://'.self::DOMINIO.'/entrar');
+            $this->assertStringNotContainsString($link->token, $resposta->headers->get('Location'));
+            $this->assertStringNotContainsString('SEGREDO', $resposta->headers->get('Location'));
+        }
     }
 
     // ─── A visao na tela do onboarding ──────────────────────────────────
 
     /**
-     * A tela /onboarding/{id} mostra quem tem LOGIN, nao so o link.
+     * A tela /onboarding/{id} mostra quem tem LOGIN — que desde 15/09/2026 é a
+     * única forma de o cliente entrar.
      *
      * "Link aberto em tal dia" nao diz quem abriu; "Fulano entrou ontem" diz.
      * Sao respostas diferentes para a mesma pergunta na hora de cobrar.

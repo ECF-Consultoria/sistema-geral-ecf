@@ -5,12 +5,11 @@ namespace Tests\Feature\OnboardingEmCompanies;
 use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\Onboarding;
-use App\Models\OnboardingLink;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingAcessosService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
@@ -28,6 +27,7 @@ use Tests\TestCase;
  */
 class AcessosDoClienteTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     /** @return array{0:Company,1:Onboarding} */
@@ -136,12 +136,8 @@ class AcessosDoClienteTest extends TestCase
         [$company] = $this->empresaComOnboarding();
         $this->svc()->salvarDaEmpresa($company, 'https://app.test', 'alguem@ecf.test');
 
-        $token = OnboardingLink::firstOrCreate(
-            ['company_id' => $company->id],
-            ['token' => Str::random(48)]
-        )->token;
-
-        $props = $this->get(route('portal.onboarding', $token))
+        $props = $this->entrarNoPortal($company)
+            ->get(route('portal.auth.onboarding'))
             ->assertOk()
             ->viewData('page')['props'];
 

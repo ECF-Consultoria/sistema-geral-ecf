@@ -18,12 +18,18 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Recusa o token antes de buscar modelos (inclusive IDs de tarefas).
+        $middleware->prependToPriorityList(
+            [\Illuminate\Routing\Middleware\ThrottleRequests::class,
+             \Illuminate\Routing\Middleware\ThrottleRequestsWithRedis::class,
+             \Illuminate\Routing\Middleware\SubstituteBindings::class],
+            \App\Http\Middleware\AposentaTokenDoPortal::class,
+        );
         $middleware->validateCsrfTokens(except: [
             'implementacao/*',
             'api/webhooks/*',   // Phase 26 — receivers HMAC (ECF Drive em /api/webhooks/ecf; futuros parceiros entram aqui)
-            // Portal do Cliente — acesso por posse do token, sem sessão e sem
-            // CSRF (Fase 135 Plano 11, D-06). Prefixo NOVO e distinto do prefixo
-            // do Polos ('implementacao/*', D-02).
+            // Endereços aposentados: o middleware recusa escritas com 410.
+            // As rotas autenticadas /portal/* mantêm a proteção CSRF.
             'portal-cliente/*',
             // Prefixo antigo do mesmo portal, antes de ele virar multimódulo em
             // 21/08/2026. Fica porque `routes/web.php` mantém o GET com redirect

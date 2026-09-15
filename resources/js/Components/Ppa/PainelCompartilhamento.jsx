@@ -94,7 +94,7 @@ export default function PainelCompartilhamento({ visibilidade, workspaceUrl, onG
                                             </button>
                                         )}
 
-                                        {workspaceUrl ? (
+                                        {!visibilidade.exige_login && (workspaceUrl ? (
                                             <button
                                                 type="button"
                                                 onClick={() => copiar(workspaceUrl)}
@@ -110,7 +110,7 @@ export default function PainelCompartilhamento({ visibilidade, workspaceUrl, onG
                                             >
                                                 <LinkIcon size={12} /> Gerar link deste quadro
                                             </button>
-                                        )}
+                                        ))}
                                     </div>
                                 </>
                             )}

@@ -13,6 +13,7 @@ use App\Services\Onboarding\OnboardingLinkService;
 use App\Support\Onboarding\DefinicaoOnboarding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
@@ -26,6 +27,7 @@ use Tests\TestCase;
  */
 class OnboardingEtapasEInstrucoesTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     private function servicoDeGestao(): Servico
@@ -332,9 +334,9 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
     {
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
-        $link = app(OnboardingLinkService::class)->paraEmpresa($company);
 
-        $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'grant_sistema_ecf'])
+        $this->entrarNoPortal($company)
+            ->patch(route('portal.auth.onboarding.passo'), ['chave' => 'grant_sistema_ecf'])
             ->assertSessionHasErrors('chave');
 
         $this->assertNotSame(
@@ -349,19 +351,21 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
     {
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
-        $link = app(OnboardingLinkService::class)->paraEmpresa($company);
+        $cliente = $this->clienteDoPortal($company);
 
         // v20 — era `planilha_custos_adman`. `acesso_colaborador_ml` é agora
         // o único passo do portal que o cliente marca com a própria mão: sem
         // `auto_fonte`, é ele quem diz que convidou o colaborador.
-        $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'acesso_colaborador_ml'])
+        $this->entrarNoPortal($company, $cliente)
+            ->patch(route('portal.auth.onboarding.passo'), ['chave' => 'acesso_colaborador_ml'])
             ->assertSessionHasNoErrors();
         $this->assertSame(
             OnboardingPasso::STATUS_CONCLUIDO,
             OnboardingPasso::where('chave', 'acesso_colaborador_ml')->value('status')
         );
 
-        $this->patch(route('onboarding.publico.passo.desmarcar', $link->token), ['chave' => 'acesso_colaborador_ml'])
+        $this->entrarNoPortal($company, $cliente)
+            ->patch(route('portal.auth.onboarding.passo.desmarcar'), ['chave' => 'acesso_colaborador_ml'])
             ->assertSessionHasNoErrors();
 
         $passo = OnboardingPasso::where('chave', 'acesso_colaborador_ml')->firstOrFail();
@@ -376,9 +380,9 @@ class OnboardingEtapasEInstrucoesTest extends TestCase
     {
         $company = Company::factory()->create();
         $this->onboardingEmAndamento($company);
-        $link = app(OnboardingLinkService::class)->paraEmpresa($company);
 
-        $this->patch(route('onboarding.publico.passo.desmarcar', $link->token), ['chave' => 'grant_sistema_ecf'])
+        $this->entrarNoPortal($company)
+            ->patch(route('portal.auth.onboarding.passo.desmarcar'), ['chave' => 'grant_sistema_ecf'])
             ->assertSessionHasErrors('chave');
     }
 

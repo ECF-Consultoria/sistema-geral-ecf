@@ -324,7 +324,7 @@ class OnboardingController extends Controller
             // `UrlDoPortal`, não `route()`: este link é COPIADO e mandado ao
             // cliente, e `route()` o montaria com o host de quem está
             // olhando — o do admin.
-            'url'           => $link ? \App\Support\Portal\UrlDoPortal::para('portal.inicio', $link->token) : null,
+            'url'           => \App\Support\Portal\UrlDoPortal::para('portal.entrada'),
             'ultimo_acesso' => $link?->ultimo_acesso?->toISOString(),
 
             // ── Quem entra COM LOGIN ─────────────────────────────────
@@ -538,13 +538,8 @@ class OnboardingController extends Controller
     }
 
     /**
-     * POST /onboarding/empresas/{company}/link — gera (ou devolve, se já
-     * existir) o token único do portal público da empresa (D-06, Plano 11).
-     * Ação INTERNA, atrás do mesmo gate `permission:core.onboarding` do
-     * resto do painel — o cliente nunca chega a esta rota, ela só existe
-     * para a Coordenação obter/copiar o link a entregar. `paraEmpresa()` é
-     * idempotente (`firstOrCreate` em `OnboardingLinkService`): chamar duas
-     * vezes nunca cria um segundo token.
+     * Compatibilidade com abas abertas antes da migração: informa o login
+     * fixo, preservando a autorização interna, sem criar token ou acesso.
      */
     public function gerarLink(Request $request, Company $company)
     {
@@ -555,12 +550,9 @@ class OnboardingController extends Controller
             abort_unless($temAcesso, 403, 'Você não tem acesso a esta empresa.');
         }
 
-        $link = $this->linkService->paraEmpresa($company);
-
-        return back()->with(
-            'success',
-            'Link do portal do cliente: ' . \App\Support\Portal\UrlDoPortal::para('portal.inicio', $link->token)
-        );
+        // Compatibilidade com abas antigas: não gera token nem concede acesso.
+        return back()->with('success', 'O cliente entra com seu e-mail cadastrado em: '
+            . \App\Support\Portal\UrlDoPortal::para('portal.entrada'));
     }
 
     /**

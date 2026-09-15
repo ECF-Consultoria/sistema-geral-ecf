@@ -5,7 +5,7 @@ namespace Tests\Feature\Phase153;
 use App\Models\BoasVindasTemplate;
 use App\Models\Company;
 use App\Models\ContratoServico;
-use App\Models\OnboardingLink;
+use App\Models\PortalUsuario;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\BoasVindas\MensagemBoasVindasService;
@@ -73,12 +73,11 @@ class MensagemBoasVindasTest extends TestCase
         ]));
     }
 
-    private function comLink(Company $c): OnboardingLink
+    private function comAcesso(Company $c): PortalUsuario
     {
-        return OnboardingLink::create([
-            'company_id' => $c->id,
-            'token'      => 'tok-153-'.$c->id,
-        ]);
+        $usuario = PortalUsuario::create(['nome' => 'Cliente', 'email' => 'cliente'.$c->id.'@example.test', 'ativo' => true]);
+        $usuario->empresas()->attach($c->id, ['principal' => true]);
+        return $usuario;
     }
 
     private function servico153(): MensagemBoasVindasService
@@ -92,7 +91,7 @@ class MensagemBoasVindasTest extends TestCase
     {
         $empresa = $this->empresa(['name' => 'Acme Comercio']);
         $this->vincular($empresa, $this->servico('Publicação 153'));
-        $link = $this->comLink($empresa);
+        $link = $this->comAcesso($empresa);
 
         $r = $this->servico153()->paraEmpresa($empresa->fresh());
 
@@ -106,8 +105,8 @@ class MensagemBoasVindasTest extends TestCase
         // Bloco 3 — link do Adman, vindo do config.
         $this->assertStringContainsString('https://app.ad-man.io/register?ref=TESTE', $r['texto']);
         // Blocos 4 e 5 — os dois links do cliente.
-        $this->assertStringContainsString(route('onboarding.publico.conectar-ml', $link->token), $r['texto']);
-        $this->assertStringContainsString(route('portal.inicio', $link->token), $r['texto']);
+        $this->assertStringContainsString(route('portal.auth.onboarding'), $r['texto']);
+        $this->assertStringContainsString(route('portal.entrada'), $r['texto']);
         // Bloco 6 — orientações.
         $this->assertStringContainsString('O que precisamos de você agora', $r['texto']);
 
@@ -122,15 +121,15 @@ class MensagemBoasVindasTest extends TestCase
      * clicada por um usuário ECF logado, autoriza a conta do Mercado Livre DELE
      * como se fosse a do cliente. Esta mensagem vai para o cliente.
      */
-    public function test_link_de_oauth_e_a_rota_publica_por_token_nunca_a_interna(): void
+    public function test_link_de_oauth_leva_ao_onboarding_autenticado(): void
     {
         $empresa = $this->empresa();
         $this->vincular($empresa, $this->servico('Publicação 153'));
-        $link = $this->comLink($empresa);
+        $link = $this->comAcesso($empresa);
 
         $texto = $this->servico153()->paraEmpresa($empresa->fresh())['texto'];
 
-        $this->assertStringContainsString('portal-cliente/'.$link->token.'/onboarding/conectar/ml', $texto);
+        $this->assertStringContainsString(route('portal.auth.onboarding'), $texto);
         $this->assertStringNotContainsString('/ml/initiate', $texto);
         $this->assertStringNotContainsString('companies/'.$empresa->id.'/ml', $texto);
     }
@@ -141,7 +140,7 @@ class MensagemBoasVindasTest extends TestCase
     {
         $empresa = $this->empresa();
         $this->vincular($empresa, $this->servico('Assessoria 153'));
-        $this->comLink($empresa);
+        $this->comAcesso($empresa);
 
         BoasVindasTemplate::salvarGenerico('Genérico: olá {empresa}, seu link é {link_sistema}.');
 
@@ -156,7 +155,7 @@ class MensagemBoasVindasTest extends TestCase
         $empresa = $this->empresa();
         $servico = $this->servico('Incubadora 153');
         $this->vincular($empresa, $servico);
-        $this->comLink($empresa);
+        $this->comAcesso($empresa);
 
         BoasVindasTemplate::salvarGenerico('TEXTO GENERICO');
         BoasVindasTemplate::salvarParaServico($servico->id, 'TEXTO DO SERVICO para {empresa}');
@@ -177,7 +176,7 @@ class MensagemBoasVindasTest extends TestCase
         $segundo  = $this->servico('BBB 153');   // id maior
         $this->vincular($empresa, $primeiro);
         $this->vincular($empresa, $segundo);
-        $this->comLink($empresa);
+        $this->comAcesso($empresa);
 
         BoasVindasTemplate::salvarParaServico($primeiro->id, 'DO PRIMEIRO');
         BoasVindasTemplate::salvarParaServico($segundo->id, 'DO SEGUNDO');
@@ -199,7 +198,7 @@ class MensagemBoasVindasTest extends TestCase
         $this->vincular($empresa, $ativo);
         $vinculoInativo = $this->vincular($empresa, $inativo);
         ContratoServico::withoutEvents(fn () => $vinculoInativo->update(['ativo' => false]));
-        $this->comLink($empresa);
+        $this->comAcesso($empresa);
 
         BoasVindasTemplate::salvarParaServico($ativo->id, 'DO ATIVO');
         BoasVindasTemplate::salvarParaServico($inativo->id, 'DO INATIVO');
@@ -221,15 +220,15 @@ class MensagemBoasVindasTest extends TestCase
         $r = $this->servico153()->paraEmpresa($empresa->fresh());
 
         $this->assertFalse($r['pronta']);
-        $this->assertCount(1, $r['pendencias'], 'Os dois links saem do MESMO OnboardingLink — a causa é uma só, a pendência também.');
-        $this->assertStringContainsString('Conexão com o sistema ECF', $r['pendencias'][0]);
+        $this->assertCount(1, $r['pendencias'], 'A ausência de acesso autorizado gera uma única pendência.');
+        $this->assertStringContainsString('Acessos do portal', $r['pendencias'][0]);
     }
 
     public function test_sem_email_colaborador_a_mensagem_avisa(): void
     {
         $empresa = $this->empresa(['email_colaborador' => null]);
         $this->vincular($empresa, $this->servico('Publicação 153'));
-        $this->comLink($empresa);
+        $this->comAcesso($empresa);
 
         $r = $this->servico153()->paraEmpresa($empresa->fresh());
 
@@ -268,7 +267,7 @@ class MensagemBoasVindasTest extends TestCase
     public function test_empresa_sem_servico_ativo_cai_no_generico_sem_quebrar(): void
     {
         $empresa = $this->empresa();
-        $this->comLink($empresa);
+        $this->comAcesso($empresa);
 
         $r = $this->servico153()->paraEmpresa($empresa->fresh());
 

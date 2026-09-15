@@ -282,9 +282,7 @@ class ComercialEntradaController extends Controller
             // decide sozinho.
             'pode_finalizar'    => $finalizar->podeFinalizar($company),
             'adman_register_url' => config('services.adman.register_url'),
-            'portal_cliente_url' => ($token = OnboardingLink::where('company_id', $company->id)->value('token'))
-                ? route('portal.inicio', $token)
-                : null,
+            'portal_cliente_url' => \App\Support\Portal\UrlDoPortal::para('portal.entrada'),
             'mensagem_boas_vindas' => $boasVindas->paraEmpresa($company),
             // Pré-computado no servidor, ao contrário da ficha antiga que
             // mandava a lista inteira de envelopes e decidia no JSX. Aqui só

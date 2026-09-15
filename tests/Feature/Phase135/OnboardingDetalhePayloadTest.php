@@ -14,12 +14,13 @@ use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
- * Payload da tela interna de detalhe: link do cliente (com `ultimo_acesso`),
- * bloco de reunião e `etapa` por passo.
+ * Payload da tela interna de detalhe: endereço do portal, bloco de reunião e
+ * `etapa` por passo.
  *
  * O que estes testes protegem: abrir a tela NÃO pode criar token — efeito
- * colateral de leitura —, e a distinção entre "o cliente não fez" e "o cliente
- * nem viu" precisa chegar à tela.
+ * colateral de leitura —, e desde 15/09/2026 o endereço oferecido é o de LOGIN,
+ * nunca uma URL com token. A distinção entre "o cliente não fez" e "o cliente
+ * nem viu" passou a vir de `link.acessos`, por pessoa.
  */
 class OnboardingDetalhePayloadTest extends TestCase
 {
@@ -57,9 +58,12 @@ class OnboardingDetalhePayloadTest extends TestCase
      * Abrir a tela é LEITURA. Se o `show()` chamasse `paraEmpresa()` (que é
      * `firstOrCreate`), toda visita criaria token para empresa que talvez
      * nunca receba o link.
+     *
+     * Desde 15/09/2026 o endereço que a tela oferece é o de LOGIN, o mesmo
+     * para todo cliente — não existe mais link por empresa para gerar.
      */
     #[Test]
-    public function abrir_o_detalhe_nao_cria_link(): void
+    public function abrir_o_detalhe_nao_cria_link_e_oferece_o_login(): void
     {
         $onboarding = $this->onboardingEmAndamento();
 
@@ -68,45 +72,35 @@ class OnboardingDetalhePayloadTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('link.existe', false)
-                ->where('link.url', null)
+                ->where('link.url', route('portal.entrada'))
             );
 
         $this->assertSame(0, \App\Models\OnboardingLink::count(), 'Ler a tela não pode gerar token');
     }
 
-    #[Test]
-    public function link_existente_chega_com_url_completa(): void
-    {
-        $onboarding = $this->onboardingEmAndamento();
-        $link = app(OnboardingLinkService::class)->paraEmpresa($onboarding->company);
-
-        $this->actingAs($this->admin())
-            ->get(route('onboarding.painel.show', $onboarding))
-            ->assertOk()
-            ->assertInertia(fn ($page) => $page
-                ->where('link.existe', true)
-                ->where('link.url', route('portal.inicio', $link->token))
-                ->where('link.ultimo_acesso', null)
-            );
-    }
-
     /**
-     * A informação que separa "não fez" de "nem viu". `ultimo_acesso` já era
-     * gravado a cada visita e não era exibido em lugar nenhum.
+     * Empresa que ainda tem link antigo recebe o MESMO endereço de login. A URL
+     * com token não pode voltar à tela: ela seria copiada e mandada ao cliente,
+     * e não abre mais nada.
+     *
+     * Saiu junto o teste de `ultimo_acesso`: ele media a visita pelo link, que
+     * deixou de acontecer. Quem entrou e quando está agora em `link.acessos`,
+     * por pessoa (ver `DominioDoLinkTest`).
      */
     #[Test]
-    public function ultimo_acesso_do_cliente_chega_a_tela_interna(): void
+    public function link_antigo_nao_volta_a_tela_e_a_url_e_a_de_login(): void
     {
         $onboarding = $this->onboardingEmAndamento();
         $link = app(OnboardingLinkService::class)->paraEmpresa($onboarding->company);
 
-        // O cliente abre o portal.
-        $this->get(route('portal.inicio', $link->token))->assertOk();
-
         $this->actingAs($this->admin())
             ->get(route('onboarding.painel.show', $onboarding))
             ->assertOk()
-            ->assertInertia(fn ($page) => $page->whereNot('link.ultimo_acesso', null));
+            ->assertDontSee($link->token, false)
+            ->assertInertia(fn ($page) => $page
+                ->where('link.existe', true)
+                ->where('link.url', route('portal.entrada'))
+            );
     }
 
     // ─── Reunião ────────────────────────────────────────────────────────────

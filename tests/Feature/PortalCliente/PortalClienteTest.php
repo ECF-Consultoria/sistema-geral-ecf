@@ -4,34 +4,37 @@ namespace Tests\Feature\PortalCliente;
 
 use App\Models\Company;
 use App\Models\MlbEmpresa;
-use App\Models\OnboardingLink;
 use App\Models\Ppa;
 use App\Models\PpaTask;
 use App\Models\User;
 use App\Services\Portal\PortalClienteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
- * O Portal do Cliente — a área em `/portal-cliente/{token}` que deixou de ser
- * só o onboarding e virou o ambiente da empresa (21/08/2026).
+ * O Portal do Cliente — o ambiente da empresa (21/08/2026), acessado por LOGIN.
  *
  * ### O que estes testes protegem
- * 1. **O isolamento por empresa.** O portal é um link sem senha. A única coisa
- *    que separa o cliente A do cliente B é o token, e todo caminho de leitura
- *    e de escrita precisa respeitá-lo. Um vazamento aqui não é um bug de tela:
- *    é o plano de ação de um cliente aparecendo para outro.
+ * 1. **O isolamento por empresa.** Desde 15/09/2026 o que separa o cliente A do
+ *    cliente B é o vínculo em `portal_usuario_empresa`, conferido a cada request
+ *    por `EnsurePortalAutenticado` — não mais a posse de um token. Todo caminho
+ *    de leitura e de escrita precisa respeitá-lo. Um vazamento aqui não é bug de
+ *    tela: é o plano de ação de um cliente aparecendo para outro.
  * 2. **Que o PPA é UM só.** Não há cópia para o portal. O que a equipe cria em
- *    `/ppa` é o que o cliente vê, e o que o cliente move é a linha que o
- *    kanban interno mostra.
- * 3. **Que os links já enviados continuam abrindo.** O prefixo antigo
- *    (`/onboarding-cliente/{token}`) está no WhatsApp de clientes reais e não
- *    há como recolhê-lo.
+ *    `/ppa` é o que o cliente vê, e o que o cliente move é a linha que o kanban
+ *    interno mostra.
+ *
+ * ### O que saiu daqui
+ * Os casos da porta por token — 404 para token inexistente, 301 do prefixo
+ * antigo e o carimbo de `ultimo_acesso` no link — descreviam uma porta que
+ * deixou de abrir. O que vale agora está em `PortalSemTokenTest`: qualquer
+ * token, real ou inventado, em qualquer host, leva ao login sem carimbar nada.
  */
 class PortalClienteTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     private function empresa(string $nome = 'Cliente Portal'): Company
@@ -44,14 +47,6 @@ class PortalClienteTest extends TestCase
             'adman_account_id' => (string) random_int(100000, 999999),
             'empresa_nova'     => false,
         ]);
-    }
-
-    private function token(Company $company): string
-    {
-        return OnboardingLink::firstOrCreate(
-            ['company_id' => $company->id],
-            ['token' => Str::random(48)]
-        )->token;
     }
 
     private function mentor(): User
@@ -92,7 +87,7 @@ class PortalClienteTest extends TestCase
     {
         $company = $this->empresa();
 
-        $this->get(route('portal.inicio', $this->token($company)))
+        $this->entrarNoPortal($company)->get(route('portal.auth.inicio'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Portal/Inicio')
@@ -119,7 +114,7 @@ class PortalClienteTest extends TestCase
     {
         $company = $this->empresa();
 
-        $this->get(route('portal.inicio', $this->token($company)))
+        $this->entrarNoPortal($company)->get(route('portal.auth.inicio'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('modulos', fn ($modulos) => collect($modulos)
@@ -135,7 +130,7 @@ class PortalClienteTest extends TestCase
     {
         $company = $this->empresa();
 
-        $this->get(route('portal.onboarding', $this->token($company)))
+        $this->entrarNoPortal($company)->get(route('portal.auth.onboarding'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Onboarding/Publico')
@@ -150,55 +145,6 @@ class PortalClienteTest extends TestCase
             );
     }
 
-    /**
-     * Links já enviados a clientes apontam para o prefixo antigo. Eles não
-     * podem morrer — não há como recolher um link que já está no WhatsApp de
-     * alguém.
-     */
-    #[Test]
-    public function url_antiga_redireciona_permanentemente_para_o_modulo_de_onboarding(): void
-    {
-        $company = $this->empresa();
-        $token   = $this->token($company);
-
-        $this->get("/onboarding-cliente/{$token}")
-            ->assertStatus(301)
-            ->assertRedirect(route('portal.onboarding', $token));
-    }
-
-    #[Test]
-    public function token_inexistente_da_404_em_todos_os_modulos(): void
-    {
-        foreach (['portal.inicio', 'portal.onboarding', 'portal.ppa'] as $rota) {
-            $this->get(route($rota, 'token-que-nao-existe-0000'))
-                ->assertNotFound();
-        }
-    }
-
-    /**
-     * O painel interno distingue "não fez" de "nem viu" pelo `ultimo_acesso`.
-     * Ele é carimbado no `PortalClienteService::resolver()`, que é a porta de
-     * TODO módulo — entrar pelo PPA precisa contar como visita tanto quanto
-     * entrar pelo onboarding.
-     */
-    #[Test]
-    public function qualquer_modulo_carimba_o_ultimo_acesso(): void
-    {
-        foreach (['portal.inicio', 'portal.onboarding', 'portal.ppa'] as $rota) {
-            $company = $this->empresa();
-            $token   = $this->token($company);
-
-            $this->assertNull(OnboardingLink::where('token', $token)->first()->ultimo_acesso);
-
-            $this->get(route($rota, $token))->assertOk();
-
-            $this->assertNotNull(
-                OnboardingLink::where('token', $token)->first()->ultimo_acesso,
-                "A rota {$rota} não carimbou ultimo_acesso."
-            );
-        }
-    }
-
     // ─── A identidade da empresa ────────────────────────────────────────────
 
     #[Test]
@@ -207,7 +153,7 @@ class PortalClienteTest extends TestCase
         $company = $this->empresa();
         $company->update(['logo_url' => '/storage/logos/9_abc.webp']);
 
-        $this->get(route('portal.inicio', $this->token($company)))
+        $this->entrarNoPortal($company)->get(route('portal.auth.inicio'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('empresa.logo_url', '/storage/logos/9_abc.webp')
@@ -229,7 +175,7 @@ class PortalClienteTest extends TestCase
             'empresa_nova' => false,
         ]);
 
-        $this->get(route('portal.inicio', $this->token($company)))
+        $this->entrarNoPortal($company)->get(route('portal.auth.inicio'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('empresa.logo_url', null)
@@ -256,7 +202,7 @@ class PortalClienteTest extends TestCase
         $company = $this->empresa();
         $ppa = $this->ppa($company, 'sent', [['Ajustar preços', 'todo'], ['Enviar custos', 'done']]);
 
-        $this->get(route('portal.ppa', $this->token($company)))
+        $this->entrarNoPortal($company)->get(route('portal.auth.ppa'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Portal/Ppa')
@@ -280,14 +226,14 @@ class PortalClienteTest extends TestCase
         $company = $this->empresa();
         $this->ppa($company, 'draft', [['Nao deve vazar', 'todo']]);
 
-        $this->get(route('portal.ppa', $this->token($company)))
+        $this->entrarNoPortal($company)->get(route('portal.auth.ppa'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page->has('ppas', 0));
     }
 
     /**
-     * O teste central de isolamento: o token de A nunca pode trazer o plano de
-     * B.
+     * O teste central de isolamento: a sessão de A nunca pode trazer o plano
+     * de B.
      */
     #[Test]
     public function cliente_nao_ve_ppa_de_outra_empresa(): void
@@ -298,7 +244,7 @@ class PortalClienteTest extends TestCase
         $meu     = $this->ppa($minha, 'sent', [], 'Meu plano');
         $alheio  = $this->ppa($outra, 'sent', [], 'Plano alheio');
 
-        $this->get(route('portal.ppa', $this->token($minha)))
+        $this->entrarNoPortal($minha)->get(route('portal.auth.ppa'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->has('ppas', 1)
@@ -306,6 +252,29 @@ class PortalClienteTest extends TestCase
             );
 
         $this->assertDatabaseHas('ppas', ['id' => $alheio->id, 'company_id' => $outra->id]);
+    }
+
+    /**
+     * A sessão aponta para uma empresa sem vínculo com a pessoa logada. O que
+     * decide é o vínculo no banco — trocar `portal_empresa_id` na sessão não
+     * pode abrir o plano de outra empresa.
+     */
+    #[Test]
+    public function sessao_apontando_para_empresa_sem_vinculo_nao_mostra_o_plano_dela(): void
+    {
+        $minha = $this->empresa('Minha');
+        $outra = $this->empresa('Outra');
+        $this->ppa($outra, 'sent', [], 'Plano alheio');
+
+        $cliente = $this->clienteDoPortal($minha);
+
+        // Pessoa da empresa "Minha", sessão apontando para "Outra".
+        $resposta = $this->entrarNoPortal($outra, $cliente)->get(route('portal.auth.ppa'));
+
+        $resposta->assertOk();
+        $resposta->assertDontSee('Plano alheio', false);
+        // O middleware devolve a pessoa à empresa dela — não à que a sessão pedia.
+        $resposta->assertSessionHas('portal_empresa_id', $minha->id);
     }
 
     /**
@@ -330,7 +299,7 @@ class PortalClienteTest extends TestCase
             'status'         => 'sent',
         ]);
 
-        $this->get(route('portal.ppa', $this->token($company)))
+        $this->entrarNoPortal($company)->get(route('portal.auth.ppa'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->has('ppas', 1)
@@ -353,7 +322,7 @@ class PortalClienteTest extends TestCase
             'workspace_token'  => 'token-secreto-do-workspace',
         ]);
 
-        $resposta = $this->get(route('portal.ppa', $this->token($company)));
+        $resposta = $this->entrarNoPortal($company)->get(route('portal.auth.ppa'));
 
         $resposta->assertOk();
         $resposta->assertDontSee('trello.com', false);
@@ -374,7 +343,7 @@ class PortalClienteTest extends TestCase
         $ppa = $this->ppa($company, 'sent', [['Ajustar preços', 'todo']]);
         $tarefa = $ppa->tasks()->first();
 
-        $this->patchJson(route('portal.ppa.tarefa', [$this->token($company), $tarefa->id]), [
+        $this->entrarNoPortal($company)->patchJson(route('portal.auth.ppa.tarefa', $tarefa->id), [
             'status' => 'doing',
         ])->assertOk()->assertJson(['ok' => true, 'status' => 'doing']);
 
@@ -383,7 +352,7 @@ class PortalClienteTest extends TestCase
     }
 
     /**
-     * A trava que impede trocar o id na URL. Sem ela, o token de A moveria a
+     * A trava que impede trocar o id na URL. Sem ela, a sessão de A moveria a
      * tarefa de B.
      */
     #[Test]
@@ -395,7 +364,7 @@ class PortalClienteTest extends TestCase
         $ppaAlheio = $this->ppa($outra, 'sent', [['Tarefa alheia', 'todo']]);
         $tarefa = $ppaAlheio->tasks()->first();
 
-        $this->patchJson(route('portal.ppa.tarefa', [$this->token($minha), $tarefa->id]), [
+        $this->entrarNoPortal($minha)->patchJson(route('portal.auth.ppa.tarefa', $tarefa->id), [
             'status' => 'done',
         ])->assertForbidden();
 
@@ -413,7 +382,7 @@ class PortalClienteTest extends TestCase
         $ppa = $this->ppa($company, 'draft', [['Tarefa de rascunho', 'todo']]);
         $tarefa = $ppa->tasks()->first();
 
-        $this->patchJson(route('portal.ppa.tarefa', [$this->token($company), $tarefa->id]), [
+        $this->entrarNoPortal($company)->patchJson(route('portal.auth.ppa.tarefa', $tarefa->id), [
             'status' => 'done',
         ])->assertForbidden();
 
@@ -432,7 +401,7 @@ class PortalClienteTest extends TestCase
         $ppa = $this->ppa($company, 'completed', [['Tarefa encerrada', 'done']]);
         $tarefa = $ppa->tasks()->first();
 
-        $this->patchJson(route('portal.ppa.tarefa', [$this->token($company), $tarefa->id]), [
+        $this->entrarNoPortal($company)->patchJson(route('portal.auth.ppa.tarefa', $tarefa->id), [
             'status' => 'todo',
         ])->assertForbidden();
     }
@@ -443,7 +412,7 @@ class PortalClienteTest extends TestCase
         $company = $this->empresa();
         $ppa = $this->ppa($company, 'sent', [['Ajustar preços', 'todo']]);
 
-        $this->patchJson(route('portal.ppa.tarefa', [$this->token($company), $ppa->tasks()->first()->id]), [
+        $this->entrarNoPortal($company)->patchJson(route('portal.auth.ppa.tarefa', $ppa->tasks()->first()->id), [
             'status' => 'arquivada',
         ])->assertStatus(422);
     }
@@ -465,7 +434,7 @@ class PortalClienteTest extends TestCase
             ['Feita', 'done'],
         ]);
 
-        $this->get(route('portal.onboarding', $this->token($company)))
+        $this->entrarNoPortal($company)->get(route('portal.auth.onboarding'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('modulos.3.chave', 'ppa')
@@ -483,7 +452,7 @@ class PortalClienteTest extends TestCase
         $company = $this->empresa();
         $this->ppa($company, 'completed', [['Sobrou aberta', 'todo']]);
 
-        $this->get(route('portal.inicio', $this->token($company)))
+        $this->entrarNoPortal($company)->get(route('portal.auth.inicio'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page->where('modulos.3.badge', null));
     }

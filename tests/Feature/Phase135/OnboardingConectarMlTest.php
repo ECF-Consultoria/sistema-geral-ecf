@@ -13,14 +13,16 @@ use App\Services\Onboarding\OnboardingLinkService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
- * Porta pública para o OAuth do Mercado Livre a partir do portal do cliente.
+ * Porta para o OAuth do Mercado Livre a partir do portal do cliente.
  *
  * O que estes testes protegem:
- *  1. O cliente sai do portal para o ML sem login e sem link assinado — o
- *     token do onboarding já identifica a empresa.
+ *  1. O cliente sai do portal para o ML a partir da SESSÃO do portal — desde
+ *     15/09/2026 o token do onboarding não identifica mais empresa nenhuma, e
+ *     o link antigo de conectar leva ao login, nunca ao Mercado Livre.
  *  2. A URL de retorno vai no `state`, montada pelo servidor. Se um dia
  *     alguém aceitar isso do request, o callback vira open redirect.
  *  3. A tela sabe QUAL ação cada passo tem. "tem auto_fonte" não basta mais:
@@ -28,6 +30,7 @@ use Tests\TestCase;
  */
 class OnboardingConectarMlTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     private function servicoDeGestao(): Servico
@@ -53,31 +56,40 @@ class OnboardingConectarMlTest extends TestCase
         return $company->fresh();
     }
 
-    private function tokenPublico(Company $company): string
-    {
-        return app(OnboardingLinkService::class)->paraEmpresa($company)->token;
-    }
-
     #[Test]
-    public function cliente_sem_login_e_redirecionado_para_o_mercado_livre(): void
+    public function cliente_logado_e_redirecionado_para_o_mercado_livre(): void
     {
         config(['services.mercadolivre.client_id' => 'client-teste', 'services.mercadolivre.redirect' => 'https://exemplo.test/oauth/mercadolivre/callback']);
         $company = $this->empresaComOnboardingEmAndamento();
 
-        $response = $this->get(route('onboarding.publico.conectar-ml', $this->tokenPublico($company)));
+        $response = $this->entrarNoPortal($company)->get(route('portal.auth.onboarding.conectar-ml'));
 
         $response->assertRedirect();
         $destino = $response->headers->get('Location');
 
         $this->assertStringStartsWith('https://auth.mercadolivre.com.br/authorization', $destino);
-        $this->assertStringContainsString('code_challenge_method=S256', $destino, 'PKCE precisa continuar valendo na porta pública.');
+        $this->assertStringContainsString('code_challenge_method=S256', $destino, 'PKCE precisa continuar valendo na porta do portal.');
     }
 
+    /**
+     * O link antigo de conectar vivia no portal por token e pode ter sido
+     * encaminhado. Ele não pode mais levar ao Mercado Livre: autorizar a partir
+     * dele ligaria a conta de quem clicou à empresa do token. Real ou
+     * inventado, o destino é o login.
+     */
     #[Test]
-    public function token_inexistente_devolve_404_e_nao_gera_url_de_autorizacao(): void
+    public function link_antigo_de_conectar_leva_ao_login_e_nunca_ao_mercado_livre(): void
     {
-        $this->get(route('onboarding.publico.conectar-ml', str_repeat('z', 48)))
-            ->assertNotFound();
+        config(['services.mercadolivre.client_id' => 'client-teste', 'services.mercadolivre.redirect' => 'https://exemplo.test/callback']);
+        $company = $this->empresaComOnboardingEmAndamento();
+        $tokenReal = app(OnboardingLinkService::class)->paraEmpresa($company)->token;
+
+        foreach ([$tokenReal, str_repeat('z', 48)] as $token) {
+            $response = $this->get(route('onboarding.publico.conectar-ml', $token));
+
+            $response->assertRedirect(route('portal.entrada'));
+            $this->assertStringNotContainsString('mercadolivre', $response->headers->get('Location'));
+        }
     }
 
     #[Test]
@@ -85,13 +97,12 @@ class OnboardingConectarMlTest extends TestCase
     {
         config(['services.mercadolivre.client_id' => 'client-teste', 'services.mercadolivre.redirect' => 'https://exemplo.test/callback']);
         $company = $this->empresaComOnboardingEmAndamento();
-        $token = $this->tokenPublico($company);
 
-        $response = $this->get(route('onboarding.publico.conectar-ml', $token));
+        $response = $this->entrarNoPortal($company)->get(route('portal.auth.onboarding.conectar-ml'));
         $destino = $response->headers->get('Location');
 
         // O retorno NÃO viaja na URL do ML — quem o guarda é o state no cache.
-        $this->assertStringNotContainsString('onboarding-cliente', $destino);
+        $this->assertStringNotContainsString('/portal/onboarding', urldecode($destino));
 
         parse_str(parse_url($destino, PHP_URL_QUERY) ?: '', $query);
         $state = $query['state'] ?? null;
@@ -99,7 +110,7 @@ class OnboardingConectarMlTest extends TestCase
 
         $guardado = Cache::get("ml_oauth_state_{$state}");
         $this->assertSame($company->id, $guardado['company_id']);
-        $this->assertSame(route('portal.onboarding', $token), $guardado['retorno_url']);
+        $this->assertSame(route('portal.auth.onboarding'), $guardado['retorno_url']);
     }
 
     #[Test]
