@@ -8,7 +8,7 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import SeletorEmpresa from '@/Components/Portal/SeletorEmpresa';
-import { contatoDoAlvo, acessoComEmail } from '@/lib/acessosPortal';
+import { contatoDoAlvo, acessoComEmail, consumirEmpresaDaUrl } from '@/lib/acessosPortal';
 import { cn } from '@/lib/utils';
 
 // ─── Acessos do Portal do Cliente ───────────────────────────────────────────
@@ -87,8 +87,16 @@ export default function AcessosDoPortal({ dados }) {
     useEffect(() => {
         if (!dados || abriuEmpresa.current) return;
         abriuEmpresa.current = true;
-        const id = new URLSearchParams(window.location.search).get('portal_company');
-        if (id && empresas.some((e) => String(e.id) === id)) {
+
+        // O atalho vale para UMA abertura, e o parâmetro sai da URL na hora.
+        // Este componente é desmontado ao trocar de sub-aba; cada nova montagem
+        // relia o `portal_company` que tinha ficado na URL, e "Acessos do
+        // portal" passava a abrir sempre com a última empresa do atalho.
+        const { id, url, mudou } = consumirEmpresaDaUrl(window.location.href);
+        if (!mudou) return;
+        window.history.replaceState(window.history.state, '', url);
+
+        if (empresas.some((e) => String(e.id) === id)) {
             selecionarAlvo('e:' + id);
             setNovoAberto(true);
         }
