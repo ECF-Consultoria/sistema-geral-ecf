@@ -8,11 +8,13 @@ use App\Models\EmpresaFaixaFaturamento;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Fechamento\GravarTabelaEmpresaService;
 use App\Services\Fechamento\ValidadorTabelaFaixas;
+use App\Support\Cnpj;
 use App\Support\FaixaFaturamento;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
@@ -137,12 +139,36 @@ class TabelasContratoController extends Controller
         ValidadorTabelaFaixas $validador,
     ): RedirectResponse {
         $data = $request->validate([
-            'company_id' => ['required', 'integer', 'exists:companies,id'],
+            'company_id'              => ['required', 'integer', 'exists:companies,id'],
+            // Quick 260915-mtj — a pessoa marcou que conferiu um contrato com CNPJ de outra empresa.
+            'confirmo_cnpj_diferente' => ['sometimes', 'boolean'],
         ]);
 
         // T-140-20 — proposta já conferida (confirmada OU descartada) nunca é confirmada de novo.
         if ($proposta->situacao !== ContratoTabelaProposta::SITUACAO_PENDENTE) {
             abort(422, 'Este contrato já foi conferido — não é possível confirmar de novo.');
+        }
+
+        // ── CNPJ do contrato × CNPJ da empresa, ANTES de qualquer escrita (quick 260915-mtj) ──
+        // A tela mostra a comparação antes do clique, mas o servidor não confia nela. CNPJ de outra
+        // empresa NÃO é bloqueio absoluto (há contratos legítimos em CNPJ de outra empresa do mesmo
+        // dono) — só exige que a pessoa diga que conferiu. Matriz × filial passa direto.
+        $companyEscolhida = Company::findOrFail($data['company_id']);
+        $comparacaoCnpj   = Cnpj::comparar($proposta->cnpj_lido, $companyEscolhida->cnpj);
+
+        if ($comparacaoCnpj === Cnpj::COMPARACAO_DIFERENTE && ! $request->boolean('confirmo_cnpj_diferente')) {
+            Log::warning(
+                "[TabelasContrato] Confirmação recusada — CNPJ do contrato é de outra empresa e ninguém marcou que conferiu "
+                ."(proposta {$proposta->id}, empresa {$companyEscolhida->id} ({$companyEscolhida->name}))"
+            );
+
+            // ValidationException (e não abort) para a mensagem chegar ao `onError` da tela via
+            // Inertia; em requisição JSON continua sendo 422.
+            throw ValidationException::withMessages([
+                'confirmo_cnpj_diferente' => "O CNPJ deste contrato é de outra empresa, diferente do CNPJ cadastrado em "
+                    ."{$companyEscolhida->name}. Nada foi gravado. Se o contrato é mesmo desta empresa, marque que "
+                    .'você conferiu e confirme de novo.',
+            ]);
         }
 
         // ── Normaliza e valida ANTES de qualquer escrita (quick 260910-l7k) ──
@@ -170,9 +196,10 @@ class TabelasContratoController extends Controller
             }
         }
 
-        $avisoCnpj = null;
+        $avisoCnpj        = null;
+        $gravadoNaEmpresa = [];
 
-        DB::transaction(function () use ($data, $proposta, $request, $servico, $faixasNormalizadas, &$avisoCnpj) {
+        DB::transaction(function () use ($data, $proposta, $request, $servico, $faixasNormalizadas, &$avisoCnpj, &$gravadoNaEmpresa) {
             $company = Company::findOrFail($data['company_id']);
 
             // ── All-or-nothing (D-13 da Fase 137) ──────────────────────────
@@ -200,17 +227,26 @@ class TabelasContratoController extends Controller
             }
 
             if (blank($company->cnpj) && filled($proposta->cnpj_lido)) {
-                $cnpjNormalizado = preg_replace('/\D/', '', $proposta->cnpj_lido) ?? $proposta->cnpj_lido;
-
                 // Coluna é única — se o CNPJ lido já pertence a OUTRA empresa, não grava (senão a
                 // transação inteira quebraria por violação de unicidade) e avisa quem confirmou.
+                // Quick 260915-mtj — compara por DÍGITOS dos dois lados: antes, CNPJ gravado com
+                // máscara em outra empresa passava despercebido. REPLACE aninhado roda igual em
+                // MariaDB e SQLite. Com menos de 14 dígitos lidos, cai no comparativo literal.
+                $digitosLidos = Cnpj::digitos($proposta->cnpj_lido);
+
                 $donoDoCnpj = Company::where('id', '!=', $company->id)
-                    ->where(fn ($w) => $w->where('cnpj', $proposta->cnpj_lido)->orWhere('cnpj', $cnpjNormalizado))
+                    ->where(fn ($w) => $w
+                        ->where('cnpj', $proposta->cnpj_lido)
+                        ->when($digitosLidos !== '', fn ($q) => $q->orWhereRaw(
+                            "REPLACE(REPLACE(REPLACE(cnpj, '.', ''), '/', ''), '-', '') = ?",
+                            [$digitosLidos]
+                        )))
                     ->exists();
 
                 if ($donoDoCnpj) {
                     $avisoCnpj = 'O CNPJ lido neste contrato já pertence a outra empresa cadastrada — não foi gravado. Confira manualmente.';
                 } else {
+                    // Grava como sempre gravou (o texto lido), sem mudar o formato armazenado.
                     $mudancasCompany['cnpj'] = $proposta->cnpj_lido;
                 }
             }
@@ -218,6 +254,12 @@ class TabelasContratoController extends Controller
             if ($mudancasCompany !== []) {
                 $company->fill($mudancasCompany);
                 $company->save();
+
+                $gravadoNaEmpresa = [
+                    'cnpj'         => array_key_exists('cnpj', $mudancasCompany),
+                    'razao_social' => array_key_exists('razao_social', $mudancasCompany),
+                    'nome'         => $company->name,
+                ];
             }
 
             $proposta->fill([
@@ -232,6 +274,17 @@ class TabelasContratoController extends Controller
         $mensagem = $proposta->tipo_cobranca === ContratoTabelaProposta::TIPO_TABELA
             ? 'Tabela confirmada — a cobrança desta empresa já está atualizada.'
             : 'Conferido — este contrato é de valor fixo, nenhuma faixa foi criada.';
+
+        // Quick 260915-mtj — a pessoa fica sabendo o que foi gravado na empresa além da cobrança.
+        if ($gravadoNaEmpresa !== []) {
+            $oQue = match (true) {
+                $gravadoNaEmpresa['cnpj'] && $gravadoNaEmpresa['razao_social'] => 'CNPJ e razão social do contrato gravados',
+                $gravadoNaEmpresa['cnpj']                                      => 'CNPJ do contrato gravado',
+                default                                                        => 'Razão social do contrato gravada',
+            };
+
+            $mensagem .= " {$oQue} em {$gravadoNaEmpresa['nome']}.";
+        }
 
         $response = back()->with('success', $mensagem);
 
