@@ -121,7 +121,7 @@ class PortalResponsaveisTest extends TestCase
         $this->assertCount(2, $responsaveis);
 
         // Analista PRIMEIRO: é o contato do dia a dia do cliente.
-        $this->assertSame('Analista responsável', $responsaveis[0]['papel']);
+        $this->assertSame('Analista', $responsaveis[0]['papel']);
         $this->assertSame('Gustavo Analista', $responsaveis[0]['nome']);
         $this->assertSame('/storage/avatars/gustavo.webp', $responsaveis[0]['foto']);
 
@@ -221,7 +221,7 @@ class PortalResponsaveisTest extends TestCase
             ->assertOk()
             ->viewData('page')['props'];
 
-        $analistas = collect($props['responsaveis'])->where('papel', 'Analista responsável');
+        $analistas = collect($props['responsaveis'])->where('papel', 'Analista');
 
         $this->assertCount(1, $analistas, 'O mesmo analista apareceu mais de uma vez.');
     }
