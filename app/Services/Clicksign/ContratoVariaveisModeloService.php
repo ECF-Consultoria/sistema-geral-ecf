@@ -133,6 +133,10 @@ class ContratoVariaveisModeloService
             'valor_mensal'          => fn (array $d) => $d['totais']['valor_mensal_formatado'],
             'vigencia_inicio'       => fn (array $d) => $d['vigencia']['inicio'],
             'vigencia_fim'          => fn (array $d) => $d['vigencia']['fim'],
+            // Quick 260915-fc7 — duração da Cláusula 11ª ("6 (seis)"), lida
+            // pronta de montarDados(); o `.docx` precisa trocar o "12 (doze)"
+            // fixo por {{vigencia_meses}} para o valor aparecer.
+            'vigencia_meses'        => fn (array $d) => $d['vigencia']['meses'],
             // Quick 260819-guy (2026-08-19) — deixou de ser fixo A DEFINIR
             // (território previsto para a Fase 131 em
             // 126-VARIAVEIS-DO-MODELO.md §4.1, adiado até então). Lê o dado

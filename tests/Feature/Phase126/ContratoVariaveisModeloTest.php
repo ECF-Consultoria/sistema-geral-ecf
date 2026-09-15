@@ -554,6 +554,84 @@ class ContratoVariaveisModeloTest extends TestCase
         $this->assertSame('Mercado Livre', $resultado['variaveis']['plataformas']);
     }
 
+    // ─── Quick 260915-fc7 — {{vigencia_meses}}: a duração sai das parcelas ───
+
+    private function contratoComFases(array $fases): ContratoAssinatura
+    {
+        return ContratoAssinatura::factory()
+            ->comSnapshot(array_map(fn (array $fase) => array_merge([
+                'servico'          => 'Gestão de Ads',
+                'valor_contratado' => 3000.0,
+                'data_contratacao' => '2026-09-14',
+                'data_vencimento'  => null,
+            ], $fase), $fases))
+            ->for(Company::factory(), 'company')
+            ->create();
+    }
+
+    #[Test]
+    public function nomes_inclui_vigencia_meses(): void
+    {
+        $this->assertContains('vigencia_meses', ContratoVariaveisModeloService::nomes());
+    }
+
+    /**
+     * Caso real da Quater Móveis Infantis: 6 parcelas de R$ 3.000 fechadas
+     * no HubSpot e o contrato saiu com "12 (doze) meses".
+     */
+    #[Test]
+    public function vigencia_meses_com_seis_parcelas_sai_seis_por_extenso(): void
+    {
+        $resultado = $this->service()->montar($this->contratoComFases([['parcelas' => 6]]));
+
+        $this->assertSame('6 (seis)', $resultado['variaveis']['vigencia_meses']);
+    }
+
+    #[Test]
+    public function vigencia_meses_soma_as_fases_do_mesmo_servico(): void
+    {
+        $resultado = $this->service()->montar($this->contratoComFases([
+            ['parcelas' => 3, 'valor_contratado' => 5500.0],
+            ['parcelas' => 9, 'valor_contratado' => 6000.0, 'data_contratacao' => '2026-12-01'],
+        ]));
+
+        $this->assertSame('12 (doze)', $resultado['variaveis']['vigencia_meses']);
+    }
+
+    #[Test]
+    public function vigencia_meses_entre_servicos_diferentes_vale_o_mais_longo(): void
+    {
+        $resultado = $this->service()->montar($this->contratoComFases([
+            ['servico' => 'Gestão de Ads', 'parcelas' => 6],
+            ['servico' => 'Mentoria', 'parcelas' => 4],
+        ]));
+
+        $this->assertSame('6 (seis)', $resultado['variaveis']['vigencia_meses']);
+    }
+
+    /**
+     * "3 primeiras e as demais seguem a faixa" não é contrato de 3 meses —
+     * fase sem quantidade cai no padrão de 12, nunca numa soma parcial.
+     */
+    #[Test]
+    public function vigencia_meses_com_fase_sem_parcelas_cai_no_padrao_de_doze(): void
+    {
+        $resultado = $this->service()->montar($this->contratoComFases([
+            ['parcelas' => 3],
+            ['parcelas' => null, 'data_contratacao' => '2026-12-01'],
+        ]));
+
+        $this->assertSame('12 (doze)', $resultado['variaveis']['vigencia_meses']);
+    }
+
+    #[Test]
+    public function vigencia_meses_em_snapshot_antigo_sem_a_chave_parcelas_cai_no_padrao_de_doze(): void
+    {
+        $resultado = $this->service()->montar($this->contratoComSnapshot());
+
+        $this->assertSame('12 (doze)', $resultado['variaveis']['vigencia_meses']);
+    }
+
     /**
      * T-126-40: `ContratoVariaveisModeloService` continua PURA — nenhuma
      * chamada a `DB::`/`Http::`/`Log::`/`Cache::`/`Storage::` no arquivo

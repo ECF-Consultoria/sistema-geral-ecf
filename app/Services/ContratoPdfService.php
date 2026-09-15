@@ -51,6 +51,13 @@ class ContratoPdfService
     public const PLACEHOLDER = 'A DEFINIR';
 
     /**
+     * Quick 260915-fc7 — duração de `{{vigencia_meses}}` quando o snapshot
+     * não diz quantas parcelas o contrato tem: os mesmos 12 meses que o
+     * modelo de Gestão trazia escritos na Cláusula 11ª.
+     */
+    public const VIGENCIA_MESES_PADRAO = 12;
+
+    /**
      * Monta o array de dados do contrato a partir do `servicos_snapshot`
      * congelado (D-04), formatado em pt-BR, com placeholder visível para os
      * campos que ainda não existem no banco (D-05).
@@ -84,7 +91,7 @@ class ContratoPdfService
      *     servicos: array<int, array{servico: string, valor: float, valor_formatado: string, inicio: string, fim: string}>,
      *     plataformas: string,
      *     totais: array{valor_mensal_formatado: string},
-     *     vigencia: array{inicio: string, fim: string},
+     *     vigencia: array{inicio: string, fim: string, meses: string},
      *     pagamento: array{dia_vencimento: string, forma_pagamento: string, data_primeira_parcela: string},
      *     campos_pendentes: array<int, string>,
      *     gerado_em: string
@@ -290,7 +297,51 @@ class ContratoPdfService
         return [
             'inicio' => $this->formatarData($inicios[0]),
             'fim'    => $fimIndeterminado ? $this->formatarData(null) : $this->formatarData($fins[count($fins) - 1]),
+            'meses'  => $this->vigenciaEmMeses($snapshot),
         ];
+    }
+
+    /**
+     * Quick 260915-fc7 — texto de `{{vigencia_meses}}` (Cláusula 11ª do
+     * modelo de Gestão, que tinha "12 (doze) meses" escrito no `.docx`).
+     * Caso real: Quater Móveis Infantis fechou 6 parcelas de R$ 3.000 e o
+     * contrato saiu com 12 meses.
+     *
+     * A duração vem da quantidade de parcelas congelada no snapshot (D-04,
+     * `hs_recurring_billing_period` 'P<N>M' -> N): fases do MESMO serviço
+     * somam (escalonado 3 + 9 = 12) e, entre serviços diferentes, vale o
+     * maior total — o contrato dura o quanto dura o serviço mais longo.
+     *
+     * ⚠️ Qualquer fase sem `parcelas` (período não definido no HubSpot, ou
+     * snapshot anterior ao quick 260824-bte) cai no padrão de 12 meses — o
+     * mesmo texto que o modelo tinha fixo antes. Nunca soma parcial: "3
+     * primeiras e as demais seguem a faixa" não é um contrato de 3 meses.
+     *
+     * Masculino de propósito ("meses"): `numeroPorExtenso()` sem a flag
+     * feminina, ao contrário da contagem de parcelas.
+     *
+     * @param  array<int, array{servico?: string, parcelas?: ?int}>  $snapshot
+     */
+    private function vigenciaEmMeses(array $snapshot): string
+    {
+        $mesesPorServico = [];
+
+        foreach ($snapshot as $fase) {
+            $parcelas = $fase['parcelas'] ?? null;
+
+            if (!is_numeric($parcelas) || (int) $parcelas <= 0) {
+                $mesesPorServico = [];
+
+                break;
+            }
+
+            $nome = $fase['servico'] ?? '';
+            $mesesPorServico[$nome] = ($mesesPorServico[$nome] ?? 0) + (int) $parcelas;
+        }
+
+        $meses = $mesesPorServico === [] ? self::VIGENCIA_MESES_PADRAO : max($mesesPorServico);
+
+        return "{$meses} ({$this->numeroPorExtenso($meses)})";
     }
 
     /**
