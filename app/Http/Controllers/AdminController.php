@@ -887,6 +887,13 @@ class AdminController extends Controller
                 'ganho_faixa'           => $upgrade['ganho_faixa'],
                 // Quick 260911-kio (T3) — literal 1 de 5.
                 'queda_brusca'          => $quedaBrusca,
+                // Fase 143 (143-05, T2) — literal 1 de 5. Linha de empresa
+                // não junta grupo nenhum, mas a chave SAI mesmo assim: a tela
+                // lê a mesma propriedade em toda linha, e faltar em um dos
+                // cinco literais é exatamente como nasceu a prop fantasma
+                // `cobranca_mensal_grupo` nesta mesma tela.
+                'subgrupos'               => [],
+                'subgrupos_sao_de_hoje'   => false,
             ];
         }
 
@@ -992,6 +999,11 @@ class AdminController extends Controller
                     // nesta competência não há faturamento deste mês pra
                     // comparar com nada; `false` é a resposta honesta.
                     'queda_brusca'          => false,
+                    // Fase 143 (143-05, T2) — literal 2 de 5. Linha de
+                    // empresa nunca junta grupo nenhum; a chave sai vazia,
+                    // nunca omitida.
+                    'subgrupos'               => [],
+                    'subgrupos_sao_de_hoje'   => false,
                 ];
 
                 continue;
@@ -1074,6 +1086,10 @@ class AdminController extends Controller
                 'ganho_faixa'           => $upgrade['ganho_faixa'],
                 // Quick 260911-kio (T3) — literal 3 de 5.
                 'queda_brusca'          => $quedaBrusca,
+                // Fase 143 (143-05, T2) — literal 3 de 5. Mesma razão dos
+                // outros dois ramos de empresa.
+                'subgrupos'               => [],
+                'subgrupos_sao_de_hoje'   => false,
             ];
         }
 
@@ -1338,6 +1354,13 @@ class AdminController extends Controller
                 // entre os dois meses, então "caiu pela metade" ali pode
                 // ser só composição diferente, não loja parando.
                 'queda_brusca'          => false,
+                // Fase 143 (143-05, T2) — literal 4 de 5. Quais grupos do
+                // cadastro estão somados nesta linha. Sem nenhum grupo
+                // dentro, lista vazia (a chave nunca é omitida). Aqui a
+                // competência está ABERTA, então a composição é a que está
+                // valendo agora — não há "de hoje" versus "de então".
+                'subgrupos'               => $this->fechamentoSubgruposDaLinha($membros, (int) $groupId),
+                'subgrupos_sao_de_hoje'   => false,
             ];
         }
 
@@ -1495,10 +1518,65 @@ class AdminController extends Controller
                 // ramo ao vivo de grupo: a chave sai, o valor é sempre
                 // `false` porque grupo está fora do escopo deste quick.
                 'queda_brusca'          => false,
+                // Fase 143 (143-05, T2) — literal 5 de 5.
+                //
+                // ⚠️ Aqui a competência já está fechada, e o fechamento
+                // congelado NÃO guarda em qual grupo de dentro cada empresa
+                // estava naquele mês (item 3 do `deferred-items.md`: não
+                // existe coluna `subgrupo_id` no snapshot). O que dá para
+                // dizer é como o cliente está dividido HOJE — e é por isso
+                // que `subgrupos_sao_de_hoje` vai `true`: a tela avisa que
+                // aquela divisão é a de agora. Mostrar a de hoje como se
+                // fosse a daquele mês é o único desfecho proibido.
+                'subgrupos'               => $this->fechamentoSubgruposDaLinha($membros, (int) $groupId),
+                'subgrupos_sao_de_hoje'   => true,
             ];
         }
 
         return $linhasFinais;
+    }
+
+    /**
+     * Fase 143 (143-05, T2) — a COMPOSIÇÃO da linha de grupo: quais grupos do
+     * cadastro estão dentro do grupo de cobrança que a linha representa.
+     *
+     * O shape é o MESMO de `SimuladorGrupoCobrancaService` (`id`, `nome`,
+     * `eh_a_raiz`, `empresas`), de propósito: a prévia da montagem e o
+     * fechamento falam do mesmo dado, e uma segunda forma faria as duas telas
+     * contarem histórias diferentes sobre a mesma junção.
+     *
+     * ⚠️ Grupo que não tem nenhum outro grupo dentro devolve lista VAZIA — a
+     * chave continua saindo em toda linha (grupo e empresa), mas repetir o
+     * nome do próprio grupo como "composição" seria só ruído na tela.
+     *
+     * @param  Collection<int, Company>  $membros
+     * @return list<array{id: int, nome: string|null, eh_a_raiz: bool, empresas: int}>
+     */
+    private function fechamentoSubgruposDaLinha(Collection $membros, ?int $grupoDeCobrancaId): array
+    {
+        if ($grupoDeCobrancaId === null) {
+            return [];
+        }
+
+        $juntaMaisDeUmGrupo = $membros->contains(
+            fn (Company $c) => (int) $c->company_group_id !== $grupoDeCobrancaId
+        );
+
+        if (! $juntaMaisDeUmGrupo) {
+            return [];
+        }
+
+        return $membros
+            ->groupBy(fn (Company $c) => (int) $c->company_group_id)
+            ->map(fn (Collection $doGrupo, $id) => [
+                'id'        => (int) $id,
+                'nome'      => $doGrupo->first()->grupo?->name,
+                'eh_a_raiz' => (int) $id === $grupoDeCobrancaId,
+                'empresas'  => $doGrupo->count(),
+            ])
+            ->sortBy('id')
+            ->values()
+            ->all();
     }
 
     /**

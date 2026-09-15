@@ -887,6 +887,20 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
                                 Grupo · {empresa.filhas.length + 1}
                             </span>
                         )}
+                        {/* Fase 143 (143-05) — quando a cobrança junta mais de
+                            um grupo do cadastro, a listagem precisa dizer isso:
+                            "MPozenato, 10 empresas" sem avisar que DRossi, Gran
+                            Belo e Lyam estão dentro é a conferência às cegas. Os
+                            nomes ficam no tooltip; a lista completa abre junto
+                            com a linha. */}
+                        {empresa.subgrupos?.length > 0 && (
+                            <span
+                                className="text-[12px] font-semibold px-2 py-0.5 rounded-md bg-white/[0.05] text-white/50 border border-white/[0.08]"
+                                title={empresa.subgrupos.map((s) => `${s.nome ?? 'Sem nome'} · ${s.empresas} ${s.empresas === 1 ? 'empresa' : 'empresas'}`).join(' · ')}
+                            >
+                                Junta {empresa.subgrupos.length} grupos
+                            </span>
+                        )}
                         {empresa.is_filha && (
                             <span className="text-[12px] font-semibold px-2 py-0.5 rounded-md bg-white/[0.05] text-white/40 border border-white/[0.08]">
                                 Vinculada · {empresa.nome_pai}
@@ -1188,6 +1202,37 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                             <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04]">
                                 <span className="text-[12px] uppercase tracking-wider text-white/40">Composição do grupo</span>
                             </div>
+                            {/* Fase 143 (143-05, item 5 do deferred-items) — quais
+                                grupos do cadastro esta cobrança está somando. Sem
+                                isto a pessoa abre o fechamento justamente para
+                                conferir se a junção saiu certa e a tela não mostra
+                                o que foi juntado. */}
+                            {empresa.subgrupos?.length > 0 && (
+                                <div className="px-3 py-2.5 border-b border-white/[0.04] bg-white/[0.01] flex flex-col gap-1.5">
+                                    <span className="text-[13px] text-white/50">
+                                        Esta cobrança junta {empresa.subgrupos.length} grupos:
+                                    </span>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                        {empresa.subgrupos.map((s) => (
+                                            <span key={s.id} className="text-[13px] text-white/70">
+                                                {s.nome ?? 'Grupo sem nome'}
+                                                <span className="text-white/30 text-[12px] ml-1">
+                                                    ({s.empresas} {s.empresas === 1 ? 'empresa' : 'empresas'}{s.eh_a_raiz ? ' · grupo principal' : ''})
+                                                </span>
+                                            </span>
+                                        ))}
+                                    </div>
+                                    {/* ⚠️ Mês já fechado não guarda quem estava em
+                                        qual grupo naquela época — mostrar a divisão
+                                        de hoje como se fosse a de então seria o
+                                        único desfecho proibido. */}
+                                    {empresa.subgrupos_sao_de_hoje && (
+                                        <span className="text-[12px] text-white/30">
+                                            Esta é a divisão de hoje. O fechamento já registrado deste mês guarda o total do cliente, não quais grupos faziam parte dele na época.
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                             {[empresa, ...empresa.filhas].map((e, i) => (
                                 <div key={e.id} className={cn('flex items-center justify-between px-3 py-2', i > 0 && 'border-t border-white/[0.03]')}>
                                     <span className="text-white/60 text-[13px]">
