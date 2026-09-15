@@ -1536,7 +1536,7 @@ número e teste por teste idêntico ao baseline do 143-03**; nenhum teste de NPS
 `npm run build` ✓ em 43,49s, `GruposCobranca` no `manifest.json`, CSS conferido com `grep -F` sobre
 o seletor completo.
 
-Last activity: 2026-09-14 — 143-04 executado (`143-04-SUMMARY.md`), commits `e73c2706`, `b8ea57d8`.
+Last activity: 2026-09-15 — 143-05 executado (`143-05-SUMMARY.md`), commits `9a6aa06e` (aviso de faixa) e `d8cb554c` (composição na tela). Fase 143 completa em código; nada montado em produção.
 `gsd-sdk query state.advance-plan` **NÃO** foi executado (instrução explícita do prompt). Sem
 deploy, sem `.env`, sem migration. **Em produção nada mudou de cobrança: os 15 grupos seguem com
 `parent_id` nulo e `grupo_faixas_faturamento` segue zerada.** A fase está completa em CÓDIGO; o que

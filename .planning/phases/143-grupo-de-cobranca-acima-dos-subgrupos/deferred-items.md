@@ -44,7 +44,9 @@ histórico**: uma competência já fechada não sabe dizer a composição por
 subgrupo daquele mês. Se a tela do 143-03 quiser mostrar a composição de um
 mês passado, vai precisar de uma coluna `subgrupo_id` no snapshot.
 
-### 5. A tela do fechamento não tem como saber que uma linha é uma árvore
+### ~~5. A tela do fechamento não tem como saber que uma linha é uma árvore~~ ✔
+
+> **Fechado no 143-05 (T2).** A chave `subgrupos` sai nos cinco literais de linha de `fechamento()` — vazia nas linhas de empresa, calculada nas de grupo — e a tela mostra "Esta cobrança junta N grupos" com os nomes. Em mês já fechado, `subgrupos_sao_de_hoje` vai `true` e a tela avisa que a divisão mostrada é a de hoje.
 
 A linha de grupo das props (`tipo => 'grupo'`) hoje traz `filhas[]` (as
 empresas) e `grupo` (a raiz), mas **não diz quais subgrupos compõem a linha**.
@@ -63,7 +65,9 @@ competências seguidas (o faturamento do cliente oscila, e um mês atípico pode
 fazer a faixa parecer outra). O serviço aceita a chamada repetida sem efeito
 colateral — quem quiser, itera. Não foi embutido porque nenhuma tela pede.
 
-### 7. `fechamento:consolidar-mes` não avisa quando a composição do grupo mudou
+### ~~7. `fechamento:consolidar-mes` não avisa quando a composição do grupo mudou~~ ✔
+
+> **Fechado no 143-05 (T1, commit `9a6aa06e`).** `FechamentoFaixaNotifier` compara o conjunto de empresas congelado sob o grupo de cobrança entre as duas competências. Composição diferente: a linha sai do aviso de faixa e entra em `composicao_mudou`, com quantas empresas entraram e saíram, impresso no resumo do comando e em log. Composição igual: comportamento idêntico ao de antes. A idempotência por `notificado_em` segue intocada.
 
 Se alguém pendurar um subgrupo entre duas competências, a linha do cliente
 muda de faturamento e de faixa por **composição**, não por desempenho — e o
