@@ -309,3 +309,35 @@ subcobranças reais, de R$ 1.500/mês cada.
 - **Mês corrente nunca usa a API** (janela incompleta dá resposta diferente a cada hora).
 - **Rode fora da janela do sync das ~11h.** O sync diário já leva 429 da Adman; se metade cair em
   fallback o comando recusa gravar (e está certo em recusar).
+
+---
+
+## 11. Quem entra no fechamento de um mês: a data de início do contrato (quick 260915-jpr)
+
+A lista de empresas de um mês vem de `FechamentoEmpresasDoMes`, usada pelo comando, pela tela, pelo
+relatório geral, pelo job de e-mail e pelo comparativo. **Nunca monte a lista com
+`Company::where('active', true)` puro**: foi assim que julho/2026 ganhou 39 empresas que só viraram
+cliente depois.
+
+- A data é `contratos_servico.data_contratacao`, **nunca `companies.created_at`** (recusado pelo
+  usuário: há clientes antigos cadastrados depois).
+- Só sai quem tem data em **todos** os contratos ativos, e todas depois do fim do mês. Contrato sem
+  data faz a empresa entrar como pendência, e a tela lista essas empresas.
+- Mês já fechado: quem está gravado segue na tela e nos relatórios até o mês ser refeito. Só o
+  comando aplica a regra ao que está gravado.
+
+**Armadilhas que já morderam:**
+
+- **Fixture com contrato de "hoje" some do mês anterior.** O `ContratoServicoFactory` usava `now()` e
+  os testes de fechamento fecham o mês anterior. Com a regra, nenhuma empresa entrava e 62 testes
+  caíram sem nenhum defeito de cálculo. O padrão do factory virou `2025-01-01`. Teste novo de
+  fechamento que crie contrato à mão precisa de data anterior ao mês fechado.
+- **O webhook do HubSpot grava `data_contratacao = now()`** (`HubspotWebhookController`). Cliente
+  antigo que entra pelo HubSpot fica com início "hoje" e sai dos meses anteriores. Confira antes de
+  refazer um mês.
+- **A migration legada** preencheu `data_contratacao = contract_start ?? company.created_at`, e o
+  `created_at` é o reimport de 25/05/2026. Contrato antigo sem `contract_start` não entra em mês
+  anterior a 25/05/2026.
+- A migration declara a coluna NOT NULL, mas a tela de contratos valida `nullable` e o
+  `ContratoDadosMinimosService` checa "ausente". Não confie no schema: data vazia ou zerada conta
+  como sem data.
