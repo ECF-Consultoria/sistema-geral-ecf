@@ -8,6 +8,8 @@
   },
   "permissions": {
     "allow": [
+      "Bash(bash deploy.sh)", 
+      "Bash(git push origin main)",
       "Bash(./plink.exe *)",
       "Bash(./pscp.exe *)",
       "Bash(/c/xampp/php/php.exe artisan *)",
