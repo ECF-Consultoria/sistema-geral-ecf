@@ -16,6 +16,7 @@ use App\Models\ServicoFaixaFaturamento;
 use App\Models\ShopeeMetric;
 use App\Services\AdmanService;
 use App\Services\Fechamento\FechamentoComparativoService;
+use App\Services\Fechamento\FechamentoEmpresasDoMes;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Fechamento\FechamentoRegraTabela;
 use App\Services\Fechamento\FechamentoRollupService;
@@ -202,6 +203,13 @@ class AdminController extends Controller
             ->orderBy('name')
             ->get();
 
+        // Quick 260915-jpr — só entra quem já era cliente no mês (mesma
+        // regra de `fechamento:consolidar-mes`, `FechamentoEmpresasDoMes`).
+        // A pendência (contrato sem data de início) vira LISTA DA PÁGINA,
+        // nunca chave nova nas linhas.
+        $separacaoDoMes = $this->fechamentoEmpresasDoMes($rawCompanies, $mesReferenciaStr, $competenciaFechada);
+        $rawCompanies   = $separacaoDoMes['entram'];
+
         // Quick 260904-kwz — quais empresas têm contrato assinado no
         // sistema, uma consulta em massa ANTES do laço (mesmo padrão de
         // `FechamentoComparativoService`, T-138-11): é o segundo caminho de
@@ -303,7 +311,39 @@ class AdminController extends Controller
             // decidir COPY (ex.: "Valor fixo do contrato" em vez de "A
             // DEFINIR"), nunca para recalcular nada no frontend.
             'regra_nova_ativa'       => $regraNova,
+            // Quick 260915-jpr — empresas que entraram no mês só porque o
+            // contrato não tem data de início. Lista da página, calculada do
+            // dado de hoje; o link leva à ficha onde a data se corrige.
+            'empresas_sem_data_inicio' => $separacaoDoMes['pendentes']
+                ->map(fn (Company $c) => [
+                    'id'   => $c->id,
+                    'name' => $c->name,
+                    'url'  => '/administrativo/contratos/empresa/'.$c->id,
+                ])
+                ->values()
+                ->all(),
         ]);
+    }
+
+    /**
+     * Quick 260915-jpr — aplica `FechamentoEmpresasDoMes` à lista do
+     * fechamento. Mês FECHADO: quem já tem linha gravada continua na tela até
+     * o mês ser refeito — o mês congelado não muda sozinho (D-11 da Fase
+     * 137), senão o total a receber de um mês fechado mudaria sem ninguém
+     * refazer nada. Quem não tem linha gravada segue a regra.
+     *
+     * @return array{entram: Collection, pendentes: Collection, fora: Collection}
+     */
+    private function fechamentoEmpresasDoMes(Collection $rawCompanies, string $mesReferenciaStr, bool $competenciaFechada): array
+    {
+        $idsGravados = $competenciaFechada
+            ? FechamentoSnapshot::query()
+                ->whereDate('mes_referencia', $mesReferenciaStr)
+                ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+                ->pluck('company_id')
+            : [];
+
+        return app(FechamentoEmpresasDoMes::class)->separar($rawCompanies, $mesReferenciaStr, $idsGravados);
     }
 
     /**
@@ -1948,6 +1988,9 @@ class AdminController extends Controller
         $rawCompanies = $query->get();
 
         $competenciaFechada = $this->relatorioCompetenciaFechada($mesReferenciaStr);
+
+        // Quick 260915-jpr — mesma lista de empresas do mês da tela.
+        $rawCompanies = $this->fechamentoEmpresasDoMes($rawCompanies, $mesReferenciaStr, $competenciaFechada)['entram'];
 
         // Quick 260904-kwz — mesma consulta em massa de fechamento().
         $companyIdsComContratoAssinado = $this->fechamentoCompanyIdsComContratoAssinado();

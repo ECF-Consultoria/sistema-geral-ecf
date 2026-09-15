@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\FechamentoSnapshot;
 use App\Models\Servico;
 use App\Models\ShopeeMetric;
+use App\Services\Fechamento\FechamentoEmpresasDoMes;
 use App\Services\Fechamento\FechamentoFaixaNotifier;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Fechamento\FechamentoFonteFaturamento;
@@ -176,6 +177,7 @@ class ConsolidarMesFechamento extends Command
         private FechamentoFaixaNotifier $faixaNotifier,
         private FechamentoRegraTabela $regra,
         private FechamentoFonteFaturamento $fonteFaturamento,
+        private FechamentoEmpresasDoMes $empresasDoMes,
     ) {
         parent::__construct();
     }
@@ -239,6 +241,16 @@ class ConsolidarMesFechamento extends Command
                 'grupo.pai',
             ])
             ->get();
+
+        // Quick 260915-jpr — só entra quem já era cliente no mês: empresa
+        // cujos contratos ativos TODOS começam depois do fim do mês fica de
+        // fora (e a linha dela é podada pelo writer ao refazer). Na dúvida
+        // (contrato sem data), entra como pendência. Mesma regra da tela, do
+        // relatório e do comparativo — `FechamentoEmpresasDoMes`. Aqui NÃO
+        // há `idsSempreDentro`: refazer o mês é justamente o momento de
+        // aplicar a regra ao que está gravado.
+        $separacao = $this->empresasDoMes->separar($companies, $mes);
+        $companies = $separacao['entram'];
 
         // ── Passo 2 — faturamento da competência e do mês anterior (D-06),
         //    UMA passada cada — nunca uma query por empresa (T-137-19).
@@ -744,6 +756,38 @@ class ConsolidarMesFechamento extends Command
             $resumoAviso['notificacoes'],
             $resumoFontes,
         ));
+
+        // ── Quick 260915-jpr — quem ficou de fora pela data de início ─────
+        // Nada some em silêncio: os nomes de quem saiu vão no resumo, junto
+        // da contagem de quem entrou só porque falta a data. Texto é
+        // conveniência operacional — a conferência é a reconsulta ao banco.
+        $this->info(sprintf(
+            '[Fechamento] Data de início do contrato: %d empresa(s) de fora por começarem depois de %s · %d empresa(s) entraram sem data de início (pendência).',
+            $separacao['fora']->count(),
+            $mesLabel,
+            $separacao['pendentes']->count(),
+        ));
+
+        if ($separacao['fora']->isNotEmpty()) {
+            $this->warn('[Fechamento] De fora em '.$mesLabel.': '.$separacao['fora']
+                ->map(function (Company $c) {
+                    $inicio = $c->contratosServico
+                        ->pluck('data_contratacao')
+                        ->filter()
+                        ->map(fn ($d) => $d->toDateString())
+                        ->sort()
+                        ->first();
+
+                    return "{$c->name} (#{$c->id}, início {$inicio})";
+                })
+                ->implode('; ').'.');
+        }
+
+        if ($separacao['pendentes']->isNotEmpty()) {
+            $this->warn('[Fechamento] Sem data de início do contrato em '.$mesLabel.': '.$separacao['pendentes']
+                ->map(fn (Company $c) => "{$c->name} (#{$c->id})")
+                ->implode('; ').'.');
+        }
 
         // ── Fase 143 (143-05, T1) — quem mudou de faixa por COMPOSIÇÃO ────
         // O aviso não sai para essas linhas (dizer "subiu de faixa" quando o

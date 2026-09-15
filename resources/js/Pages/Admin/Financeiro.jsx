@@ -1830,6 +1830,36 @@ function TabelaPresumidaAviso({ quantidade, onVerQuais }) {
     );
 }
 
+// Quick 260915-jpr — empresas que entram no fechamento só porque o contrato
+// não tem data de início: sem ela não dá para saber em que mês a empresa
+// virou cliente. Lista da página (não é atributo de linha); o link leva à
+// ficha do contrato, onde a data se corrige.
+function SemDataInicioAviso({ empresas }) {
+    if (!empresas || empresas.length === 0) return null;
+
+    return (
+        <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.04] px-4 py-3 flex flex-col gap-2.5">
+            <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-300/80 mt-0.5 shrink-0" />
+                <p className="text-white/60 text-[14px]">
+                    {empresas.length === 1 ? 'Empresa sem data de início do contrato' : `${empresas.length} empresas sem data de início do contrato`} — preencha para o fechamento saber em que mês elas começaram. Enquanto isso, elas continuam sendo cobradas neste mês.
+                </p>
+            </div>
+            <div className="flex flex-wrap gap-2 pl-6">
+                {empresas.map(empresa => (
+                    <a
+                        key={empresa.id}
+                        href={empresa.url}
+                        className="text-[13px] text-white/70 hover:text-white border border-white/15 hover:border-white/30 px-2.5 h-7 inline-flex items-center rounded-lg transition-colors"
+                    >
+                        {empresa.name}
+                    </a>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLimpar, total, filtrado, servicosNomes }) {
     const sel = 'h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/60 focus:outline-none focus:border-ecf-yellow/40';
     const ativo = filtroChip !== 'todos' || filtros.busca !== '' || filtros.servico_nome !== '';
@@ -1890,7 +1920,7 @@ function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLim
     );
 }
 
-export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, periodo = null, totais, regra_nova_ativa = false }) {
+export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, periodo = null, totais, regra_nova_ativa = false, empresas_sem_data_inicio = [] }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
     // Atalho do widget "Subiram de faixa este mês" (Fase 139): liga o chip
@@ -2113,6 +2143,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                         <ServicosContratadosBar companies={companies} />
                     </div>
                     <TabelaPresumidaAviso quantidade={totais.tabelas_assumidas} onVerQuais={verTabelasPresumidas} />
+                    <SemDataInicioAviso empresas={empresas_sem_data_inicio} />
                     <div className="flex flex-col gap-4">
                         <FiltroBarra
                             filtros={filtros}

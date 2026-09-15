@@ -72,7 +72,9 @@ class Phase139ComparativoFaixaTest extends TestCase
             'company_id'       => $company->id,
             'servico_id'       => $servico->id,
             'valor_contratado' => 0,
-            'data_contratacao' => Carbon::now()->toDateString(),
+            // Quick 260915-jpr: contrato começando HOJE ficaria fora do fechamento
+            // do mês anterior (a empresa só entra se já era cliente no mês).
+            'data_contratacao' => '2025-01-01',
             'ativo'            => true,
         ]);
 

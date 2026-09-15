@@ -34,7 +34,11 @@ class ContratoServicoFactory extends Factory
                 'setor'         => Servico::SETOR_PERFORMANCE,
             ])->id,
             'valor_contratado' => fake()->randomFloat(2, 100, 5000),
-            'data_contratacao' => now()->toDateString(),
+            // Quick 260915-jpr — data FIXA no passado, não "hoje": o fechamento
+            // só inclui a empresa num mês se o contrato já tinha começado, e os
+            // testes de fechamento criam o contrato e fecham o mês anterior.
+            // Teste que precise de contrato recente passa a data explícita.
+            'data_contratacao' => '2025-01-01',
             'data_vencimento'  => null,
             'ativo'            => true,
         ];

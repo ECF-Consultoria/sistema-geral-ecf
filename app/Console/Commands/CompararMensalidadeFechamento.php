@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Company;
 use App\Models\Servico;
+use App\Services\Fechamento\FechamentoEmpresasDoMes;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Fechamento\FechamentoRegraTabela;
 use App\Services\Fechamento\FechamentoRollupService;
@@ -117,6 +118,12 @@ class CompararMensalidadeFechamento extends Command
                 'grupo.pai',
             ])
             ->get();
+
+        // Quick 260915-jpr — a MESMA lista de empresas do mês que
+        // `fechamento:consolidar-mes` usa (quem só virou cliente depois do
+        // mês fica de fora). Sem isto o comparativo mostraria empresas que o
+        // fechamento não cobra.
+        $companies = app(FechamentoEmpresasDoMes::class)->filtrar($companies, $mes);
 
         // Os dois lados no MESMO processo, sempre devolvendo o leitor ao
         // estado real no final — inclusive em caso de exceção.

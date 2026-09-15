@@ -8,6 +8,7 @@ use App\Models\Configuracao;
 use App\Models\FechamentoGrupoSnapshot;
 use App\Models\FechamentoSnapshot;
 use App\Models\Servico;
+use App\Services\Fechamento\FechamentoEmpresasDoMes;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Fechamento\FechamentoRollupService;
 use App\Support\CobrancaCalculator;
@@ -110,6 +111,17 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
             ->whereDate('mes_referencia', $mesReferenciaStr)
             ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
             ->exists();
+
+        // Quick 260915-jpr — mesma lista de empresas do mês da tela e do
+        // comando (`FechamentoEmpresasDoMes`). Mês fechado: quem já tem linha
+        // gravada continua no relatório até o mês ser refeito (D-11).
+        $idsGravados = $competenciaFechada
+            ? FechamentoSnapshot::query()
+                ->whereDate('mes_referencia', $mesReferenciaStr)
+                ->where('origem', FechamentoSnapshot::ORIGEM_CONSOLIDAR_MES)
+                ->pluck('company_id')
+            : [];
+        $rawCompanies = app(FechamentoEmpresasDoMes::class)->filtrar($rawCompanies, $mesReferenciaStr, $idsGravados);
 
         // ── 4. Números por empresa: congelado (D-11) ou ao vivo (D-05) ────────
         $dadosPorId = $competenciaFechada
