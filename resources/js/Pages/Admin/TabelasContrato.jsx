@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
@@ -85,10 +85,126 @@ function ListaFaixas({ faixas }) {
     );
 }
 
+// ─── Conferência do CNPJ — espelho de App\Support\Cnpj::comparar() (quick 260915-mtj) ──
+// A FONTE da regra é o helper PHP. Aqui ela só se repete para a pessoa ver o resultado ANTES do
+// clique, para cada empresa escolhível; quem decide de verdade é `confirmar()` no servidor.
+// `ConferenciaCnpjTelaTest` trava que os cinco estados abaixo batem com `Cnpj::COMPARACOES`.
+// Regra: só dígitos; os 8 primeiros identificam a empresa (existem só com 14 dígitos).
+const digitosCnpj = (cnpj) => String(cnpj ?? '').replace(/\D/g, '');
+const inicioCnpj = (cnpj) => {
+    const d = digitosCnpj(cnpj);
+    return d.length === 14 ? d.slice(0, 8) : null;
+};
+
+function compararCnpj(contrato, empresa) {
+    if (inicioCnpj(contrato) === null) return 'contrato_sem_cnpj';
+    const digitosEmpresa = digitosCnpj(empresa);
+    if (digitosEmpresa === '') return 'empresa_sem_cnpj';
+    if (digitosEmpresa === digitosCnpj(contrato)) return 'igual';
+    if (inicioCnpj(empresa) === inicioCnpj(contrato)) return 'mesma_empresa_outra_unidade';
+    return 'diferente';
+}
+
+const CONFERENCIA_CNPJ = {
+    igual: {
+        estilo: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+        icone: CheckCircle2,
+        texto: 'Mesmo CNPJ — o contrato é desta empresa.',
+    },
+    mesma_empresa_outra_unidade: {
+        estilo: 'border-sky-500/30 bg-sky-500/10 text-sky-300',
+        icone: HelpCircle,
+        texto: 'Mesma empresa, outra unidade (matriz e filial).',
+    },
+    diferente: {
+        estilo: 'border-amber-500/60 bg-amber-500/15 text-amber-200',
+        icone: AlertTriangle,
+        texto: 'O CNPJ do contrato é de outra empresa.',
+    },
+    empresa_sem_cnpj: {
+        estilo: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+        icone: AlertTriangle,
+        texto: 'Esta empresa está sem CNPJ.',
+    },
+    contrato_sem_cnpj: {
+        estilo: 'border-white/15 bg-white/[0.04] text-white/60',
+        icone: HelpCircle,
+        texto: 'Não foi possível ler o CNPJ deste contrato — confira pelo nome.',
+    },
+};
+
+function ConferenciaCnpj({ linha, empresa, empresas, confirmoDiferente, onConfirmoDiferente }) {
+    const estado = compararCnpj(linha.cnpj_lido, empresa.cnpj);
+    const visual = CONFERENCIA_CNPJ[estado];
+    const Icone = visual.icone;
+
+    // Mesma guarda do servidor: CNPJ que já está cadastrado em outra empresa não é gravado nesta.
+    const digitosLidos = digitosCnpj(linha.cnpj_lido);
+    const outraComMesmoCnpj = digitosLidos === ''
+        ? null
+        : empresas.find((e) => e.id !== empresa.id && digitosCnpj(e.cnpj) === digitosLidos) ?? null;
+
+    const gravaCnpj = estado === 'empresa_sem_cnpj' && !outraComMesmoCnpj;
+    const gravaRazao = !empresa.razao_social && !!linha.razao_social_lida;
+
+    let detalhe = null;
+    if (estado === 'empresa_sem_cnpj') {
+        if (outraComMesmoCnpj) {
+            detalhe = `O CNPJ ${linha.cnpj_lido} do contrato já está cadastrado em ${outraComMesmoCnpj.name} — não será gravado aqui.`
+                + (gravaRazao ? ` Ao confirmar, a razão social ${linha.razao_social_lida} do contrato será gravada nela.` : '');
+        } else if (gravaRazao) {
+            detalhe = `Ao confirmar, o CNPJ ${linha.cnpj_lido} e a razão social ${linha.razao_social_lida} do contrato serão gravados nela.`;
+        } else {
+            detalhe = `Ao confirmar, o CNPJ ${linha.cnpj_lido} do contrato será gravado nela.`;
+        }
+    } else if (gravaRazao) {
+        detalhe = `Esta empresa está sem razão social. Ao confirmar, a razão social ${linha.razao_social_lida} do contrato será gravada nela.`;
+    }
+
+    return (
+        <div className="space-y-2 rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">Conferência do CNPJ</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[12px]">
+                <div>
+                    <p className="text-[11px] text-white/40">No contrato</p>
+                    <p className="text-white/80">{linha.razao_social_lida || 'razão social não lida'}</p>
+                    <p className="font-mono text-white/60">{linha.cnpj_lido || 'CNPJ não lido'}</p>
+                </div>
+                <div>
+                    <p className="text-[11px] text-white/40">Na empresa escolhida</p>
+                    <p className="text-white/80">{empresa.razao_social || empresa.name}</p>
+                    <p className="font-mono text-white/60">{empresa.cnpj || 'sem CNPJ'}</p>
+                </div>
+            </div>
+
+            <div className={cn('rounded-lg border px-3 py-2 text-[12px] flex gap-2', visual.estilo)}>
+                <Icone size={14} className="shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                    <p className={cn(estado === 'diferente' && 'font-semibold')}>{visual.texto}</p>
+                    {detalhe && <p>{detalhe}</p>}
+                    {estado === 'diferente' && (
+                        <label className="flex items-start gap-2 pt-1 cursor-pointer text-white/85">
+                            <input
+                                type="checkbox"
+                                checked={confirmoDiferente}
+                                onChange={(e) => onConfirmoDiferente(e.target.checked)}
+                                className="mt-0.5 accent-amber-400"
+                            />
+                            <span>Conferi: este contrato é mesmo desta empresa</span>
+                        </label>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ─── Painel de conferência (Dialog) — seletor de empresa + comparação lado a lado ──
 function PainelConferencia({ linha, empresas, onClose }) {
     const [busca, setBusca] = useState('');
     const [companyId, setCompanyId] = useState(null);
+    const [confirmoDiferente, setConfirmoDiferente] = useState(false);
     const [enviando, setEnviando] = useState(false);
     const [erro, setErro] = useState(null);
 
@@ -101,15 +217,31 @@ function PainelConferencia({ linha, empresas, onClose }) {
     }, [busca, empresas]);
 
     const empresaSelecionada = empresas.find((e) => e.id === companyId) ?? null;
+    const estadoCnpj = empresaSelecionada ? compararCnpj(linha.cnpj_lido, empresaSelecionada.cnpj) : null;
+    const faltaConferirCnpj = estadoCnpj === 'diferente' && !confirmoDiferente;
+
+    // Trocar de empresa sempre desmarca o "Conferi" — a marcação vale só para a empresa em que foi feita.
+    function escolherEmpresa(id) {
+        setCompanyId(id);
+        setConfirmoDiferente(false);
+        setErro(null);
+    }
 
     function confirmar() {
         if (!companyId) {
             setErro('Escolha a empresa antes de confirmar.');
             return;
         }
+        if (faltaConferirCnpj) {
+            setErro('O CNPJ do contrato é de outra empresa. Marque que você conferiu antes de confirmar.');
+            return;
+        }
         setEnviando(true);
         setErro(null);
-        router.post(route('admin.contratos.tabelas.confirmar', linha.id), { company_id: companyId }, {
+        router.post(route('admin.contratos.tabelas.confirmar', linha.id), {
+            company_id: companyId,
+            confirmo_cnpj_diferente: estadoCnpj === 'diferente' && confirmoDiferente,
+        }, {
             preserveScroll: true,
             onSuccess: () => onClose(),
             onError: (errors) => setErro(Object.values(errors)[0] ?? 'Não foi possível confirmar.'),
@@ -186,7 +318,7 @@ function PainelConferencia({ linha, empresas, onClose }) {
                                 <button
                                     key={c.company_id}
                                     type="button"
-                                    onClick={() => { setCompanyId(c.company_id); setErro(null); }}
+                                    onClick={() => escolherEmpresa(c.company_id)}
                                     className={cn(
                                         'rounded-full border px-2.5 py-1 text-[11px] transition-colors',
                                         companyId === c.company_id
@@ -216,7 +348,7 @@ function PainelConferencia({ linha, empresas, onClose }) {
                                 <button
                                     key={e.id}
                                     type="button"
-                                    onClick={() => { setCompanyId(e.id); setBusca(''); setErro(null); }}
+                                    onClick={() => { escolherEmpresa(e.id); setBusca(''); }}
                                     className={cn(
                                         'block w-full text-left px-3 py-1.5 text-[12px] hover:bg-white/[0.05] transition-colors',
                                         companyId === e.id ? 'bg-ecf-yellow/10 text-ecf-yellow' : 'text-white/70'
@@ -234,6 +366,16 @@ function PainelConferencia({ linha, empresas, onClose }) {
                         </p>
                     )}
 
+                    {empresaSelecionada && (
+                        <ConferenciaCnpj
+                            linha={linha}
+                            empresa={empresaSelecionada}
+                            empresas={empresas}
+                            confirmoDiferente={confirmoDiferente}
+                            onConfirmoDiferente={(marcado) => { setConfirmoDiferente(marcado); setErro(null); }}
+                        />
+                    )}
+
                     {erro && <p className="text-red-400 text-[12px]">{erro}</p>}
                 </div>
 
@@ -241,7 +383,7 @@ function PainelConferencia({ linha, empresas, onClose }) {
                     <Button type="button" variant="outline" onClick={descartar} disabled={enviando}>
                         Descartar
                     </Button>
-                    <Button type="button" onClick={confirmar} disabled={enviando || !companyId}>
+                    <Button type="button" onClick={confirmar} disabled={enviando || !companyId || faltaConferirCnpj}>
                         {enviando ? 'Confirmando...' : 'Confirmar'}
                     </Button>
                 </DialogFooter>
@@ -251,6 +393,9 @@ function PainelConferencia({ linha, empresas, onClose }) {
 }
 
 export default function TabelasContrato({ propostas, filters = {}, resumo = {}, empresas = [] }) {
+    // O `success` já aparece no aviso do AppLayout; o `aviso` (ex.: CNPJ que não foi gravado por já
+    // estar em outra empresa) não aparecia nesta tela — mesmo molde de Admin/TabelaEmpresa.jsx.
+    const { flash } = usePage().props;
     const [conferindoId, setConferindoId] = useState(null);
     const linhasData = propostas?.data ?? [];
     const linhaAberta = linhasData.find((l) => l.id === conferindoId) ?? null;
@@ -274,6 +419,13 @@ export default function TabelasContrato({ propostas, filters = {}, resumo = {}, 
                         Cada linha veio de um contrato assinado. Nenhuma foi confirmada automaticamente — confira a
                         empresa e a tabela antes de aceitar.
                     </p>
+
+                    {flash?.aviso && (
+                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[13px] text-amber-300 flex gap-2 max-w-2xl">
+                            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                            <span>{flash.aviso}</span>
+                        </div>
+                    )}
 
                     {/* Resumo — sempre sobre o universo inteiro, nunca o recorte filtrado. */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
