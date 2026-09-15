@@ -286,7 +286,7 @@ class OnboardingLinkService
         // Ordem fixa: o analista primeiro porque é o contato do dia a dia — o
         // estrategista aparece menos na rotina do cliente.
         $papeis = [
-            ['papel' => 'Analista responsável', 'usuarios' => $onboardings->map->responsavelAnalista],
+            ['papel' => 'Analista',              'usuarios' => $onboardings->map->responsavelAnalista],
             ['papel' => 'Estrategista',         'usuarios' => $onboardings->map->responsavelEstrategista],
         ];
 
