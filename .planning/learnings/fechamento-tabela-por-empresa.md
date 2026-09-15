@@ -289,6 +289,17 @@ Medição das 60 `ml_driven` com conta Adman:
 > transformar um caso em recorte, meça a população inteira e veja se a fronteira que você imaginou é
 > mesmo a que separa os dois grupos.
 
+> ⚠️ **Correção de 2026-09-15 — no caso da LAURA LAR, quem está errado é o NOSSO dado, não a API.**
+> O token ML da LAURA LAR (`ml_user_id 433720509`) é da conta **GRAN BELO** (L P POZENATO ECOMMERCE),
+> o mesmo token da GRAN BELO #212: o faturamento diário das duas é idêntico (agosto 31/31 dias,
+> setembro 14/14). Os R$ 2,7 milhões "da LAURA LAR" são a GRAN BELO contada duas vezes dentro do
+> grupo MPozenato. A loja real da LAURA LAR é provavelmente a conta Adman 273196837 (R$ 12.966,83 em
+> agosto). A regra `podeUsarApiDaAdman()` continua certa — ids diferentes pedem conferência —, mas a
+> leitura "a API mente" não vale aqui. **Conserto:** o cliente reconecta a conta ML certa. Até lá,
+> **não refazer agosto**: o grupo MPozenato sai inflado (≈ R$ 12,68 mi, faixa R$ 21.000, contra
+> ≈ R$ 9,94 mi, faixa R$ 14.000, sem a duplicata). Para conferir depois da reconexão, o `/users/me` do
+> token não pode mais devolver "GRAN BELO".
+
 ### O que a correção custou em dinheiro
 
 +R$ 1.016.802,46 de faturamento em agosto e **2 empresas mudando de faixa** — CAMILLO PARTS MATRIZ e
