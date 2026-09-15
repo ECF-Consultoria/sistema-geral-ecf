@@ -1153,6 +1153,10 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
             ->name('onboarding.investimento.salvar');
         Route::put('/onboarding/{onboarding}/agenda', [OnboardingController::class, 'salvarAgenda'])
             ->name('onboarding.agenda.salvar');
+        // Convite no Google Agenda. Ação explícita e separada do salvar: ela
+        // manda e-mail ao cliente na hora (15/09/2026).
+        Route::post('/onboarding/{onboarding}/agenda/google', [OnboardingController::class, 'enviarConviteGoogle'])
+            ->name('onboarding.agenda.google');
         Route::post('/onboarding/{onboarding}/contatos', [OnboardingController::class, 'salvarContato'])
             ->name('onboarding.contatos.salvar');
         // Edição e remoção são por LINHA (id próprio), nunca pela lista inteira.

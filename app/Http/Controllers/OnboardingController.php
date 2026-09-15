@@ -217,6 +217,16 @@ class OnboardingController extends Controller
             // por onboarding: a conta do Mercado Livre e uma so, ainda que a
             // empresa tenha contratado dois servicos.
             'fotografia'  => app(FotografiaContaService::class)->paraPortal($onboarding->company),
+            // Estado do convite no Google, por tipo de evento (15/09/2026). A
+            // tela precisa saber de quem é a agenda, quem receberá o convite e
+            // — quando não dá para enviar — a frase que diz o que falta. É
+            // leitura pura: montar a prévia nunca toca na API do Google.
+            'agenda_google' => [
+                'kickoff' => app(\App\Services\Onboarding\AgendaGoogleService::class)
+                    ->previa($onboarding, \App\Models\OnboardingEventoGoogle::TIPO_KICKOFF),
+                'recorrente' => app(\App\Services\Onboarding\AgendaGoogleService::class)
+                    ->previa($onboarding, \App\Models\OnboardingEventoGoogle::TIPO_RECORRENTE),
+            ],
 
             // ─── Cockpit (20/08) ────────────────────────────────────────────
             // Quatro leituras que a tela ja tinha os dados para dar e nao dava:
@@ -497,6 +507,31 @@ class OnboardingController extends Controller
         }
 
         return back()->with('success', 'Reunião agendada — o cliente já vê a data no portal.');
+    }
+
+    /**
+     * POST /onboarding/{onboarding}/agenda/google — cria (ou atualiza) o evento
+     * no Google Agenda de quem conduz e convida o cliente.
+     *
+     * Ação EXPLÍCITA, nunca gancho do salvar: o Google manda e-mail aos
+     * convidados na hora, e disparar isso como efeito colateral de "salvar a
+     * data" mandaria convite para cliente real sem ninguém pedir.
+     *
+     * O serviço não lança — falha vira mensagem na própria tela, porque token
+     * velho e indisponibilidade do Google não podem derrubar a ficha de quem
+     * está no meio do onboarding.
+     */
+    public function enviarConviteGoogle(Request $request, Onboarding $onboarding, \App\Services\Onboarding\AgendaGoogleService $agenda)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'tipo' => ['required', Rule::in(\App\Models\OnboardingEventoGoogle::TIPOS)],
+        ]);
+
+        $resultado = $agenda->enviar($onboarding, $data['tipo'], $request->user());
+
+        return back()->with($resultado['ok'] ? 'success' : 'error', $resultado['mensagem']);
     }
 
     /**

@@ -20,6 +20,7 @@ import Responsabilidades from '@/Components/Onboarding/Painel/Responsabilidades'
 import AtividadeRecente from '@/Components/Onboarding/Painel/AtividadeRecente';
 import RelatorioInicial from '@/Components/Onboarding/RelatorioInicial';
 import ReuniaoBloco from '@/Components/Onboarding/Painel/ReuniaoBloco';
+import ConviteGoogle from '@/Components/Onboarding/Painel/ConviteGoogle';
 import AcessoDoClienteAoPortal from '@/Components/Onboarding/Painel/AcessoDoClienteAoPortal';
 import BlocoAcessos from '@/Components/Onboarding/Painel/BlocoAcessos';
 import ContextoDaVenda from '@/Components/Onboarding/Painel/ContextoDaVenda';
@@ -277,6 +278,11 @@ export default function Detalhe({
                         <div className="space-y-4">
                             {reuniao && <ReuniaoBloco onboardingId={onboarding.id} reuniao={reuniao} />}
                             <BlocoAgenda onboardingId={onboarding.id} agenda={respostas?.agenda} />
+                            {/* O convite fica DEPOIS dos dois blocos de propósito:
+                                ele depende da data e da rotina já combinadas, e
+                                oferecê-lo antes convidaria o cliente para algo
+                                que ainda não foi decidido. */}
+                            <ConviteGoogle onboardingId={onboarding.id} />
                         </div>
                     )}
 
