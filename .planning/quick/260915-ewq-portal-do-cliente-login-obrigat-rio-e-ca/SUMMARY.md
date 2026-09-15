@@ -39,6 +39,20 @@ Os números acima são de suítes selecionadas. Rodando as pastas inteiras que e
 
 - A porta autenticada resolve o registro da empresa com `OnboardingLinkService::paraEmpresa()`, um `firstOrCreate`. Empresa nova não recebe 404, mas ganha uma linha com token inerte — ele não abre mais nada. Remover essa criação é limpeza, não correção de segurança.
 
+## Publicação (15/09/2026, 19:01 UTC)
+
+- Commit `3d72df2a`, 52 arquivos, empurrado para `origin/main` como fast-forward de `3000eafa` (sem force). A VPS não tem credencial de push: o commit foi feito num worktree limpo local no mesmo HEAD e a VPS o recebeu por `git merge --ff-only`, o que preservou o `package-lock.json` sujo e os não rastreados preexistentes.
+- Travas antes de tocar em nada: HEAD da VPS = `3000eafa`, `origin/main` = `3d72df2a`, nenhum deploy concorrente, só `package-lock.json` como alteração rastreada.
+- Build em `public/build-next` (22s, 390 entradas, 0 arquivos ausentes); assets copiados sem sobrescrever e manifest trocado por `mv` com backup em `public/build/manifest.json.bak-260915-portal`; `route:cache`; `chown` só dos 52 arquivos; `queue:restart` gracioso. Nenhum `cache:clear`, migration ou `config:cache`.
+- Bundle conferido pelos dois lados no chunk de `Portal/Entrada.jsx`: "Receber código por e-mail" presente, "Informe o seu e-mail para começar" ausente. `route:list`: 11 rotas antigas, todas com `AposentaTokenDoPortal`.
+- Smoke HTTP, com token inventado a cada execução e sem pedir código: **30/30 OK**. `/entrar` 200; `/portal/inicio` sem sessão → `/entrar`; GET e HEAD de `portal-cliente/{token}`, `…/onboarding` e `onboarding-cliente/{token}` nos domínios cliente e admin → 302 para `https://cliente.ecfconsultoria.com.br/entrar`, com `Cache-Control: no-store`, `Referrer-Policy: no-referrer` e sem o token no `Location`; PATCH `…/onboarding/passo`, POST `…/onboarding/pessoas` e PATCH `…/ppa/tarefas/999999` → 410 nos dois domínios (o último antes do binding); `/companies` segue 404 no domínio do cliente.
+- Workers: sinal de restart gravado às 19:01:53; `ecf-worker_01` e `ecf-worker-high_00` reiniciaram em seguida; `ecf-worker_00` estava num job em curso e sai ao terminá-lo.
+
+### Pendente
+
+- **Entrega real do e-mail** com um destinatário autorizado — nada foi enviado nesta publicação.
+- **9 empresas ativas** que usavam o link nos últimos 30 dias ficam sem entrada até serem cadastradas em Acessos do portal (ver "Impacto medido").
+
 ## Base e publicação
 
 - Base inicial VPS fba3f55a, incluindo o rótulo Analista solicitado anteriormente.
