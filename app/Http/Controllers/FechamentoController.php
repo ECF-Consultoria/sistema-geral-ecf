@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\SalvarFaixasFaturamentoRequest;
+use App\Jobs\ConsolidarMesFechamentoJob;
 use App\Models\Company;
 use App\Models\CompanyGroup;
 use App\Models\EmpresaFaixaFaturamento;
@@ -13,6 +14,7 @@ use App\Services\Fechamento\GravarTabelaGrupoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -217,6 +219,17 @@ class FechamentoController extends Controller
      * POST /administrativo/financeiro/competencia/refazer — reconsolida uma
      * competência já fechada (D-12 revisado). `motivo` é obrigatório — o
      * comando/writer recusam sem ele.
+     *
+     * Quick 260916-ejt — o cálculo NÃO roda mais dentro desta requisição. Ele
+     * busca o faturamento de ~200 empresas na Adman e estourava o
+     * `memory_limit` de 512M do PHP do site (fatal em `Http/Client/Response.php`,
+     * 500 na tela, NADA gravado — e a pessoa seguia vendo os números antigos
+     * achando que o cálculo estava errado). Agora vai para a fila, onde não há
+     * esse limite, e esta resposta só diz "aceitei, está rodando" (202). Quem
+     * acompanha o fim é `statusRefazerCompetencia()`.
+     *
+     * ⚠️ O antigo `set_time_limit(0)` daqui não protegia disso — o que
+     * estourava era memória, não tempo.
      */
     public function refazerCompetencia(Request $request)
     {
@@ -235,26 +248,72 @@ class FechamentoController extends Controller
 
         $mesLabel = ucfirst($mes->locale('pt_BR')->translatedFormat('F Y'));
 
-        set_time_limit(0);
+        $chave     = ConsolidarMesFechamentoJob::statusCacheKeyFor($validated['mes']);
+        $andamento = Cache::get($chave);
 
-        $exitCode = Artisan::call('fechamento:consolidar-mes', [
-            '--mes'    => $validated['mes'],
-            '--motivo' => $validated['motivo'],
-            '--por'    => $request->user()->id,
-        ]);
-
-        if ($exitCode !== 0) {
-            Log::error("[Fechamento] Falha ao refazer a competência {$validated['mes']} (exit {$exitCode}).", [
-                'saida' => Artisan::output(),
-            ]);
-
+        // Trava anti-duplo-disparo: dois cliques (ou duas abas) regravariam a
+        // MESMA competência em paralelo, cada um deixando a sua linha na
+        // trilha de auditoria.
+        if (is_array($andamento) && ($andamento['status'] ?? null) === 'running') {
             return response()->json([
-                'message' => "Não foi possível refazer o fechamento de {$mesLabel}. O registro anterior continua valendo.",
+                'message' => 'Este fechamento já está sendo refeito — aguarde terminar.',
             ], 409);
         }
 
+        // Marcado como em andamento JÁ na entrega, não só quando o worker
+        // pegar o job: entre um e outro cabem vários cliques.
+        Cache::put($chave, [
+            'status'       => 'running',
+            'mes'          => $validated['mes'],
+            'started_at'   => now()->toIso8601String(),
+            'completed_at' => null,
+            'error'        => null,
+        ], ConsolidarMesFechamentoJob::ttlDoAndamento());
+
+        ConsolidarMesFechamentoJob::dispatch(
+            $validated['mes'],
+            $validated['motivo'],
+            $request->user()->id,
+        );
+
         return response()->json([
-            'message' => "Fechamento de {$mesLabel} refeito com sucesso.",
+            'message' => "Refazendo o fechamento de {$mesLabel}. Isso leva alguns minutos — a tela avisa quando terminar.",
+            'status'  => 'running',
+        ], 202);
+    }
+
+    /**
+     * GET /administrativo/financeiro/competencia/refazer/status?mes=AAAA-MM —
+     * andamento do refazer daquele mês, para a tela acompanhar sem ficar
+     * recarregando (Quick 260916-ejt).
+     *
+     * ⚠️ Andamento vazio NÃO é erro: é o estado normal de quem nunca refez
+     * aquele mês (`idle`).
+     */
+    public function statusRefazerCompetencia(Request $request)
+    {
+        abort_unless($request->user()?->isAdmin() === true, 403);
+
+        $validated = $request->validate([
+            'mes' => ['required', 'string', 'regex:/^\d{4}-\d{2}$/'],
+        ]);
+
+        $andamento = Cache::get(ConsolidarMesFechamentoJob::statusCacheKeyFor($validated['mes']));
+
+        if (! is_array($andamento) || empty($andamento['status'])) {
+            return response()->json([
+                'status'       => 'idle',
+                'started_at'   => null,
+                'completed_at' => null,
+                'error'        => null,
+            ]);
+        }
+
+        return response()->json([
+            'status'       => $andamento['status'],
+            'started_at'   => $andamento['started_at']   ?? null,
+            'completed_at' => $andamento['completed_at'] ?? null,
+            'error'        => $andamento['error']        ?? null,
         ]);
     }
 }

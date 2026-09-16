@@ -1427,6 +1427,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     // específica precisa vir antes do parâmetro dinâmico.
     Route::post('/financeiro/competencia/fechar',     [FechamentoController::class, 'fecharCompetencia'])->name('financeiro.competencia.fechar');
     Route::post('/financeiro/competencia/refazer',    [FechamentoController::class, 'refazerCompetencia'])->name('financeiro.competencia.refazer');
+    // Quick 260916-ejt — refazer virou job na fila (estourava a memória do PHP
+    // do site); a tela acompanha o andamento por esta rota.
+    Route::get('/financeiro/competencia/refazer/status', [FechamentoController::class, 'statusRefazerCompetencia'])->name('financeiro.competencia.refazer.status');
     Route::post('/financeiro/faixas/servico/{servico}',        [FechamentoController::class, 'salvarFaixasServico'])->name('financeiro.faixas.servico');
     Route::post('/financeiro/faixas/empresa/{company}',        [FechamentoController::class, 'salvarFaixasEmpresa'])->name('financeiro.faixas.empresa');
     Route::delete('/financeiro/faixas/empresa/{company}',      [FechamentoController::class, 'removerFaixasEmpresa'])->name('financeiro.faixas.empresa.remover');

@@ -207,8 +207,13 @@ class Phase137CompetenciaEndpointTest extends TestCase
         $this->assertSame(0, DB::table('fechamento_reconsolidacoes')->count());
     }
 
+    // Quick 260916-ejt — a reconsolidação saiu de dentro da requisição e virou
+    // job na fila (o cálculo estourava o `memory_limit` do PHP do site), então
+    // a resposta passou de 200 para 202 "aceito, está rodando". O EFEITO
+    // gravado é o mesmo, e continua sendo conferido por reconsulta ao banco:
+    // nos testes a fila é `sync`, então o job roda na hora.
     #[Test]
-    public function post_refazer_com_motivo_grava_reconsolidacao_com_autor_e_devolve_200(): void
+    public function post_refazer_com_motivo_grava_reconsolidacao_com_autor_e_devolve_202(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-02'));
 
@@ -226,7 +231,7 @@ class Phase137CompetenciaEndpointTest extends TestCase
                 'motivo' => 'Adman corrigiu faturamento na origem após o fechamento.',
             ]);
 
-        $r->assertOk();
+        $r->assertStatus(202);
 
         $this->assertSame(1, DB::table('fechamento_reconsolidacoes')->whereDate('mes_referencia', '2026-08-01')->count());
         $reconsolidacao = DB::table('fechamento_reconsolidacoes')->whereDate('mes_referencia', '2026-08-01')->first();
