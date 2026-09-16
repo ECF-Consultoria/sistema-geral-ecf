@@ -101,10 +101,13 @@ class ReconciliarContratoClicksignJob implements ShouldQueue
         // o dispatch (SELECT do comando) e a execução deste job — nesse caso
         // não há nada a reconsultar, e a chamada à Clicksign seria
         // desperdiçada contra o bucket de 3/min.
+        //
+        // 16/09 — `liberado_em` não conta como "nada a fazer": a liberação
+        // manual libera contrato que ainda aguarda assinatura, e ele precisa
+        // continuar sendo reconsultado até virar `assinado`.
         $contrato = $this->contratoAssinatura->fresh();
 
         if ($contrato === null
-            || $contrato->liberado_em !== null
             || $contrato->status !== ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS
         ) {
             return;

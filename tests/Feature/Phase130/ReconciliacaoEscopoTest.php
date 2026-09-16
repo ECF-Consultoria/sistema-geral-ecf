@@ -110,8 +110,11 @@ class ReconciliacaoEscopoTest extends TestCase
     }
 
     #[Test]
-    public function aguardando_assinaturas_ja_liberado_nao_e_despachado(): void
+    public function aguardando_assinaturas_liberado_manualmente_continua_sendo_despachado(): void
     {
+        // 16/09 — a liberação manual grava `liberado_em` com o contrato ainda
+        // aguardando assinatura; a varredura precisa continuar reconsultando
+        // até ele virar `assinado`.
         Queue::fake();
         $servico = $this->servico();
 
@@ -122,7 +125,7 @@ class ReconciliacaoEscopoTest extends TestCase
 
         $this->artisan('clicksign:reconciliar')->assertExitCode(0);
 
-        Queue::assertNotPushed(ReconciliarContratoClicksignJob::class);
+        Queue::assertPushedOn('high', ReconciliarContratoClicksignJob::class);
     }
 
     #[Test]

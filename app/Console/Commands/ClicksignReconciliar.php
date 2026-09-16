@@ -45,10 +45,15 @@ class ClicksignReconciliar extends Command
 
         try {
             // Escopo 1 (D-07) — contratos aguardando assinatura com envelope
-            // criado e ainda não liberados: candidatos a webhook perdido.
+            // criado: candidatos a webhook perdido.
+            //
+            // 16/09 — `liberado_em` NÃO entra no filtro. A liberação manual
+            // (D-11) grava `liberado_em` num contrato que continua aguardando
+            // assinatura; com o filtro, esse contrato nunca mais era
+            // reconsultado e ficava "aguardando" para sempre mesmo depois de
+            // assinado (Quadro de Medalha, contrato 37).
             $aguardando = ContratoAssinatura::where('status', ContratoAssinatura::STATUS_AGUARDANDO_ASSINATURAS)
                 ->whereNotNull('clicksign_envelope_id')
-                ->whereNull('liberado_em')
                 ->get();
 
             $vistos += $aguardando->count();
