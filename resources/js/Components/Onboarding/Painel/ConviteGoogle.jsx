@@ -101,7 +101,18 @@ function Linha({ onboardingId, tipo, rotulo, previa }) {
     );
 }
 
-export default function ConviteGoogle({ onboardingId }) {
+const ROTULOS = {
+    kickoff: 'Reunião de onboarding',
+    recorrente: 'Reuniões de acompanhamento',
+};
+
+/**
+ * `tipos` (16/09/2026): a reunião de onboarding passou a ser marcada — e
+ * convidada — pelo "Agendar" da Agenda, com plataforma, duração e
+ * organizador. Aqui fica só o convite da rotina, que nasce do dia e horário
+ * combinados logo acima.
+ */
+export default function ConviteGoogle({ onboardingId, tipos = ['kickoff', 'recorrente'] }) {
     const { agenda_google: previas } = usePage().props;
 
     if (! previas) return null;
@@ -116,18 +127,15 @@ export default function ConviteGoogle({ onboardingId }) {
                 </p>
             </div>
 
-            <Linha
-                onboardingId={onboardingId}
-                tipo="kickoff"
-                rotulo="Reunião de onboarding"
-                previa={previas.kickoff}
-            />
-            <Linha
-                onboardingId={onboardingId}
-                tipo="recorrente"
-                rotulo="Reuniões de acompanhamento"
-                previa={previas.recorrente}
-            />
+            {tipos.map((tipo) => (
+                <Linha
+                    key={tipo}
+                    onboardingId={onboardingId}
+                    tipo={tipo}
+                    rotulo={ROTULOS[tipo]}
+                    previa={previas[tipo]}
+                />
+            ))}
         </section>
     );
 }

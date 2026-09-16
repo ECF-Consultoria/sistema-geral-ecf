@@ -9,25 +9,30 @@ use App\Models\OnboardingContato;
 use App\Models\OnboardingEventoGoogle;
 use App\Models\User;
 use App\Services\GoogleCalendarService;
+use App\Support\Agenda\EventoGoogle;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 
 /**
- * Leva a agenda combinada no onboarding para o Google Agenda, como CONVITE.
+ * Leva a agenda do onboarding para o Google Agenda, como CONVITE.
  *
  * ### O desenho, e o que ele não é
  * Ninguém escreve na agenda do cliente. O evento nasce no calendário de quem
- * conduz o onboarding — o analista — e o cliente entra como convidado; a agenda
- * dele recebe pelo convite do próprio Google, com aceitar e recusar. Foi a
- * decisão do negócio em 15/09/2026, ciente do preço: o evento pertence à conta
- * de uma pessoa, e se ela sair da empresa ele sai junto (por isso
+ * conduz o onboarding e o cliente entra como convidado; a agenda dele recebe
+ * pelo convite do próprio Google, com aceitar e recusar. Foi a decisão do
+ * negócio em 15/09/2026, ciente do preço: o evento pertence à conta de uma
+ * pessoa, e se ela sair da empresa ele sai junto (por isso
  * `OnboardingEventoGoogle` guarda de quem era a agenda).
  *
+ * Quem conduz: o convite da reunião e da rotina sai da agenda do ANALISTA. Os
+ * eventos marcados pelo "Agendar" (16/09/2026) podem sair da agenda do analista
+ * OU do estrategista — é o organizador escolhido na hora de marcar.
+ *
  * ### Nunca dispara sozinho
- * Criar o evento MANDA E-MAIL para o cliente. Por isso não há gancho no salvar:
- * quem dispara é uma ação explícita da equipe, com a lista de convidados à
- * vista. Salvar a data continua sendo só salvar a data.
+ * Criar o evento MANDA E-MAIL para os convidados. Por isso não há gancho no
+ * salvar: quem dispara é uma ação explícita da equipe, com a lista de
+ * convidados à vista. Salvar a data continua sendo só salvar a data.
  *
  * ### Não lança
  * Os métodos públicos devolvem `['ok' => bool, 'mensagem' => string, ...]`. Uma
@@ -45,6 +50,9 @@ class AgendaGoogleService
     /** ISO-8601 (1 = segunda) para a sigla que o RRULE entende. */
     private const DIA_RRULE = [1 => 'MO', 2 => 'TU', 3 => 'WE', 4 => 'TH', 5 => 'FR', 6 => 'SA', 7 => 'SU'];
 
+    /** Retrato mais novo que isto não é conferido de novo contra o Google. */
+    public const RETRATO_VALE_MINUTOS = 10;
+
     public function __construct(private GoogleCalendarService $google)
     {
     }
@@ -58,6 +66,7 @@ class AgendaGoogleService
     public function previa(Onboarding $onboarding, string $tipo): array
     {
         $evento = $this->eventoRegistrado($onboarding, $tipo);
+        $ativo = $evento?->ativo() ? $evento : null;
         $dono = $this->dono($onboarding);
         $convidados = $this->convidados($onboarding);
         $impedimento = $this->impedimento($onboarding, $tipo, $dono, $convidados);
@@ -68,20 +77,21 @@ class AgendaGoogleService
             'impedimento'  => $impedimento,
             'dono'         => $dono?->name,
             'convidados'   => $convidados,
-            'ja_enviado'   => $evento !== null,
-            'enviado_em'   => $evento?->enviado_em?->toIso8601String(),
-            'dono_evento'  => $evento?->calendar_owner_email,
+            'ja_enviado'   => $ativo !== null,
+            'enviado_em'   => $ativo?->enviado_em?->toIso8601String(),
+            'dono_evento'  => $ativo?->calendar_owner_email,
         ];
     }
 
     /**
-     * Cria (ou atualiza, se já existe) o evento e convida os participantes.
+     * Cria (ou atualiza, se já existe) o convite da reunião ou da rotina e
+     * convida os participantes.
      *
      * @return array{ok: bool, mensagem: string, evento?: OnboardingEventoGoogle}
      */
     public function enviar(Onboarding $onboarding, string $tipo, User $por): array
     {
-        if (! in_array($tipo, OnboardingEventoGoogle::TIPOS, true)) {
+        if (! in_array($tipo, OnboardingEventoGoogle::TIPOS_UNICOS, true)) {
             return ['ok' => false, 'mensagem' => 'Tipo de evento desconhecido.'];
         }
 
@@ -95,27 +105,56 @@ class AgendaGoogleService
 
         $token = GoogleToken::where('user_id', $dono->id)->first();
         $registro = $this->eventoRegistrado($onboarding, $tipo);
+        // Convite cancelado não se atualiza: o cliente já foi avisado de que
+        // ele acabou. Reenviar é criar um evento novo na mesma linha.
+        $ativo = $registro?->ativo() ? $registro : null;
+
+        // Convite marcado pelo "Agendar" na agenda do estrategista não é do
+        // analista: atualizá-lo daqui usaria o token errado e trocaria o dono.
+        if ($ativo && $ativo->calendar_owner_user_id !== $dono->id) {
+            return [
+                'ok'       => false,
+                'mensagem' => 'Este convite está na agenda de '.($ativo->dono?->name ?? $ativo->calendar_owner_email)
+                    .' — ajuste-o pela Agenda do onboarding.',
+            ];
+        }
+
         $corpo = $this->corpoDoEvento($onboarding, $tipo, $convidados);
 
         try {
-            $resposta = $registro
-                ? $this->google->atualizarEvento($token, $registro->google_event_id, $corpo)
+            $resposta = $ativo
+                ? $this->google->atualizarEvento($token, $ativo->google_event_id, $corpo)
                 : $this->google->criarEvento($token, $corpo);
         } catch (\Throwable $e) {
             return ['ok' => false, 'mensagem' => $this->explicar($e, $dono)];
         }
 
         $registro = OnboardingEventoGoogle::updateOrCreate(
-            ['onboarding_id' => $onboarding->id, 'tipo' => $tipo],
+            ['onboarding_id' => $onboarding->id, 'chave' => $tipo],
             [
-                'google_event_id'        => $resposta['id'] ?? $registro?->google_event_id,
+                'tipo'                   => $tipo,
+                'google_event_id'        => $resposta['id'] ?? $ativo?->google_event_id,
                 'calendar_owner_user_id' => $dono->id,
                 'calendar_owner_email'   => $dono->email,
                 'enviado_em'             => now(),
                 'enviado_por'            => $por->id,
                 'convidados'             => count($convidados),
+                'titulo'                 => $corpo['summary'],
+                'inicio'                 => CarbonImmutable::parse($corpo['start']['dateTime'])->setTimezone(config('app.timezone')),
+                'fim'                    => CarbonImmutable::parse($corpo['end']['dateTime'])->setTimezone(config('app.timezone')),
+                'recorrencia'            => $corpo['recurrence'][0] ?? null,
+                // O convite fixo não escolhe plataforma; se o evento ganhou um
+                // Meet pelo "Agendar", o PATCH acima o preserva.
+                'plataforma'             => $ativo?->plataforma ?? OnboardingEventoGoogle::PLATAFORMA_NENHUMA,
+                'link_reuniao'           => $this->linkDoItem($resposta) ?? $ativo?->link_reuniao,
+                'participantes'          => $convidados,
+                'status'                 => OnboardingEventoGoogle::STATUS_ATIVO,
+                'cancelado_em'           => null,
+                'sincronizado_em'        => now(),
             ]
         );
+
+        $criado = $ativo === null;
 
         activity('onboarding')
             ->performedOn($onboarding)
@@ -123,17 +162,16 @@ class AgendaGoogleService
                 'tipo'        => $tipo,
                 'agenda_de'   => $dono->email,
                 'convidados'  => count($convidados),
-                'atualizacao' => $registro->wasRecentlyCreated ? false : true,
+                'atualizacao' => ! $criado,
             ])
-            ->log($registro->wasRecentlyCreated
-                ? 'Convite criado no Google Agenda ('.OnboardingEventoGoogle::TIPO_LABELS[$tipo].')'
-                : 'Convite atualizado no Google Agenda ('.OnboardingEventoGoogle::TIPO_LABELS[$tipo].')');
+            ->log(($criado ? 'Convite criado' : 'Convite atualizado')
+                .' no Google Agenda ('.OnboardingEventoGoogle::TIPO_LABELS[$tipo].')');
 
         $quantos = count($convidados);
 
         return [
             'ok'       => true,
-            'mensagem' => ($registro->wasRecentlyCreated ? 'Convite enviado' : 'Convite atualizado')
+            'mensagem' => ($criado ? 'Convite enviado' : 'Convite atualizado')
                 .' pela agenda de '.$dono->name.' — '.$quantos.' '.($quantos === 1 ? 'convidado' : 'convidados').'.',
             'evento'   => $registro,
         ];
@@ -149,6 +187,9 @@ class AgendaGoogleService
      * já existia na API — em LEITURA (`calendar.readonly`), o escopo que todo
      * mundo que conectou já tem. Ninguém precisa reconectar para ver a semana.
      *
+     * `$dono` é o organizador escolhido no "Agendar" — analista ou
+     * estrategista. Sem ele, vale o analista, como sempre.
+     *
      * ### O assunto dos compromissos é privado
      * Quem não é dono da agenda recebe os horários SEM o título: para escolher
      * um horário livre basta saber que está ocupado, e a agenda de uma pessoa
@@ -163,9 +204,9 @@ class AgendaGoogleService
      *
      * @return array<string, mixed>
      */
-    public function semana(Onboarding $onboarding, CarbonImmutable $referencia, User $espectador): array
+    public function semana(Onboarding $onboarding, CarbonImmutable $referencia, User $espectador, ?User $dono = null): array
     {
-        $dono = $this->dono($onboarding);
+        $dono ??= $this->dono($onboarding);
         $comeco = $referencia->setTimezone(self::FUSO)->startOfWeek(CarbonInterface::MONDAY);
         $fim = $comeco->addDays(6);
 
@@ -173,6 +214,7 @@ class AgendaGoogleService
             'inicio'    => $comeco->toDateString(),
             'fim'       => $fim->toDateString(),
             'dono'      => $dono?->name,
+            'dono_id'   => $dono?->id,
             'e_voce'    => $dono !== null && $dono->id === $espectador->id,
             'conectado' => $dono !== null && GoogleToken::where('user_id', $dono->id)->exists(),
             'eventos'   => [],
@@ -269,12 +311,438 @@ class AgendaGoogleService
         return $blocos;
     }
 
+    // ─── Eventos do "Agendar" (16/09/2026) ──────────────────────────────────
+
+    /**
+     * Quem pode organizar um evento deste onboarding: o analista e o
+     * estrategista. O analista vem primeiro — é ele quem conduz o dia a dia.
+     *
+     * @return array<int, array{id: int, nome: string, email: ?string, papel: string, conectado: bool, e_voce: bool}>
+     */
+    public function organizadores(Onboarding $onboarding, ?User $espectador = null): array
+    {
+        $candidatos = [
+            ['analista', $onboarding->responsavelAnalista],
+            ['estrategista', $onboarding->responsavelEstrategista],
+        ];
+
+        // Onboarding antigo, sem os dois papéis, tinha só o responsável.
+        if (! $candidatos[0][1] && ! $candidatos[1][1] && $onboarding->responsavel) {
+            $candidatos = [['responsável', $onboarding->responsavel]];
+        }
+
+        $pessoas = [];
+
+        foreach ($candidatos as [$papel, $pessoa]) {
+            if (! $pessoa) {
+                continue;
+            }
+
+            if (isset($pessoas[$pessoa->id])) {
+                $pessoas[$pessoa->id]['papel'] .= ' e '.$papel;
+
+                continue;
+            }
+
+            $pessoas[$pessoa->id] = [
+                'id'        => $pessoa->id,
+                'nome'      => $pessoa->name,
+                'email'     => $pessoa->email,
+                'papel'     => $papel,
+                'conectado' => GoogleToken::where('user_id', $pessoa->id)->exists(),
+                'e_voce'    => $espectador !== null && $pessoa->id === $espectador->id,
+            ];
+        }
+
+        return array_values($pessoas);
+    }
+
+    /** Quem vem marcado: quem está marcando, se conduz o onboarding; senão, o analista. */
+    public function organizadorPadrao(Onboarding $onboarding, ?User $espectador = null): ?int
+    {
+        $lista = $this->organizadores($onboarding, $espectador);
+
+        foreach ($lista as $pessoa) {
+            if ($pessoa['e_voce']) {
+                return $pessoa['id'];
+            }
+        }
+
+        return $lista[0]['id'] ?? null;
+    }
+
+    /**
+     * Quem o "Agendar" sugere convidar: os contatos do cliente com e-mail e a
+     * equipe do onboarding, sem o organizador — que já está no evento.
+     *
+     * @return array<int, array{email: string, nome: ?string, lado: string}>
+     */
+    public function participantesSugeridos(Onboarding $onboarding, ?User $organizador = null): array
+    {
+        return $this->convidados($onboarding, $organizador, excluirAnalistaPorPadrao: false);
+    }
+
+    /**
+     * Cria um evento do onboarding no Google e convida os participantes.
+     *
+     * A reunião de onboarding (kickoff) tem uma segunda metade, de negócio: a
+     * data vai para `onboardings.reuniao_agendada_para`, que é o que o cliente
+     * vê no portal e o que o checklist lê. Ela é gravada ANTES do Google e vale
+     * mesmo que o convite falhe — ou que ninguém queira convite
+     * (`somente_data`), como quando o analista ainda não conectou a agenda.
+     *
+     * @param  array{tipo: string, titulo: string, inicio: CarbonInterface, duracao: int, plataforma: string, link?: ?string, descricao?: ?string, participantes?: array<int, array{email: string, nome?: ?string}>, organizador_id?: ?int, somente_data?: bool}  $dados
+     * @return array{ok: bool, mensagem: string, evento?: OnboardingEventoGoogle}
+     */
+    public function criar(Onboarding $onboarding, array $dados, User $por): array
+    {
+        $tipo = $dados['tipo'];
+
+        if (! in_array($tipo, OnboardingEventoGoogle::TIPOS_CRIAVEIS, true)) {
+            return $this->falha('Tipo de evento desconhecido.');
+        }
+
+        if ($onboarding->status !== Onboarding::STATUS_ANDAMENTO) {
+            return $this->falha('O onboarding precisa estar em andamento.');
+        }
+
+        $inicio = CarbonImmutable::instance($dados['inicio'])->setTimezone(config('app.timezone'));
+        $prefixo = '';
+
+        if ($tipo === OnboardingEventoGoogle::TIPO_KICKOFF) {
+            $marcada = $this->marcarDataDoKickoff($onboarding, $inicio, $por);
+
+            if ($marcada !== null) {
+                return $this->falha($marcada);
+            }
+
+            if ($dados['somente_data'] ?? false) {
+                return [
+                    'ok'       => true,
+                    'mensagem' => 'Reunião marcada no sistema — o cliente já vê a data no portal. Nenhum convite foi enviado.',
+                ];
+            }
+
+            // Daqui em diante, qualquer falha é do CONVITE: a data já valeu.
+            $prefixo = 'A data foi salva, mas o convite não saiu: ';
+        }
+
+        $organizador = $this->organizadorValido($onboarding, $dados['organizador_id'] ?? null, $por);
+
+        if (is_string($organizador)) {
+            return $this->falha($prefixo.$organizador);
+        }
+
+        $token = GoogleToken::where('user_id', $organizador->id)->first();
+
+        if (! $token) {
+            return $this->falha($prefixo.$organizador->name.' ainda não conectou o Google Agenda.');
+        }
+
+        $existente = in_array($tipo, OnboardingEventoGoogle::TIPOS_UNICOS, true)
+            ? $this->eventoRegistrado($onboarding, $tipo)
+            : null;
+
+        if ($existente?->ativo()) {
+            if ($existente->calendar_owner_user_id === $organizador->id) {
+                return $this->atualizar($existente, $dados, $por);
+            }
+
+            // Mudou de agenda: o convite antigo sai antes, senão o cliente
+            // ficaria com duas reuniões de onboarding no calendário.
+            $saida = $this->cancelar($existente, $por);
+
+            if (! $saida['ok']) {
+                return $this->falha($prefixo.'o convite anterior não pôde ser retirado — '.$saida['mensagem']);
+            }
+        }
+
+        $fim = $inicio->addMinutes((int) $dados['duracao']);
+        $plataforma = $dados['plataforma'];
+        $participantes = $this->participantesNormalizados($onboarding, $dados['participantes'] ?? [], $organizador);
+        $corpo = $this->corpoAvulso($onboarding, $tipo, $dados, $inicio, $fim, $participantes);
+
+        try {
+            $resposta = $this->google->criarEvento($token, $corpo, $plataforma === OnboardingEventoGoogle::PLATAFORMA_MEET);
+        } catch (\Throwable $e) {
+            return $this->falha($prefixo.$this->explicar($e, $organizador));
+        }
+
+        $atributos = [
+            'onboarding_id'          => $onboarding->id,
+            'tipo'                   => $tipo,
+            'chave'                  => in_array($tipo, OnboardingEventoGoogle::TIPOS_UNICOS, true) ? $tipo : null,
+            'google_event_id'        => $resposta['id'],
+            'calendar_owner_user_id' => $organizador->id,
+            'calendar_owner_email'   => $organizador->email,
+            'enviado_em'             => now(),
+            'enviado_por'            => $por->id,
+            'convidados'             => count($participantes),
+            'titulo'                 => $corpo['summary'],
+            'inicio'                 => $inicio,
+            'fim'                    => $fim,
+            'recorrencia'            => null,
+            'plataforma'             => $plataforma,
+            'link_reuniao'           => $this->linkDoEvento($resposta, $plataforma, $dados),
+            'descricao'              => $dados['descricao'] ?? null,
+            'participantes'          => $participantes,
+            'status'                 => OnboardingEventoGoogle::STATUS_ATIVO,
+            'cancelado_em'           => null,
+            'sincronizado_em'        => now(),
+        ];
+
+        if ($existente) {
+            $existente->update($atributos);
+            $registro = $existente;
+        } else {
+            $registro = OnboardingEventoGoogle::create($atributos);
+        }
+
+        activity('onboarding')
+            ->performedOn($onboarding)
+            ->withProperties([
+                'tipo'       => $tipo,
+                'agenda_de'  => $organizador->email,
+                'convidados' => count($participantes),
+                'inicio'     => $inicio->toDateTimeString(),
+                'plataforma' => $plataforma,
+            ])
+            ->log('Evento criado no Google Agenda ('.OnboardingEventoGoogle::TIPO_LABELS[$tipo].')');
+
+        $quantos = count($participantes);
+
+        return [
+            'ok'       => true,
+            'mensagem' => 'Evento criado na agenda de '.$organizador->name
+                .($quantos ? ' — '.$quantos.' '.($quantos === 1 ? 'convidado avisado' : 'convidados avisados').' pelo Google.' : '.'),
+            'evento'   => $registro->fresh(),
+        ];
+    }
+
+    /**
+     * Altera um evento que o sistema criou. Vale para a agenda de quem o
+     * organizou — o evento não muda de dono por uma edição.
+     *
+     * Convidados que continuam na lista mantêm a resposta que já deram: o PATCH
+     * leva o convidado como o Google o devolveu, e não um objeto novo sem
+     * `responseStatus`.
+     *
+     * @param  array<string, mixed>  $dados  mesmo formato de `criar()`
+     * @return array{ok: bool, mensagem: string, evento?: OnboardingEventoGoogle}
+     */
+    public function atualizar(OnboardingEventoGoogle $evento, array $dados, User $por): array
+    {
+        if (! $evento->ativo()) {
+            return $this->falha('Este evento foi cancelado. Marque um novo.');
+        }
+
+        if ($evento->tipo === OnboardingEventoGoogle::TIPO_RECORRENTE) {
+            return $this->falha('A rotina se ajusta em "Rotina de reuniões", na ficha do onboarding.');
+        }
+
+        $onboarding = $evento->onboarding;
+        $inicio = CarbonImmutable::instance($dados['inicio'])->setTimezone(config('app.timezone'));
+        $fim = $inicio->addMinutes((int) $dados['duracao']);
+
+        if ($evento->tipo === OnboardingEventoGoogle::TIPO_KICKOFF) {
+            $marcada = $this->marcarDataDoKickoff($onboarding, $inicio, $por);
+
+            if ($marcada !== null) {
+                return $this->falha($marcada);
+            }
+        }
+
+        [$dono, $token] = $this->agendaDoEvento($evento);
+
+        if (! $token) {
+            return $this->falha('O evento está na agenda de '.($dono?->name ?? $evento->calendar_owner_email)
+                .', que não está conectada ao Google agora.');
+        }
+
+        try {
+            $atual = $this->google->buscarEvento($token, $evento->google_event_id);
+        } catch (\Throwable $e) {
+            return $this->falha($this->explicar($e, $dono));
+        }
+
+        if ($atual === null || ($atual['status'] ?? '') === 'cancelled') {
+            $this->marcarCancelado($evento);
+
+            return $this->falha('Este evento não existe mais no Google — foi apagado por lá. Marque um novo.');
+        }
+
+        $plataforma = $dados['plataforma'];
+        $participantes = $this->participantesNormalizados($onboarding, $dados['participantes'] ?? [], $dono);
+        $novo = $this->corpoAvulso($onboarding, $evento->tipo, $dados, $inicio, $fim, $participantes);
+
+        $corpo = [
+            'summary'     => $novo['summary'],
+            'description' => $novo['description'],
+            'start'       => $novo['start'],
+            'end'         => $novo['end'],
+            // String vazia é o que APAGA o local no PATCH; omitir manteria o antigo.
+            'location'    => $novo['location'] ?? '',
+            'attendees'   => EventoGoogle::mesclarConvidados($atual['attendees'] ?? [], $participantes),
+        ];
+
+        $tinhaMeet = $evento->plataforma === OnboardingEventoGoogle::PLATAFORMA_MEET;
+        $querMeet = $plataforma === OnboardingEventoGoogle::PLATAFORMA_MEET;
+        $meet = $tinhaMeet === $querMeet ? null : $querMeet;
+
+        try {
+            $resposta = $this->google->atualizarEvento($token, $evento->google_event_id, $corpo, $meet);
+        } catch (\Throwable $e) {
+            return $this->falha($this->explicar($e, $dono));
+        }
+
+        $evento->update([
+            'titulo'          => $corpo['summary'],
+            'inicio'          => $inicio,
+            'fim'             => $fim,
+            'plataforma'      => $plataforma,
+            'link_reuniao'    => $this->linkDoEvento($resposta, $plataforma, $dados),
+            'descricao'       => $dados['descricao'] ?? null,
+            'participantes'   => $participantes,
+            'convidados'      => count($participantes),
+            'sincronizado_em' => now(),
+        ]);
+
+        activity('onboarding')
+            ->performedOn($onboarding)
+            ->withProperties([
+                'tipo'       => $evento->tipo,
+                'agenda_de'  => $evento->calendar_owner_email,
+                'inicio'     => $inicio->toDateTimeString(),
+                'plataforma' => $plataforma,
+                'por'        => $por->id,
+            ])
+            ->log('Evento atualizado no Google Agenda ('.OnboardingEventoGoogle::TIPO_LABELS[$evento->tipo].')');
+
+        return [
+            'ok'       => true,
+            'mensagem' => 'Evento atualizado — os convidados foram avisados pelo Google.',
+            'evento'   => $evento->fresh(),
+        ];
+    }
+
+    /**
+     * Cancela no Google (avisando os convidados) e marca a linha como
+     * cancelada. Não apaga: o rastro do convite enviado continua valendo.
+     *
+     * A reunião de onboarding cancelada NÃO desmarca a data do onboarding:
+     * desmarcar é decisão de negócio, e o cliente continua vendo a data até
+     * alguém remarcar.
+     *
+     * @return array{ok: bool, mensagem: string}
+     */
+    public function cancelar(OnboardingEventoGoogle $evento, User $por): array
+    {
+        if (! $evento->ativo()) {
+            return ['ok' => true, 'mensagem' => 'Este evento já estava cancelado.'];
+        }
+
+        [$dono, $token] = $this->agendaDoEvento($evento);
+
+        if (! $token) {
+            return $this->falha('O evento está na agenda de '.($dono?->name ?? $evento->calendar_owner_email)
+                .', que não está conectada ao Google agora.');
+        }
+
+        try {
+            $this->google->cancelarEvento($token, $evento->google_event_id);
+        } catch (\Throwable $e) {
+            return $this->falha($this->explicar($e, $dono));
+        }
+
+        $this->marcarCancelado($evento);
+
+        activity('onboarding')
+            ->performedOn($evento->onboarding)
+            ->withProperties([
+                'tipo'      => $evento->tipo,
+                'agenda_de' => $evento->calendar_owner_email,
+                'por'       => $por->id,
+            ])
+            ->log('Evento cancelado no Google Agenda ('.OnboardingEventoGoogle::TIPO_LABELS[$evento->tipo].')');
+
+        $mensagem = 'Evento cancelado — os convidados foram avisados pelo Google.';
+
+        if ($evento->tipo === OnboardingEventoGoogle::TIPO_KICKOFF) {
+            $mensagem .= ' A data da reunião continua marcada no onboarding.';
+        }
+
+        return ['ok' => true, 'mensagem' => $mensagem];
+    }
+
+    /**
+     * Confere o retrato contra o Google, na agenda de quem organizou.
+     *
+     * Evento apagado ou cancelado lá vira cancelado aqui; horário, título e
+     * link mudados lá são copiados. Nunca lança: sem conexão, o retrato fica
+     * como estava — ele é uma cópia, e uma cópia velha é melhor que tela vazia.
+     */
+    public function conferir(OnboardingEventoGoogle $evento): OnboardingEventoGoogle
+    {
+        [, $token] = $this->agendaDoEvento($evento);
+
+        if (! $token || ! $evento->ativo()) {
+            return $evento;
+        }
+
+        try {
+            $item = $this->google->buscarEvento($token, $evento->google_event_id);
+        } catch (\Throwable $e) {
+            return $evento;
+        }
+
+        if ($item === null || ($item['status'] ?? '') === 'cancelled') {
+            $this->marcarCancelado($evento);
+
+            return $evento->fresh();
+        }
+
+        $this->copiarDoGoogle($evento, $item);
+
+        return $evento->fresh();
+    }
+
+    /**
+     * Copia do item do Google o que pode ter mudado lá. Público porque a Agenda
+     * completa já tem o item em mãos quando lê a semana de quem organizou.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    public function copiarDoGoogle(OnboardingEventoGoogle $evento, array $item): void
+    {
+        $mudancas = ['sincronizado_em' => now()];
+
+        if (isset($item['summary'])) {
+            $mudancas['titulo'] = mb_substr((string) $item['summary'], 0, 255);
+        }
+
+        // Evento de dia inteiro não tem hora; a linha fica com o que tinha.
+        if (isset($item['start']['dateTime'], $item['end']['dateTime'])) {
+            $mudancas['inicio'] = CarbonImmutable::parse($item['start']['dateTime'])->setTimezone(config('app.timezone'));
+            $mudancas['fim'] = CarbonImmutable::parse($item['end']['dateTime'])->setTimezone(config('app.timezone'));
+        }
+
+        if (! empty($item['recurrence'][0])) {
+            $mudancas['recorrencia'] = mb_substr((string) $item['recurrence'][0], 0, 120);
+        }
+
+        if (($link = $this->linkDoItem($item)) !== null) {
+            $mudancas['link_reuniao'] = mb_substr($link, 0, 500);
+        }
+
+        $evento->update($mudancas);
+    }
+
     // ─── Quem, quando e o que ───────────────────────────────────────────────
 
     /**
-     * De quem é a agenda: o ANALISTA, que é quem conduz o dia a dia. O
-     * responsável genérico entra só como queda, para onboarding antigo que
-     * nunca teve os dois papéis preenchidos.
+     * De quem é a agenda do convite fixo: o ANALISTA, que é quem conduz o dia a
+     * dia. O responsável genérico entra só como queda, para onboarding antigo
+     * que nunca teve os dois papéis preenchidos.
      */
     private function dono(Onboarding $onboarding): ?User
     {
@@ -282,14 +750,75 @@ class AgendaGoogleService
     }
 
     /**
-     * Cliente primeiro, equipe depois — e sem repetir o dono, que é o
-     * organizador e já está no evento por definição.
+     * O organizador pedido, se ele conduz o onboarding; senão, a frase do que
+     * está errado. Organizar pela agenda de quem NÃO conduz o onboarding
+     * mandaria convite de uma pessoa estranha ao cliente.
+     */
+    private function organizadorValido(Onboarding $onboarding, ?int $pedido, User $por): User|string
+    {
+        $lista = $this->organizadores($onboarding, $por);
+
+        if ($lista === []) {
+            return 'Defina o analista ou o estrategista do onboarding — o evento sai da agenda de um deles.';
+        }
+
+        $id = $pedido ?? $this->organizadorPadrao($onboarding, $por);
+
+        if (! collect($lista)->contains('id', $id)) {
+            return 'O evento só pode sair da agenda do analista ou do estrategista deste onboarding.';
+        }
+
+        return User::find($id) ?? 'Organizador não encontrado.';
+    }
+
+    /** @return array{0: ?User, 1: ?GoogleToken} */
+    private function agendaDoEvento(OnboardingEventoGoogle $evento): array
+    {
+        $dono = $evento->dono;
+
+        return [$dono, $dono ? GoogleToken::where('user_id', $dono->id)->first() : null];
+    }
+
+    /** `null` quando deu certo; a frase do domínio quando não pôde. */
+    private function marcarDataDoKickoff(Onboarding $onboarding, CarbonImmutable $inicio, User $por): ?string
+    {
+        // Remarcar para a mesma hora não é remarcar: não suja o histórico.
+        if ($onboarding->reuniao_agendada_para?->equalTo($inicio)) {
+            return null;
+        }
+
+        try {
+            app(OnboardingEngineService::class)->agendarReuniao($onboarding, $inicio, $por);
+        } catch (\DomainException $e) {
+            return $e->getMessage();
+        }
+
+        return null;
+    }
+
+    private function marcarCancelado(OnboardingEventoGoogle $evento): void
+    {
+        $evento->update([
+            'status'          => OnboardingEventoGoogle::STATUS_CANCELADO,
+            'cancelado_em'    => now(),
+            'sincronizado_em' => now(),
+        ]);
+    }
+
+    /**
+     * Cliente primeiro, equipe depois — e sem repetir quem organiza, que já
+     * está no evento por definição.
      *
      * @return array<int, array{email: string, nome: ?string, lado: string}>
      */
-    private function convidados(Onboarding $onboarding): array
+    private function convidados(Onboarding $onboarding, ?User $organizador = null, bool $excluirAnalistaPorPadrao = true): array
     {
-        $dono = $this->dono($onboarding);
+        // O convite fixo sai da agenda do analista; sem organizador informado,
+        // é ele quem fica de fora. A lista de sugestões do "Agendar", sem
+        // organizador escolhido ainda, não exclui ninguém.
+        if ($organizador === null && $excluirAnalistaPorPadrao) {
+            $organizador = $this->dono($onboarding);
+        }
         $lista = [];
 
         $contatos = OnboardingContato::where('onboarding_id', $onboarding->id)
@@ -298,15 +827,21 @@ class AgendaGoogleService
             ->get();
 
         foreach ($contatos as $contato) {
-            $lista[mb_strtolower(trim($contato->email))] = [
-                'email' => mb_strtolower(trim($contato->email)),
+            $email = mb_strtolower(trim($contato->email));
+
+            if ($email === '') {
+                continue;
+            }
+
+            $lista[$email] = [
+                'email' => $email,
                 'nome'  => $contato->nome,
                 'lado'  => 'cliente',
             ];
         }
 
         foreach ([$onboarding->responsavelEstrategista, $onboarding->responsavelAnalista] as $pessoa) {
-            if (! $pessoa || ! $pessoa->email || ($dono && $pessoa->id === $dono->id)) {
+            if (! $pessoa || ! $pessoa->email || ($organizador && $pessoa->id === $organizador->id)) {
                 continue;
             }
 
@@ -314,6 +849,36 @@ class AgendaGoogleService
                 'email' => mb_strtolower($pessoa->email),
                 'nome'  => $pessoa->name,
                 'lado'  => 'ecf',
+            ];
+        }
+
+        return array_values($lista);
+    }
+
+    /**
+     * A lista que chegou da tela, sem repetição e sem o organizador, com o
+     * nome e o lado que o sistema já conhece.
+     *
+     * @param  array<int, array{email: string, nome?: ?string}>  $entrada
+     * @return array<int, array{email: string, nome: ?string, lado: string}>
+     */
+    private function participantesNormalizados(Onboarding $onboarding, array $entrada, ?User $organizador): array
+    {
+        $conhecidos = collect($this->convidados($onboarding, $organizador))->keyBy('email');
+        $doOrganizador = $organizador?->email ? mb_strtolower($organizador->email) : null;
+        $lista = [];
+
+        foreach ($entrada as $pessoa) {
+            $email = mb_strtolower(trim((string) ($pessoa['email'] ?? '')));
+
+            if ($email === '' || $email === $doOrganizador || isset($lista[$email])) {
+                continue;
+            }
+
+            $lista[$email] = [
+                'email' => $email,
+                'nome'  => ($pessoa['nome'] ?? null) ?: ($conhecidos[$email]['nome'] ?? null),
+                'lado'  => $conhecidos[$email]['lado'] ?? 'outro',
             ];
         }
 
@@ -368,12 +933,12 @@ class AgendaGoogleService
     private function eventoRegistrado(Onboarding $onboarding, string $tipo): ?OnboardingEventoGoogle
     {
         return OnboardingEventoGoogle::where('onboarding_id', $onboarding->id)
-            ->where('tipo', $tipo)
+            ->where('chave', $tipo)
             ->first();
     }
 
     /**
-     * O corpo que vai para o Google.
+     * O corpo do convite fixo (reunião e rotina) que vai para o Google.
      *
      * `attendees` com os e-mails, `recurrence` só no evento da rotina, e as duas
      * pontas com `timeZone` explícito: sem isso o Google interpreta a hora no
@@ -385,7 +950,6 @@ class AgendaGoogleService
     private function corpoDoEvento(Onboarding $onboarding, string $tipo, array $convidados): array
     {
         $empresa = $onboarding->company?->name ?? 'Cliente';
-        $servico = $onboarding->servico?->nome;
 
         [$inicio, $recorrencia] = $tipo === OnboardingEventoGoogle::TIPO_KICKOFF
             ? [CarbonImmutable::parse($onboarding->reuniao_agendada_para), null]
@@ -395,14 +959,7 @@ class AgendaGoogleService
             'summary' => $tipo === OnboardingEventoGoogle::TIPO_KICKOFF
                 ? "ECF · {$empresa} — Reunião de onboarding"
                 : "ECF · {$empresa} — Reunião de acompanhamento",
-            // O `[Cliente: ...]` não é enfeite: é o padrão que
-            // `GoogleCalendarService::syncToMeetings()` já usa para reconhecer
-            // de quem é o evento quando ele volta do Google.
-            'description' => trim(
-                "[Cliente: {$empresa}]\n"
-                .($servico ? "Serviço: {$servico}\n" : '')
-                ."Evento criado pelo sistema da ECF a partir do onboarding."
-            ),
+            'description' => $this->descricaoPara($onboarding, $tipo, null, OnboardingEventoGoogle::PLATAFORMA_NENHUMA, []),
             'start' => [
                 'dateTime' => $inicio->toIso8601String(),
                 'timeZone' => self::FUSO,
@@ -424,6 +981,127 @@ class AgendaGoogleService
         }
 
         return $corpo;
+    }
+
+    /**
+     * O corpo de um evento do "Agendar".
+     *
+     * @param  array<string, mixed>  $dados
+     * @param  array<int, array{email: string, nome: ?string, lado: string}>  $participantes
+     * @return array<string, mixed>
+     */
+    private function corpoAvulso(
+        Onboarding $onboarding,
+        string $tipo,
+        array $dados,
+        CarbonImmutable $inicio,
+        CarbonImmutable $fim,
+        array $participantes,
+    ): array {
+        $plataforma = $dados['plataforma'];
+
+        $corpo = [
+            'summary'     => mb_substr(trim((string) $dados['titulo']), 0, 255),
+            'description' => $this->descricaoPara($onboarding, $tipo, $dados['descricao'] ?? null, $plataforma, $dados),
+            'start'       => ['dateTime' => $inicio->toIso8601String(), 'timeZone' => self::FUSO],
+            'end'         => ['dateTime' => $fim->toIso8601String(), 'timeZone' => self::FUSO],
+            'attendees'   => array_map(
+                fn (array $c) => array_filter(['email' => $c['email'], 'displayName' => $c['nome']]),
+                $participantes
+            ),
+            'guestsCanModify' => false,
+            'reminders'       => ['useDefault' => true],
+        ];
+
+        // No `location` o Google mostra o link clicável no próprio convite —
+        // é onde o convidado procura por onde entrar.
+        $local = trim((string) ($dados['link'] ?? ''));
+
+        if ($local !== '' && in_array($plataforma, [OnboardingEventoGoogle::PLATAFORMA_LINK, OnboardingEventoGoogle::PLATAFORMA_PRESENCIAL], true)) {
+            $corpo['location'] = mb_substr($local, 0, 500);
+        }
+
+        return $corpo;
+    }
+
+    /**
+     * A descrição do evento.
+     *
+     * O `[Cliente: ...]` não é enfeite: é o padrão que
+     * `GoogleCalendarService::syncToMeetings()` usa para reconhecer de quem é o
+     * evento quando ele volta do Google — e só as reuniões COM o cliente o
+     * levam (decisão de 16/09/2026).
+     *
+     * @param  array<string, mixed>  $dados
+     */
+    private function descricaoPara(Onboarding $onboarding, string $tipo, ?string $observacoes, string $plataforma, array $dados): string
+    {
+        $empresa = $onboarding->company?->name ?? 'Cliente';
+        $servico = $onboarding->servico?->nome;
+        $linhas = [];
+
+        if (in_array($tipo, OnboardingEventoGoogle::TIPOS_COM_CLIENTE, true)) {
+            $linhas[] = "[Cliente: {$empresa}]";
+        } else {
+            $linhas[] = "Empresa: {$empresa}";
+        }
+
+        if ($servico) {
+            $linhas[] = "Serviço: {$servico}";
+        }
+
+        if ($plataforma === OnboardingEventoGoogle::PLATAFORMA_LINK && ! empty($dados['link'])) {
+            $linhas[] = 'Link da reunião: '.$dados['link'];
+        }
+
+        if ($observacoes !== null && trim($observacoes) !== '') {
+            $linhas[] = '';
+            $linhas[] = trim($observacoes);
+        }
+
+        $linhas[] = '';
+        $linhas[] = 'Evento criado pelo sistema da ECF a partir do onboarding.';
+
+        return implode("\n", $linhas);
+    }
+
+    /**
+     * Onde se entra na reunião: a sala do Meet que o Google acabou de criar, o
+     * link colado, ou o endereço de um encontro presencial.
+     *
+     * @param  array<string, mixed>  $resposta
+     * @param  array<string, mixed>  $dados
+     */
+    private function linkDoEvento(array $resposta, string $plataforma, array $dados): ?string
+    {
+        $valor = match ($plataforma) {
+            OnboardingEventoGoogle::PLATAFORMA_MEET => $this->linkDoItem($resposta),
+            OnboardingEventoGoogle::PLATAFORMA_LINK,
+            OnboardingEventoGoogle::PLATAFORMA_PRESENCIAL => trim((string) ($dados['link'] ?? '')) ?: null,
+            default => null,
+        };
+
+        return $valor === null ? null : mb_substr($valor, 0, 500);
+    }
+
+    /**
+     * O link de videochamada que o Google devolve num evento.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    private function linkDoItem(array $item): ?string
+    {
+        if (! empty($item['hangoutLink'])) {
+            return (string) $item['hangoutLink'];
+        }
+
+        foreach ($item['conferenceData']['entryPoints'] ?? [] as $entrada) {
+            if (($entrada['entryPointType'] ?? '') === 'video' && ! empty($entrada['uri'])) {
+                return (string) $entrada['uri'];
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -461,12 +1139,24 @@ class AgendaGoogleService
         return [$inicio, 'RRULE:FREQ=WEEKLY;INTERVAL='.$intervalo.';BYDAY='.self::DIA_RRULE[$agenda->dia_semana]];
     }
 
-    /** Erro do Google em frase que diz o que fazer. */
-    private function explicar(\Throwable $e, User $dono): string
+    /** @return array{ok: false, mensagem: string} */
+    private function falha(string $mensagem): array
     {
+        return ['ok' => false, 'mensagem' => $mensagem];
+    }
+
+    /** Erro do Google em frase que diz o que fazer. */
+    private function explicar(\Throwable $e, ?User $dono): string
+    {
+        $nome = $dono?->name ?? 'O organizador';
+
         if ($e->getMessage() === GoogleCalendarService::ESCOPO_INSUFICIENTE) {
-            return $dono->name.' conectou o Google antes de o sistema passar a criar eventos. '
-                .'Peça para reconectar em Perfil → Google Agenda e tente de novo.';
+            return $nome.' conectou o Google antes de o sistema passar a criar eventos. '
+                .'Peça para reconectar o Google Agenda e tente de novo.';
+        }
+
+        if (str_contains($e->getMessage(), 'renovar token')) {
+            return 'A conexão de '.$nome.' com o Google expirou. Peça para reconectar o Google Agenda.';
         }
 
         return 'O Google recusou: '.mb_substr($e->getMessage(), 0, 160);

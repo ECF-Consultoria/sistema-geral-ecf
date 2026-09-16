@@ -1,7 +1,7 @@
 import { Link, usePage, router } from '@inertiajs/react';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
-    LayoutDashboard, Building2, Users, CalendarCheck,
+    LayoutDashboard, Building2, Users, CalendarCheck, CalendarDays,
     Star, Target, FileText, ChevronLeft, ChevronRight, ChevronDown,
     LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck,
     BarChart2, LineChart, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
@@ -175,6 +175,9 @@ const NAV_TREE = [
     { label: 'Setores',             routeName: 'admin.setores.index',     page: 'Admin/Setores',    icon: Shield,       permission: 'sistema.setores' },
     // Feedback UAT 2026-07-03: Reunioes eh transversal (nao especifica de ML),
     // fica como item topo acima de "Enviar notificacao".
+    // Agenda (16/09/2026): o Google Agenda de cada um com os eventos dos
+    // onboardings. Mesma permissão de Reuniões, por decisão do negócio.
+    { label: 'Agenda',              routeName: 'agenda.index',            page: 'Agenda',           icon: CalendarDays,  permission: 'core.reunioes' },
     { label: 'Reuniões',            routeName: 'meetings.index',          page: 'Meetings',         icon: CalendarCheck, permission: 'core.reunioes' },
     { label: 'Enviar notificação',  routeName: 'notificacoes.nova',       page: 'Notificacoes/Nova', icon: Send,        permission: 'notificacoes.criar' },
     // ── Grupo: NPS ───────────────────────────────────────────────────────────

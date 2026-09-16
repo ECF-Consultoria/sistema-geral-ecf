@@ -32,6 +32,7 @@ use App\Http\Controllers\GrupoCobrancaHierarquiaController;
 use App\Http\Controllers\LiderancaController;
 use App\Http\Controllers\MlbController;
 use App\Http\Controllers\MlbImplementacaoController;
+use App\Http\Controllers\AgendaController;
 use App\Http\Controllers\GoogleCalendarController;
 use App\Http\Controllers\MercadoLivreOAuthController;
 use App\Http\Controllers\ShopeeOAuthController;
@@ -732,6 +733,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
                  ->name('empresas.listagem');
          });
 
+    // Agenda (16/09/2026) — o Google de cada um, com os eventos de onboarding
+    // identificados. Sem permissão própria, como Reuniões: cada pessoa só vê a
+    // própria agenda e os onboardings que conduz; o que toca um onboarding é
+    // conferido por EscopoOnboarding dentro do controller.
+    Route::get('/agenda', [AgendaController::class, 'index'])->name('agenda.index');
+    Route::get('/agenda/eventos', [AgendaController::class, 'eventos'])->name('agenda.eventos');
+    Route::post('/agenda/eventos', [AgendaController::class, 'store'])->name('agenda.eventos.store');
+    Route::patch('/agenda/eventos/{evento}', [AgendaController::class, 'update'])->name('agenda.eventos.update');
+    Route::delete('/agenda/eventos/{evento}', [AgendaController::class, 'destroy'])->name('agenda.eventos.destroy');
+    Route::patch('/agenda/google/{eventId}', [AgendaController::class, 'atualizarGoogle'])
+        ->where('eventId', '[A-Za-z0-9_\-]+')
+        ->name('agenda.google.update');
+    Route::delete('/agenda/google/{eventId}', [AgendaController::class, 'cancelarGoogle'])
+        ->where('eventId', '[A-Za-z0-9_\-]+')
+        ->name('agenda.google.destroy');
+
     // Reuniões (todos)
     Route::get('/meetings', [MeetingController::class, 'index'])->name('meetings.index');
     Route::post('/meetings', [MeetingController::class, 'store'])->name('meetings.store');
@@ -1157,6 +1174,10 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
         // sair da ficha (16/09/2026). Leitura pura, em JSON.
         Route::get('/onboarding/{onboarding}/agenda/disponibilidade', [OnboardingController::class, 'disponibilidadeAgenda'])
             ->name('onboarding.agenda.disponibilidade');
+        // O cartão "Agenda" da ficha: eventos do mês, próximos, quem pode
+        // organizar e quem sugerir como convidado (16/09/2026).
+        Route::get('/onboarding/{onboarding}/agenda/eventos', [AgendaController::class, 'doOnboarding'])
+            ->name('onboarding.agenda.eventos');
         // Convite no Google Agenda. Ação explícita e separada do salvar: ela
         // manda e-mail ao cliente na hora (15/09/2026).
         Route::post('/onboarding/{onboarding}/agenda/google', [OnboardingController::class, 'enviarConviteGoogle'])

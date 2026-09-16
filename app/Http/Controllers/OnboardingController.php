@@ -516,18 +516,30 @@ class OnboardingController extends Controller
      * Responde JSON, e não prop de página: trocar de semana não pode recarregar
      * a ficha inteira (mapeamento, fotografia, atividade) para desenhar sete
      * colunas. Só leitura — nunca escreve no Google.
+     *
+     * `organizador` (16/09/2026): a agenda de quem vai organizar o evento no
+     * "Agendar" — só o analista ou o estrategista deste onboarding. Qualquer
+     * outro id é recusado: a rota não é janela para a agenda de um colega.
      */
     public function disponibilidadeAgenda(Request $request, Onboarding $onboarding, \App\Services\Onboarding\AgendaGoogleService $agenda)
     {
         $this->autorizarEscopo($request->user(), $onboarding);
 
         $data = $request->validate([
-            'inicio' => ['nullable', 'date_format:Y-m-d'],
+            'inicio'      => ['nullable', 'date_format:Y-m-d'],
+            'organizador' => ['nullable', 'integer'],
         ]);
 
         $referencia = \Carbon\CarbonImmutable::parse($data['inicio'] ?? 'now', 'America/Sao_Paulo');
+        $dono = null;
 
-        return response()->json($agenda->semana($onboarding, $referencia, $request->user()));
+        if (! empty($data['organizador'])) {
+            $permitidos = collect($agenda->organizadores($onboarding))->pluck('id');
+            abort_unless($permitidos->contains((int) $data['organizador']), 403, 'Essa agenda não é de quem conduz este onboarding.');
+            $dono = User::find((int) $data['organizador']);
+        }
+
+        return response()->json($agenda->semana($onboarding, $referencia, $request->user(), $dono));
     }
 
     /**
@@ -946,13 +958,11 @@ class OnboardingController extends Controller
 
     private function autorizarEscopo(User $user, Onboarding $onboarding): void
     {
-        if ($user->isAdmin()) {
-            return;
-        }
-
-        $temAcesso = $user->companies()->where('companies.id', $onboarding->company_id)->exists();
-
-        abort_unless($temAcesso, 403, 'Você não tem acesso a este onboarding.');
+        abort_unless(
+            \App\Support\Onboarding\EscopoOnboarding::permite($user, $onboarding),
+            403,
+            'Você não tem acesso a este onboarding.'
+        );
     }
 
     // ─── Montagem do payload (Tela 1) ─────────────────────────────────────

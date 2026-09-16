@@ -97,14 +97,70 @@ class GoogleCalendarService
     /** Mensagem reconhecível quando o consentimento ainda é o antigo, só de leitura. */
     public const ESCOPO_INSUFICIENTE = 'GOOGLE_ESCOPO_INSUFICIENTE';
 
-    public function criarEvento(GoogleToken $token, array $evento): array
+    /**
+     * `$comMeet` (16/09/2026) pede ao Google que gere a sala do Meet junto com o
+     * evento; o link volta em `hangoutLink` na própria resposta.
+     */
+    public function criarEvento(GoogleToken $token, array $evento, bool $comMeet = false): array
     {
-        return $this->escrever($token, 'post', self::URL_EVENTOS, $evento);
+        if ($comMeet) {
+            $evento['conferenceData'] = $this->pedidoDeMeet();
+        }
+
+        return $this->escrever($token, 'post', self::URL_EVENTOS, $evento, $comMeet);
     }
 
-    public function atualizarEvento(GoogleToken $token, string $eventId, array $evento): array
+    /**
+     * `$meet`: `null` não mexe na videochamada que o evento já tem, `true` cria
+     * uma sala do Meet e `false` tira a que existir. Só se passa `true` quando o
+     * evento ainda NÃO tem Meet — pedir de novo trocaria o link que o cliente já
+     * recebeu.
+     */
+    public function atualizarEvento(GoogleToken $token, string $eventId, array $evento, ?bool $meet = null): array
     {
-        return $this->escrever($token, 'patch', self::URL_EVENTOS.'/'.rawurlencode($eventId), $evento);
+        if ($meet !== null) {
+            $evento['conferenceData'] = $meet ? $this->pedidoDeMeet() : null;
+        }
+
+        return $this->escrever($token, 'patch', self::URL_EVENTOS.'/'.rawurlencode($eventId), $evento, $meet !== null);
+    }
+
+    /**
+     * Um evento, pelo id, da agenda do dono do token. `null` quando o evento já
+     * não existe — apagado direto no Google, por exemplo.
+     */
+    public function buscarEvento(GoogleToken $token, string $eventId): ?array
+    {
+        $token = $this->refreshToken($token);
+
+        $resposta = Http::withToken($token->access_token)
+            ->get(self::URL_EVENTOS.'/'.rawurlencode($eventId));
+
+        if (in_array($resposta->status(), [404, 410], true)) {
+            return null;
+        }
+
+        if (! $resposta->successful()) {
+            throw new \RuntimeException('Falha ao buscar o evento no Google Calendar ('.$resposta->status().').');
+        }
+
+        return $resposta->json();
+    }
+
+    /**
+     * O `requestId` é a chave de idempotência do Google para a sala: um id novo
+     * por pedido, senão o segundo pedido devolveria a sala do primeiro.
+     *
+     * @return array<string, mixed>
+     */
+    private function pedidoDeMeet(): array
+    {
+        return [
+            'createRequest' => [
+                'requestId'             => (string) \Illuminate\Support\Str::uuid(),
+                'conferenceSolutionKey' => ['type' => 'hangoutsMeet'],
+            ],
+        ];
     }
 
     /**
@@ -131,13 +187,20 @@ class GoogleCalendarService
      * `sendUpdates=all` é o que dispara o e-mail do Google. Sem ele o evento
      * nasce mudo: aparece na nossa agenda e ninguém fica sabendo — que é
      * exatamente o problema que este recurso veio resolver.
+     *
+     * `conferenceDataVersion=1` é o que faz o Google LER o `conferenceData` do
+     * corpo; sem ele o pedido de Meet é ignorado em silêncio.
      */
-    private function escrever(GoogleToken $token, string $metodo, string $url, array $corpo): array
+    private function escrever(GoogleToken $token, string $metodo, string $url, array $corpo, bool $conferencia = false): array
     {
         $token = $this->refreshToken($token);
 
         $requisicao = Http::withToken($token->access_token)->asJson();
         $url .= (str_contains($url, '?') ? '&' : '?').'sendUpdates=all';
+
+        if ($conferencia) {
+            $url .= '&conferenceDataVersion=1';
+        }
 
         $resposta = $metodo === 'post'
             ? $requisicao->post($url, $corpo)
