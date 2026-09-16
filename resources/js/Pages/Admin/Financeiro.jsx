@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, router } from '@inertiajs/react';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, FileText, Printer, Send, Settings, RefreshCw, X, BarChart2, Plus, Pencil, PowerOff, Briefcase, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
@@ -336,13 +336,81 @@ function FecharCompetenciaButton({ mes }) {
     );
 }
 
+// Quick 260916-ejt — o refazer deixou de acontecer dentro do clique. O cálculo
+// passa ~200 empresas pela Adman e estourava a memória do PHP do site: a tela
+// mostrava falha genérica, nada era gravado, e a pessoa ficava olhando número
+// velho achando que o cálculo estava errado. Agora o clique só ENCOMENDA o
+// trabalho, e esta tela acompanha até o fim.
 function RefazerFechamentoDialog({ mes }) {
     const [open, setOpen]         = useState(false);
     const [motivo, setMotivo]     = useState('');
     const [enviando, setEnviando] = useState(false);
     const [erro, setErro]         = useState(null);
+    const [refazendo, setRefazendo] = useState(false);
+    const [aviso, setAviso]         = useState(null);
+    const [falha, setFalha]         = useState(null);
     const [confirmacao, setConfirmacao] = useConfirmacaoTemporaria();
     const mesLabel = mesExtensoAno(mes);
+
+    // Só avisa o fim para quem viu o começo: sem esta marca, abrir a tela
+    // mostraria o resultado de um refazer que outra pessoa fez ontem.
+    const acompanhandoRef = useRef(false);
+
+    const consultarAndamento = useCallback(async () => {
+        let dados;
+        try {
+            const r = await axios.get(route('admin.financeiro.competencia.refazer.status'), { params: { mes } });
+            dados = r.data;
+        } catch {
+            // Uma consulta que não respondeu não quer dizer que o cálculo
+            // falhou — a próxima tentativa resolve.
+            return;
+        }
+
+        const situacao = dados?.status ?? 'idle';
+
+        if (situacao === 'running') {
+            acompanhandoRef.current = true;
+            setRefazendo(true);
+            setFalha(null);
+            // Recarregou a página no meio? O aviso volta sozinho.
+            setAviso(anterior => anterior
+                ?? `Refazendo o fechamento de ${mesLabel}. Isso leva alguns minutos — a tela avisa quando terminar.`);
+            return;
+        }
+
+        if (!acompanhandoRef.current) return;
+
+        acompanhandoRef.current = false;
+        setRefazendo(false);
+        setAviso(null);
+
+        if (situacao === 'ready') {
+            setConfirmacao(`Fechamento de ${mesLabel} refeito. Os números desta tela já são os novos.`);
+            router.reload({ preserveScroll: true });
+            return;
+        }
+
+        if (situacao === 'failed') {
+            const detalhe = dados?.error ? ` (${dados.error})` : '';
+            setFalha(`Não foi possível refazer o fechamento de ${mesLabel}. O registro anterior continua valendo.${detalhe}`);
+        }
+    }, [mes, mesLabel, setConfirmacao]);
+
+    // Uma consulta ao montar: se a pessoa recarregou a página no meio, a tela
+    // volta a acompanhar em vez de sumir com o aviso — sumir é o que a fazia
+    // clicar de novo (incidente 260903-la4).
+    useEffect(() => {
+        consultarAndamento();
+    }, [consultarAndamento]);
+
+    // Enquanto está em andamento, pergunta a cada 5s. Para ao sair da tela —
+    // senão segue batendo no servidor depois de trocar de página.
+    useEffect(() => {
+        if (!refazendo) return undefined;
+        const id = setInterval(consultarAndamento, 5000);
+        return () => clearInterval(id);
+    }, [refazendo, consultarAndamento]);
 
     function handleOpenChange(next) {
         setOpen(next);
@@ -358,14 +426,17 @@ function RefazerFechamentoDialog({ mes }) {
         setErro(null);
         axios.post(route('admin.financeiro.competencia.refazer'), { mes, motivo })
             .then((r) => {
-                // Fecha o diálogo e limpa o motivo no sucesso — deixar tudo
-                // como estava (bug 260903-la4) fazia a pessoa achar que não
-                // salvou e clicar de novo, gravando linha repetida na
-                // auditoria. A mensagem é a que o backend já devolve.
+                // Fecha o diálogo e limpa o motivo — deixar tudo como estava
+                // (bug 260903-la4) fazia a pessoa achar que não salvou e clicar
+                // de novo. Mas aqui NÃO se declara vitória: o cálculo mal
+                // começou, quem avisa o fim é `consultarAndamento`.
                 setOpen(false);
                 setMotivo('');
-                setConfirmacao(r.data?.message ?? `Fechamento de ${mesLabel} refeito com sucesso.`);
-                router.reload();
+                setFalha(null);
+                acompanhandoRef.current = true;
+                setRefazendo(true);
+                setAviso(r.data?.message
+                    ?? `Refazendo o fechamento de ${mesLabel}. Isso leva alguns minutos — a tela avisa quando terminar.`);
             })
             .catch((e) => {
                 setErro(e.response?.data?.message
@@ -379,9 +450,16 @@ function RefazerFechamentoDialog({ mes }) {
             <button
                 type="button"
                 onClick={() => handleOpenChange(true)}
-                className="inline-flex items-center gap-2 px-[18px] py-2.5 rounded-[10px] border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-[15px] font-semibold transition-colors shrink-0"
+                disabled={refazendo}
+                className={cn(
+                    'inline-flex items-center gap-2 px-[18px] py-2.5 rounded-[10px] border text-[15px] font-semibold transition-colors shrink-0',
+                    refazendo
+                        ? 'border-white/[0.08] bg-white/[0.03] text-white/50 cursor-wait'
+                        : 'border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+                )}
             >
-                Refazer fechamento
+                {refazendo && <RefreshCw size={14} className="animate-spin shrink-0" />}
+                {refazendo ? 'Refazendo...' : 'Refazer fechamento'}
             </button>
 
             <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -390,7 +468,8 @@ function RefazerFechamentoDialog({ mes }) {
                         <DialogTitle>Refazer fechamento de {mesLabel}</DialogTitle>
                     </DialogHeader>
                     <p className="text-white/60 text-[14px]">
-                        Os valores já cobrados ficam registrados no histórico. Ao confirmar, os números exibidos nesta tela passam a refletir o novo cálculo.
+                        Os valores já cobrados ficam registrados no histórico. Ao confirmar, os números exibidos nesta tela passam a refletir o novo cálculo.{' '}
+                        O recálculo leva alguns minutos e a tela avisa quando terminar.
                     </p>
                     <div className="space-y-1.5">
                         <Label>Motivo do reprocessamento *</Label>
