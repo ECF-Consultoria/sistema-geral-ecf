@@ -75,5 +75,7 @@ class ClicksignWebhookDespachaFilaTest extends TestCase
 
         Http::assertNothingSent();
         Queue::assertPushed(ProcessarEventoClicksignJob::class);
+        // 16/09 — fora da `default`, que acumula o sync de acervo ML na frente.
+        Queue::assertPushedOn('high', ProcessarEventoClicksignJob::class);
     }
 }

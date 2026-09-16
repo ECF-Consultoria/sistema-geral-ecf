@@ -57,10 +57,30 @@ class ProcessarEventoClicksignJob implements ShouldQueue
 
     public int $tries = 3;
 
+    /**
+     * 16/09 — cada devolução do `RateLimited` (3/min) conta como tentativa.
+     * Fora da `default` o job roda na hora, e uma rajada de eventos
+     * (7 em 2 minutos em 16/09) esgotaria as 3 tentativas sem erro nenhum.
+     * `retryUntil()` faz a janela valer no lugar de `$tries`; `maxExceptions`
+     * mantém o limite de 3 falhas REAIS antes do `failed()`.
+     */
+    public int $maxExceptions = 3;
+
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addHours(6);
+    }
+
     public int $timeout = 120;
 
     public function __construct(public readonly ContratoAssinaturaEvento $evento)
     {
+        // 16/09 — fila `high`, não `default`. Medido em produção: a `default`
+        // tinha 179 jobs do sync de acervo ML (~3 min cada) na frente, e a
+        // assinatura do Thiago no contrato da Quadro de Medalha (14:27) ficou
+        // horas sem virar "assinado". Evento de assinatura é o que a pessoa
+        // está esperando na tela — mesmo precedente de `ResolveOnboardingPassoJob`.
+        $this->onQueue('high');
     }
 
     public function backoff(): array
