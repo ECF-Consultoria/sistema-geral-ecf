@@ -156,7 +156,10 @@ class Company extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['name', 'cnpj', 'segment', 'active', 'status', 'notes', 'adman_account_id', 'ml_store_id', 'marketplace', 'logo_url'])
+            ->logOnly(['name', 'cnpj', 'segment', 'active', 'status', 'notes', 'adman_account_id', 'ml_store_id', 'marketplace', 'logo_url',
+                // Quick 260916-onn — marcar/desmarcar "não participa do
+                // fechamento" fica na trilha, com o motivo.
+                'fora_do_fechamento', 'fora_do_fechamento_motivo'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
@@ -222,6 +225,10 @@ class Company extends Model
         // HubSpot (reescritos a cada processamento, como `hubspot_notas`/
         // `hubspot_observacao`); `data_venda` é a data de fechamento do deal.
         'hubspot_owner_id', 'hubspot_owner_nome', 'data_venda',
+        // Quick 260916-onn — "não participa do fechamento". Quem grava é
+        // `ForaDoFechamentoController`; `_por` vem SEMPRE da sessão, nunca do
+        // corpo da requisição. ⛔ Não é campo-gatilho de contrato.
+        'fora_do_fechamento', 'fora_do_fechamento_motivo', 'fora_do_fechamento_por', 'fora_do_fechamento_em',
     ];
 
     protected $casts = [
@@ -246,6 +253,10 @@ class Company extends Model
         'hubspot_notas'    => 'array',
         // Fase 151 (plano 03, COMERC-02, D-09) — data de fechamento do deal.
         'data_venda' => 'date',
+        // Quick 260916-onn — "não participa do fechamento".
+        'fora_do_fechamento'     => 'boolean',
+        'fora_do_fechamento_por' => 'integer',
+        'fora_do_fechamento_em'  => 'datetime',
     ];
 
     /**

@@ -34,10 +34,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class CompanyGroup extends Model
 {
-    protected $fillable = ['name', 'color', 'parent_id'];
+    protected $fillable = [
+        'name', 'color', 'parent_id',
+        // Quick 260916-onn — "não participa do fechamento". O model não usa
+        // `LogsActivity`: quem grava (`ForaDoFechamentoController`) registra a
+        // trilha à mão. `_por` vem SEMPRE da sessão.
+        'fora_do_fechamento', 'fora_do_fechamento_motivo', 'fora_do_fechamento_por', 'fora_do_fechamento_em',
+    ];
 
     protected $casts = [
-        'parent_id' => 'int',
+        'parent_id'              => 'int',
+        'fora_do_fechamento'     => 'boolean',
+        'fora_do_fechamento_por' => 'integer',
+        'fora_do_fechamento_em'  => 'datetime',
     ];
 
     /**

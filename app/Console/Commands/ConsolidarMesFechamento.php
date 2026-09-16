@@ -789,6 +789,28 @@ class ConsolidarMesFechamento extends Command
                 ->implode('; ').'.');
         }
 
+        // ── Quick 260916-onn — quem não participa por decisão ─────────────
+        // Separado da linha da data de início: são dois motivos diferentes, e
+        // quem lê o resumo precisa saber qual foi. Nada some em silêncio.
+        $foraPorDecisao = $separacao['fora_por_decisao'] ?? collect();
+        $linhaDecisao   = sprintf('[Fechamento] Fora do fechamento por decisão: %d empresa(s)', $foraPorDecisao->count());
+
+        if ($foraPorDecisao->isEmpty()) {
+            $this->info($linhaDecisao.'.');
+        } else {
+            $this->warn($linhaDecisao.' — '.$foraPorDecisao
+                ->map(function (array $item) {
+                    $c      = $item['company'];
+                    $motivo = trim((string) ($item['motivo'] ?? '')) ?: 'sem motivo registrado';
+                    $quem   = $item['origem'] === 'grupo'
+                        ? "grupo {$item['grupo_nome']}: {$motivo}"
+                        : $motivo;
+
+                    return "{$c->name} (#{$c->id}, {$quem})";
+                })
+                ->implode('; ').'.');
+        }
+
         // ── Fase 143 (143-05, T1) — quem mudou de faixa por COMPOSIÇÃO ────
         // O aviso não sai para essas linhas (dizer "subiu de faixa" quando o
         // que mudou foi quem faz parte do cliente é mentira), mas o resumo
