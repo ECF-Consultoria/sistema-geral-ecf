@@ -1,4 +1,4 @@
-import { BarChart3, CalendarClock, Pencil, UserSquare } from 'lucide-react';
+import { BarChart3, CalendarClock, CalendarPlus, Pencil, UserSquare } from 'lucide-react';
 import { cn, formatDate, formatDateTime } from '@/lib/utils';
 
 /**
@@ -39,8 +39,17 @@ const brl = (v) =>
         ? null
         : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 
-/** Moldura comum: título, ícone e um botão de ação opcional. */
-export function CartaoLateral({ icone: Icone, titulo, acao = null, aoAgir = null, children }) {
+/**
+ * Moldura comum: título, ícone e um botão de ação opcional.
+ *
+ * `acaoDestacada` existe porque nem toda ação é "editar o que já está lá": marcar
+ * a reunião que ainda não tem data é a primeira coisa a fazer no onboarding, e
+ * ficava escondida num lápis cinza igual aos outros.
+ */
+export function CartaoLateral({
+    icone: Icone, titulo, acao = null, aoAgir = null,
+    acaoIcone: AcaoIcone = Pencil, acaoDestacada = false, children,
+}) {
     return (
         <section className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
             <header className="flex items-center justify-between gap-2 mb-3">
@@ -53,9 +62,14 @@ export function CartaoLateral({ icone: Icone, titulo, acao = null, aoAgir = null
                     <button
                         type="button"
                         onClick={aoAgir}
-                        className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[11px] text-white/55 hover:text-white hover:border-white/20 transition-colors"
+                        className={cn(
+                            'shrink-0 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] transition-colors',
+                            acaoDestacada
+                                ? 'bg-ecf-yellow text-ecf-bg font-semibold hover:bg-ecf-yellow/90'
+                                : 'border border-white/[0.08] bg-white/[0.03] text-white/55 hover:text-white hover:border-white/20',
+                        )}
                     >
-                        <Pencil size={11} /> {acao}
+                        <AcaoIcone size={11} /> {acao}
                     </button>
                 )}
             </header>
@@ -123,8 +137,19 @@ export function AgendaResumo({ reuniao, agenda, aoEditar }) {
         ? [DIAS[agenda.dia_semana], (agenda.horario ?? '').slice(0, 5)].filter(Boolean).join(' às ')
         : null;
 
+    // Sem data marcada, o cartão deixa de ser consulta e vira chamada: é por
+    // aqui que se abre a agenda da semana e se marca a reunião com o cliente.
+    const semData = ! reuniao?.agendada_para && ! reuniao?.realizada;
+
     return (
-        <CartaoLateral icone={CalendarClock} titulo="Agenda" acao="Editar" aoAgir={aoEditar}>
+        <CartaoLateral
+            icone={CalendarClock}
+            titulo="Agenda"
+            acao={semData ? 'Marcar reunião' : 'Editar'}
+            acaoIcone={semData ? CalendarPlus : Pencil}
+            acaoDestacada={semData}
+            aoAgir={aoEditar}
+        >
             <Campo
                 rotulo="Reunião de onboarding"
                 valor={

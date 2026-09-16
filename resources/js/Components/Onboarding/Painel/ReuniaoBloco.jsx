@@ -20,7 +20,11 @@ import { cn } from '@/lib/utils';
 
 // `datetime-local` exige 'YYYY-MM-DDTHH:mm' em hora LOCAL. Converter com
 // toISOString() aqui devolveria UTC e o campo abriria com a hora errada.
-function paraInputLocal(iso) {
+//
+// Exportado porque a grade da semana (`AgendaDaSemana`) precisa produzir
+// exatamente este formato ao clicar num horário livre: duas cópias do mesmo
+// formato divergiriam em silêncio no primeiro fuso diferente.
+export function paraInputLocal(iso) {
     if (!iso) return '';
     const d = new Date(iso);
     const pad = (n) => String(n).padStart(2, '0');
@@ -37,10 +41,19 @@ function formatar(iso) {
     });
 }
 
-export default function ReuniaoBloco({ onboardingId, reuniao }) {
-    const [quando, setQuando] = useState(paraInputLocal(reuniao?.agendada_para));
+/**
+ * `valor`/`aoMudarValor` são opcionais: sem eles o bloco guarda a data sozinho,
+ * como sempre fez. Com eles, quem manda é o pai — é assim que clicar num vão
+ * livre da grade da semana preenche este campo.
+ */
+export default function ReuniaoBloco({ onboardingId, reuniao, valor, aoMudarValor }) {
+    const [quandoLocal, setQuandoLocal] = useState(paraInputLocal(reuniao?.agendada_para));
     const [salvando, setSalvando] = useState(false);
     const [editando, setEditando] = useState(false);
+
+    const controlado = typeof valor === 'string' && typeof aoMudarValor === 'function';
+    const quando = controlado ? valor : quandoLocal;
+    const setQuando = controlado ? aoMudarValor : setQuandoLocal;
 
     const solicitada = reuniao?.status === 'solicitada';
     const agendada = reuniao?.status === 'agendada';
@@ -69,7 +82,10 @@ export default function ReuniaoBloco({ onboardingId, reuniao }) {
         );
     }
 
-    const mostrarFormulario = editando || !agendada;
+    // Com data já agendada o formulário fica fechado — mas escolher um horário
+    // novo na grade precisa abri-lo, senão o clique some sem deixar rastro.
+    const remarcando = controlado && quando !== paraInputLocal(reuniao?.agendada_para);
+    const mostrarFormulario = editando || remarcando || !agendada;
 
     return (
         <div className={cn(

@@ -9,7 +9,9 @@ use App\Models\OnboardingContato;
 use App\Models\OnboardingEventoGoogle;
 use App\Models\User;
 use App\Services\GoogleCalendarService;
+use Carbon\Carbon;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 
 /**
  * Leva a agenda combinada no onboarding para o Google Agenda, como CONVITE.
@@ -135,6 +137,136 @@ class AgendaGoogleService
                 .' pela agenda de '.$dono->name.' — '.$quantos.' '.($quantos === 1 ? 'convidado' : 'convidados').'.',
             'evento'   => $registro,
         ];
+    }
+
+    /**
+     * A semana da agenda de quem conduz, para escolher horário vendo o que já
+     * está ocupado (16/09/2026).
+     *
+     * ### Por que ler a agenda, e não só oferecer um campo de data
+     * Marcar a reunião era digitar data e hora às cegas e conferir no Google
+     * depois. A pergunta de quem marca é "quando ele está livre?", e a resposta
+     * já existia na API — em LEITURA (`calendar.readonly`), o escopo que todo
+     * mundo que conectou já tem. Ninguém precisa reconectar para ver a semana.
+     *
+     * ### O assunto dos compromissos é privado
+     * Quem não é dono da agenda recebe os horários SEM o título: para escolher
+     * um horário livre basta saber que está ocupado, e a agenda de uma pessoa
+     * tem consulta médica, entrevista e assunto de família. A exceção são os
+     * eventos deste próprio onboarding, que o sistema criou e cujo título ele
+     * já conhece.
+     *
+     * ### Não lança
+     * Uma falha do Google vira `erro` em texto, com os horários vazios. Esta
+     * leitura decora a escolha; derrubá-la deixaria a tela sem o campo de data
+     * por causa de uma API de terceiro fora do ar.
+     *
+     * @return array<string, mixed>
+     */
+    public function semana(Onboarding $onboarding, CarbonImmutable $referencia, User $espectador): array
+    {
+        $dono = $this->dono($onboarding);
+        $comeco = $referencia->setTimezone(self::FUSO)->startOfWeek(CarbonInterface::MONDAY);
+        $fim = $comeco->addDays(6);
+
+        $resposta = [
+            'inicio'    => $comeco->toDateString(),
+            'fim'       => $fim->toDateString(),
+            'dono'      => $dono?->name,
+            'e_voce'    => $dono !== null && $dono->id === $espectador->id,
+            'conectado' => $dono !== null && GoogleToken::where('user_id', $dono->id)->exists(),
+            'eventos'   => [],
+            'erro'      => null,
+        ];
+
+        if (! $dono) {
+            $resposta['erro'] = 'Defina o analista responsável — é a agenda dele que abre aqui.';
+
+            return $resposta;
+        }
+
+        // Sem token não há o que ler, e a tela oferece conectar. Sair aqui
+        // também é o que garante que nenhuma chamada saia à toa.
+        if (! $resposta['conectado']) {
+            return $resposta;
+        }
+
+        $token = GoogleToken::where('user_id', $dono->id)->first();
+
+        try {
+            $itens = $this->google->fetchEventsForRange(
+                $token,
+                Carbon::instance($comeco->toDateTime()),
+                Carbon::instance($fim->toDateTime()),
+            );
+        } catch (\Throwable $e) {
+            $resposta['erro'] = 'Não deu para ler a agenda de '.$dono->name.' agora. '
+                .'Os horários ocupados não aparecem, mas dá para marcar assim mesmo.';
+
+            return $resposta;
+        }
+
+        $resposta['eventos'] = $this->ocupacao($itens, $onboarding, $resposta['e_voce']);
+
+        return $resposta;
+    }
+
+    /**
+     * Os itens do Google viram blocos de ocupação.
+     *
+     * Fica de fora o que não ocupa a pessoa: evento cancelado, evento que ela
+     * recusou e evento marcado como "livre" (`transparent`) — um aniversário no
+     * calendário não impede reunião nenhuma, e tratá-lo como ocupado esconderia
+     * horários bons.
+     *
+     * @param  array<int, array<string, mixed>>  $itens
+     * @return array<int, array<string, mixed>>
+     */
+    private function ocupacao(array $itens, Onboarding $onboarding, bool $mostrarTitulo): array
+    {
+        // Os eventos DESTE onboarding: o título deles o sistema escreveu, então
+        // mostrá-lo não revela nada da vida de ninguém. Numa série, cada
+        // ocorrência ganha sufixo (`id_20260916T170000Z`) — daí o prefixo.
+        $nossos = OnboardingEventoGoogle::where('onboarding_id', $onboarding->id)
+            ->pluck('google_event_id')
+            ->filter()
+            ->all();
+
+        $blocos = [];
+
+        foreach ($itens as $item) {
+            if (($item['status'] ?? '') === 'cancelled' || ($item['transparency'] ?? '') === 'transparent') {
+                continue;
+            }
+
+            $recusou = collect($item['attendees'] ?? [])
+                ->first(fn ($a) => ($a['self'] ?? false) && ($a['responseStatus'] ?? '') === 'declined');
+
+            if ($recusou) {
+                continue;
+            }
+
+            $inicio = $item['start']['dateTime'] ?? ($item['start']['date'] ?? null);
+            $termino = $item['end']['dateTime'] ?? ($item['end']['date'] ?? null);
+
+            if (! $inicio || ! $termino) {
+                continue;
+            }
+
+            $id = (string) ($item['id'] ?? '');
+            $nosso = (bool) collect($nossos)->first(fn ($n) => $n !== '' && str_starts_with($id, (string) $n));
+
+            $blocos[] = [
+                'id'          => $id,
+                'inicio'      => CarbonImmutable::parse($inicio, self::FUSO)->toIso8601String(),
+                'fim'         => CarbonImmutable::parse($termino, self::FUSO)->toIso8601String(),
+                'dia_inteiro' => ! isset($item['start']['dateTime']),
+                'titulo'      => ($mostrarTitulo || $nosso) ? ($item['summary'] ?? null) : null,
+                'nosso'       => $nosso,
+            ];
+        }
+
+        return $blocos;
     }
 
     // ─── Quem, quando e o que ───────────────────────────────────────────────

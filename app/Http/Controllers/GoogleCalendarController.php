@@ -12,8 +12,26 @@ class GoogleCalendarController extends Controller
 
     // ── Redireciona para OAuth Google ─────────────────────────────────────────
 
-    public function connect()
+    /**
+     * `retorno` existe porque conectar deixou de ser assunto só do Perfil
+     * (16/09/2026): quem marca reunião conecta de dentro da ficha do onboarding,
+     * e voltar do Google no Perfil abandonaria a pessoa longe do que ela estava
+     * fazendo. Guarda-se na SESSÃO, e não no `state` do OAuth, porque o callback
+     * do Google não devolve query nossa.
+     *
+     * Só caminho interno entra: `/rota` sim, `//site.com` e `https://…` não —
+     * senão a tela de consentimento do Google viraria trampolim para fora.
+     */
+    public function connect(Request $request)
     {
+        $retorno = (string) $request->query('retorno', '');
+
+        if ($retorno !== '' && str_starts_with($retorno, '/') && ! str_starts_with($retorno, '//')) {
+            $request->session()->put('google_retorno', mb_substr($retorno, 0, 300));
+        } else {
+            $request->session()->forget('google_retorno');
+        }
+
         return redirect($this->calendar->getAuthUrl());
     }
 
@@ -21,19 +39,27 @@ class GoogleCalendarController extends Controller
 
     public function callback(Request $request)
     {
+        // `pull` e não `get`: o destino vale para esta volta. Deixá-lo na sessão
+        // faria a próxima conexão, vinda do Perfil, cair no onboarding de ontem.
+        $destino = $request->session()->pull('google_retorno');
+
+        $volta = fn (string $tipo, string $mensagem) => ($destino
+            ? redirect($destino)
+            : redirect()->route('profile.edit'))->with($tipo, $mensagem);
+
         if ($request->get('error')) {
-            return redirect()->route('profile.edit')->with('error', 'Conexão com Google negada.');
+            return $volta('error', 'Conexão com Google negada.');
         }
 
         $code = $request->get('code');
         if (!$code) {
-            return redirect()->route('profile.edit')->with('error', 'Código OAuth ausente.');
+            return $volta('error', 'Código OAuth ausente.');
         }
 
         try {
             $tokens = $this->calendar->exchangeCode($code);
         } catch (\Throwable $e) {
-            return redirect()->route('profile.edit')->with('error', 'Erro ao conectar Google: ' . $e->getMessage());
+            return $volta('error', 'Erro ao conectar Google: ' . $e->getMessage());
         }
 
         $user = $request->user();
@@ -47,7 +73,7 @@ class GoogleCalendarController extends Controller
             ]
         );
 
-        return redirect()->route('profile.edit')->with('success', 'Google Calendar conectado com sucesso!');
+        return $volta('success', 'Google Calendar conectado com sucesso!');
     }
 
     // ── Sincronização manual ──────────────────────────────────────────────────

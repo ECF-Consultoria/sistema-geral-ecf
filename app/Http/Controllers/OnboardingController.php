@@ -521,6 +521,27 @@ class OnboardingController extends Controller
      * velho e indisponibilidade do Google não podem derrubar a ficha de quem
      * está no meio do onboarding.
      */
+    /**
+     * GET /onboarding/{onboarding}/agenda/disponibilidade — a semana da agenda
+     * de quem conduz, para marcar a reunião vendo o que já está ocupado.
+     *
+     * Responde JSON, e não prop de página: trocar de semana não pode recarregar
+     * a ficha inteira (mapeamento, fotografia, atividade) para desenhar sete
+     * colunas. Só leitura — nunca escreve no Google.
+     */
+    public function disponibilidadeAgenda(Request $request, Onboarding $onboarding, \App\Services\Onboarding\AgendaGoogleService $agenda)
+    {
+        $this->autorizarEscopo($request->user(), $onboarding);
+
+        $data = $request->validate([
+            'inicio' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        $referencia = \Carbon\CarbonImmutable::parse($data['inicio'] ?? 'now', 'America/Sao_Paulo');
+
+        return response()->json($agenda->semana($onboarding, $referencia, $request->user()));
+    }
+
     public function enviarConviteGoogle(Request $request, Onboarding $onboarding, \App\Services\Onboarding\AgendaGoogleService $agenda)
     {
         $this->autorizarEscopo($request->user(), $onboarding);

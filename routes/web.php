@@ -1153,6 +1153,10 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
             ->name('onboarding.investimento.salvar');
         Route::put('/onboarding/{onboarding}/agenda', [OnboardingController::class, 'salvarAgenda'])
             ->name('onboarding.agenda.salvar');
+        // A semana da agenda de quem conduz, para escolher horário livre sem
+        // sair da ficha (16/09/2026). Leitura pura, em JSON.
+        Route::get('/onboarding/{onboarding}/agenda/disponibilidade', [OnboardingController::class, 'disponibilidadeAgenda'])
+            ->name('onboarding.agenda.disponibilidade');
         // Convite no Google Agenda. Ação explícita e separada do salvar: ela
         // manda e-mail ao cliente na hora (15/09/2026).
         Route::post('/onboarding/{onboarding}/agenda/google', [OnboardingController::class, 'enviarConviteGoogle'])

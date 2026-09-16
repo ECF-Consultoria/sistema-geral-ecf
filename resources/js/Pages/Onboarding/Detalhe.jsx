@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link } from '@inertiajs/react';
 import {
     Activity, ArrowLeft, ExternalLink, FileText, Handshake, KeyRound,
     Link2, MoreHorizontal, Quote,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -19,7 +20,8 @@ import {
 import Responsabilidades from '@/Components/Onboarding/Painel/Responsabilidades';
 import AtividadeRecente from '@/Components/Onboarding/Painel/AtividadeRecente';
 import RelatorioInicial from '@/Components/Onboarding/RelatorioInicial';
-import ReuniaoBloco from '@/Components/Onboarding/Painel/ReuniaoBloco';
+import ReuniaoBloco, { paraInputLocal } from '@/Components/Onboarding/Painel/ReuniaoBloco';
+import AgendaDaSemana from '@/Components/Onboarding/Painel/AgendaDaSemana';
 import ConviteGoogle from '@/Components/Onboarding/Painel/ConviteGoogle';
 import AcessoDoClienteAoPortal from '@/Components/Onboarding/Painel/AcessoDoClienteAoPortal';
 import BlocoAcessos from '@/Components/Onboarding/Painel/BlocoAcessos';
@@ -89,6 +91,20 @@ export default function Detalhe({
     // O passo aberto no detalhe. Separado de `caixa` porque carrega o objeto
     // inteiro, não uma chave.
     const [passoAberto, setPassoAberto] = useState(null);
+
+    // A data da reunião vive aqui, e não dentro do bloco que a salva, porque
+    // dois irmãos olham para ela: a grade da semana (que a escreve ao clicar num
+    // horário livre) e o campo de "Reunião de onboarding" (que a salva).
+    const [quandoReuniao, setQuandoReuniao] = useState('');
+
+    // Abrir a caixa parte sempre do que está GRAVADO — inclusive depois de
+    // salvar, quando o valor novo chega pela prop. Sem isto, uma escolha
+    // abandonada voltaria à tela na visita seguinte.
+    useEffect(() => {
+        if (caixa === 'agenda') {
+            setQuandoReuniao(paraInputLocal(reuniao?.agendada_para));
+        }
+    }, [caixa, reuniao?.agendada_para]);
 
     // O passo vive no payload; guardar o objeto congelaria o estado dele no
     // momento do clique — depois de concluir, o modal seguiria mostrando
@@ -256,7 +272,12 @@ export default function Detalhe({
 
             {/* ─── As caixas: formulários e consultas ───────────────────── */}
             <Dialog open={caixa !== null} onOpenChange={(aberto) => ! aberto && setCaixa(null)}>
-                <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+                {/* A agenda é a única caixa larga: sete colunas de semana
+                    espremidas em 2xl viram tiras onde não se lê o horário. */}
+                <DialogContent className={cn(
+                    'max-h-[85vh] overflow-y-auto',
+                    caixa === 'agenda' ? 'max-w-4xl' : 'max-w-2xl',
+                )}>
                     <DialogHeader>
                         <DialogTitle>{TITULOS[caixa] ?? ''}</DialogTitle>
                     </DialogHeader>
@@ -276,7 +297,27 @@ export default function Detalhe({
 
                     {caixa === 'agenda' && (
                         <div className="space-y-4">
-                            {reuniao && <ReuniaoBloco onboardingId={onboarding.id} reuniao={reuniao} />}
+                            {/* A semana de quem conduz vem ANTES do campo de
+                                data: a pergunta de quem marca é "quando ele
+                                está livre?", e clicar num vão livre preenche o
+                                campo logo abaixo. Reunião já realizada não tem
+                                horário a escolher. */}
+                            {! reuniao?.realizada && (
+                                <AgendaDaSemana
+                                    onboardingId={onboarding.id}
+                                    valor={quandoReuniao}
+                                    aoEscolher={setQuandoReuniao}
+                                    empresa={onboarding.empresa.nome}
+                                />
+                            )}
+                            {reuniao && (
+                                <ReuniaoBloco
+                                    onboardingId={onboarding.id}
+                                    reuniao={reuniao}
+                                    valor={quandoReuniao}
+                                    aoMudarValor={setQuandoReuniao}
+                                />
+                            )}
                             <BlocoAgenda onboardingId={onboarding.id} agenda={respostas?.agenda} />
                             {/* O convite fica DEPOIS dos dois blocos de propósito:
                                 ele depende da data e da rotina já combinadas, e
