@@ -510,18 +510,6 @@ class OnboardingController extends Controller
     }
 
     /**
-     * POST /onboarding/{onboarding}/agenda/google — cria (ou atualiza) o evento
-     * no Google Agenda de quem conduz e convida o cliente.
-     *
-     * Ação EXPLÍCITA, nunca gancho do salvar: o Google manda e-mail aos
-     * convidados na hora, e disparar isso como efeito colateral de "salvar a
-     * data" mandaria convite para cliente real sem ninguém pedir.
-     *
-     * O serviço não lança — falha vira mensagem na própria tela, porque token
-     * velho e indisponibilidade do Google não podem derrubar a ficha de quem
-     * está no meio do onboarding.
-     */
-    /**
      * GET /onboarding/{onboarding}/agenda/disponibilidade — a semana da agenda
      * de quem conduz, para marcar a reunião vendo o que já está ocupado.
      *
@@ -542,6 +530,18 @@ class OnboardingController extends Controller
         return response()->json($agenda->semana($onboarding, $referencia, $request->user()));
     }
 
+    /**
+     * POST /onboarding/{onboarding}/agenda/google — cria (ou atualiza) o evento
+     * no Google Agenda de quem conduz e convida o cliente.
+     *
+     * Ação EXPLÍCITA, nunca gancho do salvar: o Google manda e-mail aos
+     * convidados na hora, e disparar isso como efeito colateral de "salvar a
+     * data" mandaria convite para cliente real sem ninguém pedir.
+     *
+     * O serviço não lança — falha vira mensagem na própria tela, porque token
+     * velho e indisponibilidade do Google não podem derrubar a ficha de quem
+     * está no meio do onboarding.
+     */
     public function enviarConviteGoogle(Request $request, Onboarding $onboarding, \App\Services\Onboarding\AgendaGoogleService $agenda)
     {
         $this->autorizarEscopo($request->user(), $onboarding);

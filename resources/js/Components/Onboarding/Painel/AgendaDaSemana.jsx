@@ -291,9 +291,12 @@ export default function AgendaDaSemana({ onboardingId, valor = '', aoEscolher, e
                                             return (
                                                 <div
                                                     key={k}
+                                                    // O clique no compromisso não desce para a coluna: marcar
+                                                    // em cima de um horário ocupado é engano, não escolha.
+                                                    onClick={(e) => e.stopPropagation()}
                                                     title={`${horaCurta(evento.inicio)} – ${horaCurta(evento.fim)}${evento.titulo ? ` · ${evento.titulo}` : ''}`}
                                                     className={cn(
-                                                        'absolute inset-x-0.5 rounded px-1 py-0.5 overflow-hidden text-[10px] leading-tight border-l-2',
+                                                        'absolute inset-x-0.5 rounded px-1 py-0.5 overflow-hidden text-[10px] leading-tight border-l-2 cursor-default',
                                                         evento.nosso
                                                             ? 'bg-ecf-yellow/[0.14] border-ecf-yellow/70 text-ecf-yellow/90'
                                                             : 'bg-white/[0.09] border-white/25 text-white/55',

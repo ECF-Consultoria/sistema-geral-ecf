@@ -84,7 +84,9 @@ export default function ReuniaoBloco({ onboardingId, reuniao, valor, aoMudarValo
 
     // Com data já agendada o formulário fica fechado — mas escolher um horário
     // novo na grade precisa abri-lo, senão o clique some sem deixar rastro.
-    const remarcando = controlado && quando !== paraInputLocal(reuniao?.agendada_para);
+    // O `''` fica de fora: é o valor do pai no quadro antes de ele copiar a data
+    // gravada, e contá-lo como remarcação faria o formulário piscar ao abrir.
+    const remarcando = controlado && quando !== '' && quando !== paraInputLocal(reuniao?.agendada_para);
     const mostrarFormulario = editando || remarcando || !agendada;
 
     return (
