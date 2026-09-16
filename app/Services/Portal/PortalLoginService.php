@@ -6,6 +6,7 @@ use App\Models\PortalCodigoAcesso;
 use App\Models\PortalUsuario;
 use App\Notifications\PortalCodigoDeAcesso;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -76,20 +77,24 @@ class PortalLoginService
             return true;
         }
 
-        // Regra 3: um código vivo por vez.
-        PortalCodigoAcesso::where('portal_usuario_id', $usuario->id)
-            ->whereNull('usado_em')
-            ->update(['usado_em' => now()]);
-
         $codigo = $this->gerarCodigo();
+        DB::transaction(function () use ($usuario, $codigo, $desafio, $ip) {
+            // Serializa emissão e consumo por conta, inclusive pedidos simultâneos.
+            PortalUsuario::whereKey($usuario->id)->lockForUpdate()->firstOrFail();
+            // Regra 3: um código vivo por vez.
+            PortalCodigoAcesso::where('portal_usuario_id', $usuario->id)
+                ->whereNull('usado_em')
+                ->update(['usado_em' => now()]);
 
-        PortalCodigoAcesso::create([
-            'portal_usuario_id' => $usuario->id,
-            'codigo_hash'       => Hash::make($codigo),
-            'sessao_id'         => $desafio,
-            'expira_em'         => now()->addMinutes(config('portal.codigo.minutos', 10)),
-            'ip'                => $ip,
-        ]);
+            PortalCodigoAcesso::create([
+                'portal_usuario_id' => $usuario->id,
+                'codigo_hash'       => Hash::make($codigo),
+                'sessao_id'         => $desafio,
+                'expira_em'         => now()->addMinutes(config('portal.codigo.minutos', 10)),
+                'ip'                => $ip,
+            ]);
+
+        });
 
         $usuario->notify(new PortalCodigoDeAcesso($codigo));
 
@@ -104,48 +109,50 @@ class PortalLoginService
      */
     public function validarCodigo(string $email, string $codigo, string $desafio, ?string $ip = null): ?PortalUsuario
     {
-        $usuario = PortalUsuario::ativos()->where('email', Str::lower(trim($email)))->first();
+        return DB::transaction(function () use ($email, $codigo, $desafio, $ip) {
+            $usuario = PortalUsuario::ativos()->where('email', Str::lower(trim($email)))->lockForUpdate()->first();
 
-        if (! $usuario) {
-            $this->auditoria->codigoRecusado(null, $email, 'usuario inexistente ou inativo', $ip);
+            if (! $usuario || $usuario->empresas()->doesntExist()) {
+                $this->auditoria->codigoRecusado(null, $email, 'usuario inexistente ou inativo', $ip);
 
-            return null;
-        }
+                return null;
+            }
 
-        $registro = PortalCodigoAcesso::where('portal_usuario_id', $usuario->id)
-            ->vivos()
-            ->first();
+            $registro = PortalCodigoAcesso::where('portal_usuario_id', $usuario->id)
+                ->vivos()
+                ->first();
 
-        if (! $registro) {
-            $this->auditoria->codigoRecusado($usuario, $email, 'sem codigo vivo', $ip);
+            if (! $registro) {
+                $this->auditoria->codigoRecusado($usuario, $email, 'sem codigo vivo', $ip);
 
-            return null;
-        }
+                return null;
+            }
 
-        // Regra 2. A checagem vem ANTES de conferir os dígitos: um código
-        // encaminhado não deve nem consumir tentativa do dono legítimo.
-        if (! hash_equals($registro->sessao_id, $desafio)) {
-            $this->auditoria->codigoRecusado($usuario, $email, 'navegador diferente do que pediu', $ip);
+            // Regra 2. A checagem vem ANTES de conferir os dígitos: um código
+            // encaminhado não deve nem consumir tentativa do dono legítimo.
+            if (! hash_equals($registro->sessao_id, $desafio)) {
+                $this->auditoria->codigoRecusado($usuario, $email, 'navegador diferente do que pediu', $ip);
 
-            return null;
-        }
+                return null;
+            }
 
-        $registro->increment('tentativas');
+            $registro->increment('tentativas');
 
-        if (! Hash::check($codigo, $registro->codigo_hash)) {
-            $this->auditoria->codigoRecusado($usuario, $email, 'codigo errado', $ip);
+            if (! Hash::check($codigo, $registro->codigo_hash)) {
+                $this->auditoria->codigoRecusado($usuario, $email, 'codigo errado', $ip);
 
-            return null;
-        }
+                return null;
+            }
 
-        $registro->update(['usado_em' => now()]);
+            $registro->update(['usado_em' => now()]);
 
-        $usuario->forceFill([
-            'ultimo_acesso_em'   => now(),
-            'primeiro_acesso_em' => $usuario->primeiro_acesso_em ?? now(),
-        ])->save();
+            $usuario->forceFill([
+                'ultimo_acesso_em'   => now(),
+                'primeiro_acesso_em' => $usuario->primeiro_acesso_em ?? now(),
+            ])->save();
 
-        return $usuario;
+            return $usuario;
+        });
     }
 
     /**

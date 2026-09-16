@@ -5,11 +5,11 @@ namespace Tests\Feature\OnboardingEmCompanies;
 use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\Onboarding;
-use App\Models\OnboardingLink;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
@@ -23,9 +23,13 @@ use Tests\TestCase;
  * e-mail interno, carga de trabalho, SLA ou dias parado ao payload do portal,
  * ele quebra. Sem isso, "só o nome" vira "o nome e mais uma coisinha" a cada
  * pedido, e um dia o cliente vê a fila interna.
+ *
+ * O login (15/09/2026) não afrouxa nada disto: estar autenticado não faz do
+ * cliente alguém da equipe.
  */
 class PortalResponsaveisTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     /**
@@ -94,12 +98,13 @@ class PortalResponsaveisTest extends TestCase
         app(OnboardingEngineService::class)->definirResponsaveis($onboarding, $estrategista, $analista);
     }
 
-    private function token(Company $company): string
+    /** Props da página de onboarding do portal, pela sessão do cliente. */
+    private function propsDoPortal(Company $company): array
     {
-        return OnboardingLink::firstOrCreate(
-            ['company_id' => $company->id],
-            ['token' => \Illuminate\Support\Str::random(48)]
-        )->token;
+        return $this->entrarNoPortal($company)
+            ->get(route('portal.auth.onboarding'))
+            ->assertOk()
+            ->viewData('page')['props'];
     }
 
     /** @test */
@@ -112,11 +117,7 @@ class PortalResponsaveisTest extends TestCase
 
         $this->definir($onboarding, $estrategista, $analista);
 
-        $props = $this->get(route('portal.onboarding', $this->token($company)))
-            ->assertOk()
-            ->viewData('page')['props'];
-
-        $responsaveis = collect($props['responsaveis']);
+        $responsaveis = collect($this->propsDoPortal($company)['responsaveis']);
 
         $this->assertCount(2, $responsaveis);
 
@@ -142,9 +143,7 @@ class PortalResponsaveisTest extends TestCase
         $analista = $this->usuario('Fulano Analista');
         $this->definir($onboarding, null, $analista);
 
-        $props = $this->get(route('portal.onboarding', $this->token($company)))
-            ->assertOk()
-            ->viewData('page')['props'];
+        $props = $this->propsDoPortal($company);
 
         foreach ($props['responsaveis'] as $r) {
             $this->assertSame(
@@ -178,11 +177,7 @@ class PortalResponsaveisTest extends TestCase
 
         $this->assertSame(Onboarding::STATUS_RASCUNHO, $onboarding->fresh()->status);
 
-        $props = $this->get(route('portal.onboarding', $this->token($company)))
-            ->assertOk()
-            ->viewData('page')['props'];
-
-        $this->assertSame([], $props['responsaveis']);
+        $this->assertSame([], $this->propsDoPortal($company)['responsaveis']);
     }
 
     /**
@@ -217,11 +212,7 @@ class PortalResponsaveisTest extends TestCase
             $this->definir($o, null, $analista);
         }
 
-        $props = $this->get(route('portal.onboarding', $this->token($company)))
-            ->assertOk()
-            ->viewData('page')['props'];
-
-        $analistas = collect($props['responsaveis'])->where('papel', 'Analista');
+        $analistas = collect($this->propsDoPortal($company)['responsaveis'])->where('papel', 'Analista');
 
         $this->assertCount(1, $analistas, 'O mesmo analista apareceu mais de uma vez.');
     }

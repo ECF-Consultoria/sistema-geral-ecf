@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Portal\PortalPpaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
@@ -28,6 +29,7 @@ use Tests\TestCase;
  */
 class PpaQuadroTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     private function admin(): User
@@ -284,17 +286,20 @@ class PpaQuadroTest extends TestCase
         $this->assertNull($task->fresh()->concluida_em, 'Tarefa reaberta continuou com data de conclusão.');
     }
 
-    /** O caminho do cliente usa o MESMO `moverPara()` — o carimbo vale dos dois lados. */
+    /**
+     * O caminho do cliente usa o MESMO `moverPara()` — o carimbo vale dos dois
+     * lados. Desde 15/09/2026 esse caminho é o portal autenticado: o link
+     * avulso por token de um PPA de empresa deixou de gravar.
+     */
     #[Test]
     public function conclusao_pelo_cliente_tambem_carimba(): void
     {
         $ppa = $this->ppa([['Tarefa', 'todo']]);
-        $ppa->update(['workspace_token' => 'token-de-teste-do-quadro']);
         $task = $ppa->tasks()->first();
 
-        $this->patchJson(route('ppa.workspace.task.update', [$ppa->workspace_token, $task->id]), [
-            'status' => 'done',
-        ])->assertOk();
+        $this->entrarNoPortal($ppa->company)
+            ->patchJson(route('portal.auth.ppa.tarefa', $task->id), ['status' => 'done'])
+            ->assertOk();
 
         $this->assertNotNull($task->fresh()->concluida_em);
     }

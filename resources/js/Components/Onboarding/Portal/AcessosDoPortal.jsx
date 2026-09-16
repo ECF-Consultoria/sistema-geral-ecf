@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { router, useForm } from '@inertiajs/react';
 import {
     Building2, CheckCircle2, Clock, KeyRound, Mail, Plus, ShieldOff, ShieldCheck, Trash2, UserPlus, X,
@@ -8,6 +8,7 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import SeletorEmpresa from '@/Components/Portal/SeletorEmpresa';
+import { contatoDoAlvo, acessoComEmail, consumirEmpresaDaUrl } from '@/lib/acessosPortal';
 import { cn } from '@/lib/utils';
 
 // ─── Acessos do Portal do Cliente ───────────────────────────────────────────
@@ -77,8 +78,41 @@ export default function AcessosDoPortal({ dados }) {
     const form = useForm({ nome: '', email: '', telefone: '', cargo: '', alvo: '' });
     const formVinculo = useForm({ alvo: '' });
 
+    const existente = acessoComEmail(form.data.email, usuarios);
+    const selecionarAlvo = (alvo) => {
+        form.clearErrors();
+        form.setData({ ...contatoDoAlvo(alvo, empresas), alvo });
+    };
+    const abriuEmpresa = useRef(false);
+    useEffect(() => {
+        if (!dados || abriuEmpresa.current) return;
+        abriuEmpresa.current = true;
+
+        // O atalho vale para UMA abertura, e o parâmetro sai da URL na hora.
+        // Este componente é desmontado ao trocar de sub-aba; cada nova montagem
+        // relia o `portal_company` que tinha ficado na URL, e "Acessos do
+        // portal" passava a abrir sempre com a última empresa do atalho.
+        const { id, url, mudou } = consumirEmpresaDaUrl(window.location.href);
+        if (!mudou) return;
+        window.history.replaceState(window.history.state, '', url);
+
+        if (empresas.some((e) => String(e.id) === id)) {
+            selecionarAlvo('e:' + id);
+            setNovoAberto(true);
+        }
+    }, [dados]);
+
     const criar = (e) => {
         e.preventDefault();
+        if (existente) {
+            if (!existente.ativo) return;
+            form.transform(({ alvo }) => separarAlvo(alvo));
+            form.post(route('portal.usuarios.vincular', existente.id), {
+                preserveScroll: true,
+                onSuccess: () => { form.reset(); setNovoAberto(false); },
+            });
+            return;
+        }
         form.transform(({ alvo, ...resto }) => ({ ...resto, ...separarAlvo(alvo) }));
         form.post(route('portal.usuarios.store'), {
             preserveScroll: true,
@@ -144,6 +178,13 @@ export default function AcessosDoPortal({ dados }) {
                     <UserPlus size={14} className="mr-1.5" /> Dar acesso
                 </Button>
             </div>
+
+            {dados?.login_url && (
+                <div className="rounded-xl bg-white/[0.03] p-3 text-[12px] text-white/60">
+                    Entrada do cliente: <a className="text-ecf-yellow underline break-all" href={dados.login_url} target="_blank" rel="noopener noreferrer">{dados.login_url}</a>
+                    <p className="mt-1">O código chega ao e-mail autorizado. Os links antigos não liberam mais o portal.</p>
+                </div>
+            )}
 
             {!dados ? (
                 // Três cartões cinza no lugar da lista. O intervalo é curto,
@@ -267,12 +308,28 @@ export default function AcessosDoPortal({ dados }) {
 
                     <form onSubmit={criar} className="space-y-4">
                         <div className="space-y-1.5">
+                            <Label className="text-[12px]">Empresa</Label>
+                            <SeletorEmpresa
+                                empresas={empresas}
+                                grupos={grupos}
+                                valor={form.data.alvo}
+                                onChange={selecionarAlvo}
+                            />
+                            <p className="text-white/30 text-[11.5px]">
+                                Selecione primeiro a empresa. Revise o contato sugerido antes de liberar o acesso. Grupos exigem informar o contato.
+                            </p>
+                            {(form.errors.company_id || form.errors.company_group_id) && (
+                                <p className="text-rose-300 text-[12px]">Selecione uma empresa ou um grupo.</p>
+                            )}
+                        </div>
+
+                        <div className="space-y-1.5">
                             <Label className="text-[12px]">Nome</Label>
                             <Input
                                 value={form.data.nome}
+                                disabled={!!existente}
                                 onChange={(e) => form.setData('nome', e.target.value)}
                                 placeholder="Nome da pessoa"
-                                autoFocus
                             />
                             {form.errors.nome && <p className="text-rose-300 text-[12px]">{form.errors.nome}</p>}
                         </div>
@@ -285,6 +342,13 @@ export default function AcessosDoPortal({ dados }) {
                                 onChange={(e) => form.setData('email', e.target.value)}
                                 placeholder="pessoa@empresa.com.br"
                             />
+                            {existente && (
+                                <p role="status" className="text-amber-300 text-[12px]">
+                                    {existente.ativo
+                                        ? `Este e-mail já pertence a ${existente.nome}. Ao confirmar, vincularemos a empresa a essa conta, sem alterar seu cadastro.`
+                                        : 'Este acesso está desativado. Feche este cadastro e revise a conta existente antes de reativá-la.'}
+                                </p>
+                            )}
                             {/* É por aqui que ela entra — vale dizer com todas as letras. */}
                             <p className="text-white/30 text-[11.5px]">
                                 É este o e-mail que vai receber o código de acesso.
@@ -297,6 +361,7 @@ export default function AcessosDoPortal({ dados }) {
                                 <Label className="text-[12px]">Telefone</Label>
                                 <Input
                                     value={form.data.telefone}
+                                    disabled={!!existente}
                                     onChange={(e) => form.setData('telefone', e.target.value)}
                                     placeholder="(00) 00000-0000"
                                 />
@@ -305,32 +370,19 @@ export default function AcessosDoPortal({ dados }) {
                                 <Label className="text-[12px]">Cargo</Label>
                                 <Input
                                     value={form.data.cargo}
+                                    disabled={!!existente}
                                     onChange={(e) => form.setData('cargo', e.target.value)}
                                     placeholder="Ex: Financeiro"
                                 />
                             </div>
                         </div>
 
-                        <div className="space-y-1.5">
-                            <Label className="text-[12px]">Empresa</Label>
-                            <SeletorEmpresa
-                                empresas={empresas}
-                                grupos={grupos}
-                                valor={form.data.alvo}
-                                onChange={(v) => form.setData('alvo', v)}
-                            />
-                            <p className="text-white/30 text-[11.5px]">
-                                Empresa de um grupo? Dá para liberar o grupo inteiro de uma vez.
-                            </p>
-                            {(form.errors.company_id || form.errors.company_group_id) && (
-                                <p className="text-rose-300 text-[12px]">Selecione uma empresa ou um grupo.</p>
-                            )}
-                        </div>
+
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setNovoAberto(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={form.processing}>
-                                {form.processing ? 'Salvando…' : 'Dar acesso'}
+                            <Button type="submit" disabled={form.processing || !form.data.alvo || (existente && !existente.ativo)}>
+                                {form.processing ? 'Salvando…' : existente ? 'Vincular à conta existente' : 'Dar acesso'}
                             </Button>
                         </DialogFooter>
                     </form>

@@ -121,6 +121,10 @@ class PpaController extends Controller
     {
         // mlbEmpresa junto: o workspace público serve os dois escopos (o link é por token).
         $ppa = Ppa::with(['company', 'mlbEmpresa', 'tasks'])->where('workspace_token', $token)->firstOrFail();
+        if ($ppa->company_id) {
+            return redirect()->to(\App\Support\Portal\UrlDoPortal::para('portal.entrada'))
+                ->header('Cache-Control', 'no-store, private')->header('Referrer-Policy', 'no-referrer');
+        }
 
         $tasks = $ppa->tasks->map(fn($t) => [
             'id'          => $t->id,
@@ -145,6 +149,9 @@ class PpaController extends Controller
 
     public function generateWorkspaceLink(Ppa $ppa)
     {
+        if ($ppa->company_id) {
+            return back()->with('workspace_url', \App\Support\Portal\UrlDoPortal::para('portal.entrada'));
+        }
         if (!$ppa->workspace_token) {
             $ppa->update(['workspace_token' => Str::uuid()->toString()]);
         }

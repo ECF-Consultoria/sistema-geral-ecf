@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from '@inertiajs/react';
+import { Link, useForm } from '@inertiajs/react';
 import axios from 'axios';
 import { CheckCircle2, Copy, FileText, Zap } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
@@ -100,10 +100,6 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, 
 
     const desmarcar = () => {
         form.post(route('admin.contratos.checklist.reabrir', [companyId, item.chave]), { preserveScroll: true });
-    };
-
-    const gerarConexaoEcf = () => {
-        form.post(route('admin.contratos.checklist.conexao-ecf', companyId), { preserveScroll: true });
     };
 
     /**
@@ -229,14 +225,14 @@ export default function LinhaChecklistItem({ item, companyId, admanRegisterUrl, 
                     {item.chave === 'conexao_ecf_gerada' && portalClienteUrl && (
                         <BotaoCopiar
                             onCopiar={() => copiarParaAreaDeTransferencia(portalClienteUrl)}
-                            rotulo="Copiar link do portal"
+                            rotulo="Copiar endereço de login"
                         />
                     )}
 
                     {/* Geração idempotente (D-14): clicar duas vezes não cria dois links. */}
                     {item.chave === 'conexao_ecf_gerada' && !concluido && (
-                        <Button size="sm" variant="outline" onClick={gerarConexaoEcf} disabled={form.processing}>
-                            Gerar conexão
+                        <Button size="sm" variant="outline" asChild>
+                            <Link href={route('companies.index', { tab: 'onboarding', sub: 'acessos', portal_company: companyId })}>Cadastrar acesso</Link>
                         </Button>
                     )}
 

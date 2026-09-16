@@ -561,7 +561,7 @@ class OnboardingPublicoController extends Controller
             // O cliente precisa voltar para o domínio DELE. Voltando para o
             // do admin, ele perde a sessão no meio da conexão da conta — e a
             // tela seguinte pede login de novo, sem explicar por quê.
-            retornoUrl: \App\Support\Portal\UrlDoPortal::para('portal.onboarding', $token),
+            retornoUrl: \App\Support\Portal\UrlDoPortal::para('portal.auth.onboarding'),
         );
 
         activity('onboarding')

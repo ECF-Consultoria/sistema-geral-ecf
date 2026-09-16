@@ -85,7 +85,7 @@ class PortalAuthController extends Controller
             // atacante do que o cliente.
             return back()
                 ->withErrors(['codigo' => 'Código inválido ou expirado. Peça um novo código.'])
-                ->with('portal_codigo_enviado', true);
+                ->with(['portal_codigo_enviado' => true, 'portal_email' => $dados['email']]);
         }
 
         return $this->abrirSessao($request, $usuario);
@@ -157,6 +157,8 @@ class PortalAuthController extends Controller
     private function abrirSessao(Request $request, \App\Models\PortalUsuario $usuario)
     {
         $empresa = $usuario->empresaPadrao();
+        abort_unless($empresa, 403);
+        $request->session()->forget(\App\Support\Portal\PortalContexto::SESSAO_EQUIPE);
 
         // Regenerar o id ANTES de gravar qualquer coisa na sessão: sem isto, um
         // id de sessão plantado antes do login continuaria válido depois dele

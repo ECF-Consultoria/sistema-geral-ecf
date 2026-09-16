@@ -58,10 +58,10 @@ export default function Entrada({ aviso }) {
         if (passo === 'escolha') campoSenha.current?.focus();
     }, [passo]);
 
-    // Só troca de passo. Nada de request: ver o comentário do topo.
+    // O primeiro envio já pede o código; senha fica como alternativa.
     const continuar = (e) => {
         e.preventDefault();
-        if (form.data.email.trim()) setPasso('escolha');
+        if (form.data.email.trim()) pedirCodigo();
     };
 
     const pedirCodigo = () => form.post(route('portal.codigo'), { preserveScroll: true });
@@ -107,7 +107,7 @@ export default function Entrada({ aviso }) {
                     {passo === 'email' && (
                         <form onSubmit={continuar} className="mt-6 space-y-4">
                             <p className="text-white/45 text-[13px] leading-relaxed text-center">
-                                Informe o seu e-mail para começar.
+                                Informe o e-mail cadastrado para receber seu código de acesso.
                             </p>
 
                             <div className="space-y-1.5">
@@ -132,9 +132,13 @@ export default function Entrada({ aviso }) {
 
                             <button
                                 type="submit"
+                                disabled={form.processing}
                                 className="w-full h-11 rounded-xl bg-ecf-yellow text-ecf-bg font-semibold text-[14px] flex items-center justify-center gap-2 hover:bg-ecf-yellow/90 transition-colors"
                             >
-                                Continuar <ArrowRight size={15} />
+                                {form.processing ? 'Enviando…' : 'Receber código por e-mail'} <Mail size={15} />
+                            </button>
+                            <button type="button" className="w-full text-white/50 text-[12px]" onClick={() => form.data.email.trim() && setPasso('escolha')}>
+                                Já tenho uma senha
                             </button>
                         </form>
                     )}
@@ -216,9 +220,9 @@ export default function Entrada({ aviso }) {
                             <div className="flex items-start gap-2.5 rounded-xl bg-white/[0.03] p-3.5">
                                 <Mail size={15} className="text-ecf-yellow shrink-0 mt-0.5" />
                                 <p className="text-white/50 text-[12.5px] leading-relaxed">
-                                    Se este e-mail tiver acesso ao portal, o código chegou em{' '}
+                                    Se este e-mail tiver acesso ao portal, enviaremos um código para{' '}
                                     <span className="text-white/80 font-medium break-all">{form.data.email}</span>.
-                                    Ele vale por 10 minutos.
+                                    Ele vale por 10 minutos. Confira também a caixa de spam.
                                 </p>
                             </div>
 
@@ -282,7 +286,7 @@ export default function Entrada({ aviso }) {
                     cliente que tentar encaminhar precisa entender que não é bug. */}
                 <p className="mt-5 flex items-start gap-2 text-white/25 text-[11.5px] leading-relaxed px-1">
                     <ShieldCheck size={13} className="shrink-0 mt-0.5" />
-                    O código só funciona neste navegador. Se você encaminhar o e-mail, ele não dará acesso a mais ninguém.
+                    Use o código no navegador em que você o pediu. Não compartilhe códigos nem sua sessão.
                 </p>
             </div>
         </div>

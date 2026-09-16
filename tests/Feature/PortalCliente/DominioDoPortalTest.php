@@ -3,11 +3,10 @@
 namespace Tests\Feature\PortalCliente;
 
 use App\Models\Company;
-use App\Models\OnboardingLink;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
@@ -25,6 +24,7 @@ use Tests\TestCase;
  */
 class DominioDoPortalTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     private const DOMINIO = 'cliente.ecfconsultoria.com.br';
@@ -42,14 +42,6 @@ class DominioDoPortalTest extends TestCase
             'cnpj' => substr(str_pad((string) random_int(1, 99999999999999), 14, '0', STR_PAD_LEFT), 0, 14),
             'active' => true, 'status' => 'ativo', 'empresa_nova' => false,
         ]);
-    }
-
-    private function token(Company $company): string
-    {
-        return OnboardingLink::firstOrCreate(
-            ['company_id' => $company->id],
-            ['token' => Str::random(48)]
-        )->token;
     }
 
     private function admin(): User
@@ -162,24 +154,28 @@ class DominioDoPortalTest extends TestCase
 
     // ─── O que PRECISA continuar existindo ──────────────────────────────────
 
+    /** O portal, pela porta autenticada — desde 15/09/2026 a única. */
     #[Test]
     public function o_portal_funciona_no_dominio_do_cliente(): void
     {
         $company = $this->empresa();
-        $token = $this->token($company);
+        $cliente = $this->clienteDoPortal($company);
 
-        $this->noDominioDoCliente('/portal-cliente/'.$token)->assertOk();
-        $this->noDominioDoCliente('/portal-cliente/'.$token.'/onboarding')->assertOk();
-        $this->noDominioDoCliente('/portal-cliente/'.$token.'/ppa')->assertOk();
+        foreach (['/portal/inicio', '/portal/onboarding', '/portal/ppa'] as $uri) {
+            $this->entrarNoPortal($company, $cliente);
+            $this->noDominioDoCliente($uri)->assertOk();
+        }
     }
 
-    /** Links antigos estão no WhatsApp de clientes e não podem morrer. */
+    /**
+     * Links antigos estão no WhatsApp de clientes e não há como recolher. Eles
+     * não morrem num 404 — levam à tela de entrada, no próprio domínio.
+     */
     #[Test]
-    public function o_link_legado_continua_redirecionando_no_dominio_do_cliente(): void
+    public function o_link_legado_leva_ao_login_no_dominio_do_cliente(): void
     {
-        $token = $this->token($this->empresa());
-
-        $this->noDominioDoCliente('/onboarding-cliente/'.$token)->assertStatus(301);
+        $this->noDominioDoCliente('/onboarding-cliente/'.str_repeat('a', 48))
+            ->assertRedirect('http://'.self::DOMINIO.'/entrar');
     }
 
     /**

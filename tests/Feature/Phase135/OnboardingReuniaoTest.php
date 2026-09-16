@@ -12,6 +12,7 @@ use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
@@ -23,6 +24,7 @@ use Tests\TestCase;
  */
 class OnboardingReuniaoTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     private function servicoDeGestao(): Servico
@@ -169,9 +171,9 @@ class OnboardingReuniaoTest extends TestCase
     public function workspace_entrega_as_reunioes_junto_com_os_passos(): void
     {
         $onboarding = $this->onboardingEmAndamento();
-        $link = app(OnboardingLinkService::class)->paraEmpresa($onboarding->company);
 
-        $this->get(route('portal.onboarding', $link->token))
+        $this->entrarNoPortal($onboarding->company)
+            ->get(route('portal.auth.onboarding'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Onboarding/Publico')

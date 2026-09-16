@@ -5,7 +5,7 @@ namespace Tests\Feature\Phase153;
 use App\Models\BoasVindasTemplate;
 use App\Models\Company;
 use App\Models\ContratoServico;
-use App\Models\OnboardingLink;
+use App\Models\PortalUsuario;
 use App\Models\Servico;
 use App\Models\Setor;
 use App\Models\SetorPermissao;
@@ -94,7 +94,10 @@ class MensagemNaFichaTest extends TestCase
             'ativo'                 => true,
         ]));
 
-        OnboardingLink::create(['company_id' => $empresa->id, 'token' => 'tok-ficha-153-'.$empresa->id]);
+        // Item 8 ("Portal do Cliente") fecha por pessoa ATIVA vinculada em
+        // Acessos do portal — o link por token deixou de valer em 15/09/2026.
+        $acessoPortal = PortalUsuario::create(['nome' => 'Cliente', 'email' => 'tok-ficha-153.'.$empresa->id.'@example.test', 'ativo' => true]);
+        $acessoPortal->empresas()->attach($empresa->id, ['principal' => true]);
 
         return $empresa->fresh();
     }
@@ -166,7 +169,7 @@ class MensagemNaFichaTest extends TestCase
     public function test_empresa_sem_conexao_ecf_chega_com_pendencia_na_ficha(): void
     {
         $empresa = $this->empresaPronta();
-        OnboardingLink::where('company_id', $empresa->id)->delete();
+        PortalUsuario::whereHas('empresas', fn ($q) => $q->where('companies.id', $empresa->id))->delete();
 
         $msg = $this->props($this->userComPermissaoViaSetor(Permissions::ADMIN_CONTRATOS), $empresa)['mensagem_boas_vindas'];
 

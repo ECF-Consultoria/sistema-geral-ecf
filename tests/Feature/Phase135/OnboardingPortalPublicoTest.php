@@ -12,20 +12,27 @@ use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
 use App\Services\Onboarding\OnboardingLinkService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
- * Fase 135 Plano 11 — link único por EMPRESA (D-06) e agregação por `chave`
- * (D-10) do portal público do cliente. Task 1 cobre
- * `OnboardingLinkService` + a rota interna de geração de link; Task 2
- * acrescenta `workspace()`/`marcarFeito()`/`anexarFicha()` do
- * `OnboardingPublicoController` a esta mesma suíte.
+ * Fase 135 Plano 11 — agregação por `chave` (D-10) do portal do cliente, e o
+ * workspace de onboarding que o cliente opera.
+ *
+ * ### O que mudou em 15/09/2026
+ * O link único por empresa (D-06) deixou de abrir o portal: a posse do token
+ * não autoriza mais nada, e o cliente entra com o e-mail cadastrado em Acessos
+ * do portal. Saíram daqui os casos que descreviam a porta antiga — 404 para
+ * token inexistente, carimbo de `ultimo_acesso` no link, token de 48
+ * caracteres gerado sob demanda. O que vale agora está em `PortalSemTokenTest`.
+ *
+ * O workspace, o isolamento do payload e a marcação de passo continuam aqui,
+ * pela porta autenticada — são regras do onboarding, não da porta.
  */
 class OnboardingPortalPublicoTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     private function servicoDeGestao(): Servico
@@ -117,34 +124,27 @@ class OnboardingPortalPublicoTest extends TestCase
         return $onboarding->fresh();
     }
 
-    // ─── paraEmpresa() / rota interna de geração de link ────────────────────
+    // ─── A antiga geração de link ───────────────────────────────────────────
 
+    /**
+     * Abas abertas antes de 15/09/2026 ainda podem disparar a rota antiga. Ela
+     * precisa responder com o endereço de LOGIN — e não pode criar token, nem
+     * na primeira chamada nem na segunda.
+     */
     #[Test]
-    public function post_link_cria_um_onboarding_link_com_token_de_48_caracteres(): void
-    {
-        $company = Company::factory()->create();
-
-        $response = $this->actingAs($this->admin())->post(route('onboarding.link.gerar', $company));
-
-        $response->assertRedirect();
-        $this->assertSame(1, OnboardingLink::where('company_id', $company->id)->count());
-        $link = OnboardingLink::where('company_id', $company->id)->firstOrFail();
-        $this->assertSame(48, strlen($link->token));
-    }
-
-    #[Test]
-    public function chamar_gerar_link_duas_vezes_mantem_um_unico_token(): void
+    public function gerar_link_nao_cria_token_e_informa_o_endereco_de_login(): void
     {
         $company = Company::factory()->create();
         $admin = $this->admin();
 
-        $this->actingAs($admin)->post(route('onboarding.link.gerar', $company));
-        $primeiroToken = OnboardingLink::where('company_id', $company->id)->firstOrFail()->token;
+        foreach ([1, 2] as $_) {
+            $this->actingAs($admin)
+                ->post(route('onboarding.link.gerar', $company))
+                ->assertRedirect()
+                ->assertSessionHas('success', fn ($mensagem) => str_contains($mensagem, route('portal.entrada')));
+        }
 
-        $this->actingAs($admin)->post(route('onboarding.link.gerar', $company));
-
-        $this->assertSame(1, OnboardingLink::where('company_id', $company->id)->count());
-        $this->assertSame($primeiroToken, OnboardingLink::where('company_id', $company->id)->firstOrFail()->token);
+        $this->assertSame(0, OnboardingLink::where('company_id', $company->id)->count());
     }
 
     // ─── passosDoPortal(): agregação por chave (D-10) ──────────────────────
@@ -250,42 +250,19 @@ class OnboardingPortalPublicoTest extends TestCase
         $this->linkService()->marcarFeitoPorChave($company, 'grant_sistema_ecf', '127.0.0.1');
     }
 
-    // ─── OnboardingPublicoController::workspace() ───────────────────────────
+    // ─── O workspace, pela porta autenticada ────────────────────────────────
 
     #[Test]
-    public function get_workspace_com_token_valido_retorna_200_sem_autenticacao(): void
+    public function cliente_logado_abre_o_workspace_de_onboarding(): void
     {
         $this->withoutVite();
         $company = Company::factory()->create();
         $this->onboardingDeGestaoEmAndamento($company);
-        $link = $this->linkService()->paraEmpresa($company);
 
-        $response = $this->get(route('portal.onboarding', $link->token));
-
-        $response->assertOk();
-        $response->assertInertia(fn ($page) => $page->component('Onboarding/Publico', false));
-    }
-
-    #[Test]
-    public function get_workspace_com_token_inexistente_retorna_404(): void
-    {
-        $response = $this->get(route('portal.onboarding', 'token-inexistente-0000'));
-
-        $response->assertNotFound();
-    }
-
-    #[Test]
-    public function get_workspace_carimba_ultimo_acesso(): void
-    {
-        $this->withoutVite();
-        $company = Company::factory()->create();
-        $this->onboardingDeGestaoEmAndamento($company);
-        $link = $this->linkService()->paraEmpresa($company);
-        $this->assertNull($link->ultimo_acesso);
-
-        $this->get(route('portal.onboarding', $link->token));
-
-        $this->assertNotNull($link->fresh()->ultimo_acesso);
+        $this->entrarNoPortal($company)
+            ->get(route('portal.auth.onboarding'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->component('Onboarding/Publico', false));
     }
 
     #[Test]
@@ -294,9 +271,8 @@ class OnboardingPortalPublicoTest extends TestCase
         $this->withoutVite();
         $company = Company::factory()->create();
         $this->onboardingDeGestaoEmAndamento($company);
-        $link = $this->linkService()->paraEmpresa($company);
 
-        $response = $this->get(route('portal.onboarding', $link->token));
+        $response = $this->entrarNoPortal($company)->get(route('portal.auth.onboarding'));
         $response->assertOk();
 
         $response->assertInertia(function ($page) {
@@ -309,16 +285,16 @@ class OnboardingPortalPublicoTest extends TestCase
         });
     }
 
-    // ─── OnboardingPublicoController::marcarFeito() ─────────────────────────
+    // ─── Marcar passo, pela porta autenticada ───────────────────────────────
 
     #[Test]
     public function patch_passo_com_chave_manual_conclui_o_passo(): void
     {
         $company = Company::factory()->create();
         $onboarding = $this->onboardingDeGestaoEmAndamento($company);
-        $link = $this->linkService()->paraEmpresa($company);
 
-        $response = $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'acesso_colaborador_ml']);
+        $response = $this->entrarNoPortal($company)
+            ->patch(route('portal.auth.onboarding.passo'), ['chave' => 'acesso_colaborador_ml']);
 
         $response->assertRedirect();
         $response->assertSessionHasNoErrors();
@@ -328,16 +304,16 @@ class OnboardingPortalPublicoTest extends TestCase
     }
 
     #[Test]
-    public function patch_passo_com_chave_de_auto_fonte_devolve_422_e_nao_muda_o_status_d19(): void
+    public function patch_passo_com_chave_de_auto_fonte_devolve_erro_e_nao_muda_o_status_d19(): void
     {
         $company = Company::factory()->create();
         $onboarding = $this->onboardingDeGestaoEmAndamento($company);
-        $link = $this->linkService()->paraEmpresa($company);
 
         $statusOriginal = OnboardingPasso::where('onboarding_id', $onboarding->id)
             ->where('chave', 'grant_sistema_ecf')->firstOrFail()->status;
 
-        $response = $this->patch(route('onboarding.publico.passo', $link->token), ['chave' => 'grant_sistema_ecf']);
+        $response = $this->entrarNoPortal($company)
+            ->patch(route('portal.auth.onboarding.passo'), ['chave' => 'grant_sistema_ecf']);
 
         $response->assertStatus(302);
         $response->assertSessionHasErrors('chave');

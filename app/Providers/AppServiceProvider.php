@@ -90,7 +90,7 @@ class AppServiceProvider extends ServiceProvider
         // Pedir código: o gargalo real é o e-mail chegar — pedir mais que isso
         // não ajuda ninguém legítimo.
         RateLimiter::for('portal-codigo', function (Request $request) {
-            $email = Str::lower((string) $request->input('email'));
+            $email = Str::lower(trim((string) $request->input('email')));
 
             return [
                 Limit::perMinute(5)->by('portal-codigo-email:'.$email),
@@ -102,7 +102,7 @@ class AppServiceProvider extends ServiceProvider
         // CÓDIGO já existe no banco; este limite é a segunda rede, contra quem
         // pede código novo a cada 5 palpites.
         RateLimiter::for('portal-validar', function (Request $request) {
-            $email = Str::lower((string) $request->input('email'));
+            $email = Str::lower(trim((string) $request->input('email')));
 
             return [
                 Limit::perMinute(10)->by('portal-validar-email:'.$email),

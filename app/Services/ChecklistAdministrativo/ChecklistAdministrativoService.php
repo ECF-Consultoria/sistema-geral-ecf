@@ -6,13 +6,11 @@ use App\Contracts\ChecklistResolver;
 use App\Models\ChecklistAdministrativoItem;
 use App\Models\Company;
 use App\Models\ContratoServico;
-use App\Models\OnboardingLink;
 use App\Models\User;
 use App\Services\ChecklistAdministrativo\Resolvers\ConexaoEcfResolver;
 use App\Services\ChecklistAdministrativo\Resolvers\ContratoAssinadoResolver;
 use App\Services\ChecklistAdministrativo\Resolvers\ContratoEnviadoResolver;
 use App\Services\ChecklistAdministrativo\Resolvers\MlOAuthConectadoResolver;
-use App\Services\Onboarding\OnboardingLinkService;
 
 /**
  * ChecklistAdministrativoService — Fase 152 Plano 05. Coração de leitura e
@@ -46,7 +44,6 @@ class ChecklistAdministrativoService
         private ContratoAssinadoResolver $contratoAssinadoResolver,
         private MlOAuthConectadoResolver $mlOAuthConectadoResolver,
         private ConexaoEcfResolver $conexaoEcfResolver,
-        private OnboardingLinkService $onboardingLinkService,
     ) {
     }
 
@@ -242,28 +239,6 @@ class ChecklistAdministrativoService
         return $item;
     }
 
-    /**
-     * Gera a conexão com o sistema ECF da empresa (item 8) — chama o
-     * serviço idempotente de link (`firstOrCreate`, D-14) e devolve o link.
-     *
-     * **Não** marca o item 8 à mão: o resolver correspondente já lê a
-     * existência desta linha na próxima montagem de `paraEmpresa()`. Marcar
-     * aqui criaria uma segunda fonte de verdade para o mesmo fato — a
-     * mesma disciplina que o resolver do item 8 já documenta por que NÃO
-     * chama este mesmo método de fábrica sozinho a cada carregamento da
-     * ficha.
-     */
-    public function gerarConexaoEcf(Company $company, User $usuario): OnboardingLink
-    {
-        $link = $this->onboardingLinkService->paraEmpresa($company);
-
-        activity('checklist-administrativo')
-            ->performedOn($company)
-            ->withProperties(['chave' => ChecklistAdministrativoDefinicao::AUTO_FONTE_CONEXAO_ECF, 'por' => $usuario->id])
-            ->log('Link do Portal do Cliente gerado');
-
-        return $link;
-    }
 
     /**
      * Mapa `chave() => resolver` dos 4 resolvers automáticos, para lookup

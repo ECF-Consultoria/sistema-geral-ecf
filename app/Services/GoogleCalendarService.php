@@ -22,6 +22,18 @@ class GoogleCalendarService
             'response_type' => 'code',
             'scope'         => implode(' ', [
                 'https://www.googleapis.com/auth/calendar.readonly',
+                // 15/09/2026 — escrita, para o onboarding criar o convite da
+                // reunião na agenda de quem conduz e convidar o cliente. Não
+                // existe "escrever na agenda do cliente": o Google só permite
+                // criar na nossa e convidar o e-mail dele.
+                //
+                // `calendar.events` é escopo SENSÍVEL e quem já conectou antes
+                // desta data segue com o consentimento antigo — a API recusa a
+                // escrita até a pessoa reconectar, e a tela pede isso com todas
+                // as letras. Guardar o escopo concedido numa coluna nova custaria
+                // migration em tabela viva para descobrir o que a própria
+                // resposta da API já diz.
+                'https://www.googleapis.com/auth/calendar.events',
                 'https://www.googleapis.com/auth/userinfo.email',
             ]),
             'access_type'   => 'offline',
@@ -74,6 +86,97 @@ class GoogleCalendarService
         ]);
 
         return $token->fresh();
+    }
+
+    // ── Escrever eventos (15/09/2026) ─────────────────────────────────────────
+    //
+    // O evento nasce no calendário primário do DONO do token e os participantes
+    // entram como convidados. Não existe escrever na agenda do cliente: o que o
+    // Google permite é convidar o e-mail dele, e a agenda dele recebe por aí.
+
+    /** Mensagem reconhecível quando o consentimento ainda é o antigo, só de leitura. */
+    public const ESCOPO_INSUFICIENTE = 'GOOGLE_ESCOPO_INSUFICIENTE';
+
+    public function criarEvento(GoogleToken $token, array $evento): array
+    {
+        return $this->escrever($token, 'post', self::URL_EVENTOS, $evento);
+    }
+
+    public function atualizarEvento(GoogleToken $token, string $eventId, array $evento): array
+    {
+        return $this->escrever($token, 'patch', self::URL_EVENTOS.'/'.rawurlencode($eventId), $evento);
+    }
+
+    /**
+     * Cancela e avisa os convidados. Evento que já não existe (404/410) não é
+     * erro: o estado desejado — não haver convite — já está valendo.
+     */
+    public function cancelarEvento(GoogleToken $token, string $eventId): void
+    {
+        $token = $this->refreshToken($token);
+
+        $resposta = Http::withToken($token->access_token)
+            ->delete(self::URL_EVENTOS.'/'.rawurlencode($eventId).'?sendUpdates=all');
+
+        if ($resposta->successful() || in_array($resposta->status(), [404, 410], true)) {
+            return;
+        }
+
+        $this->recusar($resposta);
+    }
+
+    private const URL_EVENTOS = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+
+    /**
+     * `sendUpdates=all` é o que dispara o e-mail do Google. Sem ele o evento
+     * nasce mudo: aparece na nossa agenda e ninguém fica sabendo — que é
+     * exatamente o problema que este recurso veio resolver.
+     */
+    private function escrever(GoogleToken $token, string $metodo, string $url, array $corpo): array
+    {
+        $token = $this->refreshToken($token);
+
+        $requisicao = Http::withToken($token->access_token)->asJson();
+        $url .= (str_contains($url, '?') ? '&' : '?').'sendUpdates=all';
+
+        $resposta = $metodo === 'post'
+            ? $requisicao->post($url, $corpo)
+            : $requisicao->patch($url, $corpo);
+
+        if (! $resposta->successful()) {
+            $this->recusar($resposta);
+        }
+
+        return $resposta->json();
+    }
+
+    /**
+     * Traduz a recusa do Google.
+     *
+     * O caso que mais vai acontecer nos primeiros dias é o token antigo: quem
+     * conectou antes de 15/09/2026 consentiu só leitura, e o Google devolve 403
+     * `insufficientPermissions`. Isso não é falha do sistema nem do cliente — é
+     * uma reconexão pendente, e a mensagem precisa dizer isso para ninguém sair
+     * procurando bug.
+     */
+    private function recusar(\Illuminate\Http\Client\Response $resposta): never
+    {
+        $corpo = $resposta->body();
+
+        if ($resposta->status() === 403 && (
+            str_contains($corpo, 'insufficientPermissions')
+            || str_contains($corpo, 'ACCESS_TOKEN_SCOPE_INSUFFICIENT')
+            || str_contains($corpo, 'insufficient authentication scopes')
+        )) {
+            throw new \RuntimeException(self::ESCOPO_INSUFICIENTE);
+        }
+
+        Log::warning('[GoogleCalendar] escrita recusada', [
+            'status' => $resposta->status(),
+            'corpo'  => mb_substr($corpo, 0, 500),
+        ]);
+
+        throw new \RuntimeException('Google recusou a operação ('.$resposta->status().').');
     }
 
     // ── Buscar eventos do calendário ──────────────────────────────────────────

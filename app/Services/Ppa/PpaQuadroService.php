@@ -2,7 +2,6 @@
 
 namespace App\Services\Ppa;
 
-use App\Models\OnboardingLink;
 use App\Models\Ppa;
 use App\Models\PpaColuna;
 use App\Models\PpaTask;
@@ -65,10 +64,10 @@ class PpaQuadroService
             'mentor_name'     => $ppa->mentor?->name,
             'status'          => $ppa->status,
             'due_date'        => $ppa->due_date?->format('d/m/Y'),
-            'workspace_token' => $ppa->workspace_token,
+            'workspace_token' => $ppa->company_id ? null : $ppa->workspace_token,
             // O link avulso por PPA, que já existia. Continua sendo gerado e
             // enviado do mesmo jeito.
-            'workspace_url'   => $ppa->workspace_token ? route('ppa.workspace', $ppa->workspace_token) : null,
+            'workspace_url'   => !$ppa->company_id && $ppa->workspace_token ? route('ppa.workspace', $ppa->workspace_token) : null,
             'trello_board_url' => $ppa->trello_board_url,
         ];
     }
@@ -298,8 +297,7 @@ class PpaQuadroService
 
         $portalUrl = null;
         if ($compartilhado && $ppa->company_id) {
-            $link = OnboardingLink::where('company_id', $ppa->company_id)->first();
-            $portalUrl = $link ? \App\Support\Portal\UrlDoPortal::para('portal.ppa', $link->token) : null;
+            $portalUrl = \App\Support\Portal\UrlDoPortal::para('portal.entrada');
         }
 
         return [
@@ -312,6 +310,7 @@ class PpaQuadroService
             // que `PortalPpaController` aplica do outro lado.
             'somente_leitura' => $ppa->status === 'completed',
             'portal_url'      => $portalUrl,
+            'exige_login'     => (bool) $ppa->company_id,
         ];
     }
 }

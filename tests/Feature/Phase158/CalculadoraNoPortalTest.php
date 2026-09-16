@@ -2,14 +2,14 @@
 
 namespace Tests\Feature\Phase158;
 
+use App\Http\Middleware\AposentaTokenDoPortal;
 use App\Models\Company;
-use App\Models\OnboardingLink;
 use App\Support\Portal\ModulosPortal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Str;
+use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
@@ -17,12 +17,13 @@ use Tests\TestCase;
  * do Cliente (14/09).
  *
  * A conta em si vive no JSX e é a mesma de `calcPreco()`. O que se prova aqui é
- * o que o backend decide: que o módulo EXISTE nas duas portas, aparece no menu
- * e não inventa régua de permissão — a tela não grava nada, então não há
- * escrita para proteger.
+ * o que o backend decide: que o módulo existe, aparece no menu e não inventa
+ * régua de permissão — a tela não grava nada, então não há escrita para
+ * proteger. Desde 15/09/2026 ela abre só pela porta autenticada.
  */
 class CalculadoraNoPortalTest extends TestCase
 {
+    use EntraNoPortal;
     use RefreshDatabase;
 
     private static int $seq = 0;
@@ -35,30 +36,39 @@ class CalculadoraNoPortalTest extends TestCase
         Queue::fake();
     }
 
-    private function empresaComLink(): array
+    private function empresa(): Company
     {
         $n = str_pad((string) (++self::$seq), 4, '0', STR_PAD_LEFT);
 
-        $empresa = Company::factory()->create([
+        return Company::factory()->create([
             'active' => true,
             'name'   => 'Empresa Calc '.$n,
             'cnpj'   => "15.815.815/{$n}-84",
         ]);
-
-        $link = OnboardingLink::create([
-            'company_id' => $empresa->id,
-            'token'      => Str::random(48),
-        ]);
-
-        return [$empresa, $link->token];
     }
 
-    // ─── As duas portas ─────────────────────────────────────────────────────
-
-    public function test_as_duas_rotas_existem(): void
+    /** Props da calculadora, pela sessão do cliente da empresa. */
+    private function props(Company $empresa): array
     {
-        $this->assertNotNull(Route::getRoutes()->getByName('portal.calculadora'), 'falta a rota por token');
+        return $this->entrarNoPortal($empresa)
+            ->get(route('portal.auth.calculadora'))
+            ->assertOk()
+            ->viewData('page')['props'];
+    }
+
+    // ─── As portas ──────────────────────────────────────────────────────────
+
+    /**
+     * A rota por token segue registrada — ela está em links antigos — mas passa
+     * pelo `AposentaTokenDoPortal`, que só leva ao login.
+     */
+    public function test_a_porta_autenticada_existe_e_a_do_token_esta_aposentada(): void
+    {
         $this->assertNotNull(Route::getRoutes()->getByName('portal.auth.calculadora'), 'falta a rota autenticada');
+
+        $porToken = Route::getRoutes()->getByName('portal.calculadora');
+        $this->assertNotNull($porToken, 'a rota antiga sumiu — links antigos cairiam em 404 em vez de irem ao login');
+        $this->assertContains(AposentaTokenDoPortal::class, $porToken->gatherMiddleware());
     }
 
     /**
@@ -66,11 +76,10 @@ class CalculadoraNoPortalTest extends TestCase
      * ela não grava nada, e o cliente sozinho tem tanto direito de simular
      * quanto nós. Uma régua aqui seria restrição sem nada para proteger.
      */
-    public function test_o_cliente_abre_a_calculadora_pelo_link_dele(): void
+    public function test_o_cliente_logado_abre_a_calculadora(): void
     {
-        [, $token] = $this->empresaComLink();
-
-        $this->get(route('portal.calculadora', $token))
+        $this->entrarNoPortal($this->empresa())
+            ->get(route('portal.auth.calculadora'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page->component('Portal/Calculadora', false));
     }
@@ -79,13 +88,7 @@ class CalculadoraNoPortalTest extends TestCase
 
     public function test_o_modulo_aparece_no_menu_com_o_item_ativo_certo(): void
     {
-        [$empresa, $token] = $this->empresaComLink();
-
-        $props = $this->get(route('portal.calculadora', $token))
-            ->assertOk()
-            ->viewData('page')['props'];
-
-        $porChave = collect($props['modulos'])->keyBy('chave');
+        $porChave = collect($this->props($this->empresa())['modulos'])->keyBy('chave');
 
         $this->assertArrayHasKey(ModulosPortal::CALCULADORA, $porChave->all());
         $this->assertTrue($porChave[ModulosPortal::CALCULADORA]['ativo']);
@@ -105,10 +108,8 @@ class CalculadoraNoPortalTest extends TestCase
      */
     public function test_o_icone_declarado_existe_no_mapa_do_layout(): void
     {
-        [, $token] = $this->empresaComLink();
-
-        $props = $this->get(route('portal.calculadora', $token))->viewData('page')['props'];
-        $icone = collect($props['modulos'])->firstWhere('chave', ModulosPortal::CALCULADORA)['icone'];
+        $icone = collect($this->props($this->empresa())['modulos'])
+            ->firstWhere('chave', ModulosPortal::CALCULADORA)['icone'];
 
         $layout = file_get_contents(resource_path('js/Layouts/PortalClienteLayout.jsx'));
 
@@ -121,9 +122,7 @@ class CalculadoraNoPortalTest extends TestCase
 
     public function test_a_calculadora_nao_expoe_dado_de_operacao(): void
     {
-        [, $token] = $this->empresaComLink();
-
-        $props = $this->get(route('portal.calculadora', $token))->viewData('page')['props'];
+        $props = $this->props($this->empresa());
 
         // A tela é uma régua de conversa: empresa e menu bastam. Passo,
         // responsável ou faturamento aqui seria vazamento sem motivo.

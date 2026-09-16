@@ -1,59 +1,26 @@
 import { useState } from 'react';
-import { Link, router } from '@inertiajs/react';
+import { Link } from '@inertiajs/react';
 import {
-    Check, Clock, Copy, Eye, EyeOff, KeyRound, Link2, LogIn, ShieldOff, UserPlus,
+    Check, Clock, Copy, KeyRound, Link2, LogIn, ShieldOff, UserPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// ─── Como o cliente entra no portal desta empresa ───────────────────────────
-//
-// Duas portas convivem, e a tela mostra as duas porque elas respondem coisas
-// diferentes:
-//
-//  - **o link** é de quem tem o endereço. "Aberto em tal dia" não diz QUEM
-//    abriu — pode ter sido o cliente, o sócio dele, ou alguém a quem ele
-//    repassou;
-//  - **o login** é de uma pessoa. "Fulano entrou ontem" é uma frase que se
-//    pode usar numa cobrança.
-//
-// Enquanto o link existir, os dois aparecem. O dia em que ele for aposentado,
-// some o bloco de cima e fica só o de baixo.
-//
-// ### Por que "Ver o portal do cliente" mora aqui
-// A pergunta que leva alguém a clicar — "o que ele está vendo?" — nasce
-// olhando o onboarding. Estava só no menu de ações do cockpit, a dois cliques
-// de distância de quem já está na tela certa.
-
-function formatar(iso) {
-    if (! iso) return null;
-
-    return new Date(iso).toLocaleString('pt-BR', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-    });
-}
-
+// O endereço é público; os dados exigem login e vínculo com a empresa.
 export default function AcessoDoClienteAoPortal({ companyId, link }) {
     const [copiado, setCopiado] = useState(false);
-    const [gerando, setGerando] = useState(false);
+    const [erroCopia, setErroCopia] = useState(false);
 
     const acessos = link?.acessos ?? [];
-    const visto = formatar(link?.ultimo_acesso);
 
-    const copiar = () => {
-        navigator.clipboard?.writeText(link.url).then(() => {
+    const copiar = async () => {
+        try {
+            await navigator.clipboard.writeText(link.url);
             setCopiado(true);
+            setErroCopia(false);
             setTimeout(() => setCopiado(false), 2000);
-        });
-    };
-
-    const gerar = () => {
-        if (gerando) return;
-        setGerando(true);
-        router.post(route('onboarding.link.gerar', companyId), {}, {
-            preserveScroll: true,
-            onFinish: () => setGerando(false),
-        });
+        } catch {
+            setErroCopia(true);
+        }
     };
 
     return (
@@ -77,54 +44,21 @@ export default function AcessoDoClienteAoPortal({ companyId, link }) {
                 )}
             </div>
 
-            {/* ─── O link ──────────────────────────────────────────────── */}
-            {! link?.existe ? (
-                <div>
-                    <p className="text-white/40 text-[12px] mb-3">
-                        Esta empresa ainda não tem link. Ele é único por empresa e reúne os passos de todos os serviços.
-                    </p>
-                    <button
-                        onClick={gerar}
-                        disabled={gerando}
-                        className="px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 text-[12px] font-semibold transition-all disabled:opacity-50"
-                    >
-                        {gerando ? 'Gerando…' : 'Gerar link'}
+            <div className="space-y-2.5">
+                <p className="text-white/50 text-[12px]">
+                    O cliente entra com um código enviado ao e-mail cadastrado. Compartilhar este endereço não libera os dados.
+                </p>
+                <div className="flex items-center gap-2">
+                    <input aria-label="Endereço de login do portal" readOnly value={link?.url ?? ''}
+                        className="flex-1 min-w-0 rounded-lg bg-white/[0.04] border border-white/[0.08] px-3 py-1.5 text-[12px] text-white/70" />
+                    <button onClick={copiar} disabled={!link?.url}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] text-[12px] text-white/80">
+                        {copiado ? <Check size={13} /> : <Copy size={13} />}
+                        {copiado ? 'Copiado' : 'Copiar login'}
                     </button>
                 </div>
-            ) : (
-                <div className="space-y-2.5">
-                    <div className="flex items-center gap-2">
-                        <code className="flex-1 min-w-0 truncate rounded-lg bg-white/[0.04] border border-white/[0.08] px-3 py-1.5 text-[12px] text-white/70">
-                            {link.url}
-                        </code>
-                        <button
-                            onClick={copiar}
-                            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.10] text-[12px] text-white/80 transition-all"
-                            aria-label="Copiar link do portal do cliente"
-                        >
-                            {copiado ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-                            {copiado ? 'Copiado' : 'Copiar'}
-                        </button>
-                    </div>
-
-                    {/* A pergunta que muda a cobrança: ele abriu? */}
-                    <div className="flex items-center gap-1.5">
-                        {visto ? (
-                            <>
-                                <Eye size={13} className="text-white/40 shrink-0" />
-                                <span className="text-white/50 text-[12px]">Aberto pela última vez em {visto}</span>
-                            </>
-                        ) : (
-                            <>
-                                <EyeOff size={13} className="text-amber-400 shrink-0" />
-                                <span className="text-amber-400/90 text-[12px]">
-                                    O cliente nunca abriu este link — antes de cobrar, confirme que ele recebeu
-                                </span>
-                            </>
-                        )}
-                    </div>
-                </div>
-            )}
+                {erroCopia && <p role="status" className="text-amber-300 text-[12px]">Selecione e copie o endereço acima.</p>}
+            </div>
 
             {/* ─── Quem entra com login ────────────────────────────────── */}
             <div className="pt-3.5 border-t border-white/[0.06] space-y-2.5">
@@ -134,7 +68,7 @@ export default function AcessoDoClienteAoPortal({ companyId, link }) {
                     </p>
 
                     <Link
-                        href={route('companies.index', { tab: 'onboarding', sub: 'acessos' })}
+                        href={route('companies.index', { tab: 'onboarding', sub: 'acessos', portal_company: companyId })}
                         className="inline-flex items-center gap-1 text-white/35 hover:text-white/75 text-[11.5px] transition-colors"
                     >
                         <UserPlus size={11} /> {acessos.length ? 'Gerenciar' : 'Dar acesso'}

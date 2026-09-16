@@ -5,7 +5,7 @@ namespace App\Services\BoasVindas;
 use App\Models\BoasVindasTemplate;
 use App\Models\Company;
 use App\Models\ContratoServico;
-use App\Models\OnboardingLink;
+use App\Models\PortalUsuario;
 
 /**
  * MensagemBoasVindasService — monta a mensagem de boas-vindas da empresa, com
@@ -17,14 +17,8 @@ use App\Models\OnboardingLink;
  * consequência fora do sistema. Aqui o texto sai pronto do servidor, coberto por
  * PHPUnit, e o front só exibe e copia — mesma disciplina da D-04 da Fase 152.
  *
- * ⚠️ **`{link_oauth}` é SEMPRE a rota pública por token**
- * (`portal-cliente/{token}/onboarding/conectar/ml`), nunca a interna
- * `ml.oauth.initiate`. A interna é autenticada: clicada por um usuário ECF
- * logado, autoriza a conta do Mercado Livre **dele** como se fosse a do cliente,
- * e o callback do fluxo de `Company` sobrescreve o token sem a trava de
- * divergência que só o fluxo de Polos tem. Esta mensagem vai para o cliente —
- * o link precisa ser o que o cliente pode abrir. Incidente em
- * `project_polos_oauth_link_boas_vindas_260827`; mesma razão da D-05 da Fase 152.
+ * `{link_oauth}` leva ao onboarding autenticado, onde o cliente escolhe a
+ * empresa e conecta o Mercado Livre. Nunca divulgar a rota interna do admin.
  *
  * Esta classe **não** toca a mensagem do Polos (D-A): aquela continua em
  * `mlb_configuracoes.implementacao_defaults` e é montada pelo `ImplModal.jsx`
@@ -139,21 +133,10 @@ class MensagemBoasVindasService
             $pendencias[] = 'Link de cadastro do Adman não configurado no ambiente.';
         }
 
-        // Os dois links do cliente saem do MESMO OnboardingLink — o do item 8 do
-        // checklist ("Conexão com o sistema ECF"). Sem ele, os dois blocos ficam
-        // vazios de uma vez, e a pendência é uma só para não repetir a mesma
-        // causa duas vezes na tela.
-        $token = OnboardingLink::where('company_id', $company->id)->value('token');
-
-        $linkSistema = null;
-        $linkOauth   = null;
-
-        if ($token === null) {
-            $pendencias[] = 'Conexão com o sistema ECF ainda não gerada — gere o link no item 8 do checklist.';
-        } else {
-            $linkSistema = route('portal.inicio', $token);
-            // Rota PÚBLICA por token — ver o aviso no docblock da classe.
-            $linkOauth = route('onboarding.publico.conectar-ml', $token);
+        $linkSistema = \App\Support\Portal\UrlDoPortal::para('portal.entrada');
+        $linkOauth = \App\Support\Portal\UrlDoPortal::para('portal.auth.onboarding');
+        if (!PortalUsuario::ativos()->whereHas('empresas', fn ($q) => $q->where('companies.id', $company->id))->exists()) {
+            $pendencias[] = 'Cadastre um contato em Acessos do portal antes de enviar as boas-vindas.';
         }
 
         return [

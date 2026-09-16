@@ -161,10 +161,8 @@ Route::patch('/implementacao/{token}/publicador/frete', [MlbImplementacaoControl
 // ═══ Portal do Cliente — ACESSO AUTENTICADO ═════════════════════════════════
 //
 // A porta nova: a pessoa entra com e-mail e código, e a empresa sai do
-// USUÁRIO autenticado — nunca da URL. Vive ao lado das rotas por token, que
-// continuam de pé enquanto os clientes existentes migram. Quando todos
-// tiverem entrado ao menos uma vez, o bloco por token abaixo é removido e o
-// acesso por posse de link morre.
+// USUÁRIO autenticado — nunca da URL. Os endereços antigos por token abaixo
+// existem apenas para redirecionar ao login e recusar escritas.
 //
 // Sem token nas URLs — era esse o incômodo original: o cliente não conseguia
 // guardar nem digitar o endereço.
@@ -268,29 +266,9 @@ Route::post('/entrar/senha', [PortalAuthController::class, 'entrarComSenha'])
     ->middleware('throttle:portal-validar')
     ->name('portal.senha.entrar');
 
-// ─── Portal do Cliente (`/portal-cliente/{token}`) ──────────────────────────
-//
-// Nasceu na Fase 135 Plano 11 como portal de ONBOARDING (`/onboarding-cliente`,
-// D-06) e virou o ambiente da empresa em 21/08/2026: o Onboarding é hoje UM dos
-// módulos, ao lado do Início e do PPA. O catálogo de módulos vive em
-// `App\Support\Portal\ModulosPortal` — módulo novo entra lá, ganha um controller
-// que resolve o token pelo `PortalClienteService`, e uma rota neste grupo.
-//
-// Prefixo NOVO e distinto de 'implementacao/*' (Polos, D-02) — NUNCA reusar
-// aquele prefixo. O token vive na EMPRESA (não no onboarding): uma empresa pode
-// ter mais de um serviço com onboarding ativo ao mesmo tempo (D-08) e o cliente
-// recebe um único link. Sem middleware 'auth' — acesso é por posse do token
-// (mesmo risco já aceito no precedente do Polos: Str::random(48), unique() no
-// banco, sem expiração). CSRF isento via bootstrap/app.php.
-//
-// Os NOMES das rotas de onboarding seguem `onboarding.publico.*`. Só a URL
-// mudou: renomeá-los arrastaria dezenas de call-sites e testes sem ganhar nada,
-// e o nome continua descrevendo com precisão o que a rota faz — o módulo de
-// onboarding, dentro do portal. Módulo novo usa o namespace `portal.*`.
-// `portal.dominio`: link antigo aponta para o host do admin (era assim que
-// `route()` montava, até 25/08/2026) e está no WhatsApp dos clientes.
-// Redireciona em vez de bloquear — bloquear derrubaria quem usa hoje.
-Route::prefix('portal-cliente/{token}')->middleware('portal.dominio')->group(function () {
+// Links antigos: GET vai ao login e escritas retornam 410, antes dos controllers.
+// Novos módulos pertencem ao grupo portal.auth. Polos /implementacao é separado.
+Route::prefix('portal-cliente/{token}')->middleware(\App\Http\Middleware\AposentaTokenDoPortal::class)->group(function () {
     Route::get('/', [PortalClienteController::class, 'inicio'])->name('portal.inicio');
 
     // ── Módulo Onboarding ──────────────────────────────────────────────────
@@ -351,7 +329,7 @@ Route::prefix('portal-cliente/{token}')->middleware('portal.dominio')->group(fun
 //
 // Só o GET tem redirect: as demais rotas antigas eram POST/PATCH disparados de
 // dentro da própria página, e a página agora é servida já com as URLs novas.
-Route::middleware('portal.dominio')->get('/onboarding-cliente/{token}', function (string $token) {
+Route::middleware(\App\Http\Middleware\AposentaTokenDoPortal::class)->get('/onboarding-cliente/{token}', function (string $token) {
     return redirect()->route('portal.onboarding', $token, 301);
 })->name('portal.legado.onboarding');
 // ML OAuth — callback público (o cliente autoriza fora do painel)
@@ -1175,6 +1153,10 @@ Route::middleware(['auth', 'verified', 'permission:core.onboarding'])
             ->name('onboarding.investimento.salvar');
         Route::put('/onboarding/{onboarding}/agenda', [OnboardingController::class, 'salvarAgenda'])
             ->name('onboarding.agenda.salvar');
+        // Convite no Google Agenda. Ação explícita e separada do salvar: ela
+        // manda e-mail ao cliente na hora (15/09/2026).
+        Route::post('/onboarding/{onboarding}/agenda/google', [OnboardingController::class, 'enviarConviteGoogle'])
+            ->name('onboarding.agenda.google');
         Route::post('/onboarding/{onboarding}/contatos', [OnboardingController::class, 'salvarContato'])
             ->name('onboarding.contatos.salvar');
         // Edição e remoção são por LINHA (id próprio), nunca pela lista inteira.

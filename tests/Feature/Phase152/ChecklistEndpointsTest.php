@@ -8,7 +8,6 @@ use App\Models\CompanyEtapaTransicao;
 use App\Models\ContratoAssinatura;
 use App\Models\ContratoServico;
 use App\Models\MlToken;
-use App\Models\OnboardingLink;
 use App\Models\Servico;
 use App\Models\Setor;
 use App\Models\SetorPermissao;
@@ -152,7 +151,8 @@ class ChecklistEndpointsTest extends TestCase
             'connected_at'      => now(),
         ]);
 
-        OnboardingLink::create(['company_id' => $empresa->id, 'token' => 'token-endpoints-152-08-'.$empresa->id]);
+        $acesso = \App\Models\PortalUsuario::create(['nome' => 'Cliente', 'email' => 'cliente'.$empresa->id.'@example.test', 'ativo' => true]);
+        $acesso->empresas()->attach($empresa->id);
     }
 
     /** Completa os 3 itens do grupo Contrato — item 1 manual, 2/3 por envelope assinado. */
@@ -316,21 +316,15 @@ class ChecklistEndpointsTest extends TestCase
 
     // ─── Caso 7 — conexão ECF idempotente e avança a etapa (D-14/D-15) ──────
 
-    public function test_conexao_ecf_e_idempotente_e_avanca_a_etapa(): void
+    public function test_botao_antigo_leva_ao_cadastro_sem_gerar_token_ou_avancar_etapa(): void
     {
         $empresa = $this->empresaComServico();
-        $user    = $this->admin();
-
-        $this->actingAs($user)->post(route('admin.contratos.checklist.conexao-ecf', $empresa))
-            ->assertStatus(302)->assertSessionHas('success');
-
-        // Era o primeiro item concluído da empresa — a etapa avançou.
-        $this->assertSame(Company::ETAPA_ADMINISTRATIVO_ANDAMENTO, $this->etapaDe($empresa));
-
-        $this->actingAs($user)->post(route('admin.contratos.checklist.conexao-ecf', $empresa))
-            ->assertStatus(302);
-
-        $this->assertSame(1, OnboardingLink::where('company_id', $empresa->id)->count(), 'gerarConexaoEcf() é idempotente (D-14).');
+        $etapa = $this->etapaDe($empresa);
+        $this->actingAs($this->admin())->post(route('admin.contratos.checklist.conexao-ecf', $empresa))
+            ->assertRedirect(route('companies.index', ['tab' => 'onboarding', 'sub' => 'acessos', 'portal_company' => $empresa->id]));
+        $this->assertSame($etapa, $this->etapaDe($empresa));
+        $this->assertDatabaseCount('onboarding_links', 0);
+        $this->assertDatabaseCount('portal_usuarios', 0);
     }
 
     // ─── Caso 8 — finalizar com item pendente: recusado, etapa intacta ──────

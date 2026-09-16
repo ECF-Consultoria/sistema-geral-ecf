@@ -6,7 +6,7 @@ use App\Models\Company;
 use App\Models\ContratoAssinatura;
 use App\Models\ContratoServico;
 use App\Models\MlToken;
-use App\Models\OnboardingLink;
+use App\Models\PortalUsuario;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\ChecklistAdministrativo\ChecklistAdministrativoService;
@@ -137,7 +137,10 @@ class FinalizarTravaTest extends TestCase
             'connected_at'      => now(),
         ]);
 
-        OnboardingLink::create(['company_id' => $empresa->id, 'token' => 'token-trava-152-06-' . $empresa->id]);
+        // Item 8 ("Portal do Cliente") fecha por pessoa ATIVA vinculada em
+        // Acessos do portal — o link por token deixou de valer em 15/09/2026.
+        $acessoPortal = PortalUsuario::create(['nome' => 'Cliente', 'email' => 'token-trava-152-06.'.$empresa->id.'@example.test', 'ativo' => true]);
+        $acessoPortal->empresas()->attach($empresa->id, ['principal' => true]);
     }
 
     /**
@@ -260,7 +263,10 @@ class FinalizarTravaTest extends TestCase
             'status'            => 'active',
             'connected_at'      => now(),
         ]);
-        OnboardingLink::create(['company_id' => $empresa->id, 'token' => 'token-trava-152-06-caso5-' . $empresa->id]);
+        // Item 8 ("Portal do Cliente") fecha por pessoa ATIVA vinculada em
+        // Acessos do portal — o link por token deixou de valer em 15/09/2026.
+        $acessoPortal = PortalUsuario::create(['nome' => 'Cliente', 'email' => 'token-trava-152-06-caso5.'.$empresa->id.'@example.test', 'ativo' => true]);
+        $acessoPortal->empresas()->attach($empresa->id, ['principal' => true]);
 
         $resultado = $this->service()->podeFinalizar($empresa->fresh());
 
