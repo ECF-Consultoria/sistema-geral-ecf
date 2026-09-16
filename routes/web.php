@@ -1590,6 +1590,16 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos'])->prefix('a
     // Rotas: admin.contratos.grupos.index, admin.contratos.grupos.criar.
     Route::get('/grupos', [GrupoCobrancaHierarquiaController::class, 'index'])->name('grupos.index');
     Route::post('/grupos', [GrupoCobrancaHierarquiaController::class, 'criar'])->name('grupos.criar');
+
+    // Quick 260916-onn — "não participa do fechamento", marcado caso a caso
+    // para quem não tem contrato progressivo. Duas portas: a ficha da empresa
+    // e a tela de grupos. MESMO grupo de permissão, de propósito.
+    // Rotas: admin.contratos.fora-fechamento.empresa.marcar/desmarcar e
+    // admin.contratos.fora-fechamento.grupo.marcar/desmarcar.
+    Route::post('/empresa/{company}/fora-do-fechamento', [\App\Http\Controllers\ForaDoFechamentoController::class, 'marcarEmpresa'])->name('fora-fechamento.empresa.marcar');
+    Route::delete('/empresa/{company}/fora-do-fechamento', [\App\Http\Controllers\ForaDoFechamentoController::class, 'desmarcarEmpresa'])->name('fora-fechamento.empresa.desmarcar');
+    Route::post('/grupos/{grupo}/fora-do-fechamento', [\App\Http\Controllers\ForaDoFechamentoController::class, 'marcarGrupo'])->name('fora-fechamento.grupo.marcar');
+    Route::delete('/grupos/{grupo}/fora-do-fechamento', [\App\Http\Controllers\ForaDoFechamentoController::class, 'desmarcarGrupo'])->name('fora-fechamento.grupo.desmarcar');
 });
 
 // ─── Checklist administrativo (Fase 152 Plano 08, ADMIN-01/03/04/05/06) ──────

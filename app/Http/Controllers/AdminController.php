@@ -322,7 +322,66 @@ class AdminController extends Controller
                 ])
                 ->values()
                 ->all(),
+            // Quick 260916-onn — quem foi marcado como "não participa do
+            // fechamento" (empresa ou grupo). Lista da PÁGINA, do cadastro de
+            // hoje — nunca chave nova nas linhas. O link leva aonde se desmarca.
+            'nao_participam_do_fechamento' => $this->fechamentoNaoParticipantes(),
         ]);
+    }
+
+    /**
+     * Quick 260916-onn — empresas ativas e grupos marcados como "não participa
+     * do fechamento", para a lista discreta da tela. Duas consultas (mais uma
+     * para os membros dos grupos, só quando há grupo marcado).
+     *
+     * @return array<int, array{tipo: string, id: int, name: string, motivo: ?string, empresas: array<int, string>, url: string}>
+     */
+    private function fechamentoNaoParticipantes(): array
+    {
+        $empresas = Company::query()
+            ->where('active', true)
+            ->where('fora_do_fechamento', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'fora_do_fechamento_motivo'])
+            ->map(fn (Company $c) => [
+                'tipo'     => 'empresa',
+                'id'       => (int) $c->id,
+                'name'     => (string) $c->name,
+                'motivo'   => $c->fora_do_fechamento_motivo,
+                'empresas' => [],
+                'url'      => '/administrativo/contratos/empresa/'.$c->id,
+            ]);
+
+        $grupos = CompanyGroup::query()
+            ->where('fora_do_fechamento', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'fora_do_fechamento_motivo']);
+
+        $membros = collect();
+        if ($grupos->isNotEmpty()) {
+            // Empresas do grupo marcado E dos subgrupos pendurados nele.
+            $filhos = CompanyGroup::query()
+                ->whereIn('parent_id', $grupos->pluck('id'))
+                ->pluck('parent_id', 'id');
+
+            $membros = Company::query()
+                ->where('active', true)
+                ->whereIn('company_group_id', $grupos->pluck('id')->merge($filhos->keys()))
+                ->orderBy('name')
+                ->get(['id', 'name', 'company_group_id'])
+                ->groupBy(fn (Company $c) => (int) ($filhos[$c->company_group_id] ?? $c->company_group_id));
+        }
+
+        $linhasGrupo = $grupos->map(fn ($g) => [
+            'tipo'     => 'grupo',
+            'id'       => (int) $g->id,
+            'name'     => (string) $g->name,
+            'motivo'   => $g->fora_do_fechamento_motivo,
+            'empresas' => $membros->get((int) $g->id, collect())->pluck('name')->values()->all(),
+            'url'      => '/administrativo/contratos/grupos',
+        ]);
+
+        return $linhasGrupo->concat($empresas)->values()->all();
     }
 
     /**

@@ -748,6 +748,12 @@ class ContratoAdminController extends Controller
             // `contratos`/`pode_gerar_contrato`: a permissão de ROTA abre a
             // ficha, a de MÓDULO decide o que aparece dentro dela.
             'tabela_resumo' => $podeVerContrato ? $tabelaResumo : null,
+            // Quick 260916-onn — "não participa do fechamento". Mesma régua de
+            // `tabela_resumo`: só para quem tem `admin.contratos` (é quem pode
+            // marcar). `grupo` diz quando quem tirou a empresa foi o grupo
+            // dela (ou o grupo de cobrança acima dele) — aí se desmarca na
+            // tela de grupos, não aqui.
+            'fora_do_fechamento' => $podeVerContrato ? $this->resumoForaDoFechamento($company) : null,
             'contratos' => ! $podeVerContrato ? [] : $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico, $pdfDados, $servicosLiberados) {
                 return [
                     'id'                                => $c->id,
@@ -805,6 +811,41 @@ class ContratoAdminController extends Controller
                 ];
             })->values(),
         ]);
+    }
+
+    /**
+     * Quick 260916-onn — situação "não participa do fechamento" para a ficha:
+     * a marcação da própria empresa (quem, quando, motivo) e, se houver, o
+     * grupo marcado que também a tira (o dela ou o grupo de cobrança acima).
+     */
+    private function resumoForaDoFechamento(Company $company): array
+    {
+        $grupoMarcado = null;
+
+        if ($company->company_group_id !== null) {
+            $grupo = \App\Models\CompanyGroup::with('pai')->find($company->company_group_id);
+
+            foreach (array_filter([$grupo, $grupo?->pai]) as $candidato) {
+                if ($candidato->fora_do_fechamento) {
+                    $grupoMarcado = [
+                        'id'     => $candidato->id,
+                        'name'   => $candidato->name,
+                        'motivo' => $candidato->fora_do_fechamento_motivo,
+                        'url'    => route('admin.contratos.grupos.index'),
+                    ];
+
+                    break;
+                }
+            }
+        }
+
+        return [
+            'marcado'  => (bool) $company->fora_do_fechamento,
+            'motivo'   => $company->fora_do_fechamento_motivo,
+            'por_nome' => $company->fora_do_fechamento_por ? User::find($company->fora_do_fechamento_por)?->name : null,
+            'em'       => $company->fora_do_fechamento_em?->toIso8601String(),
+            'grupo'    => $grupoMarcado,
+        ];
     }
 
     /**

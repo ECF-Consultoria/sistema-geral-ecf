@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\CompanyGroup;
 use App\Models\GrupoFaixaFaturamento;
+use App\Models\User;
 use App\Services\Fechamento\SimuladorGrupoCobrancaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -114,9 +115,20 @@ class GrupoCobrancaHierarquiaController extends Controller
 
         $filhosPorPai = $grupos->groupBy('parent_id');
 
+        // Quick 260916-onn — nomes de quem marcou "não participa do
+        // fechamento", uma consulta só.
+        $nomesDeQuemMarcou = User::whereIn('id', $grupos->pluck('fora_do_fechamento_por')->filter()->unique())
+            ->pluck('name', 'id');
+        $foraDoFechamento = fn (CompanyGroup $g) => [
+            'marcado'  => (bool) $g->fora_do_fechamento,
+            'motivo'   => $g->fora_do_fechamento_motivo,
+            'por_nome' => $g->fora_do_fechamento_por ? ($nomesDeQuemMarcou[$g->fora_do_fechamento_por] ?? null) : null,
+            'em'       => $g->fora_do_fechamento_em?->toIso8601String(),
+        ];
+
         $lista = $grupos
             ->whereNull('parent_id')
-            ->map(function (CompanyGroup $grupo) use ($filhosPorPai, $empresasPorGrupo, $comTabelaPropria, $linhas) {
+            ->map(function (CompanyGroup $grupo) use ($filhosPorPai, $empresasPorGrupo, $comTabelaPropria, $linhas, $foraDoFechamento) {
                 $dentro = ($filhosPorPai[$grupo->id] ?? collect())
                     ->sortBy('name')
                     ->map(fn (CompanyGroup $filho) => [
@@ -124,6 +136,7 @@ class GrupoCobrancaHierarquiaController extends Controller
                         'nome'               => $filho->name,
                         'empresas_count'     => (int) ($empresasPorGrupo[$filho->id] ?? 0),
                         'tem_tabela_propria' => in_array($filho->id, $comTabelaPropria, true),
+                        'fora_do_fechamento' => $foraDoFechamento($filho),
                     ])
                     ->values()
                     ->all();
@@ -140,6 +153,9 @@ class GrupoCobrancaHierarquiaController extends Controller
                     'empresas_count'     => $empresasDoConjunto,
                     'tem_tabela_propria' => in_array($grupo->id, $comTabelaPropria, true),
                     'dentro'             => $dentro,
+                    // Quick 260916-onn — marcado aqui, o grupo inteiro (e os
+                    // grupos dentro dele) deixa de participar do fechamento.
+                    'fora_do_fechamento' => $foraDoFechamento($grupo),
                     // Os números da cobrança de hoje — ausentes quando o
                     // grupo não tem nenhuma empresa ativa (e por isso
                     // nenhuma linha de cobrança).

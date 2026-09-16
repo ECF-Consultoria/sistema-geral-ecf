@@ -1909,6 +1909,44 @@ function TabelaPresumidaAviso({ quantidade, onVerQuais }) {
     );
 }
 
+// Quick 260916-onn — empresas e grupos que alguém marcou como fora do
+// fechamento (sem contrato progressivo). Lista da página, discreta; o link
+// leva aonde a marcação se desfaz (ficha da empresa ou tela de grupos).
+function NaoParticipamAviso({ itens, mesFechado }) {
+    if (!itens || itens.length === 0) return null;
+
+    return (
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 flex flex-col gap-2.5">
+            <div className="flex flex-col gap-0.5">
+                <p className="text-white/70 text-[14px] font-medium">Não participam do fechamento</p>
+                <p className="text-white/45 text-[13px]">
+                    Marcados à mão por não terem tabela progressiva. Os valores cadastrados continuam guardados.
+                    {mesFechado && ' Este mês já foi fechado: quem já estava nele só sai quando o mês for refeito.'}
+                </p>
+            </div>
+            <ul className="flex flex-col gap-1.5">
+                {itens.map(item => (
+                    <li key={`${item.tipo}-${item.id}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13px]">
+                        <span className="text-white/75">
+                            {item.tipo === 'grupo' ? `Grupo ${item.name}` : item.name}
+                        </span>
+                        {item.tipo === 'grupo' && item.empresas.length > 0 && (
+                            <span className="text-white/40">({item.empresas.join(', ')})</span>
+                        )}
+                        {item.motivo && <span className="text-white/50">— {item.motivo}</span>}
+                        <a
+                            href={item.url}
+                            className="text-white/60 hover:text-white underline underline-offset-2 decoration-white/20 hover:decoration-white/50 transition-colors"
+                        >
+                            {item.tipo === 'grupo' ? 'ver na tela de grupos' : 'ver na ficha da empresa'}
+                        </a>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
 // Quick 260915-jpr — empresas que entram no fechamento só porque o contrato
 // não tem data de início: sem ela não dá para saber em que mês a empresa
 // virou cliente. Lista da página (não é atributo de linha); o link leva à
@@ -1999,7 +2037,7 @@ function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLim
     );
 }
 
-export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, periodo = null, totais, regra_nova_ativa = false, empresas_sem_data_inicio = [] }) {
+export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, periodo = null, totais, regra_nova_ativa = false, empresas_sem_data_inicio = [], nao_participam_do_fechamento = [] }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
     // Atalho do widget "Subiram de faixa este mês" (Fase 139): liga o chip
@@ -2223,6 +2261,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                     </div>
                     <TabelaPresumidaAviso quantidade={totais.tabelas_assumidas} onVerQuais={verTabelasPresumidas} />
                     <SemDataInicioAviso empresas={empresas_sem_data_inicio} />
+                    <NaoParticipamAviso itens={nao_participam_do_fechamento} mesFechado={competencia_fechada} />
                     <div className="flex flex-col gap-4">
                         <FiltroBarra
                             filtros={filtros}

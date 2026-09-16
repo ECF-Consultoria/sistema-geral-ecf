@@ -6,6 +6,7 @@ import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { cn, formatCurrency } from '@/lib/utils';
+import ParticipacaoFechamento from '@/Components/Fechamento/ParticipacaoFechamento';
 import {
     ArrowLeft,
     AlertTriangle,
@@ -437,6 +438,25 @@ function ResumoDoGrupo({ grupo }) {
     );
 }
 
+/**
+ * Quick 260916-onn — porta do GRUPO para "não participa do fechamento".
+ * Marcado aqui, o grupo inteiro (e os grupos dentro dele) sai do fechamento;
+ * a tabela e a cobrança mostradas acima continuam cadastradas.
+ */
+function ParticipacaoDoGrupo({ grupo, compacto = false }) {
+    if (!grupo.fora_do_fechamento) return null;
+
+    return (
+        <ParticipacaoFechamento
+            estado={grupo.fora_do_fechamento}
+            urlMarcar={route('admin.contratos.fora-fechamento.grupo.marcar', grupo.id)}
+            urlDesmarcar={route('admin.contratos.fora-fechamento.grupo.desmarcar', grupo.id)}
+            alvo={`o grupo ${grupo.nome}`}
+            compacto={compacto}
+        />
+    );
+}
+
 /** Um grupo de cobrança já montado, com os grupos que estão dentro dele. */
 function CartaoGrupoMontado({ grupo, saida, onTirar, onCancelarSaida, onConfirmarSaida, onColocarOutro }) {
     const saindoDaqui = saida != null && grupo.dentro.some(d => d.id === saida.id);
@@ -467,6 +487,8 @@ function CartaoGrupoMontado({ grupo, saida, onTirar, onCancelarSaida, onConfirma
                     </div>
                 </div>
 
+                <ParticipacaoDoGrupo grupo={grupo} compacto />
+
                 {!grupo.tem_tabela_propria && <AvisoSemTabela grupo={grupo} />}
 
                 <div className="space-y-1.5">
@@ -479,7 +501,25 @@ function CartaoGrupoMontado({ grupo, saida, onTirar, onCancelarSaida, onConfirma
                                     <span className="text-white/40 ml-2">
                                         {dentro.empresas_count === 1 ? '1 empresa' : `${dentro.empresas_count} empresas`}
                                     </span>
+                                    {dentro.fora_do_fechamento?.marcado && (
+                                        <span className="text-amber-200/70 ml-2">· não participa do fechamento</span>
+                                    )}
                                 </span>
+                                {/* Um grupo de dentro só aparece aqui para ser desfeito:
+                                    marcar se faz no grupo de cima, que leva todos. */}
+                                {dentro.fora_do_fechamento?.marcado && (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => router.delete(
+                                            route('admin.contratos.fora-fechamento.grupo.desmarcar', dentro.id),
+                                            { preserveScroll: true }
+                                        )}
+                                    >
+                                        Voltar a participar
+                                    </Button>
+                                )}
                                 <Button
                                     type="button"
                                     variant="ghost"
@@ -543,6 +583,10 @@ function LinhaGrupoSozinho({ grupo, marcado, onAlternar }) {
                     />
                 </span>
             </label>
+            {/* Fora do <label>: clicar aqui não pode marcar a caixa de seleção. */}
+            <div className="pl-7 pt-2">
+                <ParticipacaoDoGrupo grupo={grupo} compacto />
+            </div>
         </li>
     );
 }

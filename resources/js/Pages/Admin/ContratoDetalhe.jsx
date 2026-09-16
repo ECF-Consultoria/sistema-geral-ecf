@@ -11,6 +11,7 @@ import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { IMaskInput } from 'react-imask';
 import { ArrowLeft, Building2, AlertTriangle, Send, UserCog, Ban, RefreshCcw, RotateCcw, ChevronDown, ChevronRight, ListChecks, Unlock } from 'lucide-react';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
+import ParticipacaoFechamento from '@/Components/Fechamento/ParticipacaoFechamento';
 import { classeContratoComPreparo, rotuloContratoComPreparo, formatarHaDias, PREPARANDO_AVISO, MONTAGEM_TRAVADA_AVISO } from '@/lib/contratoStatus';
 
 // D-11 (herdada da Fase 130, absorvida no plano 131-06) — causas de
@@ -71,6 +72,9 @@ export default function ContratoDetalhe({
     // degradava para "sem tabela ainda", então o perfil de Entrada vê a mesma
     // tela de empresa sem tabela — sem quebrar.
     tabela_resumo = null,
+    // Quick 260916-onn — "não participa do fechamento". `null` para quem não
+    // tem permissão de marcar (o bloco some).
+    fora_do_fechamento = null,
 }) {
     const { flash } = usePage().props;
 
@@ -745,6 +749,37 @@ export default function ContratoDetalhe({
                             </Link>
                         </CardContent>
                     </Card>
+
+                    {/* Quick 260916-onn — porta da EMPRESA para "não participa do
+                        fechamento". Quando quem tira a empresa é o grupo, o aviso
+                        leva à tela de grupos, onde isso se desfaz. */}
+                    {fora_do_fechamento && (
+                        <Card>
+                            <CardContent className="p-4 space-y-2">
+                                <h2 className="text-white/85 text-[15px] font-semibold">Participação no fechamento</h2>
+                                {fora_do_fechamento.grupo && (
+                                    <p className="text-[13px] text-amber-200/80">
+                                        O grupo {fora_do_fechamento.grupo.name} não participa do fechamento, então esta empresa também fica de fora
+                                        {fora_do_fechamento.grupo.motivo ? ` (${fora_do_fechamento.grupo.motivo})` : ''}.{' '}
+                                        <Link href={fora_do_fechamento.grupo.url} className="underline underline-offset-2 text-white/70 hover:text-white">
+                                            Ver na tela de grupos
+                                        </Link>
+                                    </p>
+                                )}
+                                {!fora_do_fechamento.marcado && !fora_do_fechamento.grupo && (
+                                    <p className="text-[13px] text-white/60">
+                                        Esta empresa participa do fechamento do mês. Tire só se ela não tiver tabela progressiva.
+                                    </p>
+                                )}
+                                <ParticipacaoFechamento
+                                    estado={fora_do_fechamento}
+                                    urlMarcar={route('admin.contratos.fora-fechamento.empresa.marcar', company.id)}
+                                    urlDesmarcar={route('admin.contratos.fora-fechamento.empresa.desmarcar', company.id)}
+                                    alvo="esta empresa"
+                                />
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {/* Configuração interna da ECF — bloco SEPARADO, nunca misturado
                         com a lista de pendências da empresa acima (.env, não dado
