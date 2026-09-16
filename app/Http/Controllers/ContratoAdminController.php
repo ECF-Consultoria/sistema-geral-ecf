@@ -608,6 +608,15 @@ class ContratoAdminController extends Controller
         // mesmo serviço já é, por definição, uma tentativa seguinte.
         $idMaisAntigoPorServico = $contratos->groupBy('servico_id')->map(fn ($grupo) => $grupo->min('id'));
 
+        // 16/09 — a liberação é por (empresa, serviço), não por envelope:
+        // `liberarEmpresa()` devolve a liberação existente sem tocar no
+        // contrato. Sem este mapa, os envelopes antigos (cancelados/refeitos)
+        // de um serviço já liberado seguiam oferecendo "Liberar manualmente"
+        // e o clique não fazia nada.
+        $servicosLiberados = ContratoLiberacao::where('company_id', $company->id)
+            ->pluck('servico_id')
+            ->flip();
+
         // ─── Checklist administrativo (Fase 152 Plano 08) ────────────────────
         //
         // A permissão de ROTA (D-17) abre esta ficha para quem tem
@@ -739,7 +748,7 @@ class ContratoAdminController extends Controller
             // `contratos`/`pode_gerar_contrato`: a permissão de ROTA abre a
             // ficha, a de MÓDULO decide o que aparece dentro dela.
             'tabela_resumo' => $podeVerContrato ? $tabelaResumo : null,
-            'contratos' => ! $podeVerContrato ? [] : $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico, $pdfDados) {
+            'contratos' => ! $podeVerContrato ? [] : $contratos->map(function (ContratoAssinatura $c) use ($presos, $idMaisAntigoPorServico, $pdfDados, $servicosLiberados) {
                 return [
                     'id'                                => $c->id,
                     'servico_id'                        => $c->servico_id,
@@ -772,7 +781,7 @@ class ContratoAdminController extends Controller
                     'liberado_em'                        => $c->liberado_em?->toIso8601String(),
                     // D-10 — a UI usa este booleano para decidir se ainda
                     // oferece "Liberar manualmente" nesta linha.
-                    'ja_liberado'                        => $c->liberado_em !== null,
+                    'ja_liberado'                        => $c->liberado_em !== null || $servicosLiberados->has($c->servico_id),
                     'cancelamento_solicitado_em'         => $c->cancelamento_solicitado_em?->toIso8601String(),
                     'cancelamento_motivo'                => $c->cancelamento_motivo,
                     'cancelamento_solicitado_por_nome'   => $c->cancelamento_solicitado_por_user_id
@@ -1521,6 +1530,17 @@ class ContratoAdminController extends Controller
             if ($contrato->company_id !== $company->id || $contrato->servico_id !== $servico->id) {
                 abort(422, 'O contrato informado não pertence a esta empresa/serviço.');
             }
+        }
+
+        // 16/09 — o serviço já liberado (por outro envelope ou pelo webhook)
+        // não é liberado de novo: `liberarEmpresa()` devolveria a existente
+        // em silêncio. Avisar em vez de fingir que algo aconteceu.
+        $existente = ContratoLiberacao::existeParaServico($company->id, $servico->id);
+        if ($existente !== null) {
+            return back()->with('success', sprintf(
+                'Este serviço já estava liberado desde %s — nada precisou mudar.',
+                $existente->liberado_em?->format('d/m/Y H:i') ?? 'antes'
+            ));
         }
 
         // D-11 — NÃO chamar GateLiberacaoOperacionalService::avaliar() aqui.

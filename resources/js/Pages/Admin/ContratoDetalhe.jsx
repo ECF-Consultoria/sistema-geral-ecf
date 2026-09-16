@@ -346,7 +346,12 @@ export default function ContratoDetalhe({
         e.preventDefault();
         liberarForm.post(route('admin.contratos.liberacao-manual'), {
             preserveScroll: true,
-            onSuccess: () => setLiberarContratoId(null),
+            onSuccess: () => {
+                setLiberarContratoId(null);
+                // A mensagem do resultado fica no topo da página; sem rolar
+                // até ela, quem confirmou lá embaixo achava que nada aconteceu.
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            },
         });
     }
 

@@ -155,6 +155,55 @@ class LiberacaoManualAbsorvidaTest extends TestCase
         $this->assertSame('Decisão comercial registrada por e-mail com o cliente (rota absorvida).', $liberacao->motivo);
     }
 
+    /**
+     * 16/09 — regressão: com um envelope antigo cancelado e um vigente do
+     * mesmo serviço, liberar o vigente deixava o botão no antigo, e o clique
+     * ali não fazia nada (a liberação é por empresa+serviço).
+     */
+    public function test_servico_ja_liberado_esconde_o_botao_nos_envelopes_antigos_e_avisa_no_reclique(): void
+    {
+        $admin   = $this->admin();
+        $company = Company::factory()->create();
+        $servico = $this->servico();
+
+        $antigo = ContratoAssinatura::factory()->create([
+            'company_id' => $company->id,
+            'servico_id' => $servico->id,
+            'status'     => ContratoAssinatura::STATUS_CANCELADO,
+        ]);
+        $vigente = ContratoAssinatura::factory()->emAndamento()->create([
+            'company_id' => $company->id,
+            'servico_id' => $servico->id,
+        ]);
+
+        $this->actingAs($admin)->post(route('admin.contratos.liberacao-manual'), [
+            'company_id'             => $company->id,
+            'servico_id'             => $servico->id,
+            'contrato_assinatura_id' => $vigente->id,
+            'motivo_slug'            => ContratoLiberacao::MOTIVO_OUTRO,
+            'motivo_detalhe'         => 'Falta só uma assinatura interna.',
+        ])->assertSessionHas('success', 'Empresa liberada para o operacional.');
+
+        $props = $this->actingAs($admin)->get(route('admin.contratos.show', $company))
+            ->viewData('page')['props'];
+        $jaLiberado = collect($props['contratos'])->pluck('ja_liberado', 'id');
+        $this->assertTrue($jaLiberado[$vigente->id]);
+        $this->assertTrue($jaLiberado[$antigo->id]);
+
+        $reclique = $this->actingAs($admin)->post(route('admin.contratos.liberacao-manual'), [
+            'company_id'             => $company->id,
+            'servico_id'             => $servico->id,
+            'contrato_assinatura_id' => $antigo->id,
+            'motivo_slug'            => ContratoLiberacao::MOTIVO_OUTRO,
+            'motivo_detalhe'         => 'Clique repetido no envelope antigo.',
+        ]);
+
+        $this->assertStringContainsString('já estava liberado', session('success'));
+        $reclique->assertRedirect();
+        $this->assertSame(1, ContratoLiberacao::where('company_id', $company->id)->count());
+        $this->assertNull($antigo->fresh()->liberado_em);
+    }
+
     public function test_usuario_sem_permissao_admin_contratos_recebe_403(): void
     {
         $usuario = $this->usuarioSemPermissao();
