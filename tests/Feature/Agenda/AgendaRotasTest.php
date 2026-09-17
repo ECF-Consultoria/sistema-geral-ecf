@@ -211,10 +211,17 @@ class AgendaRotasTest extends TestCase
 
         $this->actingAs($analista)
             ->postJson(route('agenda.eventos.store'), $this->formulario([
-                'tipo'       => OnboardingEventoGoogle::TIPO_OUTRO,
-                'titulo'     => 'Planejamento de mídia',
-                'plataforma' => OnboardingEventoGoogle::PLATAFORMA_NENHUMA,
-                'descricao'  => 'Revisar verba',
+                'tipo'          => OnboardingEventoGoogle::TIPO_OUTRO,
+                'titulo'        => 'Planejamento de mídia',
+                'plataforma'    => OnboardingEventoGoogle::PLATAFORMA_NENHUMA,
+                'descricao'     => 'Revisar verba',
+                // Mais de um convidado, com repetição e caixa alta: todos chegam
+                // ao Google, uma vez cada (16/09 — o convite saía sem ninguém).
+                'participantes' => [
+                    ['email' => 'Fulano@Cliente.test', 'nome' => 'Fulano'],
+                    ['email' => 'ciclano@cliente.test'],
+                    ['email' => 'fulano@cliente.test'],
+                ],
             ]))
             ->assertCreated()
             ->assertJsonPath('evento.google_event_id', 'evt_meu')
@@ -222,6 +229,8 @@ class AgendaRotasTest extends TestCase
 
         Http::assertSent(fn (RequisicaoHttp $r) => $r->method() === 'POST'
             && $r->hasHeader('Authorization', 'Bearer token-analista')
+            && str_contains($r->url(), 'sendUpdates=all')
+            && array_column($r->data()['attendees'], 'email') === ['fulano@cliente.test', 'ciclano@cliente.test']
             && $r->data()['description'] === 'Revisar verba'
             && ! str_contains($r->data()['description'], '[Cliente:'));
         $this->assertSame(0, OnboardingEventoGoogle::count());

@@ -243,29 +243,86 @@ export default function EventoFormulario({
     const comCliente = TIPOS[form?.tipo]?.comCliente && onboardingId;
     const semCliente = comCliente && ! marcados.some((p) => p.lado === 'cliente');
 
-    const adicionarEmail = () => {
-        const email = novoEmail.trim().toLowerCase();
-        if (! EMAIL.test(email)) {
-            setErrosCampo((e) => ({ ...e, novoEmail: 'E-mail inválido.' }));
+    /**
+     * Lê o que foi digitado no campo de convidados — um ou vários e-mails,
+     * separados por vírgula, ponto e vírgula, espaço ou quebra de linha.
+     *
+     * O e-mail de quem organiza não entra na lista (ele já está no evento), mas
+     * isso é DITO na tela: sumir calado fazia parecer que o "+" apagava o que
+     * foi digitado (16/09/2026).
+     *
+     * @returns {{ validos: string[], invalidos: string[], organizador: boolean }}
+     */
+    const lerEmails = (texto) => {
+        const partes = texto.split(/[\s,;]+/).map((p) => p.trim().toLowerCase()).filter(Boolean);
+        const validos = [];
+        const invalidos = [];
+        let doOrganizador = false;
 
-            return;
-        }
-        setErrosCampo((e) => ({ ...e, novoEmail: null }));
-        setForm((f) => {
-            const lista = f.participantes ?? [];
-            if (lista.some((p) => p.email === email)) {
-                return { ...f, participantes: lista.map((p) => (p.email === email ? { ...p, marcado: true } : p)) };
-            }
-
-            return { ...f, participantes: [...lista, { email, nome: null, lado: 'outro', marcado: true }] };
+        partes.forEach((email) => {
+            if (! EMAIL.test(email)) invalidos.push(email);
+            else if (organizadorEmail && email === organizadorEmail) doOrganizador = true;
+            else if (! validos.includes(email)) validos.push(email);
         });
-        setNovoEmail('');
+
+        return { validos, invalidos, organizador: doOrganizador };
     };
+
+    const incluirEmails = (emails) => setForm((f) => {
+        let lista = f.participantes ?? [];
+        emails.forEach((email) => {
+            lista = lista.some((p) => p.email === email)
+                ? lista.map((p) => (p.email === email ? { ...p, marcado: true } : p))
+                : [...lista, { email, nome: null, lado: 'outro', marcado: true, manual: true }];
+        });
+
+        return { ...f, participantes: lista };
+    });
+
+    const adicionarEmail = () => {
+        // O "+" dispara depois do blur do campo, que já adicionou: com o campo
+        // vazio não há o que fazer — e limpar os avisos aqui apagaria o do blur.
+        if (! novoEmail.trim()) return;
+
+        const { validos, invalidos, organizador: doOrganizador } = lerEmails(novoEmail);
+
+        if (validos.length) incluirEmails(validos);
+
+        const avisos = [];
+        if (invalidos.length) avisos.push(`E-mail inválido: ${invalidos.join(', ')}`);
+        if (doOrganizador) avisos.push('Esse é o e-mail de quem organiza — ele já está no evento e não recebe convite.');
+        setErrosCampo((e) => ({ ...e, novoEmail: avisos.join(' ') || null }));
+
+        // Fica no campo só o que não entrou, para corrigir.
+        setNovoEmail(invalidos.join(', '));
+    };
+
+    const remover = (email) => setForm((f) => ({
+        ...f,
+        participantes: f.participantes.filter((p) => p.email !== email),
+    }));
 
     const alternar = (email) => setForm((f) => ({
         ...f,
         participantes: f.participantes.map((p) => (p.email === email ? { ...p, marcado: ! p.marcado } : p)),
     }));
+
+    const pendentesNaTela = lerEmails(novoEmail).validos.filter((email) => ! marcados.some((p) => p.email === email));
+    const totalConvidados = marcados.length + pendentesNaTela.length;
+
+    // Quem organiza aparece fixo no topo, como no Google.
+    let organizadorVisivel = null;
+    if (editando && evento?.organizador) {
+        organizadorVisivel = {
+            nome: evento.organizador.voce ? 'Você' : (evento.organizador.nome ?? evento.organizador.email ?? 'Quem organizou'),
+            email: evento.organizador.email,
+        };
+    } else if (organizador) {
+        organizadorVisivel = {
+            nome: `${organizador.nome ?? 'Você'}${organizador.e_voce ? ' (você)' : ''}`,
+            email: organizador.email,
+        };
+    }
 
     // ─── Envio ─────────────────────────────────────────────────────────────
     const ehKickoff = form?.tipo === 'kickoff';
@@ -290,14 +347,32 @@ export default function EventoFormulario({
     const salvar = async () => {
         if (! form || salvando || bloqueio) return;
 
+        // E-mail digitado e não adicionado entra no convite: quem escreveu o
+        // endereço quer convidar, e perdê-lo em silêncio mandava o evento sem
+        // convidado nenhum.
+        const pendentes = lerEmails(novoEmail);
+
         const faltas = {};
         if (! form.titulo.trim()) faltas.titulo = 'Dê um título ao evento.';
         if (! form.data || ! form.hora) faltas.inicio = 'Escolha a data e o horário.';
         if (form.plataforma === 'link' && ! form.link.trim()) faltas.link = 'Cole o link da reunião.';
+        if (pendentes.invalidos.length) faltas.novoEmail = `E-mail inválido: ${pendentes.invalidos.join(', ')}`;
         if (Object.keys(faltas).length) {
             setErrosCampo(faltas);
 
             return;
+        }
+
+        const convidados = [
+            ...marcados.map((p) => ({ email: p.email, nome: p.nome ?? null })),
+            ...pendentes.validos
+                .filter((email) => ! marcados.some((p) => p.email === email))
+                .map((email) => ({ email, nome: null })),
+        ];
+
+        if (pendentes.validos.length) {
+            incluirEmails(pendentes.validos);
+            setNovoEmail('');
         }
 
         const corpo = {
@@ -307,7 +382,7 @@ export default function EventoFormulario({
             plataforma: form.plataforma,
             link: ['link', 'presencial'].includes(form.plataforma) ? form.link.trim() || null : null,
             descricao: form.descricao.trim() || null,
-            participantes: marcados.map((p) => ({ email: p.email, nome: p.nome ?? null })),
+            participantes: convidados,
         };
 
         let metodo = 'post';
@@ -350,7 +425,7 @@ export default function EventoFormulario({
         ? 'Salvar alterações'
         : somenteData
             ? 'Marcar reunião'
-            : marcados.length ? 'Criar e enviar convite' : 'Criar evento';
+            : totalConvidados ? 'Criar e enviar convite' : 'Criar evento';
 
     return (
         <Sheet open={aberto} onOpenChange={(v) => ! v && ! salvando && aoFechar()}>
@@ -610,13 +685,68 @@ export default function EventoFormulario({
                                     )}
                                 </div>
 
-                                {/* Participantes */}
+                                {/* Convidados — como no Google: quem organiza no topo, e o campo
+                                    de adicionar logo acima da lista, para o e-mail novo aparecer
+                                    embaixo de onde foi digitado. */}
                                 <div>
-                                    <span className={rotuloCampo}>Participantes</span>
+                                    <span className={rotuloCampo}>
+                                        Convidados{totalConvidados > 0 ? ` · ${totalConvidados + 1} com quem organiza` : ''}
+                                    </span>
                                     {form.participantes === null ? (
                                         <p className="flex items-center gap-2 text-[12px] text-white/40"><Loader2 size={13} className="animate-spin" /> Carregando contatos…</p>
                                     ) : (
                                         <div className="space-y-1">
+                                            <div className="flex gap-1.5">
+                                                <input
+                                                    type="text"
+                                                    inputMode="email"
+                                                    autoComplete="off"
+                                                    value={novoEmail}
+                                                    onChange={(e) => {
+                                                        setNovoEmail(e.target.value);
+                                                        // O aviso era sobre o texto anterior.
+                                                        if (errosCampo.novoEmail) setErrosCampo((x) => ({ ...x, novoEmail: null }));
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ',') {
+                                                            e.preventDefault();
+                                                            adicionarEmail();
+                                                        }
+                                                    }}
+                                                    onBlur={() => novoEmail.trim() && adicionarEmail()}
+                                                    placeholder="Adicionar e-mails (separe por vírgula)"
+                                                    className={cn(campo, 'py-1.5', errosCampo.novoEmail && 'border-amber-400/50')}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={adicionarEmail}
+                                                    className="grid w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] text-white/60 hover:border-white/20 hover:text-white"
+                                                    aria-label="Adicionar participante"
+                                                >
+                                                    <Plus size={15} />
+                                                </button>
+                                            </div>
+                                            {errosCampo.novoEmail && (
+                                                <p className="flex items-start gap-1 text-[11.5px] text-amber-300">
+                                                    <Info size={12} className="mt-0.5 shrink-0" /> {errosCampo.novoEmail}
+                                                </p>
+                                            )}
+
+                                            {organizadorVisivel && (
+                                                <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
+                                                    <span className="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-white/10">
+                                                        <Check size={11} className="text-white/60" />
+                                                    </span>
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className="block truncate text-[12.5px] text-white/85">{organizadorVisivel.nome}</span>
+                                                        {organizadorVisivel.email && (
+                                                            <span className="block truncate text-[11px] text-white/35">{organizadorVisivel.email}</span>
+                                                        )}
+                                                    </span>
+                                                    <span className="rounded bg-ecf-yellow/15 px-1.5 py-0.5 text-[10px] text-ecf-yellow">Organizador</span>
+                                                </div>
+                                            )}
+
                                             {participantes.map((p) => (
                                                 <label
                                                     key={p.email}
@@ -629,35 +759,24 @@ export default function EventoFormulario({
                                                     </span>
                                                     {p.lado === 'cliente' && <span className="rounded bg-sky-400/15 px-1.5 py-0.5 text-[10px] text-sky-200">Cliente</span>}
                                                     {p.lado === 'ecf' && <span className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-white/50">ECF</span>}
+                                                    {(p.manual || p.lado === 'outro') && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                remover(p.email);
+                                                            }}
+                                                            className="grid h-6 w-6 shrink-0 place-items-center rounded text-white/35 hover:bg-white/[0.06] hover:text-white"
+                                                            aria-label={`Tirar ${p.email}`}
+                                                        >
+                                                            <X size={12} />
+                                                        </button>
+                                                    )}
                                                 </label>
                                             ))}
                                             {participantes.length === 0 && (
-                                                <p className="px-2 py-1 text-[12px] text-white/35">Ninguém convidado ainda.</p>
+                                                <p className="px-2 py-1 text-[12px] text-white/35">Nenhum convidado ainda — digite o e-mail acima.</p>
                                             )}
-                                            <div className="flex gap-1.5 pt-1">
-                                                <input
-                                                    type="email"
-                                                    value={novoEmail}
-                                                    onChange={(e) => setNovoEmail(e.target.value)}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault();
-                                                            adicionarEmail();
-                                                        }
-                                                    }}
-                                                    placeholder="Adicionar e-mail"
-                                                    className={cn(campo, 'py-1.5')}
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={adicionarEmail}
-                                                    className="grid w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] text-white/60 hover:border-white/20 hover:text-white"
-                                                    aria-label="Adicionar participante"
-                                                >
-                                                    <Plus size={15} />
-                                                </button>
-                                            </div>
-                                            <Erro texto={errosCampo.novoEmail} />
                                             {semCliente && (
                                                 <p className="flex items-start gap-1.5 pt-1 text-[11.5px] text-amber-300/85">
                                                     <Info size={12} className="mt-0.5 shrink-0" />
@@ -757,8 +876,8 @@ export default function EventoFormulario({
                         <p className="text-[11.5px] text-white/40">
                             {somenteData
                                 ? 'Nenhum e-mail é enviado.'
-                                : marcados.length
-                                    ? `O Google avisa ${marcados.length} ${marcados.length === 1 ? 'convidado' : 'convidados'} por e-mail ao salvar.`
+                                : totalConvidados
+                                    ? `O Google avisa ${totalConvidados} ${totalConvidados === 1 ? 'convidado' : 'convidados'} por e-mail ao salvar.`
                                     : 'Sem convidados: o evento fica só na agenda do organizador.'}
                         </p>
                         <div className="flex gap-2">
