@@ -187,8 +187,19 @@ export default function Detalhe({
 
                 {/* ─── O corpo: trabalho à esquerda, respostas à direita ── */}
                 <div className="grid gap-4 xl:grid-cols-3 items-start">
-                    <div className="xl:col-span-2">
+                    <div className="space-y-4 xl:col-span-2">
                         <ChecklistPorEtapa passos={passos} aoAbrirPasso={(p) => setPassoAberto(p.id)} />
+
+                        {/* A Agenda de verdade (16/09/2026): mini calendário,
+                            próximos eventos e o "Agendar" em drawer. Desde
+                            17/09 fica embaixo do checklist, na coluna larga —
+                            na da direita ela espremia e deixava o vazio aqui. */}
+                        <AgendaCompacta
+                            onboarding={onboarding}
+                            reuniao={reuniao}
+                            rotina={respostas?.agenda}
+                            aoAjustarRotina={() => setCaixa('rotina')}
+                        />
                     </div>
 
                     <div className="space-y-4">
@@ -198,16 +209,6 @@ export default function Detalhe({
                             contatos={respostas?.contatos ?? []}
                             investimento={respostas?.investimento}
                             aoEditar={() => setCaixa('resumo')}
-                        />
-
-                        {/* A Agenda de verdade (16/09/2026): mini calendário,
-                            próximos eventos e o "Agendar" em drawer. A rotina
-                            combinada continua na caixa própria. */}
-                        <AgendaCompacta
-                            onboarding={onboarding}
-                            reuniao={reuniao}
-                            rotina={respostas?.agenda}
-                            aoAjustarRotina={() => setCaixa('rotina')}
                         />
 
                         {mapeamento && (
