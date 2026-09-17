@@ -165,6 +165,11 @@ export default function Companies({ companies, users, estrategistas = [], analis
     // `role:admin`. `?? false` pela mesma razão da flag acima: prop ausente
     // esconde, nunca mostra.
     const podeGerirPortal = usePage().props.pode_gerir_portal ?? false;
+    // Quick 260917-mfu — quem pode abrir o modal de edição (admin ou líder do
+    // setor Performance). Antes o lápis aparecia para todo mundo que alcança a
+    // tela, e quem não podia levava 403 depois de preencher o formulário.
+    // `?? false` pela mesma razão das flags acima: prop ausente esconde.
+    const podeEditarEmpresa = usePage().props.pode_editar_empresa ?? false;
     // Lidos AQUI, no corpo do componente, e não lá embaixo no JSX da aba.
     // `usePage()` é um hook: chamá-lo dentro de `{tab === 'onboarding' && …}`
     // significa chamá-lo condicionalmente, e o React conta os hooks por
@@ -627,8 +632,12 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                                         >
                                                             <ShoppingCart className="h-4 w-4" />
                                                         </Button>
-                                                        <Button size="icon" variant="ghost" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                                                        {c.active ? (
+                                                        {podeEditarEmpresa && (
+                                                            <Button size="icon" variant="ghost" title="Editar empresa" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
+                                                        )}
+                                                        {/* Excluir/reativar continuam admin-only nas rotas — o botão
+                                                            acompanha, senão promete o que a rota nega. */}
+                                                        {isAdmin && (c.active ? (
                                                             <Button size="icon" variant="ghost" title="Excluir empresa" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => destroy(c)}>
                                                                 <Trash2 className="h-4 w-4" />
                                                             </Button>
@@ -636,7 +645,7 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                                             <Button size="icon" variant="ghost" title="Reativar empresa" className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10" onClick={() => ativar(c)}>
                                                                 <RotateCcw className="h-4 w-4" />
                                                             </Button>
-                                                        )}
+                                                        ))}
                                                     </div>
                                                 </TableCell>
                                             </TableRow>

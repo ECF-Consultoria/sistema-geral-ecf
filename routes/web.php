@@ -1035,7 +1035,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // GET /companies + /companies/{c} migrados pra grupo permission:core.empresas
         // acima (quick 260623) — lider de Performance precisa acessar.
         // Cadastro de empresa removido de /companies — entrada é exclusiva por /comercial/empresas.
-        Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
+        //
+        // Quick 260917-mfu — a EDIÇÃO sai do `role:admin`. Quem distribui as
+        // empresas (o líder do setor Performance) é quem corrige a distribuição
+        // depois, e ele levava 403 no botão de lápis que a tela mostrava para
+        // ele. Quem pode de fato é decidido em `CompanyController::
+        // podeGerirEmpresa()` — mesma régua do `pode_distribuir` da aba
+        // Distribuição, para não haver duas respostas para "o líder pode?".
+        Route::put('/companies/{company}', [CompanyController::class, 'update'])
+            ->middleware('permission:core.empresas')
+            ->withoutMiddleware('role:admin')
+            ->name('companies.update');
         Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->name('companies.destroy');
         // Reativa empresa desativada pelo Comercial (active=false → true)
         Route::post('/companies/{company}/ativar', [CompanyController::class, 'ativar'])->name('companies.ativar');
@@ -1077,7 +1087,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/companies/{company}/logo', [CompanyController::class, 'destroyLogo'])->name('companies.logo.destroy');
         // Ações em massa da aba Pendências (excluir / atribuir analista|estrategista)
         Route::post('/companies/bulk-destroy', [CompanyController::class, 'bulkDestroy'])->name('companies.bulk-destroy');
-        Route::post('/companies/bulk-assign', [CompanyController::class, 'bulkAssign'])->name('companies.bulk-assign');
+        // Quick 260917-mfu — atribuir responsável em massa é o MESMO ato do
+        // modal de edição, então segue a mesma porta (`podeGerirEmpresa()`).
+        // EXCLUIR em massa continua admin-only, de propósito.
+        Route::post('/companies/bulk-assign', [CompanyController::class, 'bulkAssign'])
+            ->middleware('permission:core.empresas')
+            ->withoutMiddleware('role:admin')
+            ->name('companies.bulk-assign');
 
         // Grupos nomeados de empresas (tipo carteira) — gestão a partir de /companies
         Route::post('/company-groups', [CompanyGroupController::class, 'store'])->name('company-groups.store');

@@ -133,6 +133,65 @@ class CompanyController extends Controller
         return $setorId !== null && $usuario->isLiderDe($setorId);
     }
 
+    /**
+     * Quem edita a empresa e troca os responsáveis nesta tela (quick 260917-mfu).
+     *
+     * Admin, e o líder do setor Performance. É a MESMA régua do
+     * `pode_distribuir` montado em `index()`: quem escolhe o time quando a
+     * empresa chega é quem conserta a escolha depois. Sem isto, o líder via o
+     * botão de lápis (renderizado sem condição) e levava 403 ao salvar.
+     *
+     * Deliberadamente NÃO inclui `coordenacao.distribuir`: a chave da Fase 154
+     * autoriza distribuir empresa nova, não editar o cadastro inteiro (nome,
+     * CNPJ, e-mails, grupo) de qualquer empresa.
+     */
+    private function podeGerirEmpresa(?User $usuario): bool
+    {
+        if ($usuario === null) {
+            return false;
+        }
+
+        return $usuario->isAdmin() || $this->ehLiderDaPerformance($usuario);
+    }
+
+    /**
+     * Apaga o slot PERFORMANCE da pivot para os papéis informados
+     * (quick 260917-mfu).
+     *
+     * ⚠️ O escopo daqui espelha, LINHA POR LINHA, o que
+     * `Company::analistaPerformance()`/`estrategistaPerformance()` leem:
+     * `servico_id` de serviço com `setor='performance'` **OU** `servico_id`
+     * NULL (o slot consolidado legado). Era essa divergência o bug: a escrita
+     * apagava só o `servico_id` devolvido por `servicoPerformanceAtivoId()`
+     * (`MIN()` dos contratos performance ativos), a linha legada NULL
+     * sobrevivia, e a leitura — que enxerga as duas e faz `->first()` sem
+     * `ORDER BY` — devolvia a antiga. A tela dizia "salvo" e mostrava o
+     * responsável de antes (empresa 251 em produção, 17/09/2026).
+     *
+     * Se um dia as duas réguas divergirem de novo, o sintoma volta igual:
+     * mexer aqui obriga a mexer lá, e vice-versa.
+     *
+     * Continua SEM tocar em Shopee (`servico_id` do setor shopee) nem em
+     * nenhum outro setor — que é o que a Fase 76 (DEC-A3) protegia.
+     *
+     * @param  array<int, string>  $roles
+     */
+    private function limparSlotPerformance(Company $company, array $roles): void
+    {
+        DB::table('company_users')
+            ->where('company_id', $company->id)
+            ->whereIn('role', $roles)
+            ->where(function ($q) {
+                $q->whereIn('servico_id', function ($sub) {
+                    $sub->select('id')->from('servicos')->where('setor', Servico::SETOR_PERFORMANCE);
+                })
+                // Pitfall 1 da Fase 76: `= NULL` nunca casa — o slot
+                // consolidado só sai com whereNull.
+                ->orWhereNull('servico_id');
+            })
+            ->delete();
+    }
+
     public function index(Request $request, AcessosDoPortalService $acessosPortal)
     {
         // Phase 18 W5-T4 — Filtro opcional por cust_id_status. Aceita apenas
@@ -460,7 +519,7 @@ class CompanyController extends Controller
         // Fase 157 — a fila do líder. `DistribuicaoService` é REUSADO inteiro
         // (mesma régua de elegibilidade, mesmo desempate determinístico, mesma
         // transição 5→6): o que muda é quem chama e de onde, nunca a régua.
-        $podeDistribuir   = $usuario->isAdmin() || $this->ehLiderDaPerformance($usuario);
+        $podeDistribuir   = $this->podeGerirEmpresa($usuario);
         $filaDistribuicao = [];
 
         if ($podeDistribuir) {
@@ -521,6 +580,13 @@ class CompanyController extends Controller
             // é este bloco.
             'pode_distribuir'    => $podeDistribuir,
             'fila_distribuicao'  => $filaDistribuicao,
+
+            // Quick 260917-mfu — o botão de lápis era renderizado SEM condição,
+            // então quem chega aqui por `core.empresas` sem poder editar (o
+            // analista e o estrategista, que veem a própria carteira) abria o
+            // modal e levava 403 no salvar. Mesma régua da escrita
+            // (`podeGerirEmpresa()`), para a tela não prometer o que a rota nega.
+            'pode_editar_empresa' => $podeDistribuir,
             // Onboarding NASCE do contrato (Observer), nunca de um botão. O
             // cockpit não oferece "criar onboarding": oferece o caminho real,
             // que é cadastrar a empresa/contrato. Sem esta flag o botão
@@ -998,6 +1064,14 @@ class CompanyController extends Controller
 
     public function update(Request $request, Company $company)
     {
+        // Quick 260917-mfu — a rota saiu do grupo `role:admin`; quem pode de
+        // fato é decidido AQUI (admin ou líder do setor Performance).
+        abort_unless(
+            $this->podeGerirEmpresa($request->user()),
+            403,
+            'Você não tem permissão para editar esta empresa.'
+        );
+
         // Fase 150 (plano 06, ETAPA-03 / D-12) — NÃO acrescente `etapa` nem
         // nenhuma chave `pendencia_*` a esta lista. `companies.etapa` é
         // gravado EXCLUSIVAMENTE por `App\Services\FluxoEntrada\EtapaTransicaoService`
@@ -1045,52 +1119,62 @@ class CompanyController extends Controller
             $company->update(['status' => 'ativo']);
         }
 
-        $sync = [];
-        if (!empty($data['consultor_id'])) {
-            $sync[$data['consultor_id']] = ['role' => 'consultor', 'assigned_at' => now()->toDateString()];
-        }
-        if (!empty($data['estrategista_id']) && $data['estrategista_id'] !== $data['consultor_id']) {
-            $sync[$data['estrategista_id']] = ['role' => 'estrategista', 'assigned_at' => now()->toDateString()];
-        }
+        // Quick 260917-mfu — a troca de responsáveis roda sempre que o
+        // formulário TROUXE os campos, inclusive vazios. Antes era
+        // `if (!empty($sync))`, e por isso limpar os dois responsáveis (deixar
+        // os dois selects em "—") era um no-op silencioso: a tela dizia
+        // "salvo" e os dois continuavam lá. Request que não manda os campos
+        // (ex.: chamada parcial) segue sem tocar na pivot.
+        $mexeuNosResponsaveis = $request->has('consultor_id') || $request->has('estrategista_id');
 
-        if (!empty($sync)) {
+        if ($mexeuNosResponsaveis) {
+            $novoAnalista     = !empty($data['consultor_id'])    ? (int) $data['consultor_id']    : null;
+            $novoEstrategista = !empty($data['estrategista_id']) ? (int) $data['estrategista_id'] : null;
+
+            // Mesma pessoa nos dois papéis continua valendo só como analista —
+            // regra herdada, preservada de propósito.
+            if ($novoEstrategista !== null && $novoEstrategista === $novoAnalista) {
+                $novoEstrategista = null;
+            }
+
             // Fase 108 — captura os responsáveis ANTES da troca, para registrar
             // o histórico de gerenciamento (entrada/saída) logo abaixo.
             $antigoAnalista     = $company->analistaPerformance()->value('users.id');
             $antigoEstrategista = $company->estrategistaPerformance()->value('users.id');
 
-            // Phase 76 (DEC-A3 / Pitfall 3): escrita ESCOPADA por servico_id.
-            // Resolve o servico_id do contrato performance ATIVO (NULL p/ ML puro
-            // sem contrato performance = slot consolidado). NUNCA detach() de TUDO
-            // — isso apagaria o responsável Shopee (que vive em outro servico_id).
+            // Phase 76 (DEC-A3 / Pitfall 3): escrita ESCOPADA — NUNCA detach()
+            // de TUDO, que apagaria o responsável Shopee (outro servico_id).
+            // Resolve o servico_id do contrato performance ATIVO (NULL p/ ML
+            // puro sem contrato performance = slot consolidado).
             $servicoMlId = $this->servicoPerformanceAtivoId($company);
 
-            // Injeta o servico_id em cada linha do pivot a gravar (persiste a
-            // coluna independente de withPivot).
-            foreach ($sync as $userId => $pivot) {
-                $sync[$userId]['servico_id'] = $servicoMlId;
+            // Apaga o slot performance INTEIRO (inclusive a linha legada
+            // servico_id NULL) antes de regravar — ver limparSlotPerformance().
+            $this->limparSlotPerformance($company, ['consultor', 'estrategista']);
+
+            $sync = [];
+            if ($novoAnalista !== null) {
+                $sync[$novoAnalista] = ['role' => 'consultor', 'servico_id' => $servicoMlId, 'assigned_at' => now()->toDateString()];
+            }
+            if ($novoEstrategista !== null) {
+                $sync[$novoEstrategista] = ['role' => 'estrategista', 'servico_id' => $servicoMlId, 'assigned_at' => now()->toDateString()];
             }
 
-            // Detach ESCOPADO ao slot performance/consolidado (roles consultor/
-            // estrategista), filtrando por servico_id — whereNull quando NULL
-            // (Pitfall 1: `= NULL` nunca casa). Linhas Shopee ficam intactas.
-            $detach = DB::table('company_users')
-                ->where('company_id', $company->id)
-                ->whereIn('role', ['consultor', 'estrategista']);
-            $servicoMlId === null
-                ? $detach->whereNull('servico_id')
-                : $detach->where('servico_id', $servicoMlId);
-            $detach->delete();
+            if (!empty($sync)) {
+                $company->users()->attach($sync);
+            }
 
-            $company->users()->attach($sync);
+            // A relação já foi lida acima (valores "antigos"); o cache do
+            // Eloquent precisa cair para quem ler depois enxergar o novo.
+            $company->unsetRelation('analistaPerformance')->unsetRelation('estrategistaPerformance');
 
             // Fase 108 — registra as trocas de responsável no histórico.
             $this->registrarHistoricoGestao(
                 $company,
                 $antigoAnalista !== null ? (int) $antigoAnalista : null,
                 $antigoEstrategista !== null ? (int) $antigoEstrategista : null,
-                !empty($data['consultor_id']) ? (int) $data['consultor_id'] : null,
-                !empty($data['estrategista_id']) ? (int) $data['estrategista_id'] : null,
+                $novoAnalista,
+                $novoEstrategista,
                 (int) $request->user()->id,
             );
         }
@@ -1206,6 +1290,14 @@ class CompanyController extends Controller
      */
     public function bulkAssign(Request $request)
     {
+        // Quick 260917-mfu — atribuir em massa é o mesmo ato do modal: admin
+        // ou líder do setor Performance (a rota saiu do grupo `role:admin`).
+        abort_unless(
+            $this->podeGerirEmpresa($request->user()),
+            403,
+            'Você não tem permissão para atribuir responsáveis.'
+        );
+
         $data = $request->validate([
             'ids'     => 'required|array|min:1',
             'ids.*'   => 'integer|exists:companies,id',
@@ -1219,14 +1311,11 @@ class CompanyController extends Controller
             // slot performance/consolidado daquele papel — não toca linhas Shopee.
             $servicoMlId = $this->servicoPerformanceAtivoId($c);
 
-            $del = DB::table('company_users')
-                ->where('company_id', $c->id)
-                ->where('role', $data['role']);
-            // Pitfall 1: `= NULL` nunca casa — usar whereNull no slot consolidado.
-            $servicoMlId === null
-                ? $del->whereNull('servico_id')
-                : $del->where('servico_id', $servicoMlId);
-            $del->delete();
+            // Quick 260917-mfu — apaga o slot performance INTEIRO daquele papel
+            // (inclusive a linha legada servico_id NULL). Antes o delete mirava
+            // só `$servicoMlId`, a linha NULL sobrevivia e a leitura mostrava a
+            // antiga. Ver limparSlotPerformance().
+            $this->limparSlotPerformance($c, [$data['role']]);
 
             $c->users()->attach($data['user_id'], [
                 'role'        => $data['role'],
