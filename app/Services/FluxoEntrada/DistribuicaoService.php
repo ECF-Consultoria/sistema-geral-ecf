@@ -24,8 +24,31 @@ use Illuminate\Support\Facades\Log;
  */
 class DistribuicaoService
 {
-    public const ROLE_ANALISTA     = 'analista';
-    public const ROLE_ESTRATEGISTA = 'estrategista';
+    /**
+     * Papéis gravados em `company_users.role` (quick 260917-mfu).
+     *
+     * ⚠️ O papel do Analista na pivot é **`consultor`**, não `analista`. Esta
+     * classe nasceu (Fase 154) gravando `'analista'` — um valor que o enum da
+     * coluna aceita e que **nenhum leitor consulta**: `/companies`, a carteira,
+     * o bônus e o NPS leem `'consultor'`. Uma empresa distribuída pela aba do
+     * líder aparecia, em toda a operação, como empresa sem analista.
+     *
+     * A invariante está escrita em `RelatorioImpactoFonteDesempenho` ("a pivot
+     * nunca grava 'analista'") e é ela que vale. `LEGADO_ROLE_ANALISTA` existe
+     * só para as leituras continuarem enxergando qualquer linha gravada errada
+     * entre a Fase 154 e esta correção.
+     *
+     * Não confundir com `CARGO_*` abaixo: aquilo é `cargos.slug` (quem PODE ser
+     * escolhido), isto é `company_users.role` (o que fica gravado). Usar a
+     * mesma constante para as duas coisas foi exatamente o bug.
+     */
+    public const ROLE_ANALISTA        = 'consultor';
+    public const ROLE_ESTRATEGISTA    = 'estrategista';
+    public const LEGADO_ROLE_ANALISTA = 'analista';
+
+    /** Slugs em `cargos.slug` — quem pode ser escolhido para cada função. */
+    public const CARGO_ANALISTA     = 'analista';
+    public const CARGO_ESTRATEGISTA = 'estrategista';
 
     /** Janela em que uma empresa recém-distribuída ainda conta como "novo cliente" (RESP-02). */
     public const DIAS_NOVO_CLIENTE = 14;
@@ -91,7 +114,14 @@ class DistribuicaoService
             ->where('etapa', Company::ETAPA_AGUARDANDO_DISTRIBUICAO)
             // "ainda não têm responsáveis operacionais" — nenhum dos dois papéis.
             ->whereDoesntHave('users', function ($q) {
-                $q->whereIn('company_users.role', [self::ROLE_ANALISTA, self::ROLE_ESTRATEGISTA]);
+                // LEGADO incluído de propósito: empresa distribuída antes da
+                // correção do papel (quick 260917-mfu) TEM responsável — ela
+                // não pode voltar para a fila como se não tivesse.
+                $q->whereIn('company_users.role', [
+                    self::ROLE_ANALISTA,
+                    self::ROLE_ESTRATEGISTA,
+                    self::LEGADO_ROLE_ANALISTA,
+                ]);
             })
             // ⚠️ Só entra na fila quem TEM serviço ativo. O vínculo de
             // responsável é por serviço (D-A), então empresa sem nenhum não tem
@@ -134,8 +164,8 @@ class DistribuicaoService
     {
         $setorIds = $this->setorIdsDaEmpresa($company);
 
-        $analistas     = $this->porCargo(self::ROLE_ANALISTA, $setorIds);
-        $estrategistas = $this->porCargo(self::ROLE_ESTRATEGISTA, $setorIds);
+        $analistas     = $this->porCargo(self::CARGO_ANALISTA, $setorIds);
+        $estrategistas = $this->porCargo(self::CARGO_ESTRATEGISTA, $setorIds);
 
         $motivo = null;
 
@@ -146,8 +176,8 @@ class DistribuicaoService
         }
 
         if ($motivo !== null) {
-            $analistas     = $this->porCargo(self::ROLE_ANALISTA, []);
-            $estrategistas = $this->porCargo(self::ROLE_ESTRATEGISTA, []);
+            $analistas     = $this->porCargo(self::CARGO_ANALISTA, []);
+            $estrategistas = $this->porCargo(self::CARGO_ESTRATEGISTA, []);
         }
 
         return [

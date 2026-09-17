@@ -243,15 +243,21 @@ class TimelineEntradaService
             ->leftJoin('users as u', 'u.id', '=', 'cu.user_id')
             ->leftJoin('servicos as s', 's.id', '=', 'cu.servico_id')
             ->where('cu.company_id', $company->id)
-            ->whereIn('cu.role', [DistribuicaoService::ROLE_ANALISTA, DistribuicaoService::ROLE_ESTRATEGISTA])
+            // LEGADO_ROLE_ANALISTA: linhas gravadas com o papel errado entre a
+            // Fase 154 e o quick 260917-mfu continuam aparecendo na timeline.
+            ->whereIn('cu.role', [
+                DistribuicaoService::ROLE_ANALISTA,
+                DistribuicaoService::ROLE_ESTRATEGISTA,
+                DistribuicaoService::LEGADO_ROLE_ANALISTA,
+            ])
             ->select('cu.role', 'cu.created_at', 'u.name as responsavel', 's.nome as servico')
             ->get();
 
         return $vinculos->map(fn ($v) => [
             'em'      => Carbon::parse($v->created_at)->toIso8601String(),
-            'acao'    => $v->role === DistribuicaoService::ROLE_ANALISTA
-                ? 'Analista definido'
-                : 'Estrategista definido',
+            'acao'    => $v->role === DistribuicaoService::ROLE_ESTRATEGISTA
+                ? 'Estrategista definido'
+                : 'Analista definido',
             'detalhe' => trim(($v->responsavel ?? '—').($v->servico ? " · {$v->servico}" : '')),
             'usuario' => null,
             // A origem não guarda quem atribuiu — a tela diz isso na letra.

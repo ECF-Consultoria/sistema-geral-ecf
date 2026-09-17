@@ -790,7 +790,9 @@ class OnboardingEngineService
     {
         return \Illuminate\Support\Facades\DB::table('company_users')
             ->where('company_id', $onboarding->company_id)
-            ->whereIn('role', ['analista', 'estrategista'])
+            // 'consultor' é o papel do Analista na pivot; 'analista' só existe
+            // em linhas gravadas errado entre a Fase 154 e o quick 260917-mfu.
+            ->whereIn('role', ['consultor', 'estrategista', 'analista'])
             ->exists();
     }
 

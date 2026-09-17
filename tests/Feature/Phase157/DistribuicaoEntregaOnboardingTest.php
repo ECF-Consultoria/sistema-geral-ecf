@@ -231,7 +231,7 @@ class DistribuicaoEntregaOnboardingTest extends TestCase
 
         $this->assertDatabaseHas('company_users', [
             'company_id' => $c['empresa']->id,
-            'role'       => 'analista',
+            'role'       => 'consultor',
             'user_id'    => $c['analista']->id,
         ]);
         $this->assertDatabaseHas('company_users', [

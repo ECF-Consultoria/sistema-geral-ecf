@@ -144,6 +144,9 @@ class DistribuicaoServiceTest extends TestCase
         $comResp = $this->empresa(['name' => 'DDD Ja tem analista']);
         $this->vincularServico($comResp, $servico);
         $analista = $this->colaborador($this->cargo($setor, 'analista'), 'Analista Um');
+        // Papel LEGADO de propósito: linha como as que a Fase 154 gravava antes
+        // do quick 260917-mfu. Prova que a fila continua reconhecendo-a como
+        // empresa JÁ distribuída (senão ela voltaria para a fila do líder).
         DB::table('company_users')->insert([
             'company_id' => $comResp->id, 'user_id' => $analista->id,
             'role' => 'analista', 'servico_id' => $servico->id,
@@ -312,7 +315,7 @@ class DistribuicaoServiceTest extends TestCase
         foreach ([$s1->id, $s2->id] as $sid) {
             $this->assertDatabaseHas('company_users', [
                 'company_id' => $empresa->id, 'servico_id' => $sid,
-                'role' => 'analista', 'user_id' => $analista->id,
+                'role' => 'consultor', 'user_id' => $analista->id,
             ]);
             $this->assertDatabaseHas('company_users', [
                 'company_id' => $empresa->id, 'servico_id' => $sid,
@@ -401,10 +404,10 @@ class DistribuicaoServiceTest extends TestCase
 
         $this->assertSame(2, DB::table('company_users')->where('company_id', $empresa->id)->count(), 'nada de acumular linha por redistribuição.');
         $this->assertDatabaseHas('company_users', [
-            'company_id' => $empresa->id, 'role' => 'analista', 'user_id' => $a2->id,
+            'company_id' => $empresa->id, 'role' => 'consultor', 'user_id' => $a2->id,
         ]);
         $this->assertDatabaseMissing('company_users', [
-            'company_id' => $empresa->id, 'role' => 'analista', 'user_id' => $a1->id,
+            'company_id' => $empresa->id, 'role' => 'consultor', 'user_id' => $a1->id,
         ]);
     }
 

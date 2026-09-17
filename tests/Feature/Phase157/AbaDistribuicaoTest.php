@@ -193,7 +193,7 @@ class AbaDistribuicaoTest extends TestCase
         $this->assertSame(Company::ETAPA_AGUARDANDO_ONBOARDING, Company::findOrFail($empresa->id)->etapa);
 
         $this->assertDatabaseHas('company_users', [
-            'company_id' => $empresa->id, 'role' => 'analista', 'user_id' => $analista->id,
+            'company_id' => $empresa->id, 'role' => 'consultor', 'user_id' => $analista->id,
         ]);
 
         // O ATOR da transição é o líder — é ele quem distribuiu.
@@ -205,6 +205,38 @@ class AbaDistribuicaoTest extends TestCase
         // E some da fila.
         $props = $this->props($lider);
         $this->assertNull(collect($props['fila_distribuicao'])->firstWhere('id', $empresa->id));
+    }
+
+    /**
+     * Quick 260917-mfu — distribuir tem de APARECER na listagem.
+     *
+     * A distribuição gravava `company_users.role = 'analista'`, papel que
+     * nenhum leitor consulta: a coluna "Analista" de `/companies`, a carteira e
+     * o bônus leem `'consultor'`. A empresa saía da fila do líder e nascia, em
+     * toda a operação, como empresa sem analista. Este teste fecha o circuito
+     * pela relação que a tela usa de fato.
+     */
+    public function test_empresa_distribuida_aparece_com_analista_na_listagem(): void
+    {
+        $empresa  = $this->empresaNaFila();
+        $analista = $this->comCargo('analista');
+        $lider    = $this->lider();
+
+        $this->actingAs($lider)
+            ->post(route('coordenacao.distribuicao.distribuir', $empresa), [
+                'analista_id'     => $analista->id,
+                'estrategista_id' => $lider->id,
+            ])
+            ->assertStatus(302);
+
+        $empresa = Company::findOrFail($empresa->id);
+
+        $this->assertSame(
+            $analista->id,
+            $empresa->analistaPerformance()->first()?->id,
+            'A empresa distribuída aparece SEM analista na listagem, na carteira e no bônus.'
+        );
+        $this->assertSame($lider->id, $empresa->estrategistaPerformance()->first()?->id);
     }
 
     /**

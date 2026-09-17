@@ -219,7 +219,7 @@ class DistribuicaoRotaTest extends TestCase
         $this->assertSame(Company::ETAPA_AGUARDANDO_ONBOARDING, Company::findOrFail($c['empresa']->id)->etapa);
 
         $this->assertDatabaseHas('company_users', [
-            'company_id' => $c['empresa']->id, 'role' => 'analista', 'user_id' => $c['analista']->id,
+            'company_id' => $c['empresa']->id, 'role' => 'consultor', 'user_id' => $c['analista']->id,
         ]);
         $this->assertDatabaseHas('company_users', [
             'company_id' => $c['empresa']->id, 'role' => 'estrategista', 'user_id' => $c['estrategista']->id,

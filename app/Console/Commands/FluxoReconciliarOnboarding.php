@@ -168,14 +168,21 @@ class FluxoReconciliarOnboarding extends Command
      */
     private function donosDistribuidos(Company $company): array
     {
+        // 'consultor' é o papel do Analista na pivot; 'analista' só existe em
+        // linhas gravadas errado entre a Fase 154 e o quick 260917-mfu — as
+        // duas somam na MESMA função, senão a mesma pessoa em linhas de papéis
+        // diferentes seria lida como duas e cairia em `ambiguo`.
         $porFuncao = DB::table('company_users')
             ->where('company_id', $company->id)
-            ->whereIn('role', ['analista', 'estrategista'])
+            ->whereIn('role', ['consultor', 'analista', 'estrategista'])
             ->get(['role', 'user_id'])
             ->groupBy('role')
             ->map(fn ($linhas) => $linhas->pluck('user_id')->unique()->values());
 
-        $analistaIds     = $porFuncao->get('analista', collect());
+        $analistaIds = $porFuncao->get('consultor', collect())
+            ->merge($porFuncao->get('analista', collect()))
+            ->unique()
+            ->values();
         $estrategistaIds = $porFuncao->get('estrategista', collect());
 
         return [
