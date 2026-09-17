@@ -3,8 +3,8 @@ quick_id: 260917-mfu
 slug: atribuicao-responsaveis-lider
 date: 2026-09-17
 status: complete
-commit: 84ac5e36
-deployed: false
+commit: 84ac5e36, a12f921c
+deployed: true
 ---
 
 # Quick 260917-mfu — Atribuição de responsáveis: o 403 do líder e a troca que não valia
@@ -94,19 +94,30 @@ Fase 76) segue verde.
 - As outras três empresas com linha `servico_id NULL` (184, 188, 189) têm uma
   linha só por papel: aparecem certo hoje e não precisam de nada.
 
-## Achado fora de escopo (NÃO corrigido)
+## Bug 3 — a distribuição gravava um papel que ninguém lê (corrigido a pedido)
 
-`DistribuicaoService` (Fases 154/157) grava `company_users.role = 'analista'`
-(`ROLE_ANALISTA`) — papel que **nenhum** leitor consulta: `/companies`, a
-carteira, o bônus e o NPS leem `'consultor'`. `RelatorioImpactoFonteDesempenho`
-chega a documentar a invariante ("a pivot nunca grava 'analista'"), quebrada
-ali. A mesma constante é usada para duas coisas diferentes: o **slug do cargo**
-(certo, em `elegiveis()`) e o **papel da pivot** (errado, em `vincular()`).
+`DistribuicaoService` (Fases 154/157) gravava `company_users.role = 'analista'`
+— valor que o enum da coluna aceita e que **nenhum leitor consulta**:
+`/companies`, a carteira, o bônus e o NPS leem `'consultor'`. A empresa
+distribuída pela aba do líder saía da fila e nascia, em toda a operação, como
+empresa **sem analista**. A invariante está escrita em
+`RelatorioImpactoFonteDesempenho` ("a pivot nunca grava 'analista'").
 
-Hoje **não há nenhuma linha `'analista'` em produção**, então nada está errado
-no banco — mas a aba Distribuição é justamente a do líder, e o primeiro uso
-dela produzirá uma empresa distribuída cujos responsáveis somem da listagem e
-da carteira. Correção provável: `ROLE_ANALISTA = 'consultor'` na escrita,
-mais `'consultor'` nos `whereIn` de `fila()`, `FluxoReconciliarOnboarding` e
-`OnboardingEngineService` — e os testes das Fases 154/157 que afirmam
-`'role' => 'analista'`.
+A raiz: **uma constante servindo a duas coisas diferentes** — o slug do cargo
+(quem PODE ser escolhido, em `elegiveis()`) e o papel da pivot (o que fica
+gravado, em `vincular()`). Agora são `CARGO_*` e `ROLE_*`.
+
+`LEGADO_ROLE_ANALISTA = 'analista'` entra nas LEITURAS — `fila()`,
+`TimelineEntradaService`, `OnboardingEngineService::empresaTemResponsavelOperacional()`
+e `FluxoReconciliarOnboarding::donosDistribuidos()` — para que qualquer linha
+gravada errado continue reconhecida: empresa já distribuída não pode voltar
+para a fila. Em produção **não havia nenhuma linha `'analista'`**: o bug estava
+adormecido e nada precisou ser reparado no banco.
+
+`AbaDistribuicaoTest::test_empresa_distribuida_aparece_com_analista_na_listagem`
+fecha o circuito pela relação que a tela usa de fato. A fixture de papel legado
+em `DistribuicaoServiceTest` ficou como estava, de propósito — passou a ser ela
+que exercita o ramo de compatibilidade.
+
+`Phase154 + Phase157 + Onboarding`: 179/179 OK.
+
