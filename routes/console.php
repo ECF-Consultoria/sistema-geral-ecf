@@ -151,6 +151,14 @@ Schedule::command('shopee:sync')
     ->name('sync-shopee-direct')
     ->withoutOverlapping();
 
+// Keep-alive dos tokens Shopee (ERP + Ads) — 03:00, independente do sync.
+// Renova tokens sem renovação há >12h e tenta reativar revogados recentes;
+// falhas ficam em shopee_tokens.last_error (alerta no painel /shopee-oauth).
+Schedule::command('shopee:refresh-tokens')
+    ->dailyAt('03:00')
+    ->name('refresh-shopee-tokens')
+    ->withoutOverlapping();
+
 // Sync de Ads Shopee (D-1) — 11:30, logo após o faturamento (shopee:sync).
 // Só empresas com token ADS ativo; grava as colunas ad_* em shopee_metrics.
 // A Shopee só entrega Ads dos últimos ~6 meses (o comando faz o clamp).

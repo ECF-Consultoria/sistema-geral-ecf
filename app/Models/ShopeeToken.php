@@ -23,6 +23,8 @@ class ShopeeToken extends Model
         'last_refreshed_at',
         'status',
         'connected_at',
+        'last_error',
+        'last_error_at',
     ];
 
     protected $casts = [
@@ -32,6 +34,7 @@ class ShopeeToken extends Model
         'refresh_expires_at' => 'datetime',
         'last_refreshed_at'  => 'datetime',
         'connected_at'       => 'datetime',
+        'last_error_at'      => 'datetime',
     ];
 
     protected $hidden = ['access_token', 'refresh_token'];
@@ -51,5 +54,21 @@ class ShopeeToken extends Model
     public function expiresSoon(int $minutes = 30): bool
     {
         return $this->expires_at && $this->expires_at->lt(now()->addMinutes($minutes));
+    }
+
+    // True quando a última tentativa de renovação falhou (erro mais novo que o
+    // último refresh bem-sucedido) ou quando a renovação está atrasada (> 36h —
+    // o sync diário renova a cada ~24h, então passar disso indica que parou).
+    public function renovacaoComProblema(): bool
+    {
+        if ($this->status !== 'active') {
+            return false;
+        }
+
+        if ($this->last_error_at && (! $this->last_refreshed_at || $this->last_error_at->gt($this->last_refreshed_at))) {
+            return true;
+        }
+
+        return ! $this->last_refreshed_at || $this->last_refreshed_at->lt(now()->subHours(36));
     }
 }

@@ -188,6 +188,8 @@ class ShopeeService
                 'last_refreshed_at'  => now(),
                 'status'             => 'active',
                 'connected_at'       => now(),
+                'last_error'         => null,
+                'last_error_at'      => null,
             ]
         );
     }
@@ -197,19 +199,24 @@ class ShopeeService
      * Serializa por empresa com Cache::lock para evitar dois processos usando o
      * mesmo refresh_token em paralelo (o segundo receberia erro e mataria a conexão).
      *
+     * Toda falha fica registrada em last_error/last_error_at (o painel mostra
+     * "Falha na renovação") e vai para Log::error — produção roda LOG_LEVEL=error.
+     *
+     * @param bool $force Renova mesmo com o access_token ainda válido (keep-alive
+     *                    do shopee:refresh-tokens, que mantém a cadeia do refresh viva).
      * @throws \RuntimeException em erro de refresh (reconectar) ou transitório (retry)
      */
-    public function refreshToken(ShopeeToken $token): ShopeeToken
+    public function refreshToken(ShopeeToken $token, bool $force = false): ShopeeToken
     {
         $companyId = $token->company_id;
 
         try {
-            return Cache::lock("shopee-refresh-{$this->app}-{$companyId}", 15)->block(10, function () use ($token, $companyId) {
+            return Cache::lock("shopee-refresh-{$this->app}-{$companyId}", 15)->block(10, function () use ($token, $force) {
                 // Recarrega: outro processo pode ter renovado enquanto esperávamos o lock.
                 $token = $token->fresh() ?? $token;
 
                 // Já ativo e longe de expirar → reaproveita (evita rotação à toa).
-                if ($token->status === 'active' && ! $token->expiresSoon(10)) {
+                if (! $force && $token->status === 'active' && ! $token->expiresSoon(10)) {
                     return $token;
                 }
 
@@ -234,7 +241,7 @@ class ShopeeService
                 try {
                     $response = $this->http()->post($url, $body);
                 } catch (\Illuminate\Http\Client\ConnectionException $e) {
-                    Log::warning("[Shopee] Falha de conexão ao renovar token empresa {$companyId}: {$e->getMessage()}");
+                    $this->registrarFalha($token, "Falha de conexão: {$e->getMessage()}");
                     throw new \RuntimeException('[Shopee] Erro de conexão ao renovar token (transitório).');
                 }
 
@@ -247,18 +254,14 @@ class ShopeeService
                         || str_contains($error, 'invalid')
                         || str_contains($error, 'expire');
 
+                    $detalhe = trim(($json['error'] ?? "HTTP {$response->status()}") . ' ' . ($json['message'] ?? ''));
+
                     if ($isInvalid) {
-                        $token->update(['status' => 'revoked']);
-                        Log::warning('[Shopee] Refresh token revogado', [
-                            'company_id' => $companyId,
-                            'response'   => $response->body(),
-                        ]);
+                        $this->registrarFalha($token, "Refresh recusado — empresa precisa reconectar ({$detalhe})", revogar: true);
                         throw new \RuntimeException('[Shopee] Refresh token inválido — empresa precisa reconectar.');
                     }
 
-                    Log::warning("[Shopee] Erro transitório ao renovar token empresa {$companyId} — conexão mantida ativa", [
-                        'response' => $response->body(),
-                    ]);
+                    $this->registrarFalha($token, "Erro transitório — conexão mantida ativa ({$detalhe})");
                     throw new \RuntimeException('[Shopee] Erro transitório ao renovar token.');
                 }
 
@@ -271,6 +274,8 @@ class ShopeeService
                     'refresh_expires_at' => now()->addDays(30),
                     'last_refreshed_at' => now(),
                     'status'            => 'active',
+                    'last_error'        => null,
+                    'last_error_at'     => null,
                 ]);
 
                 return $token->fresh();
@@ -288,6 +293,26 @@ class ShopeeService
     }
 
     // ═══ Token: helpers ═══════════════════════════════════════════════════════
+
+    /**
+     * Grava a falha de renovação no token (visível no painel) e loga como erro.
+     * Com $revogar, marca o token como revoked (a empresa precisa reconectar).
+     */
+    private function registrarFalha(ShopeeToken $token, string $mensagem, bool $revogar = false): void
+    {
+        $dados = [
+            'last_error'    => mb_substr($mensagem, 0, 1000),
+            'last_error_at' => now(),
+        ];
+        if ($revogar) {
+            $dados['status'] = 'revoked';
+        }
+
+        $token->update($dados);
+
+        $nome = $token->company?->name;
+        Log::error("[Shopee] Renovação do token {$this->app} falhou empresa {$token->company_id} ({$nome}): {$mensagem}");
+    }
 
     /**
      * Retorna token válido da empresa, renovando se necessário.

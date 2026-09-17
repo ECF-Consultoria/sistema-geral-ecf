@@ -39,7 +39,7 @@ class ShopeeOAuthController extends Controller
                        ->whereHas('servico', fn ($s) => $s->where('setor', Servico::SETOR_SHOPEE))
                 )->orWhereHas('shopeeTokens');
             })
-            ->with('shopeeToken')
+            ->with(['shopeeToken', 'shopeeAdsToken'])
             ->orderBy('name')
             ->get(['id', 'name', 'shopee_link_generated_at', 'shopee_link_url'])
             ->map(fn ($c) => [
@@ -48,15 +48,33 @@ class ShopeeOAuthController extends Controller
                 'shopee_link_generated_at' => $c->shopee_link_generated_at?->toISOString(),
                 'shopee_link_expires_at'   => $c->shopee_link_generated_at?->addDays(7)->toISOString(),
                 'shopee_link_url'          => $c->shopee_link_url,
-                'shopee_token'             => $c->shopeeToken ? [
-                    'status'       => $c->shopeeToken->status,
-                    'shop_id'      => $c->shopeeToken->shop_id,
-                    'connected_at' => $c->shopeeToken->connected_at?->toISOString(),
-                    'expires_at'   => $c->shopeeToken->expires_at?->toISOString(),
-                ] : null,
+                'shopee_token'             => $this->tokenPayload($c->shopeeToken),
+                'shopee_ads_token'         => $this->tokenPayload($c->shopeeAdsToken),
             ])->values();
 
-        return Inertia::render('ShopeeOAuth/Index', ['companies' => $companies]);
+        return Inertia::render('ShopeeOAuth/Index', [
+            'companies'      => $companies,
+            'ads_configured' => ShopeeService::for('ads')->isConfigured(),
+        ]);
+    }
+
+    /** Dados do token exibidos no painel (nunca expõe access/refresh token). */
+    private function tokenPayload($token): ?array
+    {
+        if (! $token) {
+            return null;
+        }
+
+        return [
+            'status'            => $token->status,
+            'shop_id'           => $token->shop_id,
+            'connected_at'      => $token->connected_at?->toISOString(),
+            'expires_at'        => $token->expires_at?->toISOString(),
+            'last_refreshed_at' => $token->last_refreshed_at?->toISOString(),
+            'last_error'        => $token->last_error,
+            'last_error_at'     => $token->last_error_at?->toISOString(),
+            'com_problema'      => $token->renovacaoComProblema(),
+        ];
     }
 
     // ── Gerar link de conexão (guiado, 1 link p/ os 2 apps) ───────────────────
@@ -71,14 +89,21 @@ class ShopeeOAuthController extends Controller
         // Link expira DE VERDADE em 7 dias (bate com o contador do painel, com a
         // mensagem "válido por 7 dias" e com o STATE_TTL do OAuth). Depois disso a
         // assinatura fica inválida (403) e o admin regenera pelo botão "Regerar".
-        $url = URL::temporarySignedRoute('shopee.connect.landing', now()->addDays(7), ['company' => $company->id]);
+        $expiraEm = now()->addDays(7);
+        $url = URL::temporarySignedRoute('shopee.connect.landing', $expiraEm, ['company' => $company->id]);
 
         $company->update([
             'shopee_link_generated_at' => now(),
             'shopee_link_url'          => $url,
         ]);
 
-        return response()->json(['url' => $url]);
+        // generated_at/expires_at voltam para o painel atualizar o badge na hora
+        // (sem isso, regerar um link vencido continuava mostrando "expirado").
+        return response()->json([
+            'url'          => $url,
+            'generated_at' => $company->shopee_link_generated_at->toISOString(),
+            'expires_at'   => $expiraEm->toISOString(),
+        ]);
     }
 
     // ── Landing guiada (pública, assinada) ────────────────────────────────────
