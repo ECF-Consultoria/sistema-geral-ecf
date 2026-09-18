@@ -230,27 +230,55 @@ class ChecklistEndpointsTest extends TestCase
         $this->assertNotSame($terceiro->id, $linha->feito_por);
     }
 
-    // ─── Caso 3 — item automático é recusado e nada muda ────────────────────
+    // ─── Caso 3 — item automático aceita marcação à mão (2026-09-18) ────────
 
-    public function test_concluir_item_automatico_e_recusado_sem_gravar_nem_mover_a_etapa(): void
+    /**
+     * Este caso afirmava o CONTRÁRIO até 2026-09-18: a D-13 proibia marcar à
+     * mão item com resolver, e o endpoint devolvia `error`. O usuário decidiu
+     * que todo item precisa aceitar check manual — o resolver demora a
+     * enxergar fatos que já aconteceram (contrato assinado fora da Clicksign)
+     * e a entrada inteira ficava travada esperando sinal que não vinha.
+     *
+     * A parte que REALMENTE precisa de teste é a sobrevivência: `paraEmpresa()`
+     * roda o resolver a cada montagem e, sem a guarda do override, o
+     * `status = aberto` do resolver apagaria a marcação no carregamento
+     * seguinte — clique que "funciona" e some no F5, sem erro nenhum na tela.
+     */
+    public function test_concluir_item_automatico_marca_a_mao_e_sobrevive_ao_resolver(): void
     {
         $empresa = $this->empresaComServico();
+        $user    = $this->admin();
 
-        $response = $this->actingAs($this->admin())->post(
+        $response = $this->actingAs($user)->post(
             route('admin.contratos.checklist.concluir', ['company' => $empresa, 'chave' => 'contrato_enviado'])
         );
 
         $response->assertStatus(302);
-        $response->assertSessionHas('error');
+        $response->assertSessionHas('success');
 
-        $this->assertDatabaseMissing('checklist_administrativo_itens', [
+        $this->assertDatabaseHas('checklist_administrativo_itens', [
+            'company_id' => $empresa->id,
+            'chave'      => 'contrato_enviado',
+            'status'     => ChecklistAdministrativoItem::STATUS_CONCLUIDO,
+            'feito_por'  => $user->id,
+        ]);
+
+        // A montagem seguinte roda o resolver de novo — que continua dizendo
+        // "não enviado". O item tem de continuar concluído mesmo assim.
+        $this->checklistService()->paraEmpresa($empresa->fresh());
+
+        $this->assertDatabaseHas('checklist_administrativo_itens', [
             'company_id' => $empresa->id,
             'chave'      => 'contrato_enviado',
             'status'     => ChecklistAdministrativoItem::STATUS_CONCLUIDO,
         ]);
 
-        // O funil NÃO sincroniza no ramo de exceção — nada mudou.
-        $this->assertSame(Company::ETAPA_AGUARDANDO_ADMINISTRATIVO, $this->etapaDe($empresa));
+        // E o funil sincroniza, como em toda mutação bem-sucedida (D-15): o
+        // item 2 fechado tira a empresa de "aguardando administrativo" e a
+        // leva ao degrau 2→3, porque para o checklist o contrato FOI enviado.
+        // Este é o preço declarado de deixar marcar à mão — a etapa acompanha
+        // a afirmação humana, não o envelope.
+        $this->assertSame(Company::ETAPA_AGUARDANDO_ASSINATURA, $this->etapaDe($empresa));
     }
 
     // ─── Caso 4 — chave fora do catálogo: 404 (T-152-08-04) ─────────────────

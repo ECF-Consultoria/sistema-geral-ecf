@@ -142,9 +142,19 @@ class ChecklistMarcacaoManualAutoriaTest extends TestCase
         $this->assertNull($linha->feito_em);
     }
 
-    // ─── Caso 3 — marcar item automático lança DomainException, nada é gravado ──
+    // ─── Caso 3 — item automático só fecha à mão com `forcar` EXPLÍCITO ─────
 
-    public function test_marcar_item_automatico_a_mao_lanca_domain_exception_e_nao_grava_nada(): void
+    /**
+     * A D-13 foi estreitada em 2026-09-18, não revogada: a tela passou a poder
+     * marcar item automático, mas o DEFAULT do service continua recusando.
+     *
+     * A diferença importa: `forcar` é derivado do catálogo no controller, e
+     * nunca lido do corpo da requisição. Se o default virasse permissivo, todo
+     * chamador novo (comando Artisan, job, import) fecharia item automático
+     * sem querer — e o registro de "alguém afirmou isto" deixaria de
+     * significar alguma coisa.
+     */
+    public function test_marcar_item_automatico_sem_forcar_lanca_domain_exception_e_nao_grava_autoria(): void
     {
         $empresa = $this->empresaCompleta();
         $this->vincularServico($empresa, $this->servicoComContrato());
@@ -161,6 +171,22 @@ class ChecklistMarcacaoManualAutoriaTest extends TestCase
                 'feito_por'  => $usuario->id,
             ]);
         }
+    }
+
+    public function test_marcar_item_automatico_com_forcar_grava_autoria(): void
+    {
+        $empresa = $this->empresaCompleta();
+        $this->vincularServico($empresa, $this->servicoComContrato());
+        $usuario = User::factory()->create(['role' => 'admin']);
+
+        $this->service()->concluirManualmente($empresa, 'contrato_enviado', $usuario, forcar: true);
+
+        $this->assertDatabaseHas('checklist_administrativo_itens', [
+            'company_id' => $empresa->id,
+            'chave'      => 'contrato_enviado',
+            'status'     => ChecklistAdministrativoItem::STATUS_CONCLUIDO,
+            'feito_por'  => $usuario->id,
+        ]);
     }
 
     // ─── Caso 4 — item do grupo Contrato numa empresa isenta lança DomainException (D-07) ──

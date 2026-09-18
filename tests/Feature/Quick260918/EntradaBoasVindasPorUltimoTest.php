@@ -322,4 +322,112 @@ class EntradaBoasVindasPorUltimoTest extends TestCase
         $this->assertArrayHasKey('bloqueio', $boasVindas);
         $this->assertNotNull($boasVindas['bloqueio']);
     }
+
+    // ─── Caso 7 — check manual em item AUTOMÁTICO (2026-09-18) ──────────────
+
+    /**
+     * A sobrevivência é o ponto. `paraEmpresa()` roda o resolver a cada
+     * montagem; sem a guarda do override, o `status = aberto` do resolver
+     * apagaria a marcação no carregamento seguinte — o clique "funcionaria" e
+     * sumiria no F5, sem erro nenhum na tela para denunciar.
+     */
+    public function test_item_automatico_marcado_a_mao_sobrevive_a_novas_montagens(): void
+    {
+        $empresa = $this->empresaIsenta();
+        $usuario = $this->admin();
+
+        // "Portal do Cliente" fecha por contato ativo no portal; não há
+        // nenhum, então o resolver diz aberto.
+        $this->assertSame(ChecklistAdministrativoItem::STATUS_ABERTO, $this->item($empresa, 'conexao_ecf_gerada')['status']);
+
+        $this->actingAs($usuario)->post(
+            route('admin.contratos.checklist.concluir', ['company' => $empresa, 'chave' => 'conexao_ecf_gerada'])
+        )->assertStatus(302)->assertSessionHas('success');
+
+        // Três montagens seguidas — cada uma roda o resolver de novo.
+        foreach (range(1, 3) as $_) {
+            $item = $this->item($empresa, 'conexao_ecf_gerada');
+            $this->assertSame(ChecklistAdministrativoItem::STATUS_CONCLUIDO, $item['status']);
+        }
+
+        $item = $this->item($empresa, 'conexao_ecf_gerada');
+        $this->assertTrue($item['forcado'], 'A tela precisa saber que foi marcado à mão.');
+        $this->assertFalse($item['auto_confirmado'], 'O sistema ainda não viu o fato — não pode dizer que viu.');
+        $this->assertSame($usuario->name, $item['feito_por_nome']);
+    }
+
+    public function test_desmarcar_devolve_o_item_automatico_ao_resolver(): void
+    {
+        $empresa = $this->empresaIsenta();
+        $usuario = $this->admin();
+
+        $this->actingAs($usuario)->post(
+            route('admin.contratos.checklist.concluir', ['company' => $empresa, 'chave' => 'conexao_ecf_gerada'])
+        )->assertStatus(302);
+
+        $this->actingAs($usuario)->post(
+            route('admin.contratos.checklist.reabrir', ['company' => $empresa, 'chave' => 'conexao_ecf_gerada'])
+        )->assertStatus(302)->assertSessionHas('success');
+
+        $item = $this->item($empresa, 'conexao_ecf_gerada');
+        $this->assertSame(ChecklistAdministrativoItem::STATUS_ABERTO, $item['status']);
+        $this->assertFalse($item['forcado']);
+    }
+
+    public function test_item_automatico_que_o_sistema_confirma_nao_aparece_como_forcado(): void
+    {
+        $empresa = $this->empresaIsenta();
+        $this->criarAcessoPortal($empresa);
+
+        $item = $this->item($empresa, 'conexao_ecf_gerada');
+
+        $this->assertSame(ChecklistAdministrativoItem::STATUS_CONCLUIDO, $item['status']);
+        $this->assertFalse($item['forcado'], 'Ninguém marcou à mão — foi o resolver.');
+        $this->assertTrue($item['auto_confirmado']);
+    }
+
+    /**
+     * ⚠️ `forcar` libera marcar à mão o que o SISTEMA fecharia sozinho; ele
+     * nunca libera furar a ordem que o usuário pediu. Sem esta separação, as
+     * boas-vindas voltariam a ser marcáveis antes do e-mail colaborador — pela
+     * porta do override.
+     */
+    public function test_forcar_nao_dispensa_a_trava_de_ordem(): void
+    {
+        $empresa = $this->empresaIsenta();
+        $usuario = $this->admin();
+
+        $this->expectException(\DomainException::class);
+
+        $this->service()->concluirManualmente($empresa, 'boas_vindas_enviada', $usuario, forcar: true);
+    }
+
+    /**
+     * O caminho que o usuário pediu, ponta a ponta: com todo item podendo
+     * receber check manual, uma empresa cujo cliente ainda não fez nada pode
+     * ser fechada pelo Administrativo — inclusive as boas-vindas, desde que na
+     * ordem.
+     */
+    public function test_com_check_manual_em_tudo_a_entrada_fecha_100(): void
+    {
+        $empresa = $this->empresaIsenta(['email_colaborador' => null]);
+        $usuario = $this->admin();
+
+        $this->actingAs($usuario)->post(
+            route('admin.contratos.checklist.email-colaborador', $empresa),
+            ['email_colaborador' => 'operacao@clienteteste.com.br']
+        )->assertStatus(302);
+
+        foreach (['grupo_whatsapp_criado', 'link_adman_entregue', 'grant_consultoria_ml', 'conexao_ecf_gerada', 'boas_vindas_enviada'] as $chave) {
+            $this->actingAs($usuario)->post(
+                route('admin.contratos.checklist.concluir', ['company' => $empresa, 'chave' => $chave])
+            )->assertStatus(302)->assertSessionHas('success');
+        }
+
+        $progresso = $this->service()->paraEmpresa($empresa->fresh())['progresso'];
+
+        $this->assertSame(6, $progresso['feitos']);
+        $this->assertSame(6, $progresso['total']);
+        $this->assertSame(100, $progresso['percentual']);
+    }
 }

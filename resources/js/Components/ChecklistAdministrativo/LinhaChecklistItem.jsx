@@ -16,26 +16,23 @@ import { cn } from '@/lib/utils';
  * ### Por que degrau, e não cartão
  * A versão anterior desenhava cada item como um cartão arredondado idêntico,
  * com borda, título, "Pendente", motivo, autoria e o texto de ajuda em itálico
- * — cinco linhas por item, nove itens, tudo com o mesmo peso. O usuário chamou
- * de "feio e comum", e estava certo: o conteúdo é uma SEQUÊNCIA, e a tela
- * desenhava uma pilha. Aqui o item é um degrau pendurado numa espinha vertical
- * contínua, com o número dentro do marcador. A estrutura passou a dizer a
- * mesma coisa que o conteúdo.
+ * — cinco linhas por item, nove itens, tudo com o mesmo peso. O conteúdo é uma
+ * SEQUÊNCIA, e a tela desenhava uma pilha. Aqui o item é um degrau pendurado
+ * numa espinha vertical contínua, com o número dentro do marcador.
  *
- * ### Por que só uma linha de estado
- * Um item concluído não precisa do texto de ajuda — precisa dizer quem fechou
- * e quando. Um item aberto não precisa da palavra "Pendente" (o marcador já
- * diz), precisa dizer o que falta. Então há exatamente UMA linha abaixo do
- * título, e o que ela carrega depende do estado.
+ * ### Uma linha por item
+ * Título e estado dividem a MESMA linha; as ações ficam à direita. Com 9 itens
+ * em duas linhas cada, a lista não cabia na tela e o olho perdia a sequência.
+ * O que precisa de mais espaço — o campo do e-mail, o endereço do portal —
+ * abre embaixo, e só nos itens que têm algo a abrir.
  *
- * ### Por que só dois estados de `status`
- * O análogo do Onboarding (`LinhaPasso`) tem seis — `bloqueado`,
- * `aguardando_coleta`, `indeterminado`, `nao_aplicavel` e os dois daqui. A
- * D-02 desta fase proíbe "não aplicável" (a isenção é resolvida no
- * nascimento, D-07) e nenhum resolver desta fase é assíncrono, então
- * `aberto` e `concluido` cobrem tudo. O cadeado que aparece na tela NÃO é um
- * terceiro status: é `item.bloqueio`, a trava de ORDEM calculada pelo
- * servidor, que some assim que as dependências fecham.
+ * ### Marcar à mão vale para TODO item (18/09)
+ * Inclusive os automáticos. A D-13 dizia o contrário; o usuário decidiu que o
+ * resolver não pode ser a única porta, porque ele demora a enxergar fatos que
+ * já aconteceram. Item automático fechado à mão é mostrado COMO TAL — "marcado
+ * à mão, o sistema ainda não confirmou" —, nunca como confirmação que ninguém
+ * deu. É só ele que ganha "Desmarcar" entre os automáticos: item que o próprio
+ * sistema fechou voltaria a fechar no instante seguinte, e o botão mentiria.
  */
 
 const dataCurta = (iso) => {
@@ -53,7 +50,7 @@ function BotaoCopiar({ onCopiar, rotulo = 'Copiar link', disabled = false }) {
     const [copiado, setCopiado] = useState(false);
     const [ocupado, setOcupado] = useState(false);
 
-    const copiar = async () => {
+    const acionar = async () => {
         setOcupado(true);
         try {
             const ok = await onCopiar();
@@ -67,7 +64,7 @@ function BotaoCopiar({ onCopiar, rotulo = 'Copiar link', disabled = false }) {
     };
 
     return (
-        <Button size="sm" variant="outline" onClick={copiar} disabled={disabled || ocupado}>
+        <Button size="sm" variant="outline" onClick={acionar} disabled={disabled || ocupado}>
             {copiado ? (
                 <>
                     <Check size={13} className="mr-1.5 text-emerald-300" />
@@ -108,7 +105,7 @@ function CampoUrl({ valor }) {
             readOnly
             value={valor}
             onFocus={(e) => e.target.select()}
-            className="w-full rounded-lg border border-white/[0.07] bg-black/30 px-3 py-2 font-mono text-[12px] text-white/60"
+            className="w-full rounded-lg border border-white/[0.07] bg-black/30 px-3 py-1.5 font-mono text-[12px] text-white/60"
         />
     );
 }
@@ -118,7 +115,6 @@ export default function LinhaChecklistItem({
     numero,
     companyId,
     admanRegisterUrl,
-    mensagemBoasVindas = null,
     contratoAcesso = null,
     portalClienteUrl = null,
     emailColaborador = null,
@@ -135,6 +131,11 @@ export default function LinhaChecklistItem({
     const concluido = item.status === 'concluido';
     const ehAuto = item.natureza === 'auto';
     const bloqueado = !concluido && Boolean(item.bloqueio);
+
+    // Automático fechado À MÃO: o sistema ainda não viu o fato, alguém afirmou
+    // que ele aconteceu. É o único automático que se desmarca.
+    const forcado = Boolean(item.forcado);
+    const aguardandoSistema = forcado && item.auto_confirmado === false;
 
     const concluirManualmente = () => {
         form.post(route('admin.contratos.checklist.concluir', [companyId, item.chave]), { preserveScroll: true });
@@ -199,8 +200,7 @@ export default function LinhaChecklistItem({
      * Abre o PDF assinado quando existe; senão o painel da Clicksign, onde se
      * acompanha o envelope. Sem nenhum dos dois não há documento para mostrar, e
      * aí o botão apenas leva à lista de contratos da empresa, que ao menos diz
-     * em que estado ele está — rolar a página era tudo o que ele fazia antes, e
-     * o usuário reportou justamente isso.
+     * em que estado ele está.
      *
      * ⚠️ O checklist **não gera** contrato. A geração fica no bloco próprio,
      * como sempre esteve — decisão do usuário de manter o fluxo de contrato
@@ -219,37 +219,46 @@ export default function LinhaChecklistItem({
     const feitoEm = dataCurta(item.feito_em);
     const autoEm = dataCurta(item.auto_em);
 
-    // A ÚNICA linha abaixo do título. A ordem das opções é a ordem de
-    // utilidade: o que aconteceu, depois o que falta, depois o que o item é.
+    // A ÚNICA linha de estado, ao lado do título. A ordem das opções é a ordem
+    // de utilidade: o que aconteceu, depois o que falta, depois o que o item é.
     let estado = { texto: item.ajuda, tom: 'text-white/30' };
 
-    if (concluido && item.feito_por_nome) {
+    if (aguardandoSistema) {
+        estado = {
+            texto: `Marcado à mão por ${item.feito_por_nome ?? 'alguém'}${feitoEm ? ` em ${feitoEm}` : ''} — o sistema ainda não confirmou`,
+            tom: 'text-amber-300/75',
+        };
+    } else if (concluido && item.feito_por_nome) {
         estado = {
             texto: `Concluído por ${item.feito_por_nome}${feitoEm ? ` em ${feitoEm}` : ''}`,
-            tom: 'text-white/40',
+            tom: 'text-white/35',
         };
     } else if (concluido && autoEm) {
-        estado = { texto: `Confirmado pelo sistema em ${autoEm}`, tom: 'text-white/40' };
+        estado = { texto: `Confirmado pelo sistema em ${autoEm}`, tom: 'text-white/35' };
     } else if (concluido) {
-        estado = { texto: 'Concluído', tom: 'text-white/40' };
+        estado = { texto: 'Concluído', tom: 'text-white/35' };
     } else if (bloqueado) {
-        estado = { texto: item.bloqueio, tom: 'text-amber-300/90' };
+        estado = { texto: item.bloqueio, tom: 'text-amber-300/85' };
     } else if (item.motivo) {
-        estado = { texto: item.motivo, tom: 'text-white/45' };
+        estado = { texto: item.motivo, tom: 'text-white/40' };
     }
 
     const ehEmailColaborador = item.chave === 'email_colaborador_criado';
-    const ehBoasVindas = item.chave === 'boas_vindas_enviada';
+
+    // Todo item aceita check manual (18/09) — menos o e-mail colaborador, cujo
+    // "Salvar" já conclui, porque lá o endereço É a evidência.
+    const mostraMarcar = !concluido && !ehEmailColaborador;
+    const mostraDesmarcar = concluido && (!ehAuto || forcado);
 
     return (
-        <li className={cn('relative pl-11 sm:pl-12', ultimo ? 'pb-0' : 'pb-8')}>
+        <li className={cn('relative pl-10 sm:pl-11', ultimo ? 'pb-0' : 'pb-5')}>
             {/* A espinha. Segmento por degrau, nunca no último — a linha
                 termina onde a sequência termina. */}
             {!ultimo && (
                 <span
                     aria-hidden
                     className={cn(
-                        'absolute left-[15px] top-9 bottom-0 w-px',
+                        'absolute left-[13px] top-8 bottom-0 w-px',
                         concluido ? 'bg-emerald-400/25' : 'bg-white/[0.07]'
                     )}
                 />
@@ -260,53 +269,53 @@ export default function LinhaChecklistItem({
             <span
                 aria-hidden
                 className={cn(
-                    'absolute left-0 top-0 grid h-8 w-8 place-items-center rounded-full border transition-colors',
-                    concluido && 'border-emerald-400/45 bg-emerald-400/[0.12] text-emerald-300',
+                    'absolute left-0 top-0 grid h-7 w-7 place-items-center rounded-full border transition-colors',
+                    concluido && !aguardandoSistema && 'border-emerald-400/45 bg-emerald-400/[0.12] text-emerald-300',
+                    concluido && aguardandoSistema && 'border-amber-400/40 bg-amber-400/[0.1] text-amber-300',
                     !concluido && atual && 'border-ecf-yellow/70 bg-ecf-yellow/[0.12] text-ecf-yellow',
                     !concluido && !atual && bloqueado && 'border-white/[0.07] bg-white/[0.02] text-white/20',
                     !concluido && !atual && !bloqueado && 'border-white/[0.12] bg-white/[0.02] text-white/40'
                 )}
             >
                 {concluido ? (
-                    <Check size={15} strokeWidth={2.5} />
+                    <Check size={14} strokeWidth={2.5} />
                 ) : item.bloqueio_tipo === 'dependencia' ? (
                     // Cadeado SÓ quando o que falta é outro item. Quando falta
                     // preencher um campo desta mesma linha, a ação está aqui e
                     // um cadeado diria a coisa errada.
-                    <Lock size={13} />
+                    <Lock size={12} />
                 ) : (
-                    <span className="font-display text-[13px] font-bold tabular-nums">{numero}</span>
+                    <span className="font-display text-[12px] font-bold tabular-nums">{numero}</span>
                 )}
             </span>
 
-            <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-2.5">
-                <div className="min-w-0 flex-1 basis-64 pt-0.5">
-                    <div className="flex items-center gap-2">
-                        <h4
-                            className={cn(
-                                // `break-words`, nunca `truncate`: título cortado
-                                // com reticências some no celular, onde a coluna
-                                // é estreita e o nome do item é a informação.
-                                'break-words text-[15px] font-semibold tracking-tight',
-                                concluido ? 'text-white/65' : 'text-white'
-                            )}
-                        >
-                            {item.titulo}
-                        </h4>
-                        {ehAuto && (
-                            <Zap
-                                size={13}
-                                className="shrink-0 text-white/25"
-                                aria-label="Verificado automaticamente pelo sistema"
-                                title="Verificado automaticamente pelo sistema"
-                            />
+            <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                {/* Título e estado na MESMA linha — é o que faz os 9 itens
+                    caberem na tela. Em telas estreitas o estado desce sozinho,
+                    porque `flex-wrap` resolve sem media query. */}
+                <div className="flex min-w-0 flex-1 basis-72 flex-wrap items-baseline gap-x-3 gap-y-0.5 pt-1">
+                    <h4
+                        className={cn(
+                            'break-words text-[14.5px] font-semibold tracking-tight',
+                            concluido ? 'text-white/60' : 'text-white'
                         )}
-                    </div>
+                    >
+                        {item.titulo}
+                    </h4>
+
+                    {ehAuto && (
+                        <Zap
+                            size={12}
+                            className="shrink-0 self-center text-white/25"
+                            aria-label="Verificado automaticamente pelo sistema"
+                            title="Verificado automaticamente pelo sistema"
+                        />
+                    )}
 
                     {estado.texto && (
-                        <p className={cn('mt-1 max-w-[62ch] text-[12.5px] leading-relaxed', estado.tom)}>
+                        <span className={cn('min-w-0 break-words text-[12.5px] leading-snug', estado.tom)}>
                             {estado.texto}
-                        </p>
+                        </span>
                     )}
                 </div>
 
@@ -315,18 +324,6 @@ export default function LinhaChecklistItem({
                     — o "Marcar como concluído" saía da tela. Aqui eles quebram
                     de linha e só se alinham à direita quando há espaço. */}
                 <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
-                    {/* A mensagem vem MONTADA do servidor (Fase 153, D-B). O
-                        botão só copia; nada é remontado aqui. Desabilitado
-                        enquanto o servidor acusa pendência, para ninguém
-                        enviar ao cliente um texto com bloco vazio. */}
-                    {ehBoasVindas && mensagemBoasVindas?.texto && (
-                        <BotaoCopiar
-                            onCopiar={() => copiarParaAreaDeTransferencia(mensagemBoasVindas.texto)}
-                            rotulo="Copiar mensagem"
-                            disabled={!mensagemBoasVindas.pronta || bloqueado}
-                        />
-                    )}
-
                     {/* Grupo Contrato — acesso ao contrato para revisar. NÃO
                         gera: a geração fica no bloco próprio, como já era. */}
                     {item.grupo === 'contrato' && (
@@ -369,12 +366,7 @@ export default function LinhaChecklistItem({
                         </Button>
                     )}
 
-                    {/* Item automático não tem botão de marcar/desmarcar — quem
-                        o fecha é o estado real, e forçar à mão seria marcar
-                        concluído sem evidência (D-13). O e-mail colaborador
-                        também não tem: lá quem conclui é o próprio Salvar,
-                        porque o endereço É a evidência. */}
-                    {!ehAuto && !concluido && !ehEmailColaborador && (
+                    {mostraMarcar && (
                         <Button
                             size="sm"
                             variant={atual ? 'default' : 'outline'}
@@ -382,11 +374,11 @@ export default function LinhaChecklistItem({
                             disabled={form.processing || bloqueado}
                             title={bloqueado ? item.bloqueio : undefined}
                         >
-                            Marcar como concluído
+                            {ehAuto ? 'Marcar à mão' : 'Marcar como concluído'}
                         </Button>
                     )}
 
-                    {!ehAuto && concluido && (
+                    {mostraDesmarcar && (
                         <button
                             onClick={desmarcar}
                             disabled={form.processing}
@@ -399,12 +391,13 @@ export default function LinhaChecklistItem({
             </div>
 
             {/* ─── Conteúdo do degrau ─────────────────────────────────────
-                Só três itens carregam alguma coisa abaixo da linha de estado,
-                e cada um carrega porque o trabalho acontece ali: o endereço
-                que se digita, o link que se confere, o texto que se copia. */}
+                Só dois itens carregam alguma coisa abaixo da linha, e cada um
+                carrega porque o trabalho acontece ali: o endereço que se
+                digita, o link que se confere. A mensagem de boas-vindas mora
+                no painel lateral. */}
 
             {ehEmailColaborador && (
-                <form onSubmit={salvarEmail} className="mt-3 max-w-xl">
+                <form onSubmit={salvarEmail} className="mt-2.5 max-w-xl">
                     <div className="flex flex-wrap items-center gap-2">
                         <input
                             type="email"
@@ -413,7 +406,7 @@ export default function LinhaChecklistItem({
                             placeholder="nome@empresa.com.br"
                             autoComplete="off"
                             className={cn(
-                                'min-w-0 flex-1 rounded-lg border bg-black/30 px-3 py-2 font-mono text-[13px]',
+                                'min-w-0 flex-1 rounded-lg border bg-black/30 px-3 py-1.5 font-mono text-[13px]',
                                 'text-white/85 placeholder:text-white/20',
                                 'border-white/[0.09] focus:border-ecf-yellow/50 focus:outline-none focus:ring-0'
                             )}
@@ -434,48 +427,8 @@ export default function LinhaChecklistItem({
             )}
 
             {item.chave === 'conexao_ecf_gerada' && portalClienteUrl && (
-                <div className="mt-3 max-w-xl">
+                <div className="mt-2.5 max-w-xl">
                     <CampoUrl valor={portalClienteUrl} />
-                </div>
-            )}
-
-            {/* A mensagem pronta, na própria linha (COMUNIC-01). Quando o
-                servidor acusou pendência, o que aparece é O QUE FALTA, não o
-                texto pela metade: mesmo princípio do `requisito_faltante` do
-                FINALIZAR. */}
-            {ehBoasVindas && mensagemBoasVindas && (
-                <div className="mt-3 max-w-2xl space-y-2">
-                    {!mensagemBoasVindas.pronta && (
-                        <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3.5 py-2.5">
-                            <p className="text-[12px] font-semibold text-amber-300">
-                                Falta para a mensagem ficar pronta
-                            </p>
-                            <ul className="mt-1 space-y-0.5">
-                                {mensagemBoasVindas.pendencias.map((p) => (
-                                    <li key={p} className="text-[12px] text-amber-300/75">
-                                        {p}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-
-                    <textarea
-                        readOnly
-                        value={mensagemBoasVindas.texto}
-                        rows={concluido ? 4 : 12}
-                        onFocus={(e) => e.target.select()}
-                        className={cn(
-                            'w-full resize-y rounded-xl border border-white/[0.07] bg-black/30',
-                            'px-4 py-3 text-[12.5px] leading-relaxed text-white/65'
-                        )}
-                    />
-
-                    {mensagemBoasVindas.template_servico_nome && (
-                        <p className="text-[11.5px] text-white/25">
-                            Texto do serviço {mensagemBoasVindas.template_servico_nome}
-                        </p>
-                    )}
                 </div>
             )}
 
@@ -483,7 +436,7 @@ export default function LinhaChecklistItem({
                 revelar a URL para seleção manual do que um botão que não faz
                 nada. */}
             {urlRevelada && (
-                <div className="mt-3 max-w-xl">
+                <div className="mt-2.5 max-w-xl">
                     <CampoUrl valor={urlRevelada} />
                 </div>
             )}

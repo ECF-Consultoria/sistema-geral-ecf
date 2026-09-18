@@ -945,20 +945,37 @@ class ContratoAdminController extends Controller
      * cliente é autoria forjável, e o histórico da Fase 156 mede exatamente
      * quem fez o quê.
      *
-     * O parâmetro `$forcar` de `concluirManualmente()` **não** é exposto por
-     * HTTP nesta fase — item automático não se marca à mão pela tela.
+     * ### Item automático também se marca à mão (2026-09-18)
+     * `$forcar` deixou de ser parâmetro interno: o usuário pediu que TODO item
+     * pudesse receber check manual, inclusive os 4 automáticos. O motivo é
+     * operacional — o resolver pode demorar a enxergar um fato que já
+     * aconteceu (contrato assinado fora da Clicksign, grant concedido por
+     * outro caminho), e a entrada ficava travada esperando um sinal que não
+     * vinha.
+     *
+     * Ele é derivado do CATÁLOGO, nunca lido do corpo da requisição: um
+     * `forcar=true` vindo do cliente seria uma chave para furar qualquer regra
+     * futura de item automático. Aqui só o fato de o item ter `auto_fonte`
+     * declarado liga o override.
+     *
+     * ⚠️ Isso NÃO afrouxa a trava de ordem/evidência: `concluirManualmente()`
+     * a avalia mesmo com `$forcar` — as boas-vindas continuam recusadas antes
+     * das dependências, e o e-mail colaborador continua exigindo o endereço.
      */
     public function concluirItemChecklist(Request $request, Company $company, string $chave): RedirectResponse
     {
         $this->guardaChecklist($request, $chave);
 
         $checklist = app(ChecklistAdministrativoService::class);
+        $ehAutomatico = ChecklistAdministrativoDefinicao::item($chave)['auto_fonte'] !== null;
 
         return $this->executarMutacaoChecklist(
             $request,
             $company,
-            fn () => $checklist->concluirManualmente($company, $chave, $request->user()),
-            'Item marcado como concluído.'
+            fn () => $checklist->concluirManualmente($company, $chave, $request->user(), forcar: $ehAutomatico),
+            $ehAutomatico
+                ? 'Item marcado à mão. O sistema segue conferindo por conta própria.'
+                : 'Item marcado como concluído.'
         );
     }
 

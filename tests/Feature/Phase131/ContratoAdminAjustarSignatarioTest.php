@@ -41,9 +41,24 @@ class ContratoAdminAjustarSignatarioTest extends TestCase
 
         $this->assertTrue($rotasAdminContratos->isNotEmpty(), 'esperava rotas admin.contratos.* registradas.');
 
-        $rotaDeCorrigirEmail = $rotasAdminContratos->first(
-            fn ($nome) => str_contains($nome, 'email') || str_contains($nome, 'signatario.update'),
-        );
+        // O grupo `admin.contratos.checklist.*` fica de fora (2026-09-18).
+        // Ele hospeda os endpoints do CHECKLIST ADMINISTRATIVO, que só dividem
+        // o prefixo com as rotas de contrato por herança histórica — nenhum
+        // deles toca envelope, signatário ou Clicksign. O que entrou e
+        // disparou esta guarda foi `checklist.email-colaborador`, que grava
+        // `companies.email_colaborador` (o e-mail que a ECF cria para a
+        // operação do cliente), coisa nenhuma a ver com corrigir o e-mail de
+        // quem assina.
+        //
+        // A exclusão é por PREFIXO, e não pela palavra "colaborador", de
+        // propósito: assim a guarda continua pegando qualquer rota nova de
+        // e-mail na superfície de CONTRATO, que é o que ela existe para
+        // proteger.
+        $rotaDeCorrigirEmail = $rotasAdminContratos
+            ->reject(fn ($nome) => str_starts_with($nome, 'admin.contratos.checklist.'))
+            ->first(
+                fn ($nome) => str_contains($nome, 'email') || str_contains($nome, 'signatario.update'),
+            );
 
         $this->assertNull(
             $rotaDeCorrigirEmail,
