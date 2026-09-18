@@ -134,7 +134,15 @@ class ChecklistEndpointsTest extends TestCase
     /** Completa os 6 itens do grupo Entrada pelo ESTADO REAL, nunca gravando status direto. */
     private function completarGrupoEntrada(Company $empresa, User $usuario): void
     {
-        foreach (['grupo_whatsapp_criado', 'email_colaborador_criado', 'link_adman_entregue', 'boas_vindas_enviada'] as $chave) {
+        // 2026-09-18 — duas regras novas mudam a ORDEM desta montagem:
+        // `email_colaborador_criado` exige o endereco gravado em
+        // `companies.email_colaborador`, e `boas_vindas_enviada` virou o item 9,
+        // que so fecha depois do grupo de WhatsApp, do e-mail colaborador e do
+        // Portal do Cliente. Por isso as boas-vindas sairam deste laco e fecham
+        // no fim do metodo, ja com os automaticos no lugar.
+        $empresa->update(['email_colaborador' => 'colab.'.uniqid().'@ecf.test']);
+
+        foreach (['grupo_whatsapp_criado', 'email_colaborador_criado', 'link_adman_entregue'] as $chave) {
             $this->checklistService()->concluirManualmente($empresa, $chave, $usuario);
         }
 
@@ -153,6 +161,8 @@ class ChecklistEndpointsTest extends TestCase
 
         $acesso = \App\Models\PortalUsuario::create(['nome' => 'Cliente', 'email' => 'cliente'.$empresa->id.'@example.test', 'ativo' => true]);
         $acesso->empresas()->attach($empresa->id);
+        // Item 9, por ultimo — as dependencias dele acabaram de fechar.
+        $this->checklistService()->concluirManualmente($empresa, 'boas_vindas_enviada', $usuario);
     }
 
     /** Completa os 3 itens do grupo Contrato — item 1 manual, 2/3 por envelope assinado. */
@@ -292,8 +302,12 @@ class ChecklistEndpointsTest extends TestCase
         $user    = $this->admin();
 
         $this->checklistService()->concluirManualmente($empresa, 'grupo_whatsapp_criado', $user);
+
+        // 2026-09-18 — o e-mail colaborador fecha pelo endpoint que GRAVA o
+        // endereco, nao pelo de marcar: o endereco e a evidencia do item.
         $this->actingAs($user)->post(
-            route('admin.contratos.checklist.concluir', ['company' => $empresa, 'chave' => 'email_colaborador_criado'])
+            route('admin.contratos.checklist.email-colaborador', $empresa),
+            ['email_colaborador' => 'colab.caso6@ecf.test']
         )->assertStatus(302);
 
         $this->assertSame(Company::ETAPA_ADMINISTRATIVO_ANDAMENTO, $this->etapaDe($empresa));

@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\MlToken;
 use App\Models\OnboardingLink;
+use App\Models\PortalUsuario;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\ChecklistAdministrativo\ChecklistAdministrativoService;
@@ -115,14 +116,30 @@ class ChecklistProgressoTest extends TestCase
         ]);
 
         OnboardingLink::create(['company_id' => $company->id, 'token' => 'token-progresso-152-05']);
+
+        // "Portal do Cliente" fecha por pessoa ATIVA vinculada em Acessos do
+        // portal — o link por token deixou de valer em 15/09/2026, e o
+        // OnboardingLink acima sozinho nao fecha mais o item.
+        $acessoPortal = PortalUsuario::create([
+            'nome'  => 'Cliente',
+            'email' => 'progresso-152-05.'.$company->id.'@example.test',
+            'ativo' => true,
+        ]);
+        $acessoPortal->empresas()->attach($company->id, ['principal' => true]);
     }
 
     /** Fecha os 4 itens manuais do grupo Entrada, com autoria. */
     private function fecharManuaisDeEntrada(Company $company, User $usuario): void
     {
-        foreach (['grupo_whatsapp_criado', 'email_colaborador_criado', 'link_adman_entregue', 'boas_vindas_enviada'] as $chave) {
+        // `email_colaborador_criado` exige o endereco gravado (2026-09-18).
+        $company->update(['email_colaborador' => 'colab.'.uniqid().'@ecf.test']);
+
+        foreach (['grupo_whatsapp_criado', 'email_colaborador_criado', 'link_adman_entregue'] as $chave) {
             $this->service()->concluirManualmente($company, $chave, $usuario);
         }
+
+        // Item 9, por ultimo — depende dos tres acima e do Portal do Cliente.
+        $this->service()->concluirManualmente($company, 'boas_vindas_enviada', $usuario);
     }
 
     // ─── Caso 1 — empresa isenta, 0 concluídos ──────────────────────────

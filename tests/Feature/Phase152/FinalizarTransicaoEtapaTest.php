@@ -116,7 +116,15 @@ class FinalizarTransicaoEtapaTest extends TestCase
     /** Completa os 6 itens do grupo Entrada pelo estado real (nunca por status=concluido direto). */
     private function completarGrupoEntrada(Company $empresa, User $usuario, array $manuaisAIgnorar = []): void
     {
-        foreach (['grupo_whatsapp_criado', 'email_colaborador_criado', 'link_adman_entregue', 'boas_vindas_enviada'] as $chave) {
+        // 2026-09-18 — duas regras novas mudam a ORDEM desta montagem:
+        // `email_colaborador_criado` exige o endereco gravado em
+        // `companies.email_colaborador`, e `boas_vindas_enviada` virou o item 9,
+        // que so fecha depois do grupo de WhatsApp, do e-mail colaborador e do
+        // Portal do Cliente. Por isso as boas-vindas sairam deste laco e fecham
+        // no fim do metodo, ja com os automaticos no lugar.
+        $empresa->update(['email_colaborador' => 'colab.'.uniqid().'@ecf.test']);
+
+        foreach (['grupo_whatsapp_criado', 'email_colaborador_criado', 'link_adman_entregue'] as $chave) {
             if (in_array($chave, $manuaisAIgnorar, true)) {
                 continue;
             }
@@ -141,6 +149,10 @@ class FinalizarTransicaoEtapaTest extends TestCase
         // Acessos do portal — o link por token deixou de valer em 15/09/2026.
         $acessoPortal = PortalUsuario::create(['nome' => 'Cliente', 'email' => 'token-transicao-152-06.'.$empresa->id.'@example.test', 'ativo' => true]);
         $acessoPortal->empresas()->attach($empresa->id, ['principal' => true]);
+        // Item 9, por ultimo — as dependencias dele acabaram de fechar.
+        if (! in_array('boas_vindas_enviada', $manuaisAIgnorar, true)) {
+            $this->checklistService()->concluirManualmente($empresa, 'boas_vindas_enviada', $usuario);
+        }
     }
 
     /** Completa os 3 itens do grupo Contrato — item 1 manual, 2/3 por envelope REALMENTE assinado. */

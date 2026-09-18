@@ -37,8 +37,15 @@ class ChecklistAdministrativoDefinicao
     public const AUTO_FONTE_CONEXAO_ECF = 'conexao_ecf';
 
     /**
-     * Os 9 itens do checklist, na ordem 1..9 da tabela D-03. Cada item tem o
-     * shape `['ordem', 'chave', 'titulo', 'grupo', 'natureza', 'auto_fonte', 'ajuda']`.
+     * Os 9 itens do checklist, na ordem 1..9. Cada item tem o shape
+     * `['ordem', 'chave', 'titulo', 'grupo', 'natureza', 'auto_fonte', 'ajuda']`,
+     * mais duas chaves OPCIONAIS que só alguns itens declaram: `depende_de`
+     * (chaves que precisam estar concluídas antes) e `exige_valor` (a coluna
+     * de `companies` que precisa estar preenchida antes).
+     *
+     * ⚠️ A ordem NÃO é mais a da tabela D-03 original: `boas_vindas_enviada`
+     * saiu da posição 4 para a 9 em 2026-09-18, a pedido do usuário — ver o
+     * comentário no próprio item.
      *
      * A `natureza` de cada item é decisão registrada, não falta de opção:
      *
@@ -49,6 +56,8 @@ class ChecklistAdministrativoDefinicao
      * - Itens 4, 5, 6 e 9 são manuais porque não existe sinal observável
      *   para nenhum deles, e fabricar um seria marcar concluído sem
      *   evidência (D-13).
+     * - Item 5 (`email_colaborador_criado`) é o único manual com evidência
+     *   obrigatória: `exige_valor` prende a marcação ao endereço gravado.
      * - Item 6 em particular: o link do Adman é fixo, idêntico para todas
      *   as empresas, e mora em `config('services.adman.register_url')`
      *   (D-04) — não há estado por empresa para observar.
@@ -59,7 +68,7 @@ class ChecklistAdministrativoDefinicao
      * - Item 8 fecha por **existência** do link de conexão com o sistema
      *   ECF da empresa, gerado de forma idempotente (D-14).
      *
-     * @return array<int, array{ordem:int, chave:string, titulo:string, grupo:string, natureza:string, auto_fonte:?string, ajuda:string}>
+     * @return array<int, array{ordem:int, chave:string, titulo:string, grupo:string, natureza:string, auto_fonte:?string, ajuda:string, depende_de?:array<int,string>, exige_valor?:string}>
      */
     private static function todos(): array
     {
@@ -71,8 +80,10 @@ class ChecklistAdministrativoDefinicao
                 'grupo'      => self::GRUPO_CONTRATO,
                 'natureza'   => self::NATUREZA_MANUAL,
                 'auto_fonte' => null,
-                'ajuda'      => 'Revisar o contrato antes do envio é ato humano — nenhum dos estados do '
-                    . 'envelope Clicksign representa "revisado" (D-06). Marcação manual, com autoria.',
+                // Manual porque revisar contrato é ato humano, e nenhum dos 7
+                // estados do envelope Clicksign representa "revisado" (D-06) —
+                // exceção explícita ao ADMIN-02, em REQUIREMENTS-v23.md.
+                'ajuda'      => 'Confira o contrato antes de enviar para assinatura.',
             ],
             [
                 'ordem'      => 2,
@@ -81,8 +92,7 @@ class ChecklistAdministrativoDefinicao
                 'grupo'      => self::GRUPO_CONTRATO,
                 'natureza'   => self::NATUREZA_AUTO,
                 'auto_fonte' => self::AUTO_FONTE_CONTRATO_ENVIADO,
-                'ajuda'      => 'Fecha automaticamente quando o envelope Clicksign foi enviado para '
-                    . 'assinatura (D-03).',
+                'ajuda'      => 'Fecha sozinho quando o contrato for enviado para assinatura.',
             ],
             [
                 'ordem'      => 3,
@@ -91,65 +101,64 @@ class ChecklistAdministrativoDefinicao
                 'grupo'      => self::GRUPO_CONTRATO,
                 'natureza'   => self::NATUREZA_AUTO,
                 'auto_fonte' => self::AUTO_FONTE_CONTRATO_ASSINADO,
-                'ajuda'      => 'Fecha automaticamente quando o envelope foi assinado, ou quando existe '
-                    . 'liberação registrada para o serviço — a via manual de liberação não grava no '
-                    . 'envelope (D-16).',
+                // Fecha também por liberação manual registrada para o serviço:
+                // aquela via não grava no envelope da Clicksign (D-16).
+                'ajuda'      => 'Fecha sozinho quando o cliente assinar, ou quando houver liberação registrada.',
             ],
             [
                 'ordem'      => 4,
-                'chave'      => 'boas_vindas_enviada',
-                'titulo'     => 'Boas-vindas enviada',
-                'grupo'      => self::GRUPO_ENTRADA,
-                'natureza'   => self::NATUREZA_MANUAL,
-                'auto_fonte' => null,
-                'ajuda'      => 'Vem logo após o contrato (decisão do usuário, 2026-09-10): é a mensagem que '
-                    . 'abre a relação com o cliente. Não existe sinal observável de que foi enviada — '
-                    . 'marcação manual, com autoria (D-13).',
-            ],
-            [
-                'ordem'      => 5,
                 'chave'      => 'grupo_whatsapp_criado',
                 'titulo'     => 'Grupo de WhatsApp criado',
                 'grupo'      => self::GRUPO_ENTRADA,
                 'natureza'   => self::NATUREZA_MANUAL,
                 'auto_fonte' => null,
-                'ajuda'      => 'Não existe sinal observável de que o grupo foi criado. Marcação manual, '
-                    . 'com autoria (D-13).',
+                // Manual: não existe sinal observável de que o grupo foi criado,
+                // e fabricar um seria marcar concluído sem evidência (D-13).
+                'ajuda'      => 'Crie o grupo com o cliente e a equipe antes de enviar as boas-vindas.',
             ],
             [
-                'ordem'      => 6,
+                'ordem'      => 5,
                 'chave'      => 'email_colaborador_criado',
                 'titulo'     => 'E-mail colaborador criado',
                 'grupo'      => self::GRUPO_ENTRADA,
                 'natureza'   => self::NATUREZA_MANUAL,
                 'auto_fonte' => null,
-                'ajuda'      => 'Não existe sinal observável de que o e-mail do colaborador foi criado. '
-                    . 'Marcação manual, com autoria (D-13).',
+                // `exige_valor` (2026-09-18): quem cria o e-mail é o próprio
+                // Administrativo, e o endereço criado entra LITERALMENTE na
+                // mensagem de boas-vindas (`{email_colaborador}`). Marcar este
+                // item sem gravar o endereço deixaria a mensagem com um bloco
+                // vazio — é a única evidência que o item pode ter, então ela é
+                // obrigatória. O campo mora na própria linha do checklist e
+                // grava em `companies.email_colaborador`, a MESMA coluna que
+                // `MensagemBoasVindasService` lê.
+                'exige_valor' => 'email_colaborador',
+                'ajuda'      => 'O endereço que a ECF cria para a operação do cliente.',
             ],
             [
-                'ordem'      => 7,
+                'ordem'      => 6,
                 'chave'      => 'link_adman_entregue',
                 'titulo'     => 'Link Adman entregue',
                 'grupo'      => self::GRUPO_ENTRADA,
                 'natureza'   => self::NATUREZA_MANUAL,
                 'auto_fonte' => null,
-                'ajuda'      => 'O link de cadastro no Adman é fixo, igual para todas as empresas, e mora '
-                    . 'em config(\'services.adman.register_url\') — não há estado por empresa para '
-                    . 'observar (D-04). Marcação manual, com autoria.',
+                // Manual porque o link do Adman é fixo, idêntico para todas as
+                // empresas, e mora numa chave de config (D-04) — não há estado
+                // por empresa para observar.
+                'ajuda'      => 'Copie o link de cadastro no Adman e entregue ao cliente.',
             ],
             [
-                'ordem'      => 8,
+                'ordem'      => 7,
                 'chave'      => 'grant_consultoria_ml',
                 'titulo'     => 'Grant da consultoria (OAuth Mercado Livre)',
                 'grupo'      => self::GRUPO_ENTRADA,
                 'natureza'   => self::NATUREZA_AUTO,
                 'auto_fonte' => self::AUTO_FONTE_ML_OAUTH,
-                'ajuda'      => 'Fecha somente quando o cliente efetivamente conectou via OAuth do Mercado '
-                    . 'Livre — nunca quando o link de autorização foi apenas gerado, que expira em 7 dias '
-                    . '(D-05).',
+                // Nunca fecha por link GERADO: o link expira em 7 dias e o item
+                // estaria mentindo o tempo todo (D-05).
+                'ajuda'      => 'Fecha sozinho quando o cliente autorizar o acesso à conta dele.',
             ],
             [
-                'ordem'      => 9,
+                'ordem'      => 8,
                 // ⚠️ A `chave` continua `conexao_ecf_gerada` de propósito — só o
                 // TÍTULO mudou (2026-09-11, pedido do usuário). Trocar a chave
                 // deixaria órfã toda linha já gravada em
@@ -163,9 +172,44 @@ class ChecklistAdministrativoDefinicao
                 'grupo'      => self::GRUPO_ENTRADA,
                 'natureza'   => self::NATUREZA_AUTO,
                 'auto_fonte' => self::AUTO_FONTE_CONEXAO_ECF,
-                'ajuda'      => 'O endereço sem senha por onde o cliente entra no sistema da ECF: acompanha '
-                    . 'o onboarding, preenche o que precisamos e autoriza o acesso à conta do Mercado '
-                    . 'Livre. Fecha pela existência do link, gerado de forma idempotente (D-14).',
+                // Fecha por EXISTÊNCIA de contato ativo em Acessos do portal,
+                // gerado de forma idempotente (D-14).
+                'ajuda'      => 'O endereço por onde o cliente acompanha o onboarding e envia o que pedimos. '
+                    . 'Fecha sozinho quando houver um contato cadastrado.',
+            ],
+            [
+                'ordem'      => 9,
+                'chave'      => 'boas_vindas_enviada',
+                'titulo'     => 'Boas-vindas enviada',
+                'grupo'      => self::GRUPO_ENTRADA,
+                'natureza'   => self::NATUREZA_MANUAL,
+                'auto_fonte' => null,
+                // ⚠️ ORDEM 9, e não 4 como nasceu (2026-09-18, pedido do usuário).
+                //
+                // A decisão de 2026-09-10 punha a mensagem logo após o contrato,
+                // por ser "o que abre a relação com o cliente". Na prática isso
+                // invertia a causalidade: a mensagem é MONTADA a partir do que o
+                // Administrativo preencheu — o e-mail colaborador, o endereço do
+                // Portal do Cliente — e mandá-la antes significava mandar texto
+                // com bloco vazio. Por isso ela agora fecha a lista.
+                //
+                // `depende_de` é a régua, e ela é DELIBERADAMENTE curta: só os
+                // itens cujo conteúdo ENTRA na mensagem e que dependem da ECF.
+                // `link_adman_entregue` e `grant_consultoria_ml` NÃO entram, e
+                // isso não é esquecimento — os dois são CONSEQUÊNCIA da mensagem
+                // (é ela que leva o link do Adman e o de autorização do Mercado
+                // Livre). Exigi-los aqui fecharia um ciclo: o cliente nunca
+                // recebe a mensagem porque não autorizou, e não autoriza porque
+                // não recebeu a mensagem.
+                'depende_de' => [
+                    'grupo_whatsapp_criado',
+                    'email_colaborador_criado',
+                    'conexao_ecf_gerada',
+                ],
+                // Manual: não existe sinal observável de que a mensagem foi
+                // enviada, e fabricar um seria marcar concluído sem evidência (D-13).
+                'ajuda'      => 'A mensagem abaixo é montada com o que foi preenchido acima. Copie e envie '
+                    . 'no grupo do cliente.',
             ],
         ];
     }
@@ -182,7 +226,7 @@ class ChecklistAdministrativoDefinicao
      * pendentes para sempre e nunca poderiam finalizar a entrada
      * administrativa.
      *
-     * @return array<int, array{ordem:int, chave:string, titulo:string, grupo:string, natureza:string, auto_fonte:?string, ajuda:string}>
+     * @return array<int, array{ordem:int, chave:string, titulo:string, grupo:string, natureza:string, auto_fonte:?string, ajuda:string, depende_de?:array<int,string>, exige_valor?:string}>
      */
     public static function itens(bool $exigeContrato): array
     {
@@ -205,7 +249,7 @@ class ChecklistAdministrativoDefinicao
      * aqui. Quem valida entrada de requisição é o controller, com
      * `Rule::in()` sobre {@see self::chaves()}.
      *
-     * @return array{ordem:int, chave:string, titulo:string, grupo:string, natureza:string, auto_fonte:?string, ajuda:string}|null
+     * @return array{ordem:int, chave:string, titulo:string, grupo:string, natureza:string, auto_fonte:?string, ajuda:string, depende_de?:array<int,string>, exige_valor?:string}|null
      */
     public static function item(string $chave): ?array
     {

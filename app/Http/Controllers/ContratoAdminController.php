@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\ClicksignException;
+use App\Models\ChecklistAdministrativoItem;
 use App\Models\Company;
 use App\Models\ContratoAssinatura;
 use App\Models\ContratoAssinaturaSignatario;
@@ -997,6 +998,69 @@ class ContratoAdminController extends Controller
         return redirect()->route('companies.index', [
             'tab' => 'onboarding', 'sub' => 'acessos', 'portal_company' => $company->id,
         ]);
+    }
+
+    /**
+     * O e-mail colaborador, gravado da própria linha do checklist (2026-09-18).
+     *
+     * ### Por que o campo mora aqui
+     * Quem cria esse endereço é o Administrativo, no meio do fluxo de entrada,
+     * e é ele que entra LITERALMENTE na mensagem de boas-vindas
+     * (`{email_colaborador}`). Até aqui o campo só existia na aba Acessos de
+     * `/companies` — obrigando a sair da ficha, achar a empresa noutra tela e
+     * voltar. O item do checklist é onde a informação nasce; é onde ela se
+     * grava.
+     *
+     * ### Salvar É marcar (e apagar É desmarcar)
+     * O endereço gravado é a ÚNICA evidência possível do item — não existe
+     * sinal externo a observar. Então o gesto é um só: salvar um e-mail válido
+     * conclui o item com autoria; limpar o campo o reabre. O estado
+     * "concluído, mas sem e-mail" é justamente o que a trava de
+     * `ChecklistAdministrativoService::bloqueio()` existe para impedir, e seria
+     * absurdo o próprio endpoint poder criá-lo.
+     *
+     * Coluna escrita: `companies.email_colaborador` — a MESMA que
+     * `MensagemBoasVindasService` lê. Nada novo em schema.
+     */
+    public function salvarEmailColaboradorChecklist(Request $request, Company $company): RedirectResponse
+    {
+        $this->guardaChecklist($request, 'email_colaborador_criado');
+
+        $validado = $request->validate([
+            'email_colaborador' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        $email = trim((string) ($validado['email_colaborador'] ?? ''));
+        $email = $email === '' ? null : $email;
+
+        $checklist = app(ChecklistAdministrativoService::class);
+
+        return $this->executarMutacaoChecklist(
+            $request,
+            $company,
+            function () use ($request, $company, $email, $checklist): void {
+                $company->update(['email_colaborador' => $email]);
+
+                if ($email !== null) {
+                    $checklist->concluirManualmente($company, 'email_colaborador_criado', $request->user());
+
+                    return;
+                }
+
+                // `reabrirItem()` recusa item que não está concluído — sem esta
+                // checagem, limpar o campo de uma empresa que nunca marcou o
+                // item viraria erro na tela em vez de "salvo".
+                $jaConcluido = ChecklistAdministrativoItem::where('company_id', $company->id)
+                    ->where('chave', 'email_colaborador_criado')
+                    ->where('status', ChecklistAdministrativoItem::STATUS_CONCLUIDO)
+                    ->exists();
+
+                if ($jaConcluido) {
+                    $checklist->reabrirItem($company, 'email_colaborador_criado', $request->user());
+                }
+            },
+            $email !== null ? 'E-mail colaborador salvo e item concluído.' : 'E-mail colaborador removido.'
+        );
     }
 
     /**

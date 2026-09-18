@@ -1636,6 +1636,11 @@ Route::middleware(['auth', 'verified', 'permission:admin.contratos,comercial.ent
     Route::post('/empresa/{company}/checklist/{chave}/concluir', [ContratoAdminController::class, 'concluirItemChecklist'])->name('checklist.concluir');
     Route::post('/empresa/{company}/checklist/{chave}/reabrir',  [ContratoAdminController::class, 'reabrirItemChecklist']) ->name('checklist.reabrir');
     Route::post('/empresa/{company}/checklist/conexao-ecf',      [ContratoAdminController::class, 'gerarConexaoEcfChecklist'])->name('checklist.conexao-ecf');
+    // 2026-09-18 — o e-mail colaborador passou a ser gravado da própria linha
+    // do checklist. Fica NESTE grupo (e não em `comercial.entrada.*`) pelo
+    // mesmo motivo dos irmãos acima: é endpoint de AÇÃO do checklist, e o
+    // recorte fino por grupo de item é de `guardaChecklist()`.
+    Route::post('/empresa/{company}/checklist/email-colaborador', [ContratoAdminController::class, 'salvarEmailColaboradorChecklist'])->name('checklist.email-colaborador');
     Route::post('/empresa/{company}/finalizar-entrada',          [ContratoAdminController::class, 'finalizarEntradaAdministrativa'])->name('finalizar-entrada');
 });
 

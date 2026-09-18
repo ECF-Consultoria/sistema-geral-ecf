@@ -112,6 +112,28 @@ class ChecklistAdministrativoService
             $grupos[$grupoChave]['itens'][] = $this->achatarItem($definicao, $linha, $motivo);
         }
 
+        // Segunda passada — a TRAVA de ordem (2026-09-18). Só pode ser
+        // calculada aqui, depois que todos os itens existem: `depende_de`
+        // olha para o status de OUTROS itens, e na primeira passada os
+        // posteriores ainda não foram montados.
+        $statusPorChave = [];
+        foreach ($grupos as $grupo) {
+            foreach ($grupo['itens'] as $item) {
+                $statusPorChave[$item['chave']] = $item['status'];
+            }
+        }
+
+        foreach ($grupos as $grupoChave => $grupo) {
+            foreach ($grupo['itens'] as $indice => $item) {
+                $bloqueio = $item['status'] === ChecklistAdministrativoItem::STATUS_CONCLUIDO
+                    ? null
+                    : $this->bloqueio($company, ChecklistAdministrativoDefinicao::item($item['chave']), $statusPorChave);
+
+                $grupos[$grupoChave]['itens'][$indice]['bloqueio']      = $bloqueio['motivo'] ?? null;
+                $grupos[$grupoChave]['itens'][$indice]['bloqueio_tipo'] = $bloqueio['tipo'] ?? null;
+            }
+        }
+
         return [
             'exige_contrato' => $exigeContrato,
             'grupos'         => $grupos,
@@ -187,6 +209,25 @@ class ChecklistAdministrativoService
             throw new \DomainException(
                 "O item \"{$definicao['titulo']}\" tem verificação automática — conclusão manual não é permitida."
             );
+        }
+
+        // Trava de ORDEM e de EVIDÊNCIA (2026-09-18). Mesma disciplina do
+        // ADMIN-05: a régua que desabilita o botão na tela é ESTA, lida do
+        // payload — nunca uma segunda implementação no JSX. O servidor a
+        // reavalia aqui, no instante do clique.
+        if (! $forcar) {
+            $statusPorChave = [];
+            foreach ($this->paraEmpresa($company)['grupos'] as $grupo) {
+                foreach ($grupo['itens'] as $item) {
+                    $statusPorChave[$item['chave']] = $item['status'];
+                }
+            }
+
+            $bloqueio = $this->bloqueio($company, $definicao, $statusPorChave);
+
+            if ($bloqueio !== null) {
+                throw new \DomainException($bloqueio['motivo']);
+            }
         }
 
         $item = ChecklistAdministrativoItem::updateOrCreate(
@@ -309,7 +350,7 @@ class ChecklistAdministrativoService
      * via `$forcar`), é sintoma — a tela deve poder mostrar as duas, então
      * este método NÃO normaliza apagando uma: só espelha o que está gravado.
      *
-     * @return array{chave:string, titulo:string, grupo:string, natureza:string, status:string, ajuda:string, motivo:?string, feito_por_nome:?string, feito_em:?string, auto_em:?string}
+     * @return array{chave:string, titulo:string, grupo:string, natureza:string, status:string, ajuda:string, motivo:?string, feito_por_nome:?string, feito_em:?string, auto_em:?string, depende_de:array<int,string>, exige_valor:?string, bloqueio:?string, bloqueio_tipo:?string}
      */
     private function achatarItem(array $definicao, ?ChecklistAdministrativoItem $linha, ?string $motivo): array
     {
@@ -324,7 +365,73 @@ class ChecklistAdministrativoService
             'feito_por_nome' => $linha?->feitoPor?->name,
             'feito_em'       => $linha?->feito_em?->toIso8601String(),
             'auto_em'        => $linha?->auto_em?->toIso8601String(),
+            // Chaves do catálogo que a TELA precisa para desenhar a trava e o
+            // campo de evidência. `bloqueio` NÃO é preenchido aqui — depende
+            // do status dos outros itens e só existe depois da segunda passada
+            // de `paraEmpresa()`.
+            'depende_de'     => $definicao['depende_de'] ?? [],
+            'exige_valor'    => $definicao['exige_valor'] ?? null,
+            'bloqueio'       => null,
+            'bloqueio_tipo'  => null,
         ];
+    }
+
+    /**
+     * A trava de ORDEM e de EVIDÊNCIA de um item ainda aberto (2026-09-18).
+     * Devolve a frase que explica o que falta, ou `null` quando nada trava.
+     *
+     * Duas regras, nesta ordem — a evidência primeiro porque é a que o
+     * operador resolve sem sair da linha:
+     *
+     * 1. `exige_valor` — a coluna de `companies` nomeada pelo catálogo precisa
+     *    estar preenchida. Hoje só `email_colaborador_criado` declara isso: o
+     *    endereço é a única evidência possível do item, e é ele que entra na
+     *    mensagem de boas-vindas.
+     * 2. `depende_de` — os itens listados precisam estar concluídos. Chave
+     *    ausente de `$statusPorChave` NÃO trava: é o caso da empresa isenta de
+     *    contrato (D-07), cujos itens do grupo Contrato nem são instanciados —
+     *    exigir um item que não existe travaria a ficha para sempre.
+     *
+     * Régua PURA: não escreve nada, não consulta o banco além do que já está
+     * carregado em `$company`.
+     *
+     * @param array{chave:string, titulo:string, depende_de?:array<int,string>, exige_valor?:string} $definicao
+     * @param array<string, string> $statusPorChave
+     * @return array{tipo:string, motivo:string}|null
+     */
+    private function bloqueio(Company $company, array $definicao, array $statusPorChave): ?array
+    {
+        $coluna = $definicao['exige_valor'] ?? null;
+
+        if ($coluna !== null && blank($company->{$coluna})) {
+            return [
+                'tipo'   => 'valor',
+                'motivo' => 'Preencha o campo abaixo para concluir este item.',
+            ];
+        }
+
+        $faltando = [];
+
+        foreach ($definicao['depende_de'] ?? [] as $chaveDependencia) {
+            if (! array_key_exists($chaveDependencia, $statusPorChave)) {
+                continue;
+            }
+
+            if ($statusPorChave[$chaveDependencia] !== ChecklistAdministrativoItem::STATUS_CONCLUIDO) {
+                $faltando[] = ChecklistAdministrativoDefinicao::item($chaveDependencia)['titulo'] ?? $chaveDependencia;
+            }
+        }
+
+        if ($faltando !== []) {
+            return [
+                'tipo'   => 'dependencia',
+                'motivo' => count($faltando) === 1
+                    ? "Conclua \"{$faltando[0]}\" antes deste item."
+                    : 'Conclua antes: '.implode(', ', $faltando).'.',
+            ];
+        }
+
+        return null;
     }
 
     /**

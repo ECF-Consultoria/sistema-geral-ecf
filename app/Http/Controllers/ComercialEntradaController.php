@@ -274,6 +274,14 @@ class ComercialEntradaController extends Controller
                 'id'   => $company->id,
                 'name' => $company->name,
                 'cnpj' => $company->cnpj,
+                // 2026-09-18 — o campo passou a ser editável na própria linha
+                // do item "E-mail colaborador criado". É a mesma coluna que
+                // `MensagemBoasVindasService` lê para montar `{email_colaborador}`.
+                'email_colaborador' => $company->email_colaborador,
+                // A etapa entra no cabeçalho da ficha para quem abre saber em
+                // que ponto do fluxo a empresa está sem voltar à listagem.
+                // `null` é normal: empresa legada, nunca carimbada (D-14).
+                'etapa' => $company->etapa,
             ],
             'checklist'         => $checklistPayload,
             'pode_ver_contrato' => $podeVerContrato,
