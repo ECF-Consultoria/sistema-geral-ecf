@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, FileText } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import LinhaChecklistItem from '@/Components/ChecklistAdministrativo/LinhaChecklistItem';
 import { cn } from '@/lib/utils';
@@ -11,20 +11,20 @@ import { cn } from '@/lib/utils';
  * Componente REAL, nunca re-export puro (ver `LinhaChecklistItem.jsx`).
  *
  * ### Duas colunas, cada uma com um trabalho
- * À esquerda a SEQUÊNCIA: uma espinha vertical numerada, sem cartão por item.
+ * À esquerda a SEQUÊNCIA: uma espinha vertical numerada, sem cartão por item,
+ * com as linhas em colunas de largura fixa para que tudo alinhe entre elas.
  * À direita, grudenta, a MENSAGEM de boas-vindas — o artefato que sai desta
- * tela para o grupo do cliente. Ela ficava lá embaixo, dentro do item 9, num
- * bloco alto que empurrava tudo; agora acompanha a rolagem e pode ser copiada
- * a qualquer momento, e a coluna da direita deixou de ser espaço morto abaixo
- * de um cartão curto.
+ * tela para o grupo do cliente.
  *
  * O progresso e o FINALIZAR **não moram aqui** — subiram para o cabeçalho da
  * página (`EntradaFicha.jsx`), que é a faixa visível em qualquer largura.
  *
- * ### Cada item cabe numa linha
- * Título e estado dividem a mesma linha, separados por um ponto médio, com as
- * ações à direita. Antes eram duas linhas por item — com 9 itens, a lista não
- * cabia na tela e o olho perdia a sequência.
+ * ### "Ver contrato" é do GRUPO, não da linha
+ * Os três itens de contrato apontavam para o MESMO documento, então a tela
+ * mostrava "Ver contrato assinado" três vezes empilhadas — a repetição era
+ * metade do ruído visual do bloco. O botão subiu para o cabeçalho do grupo,
+ * onde aparece uma vez só e continua a um clique de distância de quem está
+ * marcando "Contrato revisado".
  */
 
 /** Ordem de exibição dos grupos — Contrato antes de Entrada (D-03). */
@@ -63,9 +63,9 @@ function PainelBoasVindas({ mensagem, bloqueio }) {
     };
 
     return (
-        <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
-            <div className="flex items-start justify-between gap-3">
-                <h3 className="text-[13px] font-semibold text-white/80">Mensagem de boas-vindas</h3>
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.015] p-5">
+            <div className="flex items-center justify-between gap-3">
+                <h3 className="text-[13px] font-semibold text-white/75">Mensagem de boas-vindas</h3>
                 <Button size="sm" variant="outline" onClick={copiarMensagem} disabled={!mensagem.pronta}>
                     {copiado ? (
                         <>
@@ -80,16 +80,13 @@ function PainelBoasVindas({ mensagem, bloqueio }) {
             </div>
 
             {!mensagem.pronta && (
-                <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3.5 py-2.5">
-                    <p className="text-[12px] font-semibold text-amber-300">Falta para a mensagem ficar pronta</p>
-                    <ul className="mt-1 space-y-0.5">
-                        {mensagem.pendencias.map((p) => (
-                            <li key={p} className="text-[12px] text-amber-300/75">
-                                {p}
-                            </li>
-                        ))}
-                    </ul>
-                </div>
+                <ul className="mt-3 space-y-1 border-l-2 border-amber-400/40 pl-3">
+                    {mensagem.pendencias.map((p) => (
+                        <li key={p} className="text-[12px] leading-snug text-amber-300/80">
+                            {p}
+                        </li>
+                    ))}
+                </ul>
             )}
 
             {/* A trava de ordem do item 9 é informação diferente da prontidão do
@@ -103,16 +100,17 @@ function PainelBoasVindas({ mensagem, bloqueio }) {
             <textarea
                 readOnly
                 value={mensagem.texto}
-                rows={16}
+                rows={20}
                 onFocus={(e) => e.target.select()}
                 className={cn(
-                    'mt-3 w-full resize-y rounded-xl border border-white/[0.07] bg-black/30',
-                    'px-3.5 py-3 text-[12.5px] leading-relaxed text-white/65'
+                    'mt-3 max-h-[52vh] w-full resize-y rounded-none border-0 border-t border-white/[0.06] bg-transparent px-0 pb-0 pt-3',
+                    'text-[12.5px] leading-relaxed text-white/55',
+                    'focus:outline-none focus:ring-0'
                 )}
             />
 
             {mensagem.template_servico_nome && (
-                <p className="mt-2 text-[11.5px] text-white/25">
+                <p className="mt-1 text-[11.5px] text-white/25">
                     Texto do serviço {mensagem.template_servico_nome}
                 </p>
             )}
@@ -159,15 +157,39 @@ export default function CardChecklistAdministrativo({
 
     const itemBoasVindas = sequencia.find((item) => item.chave === 'boas_vindas_enviada');
 
+    /**
+     * Abre o PDF assinado quando existe; senão o painel da Clicksign, onde se
+     * acompanha o envelope. Sem nenhum dos dois não há documento para mostrar.
+     *
+     * ⚠️ O checklist **não gera** contrato. A geração fica no bloco próprio, na
+     * ficha de Contrato — decisão do usuário de manter o fluxo de contrato como
+     * o outro dev construiu e encaixar o fluxo de entrada em volta.
+     */
+    const verContrato = () => {
+        if (contratoAcesso?.url) {
+            window.open(contratoAcesso.url, '_blank', 'noopener');
+        }
+    };
+
     return (
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem] lg:gap-10 xl:grid-cols-[minmax(0,1fr)_26rem]">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_21rem] lg:gap-9 xl:grid-cols-[minmax(0,1fr)_26rem]">
             {/* ─── A sequência ──────────────────────────────────────────── */}
-            <div className="space-y-8">
+            <div className="space-y-7">
                 {grupos.map((grupo) => (
                     <section key={grupo.chave}>
                         <div className="mb-4 flex items-center gap-4">
                             <h3 className="shrink-0 text-[13px] font-semibold text-white/45">{grupo.titulo}</h3>
                             <span aria-hidden className="h-px flex-1 bg-white/[0.06]" />
+
+                            {grupo.chave === 'contrato' && contratoAcesso?.url && (
+                                <button
+                                    onClick={verContrato}
+                                    className="inline-flex shrink-0 items-center gap-1.5 text-[12px] text-white/45 transition-colors hover:text-ecf-yellow"
+                                >
+                                    <FileText size={13} />
+                                    {contratoAcesso.rotulo}
+                                </button>
+                            )}
                         </div>
 
                         <ol>
@@ -181,7 +203,6 @@ export default function CardChecklistAdministrativo({
                                     companyId={companyId}
                                     admanRegisterUrl={admanRegisterUrl}
                                     portalClienteUrl={portalClienteUrl}
-                                    contratoAcesso={contratoAcesso}
                                     emailColaborador={emailColaborador}
                                 />
                             ))}
