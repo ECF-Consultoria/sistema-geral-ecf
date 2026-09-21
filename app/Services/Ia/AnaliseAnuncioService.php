@@ -107,7 +107,7 @@ class AnaliseAnuncioService
 
         return [
             'analise'   => (array) ($dados['analise'] ?? []),
-            'titulos'   => $this->normalizarTitulos($dados['titulos'] ?? []),
+            'titulos'   => $this->normalizarTitulos($dados['titulos'] ?? [], $loja, $produto),
             'descricao' => trim((string) ($dados['descricao'] ?? '')),
             '_meta'     => [
                 // O modelo que RESPONDEU pode não ser o pedido: combo com
@@ -167,9 +167,14 @@ class AnaliseAnuncioService
         1. SEM PREPOSIÇÕES: proibido usar de, para, com, do, da, e, em.
         2. SEM CORES no título.
         3. PRODUTO/FUNÇÃO PRIMEIRO: o título começa pelo produto ou sua função.
-        4. MARCA NO FINAL, nunca no início.
+        4. NUNCA inclua o nome da loja/vendedor ("{$loja}") no título — nem no
+           começo, nem no meio, nem no fim. O título é do PRODUTO, não da loja.
+           Se existir MARCA DO PRODUTO (fabricante), ela vai no final; a loja
+           não é marca do produto e fica de fora.
         5. SEM CARACTERES ESPECIAIS: sem parênteses, traços, aspas ou pontuação.
         6. ENTRE 58 E 60 CARACTERES — conte de verdade, caractere por caractere.
+           Preencha os 58-60 caracteres com termos de busca reais do produto
+           (material, medida, capacidade, uso), nunca com o nome da loja.
         Gere de 3 a 5 variações, cada uma com combinação DIFERENTE de termos.
         PROIBIDO gerar variações que são apenas reordenações das mesmas palavras.
 
@@ -208,29 +213,89 @@ class AnaliseAnuncioService
     }
 
     /**
-     * Normaliza os títulos e mede o que o modelo prometeu.
+     * Normaliza os títulos e confere o ruleset ECF no servidor.
      *
-     * A contagem de caracteres é feita AQUI, nunca aceita do modelo: ele erra
-     * a conta com frequência. `dentro_da_regra` deixa a tela mostrar a verdade
-     * em vez de fingir que todo título serve.
+     * Nada aqui é aceito do modelo: ele erra a contagem de caracteres com
+     * frequência e ignora regras quando o título fica curto. `dentro_da_regra`
+     * deixa a tela mostrar a verdade em vez de fingir que todo título serve.
      */
-    private function normalizarTitulos(mixed $titulos): array
+    private function normalizarTitulos(mixed $titulos, string $loja, string $produto): array
     {
         return collect(is_array($titulos) ? $titulos : [])
-            ->map(function ($t) {
+            ->map(function ($t) use ($loja, $produto) {
                 $texto = trim((string) (is_array($t) ? ($t['texto'] ?? '') : $t));
                 $n     = mb_strlen($texto);
+
+                $temPreposicao = (bool) preg_match('/\b(de|para|com|do|da|e|em)\b/iu', $texto);
+                $temLoja       = $this->mencionaLoja($texto, $loja, $produto);
 
                 return [
                     'texto'           => $texto,
                     'caracteres'      => $n,
-                    'dentro_da_regra' => $n >= 58 && $n <= 60
-                        && ! preg_match('/\b(de|para|com|do|da|e|em)\b/iu', $texto),
+                    'tem_loja'        => $temLoja,
+                    'dentro_da_regra' => $n >= 58 && $n <= 60 && ! $temPreposicao && ! $temLoja,
                 ];
             })
             ->filter(fn ($t) => $t['texto'] !== '')
             ->values()
             ->all();
+    }
+
+    /**
+     * O título carrega o nome da loja?
+     *
+     * O modelo confunde "marca no final" (regra da ECF, que fala da marca do
+     * PRODUTO) com o nome do vendedor, e enfia a loja no fim para fechar os
+     * 58-60 caracteres. Isso queima espaço que deveria ser termo de busca.
+     *
+     * Casa por nome completo e também por palavra isolada da loja — mas só
+     * quando essa palavra NÃO aparece no nome do produto. Sem essa ressalva,
+     * uma loja chamada "Cadeiras Brasil" faria todo título de cadeira ser
+     * reprovado por conter "cadeiras".
+     */
+    private function mencionaLoja(string $titulo, string $loja, string $produto): bool
+    {
+        $loja = trim($loja);
+
+        if ($loja === '') {
+            return false;
+        }
+
+        $t = $this->semAcento($titulo);
+        $p = $this->semAcento($produto);
+
+        if (str_contains($t, $this->semAcento($loja))) {
+            return true;
+        }
+
+        foreach (preg_split('/\s+/', $this->semAcento($loja)) as $palavra) {
+            // Palavras curtas ("ml", "up") dariam falso positivo dentro de
+            // outras; e o que já existe no produto é termo legítimo.
+            if (mb_strlen($palavra) < 4 || str_contains($p, $palavra)) {
+                continue;
+            }
+
+            if (preg_match('/\b' . preg_quote($palavra, '/') . '\b/u', $t)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Minúsculas sem acento — o modelo escreve "Moveis" e a loja é "Móveis". */
+    private function semAcento(string $s): string
+    {
+        $s = mb_strtolower(trim($s));
+
+        return strtr($s, [
+            'á' => 'a', 'à' => 'a', 'ã' => 'a', 'â' => 'a', 'ä' => 'a',
+            'é' => 'e', 'ê' => 'e', 'è' => 'e', 'ë' => 'e',
+            'í' => 'i', 'î' => 'i', 'ì' => 'i', 'ï' => 'i',
+            'ó' => 'o', 'õ' => 'o', 'ô' => 'o', 'ò' => 'o', 'ö' => 'o',
+            'ú' => 'u', 'û' => 'u', 'ù' => 'u', 'ü' => 'u',
+            'ç' => 'c', 'ñ' => 'n',
+        ]);
     }
 
     /** Traduz o erro do provedor para algo que o publicador entenda. */

@@ -191,6 +191,56 @@ class AnuncioIaAnaliseTest extends TestCase
         $this->assertFalse($analise->fresh()->resultado['titulos'][0]['dentro_da_regra']);
     }
 
+    public function test_titulo_com_nome_da_loja_e_marcado_fora_da_regra(): void
+    {
+        // A regra da ECF é "marca no final" e fala da marca do PRODUTO. O
+        // modelo confunde com o nome do vendedor e enfia a loja no fim para
+        // fechar os 58-60 caracteres — queimando espaço que deveria ser termo
+        // de busca. Conferimos aqui porque pedir no prompt não basta.
+        Http::fake(['llm.teste/*' => Http::response($this->respostaDoProvedor([
+            'Cadeira Gamer Ergonomica Reclinavel 180 Graus Unity Moveis',   // tem a loja
+            'Cadeira Gamer Ergonomica Reclinavel Aco Carbono 150Kg 4D Alt', // limpa
+        ]))]);
+
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id' => $this->companyConectada('Unity Móveis')->id,
+            'produto'    => 'Cadeira Gamer Ergonômica',
+            'loja'       => 'Unity Móveis',
+            'status'     => MlAnuncioIaAnalise::STATUS_PENDENTE,
+        ]);
+
+        (new GerarAnaliseAnuncioIaJob($analise->id))->handle(app(\App\Services\Ia\AnaliseAnuncioService::class));
+
+        $titulos = $analise->fresh()->resultado['titulos'];
+
+        // Casa mesmo sem acento: a loja é "Móveis" e o modelo escreveu "Moveis".
+        $this->assertTrue($titulos[0]['tem_loja']);
+        $this->assertFalse($titulos[0]['dentro_da_regra'], 'Título com nome da loja não pode passar.');
+
+        $this->assertFalse($titulos[1]['tem_loja']);
+        $this->assertTrue($titulos[1]['dentro_da_regra']);
+    }
+
+    public function test_palavra_da_loja_que_tambem_e_do_produto_nao_reprova(): void
+    {
+        // Loja "Cadeiras Brasil" não pode fazer todo título de cadeira ser
+        // reprovado por conter "cadeira" — a palavra é do produto, não da loja.
+        Http::fake(['llm.teste/*' => Http::response($this->respostaDoProvedor([
+            'Cadeira Gamer Ergonomica Reclinavel Aco Carbono 150Kg 4D Alt',
+        ]))]);
+
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id' => $this->companyConectada('Cadeiras Brasil')->id,
+            'produto'    => 'Cadeira Gamer Ergonômica',
+            'loja'       => 'Cadeiras Brasil',
+            'status'     => MlAnuncioIaAnalise::STATUS_PENDENTE,
+        ]);
+
+        (new GerarAnaliseAnuncioIaJob($analise->id))->handle(app(\App\Services\Ia\AnaliseAnuncioService::class));
+
+        $this->assertFalse($analise->fresh()->resultado['titulos'][0]['tem_loja']);
+    }
+
     public function test_resposta_embrulhada_em_crases_ainda_e_aproveitada(): void
     {
         // Modelo desobedece e devolve ```json ... ```. Perder 100 segundos de

@@ -191,12 +191,22 @@ export default function PainelAnunciarIa({ empresa, onAplicarTitulo, onAplicarDe
                                             onClick={() => aplicarTitulo(t, i)}
                                             className="flex w-full items-start gap-2 rounded-lg border border-white/[0.06] bg-ecf-bg px-3 py-2 text-left hover:border-violet-400/40"
                                         >
-                                            <span className="flex-1 text-[13px] text-white">{t.texto}</span>
-                                            {/* A contagem vem do servidor, medida lá — o
-                                                modelo erra a própria conta com frequência. */}
+                                            <span className="flex-1 text-[13px] text-white">
+                                                {t.texto}
+                                                {/* Aviso específico: o motivo mais comum de
+                                                    reprovação é o modelo enfiar a loja no
+                                                    fim para fechar os 60 caracteres. */}
+                                                {t.tem_loja && (
+                                                    <span className="mt-0.5 block text-[10px] text-amber-300/80">
+                                                        contém o nome da loja
+                                                    </span>
+                                                )}
+                                            </span>
+                                            {/* Tudo medido no servidor: tamanho, preposição e
+                                                nome da loja. O modelo erra a própria conta. */}
                                             <span className={cn(
                                                 'shrink-0 rounded px-1.5 py-0.5 text-[10px]',
-                                                t.caracteres >= 58 && t.caracteres <= 60
+                                                t.dentro_da_regra
                                                     ? 'bg-emerald-500/10 text-emerald-400'
                                                     : 'bg-amber-500/10 text-amber-300',
                                             )}>
