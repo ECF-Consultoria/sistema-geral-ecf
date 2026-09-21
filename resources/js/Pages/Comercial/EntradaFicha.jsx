@@ -77,15 +77,15 @@ export default function EntradaFicha({
         <AppLayout title={`Entrada — ${company.name}`}>
             <Head title={`Entrada — ${company.name}`} />
 
-            <main className="mx-auto max-w-[95rem] px-5 py-6 sm:px-8">
+            <main className="mx-auto max-w-[90rem] px-6 py-8 sm:px-8 lg:px-10">
                 <Link
                     href={route('comercial.entrada.index')}
-                    className="inline-flex items-center gap-1.5 text-[12px] text-white/40 transition-colors hover:text-ecf-yellow"
+                    className="inline-flex items-center gap-1.5 text-[12.5px] text-white/50 transition-colors hover:text-ecf-yellow"
                 >
                     <ArrowLeft size={13} /> Voltar à Entrada
                 </Link>
 
-                <header className="mt-4 grid gap-x-10 gap-y-6 border-b border-white/[0.07] pb-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <header className="mb-6 mt-5 grid gap-x-8 gap-y-5 lg:grid-cols-[minmax(0,1fr)_34rem] lg:items-start">
                     <div className="min-w-0">
                         {/* `break-words`, nunca `truncate`: no celular o nome da
                             empresa virava "DEMO · Entrada com c…" e a ficha
@@ -95,7 +95,7 @@ export default function EntradaFicha({
                         </h1>
 
                         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-[12.5px]">
-                            {company.cnpj && <span className="tabular-nums text-white/40">{company.cnpj}</span>}
+                            {company.cnpj && <span className="tabular-nums text-white/50">{company.cnpj}</span>}
                             {etapa && (
                                 <span className="rounded-full border border-white/[0.09] bg-white/[0.03] px-2.5 py-0.5 text-white/55">
                                     {etapa}
@@ -108,7 +108,7 @@ export default function EntradaFicha({
                             {ficha_contrato_url && (
                                 <Link
                                     href={ficha_contrato_url}
-                                    className="inline-flex items-center gap-1.5 text-white/45 transition-colors hover:text-ecf-yellow"
+                                    className="inline-flex items-center gap-1.5 text-white/55 transition-colors hover:text-ecf-yellow"
                                 >
                                     <FileSignature size={13} /> Ficha de contrato
                                 </Link>
@@ -116,13 +116,15 @@ export default function EntradaFicha({
                         </div>
                     </div>
 
-                    {/* Deitado, não empilhado: empilhado este bloco ficava três
-                        vezes mais alto que o nome da empresa ao lado, e a
-                        diferença virava um vão vazio de ~150px à esquerda —
-                        exatamente o desperdício que o redesenho existe para
-                        remover. */}
+                    {/* O resumo da entrada é um CARTÃO CONTIDO (2026-09-21).
+                        Antes os quatro pedaços — fração, medidor, botão e o que
+                        falta — flutuavam soltos sobre o fundo da página, e a
+                        informação mais importante da tela parecia espalhada.
+                        Dentro de uma caixa ela vira uma coisa só, e o cartão
+                        ainda é o primeiro bloco no celular, logo abaixo do
+                        nome da empresa. */}
                     {checklist && (
-                        <div className="w-full lg:w-[34rem]">
+                        <div className="w-full rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
                             <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
                                 <span
                                     className={cn(
@@ -134,12 +136,12 @@ export default function EntradaFicha({
                                     <span className="text-white/25">/{progresso.total}</span>
                                 </span>
 
-                                <div className="min-w-[8rem] flex-1">
+                                <div className="min-w-[7rem] flex-1">
                                     <div className="mb-1.5 flex items-baseline justify-between gap-2 text-[11.5px]">
-                                        <span className="text-white/35">
+                                        <span className="text-white/50">
                                             {completo ? 'tudo concluído' : 'itens concluídos'}
                                         </span>
-                                        <span className="tabular-nums text-white/45">{progresso.percentual}%</span>
+                                        <span className="tabular-nums text-white/55">{progresso.percentual}%</span>
                                     </div>
 
                                     <div
@@ -167,7 +169,11 @@ export default function EntradaFicha({
                                     mesma trava é exatamente o que o ADMIN-05
                                     proíbe, e a que vale é a do servidor, que
                                     reavalia no POST. */}
-                                <Button onClick={finalizar} disabled={!permitido || form.processing}>
+                                <Button
+                                    className="w-full sm:w-auto"
+                                    onClick={finalizar}
+                                    disabled={!permitido || form.processing}
+                                >
                                     Finalizar entrada administrativa
                                 </Button>
                             </div>
@@ -175,7 +181,7 @@ export default function EntradaFicha({
                             {/* Botão desabilitado nunca fica sozinho sem dizer o
                                 que falta — o texto vem pronto do servidor. */}
                             {!permitido && pode_finalizar?.requisito_faltante && (
-                                <p className="mt-2.5 text-[12px] leading-relaxed text-amber-300/85">
+                                <p className="mt-2.5 text-[12px] leading-relaxed text-amber-200/90">
                                     {pode_finalizar.requisito_faltante}
                                 </p>
                             )}
@@ -189,23 +195,21 @@ export default function EntradaFicha({
                     caracteres como conteúdo. Se aparecer um `)}` solto na tela,
                     é isto. */}
                 {checklist && (
-                    <div className="mt-8">
-                        <CardChecklistAdministrativo
-                            checklist={checklist}
-                            companyId={company.id}
-                            podeVerContrato={pode_ver_contrato}
-                            admanRegisterUrl={adman_register_url}
-                            portalClienteUrl={portal_cliente_url}
-                            mensagemBoasVindas={mensagem_boas_vindas}
-                            contratoAcesso={contrato_acesso}
-                            emailColaborador={company.email_colaborador ?? null}
-                        />
-                    </div>
+                    <CardChecklistAdministrativo
+                        checklist={checklist}
+                        companyId={company.id}
+                        podeVerContrato={pode_ver_contrato}
+                        admanRegisterUrl={adman_register_url}
+                        portalClienteUrl={portal_cliente_url}
+                        mensagemBoasVindas={mensagem_boas_vindas}
+                        contratoAcesso={contrato_acesso}
+                        emailColaborador={company.email_colaborador ?? null}
+                    />
                 )}
 
                 {!checklist && (
-                    <div className="mt-8 rounded-2xl border border-white/[0.07] bg-white/[0.02] px-6 py-14 text-center">
-                        <p className="text-[13px] text-white/45">
+                    <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-6 py-14 text-center">
+                        <p className="text-[13px] text-white/55">
                             Esta empresa ainda não tem checklist administrativo.
                         </p>
                     </div>

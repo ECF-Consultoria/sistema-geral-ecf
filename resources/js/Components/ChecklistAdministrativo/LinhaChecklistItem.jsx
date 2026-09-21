@@ -114,6 +114,12 @@ export default function LinhaChecklistItem({
     emailColaborador = null,
     atual = false,
     ultimo = false,
+    // Duas apresentações da MESMA linha (2026-09-21). O grupo Entrada é uma
+    // sequência e mantém a espinha ligando os degraus; o grupo Contrato é uma
+    // lista de três estados que não se encadeiam, e ali a espinha sugeria uma
+    // ordem que não existe — lá vale o filete entre as linhas.
+    espinha = true,
+    separador = false,
 }) {
     const form = useForm({});
     const formEmail = useForm({ email_colaborador: emailColaborador ?? '' });
@@ -193,7 +199,7 @@ export default function LinhaChecklistItem({
 
     // A ÚNICA linha de estado. A ordem das opções é a ordem de utilidade: o
     // que aconteceu, depois o que falta, depois o que o item é.
-    let estado = { texto: item.ajuda, tom: 'text-white/30' };
+    let estado = { texto: item.ajuda, tom: 'text-white/45' };
 
     if (aguardandoSistema) {
         estado = {
@@ -203,16 +209,16 @@ export default function LinhaChecklistItem({
     } else if (concluido && item.feito_por_nome) {
         estado = {
             texto: `Concluído por ${item.feito_por_nome}${feitoEm ? ` em ${feitoEm}` : ''}`,
-            tom: 'text-white/35',
+            tom: 'text-white/50',
         };
     } else if (concluido && autoEm) {
-        estado = { texto: `Confirmado pelo sistema em ${autoEm}`, tom: 'text-white/35' };
+        estado = { texto: `Confirmado pelo sistema em ${autoEm}`, tom: 'text-white/50' };
     } else if (concluido) {
-        estado = { texto: 'Concluído', tom: 'text-white/35' };
+        estado = { texto: 'Concluído', tom: 'text-white/50' };
     } else if (bloqueado) {
         estado = { texto: item.bloqueio, tom: 'text-amber-300/85' };
     } else if (item.motivo) {
-        estado = { texto: item.motivo, tom: 'text-white/40' };
+        estado = { texto: item.motivo, tom: 'text-white/55' };
     }
 
     const ehEmailColaborador = item.chave === 'email_colaborador_criado';
@@ -223,14 +229,21 @@ export default function LinhaChecklistItem({
     const mostraDesmarcar = concluido && (!ehAuto || forcado);
 
     return (
-        <li className={cn('relative pl-9', ultimo ? 'pb-0' : 'pb-4')}>
+        <li
+            className={cn(
+                'relative pl-9',
+                separador ? 'py-3' : 'pb-4',
+                separador && !ultimo && 'border-b border-white/[0.05]',
+                ultimo && !separador && 'pb-0'
+            )}
+        >
             {/* A espinha. Segmento por degrau, nunca no último — a linha
                 termina onde a sequência termina. */}
-            {!ultimo && (
+            {espinha && !ultimo && (
                 <span
                     aria-hidden
                     className={cn(
-                        'absolute left-[12px] top-7 bottom-0 w-px',
+                        'absolute left-[12px] bottom-0 top-7 w-px',
                         concluido ? 'bg-emerald-400/25' : 'bg-white/[0.07]'
                     )}
                 />
@@ -241,7 +254,8 @@ export default function LinhaChecklistItem({
             <span
                 aria-hidden
                 className={cn(
-                    'absolute left-0 top-0.5 grid h-[25px] w-[25px] place-items-center rounded-full border transition-colors',
+                    'absolute left-0 grid h-[25px] w-[25px] place-items-center rounded-full border transition-colors',
+                    separador ? 'top-3' : 'top-0.5',
                     concluido && !aguardandoSistema && 'border-emerald-400/45 bg-emerald-400/[0.12] text-emerald-300',
                     concluido && aguardandoSistema && 'border-amber-400/40 bg-amber-400/[0.1] text-amber-300',
                     !concluido && atual && 'border-ecf-yellow/70 bg-ecf-yellow/[0.12] text-ecf-yellow',
@@ -266,7 +280,7 @@ export default function LinhaChecklistItem({
             <div className="flex flex-col gap-y-2 lg:flex-row lg:items-start lg:gap-x-5">
                 <h4
                     className={cn(
-                        'break-words pt-0.5 text-[14px] font-semibold leading-snug tracking-tight lg:w-[12.5rem] lg:shrink-0 xl:w-[14rem]',
+                        'break-words pt-0.5 text-[13.5px] font-semibold leading-snug tracking-tight lg:w-[11rem] lg:shrink-0 xl:w-[12.5rem]',
                         concluido ? 'text-white/60' : 'text-white'
                     )}
                 >
@@ -274,7 +288,7 @@ export default function LinhaChecklistItem({
                     {ehAuto && (
                         <Zap
                             size={11}
-                            className="ml-1.5 inline-block align-baseline text-white/25"
+                            className="ml-1.5 inline-block align-baseline text-white/35"
                             aria-label="Verificado automaticamente pelo sistema"
                             title="Verificado automaticamente pelo sistema"
                         />
@@ -305,14 +319,25 @@ export default function LinhaChecklistItem({
                                 </Button>
                             </div>
 
+                            {/* A linha sob o campo acumula três papéis, nesta
+                                ordem: o erro de validação, a AUTORIA depois de
+                                concluído — sem ela esta seria a única linha do
+                                checklist que não diz quem fechou e quando — e,
+                                enquanto está aberta, o que o Salvar faz. */}
                             <p
                                 className={cn(
                                     'mt-1.5 text-[11.5px] leading-snug',
-                                    formEmail.errors.email_colaborador ? 'text-red-300' : 'text-white/25'
+                                    formEmail.errors.email_colaborador
+                                        ? 'text-red-300'
+                                        : concluido
+                                          ? 'text-white/50'
+                                          : 'text-white/40'
                                 )}
                             >
                                 {formEmail.errors.email_colaborador ??
-                                    'Salvar conclui o item. Entra na mensagem de boas-vindas.'}
+                                    (concluido
+                                        ? estado.texto
+                                        : 'Salvar conclui o item. Entra na mensagem de boas-vindas.')}
                             </p>
                         </form>
                     ) : (
@@ -326,7 +351,7 @@ export default function LinhaChecklistItem({
                                             sub: 'acessos',
                                             portal_company: companyId,
                                         })}
-                                        className="ml-1.5 inline-flex items-center gap-1 whitespace-nowrap text-ecf-yellow/80 transition-colors hover:text-ecf-yellow"
+                                        className="ml-1.5 inline-flex items-center gap-1 whitespace-nowrap text-ecf-yellow/90 transition-colors hover:text-ecf-yellow"
                                     >
                                         <ExternalLink size={11} />
                                         Cadastrar acesso
@@ -344,12 +369,12 @@ export default function LinhaChecklistItem({
                             readOnly
                             value={urlRevelada}
                             onFocus={(e) => e.target.select()}
-                            className="mt-2 w-full rounded-lg border border-white/[0.07] bg-black/30 px-3 py-1.5 font-mono text-[11.5px] text-white/60"
+                            className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-[11.5px] text-white/70"
                         />
                     )}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 lg:w-[17.5rem] lg:shrink-0 lg:justify-end xl:w-[19rem]">
+                <div className="flex flex-wrap items-center gap-2 lg:w-[15rem] lg:shrink-0 lg:justify-end xl:w-[16.5rem]">
                     {/* Copiar, jamais abrir (D-05, comentário acima). */}
                     {item.chave === 'grant_consultoria_ml' && !concluido && (
                         <BotaoCopiar onCopiar={copiarLinkOauthMl} />
@@ -380,7 +405,7 @@ export default function LinhaChecklistItem({
                         <button
                             onClick={desmarcar}
                             disabled={form.processing}
-                            className="text-[12px] text-white/30 transition-colors hover:text-white disabled:opacity-50"
+                            className="text-[12px] text-white/45 transition-colors hover:text-white disabled:opacity-50"
                         >
                             Desmarcar
                         </button>
