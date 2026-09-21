@@ -35,7 +35,21 @@ class GerarAnaliseAnuncioIaJob implements ShouldQueue
     /** Teto acima do timeout do service (300s), senão o worker mata antes. */
     public int $timeout = 420;
 
-    public function __construct(public int $analiseId) {}
+    public function __construct(public int $analiseId)
+    {
+        // Fila `high`, NUNCA a `default`.
+        //
+        // Medido em produção em 21/09/2026: a `default` tinha 170 jobs
+        // represados (sync da Adman, que é longo) e a análise ficou 395
+        // segundos sem ninguém pegar — o publicador viu "Gerando…" e concluiu
+        // que tinha travado. A `high` tem worker dedicado
+        // (`queue:work redis --queue=high`) e vive ociosa.
+        //
+        // Aqui tem gente olhando a tela esperando: não pode entrar atrás de
+        // trabalho em lote. Definido no construtor porque `Queueable` já
+        // declara `$queue` e redeclarar a propriedade é erro fatal de PHP.
+        $this->onQueue('high');
+    }
 
     public function handle(AnaliseAnuncioService $ia): void
     {

@@ -13,14 +13,24 @@ import { Sparkles, Loader2, Check, AlertTriangle, ChevronDown, ChevronRight } fr
  * Por isso: POST enfileira, e daqui em diante é polling. Não existe versão
  * síncrona disso que sobreviva a um request.
  */
-export default function PainelAnunciarIa({ empresa, onAplicarTitulo, onAplicarDescricao }) {
-    const [aberto, setAberto]   = useState(false);
-    const [produto, setProduto] = useState('');
-    const [specs, setSpecs]     = useState('');
+export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTitulo, onAplicarDescricao }) {
+    // Estado inicial vem do servidor quando existe análise recente: é isso que
+    // faz o F5 não parecer perda de trabalho. A geração leva minutos e mora no
+    // banco — recarregar a página nunca cancelou nada, só escondia.
+    const inicial = analiseInicial ?? null;
 
-    const [estado, setEstado]   = useState('parado'); // parado | gerando | pronto | erro
-    const [erro, setErro]       = useState(null);
-    const [dados, setDados]     = useState(null);
+    const [aberto, setAberto]   = useState(Boolean(inicial));
+    const [produto, setProduto] = useState(inicial?.produto ?? '');
+    const [specs, setSpecs]     = useState(inicial?.specs ?? '');
+
+    const [estado, setEstado]   = useState(
+        !inicial ? 'parado'
+            : inicial.em_andamento ? 'gerando'
+            : inicial.status === 'erro' ? 'erro'
+            : 'pronto',
+    );
+    const [erro, setErro]       = useState(inicial?.erro ?? null);
+    const [dados, setDados]     = useState(inicial && !inicial.em_andamento && inicial.status !== 'erro' ? inicial : null);
     const [segundos, setSegundos] = useState(0);
     const [verAnalise, setVerAnalise] = useState(false);
     const [aplicado, setAplicado] = useState({});
@@ -35,7 +45,18 @@ export default function PainelAnunciarIa({ empresa, onAplicarTitulo, onAplicarDe
         if (cronoRef.current) { clearInterval(cronoRef.current); cronoRef.current = null; }
     }
 
-    useEffect(() => pararTimers, []);
+    // Retoma o acompanhamento de uma geração que já estava correndo quando a
+    // página foi recarregada. Sem isto o card ficava em "Gerando…" para sempre,
+    // porque ninguém mais perguntava ao servidor como ela terminou.
+    useEffect(() => {
+        if (inicial?.em_andamento) {
+            cronoRef.current = setInterval(() => setSegundos(s => s + 1), 1000);
+            pollRef.current  = setInterval(() => consultar(inicial.id), 5000);
+            consultar(inicial.id);
+        }
+
+        return pararTimers;
+    }, []);
 
     async function gerar() {
         if (!produto.trim()) return;
@@ -163,10 +184,11 @@ export default function PainelAnunciarIa({ empresa, onAplicarTitulo, onAplicarDe
 
                     {estado === 'gerando' && (
                         // Expectativa honesta: sem isto o publicador acha que travou
-                        // no segundo 30 e recarrega a página no meio da geração.
+                        // e recarrega a página no meio da geração.
                         <p className="text-[11px] text-white/40">
-                            Costuma levar cerca de 2 minutos. Pode continuar preenchendo o resto —
-                            o resultado aparece aqui quando ficar pronto.
+                            Costuma levar de 1 a 3 minutos. Pode continuar preenchendo o resto,
+                            e pode até recarregar a página — a geração roda no servidor e o
+                            resultado reaparece aqui quando ficar pronto.
                         </p>
                     )}
 

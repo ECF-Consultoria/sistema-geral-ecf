@@ -1029,7 +1029,7 @@ function CompatibilidadeEditor({ veiculos, setVeiculos }) {
  * WIZ-08: preview lateral em tempo real (título/preço/imagem/empresa/breadcrumb).
  * PRICE-01/02/03: SimuladorPreco embutido na etapa de preço.
  */
-export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [], abrirRascunhoId = null }) {
+export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [], abrirRascunhoId = null, iaAnalise = null }) {
     const [rascunhoId, setRascunhoId] = useState(null);
 
     // ─── Navegação do wizard (WIZ-01) ───
@@ -2083,6 +2083,7 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                 o título não precisa tropeçar nela. */}
                             <PainelAnunciarIa
                                 empresa={empresa}
+                                analiseInicial={iaAnalise}
                                 onAplicarTitulo={(t) => { setTitulo(t); marcarEditado('title'); }}
                                 onAplicarDescricao={(d) => { setDescricao(d); marcarEditado('description'); }}
                             />

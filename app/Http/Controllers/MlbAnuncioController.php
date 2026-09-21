@@ -123,6 +123,11 @@ class MlbAnuncioController extends Controller
                 'company_id' => $company->id,
                 'tem_token'  => true,
             ],
+            // Sobrevive ao F5. A análise leva minutos e mora no banco; sem
+            // isto, recarregar a página no meio da geração dava a impressão
+            // de que o trabalho tinha sido perdido — ele seguia rodando,
+            // invisível. Janela de 2h: mais velho que isso é outro anúncio.
+            'iaAnalise' => $this->ultimaAnaliseIa($company),
             'rascunhos' => $rascunhosRecentes
                 ->map(fn ($r) => [
                     'id'            => $r->id,
@@ -2132,6 +2137,40 @@ class MlbAnuncioController extends Controller
     }
 
     // ═══ Anunciar por IA — metodologia MAG T8 ════════════════════════════════
+
+    /**
+     * Última análise da empresa, para a tela se recuperar de um F5.
+     *
+     * Só as 2 últimas horas: análise de ontem é de outro anúncio e reabrir ela
+     * confundiria mais do que ajudaria. Devolve `null` quando não há nada —
+     * a tela então abre o painel em branco, como antes.
+     */
+    private function ultimaAnaliseIa(Company $company): ?array
+    {
+        $a = MlAnuncioIaAnalise::where('company_id', $company->id)
+            ->where('created_at', '>=', now()->subHours(2))
+            ->latest('id')
+            ->first();
+
+        if (! $a) {
+            return null;
+        }
+
+        return [
+            'id'           => $a->id,
+            'status'       => $a->status,
+            'em_andamento' => $a->emAndamento(),
+            'erro'         => $a->erro_mensagem,
+            'produto'      => $a->produto,
+            'specs'        => $a->specs,
+            'loja'         => $a->loja,
+            'titulos'      => $a->titulos(),
+            'descricao'    => $a->descricao(),
+            'analise'      => $a->analise(),
+            'modelo'       => $a->modelo,
+            'duracao_ms'   => $a->duracao_ms,
+        ];
+    }
 
     /**
      * Dispara a análise por IA e devolve o id para o front acompanhar.

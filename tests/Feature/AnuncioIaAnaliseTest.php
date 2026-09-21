@@ -93,6 +93,68 @@ class AnuncioIaAnaliseTest extends TestCase
         Queue::assertPushed(GerarAnaliseAnuncioIaJob::class);
     }
 
+    public function test_job_vai_para_a_fila_high_e_nao_para_a_default(): void
+    {
+        // Medido em produção em 21/09/2026: a `default` tinha 170 jobs
+        // represados do sync da Adman e a análise ficou 395s sem ninguém
+        // pegar — o publicador viu "Gerando…" e achou que tinha travado.
+        // A `high` tem worker dedicado e vive ociosa.
+        Queue::fake();
+
+        $this->actingAs($this->admin())->postJson(route('mlb.anuncios.ia.analise.store'), [
+            'company_id' => $this->companyConectada()->id,
+            'produto'    => 'Cadeira Gamer',
+        ])->assertStatus(202);
+
+        Queue::assertPushedOn('high', GerarAnaliseAnuncioIaJob::class);
+    }
+
+    public function test_wizard_devolve_a_analise_recente_para_sobreviver_ao_f5(): void
+    {
+        // A geração leva minutos e mora no banco: recarregar a página nunca
+        // cancelou nada, só escondia. O wizard reentrega a análise para a tela
+        // retomar o acompanhamento.
+        $company = $this->companyConectada();
+
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id' => $company->id,
+            'produto'    => 'Cadeira Gamer',
+            'status'     => MlAnuncioIaAnalise::STATUS_RODANDO,
+        ]);
+
+        $props = $this->actingAs($this->admin())
+            ->get(route('mlb.anuncios.wizard', ['company' => $company->id]))
+            ->assertOk()
+            ->viewData('page')['props'];
+
+        $this->assertSame($analise->id, $props['iaAnalise']['id']);
+        $this->assertTrue($props['iaAnalise']['em_andamento']);
+    }
+
+    public function test_analise_velha_nao_reabre_no_wizard(): void
+    {
+        // Análise de ontem é de outro anúncio. Reabrir confundiria mais do que
+        // ajudaria — a janela é de 2 horas.
+        $company = $this->companyConectada();
+
+        $velha = MlAnuncioIaAnalise::create([
+            'company_id' => $company->id,
+            'produto'    => 'Anúncio de ontem',
+            'status'     => MlAnuncioIaAnalise::STATUS_CONCLUIDO,
+        ]);
+
+        // `created_at` no create() é sobrescrito pelos timestamps do Eloquent —
+        // envelhecer a linha exige escrever direto na tabela.
+        MlAnuncioIaAnalise::where('id', $velha->id)->update(['created_at' => now()->subHours(5)]);
+
+        $props = $this->actingAs($this->admin())
+            ->get(route('mlb.anuncios.wizard', ['company' => $company->id]))
+            ->assertOk()
+            ->viewData('page')['props'];
+
+        $this->assertNull($props['iaAnalise']);
+    }
+
     public function test_loja_vem_da_conta_ml_e_nao_do_que_o_cliente_manda(): void
     {
         Queue::fake();
