@@ -2129,7 +2129,31 @@ class MlbAnuncioController extends Controller
             ->implode("\n");
     }
 
+    /**
+     * Cards do painel — as DUAS fontes de conta ML.
+     *
+     * 1. `companies` com token (fluxo de sempre, `/ml-oauth`).
+     * 2. `mlb_empresas` de Polos/Onboarding que autorizaram o OAuth.
+     *
+     * A fonte 2 existia e era invisível aqui: o `callbackPolos` autorizava e
+     * DESCARTAVA o token (não havia onde gravar até `mlb_empresa_id` entrar em
+     * `ml_tokens`), então 246 empresas autorizadas nunca apareceram no módulo.
+     *
+     * As que autorizaram ANTES dessa correção aparecem com `conectada: false` e
+     * um link de reconexão: o token daquela autorização não existe em lugar
+     * nenhum para ser recuperado — não está em log nem em binlog, porque nunca
+     * foi escrito. O que sobrou (e segue valendo) é o `cust_id` capturado.
+     */
     private function empresas(Request $request): Collection
+    {
+        return $this->empresasDeConsultoria()
+            ->concat($this->empresasDePolos())
+            ->sortBy('nome', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
+    }
+
+    /** Fonte 1: `companies` com token — comportamento inalterado. */
+    private function empresasDeConsultoria(): Collection
     {
         // Fonte: companies com ml_token. O whereHas filtra no banco — só conectadas.
         return Company::query()
@@ -2168,7 +2192,91 @@ class MlbAnuncioController extends Controller
                     'rascunhos_abertos' => (int) $abertos,
                     // BULK-04: quantos rascunhos estão em publicação assíncrona agora
                     'publicando_count'  => (int) $publicando,
+                    // ─── campos da convivência com Polos ───
+                    'origem'            => 'consultoria',
+                    'conectada'         => true,
+                    'pode_publicar'     => true,
+                    'cust_id'           => $c->ml_store_id,
+                    'autorizado_em'     => $c->mlToken?->connected_at?->toISOString(),
+                    'link_reconexao'    => null,
                 ];
             });
+    }
+
+    /**
+     * Fonte 2: empresas de Polos/Onboarding que autorizaram o OAuth do ML.
+     *
+     * Evidência de autorização = o carimbo `dados->ml_oauth` que o
+     * `callbackPolos` grava, e não `cust_id` preenchido: o Cust ID também pode
+     * ter sido digitado à mão por um consultor, e digitar não é autorizar.
+     *
+     * `scopeAtivas()` é obrigatório aqui — empresa arquivada saiu do projeto e
+     * não entra em listagem nenhuma de Polos (learnings de Polos §3).
+     *
+     * Contagens vêm de agregado, não de query por linha: são centenas de
+     * empresas, e o laço por empresa da fonte 1 viraria N+1 grosseiro aqui.
+     */
+    private function empresasDePolos(): Collection
+    {
+        $empresas = MlbEmpresa::query()
+            ->ativas()
+            ->with(['implementacao', 'mlToken'])
+            ->whereHas('implementacao', fn ($q) => $q->whereNotNull('dados->ml_oauth'))
+            ->get();
+
+        if ($empresas->isEmpty()) {
+            return collect();
+        }
+
+        $ids = $empresas->pluck('id');
+
+        // Um SELECT agrupado para os dois contadores, em vez de 2 por empresa.
+        $contagens = MlAnuncioRascunho::query()
+            ->whereIn('mlb_empresa_id', $ids)
+            ->selectRaw('mlb_empresa_id, status, COUNT(*) as total')
+            ->groupBy('mlb_empresa_id', 'status')
+            ->get()
+            ->groupBy('mlb_empresa_id');
+
+        $emAberto = [
+            MlAnuncioRascunho::STATUS_RASCUNHO,
+            MlAnuncioRascunho::STATUS_VALIDADO,
+            MlAnuncioRascunho::STATUS_ERRO,
+        ];
+
+        return $empresas->map(function (MlbEmpresa $e) use ($contagens, $emAberto) {
+            $porStatus = $contagens->get($e->id, collect());
+            $carimbo   = data_get($e->implementacao?->dados, 'ml_oauth', []);
+
+            // Sem token = autorizou antes da correção de 21/09/2026, quando o
+            // token era descartado. Precisa reconectar pelo mesmo link público
+            // do Onboarding — é um clique para quem já autorizou, porque o ML
+            // não repete a tela de consentimento para app já autorizado.
+            $token = $e->mlToken;
+
+            return [
+                'id'                => $e->chaveContaMl(),   // âncora = "empresa-<id>"
+                'nome'              => $e->nome,
+                'company_id'        => $e->company_id,
+                'tem_token'         => $token !== null,
+                'token_expirado'    => $token?->isExpired() ?? false,
+                'tem_dados_cliente' => $e->implementacao !== null,
+                'rascunhos_abertos' => (int) $porStatus->whereIn('status', $emAberto)->sum('total'),
+                'publicando_count'  => (int) $porStatus->where('status', MlAnuncioRascunho::STATUS_PUBLICANDO)->sum('total'),
+                // ─── campos da convivência com Polos ───
+                'origem'            => 'polos',
+                'conectada'         => $token !== null,
+                // Publicar ainda exige o refactor do controller para as duas
+                // âncoras (e o acervo ainda é ancorado em company_id). Enquanto
+                // isso o card não leva ao wizard — melhor não abrir do que
+                // abrir quebrado.
+                'pode_publicar'     => false,
+                'cust_id'           => $e->cust_id,
+                'autorizado_em'     => data_get($carimbo, 'autorizado_em'),
+                'link_reconexao'    => $e->implementacao?->token
+                    ? route('implementacao.conectar-ml', ['token' => $e->implementacao->token])
+                    : null,
+            ];
+        });
     }
 }
