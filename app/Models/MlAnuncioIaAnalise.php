@@ -26,7 +26,7 @@ class MlAnuncioIaAnalise extends Model
     protected $fillable = [
         'company_id', 'mlb_empresa_id', 'user_id',
         'produto', 'loja', 'specs',
-        'status', 'erro_mensagem', 'modelo',
+        'status', 'etapa', 'erro_mensagem', 'modelo',
         'tokens_entrada', 'tokens_saida', 'duracao_ms', 'tentativas',
         'resultado', 'started_at', 'finished_at',
     ];

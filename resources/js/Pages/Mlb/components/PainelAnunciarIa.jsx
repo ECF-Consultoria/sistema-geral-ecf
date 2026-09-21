@@ -30,13 +30,31 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
             : 'pronto',
     );
     const [erro, setErro]       = useState(inicial?.erro ?? null);
-    const [dados, setDados]     = useState(inicial && !inicial.em_andamento && inicial.status !== 'erro' ? inicial : null);
+    // Parciais contam: a análise chega antes dos títulos, que chegam antes da
+    // descrição. Mostrar o que já existe é melhor que esconder tudo até o fim.
+    const [dados, setDados]     = useState(inicial ?? null);
+    const [etapa, setEtapa]     = useState(inicial?.etapa ?? null);
+    const [inicioEm, setInicioEm] = useState(inicial?.started_at ?? null);
     const [segundos, setSegundos] = useState(0);
     const [verAnalise, setVerAnalise] = useState(false);
     const [aplicado, setAplicado] = useState({});
 
     const pollRef   = useRef(null);
     const cronoRef  = useRef(null);
+
+    // O relógio conta desde o `started_at` do SERVIDOR, não desde o momento em
+    // que este componente montou. Sem isso, um F5 zerava a contagem e passava
+    // a impressão de que a geração tinha recomeçado do nada.
+    function tique(desde) {
+        if (!desde) { setSegundos(s => s + 1); return; }
+        setSegundos(Math.max(0, Math.round((Date.now() - new Date(desde).getTime()) / 1000)));
+    }
+
+    const ETAPA_LABEL = {
+        analise:   'analisando o produto e a persona',
+        titulos:   'escrevendo os títulos',
+        descricao: 'escrevendo a descrição',
+    };
 
     // Um único lugar para desarmar os dois timers. Sem isto, sair da etapa no
     // meio da geração deixa polling rodando contra um componente desmontado.
@@ -50,7 +68,8 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
     // porque ninguém mais perguntava ao servidor como ela terminou.
     useEffect(() => {
         if (inicial?.em_andamento) {
-            cronoRef.current = setInterval(() => setSegundos(s => s + 1), 1000);
+            tique(inicial.started_at);
+            cronoRef.current = setInterval(() => tique(inicial.started_at), 1000);
             pollRef.current  = setInterval(() => consultar(inicial.id), 5000);
             consultar(inicial.id);
         }
@@ -65,9 +84,13 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
         setEstado('gerando');
         setErro(null);
         setDados(null);
+        setEtapa(null);
+        setInicioEm(null);
         setAplicado({});
         setSegundos(0);
 
+        // Sem `started_at` ainda (o job nem começou): conta local até a
+        // primeira consulta trazer o horário do servidor.
         cronoRef.current = setInterval(() => setSegundos(s => s + 1), 1000);
 
         try {
@@ -91,6 +114,12 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
     async function consultar(id) {
         try {
             const { data } = await window.axios.get(route('mlb.anuncios.ia.analise.status', { analise: id }));
+
+            // Parciais entram na tela na hora: a análise aparece enquanto os
+            // títulos ainda estão saindo.
+            setDados(data);
+            setEtapa(data.etapa ?? null);
+            if (data.started_at && !inicioEm) setInicioEm(data.started_at);
 
             if (data.em_andamento) return;
 
@@ -183,13 +212,21 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
                     </button>
 
                     {estado === 'gerando' && (
-                        // Expectativa honesta: sem isto o publicador acha que travou
-                        // e recarrega a página no meio da geração.
-                        <p className="text-[11px] text-white/40">
-                            Costuma levar de 1 a 3 minutos. Pode continuar preenchendo o resto,
-                            e pode até recarregar a página — a geração roda no servidor e o
-                            resultado reaparece aqui quando ficar pronto.
-                        </p>
+                        // Expectativa honesta e sinal de vida. Sem dizer em que
+                        // etapa está, "Gerando…" por minutos parece travamento —
+                        // foi exatamente assim que o publicador desistiu e deu F5.
+                        <div className="space-y-1">
+                            {etapa && (
+                                <p className="text-[11px] text-violet-300/80">
+                                    Etapa: {ETAPA_LABEL[etapa] ?? etapa}
+                                </p>
+                            )}
+                            <p className="text-[11px] text-white/40">
+                                São três etapas e leva alguns minutos. Cada uma aparece aqui assim
+                                que fica pronta. Pode recarregar a página — a geração roda no
+                                servidor e você volta para o mesmo ponto.
+                            </p>
+                        </div>
                     )}
 
                     {estado === 'erro' && (
@@ -199,14 +236,18 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
                         </div>
                     )}
 
-                    {estado === 'pronto' && dados && (
+                    {/* Mostra o que JA existe, mesmo com a geracao correndo:
+                        a analise chega antes dos titulos, que chegam antes da
+                        descricao. Esconder tudo ate o fim desperdicaria minutos
+                        em que o publicador ja poderia estar lendo. */}
+                    {dados && (dados.titulos?.length || dados.descricao || Object.keys(dados.analise ?? {}).length) && (
                         <div className="space-y-4 border-t border-white/[0.06] pt-4">
                             <div>
                                 <p className="mb-2 text-[11px] font-medium text-white/50">
                                     Títulos sugeridos — clique para usar
                                 </p>
                                 <div className="space-y-1.5">
-                                    {dados.titulos.map((t, i) => (
+                                    {(dados.titulos ?? []).map((t, i) => (
                                         <button
                                             key={i}
                                             type="button"

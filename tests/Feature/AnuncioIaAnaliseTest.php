@@ -58,22 +58,33 @@ class AnuncioIaAnaliseTest extends TestCase
         return $company;
     }
 
-    /** Resposta do provedor no formato OpenAI, com o JSON da metodologia dentro. */
-    private function respostaDoProvedor(array $titulos, string $descricao = 'Olá! Bem-vindo.'): array
+    /** Uma resposta do provedor, formato OpenAI, com o JSON pedido dentro. */
+    private function resposta(array $payload): array
     {
         return [
-            'model'  => 'modelo-que-respondeu',
-            'usage'  => ['prompt_tokens' => 1095, 'completion_tokens' => 8797],
-            'choices' => [[
-                'message' => [
-                    'content' => json_encode([
-                        'analise'   => ['puv' => 'Conforto que dura', 'jtbd' => 'Trabalhar sem dor'],
-                        'titulos'   => array_map(fn ($t) => ['texto' => $t], $titulos),
-                        'descricao' => $descricao,
-                    ], JSON_UNESCAPED_UNICODE),
-                ],
-            ]],
+            'model'   => 'modelo-que-respondeu',
+            'usage'   => ['prompt_tokens' => 1095, 'completion_tokens' => 8797],
+            'choices' => [['message' => ['content' => json_encode($payload, JSON_UNESCAPED_UNICODE)]]],
         ];
+    }
+
+    /**
+     * Encena as TRÊS chamadas da geração, na ordem: análise, títulos, descrição.
+     *
+     * `Http::sequence()` e não três `Http::fake()`: fakes acumulam e o PRIMEIRO
+     * stub que casa vence, então três fakes para a mesma URL fariam a resposta
+     * da análise atender também aos títulos.
+     */
+    private function fakeDasTresEtapas(array $titulos, string $descricao = 'Olá! Bem-vindo à loja.'): void
+    {
+        Http::fake(['llm.teste/*' => Http::sequence()
+            ->push($this->resposta(['analise' => [
+                'puv'  => 'Conforto que dura',
+                'jtbd' => 'Trabalhar sem dor',
+            ]]))
+            ->push($this->resposta(['titulos' => array_map(fn ($t) => ['texto' => $t], $titulos)]))
+            ->push($this->resposta(['descricao' => $descricao])),
+        ]);
     }
 
     public function test_pedido_responde_na_hora_e_joga_a_geracao_para_a_fila(): void
@@ -155,6 +166,64 @@ class AnuncioIaAnaliseTest extends TestCase
         $this->assertNull($props['iaAnalise']);
     }
 
+    public function test_etapa_que_falha_nao_apaga_as_anteriores(): void
+    {
+        // O ponto de dividir em três. Se a descrição falhar, análise e títulos
+        // FICAM — refazer 3 chamadas por causa da última desperdiça minutos e
+        // gasta cota de um provedor que já está sobrecarregado.
+        Http::fake(['llm.teste/*' => Http::sequence()
+            ->push($this->resposta(['analise' => ['puv' => 'Conforto que dura']]))
+            ->push($this->resposta(['titulos' => [['texto' => 'Cadeira Gamer Ergonomica Reclinavel Aco Carbono 150Kg 4D']]]))
+            ->push(['error' => 'Service temporarily overloaded'], 503),
+        ]);
+
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id' => $this->companyConectada()->id,
+            'produto'    => 'Cadeira Gamer',
+            'loja'       => 'Unity Móveis',
+            'status'     => MlAnuncioIaAnalise::STATUS_PENDENTE,
+        ]);
+
+        try {
+            (new GerarAnaliseAnuncioIaJob($analise->id))->handle(app(\App\Services\Ia\AnaliseAnuncioService::class));
+        } catch (\RuntimeException) {
+            // esperado: a 3ª etapa estourou
+        }
+
+        $r = $analise->fresh()->resultado;
+
+        $this->assertSame('Conforto que dura', $r['analise']['puv'], 'A análise da etapa 1 tem que sobreviver.');
+        $this->assertCount(1, $r['titulos'], 'Os títulos da etapa 2 têm que sobreviver.');
+        $this->assertArrayNotHasKey('descricao', $r);
+    }
+
+    public function test_etapa_ja_pronta_nao_e_refeita_na_retentativa(): void
+    {
+        // Retentar não pode regerar o que já deu certo: além do desperdício, o
+        // publicador veria a análise trocar de conteúdo sozinha entre uma
+        // tentativa e outra.
+        Http::fake(['llm.teste/*' => Http::sequence()
+            ->push($this->resposta(['titulos' => [['texto' => 'Cadeira Gamer Ergonomica Reclinavel Aco Carbono 150Kg 4D']]]))
+            ->push($this->resposta(['descricao' => 'Olá!'])),
+        ]);
+
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id' => $this->companyConectada()->id,
+            'produto'    => 'Cadeira Gamer',
+            'loja'       => 'Unity Móveis',
+            'status'     => MlAnuncioIaAnalise::STATUS_RODANDO,
+            // Etapa 1 já tinha saído numa tentativa anterior.
+            'resultado'  => ['analise' => ['puv' => 'PUV DA PRIMEIRA TENTATIVA']],
+        ]);
+
+        (new GerarAnaliseAnuncioIaJob($analise->id))->handle(app(\App\Services\Ia\AnaliseAnuncioService::class));
+
+        $analise->refresh();
+        $this->assertSame(MlAnuncioIaAnalise::STATUS_CONCLUIDO, $analise->status);
+        $this->assertSame('PUV DA PRIMEIRA TENTATIVA', $analise->analise()['puv']);
+        $this->assertCount(1, $analise->titulos());
+    }
+
     public function test_loja_vem_da_conta_ml_e_nao_do_que_o_cliente_manda(): void
     {
         Queue::fake();
@@ -184,10 +253,10 @@ class AnuncioIaAnaliseTest extends TestCase
 
     public function test_job_preenche_titulos_e_descricao_a_partir_da_resposta(): void
     {
-        Http::fake(['llm.teste/*' => Http::response($this->respostaDoProvedor([
+        $this->fakeDasTresEtapas([
             'Cadeira Gamer Ergonomica Reclinavel 180 Graus Unity Moveis',
             'Cadeira Gamer Ergonomica Reclinavel Aco Carbono Unity Moveis',
-        ], 'Olá! Seja bem-vindo à Unity Móveis!'))]);
+        ], 'Olá! Seja bem-vindo à Unity Móveis!');
 
         $company = $this->companyConectada();
         $analise = MlAnuncioIaAnalise::create([
@@ -216,7 +285,7 @@ class AnuncioIaAnaliseTest extends TestCase
         $dentro = 'Cadeira Gamer Ergonomica Reclinavel 180 Graus Unity Moveis'; // 58
         $curto  = 'Cadeira Gamer Unity Moveis';                                  // 26
 
-        Http::fake(['llm.teste/*' => Http::response($this->respostaDoProvedor([$dentro, $curto]))]);
+        $this->fakeDasTresEtapas([$dentro, $curto]);
 
         $analise = MlAnuncioIaAnalise::create([
             'company_id' => $this->companyConectada()->id,
@@ -238,9 +307,9 @@ class AnuncioIaAnaliseTest extends TestCase
     {
         // Regra 1 do ruleset ECF. Um título de tamanho certo mas com "de" no
         // meio continua sendo título errado.
-        Http::fake(['llm.teste/*' => Http::response($this->respostaDoProvedor([
+        $this->fakeDasTresEtapas([
             'Cadeira Gamer de Escritorio Reclinavel Ergonomica Unity Mov',
-        ]))]);
+        ]);
 
         $analise = MlAnuncioIaAnalise::create([
             'company_id' => $this->companyConectada()->id,
@@ -259,10 +328,10 @@ class AnuncioIaAnaliseTest extends TestCase
         // modelo confunde com o nome do vendedor e enfia a loja no fim para
         // fechar os 58-60 caracteres — queimando espaço que deveria ser termo
         // de busca. Conferimos aqui porque pedir no prompt não basta.
-        Http::fake(['llm.teste/*' => Http::response($this->respostaDoProvedor([
+        $this->fakeDasTresEtapas([
             'Cadeira Gamer Ergonomica Reclinavel 180 Graus Unity Moveis',   // tem a loja
             'Cadeira Gamer Ergonomica Reclinavel Aco Carbono 150Kg 4D Alt', // limpa
-        ]))]);
+        ]);
 
         $analise = MlAnuncioIaAnalise::create([
             'company_id' => $this->companyConectada('Unity Móveis')->id,
@@ -287,9 +356,9 @@ class AnuncioIaAnaliseTest extends TestCase
     {
         // Loja "Cadeiras Brasil" não pode fazer todo título de cadeira ser
         // reprovado por conter "cadeira" — a palavra é do produto, não da loja.
-        Http::fake(['llm.teste/*' => Http::response($this->respostaDoProvedor([
+        $this->fakeDasTresEtapas([
             'Cadeira Gamer Ergonomica Reclinavel Aco Carbono 150Kg 4D Alt',
-        ]))]);
+        ]);
 
         $analise = MlAnuncioIaAnalise::create([
             'company_id' => $this->companyConectada('Cadeiras Brasil')->id,
@@ -344,7 +413,7 @@ class AnuncioIaAnaliseTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessageMatches('/racioc/i');
 
-        $svc->gerar('Cadeira', 'Unity', 'specs');
+        $svc->analise('Cadeira', 'Unity', 'specs');
     }
 
     public function test_sobrecarga_do_provedor_vira_mensagem_que_o_publicador_entende(): void
@@ -356,7 +425,7 @@ class AnuncioIaAnaliseTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessageMatches('/sobrecarregado/i');
 
-        $svc->gerar('Cadeira', 'Unity', 'specs');
+        $svc->analise('Cadeira', 'Unity', 'specs');
     }
 
     public function test_status_devolve_o_resultado_para_o_polling(): void

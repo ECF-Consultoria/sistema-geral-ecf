@@ -2159,6 +2159,11 @@ class MlbAnuncioController extends Controller
         return [
             'id'           => $a->id,
             'status'       => $a->status,
+            'etapa'        => $a->etapa,
+            // A tela conta o tempo a partir DAQUI, não do momento em que a
+            // página abriu — senão um F5 zera o cronômetro e dá a impressão
+            // de que a geração recomeçou do nada.
+            'started_at'   => $a->started_at?->toISOString(),
             'em_andamento' => $a->emAndamento(),
             'erro'         => $a->erro_mensagem,
             'produto'      => $a->produto,
@@ -2230,6 +2235,8 @@ class MlbAnuncioController extends Controller
         return response()->json([
             'id'          => $analise->id,
             'status'      => $analise->status,
+            'etapa'       => $analise->etapa,
+            'started_at'  => $analise->started_at?->toISOString(),
             'em_andamento' => $analise->emAndamento(),
             'erro'        => $analise->erro_mensagem,
             'produto'     => $analise->produto,

@@ -6,35 +6,74 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Gera a Análise Estratégica da metodologia MAG T8 (Parte 1) e, a partir dela,
- * os campos que o wizard precisa: títulos e descrição.
+ * Metodologia MAG T8 em TRÊS chamadas curtas: Análise, Títulos, Descrição.
  *
- * O prompt é a Parte 1 do painel do usuário, palavra por palavra — os 9 passos
- * da metodologia da ECF. Não "melhoramos" o prompt: ele é o produto, e mexer
- * nele muda o resultado que a equipe já valida hoje no chat.
+ * POR QUE TRÊS E NÃO UMA. A primeira versão pedia tudo num JSON só e morria:
+ * medido em produção em 21/09/2026, o provedor devolvia 503 "Service
+ * temporarily overloaded" no prompt inteiro, enquanto a MESMA conta respondia
+ * os títulos sozinhos em 30 segundos. Saída curta é o que esse tier aguenta.
  *
- * REALIDADE MEDIDA do provedor (21/09/2026, `oc/muse-spark-1.3` via 9router):
- *  - 103s para uma análise completa; 1.095 tokens de entrada, 8.797 de saída
- *  - por isso isto SEMPRE roda em Job, nunca no request
- *  - 503 "Service temporarily overloaded" é comum em tier gratuito → retry
- *  - modelo de raciocínio devolve HTTP 200 com conteúdo VAZIO se `max_tokens`
- *    for curto: ele gasta o orçamento "pensando". Daí o teto alto.
+ * Ganho além de funcionar: cada parte é salva assim que fica pronta, então o
+ * publicador vê a análise aparecer enquanto os títulos ainda estão saindo — e
+ * se a descrição falhar, ele não perde as duas anteriores.
+ *
+ * Os prompts são a metodologia da ECF, não invenção nossa. Não "melhorar" sem
+ * combinar: é o resultado que a equipe valida no chat hoje.
  */
 class AnaliseAnuncioService
 {
     /** Erros que valem retentar: sobrecarga e falha transitória de gateway. */
     private const HTTP_RETENTAVEIS = [408, 429, 500, 502, 503, 504];
 
+    // ═══ As três etapas ═══════════════════════════════════════════════════════
+
+    /** Etapa 1 — Análise Estratégica (os 9 passos). */
+    public function analise(string $produto, string $loja, string $specs): array
+    {
+        $r = $this->chamar($this->promptAnalise($produto, $loja, $specs), 6000);
+
+        return [
+            'dados' => (array) ($r['json']['analise'] ?? $r['json']),
+            'meta'  => $r['meta'],
+        ];
+    }
+
+    /** Etapa 2 — Títulos sob o ruleset ECF. */
+    public function titulos(string $produto, string $loja, string $specs, array $analise): array
+    {
+        $r = $this->chamar($this->promptTitulos($produto, $loja, $specs, $analise), 2500);
+
+        return [
+            'dados' => $this->normalizarTitulos($r['json']['titulos'] ?? [], $loja, $produto),
+            'meta'  => $r['meta'],
+        ];
+    }
+
+    /** Etapa 3 — Descrição do anúncio. */
+    public function descricao(string $produto, string $loja, string $specs, array $analise): array
+    {
+        $r = $this->chamar($this->promptDescricao($produto, $loja, $specs, $analise), 3000);
+
+        return [
+            'dados' => trim((string) ($r['json']['descricao'] ?? '')),
+            'meta'  => $r['meta'],
+        ];
+    }
+
+    // ═══ Chamada ao provedor ══════════════════════════════════════════════════
+
     /**
-     * @param  string  $produto  Nome do produto (digitado pelo publicador)
-     * @param  string  $loja     Nome da empresa/loja (vem da conta ML)
-     * @param  string  $specs    Especificações reais, texto livre
+     * Uma chamada, um JSON de volta.
      *
-     * @return array{analise: array, titulos: array, descricao: string, _meta: array}
+     * `max_tokens` por etapa em vez de um teto único: modelo de raciocínio
+     * gasta orçamento "pensando" antes de escrever, e teto apertado devolve
+     * HTTP 200 com conteúdo VAZIO — sintoma que confunde quem depura.
      *
-     * @throws \RuntimeException quando o provedor falha ou devolve algo inaproveitável
+     * @return array{json: array, meta: array}
+     *
+     * @throws \RuntimeException
      */
-    public function gerar(string $produto, string $loja, string $specs): array
+    private function chamar(string $prompt, int $maxTokens): array
     {
         $cfg = config('services.llm');
 
@@ -46,10 +85,10 @@ class AnaliseAnuncioService
 
         $resposta = Http::withToken((string) $cfg['key'])
             ->timeout((int) $cfg['timeout'])
-            // Conectar é rápido ou não é: separar isso do tempo de geração evita
-            // esperar 300s por um endpoint que está fora do ar.
+            // Conectar é rápido ou não é. Separar do tempo de geração evita
+            // esperar o timeout inteiro por um endpoint que está fora do ar.
             ->connectTimeout(15)
-            ->retry(3, 5000, function ($exception, $request) {
+            ->retry(3, 5000, function ($exception) {
                 $status = method_exists($exception, 'response') ? $exception->response?->status() : null;
 
                 return $status === null || in_array($status, self::HTTP_RETENTAVEIS, true);
@@ -57,33 +96,26 @@ class AnaliseAnuncioService
             ->post(rtrim((string) $cfg['base_url'], '/') . '/chat/completions', [
                 'model'       => $cfg['model'],
                 'temperature' => 0.7,
-                'max_tokens'  => (int) $cfg['max_tokens'],
-                'messages'    => [[
-                    'role'    => 'user',
-                    'content' => $this->prompt($produto, $loja, $specs),
-                ]],
+                'max_tokens'  => $maxTokens,
+                'messages'    => [['role' => 'user', 'content' => $prompt]],
             ]);
 
         $duracaoMs = (int) round((microtime(true) - $t0) * 1000);
 
         if (! $resposta->successful()) {
             $corpo = mb_substr($resposta->body(), 0, 400);
-            Log::warning('[IA] Falha do provedor ao gerar análise', [
-                'status'  => $resposta->status(),
-                'modelo'  => $cfg['model'],
-                'produto' => $produto,
-                'corpo'   => $corpo,
+            Log::warning('[IA] Falha do provedor', [
+                'status' => $resposta->status(),
+                'modelo' => $cfg['model'],
+                'corpo'  => $corpo,
             ]);
 
             throw new \RuntimeException($this->mensagemAmigavel($resposta->status(), $corpo));
         }
 
-        $json    = $resposta->json();
+        $json     = $resposta->json();
         $conteudo = (string) data_get($json, 'choices.0.message.content', '');
 
-        // HTTP 200 com conteúdo vazio é o sintoma clássico de modelo de
-        // raciocínio que gastou todo o `max_tokens` antes de escrever a
-        // resposta. Reportar como erro claro, não como "resultado vazio".
         if (trim($conteudo) === '') {
             $pensou = mb_strlen((string) data_get($json, 'choices.0.message.reasoning_content', ''));
 
@@ -97,21 +129,16 @@ class AnaliseAnuncioService
         $dados = $this->extrairJson($conteudo);
 
         if ($dados === null) {
-            Log::warning('[IA] Resposta não era JSON válido', [
-                'modelo'  => $cfg['model'],
-                'inicio'  => mb_substr($conteudo, 0, 300),
-            ]);
+            Log::warning('[IA] Resposta não era JSON válido', ['inicio' => mb_substr($conteudo, 0, 300)]);
 
             throw new \RuntimeException('A IA não devolveu um JSON válido. Tente gerar novamente.');
         }
 
         return [
-            'analise'   => (array) ($dados['analise'] ?? []),
-            'titulos'   => $this->normalizarTitulos($dados['titulos'] ?? [], $loja, $produto),
-            'descricao' => trim((string) ($dados['descricao'] ?? '')),
-            '_meta'     => [
+            'json' => $dados,
+            'meta' => [
                 // O modelo que RESPONDEU pode não ser o pedido: combo com
-                // fallback troca por baixo. Registrar o real, não o solicitado.
+                // fallback troca por baixo. Registrar o real.
                 'modelo'         => (string) ($json['model'] ?? $cfg['model']),
                 'tokens_entrada' => (int) data_get($json, 'usage.prompt_tokens', 0),
                 'tokens_saida'   => (int) data_get($json, 'usage.completion_tokens', 0),
@@ -120,48 +147,50 @@ class AnaliseAnuncioService
         ];
     }
 
-    // ═══ Prompt ═══════════════════════════════════════════════════════════════
+    // ═══ Prompts (metodologia MAG T8) ═════════════════════════════════════════
 
-    /**
-     * Parte 1 da metodologia MAG T8 — os 9 passos, como no painel da ECF —
-     * seguida do contrato de saída.
-     */
-    private function prompt(string $produto, string $loja, string $specs): string
+    private function blocoSpecs(string $specs): string
     {
-        $blocoSpecs = trim($specs) !== ''
-            ? "\n\n**Especificações Técnicas Reais do Produto (baseie a análise nestes dados, não invente):**\n{$specs}"
+        return trim($specs) !== ''
+            ? "\n\n**Especificações Técnicas Reais do Produto (baseie-se nestes dados, não invente):**\n{$specs}"
             : '';
+    }
+
+    private function promptAnalise(string $produto, string $loja, string $specs): string
+    {
+        $bloco = $this->blocoSpecs($specs);
 
         return <<<TXT
-        Para o produto **{$produto}**, gere um plano de marketing completo para um anúncio de alta conversão no Mercado Livre.
+        Para o produto **{$produto}**, gere a análise estratégica de um anúncio de alta conversão no Mercado Livre.
 
-        Produto a ser Anunciado: **{$produto}**
-        Nome da Empresa/Vendedor: **{$loja}**{$blocoSpecs}
+        Produto: **{$produto}**
+        Nome da Empresa/Vendedor: **{$loja}**{$bloco}
 
         **Parte 1: Análise Estratégica**
 
-        Passo 1: A Persona (Quem é o Cliente?): Descreva o perfil detalhado do comprador ideal (demografia, interesses, dores, necessidades).
-        Passo 2: O Mapa de Empatia (O que Pensa e Sente?): Detalhe as frustrações (dores) e desejos (ganhos) da persona.
-        Passo 3: A Jornada de Compra (Qual Caminho Percorre?): Mapeie as etapas de descoberta, consideração e decisão no Mercado Livre.
-        Passo 4: Os Gatilhos Mentais (O que Leva à Compra?): Identifique os 3 gatilhos mentais mais eficazes (Prova Social, Escassez, Autoridade).
-        Passo 5: O "Trabalho a Ser Feito" (JTBD): Qual é a "missão" fundamental que o cliente quer realizar com este produto?
-        Passo 6: A Proposta Única de Valor (PUV): Em uma frase, responda: "Por que eu deveria escolher o seu produto e não outro?"
-        Passo 7: Funcionalidades-Chave que Entregam Valor: Liste de 3 a 5 funcionalidades que resolvem os problemas do cliente.
-        Passo 8: O Diferencial Competitivo (O Fator "Uau!"): Destaque o principal motivo pelo qual seu produto é superior às alternativas.
-        Passo 9: A Prova Social e os Resultados (A Evidência): Reúna provas (depoimentos, dados) de que seu produto funciona.
+        Passo 1: A Persona (Quem é o Cliente?): perfil detalhado do comprador ideal (demografia, interesses, dores, necessidades).
+        Passo 2: O Mapa de Empatia (O que Pensa e Sente?): frustrações (dores) e desejos (ganhos) da persona.
+        Passo 3: A Jornada de Compra: etapas de descoberta, consideração e decisão no Mercado Livre.
+        Passo 4: Os Gatilhos Mentais: os 3 mais eficazes (Prova Social, Escassez, Autoridade).
+        Passo 5: O "Trabalho a Ser Feito" (JTBD): a missão fundamental que o cliente quer realizar.
+        Passo 6: A Proposta Única de Valor (PUV): em uma frase, por que escolher este produto e não outro.
+        Passo 7: Funcionalidades-Chave: 3 a 5 que resolvem os problemas do cliente.
+        Passo 8: O Diferencial Competitivo (Fator "Uau"): por que é superior às alternativas.
+        Passo 9: A Prova Social: evidências de que o produto funciona.
 
-        ---
-        FORMATO DE RESPOSTA — responda APENAS com um JSON válido, sem crases, sem texto antes ou depois:
+        Responda APENAS com JSON válido, sem crases, sem texto antes ou depois. Seja direto: cada campo em no máximo 3 frases.
+        {"analise":{"persona":"...","mapa_empatia":"...","jornada":"...","gatilhos":["...","...","..."],"jtbd":"...","puv":"...","funcionalidades":["..."],"diferencial":"...","prova_social":"..."}}
+        TXT;
+    }
 
-        {
-          "analise": {
-            "persona": "...", "mapa_empatia": "...", "jornada": "...",
-            "gatilhos": ["...", "...", "..."], "jtbd": "...", "puv": "...",
-            "funcionalidades": ["..."], "diferencial": "...", "prova_social": "..."
-          },
-          "titulos": [{"texto": "..."}],
-          "descricao": "..."
-        }
+    private function promptTitulos(string $produto, string $loja, string $specs, array $analise): string
+    {
+        $bloco = $this->blocoSpecs($specs);
+        $puv   = (string) ($analise['puv'] ?? '');
+        $ctx   = $puv !== '' ? "\n\nProposta de valor definida na análise: {$puv}" : '';
+
+        return <<<TXT
+        Gere títulos para o anúncio do produto **{$produto}** no Mercado Livre.{$bloco}{$ctx}
 
         REGRAS DOS TÍTULOS (ruleset ECF, obrigatório em todas as variações):
         1. SEM PREPOSIÇÕES: proibido usar de, para, com, do, da, e, em.
@@ -175,31 +204,59 @@ class AnaliseAnuncioService
         6. ENTRE 58 E 60 CARACTERES — conte de verdade, caractere por caractere.
            Preencha os 58-60 caracteres com termos de busca reais do produto
            (material, medida, capacidade, uso), nunca com o nome da loja.
-        Gere de 3 a 5 variações, cada uma com combinação DIFERENTE de termos.
-        PROIBIDO gerar variações que são apenas reordenações das mesmas palavras.
 
-        DESCRIÇÃO: saudação citando "{$loja}"; três parágrafos curtos (problema, usando o JTBD; solução, usando a PUV; oferta com chamada para ação); lista de 3 a 5 especificações técnicas; despedida cordial.
+        Gere de 3 a 5 variações, cada uma com combinação DIFERENTE de termos.
+        PROIBIDO variações que são apenas reordenações das mesmas palavras.
+
+        Responda APENAS com JSON válido, sem crases:
+        {"titulos":[{"texto":"..."}]}
+        TXT;
+    }
+
+    private function promptDescricao(string $produto, string $loja, string $specs, array $analise): string
+    {
+        $bloco = $this->blocoSpecs($specs);
+        $jtbd  = (string) ($analise['jtbd'] ?? '');
+        $puv   = (string) ($analise['puv'] ?? '');
+
+        $ctx = '';
+        if ($jtbd !== '') { $ctx .= "\n\nJTBD (use no parágrafo do problema): {$jtbd}"; }
+        if ($puv !== '')  { $ctx .= "\nPUV (use no parágrafo da solução): {$puv}"; }
+
+        return <<<TXT
+        Escreva a descrição do anúncio do produto **{$produto}** no Mercado Livre.
+
+        Nome da Empresa: **{$loja}**{$bloco}{$ctx}
+
+        ESTRUTURA OBRIGATÓRIA:
+        - Saudação amigável citando "{$loja}".
+        - Parágrafo 1 (Problema): reconheça a necessidade do cliente de forma empática, usando o JTBD.
+        - Parágrafo 2 (Solução): apresente o produto como solução ideal, destacando a PUV.
+        - Parágrafo 3 (Oferta): chamada para ação clara e direta.
+        - Lista de 3 a 5 especificações técnicas mais importantes, limpa e direta.
+        - Despedida cordial.
+
+        Responda APENAS com JSON válido, sem crases. Quebras de linha dentro do texto como \\n:
+        {"descricao":"..."}
         TXT;
     }
 
     // ═══ Saída ════════════════════════════════════════════════════════════════
 
     /**
-     * Extrai o JSON mesmo quando o modelo desobedece e embrulha em crases ou
-     * escreve algo antes/depois. Tentar salvar a resposta é mais barato que
-     * mandar o publicador esperar outros 100 segundos.
+     * Extrai o JSON mesmo quando o modelo embrulha em crases ou escreve algo
+     * antes/depois. Salvar a resposta é mais barato que mandar o publicador
+     * esperar outra chamada inteira.
      */
     private function extrairJson(string $conteudo): ?array
     {
-        $limpo = trim($conteudo);
-        $limpo = preg_replace('/^```(?:json)?\s*|\s*```$/m', '', $limpo);
+        $limpo = trim(preg_replace('/^```(?:json)?\s*|\s*```$/m', '', trim($conteudo)));
 
-        $dados = json_decode(trim((string) $limpo), true);
+        $dados = json_decode($limpo, true);
         if (is_array($dados)) {
             return $dados;
         }
 
-        // Último recurso: recortar do primeiro "{" até o último "}".
         $ini = strpos($limpo, '{');
         $fim = strrpos($limpo, '}');
 
@@ -213,11 +270,8 @@ class AnaliseAnuncioService
     }
 
     /**
-     * Normaliza os títulos e confere o ruleset ECF no servidor.
-     *
-     * Nada aqui é aceito do modelo: ele erra a contagem de caracteres com
-     * frequência e ignora regras quando o título fica curto. `dentro_da_regra`
-     * deixa a tela mostrar a verdade em vez de fingir que todo título serve.
+     * Confere o ruleset ECF no servidor. Nada é aceito do modelo: ele erra a
+     * contagem de caracteres e ignora regras quando o título fica curto.
      */
     private function normalizarTitulos(mixed $titulos, string $loja, string $produto): array
     {
@@ -244,14 +298,13 @@ class AnaliseAnuncioService
     /**
      * O título carrega o nome da loja?
      *
-     * O modelo confunde "marca no final" (regra da ECF, que fala da marca do
-     * PRODUTO) com o nome do vendedor, e enfia a loja no fim para fechar os
-     * 58-60 caracteres. Isso queima espaço que deveria ser termo de busca.
+     * O modelo confunde "marca no final" (que fala da marca do PRODUTO) com o
+     * nome do vendedor e enfia a loja no fim para fechar os 58-60 caracteres,
+     * queimando espaço que deveria ser termo de busca.
      *
-     * Casa por nome completo e também por palavra isolada da loja — mas só
-     * quando essa palavra NÃO aparece no nome do produto. Sem essa ressalva,
-     * uma loja chamada "Cadeiras Brasil" faria todo título de cadeira ser
-     * reprovado por conter "cadeiras".
+     * Casa por nome completo e por palavra isolada — mas só quando a palavra
+     * NÃO aparece no nome do produto. Sem essa ressalva, uma loja "Cadeiras
+     * Brasil" reprovaria todo título de cadeira.
      */
     private function mencionaLoja(string $titulo, string $loja, string $produto): bool
     {
@@ -269,8 +322,6 @@ class AnaliseAnuncioService
         }
 
         foreach (preg_split('/\s+/', $this->semAcento($loja)) as $palavra) {
-            // Palavras curtas ("ml", "up") dariam falso positivo dentro de
-            // outras; e o que já existe no produto é termo legítimo.
             if (mb_strlen($palavra) < 4 || str_contains($p, $palavra)) {
                 continue;
             }
@@ -286,9 +337,7 @@ class AnaliseAnuncioService
     /** Minúsculas sem acento — o modelo escreve "Moveis" e a loja é "Móveis". */
     private function semAcento(string $s): string
     {
-        $s = mb_strtolower(trim($s));
-
-        return strtr($s, [
+        return strtr(mb_strtolower(trim($s)), [
             'á' => 'a', 'à' => 'a', 'ã' => 'a', 'â' => 'a', 'ä' => 'a',
             'é' => 'e', 'ê' => 'e', 'è' => 'e', 'ë' => 'e',
             'í' => 'i', 'î' => 'i', 'ì' => 'i', 'ï' => 'i',
@@ -301,7 +350,9 @@ class AnaliseAnuncioService
     /** Traduz o erro do provedor para algo que o publicador entenda. */
     private function mensagemAmigavel(int $status, string $corpo): string
     {
-        if ($status === 503 || str_contains(strtolower($corpo), 'overloaded')) {
+        $c = strtolower($corpo);
+
+        if ($status === 503 || str_contains($c, 'overloaded')) {
             return 'O provedor de IA está sobrecarregado neste momento. Tente novamente em alguns minutos.';
         }
 
@@ -309,7 +360,7 @@ class AnaliseAnuncioService
             return 'A chave de API da IA foi recusada. Confira LLM_API_KEY.';
         }
 
-        if ($status === 404 || str_contains(strtolower($corpo), 'unsupported model')) {
+        if ($status === 404 || str_contains($c, 'unsupported model')) {
             return 'O modelo configurado não existe ou saiu do ar. Confira LLM_MODEL.';
         }
 
