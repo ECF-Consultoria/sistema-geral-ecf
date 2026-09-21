@@ -59,6 +59,74 @@ class Ppa extends Model
     }
 
     /**
+     * As três contagens de tarefas que a LISTA de planos precisa, numa
+     * subquery cada — e não uma consulta por linha.
+     *
+     * Antes, a lista fazia `$p->tasks()->count()` dentro do `through()`: duas
+     * idas ao banco por plano, 40 numa página de 20. Como a ordenação passou a
+     * depender dessas contagens, elas precisavam estar no SELECT de qualquer
+     * forma.
+     */
+    public function scopeComContagemDeTarefas($query)
+    {
+        return $query->withCount([
+            'tasks',
+            'tasks as tasks_done_count'  => fn ($q) => $q->where('status', 'done'),
+            'tasks as tasks_doing_count' => fn ($q) => $q->where('status', 'doing'),
+        ]);
+    }
+
+    /**
+     * A ordem em que os planos pedem atenção — o espelho, em SQL, da régua que
+     * `resources/js/lib/ppaAgrupamento.js` aplica na tela.
+     *
+     * Os dois PRECISAM concordar: a tela agrupa o que recebe, e a lista é
+     * paginada. Se o banco mandasse os planos em outra ordem, a página 1 traria
+     * concluídos enquanto um plano em andamento esperaria na página 2 — e a
+     * seção "Em andamento" apareceria vazia numa lista que tem planos andando.
+     *
+     * 1. grupo: em andamento (0) · a fazer (1) · concluído (2);
+     * 2. dentro do grupo, prazo mais apertado primeiro, sem prazo por último;
+     * 3. empate: o mais recente primeiro, como sempre foi.
+     *
+     * Os nomes usados no CASE são os aliases de {@see scopeComContagemDeTarefas},
+     * e por isso ele tem de ser aplicado antes. Alias do SELECT em ORDER BY
+     * funciona em MySQL/MariaDB e em SQLite — o ORDER BY é avaliado depois da
+     * projeção, ao contrário do WHERE.
+     */
+    public function scopeOrdenadoPorAtencao($query)
+    {
+        return $query
+            ->orderByRaw("CASE
+                WHEN status = 'completed' THEN 2
+                WHEN tasks_count > 0 AND tasks_done_count = tasks_count THEN 2
+                WHEN tasks_doing_count > 0 THEN 0
+                ELSE 1
+            END")
+            ->orderByRaw('due_date IS NULL, due_date ASC')
+            ->orderByDesc('created_at');
+    }
+
+    /**
+     * Dias entre hoje e `due_date` (negativo = passou). `null` quando não há
+     * prazo ou quando o plano já foi encerrado.
+     *
+     * Calculado no servidor pela mesma razão de `PpaQuadroService::prazo()`: o
+     * mesmo cálculo no navegador usaria o fuso de quem olha, e o plano ficaria
+     * "atrasado" um dia antes para uns e não para outros. Plano encerrado
+     * devolve `null` porque atraso de trabalho fechado não é atraso — é o que
+     * apaga o selo vermelho nas duas telas.
+     */
+    public function diasAteOPrazo(): ?int
+    {
+        if (! $this->due_date || $this->status === 'completed') {
+            return null;
+        }
+
+        return (int) now()->startOfDay()->diffInDays($this->due_date->startOfDay(), false);
+    }
+
+    /**
      * Nome da empresa dona do plano, seja ela Company (escopo geral) ou
      * MlbEmpresa (escopo polos). Evita espalhar o ?? pelas telas.
      */

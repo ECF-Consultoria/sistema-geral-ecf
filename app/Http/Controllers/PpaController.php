@@ -17,9 +17,14 @@ class PpaController extends Controller
 
         // Escopo geral: PPA de carteira. Os PPAs de Polos vivem na mesma tabela,
         // mas têm tela própria (PolosPpaController) — não se misturam aqui.
+        // A ordem vem do banco porque a lista é PAGINADA: ordenar só a página
+        // deixaria um plano em andamento esperando na página 2 enquanto
+        // concluídos ocupam a 1. A régua está em `Ppa::scopeOrdenadoPorAtencao`
+        // e é a mesma que a tela aplica ao agrupar.
         $query = Ppa::with(['company', 'mentor'])
             ->doEscopo(Ppa::ESCOPO_GERAL)
-            ->orderBy('created_at', 'desc');
+            ->comContagemDeTarefas()
+            ->ordenadoPorAtencao();
 
         // Ajuste UAT 2026-07-07: qualquer user não-admin só vê PPAs que ELE
         // criou. Antes o filtro era só isMentor(), o que deixava Analistas
@@ -40,8 +45,12 @@ class PpaController extends Controller
             'completed_at'     => $p->completed_at?->format('d/m/Y H:i'),
             'trello_board_url' => $p->trello_board_url,
             'workspace_token'  => $p->workspace_token,
-            'tasks_count'      => $p->tasks()->count(),
-            'tasks_done'       => $p->tasks()->where('status', 'done')->count(),
+            'tasks_count'      => $p->tasks_count,
+            'tasks_done'       => $p->tasks_done_count,
+            // Quantas estão em andamento — é o que decide se o plano entra na
+            // seção "Em andamento" da lista, e o que a linha recolhida mostra.
+            'tasks_doing'      => $p->tasks_doing_count,
+            'due_date_dias'    => $p->diasAteOPrazo(),
             'created_at'       => $p->created_at->format('d/m/Y'),
         ]);
 
