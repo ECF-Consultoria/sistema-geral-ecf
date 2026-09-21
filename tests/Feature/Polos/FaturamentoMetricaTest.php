@@ -152,4 +152,39 @@ class FaturamentoMetricaTest extends TestCase
 
         $this->assertSame(['1000000007' => 1111.00], $fat);
     }
+
+    // ─── Retroatividade: meses anteriores a 07/07/2026 ──────────────────────
+
+    /**
+     * `faturamento_moveis` só existe desde a migration de 07/07/2026; a tabela nasceu em
+     * 22/06. Linha gravada naquela janela tem a coluna NULL, e no modo 'moveis' ela lê
+     * R$ 0 — a empresa aparece com status 'Não' num mês que de fato faturou.
+     *
+     * Isso NÃO é bug a consertar com fallback para `faturamento`: misturar as duas colunas
+     * poria metade do roster numa régua e metade noutra sob o mesmo rótulo (learnings
+     * §8.2c). É consequência aceita do modo 'moveis', e a saída para auditar um mês antigo
+     * é virar `polo_metrica_faturamento` para 'gross'. Este teste existe para que a
+     * consequência seja explícita em vez de descoberta na tela.
+     */
+    public function test_mes_anterior_a_coluna_moveis_le_zero_e_isso_e_esperado(): void
+    {
+        PoloFaturamentoSnapshot::create([
+            'mes' => '202606', 'cust_id' => '1000000008',
+            'faturamento' => 48000.00, 'faturamento_moveis' => null,
+            'ads' => 0, 'synced_at' => now(),
+        ]);
+
+        // A coluna NULL é PULADA por colunaDoSnapshot (`!== null`), então a chave nem
+        // aparece no mapa — e o chamador resolve `$fatAdman[$id] ?? 0.0`. Ou seja: mês
+        // sem a coluna fica indistinguível de "empresa sem snapshot" (§8.1) e de "loja
+        // parada". São três causas diferentes com a mesma aparência na tela.
+        $moveis = $this->invoca('faturamentoAdmanDoMes', [['cust_id' => '1000000008']], '202606');
+        $this->assertArrayNotHasKey('1000000008', $moveis,
+            'Sem a coluna gravada a empresa some do mapa e o painel a lê como R$ 0.');
+
+        Configuracao::set('polo_metrica_faturamento', 'gross');
+        $gross = $this->invoca('faturamentoAdmanDoMes', [['cust_id' => '1000000008']], '202606');
+        $this->assertSame(48000.00, $gross['1000000008'],
+            'Virar a métrica para gross é a saída para auditar mês anterior a 07/07/2026.');
+    }
 }

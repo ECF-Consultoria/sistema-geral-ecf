@@ -115,12 +115,16 @@ class PolosFaturamentoSnapshotTest extends TestCase
         $this->ativoM2($custId);
 
         // Snapshot do último sync bom: 1500 ≥ limiar (1000) → deveria virar 'Sim'.
+        // As DUAS colunas vêm preenchidas de propósito: este teste é sobre o fallback
+        // cache frio → snapshot, e deve passar sob qualquer `polo_metrica_faturamento`.
+        // Quem cobre a escolha da coluna é o FaturamentoMetricaTest.
         PoloFaturamentoSnapshot::create([
-            'mes'         => now()->format('Ym'),
-            'cust_id'     => $custId,
-            'faturamento' => 1500,
-            'ads'         => 200,
-            'synced_at'   => now(),
+            'mes'                => now()->format('Ym'),
+            'cust_id'            => $custId,
+            'faturamento'        => 1500,
+            'faturamento_moveis' => 1500,
+            'ads'                => 200,
+            'synced_at'          => now(),
         ]);
 
         // CSV do mês corrente parcial (só para listar o mês + LOCALIDADE).

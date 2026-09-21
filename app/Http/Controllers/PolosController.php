@@ -759,10 +759,11 @@ class PolosController extends Controller
 
         // ── Financeiro (admin): cust_norm → números do cockpit ──
         $fin = [];
-        // cust_norm → fatia de Casa/Móveis (MLB1574) sobre o gross, em %. O painel mede
-        // gross (ver faturamentoAdmanDoMes), então esta é a única visão de "essa empresa
-        // vende móvel mesmo?" — a pergunta é de ROSTER, e é aqui na planilha que o time
-        // decide quem fica no programa. JHOLP MIX MAGAZINE sai com 0,8% (99% Pet Shop).
+        // cust_norm → fatia de Casa/Móveis (MLB1574) sobre o GROSS da conta, em %. É a
+        // visão de "essa empresa vende móvel mesmo?" — pergunta de ROSTER, e é aqui na
+        // planilha que o time decide quem fica no programa. JHOLP MIX MAGAZINE sai com
+        // 0,8% (99% Pet Shop). A coluna continua útil mesmo com a métrica já em móveis:
+        // a meta responde "vendeu quanto de móvel", esta responde "é moveleira?".
         $pctMoveis = [];
         if ($isAdmin) {
             try {
@@ -786,8 +787,13 @@ class PolosController extends Controller
                 if ($mesFin !== '' && $fin !== []) {
                     $ativosFin = array_map(fn ($k) => ['cust_id' => $k], array_keys($fin));
                     $moveis    = $this->faturamentoMoveisDoMes($ativosFin, $mesFin);
+                    // Denominador SEMPRE o gross da conta — nunca `$emp['faturamento']`,
+                    // que segue a métrica vigente (metricaFaturamento). Com a métrica em
+                    // 'moveis' aquilo seria móveis/móveis = 100% para todo mundo, apagando
+                    // justamente o sinal de curadoria que esta coluna existe para dar.
+                    $grossMes = $this->colunaDoSnapshot($ativosFin, $mesFin, 'faturamento');
                     foreach ($fin as $k => $emp) {
-                        $gross = (float) ($emp['faturamento'] ?? 0);
+                        $gross = (float) ($grossMes[$k] ?? 0);
                         // Sem gross não há fração possível — coluna vazia em vez de 0%,
                         // que se leria como "não vende móvel".
                         $pctMoveis[$k] = $gross > 0 ? round(100 * ((float) ($moveis[$k] ?? 0)) / $gross, 1) : null;
