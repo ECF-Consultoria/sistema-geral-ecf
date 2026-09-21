@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\GerarAnaliseAnuncioIaJob;
 use App\Jobs\PublicarAnuncioMlJob;
 use App\Jobs\SyncMlAcervoCompanyJob;
 use App\Models\Company;
 use App\Models\MlAcervoItem;
 use App\Models\MlAcervoMetricaDiaria;
+use App\Models\MlAnuncioIaAnalise;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
@@ -2127,6 +2129,78 @@ class MlbAnuncioController extends Controller
                 ? ($e['mensagem'] ?? $e['message'] ?? json_encode($e, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES))
                 : (string) $e)
             ->implode("\n");
+    }
+
+    // ═══ Anunciar por IA — metodologia MAG T8 ════════════════════════════════
+
+    /**
+     * Dispara a análise por IA e devolve o id para o front acompanhar.
+     *
+     * Responde na hora com `pendente` e joga o trabalho para a fila: a geração
+     * levou 103s na medição de 21/09/2026, então nenhum request aguenta esperar.
+     *
+     * `loja` é derivada da conta ML no servidor — o publicador não digita, e o
+     * cliente não teria como forjar.
+     */
+    public function iaAnaliseStore(Request $request): JsonResponse
+    {
+        $dados = $request->validate([
+            'company_id' => ['required', 'integer', 'exists:companies,id'],
+            'produto'    => ['required', 'string', 'max:300'],
+            'specs'      => ['nullable', 'string', 'max:8000'],
+        ]);
+
+        $company = Company::findOrFail($dados['company_id']);
+
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 422, 'Empresa sem conta ML conectada.');
+
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id' => $company->id,
+            'user_id'    => $request->user()->id,
+            'produto'    => trim($dados['produto']),
+            'loja'       => $company->nomeContaMl(),
+            'specs'      => $dados['specs'] ?? null,
+            'status'     => MlAnuncioIaAnalise::STATUS_PENDENTE,
+        ]);
+
+        GerarAnaliseAnuncioIaJob::dispatch($analise->id);
+
+        return response()->json([
+            'id'     => $analise->id,
+            'status' => $analise->status,
+        ], 202);
+    }
+
+    /**
+     * Estado da análise — o front chama em intervalo até sair de "em andamento".
+     *
+     * Só devolve o que a tela usa. O prompt e o payload cru do provedor ficam
+     * no servidor: não há motivo para trafegar isso ao navegador.
+     */
+    public function iaAnaliseStatus(Request $request, MlAnuncioIaAnalise $analise): JsonResponse
+    {
+        // Cada análise pertence a uma conta; sem esta checagem o id sequencial
+        // viraria uma janela para o trabalho de outra empresa.
+        if ($analise->company_id !== null) {
+            $company = Company::findOrFail($analise->company_id);
+            $company->loadMissing('mlToken');
+            abort_unless($company->mlToken !== null, 404);
+        }
+
+        return response()->json([
+            'id'          => $analise->id,
+            'status'      => $analise->status,
+            'em_andamento' => $analise->emAndamento(),
+            'erro'        => $analise->erro_mensagem,
+            'produto'     => $analise->produto,
+            'loja'        => $analise->loja,
+            'titulos'     => $analise->titulos(),
+            'descricao'   => $analise->descricao(),
+            'analise'     => $analise->analise(),
+            'modelo'      => $analise->modelo,
+            'duracao_ms'  => $analise->duracao_ms,
+        ]);
     }
 
     /**
