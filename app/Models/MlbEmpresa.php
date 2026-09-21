@@ -2,16 +2,18 @@
 
 namespace App\Models;
 
+use App\Contracts\ContaMercadoLivre;
 use App\Observers\MlbEmpresaObserver;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
 #[ObservedBy(MlbEmpresaObserver::class)]
-class MlbEmpresa extends Model
+class MlbEmpresa extends Model implements ContaMercadoLivre
 {
     use LogsActivity;
 
@@ -113,6 +115,33 @@ class MlbEmpresa extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    // ─── ContaMercadoLivre ────────────────────────────────────────────────
+    // A empresa de Polos conecta a conta ML direto nela, sem passar por
+    // `Company` — 535 de 539 não têm uma, e criar Company aqui mexeria no
+    // pivô de Desempenho/carteira/NPS (learnings de Polos §3).
+
+    public function mlToken(): HasOne
+    {
+        return $this->hasOne(MlToken::class, 'mlb_empresa_id');
+    }
+
+    public function chaveContaMl(): string
+    {
+        // URL-safe de propósito: esta chave é usada tanto em lock/cache quanto
+        // como parâmetro de rota do módulo de anúncios (`{company}`).
+        return "empresa-{$this->id}";
+    }
+
+    public function nomeContaMl(): string
+    {
+        return (string) $this->nome;
+    }
+
+    public function colunaAncoraMl(): string
+    {
+        return 'mlb_empresa_id';
     }
 
     public function responsavel(): BelongsTo

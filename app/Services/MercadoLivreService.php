@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Contracts\ContaMercadoLivre;
 use App\Models\AdmanCampaignMetric;
 use App\Models\AdmanMetric;
 use App\Models\AdmanSyncLog;
@@ -63,10 +64,13 @@ class MercadoLivreService
      * Mesma URL de autorização, ancorada numa empresa de Polos (`mlb_empresas`).
      *
      * Polos não vive em `companies` — 535 das 539 empresas de Polos estavam sem
-     * `company_id` em produção (medido em 27/08/2026) — e `ml_tokens.company_id`
-     * é UNIQUE. Por isso este fluxo NÃO persiste token: ele existe para saber
-     * QUEM autorizou (o Grant por polo é o mesmo link para a região inteira e
-     * não devolve isso) e para capturar o Cust ID da conta autorizada.
+     * `company_id` em produção (medido em 27/08/2026). Este fluxo existe para
+     * saber QUEM autorizou (o Grant por polo é o mesmo link para a região
+     * inteira e não devolve isso) e para capturar o Cust ID da conta.
+     *
+     * Desde 21/09/2026 ele TAMBÉM persiste o token, ancorado em
+     * `ml_tokens.mlb_empresa_id` — é o que faz a empresa de Polos aparecer e
+     * publicar em `/mlb/anuncios` sem precisar de uma `Company`.
      *
      * O `state` carrega `mlb_empresa_id` em vez de `company_id`; é por ele que o
      * callback sabe qual dos dois fluxos seguir.
@@ -160,14 +164,24 @@ class MercadoLivreService
     }
 
     /**
-     * Salva (cria ou atualiza) o token da empresa.
+     * Salva (cria ou atualiza) o token da conta.
      * O ML renova o refresh_token a cada chamada — sempre substituir ambos.
+     *
+     * A conta pode ser `Company` ou `MlbEmpresa` (ver `ContaMercadoLivre`). A
+     * âncora escolhida é gravada e a outra fica NULL — é aqui que a invariante
+     * "exatamente uma das duas" é garantida, já que MariaDB e SQLite divergem
+     * demais em CHECK constraint para deixá-la no schema.
      */
-    public function saveToken(Company $company, array $data): MlToken
+    public function saveToken(ContaMercadoLivre $conta, array $data): MlToken
     {
+        $ancora = $conta->colunaAncoraMl();
+
         return MlToken::updateOrCreate(
-            ['company_id' => $company->id],
+            [$ancora => $conta->getKey()],
             [
+                // A âncora oposta é zerada explicitamente: um token nunca
+                // pertence às duas entidades ao mesmo tempo.
+                $ancora === 'company_id' ? 'mlb_empresa_id' : 'company_id' => null,
                 'ml_user_id'        => (string) $data['user_id'],
                 'access_token'      => $data['access_token'],
                 'refresh_token'     => $data['refresh_token'],
@@ -200,10 +214,14 @@ class MercadoLivreService
      */
     public function refreshToken(MlToken $token): MlToken
     {
-        $companyId = $token->company_id;
+        // Chave da ÂNCORA, não do `company_id` cru: token de empresa de Polos
+        // tem `company_id` nulo, então todos eles cairiam em "ml-refresh-" e
+        // serializariam entre si. Como o refresh token do ML é de uso único,
+        // essa colisão derrubaria a conexão de empresas diferentes.
+        $contaMl = $token->chaveLock();
 
         try {
-            return Cache::lock("ml-refresh-{$companyId}", 15)->block(10, function () use ($token, $companyId) {
+            return Cache::lock("ml-refresh-{$contaMl}", 15)->block(10, function () use ($token, $contaMl) {
                 // Recarrega: outro processo pode ter renovado enquanto esperávamos o lock.
                 $token = $token->fresh() ?? $token;
 
@@ -223,7 +241,7 @@ class MercadoLivreService
                     ]);
                 } catch (\Illuminate\Http\Client\ConnectionException $e) {
                     // Falha de rede — transitória. NÃO revoga; deixa para a próxima tentativa.
-                    Log::warning("[MercadoLivre] Falha de conexão ao renovar token empresa {$companyId}: {$e->getMessage()}");
+                    Log::warning("[MercadoLivre] Falha de conexão ao renovar token empresa {$contaMl}: {$e->getMessage()}");
                     throw new \RuntimeException('[MercadoLivre] Erro de conexão ao renovar token (transitório).');
                 }
 
@@ -236,14 +254,14 @@ class MercadoLivreService
                         // Refresh token realmente inválido — só aqui revogamos.
                         $token->update(['status' => 'revoked']);
                         Log::warning('[MercadoLivre] Refresh token revogado (invalid_grant)', [
-                            'company_id' => $companyId,
+                            'conta_ml'   => $contaMl,
                             'response'   => $response->body(),
                         ]);
                         throw new \RuntimeException('[MercadoLivre] Refresh token inválido — empresa precisa reconectar.');
                     }
 
                     // Transitório (5xx, 429, etc): mantém a conexão ativa e deixa retentar.
-                    Log::warning("[MercadoLivre] Erro transitório ao renovar token empresa {$companyId} (HTTP {$response->status()}) — conexão mantida ativa", [
+                    Log::warning("[MercadoLivre] Erro transitório ao renovar token empresa {$contaMl} (HTTP {$response->status()}) — conexão mantida ativa", [
                         'response' => $response->body(),
                     ]);
                     throw new \RuntimeException("[MercadoLivre] Erro {$response->status()} ao renovar token (transitório).");
@@ -262,14 +280,14 @@ class MercadoLivreService
                 ]);
 
                 if ($reactivated) {
-                    Log::info("[MercadoLivre] Token reativado empresa {$companyId} (refresh bem-sucedido após revogação)");
+                    Log::info("[MercadoLivre] Token reativado empresa {$contaMl} (refresh bem-sucedido após revogação)");
                 }
 
                 return $token->fresh();
             });
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
             // Outro processo está renovando agora — reutiliza o que estiver no banco.
-            Log::info("[MercadoLivre] Refresh concorrente empresa {$companyId} — reutilizando token do banco.");
+            Log::info("[MercadoLivre] Refresh concorrente empresa {$contaMl} — reutilizando token do banco.");
             $fresh = $token->fresh();
 
             if (! $fresh || $fresh->status !== 'active') {
@@ -286,9 +304,13 @@ class MercadoLivreService
      * Retorna token válido da empresa, renovando se necessário.
      * Retorna null se sem token ou revogado.
      */
-    public function ensureValidToken(Company $company): ?MlToken
+    public function ensureValidToken(ContaMercadoLivre $company): ?MlToken
     {
-        $token = $company->mlToken ?? MlToken::where('company_id', $company->id)->first();
+        // A busca de fallback usa a coluna-âncora da própria conta: para
+        // `MlbEmpresa` o token mora em `mlb_empresa_id`, e procurar por
+        // `company_id` acharia o token errado (ou nenhum).
+        $token = $company->mlToken
+            ?? MlToken::where($company->colunaAncoraMl(), $company->getKey())->first();
 
         if (! $token || $token->status === 'revoked') {
             return null;
@@ -312,12 +334,12 @@ class MercadoLivreService
      *
      * @throws \RuntimeException
      */
-    public function get(Company $company, string $endpoint, array $query = [], array $headers = []): array
+    public function get(ContaMercadoLivre $company, string $endpoint, array $query = [], array $headers = []): array
     {
         $token = $this->ensureValidToken($company);
 
         if (! $token) {
-            throw new \RuntimeException("[MercadoLivre] Empresa {$company->id} sem token válido.");
+            throw new \RuntimeException("[MercadoLivre] Empresa {$company->chaveContaMl()} sem token válido.");
         }
 
         // Envio isolado em closure para reusar no retry de 429 e no re-envio pós-refresh.
@@ -370,7 +392,7 @@ class MercadoLivreService
      * @param  array  $body     Corpo da requisição (enviado como JSON)
      * @throws \RuntimeException
      */
-    public function post(Company $company, string $endpoint, array $body = [], array $headers = []): array
+    public function post(ContaMercadoLivre $company, string $endpoint, array $body = [], array $headers = []): array
     {
         return $this->write('post', $company, $endpoint, $body, $headers);
     }
@@ -381,7 +403,7 @@ class MercadoLivreService
      * @param  array  $body     Corpo da requisição (enviado como JSON)
      * @throws \RuntimeException
      */
-    public function put(Company $company, string $endpoint, array $body = [], array $headers = []): array
+    public function put(ContaMercadoLivre $company, string $endpoint, array $body = [], array $headers = []): array
     {
         return $this->write('put', $company, $endpoint, $body, $headers);
     }
@@ -397,12 +419,12 @@ class MercadoLivreService
      *
      * @throws \RuntimeException
      */
-    private function write(string $method, Company $company, string $endpoint, array $body, array $headers): array
+    private function write(string $method, ContaMercadoLivre $company, string $endpoint, array $body, array $headers): array
     {
         $token = $this->ensureValidToken($company);
 
         if (! $token) {
-            throw new \RuntimeException("[MercadoLivre] Empresa {$company->id} sem token válido.");
+            throw new \RuntimeException("[MercadoLivre] Empresa {$company->chaveContaMl()} sem token válido.");
         }
 
         $send = fn (MlToken $t) => Http::withToken($t->access_token)
@@ -556,12 +578,12 @@ class MercadoLivreService
      *
      * @return array{id, nickname, email, seller_reputation, ...}
      */
-    public function fetchUserInfo(Company $company): array
+    public function fetchUserInfo(ContaMercadoLivre $company): array
     {
         $token = $this->ensureValidToken($company);
 
         if (! $token) {
-            throw new \RuntimeException("[MercadoLivre] Empresa {$company->id} sem token válido.");
+            throw new \RuntimeException("[MercadoLivre] Empresa {$company->chaveContaMl()} sem token válido.");
         }
 
         return $this->get($company, "/users/{$token->ml_user_id}");

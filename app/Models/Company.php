@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Contracts\ContaMercadoLivre;
 use App\Observers\CompanyGatilhoContratoObserver;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -13,7 +15,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
 // Fase 128 (plano 05, D-04) — reavalia o gate administrativo de contrato
 // quando o Comercial corrige um campo-gatilho (ver docblock do Observer).
 #[ObservedBy(CompanyGatilhoContratoObserver::class)]
-class Company extends Model
+class Company extends Model implements ContaMercadoLivre
 {
     use HasFactory, LogsActivity;
 
@@ -617,9 +619,30 @@ class Company extends Model
         return $this->hasMany(ContratoAssinatura::class);
     }
 
-    public function mlToken()
+    public function mlToken(): HasOne
     {
         return $this->hasOne(MlToken::class);
+    }
+
+    // ─── ContaMercadoLivre ────────────────────────────────────────────────
+    // Ver `App\Contracts\ContaMercadoLivre`: o módulo de anúncios atende
+    // Company e MlbEmpresa pela mesma porta.
+
+    public function chaveContaMl(): string
+    {
+        // URL-safe de propósito: esta chave é usada tanto em lock/cache quanto
+        // como parâmetro de rota do módulo de anúncios (`{company}`).
+        return "company-{$this->id}";
+    }
+
+    public function nomeContaMl(): string
+    {
+        return (string) $this->name;
+    }
+
+    public function colunaAncoraMl(): string
+    {
+        return 'company_id';
     }
 
     // Token do app ERP (Order/Payment/escrow) — é o "principal" da empresa na
