@@ -203,6 +203,8 @@ const NAV_TREE = [
         group: 'Dev',
         icon: Code2,
         children: [
+            // Demandas Dev — admin ou quem tem demanda atribuída (flag do HandleInertiaRequests).
+            { label: 'Demandas Dev',   routeName: 'dev.demandas.index',  page: 'Dev/Demandas/Index',  icon: ListChecks, authFlag: 'demandas_dev' },
             { label: 'Log',            routeName: 'activity-log.index',  page: 'ActivityLog',        icon: ScrollText, permission: 'sistema.activity_log' },
             { label: 'Desenvolvimento', routeName: 'dev.desenvolvimento', page: 'Dev/Desenvolvimento', icon: Code2,     permission: 'sistema.desenvolvimento' },
             // Phase 42 D-02 / REQ-42-07: item de UI de onboarding (Plan 41-05) removido daqui.
@@ -486,6 +488,8 @@ export default function AppLayout({ children, title }) {
         if (item.divider) return true;
         // Itens exclusivos do Dev (ex.: a própria tela de controle de visibilidade).
         if (item.devOnly && !isAdminDev) return false;
+        // Item liberado por uma flag booleana do `auth` compartilhado (ex.: `demandas_dev`).
+        if (item.authFlag && !auth?.[item.authFlag]) return false;
         // Gate de visibilidade por módulo — Dev vê tudo; demais não veem os ocultos.
         if (!isAdminDev && rotaOculta(item.routeName)) return false;
         if (item.excludeRoles?.some(r => effectiveRoles.has(r))) return false;

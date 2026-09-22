@@ -3,6 +3,7 @@
 use Inertia\Inertia;
 use App\Http\Controllers\BoasVindasTemplateController;
 use App\Http\Controllers\CoordenacaoDistribuicaoController;
+use App\Http\Controllers\DevDemandaController;
 use App\Http\Controllers\ContratoAdminController;
 use App\Http\Controllers\TabelasContratoController;
 use App\Http\Controllers\TabelaEmpresaContratoController;
@@ -971,6 +972,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/sugadores/configs/{company}',        [SugadorConfigController::class, 'show'])->name('sugadores.config.show');
     Route::get('/companies/{company}/sugador-config', [SugadorConfigController::class, 'show'])->name('sugadores.config.show-legacy');
     Route::put('/companies/{company}/sugador-config', [SugadorConfigController::class, 'update'])->name('sugadores.config.update');
+
+    // ─── Demandas Dev — tarefas do time de desenvolvimento ────────────────
+    // FORA do `role:admin` de propósito: o responsável por uma demanda entra
+    // mesmo sem ser admin (vê só as próprias). A trava fica no controller
+    // (DemandasDevService::podeAcessar / podeGerenciar / podeAtualizar).
+    Route::prefix('dev/demandas')->name('dev.demandas.')->group(function () {
+        Route::get('/',                          [DevDemandaController::class, 'index'])->name('index');
+        Route::post('/',                         [DevDemandaController::class, 'store'])->name('store');
+        Route::put('/{demanda}',                 [DevDemandaController::class, 'update'])->name('update');
+        Route::post('/{demanda}/atualizacoes',   [DevDemandaController::class, 'storeAtualizacao'])->name('atualizacoes.store');
+        Route::post('/reunioes',                 [DevDemandaController::class, 'storeReuniao'])->name('reunioes.store');
+        Route::put('/reunioes/{reuniao}',        [DevDemandaController::class, 'updateReuniao'])->name('reunioes.update');
+    });
 
     Route::middleware('role:admin')->group(function () {
         // Log de atividades

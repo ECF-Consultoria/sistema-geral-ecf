@@ -55,6 +55,9 @@ class HandleInertiaRequests extends Middleware
                 // consumido por AppLayout::itemVisivel(). Lista cacheada (ModuleRegistry).
                 'is_admin_dev'    => $user ? $user->isAdminDev() : false,
                 'modulos_ocultos' => $user ? app(\App\Services\ModuleRegistry::class)->hiddenRoutes() : [],
+                // Demandas Dev: admin ou quem tem demanda atribuída vê o item no menu
+                // (mesma regra do controller — DemandasDevService::podeAcessar).
+                'demandas_dev'    => $user ? $this->podeVerDemandasDev($user) : false,
             ],
             'flash' => [
                 'success'       => $request->session()->get('success'),
@@ -100,6 +103,19 @@ class HandleInertiaRequests extends Middleware
             // Lazy closure + cache 5min + try/catch retorna null em erro (falha silenciosa).
             'alertas_criticos_count' => fn() => $this->countAlertasCriticos(),
         ];
+    }
+
+    /**
+     * Item "Demandas Dev" no menu. try/catch: na janela de deploy, antes do
+     * migrate, a tabela ainda não existe — o menu não pode derrubar a página.
+     */
+    private function podeVerDemandasDev(\App\Models\User $user): bool
+    {
+        try {
+            return app(\App\Services\DevDemandas\DemandasDevService::class)->podeAcessar($user);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
