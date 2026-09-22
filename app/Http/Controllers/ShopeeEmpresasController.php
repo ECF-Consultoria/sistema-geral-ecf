@@ -266,11 +266,16 @@ class ShopeeEmpresasController extends Controller
     }
 
     /**
-     * Resolver pendência (DEC-78-2): atribui Analista/Estrategista Shopee (por
-     * servico_id) e atualiza o contato (email do cliente) de UMA empresa. Gated
-     * por permission:shopee.empresas + guard de escopo (empresa fora do escopo
-     * Shopee → validação falha). Responsáveis são opcionais (parcial resolve
-     * parte da pendência).
+     * Edita responsáveis + contato de UMA empresa Shopee (DEC-78-2): Analista
+     * (role=consultor) e Estrategista gravados por servico_id, e o email do
+     * cliente. Gated por permission:shopee.empresas + guard de escopo (empresa
+     * fora do escopo Shopee → validação falha).
+     *
+     * Quem decide é a PRESENÇA da chave no request, não o preenchimento: campo
+     * enviado vazio REMOVE o slot Shopee daquele papel (é o "— sem analista —"
+     * do select), campo ausente não é tocado. Antes só gravava quando vinha
+     * preenchido — dava para atribuir, nunca para remover, e a tela dizia
+     * "atualizada" sem ter mudado nada.
      */
     public function resolver(Request $request)
     {
@@ -285,19 +290,19 @@ class ShopeeEmpresasController extends Controller
         $servicoShopeeId = $this->servicoShopeeAtivoId($company->id);
 
         if ($servicoShopeeId !== null) {
-            if (! empty($data['analista_id'])) {
-                $this->gravarResponsavelShopee($company, 'consultor', (int) $data['analista_id'], $servicoShopeeId);
+            if (array_key_exists('analista_id', $data)) {
+                $this->definirResponsavelShopee($company, 'consultor', $data['analista_id'], $servicoShopeeId);
             }
-            if (! empty($data['estrategista_id'])) {
-                $this->gravarResponsavelShopee($company, 'estrategista', (int) $data['estrategista_id'], $servicoShopeeId);
+            if (array_key_exists('estrategista_id', $data)) {
+                $this->definirResponsavelShopee($company, 'estrategista', $data['estrategista_id'], $servicoShopeeId);
             }
         }
 
-        if (! empty($data['email_cliente'])) {
-            $company->update(['email_cliente' => $data['email_cliente']]);
+        if (array_key_exists('email_cliente', $data)) {
+            $company->update(['email_cliente' => $data['email_cliente'] ?: null]);
         }
 
-        return back()->with('success', 'Pendência da empresa atualizada.');
+        return back()->with('success', 'Responsáveis da empresa atualizados.');
     }
 
     /**
@@ -359,17 +364,22 @@ class ShopeeEmpresasController extends Controller
     }
 
     /**
-     * Grava o responsável POR-SERVIÇO Shopee: apaga só o slot
+     * Define o responsável POR-SERVIÇO Shopee: apaga só o slot
      * (company_id, role, servico_id shopee) e re-atribui — nunca toca a linha ML
-     * (Phase 76 / DEC-A3).
+     * (Phase 76 / DEC-A3). `$userId` null apaga o slot e não regrava: é a
+     * remoção do responsável, que continua sem alcançar o outro canal.
      */
-    private function gravarResponsavelShopee(Company $company, string $role, int $userId, int $servicoShopeeId): void
+    private function definirResponsavelShopee(Company $company, string $role, ?int $userId, int $servicoShopeeId): void
     {
         DB::table('company_users')
             ->where('company_id', $company->id)
             ->where('role', $role)
             ->where('servico_id', $servicoShopeeId)
             ->delete();
+
+        if ($userId === null) {
+            return; // "— sem responsável —": o slot Shopee fica vazio
+        }
 
         $company->users()->attach($userId, [
             'role'        => $role,

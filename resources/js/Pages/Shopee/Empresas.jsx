@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { useForm, router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Building2, Check, Wrench, Trash2, CheckCircle2, Clock, Copy, RefreshCw, Store } from 'lucide-react';
+import { Building2, Check, Wrench, Trash2, CheckCircle2, Clock, Copy, RefreshCw, Store, UserCog } from 'lucide-react';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 
 const SHOPEE_ORANGE = '#ee4d2d'; // laranja da marca Shopee
@@ -125,11 +125,12 @@ function ShopeeConexao({ company }) {
 
 // ─── Página "Empresas" da Shopee (Phase 75; revisada na Phase 78 DEC-78-2/3/4) ─
 // Versão ENXUTA de Companies/Index.jsx: SEM colunas de métrica/cust_id/grant.
-// Ações: atribuir responsável em massa (bulk-assign), "Resolver" pendência
-// (popup: atribui Analista/Estrategista Shopee — selects JÁ escopados ao Setor
-// Shopee pelo backend — + contato) e "Excluir" (cancela SÓ o serviço Shopee,
-// não apaga a empresa). O "Gerar NPS" avulso foi removido (o NPS passa a ser
-// por modelo/disparo — Phase 79).
+// Ações: atribuir responsável em massa (bulk-assign), editar os responsáveis de
+// UMA empresa (popup: Analista/Estrategista Shopee — selects JÁ escopados ao
+// Setor Shopee pelo backend — + contato), aberto tanto pelo botão "Responsáveis"
+// da aba Todas quanto pelo "Resolver" da aba Pendências, e "Excluir" (cancela SÓ
+// o serviço Shopee, não apaga a empresa). O "Gerar NPS" avulso foi removido
+// (o NPS passa a ser por modelo/disparo — Phase 79).
 // Rotas: shopee.empresas.* (index, bulk-assign, resolver, cancelar-servico).
 
 // Dicionário de pendências — SÓ as 3 chaves da DEC-2 (voltadas ao NPS).
@@ -267,6 +268,33 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
             email_cliente: company.email_cliente ?? '',
         });
     };
+
+    // Responsável exibido na linha vira gatilho do popup — trocar analista/
+    // estrategista de UMA empresa não depende mais de ela estar pendente.
+    const ResponsavelCell = ({ company, campo }) => (
+        <button
+            type="button"
+            onClick={() => abrirResolver(company)}
+            title="Alterar Analista/Estrategista Shopee desta empresa"
+            className="text-left rounded px-1 -mx-1 hover:text-ecf-yellow hover:bg-ecf-yellow/[0.07] transition-colors"
+        >
+            {company[campo]?.name || <span className="text-white/25">— definir —</span>}
+        </button>
+    );
+
+    // Botão "Responsáveis" da aba Todas (mesmo popup do "Resolver" das Pendências).
+    const ResponsaveisButton = ({ company }) => (
+        <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-[12px]"
+            onClick={() => abrirResolver(company)}
+            title="Alterar Analista/Estrategista Shopee e o contato desta empresa"
+        >
+            <UserCog className="h-3.5 w-3.5" /> Responsáveis
+        </Button>
+    );
+
     const salvarResolver = (e) => {
         e.preventDefault();
         resolverForm.post(route('shopee.empresas.resolver'), {
@@ -409,8 +437,8 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="text-sm text-white/70">{c.segment || <span className="text-white/25">—</span>}</TableCell>
-                                                <TableCell className="text-sm">{c.consultor?.name || <span className="text-muted-foreground">-</span>}</TableCell>
-                                                <TableCell className="text-sm">{c.estrategista?.name || <span className="text-muted-foreground">-</span>}</TableCell>
+                                                <TableCell className="text-sm"><ResponsavelCell company={c} campo="consultor" /></TableCell>
+                                                <TableCell className="text-sm"><ResponsavelCell company={c} campo="estrategista" /></TableCell>
                                                 <TableCell><ServicoBadges contratos={c.contratos_servico || []} /></TableCell>
                                                 <TableCell><ShopeeConexao company={c} /></TableCell>
                                                 <TableCell className="text-xs text-white/60">{c.email_cliente || <span className="text-white/25">—</span>}</TableCell>
@@ -420,6 +448,7 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex justify-end gap-1">
+                                                        <ResponsaveisButton company={c} />
                                                         <ExcluirButton company={c} />
                                                     </div>
                                                 </TableCell>
@@ -527,13 +556,15 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                 )}
             </div>
 
-            {/* Popup "Resolver pendência" — atribuir Analista/Estrategista Shopee + contato.
-                Os selects usam as options JÁ escopadas ao Setor Shopee pelo backend (78-01). */}
+            {/* Popup de responsáveis — atribuir/trocar/remover Analista e Estrategista
+                Shopee + contato. Aberto pelo "Responsáveis" (aba Todas) e pelo "Resolver"
+                (aba Pendências). Os selects usam as options JÁ escopadas ao Setor Shopee
+                pelo backend (78-01); "— sem ... —" remove o responsável. */}
             <Dialog open={!!resolverEmpresa} onOpenChange={(o) => { if (!o) setResolverEmpresa(null); }}>
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <Wrench size={16} className="text-ecf-yellow/70" /> Resolver pendência — {resolverEmpresa?.name}
+                            <UserCog size={16} className="text-ecf-yellow/70" /> Responsáveis Shopee — {resolverEmpresa?.name}
                         </DialogTitle>
                     </DialogHeader>
                     <form onSubmit={salvarResolver} className="space-y-4">
