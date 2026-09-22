@@ -415,13 +415,13 @@ Há um teste que quebra se alguém reintroduzir `portal/*`.
 que pegou. A suíte passava — porque o teste que eu tinha escrito verificava as
 rotas que eu me lembrei de listar, e `/portal/usuarios` não estava entre elas.
 
-## 25. A régua de agrupamento do PPA vive em TRÊS lugares — e eles têm de concordar
+## 25. A régua de agrupamento do PPA vive em QUATRO lugares — e eles têm de concordar
 
 Em 21/09/2026 as duas listas de PPA (a do portal e a interna) passaram a se
 agrupar sozinhas em **Em andamento · A fazer · Concluídos**, para que um cliente
 com 20 planos não recebesse 20 quadros de três colunas empilhados.
 
-A mesma régua existe em três implementações, e nenhuma delas é opcional:
+A mesma régua existe em quatro implementações, e nenhuma delas é opcional:
 
 1. **`resources/js/lib/ppaAgrupamento.js`** — decide o grupo de cada plano na
    tela, a partir das tarefas. Tem teste próprio em
@@ -432,6 +432,10 @@ A mesma régua existe em três implementações, e nenhuma delas é opcional:
    2. O sintoma é silencioso — nada quebra, só some.
 3. **`PortalPpaService::visao()`** — manda `fazendo` / `a_fazer` / `prazo_dias`.
    Sem essas contagens todo plano cai em "A fazer" e a hierarquia vira enfeite.
+4. **`Ppa::scopeDaSituacao()`** — a MESMA régua no `WHERE`, para o filtro de
+   situação da lista interna (22/09/2026). Nasceu depois dos outros três e é o
+   mais fácil de esquecer: um filtro que discorde da régua devolve planos que a
+   seção escolhida não desenha — lista vazia com o contador dizendo que há sete.
 
 Mudar uma sem as outras não quebra teste nenhum de forma óbvia: a tela continua
 renderizando, só que errado.
@@ -455,6 +459,46 @@ avaliado depois da projeção — ao contrário do `WHERE`, onde o alias NÃO va
   tarefa faria o plano saltar de seção no instante em que o card foi solto, e o
   quadro sumiria de sob o cursor. Contadores e percentual, esses sim, são vivos.
   A posição nova vale na próxima visita.
+
+### O filtro no `WHERE` NÃO pode reaproveitar os aliases do `withCount`
+
+`scopeOrdenadoPorAtencao` usa `tasks_count` / `tasks_done_count` /
+`tasks_doing_count` dentro de um `CASE` no `ORDER BY`, e funciona. A tentação é
+copiar as mesmas expressões para o filtro — e aí quebra: alias de SELECT vale em
+`ORDER BY` (avaliado depois da projeção) e **não** em `WHERE`. Por isso
+`scopeDaSituacao` usa `whereHas` / `whereDoesntHave`, que viram subconsulta.
+
+O SQLite dos testes é permissivo com alias em `WHERE` em alguns casos; o MariaDB
+não é. Seria mais uma armadilha do tipo "passa no teste, estoura na tela".
+
+### "Vencido" não é um grupo, e por isso não entrou em `GRUPOS`
+
+O pedido foi "filtrar por vencido, em andamento e concluído". Vencido parece o
+quarto grupo, mas não é: um plano vencido continua estando em andamento **ou** a
+fazer — ele atravessa as seções em vez de substituí-las. Virou filtro, e a lista
+filtrada continua se agrupando normalmente: quem pede "Vencidos" vê os atrasados
+já separados entre o que está andando e o que nem começou.
+
+A fronteira é a mesma do selo da tela: `due_date < hoje`, **estrito**. "Vence
+hoje" não é vencido. E plano encerrado pela equipe fica de fora, pela mesma razão
+que `diasAteOPrazo()` devolve `null` nele — atraso de trabalho fechado não cobra
+ninguém.
+
+### Filtrar por "Concluídos" tinha de abrir a gaveta que vem fechada
+
+A seção "Concluídos" nasce recolhida, para tirar do caminho o que ninguém pediu.
+Com o filtro, ela passou a ser exatamente o que se pediu — e a tela vinha vazia
+com o contador dizendo "12". Daí `soConcluidos` na lista interna: filtrou por
+concluídos, a gaveta abre e o cabeçalho deixa de ser botão.
+
+### O filtro é do SERVIDOR; a busca por texto continua sendo da página
+
+A busca por título/empresa/responsável varre só a página atual, de propósito
+(é o alcance que os olhos tinham na tabela). Os filtros novos **não** podiam
+seguir esse caminho: a lista pagina de 20 em 20, e recortar só o que chegou
+mostraria "3 vencidos" para quem tem 19 espalhados pelas páginas seguintes.
+Pelo mesmo motivo a paginação carrega os filtros na URL, e mudar um filtro volta
+para a página 1.
 
 ### No portal o card arrasta, mas não reordena
 

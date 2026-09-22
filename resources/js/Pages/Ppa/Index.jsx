@@ -12,7 +12,7 @@ import {
     CalendarDays, ChevronDown, Eye, EyeOff, FileText, LayoutDashboard, Pencil, Plus, Search, Trash2, X,
 } from 'lucide-react';
 import {
-    GRUPO_ANDAMENTO, GRUPO_CONCLUIDO, GRUPO_FAZER,
+    GRUPO_ANDAMENTO, GRUPO_CONCLUIDO, GRUPO_FAZER, GRUPOS,
     grupoDoPlano, percentual, seccionar, seloPrazo,
 } from '@/lib/ppaAgrupamento';
 import { cn } from '@/lib/utils';
@@ -94,6 +94,45 @@ const PONTO_GRUPO = {
     [GRUPO_CONCLUIDO]: 'bg-emerald-400',
 };
 
+// ─── Os filtros de situação ──────────────────────────────────────────────────
+//
+// Os rótulos saem de `GRUPOS` de propósito: filtrar por "Em andamento" tem de
+// dizer a MESMA coisa que a seção "Em andamento" logo abaixo. Duas listas de
+// rótulos viravam, no primeiro ajuste, um filtro chamado diferente da seção que
+// ele recorta.
+//
+// "Vencidos" não é um grupo, e por isso entra à mão: um plano vencido continua
+// estando em andamento ou a fazer — o recorte atravessa as seções em vez de
+// substituí-las. Quem filtra por vencidos vê os planos atrasados já separados
+// entre o que está andando e o que nem começou.
+//
+// Os valores são os mesmos de `Ppa::SITUACOES` (PHP), porque viajam crus na URL.
+const SITUACAO_VENCIDO = 'vencido';
+
+const FILTROS_SITUACAO = [
+    { valor: '',                titulo: 'Todos' },
+    { valor: SITUACAO_VENCIDO,  titulo: 'Vencidos' },
+    ...GRUPOS.map((g) => ({ valor: g.chave, titulo: g.titulo })),
+];
+
+function ChipFiltro({ ativo, onClick, children }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-pressed={ativo}
+            className={cn(
+                'h-8 px-3 rounded-lg text-[12px] font-semibold ring-1 ring-inset transition-colors',
+                ativo
+                    ? 'bg-ecf-yellow/[0.14] text-ecf-yellow ring-ecf-yellow/30'
+                    : 'bg-white/[0.03] text-white/50 ring-white/[0.07] hover:bg-white/[0.06] hover:text-white/80',
+            )}
+        >
+            {children}
+        </button>
+    );
+}
+
 /** A barra + fração, o mesmo par que a tabela mostrava na coluna "Tarefas". */
 function Progresso({ done, total, largura = 'w-20' }) {
     const pct = percentual({ total, feitas: done });
@@ -153,6 +192,8 @@ function LinhaPlano({ plano, onAbrirQuadro, onEditar, onRemover }) {
                     <span className="text-white/60 truncate">{plano.company_name}</span>
                     <span className="text-white/15">·</span>
                     <span className="truncate">{plano.mentor_name}</span>
+                    <span className="text-white/15">·</span>
+                    <span className="whitespace-nowrap">Criado em {plano.created_at}</span>
                     {plano.due_date && !selo && (
                         <>
                             <span className="text-white/15">·</span>
@@ -195,11 +236,12 @@ function CartaoConcluido({ plano, onAbrirQuadro }) {
                 {plano.tasks_done}/{plano.tasks_count} tarefas
                 {plano.due_date && ` · ${plano.due_date}`}
             </p>
+            <p className="text-white/25 text-[10.5px] mt-0.5 tabular-nums">Criado em {plano.created_at}</p>
         </button>
     );
 }
 
-export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas }) {
+export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, filtros = {} }) {
     const R = { ...ROTAS_PADRAO, ...(rotas ?? {}) };
     const ehPolos = escopo === 'polos';
     const [open, setOpen] = useState(false);
@@ -207,6 +249,46 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas }) {
     const [editing, setEditing] = useState(null);
     const [busca, setBusca] = useState('');
     const [concluidosAbertos, setConcluidosAbertos] = useState(false);
+
+    // Os filtros vivem no SERVIDOR (`Ppa::scopeDaSituacao` / `scopeCriadoEntre`)
+    // e não aqui — a lista pagina de 20 em 20, e recortar só a página devolveria
+    // "3 vencidos" para quem tem 19 espalhados pelas outras. O estado local é só
+    // o eco do que já veio aplicado, para o campo não piscar entre a navegação e
+    // a resposta.
+    const [situacao, setSituacao] = useState(filtros.situacao ?? '');
+    const [de, setDe] = useState(filtros.de ?? '');
+    const [ate, setAte] = useState(filtros.ate ?? '');
+
+    const temFiltro = Boolean(situacao || de || ate);
+
+    const paramsDe = (f, extra = {}) => {
+        const p = { ...extra };
+        if (f.situacao) p.situacao = f.situacao;
+        if (f.de) p.de = f.de;
+        if (f.ate) p.ate = f.ate;
+        return p;
+    };
+
+    // Mudar filtro volta para a página 1 (por `page` ficar de fora): a página 7
+    // de uma lista sem filtro quase nunca existe na lista filtrada, e cair numa
+    // página vazia parece resultado nenhum.
+    const aplicar = (mudanca) => {
+        const proximo = { situacao, de, ate, ...mudanca };
+        setSituacao(proximo.situacao);
+        setDe(proximo.de);
+        setAte(proximo.ate);
+
+        router.get(route(R.index), paramsDe(proximo), {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
+
+    const limparFiltros = () => aplicar({ situacao: '', de: '', ate: '' });
+
+    const irParaPagina = (page) =>
+        router.get(route(R.index), paramsDe({ situacao, de, ate }, { page }));
 
     const { data, setData, post, processing, reset } = useForm({
         company_id: '', title: '', description: '', due_date: '',
@@ -272,6 +354,11 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas }) {
     const vazio = !ppas.data || ppas.data.length === 0;
     const nadaNaBusca = !vazio && secoes.every((s) => s.planos.length === 0);
 
+    // Filtrar por "Concluídos" e receber a gaveta FECHADA seria uma tela vazia
+    // com o contador dizendo que há 12 — a seção recolhida existe para tirar do
+    // caminho o que ninguém pediu, e aqui foi exatamente o que se pediu.
+    const soConcluidos = situacao === GRUPO_CONCLUIDO;
+
     return (
         <AppLayout title={ehPolos ? 'PPA Polos — Plano Prático de Ação' : 'PPA — Plano Prático de Ação'}>
             <div className="space-y-4">
@@ -304,10 +391,63 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas }) {
                     </div>
                 </div>
 
+                <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        {FILTROS_SITUACAO.map((f) => (
+                            <ChipFiltro
+                                key={f.valor || 'todos'}
+                                ativo={situacao === f.valor}
+                                onClick={() => aplicar({ situacao: f.valor })}
+                            >
+                                {f.titulo}
+                            </ChipFiltro>
+                        ))}
+                    </div>
+
+                    <span className="h-5 w-px bg-white/[0.08] hidden sm:block" />
+
+                    <div className="flex items-center gap-1.5 text-white/40 text-[12px]">
+                        <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                        <span className="shrink-0">Criado de</span>
+                        <Input
+                            type="date"
+                            value={de}
+                            max={ate || undefined}
+                            onChange={(e) => aplicar({ de: e.target.value })}
+                            aria-label="Criado a partir de"
+                            className="h-8 w-[142px] text-[12px]"
+                        />
+                        <span className="shrink-0">até</span>
+                        <Input
+                            type="date"
+                            value={ate}
+                            min={de || undefined}
+                            onChange={(e) => aplicar({ ate: e.target.value })}
+                            aria-label="Criado até"
+                            className="h-8 w-[142px] text-[12px]"
+                        />
+                    </div>
+
+                    {temFiltro && (
+                        <button
+                            type="button"
+                            onClick={limparFiltros}
+                            className="inline-flex items-center gap-1 text-[12px] text-white/40 hover:text-white transition-colors"
+                        >
+                            <X className="h-3.5 w-3.5" /> Limpar filtros
+                        </button>
+                    )}
+                </div>
+
                 {vazio && (
                     <div className="rounded-2xl ring-1 ring-inset ring-white/[0.06] bg-white/[0.02] text-center py-14 text-muted-foreground">
                         <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                        Nenhum PPA encontrado
+                        {temFiltro ? 'Nenhum PPA nestes filtros' : 'Nenhum PPA encontrado'}
+                        {temFiltro && (
+                            <div className="mt-3">
+                                <Button variant="outline" size="sm" onClick={limparFiltros}>Limpar filtros</Button>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -321,7 +461,8 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas }) {
                     if (secao.planos.length === 0) return null;
 
                     const ehConcluidos = secao.chave === GRUPO_CONCLUIDO;
-                    const aberta = !ehConcluidos || concluidosAbertos;
+                    const dobravel = ehConcluidos && !soConcluidos;
+                    const aberta = !dobravel || concluidosAbertos;
 
                     const cabecalho = (
                         <>
@@ -333,7 +474,7 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas }) {
                                 {secao.planos.length}
                             </span>
                             <span className="h-px flex-1 bg-white/[0.06]" />
-                            {ehConcluidos && (
+                            {dobravel && (
                                 <ChevronDown className={cn('h-4 w-4 shrink-0 text-white/30 transition-transform', !aberta && '-rotate-90')} />
                             )}
                         </>
@@ -341,7 +482,7 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas }) {
 
                     return (
                         <section key={secao.chave} className="space-y-2 pt-1">
-                            {ehConcluidos ? (
+                            {dobravel ? (
                                 <button
                                     type="button"
                                     onClick={() => setConcluidosAbertos((v) => !v)}
@@ -380,11 +521,11 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas }) {
                 {ppas.last_page > 1 && (
                     <div className="flex justify-center gap-2">
                         {ppas.current_page > 1 && (
-                            <Button variant="outline" size="sm" onClick={() => router.get(route(R.index), { page: ppas.current_page - 1 })}>Anterior</Button>
+                            <Button variant="outline" size="sm" onClick={() => irParaPágina(ppas.current_page - 1)}>Anterior</Button>
                         )}
                         <span className="text-sm text-muted-foreground self-center">Página {ppas.current_page} de {ppas.last_page}</span>
                         {ppas.current_page < ppas.last_page && (
-                            <Button variant="outline" size="sm" onClick={() => router.get(route(R.index), { page: ppas.current_page + 1 })}>Próxima</Button>
+                            <Button variant="outline" size="sm" onClick={() => irParaPágina(ppas.current_page + 1)}>Próxima</Button>
                         )}
                     </div>
                 )}

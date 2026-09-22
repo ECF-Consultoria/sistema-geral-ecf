@@ -30,6 +30,27 @@ class Ppa extends Model
     /** PPA Polos (quick 260805-dzu; alvo = MlbEmpresa do projeto POLOS). */
     public const ESCOPO_POLOS = 'polos';
 
+    /**
+     * As situações pelas quais a lista filtra.
+     *
+     * As três primeiras são os GRUPOS da régua de atenção — os mesmos valores
+     * de `resources/js/lib/ppaAgrupamento.js`, e por isso strings iguais dos
+     * dois lados. `vencido` não é grupo: atravessa os três (um plano vencido
+     * está, ao mesmo tempo, em andamento ou a fazer) e por isso só existe como
+     * filtro.
+     */
+    public const GRUPO_ANDAMENTO  = 'andamento';
+    public const GRUPO_FAZER      = 'fazer';
+    public const GRUPO_CONCLUIDO  = 'concluido';
+    public const SITUACAO_VENCIDO = 'vencido';
+
+    public const SITUACOES = [
+        self::SITUACAO_VENCIDO,
+        self::GRUPO_ANDAMENTO,
+        self::GRUPO_FAZER,
+        self::GRUPO_CONCLUIDO,
+    ];
+
     protected $fillable = [
         'escopo', 'company_id', 'mlb_empresa_id', 'mentor_id', 'title', 'description', 'actions',
         'status', 'trello_board_url', 'workspace_token', 'due_date', 'sent_at', 'completed_at',
@@ -105,6 +126,100 @@ class Ppa extends Model
             END")
             ->orderByRaw('due_date IS NULL, due_date ASC')
             ->orderByDesc('created_at');
+    }
+
+    /**
+     * Filtra a lista por situação — a MESMA régua de {@see scopeOrdenadoPorAtencao},
+     * agora no WHERE.
+     *
+     * Este é o QUARTO lugar em que a régua de agrupamento do PPA existe (os
+     * outros três estão em `.planning/learnings/portal-do-cliente.md` §25), e
+     * ele tem de concordar com os demais: a tela agrupa o que recebe, então um
+     * filtro que discordasse da régua devolveria planos que a seção escolhida
+     * não mostra — a lista viria "vazia" com o contador dizendo que há 7.
+     *
+     * Por que `whereHas` e não os aliases do `withCount`: alias de SELECT vale
+     * em `ORDER BY` (que é avaliado depois da projeção) mas NÃO em `WHERE`.
+     * Reaproveitar `tasks_doing_count` aqui estouraria no MariaDB — e passaria
+     * no SQLite dos testes, que é permissivo com isso.
+     *
+     * Situação desconhecida (ou vazia) não filtra nada: o parâmetro vem da URL,
+     * e lixo na query string deve devolver a lista inteira, não um erro.
+     */
+    public function scopeDaSituacao($query, ?string $situacao)
+    {
+        if (! in_array($situacao, self::SITUACOES, true)) {
+            return $query;
+        }
+
+        // Vencido olha só o prazo, e ignora o plano que a equipe encerrou —
+        // é a mesma regra de `diasAteOPrazo()`, que é quem pinta o selo
+        // vermelho na tela. Sem esse recorte, "Vencidos" traria de volta todo
+        // plano fechado com prazo antigo, que é ruído e não trabalho.
+        if ($situacao === self::SITUACAO_VENCIDO) {
+            return $query
+                ->where('status', '!=', 'completed')
+                ->whereNotNull('due_date')
+                ->whereDate('due_date', '<', now()->toDateString());
+        }
+
+        // "Concluído" = encerrado pela equipe OU com todas as tarefas em `done`.
+        // O `has('tasks')` não é enfeite: sem ele, plano SEM tarefa nenhuma
+        // entraria aqui por vacuidade (não existe tarefa pendente) — e a régua
+        // do JS manda ele para "A fazer", de propósito.
+        $concluido = fn ($q) => $q
+            ->where('status', 'completed')
+            ->orWhere(fn ($interno) => $interno
+                ->has('tasks')
+                ->whereDoesntHave('tasks', fn ($t) => $t->where('status', '!=', 'done')));
+
+        return match ($situacao) {
+            self::GRUPO_CONCLUIDO => $query->where($concluido),
+            self::GRUPO_ANDAMENTO => $query->whereNot($concluido)
+                ->whereHas('tasks', fn ($t) => $t->where('status', 'doing')),
+            self::GRUPO_FAZER     => $query->whereNot($concluido)
+                ->whereDoesntHave('tasks', fn ($t) => $t->where('status', 'doing')),
+        };
+    }
+
+    /**
+     * Recorte pela data em que o PPA foi criado.
+     *
+     * `whereDate` e não comparação direta com o timestamp: os dois extremos
+     * chegam como DIA (o `<input type="date">` da tela). Comparar
+     * `created_at <= '2026-09-22'` deixaria de fora tudo que foi criado depois
+     * da meia-noite do próprio dia escolhido — o filtro perderia o dia final
+     * inteiro, calado.
+     */
+    public function scopeCriadoEntre($query, ?string $de, ?string $ate)
+    {
+        return $query
+            ->when($de,  fn ($q) => $q->whereDate('created_at', '>=', $de))
+            ->when($ate, fn ($q) => $q->whereDate('created_at', '<=', $ate));
+    }
+
+    /**
+     * Normaliza os filtros que chegam pela URL, para os dois controllers da
+     * lista (carteira e Polos) aplicarem o mesmo critério.
+     *
+     * Devolve sempre as três chaves, com `null` no lugar do que não veio ou
+     * não serve — é esse mesmo array que volta para a tela repovoar os campos.
+     * Nada aqui aborta: filtro inválido vira "sem filtro", porque uma URL
+     * colada pela metade tem de abrir a lista, não uma tela de erro.
+     */
+    public static function filtrosDaLista(array $entrada): array
+    {
+        $dia = fn ($valor) => is_string($valor) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $valor)
+            ? $valor
+            : null;
+
+        $situacao = $entrada['situacao'] ?? null;
+
+        return [
+            'situacao' => in_array($situacao, self::SITUACOES, true) ? $situacao : null,
+            'de'       => $dia($entrada['de'] ?? null),
+            'ate'      => $dia($entrada['ate'] ?? null),
+        ];
     }
 
     /**

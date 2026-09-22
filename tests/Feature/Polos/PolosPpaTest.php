@@ -98,6 +98,36 @@ class PolosPpaTest extends TestCase
             );
     }
 
+    /**
+     * A tela do PPA Polos é o MESMO componente da lista de carteira
+     * (`Pages/Ppa/Index.jsx`, re-exportado). Os filtros desenham lá de
+     * qualquer jeito — se o controller de Polos não os aplicasse, clicar em
+     * "Vencidos" aqui recarregaria a lista inteira e pareceria um botão morto.
+     */
+    public function test_index_filtra_por_situacao_e_devolve_os_filtros_aplicados(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaPolos();
+
+        $base = [
+            'escopo' => Ppa::ESCOPO_POLOS, 'mlb_empresa_id' => $empresa->id,
+            'mentor_id' => $admin->id, 'status' => 'sent',
+        ];
+
+        $vencido = Ppa::create([...$base, 'title' => 'Atrasado', 'due_date' => now()->subDays(3)->toDateString()]);
+        Ppa::create([...$base, 'title' => 'No prazo', 'due_date' => now()->addDays(3)->toDateString()]);
+
+        $this->actingAs($admin)
+            ->get(route('mlb.polos-ppa.index', ['situacao' => Ppa::SITUACAO_VENCIDO]))
+            ->assertStatus(200)
+            ->assertInertia(fn (Assert $p) => $p
+                ->component('Polos/Ppa/Index')
+                ->has('ppas.data', 1)
+                ->where('ppas.data.0.id', $vencido->id)
+                ->where('filtros.situacao', Ppa::SITUACAO_VENCIDO)
+            );
+    }
+
     // ─── Criação ─────────────────────────────────────────────────────────────
 
     public function test_store_cria_ppa_ligado_a_empresa_polo(): void

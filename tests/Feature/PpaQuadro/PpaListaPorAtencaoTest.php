@@ -190,6 +190,175 @@ class PpaListaPorAtencaoTest extends TestCase
         $this->assertNull($linha['due_date_dias']);
     }
 
+    // ─── Os filtros da lista ──────────────────────────────────────
+
+    /**
+     * O filtro é o QUARTO lugar em que a régua de agrupamento do PPA existe
+     * (os outros: `lib/ppaAgrupamento.js`, `scopeOrdenadoPorAtencao` e
+     * `PortalPpaService::visao`). Se ele discordar dos outros, a tela recebe
+     * planos que a seção escolhida não desenha: lista vazia com o contador
+     * dizendo que há sete. Estes três casos são os mesmos do teste de ordem
+     * lá em cima, de propósito — é a mesma pergunta, feita no WHERE.
+     */
+    #[Test]
+    public function o_filtro_de_situacao_parte_os_planos_como_a_regua_de_agrupamento(): void
+    {
+        $this->ppa('Encerrado pela equipe', ['todo', 'doing'], status: 'completed');
+        $this->ppa('Tudo feito sem encerrar', ['done', 'done']);
+        $this->ppa('Tem tarefa andando', ['todo', 'doing']);
+        $this->ppa('Só a fazer', ['todo', 'todo']);
+        $this->ppa('Ainda vazio');
+
+        $porSituacao = fn (string $situacao) => Ppa::query()
+            ->doEscopo(Ppa::ESCOPO_GERAL)
+            ->daSituacao($situacao)
+            ->orderBy('title')
+            ->pluck('title')
+            ->all();
+
+        $this->assertSame(['Tem tarefa andando'], $porSituacao(Ppa::GRUPO_ANDAMENTO));
+
+        // Plano SEM tarefa nenhuma fica com o que não começou, nunca em
+        // concluído — "nenhuma tarefa pendente" é verdade por vacuidade nele.
+        $this->assertSame(['Ainda vazio', 'Só a fazer'], $porSituacao(Ppa::GRUPO_FAZER));
+
+        // Os dois jeitos de acabar: o encerrado pela equipe e o 100% feito que
+        // ninguém voltou para marcar.
+        $this->assertSame(['Encerrado pela equipe', 'Tudo feito sem encerrar'], $porSituacao(Ppa::GRUPO_CONCLUIDO));
+    }
+
+    #[Test]
+    public function os_tres_grupos_cobrem_todos_os_planos_e_nenhum_cai_em_dois(): void
+    {
+        foreach ([
+            ['Encerrado', ['doing'], 'completed'],
+            ['Cem por cento', ['done'], 'sent'],
+            ['Andando', ['doing'], 'sent'],
+            ['Parado', ['todo'], 'sent'],
+            ['Vazio', [], 'sent'],
+            ['Meio a meio', ['done', 'todo'], 'sent'],
+        ] as [$titulo, $tarefas, $status]) {
+            $this->ppa($titulo, $tarefas, status: $status);
+        }
+
+        $ids = [];
+        foreach ([Ppa::GRUPO_ANDAMENTO, Ppa::GRUPO_FAZER, Ppa::GRUPO_CONCLUIDO] as $grupo) {
+            $ids = array_merge($ids, Ppa::query()->doEscopo(Ppa::ESCOPO_GERAL)->daSituacao($grupo)->pluck('id')->all());
+        }
+
+        $todos = Ppa::query()->doEscopo(Ppa::ESCOPO_GERAL)->pluck('id')->all();
+
+        // Partição: soma igual ao total prova que ninguém caiu em dois grupos;
+        // conjuntos iguais provam que ninguém ficou de fora dos três. Um filtro
+        // que perdesse um plano sumiria com ele da tela sem erro nenhum.
+        $this->assertCount(count($todos), $ids);
+        $this->assertEqualsCanonicalizing($todos, $ids);
+    }
+
+    #[Test]
+    public function vencido_atravessa_os_grupos_e_deixa_de_fora_o_que_a_equipe_encerrou(): void
+    {
+        $this->ppa('Andando e atrasado', ['doing'], prazo: now()->subDays(2)->toDateString());
+        $this->ppa('Nem começou e atrasado', ['todo'], prazo: now()->subDay()->toDateString());
+        $this->ppa('Vence hoje', ['doing'], prazo: now()->toDateString());
+        $this->ppa('Vence amanhã', ['doing'], prazo: now()->addDay()->toDateString());
+        $this->ppa('Sem prazo', ['doing']);
+        $this->ppa('Fechado com prazo velho', ['done'], status: 'completed', prazo: now()->subDays(40)->toDateString());
+
+        $vencidos = Ppa::query()
+            ->doEscopo(Ppa::ESCOPO_GERAL)
+            ->daSituacao(Ppa::SITUACAO_VENCIDO)
+            ->orderBy('title')
+            ->pluck('title')
+            ->all();
+
+        // Um andando e um sem começar: "vencido" recorta os dois grupos, e por
+        // isso não pode ser um grupo. "Vence hoje" fica de fora — a mesma
+        // fronteira do selo da tela, onde dia 0 é "Vence hoje" e não "Atrasado".
+        // O encerrado também fica: atraso de trabalho fechado não cobra ninguém,
+        // que é o que `diasAteOPrazo()` já dizia devolvendo null.
+        $this->assertSame(['Andando e atrasado', 'Nem começou e atrasado'], $vencidos);
+    }
+
+    #[Test]
+    public function o_filtro_por_data_de_criacao_inclui_os_dois_dias_das_pontas(): void
+    {
+        $em = function (string $titulo, string $quando) {
+            $ppa = $this->ppa($titulo);
+            $ppa->forceFill(['created_at' => $quando])->saveQuietly();
+        };
+
+        $em('Primeiro', '2026-09-01 08:00:00');
+        $em('Do meio', '2026-09-10 23:45:00');
+        $em('Último', '2026-09-20 00:05:00');
+
+        $entre = fn (?string $de, ?string $ate) => Ppa::query()
+            ->doEscopo(Ppa::ESCOPO_GERAL)
+            ->criadoEntre($de, $ate)
+            ->orderBy('created_at')
+            ->pluck('title')
+            ->all();
+
+        // `created_at` é timestamp e os extremos são DIA. Sem `whereDate`, o
+        // plano criado às 23:45 do dia 10 ficaria de fora de um intervalo que
+        // termina no dia 10 — o filtro perderia o último dia inteiro, calado.
+        $this->assertSame(['Primeiro', 'Do meio'], $entre('2026-09-01', '2026-09-10'));
+        $this->assertSame(['Do meio', 'Último'], $entre('2026-09-10', null));
+        $this->assertSame(['Primeiro'], $entre(null, '2026-09-09'));
+    }
+
+    #[Test]
+    public function a_lista_interna_mostra_a_data_em_que_o_plano_foi_criado(): void
+    {
+        $admin = $this->admin();
+        $ppa = $this->ppa('Plano datado', ['todo'], mentor: $admin);
+        $ppa->forceFill(['created_at' => '2026-09-15 10:30:00'])->saveQuietly();
+
+        $resposta = $this->actingAs($admin)->get(route('ppa.index'));
+        $linha = $resposta->viewData('page')['props']['ppas']['data'][0];
+
+        // Formatada no servidor, como o prazo: data crua no JSON viraria
+        // `new Date()` no navegador, e aí o fuso de quem olha decide o dia.
+        $this->assertSame('15/09/2026', $linha['created_at']);
+    }
+
+    #[Test]
+    public function a_lista_interna_aplica_o_filtro_da_url_e_devolve_o_que_aplicou(): void
+    {
+        $admin = $this->admin();
+        $this->ppa('Andando', ['doing'], mentor: $admin);
+        $this->ppa('Parado', ['todo'], mentor: $admin);
+
+        $resposta = $this->actingAs($admin)->get(route('ppa.index', ['situacao' => Ppa::GRUPO_ANDAMENTO]));
+        $props = $resposta->viewData('page')['props'];
+
+        // O total tem de ser o do RECORTE: ele é o que a tela mostra como
+        // "N PPA(s)" e o que decide quantas páginas existem.
+        $this->assertSame(1, $props['ppas']['total']);
+        $this->assertSame('Andando', $props['ppas']['data'][0]['title']);
+        $this->assertSame(Ppa::GRUPO_ANDAMENTO, $props['filtros']['situacao']);
+    }
+
+    #[Test]
+    public function filtro_estragado_na_url_abre_a_lista_inteira_em_vez_de_erro(): void
+    {
+        $admin = $this->admin();
+        $this->ppa('Único', ['doing'], mentor: $admin);
+
+        $resposta = $this->actingAs($admin)
+            ->get(route('ppa.index', ['situacao' => 'xpto', 'de' => 'ontem', 'ate' => '15/09/2026']));
+
+        // Link colado pela metade, filtro renomeado, bookmark velho: nada disso
+        // pode virar tela de erro — vira lista sem filtro.
+        $resposta->assertOk();
+        $this->assertSame(1, $resposta->viewData('page')['props']['ppas']['total']);
+
+        $filtros = $resposta->viewData('page')['props']['filtros'];
+        $this->assertNull($filtros['situacao']);
+        $this->assertNull($filtros['de']);
+        $this->assertNull($filtros['ate']);
+    }
+
     // ─── O payload do Portal do Cliente ─────────────────────────────────────
 
     #[Test]

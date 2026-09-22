@@ -21,9 +21,17 @@ class PpaController extends Controller
         // deixaria um plano em andamento esperando na página 2 enquanto
         // concluídos ocupam a 1. A régua está em `Ppa::scopeOrdenadoPorAtencao`
         // e é a mesma que a tela aplica ao agrupar.
+        //
+        // Situação + intervalo de criação vêm da URL e são aplicados no BANCO,
+        // não na página: a lista pagina de 20 em 20, e filtrar só o que chegou
+        // mostraria 3 planos vencidos para quem tem 19 espalhados pelas páginas.
+        $filtros = Ppa::filtrosDaLista($request->only('situacao', 'de', 'ate'));
+
         $query = Ppa::with(['company', 'mentor'])
             ->doEscopo(Ppa::ESCOPO_GERAL)
             ->comContagemDeTarefas()
+            ->daSituacao($filtros['situacao'])
+            ->criadoEntre($filtros['de'], $filtros['ate'])
             ->ordenadoPorAtencao();
 
         // Ajuste UAT 2026-07-07: qualquer user não-admin só vê PPAs que ELE
@@ -61,6 +69,7 @@ class PpaController extends Controller
         return Inertia::render('Ppa/Index', [
             'ppas'      => $ppas,
             'companies' => $companies,
+            'filtros'   => $filtros,
         ]);
     }
 

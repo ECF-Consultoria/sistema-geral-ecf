@@ -34,9 +34,14 @@ class PolosPpaController extends Controller
         // Mesma régua de ordenação do PPA de carteira (e da tela, que é a
         // mesma): em andamento, a fazer, concluído — ver
         // `Ppa::scopeOrdenadoPorAtencao`.
+        // Mesmos filtros da lista de carteira — a tela é a mesma componente.
+        $filtros = Ppa::filtrosDaLista($request->only('situacao', 'de', 'ate'));
+
         $query = Ppa::with(['mlbEmpresa', 'mentor'])
             ->doEscopo(Ppa::ESCOPO_POLOS)
             ->comContagemDeTarefas()
+            ->daSituacao($filtros['situacao'])
+            ->criadoEntre($filtros['de'], $filtros['ate'])
             ->ordenadoPorAtencao();
 
         // Mesmo recorte do PPA de carteira: não-admin só vê o que ele criou.
@@ -68,6 +73,7 @@ class PolosPpaController extends Controller
             'companies' => $this->empresasPolos(),
             'escopo'    => Ppa::ESCOPO_POLOS,
             'rotas'     => $this->rotas(),
+            'filtros'   => $filtros,
         ]);
     }
 
