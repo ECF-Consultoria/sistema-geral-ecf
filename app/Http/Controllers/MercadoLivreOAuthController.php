@@ -179,11 +179,15 @@ class MercadoLivreOAuthController extends Controller
      * - O Cust ID — o próprio retorno do /oauth/token traz o `user_id`, que é o
      *   Seller ID. Some assim o passo manual de pedir o Cust ID ao cliente.
      *
-     * O token NÃO é persistido: `ml_tokens.company_id` é UNIQUE e a empresa de
-     * Polos não tem `Company` (535 de 539 sem `company_id` em produção). Guardar
-     * o token exigiria criar uma Company por empresa de Polos, e `companies` é o
-     * pivô de Desempenho/carteira/NPS — raio de explosão que a captura do Cust
-     * ID não justifica.
+     * O token É persistido desde 21/09/2026, ancorado em
+     * `ml_tokens.mlb_empresa_id` — sem criar `Company` nenhuma, porque
+     * `companies` segue sendo o pivô de Desempenho/carteira/NPS e continua
+     * fora do caminho. Antes disso ele era descartado, e por isso as empresas
+     * de Polos autorizavam o OAuth e nunca apareciam em `/mlb/anuncios`.
+     *
+     * A gravação acontece SÓ quando a conta não é divergente (ver a trava
+     * abaixo): token de conta errada permitiria publicar anúncio no ML de
+     * outra empresa.
      */
     private function callbackPolos(array $stateData, string $code)
     {
@@ -223,6 +227,17 @@ class MercadoLivreOAuthController extends Controller
 
             if (! $divergente) {
                 $empresa->update(['cust_id' => $custRecebido]);
+
+                // O token AGORA é persistido — `ml_tokens` passou a aceitar
+                // `mlb_empresa_id` como âncora, então a empresa de Polos não
+                // precisa mais de uma `Company` para ficar conectada. É isso
+                // que a faz aparecer em `/mlb/anuncios`.
+                //
+                // Sob a trava acima de propósito: conta divergente não grava
+                // cust_id e MUITO MENOS token. Conectar a conta errada é pior
+                // que carimbar o Cust ID errado — daria para publicar anúncio
+                // no ML de outra empresa.
+                $this->ml->saveToken($empresa, $tokenData);
             }
 
             $this->carimbarOauthPolos($empresa, $custRecebido, $custAnterior, $nickname, $divergente);

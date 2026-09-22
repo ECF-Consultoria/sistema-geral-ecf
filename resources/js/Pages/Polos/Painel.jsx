@@ -1305,7 +1305,8 @@ export default function PolosPainel({
                                 ) : (
                                     <>
                                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                                            <HeroKpi titulo="Faturamento total" valor={formatCurrency(totalFat)} icone={Wallet} glow="yellow"
+                                            <HeroKpi titulo={cockpit.metricaFaturamento === 'gross' ? 'Faturamento total' : 'Faturamento (móveis)'}
+                                                valor={formatCurrency(totalFat)} icone={Wallet} glow="yellow"
                                                 sublabel={cockpit.mesRefLabel ? `${cockpit.mesRefLabel} · ${parcial ? 'parcial' : 'fechado'}` : null} />
                                             <HeroKpi titulo="% Geral da meta" valor={`${pctGeral.toFixed(0)}%`} icone={Target} glow="yellow"
                                                 sublabel={`${formatCurrency(totalFat)} / ${formatCurrency(metaFat)}`}

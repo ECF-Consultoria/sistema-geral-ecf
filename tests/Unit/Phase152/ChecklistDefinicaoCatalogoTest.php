@@ -38,14 +38,17 @@ class ChecklistDefinicaoCatalogoTest extends TestCase
             'contrato_revisado',
             'contrato_enviado',
             'contrato_assinado',
-            // Decisão do usuário (2026-09-10): boas-vindas vem logo após o
-            // contrato, não no fim — é a mensagem que abre a relação.
-            'boas_vindas_enviada',
             'grupo_whatsapp_criado',
             'email_colaborador_criado',
             'link_adman_entregue',
             'grant_consultoria_ml',
             'conexao_ecf_gerada',
+            // Decisão do usuário (2026-09-18): boas-vindas é o ÚLTIMO item.
+            // Ela vinha em 4º desde 2026-09-10 ("é a mensagem que abre a
+            // relação"), mas a mensagem é MONTADA com o que foi preenchido
+            // acima — e-mail colaborador e Portal do Cliente — então mandá-la
+            // antes era mandar texto com bloco vazio.
+            'boas_vindas_enviada',
         ], ChecklistAdministrativoDefinicao::chaves(true));
     }
 

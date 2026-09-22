@@ -345,4 +345,29 @@ return [
         )),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | LLM — geração de texto para anúncios (metodologia MAG T8)
+    |--------------------------------------------------------------------------
+    |
+    | Proposital: NÃO amarrado a um provedor. Qualquer endpoint compatível com
+    | a API da OpenAI serve — hoje o 9router local, amanhã a NVIDIA direta, a
+    | DeepSeek ou outro. Trocar é mudar `.env`, não código.
+    |
+    | `timeout` é alto de propósito: medido em 21/09/2026, uma análise completa
+    | levou 103s e devolveu 8.797 tokens. Por isso a geração vive num Job — um
+    | request web não sobreviveria, e o 9router não tem timeout configurável
+    | (fixo no código dele: 20s para o 1º byte, 30s sem token).
+    |
+    */
+    'llm' => [
+        'base_url' => env('LLM_BASE_URL', 'http://127.0.0.1:20128/v1'),
+        'key'      => env('LLM_API_KEY'),
+        'model'    => env('LLM_MODEL', 'oc/muse-spark-1.3-contributor-free'),
+        'timeout'  => (int) env('LLM_TIMEOUT', 300),
+        // Generoso porque modelo de raciocínio gasta orçamento "pensando" antes
+        // de responder — com teto curto ele devolve conteúdo VAZIO com HTTP 200.
+        'max_tokens' => (int) env('LLM_MAX_TOKENS', 16000),
+    ],
+
 ];

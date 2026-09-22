@@ -25,11 +25,36 @@ Regras que **não** são óbvias lendo o código:
 - **Só existe um ponto de decisão**: `PolosController::desconsideraDaMeta()`. Todo call site
   de `calcularStatus()` passa por ele. Se aparecer um cálculo novo de status, use o helper —
   ler `$ativo['problema']` direto reintroduz o bug.
-- **Roster de mês fechado não tem os flags.** `montarAtivosDoMes()` reconstrói o histórico do
-  CSV, que não traz `problema` nem `problema_desconsidera_meta` → ambos `false`. Mês fechado
-  nunca mostra `Problema`, e isso é por desenho (o CSV não guarda esse estado).
+- ~~**Roster de mês fechado não tem os flags.**~~ **CADUCO desde 02/09** — ver §12.3:
+  `polos_roster_snapshots` congela `problema` e `problema_desconsidera_meta` todo dia às
+  23:40, e `montarAtivosDoMes()` prefere o congelado. O flag **sobrevive** ao fechamento do
+  mês (vale o estado da última congelada). A reconstrução pelo CSV, que de fato perde os
+  flags, virou fallback para mês sem roster congelado.
 - `statusAgregado()` (pior status do polo) continua com `Problema` no topo da prioridade —
   vale para quem realmente saiu da meta.
+
+### 1.1 ⚠️ "Desconsiderar da meta" NÃO tira ninguém da aritmética do polo (2026-09-21)
+
+O nome engana, e a abertura desta seção ("sumia da meta do polo") descreve a **intenção**,
+não a mecânica. Em `agregarPorPolo()` os três acumuladores são **incondicionais** —
+`desconsideraDaMeta()` só alimenta `calcularStatus()`:
+
+```php
+$grupos[$localidade]['faturamentos'][] = $tgmv;   // numerador do polo
+$grupos[$localidade]['limiares'][]     = $limiar; // DENOMINADOR do polo
+$grupos[$localidade]['statuses'][]     = $status;
+```
+
+Para uma empresa com `problema_desconsidera_meta = true`: o limiar dela **continua inflando
+a meta do polo**, o faturamento **continua somando** no `pct`, ela **continua no total** do
+donut (`distribuicaoStatus()` faz `$contadores['total'] = count($ativos)`) e, como `Problema`
+tem prioridade máxima no `statusAgregado()`, **o polo inteiro passa a exibir badge
+"Problema"** por causa dela.
+
+O flag é mecanismo de **rotulagem**, não de exclusão. Não existe hoje forma de tirar uma
+empresa da meta sem `arquivar()` — que significa "saiu do programa" e foi o que custou
+R$ 900 mil/mês invisíveis no caso Spinella (§11.1). Quando pedirem "a empresa X não deveria
+contar", não prometa que o toggle resolve: ou é código novo, ou é a métrica (§12.4).
 
 ## 2. A suíte de Polos tem falhas antigas — não as confunda com regressão sua
 

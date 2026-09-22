@@ -35,7 +35,7 @@ const CARD = cn(
  * recente / corrente, parcial, atualizado diariamente pelo ECF Drive).
  *
  * Props de PolosController::index(): polos, statusDist, meses, mesSelecionado,
- * mesRefLabel, parcial, fonteFaturamento, erro.
+ * mesRefLabel, parcial, fonteFaturamento, metricaFaturamento, erro.
  */
 export default function PolosIndex({
     polos            = [],
@@ -45,6 +45,7 @@ export default function PolosIndex({
     mesRefLabel      = null,
     parcial          = false,
     fonteFaturamento = null,
+    metricaFaturamento = 'moveis',
     adsLimites       = { teto: 3000, alerta1: 1000, alerta2: 2000 },
     m1               = { total: 0, faturando: 0, nao: 0, faturamento: 0, empresas: [], polos: [] },
     erro             = null,
@@ -224,7 +225,7 @@ export default function PolosIndex({
                 {temDados && visiveis.length > 0 && (
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
                         <HeroKpi
-                            titulo="Faturamento total"
+                            titulo={metricaFaturamento === 'gross' ? 'Faturamento total' : 'Faturamento (móveis)'}
                             valor={formatCurrency(totalFat)}
                             icone={Wallet}
                             glow="yellow"

@@ -74,7 +74,15 @@ class PortalPpaService
      * O PPA como o cliente o vê. Ver o docblock da classe para o que fica de
      * fora e por quê.
      *
-     * @return array{id: int, titulo: string, descricao: ?string, status: string, concluido: bool, prazo: ?string, enviado_em: ?string, tarefas: array<int, array{id: int, titulo: string, descricao: ?string, status: string}>, total: int, feitas: int, pct: int}
+     * ### O prazo viaja em três formas, e nenhuma é redundante
+     * `prazo` é o que a tela escreve; `prazo_iso` é o que ela ordena; e
+     * `prazo_dias` é a distância até hoje CALCULADA AQUI. O terceiro existe
+     * porque o mesmo cálculo no JS usaria o fuso do navegador — um cliente no
+     * Acre veria "atrasado" um dia antes do cliente em São Paulo, sobre a
+     * mesma linha do banco. Mesma razão pela qual `PpaQuadroService::tarefas()`
+     * já mandava `prazo_dias` para o quadro interno.
+     *
+     * @return array{id: int, titulo: string, descricao: ?string, status: string, concluido: bool, prazo: ?string, prazo_iso: ?string, prazo_dias: ?int, enviado_em: ?string, tarefas: array<int, array{id: int, titulo: string, descricao: ?string, status: string, prazo: ?string, prazo_dias: ?int, responsavel_lado: ?string}>, total: int, feitas: int, fazendo: int, a_fazer: int, pct: int}
      */
     public function visao(Ppa $ppa): array
     {
@@ -85,12 +93,23 @@ class PortalPpaService
                 'titulo'    => $t->title,
                 'descricao' => $t->description,
                 'status'    => $t->status,
+                // Prazo e lado responsável passaram a viajar em 21/09/2026.
+                // Não são dado interno: o prazo é o que combinamos COM o
+                // cliente, e o lado responde a pergunta que ele mais faz ao
+                // abrir o plano — "isto é comigo ou com vocês?". Sem o lado,
+                // toda tarefa parece cobrança dele. O que continua de fora é o
+                // que o docblock da classe lista (quadro interno, mentor,
+                // token, escopo e datas de controle).
+                'prazo'            => $t->prazo?->format('d/m/Y'),
+                'prazo_dias'       => $this->diasAte($t->prazo, $t->status === 'done'),
+                'responsavel_lado' => $t->responsavel_lado,
             ])
             ->values()
             ->all();
 
-        $total  = count($tarefas);
-        $feitas = count(array_filter($tarefas, fn ($t) => $t['status'] === 'done'));
+        $total   = count($tarefas);
+        $feitas  = count(array_filter($tarefas, fn ($t) => $t['status'] === 'done'));
+        $fazendo = count(array_filter($tarefas, fn ($t) => $t['status'] === 'doing'));
 
         return [
             'id'         => $ppa->id,
@@ -99,12 +118,34 @@ class PortalPpaService
             'status'     => $ppa->status,
             'concluido'  => $ppa->status === 'completed',
             'prazo'      => $ppa->due_date?->format('d/m/Y'),
+            'prazo_iso'  => $ppa->due_date?->format('Y-m-d'),
+            'prazo_dias' => $this->diasAte($ppa->due_date, $ppa->status === 'completed'),
             'enviado_em' => $ppa->sent_at?->format('d/m/Y'),
             'tarefas'    => $tarefas,
             'total'      => $total,
             'feitas'     => $feitas,
+            // As contagens que decidem em que seção o plano cai na tela
+            // (`resources/js/lib/ppaAgrupamento.js`). Elas saem das MESMAS
+            // tarefas acima — a tela as recalcula ao vivo enquanto o cliente
+            // arrasta, e estas aqui são o ponto de partida.
+            'fazendo'    => $fazendo,
+            'a_fazer'    => $total - $feitas - $fazendo,
             'pct'        => $total > 0 ? (int) round(($feitas / $total) * 100) : 0,
         ];
+    }
+
+    /**
+     * Dias entre hoje e uma data (negativo = passou). `null` quando não há
+     * data ou quando o trabalho já foi encerrado — atraso de coisa pronta não
+     * é atraso, e o `null` é o que apaga o selo vermelho do outro lado.
+     */
+    private function diasAte(?\Illuminate\Support\Carbon $data, bool $encerrado): ?int
+    {
+        if (! $data || $encerrado) {
+            return null;
+        }
+
+        return (int) now()->startOfDay()->diffInDays($data->startOfDay(), false);
     }
 
     /**

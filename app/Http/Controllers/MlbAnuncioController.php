@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\GerarAnaliseAnuncioIaJob;
 use App\Jobs\PublicarAnuncioMlJob;
 use App\Jobs\SyncMlAcervoCompanyJob;
 use App\Models\Company;
 use App\Models\MlAcervoItem;
 use App\Models\MlAcervoMetricaDiaria;
+use App\Models\MlAnuncioIaAnalise;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
@@ -121,6 +123,11 @@ class MlbAnuncioController extends Controller
                 'company_id' => $company->id,
                 'tem_token'  => true,
             ],
+            // Sobrevive ao F5. A análise leva minutos e mora no banco; sem
+            // isto, recarregar a página no meio da geração dava a impressão
+            // de que o trabalho tinha sido perdido — ele seguia rodando,
+            // invisível. Janela de 2h: mais velho que isso é outro anúncio.
+            'iaAnalise' => $this->ultimaAnaliseIa($company),
             'rascunhos' => $rascunhosRecentes
                 ->map(fn ($r) => [
                     'id'            => $r->id,
@@ -2129,7 +2136,144 @@ class MlbAnuncioController extends Controller
             ->implode("\n");
     }
 
+    // ═══ Anunciar por IA — metodologia MAG T8 ════════════════════════════════
+
+    /**
+     * Última análise da empresa, para a tela se recuperar de um F5.
+     *
+     * Só as 2 últimas horas: análise de ontem é de outro anúncio e reabrir ela
+     * confundiria mais do que ajudaria. Devolve `null` quando não há nada —
+     * a tela então abre o painel em branco, como antes.
+     */
+    private function ultimaAnaliseIa(Company $company): ?array
+    {
+        $a = MlAnuncioIaAnalise::where('company_id', $company->id)
+            ->where('created_at', '>=', now()->subHours(2))
+            ->latest('id')
+            ->first();
+
+        if (! $a) {
+            return null;
+        }
+
+        return [
+            'id'           => $a->id,
+            'status'       => $a->status,
+            'etapa'        => $a->etapa,
+            // A tela conta o tempo a partir DAQUI, não do momento em que a
+            // página abriu — senão um F5 zera o cronômetro e dá a impressão
+            // de que a geração recomeçou do nada.
+            'started_at'   => $a->started_at?->toISOString(),
+            'em_andamento' => $a->emAndamento(),
+            'erro'         => $a->erro_mensagem,
+            'produto'      => $a->produto,
+            'specs'        => $a->specs,
+            'loja'         => $a->loja,
+            'titulos'      => $a->titulos(),
+            'descricao'    => $a->descricao(),
+            'analise'      => $a->analise(),
+            'modelo'       => $a->modelo,
+            'duracao_ms'   => $a->duracao_ms,
+        ];
+    }
+
+    /**
+     * Dispara a análise por IA e devolve o id para o front acompanhar.
+     *
+     * Responde na hora com `pendente` e joga o trabalho para a fila: a geração
+     * levou 103s na medição de 21/09/2026, então nenhum request aguenta esperar.
+     *
+     * `loja` é derivada da conta ML no servidor — o publicador não digita, e o
+     * cliente não teria como forjar.
+     */
+    public function iaAnaliseStore(Request $request): JsonResponse
+    {
+        $dados = $request->validate([
+            'company_id' => ['required', 'integer', 'exists:companies,id'],
+            'produto'    => ['required', 'string', 'max:300'],
+            'specs'      => ['nullable', 'string', 'max:8000'],
+        ]);
+
+        $company = Company::findOrFail($dados['company_id']);
+
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 422, 'Empresa sem conta ML conectada.');
+
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id' => $company->id,
+            'user_id'    => $request->user()->id,
+            'produto'    => trim($dados['produto']),
+            'loja'       => $company->nomeContaMl(),
+            'specs'      => $dados['specs'] ?? null,
+            'status'     => MlAnuncioIaAnalise::STATUS_PENDENTE,
+        ]);
+
+        GerarAnaliseAnuncioIaJob::dispatch($analise->id);
+
+        return response()->json([
+            'id'     => $analise->id,
+            'status' => $analise->status,
+        ], 202);
+    }
+
+    /**
+     * Estado da análise — o front chama em intervalo até sair de "em andamento".
+     *
+     * Só devolve o que a tela usa. O prompt e o payload cru do provedor ficam
+     * no servidor: não há motivo para trafegar isso ao navegador.
+     */
+    public function iaAnaliseStatus(Request $request, MlAnuncioIaAnalise $analise): JsonResponse
+    {
+        // Cada análise pertence a uma conta; sem esta checagem o id sequencial
+        // viraria uma janela para o trabalho de outra empresa.
+        if ($analise->company_id !== null) {
+            $company = Company::findOrFail($analise->company_id);
+            $company->loadMissing('mlToken');
+            abort_unless($company->mlToken !== null, 404);
+        }
+
+        return response()->json([
+            'id'          => $analise->id,
+            'status'      => $analise->status,
+            'etapa'       => $analise->etapa,
+            'started_at'  => $analise->started_at?->toISOString(),
+            'em_andamento' => $analise->emAndamento(),
+            'erro'        => $analise->erro_mensagem,
+            'produto'     => $analise->produto,
+            'loja'        => $analise->loja,
+            'titulos'     => $analise->titulos(),
+            'descricao'   => $analise->descricao(),
+            'analise'     => $analise->analise(),
+            'modelo'      => $analise->modelo,
+            'duracao_ms'  => $analise->duracao_ms,
+        ]);
+    }
+
+    /**
+     * Cards do painel — as DUAS fontes de conta ML.
+     *
+     * 1. `companies` com token (fluxo de sempre, `/ml-oauth`).
+     * 2. `mlb_empresas` de Polos/Onboarding que autorizaram o OAuth.
+     *
+     * A fonte 2 existia e era invisível aqui: o `callbackPolos` autorizava e
+     * DESCARTAVA o token (não havia onde gravar até `mlb_empresa_id` entrar em
+     * `ml_tokens`), então 246 empresas autorizadas nunca apareceram no módulo.
+     *
+     * As que autorizaram ANTES dessa correção aparecem com `conectada: false` e
+     * um link de reconexão: o token daquela autorização não existe em lugar
+     * nenhum para ser recuperado — não está em log nem em binlog, porque nunca
+     * foi escrito. O que sobrou (e segue valendo) é o `cust_id` capturado.
+     */
     private function empresas(Request $request): Collection
+    {
+        return $this->empresasDeConsultoria()
+            ->concat($this->empresasDePolos())
+            ->sortBy('nome', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
+    }
+
+    /** Fonte 1: `companies` com token — comportamento inalterado. */
+    private function empresasDeConsultoria(): Collection
     {
         // Fonte: companies com ml_token. O whereHas filtra no banco — só conectadas.
         return Company::query()
@@ -2168,7 +2312,91 @@ class MlbAnuncioController extends Controller
                     'rascunhos_abertos' => (int) $abertos,
                     // BULK-04: quantos rascunhos estão em publicação assíncrona agora
                     'publicando_count'  => (int) $publicando,
+                    // ─── campos da convivência com Polos ───
+                    'origem'            => 'consultoria',
+                    'conectada'         => true,
+                    'pode_publicar'     => true,
+                    'cust_id'           => $c->ml_store_id,
+                    'autorizado_em'     => $c->mlToken?->connected_at?->toISOString(),
+                    'link_reconexao'    => null,
                 ];
             });
+    }
+
+    /**
+     * Fonte 2: empresas de Polos/Onboarding que autorizaram o OAuth do ML.
+     *
+     * Evidência de autorização = o carimbo `dados->ml_oauth` que o
+     * `callbackPolos` grava, e não `cust_id` preenchido: o Cust ID também pode
+     * ter sido digitado à mão por um consultor, e digitar não é autorizar.
+     *
+     * `scopeAtivas()` é obrigatório aqui — empresa arquivada saiu do projeto e
+     * não entra em listagem nenhuma de Polos (learnings de Polos §3).
+     *
+     * Contagens vêm de agregado, não de query por linha: são centenas de
+     * empresas, e o laço por empresa da fonte 1 viraria N+1 grosseiro aqui.
+     */
+    private function empresasDePolos(): Collection
+    {
+        $empresas = MlbEmpresa::query()
+            ->ativas()
+            ->with(['implementacao', 'mlToken'])
+            ->whereHas('implementacao', fn ($q) => $q->whereNotNull('dados->ml_oauth'))
+            ->get();
+
+        if ($empresas->isEmpty()) {
+            return collect();
+        }
+
+        $ids = $empresas->pluck('id');
+
+        // Um SELECT agrupado para os dois contadores, em vez de 2 por empresa.
+        $contagens = MlAnuncioRascunho::query()
+            ->whereIn('mlb_empresa_id', $ids)
+            ->selectRaw('mlb_empresa_id, status, COUNT(*) as total')
+            ->groupBy('mlb_empresa_id', 'status')
+            ->get()
+            ->groupBy('mlb_empresa_id');
+
+        $emAberto = [
+            MlAnuncioRascunho::STATUS_RASCUNHO,
+            MlAnuncioRascunho::STATUS_VALIDADO,
+            MlAnuncioRascunho::STATUS_ERRO,
+        ];
+
+        return $empresas->map(function (MlbEmpresa $e) use ($contagens, $emAberto) {
+            $porStatus = $contagens->get($e->id, collect());
+            $carimbo   = data_get($e->implementacao?->dados, 'ml_oauth', []);
+
+            // Sem token = autorizou antes da correção de 21/09/2026, quando o
+            // token era descartado. Precisa reconectar pelo mesmo link público
+            // do Onboarding — é um clique para quem já autorizou, porque o ML
+            // não repete a tela de consentimento para app já autorizado.
+            $token = $e->mlToken;
+
+            return [
+                'id'                => $e->chaveContaMl(),   // âncora = "empresa-<id>"
+                'nome'              => $e->nome,
+                'company_id'        => $e->company_id,
+                'tem_token'         => $token !== null,
+                'token_expirado'    => $token?->isExpired() ?? false,
+                'tem_dados_cliente' => $e->implementacao !== null,
+                'rascunhos_abertos' => (int) $porStatus->whereIn('status', $emAberto)->sum('total'),
+                'publicando_count'  => (int) $porStatus->where('status', MlAnuncioRascunho::STATUS_PUBLICANDO)->sum('total'),
+                // ─── campos da convivência com Polos ───
+                'origem'            => 'polos',
+                'conectada'         => $token !== null,
+                // Publicar ainda exige o refactor do controller para as duas
+                // âncoras (e o acervo ainda é ancorado em company_id). Enquanto
+                // isso o card não leva ao wizard — melhor não abrir do que
+                // abrir quebrado.
+                'pode_publicar'     => false,
+                'cust_id'           => $e->cust_id,
+                'autorizado_em'     => data_get($carimbo, 'autorizado_em'),
+                'link_reconexao'    => $e->implementacao?->token
+                    ? route('implementacao.conectar-ml', ['token' => $e->implementacao->token])
+                    : null,
+            ];
+        });
     }
 }

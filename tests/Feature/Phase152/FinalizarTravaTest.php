@@ -120,7 +120,15 @@ class FinalizarTravaTest extends TestCase
      */
     private function completarGrupoEntrada(Company $empresa, User $usuario): void
     {
-        foreach (['grupo_whatsapp_criado', 'email_colaborador_criado', 'link_adman_entregue', 'boas_vindas_enviada'] as $chave) {
+        // 2026-09-18 — duas regras novas mudam a ORDEM desta montagem:
+        // `email_colaborador_criado` exige o endereco gravado em
+        // `companies.email_colaborador`, e `boas_vindas_enviada` virou o item 9,
+        // que so fecha depois do grupo de WhatsApp, do e-mail colaborador e do
+        // Portal do Cliente. Por isso as boas-vindas sairam deste laco e fecham
+        // no fim do metodo, ja com os automaticos no lugar.
+        $empresa->update(['email_colaborador' => 'colab.'.uniqid().'@ecf.test']);
+
+        foreach (['grupo_whatsapp_criado', 'email_colaborador_criado', 'link_adman_entregue'] as $chave) {
             $this->checklistService()->concluirManualmente($empresa, $chave, $usuario);
         }
 
@@ -141,6 +149,8 @@ class FinalizarTravaTest extends TestCase
         // Acessos do portal — o link por token deixou de valer em 15/09/2026.
         $acessoPortal = PortalUsuario::create(['nome' => 'Cliente', 'email' => 'token-trava-152-06.'.$empresa->id.'@example.test', 'ativo' => true]);
         $acessoPortal->empresas()->attach($empresa->id, ['principal' => true]);
+        // Item 9, por ultimo — as dependencias dele acabaram de fechar.
+        $this->checklistService()->concluirManualmente($empresa, 'boas_vindas_enviada', $usuario);
     }
 
     /**
@@ -245,6 +255,9 @@ class FinalizarTravaTest extends TestCase
         $empresa = $this->empresaCompleta();
         $this->vincularServico($empresa, $this->servicoIsento());
         $usuario = $this->usuario();
+
+        // `email_colaborador_criado` exige o endereco gravado (2026-09-18).
+        $empresa->update(['email_colaborador' => 'colab.'.uniqid().'@ecf.test']);
 
         foreach (['grupo_whatsapp_criado', 'email_colaborador_criado', 'link_adman_entregue'] as $chave) {
             $this->checklistService()->concluirManualmente($empresa, $chave, $usuario);

@@ -31,9 +31,13 @@ class PolosPpaController extends Controller
     {
         $user = $request->user();
 
+        // Mesma régua de ordenação do PPA de carteira (e da tela, que é a
+        // mesma): em andamento, a fazer, concluído — ver
+        // `Ppa::scopeOrdenadoPorAtencao`.
         $query = Ppa::with(['mlbEmpresa', 'mentor'])
             ->doEscopo(Ppa::ESCOPO_POLOS)
-            ->orderBy('created_at', 'desc');
+            ->comContagemDeTarefas()
+            ->ordenadoPorAtencao();
 
         // Mesmo recorte do PPA de carteira: não-admin só vê o que ele criou.
         if (! $user->isAdmin()) {
@@ -52,8 +56,10 @@ class PolosPpaController extends Controller
             'completed_at'     => $p->completed_at?->format('d/m/Y H:i'),
             'trello_board_url' => $p->trello_board_url,
             'workspace_token'  => $p->workspace_token,
-            'tasks_count'      => $p->tasks()->count(),
-            'tasks_done'       => $p->tasks()->where('status', 'done')->count(),
+            'tasks_count'      => $p->tasks_count,
+            'tasks_done'       => $p->tasks_done_count,
+            'tasks_doing'      => $p->tasks_doing_count,
+            'due_date_dias'    => $p->diasAteOPrazo(),
             'created_at'       => $p->created_at->format('d/m/Y'),
         ]);
 

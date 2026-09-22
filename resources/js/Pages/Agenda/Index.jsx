@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
-import { Checkbox } from '@/Components/ui/checkbox';
 import GradeDeHorarios from '@/Components/Agenda/GradeDeHorarios';
 import MiniCalendario from '@/Components/Agenda/MiniCalendario';
 import ProximosEventos from '@/Components/Agenda/ProximosEventos';
@@ -52,9 +51,11 @@ function lerUrl() {
  * um onboarding, os eventos dele mesmo que estejam na agenda de um colega.
  *
  * ### Aberta pela ficha
- * `?onboarding=ID` põe o onboarding em contexto: a agenda abre mostrando só os
- * eventos dele (dá para ver tudo com um clique) e o "Novo evento" já vem com o
- * cliente escolhido.
+ * `?onboarding=ID` põe o onboarding em contexto: os eventos dele entram na
+ * tela junto dos seus — inclusive os que estão na agenda de um colega — e o
+ * "Novo evento" já vem com o cliente escolhido. Não há filtro que esconda o
+ * resto (tirado em 17/09/2026, a pedido): quem abre a agenda pela ficha quer
+ * ver onde o compromisso cabe no dia.
  *
  * ### Uma conta Google por pessoa
  * O sistema guarda um token por usuário (`google_tokens.user_id` é único), por
@@ -66,7 +67,6 @@ export default function AgendaIndex({ conectado, usuario, contexto = null, onboa
     const [ancora, setAncora] = useState(inicial.ancora);
     const [mesMini, setMesMini] = useState(() => startOfMonth(inicial.ancora));
     const [ocultos, setOcultos] = useState(() => new Set());
-    const [soContexto, setSoContexto] = useState(Boolean(contexto));
     const [pedido, setPedido] = useState(null);
     const [aberto, setAberto] = useState(null);
     const [aviso, setAviso] = useState(null);
@@ -116,25 +116,24 @@ export default function AgendaIndex({ conectado, usuario, contexto = null, onboa
         recarregar();
     };
 
-    const visivel = (evento) => ! ocultos.has(categoriaDoEvento(evento))
-        && (! soContexto || ! contexto || evento.vinculo?.onboarding_id === contexto.id);
+    const visivel = (evento) => ! ocultos.has(categoriaDoEvento(evento));
 
     const eventos = useMemo(() => (principal.dados?.eventos ?? []).filter(visivel),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [principal.dados, ocultos, soContexto]);
+        [principal.dados, ocultos]);
 
     const marcas = useMemo(() => {
         const fonte = mesmoIntervalo ? principal.dados?.eventos : doMini.dados?.eventos;
 
         return marcasPorDia((fonte ?? []).filter(visivel));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mesmoIntervalo, principal.dados, doMini.dados, ocultos, soContexto]);
+    }, [mesmoIntervalo, principal.dados, doMini.dados, ocultos]);
 
     const listaProximos = useMemo(() => (proximos.dados?.eventos ?? [])
         .filter(visivel)
         .filter((e) => new Date(e.fim) > new Date() && ! e.dia_inteiro),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [proximos.dados, ocultos, soContexto]);
+    [proximos.dados, ocultos]);
 
     const contagem = useMemo(() => {
         const mapa = {};
@@ -238,10 +237,6 @@ export default function AgendaIndex({ conectado, usuario, contexto = null, onboa
                             Onboarding de <strong className="font-semibold text-white">{contexto.empresa}</strong>
                             {contexto.servico ? <span className="text-white/45"> · {contexto.servico}</span> : null}
                         </span>
-                        <label className="ml-1 flex cursor-pointer items-center gap-1.5 text-white/60">
-                            <Checkbox checked={soContexto} onCheckedChange={(v) => setSoContexto(Boolean(v))} />
-                            Só os eventos deste onboarding
-                        </label>
                         <span className="flex-1" />
                         <Link href={contexto.url} className="inline-flex items-center gap-1 text-ecf-yellow/85 hover:text-ecf-yellow">
                             Voltar para a ficha <ArrowUpRight size={12} />
@@ -249,7 +244,7 @@ export default function AgendaIndex({ conectado, usuario, contexto = null, onboa
                         <Link
                             href={route('agenda.index', { visao, data: ymd(ancora) })}
                             className="grid h-6 w-6 place-items-center rounded-md text-white/40 hover:bg-white/[0.06] hover:text-white"
-                            aria-label="Tirar o filtro do onboarding"
+                            aria-label="Tirar este onboarding do contexto"
                         >
                             <X size={13} />
                         </Link>
@@ -393,7 +388,6 @@ export default function AgendaIndex({ conectado, usuario, contexto = null, onboa
                                     eventos={listaProximos}
                                     limite={5}
                                     aoAbrir={setAberto}
-                                    mostrarEmpresa={! (contexto && soContexto)}
                                     vazio="Nada marcado para as próximas duas semanas."
                                 />
                             )}

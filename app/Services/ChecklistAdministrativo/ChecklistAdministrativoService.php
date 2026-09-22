@@ -17,8 +17,13 @@ use App\Services\ChecklistAdministrativo\Resolvers\MlOAuthConectadoResolver;
  * escrita do checklist administrativo: monta o checklist de uma empresa
  * (D-07), roda os 4 resolvers automáticos e persiste o resultado, calcula o
  * progresso a partir do catálogo (D-10) e permite marcar/desmarcar
- * manualmente com autoria (D-11), recusando marcação manual em item
- * automático (D-13).
+ * manualmente com autoria (D-11).
+ *
+ * ⚠️ **Item automático TAMBÉM aceita marcação à mão desde 2026-09-18** — a
+ * D-13 dizia o contrário, e foi estreitada por decisão do usuário ("tudo tem
+ * que dar para dar check manualmente"). O override fica registrado e visível
+ * como tal; ver `concluirManualmente()` e o ramo AUTO de `paraEmpresa()`, que
+ * é onde ele sobrevive ao resolver.
  *
  * ⚠️ Este service NÃO transiciona `companies.etapa` e nunca vai transicionar.
  * A régua que dirige a etapa pelo progresso do checklist mora na camada
@@ -84,14 +89,41 @@ class ChecklistAdministrativoService
         $grupos = [];
 
         foreach ($itens as $definicao) {
+            $confirmadoPeloSistema = null;
+
             if ($definicao['natureza'] === ChecklistAdministrativoDefinicao::NATUREZA_AUTO) {
                 // Rodar os 4 resolvers a cada chamada é aceitável e
                 // deliberado: são leituras de coluna local, sem rede —
                 // diferente do resolver de grant do motor de Onboarding, que
                 // sonda API externa e por isso é assíncrono lá.
                 $resultado = $resolvers[$definicao['auto_fonte']]->resolver($company);
-                $linha = $this->persistirResultadoAutomatico($company, $definicao, $resultado);
-                $motivo = $resultado->ehConcluido() ? null : $resultado->motivo;
+                $confirmadoPeloSistema = $resultado->ehConcluido();
+
+                // ⚠️ A MARCAÇÃO À MÃO DE ITEM AUTOMÁTICO DEPENDE DESTA LINHA
+                // (2026-09-18, decisão do usuário: "tudo tem que dar para dar
+                // check manualmente").
+                //
+                // O resolver roda a CADA montagem da ficha, e antes disto o
+                // ramo "não concluído" gravava `status = aberto` por cima de
+                // tudo — uma marcação manual sobrevivia ao clique e morria no
+                // próximo F5, sem erro nenhum na tela para denunciar.
+                //
+                // O sinal de que houve override é `feito_por` preenchido numa
+                // linha de item AUTOMÁTICO: só `concluirManualmente()` escreve
+                // essa coluna, e nenhum resolver a toca. Isso evita coluna
+                // nova numa tabela que já tem dado em produção — migration
+                // assim exige fase GSD (CLAUDE.md) — e ganha de brinde o
+                // desfazer: `reabrirItem()` já limpa `feito_por`, então
+                // "Desmarcar" devolve o item ao controle do resolver.
+                $forcado = $linhasManuais->get($definicao['chave'])?->feito_por !== null;
+
+                $linha = $this->persistirResultadoAutomatico($company, $definicao, $resultado, $forcado);
+
+                // Item forçado não mostra o motivo do resolver: ele está
+                // concluído por decisão humana, e o "o que falta" seria
+                // contradição na mesma linha. O que a tela diz nesse caso vem
+                // de `auto_confirmado = false` (ver `achatarItem()`).
+                $motivo = ($resultado->ehConcluido() || $forcado) ? null : $resultado->motivo;
             } else {
                 // Item manual: só lê a linha existente. Nunca cria linha
                 // aqui — só concluirManualmente() escreve.
@@ -109,7 +141,29 @@ class ChecklistAdministrativoService
                 ];
             }
 
-            $grupos[$grupoChave]['itens'][] = $this->achatarItem($definicao, $linha, $motivo);
+            $grupos[$grupoChave]['itens'][] = $this->achatarItem($definicao, $linha, $motivo, $confirmadoPeloSistema);
+        }
+
+        // Segunda passada — a TRAVA de ordem (2026-09-18). Só pode ser
+        // calculada aqui, depois que todos os itens existem: `depende_de`
+        // olha para o status de OUTROS itens, e na primeira passada os
+        // posteriores ainda não foram montados.
+        $statusPorChave = [];
+        foreach ($grupos as $grupo) {
+            foreach ($grupo['itens'] as $item) {
+                $statusPorChave[$item['chave']] = $item['status'];
+            }
+        }
+
+        foreach ($grupos as $grupoChave => $grupo) {
+            foreach ($grupo['itens'] as $indice => $item) {
+                $bloqueio = $item['status'] === ChecklistAdministrativoItem::STATUS_CONCLUIDO
+                    ? null
+                    : $this->bloqueio($company, ChecklistAdministrativoDefinicao::item($item['chave']), $statusPorChave);
+
+                $grupos[$grupoChave]['itens'][$indice]['bloqueio']      = $bloqueio['motivo'] ?? null;
+                $grupos[$grupoChave]['itens'][$indice]['bloqueio_tipo'] = $bloqueio['tipo'] ?? null;
+            }
         }
 
         return [
@@ -154,18 +208,28 @@ class ChecklistAdministrativoService
      * Marca um item manualmente, gravando autoria (D-11): `feito_por` e
      * `feito_em` sempre juntos, no mesmo `updateOrCreate`.
      *
-     * Recusa (`\DomainException`) em três situações, nesta ordem: (1) chave
+     * Recusa (`\DomainException`) em quatro situações, nesta ordem: (1) chave
      * fora do catálogo fechado — defesa contra chave livre vinda de
      * requisição; (2) item do grupo Contrato numa empresa isenta (D-07); (3)
-     * item que tem `auto_fonte` declarado no catálogo, salvo `$forcar`
-     * (D-13) — os 4 itens automáticos não podem ser marcados à mão pela
-     * tela.
+     * item que tem `auto_fonte` declarado no catálogo, salvo `$forcar`; (4) a
+     * trava de ordem/evidência de 2026-09-18, que **`$forcar` não dispensa**.
      *
-     * `$forcar` existe por paridade com o molde do motor de Onboarding
-     * (`OnboardingEngineService::concluirManualmente()`), mesma disciplina
-     * T-150-02 de nunca aceitar ator cru — mas **não é exposto por HTTP
-     * nesta fase**: o controller do plano 152-08 nunca encaminha este
-     * parâmetro.
+     * ### `$forcar` passou a ser exposto por HTTP em 2026-09-18
+     * Até aqui ele existia só por paridade com o motor de Onboarding e o
+     * controller nunca o encaminhava: a D-13 dizia que item automático não se
+     * marca à mão, porque seria marcar concluído sem evidência.
+     *
+     * O usuário decidiu o contrário — "tudo tem que dar para dar check
+     * manualmente" — e a razão é operacional: o resolver pode demorar a
+     * enxergar um fato que já aconteceu (contrato assinado fora da Clicksign,
+     * grant concedido por outro caminho), e a entrada inteira ficava travada
+     * esperando um sinal que nunca vinha.
+     *
+     * A D-13 não foi jogada fora, foi ESTREITADA: a marcação à mão de item
+     * automático fica REGISTRADA e VISÍVEL como tal — `feito_por` preenchido
+     * numa linha automática é o override, `paraEmpresa()` devolve
+     * `forcado: true` com `auto_confirmado: false`, e a tela diz "marcado à
+     * mão, o sistema ainda não confirmou" em vez de fingir confirmação.
      */
     public function concluirManualmente(Company $company, string $chave, User $usuario, bool $forcar = false): ChecklistAdministrativoItem
     {
@@ -187,6 +251,29 @@ class ChecklistAdministrativoService
             throw new \DomainException(
                 "O item \"{$definicao['titulo']}\" tem verificação automática — conclusão manual não é permitida."
             );
+        }
+
+        // Trava de ORDEM e de EVIDÊNCIA (2026-09-18). Mesma disciplina do
+        // ADMIN-05: a régua que desabilita o botão na tela é ESTA, lida do
+        // payload — nunca uma segunda implementação no JSX. O servidor a
+        // reavalia aqui, no instante do clique.
+        //
+        // ⚠️ Roda mesmo com `$forcar`. `$forcar` libera marcar à mão um item
+        // que o SISTEMA fecharia sozinho; ele nunca libera furar a ordem que o
+        // usuário pediu. São duas regras diferentes, e confundi-las deixaria
+        // as boas-vindas marcáveis antes do e-mail colaborador pela porta do
+        // override.
+        $statusPorChave = [];
+        foreach ($this->paraEmpresa($company)['grupos'] as $grupo) {
+            foreach ($grupo['itens'] as $item) {
+                $statusPorChave[$item['chave']] = $item['status'];
+            }
+        }
+
+        $bloqueio = $this->bloqueio($company, $definicao, $statusPorChave);
+
+        if ($bloqueio !== null) {
+            throw new \DomainException($bloqueio['motivo']);
         }
 
         $item = ChecklistAdministrativoItem::updateOrCreate(
@@ -280,7 +367,7 @@ class ChecklistAdministrativoService
      * depois de ter conectado) não perde o carimbo de quando fechou a
      * primeira vez.
      */
-    private function persistirResultadoAutomatico(Company $company, array $definicao, ChecklistResolverResultado $resultado): ChecklistAdministrativoItem
+    private function persistirResultadoAutomatico(Company $company, array $definicao, ChecklistResolverResultado $resultado, bool $forcado = false): ChecklistAdministrativoItem
     {
         if ($resultado->ehConcluido()) {
             return ChecklistAdministrativoItem::updateOrCreate(
@@ -290,6 +377,17 @@ class ChecklistAdministrativoService
                     'valor'   => $resultado->valor,
                     'auto_em' => now(),
                 ]
+            );
+        }
+
+        // Override humano vivo: o resolver ainda não vê o fato, mas alguém
+        // afirmou que ele aconteceu. Não reabrir — era exatamente isto que
+        // apagava a marcação manual no carregamento seguinte. `feito_por` e
+        // `feito_em` ficam onde estão; só `reabrirItem()` os limpa.
+        if ($forcado) {
+            return ChecklistAdministrativoItem::updateOrCreate(
+                ['company_id' => $company->id, 'chave' => $definicao['chave']],
+                ['status' => ChecklistAdministrativoItem::STATUS_CONCLUIDO]
             );
         }
 
@@ -309,10 +407,16 @@ class ChecklistAdministrativoService
      * via `$forcar`), é sintoma — a tela deve poder mostrar as duas, então
      * este método NÃO normaliza apagando uma: só espelha o que está gravado.
      *
-     * @return array{chave:string, titulo:string, grupo:string, natureza:string, status:string, ajuda:string, motivo:?string, feito_por_nome:?string, feito_em:?string, auto_em:?string}
+     * @return array{chave:string, titulo:string, grupo:string, natureza:string, status:string, ajuda:string, motivo:?string, feito_por_nome:?string, feito_em:?string, auto_em:?string, depende_de:array<int,string>, exige_valor:?string, bloqueio:?string, bloqueio_tipo:?string, forcado:bool, auto_confirmado:?bool}
      */
-    private function achatarItem(array $definicao, ?ChecklistAdministrativoItem $linha, ?string $motivo): array
+    private function achatarItem(array $definicao, ?ChecklistAdministrativoItem $linha, ?string $motivo, ?bool $confirmadoPeloSistema = null): array
     {
+        // `forcado` só faz sentido em item AUTOMÁTICO: é a marcação humana de
+        // algo que o sistema observaria sozinho. Em item manual, `feito_por`
+        // preenchido é o funcionamento normal, não override.
+        $forcado = $definicao['natureza'] === ChecklistAdministrativoDefinicao::NATUREZA_AUTO
+            && $linha?->feito_por !== null;
+
         return [
             'chave'          => $definicao['chave'],
             'titulo'         => $definicao['titulo'],
@@ -324,7 +428,81 @@ class ChecklistAdministrativoService
             'feito_por_nome' => $linha?->feitoPor?->name,
             'feito_em'       => $linha?->feito_em?->toIso8601String(),
             'auto_em'        => $linha?->auto_em?->toIso8601String(),
+            // Chaves do catálogo que a TELA precisa para desenhar a trava e o
+            // campo de evidência. `bloqueio` NÃO é preenchido aqui — depende
+            // do status dos outros itens e só existe depois da segunda passada
+            // de `paraEmpresa()`.
+            'depende_de'     => $definicao['depende_de'] ?? [],
+            'exige_valor'    => $definicao['exige_valor'] ?? null,
+            'bloqueio'       => null,
+            'bloqueio_tipo'  => null,
+            // Item automático fechado À MÃO (2026-09-18). A tela precisa das
+            // duas informações separadas para não mentir: `forcado` diz que
+            // alguém afirmou o fato, `auto_confirmado` diz se o sistema já o
+            // viu. Fechado à mão e ainda não observado é um estado legítimo —
+            // e a tela avisa, em vez de exibir um "confirmado" que ninguém
+            // confirmou.
+            'forcado'          => $forcado,
+            'auto_confirmado'  => $confirmadoPeloSistema,
         ];
+    }
+
+    /**
+     * A trava de ORDEM e de EVIDÊNCIA de um item ainda aberto (2026-09-18).
+     * Devolve a frase que explica o que falta, ou `null` quando nada trava.
+     *
+     * Duas regras, nesta ordem — a evidência primeiro porque é a que o
+     * operador resolve sem sair da linha:
+     *
+     * 1. `exige_valor` — a coluna de `companies` nomeada pelo catálogo precisa
+     *    estar preenchida. Hoje só `email_colaborador_criado` declara isso: o
+     *    endereço é a única evidência possível do item, e é ele que entra na
+     *    mensagem de boas-vindas.
+     * 2. `depende_de` — os itens listados precisam estar concluídos. Chave
+     *    ausente de `$statusPorChave` NÃO trava: é o caso da empresa isenta de
+     *    contrato (D-07), cujos itens do grupo Contrato nem são instanciados —
+     *    exigir um item que não existe travaria a ficha para sempre.
+     *
+     * Régua PURA: não escreve nada, não consulta o banco além do que já está
+     * carregado em `$company`.
+     *
+     * @param array{chave:string, titulo:string, depende_de?:array<int,string>, exige_valor?:string} $definicao
+     * @param array<string, string> $statusPorChave
+     * @return array{tipo:string, motivo:string}|null
+     */
+    private function bloqueio(Company $company, array $definicao, array $statusPorChave): ?array
+    {
+        $coluna = $definicao['exige_valor'] ?? null;
+
+        if ($coluna !== null && blank($company->{$coluna})) {
+            return [
+                'tipo'   => 'valor',
+                'motivo' => 'Preencha o campo abaixo para concluir este item.',
+            ];
+        }
+
+        $faltando = [];
+
+        foreach ($definicao['depende_de'] ?? [] as $chaveDependencia) {
+            if (! array_key_exists($chaveDependencia, $statusPorChave)) {
+                continue;
+            }
+
+            if ($statusPorChave[$chaveDependencia] !== ChecklistAdministrativoItem::STATUS_CONCLUIDO) {
+                $faltando[] = ChecklistAdministrativoDefinicao::item($chaveDependencia)['titulo'] ?? $chaveDependencia;
+            }
+        }
+
+        if ($faltando !== []) {
+            return [
+                'tipo'   => 'dependencia',
+                'motivo' => count($faltando) === 1
+                    ? "Conclua \"{$faltando[0]}\" antes deste item."
+                    : 'Conclua antes: '.implode(', ', $faltando).'.',
+            ];
+        }
+
+        return null;
     }
 
     /**

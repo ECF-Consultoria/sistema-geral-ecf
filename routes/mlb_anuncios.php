@@ -120,4 +120,16 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/meta/compat/marcas', [MlbAnuncioController::class, 'compatMarcas'])->name('meta.compat.marcas');
         Route::get('/meta/compat/modelos', [MlbAnuncioController::class, 'compatModelos'])->name('meta.compat.modelos');
         Route::get('/meta/compat/anos', [MlbAnuncioController::class, 'compatAnos'])->name('meta.compat.anos');
+
+        // ─── Anunciar por IA (metodologia MAG T8, Parte 1: Análise) ───
+        // Assíncrono por necessidade: a geração levou 103s na medição de
+        // 21/09/2026. O POST enfileira e devolve 202; o GET é o polling.
+        // Throttle porque cada chamada consome cota de provedor gratuito —
+        // um duplo-clique não pode virar duas gerações de 100 segundos.
+        Route::post('/ia/analise', [MlbAnuncioController::class, 'iaAnaliseStore'])
+            ->middleware('throttle:10,1')
+            ->name('ia.analise.store');
+        Route::get('/ia/analise/{analise}', [MlbAnuncioController::class, 'iaAnaliseStatus'])
+            ->whereNumber('analise')
+            ->name('ia.analise.status');
     });

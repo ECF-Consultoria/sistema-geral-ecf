@@ -414,3 +414,53 @@ Há um teste que quebra se alguém reintroduzir `portal/*`.
 **A lição maior:** o `curl` rota a rota contra PRODUÇÃO, depois do deploy, foi o
 que pegou. A suíte passava — porque o teste que eu tinha escrito verificava as
 rotas que eu me lembrei de listar, e `/portal/usuarios` não estava entre elas.
+
+## 25. A régua de agrupamento do PPA vive em TRÊS lugares — e eles têm de concordar
+
+Em 21/09/2026 as duas listas de PPA (a do portal e a interna) passaram a se
+agrupar sozinhas em **Em andamento · A fazer · Concluídos**, para que um cliente
+com 20 planos não recebesse 20 quadros de três colunas empilhados.
+
+A mesma régua existe em três implementações, e nenhuma delas é opcional:
+
+1. **`resources/js/lib/ppaAgrupamento.js`** — decide o grupo de cada plano na
+   tela, a partir das tarefas. Tem teste próprio em
+   `tests/js/ppaAgrupamento.test.js`.
+2. **`Ppa::scopeOrdenadoPorAtencao()`** — o MESMO critério em SQL. Existe porque
+   a lista interna **pagina de 20 em 20**: se o banco devolvesse em outra ordem,
+   a seção "Em andamento" apareceria VAZIA para quem tem plano andando na página
+   2. O sintoma é silencioso — nada quebra, só some.
+3. **`PortalPpaService::visao()`** — manda `fazendo` / `a_fazer` / `prazo_dias`.
+   Sem essas contagens todo plano cai em "A fazer" e a hierarquia vira enfeite.
+
+Mudar uma sem as outras não quebra teste nenhum de forma óbvia: a tela continua
+renderizando, só que errado.
+
+### `withCount` + alias em `ORDER BY` funciona no MariaDB — verificado, não suposto
+
+`scopeOrdenadoPorAtencao` usa os aliases de `withCount` (`tasks_count`,
+`tasks_done_count`, `tasks_doing_count`) **dentro de um `CASE` no `ORDER BY`**.
+O SQLite dos testes aceitaria de qualquer jeito, então isso foi conferido contra
+o **MariaDB 10.4.32** local, com a tela carregando de verdade. `ORDER BY` é
+avaliado depois da projeção — ao contrário do `WHERE`, onde o alias NÃO vale.
+
+### Duas decisões de produto que parecem bug e não são
+
+- **Plano 100% feito desce para "Concluídos" mesmo sem a equipe encerrar.**
+  `ppas.status = completed` é um ato da equipe, e ela nem sempre volta para
+  marcar. O plano desce para a gaveta, mas continua EDITÁVEL — só o encerrado
+  pela equipe vira leitura, regra que já existia.
+- **A ordem NÃO se reorganiza enquanto o cliente trabalha.** O agrupamento usa
+  as tarefas como chegaram do servidor, não o estado vivo: concluir a última
+  tarefa faria o plano saltar de seção no instante em que o card foi solto, e o
+  quadro sumiria de sob o cursor. Contadores e percentual, esses sim, são vivos.
+  A posição nova vale na próxima visita.
+
+### No portal o card arrasta, mas não reordena
+
+`useDraggable`, não `useSortable` — ao contrário do quadro interno. A rota do
+portal (`PortalPpaController::moverTarefa`) persiste **status**, e só. Um card
+que se reordenasse dentro da coluna mostraria uma organização que o próximo F5
+desfaz. Se um dia a reordenação pelo cliente for desejada, ela exige passar
+`ordem` pela rota do portal — e aí vale lembrar que a ordem é COMPARTILHADA com
+o quadro que a equipe usa.

@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/Components/ui/button';
 import { router } from '@inertiajs/react';
 import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
+import PainelAnunciarIa from '@/Pages/Mlb/components/PainelAnunciarIa';
 import {
     analisarAnuncio, MODALIDADES_FRETE, DICAS_DESCRICAO, INFO_EXPOSICAO_TIER,
     PRECO_FRETE_GRATIS_OBRIGATORIO, FOTOS_RECOMENDADAS_MIN, extrairSettingsCategoria,
@@ -1028,7 +1029,7 @@ function CompatibilidadeEditor({ veiculos, setVeiculos }) {
  * WIZ-08: preview lateral em tempo real (título/preço/imagem/empresa/breadcrumb).
  * PRICE-01/02/03: SimuladorPreco embutido na etapa de preço.
  */
-export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [], abrirRascunhoId = null }) {
+export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [], abrirRascunhoId = null, iaAnalise = null }) {
     const [rascunhoId, setRascunhoId] = useState(null);
 
     // ─── Navegação do wizard (WIZ-01) ───
@@ -2076,6 +2077,16 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                             ETAPA 0 — Título e categoria (WIZ-01/02)
                             ════════════════════════════════════════════════════ */}
                         {etapa === 0 && (
+                            <>
+                            {/* A IA entra ANTES do título: é ela que preenche o
+                                campo abaixo. Colapsada por padrão — quem já sabe
+                                o título não precisa tropeçar nela. */}
+                            <PainelAnunciarIa
+                                empresa={empresa}
+                                analiseInicial={iaAnalise}
+                                onAplicarTitulo={(t) => { setTitulo(t); marcarEditado('title'); }}
+                                onAplicarDescricao={(d) => { setDescricao(d); marcarEditado('description'); }}
+                            />
                             <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                                 <h2 className="mb-3 text-sm font-semibold text-white">1. Título e categoria</h2>
                                 <Campo
@@ -2153,6 +2164,7 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                     </p>
                                 )}
                             </section>
+                            </>
                         )}
 
                         {/* ════════════════════════════════════════════════════
