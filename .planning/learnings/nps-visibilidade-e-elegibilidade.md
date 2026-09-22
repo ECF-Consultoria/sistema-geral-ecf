@@ -391,3 +391,86 @@ Matheus Estrela em EDUMAC/RS.
 Travado por `tests/Feature/NpsReplicarRespostaParaGrupoTest.php` (6 testes),
 que cobrem inclusive o que mais assusta aqui: a nota vai para o responsável de
 CADA empresa, nunca para o da empresa que respondeu.
+
+## 7. O slot de serviço em `company_users` é um SNAPSHOT — contrato novo o invalida calado
+
+Reportado em 2026-09-22: a empresa 253 (`Racoes soldera - Petshopbrasil`) *"não
+aparece no link do NPS em 'Quem cuida da sua conta', parece não estar atribuída
+a ninguém"* — embora a ficha interna mostrasse Rubens (estrategista) e Stefani
+(analista) normalmente. **Corrigido só em DADO, na produção; nenhuma linha de
+código mudou.** Fica aqui porque o mecanismo não é dedutível lendo qualquer um
+dos dois lados isolado, e porque a mesma assinatura vai voltar.
+
+### Os dois lados que divergem
+
+- **Escrita** (`CompanyController::servicoPerformanceAtivoId()`): o slot é
+  `MIN(servico_id)` dos contratos de `setor='performance'` ATIVOS **no instante
+  da escrita**. É valor congelado, não relação viva.
+- **Leitura** (`NpsController::responsaveisDoSurvey()`, o fix de 18/08 do §6):
+  interseção **serviços cobertos pelo modelo ∩ contratos ativos AGORA**, e
+  dentro dela `Company::responsavelDoServicoOuConsolidado()`.
+
+Quando entra um contrato de performance com `servico_id` **MENOR**, o `MIN`
+muda e o slot gravado vira órfão. Ninguém reescreve nada: sem log, sem aviso,
+sem tela que mostre a discrepância. A linha do tempo real:
+
+| data | evento | slot gravado | `MIN` correto |
+|---|---|---|---|
+| 16/09 | alguém re-salvou os responsáveis; só Brigada(10) ativo | 10 | 10 ✓ |
+| 18/09 | criado contrato **Gestão(6)** | 10 | **6** ✗ |
+| 21/09 | gerada a survey 604 — modelo cobre 3,4,5,6,7,8, **não cobre 10** | 10 | 6 ✗ |
+
+Interseção = {6}; ninguém em `servico_id` 6 nem no consolidado (`NULL`) ⇒ os
+dois papéis resolvem `null` ⇒ o card some. E como os mesmos nomes alimentam
+`{nome_estrategista}`/`{nome_analista}`, o questionário inteiro fica sem nome.
+
+O sintoma engana porque a ficha interna continua certa:
+`analistaPerformance()`/`estrategistaPerformance()` leem `setor='performance'`
+OU `NULL` — para elas o slot 10 serve. Só a régua do NPS, que é por serviço
+COBERTO, recusa.
+
+### A correção
+
+`UPDATE company_users SET servico_id=6 WHERE id IN (235,236)` — exatamente o
+que a própria tela escreveria hoje. `assigned_at` preservado: é correção de
+slot, não atribuição nova.
+
+**Não dobrar a linha** (deixar 6 e 10 juntas): o app mantém UMA linha de
+performance por papel — `limparSlotPerformance()` apaga `setor='performance'`
+**ou** `servico_id IS NULL` antes de regravar. Carteira e bônus até
+aguentariam (`User::companies()` já tem `select('companies.*')->distinct()`,
+blindagem da Fase 78), mas seria um estado que nenhuma tela produz.
+
+### A consulta que mata a hipótese em um minuto
+
+```sql
+SELECT cu.company_id, c.name, cu.role, cu.servico_id AS slot, m.min_srv AS correto
+FROM company_users cu
+JOIN companies c ON c.id = cu.company_id
+JOIN (SELECT ct.company_id, MIN(ct.servico_id) AS min_srv
+      FROM contratos_servico ct JOIN servicos s ON s.id = ct.servico_id
+      WHERE ct.ativo = 1 AND s.setor = 'performance'
+      GROUP BY ct.company_id) m ON m.company_id = cu.company_id
+JOIN servicos sv ON sv.id = cu.servico_id AND sv.setor = 'performance'
+WHERE cu.servico_id <> m.min_srv;
+```
+
+Em 22/09 devolvia só a empresa 253 — e zero depois do fix. **Rodar sempre que
+reclamarem de responsável sumido na pesquisa**: é barata e elimina a hipótese
+antes de qualquer leitura de código.
+
+### Brigada (serviço 10) não está em NENHUM scope de modelo NPS
+
+`nps_template_service_scopes` cobre 3,4,5,6,7,8 (Performance/Mentoria) e 9
+(Shopee). Brigada nasceu em 31/08, **depois** dos scopes (14/08), e ficou de
+fora. Para empresa de Brigada PURA (hoje só a 450, `OliverMulti`) a interseção
+fica VAZIA: o card cai no fallback e nomeia quem estiver na pivot — mas
+`NpsSnapshotService::registrar()` usa a MESMA interseção e por isso **não gera
+nenhum `nps_score_assignment`**, ou seja, a nota não conta para o bônus de
+ninguém. Incluir 10 nos scopes é decisão de negócio com efeito em bonificação —
+não mexer sem pedir.
+
+Outros dois buracos de cadastro medidos no mesmo dia, deixados como estavam:
+**450 OliverMulti** não tem nenhuma linha em `company_users`; **330 Decoral**
+tem estrategista só no serviço 9 (Shopee), então o NPS de Performance dela
+mostra a analista sem estrategista.
