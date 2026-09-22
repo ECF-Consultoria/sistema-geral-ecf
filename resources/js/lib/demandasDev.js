@@ -1,4 +1,5 @@
-// Demandas Dev — rótulos e cores. Espelho manual das constantes de App\Models\DevDemanda.
+// Demandas Dev — rótulos e regras. Espelho manual das constantes de App\Models\DevDemanda.
+// Classes de cor ficam em Components/DemandasDev/Selos.jsx: o Tailwind só varre .jsx.
 
 export const STATUS_LABELS = {
     backlog:            'Backlog',
@@ -10,17 +11,6 @@ export const STATUS_LABELS = {
     cancelado:          'Cancelado',
 };
 
-// Cor do ponto ao lado do status.
-export const STATUS_DOT = {
-    backlog:            'bg-white/30',
-    a_fazer:            'bg-sky-400',
-    em_desenvolvimento: 'bg-violet-400',
-    em_validacao:       'bg-amber-400',
-    bloqueado:          'bg-orange-500',
-    concluido:          'bg-emerald-400',
-    cancelado:          'bg-white/20',
-};
-
 export const PRIORIDADE_LABELS = {
     0: 'P0 - Crítica',
     1: 'P1 - Alta',
@@ -30,13 +20,6 @@ export const PRIORIDADE_LABELS = {
 
 export const PRIORIDADE_CURTA = { 0: 'P0', 1: 'P1', 2: 'P2', 3: 'P3' };
 
-export const PRIORIDADE_CLASSE = {
-    0: 'bg-red-500/15 text-red-400 ring-1 ring-inset ring-red-500/30',
-    1: 'bg-amber-500/15 text-amber-400',
-    2: 'bg-white/[0.05] text-white/70',
-    3: 'bg-white/[0.03] text-white/40',
-};
-
 export const SITUACAO_LABELS = {
     bloqueado:     'Bloqueada',
     atrasada:      'Atrasada',
@@ -45,16 +28,6 @@ export const SITUACAO_LABELS = {
     sem_prazo:     'Sem prazo',
     concluido:     'Concluída',
     cancelado:     'Cancelada',
-};
-
-export const SITUACAO_CLASSE = {
-    bloqueado:     'bg-orange-500/15 text-orange-400',
-    atrasada:      'bg-red-500/15 text-red-400',
-    prazo_proximo: 'bg-amber-500/15 text-amber-400',
-    no_prazo:      'bg-emerald-500/10 text-emerald-400',
-    sem_prazo:     'bg-white/[0.04] text-white/50',
-    concluido:     'bg-sky-500/10 text-sky-400',
-    cancelado:     'bg-white/[0.03] text-white/40 line-through',
 };
 
 // Ordem de exibição da situação no painel (do mais urgente ao encerrado).

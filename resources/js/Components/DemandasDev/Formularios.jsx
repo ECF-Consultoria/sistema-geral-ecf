@@ -3,8 +3,8 @@ import { useForm } from '@inertiajs/react';
 import { Loader2, Lock, Search } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/Components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { compararCodigo, PRIORIDADE_LABELS, STATUS_DOT, STATUS_LABELS } from '@/lib/demandasDev';
-import { Campo, inputClasse } from './Selos';
+import { compararCodigo, PRIORIDADE_LABELS, STATUS_LABELS } from '@/lib/demandasDev';
+import { Campo, inputClasse, STATUS_COR } from './Selos';
 
 // Casca comum dos três formulários: diálogo escuro com rolagem própria.
 function Janela({ open, onOpenChange, titulo, descricao, children, largura = 'max-w-xl' }) {
@@ -95,7 +95,7 @@ export function AtualizacaoDialog({ demanda, hoje, onClose }) {
                                             : 'border-white/[0.08] text-white/60 hover:bg-white/[0.04] hover:text-white',
                                     )}
                                 >
-                                    <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[valor])} />
+                                    <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_COR[valor])} />
                                     {rotulo}
                                 </button>
                             ))}

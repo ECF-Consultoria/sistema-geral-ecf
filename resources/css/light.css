@@ -175,3 +175,11 @@ html.light .text-ecf-yellow\/90 { color: #9a7b0a; }
 html.light .hover\:text-ecf-yellow\/70:hover { color: #9a7b0a; }
 html.light .hover\:text-ecf-yellow\/80:hover { color: #9a7b0a; }
 html.light .group:hover .group-hover\:text-ecf-yellow\/60 { color: #9a7b0a; }
+
+/* Demandas Dev — degraus claros das cores de status (validados contra o branco). */
+html.light {
+    --dd-bloqueado: #eb6834;
+    --dd-dev:       #4a3aa7;
+    --dd-validacao: #eda100;
+    --dd-afazer:    #2a78d6;
+}

@@ -10,6 +10,13 @@
 
 @layer base {
     :root {
+        /* Demandas Dev — cores dos status de trabalho ativo (validadas p/ daltonismo
+           contra o card escuro; o tema claro redefine em light.css). */
+        --dd-bloqueado: #d95926;
+        --dd-dev:       #9085e9;
+        --dd-validacao: #c98500;
+        --dd-afazer:    #3987e5;
+
         /* ECF Brand — Dark Mode */
         --background: 240 17% 2%;        /* #050507 */
         --foreground: 216 14% 93%;       /* #e8eaee */
