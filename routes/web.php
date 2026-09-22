@@ -984,6 +984,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/{demanda}/atualizacoes',   [DevDemandaController::class, 'storeAtualizacao'])->name('atualizacoes.store');
         Route::post('/reunioes',                 [DevDemandaController::class, 'storeReuniao'])->name('reunioes.store');
         Route::put('/reunioes/{reuniao}',        [DevDemandaController::class, 'updateReuniao'])->name('reunioes.update');
+        Route::post('/reunioes/{reuniao}/cancelar',        [DevDemandaController::class, 'cancelarReuniao'])->name('reunioes.cancelar');
+        Route::post('/reunioes/{reuniao}/buscar-gravacao', [DevDemandaController::class, 'buscarGravacao'])->name('reunioes.buscar_gravacao');
     });
 
     Route::middleware('role:admin')->group(function () {

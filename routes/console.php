@@ -445,3 +445,11 @@ Schedule::command('clicksign:verificar-varredura')
     ->dailyAt('08:00')
     ->name('clicksign-verificar-varredura')
     ->withoutOverlapping();
+
+// Demandas Dev — o Meet anexa gravação, transcrição e anotações do Gemini ao
+// evento alguns minutos depois do fim da reunião. A cada 30 min puxa esses links
+// das reuniões dev encerradas nos últimos 3 dias (só preenche link vazio).
+Schedule::command('demandas-dev:buscar-gravacoes')
+    ->everyThirtyMinutes()
+    ->name('demandas-dev-buscar-gravacoes')
+    ->withoutOverlapping();

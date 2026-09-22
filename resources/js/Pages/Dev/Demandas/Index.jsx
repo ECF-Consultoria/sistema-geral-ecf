@@ -32,12 +32,23 @@ const urlComDemanda = (id) => {
  * andamento cresce no diário de atualizações; status, próxima ação e bloqueio
  * saem da atualização mais recente.
  */
-export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios, areas, prefixos, pode, eu, hoje, detalhe }) {
+export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios, areas, prefixos, pode, eu, hoje, detalhe, google }) {
     const [aba, setAba] = useState(eu.tem_demandas ? 'fila' : 'demandas');
     const [abertaId, setAbertaId] = useState(detalhe?.id ?? null);
     const [atualizando, setAtualizando] = useState(null);
     const [editandoDemanda, setEditandoDemanda] = useState(null); // null | 'nova' | demanda
-    const [editandoReuniao, setEditandoReuniao] = useState(null); // null | 'nova' | reuniao
+    // null | { reuniao } (editar) | { preset } (agendar, opcionalmente já com demanda e participante)
+    const [editandoReuniao, setEditandoReuniao] = useState(null);
+
+    // Agendar a partir de uma demanda: ela entra na pauta e o responsável, como participante.
+    const agendarReuniao = (demanda) => setEditandoReuniao({
+        preset: demanda ? {
+            titulo: `${demanda.codigo} — ${demanda.titulo}`.slice(0, 255),
+            modulo: demanda.area ?? '',
+            demandas: [demanda.id],
+            participantes: demanda.responsavel ? [demanda.responsavel.id] : [],
+        } : null,
+    });
 
     const aberta = abertaId ? demandas.find((d) => d.id === abertaId) : null;
 
@@ -110,8 +121,8 @@ export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios,
                         pode={pode}
                         hoje={hoje}
                         onAbrir={abrir}
-                        onNova={() => setEditandoReuniao('nova')}
-                        onEditar={setEditandoReuniao}
+                        onAgendar={agendarReuniao}
+                        onEditar={(reuniao) => setEditandoReuniao({ reuniao })}
                     />
                 )}
             </div>
@@ -125,6 +136,7 @@ export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios,
                 onClose={fechar}
                 onAtualizar={setAtualizando}
                 onEditar={setEditandoDemanda}
+                onAgendarReuniao={pode.gerenciar ? agendarReuniao : null}
             />
 
             {atualizando && (
@@ -143,9 +155,13 @@ export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios,
             )}
             {editandoReuniao && (
                 <ReuniaoDialog
-                    key={editandoReuniao === 'nova' ? 'nova' : editandoReuniao.id}
-                    reuniao={editandoReuniao === 'nova' ? null : editandoReuniao}
+                    key={editandoReuniao.reuniao?.id ?? 'nova'}
+                    reuniao={editandoReuniao.reuniao ?? null}
+                    preset={editandoReuniao.preset ?? null}
                     demandas={demandas}
+                    usuarios={usuarios}
+                    areas={areas}
+                    google={google}
                     hoje={hoje}
                     onClose={() => setEditandoReuniao(null)}
                 />

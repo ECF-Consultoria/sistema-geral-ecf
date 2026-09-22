@@ -294,12 +294,13 @@ class DemandasDevTest extends TestCase
         $minha = $this->demanda(['responsavel_id' => $dev->id]);
         $alheia = $this->demanda();
 
+        // Registro sem convite (reunião que já aconteceu): não toca no Google.
         $this->actingAs($admin)->post('/dev/demandas/reunioes', [
-            'data' => '2026-09-19', 'titulo' => 'Alinhamento', 'link_gravacao' => 'https://drive.google.com/x',
-            'demandas' => [$minha->id, $alheia->id],
+            'convite' => false, 'data' => '2026-09-19', 'duracao' => 60, 'titulo' => 'Alinhamento',
+            'link_gravacao' => 'https://drive.google.com/x', 'demandas' => [$minha->id, $alheia->id],
         ])->assertSessionHasNoErrors();
         $this->actingAs($admin)->post('/dev/demandas/reunioes', [
-            'data' => '2026-09-20', 'titulo' => 'Só do outro', 'demandas' => [$alheia->id],
+            'convite' => false, 'data' => '2026-09-20', 'duracao' => 60, 'titulo' => 'Só do outro', 'demandas' => [$alheia->id],
         ])->assertSessionHasNoErrors();
 
         $this->assertSame(2, DevReuniao::first()->demandas()->count());

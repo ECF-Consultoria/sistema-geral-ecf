@@ -8,13 +8,14 @@ use App\Models\DevReuniao;
 use App\Models\User;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Demandas Dev — regras de acesso e montagem das visões (fila, lista, painel).
  *
- * Acesso: admin vê e gerencia tudo; quem não é admin só entra se tiver ao
- * menos uma demanda atribuída, vê apenas as próprias e registra atualização
- * apenas nelas.
+ * Acesso: admin vê e gerencia tudo; quem não é admin entra se tiver ao menos
+ * uma demanda atribuída ou um convite para reunião dev, vê apenas as próprias
+ * demandas e registra atualização apenas nelas.
  */
 class DemandasDevService
 {
@@ -23,7 +24,9 @@ class DemandasDevService
     public function podeAcessar(User $user): bool
     {
         return $user->isAdmin()
-            || DevDemanda::query()->where('responsavel_id', $user->id)->exists();
+            || DevDemanda::query()->where('responsavel_id', $user->id)->exists()
+            // Convidado para uma reunião dev entra para ver a pauta e os links dela.
+            || DB::table('dev_reuniao_participantes')->where('user_id', $user->id)->exists();
     }
 
     public function podeGerenciar(User $user): bool
@@ -181,26 +184,52 @@ class DemandasDevService
         ];
     }
 
-    /** Biblioteca de reuniões. Quem não é admin vê só as ligadas às próprias demandas. */
+    /**
+     * Reuniões, das próximas para as passadas. Quem não é admin vê as que tocam
+     * as próprias demandas e as em que foi convidado.
+     */
     public function reunioes(User $user): array
     {
+        $admin = $user->isAdmin();
+
         return DevReuniao::query()
-            ->with('demandas:dev_demandas.id,codigo,titulo,responsavel_id')
-            ->when(! $user->isAdmin(), fn ($q) => $q->whereHas('demandas', fn ($d) => $d->where('responsavel_id', $user->id)))
+            ->with([
+                'demandas:dev_demandas.id,codigo,titulo,responsavel_id',
+                'participantesUsuarios:users.id,name',
+                'organizador:id,name',
+            ])
+            ->when(! $admin, fn ($q) => $q->where(fn ($w) => $w
+                ->whereHas('demandas', fn ($d) => $d->where('responsavel_id', $user->id))
+                ->orWhereHas('participantesUsuarios', fn ($p) => $p->where('users.id', $user->id))))
             ->orderByDesc('data')
+            ->orderByDesc('inicio')
             ->orderByDesc('id')
             ->get()
             ->map(fn (DevReuniao $r) => [
                 'id'               => $r->id,
                 'data'             => $r->data?->toDateString(),
+                'inicio'           => $r->inicio?->toIso8601String(),
+                'hora'             => $r->inicio?->format('H:i'),
+                'fim_hora'         => $r->fim?->format('H:i'),
+                'duracao_min'      => $r->inicio && $r->fim ? (int) $r->inicio->diffInMinutes($r->fim) : 60,
+                'duracao'          => $r->duracao,
                 'titulo'           => $r->titulo,
+                'modulo'           => $r->modulo,
+                'pauta'            => $r->pauta,
+                'status'           => $r->status(),
                 'participantes'    => $r->participantes,
+                'participantes_usuarios' => $r->participantesUsuarios
+                    ->sortBy('name')->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name])->values()->all(),
+                'organizador'      => $r->organizador?->name,
+                'com_convite'      => $r->temConvite(),
+                'meet_link'        => $r->meet_link,
                 'link_gravacao'    => $r->link_gravacao,
                 'link_transcricao' => $r->link_transcricao,
+                'link_resumo'      => $r->link_resumo,
+                'anexos_buscados_em' => $r->anexos_buscados_em?->toIso8601String(),
                 'decisoes'         => $r->decisoes,
-                'duracao'          => $r->duracao,
                 'demandas'         => $r->demandas
-                    ->when(! $user->isAdmin(), fn ($c) => $c->where('responsavel_id', $user->id))
+                    ->when(! $admin, fn ($c) => $c->where('responsavel_id', $user->id))
                     ->sortBy('codigo')
                     ->map(fn (DevDemanda $d) => ['id' => $d->id, 'codigo' => $d->codigo, 'titulo' => $d->titulo])
                     ->values()

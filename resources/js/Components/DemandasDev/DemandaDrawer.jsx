@@ -1,11 +1,11 @@
-import { CalendarClock, Loader2, Lock, PenLine, Pencil, Video } from 'lucide-react';
+import { CalendarClock, CalendarPlus, Loader2, Lock, PenLine, Pencil, Video } from 'lucide-react';
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/Components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { fmtData, textoPrazo } from '@/lib/demandasDev';
 import { PrioridadeSelo, SituacaoSelo, StatusSelo } from './Selos';
 
 // Painel lateral de uma demanda: dados, próxima ação e o diário completo.
-export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClose, onAtualizar, onEditar }) {
+export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClose, onAtualizar, onEditar, onAgendarReuniao }) {
     const carregando = !detalhe || detalhe.id !== demanda?.id;
     const podeAtualizar = demanda && (pode.gerenciar || demanda.responsavel?.id === eu.id);
 
@@ -118,6 +118,11 @@ export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClos
 
                     {(podeAtualizar || pode.gerenciar) && (
                         <SheetFooter className="flex items-center justify-end gap-2">
+                            {onAgendarReuniao && (
+                                <button type="button" onClick={() => onAgendarReuniao(demanda)} className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] text-white/60 hover:bg-white/[0.04] hover:text-white">
+                                    <CalendarPlus size={14} /> Agendar reunião
+                                </button>
+                            )}
                             {pode.gerenciar && (
                                 <button type="button" onClick={() => onEditar(demanda)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] text-white/60 hover:bg-white/[0.04] hover:text-white">
                                     <Pencil size={14} /> Editar

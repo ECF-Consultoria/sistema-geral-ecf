@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\DevDemanda;
 use App\Models\DevReuniao;
 use App\Models\User;
+use App\Models\GoogleToken;
 use App\Services\DevDemandas\DemandasDevService;
+use App\Services\DevDemandas\ReuniaoDevGoogleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -20,7 +22,10 @@ use Inertia\Inertia;
  */
 class DevDemandaController extends Controller
 {
-    public function __construct(private DemandasDevService $service) {}
+    public function __construct(
+        private DemandasDevService $service,
+        private ReuniaoDevGoogleService $google,
+    ) {}
 
     public function index(Request $request)
     {
@@ -56,6 +61,11 @@ class DevDemandaController extends Controller
             'pode'     => ['gerenciar' => $gerencia],
             'eu'       => ['id' => $user->id, 'tem_demandas' => collect($linhas)->contains(fn ($l) => ($l['responsavel']['id'] ?? null) === $user->id)],
             'hoje'     => $hoje->toDateString(),
+            // Agendar com convite usa a agenda de quem agenda — a tela oferece conectar antes de falhar.
+            'google'   => [
+                'conectado'    => GoogleToken::where('user_id', $user->id)->exists(),
+                'conectar_url' => route('google.connect', ['retorno' => '/dev/demandas']),
+            ],
             // Histórico da demanda aberta no painel lateral (?demanda=ID).
             'detalhe'  => function () use ($request, $user) {
                 $id = (int) $request->query('demanda');
@@ -130,32 +140,76 @@ class DevDemandaController extends Controller
         return back()->with('success', "Atualização de {$demanda->codigo} registrada.");
     }
 
+    /**
+     * Agenda (com convite no Google Agenda + Meet) ou registra uma reunião que já
+     * aconteceu (sem convite). Se o Google recusar, nada é gravado.
+     */
     public function storeReuniao(Request $request)
     {
         abort_unless($this->service->podeGerenciar($request->user()), 403);
 
-        $dados = $this->validarReuniao($request);
+        $convite = $request->boolean('convite');
+        $dados = $this->validarReuniao($request, $convite);
 
-        DB::transaction(function () use ($dados, $request) {
-            $reuniao = DevReuniao::create(collect($dados)->except('demandas')->all() + ['criado_por' => $request->user()->id]);
-            $reuniao->demandas()->sync($dados['demandas'] ?? []);
-        });
+        try {
+            $reuniao = $this->google->agendar($request->user(), $dados, $convite);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
 
-        return back()->with('success', 'Reunião registrada.');
+        return back()->with('success', $reuniao->temConvite()
+            ? 'Reunião agendada. O Google enviou o convite aos participantes.'
+            : 'Reunião registrada.');
     }
 
+    /** Edita a reunião; se ela tem convite, data, hora, pauta e participantes vão ao Google. */
     public function updateReuniao(Request $request, DevReuniao $reuniao)
     {
         abort_unless($this->service->podeGerenciar($request->user()), 403);
 
-        $dados = $this->validarReuniao($request);
+        $dados = $this->validarReuniao($request, $reuniao->temConvite() && ! $reuniao->cancelada_em);
 
-        DB::transaction(function () use ($dados, $reuniao) {
-            $reuniao->update(collect($dados)->except('demandas')->all());
-            $reuniao->demandas()->sync($dados['demandas'] ?? []);
-        });
+        try {
+            $this->google->atualizar($reuniao, $dados);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
 
-        return back()->with('success', 'Reunião atualizada.');
+        return back()->with('success', $reuniao->temConvite() ? 'Reunião atualizada. O Google avisou os participantes.' : 'Reunião atualizada.');
+    }
+
+    /** Cancela a reunião e o convite (o Google avisa os participantes). */
+    public function cancelarReuniao(Request $request, DevReuniao $reuniao)
+    {
+        abort_unless($this->service->podeGerenciar($request->user()), 403);
+
+        try {
+            $this->google->cancelar($reuniao);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', 'Reunião cancelada. O Google avisou os participantes.');
+    }
+
+    /** Puxa gravação, transcrição e anotações do Gemini dos anexos do evento. */
+    public function buscarGravacao(Request $request, DevReuniao $reuniao)
+    {
+        abort_unless($this->service->podeGerenciar($request->user()), 403);
+
+        try {
+            $novos = $this->google->buscarAnexos($reuniao);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        if (! $novos) {
+            return back()->with('aviso', 'O Google ainda não anexou gravação nem transcrição a esse evento. Costuma levar alguns minutos depois do fim da reunião — ou cole os links à mão.');
+        }
+
+        $nomes = ['link_gravacao' => 'gravação', 'link_transcricao' => 'transcrição', 'link_resumo' => 'anotações do Gemini'];
+
+        return back()->with('success', 'Encontrado no Google: ' . implode(', ', array_map(fn ($c) => $nomes[$c], $novos)) . '.');
     }
 
     // ─── Validação ───────────────────────────────────────────────────────────
@@ -177,18 +231,26 @@ class DevDemandaController extends Controller
         ]);
     }
 
-    private function validarReuniao(Request $request): array
+    private function validarReuniao(Request $request, bool $comConvite): array
     {
         return $request->validate([
-            'data'             => ['required', 'date'],
             'titulo'           => ['required', 'string', 'max:255'],
-            'participantes'    => ['nullable', 'string', 'max:255'],
-            'link_gravacao'    => ['nullable', 'url', 'max:500'],
-            'link_transcricao' => ['nullable', 'url', 'max:500'],
-            'decisoes'         => ['nullable', 'string', 'max:10000'],
-            'duracao'          => ['nullable', 'string', 'max:20'],
+            'modulo'           => ['nullable', 'string', 'max:60'],
+            'pauta'            => ['nullable', 'string', 'max:5000'],
+            'data'             => ['required', 'date_format:Y-m-d'],
+            // Convite exige horário; reunião antiga registrada à mão pode ficar só com o dia.
+            'hora'             => [$comConvite ? 'required' : 'nullable', 'date_format:H:i'],
+            'duracao'          => ['required', 'integer', 'min:15', 'max:480'],
+            'participantes'    => ['array'],
+            'participantes.*'  => ['integer', Rule::exists('users', 'id')],
             'demandas'         => ['array'],
             'demandas.*'       => ['integer', Rule::exists('dev_demandas', 'id')],
+            'decisoes'         => ['nullable', 'string', 'max:10000'],
+            'link_gravacao'    => ['nullable', 'url', 'max:500'],
+            'link_transcricao' => ['nullable', 'url', 'max:500'],
+            'link_resumo'      => ['nullable', 'url', 'max:500'],
+        ], [
+            'hora.required' => 'Informe o horário — o convite do Google precisa dele.',
         ]);
     }
 }

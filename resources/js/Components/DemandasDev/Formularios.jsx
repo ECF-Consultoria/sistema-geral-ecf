@@ -31,7 +31,7 @@ function Janela({ open, onOpenChange, titulo, descricao, children, largura = 'ma
     );
 }
 
-function Rodape({ processing, onCancelar, rotulo }) {
+function Rodape({ processing, bloqueado = false, onCancelar, rotulo }) {
     return (
         <div className="flex items-center justify-end gap-2 border-t border-white/[0.06] px-6 py-4">
             <button type="button" onClick={onCancelar} className="rounded-lg px-3.5 py-2 text-[13px] text-white/60 hover:bg-white/[0.04] hover:text-white">
@@ -39,7 +39,7 @@ function Rodape({ processing, onCancelar, rotulo }) {
             </button>
             <button
                 type="submit"
-                disabled={processing}
+                disabled={processing || bloqueado}
                 className="inline-flex items-center gap-2 rounded-lg bg-ecf-yellow px-4 py-2 text-[13px] font-semibold text-black hover:bg-ecf-yellow-2 disabled:opacity-60"
             >
                 {processing && <Loader2 size={14} className="animate-spin" />}
@@ -264,105 +264,233 @@ export function DemandaDialog({ demanda = null, usuarios, areas, prefixos, hoje,
     );
 }
 
-// ═══ Registrar / editar reunião (admin) ═══════════════════════════════════════
-export function ReuniaoDialog({ reuniao = null, demandas, hoje, onClose }) {
+// ═══ Agendar / editar reunião dev (admin) ═════════════════════════════════════
+//
+// Agendar = evento no Google Agenda de quem agenda, com sala do Meet e convite
+// para os participantes. Sem convite = registrar uma reunião que já aconteceu.
+// Depois da reunião entram os links (gravação, transcrição, anotações do Gemini).
+
+const DURACOES = [15, 30, 45, 60, 90, 120];
+
+export function ReuniaoDialog({ reuniao = null, preset = null, demandas, usuarios, areas, google, hoje, onClose }) {
     const editando = !!reuniao;
     const form = useForm({
+        convite:          editando ? reuniao.com_convite : true,
+        titulo:           reuniao?.titulo ?? preset?.titulo ?? '',
+        modulo:           reuniao?.modulo ?? preset?.modulo ?? '',
+        pauta:            reuniao?.pauta ?? '',
         data:             reuniao?.data ?? hoje,
-        titulo:           reuniao?.titulo ?? '',
-        participantes:    reuniao?.participantes ?? '',
-        duracao:          reuniao?.duracao ?? '',
+        hora:             reuniao?.hora ?? '',
+        duracao:          String(reuniao?.duracao_min ?? 60),
+        participantes:    reuniao?.participantes_usuarios?.map((u) => u.id) ?? preset?.participantes ?? [],
+        demandas:         reuniao?.demandas?.map((d) => d.id) ?? preset?.demandas ?? [],
+        decisoes:         reuniao?.decisoes ?? '',
         link_gravacao:    reuniao?.link_gravacao ?? '',
         link_transcricao: reuniao?.link_transcricao ?? '',
-        decisoes:         reuniao?.decisoes ?? '',
-        demandas:         reuniao?.demandas?.map((d) => d.id) ?? [],
+        link_resumo:      reuniao?.link_resumo ?? '',
     });
     const { data, setData, errors, processing } = form;
-    const [busca, setBusca] = useState('');
 
-    const opcoes = useMemo(() => {
-        const t = busca.trim().toLowerCase();
-        return [...demandas]
-            .sort((a, b) => compararCodigo(a.codigo, b.codigo))
-            .filter((d) => !t || d.codigo.toLowerCase().includes(t) || d.titulo.toLowerCase().includes(t));
-    }, [demandas, busca]);
+    form.transform((d) => ({ ...d, duracao: Number(d.duracao), hora: d.hora || null }));
 
-    const alternar = (id) =>
-        setData('demandas', data.demandas.includes(id) ? data.demandas.filter((x) => x !== id) : [...data.demandas, id]);
+    const comConvite = editando ? reuniao.com_convite && reuniao.status !== 'cancelada' : data.convite;
+    const semGoogle = !editando && data.convite && !google.conectado;
+    // Os links só fazem sentido depois da reunião (ou ao editar uma).
+    const mostrarDepois = editando || !data.convite;
+
+    // Escolher uma demanda traz o responsável dela como participante.
+    const alternarDemanda = (id) => {
+        if (data.demandas.includes(id)) {
+            setData('demandas', data.demandas.filter((x) => x !== id));
+            return;
+        }
+        const resp = demandas.find((d) => d.id === id)?.responsavel?.id;
+        form.setData((atual) => ({
+            ...atual,
+            demandas: [...atual.demandas, id],
+            participantes: resp && !atual.participantes.includes(resp) ? [...atual.participantes, resp] : atual.participantes,
+        }));
+    };
+    const alternarPessoa = (id) =>
+        setData('participantes', data.participantes.includes(id) ? data.participantes.filter((x) => x !== id) : [...data.participantes, id]);
 
     const enviar = (e) => {
         e.preventDefault();
-        const o = { preserveScroll: true, preserveState: true, onSuccess: onClose };
+        const o = { preserveScroll: true, preserveState: true, onSuccess: (p) => !p.props.flash?.error && onClose() };
         if (editando) form.put(route('dev.demandas.reunioes.update', reuniao.id), o);
         else form.post(route('dev.demandas.reunioes.store'), o);
     };
+
+    const rotulo = editando ? 'Salvar' : data.convite ? 'Agendar e enviar convite' : 'Registrar reunião';
 
     return (
         <Janela
             open
             onOpenChange={(v) => !v && onClose()}
-            titulo={editando ? 'Editar reunião' : 'Registrar reunião'}
-            descricao="Registre no mesmo dia, com os links e as demandas que a reunião criou ou mudou."
+            titulo={editando ? 'Editar reunião' : 'Agendar reunião dev'}
+            descricao={comConvite
+                ? 'O convite sai da sua agenda do Google, com sala do Meet. Mudanças de data, horário e participantes avisam os convidados.'
+                : 'Sem convite: só fica registrada aqui.'}
             largura="max-w-2xl"
         >
             <form onSubmit={enviar} className="flex min-h-0 flex-col">
-                <div className="max-h-[68vh] space-y-4 overflow-y-auto px-6 py-5">
-                    <div className="grid grid-cols-[150px_1fr] gap-3">
-                        <Campo label="Data" erro={errors.data}>
-                            <input type="date" value={data.data} onChange={(e) => setData('data', e.target.value)} className={inputClasse} />
-                        </Campo>
-                        <Campo label="Reunião / pauta" erro={errors.titulo}>
-                            <input value={data.titulo} onChange={(e) => setData('titulo', e.target.value)} className={inputClasse} data-autofocus />
-                        </Campo>
-                    </div>
-                    <div className="grid grid-cols-[1fr_120px] gap-3">
-                        <Campo label="Participantes" erro={errors.participantes}>
-                            <input value={data.participantes} onChange={(e) => setData('participantes', e.target.value)} className={inputClasse} />
-                        </Campo>
-                        <Campo label="Duração" erro={errors.duracao}>
-                            <input value={data.duracao} onChange={(e) => setData('duracao', e.target.value)} placeholder="1h10" className={inputClasse} />
-                        </Campo>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <Campo label="Link da gravação" erro={errors.link_gravacao}>
-                            <input type="url" value={data.link_gravacao} onChange={(e) => setData('link_gravacao', e.target.value)} placeholder="https://" className={inputClasse} />
-                        </Campo>
-                        <Campo label="Link da transcrição" erro={errors.link_transcricao}>
-                            <input type="url" value={data.link_transcricao} onChange={(e) => setData('link_transcricao', e.target.value)} placeholder="https://" className={inputClasse} />
-                        </Campo>
-                    </div>
-                    <Campo label="Principais decisões / combinados" erro={errors.decisoes}>
-                        <textarea rows={4} value={data.decisoes} onChange={(e) => setData('decisoes', e.target.value)} className={inputClasse} />
-                    </Campo>
-
-                    <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                            <span className="text-[12px] font-medium text-white/60">Demandas relacionadas</span>
-                            <span className="text-[11.5px] text-white/40">{data.demandas.length} selecionada{data.demandas.length === 1 ? '' : 's'}</span>
-                        </div>
-                        <div className="relative">
-                            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-                            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Filtrar por código ou título" className={cn(inputClasse, 'pl-8')} />
-                        </div>
-                        <div className="max-h-48 overflow-y-auto rounded-lg border border-white/[0.06] divide-y divide-white/[0.04]">
-                            {opcoes.map((d) => (
-                                <label key={d.id} className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 hover:bg-white/[0.03]">
-                                    <input
-                                        type="checkbox"
-                                        checked={data.demandas.includes(d.id)}
-                                        onChange={() => alternar(d.id)}
-                                        className="h-3.5 w-3.5 rounded border-white/20 bg-transparent text-ecf-yellow focus:ring-ecf-yellow/40"
-                                    />
-                                    <span className="w-16 shrink-0 font-mono text-[11.5px] text-white/50">{d.codigo}</span>
-                                    <span className="truncate text-[12.5px] text-white/80">{d.titulo}</span>
-                                </label>
+                <div className="max-h-[70vh] space-y-5 overflow-y-auto px-6 py-5">
+                    {!editando && (
+                        <div className="flex rounded-lg border border-white/[0.08] p-0.5 text-[12.5px]" role="radiogroup">
+                            {[[true, 'Agendar com convite do Google'], [false, 'Registrar reunião que já aconteceu']].map(([v, l]) => (
+                                <button
+                                    key={l}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={data.convite === v}
+                                    onClick={() => setData('convite', v)}
+                                    className={cn('flex-1 rounded-md px-3 py-1.5 transition-colors', data.convite === v ? 'bg-white/[0.05] text-white' : 'text-white/50 hover:text-white')}
+                                >
+                                    {l}
+                                </button>
                             ))}
                         </div>
-                        {errors.demandas && <span className="block text-[11.5px] text-red-400">{errors.demandas}</span>}
+                    )}
+
+                    {semGoogle && (
+                        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3 text-[12.5px] text-amber-300">
+                            <span className="flex-1">Sua conta Google não está conectada — sem ela o convite não sai.</span>
+                            <a href={google.conectar_url} className="rounded-md bg-amber-400/15 px-3 py-1.5 font-medium text-amber-200 hover:bg-amber-400/25">Conectar Google</a>
+                        </div>
+                    )}
+
+                    <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
+                        <Campo label="Assunto" erro={errors.titulo}>
+                            <input value={data.titulo} onChange={(e) => setData('titulo', e.target.value)} placeholder="Ex.: Alinhamento da Entrada" className={inputClasse} data-autofocus />
+                        </Campo>
+                        <Campo label="Módulo" erro={errors.modulo}>
+                            <input list="demandas-dev-areas-reuniao" value={data.modulo} onChange={(e) => setData('modulo', e.target.value)} className={inputClasse} />
+                            <datalist id="demandas-dev-areas-reuniao">
+                                {areas.map((a) => <option key={a} value={a} />)}
+                            </datalist>
+                        </Campo>
                     </div>
+
+                    <div className="grid grid-cols-[1fr_110px_120px] gap-3">
+                        <Campo label="Dia" erro={errors.data}>
+                            <input type="date" value={data.data} onChange={(e) => setData('data', e.target.value)} className={inputClasse} />
+                        </Campo>
+                        <Campo label="Horário" erro={errors.hora}>
+                            <input type="time" value={data.hora} onChange={(e) => setData('hora', e.target.value)} className={inputClasse} />
+                        </Campo>
+                        <Campo label="Duração" erro={errors.duracao}>
+                            <select value={data.duracao} onChange={(e) => setData('duracao', e.target.value)} className={inputClasse}>
+                                {DURACOES.map((m) => <option key={m} value={String(m)}>{m < 60 ? `${m} min` : `${m / 60}h`}</option>)}
+                            </select>
+                        </Campo>
+                    </div>
+
+                    <Seletor
+                        titulo="Demandas em pauta"
+                        dica="Quem é responsável entra como participante."
+                        opcoes={[...demandas].sort((a, b) => compararCodigo(a.codigo, b.codigo)).map((d) => ({ id: d.id, rotulo: d.titulo, prefixo: d.codigo, encerrada: d.encerrada }))}
+                        selecionados={data.demandas}
+                        onAlternar={alternarDemanda}
+                        erro={errors.demandas}
+                        busca="Filtrar por código ou título"
+                    />
+
+                    <Seletor
+                        titulo="Participantes"
+                        dica={comConvite ? 'Cada um recebe o convite no e-mail do cadastro.' : null}
+                        opcoes={usuarios.map((u) => ({ id: u.id, rotulo: u.name }))}
+                        selecionados={data.participantes}
+                        onAlternar={alternarPessoa}
+                        erro={errors.participantes}
+                        busca="Buscar pessoa"
+                    />
+
+                    <Campo label="Pauta" erro={errors.pauta} dica={comConvite ? 'Vai na descrição do convite, junto com a lista das demandas.' : null}>
+                        <textarea rows={3} value={data.pauta} onChange={(e) => setData('pauta', e.target.value)} className={inputClasse} />
+                    </Campo>
+
+                    {mostrarDepois && (
+                        <fieldset className="space-y-3 border-t border-white/[0.06] pt-4">
+                            <legend className="sr-only">Depois da reunião</legend>
+                            <p className="text-[13px] font-medium text-white/80">Depois da reunião</p>
+                            {comConvite && (
+                                <p className="text-[12px] text-white/40">
+                                    Quando a reunião é gravada no Meet, o sistema busca sozinho os links nos anexos do convite (a cada 30 min). Colar aqui também vale.
+                                </p>
+                            )}
+                            <div className="grid gap-3 sm:grid-cols-3">
+                                <Campo label="Gravação" erro={errors.link_gravacao}>
+                                    <input type="url" value={data.link_gravacao} onChange={(e) => setData('link_gravacao', e.target.value)} placeholder="https://" className={inputClasse} />
+                                </Campo>
+                                <Campo label="Transcrição" erro={errors.link_transcricao}>
+                                    <input type="url" value={data.link_transcricao} onChange={(e) => setData('link_transcricao', e.target.value)} placeholder="https://" className={inputClasse} />
+                                </Campo>
+                                <Campo label="Anotações do Gemini" erro={errors.link_resumo}>
+                                    <input type="url" value={data.link_resumo} onChange={(e) => setData('link_resumo', e.target.value)} placeholder="https://" className={inputClasse} />
+                                </Campo>
+                            </div>
+                            <Campo label="Decisões e combinados" erro={errors.decisoes}>
+                                <textarea rows={3} value={data.decisoes} onChange={(e) => setData('decisoes', e.target.value)} className={inputClasse} />
+                            </Campo>
+                        </fieldset>
+                    )}
                 </div>
-                <Rodape processing={processing} onCancelar={onClose} rotulo={editando ? 'Salvar' : 'Registrar reunião'} />
+                <Rodape processing={processing} bloqueado={semGoogle} onCancelar={onClose} rotulo={rotulo} />
             </form>
         </Janela>
+    );
+}
+
+// Lista com busca e marcação múltipla; o que está marcado aparece em fichas acima.
+function Seletor({ titulo, dica, opcoes, selecionados, onAlternar, erro, busca: placeholder }) {
+    const [busca, setBusca] = useState('');
+    const t = busca.trim().toLowerCase();
+    const filtradas = opcoes.filter((o) => !t || o.rotulo.toLowerCase().includes(t) || (o.prefixo ?? '').toLowerCase().includes(t));
+    const marcadas = opcoes.filter((o) => selecionados.includes(o.id));
+
+    return (
+        <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[12px] font-medium text-white/60">{titulo}</span>
+                {dica && <span className="text-[11.5px] text-white/40">{dica}</span>}
+            </div>
+            {marcadas.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                    {marcadas.map((o) => (
+                        <button
+                            key={o.id}
+                            type="button"
+                            onClick={() => onAlternar(o.id)}
+                            title="Tirar"
+                            className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-ecf-yellow/10 px-2.5 py-1 text-[12px] text-white hover:bg-ecf-yellow/20"
+                        >
+                            {o.prefixo && <span className="font-semibold text-white/60">{o.prefixo}</span>}
+                            <span className="truncate">{o.rotulo}</span>
+                            <span aria-hidden className="text-white/40">×</span>
+                        </button>
+                    ))}
+                </div>
+            )}
+            <div className="relative">
+                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={placeholder} className={cn(inputClasse, 'pl-8')} />
+            </div>
+            <div className="max-h-36 overflow-y-auto rounded-lg border border-white/[0.06] divide-y divide-white/[0.04]">
+                {filtradas.map((o) => (
+                    <label key={o.id} className={cn('flex cursor-pointer items-center gap-2.5 px-3 py-1.5 hover:bg-white/[0.03]', o.encerrada && 'opacity-50')}>
+                        <input
+                            type="checkbox"
+                            checked={selecionados.includes(o.id)}
+                            onChange={() => onAlternar(o.id)}
+                            className="h-3.5 w-3.5 rounded border-white/20 bg-transparent text-ecf-yellow focus:ring-ecf-yellow/40"
+                        />
+                        {o.prefixo && <span className="w-14 shrink-0 text-[11.5px] font-semibold text-white/50">{o.prefixo}</span>}
+                        <span className="truncate text-[12.5px] text-white/80">{o.rotulo}</span>
+                    </label>
+                ))}
+                {filtradas.length === 0 && <p className="px-3 py-2 text-[12px] text-white/40">Nada encontrado.</p>}
+            </div>
+            {erro && <span className="block text-[11.5px] text-red-400">{erro}</span>}
+        </div>
     );
 }
