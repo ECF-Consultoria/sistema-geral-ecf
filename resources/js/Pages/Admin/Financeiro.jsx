@@ -38,17 +38,78 @@ function faixaNome(faixaKey) {
 const fmtValorFaixa = (valor, isPiso) => valor == null ? null
     : (isPiso ? `a partir de ${fmtBRL(valor)}` : fmtBRL(valor));
 
-// Quick 260922-gn1 (T1) — na composição do grupo a coluna mostra o total
-// faturado da empresa; quando ele vem de duas plataformas, a quebra fica no
-// tooltip para não poluir a linha. Uma plataforma só não rende tooltip: seria
-// repetir o número que já está à vista.
-const detalhePlataformas = (linha) => {
-    const partes = [];
-    if (linha.faturamento_ml != null)     partes.push(`Mercado Livre ${fmtBRL(linha.faturamento_ml)}`);
-    if (linha.faturamento_shopee != null) partes.push(`Shopee ${fmtBRL(linha.faturamento_shopee)}`);
+// Quick 260922-j4l (T1) — o faturamento por plataforma aparece em três lugares
+// da tela (listagem, composição do grupo e empresa expandida). Um componente só
+// para que a mesma informação não nasça com três estilos diferentes. Substitui
+// o tooltip `detalhePlataformas` do quick 260922-gn1: quebra escondida em
+// `title` não existe no celular e ninguém passa o mouse em 200 linhas.
+const PLATAFORMAS_FATURAMENTO = [
+    { chave: 'faturamento_ml',     rotulo: 'Mercado Livre', cor: 'text-amber-300' },
+    { chave: 'faturamento_shopee', rotulo: 'Shopee',        cor: 'text-orange-400' },
+];
 
-    return partes.length > 1 ? partes.join(' + ') : undefined;
-};
+// Regras, todas deliberadas:
+//
+// • Duas plataformas com dado → os dois valores EMPILHADOS, cada um com o nome
+//   por extenso. O rótulo não é enfeite: âmbar e laranja são quase iguais para
+//   quem enxerga pouco, então cor nunca pode ser a única pista.
+// • Uma plataforma só → o valor seco, sem rótulo e SEM cor. Sem comparação, a
+//   cor não informa nada — e âmbar nesta tela já significa pendência
+//   (`IntegrationBadge`), pintar um faturamento normal de âmbar seria alarme
+//   falso.
+// • Nenhuma → "—", nunca R$ 0,00. "Não temos o dado" e "vendeu zero" são coisas
+//   diferentes (D-05).
+//
+// ⛔ Não soma nada. O total é o `faturamento` que o backend mandou e quem exibe
+// o total é quem chama — se um dia ML + Shopee divergir dele, quem precisa
+// aparecer é a divergência, não uma soma inventada aqui.
+// ⛔ Sem `ecf-yellow`: é a cor de ação do sistema (botão, link, foco) e número
+// em amarelo de marca parece clicável.
+//
+// `alinhamento` decide a ordem de rótulo e valor para os dígitos ficarem
+// alinhados entre as duas linhas: à direita o rótulo vem antes (a vírgula do
+// último dígito encosta na borda), à esquerda o valor vem antes (todos começam
+// na mesma coluna). Rótulo largo de um lado e estreito do outro desalinharia os
+// números, que é justamente o que a coluna existe para permitir.
+function ValorPorPlataforma({ linha, alinhamento = 'direita', className, classeEmpilhada }) {
+    const presentes = PLATAFORMAS_FATURAMENTO.filter(p => linha?.[p.chave] != null);
+    const aDireita  = alinhamento === 'direita';
+    const base      = cn('font-mono tabular-nums', aDireita ? 'text-right' : 'text-left', className);
+
+    if (presentes.length === 0) {
+        return <span className={base}>—</span>;
+    }
+
+    if (presentes.length === 1) {
+        return <span className={base}>{fmtBRL(linha[presentes[0].chave])}</span>;
+    }
+
+    return (
+        <span className={cn(base, 'flex flex-col gap-0.5', classeEmpilhada)}>
+            {presentes.map(p => {
+                const rotulo = (
+                    <span key="rotulo" className="text-[11px] font-sans font-medium text-white/35">
+                        {p.rotulo}
+                    </span>
+                );
+                const valor = (
+                    <span key="valor" className={p.cor}>
+                        {fmtBRL(linha[p.chave])}
+                    </span>
+                );
+
+                return (
+                    <span
+                        key={p.chave}
+                        className={cn('flex items-baseline gap-1.5', aDireita ? 'justify-end' : 'justify-start')}
+                    >
+                        {aDireita ? [rotulo, valor] : [valor, rotulo]}
+                    </span>
+                );
+            })}
+        </span>
+    );
+}
 
 // Estilo neutro do handoff (Fase 139 §5) — antes pintava de ecf-yellow, o que
 // competia com o acento reservado a ação/status (Color Contract do UI-SPEC).
@@ -622,14 +683,24 @@ function ValorFixoContratoNota({ variant = 'compact' }) {
 // `plataformasConsideradas` só existe (não-nulo) sob a regra nova;
 // `faturamentoMlBruto`/`faturamentoShopeeBruto` são o faturamento SEM
 // filtro, só para esta comparação — nunca usados em cálculo nenhum.
-function FaturamentoCombinadoBreakdown({ faturamentoMl, faturamentoShopee, faturamentoTotal, plataformasConsideradas, faturamentoMlBruto, faturamentoShopeeBruto }) {
+function FaturamentoCombinadoBreakdown({ faturamentoMl, faturamentoShopee, plataformasConsideradas, faturamentoMlBruto, faturamentoShopeeBruto }) {
     // Só abre a composição quando as duas plataformas têm dado — nunca soma
     // silenciosa (D-05).
+    //
+    // Quick 260922-j4l (T2) — saiu a frase "Mercado Livre X + Shopee Y =
+    // total" e entrou o mesmo empilhado dos outros dois lugares. O "= total"
+    // repetia, em 12px, o número que está logo acima em 24px; e a frase corrida
+    // é exatamente o formato que o usuário pediu para abandonar. Nenhum número
+    // sumiu da tela: o total continua sendo o número grande (que vem do
+    // backend) e ML/Shopee ficam empilhados debaixo dele — some o sinal de "=",
+    // não a conferência.
     const composicao = (faturamentoMl != null && faturamentoShopee != null)
         ? (
-            <p className="text-white/40 text-[12px] mb-2">
-                Mercado Livre {fmtBRL(faturamentoMl)} + Shopee {fmtBRL(faturamentoShopee)} = {fmtBRL(faturamentoTotal)}
-            </p>
+            <ValorPorPlataforma
+                linha={{ faturamento_ml: faturamentoMl, faturamento_shopee: faturamentoShopee }}
+                alinhamento="esquerda"
+                className="text-[13px] mb-2"
+            />
         )
         : null;
 
@@ -904,10 +975,18 @@ function ColunaFaturamento({ empresa }) {
     if (empresa.estado === 'valor_fixo') {
         return <FaturamentoNaoDefineMensalidade variant="compact" />;
     }
+    // Quick 260922-j4l (T2) — empresa atendida nas duas plataformas mostrava só
+    // a soma, e a listagem é onde a pessoa passa o olho primeiro. Os dois
+    // valores empilhados, com o nome ao lado. Fonte menor quando empilha para
+    // a linha não engordar e quebrar o ritmo da lista; nenhuma das duas
+    // plataformas some.
     return (
-        <span className="font-mono tabular-nums text-[16px] text-white/75">
-            {fmtBRL(empresa.faturamento)}
-        </span>
+        <ValorPorPlataforma
+            linha={empresa}
+            alinhamento="esquerda"
+            className="text-[16px] text-white/75"
+            classeEmpilhada="text-[14px]"
+        />
     );
 }
 
@@ -1242,10 +1321,13 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                         ) : (
                             <span className="text-[24px] font-semibold font-mono tabular-nums text-white">{fmtBRL(empresa.faturamento)}</span>
                         )}
+                        {/* Quick 260922-j4l — `faturamentoTotal` saiu da lista: o
+                            total é o número grande logo acima, a quebra não o
+                            repete mais. Prop passada e não usada vira mentira
+                            de assinatura. */}
                         <FaturamentoCombinadoBreakdown
                             faturamentoMl={empresa.faturamento_ml}
                             faturamentoShopee={empresa.faturamento_shopee}
-                            faturamentoTotal={empresa.faturamento}
                             plataformasConsideradas={empresa.plataformas_consideradas}
                             faturamentoMlBruto={empresa.faturamento_ml_bruto}
                             faturamentoShopeeBruto={empresa.faturamento_shopee_bruto}
@@ -1373,13 +1455,14 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                                         {/* Quick 260922-gn1 (T1) — o número que a pessoa
                                             abre o grupo para somar. Empresa sem faturamento
                                             mostra "—", nunca R$ 0: "não temos o dado" e
-                                            "vendeu zero" não podem ficar iguais. */}
-                                        <span
-                                            className="text-white/40 text-[13px] font-mono tabular-nums text-right min-w-[110px]"
-                                            title={detalhePlataformas(e)}
-                                        >
-                                            {e.faturamento != null ? fmtBRL(e.faturamento) : '—'}
-                                        </span>
+                                            "vendeu zero" não podem ficar iguais.
+                                            Quick 260922-j4l (T2): quando vem das duas
+                                            plataformas, os valores ficam à vista na linha —
+                                            o tooltip de antes não existia no celular. */}
+                                        <ValorPorPlataforma
+                                            linha={e}
+                                            className="text-white/40 text-[13px] min-w-[110px]"
+                                        />
                                         <span className="text-white/50 text-[13px] font-mono tabular-nums text-right min-w-[110px]">
                                             {e.cobranca_mensal != null ? fmtValorFaixa(e.cobranca_mensal, e.valor_faixa_e_piso) : '—'}
                                         </span>
@@ -1398,12 +1481,15 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                                     soma as linhas acima. Se um dia divergirem, quem precisa
                                     aparecer é a divergência, não uma soma inventada aqui. */}
                                 <div className="flex items-center gap-4 shrink-0">
-                                    <span
-                                        className="text-white/70 text-[13px] font-semibold font-mono tabular-nums text-right min-w-[110px]"
-                                        title={detalhePlataformas(empresa)}
-                                    >
-                                        {empresa.faturamento != null ? fmtBRL(empresa.faturamento) : '—'}
-                                    </span>
+                                    {/* Quick 260922-j4l (T2) — o total do grupo separa pelo
+                                        mesmo critério das linhas acima: é contra ele que a
+                                        pessoa confere a soma, e conferir uma coluna
+                                        separada por plataforma contra um total somado não
+                                        fecha. */}
+                                    <ValorPorPlataforma
+                                        linha={empresa}
+                                        className="text-white/70 text-[13px] font-semibold min-w-[110px]"
+                                    />
                                     <span className="text-emerald-400 text-[14px] font-bold font-mono tabular-nums text-right min-w-[110px]">{fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}</span>
                                 </div>
                             </div>

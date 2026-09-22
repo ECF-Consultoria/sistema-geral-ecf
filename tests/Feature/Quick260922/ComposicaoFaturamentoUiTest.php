@@ -59,10 +59,14 @@ class ComposicaoFaturamentoUiTest extends TestCase
     #[Test]
     public function a_composicao_mostra_o_faturamento_de_cada_empresa(): void
     {
-        $bloco = $this->bloco('function FechamentoAccordion');
+        $bloco = $this->semComentarios($this->bloco('function FechamentoAccordion'));
 
+        // Quick 260922-j4l — o valor deixou de ser um `fmtBRL` solto na linha e
+        // passou pelo componente único (que separa por plataforma quando há
+        // duas). O que a trava garante continua sendo o mesmo: a coluna traz o
+        // faturamento de cada empresa.
         $this->assertStringContainsString(
-            'fmtBRL(e.faturamento)',
+            'linha={e}',
             $bloco,
             'É o número que a pessoa abre o grupo para somar — sem ele a conferência não acontece.'
         );
@@ -71,37 +75,45 @@ class ComposicaoFaturamentoUiTest extends TestCase
     #[Test]
     public function empresa_sem_faturamento_mostra_travessao_e_nunca_zero(): void
     {
-        $bloco = $this->semComentarios($this->bloco('function FechamentoAccordion'));
+        $bloco = $this->semComentarios($this->bloco('function ValorPorPlataforma'));
 
         $this->assertStringContainsString(
-            "e.faturamento != null ? fmtBRL(e.faturamento) : '—'",
+            "return <span className={base}>—</span>;",
             $bloco,
             '"Não temos o dado" e "vendeu zero" não podem ficar iguais na tela.'
         );
 
         $this->assertStringNotContainsString(
-            'fmtBRL(e.faturamento ?? 0)',
+            '?? 0',
             $bloco,
             'Trocar a ausência por zero é inventar um faturamento que ninguém mediu.'
         );
     }
 
     #[Test]
-    public function a_quebra_por_plataforma_fica_no_tooltip_e_nao_na_linha(): void
+    public function a_quebra_por_plataforma_aparece_na_linha_e_nao_num_tooltip(): void
     {
         $conteudo = $this->lerArquivo();
-        $bloco    = $this->bloco('function FechamentoAccordion');
 
-        $this->assertStringContainsString(
-            'const detalhePlataformas =',
+        // Quick 260922-j4l — o tooltip do quick 260922-gn1 morreu: `title` não
+        // existe no celular e ninguém passa o mouse em 200 linhas para
+        // descobrir de que plataforma veio o dinheiro.
+        $this->assertStringNotContainsString(
+            'const detalhePlataformas',
             $conteudo,
-            'A quebra Mercado Livre/Shopee existe e é montada num lugar só.'
+            'O helper do tooltip saiu de uso — helper morto no arquivo vira a próxima pessoa achando que ainda vale.'
+        );
+
+        $this->assertStringNotContainsString(
+            'detalhePlataformas(',
+            $conteudo,
+            'Nenhuma chamada pode sobrar apontando para um helper que não existe mais.'
         );
 
         $this->assertStringContainsString(
-            'title={detalhePlataformas(e)}',
-            $bloco,
-            'A coluna mostra o total; ML e Shopee separados vão no tooltip para não poluir a linha.'
+            'function ValorPorPlataforma',
+            $conteudo,
+            'A quebra Mercado Livre/Shopee existe e é montada num lugar só.'
         );
     }
 
@@ -112,8 +124,11 @@ class ComposicaoFaturamentoUiTest extends TestCase
     {
         $bloco = $this->semComentarios($this->bloco('function FechamentoAccordion'));
 
+        // Quick 260922-j4l — o total do grupo passou pelo mesmo componente das
+        // linhas acima: conferir uma coluna separada por plataforma contra um
+        // total somado não fecha.
         $this->assertStringContainsString(
-            "empresa.faturamento != null ? fmtBRL(empresa.faturamento) : '—'",
+            'linha={empresa}',
             $bloco,
             'Sem o total na mesma coluna a soma não fecha à vista — é o ponto todo do pedido.'
         );
