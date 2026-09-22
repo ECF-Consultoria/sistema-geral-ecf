@@ -9,6 +9,7 @@ import { useForm, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { Building2, Check, Wrench, Trash2, CheckCircle2, Clock, Copy, RefreshCw, Store, UserCog } from 'lucide-react';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
+import { filtrarPorGrupo, opcoesDeGrupo, SEM_GRUPO } from '@/lib/shopeeEmpresas';
 
 const SHOPEE_ORANGE = '#ee4d2d'; // laranja da marca Shopee
 
@@ -131,6 +132,9 @@ function ShopeeConexao({ company }) {
 // da aba Todas quanto pelo "Resolver" da aba Pendências, e "Excluir" (cancela SÓ
 // o serviço Shopee, não apaga a empresa). O "Gerar NPS" avulso foi removido
 // (o NPS passa a ser por modelo/disparo — Phase 79).
+// A lente por grupo (carteira) vale para a página toda — abas, cards de
+// pendência e tabelas —, menos o sync geral, que roda no servidor sobre todas as
+// lojas conectadas.
 // Rotas: shopee.empresas.* (index, bulk-assign, resolver, cancelar-servico).
 
 // Dicionário de pendências — SÓ as 3 chaves da DEC-2 (voltadas ao NPS).
@@ -189,9 +193,19 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
     const [tab, setTab] = useState('todas');
     const [search, setSearch] = useState('');
 
-    const totalAtivas = companies.filter(c => c.active).length;
+    // ── Lente por grupo (carteira) ───────────────────────────────────────────
+    // Vale para a página inteira: contagem das abas, cards de pendência e as duas
+    // tabelas passam a enxergar só o grupo escolhido. `''` = todos, `'sem'` = as
+    // empresas que não estão em grupo nenhum.
+    const [grupoFilter, setGrupoFilter] = useState('');
+    const doGrupo = filtrarPorGrupo(companies, grupoFilter);
+    const { opcoes: gruposOptions, semGrupo: semGrupoQtd } = opcoesDeGrupo(companies, grupos ?? []);
+
+    const totalAtivas = doGrupo.filter(c => c.active).length;
 
     // ── Sync forçado GERAL (todas as lojas conectadas) ───────────────────────
+    // Fica FORA da lente de propósito: shopee.sync.all roda no servidor sobre
+    // TODAS as lojas conectadas, então o número aqui tem de ser o total.
     const conectadas = companies.filter(c => c.shopee_token?.status === 'active').length;
     const [syncingAll, setSyncingAll] = useState(false);
     const sincronizarTodas = () => {
@@ -205,9 +219,9 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
     };
 
     // ── Pendências (empresas ativas com ≥1 pendência) ────────────────────────
-    const pendentes = companies.filter(c => c.active && (c.pendencias || []).length > 0);
+    const pendentes = doGrupo.filter(c => c.active && (c.pendencias || []).length > 0);
     const pendCounts = { sem_responsavel: 0, sem_contato: 0, empresa_nova: 0 };
-    companies.forEach(c => {
+    doGrupo.forEach(c => {
         if (!c.active) return;
         (c.pendencias || []).forEach(p => { if (pendCounts[p] !== undefined) pendCounts[p]++; });
     });
@@ -221,8 +235,8 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
         setSelectedIds(new Set());
     };
 
-    // ── Filtro da aba Todas (busca por nome/segmento) ────────────────────────
-    const filtered = companies.filter(c => {
+    // ── Filtro da aba Todas (busca por nome/segmento, dentro da lente) ───────
+    const filtered = doGrupo.filter(c => {
         const q = search.toLowerCase();
         return c.name.toLowerCase().includes(q) || (c.segment || '').toLowerCase().includes(q);
     });
@@ -237,6 +251,13 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
         });
     };
     const clearSelection = () => setSelectedIds(new Set());
+
+    // Trocar a lente limpa a seleção — linha selecionada que sai da tela ainda
+    // entraria no bulk-assign, e ninguém veria.
+    const aplicarGrupo = (valor) => {
+        setGrupoFilter(valor);
+        clearSelection();
+    };
 
     // Fonte da lista da view corrente (Todas vs Pendências) — orienta o "selecionar tudo".
     const viewList = tab === 'todas' ? filtered : pendentesView;
@@ -327,6 +348,36 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
         </Button>
     );
 
+    // Select da lente por grupo — o mesmo nas duas abas (estado unico).
+    const GrupoFilter = () => (
+        <div className="flex items-center gap-2">
+            <select
+                value={grupoFilter}
+                onChange={e => aplicarGrupo(e.target.value)}
+                title="Filtrar as empresas por grupo (carteira)"
+                className={cn(
+                    'h-9 pl-3 pr-8 rounded-lg border text-[13px] cursor-pointer focus:outline-none focus:border-ecf-yellow/40',
+                    grupoFilter
+                        ? 'border-ecf-yellow/40 bg-ecf-yellow/[0.07] text-white'
+                        : 'border-white/[0.1] bg-white/[0.05] text-white/80'
+                )}
+            >
+                <option value="" className="bg-[#0f1116]">Todos os grupos</option>
+                {gruposOptions.map(g => (
+                    <option key={g.id} value={String(g.id)} className="bg-[#0f1116]">{g.name} ({g.qtd})</option>
+                ))}
+                {semGrupoQtd > 0 && (
+                    <option value={SEM_GRUPO} className="bg-[#0f1116]">— sem grupo — ({semGrupoQtd})</option>
+                )}
+            </select>
+            {grupoFilter && (
+                <button onClick={() => aplicarGrupo('')} className="text-[12px] text-white/50 hover:text-white underline">
+                    limpar
+                </button>
+            )}
+        </div>
+    );
+
     // Barra de ações em massa (aparece quando há seleção) — atribuição de responsáveis.
     const BulkBar = () => (
         selectedIds.size > 0 && (
@@ -379,6 +430,7 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                     <>
                         <div className="flex items-center gap-2 flex-wrap">
                             <Input placeholder="Buscar empresa..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-sm" />
+                            <GrupoFilter />
                             {conectadas > 0 && (
                                 <Button
                                     size="sm"
@@ -458,7 +510,9 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                                             <TableRow>
                                                 <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                                                     <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                                                    Nenhuma empresa Shopee encontrada
+                                                    {grupoFilter || search
+                                                        ? 'Nenhuma empresa Shopee com esse filtro.'
+                                                        : 'Nenhuma empresa Shopee encontrada'}
                                                 </TableCell>
                                             </TableRow>
                                         )}
@@ -472,6 +526,8 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                 {/* ══════════════ ABA PENDÊNCIAS ══════════════ */}
                 {tab === 'pendencias' && (
                     <>
+                        <GrupoFilter />
+
                         {/* Cards clicáveis — filtram a lista por tipo de pendência */}
                         <div className="flex flex-wrap items-center gap-3">
                             {Object.entries(PENDENCIAS).map(([key, cfg]) => (
