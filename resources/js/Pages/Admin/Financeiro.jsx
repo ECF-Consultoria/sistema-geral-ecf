@@ -38,6 +38,18 @@ function faixaNome(faixaKey) {
 const fmtValorFaixa = (valor, isPiso) => valor == null ? null
     : (isPiso ? `a partir de ${fmtBRL(valor)}` : fmtBRL(valor));
 
+// Quick 260922-gn1 (T1) — na composição do grupo a coluna mostra o total
+// faturado da empresa; quando ele vem de duas plataformas, a quebra fica no
+// tooltip para não poluir a linha. Uma plataforma só não rende tooltip: seria
+// repetir o número que já está à vista.
+const detalhePlataformas = (linha) => {
+    const partes = [];
+    if (linha.faturamento_ml != null)     partes.push(`Mercado Livre ${fmtBRL(linha.faturamento_ml)}`);
+    if (linha.faturamento_shopee != null) partes.push(`Shopee ${fmtBRL(linha.faturamento_shopee)}`);
+
+    return partes.length > 1 ? partes.join(' + ') : undefined;
+};
+
 // Estilo neutro do handoff (Fase 139 §5) — antes pintava de ecf-yellow, o que
 // competia com o acento reservado a ação/status (Color Contract do UI-SPEC).
 function ServiceBadge({ servicos_contratados }) {
@@ -685,7 +697,10 @@ function legendaComposicaoAntiga(empresa) {
 function GrupoServicosDivergentesBanner({ empresa, regraNovaAtiva = false }) {
     if (!empresa.tabelas_divergentes) return null;
 
-    const membros = [empresa, ...(empresa.filhas || [])];
+    // Quick 260922-gn1 (T2): `filhas` já traz TODAS as empresas do grupo — a
+    // linha-mãe é sintética e leva o nome do grupo, então juntá-la aqui
+    // listava o grupo como se fosse mais uma empresa com tabela divergente.
+    const membros = empresa.filhas || [];
 
     function legendaTabela(m) {
         if (regraNovaAtiva) {
@@ -963,7 +978,11 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
                         {empresa.tabela_confirmada === false && <TabelaPresumidaBadge />}
                         {empresa.filhas?.length > 0 && (
                             <span className="text-[12px] font-semibold px-2 py-0.5 rounded-md bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20">
-                                Grupo · {empresa.filhas.length + 1}
+                                {/* Quick 260922-gn1 (T2) — `filhas` já inclui a
+                                    empresa que ancora a cobrança; o `+ 1` antigo
+                                    contava a linha do grupo como empresa e dizia
+                                    "Grupo · 11" para 10 empresas. */}
+                                Grupo · {empresa.filhas.length}
                             </span>
                         )}
                         {/* Fase 143 (143-05) — quando a cobrança junta mais de
@@ -1272,14 +1291,23 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                     </div>
                 </div>
 
-                {/* Composição do grupo (pai + filhas + total) — Fase 138,
-                    preservada, agora depois dos três passos. */}
+                {/* Composição do grupo (as empresas + o total) — Fase 138,
+                    preservada, agora depois dos três passos. Quick 260922-gn1:
+                    a linha do grupo saiu daqui de dentro; ela já é o "Total do
+                    grupo" lá embaixo. */}
                 {temGrupo && (
                     <>
                         <GrupoServicosDivergentesBanner empresa={empresa} regraNovaAtiva={regraNovaAtiva} />
                         <div className="rounded-lg border border-white/[0.06] overflow-hidden">
-                            <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04]">
+                            {/* Quick 260922-gn1 (T1) — as duas colunas da
+                                direita nomeadas: sem rótulo, dois valores em
+                                dinheiro lado a lado viram adivinhação. */}
+                            <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04] flex items-center justify-between gap-3">
                                 <span className="text-[12px] uppercase tracking-wider text-white/40">Composição do grupo</span>
+                                <div className="flex items-center gap-4 shrink-0">
+                                    <span className="text-[11px] uppercase tracking-wider text-white/30 text-right min-w-[110px]">Faturamento</span>
+                                    <span className="text-[11px] uppercase tracking-wider text-white/30 text-right min-w-[110px]">Mensalidade</span>
+                                </div>
                             </div>
                             {/* Fase 143 (143-05, item 5 do deferred-items) — quais
                                 grupos do cadastro esta cobrança está somando. Sem
@@ -1312,20 +1340,24 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                                     )}
                                 </div>
                             )}
-                            {[empresa, ...empresa.filhas].map((e, i) => (
-                                <div key={e.id} className={cn('flex items-center justify-between px-3 py-2', i > 0 && 'border-t border-white/[0.03]')}>
+                            {/* Quick 260922-gn1 (T2) — o map é sobre `empresa.filhas`
+                                e só. `filhas` já traz TODAS as empresas do grupo,
+                                inclusive a que ancora a cobrança; o `[empresa, ...]`
+                                antigo colocava a linha sintética do grupo no topo e
+                                a empresa aparecia duas vezes (uma com o nome do
+                                grupo, outra com o dela). */}
+                            {empresa.filhas.map((e, i) => (
+                                <div key={e.id} className={cn('flex items-center justify-between gap-3 px-3 py-2', i > 0 && 'border-t border-white/[0.03]')}>
                                     <span className="text-white/60 text-[13px]">
                                         {/* Aqui nao existe o problema do <button> da linha da
-                                            listagem — e so um <div>, entao basta o link. Na linha
-                                            de indice 0 so o NOME vira link, o "(este)" fica fora. */}
-                                        {i > 0 && '↳ '}
+                                            listagem — e so um <div>, entao basta o link. */}
+                                        ↳{' '}
                                         <Link
                                             href={route('companies.show', e.id)}
                                             className="hover:text-ecf-yellow hover:underline underline-offset-2 transition-colors rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/60"
                                         >
                                             {e.name}
                                         </Link>
-                                        {i === 0 && ' (este)'}
                                         {e.tabela_origem && (
                                             <span className="text-white/30 text-[12px] ml-1.5">
                                                 ({e.tabela_origem === 'grupo'
@@ -1337,18 +1369,43 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                                             <span className="text-white/25 text-[11px] ml-1">· presumida</span>
                                         )}
                                     </span>
-                                    <span className="text-white/50 text-[13px] font-mono">
-                                        {e.cobranca_mensal != null ? fmtValorFaixa(e.cobranca_mensal, e.valor_faixa_e_piso) : '—'}
-                                    </span>
+                                    <div className="flex items-center gap-4 shrink-0">
+                                        {/* Quick 260922-gn1 (T1) — o número que a pessoa
+                                            abre o grupo para somar. Empresa sem faturamento
+                                            mostra "—", nunca R$ 0: "não temos o dado" e
+                                            "vendeu zero" não podem ficar iguais. */}
+                                        <span
+                                            className="text-white/40 text-[13px] font-mono tabular-nums text-right min-w-[110px]"
+                                            title={detalhePlataformas(e)}
+                                        >
+                                            {e.faturamento != null ? fmtBRL(e.faturamento) : '—'}
+                                        </span>
+                                        <span className="text-white/50 text-[13px] font-mono tabular-nums text-right min-w-[110px]">
+                                            {e.cobranca_mensal != null ? fmtValorFaixa(e.cobranca_mensal, e.valor_faixa_e_piso) : '—'}
+                                        </span>
+                                    </div>
                                 </div>
                             ))}
-                            <div className="flex items-center justify-between px-3 py-2 border-t border-white/[0.06] bg-white/[0.02]">
+                            <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-white/[0.06] bg-white/[0.02]">
                                 <span className="text-[12px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
                                 {/* `empresa` aqui É a linha do grupo (tipo 'grupo') — o backend já
-                                    grava o total do grupo no `cobranca_mensal` da própria linha-mãe
-                                    (AdminController ~linha 801). A chave com sufixo "_grupo" nunca
-                                    existiu separada (mesma prop fantasma que existia na FechamentoRow). */}
-                                <span className="text-emerald-400 text-[14px] font-bold font-mono">{fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}</span>
+                                    grava o total do grupo no `cobranca_mensal` e no `faturamento`
+                                    da própria linha-mãe (AdminController ~linha 801 e ~1383). A
+                                    chave com sufixo "_grupo" nunca existiu separada (mesma prop
+                                    fantasma que existia na FechamentoRow).
+
+                                    ⚠️ Os dois totais são os que o backend mandou — a tela NÃO
+                                    soma as linhas acima. Se um dia divergirem, quem precisa
+                                    aparecer é a divergência, não uma soma inventada aqui. */}
+                                <div className="flex items-center gap-4 shrink-0">
+                                    <span
+                                        className="text-white/70 text-[13px] font-semibold font-mono tabular-nums text-right min-w-[110px]"
+                                        title={detalhePlataformas(empresa)}
+                                    >
+                                        {empresa.faturamento != null ? fmtBRL(empresa.faturamento) : '—'}
+                                    </span>
+                                    <span className="text-emerald-400 text-[14px] font-bold font-mono tabular-nums text-right min-w-[110px]">{fmtValorFaixa(empresa.cobranca_mensal, empresa.valor_faixa_e_piso)}</span>
+                                </div>
                             </div>
                         </div>
                     </>
