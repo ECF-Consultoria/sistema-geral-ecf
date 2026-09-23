@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useState } from 'react';
 import PessoasDoCliente from '@/Components/Onboarding/PessoasDoCliente';
 import FotografiaDaConta from '@/Components/Onboarding/FotografiaDaConta';
 import { router, usePage } from '@inertiajs/react';
@@ -170,78 +170,11 @@ function LinkAppEcf({ url }) {
 }
 
 // ─── Card de um passo (1 por `chave`, nunca por onboarding_passo) ───────────
-
-const PAPEIS_CONTATO = [
-    ['ponto_de_contato',    'Ponto de contato',         'Quem acionamos no dia a dia.'],
-    ['participante_reuniao', 'Participantes das reuniões', 'Quem recebe o convite dos encontros.'],
-];
-
-/**
- * Contatos do cliente, no portal (14/09).
- *
- * ### Por que existe, se os passos saíram
- * `ponto_contato_definido` e `participantes_reuniao_cadastrados` deixaram de
- * ser itens do portal na mesma decisão — são cadastro INTERNO, não tarefa que
- * se cobra do cliente numa lista. Mas o negócio pediu os CONTATOS no portal, e
- * as duas coisas não se contradizem: o que saiu foi a cobrança em forma de
- * checklist; o que entra é o bloco onde a informação vive e é conferida junto
- * com o cliente na reunião.
- *
- * Escrita é da equipe, leitura é dos dois — mesma régua dos outros blocos. O
- * endpoint é o `onboarding.pessoas` que já existia e já funcionava nos dois
- * modos; nada de rota nova.
- *
- * Sem ninguém cadastrado e sem ser equipe, o bloco não aparece: uma lista vazia
- * no portal do cliente não informa nada e ainda parece defeito.
- */
-function BlocoContatosPortal({ pessoas, token, ehEquipe }) {
-    const temAlguem = PAPEIS_CONTATO.some(([papel]) => (pessoas?.[papel] ?? []).length > 0);
-
-    if (! ehEquipe && ! temAlguem) return null;
-
-    return (
-        <section className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-4">
-            <h2 className="text-white font-display font-bold text-[15px]">Contatos</h2>
-
-            {PAPEIS_CONTATO.map(([papel, rotulo, ajuda]) => {
-                const doPapel = pessoas?.[papel] ?? [];
-
-                if (! ehEquipe && doPapel.length === 0) return null;
-
-                return (
-                    <div key={papel} className="space-y-1.5">
-                        <div>
-                            <p className="text-white/70 text-[13px] font-semibold">{rotulo}</p>
-                            <p className="text-white/35 text-[12px]">{ajuda}</p>
-                        </div>
-
-                        {ehEquipe ? (
-                            <PessoasDoCliente
-                                token={token}
-                                papel={papel}
-                                pessoas={doPapel}
-                                // O ponto de contato entra também como
-                                // participante: sugerir quem já está cadastrado
-                                // evita redigitar os mesmos dados.
-                                sugestoes={papel === 'participante_reuniao' ? (pessoas?.ponto_de_contato ?? []) : []}
-                            />
-                        ) : (
-                            <ul className="space-y-1">
-                                {doPapel.map((pessoa) => (
-                                    <li key={pessoa.id} className="flex flex-wrap items-center gap-2 text-[13px]">
-                                        <span className="text-white/85">{pessoa.nome}</span>
-                                        {pessoa.funcao && <span className="text-white/35 text-[12px]">{pessoa.funcao}</span>}
-                                        {pessoa.email && <span className="text-white/55 text-[12px]">{pessoa.email}</span>}
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </div>
-                );
-            })}
-        </section>
-    );
-}
+//
+// O bloco "Contatos" (ponto de contato + participantes das reuniões) saiu do
+// portal em 23/09/2026 a pedido do negócio: "não precisamos mais disso". Os
+// contatos continuam cadastrados e editáveis na ficha interna do onboarding —
+// é de lá que o convite da reunião tira os convidados.
 
 const CAMPOS_ANOTACAO = [
     ['pontos_atencao',  'Pontos de atenção'],
@@ -249,10 +182,14 @@ const CAMPOS_ANOTACAO = [
     ['proximos_passos', 'Próximos passos'],
 ];
 
+// As três perspectivas do investimento (23/09/2026). As COLUNAS não mudaram de
+// nome — só o que a tela pergunta: `investimento_mensal_previsto` passou a ser
+// o objetivo de investimento, e `investimento_publicidade`, o que o cliente já
+// investiu nos últimos 90 dias. Espelho de `Painel/BlocoInvestimento.jsx`.
 const CAMPOS_INVESTIMENTO = [
     ['investimento_disponivel',      'Disponível para investir'],
-    ['investimento_mensal_previsto', 'Previsto por mês'],
-    ['investimento_publicidade',     'Em publicidade'],
+    ['investimento_mensal_previsto', 'Objetivo de investimento'],
+    ['investimento_publicidade',     'Investido nos últimos 90 dias'],
 ];
 
 /**
@@ -418,118 +355,71 @@ function BlocoInvestimentoPortal({ bloco, token, ehEquipe }) {
     );
 }
 
-const RESPOSTA_ROTULO = {
-    sim:      'Sim',
-    nao:      'Não',
-    pendente: 'Pendente',
-};
+/**
+ * Grava a resposta de um item conduzido na reunião, pelo portal.
+ *
+ * Nunca manda `observacoes`: o servidor entende a ausência da chave como
+ * "mantenha a que já existe". A observação saiu da tela do portal em
+ * 23/09/2026, mas continua viva na ficha interna — mandar `null` daqui a
+ * apagaria calada a cada check.
+ */
+function responderConfirmacao(token, chave, resposta, onFinish) {
+    router.post(
+        rotaDoPortal('onboarding.confirmacao', token),
+        { chave, resposta },
+        { preserveScroll: true, onFinish },
+    );
+}
 
 /**
- * Item CONDUZIDO na reunião — fica registrado com resposta e observação.
+ * Item CONDUZIDO na reunião (os "explicados", 04 a 08 da lista) — só um check.
  *
- * ### Quem registra
+ * Até 23/09/2026 era observação + Sim / Não / Pendente. O negócio pediu "manter
+ * ali apenas um check": marcar grava "Sim" (a única resposta que fecha o item,
+ * ver `ConfirmacaoResolver`), e desmarcar — no rodapé de concluído do card —
+ * devolve a "Pendente". "Não" e a observação continuam existindo na ficha
+ * interna, para quem precisar registrar o porquê.
+ *
+ * ### Quem marca
  * Só a equipe da ECF, autenticada. Estes itens são `dono=interno`: o cliente
- * participa da conversa e vê o que ficou registrado, mas quem grava somos nós.
- * A régua real está no servidor (`responderConfirmacaoPorChave()` recusa
- * qualquer outro ator); aqui a tela só não oferece o que seria recusado.
- *
- * Sem resposta e sem ser equipe, o card não mostra formulário nenhum em vez de
- * um "nada a fazer" — o item existe para ser conversado, e dizer ao cliente
- * que não há nada ali seria a leitura errada.
+ * participa da conversa e vê o item fechar, mas quem grava somos nós. A régua
+ * real está no servidor (`responderConfirmacaoPorChave()` recusa qualquer
+ * outro ator); aqui a tela só não oferece o que seria recusado.
  */
 function BlocoConfirmacao({ passo, token, ehEquipe }) {
-    const registrada = passo.confirmacao;
-    const [obs, setObs] = useState(registrada?.observacoes ?? '');
     const [salvando, setSalvando] = useState(false);
 
-    // Resincroniza o campo com o que foi GRAVADO. `useState` só lê o valor
-    // inicial uma vez, e as props do Inertia trocam a cada resposta salva —
-    // sem isto o campo seguiria mostrando o texto antigo depois de alguém
-    // responder o mesmo item de novo, ou o texto de outra sessão da equipe.
-    // `respondido_em` é o gatilho por ser o que muda a cada gravação.
-    useEffect(() => {
-        setObs(registrada?.observacoes ?? '');
-    }, [registrada?.respondido_em, registrada?.observacoes]);
-
-    function responder(resposta) {
-        if (salvando) return;
-        setSalvando(true);
-        router.post(
-            rotaDoPortal('onboarding.confirmacao', token),
-            { chave: passo.chave, resposta, observacoes: obs.trim() || null },
-            { preserveScroll: true, onFinish: () => setSalvando(false) },
+    if (! ehEquipe) {
+        return (
+            <p className="text-white/40 text-[12px]">
+                Vamos tratar disto na reunião, junto com você.
+            </p>
         );
     }
 
+    function marcar() {
+        if (salvando) return;
+        setSalvando(true);
+        responderConfirmacao(token, passo.chave, 'sim', () => setSalvando(false));
+    }
+
     return (
-        <div className="w-full space-y-2">
-            {/* O que ficou REGISTRADO, para os dois lados. Antes isto só
-                aparecia para o cliente: a equipe via a observação apenas dentro
-                do campo de edição, o que é ambíguo — texto em textarea parece
-                rascunho não salvo, não registro gravado. */}
-            {registrada && (
-                <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 space-y-1">
-                    <p className="text-white/50 text-[12px]">
-                        <span className="text-white/85 font-semibold">
-                            {RESPOSTA_ROTULO[registrada.resposta] ?? registrada.resposta}
-                        </span>
-                        {registrada.respondido_por && ` · ${registrada.respondido_por}`}
-                        {registrada.respondido_em && ` · ${new Date(registrada.respondido_em).toLocaleDateString('pt-BR', {
-                            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-                        })}`}
-                    </p>
-
-                    {registrada.observacoes ? (
-                        <p className="text-white/60 text-[12px] leading-relaxed whitespace-pre-wrap">
-                            {registrada.observacoes}
-                        </p>
-                    ) : (
-                        <p className="text-white/25 text-[12px] italic">Sem observação.</p>
-                    )}
-                </div>
-            )}
-
-            {! registrada && ! ehEquipe && (
-                <p className="text-white/40 text-[12px]">
-                    Vamos tratar disto na reunião, junto com você.
-                </p>
-            )}
-
-            {ehEquipe && (
-                <>
-                    <textarea
-                        value={obs}
-                        onChange={(e) => setObs(e.target.value)}
-                        rows={3}
-                        placeholder={registrada ? 'Editar a observação' : 'Observação da conversa (opcional)'}
-                        className={cn(
-                            'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
-                            'px-3 py-2 text-[12px] text-white/80 leading-relaxed resize-y',
-                            'placeholder:text-white/25',
-                        )}
-                    />
-
-                    <div className="flex flex-wrap gap-2">
-                        {['sim', 'nao', 'pendente'].map((valor) => (
-                            <button
-                                key={valor}
-                                type="button"
-                                disabled={salvando}
-                                onClick={() => responder(valor)}
-                                className={cn(
-                                    'rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-40',
-                                    registrada?.resposta === valor
-                                        ? 'bg-ecf-yellow text-ecf-bg'
-                                        : 'border border-white/[0.10] bg-white/[0.03] text-white/70 hover:text-white',
-                                )}
-                            >
-                                {RESPOSTA_ROTULO[valor]}
-                            </button>
-                        ))}
-                    </div>
-                </>
-            )}
-        </div>
+        <label className="flex items-center gap-2.5 group w-fit cursor-pointer">
+            <div
+                onClick={marcar}
+                role="checkbox"
+                aria-checked="false"
+                aria-label={`Marcar "${passo.titulo}" como feito`}
+                className={cn(
+                    'w-5 h-5 rounded border-2 border-white/20 flex items-center justify-center transition-all',
+                    'group-hover:border-emerald-400/50',
+                    salvando && 'opacity-40',
+                )}
+            />
+            <span className="text-[13px] font-medium text-white/40 group-hover:text-white/60 transition-colors">
+                {salvando ? 'Marcando…' : 'Marcar como feito'}
+            </span>
+        </label>
     );
 }
 
@@ -558,6 +448,16 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
             preserveScroll: true,
             onFinish: () => setMarcando(false),
         });
+    }
+
+    // O item de reunião fecha pelo resolver, não por status: desmarcar é
+    // devolver a resposta a "Pendente". Só a equipe — mesma régua do marcar.
+    const podeDesmarcarConfirmacao = passo.acao === 'confirmar' && ehEquipe;
+
+    function desmarcarConfirmacao() {
+        if (marcando) return;
+        setMarcando(true);
+        responderConfirmacao(token, passo.chave, 'pendente', () => setMarcando(false));
     }
 
     // Sai do portal para o OAuth do Mercado Livre. Navegação de página inteira
@@ -657,9 +557,9 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
                     {concluido && (
                         <div className="mt-2 flex items-center gap-3 flex-wrap">
                             <p className="text-emerald-300/70 text-[11px]">Concluído.</p>
-                            {passo.pode_desmarcar && (
+                            {(passo.pode_desmarcar || podeDesmarcarConfirmacao) && (
                                 <span
-                                    onClick={desmarcar}
+                                    onClick={podeDesmarcarConfirmacao ? desmarcarConfirmacao : desmarcar}
                                     className="text-white/40 hover:text-white text-[11px] cursor-pointer select-none underline underline-offset-2"
                                 >
                                     {marcando ? 'Desmarcando…' : 'Desmarcar'}
@@ -1163,8 +1063,6 @@ export default function Publico({
                             que diziam "como está a conta" (Métricas da conta e
                             a ficha de mapeamento). */}
                         <FotografiaDaConta fotografia={fotografia} token={token} ehEquipe={ehEquipe} />
-
-                        <BlocoContatosPortal pessoas={pessoas} token={token} ehEquipe={ehEquipe} />
 
                         {blocos_operacao.map((bloco) => (
                             <Fragment key={bloco.onboarding_id}>

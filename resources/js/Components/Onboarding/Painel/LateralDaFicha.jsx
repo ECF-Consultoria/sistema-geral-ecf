@@ -107,8 +107,9 @@ export function ResumoDoCliente({ onboarding, mapeamento, contatos = [], investi
                 }
                 alerta={semEmail > 0}
             />
-            <Campo rotulo="Investimento previsto" valor={mensal ? `${mensal}/mês` : null} />
-            <Campo rotulo="Em publicidade" valor={publicidade} />
+            {/* Rótulos de 23/09/2026 — mesmas perguntas de `BlocoInvestimento`. */}
+            <Campo rotulo="Objetivo de investimento" valor={mensal} />
+            <Campo rotulo="Investido nos últimos 90 dias" valor={publicidade} />
         </CartaoLateral>
     );
 }

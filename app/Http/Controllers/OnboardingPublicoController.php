@@ -206,6 +206,9 @@ class OnboardingPublicoController extends Controller
                 $data['resposta'],
                 $data['observacoes'] ?? null,
                 $ator,
+                // O check do portal (23/09/2026) não manda a chave: sem ela, a
+                // observação gravada pela ficha interna fica como está.
+                manterObservacoes: ! $request->exists('observacoes'),
             );
         } catch (\DomainException $e) {
             throw ValidationException::withMessages(['chave' => $e->getMessage()]);

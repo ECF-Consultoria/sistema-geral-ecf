@@ -256,4 +256,51 @@ class ConfirmacaoNoPortalTest extends TestCase
         $this->assertNotNull($item);
         $this->assertNull($item['confirmacao']);
     }
+
+    // ─── O check do portal (23/09/2026) ─────────────────────────────────────
+
+    /**
+     * O portal virou só um check nestes itens e deixou de mandar observação.
+     * A observação escrita pela ficha interna precisa sobreviver ao check e ao
+     * desmarcar — mandar `null` a apagaria calada.
+     */
+    public function test_check_e_desmarcar_do_portal_preservam_a_observacao_da_ficha(): void
+    {
+        $c = $this->cenario();
+
+        $this->service()->responderConfirmacaoPorChave(
+            $c['empresa'], self::CHAVE, OnboardingConfirmacao::RESPOSTA_NAO, 'escrita na ficha interna', $this->daEquipe()
+        );
+
+        $this->service()->responderConfirmacaoPorChave(
+            $c['empresa'], self::CHAVE, OnboardingConfirmacao::RESPOSTA_SIM, null, $this->daEquipe(), manterObservacoes: true
+        );
+
+        $passo = OnboardingPasso::where('onboarding_id', $c['onboarding']->id)->where('chave', self::CHAVE)->first();
+        $this->assertSame(OnboardingPasso::STATUS_CONCLUIDO, $passo->status, 'o check grava "Sim", que fecha o item');
+
+        $this->service()->responderConfirmacaoPorChave(
+            $c['empresa'], self::CHAVE, OnboardingConfirmacao::RESPOSTA_PENDENTE, null, $this->daEquipe(), manterObservacoes: true
+        );
+
+        $confirmacao = OnboardingConfirmacao::where('onboarding_id', $c['onboarding']->id)->first();
+        $this->assertSame(OnboardingConfirmacao::RESPOSTA_PENDENTE, $confirmacao->resposta);
+        $this->assertSame('escrita na ficha interna', $confirmacao->observacoes);
+        $this->assertNotSame(OnboardingPasso::STATUS_CONCLUIDO, $passo->fresh()->status, 'desmarcar reabre o item');
+    }
+
+    /** Sem a flag, a observação continua sendo o que veio — a ficha interna depende disso para limpar. */
+    public function test_sem_a_flag_observacao_nula_limpa_como_antes(): void
+    {
+        $c = $this->cenario();
+
+        $this->service()->responderConfirmacaoPorChave(
+            $c['empresa'], self::CHAVE, OnboardingConfirmacao::RESPOSTA_SIM, 'vai sumir', $this->daEquipe()
+        );
+        $this->service()->responderConfirmacaoPorChave(
+            $c['empresa'], self::CHAVE, OnboardingConfirmacao::RESPOSTA_SIM, null, $this->daEquipe()
+        );
+
+        $this->assertNull(OnboardingConfirmacao::where('onboarding_id', $c['onboarding']->id)->value('observacoes'));
+    }
 }

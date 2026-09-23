@@ -197,6 +197,10 @@ class OnboardingLinkService
      * Escreve em TODOS os onboardings da empresa que têm a chave (D-10), do
      * mesmo jeito que as outras escritas por chave.
      *
+     * `$manterObservacoes` (23/09/2026): o portal virou só um check nestes
+     * itens e deixou de mandar observação. Com a flag, a observação que a
+     * ficha interna gravou sobrevive à resposta.
+     *
      * @return int quantos onboardings receberam a resposta
      */
     public function responderConfirmacaoPorChave(
@@ -205,6 +209,7 @@ class OnboardingLinkService
         string $resposta,
         ?string $observacoes,
         ?AtorDoPortal $ator,
+        bool $manterObservacoes = false,
     ): int {
         if (! ($ator?->equipe ?? false)) {
             throw new \DomainException(
@@ -234,7 +239,10 @@ class OnboardingLinkService
                 ['onboarding_id' => $passo->onboarding_id, 'chave' => $chave],
                 [
                     'resposta'       => $resposta,
-                    'observacoes'    => $observacoes,
+                    // `$manterObservacoes`: o check do portal só responde, e a
+                    // observação é da ficha interna — sobrescrevê-la com null
+                    // apagaria o registro de quem o escreveu.
+                    ...($manterObservacoes ? [] : ['observacoes' => $observacoes]),
                     'respondido_em'  => now(),
                     'respondido_por' => $usuarioId,
                 ]
