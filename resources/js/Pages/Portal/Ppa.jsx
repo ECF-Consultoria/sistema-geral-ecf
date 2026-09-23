@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { ClipboardList, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
@@ -76,8 +76,27 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
         prazoDias: p.prazo_dias,
     })), [ppas]);
 
-    const [abertos, setAbertos] = useState(() => abertosPorPadrao(planos));
-    const [concluidosAbertos, setConcluidosAbertos] = useState(false);
+    // O link que a equipe manda (`?plano=ID`, ver `PpaListaService::
+    // compartilhamento()`) aponta UM plano. Ele nasce aberto — e, se estiver
+    // concluído, a gaveta também, senão o link cairia num cartão recolhido.
+    // Id que não é desta empresa simplesmente não casa: a lista já vem
+    // recortada pelo servidor.
+    const [focado] = useState(() => {
+        const id = Number(new URLSearchParams(window.location.search).get('plano'));
+        return planos.find((p) => p.id === id) ?? null;
+    });
+
+    const [abertos, setAbertos] = useState(() => {
+        const padrao = abertosPorPadrao(planos);
+        if (focado) padrao.add(focado.id);
+        return padrao;
+    });
+    const [concluidosAbertos, setConcluidosAbertos] = useState(() => focado?.grupo === GRUPO_CONCLUIDO);
+
+    useEffect(() => {
+        if (!focado) return;
+        document.getElementById(`plano-${focado.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, [focado]);
     const [busca, setBusca] = useState('');
 
     // Estado local, e não URL: sem paginação não há link para compartilhar nem

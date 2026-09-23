@@ -139,12 +139,18 @@ class PolosPpaController extends Controller
         ]);
     }
 
-    public function generateWorkspaceLink(Ppa $ppa)
+    public function generateWorkspaceLink(Request $request, Ppa $ppa, PpaListaService $lista)
     {
         $this->garantirEscopo($ppa);
 
         if (! $ppa->workspace_token) {
             $ppa->update(['workspace_token' => Str::uuid()->toString()]);
+        }
+
+        // O botão "Compartilhar" da lista pede por axios e copia o link na
+        // hora — uma resposta Inertia recarregaria a página inteira.
+        if ($request->wantsJson()) {
+            return response()->json($lista->compartilhamento($ppa));
         }
 
         return back()->with([

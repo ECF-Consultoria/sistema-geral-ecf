@@ -4,6 +4,7 @@ namespace App\Services\Ppa;
 
 use App\Models\Ppa;
 use App\Services\Portal\PortalPpaService;
+use App\Support\Portal\UrlDoPortal;
 
 /**
  * PpaListaService — uma linha da lista INTERNA de PPA (carteira e Polos).
@@ -58,6 +59,49 @@ class PpaListaService
 
             'trello_board_url' => $ppa->trello_board_url,
             'workspace_token'  => $ppa->workspace_token,
+
+            'compartilhar' => $this->compartilhamento($ppa),
+        ];
+    }
+
+    /**
+     * O link que a equipe copia para mandar ESTE plano ao cliente.
+     *
+     * Dois caminhos, e a escolha não é de tela — é a mesma régua que
+     * `PpaController::workspace()` já aplica:
+     *
+     *  - **PPA de empresa (`company_id`)** → Portal do Cliente, aberto NESTE
+     *    plano (`/portal/ppa?plano=ID`). Exige login: o link por token de
+     *    Company foi aposentado em 15/09/2026, porque a posse do link dava
+     *    leitura e escrita permanentes. Se o cliente não tiver sessão, entra e
+     *    volta para cá (`PortalAuthController::destinoAposEntrar()`).
+     *  - **PPA de Polos** → o link do quadro por token (`ppa.workspace`), que
+     *    abre sem login. `url` nulo quando o token ainda não existe: ele nasce
+     *    no clique, pela rota `workspace.generate` — gerar numa listagem (GET)
+     *    gravaria token em todo plano só por alguém abrir a página.
+     *
+     * `disponivel` segue {@see PortalPpaService::STATUS_VISIVEIS}: rascunho não
+     * tem link, porque o portal o esconde e mandar um link para "nada" é pior
+     * do que dizer por que não há link.
+     *
+     * @return array{disponivel: bool, via: string, url: ?string}
+     */
+    public function compartilhamento(Ppa $ppa): array
+    {
+        $disponivel = in_array($ppa->status, PortalPpaService::STATUS_VISIVEIS, true);
+
+        if ($ppa->company_id) {
+            return [
+                'disponivel' => $disponivel,
+                'via'        => 'portal',
+                'url'        => $disponivel ? UrlDoPortal::para('portal.auth.ppa', ['plano' => $ppa->id]) : null,
+            ];
+        }
+
+        return [
+            'disponivel' => $disponivel,
+            'via'        => 'link',
+            'url'        => $disponivel && $ppa->workspace_token ? route('ppa.workspace', $ppa->workspace_token) : null,
         ];
     }
 }

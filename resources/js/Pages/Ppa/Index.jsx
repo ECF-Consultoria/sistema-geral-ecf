@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useForm, router } from '@inertiajs/react';
 import {
-    Eye, EyeOff, FileText, Pencil, Plus, Search, Trash2, X,
+    Eye, EyeOff, FileText, Pencil, Plus, Search, Share2, Trash2, X,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Button } from '@/Components/ui/button';
@@ -15,6 +15,7 @@ import { Textarea } from '@/Components/ui/textarea';
 import PlanoPpa, { PlanoConcluidoCompacto } from '@/Components/Ppa/PlanoPpa';
 import IndicadoresPpa from '@/Components/Ppa/IndicadoresPpa';
 import TituloSecaoPpa from '@/Components/Ppa/TituloSecaoPpa';
+import CompartilharPpa from '@/Components/Ppa/CompartilharPpa';
 import {
     GRUPO_CONCLUIDO, ORDEM_PADRAO, ORDENS_PPA, SITUACOES_PPA, TODAS_SITUACOES,
     abertosPorPadrao, grupoDoPlano, seccionar, totaisDosPlanos,
@@ -96,10 +97,11 @@ function SeloVisibilidade({ status }) {
 // `tasksMover` NÃO entra aqui: a rota do arraste (`ppa.tasks.mover`) é a mesma
 // para os dois escopos, porque a tarefa pertence ao PPA e não ao escopo.
 const ROTAS_PADRAO = {
-    index:   'ppa.index',
-    store:   'ppa.store',
-    update:  'ppa.update',
-    destroy: 'ppa.destroy',
+    index:     'ppa.index',
+    store:     'ppa.store',
+    update:    'ppa.update',
+    destroy:   'ppa.destroy',
+    workspace: 'ppa.workspace.generate',
 };
 
 // Os rótulos dos dois seletores vivem em `lib/ppaAgrupamento.js`, com a tela do
@@ -137,6 +139,9 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
     const [open, setOpen] = useState(false);
     const [editOpen, setEditOpen] = useState(false);
     const [editing, setEditing] = useState(null);
+    // Guarda o ID, não o plano: depois de "marcar como enviado" os props
+    // recarregam, e o diálogo precisa ler o plano NOVO (já com o link).
+    const [compartilhandoId, setCompartilhandoId] = useState(null);
 
     // Os filtros são aplicados no SERVIDOR (`Ppa::scopeDaSituacao` e
     // `scopeOrdenadoPorAtencao`), ao contrário da busca por texto, que varre só
@@ -270,7 +275,9 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
         editForm.setData({
             title: plano.titulo,
             status: plano.status,
-            description: '',
+            // O diálogo não tem campo de descrição, mas o PUT a envia: mandar
+            // vazio apagava a descrição do plano a cada edição.
+            description: plano.descricao ?? '',
             due_date: plano.prazo_iso || '',
             trello_board_url: plano.trello_board_url || '',
         });
@@ -285,6 +292,10 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
     const submitEdit = (e) => {
         e.preventDefault();
         editForm.put(route(R.update, editing.id), { onSuccess: () => setEditOpen(false) });
+    };
+
+    const marcarEnviado = (plano) => {
+        router.put(route(R.update, plano.id), { status: 'sent' }, { preserveState: true, preserveScroll: true });
     };
 
     const remover = (plano) => {
@@ -323,6 +334,9 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
 
     const acoesDoPlano = (plano) => (
         <>
+            <Button size="icon" variant="ghost" title="Compartilhar com o cliente" onClick={() => setCompartilhandoId(plano.id)}>
+                <Share2 className="h-4 w-4" />
+            </Button>
             <Button size="icon" variant="ghost" title="Editar" onClick={() => openEdit(plano)}>
                 <Pencil className="h-4 w-4" />
             </Button>
@@ -566,6 +580,14 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
                     </div>
                 )}
             </div>
+
+            <CompartilharPpa
+                plano={planos.find((p) => p.id === compartilhandoId) ?? null}
+                aberto={compartilhandoId !== null}
+                onFechar={() => setCompartilhandoId(null)}
+                rotaGerar={R.workspace}
+                onMarcarEnviado={marcarEnviado}
+            />
 
             {/* Dialog: Novo PPA */}
             <Dialog open={open} onOpenChange={setOpen}>

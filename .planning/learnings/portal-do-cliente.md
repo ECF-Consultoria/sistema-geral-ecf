@@ -664,3 +664,27 @@ que se reordenasse dentro da coluna mostraria uma organização que o próximo F
 desfaz. Se um dia a reordenação pelo cliente for desejada, ela exige passar
 `ordem` pela rota do portal — e aí vale lembrar que a ordem é COMPARTILHADA com
 o quadro que a equipe usa.
+
+## 26. Link de compartilhar PPA: o login precisa devolver ao destino — e só a destinos do portal
+
+Em 23/09/2026 a lista interna (PPA e PPA Polos) ganhou "Compartilhar" por plano
+(`PpaListaService::compartilhamento()`). Duas vias, sem reabrir o token de
+Company aposentado em 15/09:
+
+- **PPA de empresa** → `/portal/ppa?plano=ID` (login). A tela do portal abre e
+  rola até `#plano-ID`; se o plano está concluído, abre a gaveta também.
+- **PPA de Polos** → `ppa.workspace` por token, sem login. O token nasce no
+  clique (POST `workspace.generate` com `Accept: application/json`), nunca na
+  listagem.
+
+**Antes disto o login do portal SEMPRE ia para o Início** — qualquer link
+profundo para o portal morria no login. Agora `abrirSessao()` honra o
+`url.intended` gravado por `redirect()->guest()`, com duas travas:
+só caminho que começa em `/portal/`, e reduzido a caminho + query (sem host).
+O `url.intended` é a MESMA chave que o login do sistema interno usa; honrar
+qualquer valor mandaria o cliente para uma URL do admin, e aceitar host seria
+redirecionamento aberto. Teste: `tests/Feature/PpaQuadro/CompartilharPpaTest.php`.
+
+Cliente com várias empresas: se o plano do link é de uma empresa que NÃO é a
+ativa na sessão, o `?plano=` não casa e a lista abre normal — não troca de
+empresa sozinho.

@@ -170,7 +170,36 @@ class PortalAuthController extends Controller
 
         $this->auditoria->entrou($usuario, $empresa, $request->ip());
 
-        return redirect()->route('portal.auth.inicio');
+        return redirect()->to($this->destinoAposEntrar($request));
+    }
+
+    /**
+     * Para onde a pessoa vai depois de entrar: a página do portal que ela
+     * tentou abrir, ou o Início.
+     *
+     * Existe por causa do link de compartilhar PPA (23/09/2026): a equipe manda
+     * `/portal/ppa?plano=12`, o cliente sem sessão cai no login
+     * (`EnsurePortalAutenticado` usa `redirect()->guest()`, que guarda o
+     * destino) e, sem isto, entrava no Início e o link perdia o sentido.
+     *
+     * Só vale caminho sob `/portal/`. O `url.intended` é a chave padrão do
+     * Laravel e também é gravada pelo login do sistema interno — honrar
+     * qualquer valor mandaria o cliente para uma URL do admin. E o destino é
+     * reduzido a caminho + query, sem host: um valor com outro domínio não
+     * vira redirecionamento aberto.
+     */
+    private function destinoAposEntrar(Request $request): string
+    {
+        $pretendido = $request->session()->pull('url.intended');
+        $caminho = is_string($pretendido) ? parse_url($pretendido, PHP_URL_PATH) : null;
+
+        if (! is_string($caminho) || ! str_starts_with($caminho, '/portal/')) {
+            return route('portal.auth.inicio');
+        }
+
+        $query = parse_url($pretendido, PHP_URL_QUERY);
+
+        return url($caminho.($query ? '?'.$query : ''));
     }
 
     /**

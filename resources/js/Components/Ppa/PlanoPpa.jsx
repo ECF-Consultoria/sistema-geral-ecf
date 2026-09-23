@@ -100,8 +100,11 @@ export default function PlanoPpa({
 
     return (
         <section
+            // Âncora do link de compartilhar (`/portal/ppa?plano=ID`): a tela do
+            // Portal rola até aqui. `scroll-mt` para não parar sob o cabeçalho.
+            id={`plano-${plano.id}`}
             className={cn(
-                'rounded-2xl ring-1 ring-inset transition-colors',
+                'rounded-2xl ring-1 ring-inset transition-colors scroll-mt-24',
                 aberto
                     ? 'bg-white/[0.022] ring-white/[0.07]'
                     : 'bg-white/[0.012] ring-white/[0.05] hover:ring-white/[0.11]',

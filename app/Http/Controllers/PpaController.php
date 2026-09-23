@@ -151,8 +151,19 @@ class PpaController extends Controller
 
     // ── Gerar / revogar link do workspace ────────────────────────────────────
 
-    public function generateWorkspaceLink(Ppa $ppa)
+    public function generateWorkspaceLink(Request $request, Ppa $ppa, PpaListaService $lista)
     {
+        // O botão "Compartilhar" da lista pede por axios — ver o mesmo método
+        // em `PolosPpaController`. PPA de empresa não ganha token: o link dele
+        // é o do Portal, e `compartilhamento()` já o devolve.
+        if ($request->wantsJson()) {
+            if (! $ppa->company_id && ! $ppa->workspace_token) {
+                $ppa->update(['workspace_token' => Str::uuid()->toString()]);
+            }
+
+            return response()->json($lista->compartilhamento($ppa));
+        }
+
         if ($ppa->company_id) {
             return back()->with('workspace_url', \App\Support\Portal\UrlDoPortal::para('portal.entrada'));
         }
