@@ -702,195 +702,213 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
 
 // ─── Reunião de onboarding ────────────────────────────────────────────────
 // Não é um passo: `agendar_reuniao_onboarding` é `dono=interno` e nunca
-// apareceria na lista do cliente. Este bloco existe para ele VER a data.
+// apareceria na lista do cliente. Este bloco existe para ele VER a reunião.
 //
-// O cliente NÃO pede reunião. Existia aqui um botão "Solicitar reunião" e um
-// estado "Recebemos seu pedido" — o negócio derrubou os dois em 19/08: pedir
-// deixava a empresa parada esperando um clique que muitas vezes nunca vinha.
-//
-// 23/09/2026 — o cliente passou a MARCAR (não pedir): escolhe um dos horários
-// em que analista e estrategista estão livres, e a reunião sai marcada, com
-// convite e Meet. Ele nunca vê a agenda de ninguém — só a lista de horários
-// que sobraram, montada no servidor. Se a equipe marcou antes, o card só
-// mostra a data. Remarcar continua sendo pelo grupo.
+// QUEM AGENDA É A EQUIPE. Existia aqui um "Solicitar reunião" (derrubado em
+// 19/08) e, por algumas horas de 23/09/2026, um "Escolher horário" para o
+// CLIENTE — recusado: "o cliente não tem que agendar nada pra gente, a gente
+// que agenda com eles". O que ficou:
+//  - CLIENTE: "estamos definindo a data" ou, marcada, TUDO sobre a reunião —
+//    data, horário, Google Meet, convite no e-mail;
+//  - EQUIPE (operando o portal junto com o cliente): o formulário de agendar
+//    aparece de primeira, no lugar do "estamos definindo". Marcar por aqui é o
+//    mesmo "Agendar" da ficha do onboarding — se já foi marcado lá, aqui só
+//    aparece a reunião (e o "Remarcar").
 
 const FUSO_PORTAL = 'America/Sao_Paulo';
 
-function formatarQuando(iso) {
-    if (!iso) return null;
-    const d = new Date(iso);
-    return d.toLocaleString('pt-BR', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', timeZone: FUSO_PORTAL,
-    });
-}
-
 // O fuso vai explícito em toda formatação: o horário é o de Brasília, que é o
 // da equipe, mesmo que o navegador do cliente esteja em outro.
+const dataPorExtenso = (iso) => primeiraMaiuscula(new Date(iso).toLocaleDateString('pt-BR', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: FUSO_PORTAL,
+}));
+const horaDe = (iso) => new Date(iso).toLocaleTimeString('pt-BR', {
+    hour: '2-digit', minute: '2-digit', timeZone: FUSO_PORTAL,
+});
 const diaDoHorario = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: FUSO_PORTAL });
 const rotuloDoDia = (iso) => new Date(iso).toLocaleDateString('pt-BR', {
     weekday: 'short', day: '2-digit', month: '2-digit', timeZone: FUSO_PORTAL,
 });
-const horaDoHorario = (iso) => new Date(iso).toLocaleTimeString('pt-BR', {
-    hour: '2-digit', minute: '2-digit', timeZone: FUSO_PORTAL,
-});
-const rotuloCompleto = (iso) => new Date(iso).toLocaleString('pt-BR', {
-    weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: FUSO_PORTAL,
-});
+const primeiraMaiuscula = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
+
+const DURACOES = [30, 45, 60, 90];
 
 /**
- * A escolha do horário. Os horários chegam do servidor já livres para os dois
- * que conduzem; marcar confere de novo lá, porque entre abrir a lista e clicar
- * alguém pode ter ocupado o horário.
+ * O formulário da EQUIPE. Data e hora livres — as sugestões (horários em que
+ * analista e estrategista estão livres, lidos do Google) só preenchem os
+ * campos. Quem marca decide.
  */
-function EscolherHorario({ reuniao, token, aoFechar }) {
-    const [carregando, setCarregando] = useState(true);
-    const [horarios, setHorarios] = useState([]);
-    const [erro, setErro] = useState(null);
+function AgendarPelaEquipe({ reuniao, token, aoFechar, remarcando }) {
+    const organizadores = reuniao.organizadores ?? [];
+    const padrao = organizadores.find((o) => o.conectado) ?? organizadores[0];
+
+    const [organizadorId, setOrganizadorId] = useState(padrao?.id ?? '');
+    const [data, setData] = useState('');
+    const [hora, setHora] = useState('');
+    const [duracao, setDuracao] = useState(60);
+    const [sugestoes, setSugestoes] = useState({ carregando: true, horarios: [], erro: null });
     const [dia, setDia] = useState(null);
-    const [escolhido, setEscolhido] = useState(null);
+    const [erro, setErro] = useState(null);
     const [marcando, setMarcando] = useState(false);
 
-    // `recusa`: a frase de uma tentativa de marcar que o servidor recusou. A
-    // lista é relida (o horário pode ter sido ocupado), mas a frase fica na
-    // tela — sem isto a releitura a apagava e o cliente via o clique "sumir".
-    const buscar = (recusa = null) => {
-        setCarregando(true);
-        setErro(recusa);
-        setEscolhido(null);
+    useEffect(() => {
         window.axios
             .get(rotaDoPortal('onboarding.horarios', token), { params: { onboarding_id: reuniao.onboarding_id } })
-            .then(({ data }) => {
-                setHorarios(data.horarios ?? []);
-                setErro(data.erro ?? recusa);
-                setDia((data.horarios ?? []).length ? diaDoHorario(data.horarios[0]) : null);
+            .then(({ data: r }) => {
+                setSugestoes({ carregando: false, horarios: r.horarios ?? [], erro: r.erro ?? null });
+                setDia((r.horarios ?? []).length ? diaDoHorario(r.horarios[0]) : null);
             })
-            .catch(() => setErro('Não conseguimos consultar os horários agora. Tente de novo em alguns minutos.'))
-            .finally(() => setCarregando(false));
+            .catch(() => setSugestoes({ carregando: false, horarios: [], erro: 'Não deu para ler as agendas agora — escolha a data e a hora à mão.' }));
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const usarSugestao = (iso) => {
+        setData(diaDoHorario(iso));
+        setHora(horaDe(iso));
     };
 
-    // Busca uma vez ao abrir — o painel só existe depois do clique.
-    useEffect(() => { buscar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const organizador = organizadores.find((o) => o.id === Number(organizadorId));
+    const podeMarcar = data && hora && organizador?.conectado && !marcando;
 
-    const dias = [...new Set(horarios.map(diaDoHorario))];
-    const doDia = horarios.filter((h) => diaDoHorario(h) === dia);
-
-    const confirmar = () => {
-        if (!escolhido || marcando) return;
+    const marcar = () => {
+        if (!podeMarcar) return;
         setMarcando(true);
         setErro(null);
         router.post(
             rotaDoPortal('onboarding.agendar', token),
-            { onboarding_id: reuniao.onboarding_id, inicio: escolhido },
+            {
+                onboarding_id: reuniao.onboarding_id,
+                // Hora de Brasília, sem fuso no texto: o servidor a lê em
+                // America/Sao_Paulo, qualquer que seja o fuso deste navegador.
+                inicio: `${data} ${hora}`,
+                duracao,
+                organizador_id: organizador.id,
+            },
             {
                 preserveScroll: true,
-                onSuccess: () => aoFechar(),
-                onError: (erros) => {
-                    // O horário pode ter sido ocupado: a lista precisa refletir isso.
-                    buscar(erros.inicio ?? 'Não foi possível marcar. Tente de novo.');
-                },
+                onSuccess: () => aoFechar?.(),
+                onError: (erros) => setErro(erros.inicio ?? erros.duracao ?? 'Não foi possível marcar. Tente de novo.'),
                 onFinish: () => setMarcando(false),
             },
         );
     };
 
+    const dias = [...new Set(sugestoes.horarios.map(diaDoHorario))];
+    const doDia = sugestoes.horarios.filter((h) => diaDoHorario(h) === dia);
+    const campo = 'h-9 w-full rounded-lg border border-white/[0.10] bg-white/[0.03] px-2.5 text-[13px] text-white focus:outline-none focus:border-ecf-yellow/40';
+
     return (
-        <div className="mt-3 pt-3 border-t border-white/[0.06] space-y-3">
-            {carregando ? (
-                <p className="inline-flex items-center gap-1.5 text-white/50 text-[12px]">
-                    <RefreshCw size={12} className="animate-spin" /> Buscando horários livres…
-                </p>
-            ) : (
-                <>
-                    {erro && (
-                        <p className="text-[12px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-                            {erro}
-                        </p>
-                    )}
+        <div className="mt-3 space-y-3">
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-300/80">
+                Equipe ECF · {remarcando ? 'remarcar a reunião' : 'agendar a reunião'}
+            </p>
 
-                    {!erro && horarios.length === 0 && (
-                        <p className="text-white/50 text-[12px]">
-                            Não há horários livres nos próximos dias. Fale com a gente pelo grupo que combinamos um horário.
-                        </p>
-                    )}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <label className="col-span-2 sm:col-span-1 space-y-1">
+                    <span className="block text-white/45 text-[11px]">Data</span>
+                    <input type="date" value={data} onChange={(e) => setData(e.target.value)} className={campo} />
+                </label>
+                <label className="space-y-1">
+                    <span className="block text-white/45 text-[11px]">Hora</span>
+                    <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} className={campo} />
+                </label>
+                <label className="space-y-1">
+                    <span className="block text-white/45 text-[11px]">Duração</span>
+                    <select value={duracao} onChange={(e) => setDuracao(Number(e.target.value))} className={campo}>
+                        {DURACOES.map((d) => <option key={d} value={d} className="bg-[#0f1116]">{d} min</option>)}
+                    </select>
+                </label>
+                <label className="col-span-2 sm:col-span-1 space-y-1">
+                    <span className="block text-white/45 text-[11px]">Agenda de</span>
+                    <select value={organizadorId} onChange={(e) => setOrganizadorId(e.target.value)} className={campo}>
+                        {organizadores.map((o) => (
+                            <option key={o.id} value={o.id} disabled={!o.conectado} className="bg-[#0f1116]">
+                                {o.nome} ({o.papel}){o.conectado ? '' : ' — sem Google'}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+            </div>
 
-                    {dias.length > 0 && (
-                        <>
-                            <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Dia da reunião">
-                                {dias.map((d) => {
-                                    const primeiro = horarios.find((h) => diaDoHorario(h) === d);
-                                    return (
-                                        <button
-                                            key={d}
-                                            type="button"
-                                            role="tab"
-                                            aria-selected={d === dia}
-                                            onClick={() => { setDia(d); setEscolhido(null); }}
-                                            className={cn(
-                                                'shrink-0 rounded-lg px-2.5 py-1.5 text-[12px] font-medium capitalize transition-colors',
-                                                d === dia
-                                                    ? 'bg-ecf-yellow text-ecf-bg'
-                                                    : 'border border-white/[0.10] bg-white/[0.03] text-white/70 hover:text-white',
-                                            )}
-                                        >
-                                            {rotuloDoDia(primeiro)}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
-                                {doDia.map((h) => (
+            {/* Atalho, não trava: preenche data e hora. */}
+            <div className="space-y-1.5">
+                <p className="text-white/40 text-[11px]">Horários livres do analista e do estrategista</p>
+                {sugestoes.carregando ? (
+                    <p className="inline-flex items-center gap-1.5 text-white/40 text-[12px]">
+                        <RefreshCw size={12} className="animate-spin" /> Lendo as agendas…
+                    </p>
+                ) : sugestoes.erro ? (
+                    <p className="text-white/35 text-[12px]">{sugestoes.erro}</p>
+                ) : dias.length === 0 ? (
+                    <p className="text-white/35 text-[12px]">Nenhum horário livre em comum nos próximos dias.</p>
+                ) : (
+                    <>
+                        <div className="flex gap-1.5 overflow-x-auto pb-1">
+                            {dias.map((d) => (
+                                <button
+                                    key={d}
+                                    type="button"
+                                    onClick={() => setDia(d)}
+                                    className={cn(
+                                        'shrink-0 rounded-lg px-2.5 py-1 text-[11.5px] font-medium capitalize',
+                                        d === dia ? 'bg-white/[0.12] text-white' : 'border border-white/[0.08] text-white/55 hover:text-white',
+                                    )}
+                                >
+                                    {rotuloDoDia(sugestoes.horarios.find((h) => diaDoHorario(h) === d))}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {doDia.map((h) => {
+                                const escolhido = data === diaDoHorario(h) && hora === horaDe(h);
+                                return (
                                     <button
                                         key={h}
                                         type="button"
-                                        onClick={() => setEscolhido(h)}
-                                        aria-pressed={h === escolhido}
+                                        onClick={() => usarSugestao(h)}
                                         className={cn(
-                                            'rounded-lg py-1.5 text-[12px] font-semibold tabular-nums transition-colors',
-                                            h === escolhido
-                                                ? 'bg-emerald-400 text-ecf-bg'
-                                                : 'border border-white/[0.10] bg-white/[0.03] text-white/75 hover:border-emerald-400/50',
+                                            'rounded-lg px-2.5 py-1 text-[12px] font-semibold tabular-nums',
+                                            escolhido ? 'bg-emerald-400 text-ecf-bg' : 'border border-white/[0.10] text-white/70 hover:border-emerald-400/50',
                                         )}
                                     >
-                                        {horaDoHorario(h)}
+                                        {horaDe(h)}
                                     </button>
-                                ))}
-                            </div>
-                        </>
-                    )}
+                                );
+                            })}
+                        </div>
+                    </>
+                )}
+            </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                        {escolhido && (
-                            <button
-                                type="button"
-                                onClick={confirmar}
-                                disabled={marcando}
-                                className="px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 text-[12px] font-semibold disabled:opacity-40"
-                            >
-                                {marcando ? 'Marcando…' : `Confirmar ${rotuloCompleto(escolhido)}`}
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={aoFechar}
-                            className="px-3 py-1.5 rounded-lg text-[12px] text-white/50 hover:text-white/80"
-                        >
-                            Cancelar
-                        </button>
-                    </div>
-
-                    <p className="text-white/30 text-[11px]">
-                        Horários de Brasília. A reunião dura 1 hora e acontece pelo Google Meet — o convite chega no seu e-mail.
-                    </p>
-                </>
+            {erro && (
+                <p className="text-[12px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{erro}</p>
             )}
+
+            <div className="flex flex-wrap items-center gap-2">
+                <button
+                    type="button"
+                    onClick={marcar}
+                    disabled={!podeMarcar}
+                    className="px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 text-[12px] font-semibold disabled:opacity-40"
+                >
+                    {marcando ? 'Marcando…' : remarcando ? 'Remarcar e avisar o cliente' : 'Agendar e enviar convite'}
+                </button>
+                {aoFechar && (
+                    <button type="button" onClick={aoFechar} className="px-3 py-1.5 text-[12px] text-white/50 hover:text-white/80">
+                        Cancelar
+                    </button>
+                )}
+            </div>
+
+            <p className="text-white/30 text-[11px]">
+                Horário de Brasília. Sai da agenda escolhida, com Google Meet, e o convite vai por e-mail aos contatos do
+                cliente e à equipe do onboarding.
+            </p>
         </div>
     );
 }
 
-function ReuniaoCard({ reuniao, varios, token }) {
-    const [escolhendo, setEscolhendo] = useState(false);
+function ReuniaoCard({ reuniao, varios, token, ehEquipe }) {
+    const [remarcando, setRemarcando] = useState(false);
 
     if (reuniao.realizada) {
         return (
@@ -908,63 +926,76 @@ function ReuniaoCard({ reuniao, varios, token }) {
         );
     }
 
-    const quando = formatarQuando(reuniao.agendada_para);
+    const marcada = Boolean(reuniao.agendada_para);
+    const podeAgendar = ehEquipe && reuniao.pode_agendar;
 
     return (
-        <div className="rounded-2xl border border-white/[0.10] bg-white/[0.03] p-4">
+        <div className={cn('rounded-2xl border p-4', marcada ? 'border-ecf-yellow/20 bg-ecf-yellow/[0.04]' : 'border-white/[0.10] bg-white/[0.03]')}>
             <div className="flex items-start gap-3">
-                <CalendarDays size={16} className="shrink-0 mt-0.5 text-white/40" />
+                <CalendarDays size={16} className={cn('shrink-0 mt-0.5', marcada ? 'text-ecf-yellow' : 'text-white/40')} />
                 <div className="min-w-0 flex-1">
-                    {/* Sem título repetido: o `<h2>` da seção logo acima já
-                        diz "Reunião de onboarding", e o card o repetia — a
-                        primeira coisa que o negócio apontou ao ler a tela. Com
-                        mais de um serviço o card volta a ter cabeçalho, porque
-                        aí ele precisa dizer QUAL reunião é. */}
+                    {/* Com mais de um serviço o card precisa dizer QUAL reunião é. */}
                     {varios && (
                         <h3 className="text-[14px] font-semibold text-white">{reuniao.servico}</h3>
                     )}
 
-                    {quando ? (
+                    {marcada ? (
                         <>
-                            <p className="text-white/45 text-[11px] font-semibold uppercase tracking-wider mt-1.5">Reunião marcada</p>
-                            <p className="text-ecf-yellow text-[13px] font-semibold mt-0.5">{quando}</p>
-                            {reuniao.link && (
-                                <a
-                                    href={reuniao.link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow text-[12px] font-medium"
-                                >
-                                    <ExternalLink size={12} /> Entrar pelo Google Meet
-                                </a>
+                            <p className="text-white/45 text-[11px] font-semibold uppercase tracking-wider mt-0.5">Reunião marcada</p>
+                            <p className="text-white text-[15px] font-semibold mt-1">{dataPorExtenso(reuniao.agendada_para)}</p>
+                            <p className="text-ecf-yellow text-[14px] font-semibold tabular-nums">
+                                {horaDe(reuniao.agendada_para)}
+                                {reuniao.termina_em ? ` às ${horaDe(reuniao.termina_em)}` : ''}
+                                <span className="text-white/40 font-normal text-[12px]"> · horário de Brasília</span>
+                            </p>
+
+                            {reuniao.link ? (
+                                <div className="mt-2.5 space-y-1.5">
+                                    <a
+                                        href={reuniao.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 text-[12px] font-semibold"
+                                    >
+                                        <ExternalLink size={12} />
+                                        {reuniao.plataforma === 'google_meet' ? 'Entrar pelo Google Meet' : 'Entrar na reunião'}
+                                    </a>
+                                    <p className="text-white/35 text-[11px] break-all">{reuniao.link}</p>
+                                </div>
+                            ) : (
+                                <p className="text-white/40 text-[12px] mt-2">O link da reunião chega junto com o convite.</p>
                             )}
-                            <p className="text-white/40 text-[12px] mt-2">
+
+                            {reuniao.convite_enviado && (
+                                <p className="text-white/45 text-[12px] mt-2">
+                                    O convite foi enviado para o seu e-mail — aceite para a reunião entrar na sua agenda.
+                                </p>
+                            )}
+                            <p className="text-white/40 text-[12px] mt-1.5">
                                 É a conversa em que apresentamos o diagnóstico da sua conta e os próximos passos.
                                 Se esse horário não funcionar para você, fale com a gente pelo grupo.
                             </p>
-                        </>
-                    ) : reuniao.pode_agendar ? (
-                        <>
-                            <p className="text-white/50 text-[12px] mt-1.5">
-                                É a conversa em que apresentamos o diagnóstico da sua conta e os próximos passos.
-                                Escolha o melhor horário para você.
-                            </p>
-                            {escolhendo ? (
-                                <EscolherHorario reuniao={reuniao} token={token} aoFechar={() => setEscolhendo(false)} />
-                            ) : (
-                                <button
-                                    type="button"
-                                    onClick={() => setEscolhendo(true)}
-                                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 text-[12px] font-semibold"
-                                >
-                                    <CalendarDays size={13} /> Escolher horário
-                                </button>
+
+                            {podeAgendar && (
+                                remarcando ? (
+                                    <AgendarPelaEquipe reuniao={reuniao} token={token} remarcando aoFechar={() => setRemarcando(false)} />
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setRemarcando(true)}
+                                        className="mt-3 text-[12px] text-sky-300/80 hover:text-sky-200 underline underline-offset-2"
+                                    >
+                                        Remarcar (equipe ECF)
+                                    </button>
+                                )
                             )}
                         </>
+                    ) : podeAgendar ? (
+                        // A equipe, conduzindo com o cliente pela tela: agenda
+                        // de primeira, no lugar do "estamos definindo".
+                        <AgendarPelaEquipe reuniao={reuniao} token={token} />
                     ) : (
-                        // Sem data e sem como marcar pelo portal (quem conduz
-                        // ainda não conectou a agenda, ou não foi definido).
-                        <p className="text-white/50 text-[12px] mt-1.5">
+                        <p className="text-white/50 text-[12px] mt-0.5">
                             É a conversa em que apresentamos o diagnóstico da sua conta e os próximos passos.
                             Estamos definindo a data — assim que ela estiver marcada, aparece aqui.
                         </p>
@@ -1216,6 +1247,7 @@ export default function Publico({
                                         reuniao={reuniao}
                                         varios={reunioes.length > 1}
                                         token={token}
+                                        ehEquipe={ehEquipe}
                                     />
                                 ))}
                             </section>

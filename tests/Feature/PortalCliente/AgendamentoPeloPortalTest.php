@@ -7,11 +7,12 @@ use App\Models\ContratoServico;
 use App\Models\GoogleToken;
 use App\Models\Onboarding;
 use App\Models\OnboardingContato;
-use App\Models\OnboardingEventoGoogle;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\Onboarding\OnboardingEngineService;
+use App\Services\Onboarding\OnboardingLinkService;
 use App\Services\Portal\AgendamentoPortalService;
+use App\Support\Portal\PortalContexto;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -21,23 +22,24 @@ use Tests\Concerns\EntraNoPortal;
 use Tests\TestCase;
 
 /**
- * O cliente marca a reunião de onboarding pelo Portal (23/09/2026).
+ * A EQUIPE marca a reunião de onboarding pelo Portal (23/09/2026).
  *
  * O que estes testes prendem:
- *  - só aparecem horários em que analista E estrategista estão livres, em dia
- *    útil, das 9h às 18h, a partir do próximo dia útil;
- *  - o cliente não recebe nada da agenda de ninguém além da lista de horários;
- *  - marcar confere o horário DE NOVO no servidor — horário ocupado ou forjado
- *    é recusado sem criar evento;
- *  - reunião já marcada (pela equipe) não se marca de novo pelo portal;
- *  - o Google vem ANTES da data: falhou o convite, nada é gravado.
+ *  - o CLIENTE não agenda nada: as duas rotas recusam a sessão dele, e o
+ *    payload dele não traz quem organiza nem "pode agendar";
+ *  - a equipe marca pelo mesmo caminho do "Agendar" da ficha: evento na
+ *    agenda do organizador escolhido, Meet, convite aos contatos e à equipe;
+ *  - organizador sem Google é recusado ANTES de gravar a data;
+ *  - com a reunião marcada, o cliente recebe tudo: data, fim e link;
+ *  - as sugestões são horários livres dos DOIS que conduzem — atalho, não
+ *    trava (a equipe marca fora delas).
  */
 class AgendamentoPeloPortalTest extends TestCase
 {
     use EntraNoPortal;
     use RefreshDatabase;
 
-    /** Quarta, 23/09/2026, 10h de Brasília — a janela vai de 24/09 a 08/10. */
+    /** Quarta, 23/09/2026, 10h de Brasília — as sugestões vão de 24/09 a 08/10. */
     private const AGORA = '2026-09-23 10:00';
 
     protected function setUp(): void
@@ -63,9 +65,9 @@ class AgendamentoPeloPortalTest extends TestCase
      *
      * @param  array<string, array<int, array{0: string, 1: string}>>  $ocupadoPorToken
      */
-    private function google(array $ocupadoPorToken = [], int $statusCriacao = 200): void
+    private function google(array $ocupadoPorToken = []): void
     {
-        Http::fake(function (Request $request) use ($ocupadoPorToken, $statusCriacao) {
+        Http::fake(function (Request $request) use ($ocupadoPorToken) {
             if (str_contains($request->url(), '/freeBusy')) {
                 $token = str_replace('Bearer ', '', $request->header('Authorization')[0] ?? '');
                 $busy = collect($ocupadoPorToken[$token] ?? [])->map(fn ($b) => [
@@ -77,9 +79,7 @@ class AgendamentoPeloPortalTest extends TestCase
             }
 
             if (str_contains($request->url(), '/events') && $request->method() === 'POST') {
-                return $statusCriacao === 200
-                    ? Http::response(['id' => 'evt_portal', 'hangoutLink' => 'https://meet.google.com/abc-defg-hij'])
-                    : Http::response(['error' => 'boom'], $statusCriacao);
+                return Http::response(['id' => 'evt_portal', 'hangoutLink' => 'https://meet.google.com/abc-defg-hij']);
             }
 
             return Http::response([], 404);
@@ -113,10 +113,8 @@ class AgendamentoPeloPortalTest extends TestCase
 
         $onboarding = Onboarding::where('contrato_servico_id', $contrato->id)->firstOrFail();
 
-        // E-mails fixos só no primeiro cenário: o teste de outra empresa monta dois.
-        $sufixo = User::where('email', 'analista@ecf.test')->exists() ? '.'.uniqid() : '';
-        $analista = User::factory()->create(['name' => 'Ana Analista', 'email' => 'analista@ecf.test'.$sufixo]);
-        $estrategista = User::factory()->create(['name' => 'Edu Estrategista', 'email' => 'estrategista@ecf.test'.$sufixo]);
+        $analista = User::factory()->create(['name' => 'Ana Analista']);
+        $estrategista = User::factory()->create(['name' => 'Edu Estrategista']);
         app(OnboardingEngineService::class)->definirResponsaveis($onboarding, $estrategista, $analista);
 
         GoogleToken::create([
@@ -139,22 +137,33 @@ class AgendamentoPeloPortalTest extends TestCase
         return [$onboarding->fresh(), $analista, $estrategista, $company];
     }
 
-    private function servico(): AgendamentoPortalService
+    /** Sessão de EQUIPE no portal da empresa — a que o ticket de 60 s deixa. */
+    private function comoEquipe(Company $empresa, ?User $membro = null): static
     {
-        return app(AgendamentoPortalService::class);
+        $membro ??= User::factory()->create(['role' => 'admin']);
+
+        return $this->withSession([
+            PortalContexto::SESSAO_EQUIPE => $membro->id,
+            'portal_empresa_id'           => $empresa->id,
+        ]);
     }
 
-    // ─── Os horários ────────────────────────────────────────────────────────
+    private function reuniao(Company $company, bool $paraEquipe = false): array
+    {
+        return collect(app(OnboardingLinkService::class)->reunioesDaEmpresa($company, $paraEquipe))->first();
+    }
 
-    public function test_so_oferece_horario_livre_para_os_dois_em_dia_util(): void
+    // ─── Sugestões ──────────────────────────────────────────────────────────
+
+    public function test_sugere_horario_livre_para_os_dois_em_dia_util(): void
     {
         $this->google([
-            'tk-analista'      => [['2026-09-24 10:00', '2026-09-24 11:30']],
-            'tk-estrategista'  => [['2026-09-25 14:00', '2026-09-25 15:00']],
+            'tk-analista'     => [['2026-09-24 10:00', '2026-09-24 11:30']],
+            'tk-estrategista' => [['2026-09-25 14:00', '2026-09-25 15:00']],
         ]);
         [$onboarding] = $this->cenario();
 
-        $r = $this->servico()->horarios($onboarding);
+        $r = app(AgendamentoPortalService::class)->sugestoes($onboarding);
 
         $this->assertNull($r['erro']);
         $h = $r['horarios'];
@@ -167,87 +176,65 @@ class AgendamentoPeloPortalTest extends TestCase
         $this->assertContains('2026-09-24T12:00:00-03:00', $h);
         // Ocupado do ESTRATEGISTA também tira o horário.
         $this->assertNotContains('2026-09-25T14:00:00-03:00', $h);
-        $this->assertContains('2026-09-25T15:00:00-03:00', $h);
-        // A última reunião termina às 18h.
+        // A última termina às 18h; fim de semana não entra.
         $this->assertContains('2026-09-24T17:00:00-03:00', $h);
         $this->assertNotContains('2026-09-24T18:00:00-03:00', $h);
-        // Sábado e domingo não entram.
         $this->assertEmpty(array_filter($h, fn ($x) => str_starts_with($x, '2026-09-26') || str_starts_with($x, '2026-09-27')));
-        // A janela acaba 14 dias depois do primeiro dia útil.
-        $this->assertEmpty(array_filter($h, fn ($x) => $x >= '2026-10-08'));
     }
 
-    /** Sem a agenda do estrategista não dá para saber se ele está livre — não se oferece horário. */
-    public function test_sem_a_agenda_do_estrategista_o_portal_nao_oferece_marcar(): void
+    // ─── O cliente não agenda ───────────────────────────────────────────────
+
+    public function test_cliente_nao_agenda_nem_le_sugestoes(): void
     {
         $this->google();
-        [$onboarding] = $this->cenario(estrategistaConectado: false);
+        [$onboarding, , , $company] = $this->cenario();
 
-        $this->assertFalse($this->servico()->podeAgendar($onboarding));
-        $this->assertNotNull($this->servico()->horarios($onboarding)['erro']);
-        Http::assertNothingSent();
-    }
-
-    public function test_reuniao_ja_marcada_pela_equipe_so_aparece_a_data(): void
-    {
-        $this->google();
-        [$onboarding, $analista, , $company] = $this->cenario();
-        app(OnboardingEngineService::class)->agendarReuniao($onboarding, now()->addDays(2)->setTime(15, 0), $analista);
-
-        $this->assertFalse($this->servico()->podeAgendar($onboarding->fresh()));
+        $this->entrarNoPortal($company)
+            ->getJson(route('portal.auth.onboarding.horarios', ['onboarding_id' => $onboarding->id]))
+            ->assertForbidden();
 
         $this->entrarNoPortal($company)
             ->post(route('portal.auth.onboarding.agendar'), [
-                'onboarding_id' => $onboarding->id,
-                'inicio'        => '2026-09-24T09:00:00-03:00',
+                'onboarding_id' => $onboarding->id, 'inicio' => '2026-09-24 09:00', 'duracao' => 60,
             ])
-            ->assertSessionHasErrors('inicio');
+            ->assertForbidden();
 
-        $this->assertSame(0, OnboardingEventoGoogle::count());
+        Http::assertNothingSent();
+        $this->assertNull($onboarding->fresh()->reuniao_agendada_para);
     }
 
-    /** O JSON que chega ao navegador é só a lista de horários — nada da agenda de ninguém. */
-    public function test_rota_de_horarios_nao_leva_nada_alem_dos_horarios(): void
-    {
-        $this->google(['tk-analista' => [['2026-09-24 10:00', '2026-09-24 11:00']]]);
-        [$onboarding, , , $company] = $this->cenario();
-
-        $json = $this->entrarNoPortal($company)
-            ->getJson(route('portal.auth.onboarding.horarios', ['onboarding_id' => $onboarding->id]))
-            ->assertOk()
-            ->json();
-
-        $this->assertSame(['horarios', 'erro'], array_keys($json));
-        $this->assertNotContains('2026-09-24T10:00:00-03:00', $json['horarios']);
-    }
-
-    public function test_onboarding_de_outra_empresa_da_404(): void
+    public function test_payload_do_cliente_nao_traz_organizadores_nem_agendar(): void
     {
         $this->google();
-        [$onboarding] = $this->cenario();
-        [, , , $outra] = $this->cenario();
+        [, , , $company] = $this->cenario();
 
-        $this->entrarNoPortal($outra)
-            ->getJson(route('portal.auth.onboarding.horarios', ['onboarding_id' => $onboarding->id]))
-            ->assertNotFound();
+        $cliente = $this->reuniao($company);
+        $equipe = $this->reuniao($company, paraEquipe: true);
+
+        $this->assertFalse($cliente['pode_agendar']);
+        $this->assertSame([], $cliente['organizadores']);
+        $this->assertTrue($equipe['pode_agendar']);
+        $this->assertCount(2, $equipe['organizadores']);
     }
 
-    // ─── Marcar ─────────────────────────────────────────────────────────────
+    // ─── A equipe agenda ────────────────────────────────────────────────────
 
-    public function test_cliente_marca_e_o_evento_nasce_na_agenda_do_analista_com_meet(): void
+    public function test_equipe_agenda_pelo_portal_com_meet_e_o_cliente_ve_tudo(): void
     {
         $this->google();
         [$onboarding, $analista, $estrategista, $company] = $this->cenario();
-        $cliente = $this->clienteDoPortal($company, ['nome' => 'Dona da Loja', 'email' => 'dona@loja.test']);
+        $membro = User::factory()->create(['role' => 'admin']);
 
-        $this->entrarNoPortal($company, $cliente)
+        $this->comoEquipe($company, $membro)
             ->post(route('portal.auth.onboarding.agendar'), [
-                'onboarding_id' => $onboarding->id,
-                'inicio'        => '2026-09-24T09:00:00-03:00',
+                'onboarding_id'  => $onboarding->id,
+                'inicio'         => '2026-09-24 09:00',
+                'duracao'        => 45,
+                'organizador_id' => $analista->id,
             ])
             ->assertSessionHasNoErrors();
 
-        Http::assertSent(function (Request $request) {
+        Http::assertSent(function (Request $request) use ($estrategista) {
             if (! str_contains($request->url(), '/events') || $request->method() !== 'POST') {
                 return false;
             }
@@ -256,58 +243,94 @@ class AgendamentoPeloPortalTest extends TestCase
 
             return $request->hasHeader('Authorization', 'Bearer tk-analista')
                 && str_contains($request->url(), 'conferenceDataVersion=1')
-                && str_contains($request->url(), 'sendUpdates=all')
-                && in_array('estrategista@ecf.test', $emails, true)
                 && in_array('contato@cliente.test', $emails, true)
-                && in_array('dona@loja.test', $emails, true)
-                && ! in_array('analista@ecf.test', $emails, true);
+                && in_array(mb_strtolower($estrategista->email), $emails, true);
         });
 
         $onboarding->refresh();
-        $this->assertTrue($onboarding->reuniao_agendada_para->equalTo(CarbonImmutable::parse('2026-09-24T09:00:00-03:00')));
-        // Quem marcou foi o cliente — não se atribui a ninguém da equipe.
-        $this->assertNull($onboarding->reuniao_agendada_por);
+        $this->assertTrue($onboarding->reuniao_agendada_para->equalTo(CarbonImmutable::parse('2026-09-24 09:00', 'America/Sao_Paulo')));
+        $this->assertSame($membro->id, $onboarding->reuniao_agendada_por);
 
-        $evento = OnboardingEventoGoogle::where('onboarding_id', $onboarding->id)->where('chave', 'kickoff')->sole();
-        $this->assertSame($analista->id, $evento->calendar_owner_user_id);
-        $this->assertNull($evento->enviado_por);
-        $this->assertSame('https://meet.google.com/abc-defg-hij', $evento->link_reuniao);
-
-        // O card do portal passa a mostrar a data e o link, sem o botão.
-        $reuniao = collect(app(\App\Services\Onboarding\OnboardingLinkService::class)->reunioesDaEmpresa($company))->first();
-        $this->assertFalse($reuniao['pode_agendar']);
+        // O que o CLIENTE passa a ver: data, fim, link.
+        $reuniao = $this->reuniao($company);
         $this->assertSame('https://meet.google.com/abc-defg-hij', $reuniao['link']);
+        $this->assertTrue($reuniao['convite_enviado']);
+        $this->assertTrue(CarbonImmutable::parse($reuniao['termina_em'])->equalTo(CarbonImmutable::parse('2026-09-24 09:45', 'America/Sao_Paulo')));
     }
 
-    public function test_horario_ocupado_ou_forjado_e_recusado_sem_criar_evento(): void
+    /** Sugestão é atalho: a equipe marca fora dela (e fora do horário comercial). */
+    public function test_equipe_marca_horario_fora_das_sugestoes(): void
     {
-        $this->google(['tk-estrategista' => [['2026-09-24 09:00', '2026-09-24 10:00']]]);
-        [$onboarding, , , $company] = $this->cenario();
+        $this->google(['tk-analista' => [['2026-09-24 18:00', '2026-09-24 20:00']]]);
+        [$onboarding, $analista, , $company] = $this->cenario();
 
-        foreach (['2026-09-24T09:00:00-03:00', '2026-09-24T03:00:00-03:00', '2026-09-26T10:00:00-03:00'] as $tentativa) {
-            $this->entrarNoPortal($company)
-                ->post(route('portal.auth.onboarding.agendar'), ['onboarding_id' => $onboarding->id, 'inicio' => $tentativa])
-                ->assertSessionHasErrors('inicio');
-        }
+        $this->comoEquipe($company)
+            ->post(route('portal.auth.onboarding.agendar'), [
+                'onboarding_id' => $onboarding->id, 'inicio' => '2026-09-24 18:30', 'duracao' => 60, 'organizador_id' => $analista->id,
+            ])
+            ->assertSessionHasNoErrors();
 
-        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '/events'));
+        $this->assertNotNull($onboarding->fresh()->reuniao_agendada_para);
+    }
+
+    /** Organizador sem Google: recusado ANTES da data — senão o cliente veria reunião sem convite. */
+    public function test_organizador_sem_google_e_recusado_sem_gravar_a_data(): void
+    {
+        $this->google();
+        [$onboarding, , $estrategista, $company] = $this->cenario(estrategistaConectado: false);
+
+        $this->comoEquipe($company)
+            ->post(route('portal.auth.onboarding.agendar'), [
+                'onboarding_id' => $onboarding->id, 'inicio' => '2026-09-24 09:00', 'duracao' => 60, 'organizador_id' => $estrategista->id,
+            ])
+            ->assertSessionHasErrors('inicio');
+
+        Http::assertNothingSent();
         $this->assertNull($onboarding->fresh()->reuniao_agendada_para);
     }
 
-    /** O Google vem primeiro: sem convite, o cliente não fica com uma reunião que ninguém tem na agenda. */
+    /**
+     * O Google recusou o evento: nada de data. Pego na conferência visual —
+     * o `criar()` da ficha grava a data ANTES do Google, e o cliente passava a
+     * ver "reunião marcada" sem link e sem convite.
+     */
     public function test_falha_no_google_nao_grava_a_data(): void
     {
-        $this->google(statusCriacao: 500);
-        [$onboarding, , , $company] = $this->cenario();
+        Http::fake(['https://www.googleapis.com/calendar/v3/*' => Http::response(['error' => 'boom'], 500)]);
+        [$onboarding, $analista, , $company] = $this->cenario();
 
-        $this->entrarNoPortal($company)
+        $this->comoEquipe($company)
             ->post(route('portal.auth.onboarding.agendar'), [
-                'onboarding_id' => $onboarding->id,
-                'inicio'        => '2026-09-24T09:00:00-03:00',
+                'onboarding_id' => $onboarding->id, 'inicio' => '2026-09-24 09:00', 'duracao' => 60, 'organizador_id' => $analista->id,
             ])
             ->assertSessionHasErrors('inicio');
 
         $this->assertNull($onboarding->fresh()->reuniao_agendada_para);
-        $this->assertSame(0, OnboardingEventoGoogle::count());
+        $this->assertSame(0, \App\Models\OnboardingEventoGoogle::where('onboarding_id', $onboarding->id)->count());
+    }
+
+    public function test_data_no_passado_e_recusada(): void
+    {
+        $this->google();
+        [$onboarding, $analista, , $company] = $this->cenario();
+
+        $this->comoEquipe($company)
+            ->post(route('portal.auth.onboarding.agendar'), [
+                'onboarding_id' => $onboarding->id, 'inicio' => '2026-09-22 09:00', 'duracao' => 60, 'organizador_id' => $analista->id,
+            ])
+            ->assertSessionHasErrors('inicio');
+
+        $this->assertNull($onboarding->fresh()->reuniao_agendada_para);
+    }
+
+    public function test_onboarding_de_outra_empresa_da_404(): void
+    {
+        $this->google();
+        [$onboarding] = $this->cenario();
+        [, , , $outra] = $this->cenario();
+
+        $this->comoEquipe($outra)
+            ->getJson(route('portal.auth.onboarding.horarios', ['onboarding_id' => $onboarding->id]))
+            ->assertNotFound();
     }
 }

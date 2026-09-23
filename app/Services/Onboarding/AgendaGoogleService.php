@@ -555,7 +555,15 @@ class AgendaGoogleService
         $inicio = CarbonImmutable::instance($dados['inicio'])->setTimezone(config('app.timezone'));
         $prefixo = '';
 
-        if ($tipo === OnboardingEventoGoogle::TIPO_KICKOFF) {
+        // `data_so_com_convite` (23/09/2026): a marcação feita pela equipe NO
+        // PORTAL, com o cliente olhando a mesma tela. Ali "data salva, convite
+        // não saiu" mostraria ao cliente uma reunião marcada sem link e sem
+        // convite — então a data só vale depois que o Google aceitou o evento.
+        // A ficha interna segue gravando a data antes: lá quem marca lê a
+        // mensagem, e "só a data" é um uso legítimo.
+        $dataDepois = $tipo === OnboardingEventoGoogle::TIPO_KICKOFF && ($dados['data_so_com_convite'] ?? false);
+
+        if ($tipo === OnboardingEventoGoogle::TIPO_KICKOFF && ! $dataDepois) {
             $marcada = $this->marcarDataDoKickoff($onboarding, $inicio, $por);
 
             if ($marcada !== null) {
@@ -644,6 +652,10 @@ class AgendaGoogleService
             $registro = OnboardingEventoGoogle::create($atributos);
         }
 
+        if ($dataDepois && ($marcada = $this->marcarDataDoKickoff($onboarding, $inicio, $por)) !== null) {
+            return $this->falha('O convite saiu, mas a data não foi gravada no onboarding: '.$marcada);
+        }
+
         activity('onboarding')
             ->performedOn($onboarding)
             ->withProperties([
@@ -662,95 +674,6 @@ class AgendaGoogleService
             'mensagem' => 'Evento criado na agenda de '.$organizador->name
                 .($quantos ? ' — '.$quantos.' '.($quantos === 1 ? 'convidado avisado' : 'convidados avisados').' pelo Google.' : '.'),
             'evento'   => $registro->fresh(),
-        ];
-    }
-
-    /**
-     * A reunião de onboarding marcada pelo CLIENTE, no Portal (23/09/2026).
-     *
-     * O horário já chega validado como livre (`AgendamentoPortalService`).
-     * Aqui o evento nasce na agenda de `$organizador` — o analista — com Google
-     * Meet, e convida a equipe que conduz, os contatos do cliente com e-mail e
-     * quem marcou.
-     *
-     * ### Ordem ao contrário de `criar()`
-     * Lá a data vale mesmo que o convite falhe, porque quem marca é a equipe e
-     * ela vê a mensagem. Aqui quem marca é o cliente: data gravada sem convite
-     * seria uma reunião que ele acha que marcou e que não está na agenda de
-     * ninguém. Então o Google vem PRIMEIRO, e só com o evento criado a data é
-     * gravada.
-     *
-     * @param  array<int, array{email: string, nome?: ?string}>  $extras
-     * @return array{ok: bool, mensagem: string, evento?: OnboardingEventoGoogle}
-     */
-    public function agendarPeloCliente(Onboarding $onboarding, CarbonImmutable $inicio, User $organizador, array $extras, string $quem): array
-    {
-        $token = GoogleToken::where('user_id', $organizador->id)->first();
-
-        if (! $token) {
-            return $this->falha('A agenda da equipe não está disponível agora.');
-        }
-
-        $inicio = $inicio->setTimezone(config('app.timezone'));
-        $fim = $inicio->addMinutes(self::DURACAO_MINUTOS);
-        $empresa = $onboarding->company?->name ?? 'Cliente';
-
-        $participantes = $this->participantesNormalizados(
-            $onboarding,
-            [...$this->convidados($onboarding, $organizador), ...$extras],
-            $organizador,
-        );
-
-        $dados = [
-            'titulo'     => "ECF · {$empresa} — Reunião de onboarding",
-            'plataforma' => OnboardingEventoGoogle::PLATAFORMA_MEET,
-            'descricao'  => "Marcada pelo cliente no Portal ({$quem}).",
-        ];
-        $corpo = $this->corpoAvulso($onboarding, OnboardingEventoGoogle::TIPO_KICKOFF, $dados, $inicio, $fim, $participantes);
-
-        try {
-            $resposta = $this->google->criarEvento($token, $corpo, true);
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('[Portal] agendamento da reunião pelo cliente falhou no Google', [
-                'onboarding_id' => $onboarding->id,
-                'organizador'   => $organizador->id,
-                'erro'          => $e->getMessage(),
-            ]);
-
-            return $this->falha('Não conseguimos marcar agora. Tente de novo em alguns minutos ou fale com a gente pelo grupo.');
-        }
-
-        app(OnboardingEngineService::class)->agendarReuniao($onboarding, $inicio, null, $quem);
-
-        $registro = OnboardingEventoGoogle::updateOrCreate(
-            ['onboarding_id' => $onboarding->id, 'chave' => OnboardingEventoGoogle::TIPO_KICKOFF],
-            [
-                'tipo'                   => OnboardingEventoGoogle::TIPO_KICKOFF,
-                'google_event_id'        => $resposta['id'],
-                'calendar_owner_user_id' => $organizador->id,
-                'calendar_owner_email'   => $organizador->email,
-                'enviado_em'             => now(),
-                // Ninguém da equipe enviou: foi o cliente. `descricao` diz quem.
-                'enviado_por'            => null,
-                'convidados'             => count($participantes),
-                'titulo'                 => $corpo['summary'],
-                'inicio'                 => $inicio,
-                'fim'                    => $fim,
-                'recorrencia'            => null,
-                'plataforma'             => OnboardingEventoGoogle::PLATAFORMA_MEET,
-                'link_reuniao'           => $this->linkDoItem($resposta),
-                'descricao'              => $dados['descricao'],
-                'participantes'          => $participantes,
-                'status'                 => OnboardingEventoGoogle::STATUS_ATIVO,
-                'cancelado_em'           => null,
-                'sincronizado_em'        => now(),
-            ]
-        );
-
-        return [
-            'ok'       => true,
-            'mensagem' => 'Reunião marcada! O convite com o link do Google Meet foi enviado por e-mail.',
-            'evento'   => $registro,
         ];
     }
 
@@ -779,7 +702,11 @@ class AgendaGoogleService
         $inicio = CarbonImmutable::instance($dados['inicio'])->setTimezone(config('app.timezone'));
         $fim = $inicio->addMinutes((int) $dados['duracao']);
 
-        if ($evento->tipo === OnboardingEventoGoogle::TIPO_KICKOFF) {
+        // Mesmo contrato de `criar()`: com `data_so_com_convite`, a data nova
+        // só vale depois que o Google aceitou a mudança.
+        $dataDepois = $evento->tipo === OnboardingEventoGoogle::TIPO_KICKOFF && ($dados['data_so_com_convite'] ?? false);
+
+        if ($evento->tipo === OnboardingEventoGoogle::TIPO_KICKOFF && ! $dataDepois) {
             $marcada = $this->marcarDataDoKickoff($onboarding, $inicio, $por);
 
             if ($marcada !== null) {
@@ -841,6 +768,10 @@ class AgendaGoogleService
             'convidados'      => count($participantes),
             'sincronizado_em' => now(),
         ]);
+
+        if ($dataDepois && ($marcada = $this->marcarDataDoKickoff($onboarding, $inicio, $por)) !== null) {
+            return $this->falha('O convite foi atualizado, mas a data não foi gravada no onboarding: '.$marcada);
+        }
 
         activity('onboarding')
             ->performedOn($onboarding)

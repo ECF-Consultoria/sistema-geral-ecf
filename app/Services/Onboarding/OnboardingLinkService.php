@@ -339,38 +339,57 @@ class OnboardingLinkService
      *   realizada: bool,
      * }>
      */
-    public function reunioesDaEmpresa(Company $company): array
+    /**
+     * `$paraEquipe` (23/09/2026): a EQUIPE, operando pelo portal, marca a
+     * reunião dali mesmo — e só ela recebe quem pode organizar e se dá para
+     * marcar. O cliente não agenda nada; ele recebe a reunião marcada inteira
+     * (data, fim, link), ou nada além de "estamos definindo".
+     */
+    public function reunioesDaEmpresa(Company $company, bool $paraEquipe = false): array
     {
         $agendamento = app(\App\Services\Portal\AgendamentoPortalService::class);
+        $agenda = app(AgendaGoogleService::class);
 
         return Onboarding::query()
             ->where('company_id', $company->id)
             ->emAndamento()
             ->with('servico:id,nome')
             ->get()
-            ->map(fn (Onboarding $onboarding) => [
-                'onboarding_id' => $onboarding->id,
-                'servico'       => $onboarding->servico?->nome ?? '',
-                'status'        => $onboarding->reuniao_status,
-                'agendada_para' => $onboarding->reuniao_agendada_para?->toIso8601String(),
-                'solicitada_em' => $onboarding->reuniao_solicitada_em?->toIso8601String(),
-                // "Aconteceu?" continua sendo respondido pelo PASSO, nunca por
-                // um terceiro estado da coluna.
-                'realizada'     => $onboarding->passos()
-                    ->where('chave', 'reuniao_realizada')
-                    ->where('status', OnboardingPasso::STATUS_CONCLUIDO)
-                    ->exists(),
-                // 23/09/2026 — o cliente passou a poder marcar a reunião pelo
-                // portal, escolhendo entre os horários livres de quem conduz.
-                // Sem chamada ao Google aqui: os horários só são lidos quando
-                // ele pede para escolher.
-                'pode_agendar'  => $agendamento->podeAgendar($onboarding),
-                // Por onde entrar: o Meet do convite ativo, quando existe.
-                'link'          => \App\Models\OnboardingEventoGoogle::where('onboarding_id', $onboarding->id)
+            ->map(function (Onboarding $onboarding) use ($paraEquipe, $agendamento, $agenda) {
+                // O convite ativo da reunião, quando existe: é dele que saem o
+                // fim, o link e por onde a reunião acontece.
+                $convite = \App\Models\OnboardingEventoGoogle::where('onboarding_id', $onboarding->id)
                     ->where('chave', \App\Models\OnboardingEventoGoogle::TIPO_KICKOFF)
                     ->where('status', \App\Models\OnboardingEventoGoogle::STATUS_ATIVO)
-                    ->value('link_reuniao'),
-            ])
+                    ->first();
+
+                // Convite de uma data antiga (remarcada sem convite novo) não
+                // descreve a reunião de agora — melhor não mostrar link errado.
+                $conviteDaData = $convite
+                    && $onboarding->reuniao_agendada_para
+                    && $convite->inicio?->equalTo($onboarding->reuniao_agendada_para);
+
+                return [
+                    'onboarding_id' => $onboarding->id,
+                    'servico'       => $onboarding->servico?->nome ?? '',
+                    'status'        => $onboarding->reuniao_status,
+                    'agendada_para' => $onboarding->reuniao_agendada_para?->toIso8601String(),
+                    'solicitada_em' => $onboarding->reuniao_solicitada_em?->toIso8601String(),
+                    // "Aconteceu?" continua sendo respondido pelo PASSO, nunca por
+                    // um terceiro estado da coluna.
+                    'realizada'     => $onboarding->passos()
+                        ->where('chave', 'reuniao_realizada')
+                        ->where('status', OnboardingPasso::STATUS_CONCLUIDO)
+                        ->exists(),
+                    'termina_em'      => $conviteDaData ? $convite->fim?->toIso8601String() : null,
+                    'plataforma'      => $conviteDaData ? $convite->plataforma : null,
+                    'link'            => $conviteDaData ? $convite->link_reuniao : null,
+                    'convite_enviado' => (bool) $conviteDaData,
+                    // Só para a equipe: marcar e remarcar por aqui.
+                    'pode_agendar'    => $paraEquipe && $agendamento->podeAgendar($onboarding),
+                    'organizadores'   => $paraEquipe ? $agenda->organizadores($onboarding) : [],
+                ];
+            })
             ->values()
             ->all();
     }

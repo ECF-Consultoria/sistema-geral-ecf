@@ -356,42 +356,53 @@ class OnboardingPublicoController extends Controller
     }
 
     /**
-     * GET /portal/onboarding/horarios — os horários em que o cliente pode
-     * marcar a reunião de onboarding (23/09/2026). JSON, lido só quando ele
-     * pede para escolher: consultar o Google a cada abertura da tela deixaria
-     * o portal lento para quem nem vai marcar nada.
+     * GET /portal/onboarding/horarios — sugestões de horário livre para a
+     * reunião de onboarding, para a EQUIPE que opera o portal (23/09/2026).
      *
-     * Só a porta autenticada: o token foi aposentado, e esta rota lê a agenda
-     * da equipe (ainda que só o livre/ocupado).
+     * JSON, lido só quando a equipe abre o formulário: consultar o Google a
+     * cada abertura da tela deixaria o portal lento para o cliente.
      */
     public function horariosReuniao(Request $request, \App\Services\Portal\AgendamentoPortalService $agendamento)
     {
+        $this->exigirEquipe(null);
         $company = \App\Support\Portal\PortalContexto::empresa();
 
         $data = $request->validate(['onboarding_id' => ['required', 'integer']]);
         $onboarding = $this->onboardingDaEmpresa($this->linkService->paraEmpresa($company), $data['onboarding_id']);
 
-        return response()->json($agendamento->horarios($onboarding));
+        return response()->json($agendamento->sugestoes($onboarding));
     }
 
     /**
-     * POST /portal/onboarding/agendar — o cliente marca a reunião num dos
-     * horários livres (23/09/2026). O horário é conferido de novo no servidor;
-     * a lista que a tela mostrou não vale como prova de que ainda está livre.
+     * POST /portal/onboarding/agendar — a EQUIPE marca (ou remarca) a reunião
+     * de onboarding pelo portal, com convite e Google Meet (23/09/2026).
+     *
+     * Só a equipe: o cliente não agenda nada — decisão do negócio, que recusou
+     * a primeira versão em que ele escolhia o horário.
      */
     public function agendarReuniao(Request $request, \App\Services\Portal\AgendamentoPortalService $agendamento)
     {
+        $membro = $this->exigirEquipe(null);
         $company = \App\Support\Portal\PortalContexto::empresa();
-        $ator = \App\Support\Portal\PortalContexto::ator();
 
         $data = $request->validate([
-            'onboarding_id' => ['required', 'integer'],
-            'inicio'        => ['required', 'date'],
+            'onboarding_id'  => ['required', 'integer'],
+            'inicio'         => ['required', 'date', 'after:now'],
+            'duracao'        => ['required', 'integer', 'min:15', 'max:240'],
+            'organizador_id' => ['nullable', 'integer'],
+        ], [
+            'inicio.after' => 'Escolha uma data e hora no futuro.',
         ]);
 
         $onboarding = $this->onboardingDaEmpresa($this->linkService->paraEmpresa($company), $data['onboarding_id']);
 
-        $resultado = $agendamento->agendar($onboarding, \Carbon\CarbonImmutable::parse($data['inicio']), $ator);
+        $resultado = $agendamento->agendar(
+            $onboarding,
+            \Carbon\CarbonImmutable::parse($data['inicio'], 'America/Sao_Paulo'),
+            (int) $data['duracao'],
+            isset($data['organizador_id']) ? (int) $data['organizador_id'] : null,
+            $membro,
+        );
 
         if (! $resultado['ok']) {
             throw ValidationException::withMessages(['inicio' => $resultado['mensagem']]);
@@ -399,9 +410,9 @@ class OnboardingPublicoController extends Controller
 
         activity('onboarding')
             ->performedOn($onboarding)
-            ->causedBy($ator->modelo)
-            ->withProperties(['origem' => $ator->equipe ? 'interno' : 'cliente', 'ip' => $request->ip()])
-            ->log('Reunião de onboarding marcada pelo Portal do Cliente');
+            ->causedBy($membro)
+            ->withProperties(['origem' => 'interno', 'tela' => 'portal', 'ip' => $request->ip()])
+            ->log('Reunião de onboarding marcada pela equipe no Portal do Cliente');
 
         return back()->with('success', $resultado['mensagem']);
     }
@@ -872,7 +883,7 @@ class OnboardingPublicoController extends Controller
                     'funcao'   => $ct->funcao,
                     'telefone' => $ct->telefone,
                 ])->values()),
-            'reunioes' => $this->linkService->reunioesDaEmpresa($company),
+            'reunioes' => $this->linkService->reunioesDaEmpresa($company, (bool) $ator?->equipe),
             'responsaveis' => $this->linkService->responsaveisDaEmpresa($company),
             'mapeamentos' => Onboarding::where('company_id', $company->id)
                 ->emAndamento()

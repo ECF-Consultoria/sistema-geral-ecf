@@ -122,17 +122,26 @@ virou agenda de verdade.
   lido, série não é mais projetada (tudo que existe já veio da leitura — projetar
   desenhava cópia fantasma depois de um "este e os seguintes").
 
-## 7. O cliente marca a reunião pelo Portal (23/09/2026)
+## 7. A EQUIPE marca a reunião pelo Portal — o cliente NÃO agenda (23/09/2026)
 
-- Horário livre = livre para analista E estrategista, via `freeBusy` (só
-  intervalos, sem título). O navegador recebe só a lista de horários. Quem
-  conduz sem agenda conectada tira a opção do portal: não há como saber se está
-  livre.
-- **Ordem inversa à de `criar()`**: no portal o Google vem ANTES da data. Data
-  gravada sem convite seria uma reunião que o cliente acha que marcou e que não
-  está na agenda de ninguém.
-- `agendarReuniao(..., null, $peloPortal)`: `reuniao_agendada_por` fica NULO de
-  propósito — atribuir ao analista diria que foi a equipe.
-- Horário é reconferido no servidor ao marcar (e há `Cache::lock` contra clique
-  duplo). A tela, depois de uma recusa, relê a lista SEM apagar a frase do erro —
-  a primeira versão apagava e o clique parecia "não fazer nada".
+- **A primeira versão foi recusada no mesmo dia.** Ela deixava o CLIENTE escolher
+  horário livre. O negócio: "o cliente não tem que agendar nada pra gente, a
+  gente que agenda com eles". O pedido real era outro: a equipe conduz o
+  onboarding COM o cliente pela tela do portal, e precisava marcar a reunião
+  dali, no lugar do "estamos definindo a data". "Agendar pela jornada do
+  onboarding, no portal" soava como autoatendimento e não era — na dúvida sobre
+  QUEM age numa tela compartilhada, pergunte.
+- **Cliente:** "estamos definindo" ou a reunião inteira — data por extenso,
+  início e fim, botão do Meet, aviso do convite. Sem formulário, sem rota: as
+  duas rotas (`portal/onboarding/horarios|agendar`) exigem equipe e dão 403 a
+  ele. O payload dele não leva `organizadores` (e-mails internos).
+- **Equipe:** o formulário aparece de primeira (data, hora, duração, agenda de
+  quem). As sugestões são os horários livres de analista E estrategista pelo
+  `freeBusy` — atalho, NÃO trava.
+- **Mesmo `criar()` da ficha, com `data_so_com_convite`.** O `criar()`/
+  `atualizar()` gravam a data ANTES do Google (na ficha, "só a data" é uso
+  legítimo). No portal isso fazia o cliente ver "reunião marcada" sem link
+  quando o Google recusava — pego na conferência visual, não no teste. Com a
+  opção, a data só vale depois do evento aceito. Organizador sem Google é
+  recusado antes de tudo.
+- `Cache::lock` por onboarding contra dois cliques (dois convites ao cliente).
