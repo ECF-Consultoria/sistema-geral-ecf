@@ -103,7 +103,7 @@ export default function Chamados({ chamados, eu, onAbrir }) {
 
             {lista.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-white/[0.08] px-6 py-12 text-center text-[13px] text-white/50">
-                    {chamados.length === 0 ? 'Nenhum chamado ainda. Quando alguém pedir ajuda em Chamados, ele aparece aqui.' : 'Nenhum chamado com esses filtros.'}
+                    {chamados.length === 0 ? 'Nenhum ticket ainda. Quando alguém pedir ajuda em Tickets, ele aparece aqui.' : 'Nenhum ticket com esses filtros.'}
                 </div>
             ) : (
                 <ul className="divide-y divide-white/[0.06] overflow-hidden rounded-xl border border-white/[0.08] bg-ecf-card">

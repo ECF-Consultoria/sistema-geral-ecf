@@ -31,8 +31,8 @@ export default function ChamadoDrawer({ aberto, chamado: c, devs, eu, onClose, o
             <SheetContent className="max-w-3xl">
                 {carregando || !c ? (
                     <div className="flex items-center gap-2 p-6 text-[13px] text-white/50">
-                        <Loader2 size={15} className="animate-spin" /> Carregando chamado…
-                        <SheetTitle className="sr-only">Chamado</SheetTitle>
+                        <Loader2 size={15} className="animate-spin" /> Carregando ticket…
+                        <SheetTitle className="sr-only">Ticket</SheetTitle>
                         <SheetDescription className="sr-only">Carregando</SheetDescription>
                     </div>
                 ) : (
@@ -84,9 +84,9 @@ export default function ChamadoDrawer({ aberto, chamado: c, devs, eu, onClose, o
                             {c.demanda?.concluida && !encerrado(c.status) && (
                                 <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-3 text-[13px] text-emerald-300">
                                     <CheckCircle2 size={16} className="shrink-0" />
-                                    <span className="flex-1">A demanda relacionada {c.demanda.codigo} foi concluída. Deseja resolver o chamado?</span>
+                                    <span className="flex-1">A demanda relacionada {c.demanda.codigo} foi concluída. Deseja resolver o ticket?</span>
                                     <button type="button" onClick={() => setPainel('resolver')} className="rounded-md bg-emerald-500/15 px-3 py-1.5 font-medium hover:bg-emerald-500/25">
-                                        Resolver chamado
+                                        Resolver ticket
                                     </button>
                                 </div>
                             )}
@@ -99,14 +99,14 @@ export default function ChamadoDrawer({ aberto, chamado: c, devs, eu, onClose, o
                                         </Acao>
                                     )}
                                     <Acao ativo={painel === 'transferir'} onClick={() => setPainel(painel === 'transferir' ? null : 'transferir')}>
-                                        <ArrowRightLeft size={14} /> Transferir chamado
+                                        <ArrowRightLeft size={14} /> Transferir ticket
                                     </Acao>
                                     <Acao ativo={painel === 'resolver'} onClick={() => setPainel(painel === 'resolver' ? null : 'resolver')}>
                                         <CheckCircle2 size={14} /> Resolver
                                     </Acao>
                                     {!c.demanda && c.pode?.converter && (
                                         <Acao onClick={() => onCriarDemanda(c)}>
-                                            <GitBranchPlus size={14} /> Criar demanda a partir deste chamado
+                                            <GitBranchPlus size={14} /> Criar demanda a partir deste ticket
                                         </Acao>
                                     )}
                                     <Acao
@@ -130,7 +130,7 @@ export default function ChamadoDrawer({ aberto, chamado: c, devs, eu, onClose, o
                                     <div className="text-[13px] font-medium text-emerald-400">Resolvido em {fmtDataHora(c.resolvido_em)}</div>
                                     {c.resolucao && <p className="mt-1 whitespace-pre-line text-[13px] text-white/75">{c.resolucao}</p>}
                                     <button type="button" onClick={() => post(route('chamados.reabrir', c.id), {})} className="mt-2 text-[12.5px] text-white/60 underline underline-offset-2 hover:text-white">
-                                        Reabrir chamado
+                                        Reabrir ticket
                                     </button>
                                 </div>
                             )}
@@ -203,7 +203,7 @@ function Resolver({ enviando, onEnviar }) {
             </label>
             <div className="flex justify-end">
                 <button type="button" disabled={enviando || !texto.trim()} onClick={() => onEnviar(texto)} className="rounded-lg bg-emerald-500/20 px-3.5 py-1.5 text-[12.5px] font-semibold text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50">
-                    Resolver chamado
+                    Resolver ticket
                 </button>
             </div>
         </div>

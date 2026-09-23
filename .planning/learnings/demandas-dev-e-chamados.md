@@ -3,6 +3,14 @@
 Leitura recomendada antes de mexer em `/dev/demandas`, em `/chamados` ou nas
 tabelas `dev_*` e `chamado*`. Escrito em 23/09/2026.
 
+## 0. Na tela é "Ticket"; no código é `Chamado`
+
+Em 23/09 o usuário pediu para o módulo se chamar **Ticket** (menu "Tickets",
+URL `/tickets`, aba "Tickets" em `/dev/demandas?aba=tickets&ticket=ID`). O
+domínio no código NÃO foi renomeado: tabelas `chamados*`, models `Chamado*`,
+rotas nomeadas `chamados.*` e as ações internas `/dev/demandas/chamados/...`.
+Texto novo que o usuário lê diz "ticket"; identificador novo segue `chamado`.
+
 ## 1. Chamado não é demanda — e isso é regra de produto
 
 O chamado é o pedido de quem precisa de ajuda; a demanda é trabalho técnico

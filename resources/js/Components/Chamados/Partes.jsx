@@ -94,14 +94,14 @@ export function CampoArquivos({ arquivos, onChange, erro }) {
 
 // Frase de cada evento do histórico. Motivo de transferência só chega para a equipe.
 const frase = (e, rotulos) => ({
-    criado:                `${e.ator} abriu o chamado`,
-    atribuido:             e.ator === e.para ? `${e.ator} assumiu o chamado` : `Chamado direcionado para ${e.para}`,
+    criado:                `${e.ator} abriu o ticket`,
+    atribuido:             e.ator === e.para ? `${e.ator} assumiu o ticket` : `Ticket direcionado para ${e.para}`,
     transferido:           `${e.ator} transferiu de ${e.de} para ${e.para}`,
     status:                `${e.ator} mudou o status para ${rotulos[e.para] ?? e.para}`,
     convertido_em_demanda: `${e.ator} criou a demanda ${e.para}`,
-    resolvido:             `${e.ator} resolveu o chamado`,
-    reaberto:              `${e.ator} reabriu o chamado`,
-    cancelado:             `${e.ator} cancelou o chamado`,
+    resolvido:             `${e.ator} resolveu o ticket`,
+    reaberto:              `${e.ator} reabriu o ticket`,
+    cancelado:             `${e.ator} cancelou o ticket`,
 }[e.tipo] ?? e.tipo);
 
 /**

@@ -209,7 +209,7 @@ export function DemandaDialog({ demanda = null, origem = null, usuarios, areas, 
             descricao={editando
                 ? 'Status e próxima ação não se editam aqui — vêm das atualizações.'
                 : origem
-                    ? 'O chamado continua sendo a conversa com quem pediu; a demanda é o trabalho técnico. Defina prioridade, critério de conclusão e prazo.'
+                    ? 'O ticket continua sendo a conversa com quem pediu; a demanda é o trabalho técnico. Defina prioridade, critério de conclusão e prazo.'
                     : 'Uma demanda ocupa uma linha para sempre; o andamento vai nas atualizações.'}
             largura="max-w-2xl"
         >

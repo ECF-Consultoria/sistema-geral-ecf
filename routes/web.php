@@ -978,9 +978,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // FORA do `role:admin` de propósito: o responsável por uma demanda entra
     // mesmo sem ser admin (vê só as próprias). A trava fica no controller
     // (DemandasDevService::podeAcessar / podeGerenciar / podeAtualizar).
-    // ─── Chamados — Central de Chamados (qualquer usuário logado) ────────────
-    // Autorização por chamado no ChamadoService: quem abriu ou a equipe dev.
-    Route::prefix('chamados')->name('chamados.')->group(function () {
+    // ─── Tickets — Central de Tickets (qualquer usuário logado) ──────────────
+    // Na tela o nome é "Ticket"; no código o domínio segue `Chamado` (tabelas chamados*).
+    // Autorização por ticket no ChamadoService: quem abriu ou a equipe dev.
+    Route::prefix('tickets')->name('chamados.')->group(function () {
         Route::get('/',                             [ChamadoController::class, 'index'])->name('index');
         Route::post('/',                            [ChamadoController::class, 'store'])->name('store');
         Route::get('/{chamado}',                    [ChamadoController::class, 'show'])->name('show');

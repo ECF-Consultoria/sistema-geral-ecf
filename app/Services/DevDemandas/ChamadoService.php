@@ -112,7 +112,7 @@ class ChamadoService
 
         $destino = $responsavel ? collect([$responsavel]) : $this->equipe();
         $this->avisar($destino, $solicitante, $chamado,
-            $responsavel ? "Novo chamado para você: {$chamado->codigo}" : "Novo chamado na fila: {$chamado->codigo}",
+            $responsavel ? "Novo ticket para você: {$chamado->codigo}" : "Novo ticket na fila: {$chamado->codigo}",
             "{$solicitante->name}: {$chamado->titulo}");
 
         return $chamado;
@@ -132,7 +132,7 @@ class ChamadoService
             $interna = false; // o solicitante nunca escreve nota interna, mande o que mandar
         }
         if ($c->estaEncerrado() && ! $interna) {
-            throw new \RuntimeException('Este chamado está encerrado. Reabra para continuar a conversa.');
+            throw new \RuntimeException('Este ticket está encerrado. Reabra para continuar a conversa.');
         }
 
         $mensagem = DB::transaction(function () use ($c, $autor, $texto, $interna, $arquivos, $comoEquipe) {
@@ -159,7 +159,7 @@ class ChamadoService
 
         if (! $interna) {
             $comoEquipe
-                ? $this->avisar($this->solicitanteDe($c), $autor, $c, "Resposta no seu chamado {$c->codigo}", $c->titulo, paraSolicitante: true)
+                ? $this->avisar($this->solicitanteDe($c), $autor, $c, "Resposta no seu ticket {$c->codigo}", $c->titulo, paraSolicitante: true)
                 : $this->avisar($this->quemAtende($c), $autor, $c, "{$c->solicitante_nome} respondeu o {$c->codigo}", $c->titulo);
         }
 
@@ -179,7 +179,7 @@ class ChamadoService
             throw new \RuntimeException('Para resolver ou cancelar, use a ação própria.');
         }
         if ($c->estaEncerrado()) {
-            throw new \RuntimeException('Chamado encerrado: reabra antes de mudar o status.');
+            throw new \RuntimeException('Ticket encerrado: reabra antes de mudar o status.');
         }
         if ($c->status === $novo) {
             return;
@@ -201,7 +201,7 @@ class ChamadoService
     {
         $novo = $this->devValido($novoId) ?? throw new \RuntimeException('Escolha um dev válido.');
         if ($c->responsavel_id === $novo->id) {
-            throw new \RuntimeException("O chamado já está com {$novo->name}.");
+            throw new \RuntimeException("O ticket já está com {$novo->name}.");
         }
         $anterior = $c->responsavel;
         // Tirar de alguém exige motivo; assumir um chamado da fila, não.
@@ -218,7 +218,7 @@ class ChamadoService
         });
 
         $this->avisar(collect([$novo]), $ator, $c,
-            $anterior ? "Chamado transferido para você: {$c->codigo}" : "Chamado atribuído a você: {$c->codigo}",
+            $anterior ? "Ticket transferido para você: {$c->codigo}" : "Ticket atribuído a você: {$c->codigo}",
             trim($c->titulo . ($motivo ? " — {$motivo}" : '')));
     }
 
@@ -239,7 +239,7 @@ class ChamadoService
 
             $prefixo = strtoupper($dados['prefixo']);
             unset($dados['prefixo']);
-            $origem = "Origem: chamado {$travado->codigo}";
+            $origem = "Origem: ticket {$travado->codigo}";
             $demanda = DevDemanda::create($dados + [
                 'codigo'     => DevDemanda::proximoCodigo($prefixo),
                 'criado_por' => $ator->id,
@@ -262,7 +262,7 @@ class ChamadoService
     public function resolver(Chamado $c, User $ator, string $resolucao): void
     {
         if ($c->estaEncerrado()) {
-            throw new \RuntimeException('Este chamado já está encerrado.');
+            throw new \RuntimeException('Este ticket já está encerrado.');
         }
 
         DB::transaction(function () use ($c, $ator, $resolucao) {
@@ -272,14 +272,14 @@ class ChamadoService
             $this->evento($c, $ator, ChamadoEvento::RESOLVIDO, de: $de, para: Chamado::STATUS_RESOLVIDO, meta: ['mensagem_id' => $m->id], publico: true);
         });
 
-        $this->avisar($this->solicitanteDe($c), $ator, $c, "Chamado {$c->codigo} resolvido", $c->titulo, paraSolicitante: true);
+        $this->avisar($this->solicitanteDe($c), $ator, $c, "Ticket {$c->codigo} resolvido", $c->titulo, paraSolicitante: true);
     }
 
     /** Reabre um chamado resolvido (quem abriu ou a equipe). */
     public function reabrir(Chamado $c, User $ator, ?string $motivo): void
     {
         if ($c->status !== Chamado::STATUS_RESOLVIDO) {
-            throw new \RuntimeException('Só um chamado resolvido pode ser reaberto.');
+            throw new \RuntimeException('Só um ticket resolvido pode ser reaberto.');
         }
         $novo = $c->responsavel_id ? Chamado::STATUS_EM_ATENDIMENTO : Chamado::STATUS_ABERTO;
 
@@ -299,7 +299,7 @@ class ChamadoService
     public function cancelar(Chamado $c, User $ator, ?string $motivo): void
     {
         if ($c->estaEncerrado()) {
-            throw new \RuntimeException('Este chamado já está encerrado.');
+            throw new \RuntimeException('Este ticket já está encerrado.');
         }
 
         DB::transaction(function () use ($c, $ator, $motivo) {
@@ -313,7 +313,7 @@ class ChamadoService
 
         $this->ehSolicitante($ator, $c)
             ? $this->avisar($this->quemAtende($c), $ator, $c, "{$c->codigo} foi cancelado por quem abriu", $c->titulo)
-            : $this->avisar($this->solicitanteDe($c), $ator, $c, "Chamado {$c->codigo} cancelado", $c->titulo, paraSolicitante: true);
+            : $this->avisar($this->solicitanteDe($c), $ator, $c, "Ticket {$c->codigo} cancelado", $c->titulo, paraSolicitante: true);
     }
 
     // ═══ Leitura ═══
@@ -540,7 +540,7 @@ class ChamadoService
         if ($destino->isEmpty()) {
             return;
         }
-        $url = $paraSolicitante ? "/chamados/{$c->id}" : "/dev/demandas?aba=chamados&chamado={$c->id}";
+        $url = $paraSolicitante ? "/tickets/{$c->id}" : "/dev/demandas?aba=tickets&ticket={$c->id}";
 
         DB::afterCommit(fn () => Notification::send($destino, new ChamadoNotification($titulo, mb_substr($mensagem, 0, 200), $url, $ator->id, ['chamado_id' => $c->id])));
     }

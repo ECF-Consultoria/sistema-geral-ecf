@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
-import { BarChart3, Inbox, ListChecks, ListOrdered, Plus, Video } from 'lucide-react';
+import { BarChart3, ListChecks, ListOrdered, Plus, Ticket, Video } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import Fila from '@/Components/DemandasDev/Fila';
@@ -12,10 +12,10 @@ import Chamados from '@/Components/DemandasDev/Chamados';
 import ChamadoDrawer from '@/Components/DemandasDev/ChamadoDrawer';
 import { AtualizacaoDialog, DemandaDialog, ReuniaoDialog } from '@/Components/DemandasDev/Formularios';
 
-// "Chamados" só entra para a equipe dev (admin ou cargo Dev) — ver `equipe`.
+// "Tickets" só entra para a equipe dev (admin ou cargo Dev) — ver `equipe`.
 const ABAS = [
     { id: 'fila',     rotulo: 'Fila',     icone: ListOrdered },
-    { id: 'chamados', rotulo: 'Chamados', icone: Inbox, soEquipe: true },
+    { id: 'tickets', rotulo: 'Tickets', icone: Ticket, soEquipe: true },
     { id: 'demandas', rotulo: 'Demandas', icone: ListChecks },
     { id: 'painel',   rotulo: 'Painel',   icone: BarChart3 },
     { id: 'reunioes', rotulo: 'Reuniões', icone: Video },
@@ -25,7 +25,7 @@ const ABAS = [
 // Abrir um tira o outro: só um painel lateral por vez.
 const urlCom = (param, id) => {
     const u = new URL(window.location.href);
-    u.searchParams.delete(param === 'demanda' ? 'chamado' : 'demanda');
+    u.searchParams.delete(param === 'demanda' ? 'ticket' : 'demanda');
     if (id) u.searchParams.set(param, id);
     else u.searchParams.delete(param);
     return u.pathname + u.search;
@@ -45,10 +45,10 @@ export default function DemandasDevIndex({
 }) {
     const abasVisiveis = ABAS.filter((a) => !a.soEquipe || equipe);
     const [aba, setAba] = useState(() => {
-        if (chamadoDetalhe) return 'chamados';
+        if (chamadoDetalhe) return 'tickets';
         const pedida = abaDaUrl();
         if (pedida && abasVisiveis.some((a) => a.id === pedida)) return pedida;
-        return eu.tem_demandas ? 'fila' : equipe ? 'chamados' : 'demandas';
+        return eu.tem_demandas ? 'fila' : equipe ? 'tickets' : 'demandas';
     });
     const [abertaId, setAbertaId] = useState(detalhe?.id ?? null);
     const [chamadoId, setChamadoId] = useState(chamadoDetalhe?.id ?? null);
@@ -83,14 +83,14 @@ export default function DemandasDevIndex({
     const abrirChamado = (id) => {
         setAbertaId(null);
         setChamadoId(id);
-        router.get(urlCom('chamado', id), {}, { only: ['chamado_detalhe'], preserveState: true, preserveScroll: true, replace: true });
+        router.get(urlCom('ticket', id), {}, { only: ['chamado_detalhe'], preserveState: true, preserveScroll: true, replace: true });
     };
     const fecharChamado = () => {
         setChamadoId(null);
-        router.get(urlCom('chamado', null), {}, { only: ['chamado_detalhe'], preserveState: true, preserveScroll: true, replace: true });
+        router.get(urlCom('ticket', null), {}, { only: ['chamado_detalhe'], preserveState: true, preserveScroll: true, replace: true });
     };
 
-    // "Criar demanda a partir deste chamado": o mesmo formulário de demanda, já preenchido.
+    // "Criar demanda a partir deste ticket": o mesmo formulário de demanda, já preenchido.
     // Prioridade, critério de conclusão e prazo ficam para a equipe decidir.
     const origemDoChamado = (c) => ({
         chamadoId: c.id,
@@ -107,7 +107,7 @@ export default function DemandasDevIndex({
                 c.contexto_aconteceu && `O que aconteceu: ${c.contexto_aconteceu}`,
                 c.contexto_esperado && `O que esperava: ${c.contexto_esperado}`,
             ].filter(Boolean).join('\n\n'),
-            observacoes: `Origem: chamado ${c.codigo} (${c.solicitante})`,
+            observacoes: `Origem: ticket ${c.codigo} (${c.solicitante})`,
         },
     });
 
@@ -156,8 +156,8 @@ export default function DemandasDevIndex({
                             <Icone size={15} />
                             {rotulo}
                             {id === 'reunioes' && reunioes.length > 0 && <span className="text-[11px] text-white/30">{reunioes.length}</span>}
-                            {id === 'chamados' && chamadosAtencao > 0 && (
-                                <span className="inline-flex items-center gap-1 text-[11.5px] text-ecf-yellow" title="Chamados que precisam da equipe">
+                            {id === 'tickets' && chamadosAtencao > 0 && (
+                                <span className="inline-flex items-center gap-1 text-[11.5px] text-ecf-yellow" title="Tickets que precisam da equipe">
                                     <span className="h-1.5 w-1.5 rounded-full bg-ecf-yellow" />{chamadosAtencao}
                                 </span>
                             )}
@@ -168,7 +168,7 @@ export default function DemandasDevIndex({
                 {aba === 'fila' && (
                     <Fila demandas={demandas} usuarios={usuarios} eu={eu} pode={pode} hoje={hoje} onAbrir={abrir} onAtualizar={setAtualizando} />
                 )}
-                {aba === 'chamados' && equipe && <Chamados chamados={chamados} eu={eu} onAbrir={abrirChamado} />}
+                {aba === 'tickets' && equipe && <Chamados chamados={chamados} eu={eu} onAbrir={abrirChamado} />}
                 {aba === 'demandas' && <ListaDemandas demandas={demandas} pode={pode} hoje={hoje} onAbrir={abrir} />}
                 {aba === 'painel' && <Painel demandas={demandas} areas={areas} hoje={hoje} />}
                 {aba === 'reunioes' && (

@@ -21,10 +21,10 @@ export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClos
                             {demanda.chamado && (
                                 onAbrirChamado ? (
                                     <button type="button" onClick={() => onAbrirChamado(demanda.chamado.id)} className="rounded bg-white/[0.05] px-1.5 py-0.5 text-[11.5px] text-white/70 hover:bg-ecf-yellow/10 hover:text-ecf-yellow">
-                                        Origem: chamado {demanda.chamado.codigo}
+                                        Origem: ticket {demanda.chamado.codigo}
                                     </button>
                                 ) : (
-                                    <span className="rounded bg-white/[0.05] px-1.5 py-0.5 text-[11.5px] text-white/60">Origem: chamado {demanda.chamado.codigo}</span>
+                                    <span className="rounded bg-white/[0.05] px-1.5 py-0.5 text-[11.5px] text-white/60">Origem: ticket {demanda.chamado.codigo}</span>
                                 )
                             )}
                         </div>

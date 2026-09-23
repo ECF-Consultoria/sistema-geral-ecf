@@ -73,7 +73,7 @@ export const casaBusca = (c, termo) => {
 
 // Filtros rápidos da caixa da equipe.
 export const FILTROS_RAPIDOS = {
-    meus:       { rotulo: 'Meus chamados',         casa: (c, eu) => c.responsavel?.id === eu && !encerrado(c.status) },
+    meus:       { rotulo: 'Meus tickets',          casa: (c, eu) => c.responsavel?.id === eu && !encerrado(c.status) },
     novos:      { rotulo: 'Novos',                 casa: (c) => c.status === 'aberto' },
     atendimento:{ rotulo: 'Em atendimento',        casa: (c) => c.status === 'em_atendimento' || c.status === 'em_triagem' },
     aguardando: { rotulo: 'Aguardando solicitante', casa: (c) => c.status === 'aguardando_solicitante' },

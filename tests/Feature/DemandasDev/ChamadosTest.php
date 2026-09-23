@@ -55,7 +55,7 @@ class ChamadosTest extends TestCase
 
     private function abrir(User $quem, array $extra = [])
     {
-        return $this->actingAs($quem)->post('/chamados', $extra + [
+        return $this->actingAs($quem)->post('/tickets', $extra + [
             'tipo' => 'problema', 'area' => 'Entrada', 'titulo' => 'Erro ao cadastrar cliente',
             'descricao' => 'Clico em salvar e aparece erro 500.', 'impacto' => 'impedido',
         ]);
@@ -80,7 +80,7 @@ class ChamadosTest extends TestCase
         $this->assertSame('Karen Souza', $c->solicitante_nome);
         $this->assertSame($maycon->id, $c->responsavel_id);
         $this->assertSame(Chamado::STATUS_ABERTO, $c->status);
-        Notification::assertSentTo($maycon, ChamadoNotification::class, fn ($n) => str_contains($n->titulo, 'TKT-0001') && $n->url === "/dev/demandas?aba=chamados&chamado={$c->id}");
+        Notification::assertSentTo($maycon, ChamadoNotification::class, fn ($n) => str_contains($n->titulo, 'TKT-0001') && $n->url === "/dev/demandas?aba=tickets&ticket={$c->id}");
         Notification::assertNotSentTo($karen, ChamadoNotification::class);
 
         $this->actingAs($maycon)->get('/dev/demandas')->assertOk()->assertInertia(fn (Assert $p) => $p
@@ -134,11 +134,11 @@ class ChamadosTest extends TestCase
         $this->abrir($a);
         $c = Chamado::sole();
 
-        $this->actingAs($b)->get("/chamados/{$c->id}")->assertNotFound();
-        $this->actingAs($b)->post("/chamados/{$c->id}/mensagens", ['texto' => 'invadi'])->assertNotFound();
-        $this->actingAs($b)->post("/chamados/{$c->id}/cancelar")->assertNotFound();
+        $this->actingAs($b)->get("/tickets/{$c->id}")->assertNotFound();
+        $this->actingAs($b)->post("/tickets/{$c->id}/mensagens", ['texto' => 'invadi'])->assertNotFound();
+        $this->actingAs($b)->post("/tickets/{$c->id}/cancelar")->assertNotFound();
         $this->actingAs($b)->post("/dev/demandas/chamados/{$c->id}/status", ['status' => 'em_triagem'])->assertForbidden();
-        $this->actingAs($b)->get('/chamados')->assertInertia(fn (Assert $p) => $p->has('chamados', 0));
+        $this->actingAs($b)->get('/tickets')->assertInertia(fn (Assert $p) => $p->has('chamados', 0));
         $this->assertSame(0, $c->mensagens()->count());
     }
 
@@ -150,8 +150,8 @@ class ChamadosTest extends TestCase
         $c = Chamado::sole();
 
         $this->actingAs($joao)->get('/dev/demandas')->assertInertia(fn (Assert $p) => $p->has('chamados', 0));
-        $this->actingAs($joao)->get("/dev/demandas?chamado={$c->id}")->assertInertia(fn (Assert $p) => $p->where('chamado_detalhe', null));
-        $this->actingAs($joao)->post("/chamados/{$c->id}/mensagens", ['texto' => 'x', 'interna' => true])->assertNotFound();
+        $this->actingAs($joao)->get("/dev/demandas?ticket={$c->id}")->assertInertia(fn (Assert $p) => $p->where('chamado_detalhe', null));
+        $this->actingAs($joao)->post("/tickets/{$c->id}/mensagens", ['texto' => 'x', 'interna' => true])->assertNotFound();
     }
 
     // ── Fluxos 4 e 5 ─────────────────────────────────────────────────────────
@@ -204,8 +204,8 @@ class ChamadosTest extends TestCase
         $this->abrir($karen, ['responsavel_id' => $maycon->id]);
         $c = Chamado::sole();
 
-        $this->actingAs($maycon)->post("/chamados/{$c->id}/mensagens", ['texto' => 'Consegue mandar um print?', 'interna' => false]);
-        $this->actingAs($maycon)->post("/chamados/{$c->id}/mensagens", [
+        $this->actingAs($maycon)->post("/tickets/{$c->id}/mensagens", ['texto' => 'Consegue mandar um print?', 'interna' => false]);
+        $this->actingAs($maycon)->post("/tickets/{$c->id}/mensagens", [
             'texto' => 'SEGREDO: endpoint X', 'interna' => true,
             'anexos' => [UploadedFile::fake()->image('log-interno.png')],
         ]);
@@ -214,7 +214,7 @@ class ChamadosTest extends TestCase
         $this->assertSame(Chamado::STATUS_EM_ATENDIMENTO, $c->fresh()->status); // resposta da equipe tira de "Aberto"
 
         // A tela de quem abriu: a pública está lá; a interna, não — nem o anexo dela.
-        $resposta = $this->actingAs($karen)->get("/chamados/{$c->id}")->assertOk();
+        $resposta = $this->actingAs($karen)->get("/tickets/{$c->id}")->assertOk();
         $json = json_encode($resposta->viewData('page')['props']['chamado']);
         $this->assertStringContainsString('Consegue mandar um print?', $json);
         $this->assertStringNotContainsString('SEGREDO', $json);
@@ -222,11 +222,11 @@ class ChamadosTest extends TestCase
 
         // Acesso direto ao anexo da nota interna: 404 para quem abriu.
         $anexoInterno = $c->anexos()->whereNotNull('mensagem_id')->sole();
-        $this->actingAs($karen)->get("/chamados/{$c->id}/anexos/{$anexoInterno->id}")->assertNotFound();
-        $this->actingAs($maycon)->get("/chamados/{$c->id}/anexos/{$anexoInterno->id}")->assertOk();
+        $this->actingAs($karen)->get("/tickets/{$c->id}/anexos/{$anexoInterno->id}")->assertNotFound();
+        $this->actingAs($maycon)->get("/tickets/{$c->id}/anexos/{$anexoInterno->id}")->assertOk();
 
         // Tentar escrever nota interna como solicitante vira mensagem pública (nunca interna).
-        $this->actingAs($karen)->post("/chamados/{$c->id}/mensagens", ['texto' => 'segue print', 'interna' => true]);
+        $this->actingAs($karen)->post("/tickets/{$c->id}/mensagens", ['texto' => 'segue print', 'interna' => true]);
         $this->assertSame('publica', $c->mensagens()->latest('id')->first()->visibilidade);
     }
 
@@ -235,9 +235,9 @@ class ChamadosTest extends TestCase
         $maycon = $this->dev('Maycon Gomes');
         $this->abrir($this->colaborador(), ['responsavel_id' => $maycon->id]);
         $c = Chamado::sole();
-        $this->actingAs($maycon)->post("/chamados/{$c->id}/mensagens", ['texto' => 'SEGREDO', 'interna' => true]);
+        $this->actingAs($maycon)->post("/tickets/{$c->id}/mensagens", ['texto' => 'SEGREDO', 'interna' => true]);
 
-        $this->actingAs($maycon)->get("/dev/demandas?chamado={$c->id}")->assertInertia(fn (Assert $p) => $p
+        $this->actingAs($maycon)->get("/dev/demandas?ticket={$c->id}")->assertInertia(fn (Assert $p) => $p
             ->where('chamado_detalhe.codigo', 'TKT-0001')
             ->where('chamado_detalhe.linha_do_tempo', fn ($l) => collect($l)->contains(fn ($i) => ($i['texto'] ?? null) === 'SEGREDO' && $i['interna'])));
     }
@@ -266,7 +266,7 @@ class ChamadosTest extends TestCase
         $demanda = DevDemanda::where('codigo', 'DEV-32')->sole();
         $this->assertSame($demanda->id, $c->fresh()->dev_demanda_id);
         $this->assertSame(1, $demanda->prioridade);
-        $this->assertStringContainsString('Origem: chamado TKT-0001', $demanda->observacoes);
+        $this->assertStringContainsString('Origem: ticket TKT-0001', $demanda->observacoes);
         $this->assertSame(1, ChamadoEvento::where('tipo', ChamadoEvento::CONVERTIDO)->count());
 
         // A demanda aponta de volta para o chamado.
@@ -306,7 +306,7 @@ class ChamadosTest extends TestCase
         $c = Chamado::sole();
         $this->converter($admin, $c);
 
-        $json = json_encode($this->actingAs($karen)->get("/chamados/{$c->id}")->viewData('page')['props']['chamado']);
+        $json = json_encode($this->actingAs($karen)->get("/tickets/{$c->id}")->viewData('page')['props']['chamado']);
         $this->assertStringNotContainsString('DEV-', $json);
         $this->assertStringNotContainsString('convertido', $json);
         // E a tela de demandas continua fechada para ela.
@@ -318,10 +318,10 @@ class ChamadosTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin', 'active' => true]);
         $this->abrir($admin);
         $c = Chamado::sole();
-        $this->actingAs($admin)->post("/chamados/{$c->id}/mensagens", ['texto' => 'SEGREDO', 'interna' => true]);
+        $this->actingAs($admin)->post("/tickets/{$c->id}/mensagens", ['texto' => 'SEGREDO', 'interna' => true]);
         $this->converter($admin, $c);
 
-        $json = json_encode($this->actingAs($admin)->get("/chamados/{$c->id}")->assertOk()->viewData('page')['props']['chamado']);
+        $json = json_encode($this->actingAs($admin)->get("/tickets/{$c->id}")->assertOk()->viewData('page')['props']['chamado']);
         $this->assertStringNotContainsString('SEGREDO', $json);
         $this->assertStringNotContainsString('DEV-', $json);
     }
@@ -340,11 +340,11 @@ class ChamadosTest extends TestCase
         $c->refresh();
         $this->assertSame(Chamado::STATUS_RESOLVIDO, $c->status);
         $this->assertNotNull($c->resolvido_em);
-        Notification::assertSentTo($karen, ChamadoNotification::class, fn ($n) => str_contains($n->titulo, 'resolvido') && $n->url === "/chamados/{$c->id}");
+        Notification::assertSentTo($karen, ChamadoNotification::class, fn ($n) => str_contains($n->titulo, 'resolvido') && $n->url === "/tickets/{$c->id}");
 
         // Encerrado: mensagem nova exige reabrir.
-        $this->actingAs($karen)->post("/chamados/{$c->id}/mensagens", ['texto' => 'ainda dá erro'])->assertSessionHas('error');
-        $this->actingAs($karen)->post("/chamados/{$c->id}/reabrir", ['motivo' => 'Ainda dá erro.'])->assertSessionHas('success');
+        $this->actingAs($karen)->post("/tickets/{$c->id}/mensagens", ['texto' => 'ainda dá erro'])->assertSessionHas('error');
+        $this->actingAs($karen)->post("/tickets/{$c->id}/reabrir", ['motivo' => 'Ainda dá erro.'])->assertSessionHas('success');
         $this->assertSame(Chamado::STATUS_EM_ATENDIMENTO, $c->fresh()->status);
         $this->assertSame(1, ChamadoEvento::where('tipo', ChamadoEvento::REABERTO)->count());
     }
@@ -358,7 +358,7 @@ class ChamadosTest extends TestCase
 
         $this->actingAs($maycon)->post("/dev/demandas/chamados/{$c->id}/status", ['status' => 'aguardando_solicitante']);
         $this->actingAs($maycon)->post("/dev/demandas/chamados/{$c->id}/status", ['status' => 'resolvido'])->assertSessionHasErrors('status');
-        $this->actingAs($karen)->post("/chamados/{$c->id}/mensagens", ['texto' => 'Aqui está o print.']);
+        $this->actingAs($karen)->post("/tickets/{$c->id}/mensagens", ['texto' => 'Aqui está o print.']);
 
         $this->assertSame(Chamado::STATUS_EM_ATENDIMENTO, $c->fresh()->status);
         $this->assertSame(
@@ -385,8 +385,8 @@ class ChamadosTest extends TestCase
         Storage::disk('local')->assertExists($anexos[0]->caminho);
         $this->assertStringStartsWith("chamados/{$c->id}/", $anexos[0]->caminho);
 
-        $this->actingAs($karen)->get("/chamados/{$c->id}/anexos/{$anexos[0]->id}")->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
-        $this->actingAs($intrusa)->get("/chamados/{$c->id}/anexos/{$anexos[0]->id}")->assertNotFound();
+        $this->actingAs($karen)->get("/tickets/{$c->id}/anexos/{$anexos[0]->id}")->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->actingAs($intrusa)->get("/tickets/{$c->id}/anexos/{$anexos[0]->id}")->assertNotFound();
     }
 
     public function test_anexo_de_outro_chamado_nao_sai_pela_url_de_um_chamado_meu(): void
@@ -399,7 +399,7 @@ class ChamadosTest extends TestCase
         $meu = Chamado::where('solicitante_id', $bruno->id)->sole();
         $anexo = $dela->anexos()->sole();
 
-        $this->actingAs($bruno)->get("/chamados/{$meu->id}/anexos/{$anexo->id}")->assertNotFound();
+        $this->actingAs($bruno)->get("/tickets/{$meu->id}/anexos/{$anexo->id}")->assertNotFound();
     }
 
     // ── Fluxo 12 ─────────────────────────────────────────────────────────────
@@ -420,7 +420,7 @@ class ChamadosTest extends TestCase
                 && collect($cs)->firstWhere('codigo', 'TKT-0001')['responsavel']['name'] === 'Maycon Gomes'
                 && collect($cs)->firstWhere('codigo', 'TKT-0002')['solicitante'] === 'Bruno Lima'));
 
-        $this->actingAs($karen)->get('/chamados')->assertInertia(fn (Assert $p) => $p
+        $this->actingAs($karen)->get('/tickets')->assertInertia(fn (Assert $p) => $p
             ->has('chamados', 1)
             ->where('chamados.0.codigo', 'TKT-0001')
             ->missing('chamados.0.demanda')

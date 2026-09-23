@@ -74,7 +74,7 @@ class ChamadoController extends Controller
             ->where('created_at', '>=', now()->subMinute())
             ->first();
         if ($repetido) {
-            return redirect()->route('chamados.show', $repetido)->with('success', "Seu chamado {$repetido->codigo} já foi aberto.");
+            return redirect()->route('chamados.show', $repetido)->with('success', "Seu ticket {$repetido->codigo} já foi aberto.");
         }
 
         try {
@@ -84,7 +84,7 @@ class ChamadoController extends Controller
         }
 
         return redirect()->route('chamados.show', $chamado)
-            ->with('success', "Chamado {$chamado->codigo} aberto. Você acompanha tudo por aqui.");
+            ->with('success', "Ticket {$chamado->codigo} aberto. Você acompanha tudo por aqui.");
     }
 
     public function show(Request $request, Chamado $chamado)
@@ -94,7 +94,7 @@ class ChamadoController extends Controller
 
         // A equipe trabalha o chamado dentro de /dev/demandas; esta tela é de quem abriu.
         if (! $this->chamados->ehSolicitante($user, $chamado)) {
-            return redirect("/dev/demandas?aba=chamados&chamado={$chamado->id}");
+            return redirect("/dev/demandas?aba=tickets&ticket={$chamado->id}");
         }
 
         return Inertia::render('Chamados/Show', [
@@ -136,7 +136,7 @@ class ChamadoController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        return back()->with('success', "Chamado {$chamado->codigo} reaberto.");
+        return back()->with('success', "Ticket {$chamado->codigo} reaberto.");
     }
 
     public function cancelar(Request $request, Chamado $chamado)
@@ -151,7 +151,7 @@ class ChamadoController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        return back()->with('success', "Chamado {$chamado->codigo} cancelado.");
+        return back()->with('success', "Ticket {$chamado->codigo} cancelado.");
     }
 
     public function anexo(Request $request, Chamado $chamado, ChamadoAnexo $anexo)
