@@ -341,6 +341,8 @@ class OnboardingLinkService
      */
     public function reunioesDaEmpresa(Company $company): array
     {
+        $agendamento = app(\App\Services\Portal\AgendamentoPortalService::class);
+
         return Onboarding::query()
             ->where('company_id', $company->id)
             ->emAndamento()
@@ -358,6 +360,16 @@ class OnboardingLinkService
                     ->where('chave', 'reuniao_realizada')
                     ->where('status', OnboardingPasso::STATUS_CONCLUIDO)
                     ->exists(),
+                // 23/09/2026 — o cliente passou a poder marcar a reunião pelo
+                // portal, escolhendo entre os horários livres de quem conduz.
+                // Sem chamada ao Google aqui: os horários só são lidos quando
+                // ele pede para escolher.
+                'pode_agendar'  => $agendamento->podeAgendar($onboarding),
+                // Por onde entrar: o Meet do convite ativo, quando existe.
+                'link'          => \App\Models\OnboardingEventoGoogle::where('onboarding_id', $onboarding->id)
+                    ->where('chave', \App\Models\OnboardingEventoGoogle::TIPO_KICKOFF)
+                    ->where('status', \App\Models\OnboardingEventoGoogle::STATUS_ATIVO)
+                    ->value('link_reuniao'),
             ])
             ->values()
             ->all();

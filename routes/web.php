@@ -217,6 +217,15 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->name('portal.auth.onboarding.fotografia');
     Route::get('/onboarding/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
         ->name('portal.auth.onboarding.conectar-ml');
+    // 23/09/2026 — o cliente marca a reunião de onboarding num horário livre
+    // de quem conduz. Os horários são JSON (lidos só quando ele pede); marcar
+    // tem limite para ninguém martelar a agenda da equipe.
+    Route::get('/onboarding/horarios', [OnboardingPublicoController::class, 'horariosReuniao'])
+        ->middleware('throttle:30,1')
+        ->name('portal.auth.onboarding.horarios');
+    Route::post('/onboarding/agendar', [OnboardingPublicoController::class, 'agendarReuniao'])
+        ->middleware('throttle:10,1')
+        ->name('portal.auth.onboarding.agendar');
 
     Route::patch('/ppa/tarefas/{task}', [PortalPpaController::class, 'moverTarefaAutenticado'])
         ->middleware('throttle:60,1')

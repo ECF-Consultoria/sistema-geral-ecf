@@ -321,7 +321,13 @@ class OnboardingEngineService
      * `agendada` e o activity guarda as duas datas para reconstruir o
      * histórico sem precisar de tabela de remarcação.
      */
-    public function agendarReuniao(Onboarding $onboarding, CarbonInterface $quando, User $por): Onboarding
+    /**
+     * `$por` nulo (23/09/2026) é o CLIENTE marcando pelo Portal: ele não tem
+     * linha em `users`, e atribuir a marcação ao analista seria dizer que foi a
+     * equipe. Nesse caso `$peloPortal` descreve quem marcou, e é o que fica no
+     * histórico.
+     */
+    public function agendarReuniao(Onboarding $onboarding, CarbonInterface $quando, ?User $por, ?string $peloPortal = null): Onboarding
     {
         if ($onboarding->status !== Onboarding::STATUS_ANDAMENTO) {
             throw new \DomainException('Só é possível agendar reunião de onboarding em andamento.');
@@ -331,7 +337,7 @@ class OnboardingEngineService
 
         $onboarding->reuniao_status = Onboarding::REUNIAO_AGENDADA;
         $onboarding->reuniao_agendada_para = $quando;
-        $onboarding->reuniao_agendada_por = $por->id;
+        $onboarding->reuniao_agendada_por = $por?->id;
         $onboarding->save();
 
         activity('onboarding')
@@ -339,11 +345,13 @@ class OnboardingEngineService
             ->withProperties([
                 'agendada_para'   => $quando->toDateTimeString(),
                 'anterior'        => $anterior?->toDateTimeString(),
-                'agendada_por'    => $por->id,
+                'agendada_por'    => $por?->id,
+                ...($peloPortal ? ['pelo_portal' => $peloPortal] : []),
             ])
-            ->log($anterior
+            ->log(($anterior
                 ? "Reunião de onboarding remarcada para {$quando->format('d/m/Y H:i')}"
-                : "Reunião de onboarding agendada para {$quando->format('d/m/Y H:i')}");
+                : "Reunião de onboarding agendada para {$quando->format('d/m/Y H:i')}")
+                .($peloPortal ? " pelo Portal do Cliente ({$peloPortal})" : ''));
 
         return $onboarding;
     }

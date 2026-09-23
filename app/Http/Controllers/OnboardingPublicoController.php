@@ -355,6 +355,57 @@ class OnboardingPublicoController extends Controller
         return back()->with('success', 'Anotações salvas.');
     }
 
+    /**
+     * GET /portal/onboarding/horarios — os horários em que o cliente pode
+     * marcar a reunião de onboarding (23/09/2026). JSON, lido só quando ele
+     * pede para escolher: consultar o Google a cada abertura da tela deixaria
+     * o portal lento para quem nem vai marcar nada.
+     *
+     * Só a porta autenticada: o token foi aposentado, e esta rota lê a agenda
+     * da equipe (ainda que só o livre/ocupado).
+     */
+    public function horariosReuniao(Request $request, \App\Services\Portal\AgendamentoPortalService $agendamento)
+    {
+        $company = \App\Support\Portal\PortalContexto::empresa();
+
+        $data = $request->validate(['onboarding_id' => ['required', 'integer']]);
+        $onboarding = $this->onboardingDaEmpresa($this->linkService->paraEmpresa($company), $data['onboarding_id']);
+
+        return response()->json($agendamento->horarios($onboarding));
+    }
+
+    /**
+     * POST /portal/onboarding/agendar — o cliente marca a reunião num dos
+     * horários livres (23/09/2026). O horário é conferido de novo no servidor;
+     * a lista que a tela mostrou não vale como prova de que ainda está livre.
+     */
+    public function agendarReuniao(Request $request, \App\Services\Portal\AgendamentoPortalService $agendamento)
+    {
+        $company = \App\Support\Portal\PortalContexto::empresa();
+        $ator = \App\Support\Portal\PortalContexto::ator();
+
+        $data = $request->validate([
+            'onboarding_id' => ['required', 'integer'],
+            'inicio'        => ['required', 'date'],
+        ]);
+
+        $onboarding = $this->onboardingDaEmpresa($this->linkService->paraEmpresa($company), $data['onboarding_id']);
+
+        $resultado = $agendamento->agendar($onboarding, \Carbon\CarbonImmutable::parse($data['inicio']), $ator);
+
+        if (! $resultado['ok']) {
+            throw ValidationException::withMessages(['inicio' => $resultado['mensagem']]);
+        }
+
+        activity('onboarding')
+            ->performedOn($onboarding)
+            ->causedBy($ator->modelo)
+            ->withProperties(['origem' => $ator->equipe ? 'interno' : 'cliente', 'ip' => $request->ip()])
+            ->log('Reunião de onboarding marcada pelo Portal do Cliente');
+
+        return back()->with('success', $resultado['mensagem']);
+    }
+
     /** O investimento do cliente, registrado na reunião (14/09). */
     public function salvarInvestimentoPortal(Request $request, ?string $token = null)
     {

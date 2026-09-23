@@ -66,6 +66,16 @@ const ROTAS = {
         porToken: null,
         autenticada: 'portal.auth.onboarding.fotografia',
     },
+    // 23/09/2026 — o cliente marca a reunião de onboarding. Só autenticada: o
+    // token foi aposentado, e estas rotas leem a agenda da equipe.
+    'onboarding.horarios': {
+        porToken: null,
+        autenticada: 'portal.auth.onboarding.horarios',
+    },
+    'onboarding.agendar': {
+        porToken: null,
+        autenticada: 'portal.auth.onboarding.agendar',
+    },
 };
 
 /**

@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import PessoasDoCliente from '@/Components/Onboarding/PessoasDoCliente';
 import FotografiaDaConta from '@/Components/Onboarding/FotografiaDaConta';
 import { router, usePage } from '@inertiajs/react';
@@ -702,25 +702,194 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
 
 // ─── Reunião de onboarding ────────────────────────────────────────────────
 // Não é um passo: `agendar_reuniao_onboarding` é `dono=interno` e nunca
-// apareceria na lista do cliente. Este bloco existe para ele VER a data que
-// NÓS marcamos.
+// apareceria na lista do cliente. Este bloco existe para ele VER a data.
 //
 // O cliente NÃO pede reunião. Existia aqui um botão "Solicitar reunião" e um
-// estado "Recebemos seu pedido" — o negócio derrubou os dois em 19/08: quem
-// define a data somos nós, e a partir dela cobramos a presença do cliente.
-// Pedir invertia o sentido do processo, e deixava a empresa parada esperando
-// um clique que muitas vezes nunca vinha.
+// estado "Recebemos seu pedido" — o negócio derrubou os dois em 19/08: pedir
+// deixava a empresa parada esperando um clique que muitas vezes nunca vinha.
+//
+// 23/09/2026 — o cliente passou a MARCAR (não pedir): escolhe um dos horários
+// em que analista e estrategista estão livres, e a reunião sai marcada, com
+// convite e Meet. Ele nunca vê a agenda de ninguém — só a lista de horários
+// que sobraram, montada no servidor. Se a equipe marcou antes, o card só
+// mostra a data. Remarcar continua sendo pelo grupo.
+
+const FUSO_PORTAL = 'America/Sao_Paulo';
 
 function formatarQuando(iso) {
     if (!iso) return null;
     const d = new Date(iso);
     return d.toLocaleString('pt-BR', {
         day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
+        hour: '2-digit', minute: '2-digit', timeZone: FUSO_PORTAL,
     });
 }
 
-function ReuniaoCard({ reuniao, varios }) {
+// O fuso vai explícito em toda formatação: o horário é o de Brasília, que é o
+// da equipe, mesmo que o navegador do cliente esteja em outro.
+const diaDoHorario = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: FUSO_PORTAL });
+const rotuloDoDia = (iso) => new Date(iso).toLocaleDateString('pt-BR', {
+    weekday: 'short', day: '2-digit', month: '2-digit', timeZone: FUSO_PORTAL,
+});
+const horaDoHorario = (iso) => new Date(iso).toLocaleTimeString('pt-BR', {
+    hour: '2-digit', minute: '2-digit', timeZone: FUSO_PORTAL,
+});
+const rotuloCompleto = (iso) => new Date(iso).toLocaleString('pt-BR', {
+    weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: FUSO_PORTAL,
+});
+
+/**
+ * A escolha do horário. Os horários chegam do servidor já livres para os dois
+ * que conduzem; marcar confere de novo lá, porque entre abrir a lista e clicar
+ * alguém pode ter ocupado o horário.
+ */
+function EscolherHorario({ reuniao, token, aoFechar }) {
+    const [carregando, setCarregando] = useState(true);
+    const [horarios, setHorarios] = useState([]);
+    const [erro, setErro] = useState(null);
+    const [dia, setDia] = useState(null);
+    const [escolhido, setEscolhido] = useState(null);
+    const [marcando, setMarcando] = useState(false);
+
+    const buscar = () => {
+        setCarregando(true);
+        setErro(null);
+        setEscolhido(null);
+        window.axios
+            .get(rotaDoPortal('onboarding.horarios', token), { params: { onboarding_id: reuniao.onboarding_id } })
+            .then(({ data }) => {
+                setHorarios(data.horarios ?? []);
+                setErro(data.erro ?? null);
+                setDia((data.horarios ?? []).length ? diaDoHorario(data.horarios[0]) : null);
+            })
+            .catch(() => setErro('Não conseguimos consultar os horários agora. Tente de novo em alguns minutos.'))
+            .finally(() => setCarregando(false));
+    };
+
+    // Busca uma vez ao abrir — o painel só existe depois do clique.
+    useEffect(() => { buscar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const dias = [...new Set(horarios.map(diaDoHorario))];
+    const doDia = horarios.filter((h) => diaDoHorario(h) === dia);
+
+    const confirmar = () => {
+        if (!escolhido || marcando) return;
+        setMarcando(true);
+        setErro(null);
+        router.post(
+            rotaDoPortal('onboarding.agendar', token),
+            { onboarding_id: reuniao.onboarding_id, inicio: escolhido },
+            {
+                preserveScroll: true,
+                onSuccess: () => aoFechar(),
+                onError: (erros) => {
+                    setErro(erros.inicio ?? 'Não foi possível marcar. Tente de novo.');
+                    // O horário pode ter sido ocupado: a lista precisa refletir isso.
+                    buscar();
+                },
+                onFinish: () => setMarcando(false),
+            },
+        );
+    };
+
+    return (
+        <div className="mt-3 pt-3 border-t border-white/[0.06] space-y-3">
+            {carregando ? (
+                <p className="inline-flex items-center gap-1.5 text-white/50 text-[12px]">
+                    <RefreshCw size={12} className="animate-spin" /> Buscando horários livres…
+                </p>
+            ) : (
+                <>
+                    {erro && (
+                        <p className="text-[12px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                            {erro}
+                        </p>
+                    )}
+
+                    {!erro && horarios.length === 0 && (
+                        <p className="text-white/50 text-[12px]">
+                            Não há horários livres nos próximos dias. Fale com a gente pelo grupo que combinamos um horário.
+                        </p>
+                    )}
+
+                    {dias.length > 0 && (
+                        <>
+                            <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Dia da reunião">
+                                {dias.map((d) => {
+                                    const primeiro = horarios.find((h) => diaDoHorario(h) === d);
+                                    return (
+                                        <button
+                                            key={d}
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={d === dia}
+                                            onClick={() => { setDia(d); setEscolhido(null); }}
+                                            className={cn(
+                                                'shrink-0 rounded-lg px-2.5 py-1.5 text-[12px] font-medium capitalize transition-colors',
+                                                d === dia
+                                                    ? 'bg-ecf-yellow text-ecf-bg'
+                                                    : 'border border-white/[0.10] bg-white/[0.03] text-white/70 hover:text-white',
+                                            )}
+                                        >
+                                            {rotuloDoDia(primeiro)}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                                {doDia.map((h) => (
+                                    <button
+                                        key={h}
+                                        type="button"
+                                        onClick={() => setEscolhido(h)}
+                                        aria-pressed={h === escolhido}
+                                        className={cn(
+                                            'rounded-lg py-1.5 text-[12px] font-semibold tabular-nums transition-colors',
+                                            h === escolhido
+                                                ? 'bg-emerald-400 text-ecf-bg'
+                                                : 'border border-white/[0.10] bg-white/[0.03] text-white/75 hover:border-emerald-400/50',
+                                        )}
+                                    >
+                                        {horaDoHorario(h)}
+                                    </button>
+                                ))}
+                            </div>
+                        </>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        {escolhido && (
+                            <button
+                                type="button"
+                                onClick={confirmar}
+                                disabled={marcando}
+                                className="px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 text-[12px] font-semibold disabled:opacity-40"
+                            >
+                                {marcando ? 'Marcando…' : `Confirmar ${rotuloCompleto(escolhido)}`}
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={aoFechar}
+                            className="px-3 py-1.5 rounded-lg text-[12px] text-white/50 hover:text-white/80"
+                        >
+                            Cancelar
+                        </button>
+                    </div>
+
+                    <p className="text-white/30 text-[11px]">
+                        Horários de Brasília. A reunião dura 1 hora e acontece pelo Google Meet — o convite chega no seu e-mail.
+                    </p>
+                </>
+            )}
+        </div>
+    );
+}
+
+function ReuniaoCard({ reuniao, varios, token }) {
+    const [escolhendo, setEscolhendo] = useState(false);
+
     if (reuniao.realizada) {
         return (
             <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
@@ -755,16 +924,44 @@ function ReuniaoCard({ reuniao, varios }) {
 
                     {quando ? (
                         <>
-                            <p className="text-ecf-yellow text-[13px] font-semibold mt-1.5">{quando}</p>
-                            <p className="text-white/40 text-[12px] mt-1">
+                            <p className="text-white/45 text-[11px] font-semibold uppercase tracking-wider mt-1.5">Reunião marcada</p>
+                            <p className="text-ecf-yellow text-[13px] font-semibold mt-0.5">{quando}</p>
+                            {reuniao.link && (
+                                <a
+                                    href={reuniao.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow text-[12px] font-medium"
+                                >
+                                    <ExternalLink size={12} /> Entrar pelo Google Meet
+                                </a>
+                            )}
+                            <p className="text-white/40 text-[12px] mt-2">
                                 É a conversa em que apresentamos o diagnóstico da sua conta e os próximos passos.
                                 Se esse horário não funcionar para você, fale com a gente pelo grupo.
                             </p>
                         </>
+                    ) : reuniao.pode_agendar ? (
+                        <>
+                            <p className="text-white/50 text-[12px] mt-1.5">
+                                É a conversa em que apresentamos o diagnóstico da sua conta e os próximos passos.
+                                Escolha o melhor horário para você.
+                            </p>
+                            {escolhendo ? (
+                                <EscolherHorario reuniao={reuniao} token={token} aoFechar={() => setEscolhendo(false)} />
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => setEscolhendo(true)}
+                                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 text-[12px] font-semibold"
+                                >
+                                    <CalendarDays size={13} /> Escolher horário
+                                </button>
+                            )}
+                        </>
                     ) : (
-                        // Sem data ainda. Nenhum botão: não há nada para o
-                        // cliente fazer aqui, e oferecer uma ação que não é
-                        // dele foi exatamente o que se removeu.
+                        // Sem data e sem como marcar pelo portal (quem conduz
+                        // ainda não conectou a agenda, ou não foi definido).
                         <p className="text-white/50 text-[12px] mt-1.5">
                             É a conversa em que apresentamos o diagnóstico da sua conta e os próximos passos.
                             Estamos definindo a data — assim que ela estiver marcada, aparece aqui.
@@ -1016,6 +1213,7 @@ export default function Publico({
                                         key={reuniao.onboarding_id}
                                         reuniao={reuniao}
                                         varios={reunioes.length > 1}
+                                        token={token}
                                     />
                                 ))}
                             </section>

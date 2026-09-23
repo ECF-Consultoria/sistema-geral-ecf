@@ -105,6 +105,9 @@ class RestringeDominioDoPortal
         'portal/onboarding/relatorio',
         'portal/onboarding/investimento',
         'portal/onboarding/fotografia',
+        // 23/09/2026 — o cliente marca a reunião de onboarding pelo portal.
+        'portal/onboarding/horarios',
+        'portal/onboarding/agendar',
         // Módulo novo do menu lateral (Calculadora de Custo). Sem esta linha a
         // própria PÁGINA não abre no domínio do cliente.
         'portal/calculadora',
