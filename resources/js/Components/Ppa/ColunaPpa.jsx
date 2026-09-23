@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { CheckCircle2, Circle, Clock } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Plus, X } from 'lucide-react';
 import CardTarefaPpa from './CardTarefaPpa';
 import { cn } from '@/lib/utils';
 
@@ -54,7 +55,87 @@ export const COLUNAS = [
     },
 ];
 
-export default function ColunaPpa({ coluna, tarefas, somenteLeitura, arrastandoAlgo }) {
+/**
+ * "Adicionar tarefa" no pé da coluna — só na lista interna.
+ *
+ * Por coluna, e não um botão só no rodapé do plano (23/09/2026): a tarefa já
+ * nasce na etapa em que foi escrita, e o botão fica onde o olho está quando a
+ * pessoa pensa "falta isto aqui". O rodapé único, discreto e abaixo das três
+ * colunas, passou despercebido — "não tem como adicionar novos cards".
+ *
+ * Depois de salvar o campo continua aberto e vazio, para lançar várias em
+ * seguida; Esc ou "Cancelar" fecha.
+ */
+function AdicionarNaColuna({ onAdicionar }) {
+    const [aberto, setAberto] = useState(false);
+    const [titulo, setTitulo] = useState('');
+    const [salvando, setSalvando] = useState(false);
+
+    const fechar = () => { setAberto(false); setTitulo(''); };
+
+    const enviar = (e) => {
+        e.preventDefault();
+        const limpo = titulo.trim();
+        if (!limpo || salvando) return;
+
+        setSalvando(true);
+        onAdicionar(limpo)
+            .then(() => setTitulo(''))
+            .catch(() => {})
+            .finally(() => setSalvando(false));
+    };
+
+    if (!aberto) {
+        return (
+            <button
+                type="button"
+                onClick={() => setAberto(true)}
+                className="w-full flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-[12px] text-white/35 hover:text-white hover:bg-white/[0.05] transition-colors"
+            >
+                <Plus size={13} /> Adicionar tarefa
+            </button>
+        );
+    }
+
+    return (
+        <form onSubmit={enviar} className="space-y-2">
+            <textarea
+                autoFocus
+                rows={2}
+                value={titulo}
+                onChange={(e) => setTitulo(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Escape') fechar();
+                    // Enter salva, Shift+Enter quebra linha — o título é curto.
+                    if (e.key === 'Enter' && !e.shiftKey) enviar(e);
+                }}
+                placeholder="O que precisa ser feito?"
+                className="w-full resize-none rounded-xl bg-white/[0.06] ring-1 ring-inset ring-white/[0.12] focus:ring-ecf-yellow/50 outline-none px-3 py-2.5 text-[13px] text-white placeholder:text-white/30"
+            />
+            <div className="flex items-center gap-2">
+                <button
+                    type="submit"
+                    disabled={!titulo.trim() || salvando}
+                    className="rounded-lg bg-ecf-yellow px-3 py-1.5 text-[12px] font-semibold text-black disabled:opacity-40 transition-opacity"
+                >
+                    {salvando ? 'Salvando…' : 'Adicionar'}
+                </button>
+                <button
+                    type="button"
+                    onClick={fechar}
+                    className="rounded-lg px-2 py-1.5 text-[12px] text-white/45 hover:text-white transition-colors"
+                    aria-label="Cancelar"
+                >
+                    <X size={14} />
+                </button>
+            </div>
+        </form>
+    );
+}
+
+export default function ColunaPpa({
+    coluna, tarefas, somenteLeitura, arrastandoAlgo, onAbrirTarefa = null, onAdicionar = null,
+}) {
     const { setNodeRef, isOver } = useDroppable({
         id: coluna.chave,
         disabled: somenteLeitura,
@@ -92,6 +173,7 @@ export default function ColunaPpa({ coluna, tarefas, somenteLeitura, arrastandoA
                         key={tarefa.id}
                         tarefa={tarefa}
                         desabilitado={somenteLeitura}
+                        onAbrir={onAbrirTarefa}
                     />
                 ))}
 
@@ -110,12 +192,20 @@ export default function ColunaPpa({ coluna, tarefas, somenteLeitura, arrastandoA
                     </div>
                 )}
 
-                {tarefas.length === 0 && !arrastandoAlgo && (
+                {/* Com o botão de adicionar logo abaixo, o texto de coluna
+                    vazia só competiria com ele. */}
+                {tarefas.length === 0 && !arrastandoAlgo && !onAdicionar && (
                     <p className="text-white/20 text-[11.5px] text-center py-5 px-2 leading-relaxed">
                         {somenteLeitura ? 'Nenhuma tarefa' : coluna.vazio}
                     </p>
                 )}
             </div>
+
+            {onAdicionar && !arrastandoAlgo && (
+                <div className="pt-2">
+                    <AdicionarNaColuna onAdicionar={onAdicionar} />
+                </div>
+            )}
         </div>
     );
 }

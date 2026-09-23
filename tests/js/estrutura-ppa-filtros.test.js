@@ -109,12 +109,32 @@ test('ppa/interna — não há link para o "quadro completo" em lugar nenhum', (
 test('ppa/interna — a criação de tarefa veio junto, senão o módulo fica sem ela', () => {
     // O "quadro completo" era o ÚNICO lugar que criava tarefa. Tirar o link sem
     // trazer a criação deixaria o PPA sem como adicionar uma ação.
-    assert.match(interna, /route\('ppa\.tasks\.store', plano\.id\)/);
-    assert.match(interna, /Adicionar tarefa/);
-    assert.match(interna, /rodape=\{rodapeDoPlano\(plano\)\}/);
+    // Desde 23/09/2026 o "Adicionar tarefa" é por COLUNA — o rodapé único
+    // passou despercebido ("não tem como adicionar novos cards").
+    assert.match(interna, /route\('ppa\.tasks\.store', plano\.id\), \{ title: titulo, status \}/);
+    assert.match(interna, /onAdicionarTarefa=\{adicionarTarefa\}/);
+    assert.match(lerSemComentarios('resources/js/Components/Ppa/ColunaPpa.jsx'), /Adicionar tarefa/);
 
-    // O cliente move cards, mas não cria: o rodapé é só do lado interno.
-    assert.doesNotMatch(portal, /rodape=/);
+    // O cliente move cards, mas não cria.
+    assert.doesNotMatch(portal, /onAdicionarTarefa=/);
+});
+
+test('ppa/interna — clicar no card abre a edição da tarefa', () => {
+    // "Não tem como editar os cards": o diálogo existia, mas só no quadro
+    // desligado. É o MESMO componente, não uma cópia.
+    assert.match(interna, /import DialogTarefa from '@\/Components\/Ppa\/DialogTarefa'/);
+    assert.match(interna, /onAbrirTarefa=\{abrirTarefa\}/);
+    assert.match(interna, /rotaAtualizar="ppa\.tasks\.update"/);
+    assert.match(interna, /route\('ppa\.tasks\.destroy', task\.id\)/);
+
+    // O diálogo abre com o que está gravado: sem estes campos, salvar apagaria
+    // área, prioridade e prazo.
+    for (const campo of ['area', 'prioridade', 'prazo_iso', 'responsavel_lado']) {
+        assert.match(interna, new RegExp(`${campo}:\\s+t\\.${campo}`));
+    }
+
+    // O cliente não edita card.
+    assert.doesNotMatch(portal, /onAbrirTarefa=|DialogTarefa/);
 });
 
 test('ppa/interna — a tarefa nova aparece sem fechar o plano', () => {

@@ -65,7 +65,10 @@ class PpaTaskController extends Controller
     public function update(Request $request, PpaTask $task)
     {
         $data = $request->validate([
-            'title'       => 'nullable|string|max:255',
+            // `filled` e não `nullable`: o título pode ficar de fora do pedido,
+            // mas se vier, não vem vazio — `ppa_tasks.title` é NOT NULL, e o
+            // diálogo de edição deixa apagar o campo. Antes isso virava 500.
+            'title'       => 'sometimes|filled|string|max:255',
             'description' => 'nullable|string|max:1000',
             'status'      => 'nullable|in:todo,doing,done',
             'coluna_id'   => 'nullable|integer',

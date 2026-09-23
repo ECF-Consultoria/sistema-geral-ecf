@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
     DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor,
     closestCorners, useSensor, useSensors,
@@ -26,7 +26,9 @@ import { cn } from '@/lib/utils';
 //   `meta`   — empresa, responsável, datas;
 //   `chips`  — status e visibilidade, ao lado do título;
 //   `acoes`  — editar e remover;
-//   `rodape` — adicionar tarefa (o cliente não cria tarefa, a equipe cria);
+//   `onAdicionarTarefa` — "adicionar tarefa" no pé de cada coluna (o cliente
+//              não cria tarefa, a equipe cria);
+//   `onAbrirTarefa` — clicar no card abre a edição da tarefa;
 //   `somenteLeitura` / `avisoLeitura` — no portal, plano encerrado vira
 //              consulta; internamente a equipe continua podendo mexer.
 //
@@ -52,13 +54,19 @@ export default function PlanoPpa({
     meta = null,
     chips = null,
     acoes = null,
-    rodape = null,
+    onAdicionarTarefa = null,
+    onAbrirTarefa = null,
     somenteLeitura: travadoPorFora,
     avisoLeitura = 'Plano encerrado pela nossa equipe — fica aqui para consulta.',
     vazioTexto = 'Este plano ainda não tem tarefas. Assim que a equipe incluir as ações, elas aparecem aqui.',
 }) {
     const [arrastando, setArrastando] = useState(null);
     const [erro, setErro] = useState(false);
+
+    // Instante em que o último arraste terminou. Em alguns navegadores o
+    // soltar ainda dispara um `click` no card de origem, e ele abriria o
+    // diálogo de edição por cima do movimento que acabou de acontecer.
+    const soltouEm = useRef(0);
 
     const contagem = contarTarefas(tarefas);
     const pct = percentual(contagem);
@@ -86,8 +94,21 @@ export default function PlanoPpa({
         useSensor(KeyboardSensor),
     );
 
+    const abrirTarefa = onAbrirTarefa
+        ? (tarefa) => { if (Date.now() - soltouEm.current > 250) onAbrirTarefa(plano, tarefa); }
+        : null;
+
+    const adicionarEm = (status) => (onAdicionarTarefa
+        ? (titulo) => onAdicionarTarefa(plano, status, titulo)
+        : null);
+
+    // Com o "adicionar" nas colunas, o plano vazio precisa MOSTRAR as colunas:
+    // é justamente ele que mais precisa do botão.
+    const mostrarQuadro = contagem.total > 0 || Boolean(onAdicionarTarefa);
+
     const aoSoltar = ({ active, over }) => {
         setArrastando(null);
+        soltouEm.current = Date.now();
         if (!over) return;
 
         const destino = over.data.current?.coluna ?? over.id;
@@ -224,7 +245,7 @@ export default function PlanoPpa({
                         </p>
                     )}
 
-                    {contagem.total === 0 ? (
+                    {!mostrarQuadro ? (
                         <p className="text-white/30 text-[13px] text-center py-8">
                             {vazioTexto}
                         </p>
@@ -235,7 +256,7 @@ export default function PlanoPpa({
                             onDragStart={({ active }) => setArrastando(
                                 tarefas.find((t) => t.id === active.id) ?? null,
                             )}
-                            onDragCancel={() => setArrastando(null)}
+                            onDragCancel={() => { setArrastando(null); soltouEm.current = Date.now(); }}
                             onDragEnd={aoSoltar}
                         >
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -246,6 +267,8 @@ export default function PlanoPpa({
                                         tarefas={tarefas.filter((t) => t.status === coluna.chave)}
                                         somenteLeitura={somenteLeitura}
                                         arrastandoAlgo={Boolean(arrastando)}
+                                        onAbrirTarefa={abrirTarefa}
+                                        onAdicionar={adicionarEm(coluna.chave)}
                                     />
                                 ))}
                             </div>
@@ -260,10 +283,6 @@ export default function PlanoPpa({
                             </DragOverlay>
                         </DndContext>
                     )}
-
-                    {/* Fica FORA do ternário acima: o plano sem tarefa nenhuma
-                        é justamente o que mais precisa do botão de adicionar. */}
-                    {rodape}
                 </div>
             )}
         </section>

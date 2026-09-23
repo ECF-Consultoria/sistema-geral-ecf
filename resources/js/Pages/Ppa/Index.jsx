@@ -16,6 +16,7 @@ import PlanoPpa, { PlanoConcluidoCompacto } from '@/Components/Ppa/PlanoPpa';
 import IndicadoresPpa from '@/Components/Ppa/IndicadoresPpa';
 import TituloSecaoPpa from '@/Components/Ppa/TituloSecaoPpa';
 import CompartilharPpa from '@/Components/Ppa/CompartilharPpa';
+import DialogTarefa from '@/Components/Ppa/DialogTarefa';
 import {
     GRUPO_CONCLUIDO, ORDEM_PADRAO, ORDENS_PPA, SITUACOES_PPA, TODAS_SITUACOES,
     abertosPorPadrao, grupoDoPlano, seccionar, totaisDosPlanos,
@@ -46,13 +47,16 @@ import {
 // ### Não há mais "abrir o quadro completo" (23/09/2026)
 // A lista levava a uma segunda página com o mesmo quadro, só que maior. Ela foi
 // desligada a pedido ("não vou usar isso, ninguém vai") — mas era o ÚNICO lugar
-// que criava tarefa. Por isso o botão não saiu sozinho: a criação veio para o
-// rodapé do quadro aqui, senão o módulo ficaria sem como adicionar uma ação.
+// que criava e editava tarefa.
 //
 // A página (`Ppa/Kanban.jsx`) e a rota continuam existindo, sem link nenhum
-// apontando para elas. Com isso, os campos que só ela editava — área,
-// prioridade, prazo e lado responsável da TAREFA, e as colunas extras — deixam
-// de ter caminho pela tela.
+// apontando para elas. O que só ela fazia veio para cá em duas voltas:
+//   - criar: primeiro um rodapé único sob o quadro, que passou despercebido;
+//     desde 23/09/2026 é "Adicionar tarefa" no pé de CADA coluna;
+//   - editar e remover (23/09/2026, "não tem como editar os cards"): clicar
+//     no card abre `DialogTarefa`, o mesmo diálogo do quadro antigo — título,
+//     descrição, área, prioridade, prazo e lado responsável.
+// Só as colunas extras (`ppa_colunas`) continuam sem caminho pela tela.
 //
 // ### A ordem vem do backend, e a tela não a refaz
 // `Ppa::scopeOrdenadoPorAtencao()` já entrega os planos ordenados, inclusive
@@ -133,8 +137,6 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
     }, [linhas]);
 
     const [busca, setBusca] = useState('');
-    const [adicionandoEm, setAdicionandoEm] = useState(null);
-    const [novaTarefa, setNovaTarefa] = useState('');
     const [concluidosAbertos, setConcluidosAbertos] = useState(false);
     const [open, setOpen] = useState(false);
     const [editOpen, setEditOpen] = useState(false);
@@ -275,8 +277,8 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
         editForm.setData({
             title: plano.titulo,
             status: plano.status,
-            // O diálogo não tem campo de descrição, mas o PUT a envia: mandar
-            // vazio apagava a descrição do plano a cada edição.
+            // Semeada do plano: o PUT sempre a envia, e mandar vazio apagava a
+            // descrição a cada edição (quando o diálogo nem tinha o campo).
             description: plano.descricao ?? '',
             due_date: plano.prazo_iso || '',
             trello_board_url: plano.trello_board_url || '',
@@ -346,53 +348,53 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
         </>
     );
 
-    const criarTarefa = (e, plano) => {
-        e.preventDefault();
+    // ─── Tarefas: criar, editar, remover ────────────────────────────────────
 
-        const titulo = novaTarefa.trim();
-        if (!titulo) return;
-
-        // `preserveState` para o plano não fechar e a rolagem não saltar; quem
-        // traz a tarefa nova para a tela é o efeito lá em cima, quando os props
-        // chegam. A tarefa nasce em "A fazer" — de onde ela é arrastada.
-        router.post(route('ppa.tasks.store', plano.id), { title: titulo, status: 'todo' }, {
+    /**
+     * Cria a tarefa na coluna em que foi escrita (`ColunaPpa`).
+     *
+     * `preserveState` para o plano não fechar e a rolagem não saltar; quem
+     * traz a tarefa nova para a tela é o efeito lá em cima, quando os props
+     * chegam. Devolve Promise para a coluna limpar o campo só depois de salvo.
+     */
+    const adicionarTarefa = (plano, status, titulo) => new Promise((resolve, reject) => {
+        router.post(route('ppa.tasks.store', plano.id), { title: titulo, status }, {
             preserveState: true,
             preserveScroll: true,
-            onSuccess: () => setNovaTarefa(''),
+            onSuccess: resolve,
+            onError: reject,
+            // 500 ou queda de rede não passam por nenhum dos dois acima; sem
+            // isto a coluna ficaria em "Salvando…" para sempre. Rejeitar
+            // depois de resolvida não faz nada.
+            onFinish: () => reject(new Error('ppa: criação não concluída')),
+        });
+    });
+
+    // Clicar no card abre `DialogTarefa` — o mesmo do quadro antigo, que era
+    // o único lugar onde a tarefa se editava (ver o topo do arquivo). O
+    // diálogo fala a língua do quadro (`title`, `description`), a lista fala a
+    // do portal (`titulo`, `descricao`); a tradução fica aqui, num ponto só.
+    const [tarefaAberta, setTarefaAberta] = useState(null);
+
+    const abrirTarefa = (plano, t) => setTarefaAberta({
+        id:               t.id,
+        title:            t.titulo,
+        description:      t.descricao,
+        area:             t.area,
+        prioridade:       t.prioridade,
+        prazo_iso:        t.prazo_iso,
+        responsavel_lado: t.responsavel_lado,
+        concluida_em:     t.concluida_em,
+    });
+
+    const removerTarefa = (task) => {
+        if (!confirm(`Remover a tarefa "${task.title}"?`)) return;
+
+        router.delete(route('ppa.tasks.destroy', task.id), {
+            preserveScroll: true,
+            onSuccess: () => setTarefaAberta(null),
         });
     };
-
-    const rodapeDoPlano = (plano) => (
-        adicionandoEm === plano.id ? (
-            <form onSubmit={(e) => criarTarefa(e, plano)} className="flex items-center gap-2">
-                <Input
-                    autoFocus
-                    value={novaTarefa}
-                    onChange={(e) => setNovaTarefa(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Escape' && setAdicionandoEm(null)}
-                    placeholder="O que precisa ser feito?"
-                    className="h-9 text-[12.5px] max-w-md"
-                />
-                <Button type="submit" size="sm" disabled={!novaTarefa.trim()}>Adicionar</Button>
-                <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => { setAdicionandoEm(null); setNovaTarefa(''); }}
-                >
-                    Cancelar
-                </Button>
-            </form>
-        ) : (
-            <button
-                type="button"
-                onClick={() => { setAdicionandoEm(plano.id); setNovaTarefa(''); }}
-                className="inline-flex items-center gap-1.5 text-white/40 hover:text-white text-[12.5px] transition-colors"
-            >
-                <Plus className="h-3.5 w-3.5" /> Adicionar tarefa
-            </button>
-        )
-    );
 
     return (
         <AppLayout title={ehPolos ? 'PPA Polos — Plano Prático de Ação' : 'PPA — Plano Prático de Ação'}>
@@ -523,7 +525,8 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
                                                     onMover={mover}
                                                     meta={metaDoPlano(plano)}
                                                     chips={chipsDoPlano(plano)}
-                                                    rodape={rodapeDoPlano(plano)}
+                                                    onAdicionarTarefa={adicionarTarefa}
+                                                    onAbrirTarefa={abrirTarefa}
                                                     acoes={acoesDoPlano(plano)}
                                                     somenteLeitura={false}
                                                     vazioTexto="Este plano ainda não tem tarefas."
@@ -553,7 +556,8 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
                                             onMover={mover}
                                             meta={metaDoPlano(plano)}
                                             chips={chipsDoPlano(plano)}
-                                            rodape={rodapeDoPlano(plano)}
+                                            onAdicionarTarefa={adicionarTarefa}
+                                            onAbrirTarefa={abrirTarefa}
                                             acoes={acoesDoPlano(plano)}
                                             // A equipe continua podendo mexer no que ela
                                             // mesma encerrou — a trava de leitura é do
@@ -580,6 +584,14 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
                     </div>
                 )}
             </div>
+
+            <DialogTarefa
+                task={tarefaAberta}
+                rotaAtualizar="ppa.tasks.update"
+                onFechar={() => setTarefaAberta(null)}
+                onSalvo={() => {}}
+                onRemover={removerTarefa}
+            />
 
             <CompartilharPpa
                 plano={planos.find((p) => p.id === compartilhandoId) ?? null}
@@ -642,6 +654,10 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
                             <div className="space-y-1.5">
                                 <Label>Título</Label>
                                 <Input value={editForm.data.title} onChange={e => editForm.setData('title', e.target.value)} />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Descrição / Análise</Label>
+                                <Textarea value={editForm.data.description} onChange={e => editForm.setData('description', e.target.value)} rows={3} />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1.5">

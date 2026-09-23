@@ -45,8 +45,12 @@ class PpaListaService
      */
     public function linha(Ppa $ppa): array
     {
+        $visao = $this->doCliente->visao($ppa);
+
         return [
-            ...$this->doCliente->visao($ppa),
+            ...$visao,
+
+            'tarefas' => $this->tarefasDaEquipe($ppa, $visao['tarefas']),
 
             // ─── Só a equipe ────────────────────────────────────────────────
             'empresa'     => $ppa->nomeEmpresa(),
@@ -62,6 +66,39 @@ class PpaListaService
 
             'compartilhar' => $this->compartilhamento($ppa),
         ];
+    }
+
+    /**
+     * As tarefas do cliente, acrescidas do que o diálogo de edição precisa.
+     *
+     * Clicar no card abre `DialogTarefa` (23/09/2026). Sem estes campos ele
+     * abriria com área, prioridade e prazo em BRANCO, e salvar apagaria o que
+     * estava gravado — o mesmo defeito que a descrição do plano já teve em
+     * `openEdit()`. Ficam só na lista interna: área e prioridade são
+     * refinamento da equipe, e o cliente nunca os recebeu.
+     *
+     * A ordem é a do cliente (`visao()` ordena por `order`); aqui só se
+     * acrescenta chave, nunca se reordena.
+     *
+     * @param  array<int, array<string, mixed>>  $tarefas
+     * @return array<int, array<string, mixed>>
+     */
+    private function tarefasDaEquipe(Ppa $ppa, array $tarefas): array
+    {
+        $porId = $ppa->tasks->keyBy('id');
+
+        return array_map(function (array $t) use ($porId) {
+            $task = $porId->get($t['id']);
+
+            return [
+                ...$t,
+                'area'         => $task?->area,
+                'prioridade'   => $task?->prioridade,
+                // O input date exige ISO; o card mostra dd/mm/aaaa.
+                'prazo_iso'    => $task?->prazo?->format('Y-m-d'),
+                'concluida_em' => $task?->concluida_em?->format('d/m/Y'),
+            ];
+        }, $tarefas);
     }
 
     /**

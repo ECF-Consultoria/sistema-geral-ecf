@@ -185,7 +185,9 @@ export default function DialogTarefa({ task, rotaAtualizar, onFechar, onSalvo, o
 
                         <div className="flex gap-2">
                             <Button type="button" variant="outline" onClick={onFechar}>Cancelar</Button>
-                            <Button type="submit" disabled={form.processing}>
+                            {/* Título vazio o servidor recusa (`ppa_tasks.title`
+                                é NOT NULL); o botão já avisa antes. */}
+                            <Button type="submit" disabled={form.processing || !form.data.title.trim()}>
                                 {form.processing ? 'Salvando…' : 'Salvar'}
                             </Button>
                         </div>

@@ -1,5 +1,5 @@
 import { useDraggable } from '@dnd-kit/core';
-import { CalendarDays, CheckCircle2, Circle, Clock, GripVertical } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Circle, Clock, GripVertical, Pencil } from 'lucide-react';
 import { seloPrazo } from '@/lib/ppaAgrupamento';
 import { cn } from '@/lib/utils';
 
@@ -43,7 +43,7 @@ const TOM_PRAZO = {
  * cursor: usar o componente completo ali registraria o mesmo id duas vezes no
  * dnd-kit e o card fantasma sumiria no meio do arraste.
  */
-export function ConteudoCardPpa({ tarefa, arrastando = false, estatico = false }) {
+export function ConteudoCardPpa({ tarefa, arrastando = false, estatico = false, editavel = false }) {
     const feita = tarefa.status === 'done';
     const lado  = tarefa.responsavel_lado ? LADOS[tarefa.responsavel_lado] : null;
     const prazo = seloPrazo(tarefa.prazo_dias, { encerrado: feita });
@@ -83,6 +83,16 @@ export function ConteudoCardPpa({ tarefa, arrastando = false, estatico = false }
                 {/* A alça não move nada sozinha — o card inteiro já é a área de
                     arraste. Ela existe para DIZER que o card se arrasta, que é
                     a única pista que um kanban sem botões precisa dar. */}
+                {/* O lápis só aparece no hover: é a pista de que o card abre,
+                    sem somar um controle fixo a cada card da coluna. */}
+                {editavel && !arrastando && (
+                    <Pencil
+                        size={12}
+                        className="shrink-0 mt-0.5 text-white/0 group-hover/card:text-white/45 transition-colors"
+                        aria-hidden="true"
+                    />
+                )}
+
                 {!estatico && (
                     <GripVertical
                         size={14}
@@ -129,8 +139,15 @@ export function ConteudoCardPpa({ tarefa, arrastando = false, estatico = false }
     );
 }
 
-/** O card arrastável de verdade — o que vive dentro da coluna. */
-export default function CardTarefaPpa({ tarefa, desabilitado = false }) {
+/**
+ * O card arrastável de verdade — o que vive dentro da coluna.
+ *
+ * `onAbrir` só chega da lista INTERNA (23/09/2026): clicar abre o diálogo de
+ * edição da tarefa. O arraste não o dispara por engano porque o `MouseSensor`
+ * só começa depois de 6px — um clique parado nunca vira arraste. No portal a
+ * prop não vem, e o card continua sendo só de mover.
+ */
+export default function CardTarefaPpa({ tarefa, desabilitado = false, onAbrir = null }) {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
         id: tarefa.id,
         disabled: desabilitado,
@@ -148,6 +165,8 @@ export default function CardTarefaPpa({ tarefa, desabilitado = false }) {
             // no toque usa o `TouchSensor` (segurar e arrastar), configurado
             // em `PlanoPpa`.
             style={{ touchAction: 'manipulation' }}
+            onClick={onAbrir ? () => onAbrir(tarefa) : undefined}
+            title={onAbrir ? 'Clique para editar · arraste para mover' : undefined}
             className={cn(
                 'outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/50 rounded-xl',
                 // O original vira um fantasma esmaecido enquanto o
@@ -156,7 +175,7 @@ export default function CardTarefaPpa({ tarefa, desabilitado = false }) {
                 isDragging && 'opacity-25',
             )}
         >
-            <ConteudoCardPpa tarefa={tarefa} estatico={desabilitado} />
+            <ConteudoCardPpa tarefa={tarefa} estatico={desabilitado} editavel={Boolean(onAbrir)} />
         </div>
     );
 }
