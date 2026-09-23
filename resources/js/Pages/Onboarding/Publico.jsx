@@ -751,15 +751,18 @@ function EscolherHorario({ reuniao, token, aoFechar }) {
     const [escolhido, setEscolhido] = useState(null);
     const [marcando, setMarcando] = useState(false);
 
-    const buscar = () => {
+    // `recusa`: a frase de uma tentativa de marcar que o servidor recusou. A
+    // lista é relida (o horário pode ter sido ocupado), mas a frase fica na
+    // tela — sem isto a releitura a apagava e o cliente via o clique "sumir".
+    const buscar = (recusa = null) => {
         setCarregando(true);
-        setErro(null);
+        setErro(recusa);
         setEscolhido(null);
         window.axios
             .get(rotaDoPortal('onboarding.horarios', token), { params: { onboarding_id: reuniao.onboarding_id } })
             .then(({ data }) => {
                 setHorarios(data.horarios ?? []);
-                setErro(data.erro ?? null);
+                setErro(data.erro ?? recusa);
                 setDia((data.horarios ?? []).length ? diaDoHorario(data.horarios[0]) : null);
             })
             .catch(() => setErro('Não conseguimos consultar os horários agora. Tente de novo em alguns minutos.'))
@@ -783,9 +786,8 @@ function EscolherHorario({ reuniao, token, aoFechar }) {
                 preserveScroll: true,
                 onSuccess: () => aoFechar(),
                 onError: (erros) => {
-                    setErro(erros.inicio ?? 'Não foi possível marcar. Tente de novo.');
                     // O horário pode ter sido ocupado: a lista precisa refletir isso.
-                    buscar();
+                    buscar(erros.inicio ?? 'Não foi possível marcar. Tente de novo.');
                 },
                 onFinish: () => setMarcando(false),
             },

@@ -92,3 +92,47 @@ virou agenda de verdade.
 - `useJson` não limpa `dados` ao trocar a URL: durante a troca, a tela mostra os
   dados anteriores com o indicador de carregamento. É o comportamento desejado na
   grade (não pisca), mas cuidado ao ler `dados` para decidir alguma coisa.
+
+## 6. Correções de 23/09/2026 — conexão, troca de usuário e recorrência
+
+- **O OAuth não tinha `state`.** O callback gravava o token em quem estivesse
+  logado na VOLTA do Google. Trocar de usuário no mesmo navegador no meio do
+  consentimento ligava o Google de A à conta de B. Agora `connect` guarda
+  `{state, user_id}` na sessão e o callback (com `auth`) recusa o que não casar.
+- **Conta Google errada é o sintoma mais provável de "agenda de outra pessoa".**
+  `prompt=consent select_account` + `login_hint` forçam a escolha; conta
+  diferente do e-mail do sistema conecta, mas o aviso sai pelo canal `error`
+  (o toast do AppLayout só desenha `success`/`error` — `warning` morreria calado).
+  A conta Google conectada NÃO é gravada: exigiria migration em `google_tokens`
+  (tabela viva). Duas pessoas ligadas à mesma conta seguem indetectáveis.
+- **`invalid_grant` apaga o token.** Antes ele ficava e todo `exists()` dizia
+  "conectado" para sempre. 401 antes do vencimento renova e tenta de novo UMA
+  vez (`comToken`). A exceção mantém a frase "renovar token": é por ela que
+  `AgendaService`/`AgendaGoogleService::explicar()` reconhecem o caso.
+- **Rotina: a série nascia na data do kickoff mesmo no passado**, e o PATCH do
+  "Atualizar convite" movia a série INTEIRA (apagava o histórico). Agora: série
+  já iniciada com dia/horário mudado é ENCERRADA com `UNTIL` (as linhas `EXDATE`
+  são preservadas) e nasce outra; sem mudança, o PATCH não leva `start`/`end`/
+  `recurrence`. Comparação é por dia da semana + hora + regra, nunca pela data
+  da primeira ocorrência (ela anda sozinha com o tempo).
+- **Analista trocado era um beco** — `enviar()` mandava "ajustar pela Agenda", e
+  a Agenda recusa rotina. Agora a série sai da agenda antiga (cancelada se não
+  começou, encerrada se começou) e nasce na do analista atual.
+- **Projeção do retrato**: respeita `UNTIL`/`COUNT`; para o DONO com o Google
+  lido, série não é mais projetada (tudo que existe já veio da leitura — projetar
+  desenhava cópia fantasma depois de um "este e os seguintes").
+
+## 7. O cliente marca a reunião pelo Portal (23/09/2026)
+
+- Horário livre = livre para analista E estrategista, via `freeBusy` (só
+  intervalos, sem título). O navegador recebe só a lista de horários. Quem
+  conduz sem agenda conectada tira a opção do portal: não há como saber se está
+  livre.
+- **Ordem inversa à de `criar()`**: no portal o Google vem ANTES da data. Data
+  gravada sem convite seria uma reunião que o cliente acha que marcou e que não
+  está na agenda de ninguém.
+- `agendarReuniao(..., null, $peloPortal)`: `reuniao_agendada_por` fica NULO de
+  propósito — atribuir ao analista diria que foi a equipe.
+- Horário é reconferido no servidor ao marcar (e há `Cache::lock` contra clique
+  duplo). A tela, depois de uma recusa, relê a lista SEM apagar a frase do erro —
+  a primeira versão apagava e o clique parecia "não fazer nada".
