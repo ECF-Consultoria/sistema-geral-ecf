@@ -27,6 +27,7 @@ use Tests\TestCase;
  */
 class ReunioesDevGoogleTest extends TestCase
 {
+    use LiberaModulosDev;
     use RefreshDatabase;
 
     private const EVENTOS = 'https://www.googleapis.com/calendar/v3/calendars/primary/events*';
@@ -35,6 +36,7 @@ class ReunioesDevGoogleTest extends TestCase
     {
         parent::setUp();
         $this->withoutVite();
+        $this->liberarModulosDev();
         Carbon::setTestNow('2026-09-22 10:00:00');
     }
 

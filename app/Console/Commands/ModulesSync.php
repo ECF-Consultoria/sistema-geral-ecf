@@ -61,6 +61,9 @@ class ModulesSync extends Command
                         Module::create(array_merge($estruturais, [
                             'key'   => $key,
                             'stage' => Modules::defaultStageFor($key),
+                            // Módulo em teste com o time dev (ex.: Tickets) nasce oculto para
+                            // os demais; liberar é ligar em Dev → Controle Dev, sem deploy.
+                            'visivel_para_todos' => ! ($item['nasce_oculto'] ?? false),
                         ]));
                     }
                     $criados++;

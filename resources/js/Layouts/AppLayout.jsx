@@ -196,7 +196,7 @@ const NAV_TREE = [
     },
 
     // ── Item de topo: Tickets — qualquer pessoa pede ajuda ao time dev ───
-    { label: 'Tickets', routeName: 'chamados.index', page: 'Chamados', icon: Ticket },
+    { label: 'Tickets', routeName: 'chamados.index', page: 'Chamados', icon: Ticket, authFlag: 'tickets' },
 
     // ── Item de topo: Meu Setor (líder; admin excluído por ter visão global) ─
     { label: 'Meu Setor', routeName: 'lideranca.index', page: 'Lideranca', icon: Crown, permission: 'lideranca.dashboard_setor', excludeRoles: ['admin'] },

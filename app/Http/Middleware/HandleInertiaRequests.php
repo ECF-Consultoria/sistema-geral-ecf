@@ -58,6 +58,8 @@ class HandleInertiaRequests extends Middleware
                 // Demandas Dev: admin ou quem tem demanda atribuída vê o item no menu
                 // (mesma regra do controller — DemandasDevService::podeAcessar).
                 'demandas_dev'    => $user ? $this->podeVerDemandasDev($user) : false,
+                // Tickets: todo usuário, mas só o Dev enquanto o módulo estiver oculto.
+                'tickets'         => $user ? app(\App\Services\ModuleRegistry::class)->liberadoPara($user, 'chamados') : false,
             ],
             'flash' => [
                 'success'       => $request->session()->get('success'),
@@ -112,7 +114,8 @@ class HandleInertiaRequests extends Middleware
     private function podeVerDemandasDev(\App\Models\User $user): bool
     {
         try {
-            return app(\App\Services\DevDemandas\DemandasDevService::class)->podeAcessar($user);
+            return app(\App\Services\ModuleRegistry::class)->liberadoPara($user, 'dev.demandas')
+                && app(\App\Services\DevDemandas\DemandasDevService::class)->podeAcessar($user);
         } catch (\Throwable) {
             return false;
         }

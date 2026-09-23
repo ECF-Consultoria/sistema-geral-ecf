@@ -23,12 +23,14 @@ use Tests\TestCase;
  */
 class ChamadosTest extends TestCase
 {
+    use LiberaModulosDev;
     use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->withoutVite();
+        $this->liberarModulosDev();
         Carbon::setTestNow('2026-09-23 10:00:00');
         Storage::fake('local');
     }

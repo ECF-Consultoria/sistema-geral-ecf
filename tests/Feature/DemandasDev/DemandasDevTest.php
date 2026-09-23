@@ -21,12 +21,14 @@ use Tests\TestCase;
  */
 class DemandasDevTest extends TestCase
 {
+    use LiberaModulosDev;
     use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->withoutVite();
+        $this->liberarModulosDev();
         Carbon::setTestNow('2026-09-22 10:00:00');
     }
 

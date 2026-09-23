@@ -981,7 +981,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // ─── Tickets — Central de Tickets (qualquer usuário logado) ──────────────
     // Na tela o nome é "Ticket"; no código o domínio segue `Chamado` (tabelas chamados*).
     // Autorização por ticket no ChamadoService: quem abriu ou a equipe dev.
-    Route::prefix('tickets')->name('chamados.')->group(function () {
+    Route::prefix('tickets')->name('chamados.')->middleware('modulo:chamados')->group(function () {
         Route::get('/',                             [ChamadoController::class, 'index'])->name('index');
         Route::post('/',                            [ChamadoController::class, 'store'])->name('store');
         Route::get('/{chamado}',                    [ChamadoController::class, 'show'])->name('show');
@@ -995,14 +995,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::redirect('/chamados', '/tickets');
     Route::get('/chamados/{chamado}', fn (string $chamado) => redirect('/tickets/' . $chamado))->whereNumber('chamado');
     // Ações da equipe sobre um chamado (a caixa de entrada é a aba Tickets de /dev/demandas).
-    Route::prefix('dev/demandas/chamados')->name('dev.demandas.chamados.')->group(function () {
+    Route::prefix('dev/demandas/chamados')->name('dev.demandas.chamados.')->middleware('modulo:chamados')->group(function () {
         Route::post('/{chamado}/status',     [ChamadoController::class, 'status'])->name('status');
         Route::post('/{chamado}/transferir', [ChamadoController::class, 'transferir'])->name('transferir');
         Route::post('/{chamado}/converter',  [ChamadoController::class, 'converter'])->name('converter');
         Route::post('/{chamado}/resolver',   [ChamadoController::class, 'resolver'])->name('resolver');
     });
 
-    Route::prefix('dev/demandas')->name('dev.demandas.')->group(function () {
+    Route::prefix('dev/demandas')->name('dev.demandas.')->middleware('modulo:dev.demandas')->group(function () {
         Route::get('/',                          [DevDemandaController::class, 'index'])->name('index');
         Route::post('/',                         [DevDemandaController::class, 'store'])->name('store');
         Route::put('/{demanda}',                 [DevDemandaController::class, 'update'])->name('update');

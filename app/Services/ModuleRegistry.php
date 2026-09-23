@@ -36,6 +36,9 @@ class ModuleRegistry
     public const CACHE_KEY = 'modules.stage_map';
 
     /** Chave de cache das rotas ocultas (MVP Cargo Dev) — invalidada junto do mapa. */
+    public const CACHE_KEY_VISIBILIDADE = 'modules.visibilidade';
+
+    /** Chave de cache das rotas ocultas (MVP Cargo Dev) — invalidada junto do mapa. */
     public const CACHE_KEY_HIDDEN = 'modules.hidden_routes';
 
     /** TTL de rede de segurança (1h) — invalidação real é por evento via `flush()`. */
@@ -109,10 +112,49 @@ class ModuleRegistry
         }
     }
 
+    /**
+     * Mapa `key => visivel_para_todos` (cacheado). Tabela ausente (janela de
+     * deploy, antes do migrate) → mapa vazio, sem cachear o erro.
+     *
+     * @return array<string, bool>
+     */
+    public function visibilidade(): array
+    {
+        try {
+            return Cache::remember(
+                self::CACHE_KEY_VISIBILIDADE,
+                self::CACHE_TTL,
+                fn () => Module::query()->pluck('visivel_para_todos', 'key')->map(fn ($v) => (bool) $v)->all()
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * O módulo está liberado para este usuário? O Dev (`isAdminDev()`) sempre;
+     * os demais só quando o módulo EXISTE na tabela e está visível.
+     *
+     * Fail-CLOSED de propósito — ao contrário de `stageFor()`: é usado só por
+     * módulos que nascem ocultos (Tickets, Demandas Dev), e módulo ainda não
+     * sincronizado tem de valer como oculto, senão fica aberto a todos na
+     * janela entre o deploy e o `modules:sync`. Gate de rota: middleware
+     * `modulo:<key>` (EnsureModuloLiberado); gate de menu: flags do `auth`.
+     */
+    public function liberadoPara(?\App\Models\User $user, string $key): bool
+    {
+        if ($user?->isAdminDev()) {
+            return true;
+        }
+
+        return $this->visibilidade()[$key] ?? false;
+    }
+
     /** Invalida os mapas cacheados — chamado por `Module::booted()` em toda mutação. */
     public function flush(): void
     {
         Cache::forget(self::CACHE_KEY);
         Cache::forget(self::CACHE_KEY_HIDDEN);
+        Cache::forget(self::CACHE_KEY_VISIBILIDADE);
     }
 }
