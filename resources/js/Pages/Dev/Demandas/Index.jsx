@@ -114,7 +114,7 @@ export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios,
                     <Fila demandas={demandas} usuarios={usuarios} eu={eu} pode={pode} hoje={hoje} onAbrir={abrir} onAtualizar={setAtualizando} />
                 )}
                 {aba === 'demandas' && <ListaDemandas demandas={demandas} pode={pode} hoje={hoje} onAbrir={abrir} />}
-                {aba === 'painel' && <Painel demandas={demandas} hoje={hoje} onAbrir={abrir} />}
+                {aba === 'painel' && <Painel demandas={demandas} areas={areas} hoje={hoje} />}
                 {aba === 'reunioes' && (
                     <Reunioes
                         reunioes={reunioes}

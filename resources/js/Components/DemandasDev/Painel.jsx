@@ -1,338 +1,239 @@
-import { useMemo, useState } from 'react';
-import { Check, Lock } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { compararCodigo, ordenarFila, textoPrazo } from '@/lib/demandasDev';
-import { PrioridadeSelo, STATUS_COR } from './Selos';
+import { useEffect, useMemo, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, Cell, Label, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { fmtData, PRIORIDADE_LABELS, STATUS_LABELS } from '@/lib/demandasDev';
 
 /**
- * Painel de operação — responde "o que precisa de atenção agora?".
- * Tudo sai das linhas de demanda já serializadas; nada é digitado.
+ * Painel — réplica do "Painel Visual" da planilha de gestão: seis cartões de
+ * número e quatro gráficos (status, prioridade, responsável, área).
+ *
+ * Mesma regra da planilha: os CARTÕES contam as demandas abertas (menos a de
+ * Concluídas); os GRÁFICOS contam todas as demandas, inclusive as encerradas.
+ * Cores dos gráficos copiadas do arquivo (xl/charts/chart1..4.xml).
  */
 
-// Etapas da esteira, na ordem do fluxo. `var` = cor validada em app.css/light.css.
-const ETAPAS = [
-    { status: 'backlog',            rotulo: 'Backlog' },
-    { status: 'a_fazer',            rotulo: 'A fazer',            cor: 'var(--dd-afazer)' },
-    { status: 'em_desenvolvimento', rotulo: 'Em desenvolvimento', cor: 'var(--dd-dev)' },
-    { status: 'em_validacao',       rotulo: 'Em validação',       cor: 'var(--dd-validacao)' },
+// Rosca "Distribuição por Status Atual" — cores das fatias na ordem da planilha.
+const COR_STATUS = {
+    backlog:            '#156082',
+    a_fazer:            '#E97132',
+    em_desenvolvimento: '#196B24',
+    em_validacao:       '#0F9ED5',
+    bloqueado:          '#A02B93',
+    concluido:          '#4EA72E',
+    cancelado:          '#5B90A8',
+};
+// Ordem das áreas na aba Config da planilha (as novas entram depois, na ordem em que aparecem).
+const ORDEM_AREAS = ['Entrada', 'Onboarding', 'PPA', 'Metodologia', 'Produtos', 'Mapeamento', 'Planejamento',
+    'Publicação', 'Fechamento', 'Contratos', 'Landing Pages', 'Institucional', 'Gestão Dev', 'Outros'];
+const COR_PRIORIDADE = '#2D60B7';
+const COR_AREA = '#4F44B5';
+const COR_RESPONSAVEL = '#0C8C8C';
+
+// Cartões: no tema claro, as cores exatas da planilha; no escuro, o mesmo matiz (`cor`) sobre o card.
+const CARTOES = [
+    { chave: 'abertas',       rotulo: 'DEMANDAS ABERTAS', nota: 'Fluxo ativo na esteira', cor: '#6f9be0', claro: ['#EDF2F9', '#1C427C', '#142D59'] },
+    { chave: 'p0',            rotulo: 'P0 — CRÍTICAS',    nota: 'Atenção imediata',       cor: '#e57373', claro: ['#FCEFEF', '#B71C1C', '#991919'] },
+    { chave: 'bloqueadas',    rotulo: 'BLOQUEADAS',       nota: 'Requer destravamento',   cor: '#f28b82', claro: ['#FCEDED', '#D82626', '#B21919'] },
+    { chave: 'prazo_proximo', rotulo: 'PRAZO PRÓXIMO',    nota: 'Vence nos próx. dias',   cor: '#f0a64a', claro: ['#FFF7E8', '#B2660C', '#913F0C'] },
+    { chave: 'em_validacao',  rotulo: 'EM VALIDAÇÃO',     nota: 'Aguardando aceite',      cor: '#a98ae8', claro: ['#F2EDF9', '#6B28D8', '#5921B2'] },
+    { chave: 'concluidas',    rotulo: 'CONCLUÍDAS',       nota: 'Entregas realizadas',    cor: '#3fbf8f', claro: ['#EAF7EF', '#057756', '#055E44'] },
 ];
 
-// Segmentos da barra de carga (trabalho ativo). Cada demanda conta uma vez só:
-// bloqueada vence o status; backlog fica fora da barra e vira texto.
-const SEGMENTOS = [
-    { chave: 'bloqueada',          rotulo: 'Bloqueada',          cor: 'var(--dd-bloqueado)' },
-    { chave: 'em_desenvolvimento', rotulo: 'Em desenvolvimento', cor: 'var(--dd-dev)' },
-    { chave: 'em_validacao',       rotulo: 'Em validação',       cor: 'var(--dd-validacao)' },
-    { chave: 'a_fazer',            rotulo: 'A fazer',            cor: 'var(--dd-afazer)' },
-];
-
-const CARTOES_POR_COLUNA = 6;
-const SEM_RESPONSAVEL = 'sem';
-
-const tingir = (cor, pct) => `color-mix(in srgb, ${cor} ${pct}%, transparent)`;
-const primeiroNome = (nome) => nome?.split(' ')[0] ?? 'Sem responsável';
-const iniciais = (nome) => (nome ?? '?').split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
-const chavePessoa = (d) => (d.responsavel ? String(d.responsavel.id) : SEM_RESPONSAVEL);
-
-export default function Painel({ demandas, hoje, onAbrir }) {
-    const [pessoa, setPessoa] = useState('todos');
-
-    const abertas = useMemo(() => demandas.filter((d) => !d.encerrada), [demandas]);
-    const visiveis = useMemo(
-        () => (pessoa === 'todos' ? abertas : abertas.filter((d) => chavePessoa(d) === pessoa)),
-        [abertas, pessoa],
-    );
-    const concluidas = demandas.filter((d) => d.status === 'concluido' && (pessoa === 'todos' || chavePessoa(d) === pessoa)).length;
-
-    // Pessoas com demanda aberta, da mais carregada para a menos.
-    const pessoas = useMemo(() => {
-        const m = new Map();
-        abertas.forEach((d) => {
-            const k = chavePessoa(d);
-            if (!m.has(k)) m.set(k, { chave: k, nome: d.responsavel?.name ?? 'Sem responsável', demandas: [] });
-            m.get(k).demandas.push(d);
-        });
-        return [...m.values()].sort((a, b) => (a.chave === SEM_RESPONSAVEL) - (b.chave === SEM_RESPONSAVEL) || b.demandas.length - a.demandas.length);
-    }, [abertas]);
-
-    return (
-        <div className="space-y-8">
-            {/* Filtro por pessoa — vale para o painel inteiro */}
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar por pessoa">
-                <Chip ativo={pessoa === 'todos'} onClick={() => setPessoa('todos')}>Todo mundo <Contagem>{abertas.length}</Contagem></Chip>
-                {pessoas.map((p) => (
-                    <Chip key={p.chave} ativo={pessoa === p.chave} onClick={() => setPessoa(pessoa === p.chave ? 'todos' : p.chave)}>
-                        {p.nome} <Contagem>{p.demandas.length}</Contagem>
-                    </Chip>
-                ))}
-            </div>
-
-            <Atencao demandas={visiveis} hoje={hoje} onAbrir={onAbrir} mostrarDono={pessoa === 'todos'} />
-            <Esteira demandas={visiveis} concluidas={concluidas} hoje={hoje} onAbrir={onAbrir} />
-            <Carga pessoas={pessoas} selecionada={pessoa} onSelecionar={(k) => setPessoa(pessoa === k ? 'todos' : k)} />
-        </div>
-    );
+// O tema claro é a classe `.light` no <html>, trocada pelo ThemeToggle sem recarregar.
+function useTemaClaro() {
+    const ler = () => typeof document !== 'undefined' && document.documentElement.classList.contains('light');
+    const [claro, setClaro] = useState(ler);
+    useEffect(() => {
+        const obs = new MutationObserver(() => setClaro(ler()));
+        obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        return () => obs.disconnect();
+    }, []);
+    return claro;
 }
 
-// ═══ Precisa de atenção ═══════════════════════════════════════════════════════
+export default function Painel({ demandas, areas, hoje }) {
+    const claro = useTemaClaro();
+    const eixo = claro ? '#595959' : 'rgba(255,255,255,0.55)';
+    const grade = claro ? '#D9D9D9' : 'rgba(255,255,255,0.08)';
 
-function Atencao({ demandas, hoje, onAbrir, mostrarDono }) {
-    const grupos = [
-        {
-            titulo: 'Bloqueadas',
-            cor: 'var(--dd-bloqueado)',
-            itens: ordenarFila(demandas.filter((d) => d.situacao === 'bloqueado')),
-            motivo: (d) => d.motivo_bloqueio || 'Sem motivo registrado',
-        },
-        {
-            titulo: 'Atrasadas',
-            cor: '#e66767',
-            itens: demandas.filter((d) => d.situacao === 'atrasada').sort((a, b) => b.dias_atraso - a.dias_atraso),
-            motivo: (d) => textoPrazo(d, hoje),
-        },
-        {
-            titulo: 'Vencem em até 2 dias',
-            cor: 'var(--dd-validacao)',
-            itens: demandas.filter((d) => d.situacao === 'prazo_proximo').sort((a, b) => a.prazo.localeCompare(b.prazo)),
-            motivo: (d) => textoPrazo(d, hoje),
-        },
-        {
-            // A regra da planilha: quem está trabalhando registra uma linha por dia.
-            titulo: 'Em andamento sem atualização hoje',
-            cor: 'rgba(255,255,255,0.35)',
-            itens: demandas.filter((d) => ['em_desenvolvimento', 'em_validacao'].includes(d.status) && d.situacao !== 'bloqueado' && d.ultima_atualizacao !== hoje),
-            motivo: (d) => (d.ultima_atualizacao ? `Última em ${d.ultima_atualizacao.split('-').reverse().slice(0, 2).join('/')}` : 'Nunca atualizada'),
-        },
-    ].filter((g) => g.itens.length > 0);
+    const dados = useMemo(() => {
+        const abertas = demandas.filter((d) => !d.encerrada);
+        const contar = (lista, chave) => lista.reduce((m, d) => {
+            const k = chave(d);
+            m[k] = (m[k] ?? 0) + 1;
+            return m;
+        }, {});
+
+        const porStatus = contar(demandas, (d) => d.status);
+        const porPrioridade = contar(demandas, (d) => d.prioridade);
+        const porResponsavel = contar(demandas, (d) => d.responsavel?.name ?? 'Sem responsável');
+        const porArea = contar(demandas, (d) => d.area || 'Sem área');
+
+        return {
+            cartoes: {
+                abertas:       abertas.length,
+                p0:            abertas.filter((d) => d.prioridade === 0).length,
+                bloqueadas:    abertas.filter((d) => d.situacao === 'bloqueado').length,
+                prazo_proximo: abertas.filter((d) => d.situacao === 'prazo_proximo').length,
+                em_validacao:  demandas.filter((d) => d.status === 'em_validacao').length,
+                concluidas:    demandas.filter((d) => d.status === 'concluido').length,
+            },
+            status: Object.entries(STATUS_LABELS).map(([k, nome]) => ({ chave: k, nome, valor: porStatus[k] ?? 0 })),
+            prioridade: Object.entries(PRIORIDADE_LABELS).map(([k, nome]) => ({ nome, valor: porPrioridade[k] ?? 0 })),
+            responsavel: Object.entries(porResponsavel)
+                .map(([nome, valor]) => ({ nome, valor }))
+                .sort((a, b) => (a.nome === 'Sem responsável') - (b.nome === 'Sem responsável') || b.valor - a.valor),
+            // Como na planilha: todas as áreas da lista aparecem, inclusive as zeradas.
+            area: [...new Set([...ORDEM_AREAS, ...areas, ...Object.keys(porArea)])].map((nome) => ({ nome, valor: porArea[nome] ?? 0 })),
+        };
+    }, [demandas, areas]);
+
+    const total = demandas.length;
 
     return (
-        <section aria-labelledby="painel-atencao">
-            <h2 id="painel-atencao" className="font-display text-[17px] font-semibold text-white">Precisa de atenção</h2>
+        <div className="space-y-5">
+            <header className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <h2 className="font-display text-[20px] font-bold" style={{ color: claro ? '#1B365D' : '#fff' }}>
+                        PAINEL EXECUTIVO DE DEMANDAS — DESENVOLVIMENTO
+                    </h2>
+                    <p className="mt-1 text-[13px] text-white/60">
+                        Acompanhamento em tempo real: status da esteira, criticidade, carga de trabalho por desenvolvedor e projetos atendidos
+                    </p>
+                </div>
+                <div className="text-right">
+                    <div className="text-[10.5px] font-bold tracking-wide text-white/50">ÚLTIMA ATUALIZAÇÃO</div>
+                    <div className="text-[14px] font-bold tabular-nums text-white">{fmtData(hoje)}</div>
+                </div>
+            </header>
 
-            {grupos.length === 0 ? (
-                <p className="mt-2 flex items-center gap-2 text-[13.5px] text-white/60">
-                    <Check size={16} className="text-emerald-400" />
-                    Nenhuma demanda bloqueada, atrasada ou vencendo nos próximos 2 dias.
-                </p>
-            ) : (
-                <div className="mt-3 grid gap-x-8 gap-y-6 md:grid-cols-2 xl:grid-cols-4">
-                    {grupos.map((g) => (
-                        <div key={g.titulo} className="min-w-0">
-                            <h3 className="flex items-baseline gap-2 text-[13px] font-medium text-white/80">
-                                <span className="h-2.5 w-2.5 shrink-0 translate-y-px rounded-sm" style={{ background: g.cor }} />
-                                {g.titulo}
-                                <span className="font-display text-[15px] font-bold tabular-nums text-white">{g.itens.length}</span>
-                            </h3>
-                            <ul className="mt-2 space-y-1">
-                                {g.itens.map((d) => (
-                                    <li key={d.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() => onAbrir(d.id)}
-                                            className="group w-full rounded-r-md border-l-2 py-1.5 pl-3 pr-2 text-left transition-colors hover:bg-white/[0.03] focus-visible:bg-white/[0.04] focus-visible:outline-none"
-                                            style={{ borderColor: g.cor }}
-                                        >
-                                            <span className="flex items-baseline gap-2">
-                                                <span className="shrink-0 text-[12px] font-semibold tabular-nums text-white/50">{d.codigo}</span>
-                                                <span className="truncate text-[13.5px] text-white group-hover:text-ecf-yellow">{d.titulo}</span>
-                                            </span>
-                                            <span className="mt-0.5 flex gap-2 text-[12px] text-white/50">
-                                                {mostrarDono && <span className="shrink-0 text-white/70">{primeiroNome(d.responsavel?.name)}</span>}
-                                                <span className="truncate">{g.motivo(d)}</span>
-                                            </span>
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                {CARTOES.map((c) => (
+                    <div
+                        key={c.chave}
+                        className="rounded-xl px-4 py-3.5"
+                        style={claro
+                            ? { background: c.claro[0] }
+                            : { background: `color-mix(in srgb, ${c.cor} 12%, #0f1116)`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${c.cor} 22%, transparent)` }}
+                    >
+                        <div className="text-[11px] font-bold tracking-wide" style={{ color: claro ? c.claro[1] : c.cor }}>{c.rotulo}</div>
+                        <div className="mt-1 font-display text-[32px] font-bold leading-none tabular-nums" style={{ color: claro ? c.claro[2] : '#fff' }}>
+                            {dados.cartoes[c.chave]}
                         </div>
-                    ))}
-                </div>
-            )}
-        </section>
-    );
-}
-
-// ═══ Esteira ══════════════════════════════════════════════════════════════════
-
-function Esteira({ demandas, concluidas, hoje, onAbrir }) {
-    const colunas = ETAPAS.map((e) => ({ ...e, itens: ordenarFila(demandas.filter((d) => d.status === e.status)) }));
-    // "Bloqueado" como status (sem etapa própria) ganha coluna só quando existe.
-    const soBloqueio = ordenarFila(demandas.filter((d) => d.status === 'bloqueado'));
-    if (soBloqueio.length) colunas.push({ status: 'bloqueado', rotulo: 'Bloqueado', cor: 'var(--dd-bloqueado)', itens: soBloqueio, fora: true });
-
-    return (
-        <section aria-labelledby="painel-esteira">
-            <div className="flex items-baseline gap-3">
-                <h2 id="painel-esteira" className="font-display text-[17px] font-semibold text-white">Esteira</h2>
-                <span className="text-[12.5px] text-white/50">
-                    {concluidas} concluída{concluidas === 1 ? '' : 's'} até agora
-                </span>
-            </div>
-
-            <div className="-mx-4 mt-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-                <div className="grid min-w-[980px] auto-cols-fr grid-flow-col gap-3">
-                    {colunas.map((c, i) => <Coluna key={c.status} coluna={c} primeira={i === 0} hoje={hoje} onAbrir={onAbrir} />)}
-                </div>
-            </div>
-        </section>
-    );
-}
-
-function Coluna({ coluna, primeira, hoje, onAbrir }) {
-    const [todos, setTodos] = useState(false);
-    const itens = todos ? coluna.itens : coluna.itens.slice(0, CARTOES_POR_COLUNA);
-    const cor = coluna.cor ?? 'rgba(255,255,255,0.3)';
-    // Cabeçalho em seta: as etapas encaixam uma na outra e leem como fluxo.
-    const seta = coluna.fora
-        ? 'none'
-        : primeira
-            ? 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%)'
-            : 'polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)';
-
-    return (
-        <div className="min-w-0">
-            <div
-                className={cn('flex h-10 items-center justify-between gap-2 pr-6 text-[13px] font-medium text-white', primeira || coluna.fora ? 'pl-3' : 'pl-6', coluna.fora && 'rounded-md')}
-                style={{ clipPath: seta, background: tingir(cor, coluna.status === 'backlog' ? 8 : 22) }}
-            >
-                <span className="truncate">{coluna.rotulo}</span>
-                <span className="font-display text-[16px] font-bold tabular-nums">{coluna.itens.length}</span>
-            </div>
-
-            <ul className="mt-2.5 space-y-2">
-                {itens.map((d) => (
-                    <li key={d.id}>
-                        <Cartao demanda={d} cor={cor} hoje={hoje} onAbrir={onAbrir} />
-                    </li>
+                        <div className="mt-1.5 text-[11.5px]" style={{ color: claro ? '#596B84' : 'rgba(255,255,255,0.55)' }}>{c.nota}</div>
+                    </div>
                 ))}
-                {coluna.itens.length === 0 && <li className="px-1 py-3 text-[12.5px] text-white/30">Vazio</li>}
-            </ul>
-            {coluna.itens.length > CARTOES_POR_COLUNA && (
-                <button type="button" onClick={() => setTodos((v) => !v)} className="mt-2 px-1 text-[12.5px] text-white/50 hover:text-ecf-yellow">
-                    {todos ? 'Mostrar menos' : `Mostrar mais ${coluna.itens.length - CARTOES_POR_COLUNA}`}
-                </button>
-            )}
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+                {/* ── Distribuição por Status Atual (rosca, legenda à direita) ── */}
+                <Grafico titulo="Distribuição por Status Atual">
+                    <div className="flex h-[300px] items-center gap-4">
+                        <div className="h-full min-w-0 flex-1">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie data={dados.status.filter((s) => s.valor > 0)} dataKey="valor" nameKey="nome" innerRadius="45%" outerRadius="85%" stroke={claro ? '#fff' : '#0f1116'} strokeWidth={2} isAnimationActive={false}>
+                                        {dados.status.filter((s) => s.valor > 0).map((s) => <Cell key={s.chave} fill={COR_STATUS[s.chave]} />)}
+                                    </Pie>
+                                    <Tooltip content={<Dica total={total} />} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <ul className="w-[190px] shrink-0 space-y-1.5">
+                            {dados.status.map((s) => (
+                                <li key={s.chave} className="flex items-center gap-2 text-[12.5px]">
+                                    <span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: COR_STATUS[s.chave] }} />
+                                    <span className={s.valor ? 'text-white/80' : 'text-white/30'}>{s.nome}</span>
+                                    <span className={`ml-auto tabular-nums ${s.valor ? 'text-white' : 'text-white/30'}`}>{s.valor}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </Grafico>
+
+                {/* ── Demandas por Nível de Prioridade (colunas) ── */}
+                <Grafico titulo="Demandas por Nível de Prioridade">
+                    <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={dados.prioridade} margin={{ top: 16, right: 12, left: 8, bottom: 22 }}>
+                                <CartesianGrid vertical={false} stroke={grade} />
+                                <XAxis dataKey="nome" tick={{ fill: eixo, fontSize: 12 }} tickLine={false} axisLine={{ stroke: grade }}>
+                                    <Label value="Nível de Prioridade" position="bottom" offset={6} fill={eixo} fontSize={12} />
+                                </XAxis>
+                                <YAxis allowDecimals={false} tick={{ fill: eixo, fontSize: 12 }} tickLine={false} axisLine={false} width={40}>
+                                    <Label value="Quantidade de Demandas" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} fill={eixo} fontSize={12} />
+                                </YAxis>
+                                <Tooltip content={<Dica total={total} />} cursor={{ fill: grade }} />
+                                <Bar dataKey="valor" name="Demandas" fill={COR_PRIORIDADE} radius={[3, 3, 0, 0]} maxBarSize={72} isAnimationActive={false} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </Grafico>
+
+                {/* ── Demandas por Desenvolvedor / Responsável (barras horizontais) ── */}
+                <Grafico titulo="Demandas por Desenvolvedor / Responsável">
+                    <div style={{ height: Math.max(220, dados.responsavel.length * 44 + 70) }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={dados.responsavel} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 22 }}>
+                                <CartesianGrid horizontal={false} stroke={grade} />
+                                <XAxis type="number" allowDecimals={false} tick={{ fill: eixo, fontSize: 12 }} tickLine={false} axisLine={{ stroke: grade }}>
+                                    <Label value="Quantidade de Demandas" position="bottom" offset={6} fill={eixo} fontSize={12} />
+                                </XAxis>
+                                <YAxis type="category" dataKey="nome" width={130} tick={{ fill: eixo, fontSize: 12 }} tickLine={false} axisLine={false} />
+                                <Tooltip content={<Dica total={total} />} cursor={{ fill: grade }} />
+                                <Bar dataKey="valor" name="Demandas" fill={COR_RESPONSAVEL} radius={[0, 3, 3, 0]} maxBarSize={28} isAnimationActive={false} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </Grafico>
+
+                {/* ── Demandas por Área / Projeto (colunas) ── */}
+                <Grafico titulo="Demandas por Área / Projeto">
+                    <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={dados.area} margin={{ top: 16, right: 12, left: 8, bottom: 40 }}>
+                                <CartesianGrid vertical={false} stroke={grade} />
+                                <XAxis dataKey="nome" interval={0} angle={-35} textAnchor="end" height={62} tick={{ fill: eixo, fontSize: 11 }} tickLine={false} axisLine={{ stroke: grade }}>
+                                    <Label value="Área / Projeto" position="bottom" offset={20} fill={eixo} fontSize={12} />
+                                </XAxis>
+                                <YAxis allowDecimals={false} tick={{ fill: eixo, fontSize: 12 }} tickLine={false} axisLine={false} width={40}>
+                                    <Label value="Quantidade de Demandas" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} fill={eixo} fontSize={12} />
+                                </YAxis>
+                                <Tooltip content={<Dica total={total} />} cursor={{ fill: grade }} />
+                                <Bar dataKey="valor" name="Demandas" fill={COR_AREA} radius={[3, 3, 0, 0]} maxBarSize={40} isAnimationActive={false} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </Grafico>
+            </div>
+
+            <p className="text-center text-[12px] text-white/40">
+                Painel gerencial integrado · Dados calculados automaticamente a partir das demandas e das atualizações
+            </p>
         </div>
     );
 }
 
-function Cartao({ demanda: d, hoje, onAbrir }) {
-    const urgente = ['atrasada', 'prazo_proximo'].includes(d.situacao);
+function Grafico({ titulo, children }) {
     return (
-        <button
-            type="button"
-            onClick={() => onAbrir(d.id)}
-            className={cn(
-                'group block w-full rounded-lg border bg-ecf-card px-3 py-2.5 text-left transition-colors hover:border-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40',
-                d.bloqueado ? 'border-orange-500/30' : 'border-white/[0.06]',
-            )}
-        >
-            <span className="flex items-center gap-1.5">
-                <span className="text-[11.5px] font-semibold tabular-nums text-white/40">{d.codigo}</span>
-                {d.prioridade <= 1 && <PrioridadeSelo prioridade={d.prioridade} />}
-                {d.bloqueado && <Lock size={12} className="text-orange-400" aria-label="Bloqueada" />}
-            </span>
-            <span className="mt-1 line-clamp-2 text-[13px] leading-snug text-white/90 group-hover:text-white">{d.titulo}</span>
-            <span className="mt-2 flex items-center justify-between gap-2">
-                <span
-                    title={d.responsavel?.name ?? 'Sem responsável'}
-                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white/[0.05] text-[9.5px] font-semibold text-white/60"
-                >
-                    {d.responsavel ? iniciais(d.responsavel.name) : '–'}
-                </span>
-                {d.prazo && (
-                    <span className={cn('truncate text-[11.5px]', d.situacao === 'atrasada' ? 'text-red-400' : urgente ? 'text-amber-400' : 'text-white/40')}>
-                        {textoPrazo(d, hoje)}
-                    </span>
-                )}
-            </span>
-        </button>
-    );
-}
-
-// ═══ Carga por pessoa ═════════════════════════════════════════════════════════
-
-function Carga({ pessoas, selecionada, onSelecionar }) {
-    const linhas = pessoas.map((p) => {
-        const seg = Object.fromEntries(SEGMENTOS.map((s) => [s.chave, 0]));
-        let backlog = 0;
-        p.demandas.forEach((d) => {
-            if (d.situacao === 'bloqueado') seg.bloqueada++;
-            else if (seg[d.status] !== undefined) seg[d.status]++;
-            else backlog++;
-        });
-        const ativas = SEGMENTOS.reduce((t, s) => t + seg[s.chave], 0);
-        return { ...p, seg, backlog, ativas };
-    });
-    const maior = Math.max(1, ...linhas.map((l) => l.ativas));
-
-    return (
-        <section aria-labelledby="painel-carga">
-            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-                <h2 id="painel-carga" className="font-display text-[17px] font-semibold text-white">Carga por pessoa</h2>
-                <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-white/60" aria-label="Legenda">
-                    {SEGMENTOS.map((s) => (
-                        <li key={s.chave} className="flex items-center gap-1.5">
-                            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: s.cor }} />{s.rotulo}
-                        </li>
-                    ))}
-                </ul>
-            </div>
-
-            <ul className="mt-4 space-y-1">
-                {linhas.map((l) => (
-                    <li key={l.chave}>
-                        <button
-                            type="button"
-                            onClick={() => onSelecionar(l.chave)}
-                            aria-pressed={selecionada === l.chave}
-                            className={cn(
-                                'grid w-full grid-cols-[140px_minmax(0,1fr)] items-center gap-x-4 gap-y-1 rounded-lg px-3 py-2 text-left transition-colors hover:bg-white/[0.03] sm:grid-cols-[180px_minmax(0,1fr)_170px]',
-                                selecionada === l.chave && 'bg-white/[0.04]',
-                            )}
-                        >
-                            <span className={cn('truncate text-[13.5px]', l.chave === SEM_RESPONSAVEL ? 'text-white/50' : 'text-white')}>{l.nome}</span>
-
-                            {/* Barra: comprimento proporcional à maior carga ativa; 2px de respiro entre segmentos */}
-                            <span className="flex h-3 items-center" style={{ width: `${Math.max(4, (l.ativas / maior) * 100)}%` }}>
-                                {l.ativas === 0 ? (
-                                    <span className="text-[12px] text-white/30">nada ativo</span>
-                                ) : SEGMENTOS.filter((s) => l.seg[s.chave] > 0).map((s, i, arr) => (
-                                    <span
-                                        key={s.chave}
-                                        title={`${s.rotulo}: ${l.seg[s.chave]}`}
-                                        className={cn('h-3', i === 0 && 'rounded-l', i === arr.length - 1 && 'rounded-r', i > 0 && 'ml-[2px]')}
-                                        style={{ flexGrow: l.seg[s.chave], background: s.cor }}
-                                    />
-                                ))}
-                            </span>
-
-                            <span className="col-start-2 text-[12px] text-white/60 sm:col-start-auto sm:text-right">
-                                <span className="font-semibold tabular-nums text-white">{l.ativas}</span> ativa{l.ativas === 1 ? '' : 's'}
-                                {l.backlog > 0 && <span className="text-white/40">, mais {l.backlog} no backlog</span>}
-                            </span>
-                        </button>
-                    </li>
-                ))}
-            </ul>
+        <section className="rounded-xl border border-white/[0.08] bg-ecf-card px-5 pb-3 pt-4">
+            <h3 className="mb-2 text-center text-[14px] font-semibold text-white/90">{titulo}</h3>
+            {children}
         </section>
     );
 }
 
-function Chip({ ativo, onClick, children }) {
+// Dica ao passar o mouse: nome, quantidade e a fatia do total de demandas.
+function Dica({ active, payload, total }) {
+    if (!active || !payload?.length) return null;
+    const { name, value, payload: linha } = payload[0];
+    const nome = linha?.nome ?? name;
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            aria-pressed={ativo}
-            className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40',
-                ativo ? 'border-ecf-yellow/50 bg-ecf-yellow/10 text-white' : 'border-white/[0.08] text-white/60 hover:text-white',
-            )}
-        >
-            {children}
-        </button>
+        <div className="rounded-lg border border-white/10 bg-ecf-card px-3 py-2 text-[12.5px] shadow-lg">
+            <div className="text-white/70">{nome}</div>
+            <div className="font-semibold text-white">
+                {value} demanda{value === 1 ? '' : 's'}
+                {total > 0 && <span className="font-normal text-white/50"> ({Math.round((value / total) * 100)}%)</span>}
+            </div>
+        </div>
     );
 }
-
-const Contagem = ({ children }) => <span className="tabular-nums text-white/40">{children}</span>;
