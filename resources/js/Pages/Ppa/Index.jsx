@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useForm, router } from '@inertiajs/react';
 import {
-    Eye, EyeOff, FileText, LayoutDashboard, Pencil, Plus, Search, Trash2, X,
+    Eye, EyeOff, FileText, Pencil, Plus, Search, Trash2, X,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Button } from '@/Components/ui/button';
@@ -38,8 +38,20 @@ import {
 // propriedade — `meta` e `acoes` do `PlanoPpa` —, nunca por cópia da tela.
 //
 // O que a equipe vê e o cliente não: empresa, responsável, o selo de
-// visibilidade no portal, as datas de criação e da última mexida, e os botões
-// de editar, remover e abrir o quadro completo.
+// visibilidade no portal, as datas de criação e da última mexida, os botões de
+// editar e remover, e o "adicionar tarefa" — o cliente move cards, quem os cria
+// é a equipe.
+//
+// ### Não há mais "abrir o quadro completo" (23/09/2026)
+// A lista levava a uma segunda página com o mesmo quadro, só que maior. Ela foi
+// desligada a pedido ("não vou usar isso, ninguém vai") — mas era o ÚNICO lugar
+// que criava tarefa. Por isso o botão não saiu sozinho: a criação veio para o
+// rodapé do quadro aqui, senão o módulo ficaria sem como adicionar uma ação.
+//
+// A página (`Ppa/Kanban.jsx`) e a rota continuam existindo, sem link nenhum
+// apontando para elas. Com isso, os campos que só ela editava — área,
+// prioridade, prazo e lado responsável da TAREFA, e as colunas extras — deixam
+// de ter caminho pela tela.
 //
 // ### A ordem vem do backend, e a tela não a refaz
 // `Ppa::scopeOrdenadoPorAtencao()` já entrega os planos ordenados, inclusive
@@ -88,7 +100,6 @@ const ROTAS_PADRAO = {
     store:   'ppa.store',
     update:  'ppa.update',
     destroy: 'ppa.destroy',
-    kanban:  'ppa.kanban',
 };
 
 // ─── Filtro de situação ─────────────────────────────────────────────────────
@@ -111,6 +122,10 @@ const SITUACOES = [
 // A ordem DENTRO de cada seção. O agrupamento nunca muda — ele é a estrutura.
 const PADRAO = 'prioridade';
 
+// Referência estável: `?? []` criaria um array novo a cada render, e o efeito
+// que re-semeia as tarefas giraria em falso para sempre.
+const SEM_PLANOS = [];
+
 const ORDENS = [
     { valor: PADRAO,    titulo: 'Prioridade (prazo)' },
     { valor: 'recente', titulo: 'Atualizados recentemente' },
@@ -121,7 +136,7 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
     const R = { ...ROTAS_PADRAO, ...(rotas ?? {}) };
     const ehPolos = escopo === 'polos';
 
-    const linhas = ppas.data ?? [];
+    const linhas = ppas.data ?? SEM_PLANOS;
 
     // As tarefas vivem aqui, e não dentro de cada plano: os números do topo
     // somam os planos todos, e isso só é possível com uma fonte só. Cada
@@ -130,7 +145,16 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
         () => Object.fromEntries(linhas.map((p) => [p.id, p.tarefas ?? []])),
     );
 
+    // Criar uma tarefa recarrega os props com `preserveState`, para o plano não
+    // fechar debaixo de quem está trabalhando nele. É este efeito que faz a
+    // tarefa nova aparecer — sem ele, o estado local continuaria o de antes.
+    useEffect(() => {
+        setTarefasPorPlano(Object.fromEntries(linhas.map((p) => [p.id, p.tarefas ?? []])));
+    }, [linhas]);
+
     const [busca, setBusca] = useState('');
+    const [adicionandoEm, setAdicionandoEm] = useState(null);
+    const [novaTarefa, setNovaTarefa] = useState('');
     const [concluidosAbertos, setConcluidosAbertos] = useState(false);
     const [open, setOpen] = useState(false);
     const [editOpen, setEditOpen] = useState(false);
@@ -321,9 +345,6 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
 
     const acoesDoPlano = (plano) => (
         <>
-            <Button size="icon" variant="ghost" title="Abrir o quadro completo" onClick={() => router.get(route(R.kanban, plano.id))}>
-                <LayoutDashboard className="h-4 w-4" />
-            </Button>
             <Button size="icon" variant="ghost" title="Editar" onClick={() => openEdit(plano)}>
                 <Pencil className="h-4 w-4" />
             </Button>
@@ -331,6 +352,54 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
                 <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
         </>
+    );
+
+    const criarTarefa = (e, plano) => {
+        e.preventDefault();
+
+        const titulo = novaTarefa.trim();
+        if (!titulo) return;
+
+        // `preserveState` para o plano não fechar e a rolagem não saltar; quem
+        // traz a tarefa nova para a tela é o efeito lá em cima, quando os props
+        // chegam. A tarefa nasce em "A fazer" — de onde ela é arrastada.
+        router.post(route('ppa.tasks.store', plano.id), { title: titulo, status: 'todo' }, {
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: () => setNovaTarefa(''),
+        });
+    };
+
+    const rodapeDoPlano = (plano) => (
+        adicionandoEm === plano.id ? (
+            <form onSubmit={(e) => criarTarefa(e, plano)} className="flex items-center gap-2">
+                <Input
+                    autoFocus
+                    value={novaTarefa}
+                    onChange={(e) => setNovaTarefa(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Escape' && setAdicionandoEm(null)}
+                    placeholder="O que precisa ser feito?"
+                    className="h-9 text-[12.5px] max-w-md"
+                />
+                <Button type="submit" size="sm" disabled={!novaTarefa.trim()}>Adicionar</Button>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => { setAdicionandoEm(null); setNovaTarefa(''); }}
+                >
+                    Cancelar
+                </Button>
+            </form>
+        ) : (
+            <button
+                type="button"
+                onClick={() => { setAdicionandoEm(plano.id); setNovaTarefa(''); }}
+                className="inline-flex items-center gap-1.5 text-white/40 hover:text-white text-[12.5px] transition-colors"
+            >
+                <Plus className="h-3.5 w-3.5" /> Adicionar tarefa
+            </button>
+        )
     );
 
     return (
@@ -462,9 +531,10 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
                                                     onMover={mover}
                                                     meta={metaDoPlano(plano)}
                                                     chips={chipsDoPlano(plano)}
+                                                    rodape={rodapeDoPlano(plano)}
                                                     acoes={acoesDoPlano(plano)}
                                                     somenteLeitura={false}
-                                                    vazioTexto="Este plano ainda não tem tarefas. Abra o quadro completo para incluir as ações."
+                                                    vazioTexto="Este plano ainda não tem tarefas."
                                                 />
                                             </div>
                                         ) : (
@@ -491,12 +561,13 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
                                             onMover={mover}
                                             meta={metaDoPlano(plano)}
                                             chips={chipsDoPlano(plano)}
+                                            rodape={rodapeDoPlano(plano)}
                                             acoes={acoesDoPlano(plano)}
                                             // A equipe continua podendo mexer no que ela
                                             // mesma encerrou — a trava de leitura é do
                                             // cliente, não dela.
                                             somenteLeitura={false}
-                                            vazioTexto="Este plano ainda não tem tarefas. Abra o quadro completo para incluir as ações."
+                                            vazioTexto="Este plano ainda não tem tarefas."
                                         />
                                     ))}
                                 </div>

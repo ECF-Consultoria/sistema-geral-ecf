@@ -23,8 +23,10 @@ import { cn } from '@/lib/utils';
 // ajuste precisava ser feito duas vezes, ou divergia.
 //
 // O que o lado interno acrescenta entra por PROPRIEDADE, nunca por cópia:
-//   `meta`   — empresa, responsável, datas, selo de visibilidade;
-//   `acoes`  — editar, remover, abrir o quadro completo;
+//   `meta`   — empresa, responsável, datas;
+//   `chips`  — status e visibilidade, ao lado do título;
+//   `acoes`  — editar e remover;
+//   `rodape` — adicionar tarefa (o cliente não cria tarefa, a equipe cria);
 //   `somenteLeitura` / `avisoLeitura` — no portal, plano encerrado vira
 //              consulta; internamente a equipe continua podendo mexer.
 //
@@ -50,6 +52,7 @@ export default function PlanoPpa({
     meta = null,
     chips = null,
     acoes = null,
+    rodape = null,
     somenteLeitura: travadoPorFora,
     avisoLeitura = 'Plano encerrado pela nossa equipe — fica aqui para consulta.',
     vazioTexto = 'Este plano ainda não tem tarefas. Assim que a equipe incluir as ações, elas aparecem aqui.',
@@ -254,6 +257,10 @@ export default function PlanoPpa({
                             </DragOverlay>
                         </DndContext>
                     )}
+
+                    {/* Fica FORA do ternário acima: o plano sem tarefa nenhuma
+                        é justamente o que mais precisa do botão de adicionar. */}
+                    {rodape}
                 </div>
             )}
         </section>

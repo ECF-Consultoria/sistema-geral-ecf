@@ -517,6 +517,31 @@ interna, com o comportamento do portal como padrão do componente.
 responde JSON; a segunda responde Inertia e faria o quadro piscar a cada card.
 A rota serve os dois escopos porque a tarefa pertence ao PPA, não ao escopo.
 
+### O "quadro completo" foi desligado — e ele era o ÚNICO lugar que criava tarefa
+
+Pedido: *"eu não quero quadro completo, não vou usar isso, ninguém vai, o
+simples está bom"*. Com o quadro desenhado dentro da lista, a segunda página
+virou a mesma coisa maior.
+
+**A armadilha:** tirar o botão sozinho deixaria o módulo sem como adicionar uma
+ação. `Ppa/Kanban.jsx` era o único consumidor de `ppa.tasks.store`, e a lista era
+o único link até ele. Por isso a criação veio para o rodapé do quadro na lista,
+no mesmo commit.
+
+A página e as rotas continuam existindo, **sem link nenhum**. Ficaram sem
+caminho pela tela: área, prioridade, prazo e lado responsável da TAREFA, e as
+colunas extras (`ppa_colunas`). O quadro do portal e o da lista mostram
+`prazo_dias` e `responsavel_lado` dos cards — eles seguem viajando no payload,
+mas ninguém mais tem onde preenchê-los. Se alguém sentir falta, o caminho é
+trazer esses campos para o card na lista, não ressuscitar a página.
+
+**Criar tarefa recarrega com `preserveState: true`**, para o plano não fechar
+debaixo de quem está trabalhando nele. Quem traz a tarefa nova para a tela é um
+`useEffect` que re-semeia `tarefasPorPlano` quando os props chegam — sem ele o
+estado local continuaria o de antes e a tarefa só apareceria no F5. E `linhas`
+PRECISA de referência estável (`?? SEM_PLANOS`, constante de módulo): com
+`?? []` o efeito giraria em falso para sempre.
+
 ### Filtro de data virou ORDENAÇÃO, não intervalo
 
 Também recusado: "os filtros de data eu quero filtrar não data exata, mas do

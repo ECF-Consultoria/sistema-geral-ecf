@@ -100,6 +100,36 @@ test('ppa/interna — o arraste usa a rota que responde JSON', () => {
     assert.doesNotMatch(interna, /route\('ppa\.tasks\.update'/);
 });
 
+test('ppa/interna — não há link para o "quadro completo" em lugar nenhum', () => {
+    // Desligado a pedido ("não vou usar isso, ninguém vai"). A página e a rota
+    // continuam existindo; o que não pode voltar é o caminho até elas.
+    assert.doesNotMatch(interna, /ppa\.kanban|R\.kanban|LayoutDashboard/);
+});
+
+test('ppa/interna — a criação de tarefa veio junto, senão o módulo fica sem ela', () => {
+    // O "quadro completo" era o ÚNICO lugar que criava tarefa. Tirar o link sem
+    // trazer a criação deixaria o PPA sem como adicionar uma ação.
+    assert.match(interna, /route\('ppa\.tasks\.store', plano\.id\)/);
+    assert.match(interna, /Adicionar tarefa/);
+    assert.match(interna, /rodape=\{rodapeDoPlano\(plano\)\}/);
+
+    // O cliente move cards, mas não cria: o rodapé é só do lado interno.
+    assert.doesNotMatch(portal, /rodape=/);
+});
+
+test('ppa/interna — a tarefa nova aparece sem fechar o plano', () => {
+    // `preserveState` mantém o plano aberto; quem traz a tarefa para a tela é o
+    // efeito que re-semeia as tarefas quando os props chegam. Sem ele, o estado
+    // local continuaria o de antes e a tarefa só apareceria no F5.
+    assert.match(interna, /useEffect\(\(\) => \{/);
+    assert.match(interna, /setTarefasPorPlano\(Object\.fromEntries/);
+    assert.match(interna, /\}, \[linhas\]\)/);
+
+    // `?? []` criaria um array novo por render e o efeito giraria em falso.
+    assert.match(interna, /const SEM_PLANOS = \[\]/);
+    assert.match(interna, /const linhas = ppas\.data \?\? SEM_PLANOS/);
+});
+
 // ─── 3. Os dois seletores ───
 
 test('ppa/interna — situação e ordem são Selects, com sentinela em vez de vazio', () => {
