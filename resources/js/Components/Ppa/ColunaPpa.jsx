@@ -1,6 +1,6 @@
 import { useDroppable } from '@dnd-kit/core';
 import { CheckCircle2, Circle, Clock } from 'lucide-react';
-import CardTarefaPortal from './CardTarefaPortal';
+import CardTarefaPpa from './CardTarefaPpa';
 import { cn } from '@/lib/utils';
 
 // ─── Uma das três colunas do quadro do cliente ──────────────────────────────
@@ -54,7 +54,7 @@ export const COLUNAS = [
     },
 ];
 
-export default function ColunaPortal({ coluna, tarefas, somenteLeitura, arrastandoAlgo }) {
+export default function ColunaPpa({ coluna, tarefas, somenteLeitura, arrastandoAlgo }) {
     const { setNodeRef, isOver } = useDroppable({
         id: coluna.chave,
         disabled: somenteLeitura,
@@ -88,7 +88,7 @@ export default function ColunaPortal({ coluna, tarefas, somenteLeitura, arrastan
 
             <div className="flex-1 space-y-2 min-h-[72px]">
                 {tarefas.map((tarefa) => (
-                    <CardTarefaPortal
+                    <CardTarefaPpa
                         key={tarefa.id}
                         tarefa={tarefa}
                         desabilitado={somenteLeitura}

@@ -18,7 +18,7 @@
 // cliente possa fazer — deixá-lo ocupando o topo da tela empurraria para baixo
 // justamente o trabalho vivo. Ele desce para a seção recolhida, mas continua
 // EDITÁVEL quando aberto (só o encerrado pela equipe vira leitura, que é a
-// regra que já existia). Ver `somenteLeitura` em `PlanoPortal`.
+// regra que já existia). Ver `somenteLeitura` em `PlanoPpa`.
 
 export const GRUPO_ANDAMENTO = 'andamento';
 export const GRUPO_FAZER     = 'fazer';
@@ -127,8 +127,12 @@ export function ordenarPlanos(planos) {
  *
  * @param {Array<{grupo: string}>} planos já anotados por `anotarPlano`
  */
-export function seccionar(planos) {
-    const ordenados = ordenarPlanos(planos);
+export function seccionar(planos, { ordenar = true } = {}) {
+    // `ordenar: false` quando o SERVIDOR já escolheu a ordem — é o caso da
+    // lista interna, onde quem ordena é `Ppa::scopeOrdenadoPorAtencao()` e o
+    // usuário pode pedir "atualizados recentemente". Reordenar aqui por prazo
+    // desfaria, calado, a escolha dele.
+    const ordenados = ordenar ? ordenarPlanos(planos) : planos;
 
     return GRUPOS.map((g) => ({
         ...g,
@@ -172,6 +176,41 @@ export function resumoTarefas({ total, feitas, fazendo, aFazer }) {
 
     partes.push(`${feitas} de ${total} concluídas`);
     return partes.join(' · ');
+}
+
+/**
+ * Os quatro números do topo, a partir do estado VIVO das tarefas.
+ *
+ * Vive aqui, e não em cada tela, porque o Portal e a lista interna mostram os
+ * MESMOS quatro números — e "tarefas em andamento" tem de querer dizer a mesma
+ * coisa nos dois lados para uma conversa entre equipe e cliente fazer sentido.
+ *
+ * Tarefa de plano ENCERRADO não entra nas pendências: a equipe fechou o plano,
+ * e um número teimando ali mandaria perseguir algo que ninguém mais espera. É a
+ * mesma regra do badge do menu (`PortalPpaService::pendentes()`).
+ *
+ * @param {Array<{id: number|string, grupo: string, prazoDias: ?number}>} planos
+ * @param {Record<string|number, Array<{status: string}>>} tarefasPorPlano
+ */
+export function totaisDosPlanos(planos, tarefasPorPlano) {
+    let fazendo = 0, aFazer = 0, feitas = 0, total = 0, atrasados = 0, concluidos = 0;
+
+    for (const plano of planos) {
+        const c = contarTarefas(tarefasPorPlano[plano.id] ?? []);
+        total  += c.total;
+        feitas += c.feitas;
+
+        if (plano.grupo === GRUPO_CONCLUIDO) {
+            concluidos++;
+            continue;
+        }
+
+        fazendo += c.fazendo;
+        aFazer  += c.aFazer;
+        if (Number.isFinite(plano.prazoDias) && plano.prazoDias < 0) atrasados++;
+    }
+
+    return { fazendo, aFazer, feitas, total, atrasados, concluidos, pct: percentual({ total, feitas }) };
 }
 
 /**

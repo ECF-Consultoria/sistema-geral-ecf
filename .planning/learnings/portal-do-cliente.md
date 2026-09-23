@@ -471,21 +471,82 @@ copiar as mesmas expressões para o filtro — e aí quebra: alias de SELECT val
 O SQLite dos testes é permissivo com alias em `WHERE` em alguns casos; o MariaDB
 não é. Seria mais uma armadilha do tipo "passa no teste, estoura na tela".
 
-### O filtro não pode custar uma fileira da tela — rejeitado em revisão
+### O PPA interno virou a tela do Portal — um desenho só (23/09/2026)
 
-A primeira versão do filtro pôs cinco chips e dois campos de data numa linha
-própria, abaixo da busca. Foi recusada na hora ("ficou muito ruim"), e o pedido
-foi literalmente "como era antes, porém apenas com filtro e data".
+Duas revisões seguidas foram recusadas antes de a pergunta certa aparecer. A
+primeira pôs uma fileira de chips acima da lista ("ficou muito ruim"); a
+segunda acertou o peso, mas ainda era a lista de linhas. O que o usuário queria
+era outra coisa: **"o PPA do Portal está diferente do nosso interno; gostei
+apenas do Portal, então o mesmo que está no Portal eu quero no interno"**.
 
-A lição não é sobre chip: a lista agrupada é uma tela de LEITURA, e o que ela
-vende é a hierarquia das seções. Qualquer coisa nova acima da primeira seção
-empurra essa hierarquia para baixo e compete com ela. O filtro foi para DENTRO
-da linha da busca, que já existia — a tela não ganhou altura nenhuma.
+A lição de processo: quando alguém recusa um ajuste de tela duas vezes, pare de
+ajustar. "Como era antes" pode significar uma tela que você nem está olhando —
+e, aqui, a tela boa já existia, do outro lado do mesmo módulo.
 
-Antes de mexer nesta tela de novo, vale conferir o que está PUBLICADO em vez de
-supor: `curl -s https://admin.ecfconsultoria.com.br/build/manifest.json` acha o
-chunk de `resources/js/Pages/Ppa/Index.jsx`, e um `grep` nele diz qual versão o
-usuário está vendo. Foi o que resolveu "como era antes" sem adivinhação.
+**O que mudou.** Equipe e cliente desenhavam o MESMO plano de jeitos
+diferentes: o cliente tinha o quadro de três colunas que abre e fecha, e a
+equipe tinha uma lista de linhas com o Kanban em outra página. Falar ao
+telefone sobre "o card que está em andamento" exigia traduzir entre as duas.
+Agora:
+
+- os componentes saíram de `Components/Portal/Ppa/` para **`Components/Ppa/`** e
+  servem os dois lados: `PlanoPpa`, `ColunaPpa`, `CardTarefaPpa`,
+  `IndicadoresPpa`, `TituloSecaoPpa`;
+- o payload comum sai de um lugar só: **`PpaListaService::linha()` monta em
+  cima de `PortalPpaService::visao()`** e acrescenta o que é da equipe. A
+  direção da dependência é de propósito — o payload do cliente é o mais
+  restrito, e por isso é ele quem define o mínimo comum;
+- o que só a equipe vê entra por PROPRIEDADE do `PlanoPpa` (`meta`, `chips`,
+  `acoes`, `somenteLeitura`, `vazioTexto`), **nunca por cópia da tela**.
+
+O gate `tests/js/estrutura-ppa-filtros.test.js` quebra se alguém reintroduzir
+um `function Indicador` ou um `const COLUNAS` dentro de uma das páginas — que é
+o primeiro passo da divergência, sempre feito "só para ajustar uma coisinha".
+
+**Chaves do payload:** a lista interna deixou de falar `title`/`tasks_count`/
+`due_date_dias` e passou a falar `titulo`/`total`/`prazo_dias`, como o cliente.
+Componente compartilhado exige as mesmas chaves; chave que diverge é componente
+que quebra do outro lado.
+
+**A equipe NÃO herda a trava de leitura do cliente.** No portal, plano encerrado
+vira consulta. Internamente quem encerrou foi a própria equipe, e impedí-la de
+reabrir seria uma trava sem dono — daí `somenteLeitura={false}` na lista
+interna, com o comportamento do portal como padrão do componente.
+
+**O arraste interno usa `ppa.tasks.mover`, não `ppa.tasks.update`.** A primeira
+responde JSON; a segunda responde Inertia e faria o quadro piscar a cada card.
+A rota serve os dois escopos porque a tarefa pertence ao PPA, não ao escopo.
+
+### Filtro de data virou ORDENAÇÃO, não intervalo
+
+Também recusado: "os filtros de data eu quero filtrar não data exata, mas do
+mais recente atualizado, ou dos mais antigos". Intervalo `de`/`até` responde
+"o que nasceu nesta semana"; ninguém procura PPA assim. A pergunta real era
+"o que anda parado há tempo demais".
+
+Virou `Ppa::scopeOrdenadoPorAtencao($ordem)`, e o **grupo continua sendo o
+critério principal** — a ordem só desempata dentro da seção. Um concluído
+mexido agora não pode pular na frente de um plano andando, ou as seções viram
+enfeite.
+
+Como a tela agrupa o que recebe, ela não pode reordenar por conta:
+`seccionar(planos, { ordenar: false })` na lista interna. Sem isso o JS
+reordenaria por prazo e desfaria, calado, a escolha do usuário.
+
+### `GREATEST` não existe no SQLite dos testes
+
+"Quando mexeram neste plano pela última vez" é o maior entre `ppas.updated_at`
+e o `MAX(updated_at)` das tarefas. `GREATEST(a, b)` resolveria em uma linha no
+MariaDB e **não existe no SQLite** (lá é `MAX(a, b)` escalar, que no MariaDB é
+agregação). A forma que os dois entendem é um `CASE` — ver
+`Ppa::sqlUltimaAtividade()`.
+
+A subconsulta aparece DUAS vezes dentro do `CASE` de propósito: alias de SELECT
+não pode ser referenciado por outra expressão do mesmo SELECT no MySQL.
+
+**Ao escrever teste disso, envelheça a TAREFA também.** Tarefa nasce com
+`updated_at` de agora; três planos com tarefas novas empatam no mesmo instante e
+a ordem sai aleatória. Custou uma falha que parecia bug de ordenação.
 
 ### "Vencido" não é um grupo, e por isso não entrou em `GRUPOS`
 

@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 // "Voltar" / "Iniciar" / "Marcar concluída" eram a única forma de mover a
 // tarefa. Com o arraste, manter os botões seria oferecer dois caminhos para a
 // mesma coisa e encher a base do card de controles que competem com o texto.
-// Quem não usa ponteiro continua atendido: o `KeyboardSensor` em `PlanoPortal`
+// Quem não usa ponteiro continua atendido: o `KeyboardSensor` em `PlanoPpa`
 // move o card com Espaço + setas.
 
 const LADOS = {
@@ -43,7 +43,7 @@ const TOM_PRAZO = {
  * cursor: usar o componente completo ali registraria o mesmo id duas vezes no
  * dnd-kit e o card fantasma sumiria no meio do arraste.
  */
-export function ConteudoCardPortal({ tarefa, arrastando = false, estatico = false }) {
+export function ConteudoCardPpa({ tarefa, arrastando = false, estatico = false }) {
     const feita = tarefa.status === 'done';
     const lado  = tarefa.responsavel_lado ? LADOS[tarefa.responsavel_lado] : null;
     const prazo = seloPrazo(tarefa.prazo_dias, { encerrado: feita });
@@ -130,7 +130,7 @@ export function ConteudoCardPortal({ tarefa, arrastando = false, estatico = fals
 }
 
 /** O card arrastável de verdade — o que vive dentro da coluna. */
-export default function CardTarefaPortal({ tarefa, desabilitado = false }) {
+export default function CardTarefaPpa({ tarefa, desabilitado = false }) {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
         id: tarefa.id,
         disabled: desabilitado,
@@ -146,7 +146,7 @@ export default function CardTarefaPortal({ tarefa, desabilitado = false }) {
             // deixaria de rolar a página ao encostar num card, e no celular
             // quase tudo que se faz numa lista de tarefas é rolar. Quem move
             // no toque usa o `TouchSensor` (segurar e arrastar), configurado
-            // em `PlanoPortal`.
+            // em `PlanoPpa`.
             style={{ touchAction: 'manipulation' }}
             className={cn(
                 'outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/50 rounded-xl',
@@ -156,7 +156,7 @@ export default function CardTarefaPortal({ tarefa, desabilitado = false }) {
                 isDragging && 'opacity-25',
             )}
         >
-            <ConteudoCardPortal tarefa={tarefa} estatico={desabilitado} />
+            <ConteudoCardPpa tarefa={tarefa} estatico={desabilitado} />
         </div>
     );
 }

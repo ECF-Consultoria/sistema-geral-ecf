@@ -1,120 +1,153 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { lerSemComentarios } from './_fonte.js';
 import { GRUPOS } from '../../resources/js/lib/ppaAgrupamento.js';
 
 // ═══════════════════════════════════════════════════════════════════════
-// Gate do filtro da lista de PPA e das duas datas (22/09/2026).
+// Gate da unificação das duas telas de PPA (23/09/2026).
+//
+// Até aqui, equipe e cliente olhavam desenhos DIFERENTES do mesmo plano, e
+// falar ao telefone sobre "o card em andamento" exigia traduzir entre as duas.
+// Agora os dois lados montam os MESMOS componentes de `Components/Ppa/`.
 //
 // Lê a fonte SEM COMENTÁRIOS: a prosa deste projeto cita os próprios
-// identificadores ("TODAS é sentinela, e não string vazia"), e um gate cru
-// contaria o comentário e passaria pelo motivo errado.
-//
-// ### O que NÃO pode voltar
-// A primeira versão desta tela pôs uma fileira de chips e dois campos de data
-// numa linha própria, e ficou pesada: a lista agrupada que está em produção
-// desde 21/09 tem de continuar sendo o que se vê. O filtro mora DENTRO da
-// linha da busca, que já existia.
+// identificadores, e um gate cru passaria pelo comentário.
 //
 // O que estas travas protegem, na ordem em que quebraria:
-//  1. o filtro é aplicado no SERVIDOR — a lista pagina de 20 em 20, e filtrar
-//     só a página devolve "3 vencidos" para quem tem 19;
-//  2. `value=""` num Select do Radix apaga a tela inteira (já aconteceu neste
-//     projeto) — por isso a sentinela `TODAS`;
-//  3. os valores viajam CRUS na URL e são lidos por `Ppa::SITUACOES` no PHP;
-//  4. a paginação tem de carregar os filtros;
-//  5. filtrar por "Concluídos" com a gaveta fechada é uma tela vazia com o
+//  1. a volta da duplicação — alguém copia o quadro para um dos lados
+//     "só para ajustar uma coisinha" e as telas divergem de novo;
+//  2. o payload: componente compartilhado exige as MESMAS chaves, e quem as
+//     produz é `PpaListaService` em cima de `PortalPpaService::visao()`;
+//  3. `value=""` num Select do Radix apaga a tela inteira (já aconteceu aqui);
+//  4. a ordem escolhida pelo usuário, que a tela não pode refazer por conta;
+//  5. filtrar por "Concluídos" com a gaveta fechada = tela vazia com o
 //     contador dizendo que há 12.
 // ═══════════════════════════════════════════════════════════════════════
 
-const CAMINHO = 'resources/js/Pages/Ppa/Index.jsx';
-const fonte = lerSemComentarios(CAMINHO);
+const INTERNA = 'resources/js/Pages/Ppa/Index.jsx';
+const PORTAL  = 'resources/js/Pages/Portal/Ppa.jsx';
 
-// ─── 1. A tela continua sendo a lista agrupada, sem fileira nova ───
+const interna = lerSemComentarios(INTERNA);
+const portal  = lerSemComentarios(PORTAL);
 
-test('ppa/filtros — nenhuma fileira de chips: o filtro é um seletor', () => {
-    assert.doesNotMatch(fonte, /aria-pressed/);
-    assert.doesNotMatch(fonte, /ChipFiltro/);
-    assert.match(fonte, /aria-label="Filtrar por situação"/);
+const existe = (caminho) => {
+    try {
+        readFileSync(resolve(import.meta.dirname, '../..', caminho));
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+// ─── 1. Um desenho só para os dois lados ───
+
+test('ppa — as duas telas montam os MESMOS componentes de quadro', () => {
+    for (const fonte of [interna, portal]) {
+        assert.match(fonte, /from '@\/Components\/Ppa\/PlanoPpa'/);
+        assert.match(fonte, /from '@\/Components\/Ppa\/IndicadoresPpa'/);
+        assert.match(fonte, /from '@\/Components\/Ppa\/TituloSecaoPpa'/);
+    }
 });
 
-test('ppa/filtros — as seções e a régua de agrupamento continuam intactas', () => {
-    // O filtro não podia virar um jeito de a lista deixar de se agrupar.
-    assert.match(fonte, /seccionar\(linhas\)/);
-    assert.match(fonte, /grupoDoPlano\(\{/);
+test('ppa — os componentes saíram da pasta do Portal e nada ficou para trás', () => {
+    // O caminho antigo dizia que o quadro era do cliente. Ele é dos dois.
+    assert.equal(existe('resources/js/Components/Portal/Ppa/PlanoPortal.jsx'), false);
+    assert.equal(existe('resources/js/Components/Ppa/PlanoPpa.jsx'), true);
+
+    for (const fonte of [interna, portal]) {
+        assert.doesNotMatch(fonte, /Components\/Portal\/Ppa/);
+        assert.doesNotMatch(fonte, /PlanoPortal|ColunaPortal|CardTarefaPortal/);
+    }
 });
 
-// ─── 2. O Select e a armadilha do Radix ───
-
-test('ppa/filtros — "todas" é sentinela; string vazia nunca chega ao Select', () => {
-    // `value=""` num Select do Radix apaga a tela. O vazio só existe na URL.
-    assert.match(fonte, /const TODAS = 'todos'/);
-    assert.match(fonte, /value=\{situacao \|\| TODAS\}/);
-    assert.match(fonte, /v === TODAS \? '' : v/);
+test('ppa — nenhuma das telas redesenha indicador ou coluna por conta própria', () => {
+    // Um `function Indicador` ou um `const COLUNAS` reaparecendo numa página é
+    // o primeiro passo da divergência que esta unificação desfez.
+    for (const fonte of [interna, portal]) {
+        assert.doesNotMatch(fonte, /function Indicador\b/);
+        assert.doesNotMatch(fonte, /const COLUNAS\b/);
+        assert.doesNotMatch(fonte, /function TituloSecao\b/);
+    }
 });
 
-test('ppa/filtros — as opções são as seções da lista mais "Vencidos"', () => {
-    assert.match(fonte, /\.\.\.GRUPOS\.map\(\(g\) => \(\{ valor: g\.chave, titulo: g\.titulo \}\)\)/);
-    assert.match(fonte, /\{ valor: 'vencido', titulo: 'Vencidos' \}/);
+test('ppa — os quatro números saem da mesma conta, na lib', () => {
+    for (const fonte of [interna, portal]) {
+        assert.match(fonte, /totaisDosPlanos\(planos, tarefasPorPlano\)/);
+    }
 });
 
-test('ppa/filtros — os valores são exatamente os de `Ppa::SITUACOES` no PHP', () => {
-    // Viajam crus na URL. Renomear de um lado só faz o filtro devolver a lista
-    // inteira, calado — `scopeDaSituacao` trata valor desconhecido como "sem
-    // filtro", de propósito.
-    const doJs = ['vencido', ...GRUPOS.map((g) => g.chave)].sort();
-    assert.deepEqual(doJs, ['andamento', 'concluido', 'fazer', 'vencido']);
+// ─── 2. O que só a equipe vê entra por propriedade, não por cópia ───
+
+test('ppa/interna — empresa, responsável, datas e ações entram como props do PlanoPpa', () => {
+    assert.match(interna, /meta=\{metaDoPlano\(plano\)\}/);
+    assert.match(interna, /acoes=\{acoesDoPlano\(plano\)\}/);
+    assert.match(interna, /Criado \{plano\.criado_em\}/);
+    assert.match(interna, /Atualizado \{plano\.atualizado_em\}/);
 });
 
-// ─── 3. O filtro é do servidor, não da página ───
-
-test('ppa/filtros — mudar filtro navega, em vez de recortar `ppas.data`', () => {
-    assert.match(fonte, /const aplicar = \(mudanca\) => \{/);
-    assert.match(fonte, /router\.get\(route\(R\.index\), paramsDe\(proximo\)/);
+test('ppa/interna — a equipe não herda a trava de leitura do cliente', () => {
+    // No portal, plano encerrado vira consulta. Internamente, quem encerrou foi
+    // a própria equipe — impedi-la de reabrir seria uma trava sem dono.
+    assert.match(interna, /somenteLeitura=\{false\}/);
+    assert.doesNotMatch(portal, /somenteLeitura=\{/);
 });
 
-test('ppa/filtros — a página 1 é retomada a cada mudança (`page` fora de `paramsDe`)', () => {
-    const corpo = fonte.slice(fonte.indexOf('const paramsDe'), fonte.indexOf('const limparFiltros'));
-    assert.doesNotMatch(corpo, /p\.page\s*=/);
+test('ppa/interna — o arraste usa a rota que responde JSON', () => {
+    // `ppa.tasks.update` devolve Inertia e faria o quadro piscar a cada card.
+    assert.match(interna, /route\('ppa\.tasks\.mover', tarefa\.id\)/);
+    assert.doesNotMatch(interna, /route\('ppa\.tasks\.update'/);
 });
 
-test('ppa/filtros — a paginação leva os filtros junto', () => {
-    assert.match(fonte, /const irParaPagina = \(page\) =>\s*\n?\s*router\.get\(route\(R\.index\), paramsDe\(\{ situacao, de, ate \}, \{ page \}\)\)/);
-    // O `router.get` cru com só `{ page: ... }` era o jeito antigo: ele volta
-    // para a página 2 SEM filtro, e a lista parece ter mudado sozinha.
-    assert.doesNotMatch(fonte, /router\.get\(route\(R\.index\), \{ page:/);
+// ─── 3. Os dois seletores ───
+
+test('ppa/interna — situação e ordem são Selects, com sentinela em vez de vazio', () => {
+    assert.match(interna, /const TODAS = 'todos'/);
+    assert.match(interna, /const PADRAO = 'prioridade'/);
+    assert.match(interna, /value=\{situacao \|\| TODAS\}/);
+    assert.match(interna, /value=\{ordem \|\| PADRAO\}/);
+    assert.match(interna, /v === TODAS \? '' : v/);
+    assert.match(interna, /v === PADRAO \? '' : v/);
 });
 
-// ─── 4. As duas datas, que são o pedido ───
-
-test('ppa/filtros — a linha do plano mostra criação e última mexida', () => {
-    assert.match(fonte, /Criado \{plano\.created_at\}/);
-    assert.match(fonte, /Atualizado \{plano\.updated_at\}/);
+test('ppa/interna — a ordem é por ATUALIZAÇÃO, não por data exata', () => {
+    // O intervalo "criado de/até" foi recusado em revisão: o pedido era "do
+    // mais recente atualizado, ou dos mais antigos".
+    assert.match(interna, /\{ valor: 'recente', titulo: 'Atualizados recentemente' \}/);
+    assert.match(interna, /\{ valor: 'antigo',  titulo: 'Atualizados há mais tempo' \}/);
+    assert.doesNotMatch(interna, /type="date"[\s\S]{0,200}aria-label="Criado/);
 });
 
-test('ppa/filtros — o cartão do concluído também mostra as duas', () => {
-    const cartao = fonte.slice(fonte.indexOf('function CartaoConcluido'), fonte.indexOf('export default'));
-    assert.match(cartao, /Criado \{plano\.created_at\}/);
-    assert.match(cartao, /Atualizado \$\{plano\.updated_at\}/);
+test('ppa/interna — as situações são as seções da lista mais "Vencidos"', () => {
+    assert.match(interna, /\.\.\.GRUPOS\.map\(\(g\) => \(\{ valor: g\.chave, titulo: g\.titulo \}\)\)/);
+    assert.match(interna, /\{ valor: 'vencido', titulo: 'Vencidos' \}/);
+
+    // Viajam crus na URL e são lidos por `Ppa::SITUACOES` no PHP.
+    assert.deepEqual(['vencido', ...GRUPOS.map((g) => g.chave)].sort(),
+        ['andamento', 'concluido', 'fazer', 'vencido']);
 });
 
-test('ppa/filtros — o intervalo é de CRIAÇÃO, e os campos dizem isso', () => {
-    // "de/até" sozinho não diz qual data; a lista tem três (criação,
-    // atualização e prazo).
-    assert.match(fonte, />Criado de</);
-    assert.match(fonte, /aria-label="Criado a partir de"/);
-    assert.match(fonte, /aria-label="Criado até"/);
+// ─── 4. Quem ordena é o servidor ───
+
+test('ppa/interna — a tela agrupa mas NÃO reordena o que veio do servidor', () => {
+    // Reordenar aqui por prazo desfaria "atualizados recentemente", calado.
+    assert.match(interna, /seccionar\(filtrados, \{ ordenar: false \}\)/);
+});
+
+test('ppa/interna — a paginação leva os filtros junto', () => {
+    assert.match(interna, /const irParaPagina = \(page\) => router\.get\(route\(R\.index\), paramsDe\(\{ situacao, ordem \}, \{ page \}\)\)/);
+    assert.doesNotMatch(interna, /router\.get\(route\(R\.index\), \{ page:/);
 });
 
 // ─── 5. A gaveta dos concluídos ───
 
-test('ppa/filtros — filtrar por "Concluídos" abre a gaveta que vem fechada', () => {
-    assert.match(fonte, /const soConcluidos = situacao === GRUPO_CONCLUIDO/);
-    assert.match(fonte, /const dobravel = ehConcluidos && !soConcluidos/);
-    assert.match(fonte, /const aberta = !dobravel \|\| concluidosAbertos/);
+test('ppa/interna — filtrar por "Concluídos" abre a gaveta que vem fechada', () => {
+    assert.match(interna, /const soConcluidos = situacao === GRUPO_CONCLUIDO/);
+    assert.match(interna, /const dobravel = ehConcluidos && !soConcluidos/);
 });
 
-test('ppa/filtros — lista vazia POR FILTRO oferece a saída', () => {
-    assert.match(fonte, /temFiltro \? 'Nenhum PPA nestes filtros' : 'Nenhum PPA encontrado'/);
-    assert.match(fonte, /onClick=\{limparFiltros\}/);
+test('ppa/interna — lista vazia POR FILTRO oferece a saída', () => {
+    assert.match(interna, /temFiltro \? 'Nenhum PPA nestes filtros' : 'Nenhum PPA encontrado'/);
+    assert.match(interna, /onClick=\{limparFiltros\}/);
 });

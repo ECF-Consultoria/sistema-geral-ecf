@@ -51,6 +51,20 @@ class Ppa extends Model
         self::GRUPO_CONCLUIDO,
     ];
 
+    /**
+     * Como a lista se ordena DENTRO de cada seção.
+     *
+     * O agrupamento (em andamento · a fazer · concluídos) nunca muda: ele é a
+     * estrutura da tela, não uma preferência. O que estas ordens trocam é o
+     * critério de desempate dentro do grupo.
+     *
+     * `null` = a régua de atenção de sempre (prazo mais apertado primeiro).
+     */
+    public const ORDEM_RECENTE = 'recente';
+    public const ORDEM_ANTIGO  = 'antigo';
+
+    public const ORDENS = [self::ORDEM_RECENTE, self::ORDEM_ANTIGO];
+
     protected $fillable = [
         'escopo', 'company_id', 'mlb_empresa_id', 'mentor_id', 'title', 'description', 'actions',
         'status', 'trello_board_url', 'workspace_token', 'due_date', 'sent_at', 'completed_at',
@@ -115,17 +129,48 @@ class Ppa extends Model
      * funciona em MySQL/MariaDB e em SQLite — o ORDER BY é avaliado depois da
      * projeção, ao contrário do WHERE.
      */
-    public function scopeOrdenadoPorAtencao($query)
+    public function scopeOrdenadoPorAtencao($query, ?string $ordem = null)
     {
-        return $query
-            ->orderByRaw("CASE
+        $query->orderByRaw("CASE
                 WHEN status = 'completed' THEN 2
                 WHEN tasks_count > 0 AND tasks_done_count = tasks_count THEN 2
                 WHEN tasks_doing_count > 0 THEN 0
                 ELSE 1
-            END")
+            END");
+
+        // O grupo acima é sempre o critério PRINCIPAL: trocar a ordem não pode
+        // desmanchar as seções, que são o que a tela desenha.
+        if (in_array($ordem, self::ORDENS, true)) {
+            return $query->orderByRaw(
+                self::sqlUltimaAtividade().' '.($ordem === self::ORDEM_RECENTE ? 'DESC' : 'ASC')
+            );
+        }
+
+        return $query
             ->orderByRaw('due_date IS NULL, due_date ASC')
             ->orderByDesc('created_at');
+    }
+
+    /**
+     * A expressão SQL de "quando mexeram neste plano pela última vez".
+     *
+     * `GREATEST` resolveria isto em uma linha e NÃO existe no SQLite, onde os
+     * testes rodam — o `CASE` abaixo é a forma que os dois bancos entendem.
+     * A subconsulta aparece duas vezes de propósito: alias de SELECT não pode
+     * ser referenciado por outra expressão do mesmo SELECT no MySQL.
+     *
+     * O critério é o mesmo de `PpaQuadroService::ultimaAtualizacao()`, que o
+     * quadro interno já mostrava no topo — aqui ele existe em SQL porque a
+     * lista PAGINA, e ordenar em PHP ordenaria só a página.
+     */
+    private static function sqlUltimaAtividade(): string
+    {
+        $daTarefa = '(select max(updated_at) from ppa_tasks where ppa_tasks.ppa_id = ppas.id)';
+
+        return "CASE
+            WHEN {$daTarefa} IS NULL OR {$daTarefa} < ppas.updated_at THEN ppas.updated_at
+            ELSE {$daTarefa}
+        END";
     }
 
     /**
@@ -142,11 +187,13 @@ class Ppa extends Model
      */
     public function scopeComUltimaAtividade($query)
     {
-        return $query->addSelect([
-            'tarefa_mexida_em' => PpaTask::query()
-                ->selectRaw('MAX(updated_at)')
-                ->whereColumn('ppa_tasks.ppa_id', 'ppas.id'),
-        ]);
+        if (is_null($query->getQuery()->columns)) {
+            $query->select('ppas.*');
+        }
+
+        return $query->addSelect(\Illuminate\Support\Facades\DB::raw(
+            self::sqlUltimaAtividade().' as ultima_atividade'
+        ));
     }
 
     /**
@@ -156,9 +203,14 @@ class Ppa extends Model
      */
     public function atualizadoEm(): ?\Illuminate\Support\Carbon
     {
-        $daTarefa = $this->tarefa_mexida_em
-            ? \Illuminate\Support\Carbon::parse($this->tarefa_mexida_em)
-            : null;
+        if ($this->ultima_atividade) {
+            return \Illuminate\Support\Carbon::parse($this->ultima_atividade);
+        }
+
+        // Sem o scope na consulta (um `Ppa::find()` qualquer), cai no que dá
+        // para saber sem ir ao banco de novo: as tarefas se estiverem
+        // carregadas, e o plano se não estiverem. Nunca `null` por descuido.
+        $daTarefa = $this->relationLoaded('tasks') ? $this->tasks->max('updated_at') : null;
 
         return $daTarefa && $this->updated_at && $daTarefa->gt($this->updated_at)
             ? $daTarefa
@@ -220,22 +272,6 @@ class Ppa extends Model
     }
 
     /**
-     * Recorte pela data em que o PPA foi criado.
-     *
-     * `whereDate` e não comparação direta com o timestamp: os dois extremos
-     * chegam como DIA (o `<input type="date">` da tela). Comparar
-     * `created_at <= '2026-09-22'` deixaria de fora tudo que foi criado depois
-     * da meia-noite do próprio dia escolhido — o filtro perderia o dia final
-     * inteiro, calado.
-     */
-    public function scopeCriadoEntre($query, ?string $de, ?string $ate)
-    {
-        return $query
-            ->when($de,  fn ($q) => $q->whereDate('created_at', '>=', $de))
-            ->when($ate, fn ($q) => $q->whereDate('created_at', '<=', $ate));
-    }
-
-    /**
      * Normaliza os filtros que chegam pela URL, para os dois controllers da
      * lista (carteira e Polos) aplicarem o mesmo critério.
      *
@@ -246,16 +282,12 @@ class Ppa extends Model
      */
     public static function filtrosDaLista(array $entrada): array
     {
-        $dia = fn ($valor) => is_string($valor) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $valor)
-            ? $valor
-            : null;
-
         $situacao = $entrada['situacao'] ?? null;
+        $ordem    = $entrada['ordem'] ?? null;
 
         return [
             'situacao' => in_array($situacao, self::SITUACOES, true) ? $situacao : null,
-            'de'       => $dia($entrada['de'] ?? null),
-            'ate'      => $dia($entrada['ate'] ?? null),
+            'ordem'    => in_array($ordem, self::ORDENS, true) ? $ordem : null,
         ];
     }
 

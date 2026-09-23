@@ -1,15 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
 import axios from 'axios';
-import {
-    CheckCircle2, ChevronDown, ClipboardList, Clock, Search, TrendingUp, TriangleAlert, X,
-} from 'lucide-react';
+import { ClipboardList, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
-import PlanoPortal, { PlanoConcluidoCompacto } from '@/Components/Portal/Ppa/PlanoPortal';
+import PlanoPpa, { PlanoConcluidoCompacto } from '@/Components/Ppa/PlanoPpa';
+import IndicadoresPpa from '@/Components/Ppa/IndicadoresPpa';
+import TituloSecaoPpa from '@/Components/Ppa/TituloSecaoPpa';
 import {
-    GRUPO_ANDAMENTO, GRUPO_CONCLUIDO, GRUPO_FAZER,
-    abertosPorPadrao, contarTarefas, grupoDoPlano, percentual, seccionar,
+    GRUPO_CONCLUIDO,
+    abertosPorPadrao, grupoDoPlano, seccionar, totaisDosPlanos,
 } from '@/lib/ppaAgrupamento';
-import { cn } from '@/lib/utils';
 
 // ─── PPA — o mesmo plano, visto pelo cliente ────────────────────────────────
 //
@@ -48,92 +47,10 @@ import { cn } from '@/lib/utils';
 // cursor. Os contadores e o percentual, esses sim, são vivos: mudam no mesmo
 // instante. A nova posição vale na próxima visita à página.
 
-/** Um número do topo. Estado vazio mostra zero em cinza, não some — layout que dança a cada visita cansa mais do que um zero. */
-function Indicador({ icone: Icone, rotulo, valor, sufixo, tom, barra }) {
-    return (
-        <div className="flex items-center gap-3 px-4 py-3.5 min-w-0">
-            <span className={cn(
-                'grid place-items-center h-10 w-10 rounded-xl ring-1 ring-inset shrink-0',
-                tom.caixa,
-            )}>
-                <Icone size={17} className={tom.icone} />
-            </span>
-
-            <div className="min-w-0 flex-1">
-                <p className="flex items-baseline gap-1">
-                    <span className={cn('font-display font-extrabold text-[22px] leading-none tabular-nums', tom.valor)}>
-                        {valor}
-                    </span>
-                    {sufixo && <span className={cn('text-[13px] font-bold', tom.valor)}>{sufixo}</span>}
-                </p>
-                <p className="text-white/40 text-[11.5px] mt-1 truncate">{rotulo}</p>
-
-                {barra !== undefined && (
-                    <div className="h-1 rounded-full bg-white/[0.07] overflow-hidden mt-2">
-                        <div
-                            className={cn('h-full rounded-full transition-[width] duration-700', tom.barra)}
-                            style={{ width: `${barra}%` }}
-                        />
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-const TONS = {
-    amarelo:  { caixa: 'bg-ecf-yellow/10 ring-ecf-yellow/20',   icone: 'text-ecf-yellow',   valor: 'text-ecf-yellow',   barra: 'bg-ecf-yellow' },
-    neutro:   { caixa: 'bg-white/[0.05] ring-white/[0.08]',      icone: 'text-white/55',     valor: 'text-white',        barra: 'bg-white/50' },
-    verde:    { caixa: 'bg-emerald-400/10 ring-emerald-400/20',  icone: 'text-emerald-300',  valor: 'text-emerald-300',  barra: 'bg-emerald-400' },
-    vermelho: { caixa: 'bg-rose-400/10 ring-rose-400/20',        icone: 'text-rose-300',     valor: 'text-rose-300',     barra: 'bg-rose-400' },
-};
-
-function TituloSecao({ chave, titulo, quantidade, aberta, onAlternar, dobravel }) {
-    const ponto = {
-        [GRUPO_ANDAMENTO]: 'bg-ecf-yellow',
-        [GRUPO_FAZER]:     'bg-white/35',
-        [GRUPO_CONCLUIDO]: 'bg-emerald-400',
-    }[chave];
-
-    const conteudo = (
-        <>
-            <span className={cn('w-2 h-2 rounded-full shrink-0', ponto)} />
-            <h2 className="text-white/75 font-display font-bold text-[13px] uppercase tracking-wider">
-                {titulo}
-            </h2>
-            <span className="grid place-items-center min-w-[22px] h-[22px] px-1.5 rounded-md bg-white/[0.07] text-white/55 text-[11.5px] font-bold tabular-nums">
-                {quantidade}
-            </span>
-            <span className="h-px flex-1 bg-white/[0.06]" />
-            {dobravel && (
-                <ChevronDown
-                    size={15}
-                    className={cn('shrink-0 text-white/30 transition-transform duration-200', !aberta && '-rotate-90')}
-                />
-            )}
-        </>
-    );
-
-    if (!dobravel) {
-        return <div className="flex items-center gap-2.5 px-1">{conteudo}</div>;
-    }
-
-    return (
-        <button
-            type="button"
-            onClick={onAlternar}
-            aria-expanded={aberta}
-            className="w-full flex items-center gap-2.5 px-1 group hover:opacity-90 transition-opacity"
-        >
-            {conteudo}
-        </button>
-    );
-}
-
 export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
     // As tarefas vivem aqui, e não dentro de cada plano: o topo da página
     // precisa contar "3 em andamento" somando os planos todos, e isso só é
-    // possível com uma fonte só. Cada `PlanoPortal` recebe a fatia dele.
+    // possível com uma fonte só. Cada `PlanoPpa` recebe a fatia dele.
     const [tarefasPorPlano, setTarefasPorPlano] = useState(
         () => Object.fromEntries(ppas.map((p) => [p.id, p.tarefas])),
     );
@@ -208,32 +125,12 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
 
     const secoes = useMemo(() => seccionar(filtrados), [filtrados]);
 
-    // ─── Os números do topo ─────────────────────────────────────────────────
-    // Somam o estado VIVO: arrastar um card muda o indicador no mesmo instante.
-    const totais = useMemo(() => {
-        let fazendo = 0, aFazer = 0, feitas = 0, total = 0, atrasados = 0, concluidos = 0;
-
-        for (const plano of planos) {
-            const c = contarTarefas(tarefasPorPlano[plano.id] ?? []);
-            total  += c.total;
-            feitas += c.feitas;
-
-            if (plano.grupo === GRUPO_CONCLUIDO) {
-                concluidos++;
-                continue;
-            }
-
-            // Tarefa de plano encerrado não entra nas pendências do topo: a
-            // equipe fechou o plano, e um número teimando ali mandaria o
-            // cliente perseguir algo que ninguém mais espera dele. É a mesma
-            // regra do badge do menu (`PortalPpaService::pendentes()`).
-            fazendo += c.fazendo;
-            aFazer  += c.aFazer;
-            if (Number.isFinite(plano.prazoDias) && plano.prazoDias < 0) atrasados++;
-        }
-
-        return { fazendo, aFazer, feitas, total, atrasados, concluidos, pct: percentual({ total, feitas }) };
-    }, [planos, tarefasPorPlano]);
+    // Os quatro números do topo, do estado VIVO — a mesma conta da lista
+    // interna, para os dois lados falarem dos mesmos números.
+    const totais = useMemo(
+        () => totaisDosPlanos(planos, tarefasPorPlano),
+        [planos, tarefasPorPlano],
+    );
 
     const vazio = ppas.length === 0;
     const nadaNaBusca = !vazio && filtrados.length === 0;
@@ -253,43 +150,7 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
 
                 {!vazio && (
                     <>
-                        {/* ═══ Os quatro números ════════════════════════════ */}
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px rounded-2xl bg-white/[0.06] ring-1 ring-inset ring-white/[0.06] overflow-hidden">
-                            <div className="bg-ecf-bg">
-                                <Indicador
-                                    icone={Clock}
-                                    rotulo="Tarefas em andamento"
-                                    valor={totais.fazendo}
-                                    tom={TONS.amarelo}
-                                />
-                            </div>
-                            <div className="bg-ecf-bg">
-                                <Indicador
-                                    icone={ClipboardList}
-                                    rotulo="Tarefas a fazer"
-                                    valor={totais.aFazer}
-                                    tom={TONS.neutro}
-                                />
-                            </div>
-                            <div className="bg-ecf-bg">
-                                <Indicador
-                                    icone={totais.atrasados > 0 ? TriangleAlert : CheckCircle2}
-                                    rotulo={totais.atrasados > 0 ? 'Planos com prazo vencido' : 'Planos concluídos'}
-                                    valor={totais.atrasados > 0 ? totais.atrasados : totais.concluidos}
-                                    tom={totais.atrasados > 0 ? TONS.vermelho : TONS.verde}
-                                />
-                            </div>
-                            <div className="bg-ecf-bg">
-                                <Indicador
-                                    icone={TrendingUp}
-                                    rotulo={`${totais.feitas} de ${totais.total} tarefas concluídas`}
-                                    valor={totais.pct}
-                                    sufixo="%"
-                                    tom={totais.pct === 100 ? TONS.verde : TONS.amarelo}
-                                    barra={totais.pct}
-                                />
-                            </div>
-                        </div>
+                        <IndicadoresPpa totais={totais} />
 
                         {/* A busca só aparece quando há lista o bastante para
                             se perder nela. Com dois planos ela seria mais um
@@ -348,7 +209,7 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
 
                         return (
                             <section key={secao.chave} className="space-y-2.5 pt-1">
-                                <TituloSecao
+                                <TituloSecaoPpa
                                     chave={secao.chave}
                                     titulo={secao.titulo}
                                     quantidade={secao.planos.length}
@@ -365,7 +226,7 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
                                         {secao.planos.map((plano) => (
                                             abertos.has(plano.id) ? (
                                                 <div key={plano.id} className="sm:col-span-2 xl:col-span-4">
-                                                    <PlanoPortal
+                                                    <PlanoPpa
                                                         plano={plano}
                                                         tarefas={tarefasPorPlano[plano.id] ?? []}
                                                         aberto
@@ -388,7 +249,7 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
                                 {!ehConcluidos && (
                                     <div className="space-y-2.5">
                                         {secao.planos.map((plano) => (
-                                            <PlanoPortal
+                                            <PlanoPpa
                                                 key={plano.id}
                                                 plano={plano}
                                                 tarefas={tarefasPorPlano[plano.id] ?? []}

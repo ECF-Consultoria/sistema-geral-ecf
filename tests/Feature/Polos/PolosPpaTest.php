@@ -64,7 +64,7 @@ class PolosPpaTest extends TestCase
                 ->where('escopo', Ppa::ESCOPO_POLOS)
                 ->has('ppas.data', 1)
                 ->where('ppas.data.0.id', $doPolo->id)
-                ->where('ppas.data.0.company_name', $empresa->nome)
+                ->where('ppas.data.0.empresa', $empresa->nome)
             );
     }
 

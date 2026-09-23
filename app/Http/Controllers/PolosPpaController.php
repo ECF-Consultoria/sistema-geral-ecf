@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MlbEmpresa;
 use App\Models\Ppa;
+use App\Services\Ppa\PpaListaService;
 use App\Services\Ppa\PpaQuadroService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -27,7 +28,7 @@ class PolosPpaController extends Controller
     /** Fases que compõem o projeto POLOS no Painel (mesmo recorte da tela de empresas). */
     private const FASES_POLOS = ['Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Fechamento'];
 
-    public function index(Request $request)
+    public function index(Request $request, PpaListaService $lista)
     {
         $user = $request->user();
 
@@ -35,41 +36,21 @@ class PolosPpaController extends Controller
         // mesma): em andamento, a fazer, concluído — ver
         // `Ppa::scopeOrdenadoPorAtencao`.
         // Mesmos filtros da lista de carteira — a tela é a mesma componente.
-        $filtros = Ppa::filtrosDaLista($request->only('situacao', 'de', 'ate'));
+        $filtros = Ppa::filtrosDaLista($request->only('situacao', 'ordem'));
 
-        $query = Ppa::with(['mlbEmpresa', 'mentor'])
+        $query = Ppa::with(['mlbEmpresa', 'mentor', 'tasks'])
             ->doEscopo(Ppa::ESCOPO_POLOS)
             ->comContagemDeTarefas()
             ->comUltimaAtividade()
             ->daSituacao($filtros['situacao'])
-            ->criadoEntre($filtros['de'], $filtros['ate'])
-            ->ordenadoPorAtencao();
+            ->ordenadoPorAtencao($filtros['ordem']);
 
         // Mesmo recorte do PPA de carteira: não-admin só vê o que ele criou.
         if (! $user->isAdmin()) {
             $query->where('mentor_id', $user->id);
         }
 
-        $ppas = $query->paginate(20)->through(fn ($p) => [
-            'id'               => $p->id,
-            'title'            => $p->title,
-            'company_name'     => $p->nomeEmpresa(),
-            'company_id'       => $p->mlb_empresa_id,
-            'mentor_name'      => $p->mentor->name,
-            'status'           => $p->status,
-            'due_date'         => $p->due_date?->format('d/m/Y'),
-            'sent_at'          => $p->sent_at?->format('d/m/Y H:i'),
-            'completed_at'     => $p->completed_at?->format('d/m/Y H:i'),
-            'trello_board_url' => $p->trello_board_url,
-            'workspace_token'  => $p->workspace_token,
-            'tasks_count'      => $p->tasks_count,
-            'tasks_done'       => $p->tasks_done_count,
-            'tasks_doing'      => $p->tasks_doing_count,
-            'due_date_dias'    => $p->diasAteOPrazo(),
-            'created_at'       => $p->created_at->format('d/m/Y'),
-            // Última mexida, contando tarefa movida — ver `Ppa::atualizadoEm()`.
-            'updated_at'       => $p->atualizadoEm()?->format('d/m/Y'),
-        ]);
+        $ppas = $query->paginate(20)->through(fn ($p) => $lista->linha($p));
 
         return Inertia::render('Polos/Ppa/Index', [
             'ppas'      => $ppas,
