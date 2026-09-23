@@ -8,7 +8,7 @@ import {
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
     Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart, EyeOff,
     FileSignature, PencilLine,
-    MessageSquareText, UsersRound,
+    MessageSquareText, UsersRound, LifeBuoy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
@@ -194,6 +194,9 @@ const NAV_TREE = [
             { label: 'Emails enviados',  routeName: 'nps.emails-enviados.index',  page: 'Nps/EmailsEnviados',  icon: Inbox,    excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
         ],
     },
+
+    // ── Item de topo: Chamados — qualquer pessoa pede ajuda ao time dev ──
+    { label: 'Chamados', routeName: 'chamados.index', page: 'Chamados', icon: LifeBuoy },
 
     // ── Item de topo: Meu Setor (líder; admin excluído por ter visão global) ─
     { label: 'Meu Setor', routeName: 'lideranca.index', page: 'Lideranca', icon: Crown, permission: 'lideranca.dashboard_setor', excludeRoles: ['admin'] },

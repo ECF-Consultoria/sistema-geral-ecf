@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Chamado;
 use App\Models\DevDemanda;
 use App\Models\DevReuniao;
 use App\Models\User;
 use App\Models\GoogleToken;
+use App\Services\DevDemandas\ChamadoService;
 use App\Services\DevDemandas\DemandasDevService;
 use App\Services\DevDemandas\ReuniaoDevGoogleService;
 use Illuminate\Http\Request;
@@ -25,6 +27,7 @@ class DevDemandaController extends Controller
     public function __construct(
         private DemandasDevService $service,
         private ReuniaoDevGoogleService $google,
+        private ChamadoService $chamados,
     ) {}
 
     public function index(Request $request)
@@ -39,14 +42,9 @@ class DevDemandaController extends Controller
             ->all();
 
         $gerencia = $this->service->podeGerenciar($user);
+        $equipe = Chamado::ehEquipe($user);
 
-        // Áreas: as já usadas + as da lista original da planilha (sugestões do campo).
-        $areas = collect(['Entrada', 'Onboarding', 'PPA', 'Metodologia', 'Produtos', 'Mapeamento', 'Planejamento',
-            'Publicação', 'Fechamento', 'Contratos', 'Landing Pages', 'Institucional', 'Gestão Dev', 'Outros'])
-            ->merge(DevDemanda::query()->whereNotNull('area')->distinct()->pluck('area'))
-            ->unique()
-            ->sort()
-            ->values();
+        $areas = DevDemanda::areasDisponiveis();
 
         return Inertia::render('Dev/Demandas/Index', [
             'demandas' => $linhas,
@@ -61,6 +59,27 @@ class DevDemandaController extends Controller
             'pode'     => ['gerenciar' => $gerencia],
             'eu'       => ['id' => $user->id, 'tem_demandas' => collect($linhas)->contains(fn ($l) => ($l['responsavel']['id'] ?? null) === $user->id)],
             'hoje'     => $hoje->toDateString(),
+            // Caixa de chamados — só para a equipe dev (admin ou cargo Dev).
+            'equipe'   => $equipe,
+            'chamados' => $equipe
+                ? $this->chamados->daEquipe($user)
+                    ->with(['responsavel:id,name', 'demanda:id,codigo', 'ultimaMensagemPublica'])
+                    ->orderByDesc('ultima_interacao_em')->orderByDesc('id')
+                    ->get()
+                    ->map(fn (Chamado $c) => $this->chamados->resumo($c, comoEquipe: true))
+                    ->values()
+                    ->all()
+                : [],
+            'devs'     => $equipe ? Chamado::devsDisponiveis() : [],
+            // Chamado aberto no painel lateral (?chamado=ID) — só se esta pessoa pode atuar nele.
+            'chamado_detalhe' => function () use ($request, $user) {
+                $id = (int) $request->query('chamado');
+                $chamado = $id ? Chamado::find($id) : null;
+
+                return $chamado && $this->chamados->podeAtuar($user, $chamado)
+                    ? $this->chamados->detalhe($chamado, $user)
+                    : null;
+            },
             // Agendar com convite usa a agenda de quem agenda — a tela oferece conectar antes de falhar.
             'google'   => [
                 'conectado'    => GoogleToken::where('user_id', $user->id)->exists(),

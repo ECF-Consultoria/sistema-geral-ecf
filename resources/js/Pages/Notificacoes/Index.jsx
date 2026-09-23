@@ -14,7 +14,7 @@
 //   - Botão "Marcar como lida" inline em cada card unread.
 //   - Footer simples de paginação (Página X de Y) — quando há mais de 1.
 import { Head, Link, router } from '@inertiajs/react';
-import { Mail, Target, CheckCircle2, PlusCircle, ArrowUpDown } from 'lucide-react';
+import { Mail, Target, CheckCircle2, PlusCircle, ArrowUpDown, LifeBuoy } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import AppLayout from '@/Layouts/AppLayout';
@@ -31,6 +31,7 @@ const CATEGORIA_META = {
     meta_atribuida: { Icon: Target,       color: 'text-blue-400',   label: 'Meta atribuída' },
     meta_atingida:  { Icon: CheckCircle2, color: 'text-green-400',  label: 'Meta atingida' },
     faixa_alterada: { Icon: ArrowUpDown,  color: 'text-amber-400',  label: 'Mudança de faixa' },
+    chamado:        { Icon: LifeBuoy,     color: 'text-sky-400',    label: 'Chamado' },
 };
 
 function Index({ notificacoes, aba, can_criar }) {

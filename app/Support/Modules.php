@@ -130,6 +130,7 @@ class Modules
     public const DEV_ML_OAUTH                = 'dev.ml_oauth';
     public const DEV_SHOPEE_OAUTH            = 'dev.shopee_oauth';
     public const DEV_DEMANDAS                = 'dev.demandas';
+    public const CHAMADOS                    = 'chamados';
     /** Abandonado — sem item de menu; existe só no catálogo (arquivado). */
     public const DEV_METAS                   = 'dev.metas';
 
@@ -215,6 +216,7 @@ class Modules
                 ['key' => self::DEV_DESENVOLVIMENTO, 'name' => 'Desenvolvimento',          'grupo' => 'Dev', 'route_prefix' => 'dev.desenvolvimento','permission_key' => Permissions::SISTEMA_DESENVOLVIMENTO, 'stage' => 'producao'],
                 ['key' => self::DEV_ML_OAUTH,        'name' => 'ML OAuth',                 'grupo' => 'Dev', 'route_prefix' => 'ml.oauth.index',     'permission_key' => Permissions::SISTEMA_ML_OAUTH,        'stage' => 'producao'],
                 ['key' => self::DEV_SHOPEE_OAUTH,    'name' => 'Shopee OAuth',             'grupo' => 'Dev', 'route_prefix' => 'shopee.oauth.index', 'permission_key' => Permissions::SISTEMA_SHOPEE_OAUTH,    'stage' => 'producao'],
+                ['key' => self::CHAMADOS,            'name' => 'Chamados',                 'grupo' => 'Dev', 'route_prefix' => 'chamados.',          'permission_key' => null,                                  'stage' => 'homologacao'],
                 ['key' => self::DEV_DEMANDAS,        'name' => 'Demandas Dev',             'grupo' => 'Dev', 'route_prefix' => 'dev.demandas.',      'permission_key' => null,                                  'stage' => 'homologacao'],
                 ['key' => self::DEV_METAS,           'name' => 'Metas de Desenvolvimento', 'grupo' => 'Dev', 'route_prefix' => null,                 'permission_key' => null,                                  'stage' => 'arquivado'],
             ],

@@ -3,6 +3,7 @@
 use Inertia\Inertia;
 use App\Http\Controllers\BoasVindasTemplateController;
 use App\Http\Controllers\CoordenacaoDistribuicaoController;
+use App\Http\Controllers\ChamadoController;
 use App\Http\Controllers\DevDemandaController;
 use App\Http\Controllers\ContratoAdminController;
 use App\Http\Controllers\TabelasContratoController;
@@ -977,6 +978,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // FORA do `role:admin` de propósito: o responsável por uma demanda entra
     // mesmo sem ser admin (vê só as próprias). A trava fica no controller
     // (DemandasDevService::podeAcessar / podeGerenciar / podeAtualizar).
+    // ─── Chamados — Central de Chamados (qualquer usuário logado) ────────────
+    // Autorização por chamado no ChamadoService: quem abriu ou a equipe dev.
+    Route::prefix('chamados')->name('chamados.')->group(function () {
+        Route::get('/',                             [ChamadoController::class, 'index'])->name('index');
+        Route::post('/',                            [ChamadoController::class, 'store'])->name('store');
+        Route::get('/{chamado}',                    [ChamadoController::class, 'show'])->name('show');
+        Route::post('/{chamado}/mensagens',         [ChamadoController::class, 'mensagem'])->name('mensagens.store');
+        Route::post('/{chamado}/reabrir',           [ChamadoController::class, 'reabrir'])->name('reabrir');
+        Route::post('/{chamado}/cancelar',          [ChamadoController::class, 'cancelar'])->name('cancelar');
+        Route::get('/{chamado}/anexos/{anexo}',     [ChamadoController::class, 'anexo'])->name('anexos.show');
+    });
+    // Ações da equipe sobre um chamado (a caixa de entrada é a aba Chamados de /dev/demandas).
+    Route::prefix('dev/demandas/chamados')->name('dev.demandas.chamados.')->group(function () {
+        Route::post('/{chamado}/status',     [ChamadoController::class, 'status'])->name('status');
+        Route::post('/{chamado}/transferir', [ChamadoController::class, 'transferir'])->name('transferir');
+        Route::post('/{chamado}/converter',  [ChamadoController::class, 'converter'])->name('converter');
+        Route::post('/{chamado}/resolver',   [ChamadoController::class, 'resolver'])->name('resolver');
+    });
+
     Route::prefix('dev/demandas')->name('dev.demandas.')->group(function () {
         Route::get('/',                          [DevDemandaController::class, 'index'])->name('index');
         Route::post('/',                         [DevDemandaController::class, 'store'])->name('store');

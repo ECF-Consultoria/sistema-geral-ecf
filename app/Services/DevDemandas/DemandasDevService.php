@@ -2,6 +2,7 @@
 
 namespace App\Services\DevDemandas;
 
+use App\Models\Chamado;
 use App\Models\DevDemanda;
 use App\Models\DevDemandaAtualizacao;
 use App\Models\DevReuniao;
@@ -26,7 +27,9 @@ class DemandasDevService
         return $user->isAdmin()
             || DevDemanda::query()->where('responsavel_id', $user->id)->exists()
             // Convidado para uma reunião dev entra para ver a pauta e os links dela.
-            || DB::table('dev_reuniao_participantes')->where('user_id', $user->id)->exists();
+            || DB::table('dev_reuniao_participantes')->where('user_id', $user->id)->exists()
+            // Equipe dev (cargo Dev) entra para atender a caixa de chamados.
+            || Chamado::ehEquipe($user);
     }
 
     public function podeGerenciar(User $user): bool
@@ -45,7 +48,7 @@ class DemandasDevService
     public function demandasVisiveis(User $user): Collection
     {
         return DevDemanda::query()
-            ->with(['responsavel:id,name', 'ultimaAtualizacao'])
+            ->with(['responsavel:id,name', 'ultimaAtualizacao', 'chamadoDeOrigem:id,codigo,dev_demanda_id'])
             ->withCount('atualizacoes')
             ->when(! $user->isAdmin(), fn ($q) => $q->where('responsavel_id', $user->id))
             ->orderBy('codigo')
@@ -87,6 +90,8 @@ class DemandasDevService
             'faixa_fila'         => $d->faixaDaFila($hoje),
             'total_atualizacoes' => (int) ($d->atualizacoes_count ?? 0),
             'encerrada'          => $d->estaEncerrada(),
+            // Chamado que originou a demanda (só a referência — o chamado fica no chamado).
+            'chamado'            => $d->chamadoDeOrigem ? ['id' => $d->chamadoDeOrigem->id, 'codigo' => $d->chamadoDeOrigem->codigo] : null,
         ];
     }
 

@@ -79,6 +79,25 @@ class DevDemanda extends Model
     /** Prefixos sugeridos para o código. */
     public const PREFIXOS = ['DEV', 'ADM', 'MKT', 'MGT'];
 
+    /**
+     * Área / Projeto — lista da planilha de gestão (aba Config). Não é tabela: a
+     * área é texto na demanda, e as já usadas entram na lista. Demandas e chamados
+     * usam ESTA fonte (`areasDisponiveis()`), para não existirem duas listas.
+     */
+    public const AREAS_PADRAO = ['Entrada', 'Onboarding', 'PPA', 'Metodologia', 'Produtos', 'Mapeamento', 'Planejamento',
+        'Publicação', 'Fechamento', 'Contratos', 'Landing Pages', 'Institucional', 'Gestão Dev', 'Outros'];
+
+    /** Áreas oferecidas nos formulários: as padrão + as que já aparecem em demandas. */
+    public static function areasDisponiveis(): array
+    {
+        return collect(self::AREAS_PADRAO)
+            ->merge(static::query()->whereNotNull('area')->distinct()->pluck('area'))
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
@@ -108,6 +127,12 @@ class DevDemanda extends Model
     public function ultimaAtualizacao(): HasOne
     {
         return $this->hasOne(DevDemandaAtualizacao::class, 'dev_demanda_id')->latestOfMany('id');
+    }
+
+    /** Chamado que originou esta demanda (quando veio de "Criar demanda" num chamado). */
+    public function chamadoDeOrigem(): HasOne
+    {
+        return $this->hasOne(Chamado::class, 'dev_demanda_id');
     }
 
     public function reunioes(): BelongsToMany

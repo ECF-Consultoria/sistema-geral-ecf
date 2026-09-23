@@ -165,25 +165,31 @@ export function AtualizacaoDialog({ demanda, hoje, onClose }) {
 }
 
 // ═══ Cadastrar / editar demanda (admin) ═══════════════════════════════════════
-export function DemandaDialog({ demanda = null, usuarios, areas, prefixos, hoje, onClose }) {
+/**
+ * Cadastro/edição de demanda. Também serve para "Criar demanda a partir do chamado":
+ * `origem` traz o chamado (preenchimento + rota de conversão). Nesse caso a prioridade
+ * começa VAZIA — é decisão técnica da equipe, e o impacto relatado vira só uma sugestão.
+ */
+export function DemandaDialog({ demanda = null, origem = null, usuarios, areas, prefixos, hoje, onClose }) {
     const editando = !!demanda;
+    const base = origem?.preset ?? {};
     const form = useForm({
         ...(editando ? {} : { prefixo: prefixos[0] ?? 'DEV' }),
-        titulo:         demanda?.titulo ?? '',
-        area:           demanda?.area ?? '',
-        escopo:         demanda?.escopo ?? '',
-        responsavel_id: demanda?.responsavel?.id ? String(demanda.responsavel.id) : '',
-        prioridade:     String(demanda?.prioridade ?? 2),
-        data_entrada:   demanda?.data_entrada ?? hoje,
+        titulo:         demanda?.titulo ?? base.titulo ?? '',
+        area:           demanda?.area ?? base.area ?? '',
+        escopo:         demanda?.escopo ?? base.escopo ?? '',
+        responsavel_id: demanda?.responsavel?.id ? String(demanda.responsavel.id) : (base.responsavel_id ? String(base.responsavel_id) : ''),
+        prioridade:     origem ? '' : String(demanda?.prioridade ?? 2),
+        data_entrada:   demanda?.data_entrada ?? base.data_entrada ?? hoje,
         prazo:          demanda?.prazo ?? '',
-        observacoes:    demanda?.observacoes ?? '',
+        observacoes:    demanda?.observacoes ?? base.observacoes ?? '',
     });
     const { data, setData, errors, processing } = form;
 
     form.transform((d) => ({
         ...d,
         responsavel_id: d.responsavel_id ? Number(d.responsavel_id) : null,
-        prioridade:     Number(d.prioridade),
+        prioridade:     d.prioridade === '' ? null : Number(d.prioridade),
         prazo:          d.prazo || null,
     }));
 
@@ -191,6 +197,7 @@ export function DemandaDialog({ demanda = null, usuarios, areas, prefixos, hoje,
         e.preventDefault();
         const opcoes = { preserveScroll: true, preserveState: true, onSuccess: onClose };
         if (editando) form.put(route('dev.demandas.update', demanda.id), opcoes);
+        else if (origem) form.post(route('dev.demandas.chamados.converter', origem.chamadoId), opcoes);
         else form.post(route('dev.demandas.store'), opcoes);
     };
 
@@ -198,8 +205,12 @@ export function DemandaDialog({ demanda = null, usuarios, areas, prefixos, hoje,
         <Janela
             open
             onOpenChange={(v) => !v && onClose()}
-            titulo={editando ? `Editar ${demanda.codigo}` : 'Nova demanda'}
-            descricao={editando ? 'Status e próxima ação não se editam aqui — vêm das atualizações.' : 'Uma demanda ocupa uma linha para sempre; o andamento vai nas atualizações.'}
+            titulo={editando ? `Editar ${demanda.codigo}` : origem ? `Criar demanda a partir do ${origem.codigo}` : 'Nova demanda'}
+            descricao={editando
+                ? 'Status e próxima ação não se editam aqui — vêm das atualizações.'
+                : origem
+                    ? 'O chamado continua sendo a conversa com quem pediu; a demanda é o trabalho técnico. Defina prioridade, critério de conclusão e prazo.'
+                    : 'Uma demanda ocupa uma linha para sempre; o andamento vai nas atualizações.'}
             largura="max-w-2xl"
         >
             <form onSubmit={enviar} className="flex min-h-0 flex-col">
@@ -232,8 +243,13 @@ export function DemandaDialog({ demanda = null, usuarios, areas, prefixos, hoje,
                                 {usuarios.map((u) => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
                             </select>
                         </Campo>
-                        <Campo label="Prioridade" erro={errors.prioridade}>
+                        <Campo
+                            label="Prioridade"
+                            erro={errors.prioridade}
+                            dica={origem?.prioridadeSugerida != null ? `Sugestão pelo impacto relatado: ${PRIORIDADE_LABELS[origem.prioridadeSugerida]}` : null}
+                        >
                             <select value={data.prioridade} onChange={(e) => setData('prioridade', e.target.value)} className={inputClasse}>
+                                {origem && <option value="" disabled>Escolha…</option>}
                                 {Object.entries(PRIORIDADE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                             </select>
                         </Campo>
@@ -258,7 +274,7 @@ export function DemandaDialog({ demanda = null, usuarios, areas, prefixos, hoje,
                         <textarea rows={2} value={data.observacoes} onChange={(e) => setData('observacoes', e.target.value)} className={inputClasse} />
                     </Campo>
                 </div>
-                <Rodape processing={processing} onCancelar={onClose} rotulo={editando ? 'Salvar' : 'Cadastrar demanda'} />
+                <Rodape processing={processing} onCancelar={onClose} rotulo={editando ? 'Salvar' : origem ? 'Criar demanda' : 'Cadastrar demanda'} />
             </form>
         </Janela>
     );

@@ -5,7 +5,7 @@ import { fmtData, textoPrazo } from '@/lib/demandasDev';
 import { PrioridadeSelo, SituacaoSelo, StatusSelo } from './Selos';
 
 // Painel lateral de uma demanda: dados, próxima ação e o diário completo.
-export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClose, onAtualizar, onEditar, onAgendarReuniao }) {
+export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClose, onAtualizar, onEditar, onAgendarReuniao, onAbrirChamado }) {
     const carregando = !detalhe || detalhe.id !== demanda?.id;
     const podeAtualizar = demanda && (pode.gerenciar || demanda.responsavel?.id === eu.id);
 
@@ -18,6 +18,15 @@ export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClos
                             <span className="font-mono text-[12px] text-white/50">{demanda.codigo}</span>
                             <PrioridadeSelo prioridade={demanda.prioridade} longo />
                             <SituacaoSelo situacao={demanda.situacao} />
+                            {demanda.chamado && (
+                                onAbrirChamado ? (
+                                    <button type="button" onClick={() => onAbrirChamado(demanda.chamado.id)} className="rounded bg-white/[0.05] px-1.5 py-0.5 text-[11.5px] text-white/70 hover:bg-ecf-yellow/10 hover:text-ecf-yellow">
+                                        Origem: chamado {demanda.chamado.codigo}
+                                    </button>
+                                ) : (
+                                    <span className="rounded bg-white/[0.05] px-1.5 py-0.5 text-[11.5px] text-white/60">Origem: chamado {demanda.chamado.codigo}</span>
+                                )
+                            )}
                         </div>
                         <SheetTitle className="mt-1.5 text-[18px] font-semibold leading-snug text-white">{demanda.titulo}</SheetTitle>
                         <SheetDescription className="sr-only">Detalhes e histórico da demanda</SheetDescription>

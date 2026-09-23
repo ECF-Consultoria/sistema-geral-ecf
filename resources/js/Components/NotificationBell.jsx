@@ -71,8 +71,20 @@ export default function NotificationBell() {
     // Marca uma notification como lida via Inertia. `preserveScroll` evita
     // pular pro topo; `onSuccess` decrementa otimisticamente o badge e atualiza
     // o item local para mostrar o estado lido na hora.
+    // Notificação com link interno (ex.: chamado) abre o destino ao clicar.
+    // Só caminho do próprio sistema ("/..."), nunca URL externa.
+    const abrirDestino = (n) => {
+        const url = n.data?.url;
+        if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')) {
+            router.visit(url);
+        }
+    };
+
     const marcarComoLida = (n) => {
-        if (n.read_at) return;
+        if (n.read_at) {
+            abrirDestino(n);
+            return;
+        }
         router.patch(route('notificacoes.marcar-lida', n.id), {}, {
             preserveScroll: true,
             preserveState: true,
@@ -81,6 +93,7 @@ export default function NotificationBell() {
                 setNotificacoes(items => items.map(item =>
                     item.id === n.id ? { ...item, read_at: new Date().toISOString() } : item
                 ));
+                abrirDestino(n);
             },
         });
     };

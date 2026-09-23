@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
-import { BarChart3, ListChecks, ListOrdered, Plus, Video } from 'lucide-react';
+import { BarChart3, Inbox, ListChecks, ListOrdered, Plus, Video } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import Fila from '@/Components/DemandasDev/Fila';
@@ -8,22 +8,29 @@ import ListaDemandas from '@/Components/DemandasDev/ListaDemandas';
 import Painel from '@/Components/DemandasDev/Painel';
 import Reunioes from '@/Components/DemandasDev/Reunioes';
 import DemandaDrawer from '@/Components/DemandasDev/DemandaDrawer';
+import Chamados from '@/Components/DemandasDev/Chamados';
+import ChamadoDrawer from '@/Components/DemandasDev/ChamadoDrawer';
 import { AtualizacaoDialog, DemandaDialog, ReuniaoDialog } from '@/Components/DemandasDev/Formularios';
 
+// "Chamados" só entra para a equipe dev (admin ou cargo Dev) — ver `equipe`.
 const ABAS = [
     { id: 'fila',     rotulo: 'Fila',     icone: ListOrdered },
+    { id: 'chamados', rotulo: 'Chamados', icone: Inbox, soEquipe: true },
     { id: 'demandas', rotulo: 'Demandas', icone: ListChecks },
     { id: 'painel',   rotulo: 'Painel',   icone: BarChart3 },
     { id: 'reunioes', rotulo: 'Reuniões', icone: Video },
 ];
 
-// URL atual com o parâmetro `demanda` trocado (ou removido) — o histórico vem por reload parcial.
-const urlComDemanda = (id) => {
+// URL atual com `demanda`/`chamado` trocados — o detalhe vem por reload parcial.
+// Abrir um tira o outro: só um painel lateral por vez.
+const urlCom = (param, id) => {
     const u = new URL(window.location.href);
-    if (id) u.searchParams.set('demanda', id);
-    else u.searchParams.delete('demanda');
+    u.searchParams.delete(param === 'demanda' ? 'chamado' : 'demanda');
+    if (id) u.searchParams.set(param, id);
+    else u.searchParams.delete(param);
     return u.pathname + u.search;
 };
+const abaDaUrl = () => (typeof window === 'undefined' ? null : new URL(window.location.href).searchParams.get('aba'));
 
 /**
  * Demandas Dev — tarefas do time de desenvolvimento.
@@ -32,9 +39,21 @@ const urlComDemanda = (id) => {
  * andamento cresce no diário de atualizações; status, próxima ação e bloqueio
  * saem da atualização mais recente.
  */
-export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios, areas, prefixos, pode, eu, hoje, detalhe, google }) {
-    const [aba, setAba] = useState(eu.tem_demandas ? 'fila' : 'demandas');
+export default function DemandasDevIndex({
+    demandas, painel, reunioes, usuarios, areas, prefixos, pode, eu, hoje, detalhe, google,
+    equipe = false, chamados = [], devs = [], chamado_detalhe: chamadoDetalhe = null,
+}) {
+    const abasVisiveis = ABAS.filter((a) => !a.soEquipe || equipe);
+    const [aba, setAba] = useState(() => {
+        if (chamadoDetalhe) return 'chamados';
+        const pedida = abaDaUrl();
+        if (pedida && abasVisiveis.some((a) => a.id === pedida)) return pedida;
+        return eu.tem_demandas ? 'fila' : equipe ? 'chamados' : 'demandas';
+    });
     const [abertaId, setAbertaId] = useState(detalhe?.id ?? null);
+    const [chamadoId, setChamadoId] = useState(chamadoDetalhe?.id ?? null);
+    const [convertendo, setConvertendo] = useState(null); // chamado sendo transformado em demanda
+    const chamadosAtencao = chamados.filter((c) => c.precisa_atencao).length;
     const [atualizando, setAtualizando] = useState(null);
     const [editandoDemanda, setEditandoDemanda] = useState(null); // null | 'nova' | demanda
     // null | { reuniao } (editar) | { preset } (agendar, opcionalmente já com demanda e participante)
@@ -53,13 +72,44 @@ export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios,
     const aberta = abertaId ? demandas.find((d) => d.id === abertaId) : null;
 
     const abrir = (id) => {
+        setChamadoId(null);
         setAbertaId(id);
-        router.get(urlComDemanda(id), {}, { only: ['detalhe'], preserveState: true, preserveScroll: true, replace: true });
+        router.get(urlCom('demanda', id), {}, { only: ['detalhe'], preserveState: true, preserveScroll: true, replace: true });
     };
     const fechar = () => {
         setAbertaId(null);
-        router.get(urlComDemanda(null), {}, { only: ['detalhe'], preserveState: true, preserveScroll: true, replace: true });
+        router.get(urlCom('demanda', null), {}, { only: ['detalhe'], preserveState: true, preserveScroll: true, replace: true });
     };
+    const abrirChamado = (id) => {
+        setAbertaId(null);
+        setChamadoId(id);
+        router.get(urlCom('chamado', id), {}, { only: ['chamado_detalhe'], preserveState: true, preserveScroll: true, replace: true });
+    };
+    const fecharChamado = () => {
+        setChamadoId(null);
+        router.get(urlCom('chamado', null), {}, { only: ['chamado_detalhe'], preserveState: true, preserveScroll: true, replace: true });
+    };
+
+    // "Criar demanda a partir deste chamado": o mesmo formulário de demanda, já preenchido.
+    // Prioridade, critério de conclusão e prazo ficam para a equipe decidir.
+    const origemDoChamado = (c) => ({
+        chamadoId: c.id,
+        codigo: c.codigo,
+        prioridadeSugerida: c.prioridade_sugerida,
+        preset: {
+            titulo: c.titulo,
+            area: c.area ?? '',
+            responsavel_id: c.responsavel?.id ?? null,
+            data_entrada: c.criado_em.slice(0, 10),
+            escopo: [
+                c.descricao,
+                c.contexto_tentando && `Tentando fazer: ${c.contexto_tentando}`,
+                c.contexto_aconteceu && `O que aconteceu: ${c.contexto_aconteceu}`,
+                c.contexto_esperado && `O que esperava: ${c.contexto_esperado}`,
+            ].filter(Boolean).join('\n\n'),
+            observacoes: `Origem: chamado ${c.codigo} (${c.solicitante})`,
+        },
+    });
 
     const abertas = painel.abertas;
     const bloqueadas = painel.por_situacao.bloqueado ?? 0;
@@ -93,7 +143,7 @@ export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios,
                 </header>
 
                 <nav className="-mx-4 flex gap-1 overflow-x-auto border-b border-white/[0.06] px-4 sm:mx-0 sm:px-0">
-                    {ABAS.map(({ id, rotulo, icone: Icone }) => (
+                    {abasVisiveis.map(({ id, rotulo, icone: Icone }) => (
                         <button
                             key={id}
                             type="button"
@@ -106,6 +156,11 @@ export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios,
                             <Icone size={15} />
                             {rotulo}
                             {id === 'reunioes' && reunioes.length > 0 && <span className="text-[11px] text-white/30">{reunioes.length}</span>}
+                            {id === 'chamados' && chamadosAtencao > 0 && (
+                                <span className="inline-flex items-center gap-1 text-[11.5px] text-ecf-yellow" title="Chamados que precisam da equipe">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-ecf-yellow" />{chamadosAtencao}
+                                </span>
+                            )}
                         </button>
                     ))}
                 </nav>
@@ -113,6 +168,7 @@ export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios,
                 {aba === 'fila' && (
                     <Fila demandas={demandas} usuarios={usuarios} eu={eu} pode={pode} hoje={hoje} onAbrir={abrir} onAtualizar={setAtualizando} />
                 )}
+                {aba === 'chamados' && equipe && <Chamados chamados={chamados} eu={eu} onAbrir={abrirChamado} />}
                 {aba === 'demandas' && <ListaDemandas demandas={demandas} pode={pode} hoje={hoje} onAbrir={abrir} />}
                 {aba === 'painel' && <Painel demandas={demandas} areas={areas} hoje={hoje} />}
                 {aba === 'reunioes' && (
@@ -137,7 +193,31 @@ export default function DemandasDevIndex({ demandas, painel, reunioes, usuarios,
                 onAtualizar={setAtualizando}
                 onEditar={setEditandoDemanda}
                 onAgendarReuniao={pode.gerenciar ? agendarReuniao : null}
+                onAbrirChamado={equipe ? abrirChamado : null}
             />
+
+            {equipe && (
+                <ChamadoDrawer
+                    aberto={!!chamadoId}
+                    chamado={chamadoDetalhe?.id === chamadoId ? chamadoDetalhe : null}
+                    devs={devs}
+                    eu={eu}
+                    onClose={fecharChamado}
+                    onCriarDemanda={(c) => setConvertendo(c)}
+                    onAbrirDemanda={abrir}
+                />
+            )}
+            {convertendo && (
+                <DemandaDialog
+                    key={`chamado-${convertendo.id}`}
+                    origem={origemDoChamado(convertendo)}
+                    usuarios={usuarios}
+                    areas={areas}
+                    prefixos={prefixos}
+                    hoje={hoje}
+                    onClose={() => setConvertendo(null)}
+                />
+            )}
 
             {atualizando && (
                 <AtualizacaoDialog key={atualizando.id} demanda={atualizando} hoje={hoje} onClose={() => setAtualizando(null)} />
