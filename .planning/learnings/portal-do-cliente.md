@@ -517,6 +517,47 @@ interna, com o comportamento do portal como padrão do componente.
 responde JSON; a segunda responde Inertia e faria o quadro piscar a cada card.
 A rota serve os dois escopos porque a tarefa pertence ao PPA, não ao escopo.
 
+### A tela do CLIENTE tambem filtra — e lá o filtro é do navegador
+
+Unificadas as telas, veio o óbvio: *"não estou conseguindo filtrar pelo portal
+do cliente"*. O portal ganhou os MESMOS dois seletores da lista interna, e a
+busca deixou de sumir quando o cliente tem 3 planos ou menos.
+
+**O filtro do portal roda no NAVEGADOR, e o da lista interna no BANCO.** Não é
+descuido: `PortalPpaController::indexAutenticado` manda TODOS os planos do
+cliente de uma vez, sem paginação. Sem paginação não existe o risco que obriga
+o outro lado ao SQL (mostrar "3 vencidos" para quem tem 19 na página seguinte),
+e filtrar no cliente é instantâneo. Se um dia o portal paginar, o filtro TEM de
+descer para o servidor junto.
+
+Para as duas telas não divergirem, o que é comum mora em
+`lib/ppaAgrupamento.js`: `SITUACOES_PPA`, `ORDENS_PPA`, as sentinelas
+(`TODAS_SITUACOES`, `ORDEM_PADRAO`), `filtrarPorSituacao` e
+`ordenarPorAtualizacao`. `filtrarPorSituacao` **não é uma quinta
+implementação da régua**: o grupo de cada plano já foi decidido por
+`grupoDoPlano`, e "vencido" olha `prazoDias`, que o servidor calcula e que já
+vem nulo em plano encerrado.
+
+**`atualizado_em` passou a viajar para o cliente**, quebrando a regra de "datas
+de controle não vão no payload". É deliberado: ordenar por "atualizados
+recentemente" sem mostrar a data seria ordenar por critério invisível. É a data
+de mexida no plano DELE, não um dado interno.
+
+**Os números do topo NÃO seguem o filtro no portal, e seguem na lista interna.**
+Também estrutural: no portal existe o conjunto inteiro para somar, e segui-lo
+faria "Concluídos" mostrar 100% e zero pendências — lido de relance, "acabou
+tudo". Na lista interna o filtro é do servidor e a página já chega recortada;
+não há conjunto inteiro para somar.
+
+### Sem ESLint, constante órfã só estoura na cara do usuário
+
+Ao mover os rótulos dos filtros para a lib, o bloco removido levou junto uma
+constante que continuava em uso (`SEM_PLANOS`). **`npm run build` passou.** O
+que pegou foi o gate estrutural de `tests/js/estrutura-ppa-filtros.test.js`, que
+afirma a existência da declaração. Sem ele, a tela do PPA abriria em branco com
+um `ReferenceError` no console. Mesma família do `setCollapsed` órfão da
+sidebar — vale a pena o gate citar as declarações, não só os usos.
+
 ### O "quadro completo" foi desligado — e ele era o ÚNICO lugar que criava tarefa
 
 Pedido: *"eu não quero quadro completo, não vou usar isso, ninguém vai, o

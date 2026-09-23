@@ -485,6 +485,13 @@ class PpaListaPorAtencaoTest extends TestCase
         // Tarefa concluída não carrega atraso: o selo vermelho no card de algo
         // já feito seria alarme sobre trabalho que acabou.
         $this->assertNull($visao['tarefas'][2]['prazo_dias']);
+
+        // A data da última mexida viaja para o cliente desde 23/09/2026: sem
+        // ela, o seletor "atualizados recentemente" da tela dele ordenaria por
+        // um critério invisível. `_iso` é o que ordena, o outro é o que escreve.
+        $this->assertNotNull($visao['atualizado_em']);
+        $this->assertNotNull($visao['atualizado_iso']);
+        $this->assertMatchesRegularExpression('/^\d{2}\/\d{2}\/\d{4}$/', $visao['atualizado_em']);
     }
 
     #[Test]

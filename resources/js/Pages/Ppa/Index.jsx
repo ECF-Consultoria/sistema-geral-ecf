@@ -16,7 +16,7 @@ import PlanoPpa, { PlanoConcluidoCompacto } from '@/Components/Ppa/PlanoPpa';
 import IndicadoresPpa from '@/Components/Ppa/IndicadoresPpa';
 import TituloSecaoPpa from '@/Components/Ppa/TituloSecaoPpa';
 import {
-    GRUPO_CONCLUIDO, GRUPOS,
+    GRUPO_CONCLUIDO, ORDEM_PADRAO, ORDENS_PPA, SITUACOES_PPA, TODAS_SITUACOES,
     abertosPorPadrao, grupoDoPlano, seccionar, totaisDosPlanos,
 } from '@/lib/ppaAgrupamento';
 
@@ -102,35 +102,13 @@ const ROTAS_PADRAO = {
     destroy: 'ppa.destroy',
 };
 
-// ─── Filtro de situação ─────────────────────────────────────────────────────
-//
-// Os rótulos saem de `GRUPOS` para o filtro dizer a MESMA coisa que a seção que
-// ele recorta. "Vencidos" entra à mão: não é um grupo — um plano vencido
-// continua estando em andamento ou a fazer, e por isso atravessa as seções em
-// vez de substituí-las.
-//
-// TODAS/PADRAO são sentinelas, e não string vazia: `value=""` num Select do
-// Radix apaga a tela inteira. O vazio só existe na URL, do lado do PHP.
-const TODAS = 'todos';
-
-const SITUACOES = [
-    { valor: TODAS,     titulo: 'Todas as situações' },
-    { valor: 'vencido', titulo: 'Vencidos' },
-    ...GRUPOS.map((g) => ({ valor: g.chave, titulo: g.titulo })),
-];
-
-// A ordem DENTRO de cada seção. O agrupamento nunca muda — ele é a estrutura.
-const PADRAO = 'prioridade';
+// Os rótulos dos dois seletores vivem em `lib/ppaAgrupamento.js`, com a tela do
+// cliente: o mesmo filtro tem de se chamar igual nos dois lados, e os valores
+// atravessam crus para `Ppa::SITUACOES` / `Ppa::ORDENS` no PHP.
 
 // Referência estável: `?? []` criaria um array novo a cada render, e o efeito
 // que re-semeia as tarefas giraria em falso para sempre.
 const SEM_PLANOS = [];
-
-const ORDENS = [
-    { valor: PADRAO,    titulo: 'Prioridade (prazo)' },
-    { valor: 'recente', titulo: 'Atualizados recentemente' },
-    { valor: 'antigo',  titulo: 'Atualizados há mais tempo' },
-];
 
 export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, filtros = {} }) {
     const R = { ...ROTAS_PADRAO, ...(rotas ?? {}) };
@@ -431,28 +409,28 @@ export default function PpaIndex({ ppas, companies, escopo = 'geral', rotas, fil
                         </div>
 
                         <Select
-                            value={situacao || TODAS}
-                            onValueChange={(v) => aplicar({ situacao: v === TODAS ? '' : v })}
+                            value={situacao || TODAS_SITUACOES}
+                            onValueChange={(v) => aplicar({ situacao: v === TODAS_SITUACOES ? '' : v })}
                         >
                             <SelectTrigger className="h-9 w-[168px] text-[12.5px]" aria-label="Filtrar por situação">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                {SITUACOES.map((s) => (
+                                {SITUACOES_PPA.map((s) => (
                                     <SelectItem key={s.valor} value={s.valor}>{s.titulo}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
 
                         <Select
-                            value={ordem || PADRAO}
-                            onValueChange={(v) => aplicar({ ordem: v === PADRAO ? '' : v })}
+                            value={ordem || ORDEM_PADRAO}
+                            onValueChange={(v) => aplicar({ ordem: v === ORDEM_PADRAO ? '' : v })}
                         >
                             <SelectTrigger className="h-9 w-[212px] text-[12.5px]" aria-label="Ordenar a lista">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                {ORDENS.map((o) => (
+                                {ORDENS_PPA.map((o) => (
                                     <SelectItem key={o.valor} value={o.valor}>{o.titulo}</SelectItem>
                                 ))}
                             </SelectContent>

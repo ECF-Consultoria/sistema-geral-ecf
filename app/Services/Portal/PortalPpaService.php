@@ -22,8 +22,13 @@ use Illuminate\Support\Collection;
  *
  * ### O que o cliente NÃO recebe
  * `trello_board_url` (quadro interno), `mentor_id`, `workspace_token`,
- * `escopo` e as datas de controle — nada disso viaja no payload de
- * {@see self::visao()}. O nome do estrategista fica de fora aqui porque o
+ * `escopo` e `completed_at` — nada disso viaja no payload de
+ * {@see self::visao()}.
+ *
+ * `atualizado_em` É uma exceção deliberada (23/09/2026): a tela do cliente
+ * passou a poder ordenar por "atualizados recentemente", e ordenar por um
+ * critério invisível confunde. É a data de mexida no plano DELE, não um dado
+ * de controle interno. O nome do estrategista fica de fora aqui porque o
  * portal já apresenta quem atende o cliente em bloco próprio, com foto e papel
  * (`OnboardingLinkService::responsaveisDaEmpresa()`); repetir por PPA só
  * criaria uma segunda fonte para o mesmo fato.
@@ -121,6 +126,11 @@ class PortalPpaService
             'prazo_iso'  => $ppa->due_date?->format('Y-m-d'),
             'prazo_dias' => $this->diasAte($ppa->due_date, $ppa->status === 'completed'),
             'enviado_em' => $ppa->sent_at?->format('d/m/Y'),
+            // Quando mexeram neste plano pela última vez, contando as TAREFAS
+            // (ver `Ppa::atualizadoEm()`). O `_iso` é o que a tela ORDENA; o
+            // outro é o que ela escreve — mesma divisão do prazo, logo acima.
+            'atualizado_em'  => $ppa->atualizadoEm()?->format('d/m/Y'),
+            'atualizado_iso' => $ppa->atualizadoEm()?->format('Y-m-d H:i:s'),
             'tarefas'    => $tarefas,
             'total'      => $total,
             'feitas'     => $feitas,

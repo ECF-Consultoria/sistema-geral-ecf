@@ -2,12 +2,14 @@ import { useCallback, useMemo, useState } from 'react';
 import axios from 'axios';
 import { ClipboardList, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import PlanoPpa, { PlanoConcluidoCompacto } from '@/Components/Ppa/PlanoPpa';
 import IndicadoresPpa from '@/Components/Ppa/IndicadoresPpa';
 import TituloSecaoPpa from '@/Components/Ppa/TituloSecaoPpa';
 import {
-    GRUPO_CONCLUIDO,
-    abertosPorPadrao, grupoDoPlano, seccionar, totaisDosPlanos,
+    GRUPO_CONCLUIDO, ORDEM_PADRAO, ORDENS_PPA, SITUACOES_PPA, TODAS_SITUACOES,
+    abertosPorPadrao, filtrarPorSituacao, grupoDoPlano, ordenarPorAtualizacao,
+    seccionar, totaisDosPlanos,
 } from '@/lib/ppaAgrupamento';
 
 // ─── PPA — o mesmo plano, visto pelo cliente ────────────────────────────────
@@ -39,6 +41,17 @@ import {
 // Nada disso é campo novo nem status novo: o grupo é LIDO de `ppas.status` e
 // de `ppa_tasks.status` a cada render.
 //
+// ### Os filtros aqui são do NAVEGADOR, não do servidor (23/09/2026)
+// Ao contrário da lista interna, que pagina de 20 em 20 e por isso filtra no
+// banco, esta tela recebe TODOS os planos do cliente de uma vez
+// (`PortalPpaController::indexAutenticado`). Filtrar aqui é instantâneo e não
+// custa ida ao servidor — e, sem paginação, não existe o risco que obriga o
+// outro lado a filtrar no SQL (mostrar "3 vencidos" para quem tem 19 na página
+// seguinte).
+//
+// O que NÃO pode divergir são os rótulos e os valores: eles vivem em
+// `lib/ppaAgrupamento.js`, junto da régua, e servem as duas telas.
+//
 // ### A ordem não se reorganiza debaixo do dedo
 // O agrupamento usa as tarefas como elas chegaram do servidor (`ppas`), não o
 // estado vivo. Se ele seguisse o estado vivo, concluir a última tarefa faria o
@@ -66,6 +79,12 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
     const [abertos, setAbertos] = useState(() => abertosPorPadrao(planos));
     const [concluidosAbertos, setConcluidosAbertos] = useState(false);
     const [busca, setBusca] = useState('');
+
+    // Estado local, e não URL: sem paginação não há link para compartilhar nem
+    // página para preservar, e o cliente não volta a esta tela por bookmark
+    // filtrado. A lista interna usa a URL porque lá o servidor é quem filtra.
+    const [situacao, setSituacao] = useState('');
+    const [ordem, setOrdem] = useState('');
 
     const alternar = (id) => setAbertos((atual) => {
         const proximo = new Set(atual);
@@ -113,24 +132,54 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
     const termo = busca.trim().toLowerCase();
 
     const filtrados = useMemo(() => {
-        if (!termo) return planos;
+        const porSituacao = filtrarPorSituacao(planos, situacao);
+        if (!termo) return porSituacao;
 
-        return planos.filter((p) => {
+        return porSituacao.filter((p) => {
             if (p.titulo.toLowerCase().includes(termo)) return true;
             return (tarefasPorPlano[p.id] ?? []).some(
                 (t) => `${t.titulo} ${t.descricao ?? ''}`.toLowerCase().includes(termo),
             );
         });
-    }, [planos, termo, tarefasPorPlano]);
+    }, [planos, situacao, termo, tarefasPorPlano]);
 
-    const secoes = useMemo(() => seccionar(filtrados), [filtrados]);
+    // `ordenar: false` quando o cliente escolheu uma ordem — senão `seccionar`
+    // reordenaria por prazo e desfaria a escolha dele, calado. O GRUPO continua
+    // separando as seções nos dois casos.
+    const secoes = useMemo(
+        () => seccionar(ordenarPorAtualizacao(filtrados, ordem), { ordenar: !ordem }),
+        [filtrados, ordem],
+    );
 
     // Os quatro números do topo, do estado VIVO — a mesma conta da lista
     // interna, para os dois lados falarem dos mesmos números.
+    //
+    // Note o `planos`, e não o `filtrados`: o painel descreve TUDO o que o
+    // cliente tem, e o filtro recorta só a lista abaixo dele. Seguí-lo faria
+    // "Concluídos" mostrar 100% e zero pendências — lido de relance, "acabou
+    // tudo", que é o oposto do que o recorte significa.
+    //
+    // A lista interna não tem essa escolha: lá o filtro é do SERVIDOR e a
+    // página já chega recortada, então não existe conjunto inteiro para somar.
+    // A diferença entre as duas telas é estrutural, não um descuido.
     const totais = useMemo(
         () => totaisDosPlanos(planos, tarefasPorPlano),
         [planos, tarefasPorPlano],
     );
+
+    /**
+     * "Atualizado 21/09" na linha do plano.
+     *
+     * Existe por causa do seletor de ordem: ordenar por "atualizados
+     * recentemente" sem mostrar a data deixaria o cliente sem como conferir o
+     * que a lista acabou de fazer.
+     */
+    const meta = (plano) => (plano.atualizado_em ? (
+        <>
+            <span className="text-white/15">·</span>
+            <span className="whitespace-nowrap">Atualizado {plano.atualizado_em}</span>
+        </>
+    ) : null);
 
     const vazio = ppas.length === 0;
     const nadaNaBusca = !vazio && filtrados.length === 0;
@@ -152,11 +201,12 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
                     <>
                         <IndicadoresPpa totais={totais} />
 
-                        {/* A busca só aparece quando há lista o bastante para
-                            se perder nela. Com dois planos ela seria mais um
-                            controle para o olho processar sem ter o que fazer. */}
-                        {ppas.length > 3 && (
-                            <div className="relative">
+                        {/* Busca e filtros. A busca já esteve escondida abaixo de
+                            quatro planos; com os seletores ao lado, some-la
+                            deixaria a linha pela metade em telas pequenas — e o
+                            cliente com três planos também procura por tarefa. */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="relative flex-1 min-w-[200px]">
                                 <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30" />
                                 <input
                                     value={busca}
@@ -175,7 +225,41 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
                                     </button>
                                 )}
                             </div>
-                        )}
+
+                            <Select
+                                value={situacao || TODAS_SITUACOES}
+                                onValueChange={(v) => setSituacao(v === TODAS_SITUACOES ? '' : v)}
+                            >
+                                <SelectTrigger
+                                    aria-label="Filtrar por situação"
+                                    className="h-11 w-[176px] rounded-xl bg-white/[0.03] ring-1 ring-inset ring-white/[0.07] border-0 text-[13px]"
+                                >
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {SITUACOES_PPA.map((s) => (
+                                        <SelectItem key={s.valor} value={s.valor}>{s.titulo}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select
+                                value={ordem || ORDEM_PADRAO}
+                                onValueChange={(v) => setOrdem(v === ORDEM_PADRAO ? '' : v)}
+                            >
+                                <SelectTrigger
+                                    aria-label="Ordenar os planos"
+                                    className="h-11 w-[220px] rounded-xl bg-white/[0.03] ring-1 ring-inset ring-white/[0.07] border-0 text-[13px]"
+                                >
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {ORDENS_PPA.map((o) => (
+                                        <SelectItem key={o.valor} value={o.valor}>{o.titulo}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </>
                 )}
 
@@ -197,9 +281,20 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
                         </p>
                     </div>
                 ) : nadaNaBusca ? (
-                    <p className="text-white/35 text-[13px] text-center py-14">
-                        Nenhum plano ou tarefa com “{busca.trim()}”.
-                    </p>
+                    <div className="text-center py-14">
+                        <p className="text-white/35 text-[13px]">
+                            {termo
+                                ? `Nenhum plano ou tarefa com “${busca.trim()}”.`
+                                : 'Nenhum plano nesta situação.'}
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => { setBusca(''); setSituacao(''); }}
+                            className="mt-3 text-[12.5px] text-white/50 hover:text-white underline underline-offset-4 transition-colors"
+                        >
+                            Ver todos os planos
+                        </button>
+                    </div>
                 ) : (
                     secoes.map((secao) => {
                         if (secao.planos.length === 0) return null;
@@ -256,6 +351,7 @@ export default function Ppa({ token, empresa, modulos = [], ppas = [] }) {
                                                 aberto={abertos.has(plano.id)}
                                                 onAlternar={() => alternar(plano.id)}
                                                 onMover={mover}
+                                                meta={meta(plano)}
                                             />
                                         ))}
                                     </div>

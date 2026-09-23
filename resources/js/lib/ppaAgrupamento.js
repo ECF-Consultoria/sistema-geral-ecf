@@ -178,6 +178,86 @@ export function resumoTarefas({ total, feitas, fazendo, aFazer }) {
     return partes.join(' · ');
 }
 
+// ─── Os filtros da lista, iguais nas duas telas ─────────────────────────────
+//
+// Os rótulos e os valores vivem aqui porque as DUAS telas de PPA filtram: a
+// interna (`Pages/Ppa/Index.jsx`) e a do cliente (`Pages/Portal/Ppa.jsx`).
+// Duas listas de rótulos divergem no primeiro ajuste, e aí o mesmo filtro passa
+// a se chamar diferente de cada lado.
+//
+// ### Os valores atravessam para o PHP
+// Eles viajam crus na URL da lista interna e são lidos por `Ppa::SITUACOES` e
+// `Ppa::ORDENS`. Renomear aqui sem renomear lá faz o filtro devolver a lista
+// inteira, calado — o scope trata valor desconhecido como "sem filtro".
+//
+// ### Sentinelas, e não string vazia
+// `value=""` num Select do Radix apaga a tela inteira (já aconteceu neste
+// projeto). O vazio só existe na URL.
+
+export const TODAS_SITUACOES = 'todos';
+export const ORDEM_PADRAO    = 'prioridade';
+export const SITUACAO_VENCIDO = 'vencido';
+
+export const SITUACOES_PPA = [
+    { valor: TODAS_SITUACOES,  titulo: 'Todas as situações' },
+    // "Vencidos" não é um grupo: um plano vencido continua estando em andamento
+    // ou a fazer. Ele ATRAVESSA as seções em vez de substituí-las.
+    { valor: SITUACAO_VENCIDO, titulo: 'Vencidos' },
+    ...GRUPOS.map((g) => ({ valor: g.chave, titulo: g.titulo })),
+];
+
+export const ORDENS_PPA = [
+    { valor: ORDEM_PADRAO, titulo: 'Prioridade (prazo)' },
+    { valor: 'recente',    titulo: 'Atualizados recentemente' },
+    { valor: 'antigo',     titulo: 'Atualizados há mais tempo' },
+];
+
+/**
+ * Recorta os planos por situação — o espelho, em JS, de `Ppa::scopeDaSituacao`.
+ *
+ * NÃO é uma quarta implementação da régua de agrupamento: o grupo de cada plano
+ * já foi decidido por {@see grupoDoPlano}, e aqui só se compara. "Vencido" olha
+ * `prazoDias`, que o SERVIDOR calcula (`Ppa::diasAteOPrazo`) e que já vem nulo
+ * em plano encerrado — é o que mantém o recorte igual ao do SQL sem repetir a
+ * regra.
+ *
+ * Existe para a tela do CLIENTE, que não pagina e por isso filtra no navegador.
+ * A lista interna pagina de 20 em 20 e filtra no banco: recortar só a página
+ * mostraria "3 vencidos" para quem tem 19 nas páginas seguintes.
+ *
+ * @param {Array<{grupo: string, prazoDias: ?number}>} planos já anotados
+ */
+export function filtrarPorSituacao(planos, situacao) {
+    if (!situacao || situacao === TODAS_SITUACOES) return planos;
+
+    if (situacao === SITUACAO_VENCIDO) {
+        return planos.filter((p) => Number.isFinite(p.prazoDias) && p.prazoDias < 0);
+    }
+
+    return planos.filter((p) => p.grupo === situacao);
+}
+
+/**
+ * Ordena por quando mexeram no plano pela última vez.
+ *
+ * `atualizado_iso` vem pronto do servidor (`Ppa::atualizadoEm()`, que conta
+ * mexida em TAREFA) porque o mesmo cálculo aqui usaria o fuso do navegador.
+ * Ordem desconhecida — ou a padrão — devolve a lista como estava, para
+ * `seccionar` aplicar a régua de atenção.
+ *
+ * O GRUPO continua mandando: quem separa em seções é `seccionar`, e ele é
+ * chamado depois. Um concluído mexido agora não pula na frente de um plano
+ * andando.
+ */
+export function ordenarPorAtualizacao(planos, ordem) {
+    if (ordem !== 'recente' && ordem !== 'antigo') return planos;
+
+    const sentido = ordem === 'recente' ? -1 : 1;
+
+    return [...planos].sort((a, b) => sentido * String(a.atualizado_iso ?? '')
+        .localeCompare(String(b.atualizado_iso ?? '')));
+}
+
 /**
  * Os quatro números do topo, a partir do estado VIVO das tarefas.
  *

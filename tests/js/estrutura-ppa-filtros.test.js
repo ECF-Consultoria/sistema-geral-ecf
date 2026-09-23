@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { lerSemComentarios } from './_fonte.js';
-import { GRUPOS } from '../../resources/js/lib/ppaAgrupamento.js';
+import { GRUPOS, ORDENS_PPA, SITUACOES_PPA } from '../../resources/js/lib/ppaAgrupamento.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Gate da unificação das duas telas de PPA (23/09/2026).
@@ -132,30 +132,78 @@ test('ppa/interna — a tarefa nova aparece sem fechar o plano', () => {
 
 // ─── 3. Os dois seletores ───
 
-test('ppa/interna — situação e ordem são Selects, com sentinela em vez de vazio', () => {
-    assert.match(interna, /const TODAS = 'todos'/);
-    assert.match(interna, /const PADRAO = 'prioridade'/);
-    assert.match(interna, /value=\{situacao \|\| TODAS\}/);
-    assert.match(interna, /value=\{ordem \|\| PADRAO\}/);
-    assert.match(interna, /v === TODAS \? '' : v/);
-    assert.match(interna, /v === PADRAO \? '' : v/);
+test('ppa — situação e ordem são Selects, com sentinela em vez de vazio', () => {
+    // `value=""` num Select do Radix apaga a tela inteira. As sentinelas vivem
+    // na lib; o vazio só existe na URL, do lado do PHP.
+    for (const fonte of [interna, portal]) {
+        assert.match(fonte, /value=\{situacao \|\| TODAS_SITUACOES\}/);
+        assert.match(fonte, /value=\{ordem \|\| ORDEM_PADRAO\}/);
+        assert.match(fonte, /TODAS_SITUACOES \? '' : v/);
+        assert.match(fonte, /ORDEM_PADRAO \? '' : v/);
+    }
 });
 
 test('ppa/interna — a ordem é por ATUALIZAÇÃO, não por data exata', () => {
     // O intervalo "criado de/até" foi recusado em revisão: o pedido era "do
     // mais recente atualizado, ou dos mais antigos".
-    assert.match(interna, /\{ valor: 'recente', titulo: 'Atualizados recentemente' \}/);
-    assert.match(interna, /\{ valor: 'antigo',  titulo: 'Atualizados há mais tempo' \}/);
+    assert.deepEqual(ORDENS_PPA.map((o) => o.valor), ['prioridade', 'recente', 'antigo']);
     assert.doesNotMatch(interna, /type="date"[\s\S]{0,200}aria-label="Criado/);
 });
 
 test('ppa/interna — as situações são as seções da lista mais "Vencidos"', () => {
-    assert.match(interna, /\.\.\.GRUPOS\.map\(\(g\) => \(\{ valor: g\.chave, titulo: g\.titulo \}\)\)/);
-    assert.match(interna, /\{ valor: 'vencido', titulo: 'Vencidos' \}/);
-
     // Viajam crus na URL e são lidos por `Ppa::SITUACOES` no PHP.
-    assert.deepEqual(['vencido', ...GRUPOS.map((g) => g.chave)].sort(),
-        ['andamento', 'concluido', 'fazer', 'vencido']);
+    assert.deepEqual(SITUACOES_PPA.map((x) => x.valor),
+        ['todos', 'vencido', ...GRUPOS.map((g) => g.chave)]);
+    assert.deepEqual(GRUPOS.map((g) => g.chave), ['andamento', 'fazer', 'concluido']);
+});
+
+// ─── 3b. O cliente também filtra (23/09/2026) ───
+
+test('ppa/portal — a tela do cliente tem os dois seletores', () => {
+    assert.match(portal, /aria-label="Filtrar por situação"/);
+    assert.match(portal, /aria-label="Ordenar os planos"/);
+    assert.match(portal, /value=\{situacao \|\| TODAS_SITUACOES\}/);
+    assert.match(portal, /value=\{ordem \|\| ORDEM_PADRAO\}/);
+});
+
+test('ppa/portal — os rótulos vêm da lib, não de uma segunda lista', () => {
+    // Duas listas de rótulos divergem no primeiro ajuste, e aí o mesmo filtro
+    // passa a se chamar diferente de cada lado.
+    for (const fonte of [interna, portal]) {
+        assert.match(fonte, /SITUACOES_PPA/);
+        assert.match(fonte, /ORDENS_PPA/);
+        // A lista local de cada página foi embora.
+        assert.doesNotMatch(fonte, /^const SITUACOES = \[/m);
+        assert.doesNotMatch(fonte, /^const ORDENS = \[/m);
+    }
+});
+
+test('ppa/portal — lá o filtro é do NAVEGADOR; aqui, do servidor', () => {
+    // O portal recebe todos os planos do cliente de uma vez e não pagina, então
+    // filtrar no navegador é instantâneo e correto. A lista interna pagina de
+    // 20 em 20: recortar só a página mostraria "3 vencidos" para quem tem 19
+    // nas seguintes.
+    assert.match(portal, /filtrarPorSituacao\(planos, situacao\)/);
+    assert.doesNotMatch(portal, /router\.(get|visit)/);
+
+    assert.match(interna, /router\.get\(route\(R\.index\), paramsDe\(proximo\)/);
+    assert.doesNotMatch(interna, /filtrarPorSituacao/);
+});
+
+test('ppa/portal — a ordem escolhida não é desfeita por `seccionar`', () => {
+    assert.match(portal, /seccionar\(ordenarPorAtualizacao\(filtrados, ordem\), \{ ordenar: !ordem \}\)/);
+});
+
+test('ppa/portal — a busca deixou de sumir com poucos planos', () => {
+    // Com os seletores ao lado, esconder a busca deixaria a linha pela metade.
+    assert.doesNotMatch(portal, /ppas\.length > 3/);
+});
+
+test('ppa/portal — ordenar por atualização exige a data no payload e na tela', () => {
+    // Ordenar por um critério invisível deixa o cliente sem como conferir o que
+    // a lista acabou de fazer.
+    assert.match(portal, /Atualizado \{plano\.atualizado_em\}/);
+    assert.match(portal, /meta=\{meta\(plano\)\}/);
 });
 
 // ─── 4. Quem ordena é o servidor ───
